@@ -76,7 +76,7 @@ const initGameMeta=()=>({coins:500,totalCoins:0,owned:[0],equipped:0,stats:{game
 
 // ── SERVER ─────────────────────────────────────────────────────────────────────
 class GameServer{
-  constructor(){this.players={};this.food=[];this.viruses=[];this.ejected=[];this.listeners={};this.running=false;this._spawnFood();this._spawnViruses();}
+  constructor(){this.players={};this.food=[];this.viruses=[];this.ejected=[];this.missiles=[];this.listeners={};this.running=false;this._spawnFood();this._spawnViruses();}
   on(ev,cb){(this.listeners[ev]||(this.listeners[ev]=[])).push(cb);}
   off(ev,cb){if(this.listeners[ev])this.listeners[ev]=this.listeners[ev].filter(f=>f!==cb);}
   _emit(ev,d){(this.listeners[ev]||[]).forEach(cb=>cb(d));}
@@ -86,9 +86,13 @@ class GameServer{
     const puTypes=["powerup_speed","powerup_magnet","powerup_shield"];
     const puColors={"powerup_speed":"#ffdd00","powerup_magnet":"#ff66ff","powerup_shield":"#44aaff"};
     let puCount=this.food.filter(f=>f.type&&f.type.startsWith("powerup_")).length;
+    let msCount=this.food.filter(f=>f.type==="missile_ammo").length;
     while(this.food.length<FOOD_COUNT){
-      const wantPU=puCount<15&&Math.random()<0.04;
-      if(wantPU){const t=puTypes[Math.floor(Math.random()*3)];this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:12+Math.random()*5,type:t,color:puColors[t]});puCount++;}
+      const r=Math.random();
+      const wantMS=msCount<10&&r<0.02;
+      const wantPU=!wantMS&&puCount<15&&r<0.06;
+      if(wantMS){this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:13,type:"missile_ammo",color:"#ff6600"});msCount++;}
+      else if(wantPU){const t=puTypes[Math.floor(Math.random()*3)];this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:12+Math.random()*5,type:t,color:puColors[t]});puCount++;}
       else{const t=types[Math.floor(Math.random()*4)];this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:6+Math.random()*9,type:t,color:`hsl(${Math.random()*360},80%,70%)`});}
     }
   }
@@ -117,6 +121,16 @@ class GameServer{
     if(ev==="move"){const p=this.players[d.id];if(p&&!p.dead){p._tx=d.tx;p._ty=d.ty;}}
     if(ev==="split"){const p=this.players[d.id];if(p&&!p.dead)this._splitPlayer(p,d.tx,d.ty);}
     if(ev==="eject"){const p=this.players[d.id];if(p&&!p.dead)this._ejectMass(p,d.tx,d.ty);}
+    if(ev==="fire"){
+      const p=this.players[d.id];if(!p||p.dead||!(p._missiles>0))return;
+      const cx=this._cx(p),cy=this._cy(p);
+      let nearest=null,nearestD=Infinity;
+      Object.values(this.players).filter(t=>!t.dead&&t.id!==p.id).forEach(t=>{const td=dist({x:cx,y:cy},{x:this._cx(t),y:this._cy(t)});if(td<nearestD){nearestD=td;nearest=t;}});
+      if(!nearest)return;
+      p._missiles--;
+      const tx=this._cx(nearest),ty=this._cy(nearest),dx=tx-cx,dy=ty-cy,len=Math.hypot(dx,dy)||1;
+      this.missiles.push({id:uid(),x:cx,y:cy,vx:(dx/len)*20,vy:(dy/len)*20,ownerId:p.id,targetId:nearest.id,r:7,life:500});
+    }
   }
   _splitPlayer(p,tx,ty){
     if(p.pieces.length>=MAX_PIECES)return;const news=[];
@@ -213,7 +227,7 @@ class GameServer{
     // magnet power-up: pull nearby food toward piece
     plist.forEach(p=>{if(!p._powerups||!p._powerups.magnet)return;p.pieces.forEach(pc=>{this.food.forEach(f=>{if(f._life!=null||f.type.startsWith("powerup_"))return;const d=dist(pc,f);if(d<pc.r*7&&d>1){const nx=(pc.x-f.x)/d,ny=(pc.y-f.y)/d;f.x=clamp(f.x+nx*3.5,f.r,WORLD_W-f.r);f.y=clamp(f.y+ny*3.5,f.r,WORLD_H-f.r);}});});});
     // eat food
-    plist.forEach(p=>{p.pieces.forEach(pc=>{this.food=this.food.filter(f=>{if(f._life!=null)return true;if(dist(pc,f)<pc.r+f.r*0.5){if(f.type&&f.type.startsWith("powerup_")){if(!p._powerups)p._powerups={};const pt=f.type.replace("powerup_","");if(p._powerups[pt]){p._powerups[pt]+=400;}else if(Object.keys(p._powerups).length<3){p._powerups[pt]=400;}}else{pc.r=Math.min(Math.sqrt(pc.r*pc.r+f.r*f.r*0.15),260);p.score+=Math.floor(f.r);}return false;}return true;});});});
+    plist.forEach(p=>{p.pieces.forEach(pc=>{this.food=this.food.filter(f=>{if(f._life!=null)return true;if(dist(pc,f)<pc.r+f.r*0.5){if(f.type==="missile_ammo"){p._missiles=Math.min((p._missiles||0)+1,3);}else if(f.type&&f.type.startsWith("powerup_")){if(!p._powerups)p._powerups={};const pt=f.type.replace("powerup_","");if(p._powerups[pt]){p._powerups[pt]+=400;}else if(Object.keys(p._powerups).length<3){p._powerups[pt]=400;}}else{pc.r=Math.min(Math.sqrt(pc.r*pc.r+f.r*f.r*0.15),260);p.score+=Math.floor(f.r);}return false;}return true;});});});
     this._spawnFood();
     // eat ejected
     plist.forEach(p=>{p.pieces.forEach(pc=>{this.ejected=this.ejected.filter(e=>{if(e.ownerId===p.id&&e.life>0)return true;if(dist(pc,e)<pc.r+e.r*0.6){pc.r=Math.min(Math.sqrt(pc.r*pc.r+e.r*e.r*2),260);p.score+=2;return false;}return true;});});});
@@ -229,11 +243,16 @@ class GameServer{
     if(hitV.size>0){this.viruses=this.viruses.filter((_,i)=>!hitV.has(i));this._spawnViruses();}
     // eat players
     for(let i=0;i<plist.length;i++){for(let j=0;j<plist.length;j++){if(i===j)continue;const a=plist[i],b=plist[j];if(b._powerups&&b._powerups.shield>0)continue;a.pieces.forEach(ap=>{b.pieces=b.pieces.filter(bp=>{if(ap.r<bp.r*1.08)return true;if(dist(ap,bp)<ap.r*0.72){ap.r=Math.min(Math.sqrt(ap.r*ap.r+bp.r*bp.r*0.55),290);a.score+=Math.floor(bp.r*8);if(!b.isBot&&b.pieces.length===1){b.dead=true;this._emit("eaten",{by:a.name,score:b.score,isBot:a.isBot,dx:bp.x,dy:bp.y,killerId:a.id});}return false;}return true;});});if(b.isBot&&b.pieces.length===0){b.score=Math.floor(b.score*0.3);const sx=400+Math.random()*(WORLD_W-800),sy=400+Math.random()*(WORLD_H-800);b.pieces=[this._mkPiece(sx,sy,22+Math.random()*10,0,0,0)];}}}
+    // missiles
+    this.missiles.forEach(m=>{const target=this.players[m.targetId];if(target&&!target.dead){const tx=this._cx(target),ty=this._cy(target),dx=tx-m.x,dy=ty-m.y,len=Math.hypot(dx,dy)||1;m.vx=lerp(m.vx,(dx/len)*20,0.1);m.vy=lerp(m.vy,(dy/len)*20,0.1);}m.x=clamp(m.x+m.vx,0,WORLD_W);m.y=clamp(m.y+m.vy,0,WORLD_H);m.life--;});
+    const deadM=new Set();
+    this.missiles.forEach((m,mi)=>{if(deadM.has(mi))return;const target=this.players[m.targetId];if(!target||target.dead){deadM.add(mi);return;}for(const pc of target.pieces){if(dist(m,pc)<pc.r+m.r){deadM.add(mi);for(let k=0;k<4;k++)this._splitPlayer(target,pc.x+(Math.random()-.5)*40,pc.y+(Math.random()-.5)*40);break;}}});
+    this.missiles=this.missiles.filter((_,i)=>!deadM.has(i)&&_.life>0);
     // decrement power-up timers
     plist.forEach(p=>{if(p._powerups){for(const t in p._powerups){p._powerups[t]--;if(p._powerups[t]<=0)delete p._powerups[t];}}});
     const lb=Object.values(this.players).filter(p=>!p.dead).map(p=>{const mass=Math.round(p.pieces.reduce((s,pc)=>s+pc.r*pc.r,0));return{name:p.name,mass,score:p.score,isBot:p.isBot};}).sort((a,b)=>b.mass-a.mass).slice(0,10);
     this._spawnViruses();
-    this._emit("tick",{players:this.players,food:this.food,viruses:this.viruses,ejected:this.ejected,leaderboard:lb});
+    this._emit("tick",{players:this.players,food:this.food,viruses:this.viruses,ejected:this.ejected,missiles:this.missiles,leaderboard:lb});
   }
 }
 
@@ -249,6 +268,7 @@ function drawFood(ctx,f,time){
   if(f.type==="asteroid"){ctx.fillStyle=f.color;ctx.beginPath();ctx.ellipse(0,0,f.r,f.r*.7,Math.PI/4,0,Math.PI*2);ctx.fill();ctx.fillStyle="rgba(0,0,0,.3)";ctx.beginPath();ctx.arc(-f.r*.2,-f.r*.2,f.r*.25,0,Math.PI*2);ctx.fill();}
   else if(f.type==="comet"){const g=ctx.createLinearGradient(-f.r*2.5,0,f.r,0);g.addColorStop(0,"rgba(255,255,255,0)");g.addColorStop(1,f.color);ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(-f.r,0,f.r*2.5,f.r*.35,0,0,Math.PI*2);ctx.fill();ctx.shadowBlur=8;ctx.shadowColor="#fff";ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(f.r*.4,0,f.r*.5,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
   else if(f.type==="star"){const p=1+Math.sin(time*.003+f.x)*.15;ctx.fillStyle=f.color;ctx.shadowBlur=f.r*2;ctx.shadowColor=f.color;ctx.beginPath();for(let i=0;i<5;i++){const a=(i*Math.PI*2)/5-Math.PI/2,ia=(i+.5)*Math.PI*2/5-Math.PI/2;i===0?ctx.moveTo(Math.cos(a)*f.r*p,Math.sin(a)*f.r*p):ctx.lineTo(Math.cos(a)*f.r*p,Math.sin(a)*f.r*p);ctx.lineTo(Math.cos(ia)*f.r*.4*p,Math.sin(ia)*f.r*.4*p);}ctx.closePath();ctx.fill();ctx.shadowBlur=0;}
+  else if(f.type==="missile_ammo"){const g=ctx.createRadialGradient(0,0,0,0,0,f.r);g.addColorStop(0,"#ffffff");g.addColorStop(0.5,"#ff8800");g.addColorStop(1,"#cc2200");ctx.fillStyle=g;ctx.shadowBlur=20;ctx.shadowColor="#ff4400";ctx.beginPath();ctx.arc(0,0,f.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.font=`bold ${Math.round(f.r*1.2)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🚀",0,1);}
   else if(f.type==="powerup_speed"){const g=ctx.createRadialGradient(0,0,0,0,0,f.r);g.addColorStop(0,"#ffffff");g.addColorStop(0.5,"#ffdd00");g.addColorStop(1,"#ff8800");ctx.fillStyle=g;ctx.shadowBlur=18;ctx.shadowColor="#ffdd00";ctx.beginPath();ctx.arc(0,0,f.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.font=`bold ${Math.round(f.r*1.1)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("⚡",0,1);}
   else if(f.type==="powerup_magnet"){const g=ctx.createRadialGradient(0,0,0,0,0,f.r);g.addColorStop(0,"#ffffff");g.addColorStop(0.5,"#ff66ff");g.addColorStop(1,"#aa00aa");ctx.fillStyle=g;ctx.shadowBlur=18;ctx.shadowColor="#ff66ff";ctx.beginPath();ctx.arc(0,0,f.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.font=`bold ${Math.round(f.r*1.1)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🧲",0,1);}
   else if(f.type==="powerup_shield"){const g=ctx.createRadialGradient(0,0,0,0,0,f.r);g.addColorStop(0,"#ffffff");g.addColorStop(0.5,"#44aaff");g.addColorStop(1,"#0044aa");ctx.fillStyle=g;ctx.shadowBlur=18;ctx.shadowColor="#44aaff";ctx.beginPath();ctx.arc(0,0,f.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.font=`bold ${Math.round(f.r*1.1)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🛡️",0,1);}
@@ -309,8 +329,15 @@ function drawPlanet(ctx,pc,p,isMe,time,overrideSkinId){
   ctx.restore();
 }
 
+function drawMissile(ctx,m){
+  ctx.save();ctx.translate(m.x,m.y);const ang=Math.atan2(m.vy,m.vx);ctx.rotate(ang);
+  const g=ctx.createLinearGradient(-m.r*3.5,0,0,0);g.addColorStop(0,"rgba(255,80,0,0)");g.addColorStop(1,"rgba(255,200,50,0.95)");ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(-m.r*2,0,m.r*3,m.r*.5,0,0,Math.PI*2);ctx.fill();
+  ctx.shadowBlur=14;ctx.shadowColor="#ff4400";ctx.fillStyle="#dddddd";ctx.beginPath();ctx.ellipse(0,0,m.r,m.r*.42,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#ff2200";ctx.beginPath();ctx.ellipse(m.r*.5,0,m.r*.55,m.r*.42,0,0,Math.PI*2);ctx.fill();
+  ctx.shadowBlur=0;ctx.restore();
+}
 function drawScene(ctx,W,H,cam,stateRef,myId,time){
-  const{players,food,viruses,ejected}=stateRef.current;
+  const{players,food,viruses,ejected,missiles}=stateRef.current;
   const bg=ctx.createRadialGradient(W*.5,H*.4,0,W*.5,H*.5,Math.max(W,H));bg.addColorStop(0,"#0a0e2a");bg.addColorStop(.5,"#060910");bg.addColorStop(1,"#030507");ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
   ctx.save();ctx.translate(W/2,H/2);ctx.scale(cam.scale,cam.scale);ctx.translate(-cam.x,-cam.y);
   drawStars(ctx,time);
@@ -321,6 +348,7 @@ function drawScene(ctx,W,H,cam,stateRef,myId,time){
   food.forEach(f=>drawFood(ctx,f,time));
   (ejected||[]).forEach(e=>drawEjected(ctx,e));
   viruses.forEach(v=>drawVirus(ctx,v));
+  (missiles||[]).forEach(m=>drawMissile(ctx,m));
   const all=[];Object.values(players).filter(p=>!p.dead).forEach(p=>{p.pieces.forEach(pc=>all.push({pc,p}));});
   all.sort((a,b)=>a.pc.r-b.pc.r).forEach(({pc,p})=>drawPlanet(ctx,pc,p,p.id===myId,time,p.id===myId?undefined:p.skinId));
   ctx.restore();
@@ -329,7 +357,7 @@ function drawScene(ctx,W,H,cam,stateRef,myId,time){
 // ── MAIN COMPONENT ─────────────────────────────────────────────────────────────
 export default function PlanetIO(){
   const canvasRef=useRef(null);
-  const stateRef=useRef({players:{},food:[],viruses:[],ejected:[],leaderboard:[]});
+  const stateRef=useRef({players:{},food:[],viruses:[],ejected:[],missiles:[],leaderboard:[]});
   const mouseRef=useRef({x:0,y:0});
   const myIdRef=useRef("player_"+uid());
   const myNameRef=useRef("Explorer");
@@ -341,6 +369,7 @@ export default function PlanetIO(){
   const keysRef=useRef({});
   const equippedSkinIdRef=useRef(0);
   const deathCamRef=useRef(null);
+  const missileCountRef=useRef(0);
   const killerIdRef=useRef(null);
   const sessionRef=useRef({startTime:0,kills:0,splits:0,ejects:0,botKills:0,streak:0,quadVisited:new Set(),top1Time:0,lastTop1:0});
 
@@ -372,11 +401,12 @@ export default function PlanetIO(){
   useEffect(()=>{
     const server=getServer();
     const onState=d=>{stateRef.current={...stateRef.current,...d};};
-    const onTick=({players,food,viruses,ejected,leaderboard:lb})=>{
-      stateRef.current={players,food,viruses,ejected,leaderboard:lb};
+    const onTick=({players,food,viruses,ejected,missiles,leaderboard:lb})=>{
+      stateRef.current={players,food,viruses,ejected,missiles:missiles||[],leaderboard:lb};
       setLeaderboard([...lb]);
       const me=players[myIdRef.current];
       if(me&&!me.dead){
+        missileCountRef.current=me._missiles||0;
         const mass=Math.round(me.pieces.reduce((s,pc)=>s+pc.r*pc.r,0));
         setMyScore(mass);
         if(Math.random()<0.00055)addCoins(Math.max(1,Math.floor(mass/2000)));
@@ -423,6 +453,7 @@ export default function PlanetIO(){
     return()=>{window.removeEventListener("mousemove",mv);window.removeEventListener("touchmove",mt);};
   },[]);
 
+  const fireMissile=useCallback(()=>{if(missileCountRef.current>0)getServer().clientSend("fire",{id:myIdRef.current});},[]);
   const doSplit=useCallback(()=>{
     if(splitCDRef.current)return;const canvas=canvasRef.current;if(!canvas)return;
     const cam=camRef.current,wx=cam.x+(mouseRef.current.x-canvas.offsetWidth/2)/cam.scale,wy=cam.y+(mouseRef.current.y-canvas.offsetHeight/2)/cam.scale;
@@ -466,6 +497,8 @@ export default function PlanetIO(){
       stateRef.current.viruses.forEach(v=>{ctx.fillStyle="#00ff8866";ctx.beginPath();ctx.arc(mx+(v.x/WORLD_W)*MS,myt+(v.y/WORLD_H)*MS,2,0,Math.PI*2);ctx.fill();});
       // HUD buttons
       [[{x:W-MS/2-MP,y:myt-68},"DIVIDIR","ESPAÇO",splitCD],[{x:W-MS/2-MP-76,y:myt-68},"EJETAR","W",ejectCD]].forEach(([btn,lbl,key,cd])=>{ctx.fillStyle=cd?"rgba(40,40,60,.9)":"rgba(50,100,255,.88)";ctx.shadowBlur=cd?0:14;ctx.shadowColor="#4af";ctx.beginPath();ctx.arc(btn.x,btn.y,28,0,Math.PI*2);ctx.fill();ctx.strokeStyle=cd?"#333":"#88aaff";ctx.lineWidth=2;ctx.beginPath();ctx.arc(btn.x,btn.y,28,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;ctx.fillStyle=cd?"#555":"#fff";ctx.font="bold 9px Arial";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(lbl,btn.x,btn.y-4);ctx.fillText(`[${key}]`,btn.x,btn.y+7);});
+      // missile count HUD
+      if(missileCountRef.current>0){ctx.font="bold 15px Arial";ctx.textAlign="left";ctx.textBaseline="top";ctx.fillStyle="rgba(0,0,0,0.45)";ctx.fillRect(12,H-62,100,26);ctx.fillStyle="#ff8800";ctx.fillText(`🚀 x${missileCountRef.current}`,16,H-59);}
       // FPS counter
       const fpsColor=fps>=50?"#00ff88":fps>=30?"#ffcc00":"#ff4444";
       ctx.font="bold 13px monospace";ctx.textAlign="left";ctx.textBaseline="top";
@@ -478,7 +511,7 @@ export default function PlanetIO(){
 
   useEffect(()=>{
     if(screen!=="game")return;const canvas=canvasRef.current;if(!canvas)return;
-    const onMouseDown=e=>{const MS=155,MP=16,W=canvas.offsetWidth,H=canvas.offsetHeight;const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;if(Math.hypot(x-(W-MS/2-MP),y-(H-MS-MP-68))<28){doSplit();return;}if(Math.hypot(x-(W-MS/2-MP-76),y-(H-MS-MP-68))<28){doEject();return;}if(e.button===0)doEject();if(e.button===2)doSplit();};
+    const onMouseDown=e=>{const MS=155,MP=16,W=canvas.offsetWidth,H=canvas.offsetHeight;const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;if(Math.hypot(x-(W-MS/2-MP),y-(H-MS-MP-68))<28){doSplit();return;}if(Math.hypot(x-(W-MS/2-MP-76),y-(H-MS-MP-68))<28){doEject();return;}if(e.button===0){if(missileCountRef.current>0)fireMissile();else doEject();}if(e.button===2)doSplit();};
     const onMU=e=>{if(e.button===0)keysRef.current.lmb=false;};const onMD=e=>{if(e.button===0)keysRef.current.lmb=true;};
     canvas.addEventListener("mousedown",onMouseDown);canvas.addEventListener("mousedown",onMD);canvas.addEventListener("mouseup",onMU);canvas.addEventListener("contextmenu",e=>e.preventDefault());
     return()=>{canvas.removeEventListener("mousedown",onMouseDown);canvas.removeEventListener("mousedown",onMD);canvas.removeEventListener("mouseup",onMU);};
