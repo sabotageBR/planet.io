@@ -205,8 +205,8 @@ class GameServer{
         plist.forEach(t=>{if(t.id===bot.id)return;const tr=this._bigR(t);if(botBig<=tr*1.15)return;const d=dist({x:bx,y:by},{x:this._cx(t),y:this._cy(t)});const val=tr*(!t.isBot?2.2:1.4)-d*0.001;if(val>bestVal){bestVal=val;bestHunt=t;}});
         if(flee){bot._state="flee";bot._fleeFrom=flee;}else if(bestHunt){bot._state="hunt";bot._huntId=bestHunt.id;}else bot._state="wander";
       }
-      if(bot._state==="flee"&&bot._fleeFrom){const th=bot._fleeFrom;if(!th||th.dead){bot._state="wander";return;}const dx=bx-this._cx(th),dy=by-this._cy(th);bot._tx=clamp(bx+dx*4,100,WORLD_W-100);bot._ty=clamp(by+dy*4,100,WORLD_H-100);}
-      else if(bot._state==="hunt"&&bot._huntId){const t=this.players[bot._huntId];if(!t||t.dead){bot._state="wander";return;}bot._tx=this._cx(t);bot._ty=this._cy(t);const d=dist({x:bx,y:by},{x:this._cx(t),y:this._cy(t)});if(d<botBig*2.8&&botBig>this._bigR(t)*1.3&&bot.pieces.length<MAX_PIECES&&Math.random()<0.03)this._splitPlayer(bot,bot._tx,bot._ty);}
+      if(bot._state==="flee"&&bot._fleeFrom){const th=bot._fleeFrom;if(!th||th.dead){bot._state="wander";return;}const dx=bx-this._cx(th),dy=by-this._cy(th);bot._tx=clamp(bx+dx*4,100,WORLD_W-100);bot._ty=clamp(by+dy*4,100,WORLD_H-100);if(bot._missiles>0&&Math.random()<0.04)this._handleClient("fire",{id:bot.id});}
+      else if(bot._state==="hunt"&&bot._huntId){const t=this.players[bot._huntId];if(!t||t.dead){bot._state="wander";return;}bot._tx=this._cx(t);bot._ty=this._cy(t);const d=dist({x:bx,y:by},{x:this._cx(t),y:this._cy(t)});if(d<botBig*2.8&&botBig>this._bigR(t)*1.3&&bot.pieces.length<MAX_PIECES&&Math.random()<0.03)this._splitPlayer(bot,bot._tx,bot._ty);if(bot._missiles>0&&d<botBig*6&&Math.random()<0.05)this._handleClient("fire",{id:bot.id});}
       else{const d=dist({x:bx,y:by},{x:bot._tx,y:bot._ty});if(d<100){bot._tx=200+Math.random()*(WORLD_W-400);bot._ty=200+Math.random()*(WORLD_H-400);}}
     });
     // physics
