@@ -1,0 +1,12 @@
+{
+  "name": "planet-io",
+  "version": "1.0.0",
+  "description": "Multiplayer planet.io game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
