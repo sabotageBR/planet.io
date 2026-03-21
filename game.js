@@ -198,7 +198,7 @@ class GameServer{
     // physics
     plist.forEach(p=>{
       p.pieces.forEach(pc=>{
-        const dx=p._tx-pc.x,dy=p._ty-pc.y,len=Math.hypot(dx,dy)||1;const baseSpd=clamp(220/pc.r,0.8,6);const maxSpd=p._powerup&&p._powerup.type==="speed"?baseSpd*1.85:baseSpd;
+        const dx=p._tx-pc.x,dy=p._ty-pc.y,len=Math.hypot(dx,dy)||1;const baseSpd=clamp(220/pc.r,0.8,6);const speedStacks=(p._powerups||[]).filter(u=>u.type==="speed").length;const maxSpd=speedStacks>0?baseSpd*(1+speedStacks*0.85):baseSpd;
         pc.ax=(dx/len)*maxSpd*6;pc.ay=(dy/len)*maxSpd*6;pc.vx=(pc.vx+pc.ax*DT)*FRICTION;pc.vy=(pc.vy+pc.ay*DT)*FRICTION;
         const spd=Math.hypot(pc.vx,pc.vy);if(spd>maxSpd){pc.vx=(pc.vx/spd)*maxSpd;pc.vy=(pc.vy/spd)*maxSpd;}
         pc.x=clamp(pc.x+pc.vx,pc.r,WORLD_W-pc.r);pc.y=clamp(pc.y+pc.vy,pc.r,WORLD_H-pc.r);
@@ -211,9 +211,9 @@ class GameServer{
       let merged=true;while(merged){merged=false;for(let i=0;i<p.pieces.length;i++){for(let j=i+1;j<p.pieces.length;j++){const a=p.pieces[i],b=p.pieces[j];if(a.mergeTimer>0||b.mergeTimer>0)continue;if(dist(a,b)<Math.max(a.r,b.r)*0.75){const tm=a.r*a.r+b.r*b.r;a.vx=(a.vx*a.r*a.r+b.vx*b.r*b.r)/tm;a.vy=(a.vy*a.r*a.r+b.vy*b.r*b.r)/tm;a.r=Math.sqrt(tm);a.growAnim=Math.min(1.4,a.growAnim+0.6);p.pieces.splice(j,1);merged=true;break;}}if(merged)break;}}
     });
     // magnet power-up: pull nearby food toward piece
-    plist.forEach(p=>{if(!p._powerup||p._powerup.type!=="magnet")return;p.pieces.forEach(pc=>{this.food.forEach(f=>{if(f._life!=null||f.type.startsWith("powerup_"))return;const d=dist(pc,f);if(d<pc.r*7&&d>1){const nx=(pc.x-f.x)/d,ny=(pc.y-f.y)/d;f.x=clamp(f.x+nx*3.5,f.r,WORLD_W-f.r);f.y=clamp(f.y+ny*3.5,f.r,WORLD_H-f.r);}});});});
+    plist.forEach(p=>{const magnetStacks=(p._powerups||[]).filter(u=>u.type==="magnet").length;if(!magnetStacks)return;const pullR=pc2=>pc2.r*(5+magnetStacks*2.5),pullSpd=2.5+magnetStacks*1.5;p.pieces.forEach(pc=>{this.food.forEach(f=>{if(f._life!=null||f.type.startsWith("powerup_"))return;const d=dist(pc,f);if(d<pullR(pc)&&d>1){const nx=(pc.x-f.x)/d,ny=(pc.y-f.y)/d;f.x=clamp(f.x+nx*pullSpd,f.r,WORLD_W-f.r);f.y=clamp(f.y+ny*pullSpd,f.r,WORLD_H-f.r);}});});});
     // eat food
-    plist.forEach(p=>{p.pieces.forEach(pc=>{this.food=this.food.filter(f=>{if(f._life!=null)return true;if(dist(pc,f)<pc.r+f.r*0.5){if(f.type&&f.type.startsWith("powerup_")){p._powerup={type:f.type.replace("powerup_",""),timer:400};}else{pc.r=Math.min(Math.sqrt(pc.r*pc.r+f.r*f.r*0.15),260);p.score+=Math.floor(f.r);}return false;}return true;});});});
+    plist.forEach(p=>{p.pieces.forEach(pc=>{this.food=this.food.filter(f=>{if(f._life!=null)return true;if(dist(pc,f)<pc.r+f.r*0.5){if(f.type&&f.type.startsWith("powerup_")){if(!p._powerups)p._powerups=[];if(p._powerups.length<3)p._powerups.push({type:f.type.replace("powerup_",""),timer:400});}else{pc.r=Math.min(Math.sqrt(pc.r*pc.r+f.r*f.r*0.15),260);p.score+=Math.floor(f.r);}return false;}return true;});});});
     this._spawnFood();
     // eat ejected
     plist.forEach(p=>{p.pieces.forEach(pc=>{this.ejected=this.ejected.filter(e=>{if(e.ownerId===p.id&&e.life>0)return true;if(dist(pc,e)<pc.r+e.r*0.6){pc.r=Math.min(Math.sqrt(pc.r*pc.r+e.r*e.r*2),260);p.score+=2;return false;}return true;});});});
@@ -228,9 +228,9 @@ class GameServer{
     plist.forEach(p=>{p.pieces.forEach(pc=>{this.viruses.forEach((v,vi)=>{if(!hitV.has(vi)&&pc.r>v.r*1.1&&dist(pc,v)<pc.r*0.82){hitV.add(vi);const splits=clamp(Math.floor(pc.r/22),2,MAX_PIECES-p.pieces.length+1);if(splits<2)return;const nr=pc.r/Math.sqrt(splits);pc.r=nr;pc.mergeTimer=calcMergeTime(nr);for(let k=1;k<splits&&p.pieces.length<MAX_PIECES;k++){const ang=Math.random()*Math.PI*2;p.pieces.push(this._mkPiece(pc.x,pc.y,nr,Math.cos(ang)*SPLIT_SPEED*.8,Math.sin(ang)*SPLIT_SPEED*.8,calcMergeTime(nr)));}}});});});
     if(hitV.size>0){this.viruses=this.viruses.filter((_,i)=>!hitV.has(i));this._spawnViruses();}
     // eat players
-    for(let i=0;i<plist.length;i++){for(let j=0;j<plist.length;j++){if(i===j)continue;const a=plist[i],b=plist[j];if(b._powerup&&b._powerup.type==="shield")continue;a.pieces.forEach(ap=>{b.pieces=b.pieces.filter(bp=>{if(ap.r<bp.r*1.08)return true;if(dist(ap,bp)<ap.r*0.72){ap.r=Math.min(Math.sqrt(ap.r*ap.r+bp.r*bp.r*0.55),290);a.score+=Math.floor(bp.r*8);if(!b.isBot&&b.pieces.length===1){b.dead=true;this._emit("eaten",{by:a.name,score:b.score,isBot:a.isBot,dx:bp.x,dy:bp.y,killerId:a.id});}return false;}return true;});});if(b.isBot&&b.pieces.length===0){b.score=Math.floor(b.score*0.3);const sx=400+Math.random()*(WORLD_W-800),sy=400+Math.random()*(WORLD_H-800);b.pieces=[this._mkPiece(sx,sy,22+Math.random()*10,0,0,0)];}}}
+    for(let i=0;i<plist.length;i++){for(let j=0;j<plist.length;j++){if(i===j)continue;const a=plist[i],b=plist[j];if((b._powerups||[]).some(u=>u.type==="shield"))continue;a.pieces.forEach(ap=>{b.pieces=b.pieces.filter(bp=>{if(ap.r<bp.r*1.08)return true;if(dist(ap,bp)<ap.r*0.72){ap.r=Math.min(Math.sqrt(ap.r*ap.r+bp.r*bp.r*0.55),290);a.score+=Math.floor(bp.r*8);if(!b.isBot&&b.pieces.length===1){b.dead=true;this._emit("eaten",{by:a.name,score:b.score,isBot:a.isBot,dx:bp.x,dy:bp.y,killerId:a.id});}return false;}return true;});});if(b.isBot&&b.pieces.length===0){b.score=Math.floor(b.score*0.3);const sx=400+Math.random()*(WORLD_W-800),sy=400+Math.random()*(WORLD_H-800);b.pieces=[this._mkPiece(sx,sy,22+Math.random()*10,0,0,0)];}}}
     // decrement power-up timers
-    plist.forEach(p=>{if(p._powerup){p._powerup.timer--;if(p._powerup.timer<=0)p._powerup=null;}});
+    plist.forEach(p=>{if(p._powerups&&p._powerups.length){p._powerups.forEach(u=>u.timer--);p._powerups=p._powerups.filter(u=>u.timer>0);}});
     const lb=Object.values(this.players).filter(p=>!p.dead).map(p=>{const mass=Math.round(p.pieces.reduce((s,pc)=>s+pc.r*pc.r,0));return{name:p.name,mass,score:p.score,isBot:p.isBot};}).sort((a,b)=>b.mass-a.mass).slice(0,10);
     this._spawnViruses();
     this._emit("tick",{players:this.players,food:this.food,viruses:this.viruses,ejected:this.ejected,leaderboard:lb});
@@ -300,7 +300,7 @@ function drawPlanet(ctx,pc,p,isMe,time,overrideSkinId){
   if(pc.mergeTimer>0){const progress=1-(pc.mergeTimer/calcMergeTime(pc.r));ctx.beginPath();ctx.arc(0,0,dr+4,-Math.PI/2,-Math.PI/2+progress*Math.PI*2);ctx.strokeStyle="rgba(255,255,255,0.55)";ctx.lineWidth=2.5;ctx.stroke();}
 
   // power-up ring
-  if(p._powerup){const puGlow={speed:"#ffdd00",magnet:"#ff66ff",shield:"#44aaff"};const puColor=puGlow[p._powerup.type]||"#ffffff";const pulse=0.7+0.3*Math.sin(time*0.012);ctx.globalAlpha=pulse;ctx.strokeStyle=puColor;ctx.lineWidth=3;ctx.shadowBlur=12;ctx.shadowColor=puColor;ctx.beginPath();ctx.arc(0,0,dr*1.55,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;ctx.globalAlpha=1;}
+  if(p._powerups&&p._powerups.length){const puGlow={speed:"#ffdd00",magnet:"#ff66ff",shield:"#44aaff"};p._powerups.forEach((u,i)=>{const puColor=puGlow[u.type]||"#ffffff";const pulse=0.65+0.35*Math.sin(time*0.012+i*1.1);ctx.globalAlpha=pulse;ctx.strokeStyle=puColor;ctx.lineWidth=2.5;ctx.shadowBlur=10;ctx.shadowColor=puColor;ctx.beginPath();ctx.arc(0,0,dr*(1.48+i*0.18),0,Math.PI*2);ctx.stroke();});ctx.shadowBlur=0;ctx.globalAlpha=1;}
   // name below planet
   const fs=Math.max(9,dr*.28);ctx.font=`bold ${fs}px Arial`;ctx.textAlign="center";ctx.textBaseline="top";
   ctx.strokeStyle="rgba(0,0,0,.85)";ctx.lineWidth=Math.max(2,fs*.38);ctx.strokeText(p.name,0,dr+4);
