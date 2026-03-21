@@ -135,7 +135,7 @@ class GameServer{
       if(pc.r<28)return;
       const dx=tx-pc.x,dy=ty-pc.y,len=Math.hypot(dx,dy)||1,nx=dx/len,ny=dy/len;
       pc.r=Math.sqrt(Math.max(pc.r*pc.r-EJECT_R*EJECT_R*3,20*20));
-      this.ejected.push({id:uid(),x:pc.x+nx*(pc.r+EJECT_R+2),y:pc.y+ny*(pc.r+EJECT_R+2),r:EJECT_R,vx:nx*EJECT_SPEED,vy:ny*EJECT_SPEED,color:p.color,ownerId:p.id,life:220});
+      this.ejected.push({id:uid(),x:pc.x+nx*(pc.r+EJECT_R+2),y:pc.y+ny*(pc.r+EJECT_R+2),r:EJECT_R,vx:nx*EJECT_SPEED,vy:ny*EJECT_SPEED,color:p.color,ownerId:p.id,life:4});
       pc.vx-=nx*1.8;pc.vy-=ny*1.8;
     });
   }
