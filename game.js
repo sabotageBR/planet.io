@@ -293,6 +293,11 @@ function drawPlanet(ctx,pc,p,isMe,time,overrideSkinId){
 
   // dark edge
   const edge=ctx.createRadialGradient(0,0,dr*.6,0,0,dr);edge.addColorStop(0,"rgba(0,0,0,0)");edge.addColorStop(1,"rgba(0,0,0,0.4)");ctx.fillStyle=edge;ctx.fillRect(-dr,-dr,dr*2,dr*2);
+
+  // name inside planet
+  const fs=Math.max(9,dr*.28);ctx.font=`bold ${fs}px Arial`;ctx.textAlign="center";ctx.textBaseline="middle";
+  ctx.strokeStyle="rgba(0,0,0,.85)";ctx.lineWidth=Math.max(2,fs*.38);ctx.strokeText(p.name,0,dr*.52);
+  ctx.fillStyle="#fff";ctx.fillText(p.name,0,dr*.52);
   ctx.restore();// unclip
 
   if(pc.splitting&&pc.splitT!=null){const alpha=(1-pc.splitT)*0.85;ctx.strokeStyle=`rgba(255,255,255,${alpha})`;ctx.lineWidth=3+pc.splitT*5;ctx.beginPath();ctx.arc(0,0,dr*(1+pc.splitT*0.45),0,Math.PI*2);ctx.stroke();}
@@ -301,10 +306,6 @@ function drawPlanet(ctx,pc,p,isMe,time,overrideSkinId){
 
   // power-up ring
   if(p._powerups&&Object.keys(p._powerups).length){const puGlow={speed:"#ffdd00",magnet:"#ff66ff",shield:"#44aaff"};Object.keys(p._powerups).forEach((t,i)=>{const puColor=puGlow[t]||"#ffffff";const pulse=0.65+0.35*Math.sin(time*0.012+i*1.1);ctx.globalAlpha=pulse;ctx.strokeStyle=puColor;ctx.lineWidth=2.5;ctx.shadowBlur=10;ctx.shadowColor=puColor;ctx.beginPath();ctx.arc(0,0,dr*(1.48+i*0.18),0,Math.PI*2);ctx.stroke();});ctx.shadowBlur=0;ctx.globalAlpha=1;}
-  // name below planet
-  const fs=Math.max(9,dr*.28);ctx.font=`bold ${fs}px Arial`;ctx.textAlign="center";ctx.textBaseline="top";
-  ctx.strokeStyle="rgba(0,0,0,.85)";ctx.lineWidth=Math.max(2,fs*.38);ctx.strokeText(p.name,0,dr+4);
-  ctx.fillStyle="#fff";ctx.fillText(p.name,0,dr+4);
   ctx.restore();
 }
 
