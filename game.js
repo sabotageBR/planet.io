@@ -296,8 +296,8 @@ function drawPlanet(ctx,pc,p,isMe,time,overrideSkinId){
 
   // name inside planet
   const fs=Math.max(9,dr*.28);ctx.font=`bold ${fs}px Arial`;ctx.textAlign="center";ctx.textBaseline="middle";
-  ctx.strokeStyle="rgba(0,0,0,.85)";ctx.lineWidth=Math.max(2,fs*.38);ctx.strokeText(p.name,0,dr*.52);
-  ctx.fillStyle="#fff";ctx.fillText(p.name,0,dr*.52);
+  ctx.strokeStyle="rgba(0,0,0,.85)";ctx.lineWidth=Math.max(2,fs*.38);ctx.strokeText(p.name,0,0);
+  ctx.fillStyle="#fff";ctx.fillText(p.name,0,0);
   ctx.restore();// unclip
 
   if(pc.splitting&&pc.splitT!=null){const alpha=(1-pc.splitT)*0.85;ctx.strokeStyle=`rgba(255,255,255,${alpha})`;ctx.lineWidth=3+pc.splitT*5;ctx.beginPath();ctx.arc(0,0,dr*(1+pc.splitT*0.45),0,Math.PI*2);ctx.stroke();}
