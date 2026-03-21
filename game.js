@@ -83,8 +83,14 @@ class GameServer{
   clientSend(ev,d){this._handleClient(ev,d);}
   _spawnFood(){
     const types=["asteroid","comet","star","moon"];
-    while(this.food.length<FOOD_COUNT)
-      this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:6+Math.random()*9,type:types[Math.floor(Math.random()*4)],color:`hsl(${Math.random()*360},80%,70%)`});
+    const puTypes=["powerup_speed","powerup_magnet","powerup_shield"];
+    const puColors={"powerup_speed":"#ffdd00","powerup_magnet":"#ff66ff","powerup_shield":"#44aaff"};
+    let puCount=this.food.filter(f=>f.type&&f.type.startsWith("powerup_")).length;
+    while(this.food.length<FOOD_COUNT){
+      const wantPU=puCount<15&&Math.random()<0.04;
+      if(wantPU){const t=puTypes[Math.floor(Math.random()*3)];this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:12+Math.random()*5,type:t,color:puColors[t]});puCount++;}
+      else{const t=types[Math.floor(Math.random()*4)];this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:6+Math.random()*9,type:t,color:`hsl(${Math.random()*360},80%,70%)`});}
+    }
   }
   _spawnViruses(){
     while(this.viruses.length<VIRUS_COUNT)
@@ -192,7 +198,7 @@ class GameServer{
     // physics
     plist.forEach(p=>{
       p.pieces.forEach(pc=>{
-        const dx=p._tx-pc.x,dy=p._ty-pc.y,len=Math.hypot(dx,dy)||1;const maxSpd=clamp(220/pc.r,0.8,6);
+        const dx=p._tx-pc.x,dy=p._ty-pc.y,len=Math.hypot(dx,dy)||1;const baseSpd=clamp(220/pc.r,0.8,6);const maxSpd=p._powerup&&p._powerup.type==="speed"?baseSpd*1.85:baseSpd;
         pc.ax=(dx/len)*maxSpd*6;pc.ay=(dy/len)*maxSpd*6;pc.vx=(pc.vx+pc.ax*DT)*FRICTION;pc.vy=(pc.vy+pc.ay*DT)*FRICTION;
         const spd=Math.hypot(pc.vx,pc.vy);if(spd>maxSpd){pc.vx=(pc.vx/spd)*maxSpd;pc.vy=(pc.vy/spd)*maxSpd;}
         pc.x=clamp(pc.x+pc.vx,pc.r,WORLD_W-pc.r);pc.y=clamp(pc.y+pc.vy,pc.r,WORLD_H-pc.r);
@@ -204,8 +210,10 @@ class GameServer{
       for(let i=0;i<p.pieces.length;i++){for(let j=i+1;j<p.pieces.length;j++){const a=p.pieces[i],b=p.pieces[j];if(a.mergeTimer<=0&&b.mergeTimer<=0)continue;const d=dist(a,b),minD=(a.r+b.r)*0.92;if(d<minD&&d>0.01){const nx=(b.x-a.x)/d,ny=(b.y-a.y)/d,push=(minD-d)*0.2;a.x-=nx*push;a.y-=ny*push;b.x+=nx*push;b.y+=ny*push;const dv=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny;if(dv>0){a.vx-=dv*nx*.3;a.vy-=dv*ny*.3;b.vx+=dv*nx*.3;b.vy+=dv*ny*.3;}}}}
       let merged=true;while(merged){merged=false;for(let i=0;i<p.pieces.length;i++){for(let j=i+1;j<p.pieces.length;j++){const a=p.pieces[i],b=p.pieces[j];if(a.mergeTimer>0||b.mergeTimer>0)continue;if(dist(a,b)<Math.max(a.r,b.r)*0.75){const tm=a.r*a.r+b.r*b.r;a.vx=(a.vx*a.r*a.r+b.vx*b.r*b.r)/tm;a.vy=(a.vy*a.r*a.r+b.vy*b.r*b.r)/tm;a.r=Math.sqrt(tm);a.growAnim=Math.min(1.4,a.growAnim+0.6);p.pieces.splice(j,1);merged=true;break;}}if(merged)break;}}
     });
+    // magnet power-up: pull nearby food toward piece
+    plist.forEach(p=>{if(!p._powerup||p._powerup.type!=="magnet")return;p.pieces.forEach(pc=>{this.food.forEach(f=>{if(f._life!=null||f.type.startsWith("powerup_"))return;const d=dist(pc,f);if(d<pc.r*7&&d>1){const nx=(pc.x-f.x)/d,ny=(pc.y-f.y)/d;f.x=clamp(f.x+nx*3.5,f.r,WORLD_W-f.r);f.y=clamp(f.y+ny*3.5,f.r,WORLD_H-f.r);}});});});
     // eat food
-    plist.forEach(p=>{p.pieces.forEach(pc=>{this.food=this.food.filter(f=>{if(f._life!=null)return true;if(dist(pc,f)<pc.r+f.r*0.5){pc.r=Math.min(Math.sqrt(pc.r*pc.r+f.r*f.r*0.15),260);p.score+=Math.floor(f.r);return false;}return true;});});});
+    plist.forEach(p=>{p.pieces.forEach(pc=>{this.food=this.food.filter(f=>{if(f._life!=null)return true;if(dist(pc,f)<pc.r+f.r*0.5){if(f.type&&f.type.startsWith("powerup_")){p._powerup={type:f.type.replace("powerup_",""),timer:400};}else{pc.r=Math.min(Math.sqrt(pc.r*pc.r+f.r*f.r*0.15),260);p.score+=Math.floor(f.r);}return false;}return true;});});});
     this._spawnFood();
     // eat ejected
     plist.forEach(p=>{p.pieces.forEach(pc=>{this.ejected=this.ejected.filter(e=>{if(e.ownerId===p.id&&e.life>0)return true;if(dist(pc,e)<pc.r+e.r*0.6){pc.r=Math.min(Math.sqrt(pc.r*pc.r+e.r*e.r*2),260);p.score+=2;return false;}return true;});});});
@@ -220,7 +228,9 @@ class GameServer{
     plist.forEach(p=>{p.pieces.forEach(pc=>{this.viruses.forEach((v,vi)=>{if(!hitV.has(vi)&&pc.r>v.r*1.1&&dist(pc,v)<pc.r*0.82){hitV.add(vi);const splits=clamp(Math.floor(pc.r/22),2,MAX_PIECES-p.pieces.length+1);if(splits<2)return;const nr=pc.r/Math.sqrt(splits);pc.r=nr;pc.mergeTimer=calcMergeTime(nr);for(let k=1;k<splits&&p.pieces.length<MAX_PIECES;k++){const ang=Math.random()*Math.PI*2;p.pieces.push(this._mkPiece(pc.x,pc.y,nr,Math.cos(ang)*SPLIT_SPEED*.8,Math.sin(ang)*SPLIT_SPEED*.8,calcMergeTime(nr)));}}});});});
     if(hitV.size>0){this.viruses=this.viruses.filter((_,i)=>!hitV.has(i));this._spawnViruses();}
     // eat players
-    for(let i=0;i<plist.length;i++){for(let j=0;j<plist.length;j++){if(i===j)continue;const a=plist[i],b=plist[j];a.pieces.forEach(ap=>{b.pieces=b.pieces.filter(bp=>{if(ap.r<bp.r*1.08)return true;if(dist(ap,bp)<ap.r*0.72){ap.r=Math.min(Math.sqrt(ap.r*ap.r+bp.r*bp.r*0.55),290);a.score+=Math.floor(bp.r*8);if(!b.isBot&&b.pieces.length===1){b.dead=true;this._emit("eaten",{by:a.name,score:b.score,isBot:a.isBot,dx:bp.x,dy:bp.y,killerId:a.id});}return false;}return true;});});if(b.isBot&&b.pieces.length===0){b.score=Math.floor(b.score*0.3);const sx=400+Math.random()*(WORLD_W-800),sy=400+Math.random()*(WORLD_H-800);b.pieces=[this._mkPiece(sx,sy,22+Math.random()*10,0,0,0)];}}}
+    for(let i=0;i<plist.length;i++){for(let j=0;j<plist.length;j++){if(i===j)continue;const a=plist[i],b=plist[j];if(b._powerup&&b._powerup.type==="shield")continue;a.pieces.forEach(ap=>{b.pieces=b.pieces.filter(bp=>{if(ap.r<bp.r*1.08)return true;if(dist(ap,bp)<ap.r*0.72){ap.r=Math.min(Math.sqrt(ap.r*ap.r+bp.r*bp.r*0.55),290);a.score+=Math.floor(bp.r*8);if(!b.isBot&&b.pieces.length===1){b.dead=true;this._emit("eaten",{by:a.name,score:b.score,isBot:a.isBot,dx:bp.x,dy:bp.y,killerId:a.id});}return false;}return true;});});if(b.isBot&&b.pieces.length===0){b.score=Math.floor(b.score*0.3);const sx=400+Math.random()*(WORLD_W-800),sy=400+Math.random()*(WORLD_H-800);b.pieces=[this._mkPiece(sx,sy,22+Math.random()*10,0,0,0)];}}}
+    // decrement power-up timers
+    plist.forEach(p=>{if(p._powerup){p._powerup.timer--;if(p._powerup.timer<=0)p._powerup=null;}});
     const lb=Object.values(this.players).filter(p=>!p.dead).map(p=>{const mass=Math.round(p.pieces.reduce((s,pc)=>s+pc.r*pc.r,0));return{name:p.name,mass,score:p.score,isBot:p.isBot};}).sort((a,b)=>b.mass-a.mass).slice(0,10);
     this._spawnViruses();
     this._emit("tick",{players:this.players,food:this.food,viruses:this.viruses,ejected:this.ejected,leaderboard:lb});
@@ -239,6 +249,9 @@ function drawFood(ctx,f,time){
   if(f.type==="asteroid"){ctx.fillStyle=f.color;ctx.beginPath();ctx.ellipse(0,0,f.r,f.r*.7,Math.PI/4,0,Math.PI*2);ctx.fill();ctx.fillStyle="rgba(0,0,0,.3)";ctx.beginPath();ctx.arc(-f.r*.2,-f.r*.2,f.r*.25,0,Math.PI*2);ctx.fill();}
   else if(f.type==="comet"){const g=ctx.createLinearGradient(-f.r*2.5,0,f.r,0);g.addColorStop(0,"rgba(255,255,255,0)");g.addColorStop(1,f.color);ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(-f.r,0,f.r*2.5,f.r*.35,0,0,Math.PI*2);ctx.fill();ctx.shadowBlur=8;ctx.shadowColor="#fff";ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(f.r*.4,0,f.r*.5,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
   else if(f.type==="star"){const p=1+Math.sin(time*.003+f.x)*.15;ctx.fillStyle=f.color;ctx.shadowBlur=f.r*2;ctx.shadowColor=f.color;ctx.beginPath();for(let i=0;i<5;i++){const a=(i*Math.PI*2)/5-Math.PI/2,ia=(i+.5)*Math.PI*2/5-Math.PI/2;i===0?ctx.moveTo(Math.cos(a)*f.r*p,Math.sin(a)*f.r*p):ctx.lineTo(Math.cos(a)*f.r*p,Math.sin(a)*f.r*p);ctx.lineTo(Math.cos(ia)*f.r*.4*p,Math.sin(ia)*f.r*.4*p);}ctx.closePath();ctx.fill();ctx.shadowBlur=0;}
+  else if(f.type==="powerup_speed"){const g=ctx.createRadialGradient(0,0,0,0,0,f.r);g.addColorStop(0,"#ffffff");g.addColorStop(0.5,"#ffdd00");g.addColorStop(1,"#ff8800");ctx.fillStyle=g;ctx.shadowBlur=18;ctx.shadowColor="#ffdd00";ctx.beginPath();ctx.arc(0,0,f.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.font=`bold ${Math.round(f.r*1.1)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("⚡",0,1);}
+  else if(f.type==="powerup_magnet"){const g=ctx.createRadialGradient(0,0,0,0,0,f.r);g.addColorStop(0,"#ffffff");g.addColorStop(0.5,"#ff66ff");g.addColorStop(1,"#aa00aa");ctx.fillStyle=g;ctx.shadowBlur=18;ctx.shadowColor="#ff66ff";ctx.beginPath();ctx.arc(0,0,f.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.font=`bold ${Math.round(f.r*1.1)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🧲",0,1);}
+  else if(f.type==="powerup_shield"){const g=ctx.createRadialGradient(0,0,0,0,0,f.r);g.addColorStop(0,"#ffffff");g.addColorStop(0.5,"#44aaff");g.addColorStop(1,"#0044aa");ctx.fillStyle=g;ctx.shadowBlur=18;ctx.shadowColor="#44aaff";ctx.beginPath();ctx.arc(0,0,f.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.font=`bold ${Math.round(f.r*1.1)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🛡️",0,1);}
   else{ctx.fillStyle="#ccd";ctx.beginPath();ctx.arc(0,0,f.r,0,Math.PI*2);ctx.fill();ctx.fillStyle="rgba(0,0,0,.2)";[[-f.r*.3,-f.r*.2,f.r*.25],[f.r*.2,f.r*.2,f.r*.2],[f.r*.1,-f.r*.4,f.r*.15]].forEach(([cx,cy,cr])=>{ctx.beginPath();ctx.arc(cx,cy,cr,0,Math.PI*2);ctx.fill();});}
   ctx.restore();
 }
@@ -286,6 +299,8 @@ function drawPlanet(ctx,pc,p,isMe,time,overrideSkinId){
   ctx.shadowBlur=0;
   if(pc.mergeTimer>0){const progress=1-(pc.mergeTimer/calcMergeTime(pc.r));ctx.beginPath();ctx.arc(0,0,dr+4,-Math.PI/2,-Math.PI/2+progress*Math.PI*2);ctx.strokeStyle="rgba(255,255,255,0.55)";ctx.lineWidth=2.5;ctx.stroke();}
 
+  // power-up ring
+  if(p._powerup){const puGlow={speed:"#ffdd00",magnet:"#ff66ff",shield:"#44aaff"};const puColor=puGlow[p._powerup.type]||"#ffffff";const pulse=0.7+0.3*Math.sin(time*0.012);ctx.globalAlpha=pulse;ctx.strokeStyle=puColor;ctx.lineWidth=3;ctx.shadowBlur=12;ctx.shadowColor=puColor;ctx.beginPath();ctx.arc(0,0,dr*1.55,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;ctx.globalAlpha=1;}
   // name below planet
   const fs=Math.max(9,dr*.28);ctx.font=`bold ${fs}px Arial`;ctx.textAlign="center";ctx.textBaseline="top";
   ctx.strokeStyle="rgba(0,0,0,.85)";ctx.lineWidth=Math.max(2,fs*.38);ctx.strokeText(p.name,0,dr+4);
