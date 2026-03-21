@@ -441,7 +441,9 @@ export default function PlanetIO(){
   // game render loop
   useEffect(()=>{
     if(screen!=="game")return;const canvas=canvasRef.current;if(!canvas)return;const ctx=canvas.getContext("2d");
+    let lastT=performance.now(),fps=0,fFrames=0,fAccum=0;
     const loop=()=>{
+      const now=performance.now();fAccum+=now-lastT;lastT=now;fFrames++;if(fAccum>=500){fps=Math.round(fFrames*1000/fAccum);fFrames=0;fAccum=0;}
       const W=canvas.width=canvas.offsetWidth,H=canvas.height=canvas.offsetHeight;
       timeRef.current+=16;const time=timeRef.current;const id=myIdRef.current;
       const me=stateRef.current.players[id];
@@ -464,6 +466,11 @@ export default function PlanetIO(){
       stateRef.current.viruses.forEach(v=>{ctx.fillStyle="#00ff8866";ctx.beginPath();ctx.arc(mx+(v.x/WORLD_W)*MS,myt+(v.y/WORLD_H)*MS,2,0,Math.PI*2);ctx.fill();});
       // HUD buttons
       [[{x:W-MS/2-MP,y:myt-68},"DIVIDIR","ESPAÇO",splitCD],[{x:W-MS/2-MP-76,y:myt-68},"EJETAR","W",ejectCD]].forEach(([btn,lbl,key,cd])=>{ctx.fillStyle=cd?"rgba(40,40,60,.9)":"rgba(50,100,255,.88)";ctx.shadowBlur=cd?0:14;ctx.shadowColor="#4af";ctx.beginPath();ctx.arc(btn.x,btn.y,28,0,Math.PI*2);ctx.fill();ctx.strokeStyle=cd?"#333":"#88aaff";ctx.lineWidth=2;ctx.beginPath();ctx.arc(btn.x,btn.y,28,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;ctx.fillStyle=cd?"#555":"#fff";ctx.font="bold 9px Arial";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(lbl,btn.x,btn.y-4);ctx.fillText(`[${key}]`,btn.x,btn.y+7);});
+      // FPS counter
+      const fpsColor=fps>=50?"#00ff88":fps>=30?"#ffcc00":"#ff4444";
+      ctx.font="bold 13px monospace";ctx.textAlign="left";ctx.textBaseline="top";
+      ctx.fillStyle="rgba(0,0,0,0.45)";ctx.fillRect(12,12,72,22);
+      ctx.fillStyle=fpsColor;ctx.fillText(`FPS: ${fps}`,16,15);
       animRef.current=requestAnimationFrame(loop);
     };
     animRef.current=requestAnimationFrame(loop);return()=>cancelAnimationFrame(animRef.current);
