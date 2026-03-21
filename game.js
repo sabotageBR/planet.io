@@ -124,8 +124,8 @@ class GameServer{
     if(ev==="fire"){
       const p=this.players[d.id];if(!p||p.dead||!(p._missiles>0))return;
       const cx=this._cx(p),cy=this._cy(p);
-      let nearest=null,nearestD=Infinity;
-      Object.values(this.players).filter(t=>!t.dead&&t.id!==p.id).forEach(t=>{const td=dist({x:cx,y:cy},{x:this._cx(t),y:this._cy(t)});if(td<nearestD){nearestD=td;nearest=t;}});
+      let nearest=null,bestScore=-Infinity;
+      Object.values(this.players).filter(t=>!t.dead&&t.id!==p.id).forEach(t=>{const td=dist({x:cx,y:cy},{x:this._cx(t),y:this._cy(t)});const mass=t.pieces.reduce((s,pc)=>s+pc.r*pc.r,0);const score=mass-td*0.5;if(score>bestScore){bestScore=score;nearest=t;}});
       if(!nearest)return;
       p._missiles--;
       const tx=this._cx(nearest),ty=this._cy(nearest),dx=tx-cx,dy=ty-cy,len=Math.hypot(dx,dy)||1;
