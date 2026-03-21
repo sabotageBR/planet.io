@@ -89,7 +89,7 @@ class GameServer{
     let msCount=this.food.filter(f=>f.type==="missile_ammo").length;
     while(this.food.length<FOOD_COUNT){
       const r=Math.random();
-      const wantMS=msCount<10&&r<0.02;
+      const wantMS=msCount<20&&r<0.05;
       const wantPU=!wantMS&&puCount<15&&r<0.06;
       if(wantMS){this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:13,type:"missile_ammo",color:"#ff6600"});msCount++;}
       else if(wantPU){const t=puTypes[Math.floor(Math.random()*3)];this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:12+Math.random()*5,type:t,color:puColors[t]});puCount++;}
