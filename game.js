@@ -461,7 +461,6 @@ export default function PlanetIO(){
       // minimap
       const MS=155,MP=16,mx=W-MS-MP,myt=H-MS-MP;
       ctx.fillStyle="rgba(2,4,18,0.82)";ctx.strokeStyle="rgba(80,130,255,0.45)";ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(mx,myt,MS,MS,8);ctx.fill();ctx.stroke();
-      ctx.globalAlpha=.15;ctx.fillStyle="#4466ff";ctx.beginPath();ctx.arc(mx+MS*.3,myt+MS*.3,MS*.4,0,Math.PI*2);ctx.fill();ctx.fillStyle="#aa44ff";ctx.beginPath();ctx.arc(mx+MS*.7,myt+MS*.6,MS*.35,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
       Object.values(stateRef.current.players).filter(p=>!p.dead).forEach(p=>{const pcx=p.pieces.reduce((s,pc)=>s+pc.x,0)/p.pieces.length,pcy=p.pieces.reduce((s,pc)=>s+pc.y,0)/p.pieces.length;ctx.fillStyle=p.id===id?"#fff":p.color;ctx.shadowBlur=p.id===id?6:0;ctx.shadowColor="#fff";ctx.beginPath();ctx.arc(mx+(pcx/WORLD_W)*MS,myt+(pcy/WORLD_H)*MS,p.id===id?4.5:2.5,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;});
       stateRef.current.viruses.forEach(v=>{ctx.fillStyle="#00ff8866";ctx.beginPath();ctx.arc(mx+(v.x/WORLD_W)*MS,myt+(v.y/WORLD_H)*MS,2,0,Math.PI*2);ctx.fill();});
       // HUD buttons
