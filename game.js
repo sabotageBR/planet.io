@@ -236,6 +236,7 @@ export default function PlanetIO(){
     const server=getServer();
     const onState=d=>{stateRef.current={...stateRef.current,...d};};
     const onTick=({players,food,viruses,ejected,missiles,leaderboard:lb})=>{
+      if(!players)return;
       stateRef.current={players,food,viruses,ejected,missiles:missiles||[],leaderboard:lb};
       setLeaderboard([...lb]);
       const me=players[myIdRef.current];

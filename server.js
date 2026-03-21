@@ -117,7 +117,7 @@ class GameServer{
       const sx=400+Math.random()*(WORLD_W-800),sy=400+Math.random()*(WORLD_H-800);
       this.players[id]={id,name:BOT_NAMES[i%BOT_NAMES.length],color:sk.color,skinId,isBot:true,score:0,dead:false,
         pieces:[this._mkPiece(sx,sy,24+Math.random()*16,0,0,0)],_tx:Math.random()*WORLD_W,_ty:Math.random()*WORLD_H,
-        _state:"wander",_huntId:null,_stateTimer:0,_fleeFrom:null};
+        _state:"wander",_huntId:null,_stateTimer:0,_fleeFromId:null};
     }
   }
   _cx(p){return p.pieces.length?p.pieces.reduce((s,pc)=>s+pc.x,0)/p.pieces.length:0;}
@@ -151,9 +151,9 @@ class GameServer{
         plist.forEach(th=>{if(th.id===bot.id)return;const thBig=this._bigR(th);if(thBig>botBig*1.1){const d=dist({x:bx,y:by},{x:this._cx(th),y:this._cy(th)});if(d<400&&d<fleeD){fleeD=d;flee=th;}}});
         let bestHunt=null,bestVal=-Infinity;
         plist.forEach(t=>{if(t.id===bot.id)return;const tr=this._bigR(t);if(botBig<=tr*1.15)return;const d=dist({x:bx,y:by},{x:this._cx(t),y:this._cy(t)});const val=tr*(!t.isBot?2.2:1.4)-d*0.001;if(val>bestVal){bestVal=val;bestHunt=t;}});
-        if(flee){bot._state="flee";bot._fleeFrom=flee;}else if(bestHunt){bot._state="hunt";bot._huntId=bestHunt.id;}else bot._state="wander";
+        if(flee){bot._state="flee";bot._fleeFromId=flee.id;}else if(bestHunt){bot._state="hunt";bot._huntId=bestHunt.id;}else bot._state="wander";
       }
-      if(bot._state==="flee"&&bot._fleeFrom){const th=bot._fleeFrom;if(!th||th.dead){bot._state="wander";return;}const dx=bx-this._cx(th),dy=by-this._cy(th);bot._tx=clamp(bx+dx*4,100,WORLD_W-100);bot._ty=clamp(by+dy*4,100,WORLD_H-100);if(bot._missiles>0&&Math.random()<0.04)this._handleClient("fire",{id:bot.id});}
+      if(bot._state==="flee"&&bot._fleeFromId){const th=this.players[bot._fleeFromId];if(!th||th.dead){bot._state="wander";return;}const dx=bx-this._cx(th),dy=by-this._cy(th);bot._tx=clamp(bx+dx*4,100,WORLD_W-100);bot._ty=clamp(by+dy*4,100,WORLD_H-100);if(bot._missiles>0&&Math.random()<0.04)this._handleClient("fire",{id:bot.id});}
       else if(bot._state==="hunt"&&bot._huntId){const t=this.players[bot._huntId];if(!t||t.dead){bot._state="wander";return;}bot._tx=this._cx(t);bot._ty=this._cy(t);const d=dist({x:bx,y:by},{x:this._cx(t),y:this._cy(t)});if(d<botBig*2.8&&botBig>this._bigR(t)*1.3&&bot.pieces.length<MAX_PIECES&&Math.random()<0.03)this._splitPlayer(bot,bot._tx,bot._ty);if(bot._missiles>0&&d<botBig*6&&Math.random()<0.05)this._handleClient("fire",{id:bot.id});}
       else{const d=dist({x:bx,y:by},{x:bot._tx,y:bot._ty});if(d<100){bot._tx=200+Math.random()*(WORLD_W-400);bot._ty=200+Math.random()*(WORLD_H-400);}}
     });
@@ -202,7 +202,7 @@ class Room{
     this.clients=new Map(); // playerId -> ws
     this.server=new GameServer();
     this.server.on('tick',data=>{
-      const msg=JSON.stringify({type:'tick',...data});
+      let msg;try{msg=JSON.stringify({type:'tick',...data});}catch(e){return;}
       for(const ws of this.clients.values())if(ws.readyState===1)ws.send(msg);
     });
     this.server.on('eaten',data=>{
