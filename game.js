@@ -468,9 +468,9 @@ export default function PlanetIO(){
       [[{x:W-MS/2-MP,y:myt-68},"DIVIDIR","ESPAÇO",splitCD],[{x:W-MS/2-MP-76,y:myt-68},"EJETAR","W",ejectCD]].forEach(([btn,lbl,key,cd])=>{ctx.fillStyle=cd?"rgba(40,40,60,.9)":"rgba(50,100,255,.88)";ctx.shadowBlur=cd?0:14;ctx.shadowColor="#4af";ctx.beginPath();ctx.arc(btn.x,btn.y,28,0,Math.PI*2);ctx.fill();ctx.strokeStyle=cd?"#333":"#88aaff";ctx.lineWidth=2;ctx.beginPath();ctx.arc(btn.x,btn.y,28,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;ctx.fillStyle=cd?"#555":"#fff";ctx.font="bold 9px Arial";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(lbl,btn.x,btn.y-4);ctx.fillText(`[${key}]`,btn.x,btn.y+7);});
       // FPS counter
       const fpsColor=fps>=50?"#00ff88":fps>=30?"#ffcc00":"#ff4444";
-      ctx.font="bold 13px monospace";ctx.textAlign="left";ctx.textBaseline="top";
-      ctx.fillStyle="rgba(0,0,0,0.45)";ctx.fillRect(12,12,72,22);
-      ctx.fillStyle=fpsColor;ctx.fillText(`FPS: ${fps}`,16,15);
+      ctx.font="bold 13px monospace";ctx.textAlign="right";ctx.textBaseline="top";
+      ctx.fillStyle="rgba(0,0,0,0.45)";ctx.fillRect(W-84,12,72,22);
+      ctx.fillStyle=fpsColor;ctx.fillText(`FPS: ${fps}`,W-12,15);
       animRef.current=requestAnimationFrame(loop);
     };
     animRef.current=requestAnimationFrame(loop);return()=>cancelAnimationFrame(animRef.current);
