@@ -24,7 +24,7 @@ done
 
 # o Secret planet-db (DATABASE_URL) não fica no repo: precisa existir antes do deploy
 if ! KUBECONFIG="$KUBECONFIG_FILE" python3 scripts/k8s_apply.py --exists Secret planet-db; then
-  echo "!! Secret planet-db não existe no cluster. Crie com: ./scripts/db-secret.sh"; exit 1; fi
+  echo "!! Secret planet-db não existe: o jogo sobe SEM persistência (scores/ranking não gravam). Crie com: ./scripts/db-secret.sh"; fi
 
 echo "==> aplicando (tag ${TAG}${HOST:+, host ${HOST}})"
 if command -v kubectl >/dev/null 2>&1; then

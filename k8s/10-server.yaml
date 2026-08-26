@@ -92,7 +92,7 @@ spec:
                 fieldRef: {fieldPath: metadata.name}
           envFrom:
             - configMapRef: {name: planet-config}
-            - secretRef: {name: planet-db}
+            - secretRef: {name: planet-db, optional: true}   # sem o Secret o servidor sobe em modo sem persistência
           readinessProbe:
             httpGet: {path: /healthz, port: 3000}
             initialDelaySeconds: 3

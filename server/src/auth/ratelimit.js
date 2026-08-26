@@ -3,7 +3,7 @@
 const MIN=60e3;
 /** limites da spec (api.md) */
 export const LIMITS={
-  guest:{n:5,win:60*MIN},           // por IP
+  guest:{n:30,win:60*MIN},          // por IP (NAT: vários jogadores no mesmo IP)
   loginIp:{n:10,win:15*MIN},        // por IP
   loginNick:{n:5,win:15*MIN},       // falhas por nick
   tokenWrite:{n:10,win:MIN},        // claim / PATCH por token
