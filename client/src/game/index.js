@@ -1,131 +1,156 @@
-// ── MOTOR DO JOGO — STUB ──────────────────────────────────────────────────────
-// Substituído pelo renderer PixiJS. O shell só depende deste contrato:
-//
+// ── MOTOR DO JOGO v2 (PixiJS) — createGame(), contrato do shell React ────────────────────────
 //   createGame({container, hud, prefs, theme, onDead, onRewards, onConnection}) →
-//     { join({token, fallbackNick, room}), leave(), setPrefs(p), setTheme(t), resize(), destroy(), hudStore }
-//
-//   container  : <div id="game"> — o motor põe o canvas dentro.
-//   hud        : <div id="hud"> — os botões touch (#t-split/#t-eject/#t-fire) disparam CustomEvent
-//                `planet:action` {detail:{action:'split'|'eject'|'fire', phase:'down'|'up'}} que borbulha até aqui.
-//   onDead     : ({by, byHole, score, maxMass, kills, durationS}) → shell abre a tela de morte.
-//   onRewards  : ({saved, coinsEarned, coins, achievements:[{key,title}], skinsUnlocked:[id], rank:{day}}) (mensagem `rewards`).
-//   onConnection: ({state:'connecting'|'connected'|'reconnecting'|'closed'|'error', room?, attempt?, code?, message?}).
-//   hudStore   : {subscribe(fn), get()} com
-//     {mass, score, rank, coins, ammo, powerups:{speed,magnet,shield} (segundos restantes), splitCd, ejectCd (0..1, fração
-//      RESTANTE: 0 = pronto), lb:[{slot,name,mass,isBot,registered,me,rank}], room, ping, fps, dead}
-//     `coins` pode ser null (o HUD cai para session.user.coins). Emitir a ≤ 20 Hz; o HUD já se protege (throttleStore).
-//
-// Este stub desenha um canvas 2D estático com "motor do jogo em construção" e finge o hudStore (massa oscilando,
-// placar falso, cooldowns) para o HUD ser desenvolvido. Extra só do stub: `debug.die()`, `debug.rewards()`, `debug.reconn(n)`.
-import { createStore } from "../state/store.js";
+//     { join({token, fallbackNick, room, local?, skinId?}), leave(), setPrefs(p), setTheme(t), resize(), destroy(), hudStore }
+//   hudStore (8 Hz): {mass,score,rank,coins:null,ammo,powerups:{speed,magnet,shield} (s),splitCd,ejectCd (0..1 restante),
+//                    lb:[{slot,name,mass,isBot,registered,me,rank}],room,ping,fps,dead}
+//   onConnection({state:'connecting'|'connected'|'reconnecting'|'closed'|'error', room?, attempt?, code?, message?})
+// Fluxo por frame: ponteiro → alvo no mundo → InputSender (30 Hz) · Predictor (60 Hz, peças próprias)
+// · Interpolator (outros, −100 ms) · WorldView.build · Camera · Renderer (Pixi) · radar 10 Hz · HUD 8 Hz.
+// Dev: ?local=1 (servidor na página) · ?bench (pior caso + overlay) · ?stats (overlay) · ?lag=80 · ?theme=dawn|sunset|dusk
+import {createStore} from "../state/store.js";
+import {applyTheme,currentTheme,THEMES} from "../theme/index.js";
+import {api} from "../api/client.js";
+import {app as appStore} from "../state/app.js";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ} from "@planet/shared";
+import {createConnection} from "./net/Connection.js";
+import {createInputSender} from "./net/InputSender.js";
+import {createLocalServer} from "./net/LocalServer.js";
+import {createSnapshotBuffer} from "./state/SnapshotBuffer.js";
+import {createInterpolator} from "./state/Interpolator.js";
+import {createPredictor} from "./state/Predictor.js";
+import {createWorldView} from "./state/WorldView.js";
+import {createRenderer} from "./renderer/Renderer.js";
+import {createCamera} from "./renderer/Camera.js";
+import {createPointer} from "./input/Pointer.js";
+import {createKeyboard} from "./input/Keyboard.js";
+import {createTouchButtons} from "./input/Touch.js";
+import {createActions} from "./input/actions.js";
+import {createMinimap} from "./hud/Minimap.js";
+import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./bench.js";
+import {Q,qflag,bodyMode} from "./util.js";
 
-const NAMES = ["Nebulox", "Vortexia", "Cosmara", "Drakonis", "Stellara", "Graviton", "Quasara", "Pulsaris", "Meteora", "Darkion"];
-const HUMANS = ["luana_x", "Kaique", "MarcosVP", "nina.s", "Rafa", "theo_br"];
-const initialHud = () => ({ mass: 0, score: 0, rank: 0, coins: null, ammo: 0, powerups: { speed: 0, magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false });
+const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{speed:0,magnet:0,shield:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false});
+const PREF_DEFAULTS={quality:"auto",showNames:true,showMass:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false};
+const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SPLIT]:"split",[EVENT.BH_SUCK]:"suck",[EVENT.CHIP]:"chip",[EVENT.BOUNCE]:"bounce",[EVENT.BOOM]:"boom",[EVENT.EXIT]:"exit",[EVENT.SHOOT]:"shoot"};
+const unpackDir=x=>({nx:((x&255)-128)/127,ny:(((x>>>8)&255)-128)/127,vn:x>>>16});
+const shardOf=code=>{const n=parseInt(String(code||"")[0],36);return Number.isFinite(n)?n:0;};
 
-export function createGame({ container, hud, prefs = {}, theme = null, onDead, onRewards, onConnection }) {
-  const canvas = document.createElement("canvas");
-  canvas.className = "game-canvas"; canvas.style.cssText = "display:block;width:100%;height:100%;touch-action:none";
-  container.appendChild(canvas);
-  const ctx = canvas.getContext("2d");
-  const hudStore = createStore(initialHud());
-  let raf = 0, joined = false, room = null, nick = "", t0 = 0, lastHud = 0, lastLb = 0, frames = 0, fpsT = 0, fps = 60, kills = 0, maxMass = 0, dead = false;
-  let curPrefs = { ...prefs }, curTheme = theme;
-  const others = Array.from({ length: 9 }, (_, i) => ({ slot: i + 1, name: i % 3 === 0 ? HUMANS[(i * 5 + 2) % HUMANS.length] : NAMES[i % NAMES.length], isBot: i % 3 !== 0, registered: i % 3 === 0 && i % 2 === 0, base: 4200 - i * 380, phase: i * 1.3 }));
-  const dots = Array.from({ length: 60 }, (_, i) => ({ x: Math.random(), y: Math.random(), r: 1 + (i % 3), s: .02 + (i % 5) * .01 }));
+export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,onConnection}){
+  if(getComputedStyle(container).position==="static")container.style.position="absolute";
+  Object.assign(container.style,{inset:"0",overflow:"hidden"});
+  const hudStore=createStore(initialHud());
+  let curPrefs={...PREF_DEFAULTS,...prefs},curTheme=theme||currentTheme();
+  // ?theme= força um tema (dev/screenshots); o relógio do app pode tentar voltar — reaplica uma vez por evento
+  const forced=Q.get("theme");let themeGuard=null;
+  if(forced&&THEMES[forced]){curTheme=applyTheme(forced);themeGuard=e=>{if(e.detail&&e.detail.id!==forced)setTimeout(()=>applyTheme(forced),0);};addEventListener("planet:theme",themeGuard);}
+  const onThemeEvent=e=>{if(e.detail&&e.detail.theme&&e.detail.theme!==curTheme)game.setTheme(e.detail.theme);};addEventListener("planet:theme",onThemeEvent);
 
-  function resize() {
-    const dpr = Math.min(2, devicePixelRatio || 1), w = container.clientWidth || innerWidth, h = container.clientHeight || innerHeight;
-    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
-    draw(performance.now());
-  }
-  function draw(now) {
-    const W = canvas.width, H = canvas.height, dpr = W / Math.max(1, container.clientWidth || innerWidth);
-    const css = getComputedStyle(document.documentElement);
-    const bg = css.getPropertyValue("--bg").trim() || "#1b2450", fg = css.getPropertyValue("--text").trim() || "#fff5c2", ac = css.getPropertyValue("--accent").trim() || "#ffc22e";
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-    const t = (now - t0) / 1000;
-    ctx.fillStyle = fg; ctx.globalAlpha = .35;
-    for (const d of dots) { const x = ((d.x + t * d.s * .1) % 1) * W, y = d.y * H; ctx.beginPath(); ctx.arc(x, y, d.r * dpr, 0, 6.283); ctx.fill(); }
-    ctx.globalAlpha = 1;
-    if (joined) { ctx.strokeStyle = ac; ctx.lineWidth = 4 * dpr; ctx.beginPath(); ctx.arc(W / 2, H / 2, (48 + Math.sin(t * 2) * 6) * dpr, 0, 6.283); ctx.stroke(); }
-    ctx.fillStyle = fg; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.font = `bold ${22 * dpr}px ${css.getPropertyValue("--font-ui").trim() || "system-ui, sans-serif"}`;
-    ctx.fillText("motor do jogo em construção", W / 2, H / 2 + 90 * dpr);
-    ctx.font = `${13 * dpr}px system-ui, sans-serif`; ctx.globalAlpha = .7;
-    ctx.fillText(joined ? `stub · sala ${room} · ${nick} · tema ${(curTheme && curTheme.id) || "?"}` : "stub · fora da partida", W / 2, H / 2 + 116 * dpr);
-    ctx.globalAlpha = 1;
-  }
-  function tickHud(now) {
-    const t = (now - t0) / 1000, s = hudStore.get();
-    const mass = dead ? 0 : Math.round(900 + t * 45 + Math.sin(t * .8) * 220); maxMass = Math.max(maxMass, mass);
-    const lbDue = now - lastLb > 500;
-    let lb = s.lb;
-    if (lbDue) { lastLb = now;
-      const rows = others.map(o => ({ slot: o.slot, name: o.name, mass: Math.round(o.base + Math.sin(t * .5 + o.phase) * 300), isBot: o.isBot, registered: o.registered, me: false }));
-      if (!dead) rows.push({ slot: 0, name: nick, mass, isBot: false, registered: false, me: true });
-      rows.sort((a, b) => b.mass - a.mass); lb = rows.map((r, i) => ({ ...r, rank: i + 1 })); }
-    const me = lb.find(r => r.me);
-    hudStore.set({ ...s, mass, score: Math.round(mass * 1.6), rank: me ? me.rank : 0, lb,
-      powerups: { speed: Math.max(0, s.powerups.speed - .1), magnet: Math.max(0, s.powerups.magnet - .1), shield: Math.max(0, s.powerups.shield - .1) },
-      splitCd: Math.max(0, s.splitCd - .1 / .4), ejectCd: Math.max(0, s.ejectCd - .1 / .12), ping: 20 + Math.round(Math.abs(Math.sin(t)) * 12), fps, dead });
-  }
-  function frame(now) {
-    raf = requestAnimationFrame(frame);
-    frames++; if (now - fpsT > 1000) { fps = Math.round(frames * 1000 / (now - fpsT)); frames = 0; fpsT = now; }
-    draw(now);
-    if (joined && now - lastHud >= 100) { lastHud = now; tickHud(now); }
-  }
-  const act = a => { if (!joined || dead) return; const s = hudStore.get();
-    if (a === "split" && s.splitCd <= 0) hudStore.set({ ...s, splitCd: 1 });
-    else if (a === "eject" && s.ejectCd <= 0) hudStore.set({ ...s, ejectCd: 1 });
-    else if (a === "fire" && s.ammo > 0) hudStore.set({ ...s, ammo: s.ammo - 1 }); };
-  const onAction = e => { if (e.detail && e.detail.phase === "down") act(e.detail.action); };
-  const inInput = () => document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
-  const onKey = e => { if (!joined || inInput()) return;
-    if (e.code === "Space") { e.preventDefault(); act("split"); } else if (e.code === "KeyW") act("eject"); else if (e.code === "KeyF") act("fire"); };
-  const onPointer = e => { if (!joined || dead) return; if (e.button === 2) { if (curPrefs.rightSplit !== false) act("split"); } else act(hudStore.get().ammo > 0 ? "fire" : "eject"); };
-  const onCtx = e => e.preventDefault();
-  if (hud) hud.addEventListener("planet:action", onAction);
-  addEventListener("keydown", onKey); canvas.addEventListener("pointerdown", onPointer); canvas.addEventListener("contextmenu", onCtx);
-  const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => resize()) : null; if (ro) ro.observe(container);
+  // ── estado de rede/simulação ──
+  const buffer=createSnapshotBuffer();
+  let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,slowSince=0,econAt=0,statsOv=null;
+  const input=createInputSender({send:d=>conn&&conn.send(d),getTick:()=>predictor.localTick,getRtt:()=>conn?conn.rttAvg:0});
+  const predictor=createPredictor({buffer,input});
+  const interp=createInterpolator(buffer,{isOwn:e=>predictor.isOwn(e)});
+  const view=createWorldView({buffer,predictor});
+  const cam=createCamera(),fstats=createFrameStats();
+  const canAct=()=>joined&&!dead&&conn&&conn.isOpen;
+  const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self?view.self.missiles:0),canAct});
+  const keyboard=createKeyboard({onAction:actions.act,enabled:()=>joined});
+  const touch=createTouchButtons(hud,{onAction:actions.act});
+  let pointer=null;
+  const minimap=createMinimap({hud,theme:()=>curTheme,getScene:()=>{if(!joined)return null;
+    const players=[];const seenSlots=new Set();for(const p of view.pieces){if(seenSlots.has(p.owner)&&!p.isMe)continue;seenSlots.add(p.owner);const pl=view.playerOf(p.owner);players.push({x:p.rx,y:p.ry,isMe:!!p.isMe,isBot:pl?pl.isBot:false});}
+    return{players,asteroids:view.asteroids.map(a=>({x:a.rx,y:a.ry})),holes:view.holes.map(h=>({x:h.rx,y:h.ry,ri:h.influenceR})),cam};}});
+  minimap.show(false);
+  if(isStats())statsOv=createOverlay(hud);
 
-  const game = {
-    hudStore,
-    join({ token, fallbackNick, room: code } = {}) {
-      joined = true; dead = false; kills = 0; maxMass = 0; room = code || "0DEV"; nick = fallbackNick || "Viajante"; t0 = performance.now(); lastHud = lastLb = 0;
-      hudStore.set({ ...initialHud(), room, ammo: 2, powerups: { speed: 12, magnet: 0, shield: 0 } });
-      onConnection && onConnection({ state: "connecting", room });
-      setTimeout(() => { if (joined) onConnection && onConnection({ state: "connected", room, token: !!token }); }, 250);
-      if (!raf) raf = requestAnimationFrame(frame);
-      resize();
-    },
-    leave() { joined = false; dead = false; hudStore.set({ ...initialHud(), room }); draw(performance.now()); },
-    setPrefs(p) { curPrefs = { ...curPrefs, ...(p || {}) }; },
-    setTheme(t) { curTheme = t; draw(performance.now()); },
-    resize,
-    destroy() {
-      cancelAnimationFrame(raf); raf = 0; joined = false;
-      if (hud) hud.removeEventListener("planet:action", onAction);
-      removeEventListener("keydown", onKey); canvas.removeEventListener("pointerdown", onPointer); canvas.removeEventListener("contextmenu", onCtx);
-      if (ro) ro.disconnect(); canvas.remove();
-    },
-    // só no stub
-    debug: {
-      die(by = NAMES[Math.floor(Math.random() * NAMES.length)], byHole = false) {
-        if (!joined || dead) return; dead = true; const s = hudStore.get(); hudStore.set({ ...s, dead: true });
-        const durationS = Math.round((performance.now() - t0) / 1000);
-        onDead && onDead({ by, byHole, score: s.score, maxMass, kills, durationS });
-        setTimeout(() => game.debug.rewards(durationS), 1200);
-      },
-      rewards(durationS = 0) {
-        const coinsEarned = Math.min(500, Math.floor(hudStore.get().score / 300) + kills * 2 + (durationS >= 300 ? 25 : 0));
-        onRewards && onRewards({ saved: false, coinsEarned, coins: null, achievements: [], skinsUnlocked: [], rank: { day: null } });
-      },
-      reconn(n = 1) { onConnection && onConnection({ state: n > 0 ? "reconnecting" : "connected", attempt: n, room }); },
-    },
+  // ── renderer (assíncrono: Pixi init) ──
+  let destroyed=false;   // StrictMode destrói a 1ª instância com o init do Pixi ainda pendente: não pode sobrar um canvas zumbi
+  createRenderer({container,theme:curTheme,prefs:{fx:!curPrefs.reduceMotion}}).then(r=>{if(destroyed){r.destroy();return;}renderer=r;ready=true;
+    pointer=createPointer(r.canvas,{onButton:actions.button});applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();
+    if(!raf)raf=requestAnimationFrame(frame);}).catch(e=>{console.error("[game] renderer",e&&e.stack||e);container.innerHTML=`<div style="padding:20px;color:#fff">Não foi possível iniciar o renderizador (WebGL indisponível): ${e.message}</div>`;});
+  const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(()=>game.resize()):null;if(ro)ro.observe(container);
+  const onVis=()=>{visible=document.visibilityState!=="hidden";lastT=performance.now();if(visible){frames=0;fpsT=lastT;}};document.addEventListener("visibilitychange",onVis);
+
+  // ── rede ──
+  function viewSize(){return{w:Math.round(renderer?renderer.W:container.clientWidth||innerWidth),h:Math.round(renderer?renderer.H:container.clientHeight||innerHeight)};}
+  function onOpenSend(c){if(c.session){buffer.clear();predictor.reset();c.sendJson({t:"resume",sessionId:c.session.sessionId,resumeToken:c.session.resumeToken,view:viewSize()});input.resend();}
+    else c.sendJson({t:"join",token:joinOpts.token||null,room:joinOpts.room||null,view:viewSize(),fallbackNick:joinOpts.fallbackNick||"Viajante",skinId:joinOpts.skinId|0});}
+  function onJson(m){
+    if(m.t==="room"){view.mySlot=m.slot;predictor.setSlot(m.slot);view.room=m.code;view.rebuildLb();}
+    else if(m.t==="dead"){dead=true;input.setHold(false);pushHud(performance.now());if(onDead)onDead({by:m.by,byHole:!!m.byHole,score:m.score,maxMass:m.maxMass,kills:m.kills,durationS:m.durationS});}
+    else if(m.t==="rewards"){if(onRewards)onRewards(m);}}
+  function onBinary(m){const now=performance.now();
+    switch(m.type){
+      case MSG.SNAPSHOT:buffer.apply(m,now);predictor.onSnapshot(m,conn.rttAvg);view.self=m.self;selfTick=m.tick;if(m.self.flags&SELF_FLAG.DEAD)dead=true;break;
+      case MSG.PLAYERS:view.setPlayers(m.players);break;
+      case MSG.LEADERBOARD:view.setLeaderboard(m.rows);break;
+      case MSG.EVENT:{const kind=FX_OF[m.kind];if(!kind||!renderer)break;const f={x:m.x,y:m.y,r:m.r||10};
+        if(m.kind===EVENT.BOUNCE||m.kind===EVENT.CHIP||m.kind===EVENT.SHOOT){const d=unpackDir(m.extra);f.nx=d.nx;f.ny=d.ny;f.power=Math.min(1,d.vn/480);}
+        renderer.fx.add(kind,f);break;}}}
+  function onState(ev){if(ev.state==="connected"){game.resize();}
+    if(onConnection)onConnection(ev);}
+  function connectWith(makeSocket){conn=createConnection({makeSocket,onJson,onBinary,onState,onOpenSend});conn.open();}
+  const game={hudStore,
+    join({token,fallbackNick,room,local:useLocal,skinId}={}){
+      game.leave(true);joined=true;dead=false;selfTick=0;
+      const user=(appStore.get().session||{}).user||{};
+      joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0)};
+      buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();hudStore.set({...initialHud(),room:room||null});minimap.show(curPrefs.showMinimap!==false);
+      if(pointer&&renderer)pointer.center(renderer.W,renderer.H);
+      const isLocal=useLocal||qflag("local")||isBench()||api.online===false;
+      if(isLocal){local=createLocalServer(isBench()?benchOptions():{lag:+(Q.get("lag")||0),seed:+(Q.get("seed")||7)});connectWith(()=>local.connect());return;}
+      const proto=location.protocol==="https:"?"wss":"ws";
+      const go=shard=>{if(!joined)return;connectWith(()=>new WebSocket(`${proto}://${location.host}/ws/${shard}`));};
+      if(room)go(shardOf(room));
+      else fetch("/api/config",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(c=>go(c&&c.shard!=null?c.shard:0)).catch(()=>go(0));},
+    leave(silent){if(conn){const c=conn;conn=null;c.close();}if(local){local.stop();local=null;}
+      const was=joined;joined=false;dead=false;input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
+      if(was&&!silent)hudStore.set({...initialHud()});},
+    setPrefs(p){curPrefs={...curPrefs,...(p||{})};applyQuality();minimap.show(joined&&curPrefs.showMinimap!==false);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
+    setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer)renderer.setTheme(t);minimap.setTheme(t);},
+    resize(){if(!renderer)return;renderer.resize();if(conn&&conn.isOpen&&joined){const v=viewSize();if(v.w!==game._vw||v.h!==game._vh){game._vw=v.w;game._vh=v.h;conn.sendJson({t:"view",w:v.w,h:v.h});}}},
+    destroy(){destroyed=true;cancelAnimationFrame(raf);raf=0;game.leave(true);keyboard.destroy();touch.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
+      if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("planet:theme",onThemeEvent);if(themeGuard)removeEventListener("planet:theme",themeGuard);
+      if(renderer){renderer.destroy();renderer=null;}ready=false;},
+    debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats}),local:()=>local},
   };
-  if (!raf) raf = requestAnimationFrame(frame);
-  resize();
-  return game;
-}
+
+  // ── qualidade / modo econômico ──
+  function applyQuality(){if(!renderer)return;const q=curPrefs.quality||"auto";
+    if(q==="low")setEcon(true);else if(q==="high")setEcon(false);else if(!econ)setEcon(false);}
+  function setEcon(on){econ=on;if(!renderer)return;renderer.setEcon(on);renderer.setResolution(on?1:Math.min(2,devicePixelRatio||1));}
+  function econCheck(now,ms){if((curPrefs.quality||"auto")!=="auto")return;
+    if(!econ){if(ms>20){if(!slowSince)slowSince=now;else if(now-slowSince>2000){setEcon(true);econAt=now;slowSince=0;}}else slowSince=0;}
+    else if(now-econAt>30000){setEcon(false);econAt=now;}}
+
+  // ── HUD (8 Hz) ──
+  function pushHud(now){const s=view.self,tk=buffer.tickAt(now),el=Math.max(0,tk-selfTick);
+    const cd=(v,max)=>s?Math.min(1,Math.max(0,(v-el)/max)):0,sec=v=>s?Math.max(0,(v-el)/TICK_HZ):0;
+    hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,
+      powerups:{speed:sec(s?s.speedT:0),magnet:sec(s?s.magnetT:0),shield:sec(s?s.shieldT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
+      lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead});}
+  function statsText(){const c=renderer.counts(),st=predictor.stats;
+    const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
+    return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON":""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}
+  let bytesRate=0,bytesLast=0,bytesT=0,themeAt=0,own0=[];
+
+  // ── laço ──
+  function frame(now){raf=requestAnimationFrame(frame);if(!ready)return;
+    const dt=Math.min(.1,Math.max(0,(now-lastT)/1000));lastT=now;const t0=performance.now();
+    frames++;if(now-fpsT>1000){fps=Math.round(frames*1000/(now-fpsT));frames=0;fpsT=now;}
+    if(forced&&document.documentElement.dataset.theme!==forced&&now-themeAt>500){themeAt=now;applyTheme(forced);}
+    if(renderer.R.theme!==curTheme)renderer.setTheme(curTheme);
+    if(joined&&conn){if(!dead){let w=null;if(pointer&&pointer.state.active)w=cam.toWorld(pointer.state.sx,pointer.state.sy);
+        else if(own0.length){w={x:0,y:0};for(const p of own0){w.x+=p.rx/own0.length;w.y+=p.ry/own0.length;}}   // sem ponteiro ainda: fica parado
+        if(w){input.setTarget(w.x,w.y);predictor.setTarget(w.x,w.y);}}
+      if(conn.isOpen&&!dead)input.update(now);}
+    predictor.update(dt);interp.update(now);view.build();
+    const own=[];predictor.forEach(pc=>own.push(pc));own0=own;cam.W=renderer.W;cam.H=renderer.H;cam.update(own,dt,bodyMode()==="portrait");
+    const t1=performance.now();
+    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),parallax:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
+      showNames:curPrefs.showNames!==false,showMass:curPrefs.showMass!==false,showTrails:!curPrefs.reduceMotion});
+    const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,t2-t0);
+    if(joined){minimap.update(now);if(now-lastHud>=125){lastHud=now;pushHud(now);}}
+    if(statsOv){if(now-bytesT>1000){bytesRate=conn?(conn.bytesIn-bytesLast)*1000/(now-bytesT):0;bytesLast=conn?conn.bytesIn:0;bytesT=now;}statsOv.update(now,statsText());}}
+  return game;}
