@@ -27,3 +27,6 @@ Rate limit em memória por pod: guest 5/h/IP · login 10/15min/IP e 5 falhas/15m
 Economia (servidor): `coins = ⌊score/300⌋ + 2·kills + 1·botKills + (duração ≥ 300 s ? 25 : 0)`, cap 500/partida; +100 por conquista nova.
 Conquistas (fim de partida): survive5 (≥300 s), mass5000, streak5 (≥5 abates na vida), top1_3min (≥ 3·60·60 ticks em 1º),
 explore4 (4 quadrantes), eat50/eatbots10/split100/eject200/games10 (cumulativos em user_stats); secret1–4 = false.
+
+Sem banco (`DATABASE_URL` ausente ou Secret `planet-db` faltando): as rotas de conta respondem `503 {error:"unreachable"}` e o
+cliente usa um perfil local (`localStorage`), mas continua entrando nas salas reais (`api.server` = `/api/config` ok; `api.online` = contas ok).
