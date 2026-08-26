@@ -1,9 +1,11 @@
-// ── REGRAS DO JOGO: engolir/quicar, comida e powerups, ejetados, asteroides (pop/lasca/alimentar/atirar),
-//    buracos negros (puxar/horizonte/teleporte/ciclo), mísseis (homing/impacto), split/eject/fire ──
+// ── REGRAS DO JOGO: engolir/quicar (escudo quica, nunca é engolido), comida e powerups (escudo por níveis:
+//    não expira, sobe de nível sem ser atingido, cai ao disparar/dividir), ejetados, asteroides (pop/lasca/alimentar/atirar),
+//    buracos negros (puxar/horizonte/teleporte/ciclo), mísseis (homing em jogador ou em míssil inimigo, impacto em peça/escudo,
+//    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire ──
 // Todas recebem o mundo `w` (ids, rng, eventos, jogadores); toda aleatoriedade passa por w.rng.
 // @ts-check
 import {DT,PLAYER,SPLIT,EJECT,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP} from "../constants.js";
-import {KIND,BH_PHASE} from "../protocol/constants.js";
+import {KIND,BH_PHASE,FOOD_FLAG} from "../protocol/constants.js";
 import {clamp} from "../util.js";
 import {setR,setMass,addMass,liveCount,firstLive} from "./body.js";
 import {resolveBounce} from "./collide.js";
@@ -27,14 +29,16 @@ function dirTo(fx,fy,tx,ty,out){let dx=tx-fx,dy=ty-fy;const l=Math.sqrt(dx*dx+dy
 const DIR=[0,0];
 
 // ── peça × peça (donos diferentes) ──
-/** Engolir (ra ≥ rb·RATIO, centro de B a d < ra − rb·CENTER, B sem escudo) ou quique mass-weighted. @param {World} w @param {Body} A @param {Body} B */
+/**
+ * Engolir (ra ≥ rb·RATIO, centro de B a d < ra − rb·CENTER, B sem escudo — enquanto se aproxima não há quique)
+ * ou quique mass-weighted (tamanhos parecidos, ou o menor tem escudo: E_SHIELD). @param {World} w @param {Body} A @param {Body} B
+ */
 export function piecePair(w,A,B){
-  const psA=w.players.get(A.owner),psB=w.players.get(B.owner),tick=w.tick;
-  const dx=B.x-A.x,dy=B.y-A.y,d2=dx*dx+dy*dy,ra=A.r,rb=B.r;
-  if(ra>=rb*EAT.RATIO){const lim=ra-rb*EAT.CENTER;if(lim>0&&d2<lim*lim&&!(psB.shieldUntil>tick))eatPiece(w,psA,A,psB,B);}
-  else if(rb>=ra*EAT.RATIO){const lim=rb-ra*EAT.CENTER;if(lim>0&&d2<lim*lim&&!(psA.shieldUntil>tick))eatPiece(w,psB,B,psA,A);}
-  else if(d2<(ra+rb)*(ra+rb)&&d2>0){const e=(psA.shieldUntil>tick||psB.shieldUntil>tick)?BOUNCE.E_SHIELD:BOUNCE.E;
-    const vn=resolveBounce(A,B,e,BOUNCE.POS_CORR);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}}
+  const psA=w.players.get(A.owner),psB=w.players.get(B.owner),shA=psA.shieldLv>0,shB=psB.shieldLv>0;
+  const dx=B.x-A.x,dy=B.y-A.y,d2=dx*dx+dy*dy,ra=A.r,rb=B.r;if(d2<=0)return;
+  if(ra>=rb*EAT.RATIO){if(!shB){const lim=ra-rb*EAT.CENTER;if(lim>0&&d2<lim*lim)eatPiece(w,psA,A,psB,B);return;}}
+  else if(rb>=ra*EAT.RATIO){if(!shA){const lim=rb-ra*EAT.CENTER;if(lim>0&&d2<lim*lim)eatPiece(w,psB,B,psA,A);return;}}
+  if(d2<(ra+rb)*(ra+rb)){const vn=resolveBounce(A,B,(shA||shB)?BOUNCE.E_SHIELD:BOUNCE.E,BOUNCE.POS_CORR);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}}
 /** A (de killer) engole B (de victim): ma += mb·GAIN (teto MAX_R), pontos, EAT e talvez PLAYER_DEAD. */
 export function eatPiece(w,killer,A,victim,B){
   addMass(A,B.mass*EAT.GAIN,PLAYER.MAX_R);killer.score+=Math.floor(B.r*EAT.SCORE_PLAYER);
@@ -42,16 +46,21 @@ export function eatPiece(w,killer,A,victim,B){
   w.killPiece(B,"eaten",killer.slot);}
 
 // ── comida ──
-/** Come uma comida: munição, powerup (até POWERUP.MAX ativos; renova se já ativo) ou massa. @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} f */
+/**
+ * Come uma comida: munição, escudo (+1 nível até SHIELD_MAX_LEVEL, reinicia o timer de evolução; nunca expira),
+ * powerup temporário (até POWERUP.MAX ativos; renova se já ativo) ou massa. @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} f
+ */
 export function eatFood(w,ps,pc,f){
   f.dead=true;w.foodDirty=true;const t=f.type,tick=w.tick;
   if(t===FOOD_TYPE.AMMO){if(ps.missiles<MISSILE.MAX_AMMO)ps.missiles++;w.events.push({type:"AMMO",slot:ps.slot});}
+  else if(t===FOOD_TYPE.SHIELD){if(ps.shieldLv<POWERUP.SHIELD_MAX_LEVEL)ps.shieldLv++;ps.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
+    w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:ps.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
   else if(t>=FOOD_TYPE.SPEED){
-    const active=(ps.speedUntil>tick?1:0)+(ps.magnetUntil>tick?1:0)+(ps.shieldUntil>tick?1:0);
-    const cur=t===FOOD_TYPE.SPEED?ps.speedUntil:t===FOOD_TYPE.MAGNET?ps.magnetUntil:ps.shieldUntil;
+    const active=(ps.speedUntil>tick?1:0)+(ps.magnetUntil>tick?1:0)+(ps.shieldLv>0?1:0);
+    const cur=t===FOOD_TYPE.SPEED?ps.speedUntil:ps.magnetUntil;
     if(active<POWERUP.MAX||cur>tick){const until=(cur>tick?cur:tick)+POWERUP.TICKS;
-      if(t===FOOD_TYPE.SPEED)ps.speedUntil=until;else if(t===FOOD_TYPE.MAGNET)ps.magnetUntil=until;else ps.shieldUntil=until;
-      w.events.push({type:"POWERUP",slot:ps.slot,kind:t===FOOD_TYPE.SPEED?"speed":t===FOOD_TYPE.MAGNET?"magnet":"shield"});}}
+      if(t===FOOD_TYPE.SPEED)ps.speedUntil=until;else ps.magnetUntil=until;
+      w.events.push({type:"POWERUP",slot:ps.slot,kind:t===FOOD_TYPE.SPEED?"speed":"magnet"});}}
   else{addMass(pc,f.mass*EAT.FOOD_GAIN,PLAYER.MAX_R);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD);}
   w.events.push({type:"FOOD_EATEN",slot:ps.slot,foodId:f.id,foodType:t,x:f.x,y:f.y});}
 
@@ -127,7 +136,7 @@ export function pullBody(h,o,mult,rc,ri){
 export function pullFood(h,f,rc,ri){
   const dx=h.x-f.x,dy=h.y-f.y,d2=dx*dx+dy*dy;if(d2>ri*ri||d2<1e-6)return false;
   const d=Math.sqrt(d2),dd=d>rc?d:rc;let a=BLACKHOLE.G/(dd*dd);if(a>BLACKHOLE.A_MAX)a=BLACKHOLE.A_MAX;a*=h.k*DT*DT*BLACKHOLE.FOOD_PULL;
-  f.x+=dx/d*a;f.y+=dy/d*a;return d<rc;}
+  f.x+=dx/d*a;f.y+=dy/d*a;f.flags|=FOOD_FLAG.MOVED;return d<rc;}
 /** Par (corpo dinâmico, buraco): puxa conforme o tipo; peça no núcleo (fora do cooldown) é sugada; ejetado some; errante respawna. @param {World} w @param {Body} A @param {Body} h */
 export function holePair(w,A,h){
   const ri=h.r*BLACKHOLE.INFLUENCE*h.k,rc=h.r*h.k;if(ri<LOCAL.HOLE_MIN_RI)return;
@@ -148,19 +157,56 @@ export function suckPiece(w,ps,pc,h){
   ev.push({type:"EXIT",slot:ps.slot,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r});}
 
 // ── mísseis ──
-/** Homing: v → lerp(v, dir(alvo)·SPEED, TURN) por tick, mirando a primeira peça viva do slot alvo. @param {World} w @param {Body} m */
+/**
+ * Homing: v → lerp(v, dir(alvo)·SPEED, TURN) por tick. type 0: alvo é o slot targetId (primeira peça viva);
+ * type 1: alvo é o míssil de id targetId (interceptação) — se ele sumiu, segue reto (type 0, sem alvo). @param {World} w @param {Body} m
+ */
 export function homeMissile(w,m){
-  if(m.targetId<0)return;const t=w.players.get(m.targetId),tp=t&&t.alive?firstLive(t.pieces):null;if(!tp)return;
-  const dx=tp.x-m.x,dy=tp.y-m.y,l=Math.sqrt(dx*dx+dy*dy)||1,k=MISSILE.TURN;
+  if(m.targetId<0)return;let tx,ty;
+  if(m.type===1){const t=w.entityById.get(m.targetId);if(!t||t.dead||t.kind!==KIND.MISSILE){m.type=0;m.targetId=-1;return;}tx=t.x;ty=t.y;}
+  else{const t=w.players.get(m.targetId),tp=t&&t.alive?firstLive(t.pieces):null;if(!tp)return;tx=tp.x;ty=tp.y;}
+  const dx=tx-m.x,dy=ty-m.y,l=Math.sqrt(dx*dx+dy*dy)||1,k=MISSILE.TURN;
   m.vx+=(dx/l*MISSILE.SPEED-m.vx)*k;m.vy+=(dy/l*MISSILE.SPEED-m.vy)*k;}
-/** Impacto: peça encolhe para r·HIT_SHRINK (mín. MIN_PIECE_R) e solta HIT_DEBRIS debris; míssil morre. @param {World} w @param {Body} pc @param {Body} m */
+/**
+ * Impacto em peça de outro dono: com escudo, o míssil explode no escudo e tira 1 nível (SHIELD_HIT, ou SHIELD_BREAK ao
+ * chegar a 0; o timer de evolução reinicia; massa intacta). Sem escudo: peça encolhe para r·HIT_SHRINK (mín. MIN_PIECE_R)
+ * e solta HIT_DEBRIS debris (BOOM). O míssil morre nos dois casos. @param {World} w @param {Body} pc @param {Body} m
+ */
 export function pieceMissile(w,pc,m){
   if(m.owner===pc.owner)return;const dx=m.x-pc.x,dy=m.y-pc.y,s=pc.r+m.r;if(dx*dx+dy*dy>=s*s)return;
+  const ps=w.players.get(pc.owner);
+  if(ps.shieldLv>0){m.dead=true;ps.shieldLv--;ps.shieldEvolveAt=w.tick+POWERUP.SHIELD_EVOLVE_TICKS;
+    if(ps.shieldLv>0)w.events.push({type:"SHIELD_HIT",slot:ps.slot,level:ps.shieldLv,x:m.x,y:m.y,r:pc.r,bySlot:m.owner});
+    else w.events.push({type:"SHIELD_BREAK",slot:ps.slot,x:pc.x,y:pc.y,r:pc.r,bySlot:m.owner});return;}
   let r=pc.r*MISSILE.HIT_SHRINK;if(r<PLAYER.MIN_PIECE_R)r=PLAYER.MIN_PIECE_R;setR(pc,r);
   const rng=w.rng,er=EJECT.R;
   for(let i=0;i<MISSILE.HIT_DEBRIS;i++){const an=rng.angle();
     w.addEjected(pc.x,pc.y,Math.cos(an)*MISSILE.DEBRIS_SPEED,Math.sin(an)*MISSILE.DEBRIS_SPEED,er,er*er,pc.owner,EJECT.OWNER_IMMUNE_TICKS,LOCAL.DEBRIS_LIFE_TICKS);}
   m.dead=true;w.events.push({type:"BOOM",x:m.x,y:m.y,r:pc.r,slot:pc.owner,bySlot:m.owner});}
+/**
+ * Míssil × míssil (donos diferentes), teste varrido no último passo: menor distância entre os centros ao longo do
+ * movimento relativo do tick (segmento p−v·DT → p) < ra+rb → ambos morrem, CLASH no ponto médio. Retorna true se chocou.
+ * @param {World} w @param {Body} A @param {Body} B
+ */
+export function missileMissile(w,A,B){
+  if(A.owner===B.owner)return false;
+  const px=B.x-A.x,py=B.y-A.y,vx=(B.vx-A.vx)*DT,vy=(B.vy-A.vy)*DT,qx=px-vx,qy=py-vy,v2=vx*vx+vy*vy;
+  let s=1;if(v2>1e-9){s=-(qx*vx+qy*vy)/v2;if(s<0)s=0;else if(s>1)s=1;}
+  const cx=qx+vx*s,cy=qy+vy*s,rr=A.r+B.r;if(cx*cx+cy*cy>=rr*rr)return false;
+  A.dead=true;B.dead=true;w.events.push({type:"CLASH",x:(A.x+B.x)/2,y:(A.y+B.y)/2,r:MISSILE.R*2,slotA:A.owner,slotB:B.owner});return true;}
+/**
+ * Míssil × asteroide: o míssil morre e o asteroide ganha Δv = AST_KICK·min(1,R_MIN/r) na direção do míssil.
+ * Asteroide de cinturão vira errante (type −1) e o cinturão reagenda um substituto (só se abaixo de astCap). DEFLECT.
+ * @param {World} w @param {Body} a @param {Body} m
+ */
+export function asteroidMissile(w,a,m){
+  const dx=m.x-a.x,dy=m.y-a.y,s=a.r+m.r;if(dx*dx+dy*dy>=s*s)return false;
+  const l=Math.sqrt(m.vx*m.vx+m.vy*m.vy)||1,ux=m.vx/l,uy=m.vy/l,k=MISSILE.AST_KICK*Math.min(1,ASTEROID.R_MIN/a.r);
+  a.vx+=ux*k;a.vy+=uy*k;m.dead=true;
+  if(a.type>=0&&w.asteroids.length<w.astCap){w.queueAsteroid(a.type,ASTEROID.RESPAWN_TICKS);a.type=-1;}
+  w.events.push({type:"DEFLECT",x:m.x,y:m.y,r:a.r,nx:ux,ny:uy,bySlot:m.owner});return true;}
+/** Escudo cai por completo (o dono atacou: disparou ou dividiu). @param {World} w @param {PlayerState} ps @param {Body} pc */
+export function breakShield(w,ps,pc){ps.shieldLv=0;w.events.push({type:"SHIELD_BREAK",slot:ps.slot,x:pc.x,y:pc.y,r:pc.r,bySlot:-1});}
 
 // ── ações do jogador ──
 /** Split: cada peça r ≥ SPLIT.MIN_R vira duas de massa/2; filho a v_pai + dir·SPEED, pai recua RECOIL. Retorna quantas dividiu. @param {World} w @param {PlayerState} ps */
@@ -172,6 +218,7 @@ export function applySplit(w,ps){
     const q=w.newPiece(ps.slot,pc.x+ux*nr*SPLIT.OFFSET,pc.y+uy*nr*SPLIT.OFFSET,nr);
     q.vx=pc.vx+ux*SPLIT.SPEED;q.vy=pc.vy+uy*SPLIT.SPEED;q.mergeAt=pc.mergeAt;count++;did++;
     w.events.push({type:"SPLIT",slot:ps.slot,pieceId:pc.id,childId:q.id,x:pc.x,y:pc.y,r:nr});}
+  if(did&&ps.shieldLv>0)breakShield(w,ps,firstLive(arr));
   return did;}
 /**
  * Eject: pellet r=EJECT.R com massa R²·MASS_FACTOR a v_peça + dir·SPEED; recuo exato −dir·SPEED·(m_pellet/m_peça)
@@ -186,12 +233,22 @@ export function applyEject(w,ps){
     setMass(pc,m1);pc.vx-=ux*EJECT.SPEED*mp/m1;pc.vy-=uy*EJECT.SPEED*mp/m1;did++;
     w.events.push({type:"EJECT",slot:ps.slot,pieceId:pc.id,ejectId:e.id,x:e.x,y:e.y});}
   return did;}
-/** Fire: gasta 1 míssil; sai da primeira peça viva rumo ao oponente vivo mais próximo (homing nele); sem alvo, direção aleatória. @param {World} w @param {PlayerState} ps */
+/**
+ * Fire: gasta 1 míssil (e derruba o escudo). Sai da primeira peça viva. Alvo, em ordem: míssil inimigo mirando este slot
+ * a < INTERCEPT_DIST e se aproximando (o mais próximo; ordem do array desempata) → interceptação (type 1);
+ * senão o oponente vivo mais próximo (homing, type 0); sem alvo, direção aleatória. @param {World} w @param {PlayerState} ps
+ */
 export function applyFire(w,ps){
   if(ps.missiles<=0)return false;const src=firstLive(ps.pieces);if(!src)return false;ps.missiles--;
-  let best=-1,bd=Infinity,bx=0,by=0;
-  for(const o of w.players.values()){if(o===ps||!o.alive)continue;const op=firstLive(o.pieces);if(!op)continue;
-    const dx=op.x-src.x,dy=op.y-src.y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;best=o.slot;bx=op.x;by=op.y;}}
-  let ux,uy;if(best>=0){dirTo(src.x,src.y,bx,by,DIR);ux=DIR[0];uy=DIR[1];}else{const an=w.rng.angle();ux=Math.cos(an);uy=Math.sin(an);}
-  const m=w.addMissile(src.x,src.y,ux*MISSILE.SPEED,uy*MISSILE.SPEED,ps.slot,best);
-  w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:best});return true;}
+  if(ps.shieldLv>0)breakShield(w,ps,src);
+  const ms=w.missiles;let im=null,id2=MISSILE.INTERCEPT_DIST*MISSILE.INTERCEPT_DIST;
+  for(let i=0;i<ms.length;i++){const m=ms[i];if(m.dead||m.owner===ps.slot||m.type!==0||m.targetId!==ps.slot)continue;
+    const dx=m.x-src.x,dy=m.y-src.y,d2=dx*dx+dy*dy;if(d2<id2&&dx*m.vx+dy*m.vy<0){id2=d2;im=m;}}
+  let ux,uy,best=-1,kind=0;
+  if(im){dirTo(src.x,src.y,im.x,im.y,DIR);ux=DIR[0];uy=DIR[1];best=im.id;kind=1;}
+  else{let bd=Infinity,bx=0,by=0;
+    for(const o of w.players.values()){if(o===ps||!o.alive)continue;const op=firstLive(o.pieces);if(!op)continue;
+      const dx=op.x-src.x,dy=op.y-src.y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;best=o.slot;bx=op.x;by=op.y;}}
+    if(best>=0){dirTo(src.x,src.y,bx,by,DIR);ux=DIR[0];uy=DIR[1];}else{const an=w.rng.angle();ux=Math.cos(an);uy=Math.sin(an);}}
+  const m=w.addMissile(src.x,src.y,ux*MISSILE.SPEED,uy*MISSILE.SPEED,ps.slot,best);m.type=kind;
+  w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:kind?-1:best,targetMissile:kind?best:-1});return true;}

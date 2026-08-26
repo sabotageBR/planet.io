@@ -4,13 +4,13 @@
 // compactação ordenada → spawns → tick++. Remoção só por `dead` + compactação (ordem estável).
 // @ts-check
 import {WORLD,DT,PLAYER,SPEED,SPLIT,EJECT,BOUNCE,WALL,FOOD,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP} from "../constants.js";
-import {KIND,PIECE_FLAG,BH_PHASE} from "../protocol/constants.js";
+import {KIND,PIECE_FLAG,FOOD_FLAG,BH_PHASE} from "../protocol/constants.js";
 import {createRng} from "../rng.js";
 import {clamp} from "../util.js";
-import {createBody,liveCount} from "./body.js";
+import {createBody,liveCount,firstLive} from "./body.js";
 import {createGrid,GRID_CELL} from "./spatial-hash.js";
 import {integratePiece,integrateFree} from "./integrate.js";
-import {resolveBounce,separateOwn,tryMergeOwn,pullToCentroid} from "./collide.js";
+import {resolveBounce,separateOwn,tryMergeOwn,attractOwn} from "./collide.js";
 import * as R from "./rules.js";
 
 /** @typedef {import("./body.js").Body} Body */
@@ -25,7 +25,8 @@ import * as R from "./rules.js";
  * @property {number} missiles
  * @property {number} speedUntil    ticks absolutos
  * @property {number} magnetUntil
- * @property {number} shieldUntil
+ * @property {number} shieldLv       escudo: nível 0..POWERUP.SHIELD_MAX_LEVEL (0 = sem; não expira)
+ * @property {number} shieldEvolveAt tick em que o escudo sobe um nível se não for atingido
  * @property {number} splitCdUntil
  * @property {number} ejectCdUntil
  * @property {boolean} ejectHold
@@ -38,7 +39,8 @@ import * as R from "./rules.js";
 
 // códigos de par (kind de A << 3 | kind de B); A sempre do grupo inserido antes: peças, ejetados, asteroides, mísseis, buracos
 const K=KIND,PP=K.PIECE<<3|K.PIECE,PE=K.PIECE<<3|K.EJECT,PA=K.PIECE<<3|K.ASTEROID,PM=K.PIECE<<3|K.MISSILE,PH=K.PIECE<<3|K.BLACKHOLE,
-  EA=K.EJECT<<3|K.ASTEROID,EH=K.EJECT<<3|K.BLACKHOLE,AA=K.ASTEROID<<3|K.ASTEROID,AH=K.ASTEROID<<3|K.BLACKHOLE,MH=K.MISSILE<<3|K.BLACKHOLE;
+  EA=K.EJECT<<3|K.ASTEROID,EH=K.EJECT<<3|K.BLACKHOLE,AA=K.ASTEROID<<3|K.ASTEROID,AH=K.ASTEROID<<3|K.BLACKHOLE,AM=K.ASTEROID<<3|K.MISSILE,
+  MM=K.MISSILE<<3|K.MISSILE,MH=K.MISSILE<<3|K.BLACKHOLE;
 // constantes locais de spawn (margens do mockup; não existem em constants.js)
 const PLAYER_MARGIN=300,PLAYER_SAFE=900,AST_MARGIN=200,BELT_MARGIN=ASTEROID.BELT_RADIUS[1]+200,BELT_RAD_JITTER=40,SPAWN_TRIES=40;
 /** (x,y) está a ≥ min de todos os corpos vivos de arr? (arr null = sim) @param {Body[]|null} arr */
@@ -120,13 +122,13 @@ export class World{
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0}={}){
     let ps=this.players.get(slot);
-    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,pieces:[],missiles,speedUntil:0,magnetUntil:0,shieldUntil:0,splitCdUntil:0,ejectCdUntil:0,
+    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,pieces:[],missiles,speedUntil:0,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,splitCdUntil:0,ejectCdUntil:0,
       ejectHold:false,ejectHoldAt:0,score:0,splitReq:false,ejectReq:false,fireReq:false};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.missiles=missiles;}
     return this._spawnPiece(ps,x,y,r);}
   _spawnPiece(ps,x,y,r){
     if(Number.isNaN(x)){const s=this._farSpot(PLAYER_MARGIN,this.holes,BLACKHOLE.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE);x=s.x;y=s.y;}
-    ps.alive=true;ps.tx=x;ps.ty=y;ps.speedUntil=ps.magnetUntil=ps.shieldUntil=0;ps.ejectHold=false;
+    ps.alive=true;ps.tx=x;ps.ty=y;ps.speedUntil=ps.magnetUntil=0;ps.shieldLv=0;ps.ejectHold=false;
     const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;return pc;}
   _dropPieces(ps){for(let i=0;i<ps.pieces.length;i++){const pc=ps.pieces[i];pc.dead=true;this.entityById.delete(pc.id);}
     ps.pieces.length=0;const arr=this.pieces;let k=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)arr[k++]=arr[i];arr.length=k;}
@@ -153,12 +155,16 @@ export class World{
         if(ps.splitReq&&tick>=ps.splitCdUntil){ps.splitCdUntil=tick+SPLIT.COOLDOWN_TICKS;R.applySplit(this,ps);}
         let ej=ps.ejectReq;if(ps.ejectHold&&tick>=ps.ejectHoldAt){ej=true;ps.ejectHoldAt=tick+EJECT.HOLD_TICKS;}
         if(ej&&tick>=ps.ejectCdUntil){ps.ejectCdUntil=tick+EJECT.COOLDOWN_TICKS;R.applyEject(this,ps);}
-        if(ps.fireReq)R.applyFire(this,ps);}
+        if(ps.fireReq)R.applyFire(this,ps);
+        if(ps.shieldLv>0&&ps.shieldLv<POWERUP.SHIELD_MAX_LEVEL&&tick>=ps.shieldEvolveAt){ps.shieldLv++;ps.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
+          const pc=firstLive(ps.pieces);if(pc)ev.push({type:"SHIELD_UP",slot:ps.slot,level:ps.shieldLv,x:pc.x,y:pc.y,r:pc.r});}}
       ps.splitReq=ps.ejectReq=ps.fireReq=false;}
     // ── 2. integração ──
     for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner);
       integratePiece(pc,ps.tx,ps.ty,ps.speedUntil>tick?SPEED.POWER_SPEED:1,DT,W,H);
-      let f=pc.flags&~(PIECE_FLAG.SHIELD|PIECE_FLAG.MERGING);if(ps.shieldUntil>tick)f|=PIECE_FLAG.SHIELD;if(pc.mergeAt<=tick&&ps.pieces.length>1)f|=PIECE_FLAG.MERGING;pc.flags=f;}
+      let f=pc.flags&~(PIECE_FLAG.SHIELD|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK);
+      if(ps.shieldLv>0)f|=PIECE_FLAG.SHIELD|(ps.shieldLv<<PIECE_FLAG.SHIELD_LV_SHIFT);if(ps.magnetUntil>tick)f|=PIECE_FLAG.MAGNET;
+      if(pc.mergeAt<=tick&&ps.pieces.length>1)f|=PIECE_FLAG.MERGING;pc.flags=f;}
     for(let i=0;i<ejected.length;i++){const e=ejected[i];if(e.dead)continue;if(tick>=e.life){e.dead=true;continue;}integrateFree(e,EJECT.DRAG,WALL.E_EJECT,DT,W,H);}
     for(let i=0;i<asts.length;i++){const a=asts[i];if(a.dead)continue;
       if(a.type>=0){const bt=this.belts[a.type];a.ang+=bt.w*DT;const tx=bt.cx+Math.cos(a.ang)*a.orbitR,ty=bt.cy+Math.sin(a.ang)*a.orbitR;
@@ -179,15 +185,14 @@ export class World{
     if(this.foodDirty){fg.clear();for(let i=0;i<food.length;i++){const f=food[i];fg.insert(i,f.x,f.y,f.r);}fg.build();this.foodDirty=false;}
     let pb=this._pairs,np=0;
     grid.forEachPair((i,j)=>{if(np+3>pb.length){const nb=new Int32Array(pb.length*2);nb.set(pb);pb=this._pairs=nb;}pb[np++]=i;pb[np++]=j;pb[np++]=dyn[i].kind<<3|dyn[j].kind;});
-    // ── 4. mesmo dono: separação só enquanto uma das duas não pode fundir (regra v1); atração ao centróide quando todas podem ──
-    for(const ps of players.values()){const arr=ps.pieces,n=arr.length;if(n<2)continue;let all=true;
-      for(let i=0;i<n;i++){const a=arr[i];if(a.dead)continue;const am=a.mergeAt<=tick;if(!am)all=false;
-        for(let j=i+1;j<n;j++){const b=arr[j];if(!b.dead&&!(am&&b.mergeAt<=tick))separateOwn(a,b);}}
-      if(all)pullToCentroid(arr);}
+    // ── 4. mesmo dono, por par: separação enquanto uma das duas não pode fundir; atração curta (attractOwn) quando ambas podem ──
+    for(const ps of players.values()){const arr=ps.pieces,n=arr.length;if(n<2)continue;
+      for(let i=0;i<n;i++){const a=arr[i];if(a.dead)continue;const am=a.mergeAt<=tick;
+        for(let j=i+1;j<n;j++){const b=arr[j];if(b.dead)continue;if(am&&b.mergeAt<=tick)attractOwn(a,b);else separateOwn(a,b);}}}
     // ── 5. donos diferentes: engolir ou quicar ──
     for(let p=0;p<np;p+=3){if(pb[p+2]!==PP)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead||A.owner===B.owner)continue;R.piecePair(this,A,B);}
     // ── 6. perigos: asteroides e buracos negros ──
-    for(let p=0;p<np;p+=3){const code=pb[p+2];if(code===PP||code===PE||code===EA||code===PM)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;
+    for(let p=0;p<np;p+=3){const code=pb[p+2];if(code===PP||code===PE||code===EA||code===PM||code===AM||code===MM)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;
       if(code===PA)R.pieceAsteroid(this,A,B);
       else if(code===AA){const s=A.r+B.r,dx=B.x-A.x,dy=B.y-A.y;if(dx*dx+dy*dy<s*s)resolveBounce(A,B,ASTEROID.E_AST,BOUNCE.POS_CORR);}
       else if(code===PH||code===EH||code===AH||code===MH)R.holePair(this,A,B);}
@@ -196,17 +201,25 @@ export class World{
       const n=fg.query(h.x,h.y,ri,q);let moved=false;
       for(let k=0;k<n;k++){const f=food[q[k]];if(f.dead)continue;const dx=h.x-f.x,dy=h.y-f.y;if(dx*dx+dy*dy>ri*ri)continue;moved=true;if(R.pullFood(h,f,rc,ri))f.dead=true;}
       if(moved)this.foodDirty=true;}
-    // ── 7. comida (ímã, comer) e ejetados (absorver, alimentar asteroide) ──
-    const ov=R.LOCAL.FOOD_OVERLAP;
+    // ── 7. comida (ímã, comer) e ejetados (ímã, absorver, alimentar asteroide) ──
+    // ímã: comida a d<range anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/range)) px/s (acelera perto = sucção) e fica
+    // marcada MOVED (o snapshot manda UPDATE); ejetados (de terceiros, ou próprios após cdUntil) ganham MAGNET_EJECT_A px/s².
+    const ov=R.LOCAL.FOOD_OVERLAP,PW=POWERUP;
     for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner),magnet=ps.magnetUntil>tick;
-      const range=magnet?pc.r*POWERUP.MAGNET_RANGE:pc.r+FOOD.R_MAX*ov,n=fg.query(pc.x,pc.y,range,q);
+      const range=magnet?pc.r*PW.MAGNET_RANGE:pc.r+FOOD.R_MAX*ov,n=fg.query(pc.x,pc.y,range,q);
       for(let k=0;k<n;k++){const f=food[q[k]];if(f.dead)continue;let dx=pc.x-f.x,dy=pc.y-f.y,d2=dx*dx+dy*dy;
-        if(magnet&&d2<range*range&&d2>1e-6){const d=Math.sqrt(d2);let s=POWERUP.MAGNET_PULL*DT;if(s>d)s=d;f.x+=dx/d*s;f.y+=dy/d*s;this.foodDirty=true;dx=pc.x-f.x;dy=pc.y-f.y;d2=dx*dx+dy*dy;}
-        const lim=pc.r+f.r*ov;if(d2<lim*lim)R.eatFood(this,ps,pc,f);}}
+        if(magnet&&d2<range*range&&d2>1e-6){const d=Math.sqrt(d2);let s=PW.MAGNET_PULL*(1+(PW.MAGNET_NEAR-1)*(1-d/range))*DT;if(s>d)s=d;
+          f.x+=dx/d*s;f.y+=dy/d*s;f.flags|=FOOD_FLAG.MOVED;this.foodDirty=true;dx=pc.x-f.x;dy=pc.y-f.y;d2=dx*dx+dy*dy;}
+        const lim=pc.r+f.r*ov;if(d2<lim*lim)R.eatFood(this,ps,pc,f);}
+      if(magnet){const m=grid.query(pc.x,pc.y,range,q);
+        for(let k=0;k<m;k++){const e=dyn[q[k]];if(e.kind!==KIND.EJECT||e.dead||(e.owner===pc.owner&&tick<e.cdUntil))continue;
+          const ex=pc.x-e.x,ey=pc.y-e.y,ed2=ex*ex+ey*ey;if(ed2>=range*range||ed2<1e-6)continue;const a=PW.MAGNET_EJECT_A*DT/Math.sqrt(ed2);e.vx+=ex*a;e.vy+=ey*a;}}}
     for(let p=0;p<np;p+=3){const code=pb[p+2];if(code!==PE&&code!==EA)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;
       if(code===PE)R.pieceEject(this,A,B);else R.ejectAsteroid(this,A,B);}
-    // ── 8. mísseis ──
-    for(let p=0;p<np;p+=3){if(pb[p+2]!==PM)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;R.pieceMissile(this,A,B);}
+    // ── 8. mísseis: míssil×míssil (O(n²) sobre w.missiles, teste varrido — fora da grade), depois peça×míssil e asteroide×míssil ──
+    for(let i=0;i<missiles.length;i++){const A=missiles[i];if(A.dead)continue;for(let j=i+1;j<missiles.length;j++){const B=missiles[j];if(!B.dead&&R.missileMissile(this,A,B))break;}}
+    for(let p=0;p<np;p+=3){const code=pb[p+2];if(code!==PM&&code!==AM)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;
+      if(code===PM)R.pieceMissile(this,A,B);else R.asteroidMissile(this,A,B);}
     // ── 9. fusões ──
     for(const ps of players.values()){const arr=ps.pieces,n=arr.length;if(n<2)continue;
       for(let i=0;i<n;i++){const a=arr[i];if(a.dead||a.mergeAt>tick)continue;for(let j=i+1;j<n;j++){const b=arr[j];if(b.dead)continue;

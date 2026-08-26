@@ -1,6 +1,6 @@
 // ── COLISÃO: quique por impulso (+Baumgarte), separação e fusão de peças do mesmo dono ──
 // @ts-check
-import {MERGE,PLAYER} from "../constants.js";
+import {MERGE,PLAYER,DT} from "../constants.js";
 import {setMass} from "./body.js";
 
 /**
@@ -45,11 +45,13 @@ export function tryMergeOwn(a,b,tick){
   setMass(a,m>cap?cap:m);b.dead=true;return true;}
 
 /**
- * Quando todas as peças do dono já podem fundir, puxa cada uma para o centróide
- * (Δv = (c − x)·MERGE.PULL por tick, como no mockup). Ignora mortas.
- * @param {import("./body.js").Body[]} pieces
+ * Atração entre duas peças do mesmo dono que JÁ podem fundir: a d < (ra+rb)·MERGE.ATTRACT_RANGE cada uma
+ * ganha Δv = n·ATTRACT_A·DT·(1−d/alcance) rumo à outra (simétrico, independe da massa). Fora do alcance
+ * nada acontece — as partes só se juntam pelo steering natural até ficarem perto. Retorna true se agiu.
+ * @param {import("./body.js").Body} a @param {import("./body.js").Body} b
  */
-export function pullToCentroid(pieces){
-  let sx=0,sy=0,n=0;for(let i=0;i<pieces.length;i++){const p=pieces[i];if(p.dead)continue;sx+=p.x;sy+=p.y;n++;}
-  if(n<2)return;const cx=sx/n,cy=sy/n,k=MERGE.PULL;
-  for(let i=0;i<pieces.length;i++){const p=pieces[i];if(p.dead)continue;p.vx+=(cx-p.x)*k;p.vy+=(cy-p.y)*k;}}
+export function attractOwn(a,b){
+  const dx=b.x-a.x,dy=b.y-a.y,d2=dx*dx+dy*dy,range=(a.r+b.r)*MERGE.ATTRACT_RANGE;
+  if(d2>=range*range||d2<1e-8)return false;
+  const d=Math.sqrt(d2),k=MERGE.ATTRACT_A*DT*(1-d/range)/d;
+  a.vx+=dx*k;a.vy+=dy*k;b.vx-=dx*k;b.vy-=dy*k;return true;}

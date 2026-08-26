@@ -9,6 +9,7 @@ import {createWorld} from '@planet/shared/physics/world.js';
 import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT} from '@planet/shared/constants.js';
 import {EVENT,REMOVE,PLAYER_FLAG,SELF_FLAG,POWER_BIT,INPUT_FLAG} from '@planet/shared/protocol/constants.js';
 import {createRng} from '@planet/shared/rng.js';
+import {packDir} from '@planet/shared/util.js';
 import {NOOP_HOOKS} from './hooks.js';
 import {BotBrain} from './bots.js';
 
@@ -107,10 +108,15 @@ export class Sim{
       case 'BH_SUCK':{if(e.destroyed)gone.set(e.pieceId,REMOVE.SUCKED);const b=w.entityById.get(e.pieceId),r=b?b.r:0;hit.set(e.slot,{x:e.fromX,y:e.fromY,r});
         this._ev(EVENT.BH_SUCK,e.fromX,e.fromY,r,e.slot,NO_SLOT,e.destroyed?1:0);break;}
       case 'EXIT':this._ev(EVENT.EXIT,e.x,e.y,e.r,e.slot,NO_SLOT,e.pieceId);break;
-      case 'CHIP':this._ev(EVENT.CHIP,e.x,e.y,e.r,e.slot,NO_SLOT,e.pieceId);break;
-      case 'BOUNCE':this._ev(EVENT.BOUNCE,e.x,e.y,e.r,NO_SLOT,NO_SLOT,Math.round(e.vn));break;
+      case 'CHIP':this._ev(EVENT.CHIP,e.x,e.y,e.r,e.slot,NO_SLOT,packDir(e.nx,e.ny,0));break;
+      case 'BOUNCE':this._ev(EVENT.BOUNCE,e.x,e.y,e.r,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,e.vn));break;
       case 'BOOM':this._ev(EVENT.BOOM,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;
-      case 'SHOOT':this._ev(EVENT.SHOOT,e.x,e.y,0,NO_SLOT,NO_SLOT,e.childId);break;
+      case 'SHOOT':this._ev(EVENT.SHOOT,e.x,e.y,0,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,0));break;
+      case 'SHIELD_BREAK':this._ev(EVENT.SHIELD_BREAK,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;
+      case 'SHIELD_HIT':this._ev(EVENT.SHIELD_HIT,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,e.level);break;
+      case 'SHIELD_UP':this._ev(EVENT.SHIELD_UP,e.x,e.y,e.r,e.slot,NO_SLOT,e.level);break;
+      case 'CLASH':this._ev(EVENT.CLASH,e.x,e.y,e.r,e.slotA,e.slotB,0);break;
+      case 'DEFLECT':this._ev(EVENT.DEFLECT,e.x,e.y,e.r,e.bySlot<0?NO_SLOT:e.bySlot,NO_SLOT,packDir(e.nx,e.ny,0));break;
       case 'PLAYER_DEAD':deaths.push(e);break;}}
     for(let i=0;i<deaths.length;i++)this._died(deaths[i]);
     hit.clear();}
@@ -142,10 +148,10 @@ export class Sim{
   rankOf(slot){const lb=this.leaderboard();for(let i=0;i<lb.length;i++)if(lb[i].slot===slot)return i+1;return 0;}
   /** Bloco `self` do snapshot (preenche `out`). */
   self(slot,out){const w=this.world,ps=w.players.get(slot),gp=this.players.get(slot),t=w.tick;
-    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.speedT=out.magnetT=out.shieldT=out.score=out.splitCd=out.ejectCd=out.rank=out.mass=0;return out;}
-    const st=ps.speedUntil-t,mt=ps.magnetUntil-t,sh=ps.shieldUntil-t,sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t;
+    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.speedT=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.rank=out.mass=0;return out;}
+    const st=ps.speedUntil-t,mt=ps.magnetUntil-t,sh=ps.shieldLv,sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t;
     out.flags=gp.dead?SELF_FLAG.DEAD:0;out.missiles=ps.missiles;out.powerBits=(st>0?POWER_BIT.speed:0)|(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0);
-    out.speedT=st>0?st:0;out.magnetT=mt>0?mt:0;out.shieldT=sh>0?sh:0;out.score=ps.score;out.splitCd=sc>0?sc:0;out.ejectCd=ec>0?ec:0;
+    out.speedT=st>0?st:0;out.magnetT=mt>0?mt:0;out.shieldLv=sh;out.score=ps.score;out.splitCd=sc>0?sc:0;out.ejectCd=ec>0?ec:0;
     out.rank=gp.dead?0:this.rankOf(slot);out.mass=gp.dead?0:Math.round(w.massOf(slot));return out;}
   /** Linhas do PLAYERS. */
   playersInfo(){const out=[];for(const gp of this.players.values())

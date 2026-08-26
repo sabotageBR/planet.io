@@ -2,9 +2,10 @@
 // @ts-check
 import {test} from "node:test";
 import assert from "node:assert/strict";
+import {packDir,unpackDir} from "../src/util.js";
 import {WORLD} from "../src/constants.js";
 import {createRng} from "../src/rng.js";
-import {MSG,KIND,UPD,EVENT,NAME_MAX_BYTES,INPUT_BYTES,SNAPSHOT_HEADER_BYTES,SELF_BYTES,
+import {PIECE_FLAG,MSG,KIND,UPD,EVENT,NAME_MAX_BYTES,INPUT_BYTES,SNAPSHOT_HEADER_BYTES,SELF_BYTES,
   createWriter,createReader,qPos,dqPos,encodeInput,decodeInput,encodeSnapshot,decodeSnapshot,encodePlayers,decodePlayers,
   encodeLeaderboard,decodeLeaderboard,encodeEvent,decodeEvent,encodePong,decodePong,decodeMessage} from "../src/protocol/index.js";
 
@@ -37,7 +38,7 @@ function assertUpdate(got,exp){assert.deepEqual(Object.keys(got).sort(),Object.k
   if("x"in exp){near(got.x,exp.x,EPS_POS,"x");near(got.y,exp.y,EPS_POS,"y");}if("r"in exp)near(got.r,exp.r,EPS_R,"r");
   if("vx"in exp){near(got.vx,exp.vx,EPS_V,"vx");near(got.vy,exp.vy,EPS_V,"vy");}
   if("flags"in exp)assert.equal(got.flags,exp.flags);if("phase"in exp){assert.equal(got.phase,exp.phase);assert.equal(got.influenceR,exp.influenceR);}}
-const randSelf=()=>({flags:rng.int(0,1),missiles:rng.int(0,3),powerBits:rng.int(0,7),speedT:u16(),magnetT:u16(),shieldT:u16(),score:u32(),splitCd:rng.int(0,255),ejectCd:rng.int(0,255),rank:rng.int(0,30),mass:u32()});
+const randSelf=()=>({flags:rng.int(0,1),missiles:rng.int(0,3),powerBits:rng.int(0,7),speedT:u16(),magnetT:u16(),shieldLv:rng.int(0,3),score:u32(),splitCd:rng.int(0,255),ejectCd:rng.int(0,255),rank:rng.int(0,30),mass:u32()});
 const randRemove=()=>({id:rng.int(1,1e6),reason:rng.int(0,6)});
 const randSnapshot=(nPerKind=6,nU=30,nR=10)=>({tick:u32(),ackSeq:u16(),creates:KINDS.flatMap(k=>Array.from({length:nPerKind},()=>randCreate(k))),
   updates:Array.from({length:nU},()=>randUpdate()),removes:Array.from({length:nR},randRemove),self:randSelf()});
@@ -77,7 +78,7 @@ test("SNAPSHOT: ida e volta de todos os kinds, máscaras, remoções e self",()=
     s.creates.forEach((e,i)=>assertCreate(d.creates[i],e));s.updates.forEach((u,i)=>assertUpdate(d.updates[i],u));
     assert.deepEqual(d.removes,s.removes);assert.deepEqual(d.self,s.self);}
   const empty=decodeSnapshot(encodeSnapshot(w,{tick:7,ackSeq:3}));
-  assert.deepEqual(empty,{tick:7,ackSeq:3,creates:[],updates:[],removes:[],self:{flags:0,missiles:0,powerBits:0,speedT:0,magnetT:0,shieldT:0,score:0,splitCd:0,ejectCd:0,rank:0,mass:0}});});
+  assert.deepEqual(empty,{tick:7,ackSeq:3,creates:[],updates:[],removes:[],self:{flags:0,missiles:0,powerBits:0,speedT:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,rank:0,mass:0}});});
 test("SNAPSHOT: tamanho do create por kind bate com a conta manual",()=>{
   const SIZE={[KIND.PIECE]:11+7,[KIND.FOOD]:11+2,[KIND.EJECT]:11+7,[KIND.ASTEROID]:11+6,[KIND.BLACKHOLE]:11+5,[KIND.MISSILE]:11+8};
   for(const k of KINDS)assert.equal(encodeSnapshot(w,{tick:0,ackSeq:0,creates:[randCreate(k)]}).length,SNAPSHOT_HEADER_BYTES+SIZE[k]+SELF_BYTES,`kind ${k}`);
@@ -95,9 +96,9 @@ test("SNAPSHOT: update só escreve/lê os campos presentes na máscara (32 combi
   assert.equal(b.length,SNAPSHOT_HEADER_BYTES+7+SELF_BYTES);assert.deepEqual(decodeSnapshot(b).updates[0],{id:5,mask:UPD.R,r:40});});
 test("SNAPSHOT: magnitudes saturam, contadores dão wrap",()=>{
   const d=decodeSnapshot(encodeSnapshot(w,{tick:2**32+5,ackSeq:65536+9,creates:[{kind:KIND.PIECE,id:1,x:-10,y:99999,r:99999,vx:-99999,vy:99999,flags:15}],
-    self:{flags:1,missiles:999,powerBits:7,speedT:1e6,magnetT:-1,shieldT:NaN,score:2**40,splitCd:400,ejectCd:-3,rank:1e6,mass:2**33}}));
+    self:{flags:1,missiles:999,powerBits:7,speedT:1e6,magnetT:-1,shieldLv:NaN,score:2**40,splitCd:400,ejectCd:-3,rank:1e6,mass:2**33}}));
   assert.equal(d.tick,5);assert.equal(d.ackSeq,9);const p=d.creates[0];assert.equal(p.x,0);assert.equal(p.y,WORLD.h);assert.equal(p.r,6553.5);assert.equal(p.vx,-32767);assert.equal(p.vy,32767);
-  assert.deepEqual(d.self,{flags:1,missiles:255,powerBits:7,speedT:65535,magnetT:0,shieldT:0,score:4294967295,splitCd:255,ejectCd:0,rank:65535,mass:4294967295});
+  assert.deepEqual(d.self,{flags:1,missiles:255,powerBits:7,speedT:65535,magnetT:0,shieldLv:0,score:4294967295,splitCd:255,ejectCd:0,rank:65535,mass:4294967295});
 });
 test("SNAPSHOT: orçamento — 150 PIECE + 100 FOOD + 100 updates(X_Y|V) + 20 removes ≤ 6 KB",t=>{
   const s={tick:1234,ackSeq:77,creates:[...Array.from({length:150},()=>randCreate(KIND.PIECE)),...Array.from({length:100},()=>randCreate(KIND.FOOD))],
@@ -126,9 +127,14 @@ test("LEADERBOARD: ida e volta exata; > 255 linhas estoura",()=>{
   const rows=Array.from({length:30},()=>({slot:slot(),mass:u32()}));assert.deepEqual(decodeLeaderboard(encodeLeaderboard(w,rows)),rows);
   assert.equal(encodeLeaderboard(w,rows).length,2+30*6);assert.throws(()=>encodeLeaderboard(w,new Array(256).fill({slot:0,mass:0})),RangeError);});
 test("EVENT: ida e volta dentro da quantização",()=>{
-  for(let i=0;i<30;i++){const e={kind:rng.int(0,10),x:rx(),y:ry(),r:rr(),slotA:slot(),slotB:slot(),extra:u32()};const b=encodeEvent(w,e);assert.equal(b.length,16);const d=decodeEvent(b);
+  for(let i=0;i<30;i++){const e={kind:rng.int(0,15),x:rx(),y:ry(),r:rr(),slotA:slot(),slotB:slot(),extra:u32()};const b=encodeEvent(w,e);assert.equal(b.length,16);const d=decodeEvent(b);
     assert.equal(d.kind,e.kind);near(d.x,e.x,EPS_POS,"x");near(d.y,e.y,EPS_POS,"y");near(d.r,e.r,EPS_R,"r");assert.equal(d.slotA,e.slotA);assert.equal(d.slotB,e.slotB);assert.equal(d.extra,e.extra);}
-  const d=decodeEvent(encodeEvent(w,{kind:EVENT.SHOOT,x:0,y:0,r:0,slotA:0,slotB:0,extra:-1}));assert.equal(d.extra,4294967295);});
+  const d=decodeEvent(encodeEvent(w,{kind:EVENT.SHOOT,x:0,y:0,r:0,slotA:0,slotB:0,extra:-1}));assert.equal(d.extra,4294967295);
+  for(const k of [EVENT.SHIELD_BREAK,EVENT.CLASH,EVENT.DEFLECT,EVENT.SHIELD_HIT,EVENT.SHIELD_UP])assert.equal(decodeEvent(encodeEvent(w,{kind:k,x:1,y:1,r:1,slotA:0,slotB:0,extra:0})).kind,k);
+  const pd=unpackDir(decodeEvent(encodeEvent(w,{kind:EVENT.DEFLECT,x:1,y:1,r:1,slotA:0,slotB:0,extra:packDir(-.6,.8,300)})).extra);
+  assert.ok(Math.abs(pd.nx+.6)<.01&&Math.abs(pd.ny-.8)<.01&&pd.vn===300,"packDir/unpackDir");
+  const c=decodeSnapshot(encodeSnapshot(w,{tick:1,ackSeq:0,creates:[{kind:KIND.PIECE,id:1,x:1,y:1,r:1,owner:0,vx:0,vy:0,flags:PIECE_FLAG.SHIELD|PIECE_FLAG.MAGNET|(3<<PIECE_FLAG.SHIELD_LV_SHIFT)}]})).creates[0];
+  assert.equal(c.flags,PIECE_FLAG.SHIELD|PIECE_FLAG.MAGNET|96);assert.equal((c.flags>>PIECE_FLAG.SHIELD_LV_SHIFT)&3,3);});
 test("PONG: ida e volta exata",()=>{for(let i=0;i<10;i++){const p={clientTime:u32(),serverTick:u32()};const b=encodePong(w,p);assert.equal(b.length,9);assert.deepEqual(decodePong(b),p);}});
 
 // ── decodeMessage ────────────────────────────────────────────────────────────

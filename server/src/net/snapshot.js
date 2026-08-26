@@ -2,13 +2,14 @@
 // As máscaras de mudança são calculadas UMA vez por tick de snapshot para a sala (contra o estado
 // quantizado do snapshot anterior) e valem para todas as sessões — todo CREATE nasce num tick de
 // snapshot com o estado daquele tick, então o delta seguinte é sempre relativo ao que o cliente viu.
-// Comida nunca recebe UPDATE (id estável; só CREATE/REMOVE). Objetos de saída são de pools reutilizados.
+// Comida só recebe UPDATE (X_Y) quando o mundo a marcou FOOD_FLAG.MOVED (ímã/buraco negro); senão só CREATE/REMOVE.
+// Objetos de saída são de pools reutilizados.
 // @ts-check
 import {NET,BLACKHOLE} from '@planet/shared/constants.js';
-import {KIND,UPD,REMOVE,PIECE_FLAG} from '@planet/shared/protocol/constants.js';
+import {KIND,UPD,REMOVE,PIECE_FLAG,FOOD_FLAG} from '@planet/shared/protocol/constants.js';
 import {encodeSnapshot,qPos,qR,qV} from '@planet/shared/protocol/index.js';
 import {focusOf,zoomFor,viewRect,rectHas} from '@planet/shared/camera.js';
-const MAX_BUFFERED=256*1024,SWEEP_EVERY=60,WFLAGS=PIECE_FLAG.SHIELD|PIECE_FLAG.LAUNCH|PIECE_FLAG.MERGING,NO_SLOT=0xffff;
+const MAX_BUFFERED=256*1024,SWEEP_EVERY=60,WFLAGS=PIECE_FLAG.SHIELD|PIECE_FLAG.LAUNCH|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK,NO_SLOT=0xffff;
 const DEFAULT_REASON=[0,REMOVE.EATEN,REMOVE.EATEN,REMOVE.EXPIRED,REMOVE.DESPAWN,REMOVE.DESPAWN,REMOVE.EXPIRED]; // por KIND
 const newCreate=()=>({kind:0,id:0,x:0,y:0,r:0,owner:0,vx:0,vy:0,flags:0,type:0,hue:0,seed:0,influenceR:0,phase:0,target:0});
 const newUpdate=()=>({id:0,mask:0,x:0,y:0,r:0,vx:0,vy:0,flags:0,phase:0,influenceR:0});
@@ -20,7 +21,7 @@ export function createSnapshotter(room){
   /** @type {Map<number,{x:number,y:number,r:number,vx:number,vy:number,flags:number,phase:number,infl:number,seen:number}>} */const prev=new Map();
   /** @type {Map<number,number>} */const masks=new Map();
   const crPool=[],upPool=[],rmPool=[],creates=[],updates=[],removes=[];
-  const self={flags:0,missiles:0,powerBits:0,speedT:0,magnetT:0,shieldT:0,score:0,splitCd:0,ejectCd:0,rank:0,mass:0};
+  const self={flags:0,missiles:0,powerBits:0,speedT:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,rank:0,mass:0};
   const snap={tick:0,ackSeq:0,creates,updates,removes,self};
   let passes=0;
   const track=(arr,kind,t)=>{for(let i=0;i<arr.length;i++){const b=arr[i];if(b.dead)continue;
@@ -34,6 +35,7 @@ export function createSnapshotter(room){
   /** Uma vez por tick de snapshot: máscaras de mudança de tudo que se move. */
   function beginTick(){const w=room.sim.world,t=w.tick;masks.clear();
     track(w.pieces,KIND.PIECE,t);track(w.ejected,KIND.EJECT,t);track(w.asteroids,KIND.ASTEROID,t);track(w.holes,KIND.BLACKHOLE,t);track(w.missiles,KIND.MISSILE,t);
+    const food=w.food;for(let i=0;i<food.length;i++){const f=food[i];if(f.flags&FOOD_FLAG.MOVED){f.flags&=~FOOD_FLAG.MOVED;if(!f.dead)masks.set(f.id,UPD.X_Y);}}
     if(++passes%SWEEP_EVERY===0)for(const [id,p] of prev)if(p.seen!==t)prev.delete(id);}
   function pushCreate(b,kind,slot,sim){const e=crPool[creates.length]||(crPool[creates.length]=newCreate());creates.push(e);
     e.kind=kind;e.id=b.id;e.x=b.x;e.y=b.y;e.r=b.r;
@@ -43,7 +45,7 @@ export function createSnapshotter(room){
       case KIND.EJECT:{e.owner=b.owner<0?NO_SLOT:b.owner;const gp=sim.players.get(b.owner);e.hue=gp?gp.skinId&255:0;e.vx=b.vx;e.vy=b.vy;break;}
       case KIND.ASTEROID:e.seed=(b.seed*65535)|0;e.vx=b.vx;e.vy=b.vy;break;
       case KIND.BLACKHOLE:e.seed=(b.seed*65535)|0;e.influenceR=influenceOf(b);e.phase=b.type;break;
-      case KIND.MISSILE:e.owner=b.owner<0?NO_SLOT:b.owner;e.target=b.targetId<0?NO_SLOT:b.targetId;e.vx=b.vx;e.vy=b.vy;break;}}
+      case KIND.MISSILE:e.owner=b.owner<0?NO_SLOT:b.owner;e.target=(b.type!==0||b.targetId<0)?NO_SLOT:b.targetId;e.vx=b.vx;e.vy=b.vy;break;}}   // type 1: alvo é um id de míssil (não vai no fio)
   function pushUpdate(b,kind,m,slot){const u=upPool[updates.length]||(upPool[updates.length]=newUpdate());updates.push(u);u.id=b.id;u.mask=m;
     if(m&UPD.X_Y){u.x=b.x;u.y=b.y;}if(m&UPD.R)u.r=b.r;if(m&UPD.V){u.vx=b.vx;u.vy=b.vy;}
     if(m&UPD.FLAGS)u.flags=(b.flags&WFLAGS)|(kind===KIND.PIECE&&b.owner===slot?PIECE_FLAG.ME:0);

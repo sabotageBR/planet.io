@@ -48,7 +48,7 @@
  * @property {number} powerBits POWER_BIT.*
  * @property {number} speedT ticks restantes (u16)
  * @property {number} magnetT
- * @property {number} shieldT
+ * @property {number} shieldLv nível do escudo 0..3 (u8; 0 = sem escudo — não expira)
  * @property {number} score u32
  * @property {number} splitCd ticks (u8 saturado)
  * @property {number} ejectCd

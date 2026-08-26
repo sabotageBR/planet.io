@@ -1,7 +1,7 @@
 // ── BOT: wander / hunt / flee + fuga de buracos negros; pensa a cada THINK_TICKS ──
 // Sem Session nem hooks: produz input como um humano via sim.applyInput(slot,{tx,ty,flags}).
 // Razões FLEE_RATIO/HUNT_RATIO são de raio (a maior peça de cada lado). Split quando caça de perto e é
-// bem maior (SPLIT_P por tick, ≤ BOT.MAX_PIECES); FIRE_P por tick com munição enquanto caça/foge.
+// bem maior (SPLIT_P por tick, ≤ BOT.MAX_PIECES); FIRE_P por tick com munição enquanto caça/foge. Com escudo não atira nem divide (preserva o escudo).
 // @ts-check
 import {BOT,BLACKHOLE} from '@planet/shared/constants.js';
 import {INPUT_FLAG} from '@planet/shared/protocol/constants.js';
@@ -21,16 +21,16 @@ export class BotBrain{
   act(tick){
     const sim=this.sim,w=sim.world,ps=w.players.get(this.slot);if(!ps||!ps.alive)return;const c=centroid(ps);if(!c)return;const rng=sim.rng;
     if(tick>=this.nextThink){this._think(ps,c);this.nextThink=tick+rng.int(BOT.THINK_TICKS[0],BOT.THINK_TICKS[1]);}
-    let tx=this.wx,ty=this.wy,flags=0;
+    let tx=this.wx,ty=this.wy,flags=0;const shielded=ps.shieldLv>0;
     if(this.mode==='hunt'||this.mode==='flee'){
       const o=w.players.get(this.target),oc=o&&o.alive?centroid(o):null;
       if(!oc){this._wander(w);tx=this.wx;ty=this.wy;}
       else{const dx=oc.x-c.x,dy=oc.y-c.y,d=Math.hypot(dx,dy)||1;
         if(this.mode==='hunt'){tx=oc.x;ty=oc.y;
-          if(d<c.big*2.8&&c.big>oc.big*BOT.HUNT_RATIO&&c.n<BOT.MAX_PIECES&&rng.chance(BOT.SPLIT_P))flags|=INPUT_FLAG.SPLIT;
-          if(ps.missiles>0&&d<c.big*8&&rng.chance(BOT.FIRE_P))flags|=INPUT_FLAG.FIRE;}
+          if(!shielded&&d<c.big*2.8&&c.big>oc.big*BOT.HUNT_RATIO&&c.n<BOT.MAX_PIECES&&rng.chance(BOT.SPLIT_P))flags|=INPUT_FLAG.SPLIT;
+          if(!shielded&&ps.missiles>0&&d<c.big*8&&rng.chance(BOT.FIRE_P))flags|=INPUT_FLAG.FIRE;}
         else{tx=clamp(c.x-dx/d*FLEE_STEP,MARGIN,w.w-MARGIN);ty=clamp(c.y-dy/d*FLEE_STEP,MARGIN,w.h-MARGIN);
-          if(ps.missiles>0&&rng.chance(BOT.FIRE_P))flags|=INPUT_FLAG.FIRE;}}}
+          if(!shielded&&ps.missiles>0&&rng.chance(BOT.FIRE_P))flags|=INPUT_FLAG.FIRE;}}}
     else if(this.mode==='food'){const f=w.entityById.get(this.target);if(f&&!f.dead){tx=f.x;ty=f.y;}else{this._wander(w);tx=this.wx;ty=this.wy;}}
     else if(Math.hypot(this.wx-c.x,this.wy-c.y)<WAYPOINT_DONE){this._wander(w);tx=this.wx;ty=this.wy;}
     const h=threateningHole(w,c.x,c.y);

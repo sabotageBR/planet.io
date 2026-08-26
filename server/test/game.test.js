@@ -12,7 +12,7 @@ const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.env'),'utf8').split('\n')){const m=/^\s*([A-Z_]+)=(.*)$/.exec(l);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim();}}catch{}}
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';process.env.SHARDS='1';process.env.PEERS='';
 const {startServer}=await import('../src/index.js');
-const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG}=await import('@planet/shared/protocol/index.js');
+const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG,PROTOCOL_VERSION}=await import('@planet/shared/protocol/index.js');
 const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY}=await import('@planet/shared/constants.js');
 const {rectHas}=await import('@planet/shared/camera.js');
 const {newCode,shardOf,isValidCode,normalizeCode}=await import('../src/rooms/codes.js');
@@ -64,7 +64,7 @@ test('unitários: códigos de sala e token bucket',()=>{
 let A,B,roomCode;
 test('join: room + PLAYERS com bots + snapshots com criações na AOI',async()=>{
   A=new Client();await A.open();const r=await A.join('Alice');roomCode=r.code;
-  assert.equal(r.protocol,1);assert.equal(shardOf(r.code),0);assert.match(r.sessionId,/^[0-9a-f-]{36}$/);assert.match(r.resumeToken,/^[0-9a-f]{32}$/);assert.deepEqual(r.world,{w:7200,h:7200});
+  assert.equal(r.protocol,PROTOCOL_VERSION);assert.equal(shardOf(r.code),0);assert.match(r.sessionId,/^[0-9a-f-]{36}$/);assert.match(r.resumeToken,/^[0-9a-f]{32}$/);assert.deepEqual(r.world,{w:7200,h:7200});
   await A.until(()=>A.players,3000,'PLAYERS');
   const bots=A.players.filter(p=>p.flags&PLAYER_FLAG.BOT);assert.equal(bots.length,srv.config.roomBots);assert.ok(bots.every(p=>BOT_NAMES.includes(p.name)));
   const me=A.players.find(p=>p.slot===A.slot);assert.ok(me);assert.equal(me.flags&PLAYER_FLAG.BOT,0);
@@ -134,8 +134,8 @@ test('morte: dead + rewards; PLAYERS marca DEAD; join de novo recomeça com sess
 });
 test('/healthz: tick p99, overruns, db, protocol',async()=>{
   const h=await (await fetch(base+'/healthz')).json();assert.equal(h.ok,true);assert.equal(h.shard,0);assert.ok(h.rooms>=1);assert.ok(h.players>=2);
-  assert.equal(typeof h.tick.p99,'number');assert.equal(typeof h.tick.overruns,'number');assert.equal(typeof h.loopLagMs.p99,'number');assert.ok(['ok','down','none'].includes(h.db));assert.equal(h.protocol,1);assert.ok(h.net.outKBps>0);
-  const cfg=await (await fetch(base+'/api/config')).json();assert.deepEqual(cfg,{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:1});
+  assert.equal(typeof h.tick.p99,'number');assert.equal(typeof h.tick.overruns,'number');assert.equal(typeof h.loopLagMs.p99,'number');assert.ok(['ok','down','none'].includes(h.db));assert.equal(h.protocol,PROTOCOL_VERSION);assert.ok(h.net.outKBps>0);
+  const cfg=await (await fetch(base+'/api/config')).json();assert.deepEqual(cfg,{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION});
   assert.equal((await (await fetch(base+'/internal/rooms')).json()).rooms[0].code,roomCode);
   assert.equal((await (await fetch(base+'/api/auto')).json()).code,roomCode);
   assert.equal((await fetch(base+'/nada')).status,404);
