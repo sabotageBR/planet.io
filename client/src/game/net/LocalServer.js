@@ -7,7 +7,7 @@
 import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,encodePong,decodeInput,
   MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,
   WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,PLAYER,BOT,BOT_NAMES,NET,BLACKHOLE,MISSILE,SKINS,FOOD,
-  focusOf,zoomFor,viewRect,rectHas,qPos,qR,qV,createRng,SCORE_COINS,clamp} from "@planet/shared";
+  focusOf,zoomFor,viewRect,rectHas,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir} from "@planet/shared";
 import {createWorld,applySplit,liveCount,firstLive} from "@planet/shared/physics/index.js";
 
 const seqNewer=(a,b)=>b<0||(((a-b)&0xFFFF)>0&&((a-b)&0xFFFF)<0x8000);
@@ -27,9 +27,10 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
         else if(mass>om*BOT.HUNT_RATIO&&d2<BOT.HUNT_DIST*BOT.HUNT_DIST&&d2<pd){pd=d2;prey=o.slot;}}
       if(threat>=0){b.st="flee";b.tgt=threat;}else if(prey>=0){b.st="hunt";b.tgt=prey;}else{b.st="wander";b.tx=rng.range(150,w.w-150);b.ty=rng.range(150,w.h-150);}}
     if(b.st==="flee"||b.st==="hunt"){const o=w.players.get(b.tgt),op=o&&o.alive?firstLive(o.pieces):null;
-      if(!op)b.st="wander";else if(b.st==="flee"){b.tx=c.x*2-op.x;b.ty=c.y*2-op.y;if(ps.missiles&&rng.chance(BOT.FIRE_P))w.requestFire(slot);}
-      else{b.tx=op.x;b.ty=op.y;if(ps.missiles&&rng.chance(BOT.FIRE_P*.8))w.requestFire(slot);
-        const d=Math.hypot(op.x-c.x,op.y-c.y);if(d<c.r*3.2&&c.r>op.r*1.5&&liveCount(ps.pieces)<BOT.MAX_PIECES&&rng.chance(BOT.SPLIT_P))w.requestSplit(slot);}}
+      const sh=ps.shieldLv>0;   // com escudo não atira nem divide (preserva o escudo)
+      if(!op)b.st="wander";else if(b.st==="flee"){b.tx=c.x*2-op.x;b.ty=c.y*2-op.y;if(!sh&&ps.missiles&&rng.chance(BOT.FIRE_P))w.requestFire(slot);}
+      else{b.tx=op.x;b.ty=op.y;if(!sh&&ps.missiles&&rng.chance(BOT.FIRE_P*.8))w.requestFire(slot);
+        const d=Math.hypot(op.x-c.x,op.y-c.y);if(!sh&&d<c.r*3.2&&c.r>op.r*1.5&&liveCount(ps.pieces)<BOT.MAX_PIECES&&rng.chance(BOT.SPLIT_P))w.requestSplit(slot);}}
     else if(b.think%5===0){let bf=null,bd=BOT.FOOD_DIST*BOT.FOOD_DIST;const q=[];const n=w.foodGrid.query(c.x,c.y,BOT.FOOD_DIST,q);
       for(let i=0;i<n;i++){const f=w.food[q[i]];if(!f||f.dead)continue;const dx=f.x-c.x,dy=f.y-c.y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;bf=f;}}if(bf){b.tx=bf.x;b.ty=bf.y;}}
     for(const h of w.holes){const ri=h.r*BLACKHOLE.INFLUENCE*h.k,dx=c.x-h.x,dy=c.y-h.y;if(h.k>.3&&dx*dx+dy*dy<ri*ri*BOT.HOLE_AVOID*BOT.HOLE_AVOID){b.tx=c.x+dx*3;b.ty=c.y+dy*3;}}
@@ -92,6 +93,11 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
         case "BOUNCE":e={kind:EVENT.BOUNCE,x:ev.x,y:ev.y,r:ev.r,slotA:0,slotB:0,extra:packDir(ev.nx,ev.ny,ev.vn)};break;
         case "BOOM":e={kind:EVENT.BOOM,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot,extra:0};break;
         case "SHOOT":e={kind:EVENT.SHOOT,x:ev.x,y:ev.y,r:36,slotA:0,slotB:0,extra:packDir(ev.nx,ev.ny,0)};break;
+        case "SHIELD_BREAK":e={kind:EVENT.SHIELD_BREAK,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot<0?65535:ev.bySlot,extra:0};break;
+        case "SHIELD_HIT":e={kind:EVENT.SHIELD_HIT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot<0?65535:ev.bySlot,extra:packDir(ev.nx,ev.ny,ev.level)};break;
+        case "SHIELD_UP":e={kind:EVENT.SHIELD_UP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:65535,extra:ev.level};break;
+        case "CLASH":e={kind:EVENT.CLASH,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slotA,slotB:ev.slotB,extra:0};break;
+        case "DEFLECT":e={kind:EVENT.DEFLECT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.bySlot<0?65535:ev.bySlot,slotB:65535,extra:packDir(ev.nx,ev.ny,0)};break;
         case "PLAYER_DEAD":{const m=meta.get(ev.slot);
           if(m&&m.isBot){const ps=w.players.get(ev.slot);w.respawnPlayer(ev.slot,{score:Math.floor((ps?ps.score:0)*BOT.RESPAWN_SCORE)});const bp=w.players.get(ev.slot);if(bp)bp.missiles=rng.chance(.3)?1:0;playersDirty=true;}
           else for(const s of sessions)if(s.slot===ev.slot&&!s.dead){s.dead=true;playersDirty=true;const ps=w.players.get(ev.slot),by=meta.get(ev.bySlot),durationS=Math.round((tick-s.startTick)/TICK_HZ);
@@ -105,7 +111,6 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     if(tick%LEADERBOARD_EVERY===0){const rows=[];for(const slot of meta.keys()){const ps=w.players.get(slot);if(ps&&ps.alive)rows.push({slot,mass:Math.round(w.massOf(slot))});}
       rows.sort((a,b)=>b.mass-a.mass);const top=rows.slice(0,10);for(const s of sessions)if(s.slot>=0&&!top.some(r=>r.slot===s.slot)){const mine=rows.find(r=>r.slot===s.slot);if(mine)top.push(mine);}
       const u8=encodeLeaderboard(writer,top);for(const s of sessions)if(s.slot>=0)sendBin(s.sock,u8);}}
-  const packDir=(nx,ny,vn)=>((Math.round((nx||0)*127)+128)&255|((Math.round((ny||0)*127)+128)&255)<<8|(Math.min(65535,Math.round(vn||0))<<16))>>>0;
   // ── snapshot por sessão ──
   const cr=[],up=[],rm=[];
   function snapshot(s){const ps=w.players.get(s.slot),tick=w.tick,view=s.view;let cx,cy,scale;
@@ -121,8 +126,8 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     for(const b of w.pieces)visit(b,b.r);for(const b of w.food)visit(b,b.r);for(const b of w.ejected)visit(b,b.r);
     for(const b of w.asteroids)visit(b,b.r);for(const b of w.holes)visit(b,Math.max(b.r,b.r*BLACKHOLE.INFLUENCE*b.k));for(const b of w.missiles)visit(b,b.r);
     for(const [id,k] of known)if(k.seen!==stamp){const body=w.entityById.get(id);rm.push({id,reason:body&&!body.dead?REMOVE.LEFT_AOI:(reasonMap.has(id)?reasonMap.get(id):REMOVE.DESPAWN)});known.delete(id);}
-    const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ps.missiles,powerBits:(ps.speedUntil>tick?POWER_BIT.speed:0)|(ps.magnetUntil>tick?POWER_BIT.magnet:0)|(ps.shieldUntil>tick?POWER_BIT.shield:0),
-      speedT:Math.max(0,ps.speedUntil-tick),magnetT:Math.max(0,ps.magnetUntil-tick),shieldT:Math.max(0,ps.shieldUntil-tick),score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),
+    const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ps.missiles,powerBits:(ps.speedUntil>tick?POWER_BIT.speed:0)|(ps.magnetUntil>tick?POWER_BIT.magnet:0)|(ps.shieldLv>0?POWER_BIT.shield:0),
+      speedT:Math.max(0,ps.speedUntil-tick),magnetT:Math.max(0,ps.magnetUntil-tick),shieldLv:ps.shieldLv,score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),
       rank:rankOf(s.slot),mass:Math.round(w.massOf(s.slot))}:undefined;
     sendBin(s.sock,encodeSnapshot(writer,{tick,ackSeq:s.ackSeq,creates:cr,updates:up,removes:rm,self}));}
   function rankOf(slot){const m=w.massOf(slot);let r=1;for(const o of meta.keys()){if(o===slot)continue;const ps=w.players.get(o);if(ps&&ps.alive&&w.massOf(o)>m)r++;}return r;}
@@ -133,7 +138,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
       case KIND.EJECT:c.owner=b.owner;c.hue=b.hue;c.vx=b.vx;c.vy=b.vy;break;
       case KIND.ASTEROID:c.seed=Math.floor(b.seed*65535);c.vx=b.vx;c.vy=b.vy;c.hue=b.hue;break;   // hue não vai no fio (variante = seed%3 no cliente)
       case KIND.BLACKHOLE:c.seed=Math.floor(b.seed*65535);c.influenceR=Math.round(b.r*BLACKHOLE.INFLUENCE*b.k);c.phase=b.type;break;
-      case KIND.MISSILE:c.owner=b.owner;c.target=b.targetId<0?65535:b.targetId;c.vx=b.vx;c.vy=b.vy;break;}
+      case KIND.MISSILE:c.owner=b.owner;c.target=(b.type!==0||b.targetId<0)?65535:b.targetId;c.vx=b.vx;c.vy=b.vy;break;}
     return c;}
   function setLast(k,b,me){k.x=qPos(b.x,WORLD.w);k.y=qPos(b.y,WORLD.h);k.r=qR(b.r);k.vx=qV(b.vx);k.vy=qV(b.vy);k.flags=b.kind===KIND.PIECE?(b.flags|(b.owner===me?PIECE_FLAG.ME:0))&255:0;
     k.phase=b.type;k.ri=b.kind===KIND.BLACKHOLE?Math.round(b.r*BLACKHOLE.INFLUENCE*b.k):0;}

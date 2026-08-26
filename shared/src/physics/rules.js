@@ -175,8 +175,8 @@ export function homeMissile(w,m){
 export function pieceMissile(w,pc,m){
   if(m.owner===pc.owner)return;const dx=m.x-pc.x,dy=m.y-pc.y,s=pc.r+m.r;if(dx*dx+dy*dy>=s*s)return;
   const ps=w.players.get(pc.owner);
-  if(ps.shieldLv>0){m.dead=true;ps.shieldLv--;ps.shieldEvolveAt=w.tick+POWERUP.SHIELD_EVOLVE_TICKS;
-    if(ps.shieldLv>0)w.events.push({type:"SHIELD_HIT",slot:ps.slot,level:ps.shieldLv,x:m.x,y:m.y,r:pc.r,bySlot:m.owner});
+  if(ps.shieldLv>0){m.dead=true;ps.shieldLv--;ps.shieldEvolveAt=w.tick+POWERUP.SHIELD_EVOLVE_TICKS;const d=Math.sqrt(dx*dx+dy*dy)||1;
+    if(ps.shieldLv>0)w.events.push({type:"SHIELD_HIT",slot:ps.slot,level:ps.shieldLv,x:pc.x,y:pc.y,r:pc.r,nx:dx/d,ny:dy/d,bySlot:m.owner});
     else w.events.push({type:"SHIELD_BREAK",slot:ps.slot,x:pc.x,y:pc.y,r:pc.r,bySlot:m.owner});return;}
   let r=pc.r*MISSILE.HIT_SHRINK;if(r<PLAYER.MIN_PIECE_R)r=PLAYER.MIN_PIECE_R;setR(pc,r);
   const rng=w.rng,er=EJECT.R;

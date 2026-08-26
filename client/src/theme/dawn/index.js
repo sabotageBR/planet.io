@@ -138,6 +138,8 @@ export const world={grid:{step:150,color:"rgba(255,245,194,.09)",width:2},border
   foodAnim:{starPulse:{amp:.14,speed:.003},bob:{amp:3,speed:.005}}};
 
 // ── efeitos (drawFx) como primitivas; k=age/ttl, f={x,y,r,nx,ny,power} ──
+// escudo por nível (1 → 2 → 3): cor, largura, pulso e nº de anéis — usados pelos anéis (Planets.js), pelo HUD e pelos efeitos
+const SHIELD_LV=[{color:BLU,widthK:1,pulse:.012,alpha:[.6,1],rings:1},{color:PUR,widthK:1.25,pulse:.02,alpha:[.7,1],rings:1},{color:YEL,widthK:1.5,pulse:.03,alpha:[.85,1],rings:2}],ROCK_DUST="#b8a898";
 export const effects={
   fx(kind,k,f){const a=1-k,P=[];
     switch(kind){
@@ -151,18 +153,52 @@ export const effects={
         P.push({type:"star",x:f.x,y:f.y,r:s,n:12,inner:.55,phase:-k*.5,fill:ORA,stroke:INK,width:Math.max(2.5,s*.06),alpha:al});
         P.push({type:"star",x:f.x,y:f.y,r:s*.55,n:12,inner:.55,phase:-k*.5,fill:YEL,alpha:al});
         P.push({type:"text",x:f.x,y:f.y,text:"KABOOM!",size:Math.max(11,s*.34),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
-      case "eat":P.push({type:"ring",x:f.x,y:f.y,r:f.r*(1.2+k*1.2),color:CREAM,alpha:a,width:3});
-        if(f.r>8)P.push({type:"text",x:f.x,y:f.y-f.r*(1+k*2),text:"nom",size:Math.max(9,f.r*.9),fill:CREAM,stroke:INK,font:FONT});break;
       case "suck":P.push({type:"ring",x:f.x,y:f.y,r:f.r*(3-k*2.6),color:PUR,alpha:a,width:4});break;
       case "exit":case "split":case "merge":P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.6+k*1.5),color:"#ffffff",alpha:a,width:3});break;
       case "chip":{const b=Math.atan2(f.ny||0,f.nx||1);for(let i=-1;i<=1;i++){const an=b+i*.5;
         P.push({type:"line",x1:f.x,y1:f.y,x2:f.x+Math.cos(an)*f.r*3*k,y2:f.y+Math.sin(an)*f.r*3*k,color:YEL,alpha:a,width:3});}break;}
       case "shoot":P.push({type:"burst",x:f.x,y:f.y,n:8,r0:f.r*(1+k),r1:f.r*(1.6+k*1.4),color:ORA,alpha:a,width:3});break;
+      case "eat":{const s=f.r*(1+k*1.1),al=Math.min(1,a*1.4);   // planeta comido: explosão (estrela + estilhaços + anel + texto)
+        P.push({type:"star",x:f.x,y:f.y,r:s,n:10,inner:.5,phase:k*.8,fill:YEL,stroke:INK,width:Math.max(2,s*.06),alpha:al});
+        P.push({type:"burst",x:f.x,y:f.y,n:8,r0:f.r*(1.1+k*1.6),r1:f.r*(1.5+k*2.6),color:CREAM,alpha:a,width:Math.max(2,f.r*.08)});
+        P.push({type:"ring",x:f.x,y:f.y,r:f.r*(1.2+k*1.6),color:CREAM,alpha:a,width:3});
+        if(f.r>8)P.push({type:"text",x:f.x,y:f.y-f.r*(1+k*1.5),text:"NHAC!",size:Math.max(10,f.r*.7),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
+      case "vanish":{const col=f.color||CREAM;   // sumiço no mesmo frame: anel que colapsa + 6 estilhaços na cor do planeta
+        P.push({type:"ring",x:f.x,y:f.y,r:f.r*(1-k*.9)+1,color:col,alpha:a,width:Math.max(3,f.r*.15*(1-k))});
+        P.push({type:"burst",x:f.x,y:f.y,n:6,r0:f.r*(.4+k*2),r1:f.r*(.9+k*2.6),color:col,alpha:a,width:Math.max(2,f.r*.1),phase:.5});break;}
+      case "death":{const s=f.r*(1+k*2),al=Math.min(1,a*1.3);
+        P.push({type:"star",x:f.x,y:f.y,r:s,n:14,inner:.5,phase:k*.4,fill:ORA,stroke:INK,width:Math.max(3,s*.05),alpha:al});
+        P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:14,inner:.5,phase:-k*.4,fill:YEL,alpha:al});
+        P.push({type:"ring",x:f.x,y:f.y,r:s*1.3,color:"#fff",alpha:a,width:4});
+        P.push({type:"text",x:f.x,y:f.y,text:"KABOOM!",size:Math.max(12,s*.3),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
+      case "shieldBreak":{const col=SHIELD_LV[0].color,R0=f.r*1.3;   // anel estilhaça em 8 arcos que voam
+        P.push({type:"ring",x:f.x,y:f.y,r:R0*(1+k*.4),color:col,alpha:a*.6,width:3,dash:[R0*.5,R0*.35]});
+        P.push({type:"burst",x:f.x,y:f.y,n:8,r0:R0*(1+k*1.2),r1:R0*(1.3+k*1.8),color:col,alpha:a,width:Math.max(3,f.r*.1),phase:.4});
+        P.push({type:"text",x:f.x,y:f.y-f.r*1.4,text:"CRACK!",size:Math.max(10,f.r*.5),fill:"#fff",stroke:INK,font:FONT,alpha:a});break;}
+      case "shieldHit":{const col=(SHIELD_LV[(f.level||1)-1]||SHIELD_LV[0]).color,hx=f.x+(f.nx||0)*f.r*1.3,hy=f.y+(f.ny||0)*f.r*1.3;   // flash do anel + impacto na borda
+        P.push({type:"ring",x:f.x,y:f.y,r:f.r*1.3*(1+k*.15),color:col,alpha:a,width:Math.max(4,f.r*.12)});
+        P.push({type:"star",x:hx,y:hy,r:f.r*.45*(1+k),n:6,inner:.5,phase:k,fill:"#fff",stroke:INK,width:2,alpha:a});break;}
+      case "shieldUp":{const col=(SHIELD_LV[(f.level||1)-1]||SHIELD_LV[0]).color;
+        P.push({type:"ring",x:f.x,y:f.y,r:f.r*(1.3+k*1.4),color:col,alpha:a,width:4});
+        P.push({type:"text",x:f.x,y:f.y-f.r*(1.2+k*.8),text:"NÍVEL "+(f.level||1)+"!",size:Math.max(10,f.r*.5),fill:col,stroke:INK,font:FONT,alpha:a});break;}
+      case "clash":{const s=f.r*(2+k*3),al=Math.min(1,a*1.4);   // míssil × míssil
+        P.push({type:"star",x:f.x,y:f.y,r:s,n:9,inner:.5,phase:k*.7,fill:ORA,stroke:INK,width:Math.max(2,s*.06),alpha:al});
+        P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:9,inner:.5,phase:-k*.7,fill:"#fff",alpha:al});
+        P.push({type:"text",x:f.x,y:f.y,text:"BAM!",size:Math.max(11,s*.4),fill:YEL,stroke:INK,font:FONT,alpha:al});break;}
+      case "deflect":{P.push({type:"burst",x:f.x,y:f.y,n:7,r0:f.r*(.3+k*1.2),r1:f.r*(.7+k*1.8),color:ROCK_DUST,alpha:a,width:Math.max(2,f.r*.08),phase:(f.nx||0)});   // poeira de rocha
+        P.push({type:"star",x:f.x,y:f.y,r:f.r*.5*(1+k),n:7,inner:.5,phase:k,fill:YEL,stroke:INK,width:2,alpha:a});break;}
       case "rock":P.push({type:"ring",x:f.x,y:f.y,r:f.r*.4*(1+k),color:CREAM,alpha:a*.5,width:2});break;}
     return P;},
   missileTrail:{color:CREAM,alphaK:.5,radiusK:.7,every:2},                                   // pontinhos atrás do míssil (alpha=i/n*alphaK, r=m.r*radiusK*i/n)
   missileFlame:{amp:.25,speed:.05},                                                          // escala da chama: 1+amp*sin(t*speed)
   blackHole:{ring:{color:PUR,alpha:[.25,.35],pulse:.004,width:3,dash:[14,18],spinK:-.4},alphaK:1.2},   // anel tracejado no raio de influência + alpha do sprite min(1,k*alphaK)
+  sparkColor:CREAM,                                                                          // faíscas de comida/pellet comido (Fx.spark)
+  // ímã (por frame, t em ms): 3 anéis tracejados contraindo para a peça + 6 traços radiais correndo para dentro
+  ambient(kind,t,f){if(kind!=="magnet")return null;const P=[],col=PUR,R1=f.r*1.3;
+    for(let i=0;i<3;i++){const ph=((t*.0009)+i/3)%1,r=R1+(1-ph)*f.r*2.4;P.push({type:"ring",x:f.x,y:f.y,r,color:col,alpha:.15+ph*.5,width:2,dash:[r*.3,r*.22]});}
+    const ph2=(t*.0018)%1,r0=R1+(1-ph2)*f.r*2.2,r1=r0+f.r*.35;
+    for(let i=0;i<6;i++){const an=i/6*6.2832+t*.0006;P.push({type:"line",x1:f.x+Math.cos(an)*r1,y1:f.y+Math.sin(an)*r1,x2:f.x+Math.cos(an)*r0,y2:f.y+Math.sin(an)*r0,color:col,alpha:.35+ph2*.4,width:2});}
+    return P;},
 };
 
 // ── HUD/rótulos/rastro (drawHud, drawTrail, drawCell) ──
@@ -177,7 +213,7 @@ export const hud={
   trail:{style:"dashed",color:(skin,isMe)=>`rgba(255,255,255,${isMe?.55:.35})`,width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},
   labels:{font:FONT,nameColor:"#fff",massColor:CREAM,stroke:INK,minR:13,size:r=>Math.max(12,r*.34),massK:.68,nameY:fs=>-fs*.28,massY:fs=>fs*.8,strokeWidth:s=>Math.max(2,s*.2)},
   cell:{merge:{color:YEL,width:r=>Math.max(3,r*.08),radiusK:1.18},
-    powerups:{colors:{speed:YEL,magnet:PUR,shield:BLU},width:r=>Math.max(3,r*.08),dash:r=>[r*.4,r*.3],radiusK:i=>1.3+i*.16,alpha:[.6,1],pulse:.012,spin:.001}},
+    powerups:{colors:{speed:YEL,magnet:PUR,shield:BLU},width:r=>Math.max(3,r*.08),dash:r=>[r*.4,r*.3],radiusK:i=>1.3+i*.16,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},
   skinPreview:{ringK:.68,dy:2},
 };
 

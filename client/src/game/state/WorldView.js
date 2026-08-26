@@ -30,7 +30,7 @@ export function createWorldView({buffer,predictor}){
           case KIND.PIECE:if(predictor.isOwn(e))continue;P.push(e);break;
           case KIND.FOOD:F.push(e);break;case KIND.EJECT:E.push(e);break;case KIND.ASTEROID:A.push(e);break;
           case KIND.BLACKHOLE:H.push(e);break;case KIND.MISSILE:M.push(e);break;}}
-      predictor.forEach(pc=>{pc.rx=pc.x+pc.vox;pc.ry=pc.y+pc.voy;pc.rr=pc.r;pc.alpha=1;pc.isMe=true;P.push(pc);});
+      const al=predictor.alpha;predictor.forEach(pc=>{pc.rx=pc.px+(pc.x-pc.px)*al+pc.vox;pc.ry=pc.py+(pc.y-pc.py)*al+pc.voy;pc.rr=pc.r;pc.alpha=1;pc.isMe=true;P.push(pc);});   // interpolado entre passos
       P.sort((a,b)=>a.rr-b.rr);},
     reset(){players.clear();v.self=null;v.lb=[];v.lbRaw=[];v.mySlot=-1;v.room=null;},
   };

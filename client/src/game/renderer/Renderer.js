@@ -22,8 +22,10 @@ export async function createRenderer({container,theme,prefs}){
   catch(e){console.warn("[render] WebGL indisponível, tentando canvas:",e&&e.message);kind="canvas";await app.init({...base,preference:"canvas"});}
   const canvas=app.canvas;canvas.className="game-canvas";canvas.style.cssText="display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none";
   container.appendChild(canvas);
-  const R={app,canvas,kind,cache:createTextureCache({budgetMB:48}),theme,prefs:{fx:true,...prefs},W:app.screen.width,H:app.screen.height,res:dpr,econ:false};
+  const upload=tex=>{const r=app.renderer;if(r.prepare&&r.prepare.upload)r.prepare.upload(tex);else if(r.texture&&r.texture.initSource)r.texture.initSource(tex.source);};
+  const R={app,canvas,kind,cache:createTextureCache({budgetMB:48,upload}),theme,prefs:{fx:true,...prefs},W:app.screen.width,H:app.screen.height,res:dpr,econ:false,ambient:null};
   const bg=createBackground(R),grid=createGrid(R),food=createFood(R),ejected=createEjected(R),hazards=createHazards(R),planets=createPlanets(R),missiles=createMissiles(R),fx=createFx(R);
+  R.ambient=(kind,f)=>fx.ambient(kind,f);   // camadas pedem efeitos contínuos (ímã) sem conhecer a camada de fx
   const world=new Container();
   const layers=[bg,grid,food,ejected,hazards,planets,missiles,fx];
   function mount(){world.removeChildren();world.addChild(bg.props,grid.root,hazards.holes,food.root,ejected.root,hazards.asteroids,missiles.root,planets.trails,planets.root,fx.root);}
@@ -36,6 +38,10 @@ export async function createRenderer({container,theme,prefs}){
     /** resolução (1 = econômico) */
     setResolution(r){r=Math.max(1,Math.min(2,r));if(app.renderer.resolution===r)return;app.renderer.resolution=r;R.res=r;app.resize();bg.resize();},
     setEcon(on){R.econ=on;fx.setBudget(on?.5:1);},
+    /** Aquece as texturas de planeta das skins presentes (tiers 128/256; a própria também em 512 e na variante isMe). */
+    warmPlanets(skins,meSkin){const TX=R.theme.textures;
+      for(const sk of skins)for(const size of [128,256])R.cache.warm(TX.key("planet",{skin:sk,isMe:false},size),size,(c,s)=>TX.planet(c,s,{skin:sk,isMe:false}));
+      if(meSkin)for(const size of [128,256,512])R.cache.warm(TX.key("planet",{skin:meSkin,isMe:true},size),size,(c,s)=>TX.planet(c,s,{skin:meSkin,isMe:true}));},
     /** f: {view,cam,now,dt,t,rt,rect,parallax,showGrid,showNames,showMass,showTrails} */
     render(f){R.cache.tick();const cam=f.cam;world.position.set(R.W/2-cam.x*cam.scale,R.H/2-cam.y*cam.scale);world.scale.set(cam.scale);
       for(const l of layers)l.render(f);app.render();},

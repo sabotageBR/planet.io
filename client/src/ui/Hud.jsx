@@ -6,7 +6,7 @@ import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
 import { leaveGame } from "../state/actions.js";
-import { useLabels } from "../hooks/useTheme.js";
+import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, powerups: { speed: 0, magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false };
@@ -23,7 +23,8 @@ function press(action) {
 }
 
 export default function Hud() {
-  const LB = useLabels();
+  const LB = useLabels(), th = useTheme();
+  const LV = th && th.hud && th.hud.cell && th.hud.cell.powerups ? th.hud.cell.powerups.shieldLevels : null;
   const screen = useStore(app, s => s.screen), room = useStore(app, s => s.room), session = useStore(app, s => s.session);
   const game = useStore(gameRef, s => s.game);
   const store = useMemo(() => (game && game.hudStore ? throttleStore(game.hudStore, 50) : EMPTY_STORE), [game]);
@@ -56,7 +57,9 @@ export default function Hud() {
     </div>
     <div id="hud-status">
       <div className={"chip" + (ammo ? "" : " empty")} id="hud-ammo"><i>🚀</i> <b id="v-ammo">{ammo}</b> <span>{LB.ammo}</span></div>
-      <div id="hud-pw">{pw.map(([k, v]) => <span key={k} className={"pw pw-" + k}><i>{PW_ICON[k] || "✦"}</i>{LB.powerups[k] || k} <b>{Math.ceil(v)}s</b></span>)}</div>
+      <div id="hud-pw">{pw.map(([k, v]) => k === "shield"
+        ? <span key={k} className={"pw pw-shield lv-" + v} style={LV && LV[v - 1] ? { background: LV[v - 1].color } : undefined}><i>{PW_ICON.shield}</i>{LB.powerups.shield} <b>{LB.shieldLevel} {v} {"★".repeat(v)}</b></span>
+        : <span key={k} className={"pw pw-" + k}><i>{PW_ICON[k] || "✦"}</i>{LB.powerups[k] || k} <b>{Math.ceil(v)}s</b></span>)}</div>
     </div>
     <div id="hud-cd">
       <div className={"cd" + (splitReady ? " ready" : "")} id="cd-split" style={{ "--p": (1 - (h.splitCd || 0)).toFixed(2) }}><i className="cd-fill"></i><span>{LB.split}</span><em>{LB.keySplit}</em></div>
