@@ -1,10 +1,11 @@
 {
   "name": "planet-io",
   "version": "1.0.0",
-  "description": "Multiplayer planet.io game",
-  "main": "server.js",
+  "description": "Multiplayer planet.io game — client (client/) + game server (server/)",
+  "main": "server/server.js",
   "scripts": {
-    "start": "node server.js"
+    "dev": "STATIC_DIR=client node server/server.js",
+    "start": "STATIC_DIR=client node server/server.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

@@ -1,0 +1,4 @@
+node_modules/
+npm-debug.log*
+.last-tag
+k8s/.rendered/

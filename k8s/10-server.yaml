@@ -1,0 +1,109 @@
+# Headless: dá DNS estável por pod (planet-server-0.planet-server.planet.svc...)
+apiVersion: v1
+kind: Service
+metadata:
+  name: planet-server
+  namespace: planet
+  labels: {app: planet-server}
+spec:
+  clusterIP: None
+  selector: {app: planet-server}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+# Balanceia /api entre todos os shards (qualquer pod agrega a lista de salas)
+apiVersion: v1
+kind: Service
+metadata:
+  name: planet-server-api
+  namespace: planet
+  labels: {app: planet-server}
+spec:
+  selector: {app: planet-server}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: planet-server-0
+  namespace: planet
+  labels: {app: planet-server, shard: "0"}
+spec:
+  selector:
+    app: planet-server
+    statefulset.kubernetes.io/pod-name: planet-server-0
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: planet-server-1
+  namespace: planet
+  labels: {app: planet-server, shard: "1"}
+spec:
+  selector:
+    app: planet-server
+    statefulset.kubernetes.io/pod-name: planet-server-1
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: planet-server-2
+  namespace: planet
+  labels: {app: planet-server, shard: "2"}
+spec:
+  selector:
+    app: planet-server
+    statefulset.kubernetes.io/pod-name: planet-server-2
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: planet-server
+  namespace: planet
+  labels: {app: planet-server}
+spec:
+  serviceName: planet-server
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: {app: planet-server}
+  template:
+    metadata:
+      labels: {app: planet-server}
+    spec:
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: server
+          image: __IMAGE_SERVER__
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 3000}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef: {fieldPath: metadata.name}
+            - {name: SHARDS,    value: "3"}
+            - {name: PEER_HOST, value: "planet-server.planet.svc.cluster.local"}
+            - {name: PEER_NAME, value: "planet-server"}
+            - {name: ROOM_MAX,  value: "30"}
+            - {name: ROOM_BOTS, value: "15"}
+            - {name: PORT,      value: "3000"}
+          readinessProbe:
+            httpGet: {path: /healthz, port: 3000}
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: 3000}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 200m, memory: 256Mi}
+            limits:   {cpu: "1",  memory: 512Mi}

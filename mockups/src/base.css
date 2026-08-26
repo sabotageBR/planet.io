@@ -1,0 +1,61 @@
+/* ── BASE ── só layout. Toda a aparência vem do CSS do tema. ─────────────── */
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden}
+body{background:#000}
+#app{position:fixed;inset:0}
+canvas#game{display:block;width:100%;height:100%;cursor:crosshair}
+.hidden{display:none!important}
+button{cursor:pointer;font:inherit}
+input{font:inherit}
+
+/* HUD in-game */
+#hud-lb{position:fixed;top:16px;left:16px;min-width:190px;z-index:5}
+#hud-score{position:fixed;top:16px;right:16px;min-width:170px;text-align:right;z-index:5}
+.ph{margin-bottom:7px}
+.lb-row{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
+.lb-row span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+.score-big{line-height:1}
+.score-row{display:flex;justify-content:flex-end;gap:6px;align-items:baseline}
+#hud-score .btn-mini{width:100%;margin-top:8px}
+
+/* telas */
+.screen{position:fixed;inset:0;z-index:10;display:none;align-items:center;justify-content:center;
+  flex-direction:column;overflow:auto;padding:24px}
+.screen.on{display:flex}
+.menu-card,.dead-card{display:flex;flex-direction:column;align-items:center;gap:12px;width:min(400px,92vw)}
+.field{width:100%;display:flex;flex-direction:column;gap:5px}
+.field input{width:100%;text-align:center}
+.skinrow{width:100%;display:flex;align-items:center;gap:12px}
+.skinrow canvas{width:56px;height:56px;flex:none}
+.skinmeta{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.skinrow .btn-mini{flex:none}
+.btn-primary,.btn-secondary{width:100%}
+.hint{text-align:center}
+
+/* loja */
+.shop-wrap{width:min(1000px,96vw);max-height:92vh;display:flex;flex-direction:column;gap:14px}
+.shop-top{display:flex;align-items:center;gap:14px}
+.shop-title{flex:1}
+.shop-grid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+  gap:12px;align-content:start;padding:4px}
+.skin-card{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:12px 8px;text-align:center;cursor:pointer}
+.skin-card canvas{width:60px;height:60px}
+.badge{position:absolute;top:5px;right:5px}
+.shop-note{text-align:center}
+
+/* morte */
+.dead-stats{display:flex;gap:22px}
+.dead-stats div{display:flex;flex-direction:column;align-items:center;gap:2px}
+.dead-by{display:flex;flex-direction:column;align-items:center;gap:2px}
+
+/* seletor de modelos */
+#switcher{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:40;
+  display:flex;align-items:center;gap:4px;padding:6px 8px;white-space:nowrap;font-size:12px;
+  background:rgba(8,10,16,.82);border:1px solid rgba(255,255,255,.16);border-radius:999px;
+  font-family:system-ui,sans-serif;backdrop-filter:blur(8px)}
+#switcher a{color:#9fb0c8;text-decoration:none;padding:4px 9px;border-radius:999px}
+#switcher a:hover{background:rgba(255,255,255,.1);color:#fff}
+#switcher a.on{background:#fff;color:#111;font-weight:700}
+#switcher .sw-lab{color:#5a6b80;padding:0 8px 0 4px;border-right:1px solid rgba(255,255,255,.14);margin-right:4px}
+#switcher .sw-home{color:#ffcc66}

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>planet.io — 6 modelos visuais</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0b0e14;color:#e6edf6;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:44px 24px 60px}
+.wrap{max-width:1100px;margin:0 auto}
+h1{font-size:32px;letter-spacing:-.5px}
+.sub{color:#8b9bb4;margin:8px 0 6px;font-size:15px;line-height:1.6}
+.keys{color:#63738c;font-size:13px;margin-bottom:28px}
+.keys b{color:#9fb0c8;font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.card{display:flex;gap:14px;padding:14px;background:#141a24;border:1px solid #202a38;border-radius:14px;
+  text-decoration:none;color:inherit;transition:.15s}
+.card:hover{border-color:#3d5a80;transform:translateY(-2px);background:#182030}
+.thumb{width:92px;height:92px;flex:none;border-radius:10px;position:relative;
+  background:linear-gradient(135deg,var(--a),var(--b))}
+.thumb span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:34px;font-weight:800;color:rgba(0,0,0,.45)}
+.body h2{font-size:17px;margin-bottom:5px}
+.body p{font-size:13px;color:#8b9bb4;line-height:1.5}
+.body em{display:block;margin-top:8px;font-style:normal;font-size:12px;color:#5b8cff}
+footer{margin-top:34px;color:#4d5b70;font-size:12.5px;line-height:1.8}
+</style>
+</head>
+<body><div class="wrap">
+<h1>planet.io — 6 modelos visuais</h1>
+<p class="sub">Cada modelo é uma demo jogável em tela cheia, com a mesma simulação (células, comida, vírus, massa ejetada, mísseis e bots) e arte totalmente diferente — mundo, HUD, menu, loja e tela de morte.</p>
+<p class="keys">Dentro da demo: <b>mouse</b> mover · <b>ESPAÇO</b> dividir · <b>W</b> ejetar · <b>clique</b> míssil/ejetar · <b>botão direito</b> dividir · <b>M</b> menu · <b>L</b> loja · <b>K</b> tela de morte · <b>1–7</b> trocar de modelo · <b>ESC</b> voltar aqui</p>
+<div class="grid">
+    <a class="card" href="classic.html">
+      <div class="thumb" style="--a:#4ecdc4;--b:#2f6bd8"><span>1</span></div>
+      <div class="body"><h2>Agar Espacial Clássico</h2><p>A tradução mais fiel do agar.io: tudo chapado, grid fino no fundo, aro escuro, nome + massa no centro. Tema escuro espacial.</p><em>abrir demo →</em></div>
+    </a>
+    <a class="card" href="light.html">
+      <div class="thumb" style="--a:#9fc7ff;--b:#e6ecf7"><span>2</span></div>
+      <div class="body"><h2>Agar Claro</h2><p>O agar.io original: fundo claro com grid cinza e círculos pastel de contorno fino. O espaço entra pelas skins, cometas e constelações.</p><em>abrir demo →</em></div>
+    </a>
+    <a class="card" href="neon.html">
+      <div class="thumb" style="--a:#00e5ff;--b:#ff2fb9"><span>3</span></div>
+      <div class="body"><h2>Neon Arcade</h2><p>Mesma leitura, acabamento emissivo: fundo preto, grid ciano, aro brilhante, rastro de luz e scanlines de CRT.</p><em>abrir demo →</em></div>
+    </a>
+    <a class="card" href="toon.html">
+      <div class="thumb" style="--a:#ffd23d;--b:#ff6b4a"><span>4</span></div>
+      <div class="body"><h2>Cartoon Cósmico</h2><p>Contorno preto grosso, cores saturadas e formas chapadas — leitura instantânea e cara de jogo mobile.</p><em>abrir demo →</em></div>
+    </a>
+    <a class="card" href="cosmic.html">
+      <div class="thumb" style="--a:#7aa2ff;--b:#c56bff"><span>5</span></div>
+      <div class="body"><h2>Cinematográfico</h2><p>O tema atual levado a sério: parallax de estrelas, nebulosas volumétricas, relevo nos planetas e HUD de vidro.</p><em>abrir demo →</em></div>
+    </a>
+    <a class="card" href="pixel.html">
+      <div class="thumb" style="--a:#7bd44b;--b:#2b3a67"><span>6</span></div>
+      <div class="body"><h2>Pixel 16-bit</h2><p>Baixa resolução escalada, paleta limitada, dithering e HUD com moldura estilo SNES.</p><em>abrir demo →</em></div>
+    </a>
+    <a class="card" href="hybrid.html">
+      <div class="thumb" style="--a:#4fe3ff;--b:#2f6bff"><span>7</span></div>
+      <div class="body"><h2>Neon Cinematográfico (híbrido)</h2><p>Planeta com volume, atmosfera e terminador do modelo 5, com aro emissivo, grid, borda e HUD do modelo 3. Painéis de vidro com acento ciano.</p><em>abrir demo →</em></div>
+    </a>
+</div>
+<footer>Protótipos descartáveis — nada em <code>game.js</code>, <code>server.js</code> ou <code>index.html</code> foi alterado.<br>
+Escolhido o rumo, ele vira o visual definitivo do jogo (e dá pra pedir variações de qualquer um antes disso).</footer>
+</div></body></html>

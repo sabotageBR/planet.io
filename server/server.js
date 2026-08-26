@@ -6,8 +6,26 @@ const WebSocket=require('ws');
 
 // ── CONSTANTS ──────────────────────────────────────────────────────────────────
 const WORLD_W=7200,WORLD_H=7200,FOOD_COUNT=840,VIRUS_COUNT=44,MAX_PIECES=8;
-const SPLIT_SPEED=24,MERGE_TIME_BASE=300,FRICTION=0.86,EJECT_SPEED=18,EJECT_R=9;
-const ROOM_MAX=30,ROOM_BOTS=15;
+const SPLIT_SPEED=26,MERGE_TIME_BASE=300,FRICTION=0.86,EJECT_SPEED=18,EJECT_R=9;
+// arremesso do split: enquanto launch>0 a peça não é limitada por maxSpd — ela sai
+// rápido e desacelera sozinha (estilingue). Sem isso o clamp mata a velocidade no
+// primeiro tick e o split vira um "pulinho".
+// LAUNCH_TICKS é só trava de segurança: o arremesso termina quando a peça desacelera
+// até a velocidade normal, então a transição não tem degrau. SPLIT_ANIM é a duração
+// do clarão no cliente.
+const LAUNCH_TICKS=45,LAUNCH_FRICTION=0.925,LAUNCH_STEER=1.5,SPLIT_ANIM=20;
+const ROOM_MAX=+(process.env.ROOM_MAX||30),ROOM_BOTS=+(process.env.ROOM_BOTS||15);
+// identidade do shard: no k8s vem do nome do pod do StatefulSet (planet-server-2 -> 2)
+const POD_NAME=process.env.POD_NAME||'';
+const SHARD=+(process.env.SHARD??(POD_NAME.match(/-(\d+)$/)||[,0])[1])||0;
+const SHARDS=+(process.env.SHARDS||1);
+// irmãos para agregar a lista de salas (DNS do headless service)
+const PEER_HOST=process.env.PEER_HOST||'';            // ex.: planet-server.planet.svc.cluster.local
+const PEER_NAME=process.env.PEER_NAME||'planet-server';
+// PEERS explícito (útil em dev) ou derivado do headless service do StatefulSet
+const PEERS=process.env.PEERS?process.env.PEERS.split(',').map(x=>x.trim()).filter(Boolean)
+  :Array.from({length:SHARDS},(_,i)=>i).filter(i=>i!==SHARD)
+    .map(i=>PEER_HOST?`${PEER_NAME}-${i}.${PEER_HOST}:${process.env.PORT||3000}`:null).filter(Boolean);
 const BOT_NAMES=["Nebulox","Vortexia","Cosmara","Drakonis","Stellara","Graviton","Quasara","Pulsaris","Meteora","Darkion","Nexaris","Solaron","Astrophex","Hydraxis","Volcanix","Luminos","Aetheron","Aurorax","Voidrix","Pyronis"];
 const SKINS=[
   {id:0,color:"#4ECDC4"},{id:1,color:"#c1440e"},{id:2,color:"#4060c8"},{id:3,color:"#e8c87a"},{id:4,color:"#9090a8"},
@@ -48,7 +66,7 @@ class GameServer{
       const wantPU=!wantMS&&puCount<15&&r<0.06;
       if(wantMS){this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:13,type:"missile_ammo",color:"#ff6600"});msCount++;}
       else if(wantPU){const t=puTypes[Math.floor(Math.random()*3)];this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:12+Math.random()*5,type:t,color:puColors[t]});puCount++;}
-      else{const t=types[Math.floor(Math.random()*4)];this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:6+Math.random()*9,type:t,color:`hsl(${Math.random()*360},80%,70%)`});}
+      else{const t=types[Math.floor(Math.random()*4)];this.food.push({id:uid(),x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:6+Math.random()*9,type:t,color:`hsl(${Math.floor(Math.random()*12)*30},80%,70%)`});}
     }
   }
   _spawnViruses(){
@@ -58,10 +76,10 @@ class GameServer{
   _explodeVirus(cx,cy,r){
     for(let k=0;k<10;k++){
       const ang=(k/10)*Math.PI*2,spd=8+Math.random()*10;
-      this.food.push({id:uid(),x:cx+Math.cos(ang)*(r+4),y:cy+Math.sin(ang)*(r+4),r:9+Math.random()*7,type:"star",color:`hsl(${100+Math.random()*80},90%,65%)`,_vx:Math.cos(ang)*spd,_vy:Math.sin(ang)*spd,_life:240});
+      this.food.push({id:uid(),x:cx+Math.cos(ang)*(r+4),y:cy+Math.sin(ang)*(r+4),r:9+Math.random()*7,type:"star",color:`hsl(${100+Math.floor(Math.random()*3)*30},90%,65%)`,_vx:Math.cos(ang)*spd,_vy:Math.sin(ang)*spd,_life:240});
     }
   }
-  _mkPiece(x,y,r,vx=0,vy=0,mt=null){return{id:uid(),x,y,r,vx,vy,ax:0,ay:0,mergeTimer:mt!==null?mt:calcMergeTime(r),displayR:r,growAnim:0,splitting:false,splitT:0};}
+  _mkPiece(x,y,r,vx=0,vy=0,mt=null){return{id:uid(),x,y,r,vx,vy,ax:0,ay:0,mergeTimer:mt!==null?mt:calcMergeTime(r),displayR:r,growAnim:0,splitting:false,splitT:0,launch:0};}
   _handleClient(ev,d){
     if(ev==="join"){
       const skin=SKINS.find(s=>s.id===(d.skinId||0))||SKINS[0];
@@ -93,9 +111,9 @@ class GameServer{
       if(p.pieces.length+news.length>=MAX_PIECES||pc.r<22)return;
       let dx=tx-pc.x,dy=ty-pc.y;const rawLen=Math.hypot(dx,dy);
       if(rawLen<1){const vl=Math.hypot(pc.vx,pc.vy);if(vl>0.05){dx=pc.vx/vl;dy=pc.vy/vl;}else{dx=0;dy=-1;}}else{dx/=rawLen;dy/=rawLen;}
-      const nr=pc.r/Math.SQRT2;pc.r=nr;pc.mergeTimer=calcMergeTime(nr);pc.vx=dx*-1.5;pc.vy=dy*-1.5;
-      const np=this._mkPiece(pc.x+dx*(pc.r+nr+4),pc.y+dy*(pc.r+nr+4),nr,dx*SPLIT_SPEED,dy*SPLIT_SPEED,calcMergeTime(nr));
-      np.splitting=true;np.splitT=0;news.push(np);
+      const nr=pc.r/Math.SQRT2;pc.r=nr;pc.mergeTimer=calcMergeTime(nr);pc.vx=dx*-2.6;pc.vy=dy*-2.6;
+      const np=this._mkPiece(pc.x+dx*(nr*0.6),pc.y+dy*(nr*0.6),nr,dx*SPLIT_SPEED,dy*SPLIT_SPEED,calcMergeTime(nr));
+      np.splitting=true;np.splitT=0;np.launch=LAUNCH_TICKS;news.push(np);
     });
     p.pieces.push(...news);
   }
@@ -108,14 +126,15 @@ class GameServer{
       pc.vx-=nx*1.8;pc.vy-=ny*1.8;
     });
   }
-  start(){if(this.running)return;this.running=true;this._spawnBots(ROOM_BOTS);this._interval=setInterval(()=>this._tick(),16);}
+  // Idempotent: also revives a room that idled out, topping bots back up to ROOM_BOTS.
+  start(){if(this.running)return;this.running=true;const have=Object.values(this.players).filter(p=>p.isBot).length;if(have<ROOM_BOTS)this._spawnBots(ROOM_BOTS-have,have);this._interval=setInterval(()=>this._tick(),16);}
   stop(){clearInterval(this._interval);this.running=false;}
-  _spawnBots(n){
+  _spawnBots(n,nameOffset=0){
     for(let i=0;i<n;i++){
       const id="bot_"+uid(),skinId=Math.floor(Math.random()*10);
       const sk=SKINS[skinId]||SKINS[0];
       const sx=400+Math.random()*(WORLD_W-800),sy=400+Math.random()*(WORLD_H-800);
-      this.players[id]={id,name:BOT_NAMES[i%BOT_NAMES.length],color:sk.color,skinId,isBot:true,score:0,dead:false,
+      this.players[id]={id,name:BOT_NAMES[(nameOffset+i)%BOT_NAMES.length],color:sk.color,skinId,isBot:true,score:0,dead:false,
         pieces:[this._mkPiece(sx,sy,24+Math.random()*16,0,0,0)],_tx:Math.random()*WORLD_W,_ty:Math.random()*WORLD_H,
         _state:"wander",_huntId:null,_stateTimer:0,_fleeFromId:null};
     }
@@ -160,12 +179,19 @@ class GameServer{
     plist.forEach(p=>{
       p.pieces.forEach(pc=>{
         const dx=p._tx-pc.x,dy=p._ty-pc.y,len=Math.hypot(dx,dy)||1;const baseSpd=clamp(220/pc.r,0.8,6);const maxSpd=p._powerups&&p._powerups.speed>0?baseSpd*1.85:baseSpd;
-        pc.ax=(dx/len)*maxSpd*6;pc.ay=(dy/len)*maxSpd*6;pc.vx=(pc.vx+pc.ax*DT)*FRICTION;pc.vy=(pc.vy+pc.ay*DT)*FRICTION;
-        const spd=Math.hypot(pc.vx,pc.vy);if(spd>maxSpd){pc.vx=(pc.vx/spd)*maxSpd;pc.vy=(pc.vy/spd)*maxSpd;}
+        if(pc.launch>0){
+          pc.launch--;                                              // arremesso: leve controle, sem teto de velocidade
+          pc.ax=(dx/len)*maxSpd*LAUNCH_STEER;pc.ay=(dy/len)*maxSpd*LAUNCH_STEER;
+          pc.vx=(pc.vx+pc.ax*DT)*LAUNCH_FRICTION;pc.vy=(pc.vy+pc.ay*DT)*LAUNCH_FRICTION;
+          if(Math.hypot(pc.vx,pc.vy)<=maxSpd)pc.launch=0;            // acabou de desacelerar: volta ao normal
+        }else{
+          pc.ax=(dx/len)*maxSpd*6;pc.ay=(dy/len)*maxSpd*6;pc.vx=(pc.vx+pc.ax*DT)*FRICTION;pc.vy=(pc.vy+pc.ay*DT)*FRICTION;
+          const spd=Math.hypot(pc.vx,pc.vy);if(spd>maxSpd){pc.vx=(pc.vx/spd)*maxSpd;pc.vy=(pc.vy/spd)*maxSpd;}
+        }
         pc.x=clamp(pc.x+pc.vx,pc.r,WORLD_W-pc.r);pc.y=clamp(pc.y+pc.vy,pc.r,WORLD_H-pc.r);
         if(pc.x<=pc.r||pc.x>=WORLD_W-pc.r)pc.vx*=-0.4;if(pc.y<=pc.r||pc.y>=WORLD_H-pc.r)pc.vy*=-0.4;
         if(pc.mergeTimer>0)pc.mergeTimer--;
-        if(pc.splitting){pc.splitT=Math.min((pc.splitT||0)+0.065,1);if(pc.splitT>=1)pc.splitting=false;}
+        if(pc.splitting){pc.splitT=Math.min((pc.splitT||0)+1/SPLIT_ANIM,1);if(pc.splitT>=1)pc.splitting=false;}
         pc.displayR=lerp(pc.displayR||pc.r,pc.r,0.18);
       });
       for(let i=0;i<p.pieces.length;i++){for(let j=i+1;j<p.pieces.length;j++){const a=p.pieces[i],b=p.pieces[j];if(a.mergeTimer<=0&&b.mergeTimer<=0)continue;const d=dist(a,b),minD=(a.r+b.r)*0.92;if(d<minD&&d>0.01){const nx=(b.x-a.x)/d,ny=(b.y-a.y)/d,push=(minD-d)*0.2;a.x-=nx*push;a.y-=ny*push;b.x+=nx*push;b.y+=ny*push;const dv=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny;if(dv>0){a.vx-=dv*nx*.3;a.vy-=dv*ny*.3;b.vx+=dv*nx*.3;b.vy+=dv*ny*.3;}}}}
@@ -181,7 +207,7 @@ class GameServer{
       for(let vi=0;vi<this.viruses.length;vi++){const v=this.viruses[vi];if(dist(e,v)<v.r+e.r*0.6){const dx=v.x-e.x,dy=v.y-e.y,len=Math.hypot(dx,dy)||1;v.vx+=(dx/len)*6;v.vy+=(dy/len)*6;v.r=Math.min(v.r+EJECT_R*0.7,VIRUS_MAX_R);v.hits=(v.hits||0)+1;if(v.r>=VIRUS_SPLIT_R&&this.viruses.length<VIRUS_COUNT+6){const ang=Math.random()*Math.PI*2;v.r=VIRUS_FEED_R;this.viruses.push({id:uid(),x:v.x+Math.cos(ang)*VIRUS_FEED_R*2,y:v.y+Math.sin(ang)*VIRUS_FEED_R*2,r:VIRUS_FEED_R,pulseT:Math.random()*Math.PI*2,vx:Math.cos(ang)*8,vy:Math.sin(ang)*8,hits:0});}return false;}}return true;
     });
     const hitV=new Set();
-    plist.forEach(p=>{p.pieces.forEach(pc=>{this.viruses.forEach((v,vi)=>{if(!hitV.has(vi)&&pc.r>v.r*1.1&&dist(pc,v)<pc.r*0.82){hitV.add(vi);const splits=clamp(Math.floor(pc.r/22),2,MAX_PIECES-p.pieces.length+1);if(splits<2)return;const nr=pc.r/Math.sqrt(splits);pc.r=nr;pc.mergeTimer=calcMergeTime(nr);for(let k=1;k<splits&&p.pieces.length<MAX_PIECES;k++){const ang=Math.random()*Math.PI*2;p.pieces.push(this._mkPiece(pc.x,pc.y,nr,Math.cos(ang)*SPLIT_SPEED*.8,Math.sin(ang)*SPLIT_SPEED*.8,calcMergeTime(nr)));}}});});});
+    plist.forEach(p=>{p.pieces.forEach(pc=>{this.viruses.forEach((v,vi)=>{if(!hitV.has(vi)&&pc.r>v.r*1.1&&dist(pc,v)<pc.r*0.82){hitV.add(vi);const splits=clamp(Math.floor(pc.r/22),2,MAX_PIECES-p.pieces.length+1);if(splits<2)return;const nr=pc.r/Math.sqrt(splits);pc.r=nr;pc.mergeTimer=calcMergeTime(nr);for(let k=1;k<splits&&p.pieces.length<MAX_PIECES;k++){const ang=Math.random()*Math.PI*2;const np=this._mkPiece(pc.x,pc.y,nr,Math.cos(ang)*SPLIT_SPEED*.9,Math.sin(ang)*SPLIT_SPEED*.9,calcMergeTime(nr));np.splitting=true;np.splitT=0;np.launch=LAUNCH_TICKS;p.pieces.push(np);}}});});});
     if(hitV.size>0){this.viruses=this.viruses.filter((_,i)=>!hitV.has(i));this._spawnViruses();}
     for(let i=0;i<plist.length;i++){for(let j=0;j<plist.length;j++){if(i===j)continue;const a=plist[i],b=plist[j];if(b._powerups&&b._powerups.shield>0)continue;a.pieces.forEach(ap=>{b.pieces=b.pieces.filter(bp=>{if(ap.r<bp.r*1.08)return true;if(dist(ap,bp)<ap.r*0.72){ap.r=Math.min(Math.sqrt(ap.r*ap.r+bp.r*bp.r*0.55),290);a.score+=Math.floor(bp.r*8);if(!b.isBot&&b.pieces.length===1){b.dead=true;this._emit("eaten",{by:a.name,score:b.score,isBot:a.isBot,dx:bp.x,dy:bp.y,killerId:a.id,victimId:b.id});}return false;}return true;});});if(b.isBot&&b.pieces.length===0){b.score=Math.floor(b.score*0.3);const sx=400+Math.random()*(WORLD_W-800),sy=400+Math.random()*(WORLD_H-800);b.pieces=[this._mkPiece(sx,sy,22+Math.random()*10,0,0,0)];}}}
     this.missiles.forEach(m=>{const target=this.players[m.targetId];if(target&&!target.dead){const tx=this._cx(target),ty=this._cy(target),dx=tx-m.x,dy=ty-m.y,len=Math.hypot(dx,dy)||1;m.vx=lerp(m.vx,(dx/len)*20,0.1);m.vy=lerp(m.vy,(dy/len)*20,0.1);}m.x=clamp(m.x+m.vx,0,WORLD_W);m.y=clamp(m.y+m.vy,0,WORLD_H);m.life--;});
@@ -196,9 +222,15 @@ class GameServer{
 }
 
 // ── ROOM ──────────────────────────────────────────────────────────────────────
+const CODE_CHARS="23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+function newCode(){let c=SHARD.toString(36).toUpperCase();
+  for(let i=0;i<3;i++)c+=CODE_CHARS[Math.floor(Math.random()*CODE_CHARS.length)];return c;}
+
 class Room{
-  constructor(id){
+  constructor(id,code){
     this.id=id;
+    this.code=code||newCode();
+    this.createdAt=Date.now();
     this.clients=new Map(); // playerId -> ws
     this.server=new GameServer();
     this.server.on('tick',data=>{
@@ -212,6 +244,8 @@ class Room{
     this.server.start();
   }
   join(ws,data){
+    if(this._stopTimer){clearTimeout(this._stopTimer);this._stopTimer=null;}
+    this.server.start(); // no-op while running; restarts the tick loop of an idled-out room
     this.clients.set(data.id,ws);
     const onState=d=>{if(ws.readyState===1)ws.send(JSON.stringify({type:'gameState',...d}));this.server.off('gameState',onState);};
     this.server.on('gameState',onState);
@@ -222,29 +256,78 @@ class Room{
     this.clients.delete(playerId);
     delete this.server.players[playerId];
     if(this.clients.size===0&&Object.keys(this.server.players).filter(id=>!this.server.players[id].isBot).length===0)
-      setTimeout(()=>{if(this.clients.size===0)this.server.stop();},30000);
+      this._stopTimer=setTimeout(()=>{if(this.clients.size===0)this.server.stop();},30000);
   }
   get humanCount(){return this.clients.size;}
   isFull(){return this.humanCount>=ROOM_MAX;}
+  info(){return{code:this.code,shard:SHARD,players:this.humanCount,max:ROOM_MAX,bots:ROOM_BOTS};}
 }
 
 // ── ROOM MANAGER ──────────────────────────────────────────────────────────────
-const rooms=[];
-function findOrCreateRoom(){
-  for(const room of rooms)if(!room.isFull())return room;
-  const room=new Room('room_'+rooms.length);
-  rooms.push(room);
-  console.log(`New room created: ${room.id} (total rooms: ${rooms.length})`);
+const rooms=new Map();                                  // code -> Room
+function createRoom(){
+  let code=newCode();while(rooms.has(code))code=newCode();
+  const room=new Room('room_'+(rooms.size+1),code);
+  rooms.set(code,room);
+  console.log(`[shard ${SHARD}] sala criada: ${room.code} (total: ${rooms.size})`);
   return room;
 }
+// automático: a sala com vaga mais cheia (agrupa gente em vez de espalhar)
+function findOrCreateRoom(){
+  const open=[...rooms.values()].filter(r=>!r.isFull()).sort((a,b)=>b.humanCount-a.humanCount);
+  return open[0]||createRoom();
+}
+function getRoom(code){
+  if(!code)return null;
+  code=String(code).toUpperCase().trim();
+  const room=rooms.get(code);
+  if(room)return room.isFull()?null:room;
+  // código de outro shard não existe aqui; código deste shard ainda não criado -> cria com ele
+  if(code[0]!==SHARD.toString(36).toUpperCase())return null;
+  if(!/^[0-9A-Z]{4}$/.test(code))return null;
+  const novo=new Room('room_'+(rooms.size+1),code);
+  rooms.set(code,novo);
+  console.log(`[shard ${SHARD}] sala criada por código: ${code}`);
+  return novo;
+}
+function listRooms(){return[...rooms.values()].map(r=>r.info());}
+function fetchJson(url,timeout=1200){
+  return new Promise(resolve=>{
+    const req=http.get(url,res=>{let b='';res.on('data',c=>b+=c);res.on('end',()=>{try{resolve(JSON.parse(b));}catch{resolve(null);}});});
+    req.on('error',()=>resolve(null));req.setTimeout(timeout,()=>{req.destroy();resolve(null);});
+  });
+}
+async function allRooms(){
+  const mine=listRooms();
+  const outros=await Promise.all(PEERS.map(p=>fetchJson(`http://${p}/internal/rooms`)));
+  return mine.concat(...outros.filter(Boolean).map(r=>r.rooms||[]));
+}
 
-// ── HTTP SERVER ───────────────────────────────────────────────────────────────
-const MIME={'.html':'text/html','.js':'application/javascript','.css':'text/css','.ico':'image/x-icon'};
-const httpServer=http.createServer((req,res)=>{
-  const filePath=path.join(__dirname,req.url==='/'?'index.html':req.url.split('?')[0]);
-  fs.readFile(filePath,(err,data)=>{
+// ── HTTP: API DE SALAS (+ estáticos só no modo dev) ────────────────────────────
+const MIME={'.html':'text/html','.js':'application/javascript','.css':'text/css','.ico':'image/x-icon',
+  '.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.json':'application/json'};
+const STATIC_DIR=process.env.STATIC_DIR?path.resolve(process.env.STATIC_DIR):null;
+const sendJson=(res,obj,code)=>{res.writeHead(code||200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(obj));};
+
+const httpServer=http.createServer(async(req,res)=>{
+  const p=new URL(req.url,'http://x').pathname;
+  if(p==='/healthz')return sendJson(res,{ok:true,shard:SHARD,rooms:rooms.size,
+    players:[...rooms.values()].reduce((n,r)=>n+r.humanCount,0)});
+  if(p==='/internal/rooms')return sendJson(res,{shard:SHARD,rooms:listRooms()});
+  if(p==='/api/config')return sendJson(res,{shards:SHARDS,shard:SHARD,roomMax:ROOM_MAX});
+  if(p==='/api/rooms')return sendJson(res,{rooms:(await allRooms()).sort((a,b)=>b.players-a.players)});
+  if(p==='/api/auto'){
+    const abertas=(await allRooms()).filter(r=>r.players<r.max).sort((a,b)=>b.players-a.players);
+    return sendJson(res,abertas[0]||findOrCreateRoom().info());
+  }
+  if(!STATIC_DIR){res.writeHead(404);return res.end('Not found');}
+  // modo dev: serve o client local — resolve e confere o prefixo (sem path traversal)
+  const rel=p==='/'?'index.html':decodeURIComponent(p).replace(/^\/+/,'');
+  const file=path.resolve(STATIC_DIR,rel);
+  if(file!==STATIC_DIR&&!file.startsWith(STATIC_DIR+path.sep)){res.writeHead(403);return res.end('Forbidden');}
+  fs.readFile(file,(err,data)=>{
     if(err){res.writeHead(404);res.end('Not found');return;}
-    res.writeHead(200,{'Content-Type':MIME[path.extname(filePath)]||'text/plain'});
+    res.writeHead(200,{'Content-Type':MIME[path.extname(file)]||'text/plain'});
     res.end(data);
   });
 });
@@ -253,17 +336,19 @@ const httpServer=http.createServer((req,res)=>{
 const wss=new WebSocket.Server({server:httpServer});
 const playerRoom=new Map();
 
-wss.on('connection',ws=>{
+wss.on('connection',(ws,req)=>{
   let playerId=null,room=null;
+  const codigoDaUrl=new URL(req.url||'/','http://x').searchParams.get('room');
   ws.on('message',rawMsg=>{
     let msg;try{msg=JSON.parse(rawMsg);}catch{return;}
     const{type,...data}=msg;
     if(type==='join'){
       playerId=data.id;
-      room=findOrCreateRoom();
+      room=getRoom(data.room||codigoDaUrl)||findOrCreateRoom();
       playerRoom.set(playerId,room);
+      if(ws.readyState===1)ws.send(JSON.stringify({type:'room',...room.info()}));
       room.join(ws,data);
-      console.log(`Player joined room ${room.id} (${room.humanCount}/${ROOM_MAX} humans)`);
+      console.log(`[shard ${SHARD}] entrou na sala ${room.code} (${room.humanCount}/${ROOM_MAX})`);
     }else if(room&&playerId){
       room.relay(type,{...data,id:playerId});
     }
@@ -272,10 +357,13 @@ wss.on('connection',ws=>{
     if(room&&playerId){
       room.leave(playerId);
       playerRoom.delete(playerId);
-      console.log(`Player left room ${room.id} (${room.humanCount}/${ROOM_MAX} humans)`);
+      if(room.humanCount===0&&rooms.get(room.code)===room)setTimeout(()=>{if(room.humanCount===0)rooms.delete(room.code);},35000);
+      console.log(`[shard ${SHARD}] saiu da sala ${room.code} (${room.humanCount}/${ROOM_MAX})`);
     }
   });
 });
 
 const PORT=process.env.PORT||3000;
-httpServer.listen(PORT,()=>console.log(`planet.io running on http://localhost:${PORT}`));
+httpServer.listen(PORT,()=>console.log(
+  `planet.io server | shard ${SHARD}/${SHARDS} | porta ${PORT}` +
+  (STATIC_DIR?` | servindo ${STATIC_DIR}`:'') + (PEERS.length?` | peers: ${PEERS.join(', ')}`:'')));

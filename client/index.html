@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>planet.io</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #04060d; overflow: hidden;
+           font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif; }
+    /* pós-processamento do tema (scanlines + vinheta + grão): overlay composto pela
+       GPU, custo ~zero no canvas */
+    body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 45;
+      background: repeating-linear-gradient(180deg, rgba(79,227,255,.05) 0 1px, transparent 1px 4px),
+        radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 42%, rgba(0,0,0,.5) 100%); }
+    body::before { content: ""; position: fixed; inset: -12px; pointer-events: none; z-index: 44; opacity: .035;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+      animation: grain 1.6s steps(3) infinite; }
+    @keyframes grain { 0%{transform:translate(0,0)} 33%{transform:translate(-4px,3px)}
+      66%{transform:translate(3px,-4px)} 100%{transform:translate(0,0)} }
+  </style>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@8/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    fetch('./game.js')
+      .then(r => r.text())
+      .then(src => {
+        // Remove the React import (provided as UMD globals)
+        src = src.replace(/^import\s*\{[^}]+\}\s*from\s*['"]react['"]\s*;?\s*\n?/m, '');
+        // Remove export default so PlanetIO becomes a plain function declaration
+        src = src.replace(/^export default /m, '');
+        // Transform JSX — classic runtime, or Babel 8 injects an `import` of
+        // react/jsx-runtime, which is illegal in a non-module <script>.
+        const { code } = Babel.transform(src, { presets: [['react', { runtime: 'classic' }]] });
+        // Execute with React globals in scope and mount
+        const script = document.createElement('script');
+        script.textContent = `(function(){
+          const { useState, useEffect, useRef, useCallback } = React;
+          ${code}
+          ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(PlanetIO));
+        })();`;
+        document.body.appendChild(script);
+      })
+      .catch(err => {
+        document.getElementById('root').innerHTML =
+          '<div style="color:#ff4444;padding:40px;font-family:monospace">Failed to load game: ' + err.message + '</div>';
+      });
+  </script>
+</body>
+</html>
