@@ -67,7 +67,8 @@ export const api = {
       if (!me) { const g = await request("POST", "/api/auth/guest", {}, { auth: false }); setToken(g.token); me = await request("GET", "/api/me"); }
       api.online = true; return me;
     } catch (e) {
-      if (isUnreachable(e)) { api.online = false; return localProfile(); }
+      // servidor sem banco (rotas de conta ausentes) ou fora do ar → perfil local
+      if (isUnreachable(e) || (e instanceof ApiError && e.status === 404)) { api.online = false; return localProfile(); }
       throw e;
     }
   },

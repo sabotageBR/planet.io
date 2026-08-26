@@ -101,9 +101,9 @@ test('router: JSON inválido, corpo > 16 KB, 404, 405, rotas não tratadas',asyn
   r=await call('GET','/api/auth/nope');assert.equal(r.status,404);r=await call('DELETE','/api/me');assert.equal(r.status,405);
   r=await fetch(base+'/api/rooms');assert.equal(r.status,404);  // não é desta camada → false → 404 do servidor de teste
 });
-test('rate limit: guest 5/h/IP',async()=>{
-  const codes=[];for(let i=0;i<6;i++)codes.push((await call('POST','/api/auth/guest',{body:{},ip:'10.9.9.9'})).status);
-  assert.deepEqual(codes,[201,201,201,201,201,429]);
+test('rate limit: guest 30/h/IP',async()=>{
+  const codes=[];for(let i=0;i<31;i++)codes.push((await call('POST','/api/auth/guest',{body:{},ip:'10.9.9.9'})).status);
+  assert.deepEqual(codes,[...Array(30).fill(201),429]);
 });
 
 test('hooks: join → kill/stat/sample → matchEnd salva match, moedas, conquistas, skins; coins = Σ ledger',async()=>{

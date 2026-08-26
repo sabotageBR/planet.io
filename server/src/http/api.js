@@ -33,6 +33,8 @@ export function createHttpHandler({config,rooms,persistApi,health,log}){
       if(p==='/api/auto'){const open=(await allRooms()).filter(r=>r.players<r.max).sort(byPlayers);
         if(open[0])return sendJson(res,200,open[0]);if(rooms)return sendJson(res,200,rooms.findOrCreateRoom().info());
         return sendJson(res,503,{error:'no_game',message:'nenhum shard de jogo disponível'});}
+      if(!persistApi&&/^\/api\/(auth|me|skins|ranking)(\/|\?|$)/.test(req.url||"")){   // sem banco: o cliente cai em modo offline
+        res.writeHead(503,{"content-type":"application/json","cache-control":"no-store"});res.end(JSON.stringify({error:"unreachable",message:"servidor sem banco de dados"}));return;}
       if(persistApi&&await persistApi(req,res))return;
       if(staticDir&&(req.method==='GET'||req.method==='HEAD'))return serveStatic(p,res);
       notFound(res);
