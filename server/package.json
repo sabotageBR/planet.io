@@ -6,7 +6,13 @@
   "scripts": {
     "dev": "node --watch --env-file=../.env src/index.js",
     "start": "node src/index.js",
-    "migrate": "node --env-file=../.env src/db/migrate.js"
+    "migrate": "node --env-file=../.env src/db/migrate.js",
+    "api": "node --env-file=../.env src/api/standalone.js",
+    "test": "node --test 'test/**/*.test.js'"
   },
-  "dependencies": { "@planet/shared": "*", "pg": "^8.16.3", "ws": "^8.18.3" }
+  "dependencies": {
+    "@planet/shared": "*",
+    "pg": "^8.16.3",
+    "ws": "^8.18.3"
+  }
 }

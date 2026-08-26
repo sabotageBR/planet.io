@@ -1,0 +1,7 @@
+/* ── CSS completo do cliente: base (estrutura) + os três temas escopados por html[data-theme] ──
+   O app importa só este arquivo. A ordem importa: base.css primeiro (sem prefixo), depois os temas
+   (prefixados com :where(html[data-theme="…"]), especificidade zero — cascata idêntica ao mockup). */
+@import "../styles/base.css";
+@import "./dawn/styles.css";
+@import "./sunset/styles.css";
+@import "./dusk/styles.css";

@@ -1,18 +1,19 @@
-/* gerado de mockups/v2/src/theme.toon-dawn.js — modelo "Cartoon Amanhecer" */
-:root{
-  --bg: #1b2450;
-  --surface: #232f63;
-  --text: #fff5c2;
-  --muted: #8fa0d8;
-  --accent: #ffc22e;
-  --accent2: #ff6b4a;
-  --danger: #ff3d5a;
-  --ok: #3ddc5f;
-  --line: #141026;
-  --radius: 14px;
-  --radius-lg: 20px;
-  --space: 14px;
-  --font-ui: 'Trebuchet MS',Verdana,sans-serif;
-  --font-mono: 'Courier New',monospace;
-  --shadow: 6px 6px 0 #141026;
+/* tokens — gerado por client/src/theme/port.js a partir de mockups/v2/src/theme.toon-dawn.js ("Cartoon Amanhecer"). NÃO EDITE À MÃO: rode `node client/src/theme/port.js dawn`. */
+html[data-theme="dawn"]{
+  --bg:#1b2450;
+  --surface:#232f63;
+  --text:#fff5c2;
+  --muted:#8fa0d8;
+  --accent:#ffc22e;
+  --accent2:#ff6b4a;
+  --danger:#ff3d5a;
+  --ok:#3ddc5f;
+  --line:#141026;
+  --radius:14px;
+  --radius-lg:20px;
+  --space:14px;
+  --font-ui:'Trebuchet MS',Verdana,sans-serif;
+  --font-mono:'Courier New',monospace;
+  --shadow:6px 6px 0 #141026;
+  color-scheme:dark;
 }

@@ -1,18 +1,19 @@
-/* gerado de mockups/v2/src/theme.toon-sunset.js — modelo "Cartoon Crepúsculo" */
-:root{
-  --bg: #3b1f6b;
-  --surface: #4a2a7a;
-  --text: #fff1d6;
-  --muted: #c9a6d8;
-  --accent: #ffb547;
-  --accent2: #ff5e6c;
-  --danger: #ff3b5c;
-  --ok: #2ec4b6;
-  --line: #241238;
-  --radius: 14px;
-  --radius-lg: 20px;
-  --space: 14px;
-  --font-ui: 'Trebuchet MS',Verdana,sans-serif;
-  --font-mono: 'Courier New',monospace;
-  --shadow: 6px 6px 0 #241238;
+/* tokens — gerado por client/src/theme/port.js a partir de mockups/v2/src/theme.toon-sunset.js ("Cartoon Crepúsculo"). NÃO EDITE À MÃO: rode `node client/src/theme/port.js sunset`. */
+html[data-theme="sunset"]{
+  --bg:#3b1f6b;
+  --surface:#4a2a7a;
+  --text:#fff1d6;
+  --muted:#c9a6d8;
+  --accent:#ffb547;
+  --accent2:#ff5e6c;
+  --danger:#ff3b5c;
+  --ok:#2ec4b6;
+  --line:#241238;
+  --radius:14px;
+  --radius-lg:20px;
+  --space:14px;
+  --font-ui:'Trebuchet MS',Verdana,sans-serif;
+  --font-mono:'Courier New',monospace;
+  --shadow:6px 6px 0 #241238;
+  color-scheme:dark;
 }

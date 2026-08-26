@@ -1,0 +1,222 @@
+// ── AÇÕES DO SHELL ────────────────────────────────────────────────────────────
+// Tudo que muda o estado passa por aqui (telas, sessão, prefs, loja, conta, partida).
+import { api, isUnreachable } from "../api/client.js";
+import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS } from "./app.js";
+import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
+import { LABELS } from "../ui/labels.js";
+import { skinById } from "@planet/shared";
+
+const Q = new URLSearchParams(location.search);
+const NICK_RE = /^.{2,16}$/;
+
+// ── toast / navegação / overlays ─────────────────────────────────────────────
+let toastN = 0, toastT = null;
+export function toast(msg, ms = 1800) {
+  clearTimeout(toastT); app.update({ toast: { msg: String(msg), n: ++toastN } });
+  toastT = setTimeout(() => app.update({ toast: null }), ms);
+}
+export function go(screen) {
+  if (!SCREENS.includes(screen)) return;
+  app.update(s => ({ ...s, screen, overlays: { account: false, reconn: s.overlays.reconn && screen === "game" } }));
+}
+export const openAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: true } }));
+export const closeAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: false } }));
+export const setReconn = (on, attempt) => app.update(s => ({ ...s, overlays: { ...s.overlays, reconn: !!on }, reconnAttempt: on ? (attempt || s.reconnAttempt || 1) : 0 }));
+/** Esc: fecha modal → tira foco do input → volta à entrada (fora do jogo). */
+export function escape() {
+  const s = app.get();
+  if (s.overlays.account) { closeAccount(); return true; }
+  const a = document.activeElement;
+  if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) { a.blur(); return true; }
+  if (s.screen !== "game" && s.screen !== "dead" && s.screen !== "entry") { go("entry"); return true; }
+  return false;
+}
+
+// ── sessão ───────────────────────────────────────────────────────────────────
+export function applySession(me) {
+  const prefs = normalizePrefs(me.prefs);
+  app.update(s => ({ ...s, session: { ...s.session, user: me.user, skins: me.skins && me.skins.length ? me.skins : [0], prefs,
+    stats: normalizeStats(me.stats), achievements: me.achievements || [], online: api.online } }));
+  applyPrefsSideEffects(prefs);
+}
+export const patchUser = patch => app.update(s => ({ ...s, session: { ...s.session, user: { ...(s.session.user || {}), ...patch } } }));
+
+let themeClock = null, lastThemePref = null;
+const themePref = () => app.get().session.prefs.theme || "auto";
+/** Efeitos imediatos das prefs: tema (aplica já; o relógio reavalia 'auto' a cada minuto/foco), body[data-reduce|bigtext|colorblind]. */
+export function applyPrefsSideEffects(prefs) {
+  const b = document.body.dataset;
+  b.reduce = prefs.reduceMotion ? "1" : "0"; b.bigtext = prefs.bigText ? "1" : "0"; b.colorblind = prefs.colorblind || "off";
+  if (prefs.theme !== lastThemePref) { lastThemePref = prefs.theme; applyTheme(resolveThemeId(prefs.theme || "auto")); }
+  if (!themeClock) themeClock = startThemeClock(themePref);
+}
+
+export async function boot() {
+  try { applySession(await api.bootstrap()); }
+  catch (e) { app.update({ bootError: e.message || String(e) }); applyPrefsSideEffects(PREF_DEFAULTS); }
+  app.update({ booted: true });
+  if (api.online === false) toast(LABELS.offlineNote, 3200);
+  loadConfig(); loadTop5(); loadRooms();
+  devQuery();
+}
+/** ?screen=<id> (entry|account|lobby|rank|profile|shop|prefs|game|dead|reconn) — atalho de desenvolvimento. */
+function devQuery() {
+  const s = Q.get("screen"); if (!s) return;
+  if (s === "account") { go("entry"); openAccount(); }
+  else if (s === "game") play({});
+  else if (s === "reconn") { play({}); setTimeout(() => setReconn(true, 2), 400); }
+  else if (s === "dead") {
+    if (!import.meta.env.DEV) return;
+    app.update({ room: "1ABC", lastMatch: { by: "Nebulox", byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, room: "1ABC", at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
+    setTimeout(() => onRewards({ saved: true, coinsEarned: 54, coins: (app.get().session.user || {}).coins + 54 || 54, achievements: [], skinsUnlocked: [], rank: { day: 35 } }), 1200);
+  }
+  else go(s);
+}
+
+// ── dados de apoio ───────────────────────────────────────────────────────────
+export async function loadConfig() { try { app.update({ config: await api.config() }); } catch { /* opcional */ } }
+export async function loadTop5() {
+  try { const r = await api.ranking("day", "score", 5);
+    app.update(s => ({ ...s, top5: r.rows || [], session: { ...s.session, dayRank: r.me ? r.me.rank : null } })); }
+  catch { /* opcional */ }
+}
+export async function loadRooms() {
+  try { const r = await api.rooms(); app.update({ rooms: r.rooms || [], roomsAt: Date.now() }); }
+  catch { /* opcional */ }
+}
+export async function loadSkins() {
+  try { const r = await api.skins(); if (!r) return;
+    app.update(s => ({ ...s, session: { ...s.session, skins: r.owned && r.owned.length ? r.owned : s.session.skins, user: s.session.user && r.equipped != null ? { ...s.session.user, equippedSkin: r.equipped } : s.session.user } })); }
+  catch { /* opcional */ }
+}
+export async function loadHistory(limit = 20) {
+  try { const r = await api.history(limit); return r.matches || []; } catch { return []; }
+}
+
+// ── nick / conta ─────────────────────────────────────────────────────────────
+/** PATCH /api/me {nick}. Devolve {ok, suggestion?}. */
+export async function setNick(nick) {
+  nick = String(nick || "").replace(/\s+/g, " ").trim();
+  const cur = (app.get().session.user || {}).nick;
+  if (nick === cur) return { ok: true };
+  if (!NICK_RE.test(nick)) { toast(LABELS.nickShort); return { ok: false }; }
+  try { const r = await api.setNick(nick); patchUser(r && r.user ? r.user : { nick }); toast(LABELS.nickSaved); return { ok: true }; }
+  catch (e) { toast(e.message + (e.suggestion ? ` · ${e.suggestion}` : ""), 3000); return { ok: false, suggestion: e.suggestion, error: e }; }
+}
+export async function claim({ nick, password, email }) {
+  const cur = (app.get().session.user || {}).nick;
+  if (nick && nick !== cur) { const r = await setNick(nick); if (!r.ok) throw r.error || new Error(LABELS.nickShort); }
+  const r = await api.claim({ password, email });
+  if (r && r.user) patchUser(r.user); else patchUser({ kind: "registered" });
+  closeAccount(); toast(LABELS.claimed); return r;
+}
+export async function login({ login: l, password }) {
+  await api.login({ login: l, password });
+  applySession(await api.bootstrap());
+  closeAccount(); toast(LABELS.loggedIn); loadTop5();
+}
+export async function logout() {
+  await api.logout(); applySession(await api.bootstrap()); toast(LABELS.loggedOut); go("entry");
+}
+
+// ── preferências ─────────────────────────────────────────────────────────────
+let prefsT = null, prefsDirty = {};
+const schedule = () => { clearTimeout(prefsT); prefsT = setTimeout(() => flushPrefs(), 600); };
+export function setPref(key, val) {
+  if (!PREF_KEYS.includes(key)) return;
+  app.update(s => ({ ...s, session: { ...s.session, prefs: { ...s.session.prefs, [key]: val } } }));
+  applyPrefsSideEffects(app.get().session.prefs);
+  prefsDirty[key] = val; schedule();
+}
+export async function flushPrefs() {
+  clearTimeout(prefsT); const d = prefsDirty; prefsDirty = {};
+  if (!Object.keys(d).length) return true;
+  try { await api.setPrefs(d); return true; } catch (e) { toast(e.message, 2500); return false; }
+}
+export async function savePrefs() {
+  const p = app.get().session.prefs; PREF_KEYS.forEach(k => { prefsDirty[k] = p[k]; });
+  if (await flushPrefs()) toast(LABELS.saved);
+}
+export function resetPrefs() {
+  app.update(s => ({ ...s, session: { ...s.session, prefs: { ...PREF_DEFAULTS } } }));
+  applyPrefsSideEffects(PREF_DEFAULTS); PREF_KEYS.forEach(k => { prefsDirty[k] = PREF_DEFAULTS[k]; }); schedule();
+}
+
+// ── loja (UI otimista) ───────────────────────────────────────────────────────
+export async function equipSkin(id) {
+  const before = app.get().session.user; if (!before) return;
+  if (!app.get().session.skins.includes(id)) { toast(LABELS.lockedToast); return; }
+  patchUser({ equippedSkin: id });
+  try { const r = await api.equip(id); if (r && r.equippedSkin != null) patchUser({ equippedSkin: r.equippedSkin }); toast(LABELS.equippedToast); }
+  catch (e) { patchUser({ equippedSkin: before.equippedSkin }); toast(e.message, 2500); }
+}
+export async function buySkin(id) {
+  const s = app.get().session, sk = skinById(id); if (!s.user) return;
+  if (s.skins.includes(id)) return equipSkin(id);
+  if (sk.rarity === "secret") { toast(LABELS.secretToast); return; }
+  if (sk.unlockKey || sk.price <= 0) { toast(LABELS.lockedToast + ": " + sk.desc); return; }
+  if (s.user.coins < sk.price) { toast(LABELS.poorToast); return; }
+  const snapshot = { coins: s.user.coins, skins: s.skins, equipped: s.user.equippedSkin };
+  app.update(st => ({ ...st, session: { ...st.session, skins: [...st.session.skins, id], user: { ...st.session.user, coins: st.session.user.coins - sk.price, equippedSkin: id } } }));
+  try {
+    const r = await api.buy(id);
+    app.update(st => ({ ...st, session: { ...st.session, skins: r && r.owned ? r.owned : st.session.skins, user: { ...st.session.user, coins: r && typeof r.coins === "number" ? r.coins : st.session.user.coins } } }));
+    toast(LABELS.bought);
+    try { await api.equip(id); } catch { patchUser({ equippedSkin: snapshot.equipped }); }
+  } catch (e) {
+    app.update(st => ({ ...st, session: { ...st.session, skins: snapshot.skins, user: { ...st.session.user, coins: snapshot.coins, equippedSkin: snapshot.equipped } } }));
+    toast(e.message, 2500);
+  }
+}
+
+// ── partida ──────────────────────────────────────────────────────────────────
+/** Entra numa sala: `room` explícito, senão GET /api/auto (offline → sala local do stub). */
+export async function play({ room } = {}) {
+  let code = room ? String(room).toUpperCase() : null;
+  if (!code) { try { const a = await api.auto(); if (a && a.code) code = a.code; } catch (e) { if (!isUnreachable(e)) toast(e.message, 2500); } }
+  app.update(s => ({ ...s, screen: "game", rewards: null, rewardsPending: false, overlays: { account: false, reconn: false }, conn: "connecting",
+    pendingJoin: { room: code, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
+}
+export function leaveGame(screen = "lobby") {
+  app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
+}
+let rewardsT = null;
+/** Callback do jogo: {by, byHole, score, maxMass, kills, durationS}. */
+export function onDead(info) {
+  const s = app.get();
+  app.update({ lastMatch: { ...info, room: s.room, at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
+  clearTimeout(rewardsT); rewardsT = setTimeout(() => { if (app.get().rewardsPending) app.update({ rewardsPending: false }); }, 5000);
+}
+/** Callback do jogo: {saved, coinsEarned, coins, achievements:[{key,title}], skinsUnlocked:[id], rank:{day}} */
+export function onRewards(r) {
+  clearTimeout(rewardsT);
+  app.update(s => {
+    const sess = { ...s.session };
+    if (r && sess.user) {
+      const coins = typeof r.coins === "number" ? r.coins : (sess.user.coins || 0) + (r.coinsEarned || 0);
+      sess.user = { ...sess.user, coins };
+      if (r.achievements && r.achievements.length) sess.achievements = [...new Set([...sess.achievements, ...r.achievements.map(a => (a && a.key) || a)])];
+      if (r.skinsUnlocked && r.skinsUnlocked.length) sess.skins = [...new Set([...sess.skins, ...r.skinsUnlocked])];
+      if (r.rank && r.rank.day != null) sess.dayRank = r.rank.day;
+    }
+    return { ...s, session: sess, rewards: r || null, rewardsPending: false };
+  });
+  if (api.online === false && app.get().lastMatch) {
+    const m = app.get().lastMatch, u = app.get().session.user;
+    const p = api.localMatchEnd({ endedAt: new Date(m.at).toISOString(), score: m.score, maxMass: m.maxMass, kills: m.kills, durationS: m.durationS, cause: m.byHole ? "blackhole" : "eaten", by: m.by, coinsEarned: r ? r.coinsEarned : 0, roomCode: m.room }, r ? { ...r, coins: u ? u.coins : 0 } : null);
+    if (p) app.update(s => ({ ...s, session: { ...s.session, stats: normalizeStats(p.stats) } }));
+  }
+}
+/** Callback do jogo: {state:'connecting'|'connected'|'reconnecting'|'closed'|'error', room?, attempt?, code?, message?} */
+export function onConnection(ev) {
+  const st = ev && ev.state;
+  if (st === "connected") app.update(s => ({ ...s, conn: "connected", room: ev.room || s.room, overlays: { ...s.overlays, reconn: false }, reconnAttempt: 0 }));
+  else if (st === "connecting") app.update(s => ({ ...s, conn: "connecting", room: ev.room || s.room }));
+  else if (st === "reconnecting") app.update(s => ({ ...s, conn: "reconnecting", reconnAttempt: ev.attempt || 1, overlays: { ...s.overlays, reconn: true } }));
+  else if (st === "closed" || st === "error") {
+    const s = app.get();
+    app.update({ conn: "closed", overlays: { ...s.overlays, reconn: false } });
+    if (s.screen === "game") { toast(ev.message || (ev.code === "FULL" ? LABELS.roomFull : LABELS.connLost), 3000); leaveGame("lobby"); }
+    else if (ev.message) toast(ev.message, 3000);
+  }
+}

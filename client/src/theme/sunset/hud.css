@@ -1,0 +1,78 @@
+/* HUD in-game — gerado por client/src/theme/port.js a partir de mockups/v2/src/theme.toon-sunset.js ("Cartoon Crepúsculo"). NÃO EDITE À MÃO: rode `node client/src/theme/port.js sunset`. */
+/* ── HUD ── */
+:where(html[data-theme="sunset"]) #hud-top{left:50%;top:12px;transform:translateX(-50%);gap:8px}
+:where(html[data-theme="sunset"]) #hud-top .chip{background:var(--surface);border:3px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12px;color:#fff;box-shadow:3px 3px 0 var(--line)}
+:where(html[data-theme="sunset"]) #hud-top .chip i{color:var(--muted);font-size:10px;text-transform:uppercase}
+:where(html[data-theme="sunset"]) #h-exit{background:var(--accent2);border-radius:999px}
+:where(html[data-theme="sunset"]) #hud-lb{left:12px;right:auto;top:auto;bottom:12px;min-width:0;background:transparent;border:0;box-shadow:none;padding:0}
+:where(html[data-theme="sunset"]) #hud-lb .ph{display:none}
+:where(html[data-theme="sunset"]) #lb-rows{display:flex;flex-direction:column;gap:9px;align-items:flex-start;padding-left:8px}
+:where(html[data-theme="sunset"]) .lb-row{position:relative;background:var(--surface);border:3px solid var(--line);border-radius:14px;padding:5px 12px 5px 6px;gap:8px;color:#fff;font-size:13px;box-shadow:3px 3px 0 var(--line);min-width:172px;max-width:240px}
+:where(html[data-theme="sunset"]) .lb-row::after{content:"";position:absolute;left:-9px;top:9px;width:10px;height:10px;background:inherit;border-left:3px solid var(--line);border-bottom:3px solid var(--line);transform:rotate(45deg)}
+:where(html[data-theme="sunset"]) .lb-row:nth-child(n+4):not(.mine){display:none}
+:where(html[data-theme="sunset"]) .lb-pos{flex:none;width:24px;min-width:24px;height:24px;border-radius:50%;background:#c9a6d8;color:var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid var(--line)}
+:where(html[data-theme="sunset"]) .lb-row:nth-child(1){font-size:15px;min-width:204px}
+:where(html[data-theme="sunset"]) .lb-row:nth-child(2){min-width:188px}
+:where(html[data-theme="sunset"]) .lb-row:nth-child(1) .lb-pos{background:var(--accent)}
+:where(html[data-theme="sunset"]) .lb-row:nth-child(2) .lb-pos{background:#f0e6f5}
+:where(html[data-theme="sunset"]) .lb-row:nth-child(3) .lb-pos{background:#d0905c}
+:where(html[data-theme="sunset"]) .lb-row.mine{background:var(--accent);color:var(--line)}
+:where(html[data-theme="sunset"]) .lb-row.mine .lb-pos{background:#fff}
+:where(html[data-theme="sunset"]) .lb-val{color:var(--ok)}
+:where(html[data-theme="sunset"]) .lb-row.mine .lb-val{color:var(--line)}
+:where(html[data-theme="sunset"]) #hud-score{left:12px;top:12px;bottom:auto;min-width:0;background:var(--accent);border:4px solid var(--line);border-radius:18px;padding:8px 14px;color:var(--line);box-shadow:4px 4px 0 var(--line)}
+:where(html[data-theme="sunset"]) .score-big{font-size:30px;text-shadow:2px 2px 0 rgba(255,255,255,.45)}
+:where(html[data-theme="sunset"]) .score-sub{font-size:10px;letter-spacing:2px;margin-bottom:5px}
+:where(html[data-theme="sunset"]) .score-row{font-size:12px}
+:where(html[data-theme="sunset"]) .score-row .k{font-size:10px;opacity:.7;text-transform:uppercase}
+:where(html[data-theme="sunset"]) #hud-status{left:50%;bottom:16px;transform:translateX(-50%);flex-direction:row;align-items:center;gap:8px}
+:where(html[data-theme="sunset"]) #hud-ammo{background:var(--accent2);border:3px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px;color:#fff;box-shadow:3px 3px 0 var(--line)}
+:where(html[data-theme="sunset"]) #hud-ammo span{font-size:10px;text-transform:uppercase;opacity:.85}
+:where(html[data-theme="sunset"]) #hud-ammo.empty{background:#5e4a78;color:#c4b4d4}
+:where(html[data-theme="sunset"]) .pw{background:var(--surface);border:3px solid var(--line);border-radius:999px;padding:4px 10px;font-size:11px;color:#fff;box-shadow:3px 3px 0 var(--line)}
+:where(html[data-theme="sunset"]) .pw-speed{background:#d9962a}
+:where(html[data-theme="sunset"]) .pw-magnet{background:#c02f6a}
+:where(html[data-theme="sunset"]) .pw-shield{background:#1f9a90}
+:where(html[data-theme="sunset"]) #hud-cd{display:none}
+:where(html[data-theme="sunset"]) #touch{display:flex;bottom:16px;right:16px;gap:12px}
+:where(html[data-theme="sunset"]) .tbtn{position:relative;width:72px;height:72px;border:4px solid var(--line);box-shadow:4px 4px 0 var(--line);color:var(--line);font-weight:700;gap:0;transition:transform .05s,box-shadow .05s}
+:where(html[data-theme="sunset"]) .tbtn::before{font-size:24px;line-height:1}
+:where(html[data-theme="sunset"]) #t-split{background:var(--ok)}
+:where(html[data-theme="sunset"]) #t-split::before{content:"✂️"}
+:where(html[data-theme="sunset"]) #t-eject{background:var(--accent)}
+:where(html[data-theme="sunset"]) #t-eject::before{content:"💨"}
+:where(html[data-theme="sunset"]) #t-fire{background:var(--accent2)}
+:where(html[data-theme="sunset"]) #t-fire::before{content:"🚀"}
+:where(html[data-theme="sunset"]) .tbtn span{font-size:9px;letter-spacing:.5px}
+:where(html[data-theme="sunset"]) .tbtn b{position:absolute;top:-7px;right:-7px;width:24px;height:24px;border-radius:50%;background:var(--accent);border:3px solid var(--line);font-size:11px;display:flex;align-items:center;justify-content:center}
+:where(html[data-theme="sunset"]) .tbtn:active{transform:translate(4px,4px);box-shadow:none}
+:where(html[data-theme="sunset"]) .tbtn.cd,:where(html[data-theme="sunset"]) #t-fire.empty{opacity:1;background:#5e4a78;color:#b9a8c8;box-shadow:none;transform:translate(4px,4px)}
+:where(html[data-theme="sunset"]) .tbtn.cd::before,:where(html[data-theme="sunset"]) #t-fire.empty::before{filter:grayscale(1);opacity:.5}
+/* ── MOBILE (HUD) ── */
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] #hud-top{left:auto;right:12px;top:112px;transform:none;flex-direction:column;align-items:flex-end;gap:6px}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] #hud-top .chip{padding:3px 9px;font-size:11px}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] #hud-lb{top:12px;bottom:auto;left:12px}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] #lb-rows{gap:7px}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] .lb-row{font-size:11px;min-width:140px;max-width:180px;padding:3px 9px 3px 4px;gap:6px}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] .lb-row:nth-child(1){font-size:12px;min-width:160px}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] .lb-row:nth-child(2){min-width:150px}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] .lb-pos{width:20px;min-width:20px;height:20px;font-size:10px}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] #hud-lb .lb-row.mine,:where(html[data-theme="sunset"]) body[data-mode="landscape"] #hud-lb .lb-row.mine{display:flex}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] #hud-score{padding:6px 10px;top:auto;bottom:12px}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] .score-big{font-size:22px}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] .score-row:nth-child(n+4){display:none}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] #hud-status{left:12px;bottom:106px;transform:none;flex-direction:column;align-items:flex-start}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] #touch{bottom:14px;right:12px;gap:8px}
+:where(html[data-theme="sunset"]) body[data-mode="portrait"] .tbtn{width:66px;height:66px}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] #hud-top{top:10px}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] #lb-rows{gap:6px}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] .lb-row{font-size:11px;min-width:140px;padding:3px 9px 3px 4px;gap:6px}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] .lb-row:nth-child(1){font-size:12px;min-width:160px}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] .lb-row:nth-child(2){min-width:150px}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] .lb-pos{width:20px;min-width:20px;height:20px;font-size:10px}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] #hud-score{padding:6px 10px}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] .score-big{font-size:22px}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] .score-row:nth-child(n+4){display:none}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] #hud-status{left:50%;bottom:14px;transform:translateX(-50%)}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] #touch{gap:8px;bottom:12px}
+:where(html[data-theme="sunset"]) body[data-mode="landscape"] .tbtn{width:60px;height:60px}

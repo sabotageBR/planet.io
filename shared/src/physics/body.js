@@ -1,0 +1,52 @@
+// ── CORPO: objeto de forma fixa para todas as entidades (monomórfico para o V8) ──
+// @ts-check
+import {PLAYER} from "../constants.js";
+
+/**
+ * @typedef {object} Body
+ * @property {number} kind       KIND.*
+ * @property {number} id         u32 incremental por mundo
+ * @property {number} x
+ * @property {number} y
+ * @property {number} vx         px/s
+ * @property {number} vy         px/s
+ * @property {number} r          px — peça/asteroide/comida: r²=mass; ejetado: visual (mass pode ser maior, ver EJECT.MASS_FACTOR)
+ * @property {number} mass
+ * @property {number} owner      slot do dono (peça, ejetado, míssil) ou -1
+ * @property {number} mergeAt    peça: tick a partir do qual pode fundir
+ * @property {number} flags      PIECE_FLAG.*
+ * @property {number} cdUntil    peça: imune à sucção até; ejetado: dono não come até; buraco: próxima mudança de deriva
+ * @property {number} chipUntil  peça: próxima lasca permitida (cooldown por peça)
+ * @property {number} seed       só visual (forma do asteroide, brilho da comida, giro do buraco)
+ * @property {number} type       comida: FOOD_TYPE; asteroide: índice do cinturão (-1 = errante); buraco: BH_PHASE
+ * @property {number} hue        comida: 0..FOOD.HUES-1 (matiz quantizado); asteroide: variante visual
+ * @property {number} targetId   míssil: slot do alvo (-1 sem alvo)
+ * @property {number} life       ejetado/míssil: tick de expiração; buraco: tick em que a fase atual termina
+ * @property {number} ax         asteroide: empurrão acumulado em x ("vírus atirador")
+ * @property {number} ay         asteroide: empurrão acumulado em y
+ * @property {number} ang        asteroide de cinturão: ângulo orbital; buraco: direção da deriva
+ * @property {number} orbitR     asteroide de cinturão: raio orbital
+ * @property {number} k          buraco: intensidade 0..1 (GROW/ACTIVE/FADE)
+ * @property {number} ex         buraco: saída pareada (x)
+ * @property {number} ey         buraco: saída pareada (y)
+ * @property {boolean} dead      removido na compactação ordenada do fim do passo
+ */
+
+/** Cria um corpo com todos os campos (sempre a mesma forma). @returns {Body} */
+export function createBody(kind,id,x,y,r){
+  return{kind,id,x,y,vx:0,vy:0,r,mass:r*r,owner:-1,mergeAt:0,flags:0,cdUntil:0,chipUntil:0,seed:0,type:0,hue:0,targetId:-1,life:0,
+    ax:0,ay:0,ang:0,orbitR:0,k:0,ex:0,ey:0,dead:false};}
+/** Define a massa e recalcula o raio (r=√m). @param {Body} b */
+export function setMass(b,m){b.mass=m;b.r=Math.sqrt(m);}
+/** Define o raio e recalcula a massa (m=r²). @param {Body} b */
+export function setR(b,r){b.r=r;b.mass=r*r;}
+/** Soma massa com teto de raio. @param {Body} b */
+export function addMass(b,dm,maxR=PLAYER.MAX_R){let m=b.mass+dm;const cap=maxR*maxR;if(m>cap)m=cap;setMass(b,m);}
+/** Distância² entre centros. @param {Body} a @param {Body} b */
+export const dist2b=(a,b)=>{const dx=a.x-b.x,dy=a.y-b.y;return dx*dx+dy*dy;};
+/** Círculos se sobrepõem? @param {Body} a @param {Body} b */
+export const overlaps=(a,b)=>{const s=a.r+b.r;return dist2b(a,b)<s*s;};
+/** Quantos corpos vivos há no array. @param {Body[]} arr */
+export function liveCount(arr){let n=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)n++;return n;}
+/** Primeiro corpo vivo do array (ou null). @param {Body[]} arr */
+export function firstLive(arr){for(let i=0;i<arr.length;i++)if(!arr[i].dead)return arr[i];return null;}

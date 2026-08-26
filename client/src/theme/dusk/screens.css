@@ -1,0 +1,261 @@
+/* telas — gerado por client/src/theme/port.js a partir de mockups/v2/src/theme.toon-dusk.js ("Cartoon Anoitecer"). NÃO EDITE À MÃO: rode `node client/src/theme/port.js dusk`. */
+/* ── BASE ── */
+:where(html[data-theme="dusk"]) body{font-family:var(--font-ui);font-weight:700}
+:where(html[data-theme="dusk"]) .card,:where(html[data-theme="dusk"]) .panel{background:var(--surface);border:4px solid var(--line);border-radius:var(--radius-lg);padding:14px 16px;color:var(--text);box-shadow:var(--shadow)}
+:where(html[data-theme="dusk"]) .panel{padding:10px 12px;border-radius:var(--radius)}
+:where(html[data-theme="dusk"]) .ph{font-size:12px;letter-spacing:1px;color:var(--accent);text-shadow:2px 2px 0 var(--line);text-transform:uppercase}
+:where(html[data-theme="dusk"]) .hint{font-size:12px;color:var(--muted);font-weight:600}
+:where(html[data-theme="dusk"]) .dim{color:var(--muted);opacity:1}
+:where(html[data-theme="dusk"]) .reg{color:var(--ok)}
+:where(html[data-theme="dusk"]) .bot{color:var(--muted)}
+:where(html[data-theme="dusk"]) .code,:where(html[data-theme="dusk"]) .mono{font-family:var(--font-mono);font-weight:700}
+:where(html[data-theme="dusk"]) .coinbar{background:var(--line);border:3px solid var(--accent);border-radius:999px;padding:4px 14px;font-size:15px;color:var(--accent)}
+:where(html[data-theme="dusk"]) .coinbar span{font-size:11px;color:#d9a24a;font-weight:600}
+:where(html[data-theme="dusk"]) .btn-primary{background:var(--accent);border:4px solid var(--line);border-radius:var(--radius-lg);padding:14px;font-size:20px;font-weight:700;color:var(--line);box-shadow:var(--shadow);letter-spacing:1px;text-transform:uppercase;transition:transform .05s,box-shadow .05s}
+:where(html[data-theme="dusk"]) .btn-primary:hover{background:#ffc76a}
+:where(html[data-theme="dusk"]) .btn-secondary{background:#2ec4b6;border:4px solid var(--line);border-radius:var(--radius);padding:11px;font-size:14px;font-weight:700;color:var(--line);box-shadow:4px 4px 0 var(--line);transition:transform .05s,box-shadow .05s}
+:where(html[data-theme="dusk"]) .btn-secondary:hover{background:#5fd8cc}
+:where(html[data-theme="dusk"]) .btn-mini{background:#ffcf9a;border:3px solid var(--line);border-radius:10px;padding:6px 12px;font-size:12px;color:var(--line);font-weight:700;box-shadow:3px 3px 0 var(--line);white-space:nowrap;transition:transform .05s,box-shadow .05s}
+:where(html[data-theme="dusk"]) .btn-primary:active,:where(html[data-theme="dusk"]) .btn-secondary:active{transform:translate(4px,4px);box-shadow:none}
+:where(html[data-theme="dusk"]) .btn-mini:active{transform:translate(3px,3px);box-shadow:none}
+:where(html[data-theme="dusk"]) .btn-link{color:var(--accent);text-decoration:underline;font-size:12px}
+:where(html[data-theme="dusk"]) .field label{font-size:12px;color:var(--muted)}
+:where(html[data-theme="dusk"]) .field input,:where(html[data-theme="dusk"]) .code-row input{background:#1c1445;border:4px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:17px;color:var(--text);outline:none;font-weight:700;font-family:inherit}
+:where(html[data-theme="dusk"]) .field input:focus,:where(html[data-theme="dusk"]) .code-row input:focus{border-color:var(--accent)}
+:where(html[data-theme="dusk"]) select{background:#1c1445;border:3px solid var(--line);border-radius:10px;padding:6px 10px;color:var(--text);font-weight:700;font-family:inherit}
+:where(html[data-theme="dusk"]) .seg{gap:4px;padding:0 6px;border-bottom:4px solid var(--line)}
+:where(html[data-theme="dusk"]) .seg button{padding:8px 14px;font-size:12.5px;color:var(--muted);background:#1f1848;border:4px solid var(--line);border-bottom:0;border-radius:14px 14px 0 0;margin-bottom:-4px}
+:where(html[data-theme="dusk"]) .seg button.on{background:var(--accent);color:var(--line)}
+:where(html[data-theme="dusk"]) .sh{position:sticky;top:0;z-index:3;background:var(--surface);padding:6px 0 10px;border-bottom:4px solid var(--line);gap:12px}
+:where(html[data-theme="dusk"]) .sh .stitle{font-size:24px;color:var(--accent);text-shadow:3px 3px 0 var(--line);letter-spacing:1px}
+:where(html[data-theme="dusk"]) .btn-mini.back{width:38px;height:38px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center;font-size:14px;background:var(--accent2)}
+:where(html[data-theme="dusk"]) .nav{order:99;position:sticky;bottom:0;z-index:3;background:var(--line);margin:4px -16px 0;padding:8px 8px 0;height:74px;gap:2px;justify-content:space-around;flex-wrap:nowrap;box-shadow:0 8px 0 var(--line)}
+:where(html[data-theme="dusk"]) .nav-btn{flex:1;flex-direction:column;gap:3px;padding:2px;border-radius:12px;color:var(--muted);font-size:10px;font-weight:700}
+:where(html[data-theme="dusk"]) .nav-ico{display:flex;width:40px;height:40px;border-radius:50%;background:#3a2f78;border:3px solid #4c3f94;align-items:center;justify-content:center;font-size:19px;font-style:normal}
+:where(html[data-theme="dusk"]) .nav-btn[data-nav="entry"] .nav-ico::before{content:"🏠"}
+:where(html[data-theme="dusk"]) .nav-btn[data-nav="lobby"] .nav-ico::before{content:"🛰️"}
+:where(html[data-theme="dusk"]) .nav-btn[data-nav="rank"] .nav-ico::before{content:"🏆"}
+:where(html[data-theme="dusk"]) .nav-btn[data-nav="profile"] .nav-ico::before{content:"👤"}
+:where(html[data-theme="dusk"]) .nav-btn[data-nav="shop"] .nav-ico::before{content:"🛍️"}
+:where(html[data-theme="dusk"]) .nav-btn[data-nav="prefs"] .nav-ico::before{content:"⚙️"}
+:where(html[data-theme="dusk"]) .nav-btn.on{color:var(--accent)}
+:where(html[data-theme="dusk"]) .nav-btn.on .nav-ico{background:var(--accent);border-color:#fff1d6}
+:where(html[data-theme="dusk"]) th{font-size:11px;color:var(--muted);border-bottom:3px solid var(--line);text-transform:uppercase}
+:where(html[data-theme="dusk"]) td{font-size:13px;border-bottom:2px solid rgba(36,18,56,.35)}
+:where(html[data-theme="dusk"]) #toast{background:var(--accent);border:3px solid var(--line);border-radius:999px;color:var(--line);font-size:13px;box-shadow:4px 4px 0 var(--line)}
+/* folhas: toda tela é um bottom sheet por cima do mundo */
+:where(html[data-theme="dusk"]) .screen{background:rgba(36,18,56,.28);padding:0;overflow:hidden}
+:where(html[data-theme="dusk"]) .screen.on{display:block}
+:where(html[data-theme="dusk"]) .screen .wrap{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(520px,100%);max-height:88%;overflow:auto;border-radius:24px 24px 0 0;
+  background:var(--surface);border:5px solid var(--line);border-bottom:0;padding:0 16px;gap:12px;grid-template-columns:1fr;grid-template-areas:none;box-shadow:0 -10px 40px rgba(0,0,0,.45)}
+:where(html[data-theme="dusk"]) .screen .wrap>*{grid-area:auto}
+:where(html[data-theme="dusk"]) .screen .wrap::before{content:"";display:block;width:60px;height:8px;border-radius:99px;background:var(--line);margin:8px auto -4px;justify-self:center}
+/* ── ENTRADA ── */
+:where(html[data-theme="dusk"]) #s-entry{background:rgba(36,18,56,.15)}
+:where(html[data-theme="dusk"]) #s-entry .entry-wrap{position:absolute;inset:0;left:0;bottom:auto;transform:none;width:100%;max-height:none;border:0;border-radius:0;background:transparent;box-shadow:none;padding:0;overflow:hidden;
+  display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:0}
+:where(html[data-theme="dusk"]) #s-entry .entry-wrap::before{display:none}
+:where(html[data-theme="dusk"]) .brand-block{padding-top:8vh;gap:8px}
+:where(html[data-theme="dusk"]) .brand{font-size:56px;color:var(--accent);text-shadow:4px 4px 0 var(--line);letter-spacing:1px;transform:rotate(-3deg);line-height:1.1}
+:where(html[data-theme="dusk"]) .tagline{font-size:13px;color:var(--text);background:var(--line);padding:4px 14px;border-radius:999px;border:3px solid var(--accent2)}
+:where(html[data-theme="dusk"]) .entry-main{background:transparent;border:0;box-shadow:none;padding:0 16px 22px;width:min(440px,100%);gap:12px}
+:where(html[data-theme="dusk"]) .entry-main .coinbar{position:absolute;top:14px;right:14px}
+:where(html[data-theme="dusk"]) .entry-main .field{order:2;align-items:center}
+:where(html[data-theme="dusk"]) .entry-main .field input{border-radius:999px;text-align:center;max-width:320px}
+:where(html[data-theme="dusk"]) .skinrow{order:1;background:var(--surface);border:4px solid var(--line);border-radius:999px;padding:5px 12px 5px 6px;width:auto;min-width:270px;box-shadow:4px 4px 0 var(--line)}
+:where(html[data-theme="dusk"]) .skinrow canvas{width:56px;height:56px}
+:where(html[data-theme="dusk"]) .skinmeta b{font-size:15px;color:#fff}
+:where(html[data-theme="dusk"]) .skinmeta i{font-style:normal;font-size:11px;text-transform:uppercase}
+:where(html[data-theme="dusk"]) .entry-main .btn-primary{order:3;font-size:30px;padding:18px;border-radius:26px;border-width:5px;box-shadow:8px 8px 0 var(--line);transform:rotate(-1.5deg)}
+:where(html[data-theme="dusk"]) .entry-main .btn-primary:active{transform:rotate(-1.5deg) translate(6px,6px);box-shadow:none}
+:where(html[data-theme="dusk"]) .entry-links{order:4;display:flex;justify-content:center;gap:10px}
+:where(html[data-theme="dusk"]) .entry-links .btn-secondary{display:flex;flex-direction:column;align-items:center;gap:5px;width:66px;padding:0;background:none;border:0;box-shadow:none;font-size:10.5px;color:#fff;text-shadow:1px 1px 0 var(--line)}
+:where(html[data-theme="dusk"]) .entry-links .btn-secondary::before{content:"";display:flex;align-items:center;justify-content:center;width:58px;height:58px;border-radius:50%;background:#2ec4b6;border:4px solid var(--line);box-shadow:4px 4px 0 var(--line);font-size:26px;transition:transform .05s,box-shadow .05s}
+:where(html[data-theme="dusk"]) .entry-links [data-go="lobby"]::before{content:"🛰️";background:#2ec4b6}
+:where(html[data-theme="dusk"]) .entry-links [data-go="rank"]::before{content:"🏆";background:#ff5e6c}
+:where(html[data-theme="dusk"]) .entry-links [data-go="profile"]::before{content:"👤";background:#ffb547}
+:where(html[data-theme="dusk"]) .entry-links [data-go="shop"]::before{content:"🛍️";background:#e0417f}
+:where(html[data-theme="dusk"]) .entry-links [data-go="prefs"]::before{content:"⚙️";background:#b59fd0}
+:where(html[data-theme="dusk"]) .entry-links .btn-secondary:hover{background:none}
+:where(html[data-theme="dusk"]) .entry-links .btn-secondary:active{transform:none}
+:where(html[data-theme="dusk"]) .entry-links .btn-secondary:active::before{transform:translate(4px,4px);box-shadow:none}
+:where(html[data-theme="dusk"]) .guest-note{order:5;font-size:12px;color:var(--text);text-shadow:1px 1px 0 var(--line)}
+:where(html[data-theme="dusk"]) .guest-note[data-kind="registered"] .gn-txt{color:var(--ok)}
+:where(html[data-theme="dusk"]) .entry-main .hint{order:6;font-size:11px;text-align:center;color:var(--text);text-shadow:1px 1px 0 var(--line)}
+:where(html[data-theme="dusk"]) .entry-side{display:none}
+/* ── CONTA ── */
+:where(html[data-theme="dusk"]) .overlay{background:rgba(36,18,56,.5);padding:0;backdrop-filter:blur(2px)}
+:where(html[data-theme="dusk"]) .modal{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(520px,100%);max-height:88%;overflow:auto;border-radius:24px 24px 0 0;border:5px solid var(--line);border-bottom:0;
+  background:var(--surface);padding:12px 18px 20px;box-shadow:0 -10px 40px rgba(0,0,0,.45)}
+:where(html[data-theme="dusk"]) .modal::before{content:"";display:block;width:60px;height:8px;border-radius:99px;background:var(--line);margin:0 auto 2px;flex:none}
+:where(html[data-theme="dusk"]) .modal-title{font-size:24px;color:var(--accent);text-shadow:3px 3px 0 var(--line);text-align:center}
+:where(html[data-theme="dusk"]) .tabs{gap:4px;padding:0 6px;border-bottom:4px solid var(--line)}
+:where(html[data-theme="dusk"]) .tabs button{flex:1;padding:9px;font-size:13px;color:var(--muted);background:#1f1848;border:4px solid var(--line);border-bottom:0;border-radius:14px 14px 0 0;margin-bottom:-4px}
+:where(html[data-theme="dusk"]) .tabs button.on{background:var(--accent);color:var(--line)}
+:where(html[data-theme="dusk"]) .modal-actions button{flex:1;padding:12px;font-size:15px}
+/* ── LOBBY ── */
+:where(html[data-theme="dusk"]) .lobby-hero{order:50;position:sticky;bottom:74px;z-index:2;background:var(--surface);border:0;border-top:4px solid var(--line);border-radius:0;box-shadow:none;margin:0 -16px;padding:10px 16px 12px;grid-template-columns:auto 1fr auto;gap:10px;grid-template-areas:"me input enter" "create play play"}
+:where(html[data-theme="dusk"]) .me-chip{grid-area:me;background:#1f1848;border:3px solid var(--line);border-radius:999px;padding:4px 14px 4px 5px;width:max-content;box-shadow:3px 3px 0 var(--line)}
+:where(html[data-theme="dusk"]) .me-chip canvas{width:40px;height:40px}
+:where(html[data-theme="dusk"]) .me-chip b{font-size:15px;color:#fff}
+:where(html[data-theme="dusk"]) .me-chip i{font-style:normal;font-size:10px;color:var(--muted);text-transform:uppercase}
+:where(html[data-theme="dusk"]) .me-chip i[data-kind="registered"]{color:var(--ok)}
+:where(html[data-theme="dusk"]) .code-row{display:contents}
+:where(html[data-theme="dusk"]) .code-row input{grid-area:input;text-align:center;letter-spacing:3px;font-size:17px;padding:8px 6px;min-width:0}
+:where(html[data-theme="dusk"]) .code-row .btn-secondary:first-of-type{grid-area:enter;width:auto;padding:8px 16px}
+:where(html[data-theme="dusk"]) .code-row .btn-secondary:last-of-type{grid-area:create;background:var(--accent2);padding:12px 14px;font-size:15px;white-space:nowrap}
+:where(html[data-theme="dusk"]) .lobby-hero .btn-primary{grid-area:play;font-size:16px;padding:12px}
+:where(html[data-theme="dusk"]) .lobby-hero .hint{display:none}
+:where(html[data-theme="dusk"]) .room-list{background:transparent;border:0;box-shadow:none;padding:2px 0 0;gap:8px}
+:where(html[data-theme="dusk"]) .room-row{background:#1f1848;border:3px solid var(--line);border-radius:12px;padding:6px 8px;grid-template-columns:70px 44px 1fr 44px 46px 78px;font-size:12.5px;color:#e8d8f0;box-shadow:3px 3px 0 var(--line)}
+:where(html[data-theme="dusk"]) .room-row.head{background:transparent;border:0;box-shadow:none;padding:0 8px;font-size:10px;color:var(--muted);text-transform:uppercase}
+:where(html[data-theme="dusk"]) .room-row.head .code{background:none;border:0;color:var(--muted);font-size:10px;padding:0;text-align:left;box-shadow:none}
+:where(html[data-theme="dusk"]) .room-row .code{background:var(--accent);color:var(--line);border:3px solid var(--line);border-radius:8px;padding:3px 4px;text-align:center;font-size:13px;letter-spacing:1px}
+:where(html[data-theme="dusk"]) .room-row .bar{background:var(--line);border-radius:4px;color:var(--ok);height:8px;border:1px solid var(--line)}
+:where(html[data-theme="dusk"]) .room-row .btn-mini{background:var(--accent);padding:5px 10px}
+:where(html[data-theme="dusk"]) .room-row.full{opacity:.5}
+:where(html[data-theme="dusk"]) .lobby-side{display:none}
+/* ── RANKING ── */
+:where(html[data-theme="dusk"]) .toggles{flex-direction:column;gap:8px;align-items:stretch}
+:where(html[data-theme="dusk"]) #rk-period button{flex:1;text-align:center}
+:where(html[data-theme="dusk"]) #rk-metric{border:0;padding:0;gap:6px;justify-content:center}
+:where(html[data-theme="dusk"]) #rk-metric button{border:3px solid var(--line);border-radius:999px;padding:5px 14px;font-size:11px;margin:0}
+:where(html[data-theme="dusk"]) .rank-table{background:transparent;border:0;box-shadow:none;padding:0;max-height:none;overflow:visible}
+:where(html[data-theme="dusk"]) #rk-table td{padding:7px 8px}
+:where(html[data-theme="dusk"]) #rk-table tr.me td{background:var(--accent);color:var(--line)}
+:where(html[data-theme="dusk"]) #rk-table tr.top1 .c-rank,:where(html[data-theme="dusk"]) #rk-table tr.top2 .c-rank,:where(html[data-theme="dusk"]) #rk-table tr.top3 .c-rank{font-size:0;text-align:center}
+:where(html[data-theme="dusk"]) #rk-table tr.top1 .c-rank::before{content:"🥇";font-size:20px}
+:where(html[data-theme="dusk"]) #rk-table tr.top2 .c-rank::before{content:"🥈";font-size:20px}
+:where(html[data-theme="dusk"]) #rk-table tr.top3 .c-rank::before{content:"🥉";font-size:20px}
+:where(html[data-theme="dusk"]) .c-delta.up{color:var(--ok)}
+:where(html[data-theme="dusk"]) .c-delta.down{color:var(--accent2)}
+:where(html[data-theme="dusk"]) .rank-me{position:sticky;bottom:82px;z-index:2;background:var(--accent);color:var(--line);border-radius:999px;padding:8px 20px;justify-content:center;box-shadow:4px 4px 0 var(--line);margin-bottom:8px}
+:where(html[data-theme="dusk"]) .rank-me b{font-size:24px}
+/* ── PERFIL ── */
+:where(html[data-theme="dusk"]) .profile-head{background:transparent;border:0;box-shadow:none;padding:0;flex-wrap:wrap}
+:where(html[data-theme="dusk"]) .profile-head canvas{width:80px;height:80px}
+:where(html[data-theme="dusk"]) .pf-nick{font-size:24px;color:#fff;text-shadow:2px 2px 0 var(--line)}
+:where(html[data-theme="dusk"]) .pf-kind{font-style:normal;font-size:11px;color:var(--muted);text-transform:uppercase}
+:where(html[data-theme="dusk"]) .pf-kind[data-kind="registered"]{color:var(--ok)}
+:where(html[data-theme="dusk"]) .pf-meta .coinbar{width:max-content}
+:where(html[data-theme="dusk"]) .stat-cards{grid-template-columns:repeat(3,1fr);gap:12px 10px;padding:0 4px 4px 0}
+:where(html[data-theme="dusk"]) .stat{padding:10px 6px;border-radius:18px;border:4px solid var(--line);background:#2ec4b6;color:var(--line);box-shadow:4px 4px 0 var(--line)}
+:where(html[data-theme="dusk"]) .stat:nth-child(2){background:var(--accent);transform:rotate(1.5deg)}
+:where(html[data-theme="dusk"]) .stat:nth-child(3){background:#ffcf9a}
+:where(html[data-theme="dusk"]) .stat:nth-child(4){background:#e0417f;transform:rotate(-1.5deg)}
+:where(html[data-theme="dusk"]) .stat:nth-child(5){background:var(--accent2)}
+:where(html[data-theme="dusk"]) .stat:nth-child(6){background:#b59fd0;transform:rotate(1deg)}
+:where(html[data-theme="dusk"]) .stat b{font-size:22px;color:var(--line)}
+:where(html[data-theme="dusk"]) .stat i{font-style:normal;font-size:9.5px;font-weight:700;text-transform:uppercase;line-height:1.1}
+:where(html[data-theme="dusk"]) .pf-hist{overflow-x:auto;padding:10px 12px}
+:where(html[data-theme="dusk"]) #pf-table th{font-size:10px;padding:5px 6px}
+:where(html[data-theme="dusk"]) #pf-table td{font-size:11.5px;padding:5px 6px;white-space:nowrap}
+:where(html[data-theme="dusk"]) #pf-table th:nth-child(2),:where(html[data-theme="dusk"]) #pf-table td:nth-child(2),:where(html[data-theme="dusk"]) #pf-table th:nth-child(6),:where(html[data-theme="dusk"]) #pf-table td:nth-child(6){display:none}
+:where(html[data-theme="dusk"]) .pf-hist td.cause{color:var(--muted)}
+:where(html[data-theme="dusk"]) .pf-hist td.cause.blackhole{color:#e0417f}
+:where(html[data-theme="dusk"]) .pf-hist td.cause i{font-style:normal;color:#fff}
+:where(html[data-theme="dusk"]) .ach-grid{grid-template-columns:1fr}
+:where(html[data-theme="dusk"]) .ach{padding:8px 10px;border:3px solid var(--line);border-radius:14px;background:#1f1848;opacity:.6}
+:where(html[data-theme="dusk"]) .ach.done{opacity:1;background:#1f4a46;border-color:var(--ok)}
+:where(html[data-theme="dusk"]) .ach.secret{opacity:.4}
+:where(html[data-theme="dusk"]) .ach b{font-size:13px;color:#fff}
+:where(html[data-theme="dusk"]) .ach i{font-size:11px;color:var(--muted)}
+:where(html[data-theme="dusk"]) .ach-bar{background:var(--line);color:var(--accent);border-radius:4px;height:6px;margin-top:4px}
+:where(html[data-theme="dusk"]) .ach.done .ach-bar{color:var(--ok)}
+:where(html[data-theme="dusk"]) .ach-coins{font-style:normal;font-size:12px;color:var(--accent)}
+/* ── LOJA ── */
+:where(html[data-theme="dusk"]) .shop-eq{background:#1f1848;padding:10px 14px}
+:where(html[data-theme="dusk"]) .shop-eq .badge{position:static;margin-left:auto}
+:where(html[data-theme="dusk"]) .shop-eq .skinmeta b{font-size:16px}
+:where(html[data-theme="dusk"]) .filters button{padding:6px 12px;border-radius:999px;border:3px solid var(--line);background:#1f1848;font-size:11px;color:var(--muted);font-weight:700}
+:where(html[data-theme="dusk"]) .filters button.on{background:var(--rc,var(--accent));color:var(--line)}
+:where(html[data-theme="dusk"]) .shop-grid{grid-template-columns:repeat(3,1fr);max-height:none;overflow:visible;gap:14px;padding:6px 6px 10px 2px}
+:where(html[data-theme="dusk"]) .skin-card{background:#3a2f78;border:4px solid var(--rc);border-radius:18px;color:var(--text);box-shadow:4px 4px 0 var(--line);padding:12px 6px 10px;transition:transform .1s}
+:where(html[data-theme="dusk"]) .skin-card:nth-child(3n+1){transform:rotate(-1.5deg)}
+:where(html[data-theme="dusk"]) .skin-card:nth-child(3n){transform:rotate(1.5deg)}
+:where(html[data-theme="dusk"]) .skin-card:hover{transform:translateY(-3px) rotate(0);background:#463a8c}
+:where(html[data-theme="dusk"]) .skin-card.eq{background:var(--accent);color:var(--line);border-color:#fff}
+:where(html[data-theme="dusk"]) .skin-card.eq i,:where(html[data-theme="dusk"]) .skin-card.eq em{color:var(--line)}
+:where(html[data-theme="dusk"]) .skin-card.locked,:where(html[data-theme="dusk"]) .skin-card.secret{opacity:.55;filter:grayscale(.4)}
+:where(html[data-theme="dusk"]) .skin-card.poor em{color:var(--accent2)}
+:where(html[data-theme="dusk"]) .skin-card b{font-size:12.5px}
+:where(html[data-theme="dusk"]) .skin-card i{font-style:normal;font-size:9.5px;color:var(--rc);text-transform:uppercase}
+:where(html[data-theme="dusk"]) .skin-card em{font-style:normal;font-size:12px;color:var(--accent);font-weight:700}
+:where(html[data-theme="dusk"]) .badge{background:var(--accent);color:var(--line);font-size:9px;font-weight:700;padding:3px 7px;border-radius:8px;border:2px solid var(--line)}
+:where(html[data-theme="dusk"]) .shop-note{font-size:11px;padding-bottom:4px}
+/* ── PREFS ── */
+:where(html[data-theme="dusk"]) .pg{padding:10px 14px;background:#1f1848}
+:where(html[data-theme="dusk"]) .pg h2{font-size:13px;color:var(--accent);text-shadow:2px 2px 0 var(--line);text-transform:uppercase;letter-spacing:1px}
+:where(html[data-theme="dusk"]) .pref-row{border-bottom:2px solid rgba(36,18,56,.4);font-size:13px;padding:8px 0}
+:where(html[data-theme="dusk"]) .pref-row:last-child{border-bottom:0}
+:where(html[data-theme="dusk"]) .toggle{width:58px;height:32px;border-radius:16px;background:#5e4a78;border:3px solid var(--line);color:#fff}
+:where(html[data-theme="dusk"]) .toggle i{top:2px;left:2px;width:22px;height:22px;background:#fff;border:2px solid var(--line)}
+:where(html[data-theme="dusk"]) .toggle[aria-checked="true"]{background:var(--ok)}
+:where(html[data-theme="dusk"]) .toggle[aria-checked="true"] i{left:24px}
+:where(html[data-theme="dusk"]) input[type=range]{accent-color:var(--accent)}
+:where(html[data-theme="dusk"]) .prefs-foot{position:sticky;bottom:74px;z-index:2;background:var(--surface);margin:0 -16px;padding:10px 16px 12px;border-top:4px solid var(--line)}
+:where(html[data-theme="dusk"]) .prefs-foot button{padding:10px 20px;font-size:14px}
+/* ── MORTE ── */
+:where(html[data-theme="dusk"]) #s-dead{background:rgba(60,14,50,.4)}
+:where(html[data-theme="dusk"]) #s-dead .dead-card{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(520px,100%);max-height:90%;overflow:auto;border-radius:24px 24px 0 0;border:5px solid var(--line);border-bottom:0;
+  background:#2a1240;padding:10px 20px 22px;gap:10px;box-shadow:0 -10px 40px rgba(0,0,0,.45)}
+:where(html[data-theme="dusk"]) #s-dead .dead-card::before{content:"";display:block;width:60px;height:8px;border-radius:99px;background:var(--line);flex:none}
+:where(html[data-theme="dusk"]) .dead-icon{font-size:60px;line-height:1}
+:where(html[data-theme="dusk"]) .dead-title{font-size:46px;color:var(--accent2);text-shadow:4px 4px 0 var(--line);transform:rotate(-4deg);letter-spacing:1px;line-height:1}
+:where(html[data-theme="dusk"]) .dead-sub{font-size:12px;color:#d8a6c8}
+:where(html[data-theme="dusk"]) .dead-by{background:var(--line);border-radius:999px;padding:6px 20px}
+:where(html[data-theme="dusk"]) .dead-by span{font-size:10px;color:#d8a6c8;letter-spacing:2px}
+:where(html[data-theme="dusk"]) .dead-by b{font-size:22px;color:var(--accent)}
+:where(html[data-theme="dusk"]) .dead-stats{gap:12px;flex-wrap:wrap;justify-content:center;padding:4px 6px}
+:where(html[data-theme="dusk"]) .dead-stats div{background:#2ec4b6;border:4px solid var(--line);border-radius:16px;padding:8px 10px;min-width:96px;color:var(--line);box-shadow:4px 4px 0 var(--line);transform:rotate(-2deg)}
+:where(html[data-theme="dusk"]) .dead-stats div:nth-child(2){background:var(--accent);transform:rotate(2deg)}
+:where(html[data-theme="dusk"]) .dead-stats div:nth-child(3){background:#ffcf9a;transform:rotate(-1deg)}
+:where(html[data-theme="dusk"]) .dead-stats div:nth-child(4){background:#e0417f;transform:rotate(2deg)}
+:where(html[data-theme="dusk"]) .dead-stats b{font-size:22px}
+:where(html[data-theme="dusk"]) .dead-stats i{font-style:normal;font-size:9.5px;text-transform:uppercase}
+:where(html[data-theme="dusk"]) .dead-rank span{font-size:10px;color:#d8a6c8;letter-spacing:2px}
+:where(html[data-theme="dusk"]) .dead-rank b{font-size:18px;color:#fff}
+:where(html[data-theme="dusk"]) .dead-rank .arrow{color:var(--ok)}
+:where(html[data-theme="dusk"]) .dead-actions{flex-direction:row}
+:where(html[data-theme="dusk"]) .dead-actions .btn-primary{font-size:18px;padding:12px}
+/* ── RECONN ── */
+:where(html[data-theme="dusk"]) .modal.reconn{bottom:auto;top:45%;transform:translate(-50%,-50%);width:min(340px,92%);max-height:none;overflow:visible;border-radius:28px;border-bottom:5px solid var(--line);background:var(--text);color:var(--line);padding:22px 22px 24px;box-shadow:var(--shadow)}
+:where(html[data-theme="dusk"]) .modal.reconn::before{display:none}
+:where(html[data-theme="dusk"]) .modal.reconn::after{content:"";position:absolute;left:44px;bottom:-19px;width:26px;height:26px;background:var(--text);border-right:5px solid var(--line);border-bottom:5px solid var(--line);transform:rotate(45deg)}
+:where(html[data-theme="dusk"]) .spinner{width:52px;height:52px;border:5px solid var(--line);border-top-color:var(--accent2)}
+:where(html[data-theme="dusk"]) .rc-title{font-size:24px;color:var(--accent2);text-shadow:2px 2px 0 var(--line)}
+:where(html[data-theme="dusk"]) .rc-title::before{content:"📡 "}
+:where(html[data-theme="dusk"]) .rc-sub{font-size:13px;color:#5a3a70}
+:where(html[data-theme="dusk"]) .reconn .btn-secondary{width:auto;padding:10px 22px}
+/* ── MOBILE ── */
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .screen,:where(html[data-theme="dusk"]) body[data-mode="landscape"] .screen{padding:0}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .screen .wrap,:where(html[data-theme="dusk"]) body[data-mode="portrait"] .modal,:where(html[data-theme="dusk"]) body[data-mode="portrait"] #s-dead .dead-card{width:100%;max-height:86%}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .modal.reconn{width:92%}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .brand{font-size:40px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .tagline{font-size:11px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .entry-main .btn-primary{font-size:26px;padding:16px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .entry-main .hint{display:none}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .entry-links{gap:6px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .skinrow{min-width:0}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .sh .stitle{font-size:20px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .room-row .btn-mini{padding:5px 8px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .me-chip{padding:3px 10px 3px 4px;gap:6px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .me-chip canvas{width:34px;height:34px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .me-chip b{font-size:13px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .code-row .btn-secondary:first-of-type{padding:8px 10px;font-size:13px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .code-row .btn-secondary:last-of-type{font-size:13px;padding:12px 10px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .lobby-hero .btn-primary{font-size:14px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .stat-cards{gap:10px 8px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .stat b{font-size:18px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .shop-grid{gap:10px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .dead-title{font-size:38px}
+:where(html[data-theme="dusk"]) body[data-mode="portrait"] .dead-stats div{min-width:120px}
+:where(html[data-theme="dusk"]) body[data-mode="landscape"] #s-entry .entry-wrap{flex-direction:row;justify-content:center;align-items:center;gap:30px;padding:0 20px}
+:where(html[data-theme="dusk"]) body[data-mode="landscape"] .brand-block{padding-top:0}
+:where(html[data-theme="dusk"]) body[data-mode="landscape"] .brand{font-size:40px}
+:where(html[data-theme="dusk"]) body[data-mode="landscape"] .entry-main{padding:0;width:400px;gap:8px}
+:where(html[data-theme="dusk"]) body[data-mode="landscape"] .entry-main .btn-primary{font-size:22px;padding:12px}
+:where(html[data-theme="dusk"]) body[data-mode="landscape"] .entry-main .hint,:where(html[data-theme="dusk"]) body[data-mode="landscape"] .entry-main .field label{display:none}
+:where(html[data-theme="dusk"]) body[data-mode="landscape"] .entry-links .btn-secondary::before{width:48px;height:48px;font-size:20px}
+:where(html[data-theme="dusk"]) body[data-mode="landscape"] .skinrow canvas{width:44px;height:44px}
+:where(html[data-theme="dusk"]) body[data-mode="landscape"] .screen .wrap,:where(html[data-theme="dusk"]) body[data-mode="landscape"] .modal{max-height:92%}
