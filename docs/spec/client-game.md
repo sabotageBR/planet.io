@@ -1,9 +1,12 @@
 # Cliente de jogo v2 — `client/src/game/` (PixiJS v8)
 
 Contrato com o app React (já usado pelo shell): 
-`createGame({container, hud, prefs, theme, onDead, onRewards, onConnection, onError})` →
+`createGame({container, hud, prefs, theme, onDead, onRewards, onRoundEnd, onConnection, onError})` →
 `{join({token,fallbackNick,room}), leave(), setPrefs(p), setTheme(t), resize(), destroy(), hudStore}`.
-`hudStore` = `{subscribe(fn), get()}` com `{mass,score,rank,coins,ammo,powerups:{magnet (s),shield (nível 0..3)},splitCd,ejectCd,lb:[{slot,name,mass,isBot,registered,me,rank}],room,ping,fps,dead}` atualizado a 8 Hz.
+`hudStore` = `{subscribe(fn), get()}` com `{mass,score,rank,coins,ammo,powerups:{magnet (s),shield (nível 0..3)},splitCd,ejectCd,lb:[…],room,ping,fps,dead,clock:{h,m,leftS}}` atualizado a 8 Hz.
+`clock` = relógio do espaço da rodada + contagem para o fim do mundo (derivados do tick do servidor e do bloco `round` do JSON `room`);
+o shell publica a hora em `state/game.js clockRef` e o relógio de tema (`startThemeClock({getHour})`) troca o céu por ela — dentro da
+partida o dia inteiro passa nos 10 min da rodada. `onRoundEnd({champion,board,nextInMs,mySlot})` abre a tela do placar (`ui/Round.jsx`).
 `onConnection(state)`: `'connecting'|'open'|'reconnecting'|'closed'` (+ tentativa); `onDead(info)` com o JSON `dead`; `onRewards(rewards)`.
 
 ```
@@ -20,10 +23,11 @@ game/renderer/TextureCache.js theme.textures.* → canvas → Texture (mipmaps);
 game/renderer/layers/Background.js  bake do fundo por resolução (theme.textures.background) + camadas parallax (theme.bandLayers) + big stars + props (silhuetas do mundo)
 game/renderer/layers/Grid.js        TilingSprite do tile de grade (theme) — respeita prefs.showGrid
 game/renderer/layers/Food.js / Ejected.js   ParticleContainer
-game/renderer/layers/Hazards.js     asteroides (rotate por seed+tick), buracos negros (núcleo + anel girando + anel de influência)
+game/renderer/layers/Hazards.js     asteroides (rotate por seed+tick), buracos negros (núcleo + anel de influência) e estrelas (sprite jovem/velha pulsando + coroa tracejada no halo; k = haloR/(r·HALO) dá a rampa de nascimento)
 game/renderer/layers/Planets.js     pool: body sprite (tier), ring, BitmapText nome/massa (prefs.showNames/showMass), arco de merge, anéis de powerup (escudo por nível: theme.hud.cell.powerups.shieldLevels; ímã → R.ambient); trilha (theme.hud.trail) como Graphics polilinha
-game/renderer/layers/Missiles.js, Fx.js (theme.effects.fx(kind,k,params) → primitivas Graphics/Text; pool ≤ 32; add(kind,f,delayMs) atrasa efeitos de terceiros; spark() faíscas ≤ 64 num Graphics; ambient() → theme.effects.ambient)
-game/input/{Pointer,Keyboard,Touch,actions}.js  pointer events unificados; Space split, W eject (hold), F/clique míssil, botão direito split (prefs.rightSplit); botões DOM #t-split/#t-eject/#t-fire (o HUD React chama game.action('split'|'eject'|'fire', pressed))
+game/renderer/layers/Missiles.js, Aim.js (reta pontilhada + seta do tiro mirado, só local), Fx.js (theme.effects.fx(kind,k,params) → primitivas Graphics/Text; pool ≤ 32; add(kind,f,delayMs) atrasa efeitos de terceiros; spark() faíscas ≤ 64 num Graphics; ambient() → theme.effects.ambient)
+game/input/{Pointer,Keyboard,Touch,actions}.js  pointer events unificados; Space split, W eject (hold), botão direito split (prefs.rightSplit);
+                       míssil no botão esquerdo/F: SEGURAR mira (reta pontilhada) e SOLTAR dispara — ≥160 ms manda FIRE|AIM (tiro reto), clique rápido continua teleguiado; sem munição o down ejeta
 game/hud/Minimap.js     canvas 2D pequeno (10 Hz) desenhado no #radar (DOM) conforme theme.hud.radar
 game/bench.js           ?bench (mundo local do shared com bots, pior caso) e ?stats overlay
 ```

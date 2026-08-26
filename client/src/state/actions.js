@@ -5,6 +5,7 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { LABELS } from "../ui/labels.js";
 import { skinById } from "@planet/shared";
+import { clockRef } from "./game.js";
 
 const Q = new URLSearchParams(location.search);
 const NICK_RE = /^.{2,16}$/;
@@ -48,7 +49,7 @@ export function applyPrefsSideEffects(prefs) {
   const b = document.body.dataset;
   b.reduce = prefs.reduceMotion ? "1" : "0"; b.bigtext = prefs.bigText ? "1" : "0"; b.colorblind = prefs.colorblind || "off";
   if (prefs.theme !== lastThemePref) { lastThemePref = prefs.theme; applyTheme(resolveThemeId(prefs.theme || "auto")); }
-  if (!themeClock) themeClock = startThemeClock(themePref);
+  if (!themeClock) themeClock = startThemeClock(themePref, null, { getHour: () => clockRef.get().hour });   // dentro da partida o céu segue o relógio da rodada
 }
 
 export async function boot() {
@@ -59,7 +60,7 @@ export async function boot() {
   loadConfig(); loadTop5(); loadRooms();
   devQuery();
 }
-/** ?screen=<id> (entry|account|lobby|rank|profile|shop|prefs|game|dead|reconn) — atalho de desenvolvimento. */
+/** ?screen=<id> (entry|account|lobby|rank|profile|shop|prefs|game|dead|round|reconn) — atalho de desenvolvimento. */
 function devQuery() {
   const s = Q.get("screen"); if (!s) return;
   if (s === "account") { go("entry"); openAccount(); }
@@ -68,6 +69,9 @@ function devQuery() {
   else if (s === "dead") {
     if (!import.meta.env.DEV) return;
     app.update({ room: "1ABC", lastMatch: { by: "Nebulox", byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, room: "1ABC", at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
+    if (s === "round") app.update({ room: "1ABC", roundResult: { code: "1ABC", mySlot: 3, at: Date.now(), nextInMs: 15000,
+      champion: { slot: 1, name: "Vortexia", mass: 12400, isBot: true },
+      board: [{ slot: 1, name: "Vortexia", mass: 12400, isBot: true }, { slot: 3, name: "Você", mass: 8200 }, { slot: 5, name: "Drakonis", mass: 3100, isBot: true }] }, rewards: null, rewardsPending: true, screen: "round" });
     setTimeout(() => onRewards({ saved: true, coinsEarned: 54, coins: (app.get().session.user || {}).coins + 54 || 54, achievements: [], skinsUnlocked: [], rank: { day: 35 } }), 1200);
   }
   else go(s);
@@ -181,6 +185,12 @@ export function leaveGame(screen = "lobby") {
   app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
 let rewardsT = null;
+/** Callback do jogo: fim da rodada — {code, champion, board, nextInMs, tick}. Mostra o placar da sala. */
+export function onRoundEnd(r) {
+  clearTimeout(rewardsT);
+  app.update(s => ({ ...s, screen: "round", roundResult: { ...r, at: Date.now() }, rewards: null, rewardsPending: true }));
+  rewardsT = setTimeout(() => { if (app.get().rewardsPending) app.update({ rewardsPending: false }); }, 5000);
+}
 /** Callback do jogo: {by, byHole, score, maxMass, kills, durationS}. */
 export function onDead(info) {
   const s = app.get();

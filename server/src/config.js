@@ -1,5 +1,6 @@
 // ── CONFIG (env → objeto único; defaults de dev) ──────────────────────────────
 // @ts-check
+import {ROUND} from '@planet/shared/constants.js';
 const env=process.env;
 const str=(k,d)=>env[k]!=null&&env[k]!==''?env[k]:d;
 const num=(k,d)=>{const v=Number(env[k]);return env[k]!=null&&env[k]!==''&&Number.isFinite(v)?v:d;};
@@ -23,6 +24,7 @@ export const config=Object.freeze({
   port,shard,shards,podName,peerHost,peerName,peers,
   roomMax:num('ROOM_MAX',30),
   roomBots:num('ROOM_BOTS',15),
+  roundTicks:Math.max(60,num('ROUND_TICKS',ROUND.TICKS)),   // duração da rodada em ticks (os testes usam rodadas curtas)
   logLevel:str('LOG_LEVEL','info'),
   role,
   staticDir:str('STATIC_DIR',''),

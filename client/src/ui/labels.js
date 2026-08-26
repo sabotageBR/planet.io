@@ -15,7 +15,7 @@ export const LABELS = {
   rankTitle: "RANKING", periods: { all: "Geral", week: "Semanal", day: "Diário" }, metrics: { score: "Pontos", mass: "Massa", kills: "Abates" }, you: "Você", rankPos: "posição",
   profileTitle: "PERFIL", history: "HISTÓRICO", achievements: "CONQUISTAS",
   stats: { games: "partidas", kills: "abates", bestScore: "melhor pontuação", bestMass: "maior massa", playTime: "tempo jogado", bestStreak: "melhor sequência" },
-  causes: { eaten: "devorado", blackhole: "buraco negro", left: "saiu", shutdown: "servidor" },
+  causes: { eaten: "devorado", blackhole: "buraco negro", left: "saiu", shutdown: "servidor", round: "fim do mundo" },
   shopTitle: "LOJA DE SKINS", shopNote: "Moedas se ganham jogando. Skins de conquista desbloqueiam sozinhas.", filterAll: "Todas", unlocked: "desbloqueadas",
   prefsTitle: "PREFERÊNCIAS", save: "Salvar", reset: "Restaurar padrão", saved: "Preferências salvas",
   accountTitle: "CONTA", claimTab: "Reivindicar", loginTab: "Entrar", nick: "Nick", password: "Senha", password2: "Confirmar senha", email: "E-mail (opcional)",
@@ -25,6 +25,8 @@ export const LABELS = {
   split: "DIVIDIR", eject: "EJETAR", fire: "MÍSSIL", exit: "Sair", keySplit: "ESPAÇO", keyEject: "W", keyFire: "F",
   ammo: "mísseis", powerups: { magnet: "Ímã", shield: "Escudo" }, shieldLevel: "Nv",
   room: "SALA", ping: "ms", fps: "fps", top5: "TOP 5 HOJE", activeRooms: "SALAS ATIVAS",
+  roundTitle: "FIM DO MUNDO", roundIcon: "🌌", roundSub: "— a sala explodiu; a próxima galáxia já está nascendo —",
+  champion: "CAMPEÃO DA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar agora", playersWord: "no placar", posWord: "#",
   // extras do shell (não existem no mockup)
   offlineNote: "Sem servidor: jogando em modo local",
   noDbNote: "Servidor sem banco: progresso não é salvo", saving: "salvando…", noRank: "sem posição", loading: "carregando…",

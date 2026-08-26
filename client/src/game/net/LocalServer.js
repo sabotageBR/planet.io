@@ -6,15 +6,15 @@
 // com último estado quantizado (UPDATE só se mudou). ?lag=<ms> simula latência nos dois sentidos.
 import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,encodePong,decodeInput,
   MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,
-  WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,PLAYER,BOT,BOT_NAMES,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,
+  WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,BOT_NAMES,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,
   focusOf,zoomFor,viewRect,rectHas,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir} from "@planet/shared";
 import {createWorld,applySplit,liveCount,firstLive} from "@planet/shared/physics/index.js";
 
 const seqNewer=(a,b)=>b<0||(((a-b)&0xFFFF)>0&&((a-b)&0xFFFF)<0x8000);
-export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=FOOD.COUNT,code="0LOC"}={}){
+export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=FOOD.COUNT,code="0LOC",roundTicks=ROUND.TICKS}={}){
   const w=createWorld({seed,food:bench?Math.max(food,1800):food,holes:BLACKHOLE.COUNT});
   const rng=createRng(seed*7+1),writer=createWriter(1<<16),meta=new Map(),sessions=new Set(),brains=new Map();
-  let nextSlot=0,timer=0,acc=0,last=0,playersDirty=true,running=false;
+  let nextSlot=0,timer=0,acc=0,last=0,playersDirty=true,running=false,over=false;   // over: a rodada acabou (mundo explodido)
   const reasonMap=new Map();
   // ── bots ──
   function addBot(x=NaN,y=NaN){const slot=nextSlot++;const r=rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]);w.addPlayer(slot,{x,y,r,isBot:true,missiles:rng.chance(.3)?1:0});
@@ -55,7 +55,8 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
         if(!sess){sess={sock,slot:-1,known:new Map(),lastSeq:-1,ackSeq:0,view:{w:1280,h:720},dead:false,kills:0,maxMass:0,startTick:w.tick,name:"",skinId:0};sessions.add(sess);}
         if(m.view)sess.view=m.view;if(m.t==="join"){sess.name=(m.fallbackNick||"Viajante").slice(0,16);sess.skinId=m.skinId|0;}
         if(sess.slot<0){sess.slot=nextSlot++;spawn(sess);}else if(m.t==="join"&&sess.dead){spawn(sess);}
-        sendJson(sock,{t:"room",code,shard:0,slot:sess.slot,sessionId:"local-"+sess.slot,resumeToken:"local",protocol:PROTOCOL_VERSION,tick:w.tick,world:{w:w.w,h:w.h}});
+        sendJson(sock,{t:"room",code,shard:0,slot:sess.slot,sessionId:"local-"+sess.slot,resumeToken:"local",protocol:PROTOCOL_VERSION,tick:w.tick,world:{w:w.w,h:w.h},
+          round:{start:0,ticks:roundTicks,dayStart:ROUND.DAY_START_H,breakMs:ROUND.BREAK_MS}});
         sess.known.clear();sendBin(sock,encodePlayers(writer,playerList()));return;}
       if(!s)return;
       if(m.t==="view"){s.view={w:m.w,h:m.h};}
@@ -78,7 +79,16 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
   function start(){if(running)return;running=true;last=performance.now();acc=0;timer=setInterval(loop,8);}
   function stopLoop(){running=false;clearInterval(timer);timer=0;}
   function loop(){const now=performance.now();acc+=Math.min(250,now-last);last=now;let n=0;while(acc>=1000/TICK_HZ&&n<5){acc-=1000/TICK_HZ;step();n++;}}
-  function step(){for(const [slot,b] of brains)botThink(slot,b);w.step();
+  /** Fim do mundo local: placar por massa viva (campeão = 1º) e `roundEnd` para as sessões. */
+  function endRound(){if(over)return;over=true;
+    const board=[];for(const [slot,m] of meta){const ps=w.players.get(slot);if(!ps||!ps.alive)continue;
+      board.push({slot,name:m.name,mass:Math.round(w.massOf(slot)),score:ps.score,kills:0,isBot:m.isBot,registered:m.registered,skinId:m.skinId});}
+    board.sort((a,b)=>b.mass-a.mass);
+    for(const s of sessions)if(s.slot>=0&&!board.some(b=>b.slot===s.slot))board.push({slot:s.slot,name:s.name,mass:0,score:0,kills:s.kills,isBot:false,registered:false,skinId:s.skinId});
+    const msg={t:"roundEnd",code,champion:board[0]||null,board:board.slice(0,20),nextInMs:ROUND.BREAK_MS,tick:w.tick};
+    for(const s of sessions)if(s.slot>=0)sendJson(s.sock,msg);}
+  function step(){if(over)return;if(w.tick>=roundTicks)return endRound();
+    for(const [slot,b] of brains)botThink(slot,b);w.step();
     reasonMap.clear();const tick=w.tick;
     for(const ev of w.events){let e=null;
       switch(ev.type){

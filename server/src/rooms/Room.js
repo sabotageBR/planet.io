@@ -1,10 +1,14 @@
 // ── ROOM: {code, shard, sim, sessions, writer}; step() é chamado pelo Scheduler ─
+// A sala tem RODADA: `roundTicks` ticks (10 min) valendo um dia inteiro do relógio do espaço (o cliente
+// deriva hora e contagem do tick + `round` do JSON `room`). No fim o mundo explode: `sim.endRound()` fecha
+// a partida de todos (persistência normal, cause 'round'), vai um `roundEnd` com campeão e placar, a sala
+// é aposentada (ninguém mais entra) e o cliente entra sozinho numa sala nova depois de ROUND.BREAK_MS.
 // A cada passo: sim.step() → PLAYERS se mudou → dead/rewards (listeners) → a cada SNAPSHOT_EVERY
 // snapshots por sessão + EVENTs por AOI → a cada LEADERBOARD_EVERY o placar. Um writer por sala:
 // cada encode devolve uma vista reutilizada; se um socket ficou com bytes pendentes trocamos de
 // writer (o antigo fica com o socket até drenar) em vez de copiar a cada envio.
 // @ts-check
-import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT_NAMES} from '@planet/shared/constants.js';
+import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT_NAMES,ROUND} from '@planet/shared/constants.js';
 import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent} from '@planet/shared/protocol/index.js';
 import {rectHas} from '@planet/shared/camera.js';
 import {createRng} from '@planet/shared/rng.js';
@@ -18,6 +22,7 @@ export class Room{
     this.sim=new Sim({seed,hooks,log,rng:this.rng});
     /** @type {Map<number,import('../net/Session.js').Session>} */this.sessions=new Map();
     this.createdAt=Date.now();this.lastHumanAt=Date.now();this.running=false;this.max=config.roomMax;this.botCount=config.roomBots;
+    this.roundTicks=config.roundTicks||ROUND.TICKS;this.roundStart=0;this.over=false;this.endedAt=0;
     this.writer=createWriter(WRITER_SIZE);this.snapshotter=createSnapshotter(this);this._botName=this.rng.int(0,BOT_NAMES.length-1);this.onRewards=onRewards;
     this.sim.on('death',info=>{const s=this.sessions.get(info.slot);if(s)s.sendJson({t:'dead',by:info.by,byHole:info.byHole,score:info.score,maxMass:info.maxMass,kills:info.kills,durationS:info.durationS});});
     this.sim.on('rewards',({slot,sessionId,rewards})=>{const s=this.sessions.get(slot);
@@ -29,7 +34,11 @@ export class Room{
   freeSlot(){let s=0;while(this.sim.players.has(s))s++;return s;}
   get humanCount(){return this.sessions.size;}
   isFull(){return this.sessions.size>=this.max;}
-  info(){return{code:this.code,shard:this.shard,players:this.sessions.size,max:this.max,bots:this.botCount};}
+  info(){return{code:this.code,shard:this.shard,players:this.sessions.size,max:this.max,bots:this.botCount,round:this.roundLeft()};}
+  /** Bloco `round` do JSON `room`: tick de início, duração e hora do relógio do espaço no início. */
+  roundInfo(){return{start:this.roundStart,ticks:this.roundTicks,dayStart:ROUND.DAY_START_H,breakMs:ROUND.BREAK_MS};}
+  /** Segundos restantes da rodada (0 se já acabou). */
+  roundLeft(){const left=(this.roundStart+this.roundTicks-this.sim.tick)/TICK_HZ;return left>0?Math.round(left):0;}
   // ── sessões ──
   /** Entra no menor slot livre. Devolve o slot. */
   join(session,{name,registered=false,skinId=0,sessionId=null,userId=null}){
@@ -65,9 +74,19 @@ export class Room{
       for(const s of this.sessions.values()){if(!s.ws||!s.rect||!rectHas(s.rect,e.x,e.y,0))continue;if(!s.send(view))busy=true;}
       if(busy)this.rotateWriter();}
     evs.length=0;}
+  /** Fim do mundo: placar + campeão (maior planeta vivo), persistência de todos e sala aposentada. */
+  endRound(){
+    if(this.over)return;this.over=true;this.endedAt=Date.now();
+    const board=this.sim.endRound(),champion=board.length?board[0]:null;
+    const msg={t:'roundEnd',code:this.code,champion,board:board.slice(0,20),nextInMs:ROUND.BREAK_MS,tick:this.sim.tick};
+    for(const s of this.sessions.values())s.sendJson(msg);
+    this.broadcastPlayers();
+    this.log.info(`sala ${this.code}: fim do mundo — campeão ${champion?champion.name:'ninguém'} (${champion?Math.round(champion.mass):0})`);}
   // ── passo ──
   step(){
-    const sim=this.sim;sim.step();const t=sim.tick;
+    const sim=this.sim;if(this.over)return;
+    if(sim.tick-this.roundStart>=this.roundTicks){this.endRound();return;}
+    sim.step();const t=sim.tick;
     if(sim.playersDirty){sim.playersDirty=false;this.broadcastPlayers();}
     if(t%SNAPSHOT_EVERY===0){this.snapshotter.beginTick();for(const s of this.sessions.values())this.snapshotter.send(s);this.flushEvents();sim.gone.clear();}
     else if(sim.wireEvents.length>=200)this.flushEvents();

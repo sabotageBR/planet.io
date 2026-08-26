@@ -18,10 +18,10 @@ export const DEFAULT_THEME="dawn";
 export const SCHEDULE=[{id:"dawn",from:5,to:16},{id:"sunset",from:16,to:20},{id:"dusk",from:20,to:29}];
 export const THEME_PREFS=["auto","dawn","sunset","dusk"];
 
-// 'auto' → pela hora local de `date`; qualquer outro id conhecido → ele mesmo
-export function resolveThemeId(pref="auto",date=new Date()){
+// 'auto' → pela hora de `when` (Date, ou hora 0..24 do relógio do espaço da rodada); id conhecido → ele mesmo
+export function resolveThemeId(pref="auto",when=new Date()){
   if(pref&&pref!=="auto"&&THEMES[pref])return pref;
-  const h=date.getHours()+date.getMinutes()/60;
+  const h=typeof when==="number"?((when%24)+24)%24:when.getHours()+when.getMinutes()/60;
   for(const s of SCHEDULE){if(h>=s.from&&h<s.to)return s.id;if(s.to>24&&h+24>=s.from&&h+24<s.to)return s.id;}
   return DEFAULT_THEME;}
 
@@ -39,11 +39,12 @@ export function applyTheme(id){
 
 export function currentTheme(){return current||THEMES[resolveThemeId("auto")];}
 
-// reavalia a cada 60 s e na volta do foco (visibilitychange → visible); getPref() devolve 'auto'|id.
-// Chama applyTheme quando muda e onChange(id,theme). Devolve stop(); stop.check() força uma reavaliação
-// (útil logo depois de o usuário trocar a preferência).
-export function startThemeClock(getPref=()=>"auto",onChange=null,{interval=60000}={}){
-  const check=()=>{const id=resolveThemeId(getPref());
+// Reavalia a cada `interval` e na volta do foco (visibilitychange → visible); getPref() devolve 'auto'|id.
+// getHour() (opcional) devolve a hora do relógio do espaço da rodada (0..24) ou null fora da partida — dentro
+// de uma partida o céu segue a rodada (10 min = um dia), então a checagem é de 1 s; fora dela, a hora local.
+// Chama applyTheme quando muda e onChange(id,theme). Devolve stop(); stop.check() força uma reavaliação.
+export function startThemeClock(getPref=()=>"auto",onChange=null,{interval=1000,getHour=null}={}){
+  const check=()=>{const h=getHour?getHour():null,id=resolveThemeId(getPref(),h==null?new Date():h);
     if(!current||current.id!==id||(typeof document!=="undefined"&&document.documentElement.dataset.theme!==id)){applyTheme(id);if(onChange)onChange(id,current);}
     return id;};
   check();

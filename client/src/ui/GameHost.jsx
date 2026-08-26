@@ -4,7 +4,7 @@ import { createGame } from "../game/index.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { setGame, getGame } from "../state/game.js";
-import { onDead, onRewards, onConnection } from "../state/actions.js";
+import { onDead, onRewards, onRoundEnd, onConnection } from "../state/actions.js";
 import { api } from "../api/client.js";
 import { currentTheme } from "../app/theme.js";
 import { useTheme } from "../hooks/useTheme.js";
@@ -15,7 +15,7 @@ export default function GameHost() {
   const theme = useTheme();
 
   useEffect(() => {
-    const game = createGame({ container: ref.current, hud: document.getElementById("hud"), prefs: app.get().session.prefs, theme: currentTheme(), onDead, onRewards, onConnection });
+    const game = createGame({ container: ref.current, hud: document.getElementById("hud"), prefs: app.get().session.prefs, theme: currentTheme(), onDead, onRewards, onRoundEnd, onConnection });
     setGame(game);
     if (import.meta.env.DEV) window.__game = game;
     const onResize = () => game.resize();
@@ -29,7 +29,7 @@ export default function GameHost() {
     game.join({ token: api.token, fallbackNick: user.nick || "Viajante", room: pending.room || null }); joined.current = true;
   }, [pending]);
 
-  useEffect(() => { const game = getGame(); if (game && joined.current && screen !== "game" && screen !== "dead") { joined.current = false; game.leave(); } }, [screen]);
+  useEffect(() => { const game = getGame(); if (game && joined.current && screen !== "game" && screen !== "dead" && screen !== "round") { joined.current = false; game.leave(); } }, [screen]);
   useEffect(() => { const game = getGame(); if (game) game.setPrefs(prefs); }, [prefs]);
   useEffect(() => { const game = getGame(); if (game) game.setTheme(theme); }, [theme]);
 

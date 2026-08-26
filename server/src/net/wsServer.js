@@ -1,5 +1,6 @@
 // ── WS: upgrade em /ws/<n>, join/resume/view/ping (JSON) e INPUT (binário), heartbeat, rate limit ──
-// Join: hooks.onPlayerJoin (3 s; falha → modo unsaved) → sala (código ou automática) → slot → `room` →
+// Join: hooks.onPlayerJoin (3 s; falha → modo unsaved) → sala (código ou automática) → slot → `room` (com o
+// bloco `round`: tick de início e duração da rodada, de onde o cliente tira o relógio do espaço) →
 // PLAYERS → snapshots. Queda: Room.detach (graça NET.RESUME_MS); `resume` religa o socket novo na
 // Session antiga. Rate limit por sessão (inputs RATE_INPUTS/s burst RATE_BURST; JSON RATE_JSON/s):
 // 3 violações em 10 s → error RATE + close 4429.
@@ -27,7 +28,7 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
     wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws,req));});
   wss.on('connection',(ws,req)=>{
     let s=new Session({ws,metrics,log,remoteAddr:clientIp(req),userAgent:req.headers['user-agent']||null});live.add(s);
-    const roomMsg=room=>({t:'room',code:room.code,shard:room.shard,slot:s.slot,sessionId:s.sessionId,resumeToken:s.resumeToken,protocol:PROTOCOL_VERSION,tick:room.sim.tick,world:{w:WORLD.w,h:WORLD.h}});
+    const roomMsg=room=>({t:'room',code:room.code,shard:room.shard,slot:s.slot,sessionId:s.sessionId,resumeToken:s.resumeToken,protocol:PROTOCOL_VERSION,tick:room.sim.tick,world:{w:WORLD.w,h:WORLD.h},round:room.roundInfo()});
     const rate=()=>{if(s.violation())s.error('RATE','muitas mensagens; conexão encerrada');};
     async function join(msg){
       if(s.joining)return;

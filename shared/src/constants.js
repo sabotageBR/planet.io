@@ -4,6 +4,10 @@
 export const WORLD={w:7200,h:7200};
 export const TICK_HZ=60,DT=1/60,SNAPSHOT_EVERY=3,LEADERBOARD_EVERY=30,SAMPLE_EVERY=30;
 export const ROOM={MAX:30,BOTS:15,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600};
+export const ROUND={TICKS:36000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10};
+// rodada de 10 min (36000 ticks a 60 Hz) = um dia inteiro no relógio do espaço, começando às DAY_START_H;
+// no fim o mundo explode, define-se o campeão (maior planeta vivo) e o placar fica BREAK_MS antes da sala nova.
+// WARN_S: segundos finais com a contagem gigante na tela.
 export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:290,MAX_PIECES:8,BOT_R:[24,58]};
 export const SPEED={K:13200,MIN:48,MAX:360,ACCEL:6,DRAG:9.05,LAUNCH_DRAG:4.7,LAUNCH_STEER:1.5,LAUNCH_THRESH:1.05,STOP_DIST:4};
 export const SPLIT={SPEED:1150,RECOIL:.1,MIN_R:26,COOLDOWN_TICKS:15,ANIM_TICKS:20,OFFSET:.6};

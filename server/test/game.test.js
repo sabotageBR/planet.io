@@ -70,7 +70,7 @@ test('join: room + PLAYERS com bots + snapshots com criações na AOI',async()=>
   const me=A.players.find(p=>p.slot===A.slot);assert.ok(me);assert.equal(me.flags&PLAYER_FLAG.BOT,0);
   await A.until(()=>A.snaps.length>=3,3000,'3 snapshots');
   const first=A.snaps[0];assert.ok(first.creates.some(c=>c.kind===KIND.PIECE&&(c.flags&PIECE_FLAG.ME)&&c.owner===A.slot),'peça própria com ME no 1º snapshot');
-  assert.equal(first.updates.length,0);assert.equal(first.removes.length,0);assert.equal(first.self.mass,900);
+  assert.equal(first.updates.length,0);assert.equal(first.removes.length,0);assert.ok(first.self.mass>=900&&first.self.mass<1100,`massa inicial ${first.self.mass}`);   // 30²=900 (+ alguma comida comida nos 3 primeiros ticks)
   const food=A.ofKind(KIND.FOOD),known=A.known.size;
   assert.ok(food>0&&food<FOOD.COUNT,`comida conhecida ${food} (nunca as ${FOOD.COUNT})`);assert.ok(known>=5&&known<=600,`entidades conhecidas ${known}`);
   // AOI: tudo que o servidor tem dentro do retângulo interno da sessão é conhecido; nada conhecido fora do externo
@@ -179,6 +179,24 @@ test('soak 10 s: 3 clientes + bots → overruns 0, tick p99 < 2 ms',async()=>{
   assert.equal(m.tick.overruns-before.tick.overruns,0);assert.ok(m.tick.p99<2,`tick p99 ${m.tick.p99} ms`);assert.ok(sizes.length>=3*20*8,'≥ 20 Hz de snapshots por cliente');
   for(const c of cs)assert.equal(c.closeCode,null,'nenhum cliente derrubado');
   cs[2].close();
+});
+test('rodada: fim do mundo manda roundEnd com campeão e placar, aposenta a sala e a próxima é outra',async()=>{
+  const s2=await startServer({port:0,logLevel:LOG,migrateOnStart:false,roundTicks:180});   // rodada de 3 s
+  try{
+    const url=`ws://127.0.0.1:${s2.port}/ws/0`,C=new Client(url);await C.open();
+    const r=await C.join('Efêmero',null,{w:1280,h:720});
+    assert.ok(r.round&&r.round.ticks===180&&r.round.dayStart===5&&r.round.breakMs>0,'o room traz o bloco round');
+    assert.equal(r.round.start,0);
+    const end=await C.until(()=>C.jsonOf('roundEnd'),9000,'roundEnd');
+    assert.ok(end.champion,'campeão definido');assert.ok(end.board.length>1,'placar com linhas');
+    assert.equal(end.board[0].slot,end.champion.slot,'o campeão é o 1º do placar (maior massa viva)');
+    assert.ok(end.board.every((b,i)=>i===0||b.mass<=end.board[i-1].mass),'placar ordenado por massa');
+    assert.ok(end.board.some(b=>b.slot===C.slot),'apareço no placar');assert.ok(end.nextInMs>0);
+    const room=s2.rooms.rooms.get(r.code);assert.ok(room.over&&room.roundLeft()===0,'sala aposentada');
+    const C2=new Client(url);await C2.open();const r2=await C2.join('Efêmero',null,{w:1280,h:720});
+    assert.notEqual(r2.code,r.code,'a próxima sala é outra');assert.ok(r2.round.start<=s2.rooms.rooms.get(r2.code).sim.tick);
+    C.close();C2.close();
+  }finally{await s2.close();}
 });
 test('saída: fecha os sockets, salas expiram as sessões',async()=>{
   A.close();B.close();await sleep(100);const room=roomOf(roomCode);assert.equal(room.humanCount,3,'A, B e Carol na graça');assert.ok([...room.sessions.values()].every(s=>!s.ws));

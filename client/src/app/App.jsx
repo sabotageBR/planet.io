@@ -13,6 +13,7 @@ import Profile from "../ui/Profile.jsx";
 import Shop from "../ui/Shop.jsx";
 import Prefs from "../ui/Prefs.jsx";
 import Dead from "../ui/Dead.jsx";
+import Round from "../ui/Round.jsx";
 import AccountModal from "../ui/AccountModal.jsx";
 import ReconnOverlay from "../ui/ReconnOverlay.jsx";
 import Toast from "../ui/Toast.jsx";
@@ -38,6 +39,7 @@ export default function App() {
     <Shop on={screen === "shop"} />
     <Prefs on={screen === "prefs"} />
     <Dead on={screen === "dead"} />
+    <Round on={screen === "round"} />
     <AccountModal on={overlays.account} />
     <ReconnOverlay on={overlays.reconn} />
     <Toast />

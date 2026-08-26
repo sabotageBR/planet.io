@@ -182,6 +182,9 @@ export const effects={
         P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:16,inner:.45,phase:-k*.5,fill:GOLD,stroke:INK,width:Math.max(2,s*.02),alpha:al});
         P.push({type:"burst",x:f.x,y:f.y,n:14,r0:f.r*(.2+k*.9),r1:f.r*(.35+k*1.15),color:CREAM,alpha:a,width:Math.max(2,f.r*.02)});
         P.push({type:"text",x:f.x,y:f.y,text:"SUPERNOVA!",size:Math.max(14,f.r*.14),fill:CREAM,stroke:INK,font:FONT,alpha:al});break;}
+      case "countdown":{const s=f.r*(1.6-k*.5),al=Math.min(1,a*2);   // contagem do fim do mundo (segundos finais)
+        P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.7+k*1.1),color:CORAL,alpha:a*.7,width:Math.max(4,f.r*.05)});
+        P.push({type:"text",x:f.x,y:f.y,text:String(f.n||0),size:s,fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
       case "rock":P.push({type:"ring",x:f.x,y:f.y,r:f.r*.4*(1+k),color:PEACH,alpha:a*.5,width:2});break;}
     return P;},
   missileTrail:{color:CREAM,alphaK:.5,radiusK:.7,every:2},

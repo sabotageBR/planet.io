@@ -29,7 +29,7 @@ shared/src/    constants.js (ÚNICA fonte de tunables) · skins.js (50 skins) ·
 server/src/    index.js (composition root + startServer) · loop.js (scheduler 60 Hz) · metrics.js
                sim/ (Sim, bots, hooks) · rooms/ (codes, Room, RoomManager) · net/ (Session, wsServer, snapshot) · http/ (api, peers)
                config.js · log.js · db/ (pool, migrate, migrations/) · auth/ (tokens, password, nick, ratelimit) · repos/ · api/ (router + rotas) · persist/ (session, rewards, queue, hooks)
-client/src/    main.jsx · app/ (App, theme bridge) · ui/ (telas React: mesmo DOM dos mockups) · api/client.js · state/ (store) · hooks/
+client/src/    main.jsx · app/ (App, theme bridge) · ui/ (telas React: mesmo DOM dos mockups + Round.jsx do fim do mundo) · api/client.js · state/ (store) · hooks/
                theme/ (index.js + dawn|sunset|dusk: tokens/hud/screens.css gerados por port.js, index.js com textures/effects/hud) · styles/base.css
                game/ (index.js createGame · net/ · state/ · renderer/ · input/ · hud/ · bench.js)
 docs/spec/     protocol.md · api.md · hooks.md · server-game.md · client-game.md      docs/design/  telas.md · theme-time.md · rodada-1.md
@@ -42,18 +42,24 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 
 - **Autoridade no servidor, física compartilhada.** `shared/physics` roda a 60 Hz no servidor (`World.step`) e no cliente só para as
   próprias peças (`predict.js`). Determinística: `mulberry32` por sala, tick inteiro, sem gerador nativo. Spatial hash de 128 px.
-  Regras: engolir só com `EAT.RATIO` (1.15) e centro dentro; senão quique elástico; asteroides (cinturões + errantes: pop/chip/alimentar/atirar);
+  Regras: engolir só com `EAT.RATIO` (1.15) e centro dentro; senão quique elástico; asteroides (cinturões + errantes: pop/chip/alimentar/atirar;
+  batida forte com escudo tira um nível em vez de lascar); estrelas (perigo que estilhaça quem encosta e, ao envelhecer, vira supernova:
+  espalha partículas, chuta os asteroides e empurra os planetas por perto);
   buracos negros (força ∝ 1/d², horizonte tira 30% da massa e teleporta para a saída pareada); powerups = só ímã e escudo
-  (o de velocidade foi removido); mísseis (homing no jogador ou
-  interceptação de míssil inimigo; míssil×míssil varrido = CLASH; míssil desvia asteroide = DEFLECT); ímã suga comida e ejetados
-  (comida movida recebe UPDATE); escudo por níveis 1–3 (não expira, evolui sem ser atingido, míssil tira um nível, cai ao
-  disparar/dividir; contra quem pode engolir só segura a 1ª batida — ela derruba o escudo inteiro e quica, depois o maior come); fusão por par (atração só perto, sem puxão ao centróide).
+  (o de velocidade foi removido); mísseis (homing no jogador, interceptação de míssil inimigo ou **tiro mirado reto** quando o
+  jogador segura o botão; míssil×míssil varrido = CLASH; míssil desvia asteroide = DEFLECT); ímã suga comida e ejetados
+  (comida movida recebe UPDATE; cometa/estrela mais devagar; a estrela-perigo se arrasta até você); escudo por níveis 1–3 (não expira,
+  evolui sem ser atingido, míssil/tiro/batida forte de asteroide tiram um nível, dividir derruba inteiro; contra quem pode engolir só
+  segura a 1ª batida — ela derruba o escudo inteiro e quica, depois o maior come); fusão por par (atração só perto, sem puxão ao centróide).
   Regras novas = `rules.js` + `predict.js` (peças próprias) + tradução de eventos em `Sim._consume` E `LocalServer.step`.
 - **Fio binário** (`docs/spec/protocol.md`): snapshots a 20 Hz com AOI por sessão (create/update/remove por id), `self`, PLAYERS,
   LEADERBOARD, EVENT, PONG; INPUT de 10 bytes a ≤30 Hz com `seq`/`ackSeq`. JSON só para controle (join/resume/room/error/dead/rewards).
   Cliente: interpolação a −100 ms para os outros, predição + reconciliação para si (`visualOffset` decai; snap > 120 px) com a
   peça própria renderizada interpolada entre passos (sem isso treme a 60/120 Hz); relógio com mediana+slew; removidas somem
   no frame com efeito (`onVanish`); efeitos de terceiros atrasados pelo atraso de interpolação; skins aquecidas no PLAYERS.
+- **Rodada de 10 min** (`ROUND` em constants; `ROUND_TICKS` no env): a sala inteira vale um dia do "relógio do espaço"
+  (começa 05:00 e o tema do céu segue essa hora, dawn→sunset→dusk); no fim o mundo explode, o maior planeta vivo é o campeão,
+  vai um `roundEnd` com o placar, a sala é aposentada e o cliente entra sozinho numa sala nova depois de 15 s (`ui/Round.jsx`).
 - **Salas por shard** como na v1: código `1ABC` → shard 1 (1º char base36); nginx roteia `/ws/<shard>` para `planet-server-<shard>`;
   `/api/*` balanceado (qualquer shard responde, tudo stateless no Postgres). `findOrCreateRoom` enche a sala mais cheia com vaga.
 - **Identidade**: token opaco `pt_…` (sha256 no banco), guest por padrão (`POST /api/auth/guest`), reivindicar com senha (scrypt nativo)

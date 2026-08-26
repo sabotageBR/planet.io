@@ -1,5 +1,6 @@
 // ── SIM: World (shared/physics) + estado de jogo por slot ───────────────────────
 // Consome world.events a cada passo → kills/streak, mortes (humano: `death` + onMatchEnd → `rewards`;
+// fim de rodada: `endRound()` fecha a partida de todos sem `death` e devolve o placar final;
 // bot: renasce com score·RESPAWN_SCORE), motivos de remoção para os snapshots (`gone`), eventos de
 // alto nível para o fio (`wireEvents`, a Room filtra por AOI) e hooks de persistência.
 // Pontuação: o World já aplica EAT.SCORE_PLAYER·r / SCORE_FOOD·r / SCORE_EJECT·r em ps.score; aqui só
@@ -135,6 +136,24 @@ export class Sim{
     const sessionId=gp.sessionId,done=r=>this._emit('rewards',{slot:e.slot,sessionId,rewards:r||null});
     Promise.resolve().then(()=>this.hooks.onMatchEnd({sessionId,cause:byHole?'blackhole':'eaten',killedBySessionId:by&&!by.isBot?by.sessionId:null,score:gp.score,maxMass,durationMs}))
       .then(done,err=>{if(this.log)this.log.warn(`onMatchEnd (${gp.name}) falhou:`,err&&err.message);done(null);});}
+  /**
+   * Fim de rodada (o mundo explodiu): fecha a partida de todo humano vivo pelo mesmo caminho de persistência da morte
+   * (`cause:'round'`, sem mandar `dead` — quem manda o placar é a Room) e devolve o placar final: vivos por massa
+   * (o 1º é o campeão) e, no fim, os humanos que já tinham morrido.
+   */
+  endRound(){
+    const w=this.world,rows=this.leaderboard(),board=[],seen=new Set();
+    const row=(gp,mass)=>({slot:gp.slot,name:gp.name,mass,score:gp.score,kills:gp.kills+gp.botKills,isBot:gp.isBot,registered:gp.registered,skinId:gp.skinId});
+    for(const r of rows){const gp=this.players.get(r.slot);if(!gp)continue;seen.add(gp.slot);board.push(row(gp,r.mass));}
+    for(const gp of this.players.values())if(!gp.isBot&&!seen.has(gp.slot))board.push(row(gp,0));
+    for(const gp of this.players.values()){
+      if(gp.isBot||gp.dead)continue;
+      const ps=w.players.get(gp.slot);if(ps){gp.score=ps.score;ps.alive=false;}
+      gp.dead=true;const sessionId=gp.sessionId,maxMass=Math.round(gp.maxMass),durationMs=Math.round((w.tick-gp.joinedTick)*1000/TICK_HZ);
+      const done=r=>this._emit('rewards',{slot:gp.slot,sessionId,rewards:r||null});
+      Promise.resolve().then(()=>this.hooks.onMatchEnd({sessionId,cause:'round',killedBySessionId:null,score:gp.score,maxMass,durationMs}))
+        .then(done,err=>{if(this.log)this.log.warn(`onMatchEnd (rodada, ${gp.name}) falhou:`,err&&err.message);done(null);});}
+    this.playersDirty=true;return board;}
   _sample(){
     const w=this.world;
     for(const gp of this.players.values()){if(gp.isBot||gp.dead||!gp.sessionId)continue;const ps=w.players.get(gp.slot);if(!ps||!ps.alive)continue;

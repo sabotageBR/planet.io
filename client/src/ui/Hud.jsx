@@ -1,4 +1,5 @@
-// HUD sobre o canvas: chips, placar, massa/pontos, munição, powerups, cooldowns, botões touch.
+// HUD sobre o canvas: chips (sala, relógio do espaço + contagem do fim do mundo, ping/fps), placar,
+// massa/pontos, munição, powerups, cooldowns, botões touch.
 // Lê o hudStore do jogo (throttle 20 Hz) e a sessão (moedas/nick/prefs). Os botões touch emitem
 // CustomEvent `planet:action` {action, phase} que borbulha até #hud (o motor escuta ali).
 import React, { useMemo, useSyncExternalStore } from "react";
@@ -9,7 +10,7 @@ import { leaveGame } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
 
-const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false };
+const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, clock: null };
 const EMPTY_STORE = { get: () => EMPTY, subscribe: () => () => {} };
 const PW_ICON = { magnet: "🧲", shield: "🛡️" };
 const emit = (el, action, phase) => el.dispatchEvent(new CustomEvent("planet:action", { bubbles: true, detail: { action, phase } }));
@@ -39,6 +40,7 @@ export default function Hud() {
   return <div id="hud" className={screen === "game" ? "" : "hidden"}>
     <div id="hud-top">
       <span className="chip" id="h-room"><i>{LB.room}</i> <b id="v-room">{h.room || room || "—"}</b></span>
+      {h.clock ? <span className="chip" id="h-clock"><i>🕒</i> <b>{String(h.clock.h).padStart(2, "0")}:{String(h.clock.m).padStart(2, "0")}</b> <i>⏳</i> <b>{Math.floor(h.clock.leftS / 60)}:{String(Math.floor(h.clock.leftS % 60)).padStart(2, "0")}</b></span> : null}
       <span className="chip" id="h-net" style={prefs.showFps ? undefined : { display: "none" }}><b id="v-ping">{h.ping || 0}</b><i>{LB.ping}</i> <b id="v-fps">{h.fps || 0}</b><i>{LB.fps}</i></span>
       <button className="btn-mini" id="h-exit" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.exit}</button>
     </div>

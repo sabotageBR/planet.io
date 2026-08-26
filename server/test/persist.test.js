@@ -29,7 +29,7 @@ const call=async(method,p,{body,token,ip='10.0.0.1'}={})=>{
 before(async()=>{
   db=createDb(config,log);
   await db.query('DROP SCHEMA public CASCADE');await db.query('CREATE SCHEMA public');
-  const {applied}=await migrate(db,log);assert.equal(applied.length,1);
+  const {applied}=await migrate(db,log);assert.equal(applied.length,2);   // 0001_init + 0002_round_cause
   persist=createPersistence({db,log,config:{...config,noCleanup:true}});
   api=createApi({db,log,config,persist});
   server=http.createServer(async(req,res)=>{if(await api(req,res))return;res.writeHead(404);res.end();});

@@ -3,7 +3,7 @@
 // última partida e recompensas. A simulação vive no módulo do jogo (hudStore), não aqui.
 import { createStore } from "./store.js";
 
-export const SCREENS = ["entry", "lobby", "rank", "profile", "shop", "prefs", "game", "dead"];
+export const SCREENS = ["entry", "lobby", "rank", "profile", "shop", "prefs", "game", "dead", "round"];
 export const NAV_SCREENS = ["entry", "lobby", "rank", "profile", "shop", "prefs"];
 
 /** Whitelist de PATCH /api/me/prefs (docs/spec/api.md) com os padrões do cliente. */
@@ -36,6 +36,7 @@ export const initialState = {
   toast: null,           // {msg, n}
   mode: "desktop",       // desktop|portrait|landscape (body[data-mode])
   lastMatch: null,       // {by, byHole, score, maxMass, kills, durationS, room, at}
+  roundResult: null,     // {code, champion, board:[{slot,name,mass,score,kills,isBot,registered}], nextInMs, at} — fim do mundo
   rewards: null,         // {saved, coinsEarned, coins, achievements, skinsUnlocked, rank:{day}}
   rewardsPending: false,
   rooms: [], roomsAt: 0,

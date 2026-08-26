@@ -7,11 +7,11 @@ loop.js         UM Scheduler 60 Hz por processo: acumulador performance.now(), s
 metrics.js      ring buffers (600 amostras): tick ms p50/p99/max, loopLag, bytes out/s, msgs in/s, rateLimitHits
 sim/Sim.js      World (shared/physics) + estado de jogo por slot {slot,sessionId,userId,name,registered,skinId,isBot,dead,score,stats,input:{seq,tx,ty,flags},missiles…}
                 consome world.events → score, kills, mortes, respawn de bots, eventos de alto nível; chama hooks (docs/spec/hooks.md)
-sim/bots.js     BotBrain: wander/hunt/flee + evitar buracos negros e asteroides maiores; produz input como humano (applyInput)
+sim/bots.js     BotBrain: wander/hunt/flee + evitar buracos negros, estrelas e asteroides maiores; produz input como humano (applyInput)
 sim/hooks.js    NOOP_HOOKS
 rooms/codes.js  newCode(shard) (1º char = shard base36 + 3 de "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"), shardOf(code)
-rooms/Room.js   {code, shard, sim, sessions: Map<slot,Session>, snapshotter, createdAt}; step(tick): sim.step(); a cada SNAPSHOT_EVERY → snapshots; a cada LEADERBOARD_EVERY → leaderboard
-rooms/RoomManager.js  findOrCreateRoom (mais cheia com vaga), getRoom(code) (cria se for do shard local), listRooms, reap (30 s sem humanos → para; 35 s → remove)
+rooms/Room.js   {code, shard, sim, sessions, snapshotter, createdAt, roundStart, over}; step(tick): fim da rodada → endRound(); senão sim.step(); a cada SNAPSHOT_EVERY → snapshots; a cada LEADERBOARD_EVERY → leaderboard
+rooms/RoomManager.js  findOrCreateRoom (mais cheia com vaga, ignorando as que já acabaram), getRoom(code), listRooms, reap (30 s sem humanos → para; 35 s → remove; sala terminada → remove BREAK_MS depois)
 net/Session.js  ws + slot + seq/ack + known:Set<id> + AOI rect + token bucket + view{w,h} + resumeToken + lastSeen
 net/wsServer.js upgrade em /ws/<shard> (o nginx já roteia), dispatch join/resume/view/ping (JSON) e INPUT (binário), heartbeat, rate limit, close codes
 net/snapshot.js por sessão: AOI (shared/camera.viewRect + NET.AOI_PAD/AOI_PAD_OUT com histerese), CREATE/UPDATE-se-mudou/REMOVE, self block; usa encodeSnapshot do shared/protocol
@@ -32,7 +32,8 @@ http/peers.js   fetch dos irmãos (PEERS ou PEER_HOST) com timeout 1200 ms
 flags one-shot: `SPLIT`/`EJECT`/`FIRE` executadas uma vez por seq nova (o cliente repete a flag até o ack — o servidor
 ignora repetições porque só processa seq > lastSeq); `EJECT_HOLD` liga/desliga repetição (a cada EJECT.HOLD_TICKS).
 Cooldowns só no servidor (`World.requestSplit/Eject/Fire` já checam). Rate limit: NET.RATE_INPUTS/s, burst NET.RATE_BURST.
-`FIRE` e `SPLIT` derrubam o escudo do jogador (SHIELD_BREAK). `FIRE` mira, nesta ordem: míssil inimigo que persegue este slot a
+`FIRE` custa **um nível** do escudo (SHIELD_HIT; 0 → SHIELD_BREAK) e `SPLIT` derruba o escudo inteiro. Com `AIM` (o jogador segurou o
+botão) o míssil sai **reto** na direção de `tx,ty`, sem alvo. Sem AIM, `FIRE` mira nesta ordem: míssil inimigo que persegue este slot a
 < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`), senão o oponente vivo mais próximo.
 
 ## Regras (shared/physics/rules.js — o servidor não tem regra própria)
@@ -43,12 +44,29 @@ Cooldowns só no servidor (`World.requestSplit/Eject/Fire` já checam). Rate lim
   normalmente. Disparar ou dividir também derruba o escudo. Bots com escudo não atiram nem dividem.
 - **Fusão**: por par de peças do mesmo dono — separação enquanto uma não pode fundir; quando ambas podem, atração só a
   d < (ra+rb)·MERGE.ATTRACT_RANGE (sem puxão global ao centróide); merge pareado a d < max(r)·MERGE.DIST.
+- **Asteroide**: batida forte (vn ≥ ASTEROID.SHIELD_VN) com escudo tira 1 nível em vez de lascar; batida fraca com escudo não faz nada;
+  sem escudo, lasca como antes (CHIP).
+- **Estrelas** (STAR.*): perigo estático em 3 fases — GROW (rampa de `k`; só arma acima de ARM_K), ACTIVE e OLD (incha até R·SWELL).
+  Encostar empurra a peça (PUSH_TOUCH) e, fora do cooldown de contato e com r ≥ SHATTER_MIN_R, **estilhaça** em SHATTER_N+1 pedaços a
+  SHATTER_SPEED com a massa conservada (STAR_BURST). No fim do OLD vira **supernova** num raio r·NOVA_R: NOVA_PARTICLES ejetados sem
+  dono, asteroides chutados com AST_KICK·(1−d/blast)·min(1,R_MIN/r) (os de cinturão viram errantes e o cinturão repõe) e peças
+  empurradas com PUSH·(1−d/blast) — só empurrão. A estrela morre e outra nasce RESPAWN_TICKS depois.
 - **Powerups**: só ímã (temporário, POWERUP.TICKS) e escudo (níveis). O powerup de velocidade foi removido — a velocidade máxima vem só do raio (`vmaxFor`).
 - **Ímã**: comida a d < r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s e é marcada MOVED (UPDATE X_Y
-  no snapshot); ejetados de terceiros (ou próprios após cdUntil) ganham MAGNET_EJECT_A px/s². Flag PIECE_FLAG.MAGNET para todos verem.
+  no snapshot) — cometa e estrela (comida pesada) a MAGNET_HEAVY disso; ejetados de terceiros (ou próprios após cdUntil) ganham
+  MAGNET_EJECT_A px/s²; a estrela do mundo se arrasta a MAGNET_STAR (vem para cima de você). Flag PIECE_FLAG.MAGNET para todos verem.
 - **Mísseis**: míssil × míssil de donos diferentes com teste varrido (O(n²) sobre w.missiles, fora da grade) → ambos morrem (CLASH);
   míssil × asteroide → o míssil morre e o asteroide ganha Δv = AST_KICK·min(1, R_MIN/r) na direção do míssil; asteroide de cinturão
   vira errante e o cinturão reagenda um substituto (DEFLECT).
+
+## Rodada (fim do mundo)
+Cada sala vive `config.roundTicks` (env `ROUND_TICKS`, padrão ROUND.TICKS = 10 min). O bloco `round` do JSON `room`
+(`{start,ticks,dayStart,breakMs}`) é tudo que o cliente precisa: dele saem o relógio do espaço (a rodada = um dia inteiro
+começando às `dayStart`, e o tema do céu segue essa hora) e a contagem para a explosão. Ao acabar: `Room.endRound()` →
+`Sim.endRound()` fecha a partida de todo humano vivo (mesma persistência da morte, `cause:'round'`, sem `dead`) e devolve o
+placar (vivos por massa; o 1º é o campeão, bots incluídos; humanos já mortos entram no fim). Vai um `roundEnd` para todas as
+sessões, a sala fica `over` (não recebe mais ninguém, não simula) e o RoomManager a remove BREAK_MS depois — o cliente entra
+sozinho numa sala nova quando o contador do placar zera.
 
 ## Morte / saída
 - `PLAYER_DEAD` do world → `dead` JSON `{by, byHole, score, maxMass, kills, durationS}` → `hooks.onMatchEnd(...)` → quando resolver, `rewards` JSON; o jogador fica no mundo como morto até `join` de novo (novo sessionId) ou sair.
