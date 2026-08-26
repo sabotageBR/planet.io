@@ -96,7 +96,6 @@ export const textures={
 
   paintSkin(c,sk,r){const rr2=sk.ring?r*.68:r,d=rr2*PK(sk),size=tier(rr2),k=d*2/size;c.save();c.translate(0,2);c.scale(k,k);textures.planet(c,size,{skin:sk,isMe:false});c.restore();},
 
-  // fundo: ameixa → magenta → laranja (sem sol), faixas de nuvem roxas com fio quente, estrelas fixas só na parte roxa
   background(x,W,H,{rng}={}){x.lineJoin="round";x.lineCap="round";
     const gd=x.createLinearGradient(0,0,0,H);gd.addColorStop(0,SIL);gd.addColorStop(.22,PLUM);gd.addColorStop(.6,MAG);gd.addColorStop(1,ORA);x.fillStyle=gd;x.fillRect(0,0,W,H);
     const rand=rng||mulberry(5);

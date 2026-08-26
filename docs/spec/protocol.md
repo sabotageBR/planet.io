@@ -40,7 +40,7 @@ Binário (primeiro byte = tipo):
     - `MISSILE=6`: `u16 ownerSlot | u16 targetSlot (65535 = sem alvo ou alvo é outro míssil) | i16 vx | i16 vy`
   - update: `u32 id | u8 mask` + campos presentes na ordem: `X_Y=1 (u16 x,u16 y)`, `R=2 (u16 r10)`, `V=4 (i16 vx,i16 vy)`, `FLAGS=8 (u8)`, `EXTRA=16 (u8 phase / u16 influenceR para buraco negro: u8 phase + u16 influenceR)`
   - remove: `u32 id | u8 reason (0 LEFT_AOI,1 EATEN,2 MERGED,3 POPPED,4 EXPIRED,5 SUCKED,6 DESPAWN)`
-  - self: `u8 flags(DEAD=1) | u8 missiles | u8 powerupBits(magnet=1,shield=2) | u16 magnetT | u8 shieldLv(0..3; o escudo não expira) | u32 score | u8 splitCd | u8 ejectCd | u16 rank | u32 mass` (18 bytes)
+  - self: `u8 flags(DEAD=1,RESYNC=2 — descarte as entidades conhecidas antes de aplicar este snapshot) | u8 missiles | u8 powerupBits(magnet=1,shield=2) | u16 magnetT | u8 shieldLv(0..3; o escudo não expira) | u32 score | u8 splitCd | u8 ejectCd | u16 rank | u32 mass` (18 bytes)
 - `0x11 PLAYERS` (no join e quando muda): `u8 | u16 n | [u16 slot | u8 flags(BOT=1,DEAD=2,REG=4) | u8 skinId | u8 nameLen | nameLen bytes utf8 | u32 score]`
 - `0x12 LEADERBOARD` (2 Hz): `u8 | u8 n | [u16 slot | u32 mass]`
 - `0x13 EVENT`: `u8 | u8 kind(0 EAT,1 POP,2 MERGE,3 SPLIT,4 BH_SUCK,5 DEATH,6 CHIP,7 BOUNCE,8 BOOM,9 EXIT,10 SHOOT,11 SHIELD_BREAK,12 CLASH,13 DEFLECT,14 SHIELD_HIT,15 SHIELD_UP) | u16 x | u16 y | u16 r10 | u16 slotA | u16 slotB | u32 extra`
@@ -52,6 +52,8 @@ Binário (primeiro byte = tipo):
 Sim 60 Hz; snapshot a cada 3 ticks (20 Hz). Área de interesse por sessão = retângulo da câmera (`shared/camera.viewRect`)
 expandido 30% (histerese: sai a 45%). `Session.known` guarda ids conhecidos → CREATE ao entrar, UPDATE só se mudou
 (comida só quando o ímã/buraco negro a moveu — `FOOD_FLAG.MOVED` → X_Y), REMOVE(LEFT_AOI) ao sair, REMOVE(motivo) ao morrer. Comida tem id estável.
+Socket congestionado (> 256 KB pendentes): a sessão pula o snapshot e esquece o `known`; o snapshot seguinte vai com `self.flags RESYNC`
+para o cliente descartar tudo e recriar (sem isso o que já fora enviado nunca receberia REMOVE e viraria entidade fantasma permanente).
 
 ## Predição / interpolação (cliente)
 Próprias peças: predição com `shared/physics` (thrust, drag, paredes, separação/merge próprios); ao receber snapshot com

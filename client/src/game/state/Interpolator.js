@@ -2,12 +2,14 @@
 // Atraso base NET.INTERP_DELAY_MS, adaptativo até INTERP_MAX_MS quando o buffer seca 2× em 5 s
 // (volta 0.5 tick a cada 10 s calmos); o atraso usado RAMPA (DELAY_SLEW/frame) em vez de saltar.
 // Lerp x/y/r entre as amostras que cercam tRender; além da última amostra extrapola com vx,vy até
-// EXTRAP_MAX_MS. Sem update há 1 s (peças/ejetados/mísseis) → fade e remoção. Removidas pelo servidor,
+// EXTRAP_MAX_MS. Sem update há 1 s → fade e remoção, mas SÓ para quem estava em movimento: o servidor não
+// manda UPDATE de quem está parado (posição quantizada igual), então um fragmento parado sumiria da tela
+// continuando comível no mundo. Entidades órfãs de verdade somem pelo RESYNC do servidor. Removidas pelo servidor,
 // quando tRender alcança o tick da remoção: EATEN/SUCKED/POPPED/MERGED → somem NO MESMO FRAME e
 // chamam onVanish(e) (efeito local); LEFT_AOI → imediato; EXPIRED/DESPAWN → fade curto (0,2 s).
 import {KIND,NET,TICK_HZ,REMOVE} from "@planet/shared";
 
-const T=TICK_HZ/1000,BASE=NET.INTERP_DELAY_MS*T,MAXD=NET.INTERP_MAX_MS*T,EXTRAP=NET.EXTRAP_MAX_MS*T,STALE=60,FADE_REMOVED=12,FADE_STALE=30,DELAY_SLEW=.05;
+const T=TICK_HZ/1000,BASE=NET.INTERP_DELAY_MS*T,MAXD=NET.INTERP_MAX_MS*T,EXTRAP=NET.EXTRAP_MAX_MS*T,STALE=60,FADE_REMOVED=12,FADE_STALE=30,DELAY_SLEW=.05,STILL_V2=64;   // |v| ≤ 8 px/s = parado
 const MOVING=new Set([KIND.PIECE,KIND.EJECT,KIND.MISSILE]);
 const VANISH=new Set([REMOVE.EATEN,REMOVE.SUCKED,REMOVE.POPPED,REMOVE.MERGED]);
 export function createInterpolator(buffer,{isOwn=()=>false,onVanish=null}={}){
@@ -36,7 +38,7 @@ export function createInterpolator(buffer,{isOwn=()=>false,onVanish=null}={}){
           if(age<0)e.alpha=1;   // o tempo de render ainda não chegou ao tick da remoção
           else if(VANISH.has(e.reason)){e.gone=true;if(!e.vanished){e.vanished=true;if(onVanish)onVanish(e);}}
           else{e.alpha=Math.max(0,1-age/FADE_REMOVED);if(e.alpha<=0)e.gone=true;}}
-        else if(MOVING.has(e.kind)){const stale=rt-last.tick-STALE;e.alpha=stale>0?Math.max(0,1-stale/FADE_STALE):1;if(e.alpha<=0)e.gone=true;}
+        else if(MOVING.has(e.kind)&&(last.vx*last.vx+last.vy*last.vy)>STILL_V2){const stale=rt-last.tick-STALE;e.alpha=stale>0?Math.max(0,1-stale/FADE_STALE):1;if(e.alpha<=0)e.gone=true;}
         else e.alpha=1;}
       it.extrap=extrap;
       for(const [id,e] of buffer.entities)if(e.gone)buffer.entities.delete(id);},

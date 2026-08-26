@@ -96,14 +96,14 @@ export const textures={
   paintSkin(c,sk,r){const rr2=sk.ring?r*.68:r,d=rr2*PK(sk),size=tier(rr2),k=d*2/size;c.save();c.translate(0,2);c.scale(k,k);textures.planet(c,size,{skin:sk,isMe:false});c.restore();},
 
   // fundo: marinho → violeta, brasa magenta → laranja queimado só nos ~18% de baixo (sem sol); estrelas no alto (60%) com fade;
-  // 3 calotas de planetas/montes em silhueta no horizonte com fio pêssego; faixas de nuvem ameixa
+  // 3 calotas de planetas/montes em silhueta no horizonte com fio pêssego
   background(x,W,H,{rng}={}){x.lineJoin="round";x.lineCap="round";
     const gd=x.createLinearGradient(0,0,0,H);gd.addColorStop(0,NAVY);gd.addColorStop(.46,VIO);gd.addColorStop(.7,"#4b2c6c");gd.addColorStop(.84,EMB1);gd.addColorStop(1,EMB2);x.fillStyle=gd;x.fillRect(0,0,W,H);
     const rand=rng||mulberry(5);
     x.fillStyle=CREAM;for(let i=0;i<80;i++){const y=H*rand()*.6;x.globalAlpha=(.2+rand()*.5)*Math.min(1,(H*.6-y)/(H*.2));x.fillRect(rand()*W,y,2,2);}x.globalAlpha=1;
     [[.16,.16,.4],[.82,.12,.36],[.5,.26,.3]].forEach(([fx,fr,k])=>{const R=W*fr,cx=W*fx,cy=H+R*(1-k);
       x.fillStyle="rgba(24,14,52,.85)";x.beginPath();x.arc(cx,cy,R,0,6.283);x.fill();
-      x.strokeStyle="rgba(255,207,154,.4)";x.lineWidth=3;x.beginPath();x.arc(cx,cy,R-1.5,3.4,6.02);x.stroke();});
+      x.strokeStyle="rgba(255,207,154,.4)";x.lineWidth=3;x.beginPath();x.arc(cx,cy,R-1.5,3.4,6.02);x.stroke();});},
 
   // parallax só na parte escura do céu (60% de cima), com fade
   bandLayers({seed=21,WW=3000,WH=3000}={}){const rand=mulberry(seed);

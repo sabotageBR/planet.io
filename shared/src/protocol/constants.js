@@ -7,7 +7,7 @@ export const INPUT_FLAG={SPLIT:1,EJECT:2,EJECT_HOLD:4,FIRE:8};
 export const PIECE_FLAG={SHIELD:1,LAUNCH:2,MERGING:4,ME:8,MAGNET:16,SHIELD_LV_SHIFT:5,SHIELD_LV_MASK:96};   // nível do escudo (1..3) = (flags>>SHIELD_LV_SHIFT)&3
 export const FOOD_FLAG={MOVED:1};   // interno ao mundo (ímã/buraco negro moveu a comida desde o último snapshot); não vai no fio
 export const PLAYER_FLAG={BOT:1,DEAD:2,REG:4};
-export const SELF_FLAG={DEAD:1};
+export const SELF_FLAG={DEAD:1,RESYNC:2};   // RESYNC: a sessão esqueceu o que o cliente conhece (socket congestionado) — o cliente descarta tudo e recria com este snapshot
 export const POWER_BIT={magnet:1,shield:2};
 export const UPD={X_Y:1,R:2,V:4,FLAGS:8,EXTRA:16};
 export const REMOVE={LEFT_AOI:0,EATEN:1,MERGED:2,POPPED:3,EXPIRED:4,SUCKED:5,DESPAWN:6};

@@ -5,7 +5,6 @@
 // esquerda, munição no centro, três botões de toque sempre à mão) com a PALETA
 // quente do Cartoon Crepúsculo já escurecida para o começo da noite: céu
 // azul-marinho → violeta com uma brasa magenta → laranja queimado só no horizonte
-// (faixa fina, SEM sol), estrelas só no alto, faixas de nuvem em silhueta com fio
 // pêssego, cenário em silhueta, planetas com fio quente e crescente roxo; ouro,
 // coral e teal sobre ameixa.
 // Desempenho: tudo que tem contorno/volume é sprite assado por (skin, tier);
@@ -108,8 +107,7 @@ drawBg(c,W,H,cam,t,g){
     // horizonte: 3 planetas/montes distantes em silhueta, só a calota (fração do raio) aparece, fio pêssego em cima
     [[.16,.16,.4],[.82,.12,.36],[.5,.26,.3]].forEach(([fx,fr,k])=>{const R=W*fr,cx=W*fx,cy=H+R*(1-k);
       x.fillStyle="rgba(24,14,52,.85)";x.beginPath();x.arc(cx,cy,R,0,6.283);x.fill();
-      x.strokeStyle="rgba(255,207,154,.4)";x.lineWidth=3;x.beginPath();x.arc(cx,cy,R-1.5,3.4,6.02);x.stroke();});
-    // faixas de nuvem: silhuetas ameixa compridas com fio pêssego em cima (faixa do meio para baixo)
+      x.strokeStyle="rgba(255,207,154,.4)";x.lineWidth=3;x.beginPath();x.arc(cx,cy,R-1.5,3.4,6.02);x.stroke();});}
   c.drawImage(bg,0,0);
   if(g&&g.prefs&&!g.prefs.parallax)return;
   // parallax só na parte escura do céu (60% de cima), com fade

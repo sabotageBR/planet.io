@@ -6,7 +6,7 @@
 // Objetos de saída são de pools reutilizados.
 // @ts-check
 import {NET,BLACKHOLE} from '@planet/shared/constants.js';
-import {KIND,UPD,REMOVE,PIECE_FLAG,FOOD_FLAG} from '@planet/shared/protocol/constants.js';
+import {KIND,UPD,REMOVE,PIECE_FLAG,FOOD_FLAG,SELF_FLAG} from '@planet/shared/protocol/constants.js';
 import {encodeSnapshot,qPos,qR,qV} from '@planet/shared/protocol/index.js';
 import {focusOf,zoomFor,viewRect,rectHas} from '@planet/shared/camera.js';
 const MAX_BUFFERED=256*1024,SWEEP_EVERY=60,WFLAGS=PIECE_FLAG.SHIELD|PIECE_FLAG.LAUNCH|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK,NO_SLOT=0xffff;
@@ -54,7 +54,7 @@ export function createSnapshotter(room){
   /** Monta e envia o snapshot de uma sessão (nada acontece se o socket está fechado ou atolado). */
   function send(s){
     const ws=s.ws;if(!ws||ws.readyState!==1)return false;
-    if(ws.bufferedAmount>MAX_BUFFERED){s.known.clear();s.rect=null;return false;}   // cliente lento: pula este; recria tudo quando drenar
+    if(ws.bufferedAmount>MAX_BUFFERED){s.known.clear();s.rect=null;s.resync=true;return false;}   // cliente lento: pula este e esquece o known; o próximo snapshot vai com RESYNC (senão o que já foi enviado vira entidade fantasma eterna no cliente)
     const sim=room.sim,w=sim.world,slot=s.slot,ps=w.players.get(slot),gp=sim.players.get(slot);
     const pcs=ps?ps.pieces:null;
     if(pcs&&pcs.length){const f=focusOf(pcs);s.cx=f.cx;s.cy=f.cy;s.scale=zoomFor(f.bigR,f.spread,s.view.h>s.view.w);}
@@ -68,6 +68,7 @@ export function createSnapshotter(room){
     for(const [id,v] of known){if((v>>>3)===stamp)continue;known.delete(id);
       const g=gone.get(id);pushRemove(id,g!==undefined?g:byId.has(id)?REMOVE.LEFT_AOI:DEFAULT_REASON[v&7]);}
     snap.tick=w.tick;snap.ackSeq=gp?gp.lastInput.seq:0;sim.self(slot,self);
+    if(s.resync){self.flags|=SELF_FLAG.RESYNC;s.resync=false;}
     const view=encodeSnapshot(room.writer,snap);if(!s.send(view))room.rotateWriter();return true;}
   return{beginTick,send,prev,masks};
 }

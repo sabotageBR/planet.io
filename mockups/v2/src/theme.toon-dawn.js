@@ -8,7 +8,6 @@
 // de ícones na entrada) e a PALETA é a do Cósmico (tinta #141026, creme, amarelo,
 // laranja, azul, roxo, verde) num céu de MANHÃ CEDO: azul-marinho no alto → azul
 // céu → brilho pêssego no horizonte, SEM SOL (o sol distraía), estrelas pálidas só
-// no terço de cima (a noite acabando), faixas de nuvem creme e planetas distantes
 // em azul-poeira. Mundo: receita de planeta do Cósmico (chapado + crescente escuro +
 // brilho elíptico + contorno de tinta), comida confete, asteroide marrom-cinza,
 // buraco negro roxo em espiral, rastro branco tracejado e POW! amarelo.
@@ -109,7 +108,6 @@ drawBg(c,W,H,cam,t,g){
     for(let i=0;i<3;i++){const r=H*(.05+rand()*.07),px=W*(.1+rand()*.8),py=H*(.5+rand()*.18);
       x.fillStyle="rgba(77,104,168,.4)";x.beginPath();x.arc(px,py,r,0,6.283);x.fill();
       x.strokeStyle="rgba(255,233,184,.55)";x.lineWidth=Math.max(2,r*.12);x.beginPath();x.arc(px,py,r*.9,.6,2.5);x.stroke();}
-    // faixas de nuvem: silhuetas creme compridas com fio branco em cima (sem tinta)
     // estrelas pálidas só no terço de cima (a noite acabando)
     x.fillStyle=CREAM;for(let i=0;i<50;i++){const y=H*rand()*.3;x.globalAlpha=(.15+rand()*.45)*(1-y/(H*.3));x.fillRect(rand()*W,y,2,2);}x.globalAlpha=1;}
   c.drawImage(bg,0,0);

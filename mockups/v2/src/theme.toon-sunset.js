@@ -101,8 +101,6 @@ init(g){const rand=u.mulberry(21);
 drawBg(c,W,H,cam,t,g){
   if(!bg||bgW!==W||bgH!==H){bgW=W;bgH=H;bg=document.createElement("canvas");bg.width=W;bg.height=H;const x=bg.getContext("2d");x.lineJoin="round";x.lineCap="round";
     const gd=x.createLinearGradient(0,0,0,H);gd.addColorStop(0,SIL);gd.addColorStop(.22,PLUM);gd.addColorStop(.6,MAG);gd.addColorStop(1,ORA);x.fillStyle=gd;x.fillRect(0,0,W,H);
-    // (sem sol: o horizonte fica só com o gradiente quente e as faixas de nuvem)
-    // faixas de nuvem: silhuetas roxas compridas com fio quente em cima
     const rand=u.mulberry(5);
     // estrelas fixas só na parte roxa (alto)
     x.fillStyle=CREAM;for(let i=0;i<70;i++){const y=H*(rand()*.42);x.globalAlpha=.25+rand()*.5;x.fillRect(rand()*W,y,2,2);}x.globalAlpha=1;}

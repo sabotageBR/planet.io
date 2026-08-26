@@ -132,6 +132,18 @@ test('morte: dead + rewards; PLAYERS marca DEAD; join de novo recomeça com sess
   const old=A.room.sessionId;A.known.clear();const r=await A.join('Alice',roomCode);assert.equal(r.code,roomCode);assert.notEqual(r.sessionId,old);
   await A.until(()=>A.mine().length>0,3000,'viva de novo');
 });
+test('resync: sessão que esqueceu o known avisa o cliente e recria tudo',async()=>{
+  const room=roomOf(roomCode),sess=[...room.sessions.values()].find(x=>x.slot===A.slot);
+  assert.ok(sess,'sessão de A');
+  const antes=A.known.size;assert.ok(antes>10,`cliente conhecia ${antes} entidades`);
+  sess.known.clear();sess.resync=true;   // simula o socket congestionado (snapshot.js: bufferedAmount > MAX_BUFFERED)
+  const n=A.snaps.length;
+  const snap=await A.until(()=>A.snaps.slice(n).find(s=>s.self.flags&SELF_FLAG.RESYNC),4000,'snapshot com RESYNC');
+  assert.ok(snap.creates.length>10,`recria tudo (${snap.creates.length} creates)`);
+  assert.ok(snap.creates.some(c=>c.kind===KIND.PIECE&&(c.flags&PIECE_FLAG.ME)),'peça própria recriada');
+  await A.until(()=>A.known.size>10,4000,'mundo reconstruído');
+});
+
 test('/healthz: tick p99, overruns, db, protocol',async()=>{
   const h=await (await fetch(base+'/healthz')).json();assert.equal(h.ok,true);assert.equal(h.shard,0);assert.ok(h.rooms>=1);assert.ok(h.players>=2);
   assert.equal(typeof h.tick.p99,'number');assert.equal(typeof h.tick.overruns,'number');assert.equal(typeof h.loopLagMs.p99,'number');assert.ok(['ok','down','none'].includes(h.db));assert.equal(h.protocol,PROTOCOL_VERSION);assert.ok(h.net.outKBps>0);
