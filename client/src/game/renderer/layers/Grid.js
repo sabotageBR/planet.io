@@ -14,4 +14,5 @@ export function createGrid(R){
       if(b.dash){dashPolyline([{x:0,y:0},{x:W,y:0},{x:W,y:H},{x:0,y:H},{x:0,y:0}],b.dash,seg);
         for(let i=0;i<seg.length;i+=4){border.moveTo(seg[i],seg[i+1]);border.lineTo(seg[i+2],seg[i+3]);}border.stroke({width:b.width,color:col.c,alpha:col.a,cap:"butt"});}
       else{border.rect(0,0,W,H).stroke({width:b.width,color:col.c,alpha:col.a});}}}
-  return{root,setTheme,render(f){ts.visible=f.showGrid;},destroy(){root.destroy({children:true});}};}
+  // a grade cobre a tela inteira (é a camada mais cara em máquina fraca): sai no modo econômico
+  return{root,setTheme,render(f){ts.visible=f.showGrid&&!R.econ;},destroy(){root.destroy({children:true});}};}

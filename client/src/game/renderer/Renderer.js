@@ -23,7 +23,7 @@ export async function createRenderer({container,theme,prefs}){
   const canvas=app.canvas;canvas.className="game-canvas";canvas.style.cssText="display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none";
   container.appendChild(canvas);
   const upload=tex=>{const r=app.renderer;if(r.prepare&&r.prepare.upload)r.prepare.upload(tex);else if(r.texture&&r.texture.initSource)r.texture.initSource(tex.source);};
-  const R={app,canvas,kind,cache:createTextureCache({budgetMB:48,upload}),theme,prefs:{fx:true,...prefs},W:app.screen.width,H:app.screen.height,res:dpr,econ:false,ambient:null};
+  const R={app,canvas,kind,cache:createTextureCache({budgetMB:48,upload}),theme,prefs:{fx:true,...prefs},W:app.screen.width,H:app.screen.height,res:dpr,econ:false,econLevel:0,ambient:null};
   const bg=createBackground(R),grid=createGrid(R),food=createFood(R),ejected=createEjected(R),hazards=createHazards(R),planets=createPlanets(R),missiles=createMissiles(R),fx=createFx(R);
   R.ambient=(kind,f)=>fx.ambient(kind,f);   // camadas pedem efeitos contínuos (ímã) sem conhecer a camada de fx
   const world=new Container();
@@ -35,9 +35,9 @@ export async function createRenderer({container,theme,prefs}){
     get W(){return R.W;},get H(){return R.H;},
     setTheme,
     resize(){app.resize();const w=app.screen.width,h=app.screen.height;if(w!==R.W||h!==R.H){R.W=w;R.H=h;bg.resize();}},
-    /** resolução (1 = econômico) */
-    setResolution(r){r=Math.max(1,Math.min(2,r));if(app.renderer.resolution===r)return;app.renderer.resolution=r;R.res=r;app.resize();bg.resize();},
-    setEcon(on){R.econ=on;fx.setBudget(on?.5:1);},
+    /** resolução de render (abaixo de 1 = econômico: menos pixels, leve borrão) */
+    setResolution(r){r=Math.max(.5,Math.min(2,r));if(app.renderer.resolution===r)return;app.renderer.resolution=r;R.res=r;app.resize();bg.resize();},
+    setEcon(lv){R.econ=lv>0;R.econLevel=lv|0;fx.setBudget(lv?(lv>1?.25:.5):1);},
     /** Aquece as texturas de planeta das skins presentes (tiers 128/256; a própria também em 512 e na variante isMe). */
     warmPlanets(skins,meSkin){const TX=R.theme.textures;
       for(const sk of skins)for(const size of [128,256])R.cache.warm(TX.key("planet",{skin:sk,isMe:false},size),size,(c,s)=>TX.planet(c,s,{skin:sk,isMe:false}));

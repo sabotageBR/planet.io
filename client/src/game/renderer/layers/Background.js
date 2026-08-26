@@ -36,6 +36,6 @@ export function createBackground(R){
         for(const m of metas){const l=m.l;if(l!==lf){lf=l;ox=((-cam.x*l.f*cam.scale)%T+T)%T;oy=((-cam.y*l.f*cam.scale)%T+T)%T;}
           const x=(m.s.x+ox)%T+m.i*T,y=(m.s.y+oy)%T+m.j*T,lim=m.big?Y0-FD*.5:Y0;
           if(y>lim||x>W+20||y<-20){m.p.alpha=0;continue;}m.p.x=x;m.p.y=y;m.p.alpha=(m.big?l.alpha:m.s.a)*Math.min(1,(Y0-y)/FD);}}
-      for(const sp of propSprites)sp.visible=rectHas(f.rect,sp.x,sp.y,sp._r);},
+      const showProps=R.econLevel<2;for(const sp of propSprites)sp.visible=showProps&&rectHas(f.rect,sp.x,sp.y,sp._r);},
     destroy(){root.destroy({children:true});props.destroy({children:true});if(bgTex)bgTex.destroy(true);},
   };}

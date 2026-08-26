@@ -28,5 +28,5 @@ game/hud/Minimap.js     canvas 2D pequeno (10 Hz) desenhado no #radar (DOM) conf
 game/bench.js           ?bench (mundo local do shared com bots, pior caso) e ?stats overlay
 ```
 
-Regras: nenhuma cor fora de `theme/`; texturas assadas só via `theme.textures`; nada de filtros/blur por frame; culling manual por retângulo da câmera; modo econômico automático (frame > 20 ms por 2 s → resolution 1, parallax off, fx reduzidos).
+Regras: nenhuma cor fora de `theme/`; texturas assadas só via `theme.textures`; nada de filtros/blur por frame; culling manual por retângulo da câmera; modo econômico automático em 2 níveis pelo tempo REAL entre frames (> 20 ms por 1 s sobe; < 18 ms por 2 s + backoff desce): nível 1 = resolution .8 + sem grade/parallax/trilhas + fx pela metade; nível 2 = resolution .6 + sem props (Opções → Gráficos → Qualidade força Alta/Baixa). Medido no pior caso com render por software: 13 → 37 fps. Antes o gatilho usava o custo de CPU do frame, que não enxerga a GPU, e nunca ligava (fx reduzidos).
 Metas: ≤ 5 ms/frame desktop, ≤ 10 ms mobile, ≤ 40 draw calls, texturas ≤ 48 MB.

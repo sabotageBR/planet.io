@@ -50,7 +50,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
 
   // ── estado de rede/simulação ──
   const buffer=createSnapshotBuffer();
-  let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,slowSince=0,econAt=0,statsOv=null;
+  let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,slowSince=0,econAt=0,statsOv=null;
   const input=createInputSender({send:d=>conn&&conn.send(d),getTick:()=>predictor.localTick,getRtt:()=>conn?conn.rttAvg:0});
   const predictor=createPredictor({buffer,input});
   const interp=createInterpolator(buffer,{isOwn:e=>predictor.isOwn(e),onVanish});
@@ -129,15 +129,25 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats}),local:()=>local},
   };
 
-  // ── qualidade / modo econômico ──
+  // ── qualidade / modo econômico (0 = cheio, 1 = econômico, 2 = mínimo) ──
+  // O custo de frame é dominado pelas camadas que cobrem a tela toda (grade e fundo) — por isso cada nível
+  // corta resolução E camadas: 1 desliga grade, parallax e trilhas (res .8); 2 ainda tira props (res .6).
+  const ECON_RES=[0,.8,.6];
   function applyQuality(){if(!renderer)return;const q=curPrefs.quality||"auto";
-    if(q==="low")setEcon(true);else if(q==="high")setEcon(false);else if(!econ)setEcon(false);}
-  function setEcon(on){econ=on;if(!renderer)return;renderer.setEcon(on);renderer.setResolution(on?1:Math.min(2,devicePixelRatio||1));}
-  // frame > 20 ms por 2 s → econ; tenta sair após econBackoff (30 s; dobra até 5 min se voltar a ficar lento em < 5 s — sem "piscar" a nitidez)
-  let econBackoff=30000,econLeftAt=-1e9;
+    if(q==="low")setEcon(2);else if(q==="high")setEcon(0);else if(!econLevel)setEcon(0);}
+  function setEcon(lv){econLevel=lv;econ=lv>0;if(!renderer)return;renderer.setEcon(lv);
+    renderer.setResolution(lv?ECON_RES[lv]:Math.min(2,devicePixelRatio||1));}
+  // Decide pelo tempo REAL entre frames (o custo de CPU medido não enxerga o trabalho da GPU: um jogo a 20 fps
+  // podia ter "6 ms de frame" e o modo econômico nunca ligava). > SLOW_MS (menos de 50 fps) por 1 s → sobe um
+  // nível; < FAST_MS (55 fps+, folga com vsync a 60 Hz) por 2 s e passado o backoff → desce. O backoff dobra
+  // até 5 min quando a queda se repete rápido, para a nitidez não ficar piscando.
+  const SLOW_MS=20,FAST_MS=18;
+  let econBackoff=30000,econLeftAt=-1e9,fastSince=0;
   function econCheck(now,ms){if((curPrefs.quality||"auto")!=="auto")return;
-    if(!econ){if(ms>20){if(!slowSince)slowSince=now;else if(now-slowSince>2000){if(now-econLeftAt<5000)econBackoff=Math.min(300000,econBackoff*2);setEcon(true);econAt=now;slowSince=0;}}else slowSince=0;}
-    else if(now-econAt>econBackoff){setEcon(false);econAt=now;econLeftAt=now;}}
+    if(ms>SLOW_MS){fastSince=0;
+      if(econLevel<2){if(!slowSince)slowSince=now;else if(now-slowSince>1000){if(now-econLeftAt<5000)econBackoff=Math.min(300000,econBackoff*2);setEcon(econLevel+1);econAt=now;slowSince=0;}}}
+    else{slowSince=0;
+      if(econLevel>0&&ms<FAST_MS){if(!fastSince)fastSince=now;else if(now-fastSince>2000&&now-econAt>econBackoff){setEcon(econLevel-1);econAt=now;econLeftAt=now;fastSince=0;}}else fastSince=0;}}
 
   // ── HUD (8 Hz) ──
   function pushHud(now){const s=view.self,tk=buffer.tickAt(now),el=Math.max(0,tk-selfTick);
@@ -147,7 +157,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead});}
   function statsText(){const c=renderer.counts(),st=predictor.stats;
     const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
-    return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON":""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}
+    return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}
   let bytesRate=0,bytesLast=0,bytesT=0,themeAt=0,own0=[];
 
   // ── laço ──
@@ -164,8 +174,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const own=[];predictor.forEach(pc=>own.push(pc));own0=own;cam.W=renderer.W;cam.H=renderer.H;cam.update(own,dt,bodyMode()==="portrait");
     const t1=performance.now();
     renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),parallax:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
-      showNames:curPrefs.showNames!==false,showMass:curPrefs.showMass!==false,showTrails:!curPrefs.reduceMotion});
-    const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,t2-t0);
+      showNames:curPrefs.showNames!==false,showMass:curPrefs.showMass!==false,showTrails:!curPrefs.reduceMotion&&!econ});
+    const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU
     if(joined){minimap.update(now);if(now-lastHud>=125){lastHud=now;pushHud(now);}}
     if(statsOv){if(now-bytesT>1000){bytesRate=conn?(conn.bytesIn-bytesLast)*1000/(now-bytesT):0;bytesLast=conn?conn.bytesIn:0;bytesT=now;}statsOv.update(now,statsText());}}
   return game;}
