@@ -477,7 +477,7 @@ function boot(TH){
     const k=e.code;
     if(k==="Escape"){if(g.account){setAccount(false);return;}if(inInput()){document.activeElement.blur();return;}location.href="index.html";return;}
     if(inInput())return;
-    const n="Digit1 Digit2 Digit3 Digit4 Digit5 Digit6".split(" ").indexOf(k);
+    const n="Digit1 Digit2 Digit3 Digit4 Digit5 Digit6 Digit7 Digit8 Digit9 Digit0".split(" ").indexOf(k);
     if(n>=0&&D.MODELS[n]){location.href=D.MODELS[n][0]+".html"+location.search;return;}
     if(k==="BracketLeft"){location.href=prev[0]+".html"+location.search;return;}
     if(k==="BracketRight"){location.href=next[0]+".html"+location.search;return;}

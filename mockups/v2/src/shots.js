@@ -5,7 +5,7 @@ const {execFileSync}=require("child_process"),fs=require("fs"),path=require("pat
 const OUT=path.join(__dirname,".."),SHOTS=path.join(OUT,"shots");fs.mkdirSync(SHOTS,{recursive:true});
 const args=process.argv.slice(2);const opt=(k,d)=>{const i=args.indexOf(k);return i>=0?args[i+1]:d;};
 const CHROME=opt("--chrome",process.env.CHROME||"/usr/bin/google-chrome");
-const ORDER=["nebula","console","orbit","toon","mono","cockpit"].filter(id=>fs.existsSync(path.join(OUT,id+".html")));
+const ORDER=["nebula","console","orbit","toon","mono","cockpit","toon-candy","toon-neon","toon-comic","toon-sunset"].filter(id=>fs.existsSync(path.join(OUT,id+".html")));
 const only=opt("--only",null);const models=only?ORDER.filter(x=>x===only):ORDER;
 const SHOTS_LIST=[["entry",null],["account",null],["lobby",null],["rank",null],["profile",null],["shop",null],["prefs",null],["game",null],["dead",null],["reconn",null],
   ["game","portrait"],["entry","portrait"],["lobby","portrait"],["game","landscape"]];

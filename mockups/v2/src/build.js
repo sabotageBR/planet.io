@@ -7,6 +7,7 @@ const SRC=__dirname,OUT=path.join(SRC,".."),ROOT=path.join(SRC,"..","..","..");
 const read=f=>fs.readFileSync(path.join(SRC,f),"utf8");
 const base=read("base.css"),data=read("data.js"),engine=read("engine2.js");
 const ORDER=["nebula","console","orbit","toon","mono","cockpit"];
+const VARIANTS=["toon","toon-candy","toon-neon","toon-comic","toon-sunset"];   // rodada 2: variações do modelo escolhido
 
 // avalia o tema num sandbox só para ler os metadados (sem DOM: o tema não pode tocar document no topo)
 function meta(id){
@@ -29,7 +30,7 @@ if(process.argv[2]==="--tokens"){const id=process.argv[3],m=meta(id);
   console.log("ok  client/src/theme/"+id+"/tokens.css");process.exit(0);}
 
 const models=[];
-for(const id of ORDER){
+for(const id of ORDER.concat(VARIANTS.filter(v=>!ORDER.includes(v)))){
   if(!fs.existsSync(path.join(SRC,`theme.${id}.js`))){console.log("--  tema ainda não escrito: "+id);continue;}
   const m=meta(id);models.push(m);
   const theme=read(`theme.${id}.js`);
@@ -66,14 +67,17 @@ const SCREENS=[["entry","Entrada"],["account","Conta"],["lobby","Salas"],["rank"
 const shot=(id,s,mode)=>{const f=`shots/${id}-${s}${mode?"-"+mode:""}.jpg`;return fs.existsSync(path.join(OUT,f))?f:null;};
 const thumb=(id,s,mode,label)=>{const f=shot(id,s,mode);const href=`${id}.html?screen=${s}${mode?"&mode="+mode:""}`;
   return f?`<a class="th ${mode||""}" href="${href}" title="${label}"><img src="${f}" alt="${label}" loading="lazy"></a>`:`<a class="th empty ${mode||""}" href="${href}">${label}</a>`;};
-const cards=models.map((m,i)=>{const b=bench[m.id];
+const card=(m,i)=>{const b=bench[m.id];
   return`
     <article class="card" style="--a:${m.swatch[0]};--b:${m.swatch[1]}">
       <div class="thumbs">${thumb(m.id,"entry",null,"entrada")}${thumb(m.id,"game",null,"jogo")}${thumb(m.id,"lobby",null,"salas")}${thumb(m.id,"game","portrait","jogo · retrato")}</div>
       <div class="body"><h2><span class="n">${i+1}</span>${m.name}</h2><p>${m.desc}</p>
         <div class="tags">${m.tags.map(t=>`<span>${t}</span>`).join("")}${b?`<span class="bench" title="pior caso, 1920×1080, culling ligado">${b.heavy} ms/quadro</span>`:""}</div>
         <div class="links"><a class="go" href="${m.id}.html">abrir demo →</a><a href="${m.id}.html?bench">bench</a><a href="${m.id}.html?mode=portrait&screen=game">celular</a></div></div>
-    </article>`;}).join("");
+    </article>`;};
+const baseModels=models.filter(m=>ORDER.includes(m.id)),varModels=VARIANTS.map(id=>models.find(m=>m.id===id)).filter(Boolean);
+const cards=baseModels.map(card).join("");
+const varCards=varModels.map((m,i)=>card(m,i)).join("");
 const matrix=`<table class="matrix"><thead><tr><th>tela</th>${models.map((m,i)=>`<th>${i+1}. ${m.name}</th>`).join("")}</tr></thead><tbody>${
   SCREENS.map(([s,l])=>`<tr><td>${l}</td>${models.map(m=>`<td><a href="${m.id}.html?screen=${s}">abrir</a></td>`).join("")}</tr>`).join("")}
   <tr><td>Jogo · retrato</td>${models.map(m=>`<td><a href="${m.id}.html?screen=game&mode=portrait">abrir</a></td>`).join("")}</tr>
@@ -110,6 +114,7 @@ h1{font-size:32px;letter-spacing:-.5px}
 .links{display:flex;gap:14px;margin-top:12px;font-size:12.5px}
 .links a{color:#7fa4ff;text-decoration:none}.links .go{color:#fff;font-weight:600}
 h3{margin:40px 0 12px;font-size:18px}
+h3.r2{margin-top:10px;color:#ffc22e}
 .matrix{border-collapse:collapse;font-size:13px;width:100%}
 .matrix th,.matrix td{border:1px solid #202a38;padding:7px 10px;text-align:left}
 .matrix th{background:#141a24;color:#9fb0c8;font-weight:600}
@@ -123,6 +128,11 @@ footer a{color:#7fa4ff}
 <p class="sub">Cada modelo é uma demo jogável (mesma simulação, mesmos dados falsos) com <b>todas as 11 telas do jogo novo</b>: entrada, conta, salas, ranking, perfil, loja, preferências, jogo (desktop, retrato e paisagem), morte e reconexão. A física nova já aparece: inércia, quique entre planetas, asteroides e buracos negros.</p>
 <p class="keys"><b>Na demo:</b> <b>E</b> entrada · <b>C</b> conta · <b>S</b> salas · <b>R</b> ranking · <b>P</b> perfil · <b>L</b> loja · <b>O</b> opções · <b>J</b> jogo · <b>K</b> morte · <b>X</b> reconectando · <b>T</b> desktop/retrato/paisagem · <b>1–6</b> ou <b>[ ]</b> trocar de modelo · <b>H</b> esconde a barra · <b>ESC</b> volta aqui<br>
 <b>No jogo:</b> mouse mira · <b>ESPAÇO</b>/botão direito divide · <b>W</b> ejeta · <b>F</b>/clique míssil · no celular: arrastar mira + botões</p>
+${varModels.length>1?`<h3 class="r2">Rodada 2 — variações do Cartoon Cósmico (modelo escolhido)</h3>
+<p class="sub">Mesma linguagem (tinta grossa, cores chapadas, sombras sólidas, folhas que sobem, botões redondos) em quatro climas diferentes; o original fica como referência.</p>
+<div class="grid">${varCards}
+</div>
+<h3>Rodada 1 — os 6 modelos originais</h3>`:""}
 <div class="grid">${cards}
 </div>
 <h3>Comparar a mesma tela em todos os modelos</h3>

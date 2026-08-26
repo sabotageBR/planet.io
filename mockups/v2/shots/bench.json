@@ -34,5 +34,29 @@
   "heavyOff": 9.84,
   "res": "1854x927",
   "heavyTxt": "cockpit | 1854x927 | culling ON: desenho 5.77ms + lógica 1.14ms = 6.91ms/quadro (344 objs; fundo 0.60, mundo 0.45, asteroides 0.29, buracos 0.24, rastros 0.33, fx 0.13, pós 0.00) | culling OFF: desenho 7.72ms + lógica 2.12ms = 9.84ms/quadro (477 objs; fundo 0.64, mundo 0.46, asteroides 0.32, buracos 0.26, rastros 0.40, fx 0.16, pós 0.00)"
+ },
+ "toon-candy": {
+  "heavy": 9.25,
+  "heavyOff": 12.85,
+  "res": "1854x927",
+  "heavyTxt": "toon-candy | 1854x927 | culling ON: desenho 8.22ms + lógica 1.04ms = 9.25ms/quadro (315 objs; fundo 0.82, mundo 0.70, asteroides 0.29, buracos 0.15, rastros 0.53, fx 0.46, pós 0.00) | culling OFF: desenho 11.57ms + lógica 1.28ms = 12.85ms/quadro (477 objs; fundo 0.90, mundo 0.87, asteroides 0.34, buracos 0.16, rastros 0.59, fx 0.75, pós 0.00)"
+ },
+ "toon-neon": {
+  "heavy": 10.37,
+  "heavyOff": 13.65,
+  "res": "1854x927",
+  "heavyTxt": "toon-neon | 1854x927 | culling ON: desenho 9.61ms + lógica 0.76ms = 10.37ms/quadro (315 objs; fundo 0.87, mundo 0.76, asteroides 0.30, buracos 0.15, rastros 0.56, fx 0.48, pós 0.00) | culling OFF: desenho 12.08ms + lógica 1.57ms = 13.65ms/quadro (477 objs; fundo 0.84, mundo 0.98, asteroides 0.39, buracos 0.16, rastros 0.56, fx 0.77, pós 0.00)"
+ },
+ "toon-comic": {
+  "heavy": 9.33,
+  "heavyOff": 12.88,
+  "res": "1854x875",
+  "heavyTxt": "toon-comic | 1854x875 | culling ON: desenho 8.37ms + lógica 0.97ms = 9.33ms/quadro (367 objs; fundo 0.98, mundo 0.78, asteroides 0.28, buracos 0.15, rastros 0.62, fx 0.32, pós 0.00) | culling OFF: desenho 11.92ms + lógica 0.96ms = 12.88ms/quadro (451 objs; fundo 1.13, mundo 0.91, asteroides 0.32, buracos 0.17, rastros 0.75, fx 0.64, pós 0.00)"
+ },
+ "toon-sunset": {
+  "heavy": 8.57,
+  "heavyOff": 12.2,
+  "res": "1854x875",
+  "heavyTxt": "toon-sunset | 1854x875 | culling ON: desenho 7.85ms + lógica 0.72ms = 8.57ms/quadro (350 objs; fundo 0.66, mundo 0.93, asteroides 0.22, buracos 0.15, rastros 0.43, fx 0.40, pós 0.00) | culling OFF: desenho 11.48ms + lógica 0.72ms = 12.20ms/quadro (437 objs; fundo 0.58, mundo 1.01, asteroides 0.32, buracos 0.16, rastros 0.79, fx 0.43, pós 0.00)"
  }
 }
