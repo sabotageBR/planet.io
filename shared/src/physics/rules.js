@@ -1,4 +1,4 @@
-// ── REGRAS DO JOGO: engolir/quicar (escudo quica, nunca é engolido), comida e powerups (escudo por níveis:
+// ── REGRAS DO JOGO: engolir/quicar (o maior sempre acaba comendo; o escudo só segura a PRIMEIRA batida), comida e powerups (escudo por níveis:
 //    não expira, sobe de nível sem ser atingido, cai ao disparar/dividir), ejetados, asteroides (pop/lasca/alimentar/atirar),
 //    buracos negros (puxar/horizonte/teleporte/ciclo), mísseis (homing em jogador ou em míssil inimigo, impacto em peça/escudo,
 //    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire ──
@@ -30,15 +30,24 @@ const DIR=[0,0];
 
 // ── peça × peça (donos diferentes) ──
 /**
- * Engolir (ra ≥ rb·RATIO, centro de B a d < ra − rb·CENTER, B sem escudo — enquanto se aproxima não há quique)
- * ou quique mass-weighted (tamanhos parecidos, ou o menor tem escudo: E_SHIELD). @param {World} w @param {Body} A @param {Body} B
+ * Engolir (ra ≥ rb·RATIO e centro do menor a d < ra − rb·CENTER; enquanto só encosta, o maior atravessa) ou
+ * quique mass-weighted entre tamanhos parecidos. **A regra do maior comer o menor sempre prevalece**: o escudo
+ * (que serve mesmo é contra míssil) só segura a PRIMEIRA batida — ela quebra o escudo inteiro, seja qual for o
+ * nível (SHIELD_BREAK), e quica com E_SHIELD dando chance de fuga; da batida seguinte em diante o maior come.
+ * @param {World} w @param {Body} A @param {Body} B
  */
 export function piecePair(w,A,B){
-  const psA=w.players.get(A.owner),psB=w.players.get(B.owner),shA=psA.shieldLv>0,shB=psB.shieldLv>0;
-  const dx=B.x-A.x,dy=B.y-A.y,d2=dx*dx+dy*dy,ra=A.r,rb=B.r;if(d2<=0)return;
-  if(ra>=rb*EAT.RATIO){if(!shB){const lim=ra-rb*EAT.CENTER;if(lim>0&&d2<lim*lim)eatPiece(w,psA,A,psB,B);return;}}
-  else if(rb>=ra*EAT.RATIO){if(!shA){const lim=rb-ra*EAT.CENTER;if(lim>0&&d2<lim*lim)eatPiece(w,psB,B,psA,A);return;}}
-  if(d2<(ra+rb)*(ra+rb)){const vn=resolveBounce(A,B,(shA||shB)?BOUNCE.E_SHIELD:BOUNCE.E,BOUNCE.POS_CORR);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}}
+  const psA=w.players.get(A.owner),psB=w.players.get(B.owner);
+  const dx=B.x-A.x,dy=B.y-A.y,d2=dx*dx+dy*dy,ra=A.r,rb=B.r,sum=ra+rb;if(d2<=0)return;
+  const aBig=ra>=rb*EAT.RATIO,bBig=!aBig&&rb>=ra*EAT.RATIO;
+  if(aBig||bBig){
+    const big=aBig?A:B,small=aBig?B:A,psBig=aBig?psA:psB,psSmall=aBig?psB:psA;
+    if(psSmall.shieldLv>0){
+      if(d2<sum*sum){breakShield(w,psSmall,small,big.owner);const vn=resolveBounce(A,B,BOUNCE.E_SHIELD,BOUNCE.POS_CORR);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}
+      return;}
+    const lim=big.r-small.r*EAT.CENTER;if(lim>0&&d2<lim*lim)eatPiece(w,psBig,big,psSmall,small);
+    return;}
+  if(d2<sum*sum){const vn=resolveBounce(A,B,BOUNCE.E,BOUNCE.POS_CORR);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}}
 /** A (de killer) engole B (de victim): ma += mb·GAIN (teto MAX_R), pontos, EAT e talvez PLAYER_DEAD. */
 export function eatPiece(w,killer,A,victim,B){
   addMass(A,B.mass*EAT.GAIN,PLAYER.MAX_R);killer.score+=Math.floor(B.r*EAT.SCORE_PLAYER);
@@ -47,7 +56,8 @@ export function eatPiece(w,killer,A,victim,B){
 
 // ── comida ──
 /**
- * Come uma comida: munição, escudo (+1 nível até SHIELD_MAX_LEVEL, reinicia o timer de evolução; nunca expira),
+ * Come uma comida: munição, escudo (+1 nível até SHIELD_MAX_LEVEL, reinicia o timer; nunca expira; cada nível
+ * aguenta um míssil e a primeira batida de um maior derruba tudo),
  * ímã (POWERUP.TICKS, acumula se já ativo) ou massa. @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} f
  */
 export function eatFood(w,ps,pc,f){
@@ -201,8 +211,8 @@ export function asteroidMissile(w,a,m){
   a.vx+=ux*k;a.vy+=uy*k;m.dead=true;
   if(a.type>=0&&w.asteroids.length<w.astCap){w.queueAsteroid(a.type,ASTEROID.RESPAWN_TICKS);a.type=-1;}
   w.events.push({type:"DEFLECT",x:m.x,y:m.y,r:a.r,nx:ux,ny:uy,bySlot:m.owner});return true;}
-/** Escudo cai por completo (o dono atacou: disparou ou dividiu). @param {World} w @param {PlayerState} ps @param {Body} pc */
-export function breakShield(w,ps,pc){ps.shieldLv=0;w.events.push({type:"SHIELD_BREAK",slot:ps.slot,x:pc.x,y:pc.y,r:pc.r,bySlot:-1});}
+/** Escudo cai por completo: o dono atacou (disparou/dividiu, bySlot −1) ou levou a batida de quem pode engoli-lo. @param {World} w @param {PlayerState} ps @param {Body} pc */
+export function breakShield(w,ps,pc,bySlot=-1){ps.shieldLv=0;w.events.push({type:"SHIELD_BREAK",slot:ps.slot,x:pc.x,y:pc.y,r:pc.r,bySlot});}
 
 // ── ações do jogador ──
 /** Split: cada peça r ≥ SPLIT.MIN_R vira duas de massa/2; filho a v_pai + dir·SPEED, pai recua RECOIL. Retorna quantas dividiu. @param {World} w @param {PlayerState} ps */

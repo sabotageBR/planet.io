@@ -182,12 +182,15 @@ test("escudo: não expira, evolui sem ser atingido, míssil tira um nível, disp
   w4.requestFire(0);w4.step();assert.equal(ps4.shieldLv,2,"sem munição não derruba");
   ps4.missiles=1;w4.requestFire(0);w4.step();assert.equal(ps4.shieldLv,0);assert.ok(w4.events.some(e=>e.type==="SHIELD_BREAK"&&e.bySlot===-1));
   ps4.shieldLv=1;w4.requestSplit(0);w4.step();assert.equal(ps4.shieldLv,0,"dividir derruba");assert.equal(w4.piecesOf(0).length,2);
-  // grande vs pequeno escudado: quica, nunca engole
-  const w5=empty(33),big=w5.addPlayer(0,{x:1000,y:1000,r:60}),small=w5.addPlayer(1,{x:1040,y:1000,r:30});w5.players.get(1).shieldLv=1;w5.players.get(1).shieldEvolveAt=1e9;
-  w5.setTarget(0,1300,1000);w5.setTarget(1,1040,1000);
-  for(let t=0;t<40;t++){w5.step();assert.ok(!w5.events.some(e=>e.type==="EAT"),"escudado nunca é engolido");}
-  assert.ok(w5.players.get(1).alive);assert.ok(Math.hypot(big.x-small.x,big.y-small.y)>=(big.r+small.r)*.95,"quicou");
-  assert.ok(small.vx>0,"o pequeno foi empurrado");});
+  // grande vs pequeno com escudo nível 3: a 1ª batida derruba o escudo inteiro e quica; depois o grande come
+  const w5=empty(33),big=w5.addPlayer(0,{x:1000,y:1000,r:60}),small=w5.addPlayer(1,{x:1085,y:1000,r:30});
+  const ps5=w5.players.get(1);ps5.shieldLv=POWERUP.SHIELD_MAX_LEVEL;ps5.shieldEvolveAt=1e9;w5.setTarget(1,1085,1000);
+  let quebra=null;for(let t=0;t<120&&!quebra;t++){w5.setTarget(0,small.x,small.y);w5.step();quebra=w5.events.find(e=>e.type==="SHIELD_BREAK")||null;
+    assert.ok(!w5.events.some(e=>e.type==="EAT"),"não engole com escudo de pé");}
+  assert.ok(quebra&&quebra.bySlot===0,"a batida do maior derruba o escudo (bySlot = o grande)");assert.equal(ps5.shieldLv,0,"cai inteiro, mesmo no nível 3");
+  assert.ok(w5.players.get(1).alive,"sobrevive à batida");assert.ok(Math.hypot(small.vx,small.vy)>0,"foi empurrado (chance de fuga)");
+  let eat=null;for(let t=0;t<600&&!eat;t++){w5.setTarget(0,small.x,small.y);w5.step();eat=w5.events.find(e=>e.type==="EAT")||null;}
+  assert.ok(eat&&eat.killerSlot===0,"sem escudo, o maior come");assert.ok(!w5.players.get(1).alive);});
 
 // 12. míssil × míssil
 test("míssil×míssil: interceptação (type 1 mira o míssil inimigo) e choque varrido destroem os dois (CLASH)",()=>{

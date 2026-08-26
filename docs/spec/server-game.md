@@ -38,7 +38,9 @@ Cooldowns só no servidor (`World.requestSplit/Eject/Fire` já checam). Rate lim
 ## Regras (shared/physics/rules.js — o servidor não tem regra própria)
 - **Escudo por níveis**: pegar 🛡️ = +1 nível (teto POWERUP.SHIELD_MAX_LEVEL), reinicia o timer; não expira; sobe um nível a cada
   SHIELD_EVOLVE_TICKS sem ser atingido (SHIELD_UP). Míssil inimigo explode no escudo sem tirar massa e tira 1 nível (SHIELD_HIT;
-  0 → SHIELD_BREAK). Escudado nunca é engolido: o grande quica (E_SHIELD). Bots com escudo não atiram nem dividem.
+  0 → SHIELD_BREAK) — é contra míssil que o escudo serve. **A regra do maior comer o menor prevalece**: a primeira batida de quem
+  pode engolir derruba o escudo inteiro (qualquer nível) e quica com E_SHIELD (chance de fuga); da batida seguinte em diante come
+  normalmente. Disparar ou dividir também derruba o escudo. Bots com escudo não atiram nem dividem.
 - **Fusão**: por par de peças do mesmo dono — separação enquanto uma não pode fundir; quando ambas podem, atração só a
   d < (ra+rb)·MERGE.ATTRACT_RANGE (sem puxão global ao centróide); merge pareado a d < max(r)·MERGE.DIST.
 - **Powerups**: só ímã (temporário, POWERUP.TICKS) e escudo (níveis). O powerup de velocidade foi removido — a velocidade máxima vem só do raio (`vmaxFor`).

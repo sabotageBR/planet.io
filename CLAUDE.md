@@ -47,7 +47,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (o de velocidade foi removido); mísseis (homing no jogador ou
   interceptação de míssil inimigo; míssil×míssil varrido = CLASH; míssil desvia asteroide = DEFLECT); ímã suga comida e ejetados
   (comida movida recebe UPDATE); escudo por níveis 1–3 (não expira, evolui sem ser atingido, míssil tira um nível, cai ao
-  disparar/dividir, escudado quica em vez de ser engolido); fusão por par (atração só perto, sem puxão ao centróide).
+  disparar/dividir; contra quem pode engolir só segura a 1ª batida — ela derruba o escudo inteiro e quica, depois o maior come); fusão por par (atração só perto, sem puxão ao centróide).
   Regras novas = `rules.js` + `predict.js` (peças próprias) + tradução de eventos em `Sim._consume` E `LocalServer.step`.
 - **Fio binário** (`docs/spec/protocol.md`): snapshots a 20 Hz com AOI por sessão (create/update/remove por id), `self`, PLAYERS,
   LEADERBOARD, EVENT, PONG; INPUT de 10 bytes a ≤30 Hz com `seq`/`ackSeq`. JSON só para controle (join/resume/room/error/dead/rewards).
