@@ -1,12 +1,12 @@
 {
-  "name": "planet-io-server",
-  "version": "1.0.0",
-  "description": "planet.io authoritative game server (WS + rooms API)",
-  "main": "server.js",
+  "name": "planet-server",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "dev": "node --watch --env-file=../.env src/index.js",
+    "start": "node src/index.js",
+    "migrate": "node --env-file=../.env src/db/migrate.js"
   },
-  "dependencies": {
-    "ws": "^8.18.0"
-  }
+  "dependencies": { "@planet/shared": "*", "pg": "^8.16.3", "ws": "^8.18.3" }
 }

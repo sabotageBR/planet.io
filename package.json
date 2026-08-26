@@ -1,13 +1,16 @@
 {
   "name": "planet-io",
-  "version": "1.0.0",
-  "description": "Multiplayer planet.io game — client (client/) + game server (server/)",
-  "main": "server/server.js",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["shared", "server", "client"],
+  "engines": { "node": ">=22" },
   "scripts": {
-    "dev": "STATIC_DIR=client node server/server.js",
-    "start": "STATIC_DIR=client node server/server.js"
+    "dev": "concurrently -n server,client -c blue,green \"npm -w server run dev\" \"npm -w client run dev\"",
+    "build": "npm -w client run build",
+    "test": "node --test shared/test/",
+    "start": "node server/src/index.js",
+    "migrate": "node server/src/db/migrate.js"
   },
-  "dependencies": {
-    "ws": "^8.18.0"
-  }
+  "devDependencies": { "concurrently": "^9.1.2" }
 }

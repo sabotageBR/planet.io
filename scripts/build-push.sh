@@ -6,15 +6,16 @@ cd "$(dirname "$0")/.."
 
 REPO="${DOCKER_REPO:-evandromoura/planet-io}"
 TAG="${TAG:-$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M)}"
+DOCKER="${DOCKER_CMD:-docker}"   # ex.: DOCKER_CMD="sudo -n docker"
 
 echo "==> build  ${REPO}-server:${TAG}"
-docker build -t "${REPO}-server:${TAG}" -t "${REPO}-server:latest" server
+$DOCKER build -f server/Dockerfile -t "${REPO}-server:${TAG}" -t "${REPO}-server:latest" .
 echo "==> build  ${REPO}-client:${TAG}"
-docker build -t "${REPO}-client:${TAG}" -t "${REPO}-client:latest" client
+$DOCKER build -f client/Dockerfile -t "${REPO}-client:${TAG}" -t "${REPO}-client:latest" .
 
 echo "==> push"
-docker push "${REPO}-server:${TAG}"; docker push "${REPO}-server:latest"
-docker push "${REPO}-client:${TAG}"; docker push "${REPO}-client:latest"
+$DOCKER push "${REPO}-server:${TAG}"; $DOCKER push "${REPO}-server:latest"
+$DOCKER push "${REPO}-client:${TAG}"; $DOCKER push "${REPO}-client:latest"
 
 echo "${TAG}" > .last-tag
 echo "==> pronto — tag ${TAG} (gravada em .last-tag, usada pelo deploy.sh)"

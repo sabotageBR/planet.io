@@ -3,3 +3,6 @@ npm-debug.log*
 .last-tag
 k8s/.rendered/
 mockups/v2/shots/test-*
+.env
+k8s/*.local.yaml
+client/dist/

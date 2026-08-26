@@ -22,6 +22,10 @@ for f in k8s/*.yaml; do
       -e "s|__HOST__|${HOST}|g" "$f" > "$OUT/$base"
 done
 
+# o Secret planet-db (DATABASE_URL) não fica no repo: precisa existir antes do deploy
+if ! KUBECONFIG="$KUBECONFIG_FILE" python3 scripts/k8s_apply.py --exists Secret planet-db; then
+  echo "!! Secret planet-db não existe no cluster. Crie com: ./scripts/db-secret.sh"; exit 1; fi
+
 echo "==> aplicando (tag ${TAG}${HOST:+, host ${HOST}})"
 if command -v kubectl >/dev/null 2>&1; then
   kubectl --kubeconfig="$KUBECONFIG_FILE" apply -f "$OUT"

@@ -1,0 +1,63 @@
+# Protocolo de rede planet.io v2
+
+Transporte: WebSocket em `/ws/<shard>`. Mensagens de **controle** são JSON (texto); mensagens de **jogo** são
+binárias (`ArrayBuffer`, little-endian, `DataView`). `PROTOCOL_VERSION = 1` (em `shared/src/protocol/constants.js`).
+Slots: cada jogador da sala tem um `slot` u16 estável enquanto está na sala. Ids de entidade: u32 incrementais por sala.
+
+## Quantização
+- Posição: `u16 = round(x / WORLD_W * 65535)` (idem y com WORLD_H). Decodifica `x = u16 / 65535 * WORLD_W`.
+- Raio: `r10 = u16 round(r*10)`.
+- Velocidade: `i16 = round(v)` em px/s, clamp ±32767.
+- Ticks/tempos: u32 tick da simulação (60 Hz); cooldowns em ticks (u8 = min(255, ticks)).
+
+## Cliente → servidor
+JSON:
+- `{"t":"join","token":"pt_…","room":"1ABC"|null,"view":{"w":1280,"h":720},"fallbackNick":"Evandro"}`
+- `{"t":"resume","sessionId":"uuid","resumeToken":"hex","view":{"w","h"}}`
+- `{"t":"view","w":…,"h":…}` (resize)
+- `{"t":"ping","c":<performance.now() u32>}`
+
+Binário `INPUT` (10 bytes): `u8 0x01 | u16 seq | u16 tx | u16 ty | u8 flags | u16 clientTick(low)`.
+`flags`: `SPLIT=1, EJECT=2, EJECT_HOLD=4, FIRE=8`. `tx,ty` quantizados como posição. Ações são one-shot por `seq`: o
+servidor processa cada `seq` uma vez (guarda `lastSeq`); o cliente reenvia a flag nos inputs seguintes até `ackSeq >= seq`.
+Taxa: ≤ 30 Hz e só quando muda (>2 px ou flag); keepalive a 10 Hz.
+
+## Servidor → cliente
+JSON:
+- `{"t":"room","code":"1ABC","shard":1,"slot":3,"sessionId":"uuid","resumeToken":"hex","protocol":1,"tick":123,"world":{"w":7200,"h":7200}}`
+- `{"t":"error","code":"VERSION"|"FULL"|"AUTH"|"NICK_RESERVED"|"RATE"|"ROOM","message":"pt-BR","suggestion":"Nick_4821"?}` → o servidor fecha o socket (código 4400+).
+- `{"t":"rewards","saved":true,"coinsEarned":54,"coins":2504,"achievements":[{"key","title"}],"skinsUnlocked":[35],"rank":{"day":37}}` (após a morte; `saved:false` sem banco)
+- `{"t":"dead","by":"Nome","byHole":false,"score":6900,"maxMass":4820,"kills":3,"durationS":372}`
+
+Binário (primeiro byte = tipo):
+- `0x10 SNAPSHOT`: `u8 | u32 tick | u16 ackSeq | u16 nCreate | u16 nUpdate | u16 nRemove | creates | updates | removes | self`
+  - create: `u8 kind | u32 id | u16 x | u16 y | u16 r10 |` + por kind:
+    - `PIECE=1`: `u16 ownerSlot | i16 vx | i16 vy | u8 flags(SHIELD=1,LAUNCH=2,MERGING=4,ME=8)`
+    - `FOOD=2`: `u8 type (0 dust,1 comet,2 star,3 rock,4 ammo,5 speed,6 magnet,7 shield) | u8 hue(0..11)`
+    - `EJECT=3`: `u16 ownerSlot | u8 hue | i16 vx | i16 vy`
+    - `ASTEROID=4`: `u16 seed | i16 vx | i16 vy`
+    - `BLACKHOLE=5`: `u16 seed | u16 influenceR | u8 phase(0 grow,1 active,2 fade)`
+    - `MISSILE=6`: `u16 ownerSlot | u16 targetSlot | i16 vx | i16 vy`
+  - update: `u32 id | u8 mask` + campos presentes na ordem: `X_Y=1 (u16 x,u16 y)`, `R=2 (u16 r10)`, `V=4 (i16 vx,i16 vy)`, `FLAGS=8 (u8)`, `EXTRA=16 (u8 phase / u16 influenceR para buraco negro: u8 phase + u16 influenceR)`
+  - remove: `u32 id | u8 reason (0 LEFT_AOI,1 EATEN,2 MERGED,3 POPPED,4 EXPIRED,5 SUCKED,6 DESPAWN)`
+  - self: `u8 flags(DEAD=1) | u8 missiles | u8 powerupBits(speed=1,magnet=2,shield=4) | u16 speedT | u16 magnetT | u16 shieldT | u32 score | u8 splitCd | u8 ejectCd | u16 rank | u32 mass`
+- `0x11 PLAYERS` (no join e quando muda): `u8 | u16 n | [u16 slot | u8 flags(BOT=1,DEAD=2,REG=4) | u8 skinId | u8 nameLen | nameLen bytes utf8 | u32 score]`
+- `0x12 LEADERBOARD` (2 Hz): `u8 | u8 n | [u16 slot | u32 mass]`
+- `0x13 EVENT`: `u8 | u8 kind(0 EAT,1 POP,2 MERGE,3 SPLIT,4 BH_SUCK,5 DEATH,6 CHIP,7 BOUNCE,8 BOOM,9 EXIT,10 SHOOT) | u16 x | u16 y | u16 r10 | u16 slotA | u16 slotB | u32 extra`
+- `0x14 PONG`: `u8 | u32 clientTime | u32 serverTick`
+
+## Snapshots e AOI
+Sim 60 Hz; snapshot a cada 3 ticks (20 Hz). Área de interesse por sessão = retângulo da câmera (`shared/camera.viewRect`)
+expandido 30% (histerese: sai a 45%). `Session.known` guarda ids conhecidos → CREATE ao entrar, UPDATE só se mudou
+(comida parada nunca), REMOVE(LEFT_AOI) ao sair, REMOVE(motivo) ao morrer. Comida tem id estável.
+
+## Predição / interpolação (cliente)
+Próprias peças: predição com `shared/physics` (thrust, drag, paredes, separação/merge próprios); ao receber snapshot com
+`ackSeq`, substitui pelo estado do servidor e reaplica inputs `seq > ackSeq`; erro residual vira `visualOffset` decaindo
+`exp(-dt/0.1s)`; `|Δ| > 120 px` → snap. Outros: buffer de 10 snapshots, render a −100 ms (adaptativo até 150), lerp
+x/y/r; extrapola ≤100 ms; remove com fade após 1 s sem update.
+
+## Sessão
+`join` → `room` (slot, sessionId, resumeToken) → `PLAYERS` → snapshots. Queda: 10 s no mundo sem thrust; `resume`
+válido religa (reset de `known`). Heartbeat `ws.ping` 5 s / terminate 15 s. Rate limit por sessão: inputs 40/s (burst 60),
+JSON 5/s; 3 violações em 10 s → `error RATE`.

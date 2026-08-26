@@ -4,6 +4,7 @@
 uso:  python3 scripts/k8s_apply.py k8s/.rendered/*.yaml
       python3 scripts/k8s_apply.py --status            # espera os pods ficarem prontos
       python3 scripts/k8s_apply.py --get pods          # lista os pods do namespace
+      python3 scripts/k8s_apply.py --exists Secret planet-db   # exit 0 se existe, 1 se não
 
 Lê o kubeconfig de $KUBECONFIG (ou o caminho padrão do OpenLens). Os certificados são
 escritos num diretório temporário com permissão 0600 e apagados no fim.
@@ -22,6 +23,7 @@ RESOURCES = {
     "Namespace":   ("api/v1", "namespaces", False),
     "Service":     ("api/v1", "services", True),
     "ConfigMap":   ("api/v1", "configmaps", True),
+    "Secret":      ("api/v1", "secrets", True),
     "Deployment":  ("apis/apps/v1", "deployments", True),
     "StatefulSet": ("apis/apps/v1", "statefulsets", True),
     "Ingress":     ("apis/networking.k8s.io/v1", "ingresses", True),
@@ -139,6 +141,11 @@ if __name__ == "__main__":
             sys.exit(0 if status(cl) else 1)
         elif args[0] == "--get":
             get(cl, args[1] if len(args) > 1 else "pods")
+        elif args[0] == "--exists":
+            o = cl.request("GET", path_for(args[1], args[2]))
+            ok = o.get("kind") == args[1]
+            print(f"  {args[1]}/{args[2]}: {'existe' if ok else 'NÃO existe'}")
+            sys.exit(0 if ok else 1)
         else:
             falhas = 0
             for f in args:

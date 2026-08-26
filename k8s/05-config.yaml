@@ -1,0 +1,18 @@
+# Configuração não-secreta dos shards. O Secret planet-db (DATABASE_URL) é criado por scripts/db-secret.sh.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: planet-config
+  namespace: planet
+  labels: {app: planet-server}
+data:
+  SHARDS: "3"
+  PEER_HOST: "planet-server.planet.svc.cluster.local"
+  PEER_NAME: "planet-server"
+  ROOM_MAX: "30"
+  ROOM_BOTS: "15"
+  PORT: "3000"
+  DB_POOL_MAX: "5"
+  MIGRATE_ON_START: "1"
+  ROLE: "both"
+  LOG_LEVEL: "info"

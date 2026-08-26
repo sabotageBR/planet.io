@@ -1,0 +1,18 @@
+/* gerado de mockups/v2/src/theme.toon-dusk.js — modelo "Cartoon Anoitecer" */
+:root{
+  --bg: #141a4a;
+  --surface: #2b2260;
+  --text: #fff1d6;
+  --muted: #b59fd0;
+  --accent: #ffb547;
+  --accent2: #ff5e6c;
+  --danger: #ff3b5c;
+  --ok: #2ec4b6;
+  --line: #241238;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --space: 14px;
+  --font-ui: 'Trebuchet MS',Verdana,sans-serif;
+  --font-mono: 'Courier New',monospace;
+  --shadow: 6px 6px 0 #241238;
+}
