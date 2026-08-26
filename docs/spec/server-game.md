@@ -32,6 +32,20 @@ http/peers.js   fetch dos irmãos (PEERS ou PEER_HOST) com timeout 1200 ms
 flags one-shot: `SPLIT`/`EJECT`/`FIRE` executadas uma vez por seq nova (o cliente repete a flag até o ack — o servidor
 ignora repetições porque só processa seq > lastSeq); `EJECT_HOLD` liga/desliga repetição (a cada EJECT.HOLD_TICKS).
 Cooldowns só no servidor (`World.requestSplit/Eject/Fire` já checam). Rate limit: NET.RATE_INPUTS/s, burst NET.RATE_BURST.
+`FIRE` e `SPLIT` derrubam o escudo do jogador (SHIELD_BREAK). `FIRE` mira, nesta ordem: míssil inimigo que persegue este slot a
+< MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`), senão o oponente vivo mais próximo.
+
+## Regras (shared/physics/rules.js — o servidor não tem regra própria)
+- **Escudo por níveis**: pegar 🛡️ = +1 nível (teto POWERUP.SHIELD_MAX_LEVEL), reinicia o timer; não expira; sobe um nível a cada
+  SHIELD_EVOLVE_TICKS sem ser atingido (SHIELD_UP). Míssil inimigo explode no escudo sem tirar massa e tira 1 nível (SHIELD_HIT;
+  0 → SHIELD_BREAK). Escudado nunca é engolido: o grande quica (E_SHIELD). Bots com escudo não atiram nem dividem.
+- **Fusão**: por par de peças do mesmo dono — separação enquanto uma não pode fundir; quando ambas podem, atração só a
+  d < (ra+rb)·MERGE.ATTRACT_RANGE (sem puxão global ao centróide); merge pareado a d < max(r)·MERGE.DIST.
+- **Ímã**: comida a d < r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s e é marcada MOVED (UPDATE X_Y
+  no snapshot); ejetados de terceiros (ou próprios após cdUntil) ganham MAGNET_EJECT_A px/s². Flag PIECE_FLAG.MAGNET para todos verem.
+- **Mísseis**: míssil × míssil de donos diferentes com teste varrido (O(n²) sobre w.missiles, fora da grade) → ambos morrem (CLASH);
+  míssil × asteroide → o míssil morre e o asteroide ganha Δv = AST_KICK·min(1, R_MIN/r) na direção do míssil; asteroide de cinturão
+  vira errante e o cinturão reagenda um substituto (DEFLECT).
 
 ## Morte / saída
 - `PLAYER_DEAD` do world → `dead` JSON `{by, byHole, score, maxMass, kills, durationS}` → `hooks.onMatchEnd(...)` → quando resolver, `rewards` JSON; o jogador fica no mundo como morto até `join` de novo (novo sessionId) ou sair.

@@ -3,26 +3,26 @@
 Contrato com o app React (já usado pelo shell): 
 `createGame({container, hud, prefs, theme, onDead, onRewards, onConnection, onError})` →
 `{join({token,fallbackNick,room}), leave(), setPrefs(p), setTheme(t), resize(), destroy(), hudStore}`.
-`hudStore` = `{subscribe(fn), get()}` com `{mass,score,rank,coins,ammo,powerups:{speed,magnet,shield},splitCd,ejectCd,lb:[{slot,name,mass,isBot,registered,me,rank}],room,ping,fps,dead}` atualizado a 8 Hz.
+`hudStore` = `{subscribe(fn), get()}` com `{mass,score,rank,coins,ammo,powerups:{speed (s),magnet (s),shield (nível 0..3)},splitCd,ejectCd,lb:[{slot,name,mass,isBot,registered,me,rank}],room,ping,fps,dead}` atualizado a 8 Hz.
 `onConnection(state)`: `'connecting'|'open'|'reconnecting'|'closed'` (+ tentativa); `onDead(info)` com o JSON `dead`; `onRewards(rewards)`.
 
 ```
 game/index.js          createGame (orquestra tudo abaixo)
 game/net/Connection.js ws `${wss}://${host}/ws/${shard}`; join/resume; heartbeat; backoff 0.5→4 s; PROTOCOL_VERSION mismatch → recarrega
-game/net/InputSender.js 30 Hz on-change (>2 px ou flag), keepalive 10 Hz, seq u16, fila de ações até ack
-game/state/SnapshotBuffer.js  últimos 10 snapshots por tick; relógio do servidor (EMA); entidades por id com histórico
-game/state/Interpolator.js    outros: render a tRender = tickEstimado − NET.INTERP_DELAY (adaptativo ≤ INTERP_MAX); lerp x/y/r; extrapola ≤ EXTRAP_MAX; fade após 1 s
-game/state/Predictor.js       próprias peças: shared/physics/predict.js stepOwnPieces + replay de inputs > ackSeq; visualOffset decai exp(−dt/0.1); snap > NET.SNAP_DIST
+game/net/InputSender.js 30 Hz on-change (>2 px ou flag), keepalive 10 Hz, seq u16, fila de ações até ack; nada antes do 1º setTarget (evita o puxão para (0,0))
+game/state/SnapshotBuffer.js  últimos 10 snapshots por tick; relógio do servidor (mediana de 8 + slew ≤ 0.02 tick/frame); entidades por id com histórico
+game/state/Interpolator.js    outros: render a tRender = tickEstimado − NET.INTERP_DELAY (adaptativo ≤ INTERP_MAX, rampa); lerp x/y/r; extrapola ≤ EXTRAP_MAX; fade após 1 s; REMOVE EATEN/SUCKED/POPPED/MERGED → some no frame + onVanish(e) (fx vanish/spark)
+game/state/Predictor.js       próprias peças: shared/physics/predict.js stepOwnPieces + replay de inputs > ackSeq; render interpolado entre passos (px + (x−px)·alpha); visualOffset = renderizado − interpolado, decai exp(−dt/0.1); snap > NET.SNAP_DIST; ressincroniza se o lead (RTT) muda
 game/state/WorldView.js       entidades prontas para render (pos/r/alpha) + players (PLAYERS msg) + leaderboard + self
 game/renderer/Renderer.js     Pixi Application (webgl, resolution min(dpr,2), autoDensity, resizeTo container, antialias false, backgroundAlpha 0)
 game/renderer/Camera.js       shared/camera focusOf/zoomFor; suavização 1−exp(−dt/τ) (τ 120 ms pos, 200 ms zoom); zoom base retrato
-game/renderer/TextureCache.js theme.textures.* → canvas → Texture (mipmaps); tiers 128/256/512 por raio; atlas de comida/ejetados p/ ParticleContainer; invalida ao trocar tema
+game/renderer/TextureCache.js theme.textures.* → canvas → Texture (mipmaps); tiers 128/256/512 por raio; atlas de comida/ejetados p/ ParticleContainer; invalida ao trocar tema; warm() assa ≤ 2/frame + upload GPU (skins da sala ao receber PLAYERS)
 game/renderer/layers/Background.js  bake do fundo por resolução (theme.textures.background) + camadas parallax (theme.bandLayers) + big stars + props (silhuetas do mundo)
 game/renderer/layers/Grid.js        TilingSprite do tile de grade (theme) — respeita prefs.showGrid
 game/renderer/layers/Food.js / Ejected.js   ParticleContainer
 game/renderer/layers/Hazards.js     asteroides (rotate por seed+tick), buracos negros (núcleo + anel girando + anel de influência)
-game/renderer/layers/Planets.js     pool: body sprite (tier), ring, BitmapText nome/massa (prefs.showNames/showMass), arco de merge, anéis de powerup; trilha (theme.hud.trail) como Graphics polilinha
-game/renderer/layers/Missiles.js, Fx.js (theme.effects.fx(kind,k,params) → primitivas Graphics/Text; pool ≤ 32)
+game/renderer/layers/Planets.js     pool: body sprite (tier), ring, BitmapText nome/massa (prefs.showNames/showMass), arco de merge, anéis de powerup (escudo por nível: theme.hud.cell.powerups.shieldLevels; ímã → R.ambient); trilha (theme.hud.trail) como Graphics polilinha
+game/renderer/layers/Missiles.js, Fx.js (theme.effects.fx(kind,k,params) → primitivas Graphics/Text; pool ≤ 32; add(kind,f,delayMs) atrasa efeitos de terceiros; spark() faíscas ≤ 64 num Graphics; ambient() → theme.effects.ambient)
 game/input/{Pointer,Keyboard,Touch,actions}.js  pointer events unificados; Space split, W eject (hold), F/clique míssil, botão direito split (prefs.rightSplit); botões DOM #t-split/#t-eject/#t-fire (o HUD React chama game.action('split'|'eject'|'fire', pressed))
 game/hud/Minimap.js     canvas 2D pequeno (10 Hz) desenhado no #radar (DOM) conforme theme.hud.radar
 game/bench.js           ?bench (mundo local do shared com bots, pior caso) e ?stats overlay

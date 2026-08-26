@@ -32,30 +32,37 @@ JSON:
 Binário (primeiro byte = tipo):
 - `0x10 SNAPSHOT`: `u8 | u32 tick | u16 ackSeq | u16 nCreate | u16 nUpdate | u16 nRemove | creates | updates | removes | self`
   - create: `u8 kind | u32 id | u16 x | u16 y | u16 r10 |` + por kind:
-    - `PIECE=1`: `u16 ownerSlot | i16 vx | i16 vy | u8 flags(SHIELD=1,LAUNCH=2,MERGING=4,ME=8)`
+    - `PIECE=1`: `u16 ownerSlot | i16 vx | i16 vy | u8 flags(SHIELD=1,LAUNCH=2,MERGING=4,ME=8,MAGNET=16; bits 5–6 = nível do escudo 1..3)`
     - `FOOD=2`: `u8 type (0 dust,1 comet,2 star,3 rock,4 ammo,5 speed,6 magnet,7 shield) | u8 hue(0..11)`
     - `EJECT=3`: `u16 ownerSlot | u8 hue | i16 vx | i16 vy`
     - `ASTEROID=4`: `u16 seed | i16 vx | i16 vy`
     - `BLACKHOLE=5`: `u16 seed | u16 influenceR | u8 phase(0 grow,1 active,2 fade)`
-    - `MISSILE=6`: `u16 ownerSlot | u16 targetSlot | i16 vx | i16 vy`
+    - `MISSILE=6`: `u16 ownerSlot | u16 targetSlot (65535 = sem alvo ou alvo é outro míssil) | i16 vx | i16 vy`
   - update: `u32 id | u8 mask` + campos presentes na ordem: `X_Y=1 (u16 x,u16 y)`, `R=2 (u16 r10)`, `V=4 (i16 vx,i16 vy)`, `FLAGS=8 (u8)`, `EXTRA=16 (u8 phase / u16 influenceR para buraco negro: u8 phase + u16 influenceR)`
   - remove: `u32 id | u8 reason (0 LEFT_AOI,1 EATEN,2 MERGED,3 POPPED,4 EXPIRED,5 SUCKED,6 DESPAWN)`
-  - self: `u8 flags(DEAD=1) | u8 missiles | u8 powerupBits(speed=1,magnet=2,shield=4) | u16 speedT | u16 magnetT | u16 shieldT | u32 score | u8 splitCd | u8 ejectCd | u16 rank | u32 mass`
+  - self: `u8 flags(DEAD=1) | u8 missiles | u8 powerupBits(speed=1,magnet=2,shield=4) | u16 speedT | u16 magnetT | u8 shieldLv(0..3; o escudo não expira) | u8 reservado | u32 score | u8 splitCd | u8 ejectCd | u16 rank | u32 mass`
 - `0x11 PLAYERS` (no join e quando muda): `u8 | u16 n | [u16 slot | u8 flags(BOT=1,DEAD=2,REG=4) | u8 skinId | u8 nameLen | nameLen bytes utf8 | u32 score]`
 - `0x12 LEADERBOARD` (2 Hz): `u8 | u8 n | [u16 slot | u32 mass]`
-- `0x13 EVENT`: `u8 | u8 kind(0 EAT,1 POP,2 MERGE,3 SPLIT,4 BH_SUCK,5 DEATH,6 CHIP,7 BOUNCE,8 BOOM,9 EXIT,10 SHOOT) | u16 x | u16 y | u16 r10 | u16 slotA | u16 slotB | u32 extra`
+- `0x13 EVENT`: `u8 | u8 kind(0 EAT,1 POP,2 MERGE,3 SPLIT,4 BH_SUCK,5 DEATH,6 CHIP,7 BOUNCE,8 BOOM,9 EXIT,10 SHOOT,11 SHIELD_BREAK,12 CLASH,13 DEFLECT,14 SHIELD_HIT,15 SHIELD_UP) | u16 x | u16 y | u16 r10 | u16 slotA | u16 slotB | u32 extra`
+  - `extra`: BOUNCE/CHIP/SHOOT/DEFLECT/SHIELD_HIT = `packDir(nx,ny,vn)` (`shared/util.js`: u8 nx, u8 ny, u16 vn — em SHIELD_HIT vn = nível restante); SHIELD_UP = nível; EAT = pieceId; DEATH = score.
+  - Eventos são filtrados pela AOI da sessão; o cliente atrasa os que não envolvem o próprio slot pelo atraso de interpolação (casam com o sumiço da entidade).
 - `0x14 PONG`: `u8 | u32 clientTime | u32 serverTick`
 
 ## Snapshots e AOI
 Sim 60 Hz; snapshot a cada 3 ticks (20 Hz). Área de interesse por sessão = retângulo da câmera (`shared/camera.viewRect`)
 expandido 30% (histerese: sai a 45%). `Session.known` guarda ids conhecidos → CREATE ao entrar, UPDATE só se mudou
-(comida parada nunca), REMOVE(LEFT_AOI) ao sair, REMOVE(motivo) ao morrer. Comida tem id estável.
+(comida só quando o ímã/buraco negro a moveu — `FOOD_FLAG.MOVED` → X_Y), REMOVE(LEFT_AOI) ao sair, REMOVE(motivo) ao morrer. Comida tem id estável.
 
 ## Predição / interpolação (cliente)
 Próprias peças: predição com `shared/physics` (thrust, drag, paredes, separação/merge próprios); ao receber snapshot com
 `ackSeq`, substitui pelo estado do servidor e reaplica inputs `seq > ackSeq`; erro residual vira `visualOffset` decaindo
-`exp(-dt/0.1s)`; `|Δ| > 120 px` → snap. Outros: buffer de 10 snapshots, render a −100 ms (adaptativo até 150), lerp
-x/y/r; extrapola ≤100 ms; remove com fade após 1 s sem update.
+`exp(-dt/0.1s)`; `|Δ| > 120 px` → snap. A peça própria é renderizada INTERPOLADA entre o passo anterior e o atual
+(`px + (x−px)·alpha`, alpha = fração do passo acumulada; atraso ≤ 16 ms) — sem isso o acumulador de 60 Hz dá 0/1/2 passos
+por frame e a peça treme (muito visível com zoom 1.25× no início). Relógio do servidor: mediana das últimas 8 medições,
+usado com slew ≤ 0.02 tick/frame; atraso de interpolação rampa 0.05 tick/frame. Outros: buffer de 10 snapshots, render a
+−100 ms (adaptativo até 150), lerp x/y/r; extrapola ≤100 ms; remove com fade após 1 s sem update. REMOVE EATEN/SUCKED/
+POPPED/MERGED some no mesmo frame em que tRender alcança o tick da remoção (efeito local: explosão/faísca); EXPIRED/DESPAWN
+têm fade de 0,2 s; LEFT_AOI some na hora.
 
 ## Sessão
 `join` → `room` (slot, sessionId, resumeToken) → `PLAYERS` → snapshots. Queda: 10 s no mundo sem thrust; `resume`
