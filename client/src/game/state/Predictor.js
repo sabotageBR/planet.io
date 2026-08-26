@@ -3,7 +3,7 @@
 // ≤ 1 passo = 16 ms). Sem isso o acumulador dá 0/1/2 passos por frame e a peça treme — muito visível com
 // zoom alto (r=30: 1.25×, 3–7 px de tela por passo) e em telas de 120 Hz.
 // No snapshot: estado do servidor → reaplica os inputs do histórico (ticks > tick do servidor) até o tick
-// local → a diferença entre a posição RENDERIZADA antes e a nova vira visualOffset (vox,voy) que decai
+// local → a diferença entre a posição RENDERIZADA antes e a interpolada agora vira visualOffset (vox,voy) que decai
 // exp(−dt/0.1); |Δ| > NET.SNAP_DIST → snap (sem offset). Peças criadas/removidas pelo servidor entram/saem
 // casando por id; fundidas localmente no replay ficam ocultas (HIDE_TICKS) até o servidor confirmar.
 // lead = RTT/2 + 1 tick; ressincroniza quando deriva > 2 ticks OU quando o lead muda (1º PONG chega ~1 s após o join).
@@ -46,14 +46,16 @@ export function createPredictor({buffer,input}){
       // replay dos inputs do histórico do tick do servidor até o local
       const h=input?input.history:[];let hi=0,cur=null;while(hi<h.length&&h[hi].tick<=tick){cur=h[hi];hi++;}
       let steps=0;const st={tx:cur?cur.tx:tx,ty:cur?cur.ty:ty,speedUntil};
-      for(let t=tick+1;t<=localTick;t++){while(hi<h.length&&h[hi].tick<=t){cur=h[hi];hi++;st.tx=cur.tx;st.ty=cur.ty;}stepOwnPieces(pieces,st,t);steps++;}
+      for(let t=tick+1;t<=localTick;t++){while(hi<h.length&&h[hi].tick<=t){cur=h[hi];hi++;st.tx=cur.tx;st.ty=cur.ty;}
+        for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}stepOwnPieces(pieces,st,t);steps++;}   // px = posição do passo anterior (mesma fase do render)
+      if(!steps)for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}
       p.stats.replaySteps=steps;
       // fundidas localmente durante o replay (sumiram do array): ocultar até o servidor remover
       if(pieces.length<seen.size){for(const id of seen){let f=false;for(const pc of pieces)if(pc.id===id){f=true;break;}if(!f)hidden.set(id,localTick+HIDE_TICKS);}}
-      // offset visual: o render continua exatamente onde estava; o resto é absorvido pelo decaimento
+      // offset visual = posição renderizada antes − posição interpolada agora (mesmo alpha): só correção, sem fração de passo
       let corr=0,n=0;
-      for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;const o=old.get(pc.id);if(!o){pc.vox=0;pc.voy=0;continue;}
-        const dx=o.x-pc.x,dy=o.y-pc.y,d=Math.hypot(dx,dy);corr+=d;n++;
+      for(const pc of pieces){const o=old.get(pc.id);if(!o){pc.vox=0;pc.voy=0;continue;}
+        const dx=o.x-(pc.px+(pc.x-pc.px)*alpha),dy=o.y-(pc.py+(pc.y-pc.py)*alpha),d=Math.hypot(dx,dy);corr+=d;n++;
         if(d>NET.SNAP_DIST){pc.vox=0;pc.voy=0;}else{pc.vox=dx;pc.voy=dy;}}
       if(n){corrSum+=corr/n;corrN++;p.stats.lastCorr=corr/n;p.stats.corrAvg=corrSum/corrN;}},
     isHidden(id){return hidden.has(id);},
