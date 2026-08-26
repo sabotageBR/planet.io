@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>planet.io v2 — 6 modelos de layout</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0b0e14;color:#e6edf6;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:44px 24px 60px}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:32px;letter-spacing:-.5px}
+.sub{color:#8b9bb4;margin:8px 0 6px;font-size:15px;line-height:1.6;max-width:900px}
+.keys{color:#63738c;font-size:13px;margin-bottom:28px;line-height:1.8}
+.keys b{color:#9fb0c8;font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:18px}
+.card{display:flex;flex-direction:column;background:#141a24;border:1px solid #202a38;border-radius:14px;overflow:hidden;transition:.15s}
+.card:hover{border-color:#3d5a80;transform:translateY(-2px)}
+.thumbs{display:grid;grid-template-columns:1fr 1fr 1fr .55fr;gap:3px;background:linear-gradient(135deg,var(--a),var(--b));padding:3px}
+.th{display:block;aspect-ratio:16/10;background:#0b0e14;overflow:hidden;font-size:11px;color:#8b9bb4;display:flex;align-items:center;justify-content:center;text-decoration:none}
+.th.portrait{aspect-ratio:auto}
+.th img{width:100%;height:100%;object-fit:cover;object-position:top}
+.body{padding:14px 16px 16px}
+.body h2{font-size:18px;margin-bottom:5px;display:flex;align-items:center;gap:10px}
+.body h2 .n{display:inline-flex;width:26px;height:26px;border-radius:8px;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--a),var(--b));color:rgba(0,0,0,.6);font-size:14px;font-weight:800}
+.body p{font-size:13px;color:#8b9bb4;line-height:1.5}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.tags span{font-size:11px;padding:3px 8px;border-radius:999px;background:#1c2432;color:#9fb0c8}
+.tags .bench{background:#12321e;color:#7CFC00;font-family:monospace}
+.links{display:flex;gap:14px;margin-top:12px;font-size:12.5px}
+.links a{color:#7fa4ff;text-decoration:none}.links .go{color:#fff;font-weight:600}
+h3{margin:40px 0 12px;font-size:18px}
+.matrix{border-collapse:collapse;font-size:13px;width:100%}
+.matrix th,.matrix td{border:1px solid #202a38;padding:7px 10px;text-align:left}
+.matrix th{background:#141a24;color:#9fb0c8;font-weight:600}
+.matrix a{color:#7fa4ff;text-decoration:none}
+footer{margin-top:34px;color:#4d5b70;font-size:12.5px;line-height:1.8}
+footer a{color:#7fa4ff}
+</style>
+</head>
+<body><div class="wrap">
+<h1>planet.io v2 — 6 modelos de layout</h1>
+<p class="sub">Cada modelo é uma demo jogável (mesma simulação, mesmos dados falsos) com <b>todas as 11 telas do jogo novo</b>: entrada, conta, salas, ranking, perfil, loja, preferências, jogo (desktop, retrato e paisagem), morte e reconexão. A física nova já aparece: inércia, quique entre planetas, asteroides e buracos negros.</p>
+<p class="keys"><b>Na demo:</b> <b>E</b> entrada · <b>C</b> conta · <b>S</b> salas · <b>R</b> ranking · <b>P</b> perfil · <b>L</b> loja · <b>O</b> opções · <b>J</b> jogo · <b>K</b> morte · <b>X</b> reconectando · <b>T</b> desktop/retrato/paisagem · <b>1–6</b> ou <b>[ ]</b> trocar de modelo · <b>H</b> esconde a barra · <b>ESC</b> volta aqui<br>
+<b>No jogo:</b> mouse mira · <b>ESPAÇO</b>/botão direito divide · <b>W</b> ejeta · <b>F</b>/clique míssil · no celular: arrastar mira + botões</p>
+<div class="grid">
+    <article class="card" style="--a:#4fe3ff;--b:#2f2fb0">
+      <div class="thumbs"><a class="th " href="nebula.html?screen=entry" title="entrada"><img src="shots/nebula-entry.jpg" alt="entrada" loading="lazy"></a><a class="th " href="nebula.html?screen=game" title="jogo"><img src="shots/nebula-game.jpg" alt="jogo" loading="lazy"></a><a class="th " href="nebula.html?screen=lobby" title="salas"><img src="shots/nebula-lobby.jpg" alt="salas" loading="lazy"></a><a class="th portrait" href="nebula.html?screen=game&mode=portrait" title="jogo · retrato"><img src="shots/nebula-game-portrait.jpg" alt="jogo · retrato" loading="lazy"></a></div>
+      <div class="body"><h2><span class="n">1</span>Nebulosa</h2><p>Evolução do visual atual: vidro, ciano/magenta, cantoneiras e Courier. HUD com hierarquia nos quatro cantos; menus como hub de colunas; asteroides e buracos negros no mesmo vocabulário emissivo.</p>
+        <div class="tags"><span>continuidade</span><span>premium</span><span>escuro</span><span>vidro</span><span class="bench" title="pior caso, 1920×1080, culling ligado">6.72 ms/quadro</span></div>
+        <div class="links"><a class="go" href="nebula.html">abrir demo →</a><a href="nebula.html?bench">bench</a><a href="nebula.html?mode=portrait&screen=game">celular</a></div></div>
+    </article>
+    <article class="card" style="--a:#ffb000;--b:#0a0f14">
+      <div class="thumbs"><a class="th " href="console.html?screen=entry" title="entrada"><img src="shots/console-entry.jpg" alt="entrada" loading="lazy"></a><a class="th " href="console.html?screen=game" title="jogo"><img src="shots/console-game.jpg" alt="jogo" loading="lazy"></a><a class="th " href="console.html?screen=lobby" title="salas"><img src="shots/console-lobby.jpg" alt="salas" loading="lazy"></a><a class="th portrait" href="console.html?screen=game&mode=portrait" title="jogo · retrato"><img src="shots/console-game-portrait.jpg" alt="jogo · retrato" loading="lazy"></a></div>
+      <div class="body"><h2><span class="n">2</span>Console de Comando</h2><p>HUD como moldura fixa: barra superior, barra inferior com cooldowns em 8 segmentos, trilho esquerdo com o placar em barras e trilho direito com minimapa e radar de ameaças. Menus como telas de terminal em âmbar sobre preto: coluna-índice com atalhos entre colchetes, cabeçalhos invertidos, listas densas.</p>
+        <div class="tags"><span>tático</span><span>terminal</span><span>âmbar</span><span>denso</span><span class="bench" title="pior caso, 1920×1080, culling ligado">6.65 ms/quadro</span></div>
+        <div class="links"><a class="go" href="console.html">abrir demo →</a><a href="console.html?bench">bench</a><a href="console.html?mode=portrait&screen=game">celular</a></div></div>
+    </article>
+    <article class="card" style="--a:#4f5dff;--b:#ff6a5c">
+      <div class="thumbs"><a class="th " href="orbit.html?screen=entry" title="entrada"><img src="shots/orbit-entry.jpg" alt="entrada" loading="lazy"></a><a class="th " href="orbit.html?screen=game" title="jogo"><img src="shots/orbit-game.jpg" alt="jogo" loading="lazy"></a><a class="th " href="orbit.html?screen=lobby" title="salas"><img src="shots/orbit-lobby.jpg" alt="salas" loading="lazy"></a><a class="th portrait" href="orbit.html?screen=game&mode=portrait" title="jogo · retrato"><img src="shots/orbit-game-portrait.jpg" alt="jogo · retrato" loading="lazy"></a></div>
+      <div class="body"><h2><span class="n">3</span>Órbita Clara</h2><p>O único modelo claro: interface de produto, acessível e amigável. Barra lateral fixa no desktop (abas em vez de "voltar"), barra de abas no celular, HUD numa única faixa superior com a massa no centro, cartões brancos com sombra suave e mundo em papel com grade pontilhada.</p>
+        <div class="tags"><span>claro</span><span>produto</span><span>acessível</span><span>limpo</span><span class="bench" title="pior caso, 1920×1080, culling ligado">6.95 ms/quadro</span></div>
+        <div class="links"><a class="go" href="orbit.html">abrir demo →</a><a href="orbit.html?bench">bench</a><a href="orbit.html?mode=portrait&screen=game">celular</a></div></div>
+    </article>
+    <article class="card" style="--a:#ffc22e;--b:#3fc4ff">
+      <div class="thumbs"><a class="th " href="toon.html?screen=entry" title="entrada"><img src="shots/toon-entry.jpg" alt="entrada" loading="lazy"></a><a class="th " href="toon.html?screen=game" title="jogo"><img src="shots/toon-game.jpg" alt="jogo" loading="lazy"></a><a class="th " href="toon.html?screen=lobby" title="salas"><img src="shots/toon-lobby.jpg" alt="salas" loading="lazy"></a><a class="th portrait" href="toon.html?screen=game&mode=portrait" title="jogo · retrato"><img src="shots/toon-game-portrait.jpg" alt="jogo · retrato" loading="lazy"></a></div>
+      <div class="body"><h2><span class="n">4</span>Cartoon Cósmico</h2><p>Jogo mobile de verdade: tinta grossa, cores chapadas e sombras sólidas. O mundo fica sempre visível e todo menu é uma folha que sobe por cima; entrada com JOGAR gigante e ícones redondos; no jogo, pódio de balões, radar redondo e três botões de toque sempre à mão.</p>
+        <div class="tags"><span>divertido</span><span>mobile</span><span>folhas</span><span>cartoon</span><span class="bench" title="pior caso, 1920×1080, culling ligado">8.91 ms/quadro</span></div>
+        <div class="links"><a class="go" href="toon.html">abrir demo →</a><a href="toon.html?bench">bench</a><a href="toon.html?mode=portrait&screen=game">celular</a></div></div>
+    </article>
+    <article class="card" style="--a:#d6ff3c;--b:#0e0e11">
+      <div class="thumbs"><a class="th " href="mono.html?screen=entry" title="entrada"><img src="shots/mono-entry.jpg" alt="entrada" loading="lazy"></a><a class="th " href="mono.html?screen=game" title="jogo"><img src="shots/mono-game.jpg" alt="jogo" loading="lazy"></a><a class="th " href="mono.html?screen=lobby" title="salas"><img src="shots/mono-lobby.jpg" alt="salas" loading="lazy"></a><a class="th portrait" href="mono.html?screen=game&mode=portrait" title="jogo · retrato"><img src="shots/mono-game-portrait.jpg" alt="jogo · retrato" loading="lazy"></a></div>
+      <div class="body"><h2><span class="n">5</span>Mínimo</h2><p>Quase monocromático e sem painéis: texto grande, fios de 1px e um único acento ácido. Placar em lista, massa como numeral gigante, cooldowns como linhas, minimapa de fio. Menus de sangria total com títulos enormes. O modelo mais legível e o mais barato de desenhar.</p>
+        <div class="tags"><span>mínimo</span><span>texto</span><span>hardcore</span><span>leve</span><span class="bench" title="pior caso, 1920×1080, culling ligado">4.41 ms/quadro</span></div>
+        <div class="links"><a class="go" href="mono.html">abrir demo →</a><a href="mono.html?bench">bench</a><a href="mono.html?mode=portrait&screen=game">celular</a></div></div>
+    </article>
+    <article class="card" style="--a:#ffa53a;--b:#0b2a31">
+      <div class="thumbs"><a class="th " href="cockpit.html?screen=entry" title="entrada"><img src="shots/cockpit-entry.jpg" alt="entrada" loading="lazy"></a><a class="th " href="cockpit.html?screen=game" title="jogo"><img src="shots/cockpit-game.jpg" alt="jogo" loading="lazy"></a><a class="th " href="cockpit.html?screen=lobby" title="salas"><img src="shots/cockpit-lobby.jpg" alt="salas" loading="lazy"></a><a class="th portrait" href="cockpit.html?screen=game&mode=portrait" title="jogo · retrato"><img src="shots/cockpit-game-portrait.jpg" alt="jogo · retrato" loading="lazy"></a></div>
+      <div class="body"><h2><span class="n">6</span>Cabine</h2><p>Retro-futurismo NASA anos 60/70: o jogador pilota o planeta de dentro de uma cabine. HUD é um painel de instrumentos creme na base da tela — manômetro de massa, arcos de cooldown, LEDs de mísseis, radar com varredura e o placar em fita de papel. Menus viram um caderno de bordo com abas de índice; creme quente sobre teal profundo.</p>
+        <div class="tags"><span>retrô</span><span>cabine</span><span>instrumentos</span><span>aconchegante</span><span class="bench" title="pior caso, 1920×1080, culling ligado">6.91 ms/quadro</span></div>
+        <div class="links"><a class="go" href="cockpit.html">abrir demo →</a><a href="cockpit.html?bench">bench</a><a href="cockpit.html?mode=portrait&screen=game">celular</a></div></div>
+    </article>
+</div>
+<h3>Comparar a mesma tela em todos os modelos</h3>
+<table class="matrix"><thead><tr><th>tela</th><th>1. Nebulosa</th><th>2. Console de Comando</th><th>3. Órbita Clara</th><th>4. Cartoon Cósmico</th><th>5. Mínimo</th><th>6. Cabine</th></tr></thead><tbody><tr><td>Entrada</td><td><a href="nebula.html?screen=entry">abrir</a></td><td><a href="console.html?screen=entry">abrir</a></td><td><a href="orbit.html?screen=entry">abrir</a></td><td><a href="toon.html?screen=entry">abrir</a></td><td><a href="mono.html?screen=entry">abrir</a></td><td><a href="cockpit.html?screen=entry">abrir</a></td></tr><tr><td>Conta</td><td><a href="nebula.html?screen=account">abrir</a></td><td><a href="console.html?screen=account">abrir</a></td><td><a href="orbit.html?screen=account">abrir</a></td><td><a href="toon.html?screen=account">abrir</a></td><td><a href="mono.html?screen=account">abrir</a></td><td><a href="cockpit.html?screen=account">abrir</a></td></tr><tr><td>Salas</td><td><a href="nebula.html?screen=lobby">abrir</a></td><td><a href="console.html?screen=lobby">abrir</a></td><td><a href="orbit.html?screen=lobby">abrir</a></td><td><a href="toon.html?screen=lobby">abrir</a></td><td><a href="mono.html?screen=lobby">abrir</a></td><td><a href="cockpit.html?screen=lobby">abrir</a></td></tr><tr><td>Ranking</td><td><a href="nebula.html?screen=rank">abrir</a></td><td><a href="console.html?screen=rank">abrir</a></td><td><a href="orbit.html?screen=rank">abrir</a></td><td><a href="toon.html?screen=rank">abrir</a></td><td><a href="mono.html?screen=rank">abrir</a></td><td><a href="cockpit.html?screen=rank">abrir</a></td></tr><tr><td>Perfil</td><td><a href="nebula.html?screen=profile">abrir</a></td><td><a href="console.html?screen=profile">abrir</a></td><td><a href="orbit.html?screen=profile">abrir</a></td><td><a href="toon.html?screen=profile">abrir</a></td><td><a href="mono.html?screen=profile">abrir</a></td><td><a href="cockpit.html?screen=profile">abrir</a></td></tr><tr><td>Loja</td><td><a href="nebula.html?screen=shop">abrir</a></td><td><a href="console.html?screen=shop">abrir</a></td><td><a href="orbit.html?screen=shop">abrir</a></td><td><a href="toon.html?screen=shop">abrir</a></td><td><a href="mono.html?screen=shop">abrir</a></td><td><a href="cockpit.html?screen=shop">abrir</a></td></tr><tr><td>Opções</td><td><a href="nebula.html?screen=prefs">abrir</a></td><td><a href="console.html?screen=prefs">abrir</a></td><td><a href="orbit.html?screen=prefs">abrir</a></td><td><a href="toon.html?screen=prefs">abrir</a></td><td><a href="mono.html?screen=prefs">abrir</a></td><td><a href="cockpit.html?screen=prefs">abrir</a></td></tr><tr><td>Jogo</td><td><a href="nebula.html?screen=game">abrir</a></td><td><a href="console.html?screen=game">abrir</a></td><td><a href="orbit.html?screen=game">abrir</a></td><td><a href="toon.html?screen=game">abrir</a></td><td><a href="mono.html?screen=game">abrir</a></td><td><a href="cockpit.html?screen=game">abrir</a></td></tr><tr><td>Morte</td><td><a href="nebula.html?screen=dead">abrir</a></td><td><a href="console.html?screen=dead">abrir</a></td><td><a href="orbit.html?screen=dead">abrir</a></td><td><a href="toon.html?screen=dead">abrir</a></td><td><a href="mono.html?screen=dead">abrir</a></td><td><a href="cockpit.html?screen=dead">abrir</a></td></tr><tr><td>Reconectando</td><td><a href="nebula.html?screen=reconn">abrir</a></td><td><a href="console.html?screen=reconn">abrir</a></td><td><a href="orbit.html?screen=reconn">abrir</a></td><td><a href="toon.html?screen=reconn">abrir</a></td><td><a href="mono.html?screen=reconn">abrir</a></td><td><a href="cockpit.html?screen=reconn">abrir</a></td></tr>
+  <tr><td>Jogo · retrato</td><td><a href="nebula.html?screen=game&mode=portrait">abrir</a></td><td><a href="console.html?screen=game&mode=portrait">abrir</a></td><td><a href="orbit.html?screen=game&mode=portrait">abrir</a></td><td><a href="toon.html?screen=game&mode=portrait">abrir</a></td><td><a href="mono.html?screen=game&mode=portrait">abrir</a></td><td><a href="cockpit.html?screen=game&mode=portrait">abrir</a></td></tr>
+  <tr><td>Jogo · paisagem</td><td><a href="nebula.html?screen=game&mode=landscape">abrir</a></td><td><a href="console.html?screen=game&mode=landscape">abrir</a></td><td><a href="orbit.html?screen=game&mode=landscape">abrir</a></td><td><a href="toon.html?screen=game&mode=landscape">abrir</a></td><td><a href="mono.html?screen=game&mode=landscape">abrir</a></td><td><a href="cockpit.html?screen=game&mode=landscape">abrir</a></td></tr>
+  <tr><td>Bench (pior caso)</td><td><a href="nebula.html?bench">6.72 ms</a></td><td><a href="console.html?bench">6.65 ms</a></td><td><a href="orbit.html?bench">6.95 ms</a></td><td><a href="toon.html?bench">8.91 ms</a></td><td><a href="mono.html?bench">4.41 ms</a></td><td><a href="cockpit.html?bench">6.91 ms</a></td></tr></tbody></table>
+<footer>Protótipos descartáveis em <code>mockups/v2/</code> — nada em <code>client/</code>, <code>server/</code> ou <code>k8s/</code> foi alterado. Os 7 modelos da rodada anterior continuam em <a href="../index.html">mockups/index.html</a>.<br>
+Feedback por modelo × tela: <b>aprova</b> / <b>ajustar (o quê)</b> / <b>rejeita</b>, e "quero X deste em Y daquele" — vira a rodada híbrida.</footer>
+</div></body></html>

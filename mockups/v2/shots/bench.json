@@ -1,0 +1,38 @@
+{
+ "nebula": {
+  "heavy": 6.72,
+  "heavyOff": 9.6,
+  "res": "1854x927",
+  "heavyTxt": "nebula | 1854x927 | culling ON: desenho 5.90ms + lógica 0.83ms = 6.72ms/quadro (315 objs; fundo 0.87, mundo 0.57, asteroides 0.30, buracos 0.30, rastros 0.30, fx 0.10, pós 0.00) | culling OFF: desenho 8.37ms + lógica 1.24ms = 9.60ms/quadro (477 objs; fundo 0.74, mundo 0.62, asteroides 0.34, buracos 0.31, rastros 0.40, fx 0.13, pós 0.00)"
+ },
+ "console": {
+  "heavy": 6.65,
+  "heavyOff": 8.78,
+  "res": "1854x927",
+  "heavyTxt": "console | 1854x927 | culling ON: desenho 5.64ms + lógica 1.01ms = 6.65ms/quadro (315 objs; fundo 0.27, mundo 0.69, asteroides 0.29, buracos 0.19, rastros 0.12, fx 0.05, pós 0.00) | culling OFF: desenho 6.87ms + lógica 1.91ms = 8.78ms/quadro (477 objs; fundo 0.26, mundo 0.78, asteroides 0.32, buracos 0.20, rastros 0.13, fx 0.10, pós 0.00)"
+ },
+ "orbit": {
+  "heavy": 6.95,
+  "heavyOff": 10.36,
+  "res": "1854x927",
+  "heavyTxt": "orbit | 1854x927 | culling ON: desenho 5.80ms + lógica 1.15ms = 6.95ms/quadro (315 objs; fundo 0.63, mundo 0.99, asteroides 0.28, buracos 0.19, rastros 0.31, fx 0.11, pós 0.00) | culling OFF: desenho 8.34ms + lógica 2.02ms = 10.36ms/quadro (477 objs; fundo 0.66, mundo 1.02, asteroides 0.33, buracos 0.21, rastros 0.44, fx 0.15, pós 0.00)"
+ },
+ "toon": {
+  "heavy": 8.91,
+  "heavyOff": 12.11,
+  "res": "1854x927",
+  "heavyTxt": "toon | 1854x927 | culling ON: desenho 7.99ms + lógica 0.92ms = 8.91ms/quadro (315 objs; fundo 0.79, mundo 0.70, asteroides 0.28, buracos 0.15, rastros 0.52, fx 0.50, pós 0.00) | culling OFF: desenho 10.44ms + lógica 1.67ms = 12.11ms/quadro (477 objs; fundo 0.81, mundo 0.75, asteroides 0.33, buracos 0.16, rastros 0.53, fx 0.64, pós 0.00)"
+ },
+ "mono": {
+  "heavy": 4.41,
+  "heavyOff": 5.14,
+  "res": "1854x927",
+  "heavyTxt": "mono | 1854x927 | culling ON: desenho 2.97ms + lógica 1.44ms = 4.41ms/quadro (315 objs; fundo 0.21, mundo 0.29, asteroides 0.17, buracos 0.09, rastros 0.06, fx 0.10, pós 0.00) | culling OFF: desenho 3.26ms + lógica 1.88ms = 5.14ms/quadro (477 objs; fundo 0.23, mundo 0.29, asteroides 0.19, buracos 0.09, rastros 0.07, fx 0.14, pós 0.00)"
+ },
+ "cockpit": {
+  "heavy": 6.91,
+  "heavyOff": 9.84,
+  "res": "1854x927",
+  "heavyTxt": "cockpit | 1854x927 | culling ON: desenho 5.77ms + lógica 1.14ms = 6.91ms/quadro (344 objs; fundo 0.60, mundo 0.45, asteroides 0.29, buracos 0.24, rastros 0.33, fx 0.13, pós 0.00) | culling OFF: desenho 7.72ms + lógica 2.12ms = 9.84ms/quadro (477 objs; fundo 0.64, mundo 0.46, asteroides 0.32, buracos 0.26, rastros 0.40, fx 0.16, pós 0.00)"
+ }
+}
