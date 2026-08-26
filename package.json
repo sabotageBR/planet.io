@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"npm -w server run dev\" \"npm -w client run dev\"",
     "build": "npm -w client run build",
-    "test": "node --test \"shared/test/**/*.test.js\" \"server/test/**/*.test.js\"",
+    "test": "node --test \"shared/test/*.test.js\" && node --test \"server/test/*.test.js\"",
     "start": "node server/src/index.js",
     "migrate": "node server/src/db/migrate.js"
   },
