@@ -7,7 +7,7 @@ const SRC=__dirname,OUT=path.join(SRC,".."),ROOT=path.join(SRC,"..","..","..");
 const read=f=>fs.readFileSync(path.join(SRC,f),"utf8");
 const base=read("base.css"),data=read("data.js"),engine=read("engine2.js");
 const ORDER=["nebula","console","orbit","toon","mono","cockpit"];
-const VARIANTS=["toon","toon-candy","toon-neon","toon-comic","toon-sunset"];   // rodada 2: variações do modelo escolhido
+const VARIANTS=["toon","toon-candy","toon-neon","toon-comic","toon-sunset","toon-dusk","toon-dawn"];   // rodada 2: variações do modelo escolhido
 
 // avalia o tema num sandbox só para ler os metadados (sem DOM: o tema não pode tocar document no topo)
 function meta(id){
@@ -128,8 +128,8 @@ footer a{color:#7fa4ff}
 <p class="sub">Cada modelo é uma demo jogável (mesma simulação, mesmos dados falsos) com <b>todas as 11 telas do jogo novo</b>: entrada, conta, salas, ranking, perfil, loja, preferências, jogo (desktop, retrato e paisagem), morte e reconexão. A física nova já aparece: inércia, quique entre planetas, asteroides e buracos negros.</p>
 <p class="keys"><b>Na demo:</b> <b>E</b> entrada · <b>C</b> conta · <b>S</b> salas · <b>R</b> ranking · <b>P</b> perfil · <b>L</b> loja · <b>O</b> opções · <b>J</b> jogo · <b>K</b> morte · <b>X</b> reconectando · <b>T</b> desktop/retrato/paisagem · <b>1–6</b> ou <b>[ ]</b> trocar de modelo · <b>H</b> esconde a barra · <b>ESC</b> volta aqui<br>
 <b>No jogo:</b> mouse mira · <b>ESPAÇO</b>/botão direito divide · <b>W</b> ejeta · <b>F</b>/clique míssil · no celular: arrastar mira + botões</p>
-${varModels.length>1?`<h3 class="r2">Rodada 2 — variações do Cartoon Cósmico (modelo escolhido)</h3>
-<p class="sub">Mesma linguagem (tinta grossa, cores chapadas, sombras sólidas, folhas que sobem, botões redondos) em quatro climas diferentes; o original fica como referência.</p>
+${varModels.length>1?`<h3 class="r2">Rodadas 2 e 3 — variações do Cartoon Cósmico (modelo escolhido)</h3>
+<p class="sub">Mesma linguagem (tinta grossa, cores chapadas, sombras sólidas, folhas que sobem, botões redondos) em climas diferentes; o original fica como referência. <b>Rodada 3:</b> Crepúsculo sem sol + dois cruzamentos Crepúsculo × Cósmico (Anoitecer e Amanhecer).</p>
 <div class="grid">${varCards}
 </div>
 <h3>Rodada 1 — os 6 modelos originais</h3>`:""}

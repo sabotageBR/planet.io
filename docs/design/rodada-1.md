@@ -24,3 +24,15 @@ menus em folhas que sobem sobre o mundo, botões redondos, onomatopeias):
 
 Bench (pior caso, 1854×927, culling ligado, Chrome real): toon 8,9 · toon-candy 9,3 · toon-neon 10,4 · toon-comic 9,3 · toon-sunset 8,6 ms/quadro.
 Galeria: `mockups/v2/index.html` (seção "Rodada 2"). Veredicto do Evandro: pendente.
+
+## Rodada 3 (2026-08-26)
+
+Pedido: "faz um modelo 5 crepúsculo sem o sol, ele está atrapalhando; e faça mais 2 modelos derivados do crepúsculo e cartoon cósmico".
+
+| id | Nome | Cruzamento |
+|---|---|---|
+| `toon-sunset` | Cartoon Crepúsculo | **sem o sol** (só gradiente quente + faixas de nuvem) |
+| `toon-dusk` | Cartoon Anoitecer | estrutura do Cósmico (folhas de baixo, pódio em cima) + paleta quente do Crepúsculo escurecida: céu azul-noite com brasa no horizonte, dourado/coral/teal, sem sol |
+| `toon-dawn` | Cartoon Amanhecer | estrutura do Crepúsculo (gaveta lateral no desktop, pódio embaixo) + paleta azul/amarela do Cósmico num céu de manhã (azul → pêssego), sem sol |
+
+Veredicto do Evandro: pendente.

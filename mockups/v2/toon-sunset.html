@@ -289,7 +289,8 @@ const RARITY_COLOR={free:"#aaaaaa",common:"#88ccff",rare:"#44aaff",epic:"#aa44ff
 const NAMES=["Nebulox","Vortexia","Cosmara","Drakonis","Stellara","Graviton","Quasara","Pulsaris","Meteora","Darkion","Nexaris","Solaron","Astrophex","Hydraxis","Volcanix","Luminos","Aetheron","Aurorax","Voidrix","Pyronis"];
 const HUMANS=["Evandro","luana_x","Kaique","MarcosVP","nina.s","Rafa","theo_br","Bia_2049","Guto","Pedro_H","clara","zeca","Duda","Fernanda","matheus.k","Ravi","Jujuba","Igor","Manu","Lipe","Sofia_R","Caio","Yasmin","Tico","Alice"];
 const MODELS=[["nebula","Nebulosa"],["console","Console"],["orbit","Órbita Clara"],["toon","Cartoon"],["mono","Mínimo"],["cockpit","Cabine"],
-  ["toon-candy","Cartoon Doce"],["toon-neon","Cartoon Neon"],["toon-comic","Cartoon HQ"],["toon-sunset","Cartoon Crepúsculo"]];
+  ["toon-candy","Cartoon Doce"],["toon-neon","Cartoon Neon"],["toon-comic","Cartoon HQ"],["toon-sunset","Cartoon Crepúsculo"],
+  ["toon-dusk","Cartoon Anoitecer"],["toon-dawn","Cartoon Amanhecer"]];
 
 // gerador determinístico (mesmo da engine)
 function mulberry(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
@@ -1351,10 +1352,7 @@ init(g){const rand=u.mulberry(21);
 drawBg(c,W,H,cam,t,g){
   if(!bg||bgW!==W||bgH!==H){bgW=W;bgH=H;bg=document.createElement("canvas");bg.width=W;bg.height=H;const x=bg.getContext("2d");x.lineJoin="round";x.lineCap="round";
     const gd=x.createLinearGradient(0,0,0,H);gd.addColorStop(0,SIL);gd.addColorStop(.22,PLUM);gd.addColorStop(.6,MAG);gd.addColorStop(1,ORA);x.fillStyle=gd;x.fillRect(0,0,W,H);
-    // sol baixo no horizonte: disco chapado dourado com contorno de tinta, cortado pela borda de baixo
-    const D=Math.max(W,H),sr=D*.13,sx=W*.66,sy=H*.96;
-    x.fillStyle="#ffd36b";x.beginPath();x.arc(sx,sy,sr,0,6.283);x.fill();x.strokeStyle=INK;x.lineWidth=5;x.stroke();
-    x.fillStyle="#ffe6a3";x.beginPath();x.arc(sx-sr*.22,sy-sr*.1,sr*.6,0,6.283);x.fill();
+    // (sem sol: o horizonte fica só com o gradiente quente e as faixas de nuvem)
     // faixas de nuvem: silhuetas roxas compridas com fio quente em cima
     const rand=u.mulberry(5);
     for(let i=0;i<7;i++){const y=H*(.5+i*.065)+rand()*H*.03,w=W*(.18+rand()*.34),h=9+rand()*12,xx=rand()*(W+w)-w;

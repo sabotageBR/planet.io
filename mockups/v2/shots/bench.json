@@ -54,9 +54,21 @@
   "heavyTxt": "toon-comic | 1854x875 | culling ON: desenho 8.37ms + lógica 0.97ms = 9.33ms/quadro (367 objs; fundo 0.98, mundo 0.78, asteroides 0.28, buracos 0.15, rastros 0.62, fx 0.32, pós 0.00) | culling OFF: desenho 11.92ms + lógica 0.96ms = 12.88ms/quadro (451 objs; fundo 1.13, mundo 0.91, asteroides 0.32, buracos 0.17, rastros 0.75, fx 0.64, pós 0.00)"
  },
  "toon-sunset": {
-  "heavy": 8.57,
-  "heavyOff": 12.2,
-  "res": "1854x875",
-  "heavyTxt": "toon-sunset | 1854x875 | culling ON: desenho 7.85ms + lógica 0.72ms = 8.57ms/quadro (350 objs; fundo 0.66, mundo 0.93, asteroides 0.22, buracos 0.15, rastros 0.43, fx 0.40, pós 0.00) | culling OFF: desenho 11.48ms + lógica 0.72ms = 12.20ms/quadro (437 objs; fundo 0.58, mundo 1.01, asteroides 0.32, buracos 0.16, rastros 0.79, fx 0.43, pós 0.00)"
+  "heavy": 10.71,
+  "heavyOff": 13.23,
+  "res": "1854x927",
+  "heavyTxt": "toon-sunset | 1854x927 | culling ON: desenho 9.69ms + lógica 1.02ms = 10.71ms/quadro (315 objs; fundo 1.01, mundo 0.80, asteroides 0.30, buracos 0.20, rastros 0.61, fx 0.41, pós 0.00) | culling OFF: desenho 11.78ms + lógica 1.46ms = 13.23ms/quadro (477 objs; fundo 0.78, mundo 0.90, asteroides 0.37, buracos 0.17, rastros 0.56, fx 0.63, pós 0.00)"
+ },
+ "toon-dusk": {
+  "heavy": 9.52,
+  "heavyOff": 12.43,
+  "res": "1854x927",
+  "heavyTxt": "toon-dusk | 1854x927 | culling ON: desenho 8.58ms + lógica 0.94ms = 9.52ms/quadro (315 objs; fundo 0.72, mundo 0.73, asteroides 0.32, buracos 0.16, rastros 0.54, fx 0.49, pós 0.00) | culling OFF: desenho 10.75ms + lógica 1.68ms = 12.43ms/quadro (477 objs; fundo 0.87, mundo 0.88, asteroides 0.35, buracos 0.16, rastros 0.55, fx 0.64, pós 0.00)"
+ },
+ "toon-dawn": {
+  "heavy": 8.97,
+  "heavyOff": 12.82,
+  "res": "1854x927",
+  "heavyTxt": "toon-dawn | 1854x927 | culling ON: desenho 8.24ms + lógica 0.74ms = 8.97ms/quadro (315 objs; fundo 0.69, mundo 0.73, asteroides 0.29, buracos 0.16, rastros 0.54, fx 0.50, pós 0.00) | culling OFF: desenho 11.25ms + lógica 1.56ms = 12.82ms/quadro (477 objs; fundo 0.61, mundo 0.76, asteroides 0.34, buracos 0.17, rastros 0.54, fx 0.64, pós 0.00)"
  }
 }
