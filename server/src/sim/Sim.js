@@ -148,10 +148,10 @@ export class Sim{
   rankOf(slot){const lb=this.leaderboard();for(let i=0;i<lb.length;i++)if(lb[i].slot===slot)return i+1;return 0;}
   /** Bloco `self` do snapshot (preenche `out`). */
   self(slot,out){const w=this.world,ps=w.players.get(slot),gp=this.players.get(slot),t=w.tick;
-    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.speedT=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.rank=out.mass=0;return out;}
-    const st=ps.speedUntil-t,mt=ps.magnetUntil-t,sh=ps.shieldLv,sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t;
-    out.flags=gp.dead?SELF_FLAG.DEAD:0;out.missiles=ps.missiles;out.powerBits=(st>0?POWER_BIT.speed:0)|(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0);
-    out.speedT=st>0?st:0;out.magnetT=mt>0?mt:0;out.shieldLv=sh;out.score=ps.score;out.splitCd=sc>0?sc:0;out.ejectCd=ec>0?ec:0;
+    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.rank=out.mass=0;return out;}
+    const mt=ps.magnetUntil-t,sh=ps.shieldLv,sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t;
+    out.flags=gp.dead?SELF_FLAG.DEAD:0;out.missiles=ps.missiles;out.powerBits=(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0);
+    out.magnetT=mt>0?mt:0;out.shieldLv=sh;out.score=ps.score;out.splitCd=sc>0?sc:0;out.ejectCd=ec>0?ec:0;
     out.rank=gp.dead?0:this.rankOf(slot);out.mass=gp.dead?0:Math.round(w.massOf(slot));return out;}
   /** Linhas do PLAYERS. */
   playersInfo(){const out=[];for(const gp of this.players.values())

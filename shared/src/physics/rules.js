@@ -48,19 +48,15 @@ export function eatPiece(w,killer,A,victim,B){
 // ── comida ──
 /**
  * Come uma comida: munição, escudo (+1 nível até SHIELD_MAX_LEVEL, reinicia o timer de evolução; nunca expira),
- * powerup temporário (até POWERUP.MAX ativos; renova se já ativo) ou massa. @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} f
+ * ímã (POWERUP.TICKS, acumula se já ativo) ou massa. @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} f
  */
 export function eatFood(w,ps,pc,f){
   f.dead=true;w.foodDirty=true;const t=f.type,tick=w.tick;
   if(t===FOOD_TYPE.AMMO){if(ps.missiles<MISSILE.MAX_AMMO)ps.missiles++;w.events.push({type:"AMMO",slot:ps.slot});}
   else if(t===FOOD_TYPE.SHIELD){if(ps.shieldLv<POWERUP.SHIELD_MAX_LEVEL)ps.shieldLv++;ps.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:ps.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
-  else if(t>=FOOD_TYPE.SPEED){
-    const active=(ps.speedUntil>tick?1:0)+(ps.magnetUntil>tick?1:0)+(ps.shieldLv>0?1:0);
-    const cur=t===FOOD_TYPE.SPEED?ps.speedUntil:ps.magnetUntil;
-    if(active<POWERUP.MAX||cur>tick){const until=(cur>tick?cur:tick)+POWERUP.TICKS;
-      if(t===FOOD_TYPE.SPEED)ps.speedUntil=until;else ps.magnetUntil=until;
-      w.events.push({type:"POWERUP",slot:ps.slot,kind:t===FOOD_TYPE.SPEED?"speed":"magnet"});}}
+  else if(t===FOOD_TYPE.MAGNET){ps.magnetUntil=(ps.magnetUntil>tick?ps.magnetUntil:tick)+POWERUP.TICKS;
+    w.events.push({type:"POWERUP",slot:ps.slot,kind:"magnet"});}
   else{addMass(pc,f.mass*EAT.FOOD_GAIN,PLAYER.MAX_R);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD);}
   w.events.push({type:"FOOD_EATEN",slot:ps.slot,foodId:f.id,foodType:t,x:f.x,y:f.y});}
 

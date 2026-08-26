@@ -110,10 +110,6 @@ drawBg(c,W,H,cam,t,g){
       x.fillStyle="rgba(24,14,52,.85)";x.beginPath();x.arc(cx,cy,R,0,6.283);x.fill();
       x.strokeStyle="rgba(255,207,154,.4)";x.lineWidth=3;x.beginPath();x.arc(cx,cy,R-1.5,3.4,6.02);x.stroke();});
     // faixas de nuvem: silhuetas ameixa compridas com fio pêssego em cima (faixa do meio para baixo)
-    for(let i=0;i<7;i++){const y=H*(.5+i*.055)+rand()*H*.03,w=W*(.18+rand()*.34),h=9+rand()*12,xx=rand()*(W+w)-w;
-      x.fillStyle="rgba(28,16,64,.72)";u.rr(x,xx,y,w,h,h/2);x.fill();
-      x.strokeStyle="rgba(255,207,154,.55)";x.lineWidth=2.5;x.beginPath();x.moveTo(xx+h/2,y+2);x.lineTo(xx+w-h/2,y+2);x.stroke();
-      if(rand()<.6){const w2=w*.5,x2=xx+w*.2;x.fillStyle="rgba(28,16,64,.72)";u.rr(x,x2,y-h*.55,w2,h*.8,h*.4);x.fill();}}}
   c.drawImage(bg,0,0);
   if(g&&g.prefs&&!g.prefs.parallax)return;
   // parallax só na parte escura do céu (60% de cima), com fade

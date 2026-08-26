@@ -335,7 +335,7 @@ function scene(){const rand=mulberry(7),rnd=(a,b)=>a+rand()*(b-a),sk=i=>SKINS[i%
   const me={x:1500,y:1500,r:52,skin:mySkin,isMe:true,name:ME.nick,powerups:["speed","shield"],trail:Array.from({length:14},(_,i)=>({x:1500-i*22-Math.sin(i*.5)*8,y:1500+i*14}))};
   const bots=[[1,-330,-90,44,"Vortexia",true],[6,300,190,38,"Kaique",false,true],[10,-140,270,30,"Drakonis",true],[13,520,-260,26,"luana_x",false,true],[3,-520,220,20,"Cosmara",true],[22,140,-360,58,"Stellara",true],[7,-600,-300,16,"nina.s",false]]
     .map(([s,dx,dy,r,name,isBot,reg])=>({x:1500+dx,y:1500+dy,r,skin:sk(s),isBot,name,registered:!!reg,merge:isBot?0:.6,trail:Array.from({length:8},(_,i)=>({x:1500+dx+i*10,y:1500+dy-i*6}))}));
-  const food=Array.from({length:120},()=>{const roll=rand();const type=roll<.06?"missile_ammo":roll<.11?["powerup_speed","powerup_magnet","powerup_shield"][Math.floor(rand()*3)]:["dust","comet","star","rock"][Math.floor(rand()*4)];
+  const food=Array.from({length:120},()=>{const roll=rand();const type=roll<.06?"missile_ammo":roll<.11?["powerup_magnet","powerup_shield"][Math.floor(rand()*3)]:["dust","comet","star","rock"][Math.floor(rand()*4)];
     return{x:rnd(700,2300),y:rnd(900,2100),r:type.startsWith("p")||type==="missile_ammo"?13:rnd(6,15),type,hue:Math.floor(rand()*12),color:`hsl(${Math.floor(rand()*12)*30},80%,68%)`,seed:rand()*6};});
   return{cam:{x:1500,y:1500,scale:mode==="desktop"?.9:.75},players:[me,...bots],food,
     asteroids:[{x:1280,y:1620,r:48,rot:.4,variant:0},{x:2050,y:1330,r:36,rot:1.6,variant:1},{x:960,y:1200,r:58,rot:2.5,variant:2}],
@@ -363,7 +363,7 @@ function drawScene(c){const S=scene(),cam=S.cam;drawBg(c,cam);
 function drawSheet(c){c.setTransform(1,0,0,1,0,0);c.fillStyle=TH.tokens.surface;c.fillRect(0,0,W,H);c.fillStyle=TH.tokens.text;c.font="bold 16px "+TH.hud.labels.font;c.textAlign="left";
   c.fillText(`texturas · ${TH.name} (${TH.id})`,16,26);let x=16,y=48;const cell=(img,label,w=96)=>{if(x+w>W-16){x=16;y+=w+26;}c.drawImage(img,x,y,w,w);c.font="11px "+TH.hud.labels.font;c.fillStyle=TH.tokens.muted;c.fillText(label,x,y+w+13);x+=w+10;};
   [0,10,20,30,33,49,13,18].forEach(i=>{const sk=SKINS[i];cell(spr.planet(sk,false,256),sk.name);cell(spr.planet(sk,true,256),sk.name+" (eu)");});
-  x=16;y+=122;["dust","comet","star","rock","missile_ammo","powerup_speed","powerup_magnet","powerup_shield"].forEach((type,i)=>cell(spr.food({type,hue:i,color:`hsl(${i*30},80%,68%)`}),type,64));
+  x=16;y+=122;["dust","comet","star","rock","missile_ammo","powerup_magnet","powerup_shield"].forEach((type,i)=>cell(spr.food({type,hue:i,color:`hsl(${i*30},80%,68%)`}),type,64));
   cell(spr.ejected(mySkin.color),"ejected",64);[0,1].forEach(v=>cell(spr.star(v),"star "+v,64));cell(spr.missile(),"missile",64);
   x=16;y+=90;[0,1,2].forEach(v=>cell(spr.asteroid(v,256),"asteroid "+v,128));cell(spr.blackHole(),"blackHole",128);
   band.props.slice(0,4).forEach((p,i)=>cell(spr.prop(p,i),"prop "+i+(p.ring?" ring":""),128));

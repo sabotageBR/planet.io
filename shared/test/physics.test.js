@@ -18,7 +18,7 @@ const snapshot=w=>JSON.stringify({tick:w.tick,nextId:w.nextId,
   food:w.food.map(b=>[b.id,b.x,b.y,b.type,b.hue]),ejected:w.ejected.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.life]),
   asteroids:w.asteroids.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.r,b.type,b.ang]),holes:w.holes.map(b=>[b.id,b.x,b.y,b.k,b.type,b.life,b.ex,b.ey]),
   missiles:w.missiles.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.targetId,b.type]),
-  players:[...w.players.values()].map(p=>[p.slot,p.alive,p.score,p.missiles,p.speedUntil,p.magnetUntil,p.shieldLv,p.shieldEvolveAt])});
+  players:[...w.players.values()].map(p=>[p.slot,p.alive,p.score,p.missiles,p.magnetUntil,p.shieldLv,p.shieldEvolveAt])});
 
 // 1. determinismo: mesma seed + mesmos inputs → 3600 passos byte-idênticos
 test("determinismo: duas salas com a mesma seed e os mesmos inputs são idênticas após 3600 passos",()=>{
@@ -121,7 +121,7 @@ test("buraco negro: peça no núcleo é teleportada para a saída com massa ×(1
 // 8. predição usa as mesmas funções (peça própria isolada = servidor)
 test("predição: stepOwnPieces reproduz o servidor para um jogador isolado",()=>{
   const w=empty(12);w.addPlayer(0,{x:3000,y:3000,r:50});w.setTarget(0,3600,3200);w.requestSplit(0);w.step();
-  const own=w.piecesOf(0).map(p=>({...p})),st={tx:3600,ty:3200,speedUntil:0};
+  const own=w.piecesOf(0).map(p=>({...p})),st={tx:3600,ty:3200};
   for(let t=0;t<400;t++){if(t===100){w.setTarget(0,2800,3300);st.tx=2800;st.ty=3300;}stepOwnPieces(own,st,w.tick);w.step();}
   const real=w.piecesOf(0);assert.equal(own.length,real.length);
   for(let i=0;i<own.length;i++){assert.ok(Math.abs(own[i].x-real[i].x)<1e-6&&Math.abs(own[i].y-real[i].y)<1e-6,`peça ${i} diverge`);}});

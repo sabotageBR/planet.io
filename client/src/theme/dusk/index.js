@@ -104,10 +104,6 @@ export const textures={
     [[.16,.16,.4],[.82,.12,.36],[.5,.26,.3]].forEach(([fx,fr,k])=>{const R=W*fr,cx=W*fx,cy=H+R*(1-k);
       x.fillStyle="rgba(24,14,52,.85)";x.beginPath();x.arc(cx,cy,R,0,6.283);x.fill();
       x.strokeStyle="rgba(255,207,154,.4)";x.lineWidth=3;x.beginPath();x.arc(cx,cy,R-1.5,3.4,6.02);x.stroke();});
-    for(let i=0;i<7;i++){const y=H*(.5+i*.055)+rand()*H*.03,w=W*(.18+rand()*.34),h=9+rand()*12,xx=rand()*(W+w)-w;
-      x.fillStyle="rgba(28,16,64,.72)";rr(x,xx,y,w,h,h/2);x.fill();
-      x.strokeStyle="rgba(255,207,154,.55)";x.lineWidth=2.5;x.beginPath();x.moveTo(xx+h/2,y+2);x.lineTo(xx+w-h/2,y+2);x.stroke();
-      if(rand()<.6){const w2=w*.5,x2=xx+w*.2;x.fillStyle="rgba(28,16,64,.72)";rr(x,x2,y-h*.55,w2,h*.8,h*.4);x.fill();}}},
 
   // parallax só na parte escura do céu (60% de cima), com fade
   bandLayers({seed=21,WW=3000,WH=3000}={}){const rand=mulberry(seed);
@@ -196,7 +192,7 @@ export const hud={
   trail:{style:"dashed",color:(skin,isMe)=>rgba(PEACH,isMe?.7:.42),width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},
   labels:{font:FONT,nameColor:"#fff",massColor:PEACH,stroke:INK,minR:13,size:r=>Math.max(12,r*.34),massK:.68,nameY:fs=>-fs*.28,massY:fs=>fs*.8,strokeWidth:s=>Math.max(2,s*.2)},
   cell:{merge:{color:GOLD,width:r=>Math.max(3,r*.08),radiusK:1.18},
-    powerups:{colors:{speed:GOLD,magnet:MAG,shield:TEAL},width:r=>Math.max(3,r*.08),dash:r=>[r*.4,r*.3],radiusK:i=>1.3+i*.16,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},
+    powerups:{colors:{magnet:MAG,shield:TEAL},width:r=>Math.max(3,r*.08),dash:r=>[r*.4,r*.3],radiusK:i=>1.3+i*.16,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},
   skinPreview:{ringK:.68,dy:2},
 };
 

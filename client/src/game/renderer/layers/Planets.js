@@ -8,7 +8,7 @@ import {PIECE_FLAG,POWER_BIT,mergeTicks,rectHas} from "@planet/shared";
 import {colorOf,fmt,dashPolyline} from "../../util.js";
 
 const FS=48,CHARS=[[" ","~"],["¡","ÿ"],["Ā","ž"],"✓◆✦•–—…"],TRAIL_MAX=12,TRAIL_MIN_V=72;
-const PW_ORDER=["speed","magnet","shield"];
+const PW_ORDER=["magnet","shield"];
 export function createPlanets(R){
   const root=new Container();root.sortableChildren=true;const trails=new Graphics();
   const views=new Map(),trailMap=new Map(),seg=[],counts=new Map();let frame=0,fontName="",fontMass="",lastTrailTick=-1;

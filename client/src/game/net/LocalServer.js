@@ -126,8 +126,8 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     for(const b of w.pieces)visit(b,b.r);for(const b of w.food)visit(b,b.r);for(const b of w.ejected)visit(b,b.r);
     for(const b of w.asteroids)visit(b,b.r);for(const b of w.holes)visit(b,Math.max(b.r,b.r*BLACKHOLE.INFLUENCE*b.k));for(const b of w.missiles)visit(b,b.r);
     for(const [id,k] of known)if(k.seen!==stamp){const body=w.entityById.get(id);rm.push({id,reason:body&&!body.dead?REMOVE.LEFT_AOI:(reasonMap.has(id)?reasonMap.get(id):REMOVE.DESPAWN)});known.delete(id);}
-    const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ps.missiles,powerBits:(ps.speedUntil>tick?POWER_BIT.speed:0)|(ps.magnetUntil>tick?POWER_BIT.magnet:0)|(ps.shieldLv>0?POWER_BIT.shield:0),
-      speedT:Math.max(0,ps.speedUntil-tick),magnetT:Math.max(0,ps.magnetUntil-tick),shieldLv:ps.shieldLv,score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),
+    const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ps.missiles,powerBits:(ps.magnetUntil>tick?POWER_BIT.magnet:0)|(ps.shieldLv>0?POWER_BIT.shield:0),
+      magnetT:Math.max(0,ps.magnetUntil-tick),shieldLv:ps.shieldLv,score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),
       rank:rankOf(s.slot),mass:Math.round(w.massOf(s.slot))}:undefined;
     sendBin(s.sock,encodeSnapshot(writer,{tick,ackSeq:s.ackSeq,creates:cr,updates:up,removes:rm,self}));}
   function rankOf(slot){const m=w.massOf(slot);let r=1;for(const o of meta.keys()){if(o===slot)continue;const ps=w.players.get(o);if(ps&&ps.alive&&w.massOf(o)>m)r++;}return r;}

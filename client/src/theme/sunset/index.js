@@ -100,10 +100,6 @@ export const textures={
   background(x,W,H,{rng}={}){x.lineJoin="round";x.lineCap="round";
     const gd=x.createLinearGradient(0,0,0,H);gd.addColorStop(0,SIL);gd.addColorStop(.22,PLUM);gd.addColorStop(.6,MAG);gd.addColorStop(1,ORA);x.fillStyle=gd;x.fillRect(0,0,W,H);
     const rand=rng||mulberry(5);
-    for(let i=0;i<7;i++){const y=H*(.5+i*.065)+rand()*H*.03,w=W*(.18+rand()*.34),h=9+rand()*12,xx=rand()*(W+w)-w;
-      x.fillStyle="rgba(42,21,80,.6)";rr(x,xx,y,w,h,h/2);x.fill();
-      x.strokeStyle="rgba(255,207,154,.8)";x.lineWidth=3;x.beginPath();x.moveTo(xx+h/2,y+2);x.lineTo(xx+w-h/2,y+2);x.stroke();
-      if(rand()<.6){const w2=w*.5,x2=xx+w*.2;x.fillStyle="rgba(42,21,80,.6)";rr(x,x2,y-h*.55,w2,h*.8,h*.4);x.fill();}}
     x.fillStyle=CREAM;for(let i=0;i<70;i++){const y=H*(rand()*.42);x.globalAlpha=.25+rand()*.5;x.fillRect(rand()*W,y,2,2);}x.globalAlpha=1;},
 
   // parallax só acima do horizonte (metade de cima), com fade
@@ -193,7 +189,7 @@ export const hud={
   trail:{style:"dashed",color:(skin,isMe)=>rgba(PEACH,isMe?.7:.42),width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},
   labels:{font:FONT,nameColor:"#fff",massColor:PEACH,stroke:INK,minR:13,size:r=>Math.max(12,r*.34),massK:.68,nameY:fs=>-fs*.28,massY:fs=>fs*.8,strokeWidth:s=>Math.max(2,s*.2)},
   cell:{merge:{color:GOLD,width:r=>Math.max(3,r*.08),radiusK:1.18},
-    powerups:{colors:{speed:GOLD,magnet:MAG,shield:TEAL},width:r=>Math.max(3,r*.08),dash:r=>[r*.4,r*.3],radiusK:i=>1.3+i*.16,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},
+    powerups:{colors:{magnet:MAG,shield:TEAL},width:r=>Math.max(3,r*.08),dash:r=>[r*.4,r*.3],radiusK:i=>1.3+i*.16,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},
   skinPreview:{ringK:.68,dy:2},
 };
 

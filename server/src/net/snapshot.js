@@ -21,7 +21,7 @@ export function createSnapshotter(room){
   /** @type {Map<number,{x:number,y:number,r:number,vx:number,vy:number,flags:number,phase:number,infl:number,seen:number}>} */const prev=new Map();
   /** @type {Map<number,number>} */const masks=new Map();
   const crPool=[],upPool=[],rmPool=[],creates=[],updates=[],removes=[];
-  const self={flags:0,missiles:0,powerBits:0,speedT:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,rank:0,mass:0};
+  const self={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,rank:0,mass:0};
   const snap={tick:0,ackSeq:0,creates,updates,removes,self};
   let passes=0;
   const track=(arr,kind,t)=>{for(let i=0;i<arr.length;i++){const b=arr[i];if(b.dead)continue;

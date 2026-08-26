@@ -43,7 +43,8 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 - **Autoridade no servidor, física compartilhada.** `shared/physics` roda a 60 Hz no servidor (`World.step`) e no cliente só para as
   próprias peças (`predict.js`). Determinística: `mulberry32` por sala, tick inteiro, sem gerador nativo. Spatial hash de 128 px.
   Regras: engolir só com `EAT.RATIO` (1.15) e centro dentro; senão quique elástico; asteroides (cinturões + errantes: pop/chip/alimentar/atirar);
-  buracos negros (força ∝ 1/d², horizonte tira 30% da massa e teleporta para a saída pareada); mísseis (homing no jogador ou
+  buracos negros (força ∝ 1/d², horizonte tira 30% da massa e teleporta para a saída pareada); powerups = só ímã e escudo
+  (o de velocidade foi removido); mísseis (homing no jogador ou
   interceptação de míssil inimigo; míssil×míssil varrido = CLASH; míssil desvia asteroide = DEFLECT); ímã suga comida e ejetados
   (comida movida recebe UPDATE); escudo por níveis 1–3 (não expira, evolui sem ser atingido, míssil tira um nível, cai ao
   disparar/dividir, escudado quica em vez de ser engolido); fusão por par (atração só perto, sem puxão ao centróide).

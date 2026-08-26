@@ -10,7 +10,7 @@ export function createFood(R){
   let pc=null,atlas=null;const byId=new Map();let frame=0;
   function setTheme(){const th=R.theme,TX=th.textures,items=[];
     for(let t=FOOD_TYPE.DUST;t<=FOOD_TYPE.ROCK;t++)for(let h=0;h<FOOD.HUES;h++)items.push({key:t+":"+h,size:SIZE,draw:(c,s)=>TX.food(c,s,{type:t,hue:h})});
-    for(let t=FOOD_TYPE.AMMO;t<=FOOD_TYPE.SHIELD;t++)items.push({key:t+":0",size:SIZE,draw:(c,s)=>TX.food(c,s,{type:t,hue:0})});
+    for(const t of [FOOD_TYPE.AMMO,FOOD_TYPE.MAGNET,FOOD_TYPE.SHIELD])items.push({key:t+":0",size:SIZE,draw:(c,s)=>TX.food(c,s,{type:t,hue:0})});
     atlas=R.cache.atlas(`${th.id}:food`,items);
     const old=pc;pc=new ParticleContainer({dynamicProperties:{position:true,vertex:true,color:true,rotation:false,uvs:false},texture:atlas.texture});
     if(old){old.parent&&old.parent.addChildAt(pc,old.parent.getChildIndex(old));old.parent&&old.parent.removeChild(old);old.destroy();}

@@ -11,11 +11,12 @@ export const vmaxFor=r=>clamp(SPEED.K/r,SPEED.MIN,SPEED.MAX);
 /**
  * Integra uma peça: thrust em direção a (tx,ty), arrasto, regime de arremesso (emerge da
  * velocidade: |v| > vmax·LAUNCH_THRESH → LAUNCH_DRAG, steer ×LAUNCH_STEER, sem clamp), paredes (WALL.E).
+ * A velocidade máxima vem só do raio (vmaxFor) — não há multiplicador de powerup.
  * Seta/limpa PIECE_FLAG.LAUNCH. Retorna true se estava em arremesso.
  * @param {import("./body.js").Body} pc
  */
-export function integratePiece(pc,tx,ty,vmaxMul,dt=DT,w=WORLD.w,h=WORLD.h){
-  const vmax=vmaxFor(pc.r)*vmaxMul;let vx=pc.vx,vy=pc.vy;
+export function integratePiece(pc,tx,ty,dt=DT,w=WORLD.w,h=WORLD.h){
+  const vmax=vmaxFor(pc.r);let vx=pc.vx,vy=pc.vy;
   const launch=vx*vx+vy*vy>vmax*vmax*SPEED.LAUNCH_THRESH*SPEED.LAUNCH_THRESH;
   const dx=tx-pc.x,dy=ty-pc.y,len2=dx*dx+dy*dy;
   if(len2>SPEED.STOP_DIST*SPEED.STOP_DIST){const k=vmax*SPEED.ACCEL*dt*(launch?SPEED.LAUNCH_STEER:1)/Math.sqrt(len2);vx+=dx*k;vy+=dy*k;}

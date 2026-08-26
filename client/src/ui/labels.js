@@ -23,7 +23,7 @@ export const LABELS = {
   confirm: "Confirmar", cancel: "Cancelar",
   reconnTitle: "CONEXÃO PERDIDA", reconnSub: "Reconectando… tentativa {n}/5",
   split: "DIVIDIR", eject: "EJETAR", fire: "MÍSSIL", exit: "Sair", keySplit: "ESPAÇO", keyEject: "W", keyFire: "F",
-  ammo: "mísseis", powerups: { speed: "Velocidade", magnet: "Ímã", shield: "Escudo" }, shieldLevel: "Nv",
+  ammo: "mísseis", powerups: { magnet: "Ímã", shield: "Escudo" }, shieldLevel: "Nv",
   room: "SALA", ping: "ms", fps: "fps", top5: "TOP 5 HOJE", activeRooms: "SALAS ATIVAS",
   // extras do shell (não existem no mockup)
   offlineNote: "Sem servidor: jogando em modo local",

@@ -23,8 +23,7 @@ import * as R from "./rules.js";
  * @property {boolean} isBot
  * @property {Body[]} pieces        refs (ordem de criação; compactada 1×/passo)
  * @property {number} missiles
- * @property {number} speedUntil    ticks absolutos
- * @property {number} magnetUntil
+ * @property {number} magnetUntil    ímã: tick absoluto de expiração
  * @property {number} shieldLv       escudo: nível 0..POWERUP.SHIELD_MAX_LEVEL (0 = sem; não expira)
  * @property {number} shieldEvolveAt tick em que o escudo sobe um nível se não for atingido
  * @property {number} splitCdUntil
@@ -81,7 +80,7 @@ export class World{
   /** Comida nova: tipo por sorteio (AMMO_P, POWER_P), matiz quantizado 0..HUES-1, r especial para munição/powerups. */
   spawnFood(){const rng=this.rng,roll=rng.next();let type,r;
     if(roll<FOOD.AMMO_P){type=FOOD_TYPE.AMMO;r=FOOD.SPECIAL_R;}
-    else if(roll<FOOD.AMMO_P+FOOD.POWER_P){type=rng.int(FOOD_TYPE.SPEED,FOOD_TYPE.SHIELD);r=FOOD.SPECIAL_R;}
+    else if(roll<FOOD.AMMO_P+FOOD.POWER_P){type=rng.chance(.5)?FOOD_TYPE.MAGNET:FOOD_TYPE.SHIELD;r=FOOD.SPECIAL_R;}
     else{type=rng.int(FOOD_TYPE.DUST,FOOD_TYPE.ROCK);r=rng.range(FOOD.R_MIN,FOOD.R_MAX);}
     const f=createBody(KIND.FOOD,this.newId(),rng.range(FOOD.MARGIN,this.w-FOOD.MARGIN),rng.range(FOOD.MARGIN,this.h-FOOD.MARGIN),r);
     f.type=type;f.hue=rng.int(0,FOOD.HUES-1);f.seed=rng.next();this.food.push(f);this.foodDirty=true;return this._register(f);}
@@ -122,13 +121,13 @@ export class World{
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0}={}){
     let ps=this.players.get(slot);
-    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,pieces:[],missiles,speedUntil:0,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,splitCdUntil:0,ejectCdUntil:0,
+    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,pieces:[],missiles,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,splitCdUntil:0,ejectCdUntil:0,
       ejectHold:false,ejectHoldAt:0,score:0,splitReq:false,ejectReq:false,fireReq:false};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.missiles=missiles;}
     return this._spawnPiece(ps,x,y,r);}
   _spawnPiece(ps,x,y,r){
     if(Number.isNaN(x)){const s=this._farSpot(PLAYER_MARGIN,this.holes,BLACKHOLE.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE);x=s.x;y=s.y;}
-    ps.alive=true;ps.tx=x;ps.ty=y;ps.speedUntil=ps.magnetUntil=0;ps.shieldLv=0;ps.ejectHold=false;
+    ps.alive=true;ps.tx=x;ps.ty=y;ps.magnetUntil=0;ps.shieldLv=0;ps.ejectHold=false;
     const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;return pc;}
   _dropPieces(ps){for(let i=0;i<ps.pieces.length;i++){const pc=ps.pieces[i];pc.dead=true;this.entityById.delete(pc.id);}
     ps.pieces.length=0;const arr=this.pieces;let k=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)arr[k++]=arr[i];arr.length=k;}
@@ -161,7 +160,7 @@ export class World{
       ps.splitReq=ps.ejectReq=ps.fireReq=false;}
     // ── 2. integração ──
     for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner);
-      integratePiece(pc,ps.tx,ps.ty,ps.speedUntil>tick?SPEED.POWER_SPEED:1,DT,W,H);
+      integratePiece(pc,ps.tx,ps.ty,DT,W,H);
       let f=pc.flags&~(PIECE_FLAG.SHIELD|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK);
       if(ps.shieldLv>0)f|=PIECE_FLAG.SHIELD|(ps.shieldLv<<PIECE_FLAG.SHIELD_LV_SHIFT);if(ps.magnetUntil>tick)f|=PIECE_FLAG.MAGNET;
       if(pc.mergeAt<=tick&&ps.pieces.length>1)f|=PIECE_FLAG.MERGING;pc.flags=f;}

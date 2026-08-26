@@ -41,6 +41,7 @@ Cooldowns só no servidor (`World.requestSplit/Eject/Fire` já checam). Rate lim
   0 → SHIELD_BREAK). Escudado nunca é engolido: o grande quica (E_SHIELD). Bots com escudo não atiram nem dividem.
 - **Fusão**: por par de peças do mesmo dono — separação enquanto uma não pode fundir; quando ambas podem, atração só a
   d < (ra+rb)·MERGE.ATTRACT_RANGE (sem puxão global ao centróide); merge pareado a d < max(r)·MERGE.DIST.
+- **Powerups**: só ímã (temporário, POWERUP.TICKS) e escudo (níveis). O powerup de velocidade foi removido — a velocidade máxima vem só do raio (`vmaxFor`).
 - **Ímã**: comida a d < r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s e é marcada MOVED (UPDATE X_Y
   no snapshot); ejetados de terceiros (ou próprios após cdUntil) ganham MAGNET_EJECT_A px/s². Flag PIECE_FLAG.MAGNET para todos verem.
 - **Mísseis**: míssil × míssil de donos diferentes com teste varrido (O(n²) sobre w.missiles, fora da grade) → ambos morrem (CLASH);

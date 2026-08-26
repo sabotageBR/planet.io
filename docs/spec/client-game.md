@@ -3,7 +3,7 @@
 Contrato com o app React (já usado pelo shell): 
 `createGame({container, hud, prefs, theme, onDead, onRewards, onConnection, onError})` →
 `{join({token,fallbackNick,room}), leave(), setPrefs(p), setTheme(t), resize(), destroy(), hudStore}`.
-`hudStore` = `{subscribe(fn), get()}` com `{mass,score,rank,coins,ammo,powerups:{speed (s),magnet (s),shield (nível 0..3)},splitCd,ejectCd,lb:[{slot,name,mass,isBot,registered,me,rank}],room,ping,fps,dead}` atualizado a 8 Hz.
+`hudStore` = `{subscribe(fn), get()}` com `{mass,score,rank,coins,ammo,powerups:{magnet (s),shield (nível 0..3)},splitCd,ejectCd,lb:[{slot,name,mass,isBot,registered,me,rank}],room,ping,fps,dead}` atualizado a 8 Hz.
 `onConnection(state)`: `'connecting'|'open'|'reconnecting'|'closed'` (+ tentativa); `onDead(info)` com o JSON `dead`; `onRewards(rewards)`.
 
 ```

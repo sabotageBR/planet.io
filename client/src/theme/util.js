@@ -35,10 +35,10 @@ export function outText(c,txt,x,y,size,fill,stroke,w){
 export const tier=r=>r<=44?128:r<=120?256:512;
 
 // tipos de comida: o mockup usa strings; shared/src/constants.js FOOD_TYPE usa índices. Aceita os dois.
-const FOOD_NAMES=["dust","comet","star","rock","missile_ammo","powerup_speed","powerup_magnet","powerup_shield"];
+const FOOD_NAMES=["dust","comet","star","rock","missile_ammo",null,"powerup_magnet","powerup_shield"];   // 5 vago (velocidade removida)
 export const foodType=t=>typeof t==="number"?(FOOD_NAMES[t]||"dust"):(t||"dust");
-export const FOOD_ICON={missile_ammo:"🚀",powerup_speed:"⚡",powerup_magnet:"🧲",powerup_shield:"🛡️"};
-export const FOOD_FIXED={powerup_speed:"#ffdd00",powerup_magnet:"#ff66ff",powerup_shield:"#44aaff",missile_ammo:"#ff6600"};   // cores dos especiais (engine2 mkFood)
+export const FOOD_ICON={missile_ammo:"🚀",powerup_magnet:"🧲",powerup_shield:"🛡️"};
+export const FOOD_FIXED={powerup_magnet:"#ff66ff",powerup_shield:"#44aaff",missile_ammo:"#ff6600"};   // cores dos especiais (engine2 mkFood)
 
 // desenha as primitivas de effects.fx() num contexto 2D (referência; o Pixi faz o equivalente)
 export function drawPrims(c,prims){

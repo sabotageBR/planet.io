@@ -9,9 +9,9 @@ import { leaveGame } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
 
-const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, powerups: { speed: 0, magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false };
+const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false };
 const EMPTY_STORE = { get: () => EMPTY, subscribe: () => () => {} };
-const PW_ICON = { speed: "⚡", magnet: "🧲", shield: "🛡️" };
+const PW_ICON = { magnet: "🧲", shield: "🛡️" };
 const emit = (el, action, phase) => el.dispatchEvent(new CustomEvent("planet:action", { bubbles: true, detail: { action, phase } }));
 function press(action) {
   return {

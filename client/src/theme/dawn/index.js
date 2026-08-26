@@ -110,17 +110,13 @@ export const textures={
   // prévia de skin (entrada/loja/perfil): desenha o planeta centrado na origem atual com raio r (paintSkin do mockup)
   paintSkin(c,sk,r){const rr2=sk.ring?r*.68:r,d=rr2*PK(sk),size=tier(rr2),k=d*2/size;c.save();c.translate(0,2);c.scale(k,k);textures.planet(c,size,{skin:sk,isMe:false});c.restore();},
 
-  // fundo assado por resolução: céu de manhã cedo (marinho → azul céu → pêssego, SEM sol), planetas distantes, faixas de nuvem, estrelas pálidas no terço de cima
+  // fundo assado por resolução: céu de manhã cedo (marinho → azul céu → pêssego, SEM sol), planetas distantes, estrelas pálidas no terço de cima
   background(x,W,H,{rng}={}){x.lineJoin="round";x.lineCap="round";
     const gd=x.createLinearGradient(0,0,0,H);gd.addColorStop(0,NAVY);gd.addColorStop(.2,"#24407f");gd.addColorStop(.48,SKY);gd.addColorStop(.68,"#a8dcf5");gd.addColorStop(.82,PEACH);gd.addColorStop(1,PALE);x.fillStyle=gd;x.fillRect(0,0,W,H);
     const rand=rng||mulberry(5);
     for(let i=0;i<3;i++){const r=H*(.05+rand()*.07),px=W*(.1+rand()*.8),py=H*(.5+rand()*.18);
       x.fillStyle="rgba(77,104,168,.4)";x.beginPath();x.arc(px,py,r,0,6.283);x.fill();
       x.strokeStyle="rgba(255,233,184,.55)";x.lineWidth=Math.max(2,r*.12);x.beginPath();x.arc(px,py,r*.9,.6,2.5);x.stroke();}
-    for(let i=0;i<7;i++){const y=H*(.55+i*.045)+rand()*H*.03,w=W*(.18+rand()*.34),h=9+rand()*12,xx=rand()*(W+w)-w;
-      x.fillStyle="rgba(255,245,194,.55)";rr(x,xx,y,w,h,h/2);x.fill();
-      x.strokeStyle="rgba(255,255,255,.75)";x.lineWidth=2.5;x.beginPath();x.moveTo(xx+h/2,y+2);x.lineTo(xx+w-h/2,y+2);x.stroke();
-      if(rand()<.6){const w2=w*.5,x2=xx+w*.2;x.fillStyle="rgba(255,245,194,.55)";rr(x,x2,y-h*.55,w2,h*.8,h*.4);x.fill();}}
     x.fillStyle=CREAM;for(let i=0;i<50;i++){const y=H*rand()*.3;x.globalAlpha=(.15+rand()*.45)*(1-y/(H*.3));x.fillRect(rand()*W,y,2,2);}x.globalAlpha=1;},
 
   // parallax (init do mockup, seed 21): pontos creme em 2 camadas + 22 estrelas grandes, só no terço de cima com fade; 10 planetas de cenário no mundo
@@ -213,7 +209,7 @@ export const hud={
   trail:{style:"dashed",color:(skin,isMe)=>`rgba(255,255,255,${isMe?.55:.35})`,width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},
   labels:{font:FONT,nameColor:"#fff",massColor:CREAM,stroke:INK,minR:13,size:r=>Math.max(12,r*.34),massK:.68,nameY:fs=>-fs*.28,massY:fs=>fs*.8,strokeWidth:s=>Math.max(2,s*.2)},
   cell:{merge:{color:YEL,width:r=>Math.max(3,r*.08),radiusK:1.18},
-    powerups:{colors:{speed:YEL,magnet:PUR,shield:BLU},width:r=>Math.max(3,r*.08),dash:r=>[r*.4,r*.3],radiusK:i=>1.3+i*.16,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},
+    powerups:{colors:{magnet:PUR,shield:BLU},width:r=>Math.max(3,r*.08),dash:r=>[r*.4,r*.3],radiusK:i=>1.3+i*.16,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},
   skinPreview:{ringK:.68,dy:2},
 };
 
