@@ -36,7 +36,7 @@ export function escape() {
 export function applySession(me) {
   const prefs = normalizePrefs(me.prefs);
   app.update(s => ({ ...s, session: { ...s.session, user: me.user, skins: me.skins && me.skins.length ? me.skins : [0], prefs,
-    stats: normalizeStats(me.stats), achievements: me.achievements || [], online: api.online } }));
+    stats: normalizeStats(me.stats), achievements: me.achievements || [], online: api.online, server: api.server } }));
   applyPrefsSideEffects(prefs);
 }
 export const patchUser = patch => app.update(s => ({ ...s, session: { ...s.session, user: { ...(s.session.user || {}), ...patch } } }));
@@ -55,7 +55,7 @@ export async function boot() {
   try { applySession(await api.bootstrap()); }
   catch (e) { app.update({ bootError: e.message || String(e) }); applyPrefsSideEffects(PREF_DEFAULTS); }
   app.update({ booted: true });
-  if (api.online === false) toast(LABELS.offlineNote, 3200);
+  if (api.server === false) toast(LABELS.offlineNote, 3200); else if (api.online === false) toast(LABELS.noDbNote, 3200);
   loadConfig(); loadTop5(); loadRooms();
   devQuery();
 }

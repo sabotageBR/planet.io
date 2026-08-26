@@ -33,7 +33,7 @@ function Body() {
       <button className="btn-primary" data-go="play" onClick={() => { commit(); play({}); }}>{LB.play}</button>
       <div className="entry-links">{links.map(([s, l]) => <button key={s} className="btn-secondary" data-go={s} onClick={() => go(s)}>{l}</button>)}</div>
       <div className="guest-note" data-kind={guest ? "guest" : "registered"}>
-        <span className="gn-txt">{guest ? LB.guestNote : LB.registered}{session.online === false ? ` · ${LB.offlineNote}` : ""}</span>
+        <span className="gn-txt">{guest ? LB.guestNote : LB.registered}{session.online === false ? ` · ${session.server === false ? LB.offlineNote : LB.noDbNote}` : ""}</span>
         {guest ? <button className="btn-link" data-go="account" onClick={openAccount}>{LB.claim}</button> : null}
       </div>
       <div className="hint">{LB.hint}</div>

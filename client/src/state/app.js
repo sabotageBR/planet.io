@@ -26,7 +26,7 @@ export function normalizeStats(s) {
 
 export const initialState = {
   booted: false, bootError: null,
-  session: { user: null, skins: [0], prefs: { ...PREF_DEFAULTS }, stats: EMPTY_STATS, achievements: [], online: null, dayRank: null },
+  session: { user: null, skins: [0], prefs: { ...PREF_DEFAULTS }, stats: EMPTY_STATS, achievements: [], online: null, server: null, dayRank: null },
   screen: "entry",
   overlays: { account: false, reconn: false },
   reconnAttempt: 0,

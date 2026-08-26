@@ -26,7 +26,8 @@ export const LABELS = {
   ammo: "mísseis", powerups: { speed: "Velocidade", magnet: "Ímã", shield: "Escudo" },
   room: "SALA", ping: "ms", fps: "fps", top5: "TOP 5 HOJE", activeRooms: "SALAS ATIVAS",
   // extras do shell (não existem no mockup)
-  offlineNote: "Sem servidor: jogando em modo local", saving: "salvando…", noRank: "sem posição", loading: "carregando…",
+  offlineNote: "Sem servidor: jogando em modo local",
+  noDbNote: "Servidor sem banco: progresso não é salvo", saving: "salvando…", noRank: "sem posição", loading: "carregando…",
   noRooms: "Nenhuma sala ativa — jogue para criar uma", noHistory: "Nenhuma partida ainda", useSuggestion: "Usar sugestão",
   claimed: "Conta reivindicada", loggedIn: "Bem-vindo de volta", loggedOut: "Você saiu da conta", nickSaved: "Nick salvo",
   bought: "Skin comprada", equippedToast: "Skin equipada", poorToast: "Moedas insuficientes", lockedToast: "Desbloqueie pela conquista", secretToast: "Segredo oculto…",

@@ -98,7 +98,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0)};
       buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();hudStore.set({...initialHud(),room:room||null});minimap.show(curPrefs.showMinimap!==false);
       if(pointer&&renderer)pointer.center(renderer.W,renderer.H);
-      const isLocal=useLocal||qflag("local")||isBench()||api.online===false;
+      const isLocal=useLocal||qflag("local")||isBench()||api.server===false;
       if(isLocal){local=createLocalServer(isBench()?benchOptions():{lag:+(Q.get("lag")||0),seed:+(Q.get("seed")||7)});connectWith(()=>local.connect());return;}
       const proto=location.protocol==="https:"?"wss":"ws";
       const go=shard=>{if(!joined)return;connectWith(()=>new WebSocket(`${proto}://${location.host}/ws/${shard}`));};

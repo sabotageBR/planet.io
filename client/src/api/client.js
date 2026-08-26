@@ -50,7 +50,8 @@ const NO_SERVER = () => offline("offline", "Servidor indisponível — isso prec
 
 export const api = {
   /** null até o bootstrap; depois true (servidor respondeu) ou false (modo offline). */
-  online: null,
+  online: null,   // serviço de contas (banco) disponível?
+  server: null,   // servidor de jogo alcançável (/api/config)?
   get token() { return getToken(); },
   get: p => request("GET", p),
   post: (p, b) => request("POST", p, b === undefined ? {} : b),
@@ -61,7 +62,8 @@ export const api = {
     try {
       let me = null;
       if (getToken()) {
-        try { me = await request("GET", "/api/me"); }
+        try { await request("GET", "/api/config", undefined, { auth: false }); api.server = true; } catch (e) { api.server = false; }
+      try { me = await request("GET", "/api/me"); }
         catch (e) { if (e instanceof ApiError && e.status === 401) setToken(null); else throw e; }
       }
       if (!me) { const g = await request("POST", "/api/auth/guest", {}, { auth: false }); setToken(g.token); me = await request("GET", "/api/me"); }
