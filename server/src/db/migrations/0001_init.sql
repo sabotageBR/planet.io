@@ -16,7 +16,7 @@ CREATE TABLE skins(
 );
 
 CREATE TABLE users(
-  id               bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id               bigserial PRIMARY KEY,
   kind             text NOT NULL CHECK (kind IN ('guest','registered')),
   nick             text NOT NULL CHECK (char_length(nick) BETWEEN 2 AND 16),
   email            text,
@@ -34,7 +34,7 @@ CREATE UNIQUE INDEX users_email_uq ON users (lower(email)) WHERE email IS NOT NU
 CREATE INDEX users_guest_seen_idx ON users (last_seen_at) WHERE kind = 'guest';
 
 CREATE TABLE auth_tokens(
-  id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id           bigserial PRIMARY KEY,
   user_id      bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token_hash   text NOT NULL UNIQUE,
   kind         text NOT NULL CHECK (kind IN ('device','session')),
@@ -49,7 +49,7 @@ CREATE INDEX auth_tokens_expires_idx ON auth_tokens (expires_at);
 
 -- uma linha por vida (join → morte/saída); session_id garante idempotência
 CREATE TABLE matches(
-  id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id                bigserial PRIMARY KEY,
   session_id        uuid NOT NULL UNIQUE,
   user_id           bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   room_code         text,
@@ -98,7 +98,7 @@ CREATE INDEX user_stats_total_score_idx ON user_stats (total_score DESC);
 
 -- invariante: users.coins = sum(delta) por usuário
 CREATE TABLE coin_ledger(
-  id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id            bigserial PRIMARY KEY,
   user_id       bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   delta         int NOT NULL CHECK (delta <> 0),
   balance_after int NOT NULL CHECK (balance_after >= 0),
