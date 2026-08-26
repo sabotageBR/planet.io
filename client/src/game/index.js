@@ -4,6 +4,7 @@
 //   hudStore (8 Hz): {mass,score,rank,coins:null,ammo,powerups:{magnet (s),shield (nível 0..3)},splitCd,ejectCd (0..1 restante),
 //                    lb:[{slot,name,mass,isBot,registered,me,rank}],room,ping,fps,dead}
 //   onConnection({state:'connecting'|'connected'|'reconnecting'|'closed'|'error', room?, attempt?, code?, message?})
+// Tiro: segurar o botão esquerdo mira (reta pontilhada local) e soltar dispara — segurando, o míssil sai reto.
 // Fluxo por frame: ponteiro → alvo no mundo → InputSender (30 Hz) · Predictor (60 Hz, peças próprias, render
 // interpolado entre passos) · Interpolator (outros, −100 ms; removidas somem com efeito via onVanish)
 // · WorldView.build · Camera · Renderer (Pixi) · radar 10 Hz · HUD 8 Hz. EVENTs de terceiros esperam o
@@ -34,7 +35,9 @@ import {Q,qflag,bodyMode} from "./util.js";
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{speed:0,magnet:0,shield:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false});
 const PREF_DEFAULTS={quality:"auto",showNames:true,showMass:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false};
 const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SPLIT]:"split",[EVENT.BH_SUCK]:"suck",[EVENT.CHIP]:"chip",[EVENT.BOUNCE]:"bounce",[EVENT.BOOM]:"boom",[EVENT.EXIT]:"exit",[EVENT.SHOOT]:"shoot",
-  [EVENT.DEATH]:"death",[EVENT.SHIELD_BREAK]:"shieldBreak",[EVENT.SHIELD_HIT]:"shieldHit",[EVENT.SHIELD_UP]:"shieldUp",[EVENT.CLASH]:"clash",[EVENT.DEFLECT]:"deflect"};
+  [EVENT.DEATH]:"death",[EVENT.SHIELD_BREAK]:"shieldBreak",[EVENT.SHIELD_HIT]:"shieldHit",[EVENT.SHIELD_UP]:"shieldUp",[EVENT.CLASH]:"clash",[EVENT.DEFLECT]:"deflect",
+  [EVENT.STAR_BURST]:"starBurst",[EVENT.SUPERNOVA]:"supernova"};
+const AIM_LEN=1100;   // comprimento máximo da reta de mira (px de mundo)
 const DIR_EVENTS=new Set([EVENT.BOUNCE,EVENT.CHIP,EVENT.SHOOT,EVENT.DEFLECT,EVENT.SHIELD_HIT]);
 const shardOf=code=>{const n=parseInt(String(code||"")[0],36);return Number.isFinite(n)?n:0;};
 
@@ -57,13 +60,15 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const view=createWorldView({buffer,predictor});
   const cam=createCamera(),fstats=createFrameStats();
   const canAct=()=>joined&&!dead&&conn&&conn.isOpen;
-  const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self?view.self.missiles:0),canAct});
+  let aiming=false,aim=null;
+  const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self?view.self.missiles:0),canAct,onAim:on=>{aiming=on;if(!on)aim=null;}});
   const keyboard=createKeyboard({onAction:actions.act,enabled:()=>joined});
   const touch=createTouchButtons(hud,{onAction:actions.act});
   let pointer=null;
   const minimap=createMinimap({hud,theme:()=>curTheme,getScene:()=>{if(!joined)return null;
     const players=[];const seenSlots=new Set();for(const p of view.pieces){if(seenSlots.has(p.owner)&&!p.isMe)continue;seenSlots.add(p.owner);const pl=view.playerOf(p.owner);players.push({x:p.rx,y:p.ry,isMe:!!p.isMe,isBot:pl?pl.isBot:false});}
-    return{players,asteroids:view.asteroids.map(a=>({x:a.rx,y:a.ry})),holes:view.holes.map(h=>({x:h.rx,y:h.ry,ri:h.influenceR})),cam};}});
+    return{players,asteroids:view.asteroids.map(a=>({x:a.rx,y:a.ry})),holes:view.holes.map(h=>({x:h.rx,y:h.ry,ri:h.influenceR})),
+      stars:view.stars.map(st=>({x:st.rx,y:st.ry,r:st.rr})),cam};}});
   minimap.show(false);
   if(isStats())statsOv=createOverlay(hud);
 
@@ -126,7 +131,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     destroy(){destroyed=true;cancelAnimationFrame(raf);raf=0;game.leave(true);keyboard.destroy();touch.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("planet:theme",onThemeEvent);if(themeGuard)removeEventListener("planet:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
-    debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats}),local:()=>local},
+    debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming}),local:()=>local},
   };
 
   // ── qualidade / modo econômico (0 = cheio, 1 = econômico, 2 = mínimo) ──
@@ -157,7 +162,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead});}
   function statsText(){const c=renderer.counts(),st=predictor.stats;
     const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
-    return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}
+    return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · estrelas ${c.stars} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}
   let bytesRate=0,bytesLast=0,bytesT=0,themeAt=0,own0=[];
 
   // ── laço ──
@@ -172,8 +177,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(conn.isOpen&&!dead)input.update(now);}
     predictor.update(dt);interp.update(now);view.build();
     const own=[];predictor.forEach(pc=>own.push(pc));own0=own;cam.W=renderer.W;cam.H=renderer.H;cam.update(own,dt,bodyMode()==="portrait");
+    aim=null;   // reta de mira: da 1ª peça própria (a que dispara no servidor) até o ponteiro
+    if(aiming&&joined&&!dead&&own.length&&pointer&&pointer.state.active){const src=own[0],p=cam.toWorld(pointer.state.sx,pointer.state.sy);
+      const dx=p.x-src.rx,dy=p.y-src.ry,l=Math.hypot(dx,dy)||1,len=Math.min(AIM_LEN,Math.max(src.rr*2.5,l));
+      aim={x0:src.rx+dx/l*src.rr,y0:src.ry+dy/l*src.rr,x1:src.rx+dx/l*len,y1:src.ry+dy/l*len};}
     const t1=performance.now();
-    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),parallax:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
+    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,parallax:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
       showNames:curPrefs.showNames!==false,showMass:curPrefs.showMass!==false,showTrails:!curPrefs.reduceMotion&&!econ});
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU
     if(joined){minimap.update(now);if(now-lastHud>=125){lastHud=now;pushHud(now);}}

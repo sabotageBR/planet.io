@@ -48,7 +48,7 @@ function writeCreate(w,e){w.u8(e.kind).u32(e.id>>>0).u16(qPos(e.x,W)).u16(qPos(e
     case KIND.FOOD:w.u8(e.type|0).u8(e.hue|0);break;
     case KIND.EJECT:w.u16(e.owner|0).u8(e.hue|0).i16(qV(e.vx)).i16(qV(e.vy));break;
     case KIND.ASTEROID:w.u16(e.seed|0).i16(qV(e.vx)).i16(qV(e.vy));break;
-    case KIND.BLACKHOLE:w.u16(e.seed|0).u16(u16c(e.influenceR)).u8(e.phase|0);break;
+    case KIND.BLACKHOLE:case KIND.STAR:w.u16(e.seed|0).u16(u16c(e.influenceR)).u8(e.phase|0);break;
     case KIND.MISSILE:w.u16(e.owner|0).u16(e.target|0).i16(qV(e.vx)).i16(qV(e.vy));break;
     default:throw new Error(`kind desconhecido: ${e.kind}`);}}
 /** @param {Reader} rd @returns {EntityCreate} */
@@ -58,7 +58,7 @@ function readCreate(rd){const kind=rd.u8(),id=rd.u32(),x=dqPos(rd.u16(),W),y=dqP
     case KIND.FOOD:return{kind,id,x,y,r,type:rd.u8(),hue:rd.u8()};
     case KIND.EJECT:return{kind,id,x,y,r,owner:rd.u16(),hue:rd.u8(),vx:dqV(rd.i16()),vy:dqV(rd.i16())};
     case KIND.ASTEROID:return{kind,id,x,y,r,seed:rd.u16(),vx:dqV(rd.i16()),vy:dqV(rd.i16())};
-    case KIND.BLACKHOLE:return{kind,id,x,y,r,seed:rd.u16(),influenceR:rd.u16(),phase:rd.u8()};
+    case KIND.BLACKHOLE:case KIND.STAR:return{kind,id,x,y,r,seed:rd.u16(),influenceR:rd.u16(),phase:rd.u8()};
     case KIND.MISSILE:return{kind,id,x,y,r,owner:rd.u16(),target:rd.u16(),vx:dqV(rd.i16()),vy:dqV(rd.i16())};
     default:throw new Error(`kind desconhecido: ${kind}`);}}
 /** @param {Writer} w @param {EntityUpdate} u */

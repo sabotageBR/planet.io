@@ -75,7 +75,7 @@ export class Sim{
     if(seq!=null){const s=seq&0xffff;if(gp.gotInput){const d=(s-gp.lastInput.seq)&0xffff;if(!(d>0&&d<32768))return false;}gp.gotInput=true;gp.lastInput.seq=s;}
     const w=this.world,li=gp.lastInput;li.tx=tx;li.ty=ty;li.flags=flags;w.setTarget(slot,tx,ty);
     if(flags&INPUT_FLAG.SPLIT)w.requestSplit(slot);if(flags&INPUT_FLAG.EJECT)w.requestEject(slot);
-    w.setEjectHold(slot,(flags&INPUT_FLAG.EJECT_HOLD)!==0);if(flags&INPUT_FLAG.FIRE)w.requestFire(slot);return true;}
+    w.setEjectHold(slot,(flags&INPUT_FLAG.EJECT_HOLD)!==0);if(flags&INPUT_FLAG.FIRE)w.requestFire(slot,(flags&INPUT_FLAG.AIM)!==0);return true;}
   /** Mata o slot fora do passo (testes/admin): peças mortas + fluxo de morte normal. */
   kill(slot,{bySlot=-1,cause='eaten'}={}){const w=this.world,ps=w.players.get(slot),gp=this.players.get(slot);if(!ps||!gp||!ps.alive)return false;
     const pc=ps.pieces.find(p=>!p.dead);if(pc)this._hit.set(slot,{x:pc.x,y:pc.y,r:pc.r});
@@ -117,6 +117,8 @@ export class Sim{
       case 'SHIELD_UP':this._ev(EVENT.SHIELD_UP,e.x,e.y,e.r,e.slot,NO_SLOT,e.level);break;
       case 'CLASH':this._ev(EVENT.CLASH,e.x,e.y,e.r,e.slotA,e.slotB,0);break;
       case 'DEFLECT':this._ev(EVENT.DEFLECT,e.x,e.y,e.r,e.bySlot<0?NO_SLOT:e.bySlot,NO_SLOT,packDir(e.nx,e.ny,0));break;
+      case 'STAR_BURST':this._ev(EVENT.STAR_BURST,e.x,e.y,e.r,e.slot,NO_SLOT,e.starId);break;
+      case 'SUPERNOVA':this._ev(EVENT.SUPERNOVA,e.x,e.y,e.r,NO_SLOT,NO_SLOT,e.starId);break;
       case 'PLAYER_DEAD':deaths.push(e);break;}}
     for(let i=0;i<deaths.length;i++)this._died(deaths[i]);
     hit.clear();}

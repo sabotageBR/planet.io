@@ -1,9 +1,9 @@
-// ── BOT: wander / hunt / flee + fuga de buracos negros; pensa a cada THINK_TICKS ──
+// ── BOT: wander / hunt / flee + fuga de buracos negros e estrelas; pensa a cada THINK_TICKS ──
 // Sem Session nem hooks: produz input como um humano via sim.applyInput(slot,{tx,ty,flags}).
 // Razões FLEE_RATIO/HUNT_RATIO são de raio (a maior peça de cada lado). Split quando caça de perto e é
 // bem maior (SPLIT_P por tick, ≤ BOT.MAX_PIECES); FIRE_P por tick com munição enquanto caça/foge. Com escudo não atira nem divide (preserva o escudo).
 // @ts-check
-import {BOT,BLACKHOLE} from '@planet/shared/constants.js';
+import {BOT,BLACKHOLE,STAR} from '@planet/shared/constants.js';
 import {INPUT_FLAG} from '@planet/shared/protocol/constants.js';
 import {clamp} from '@planet/shared/util.js';
 const MARGIN=200,FLEE_STEP=700,WAYPOINT_DONE=100,HUMAN_BONUS=1.5;
@@ -15,6 +15,11 @@ function threateningHole(w,x,y){let best=null,bd=Infinity;const holes=w.holes;
   for(let i=0;i<holes.length;i++){const h=holes[i];if(h.dead||h.k<=0)continue;const ri=h.r*BLACKHOLE.INFLUENCE*h.k,lim=ri*BOT.HOLE_AVOID,dx=x-h.x,dy=y-h.y,d2=dx*dx+dy*dy;
     if(d2<lim*lim&&d2<bd){bd=d2;best=h;}}
   if(!best)return null;return{x:best.x,y:best.y,ri:best.r*BLACKHOLE.INFLUENCE*best.k};}
+/** Estrela armada cujo halo (raio·HALO·HOLE_AVOID) contém (x,y); a mais próxima — encostar estilhaça o planeta. */
+function threateningStar(w,x,y){let best=null,bd=Infinity;const stars=w.stars;
+  for(let i=0;i<stars.length;i++){const st=stars[i];if(st.dead||st.k<STAR.ARM_K)continue;const ri=st.r*STAR.HALO,lim=ri*BOT.HOLE_AVOID,dx=x-st.x,dy=y-st.y,d2=dx*dx+dy*dy;
+    if(d2<lim*lim&&d2<bd){bd=d2;best=st;}}
+  if(!best)return null;return{x:best.x,y:best.y,ri:best.r*STAR.HALO};}
 export class BotBrain{
   constructor(sim,slot){this.sim=sim;this.slot=slot;this.mode='wander';this.target=-1;this.wx=0;this.wy=0;this.nextThink=0;}
   reset(){this.mode='wander';this.target=-1;this.nextThink=0;}
@@ -33,7 +38,7 @@ export class BotBrain{
           if(!shielded&&ps.missiles>0&&rng.chance(BOT.FIRE_P))flags|=INPUT_FLAG.FIRE;}}}
     else if(this.mode==='food'){const f=w.entityById.get(this.target);if(f&&!f.dead){tx=f.x;ty=f.y;}else{this._wander(w);tx=this.wx;ty=this.wy;}}
     else if(Math.hypot(this.wx-c.x,this.wy-c.y)<WAYPOINT_DONE){this._wander(w);tx=this.wx;ty=this.wy;}
-    const h=threateningHole(w,c.x,c.y);
+    const h=threateningHole(w,c.x,c.y)||threateningStar(w,c.x,c.y);
     if(h){const dx=c.x-h.x,dy=c.y-h.y,d=Math.hypot(dx,dy)||1,s=h.ri*1.5;tx=clamp(c.x+dx/d*s,MARGIN,w.w-MARGIN);ty=clamp(c.y+dy/d*s,MARGIN,w.h-MARGIN);flags&=~INPUT_FLAG.SPLIT;}
     sim.applyInput(this.slot,{tx,ty,flags});}
   _wander(w){const rng=this.sim.rng;this.mode='wander';this.target=-1;this.wx=rng.range(MARGIN,w.w-MARGIN);this.wy=rng.range(MARGIN,w.h-MARGIN);}

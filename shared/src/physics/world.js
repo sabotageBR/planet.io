@@ -1,10 +1,10 @@
 // ── MUNDO: simulação determinística a 60 Hz (servidor autoritativo; ?bench e testes) ──
-// Ordem fixa do passo: inputs → integração → grades → pares do mesmo dono → pares de donos
-// diferentes → perigos (asteroides, buracos) → comida/ejetados → mísseis → fusões →
+// Ordem fixa do passo: inputs → integração (+ fases dos buracos e das estrelas) → grades → pares do mesmo dono →
+// pares de donos diferentes → perigos (asteroides, buracos, estrelas) → comida/ejetados → mísseis → fusões →
 // compactação ordenada → spawns → tick++. Remoção só por `dead` + compactação (ordem estável).
 // @ts-check
-import {WORLD,DT,PLAYER,SPEED,SPLIT,EJECT,BOUNCE,WALL,FOOD,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP} from "../constants.js";
-import {KIND,PIECE_FLAG,FOOD_FLAG,BH_PHASE} from "../protocol/constants.js";
+import {WORLD,DT,PLAYER,SPEED,SPLIT,EJECT,BOUNCE,WALL,FOOD,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR} from "../constants.js";
+import {KIND,PIECE_FLAG,FOOD_FLAG,BH_PHASE,STAR_PHASE} from "../protocol/constants.js";
 import {createRng} from "../rng.js";
 import {clamp} from "../util.js";
 import {createBody,liveCount,firstLive} from "./body.js";
@@ -34,28 +34,30 @@ import * as R from "./rules.js";
  * @property {boolean} splitReq
  * @property {boolean} ejectReq
  * @property {boolean} fireReq
+ * @property {boolean} fireAim   tiro mirado (reto na direção do alvo, sem perseguir)
  */
 
 // códigos de par (kind de A << 3 | kind de B); A sempre do grupo inserido antes: peças, ejetados, asteroides, mísseis, buracos
 const K=KIND,PP=K.PIECE<<3|K.PIECE,PE=K.PIECE<<3|K.EJECT,PA=K.PIECE<<3|K.ASTEROID,PM=K.PIECE<<3|K.MISSILE,PH=K.PIECE<<3|K.BLACKHOLE,
-  EA=K.EJECT<<3|K.ASTEROID,EH=K.EJECT<<3|K.BLACKHOLE,AA=K.ASTEROID<<3|K.ASTEROID,AH=K.ASTEROID<<3|K.BLACKHOLE,AM=K.ASTEROID<<3|K.MISSILE,
-  MM=K.MISSILE<<3|K.MISSILE,MH=K.MISSILE<<3|K.BLACKHOLE;
+  PS=K.PIECE<<3|K.STAR,EA=K.EJECT<<3|K.ASTEROID,EH=K.EJECT<<3|K.BLACKHOLE,AA=K.ASTEROID<<3|K.ASTEROID,AH=K.ASTEROID<<3|K.BLACKHOLE,
+  AM=K.ASTEROID<<3|K.MISSILE,MM=K.MISSILE<<3|K.MISSILE,MH=K.MISSILE<<3|K.BLACKHOLE;
 // constantes locais de spawn (margens do mockup; não existem em constants.js)
-const PLAYER_MARGIN=300,PLAYER_SAFE=900,AST_MARGIN=200,BELT_MARGIN=ASTEROID.BELT_RADIUS[1]+200,BELT_RAD_JITTER=40,SPAWN_TRIES=40;
+const PLAYER_MARGIN=300,PLAYER_SAFE=900,AST_MARGIN=200,BELT_MARGIN=ASTEROID.BELT_RADIUS[1]+200,BELT_RAD_JITTER=40,SPAWN_TRIES=40,STAR_MARGIN=400;
 /** (x,y) está a ≥ min de todos os corpos vivos de arr? (arr null = sim) @param {Body[]|null} arr */
 function farFrom(arr,min,x,y){if(!arr)return true;const m2=min*min;
   for(let i=0;i<arr.length;i++){const b=arr[i];if(!b||b.dead)continue;const dx=b.x-x,dy=b.y-y;if(dx*dx+dy*dy<m2)return false;}return true;}
 
 export class World{
-  /** @param {number} seed @param {number} w @param {number} h @param {{food:number,asteroids:boolean,holes:number}} o */
+  /** @param {number} seed @param {number} w @param {number} h @param {{food:number,asteroids:boolean,holes:number,stars:number}} o */
   constructor(seed,w,h,o){
     this.seed=seed;this.rng=createRng(seed);this.w=w;this.h=h;this.tick=0;this.nextId=1;
     /** @type {Body[]} */this.pieces=[];/** @type {Body[]} */this.food=[];/** @type {Body[]} */this.ejected=[];
-    /** @type {Body[]} */this.asteroids=[];/** @type {Body[]} */this.holes=[];/** @type {Body[]} */this.missiles=[];
+    /** @type {Body[]} */this.asteroids=[];/** @type {Body[]} */this.holes=[];/** @type {Body[]} */this.missiles=[];/** @type {Body[]} */this.stars=[];
     /** @type {Map<number,PlayerState>} */this.players=new Map();
     /** @type {any[]} */this.events=[];/** @type {Map<number,Body>} */this.entityById=new Map();
     /** @type {{cx:number,cy:number,rad:number,w:number}[]} */this.belts=[];/** @type {{belt:number,at:number}[]} */this.astQueue=[];
-    this.foodCount=o.food;this.holeCount=o.holes;this.astBase=o.asteroids?ASTEROID.BELTS*ASTEROID.PER_BELT+ASTEROID.WANDERERS:0;this.astCap=this.astBase+ASTEROID.MAX_EXTRA;
+    /** @type {{at:number}[]} */this.starQueue=[];
+    this.foodCount=o.food;this.holeCount=o.holes;this.starCount=o.stars;this.astBase=o.asteroids?ASTEROID.BELTS*ASTEROID.PER_BELT+ASTEROID.WANDERERS:0;this.astCap=this.astBase+ASTEROID.MAX_EXTRA;
     this.grid=createGrid(w,h,GRID_CELL);this.foodGrid=createGrid(w,h,GRID_CELL);this.foodDirty=true;
     /** @type {Body[]} */this.dyn=[];this._pairs=new Int32Array(4096*3);/** @type {number[]} */this._q=[];this._spot={x:0,y:0};
     for(let i=0;i<o.food;i++)this.spawnFood();
@@ -64,7 +66,8 @@ export class World{
         this.belts.push({cx:rng.range(BELT_MARGIN,w-BELT_MARGIN),cy:rng.range(BELT_MARGIN,h-BELT_MARGIN),rad,w:sp/rad});
         for(let i=0;i<ASTEROID.PER_BELT;i++)this.spawnAsteroid(b,0,0,0,i/ASTEROID.PER_BELT*Math.PI*2);}
       for(let i=0;i<ASTEROID.WANDERERS;i++)this.spawnAsteroid(-1);}
-    for(let i=0;i<o.holes;i++)this.spawnHole({active:i>0});}
+    for(let i=0;i<o.holes;i++)this.spawnHole({active:i>0});
+    for(let i=0;i<o.stars;i++)this.spawnStar(i>0);}
 
   // ── ids e corpos ──
   newId(){return(this.nextId++)>>>0;}
@@ -106,6 +109,17 @@ export class World{
     if(active){h.type=BH_PHASE.ACTIVE;h.k=1;const L=BLACKHOLE.LIFE_TICKS;h.life=this.tick+rng.int(Math.floor(L[0]*.5),L[1]);}
     else{h.type=BH_PHASE.GROW;h.k=0;h.life=this.tick+BLACKHOLE.GROW_TICKS;}
     this.holes.push(h);return this._register(h);}
+  /**
+   * Estrela: perigo estático que estilhaça quem encosta e termina em supernova. Nasce em GROW (`k` rampa) longe
+   * das outras (MIN_SEP), dos buracos e dos jogadores (SAFE_SPAWN); `active` pula a fase GROW (só no início do mundo).
+   */
+  spawnStar(active=false){const rng=this.rng,s=this._farSpot(STAR_MARGIN,this.stars,STAR.MIN_SEP,this.holes,BLACKHOLE.MIN_SEP,this.pieces,STAR.SAFE_SPAWN);
+    const st=createBody(KIND.STAR,this.newId(),s.x,s.y,STAR.R);st.seed=rng.next();
+    if(active){st.type=STAR_PHASE.ACTIVE;st.k=1;st.life=this.tick+rng.int(STAR.LIFE_TICKS[0],STAR.LIFE_TICKS[1]);}
+    else{st.type=STAR_PHASE.GROW;st.k=0;st.life=this.tick+STAR.GROW_TICKS;}
+    this.stars.push(st);return this._register(st);}
+  /** Agenda o nascimento de uma estrela nova daqui a `delay` ticks (depois de uma supernova). */
+  queueStar(delay){this.starQueue.push({at:this.tick+delay});}
   _tmpHole=[null];
   /** Ponto aleatório com margem a ≥ minX de cada lista (até 3; null ignora). 40 tentativas; devolve a última se falhar. */
   _farSpot(margin,arrA,minA,arrB=null,minB=0,arrC=null,minC=0){const rng=this.rng,s=this._spot;
@@ -122,7 +136,7 @@ export class World{
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0}={}){
     let ps=this.players.get(slot);
     if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,pieces:[],missiles,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,splitCdUntil:0,ejectCdUntil:0,
-      ejectHold:false,ejectHoldAt:0,score:0,splitReq:false,ejectReq:false,fireReq:false};this.players.set(slot,ps);}
+      ejectHold:false,ejectHoldAt:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.missiles=missiles;}
     return this._spawnPiece(ps,x,y,r);}
   _spawnPiece(ps,x,y,r){
@@ -140,13 +154,14 @@ export class World{
   requestSplit(slot){const ps=this.players.get(slot);if(ps)ps.splitReq=true;}
   requestEject(slot){const ps=this.players.get(slot);if(ps)ps.ejectReq=true;}
   setEjectHold(slot,on){const ps=this.players.get(slot);if(!ps)return;if(on&&!ps.ejectHold)ps.ejectHoldAt=this.tick;ps.ejectHold=!!on;}
-  requestFire(slot){const ps=this.players.get(slot);if(ps)ps.fireReq=true;}
+  /** `aim`: tiro mirado — sai reto na direção do alvo do ponteiro, sem perseguir nem interceptar. */
+  requestFire(slot,aim=false){const ps=this.players.get(slot);if(ps){ps.fireReq=true;ps.fireAim=!!aim;}}
   massOf(slot){const ps=this.players.get(slot);if(!ps)return 0;let m=0;for(let i=0;i<ps.pieces.length;i++){const p=ps.pieces[i];if(!p.dead)m+=p.mass;}return m;}
   piecesOf(slot){const ps=this.players.get(slot);return ps?ps.pieces:[];}
 
   // ── passo ──
   step(){
-    const tick=this.tick,ev=this.events,W=this.w,H=this.h,players=this.players,pieces=this.pieces,ejected=this.ejected,asts=this.asteroids,missiles=this.missiles,holes=this.holes;
+    const tick=this.tick,ev=this.events,W=this.w,H=this.h,players=this.players,pieces=this.pieces,ejected=this.ejected,asts=this.asteroids,missiles=this.missiles,holes=this.holes,stars=this.stars;
     ev.length=0;
     // ── 1. inputs ──
     for(const ps of players.values()){
@@ -157,7 +172,7 @@ export class World{
         if(ps.fireReq)R.applyFire(this,ps);
         if(ps.shieldLv>0&&ps.shieldLv<POWERUP.SHIELD_MAX_LEVEL&&tick>=ps.shieldEvolveAt){ps.shieldLv++;ps.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
           const pc=firstLive(ps.pieces);if(pc)ev.push({type:"SHIELD_UP",slot:ps.slot,level:ps.shieldLv,x:pc.x,y:pc.y,r:pc.r});}}
-      ps.splitReq=ps.ejectReq=ps.fireReq=false;}
+      ps.splitReq=ps.ejectReq=ps.fireReq=false;ps.fireAim=false;}
     // ── 2. integração ──
     for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner);
       integratePiece(pc,ps.tx,ps.ty,DT,W,H);
@@ -172,6 +187,7 @@ export class World{
     for(let i=0;i<missiles.length;i++){const m=missiles[i];if(m.dead)continue;if(tick>=m.life){m.dead=true;continue;}
       R.homeMissile(this,m);if(integrateFree(m,0,0,DT,W,H))m.dead=true;}
     for(let i=0;i<holes.length;i++){const h=holes[i];if(!h.dead)R.tickHole(this,h);}
+    for(let i=0;i<stars.length;i++){const st=stars[i];if(!st.dead)R.tickStar(this,st);}   // fases da estrela (a supernova acontece aqui)
     // ── 3. grades ──
     const grid=this.grid,dyn=this.dyn;let nd=0;grid.clear();
     for(let i=0;i<pieces.length;i++){const b=pieces[i];if(b.dead)continue;dyn[nd]=b;grid.insert(nd++,b.x,b.y,b.r);}
@@ -179,6 +195,7 @@ export class World{
     for(let i=0;i<asts.length;i++){const b=asts[i];if(b.dead)continue;dyn[nd]=b;grid.insert(nd++,b.x,b.y,b.r);}
     for(let i=0;i<missiles.length;i++){const b=missiles[i];if(b.dead)continue;dyn[nd]=b;grid.insert(nd++,b.x,b.y,b.r);}
     for(let i=0;i<holes.length;i++){const b=holes[i];if(b.dead)continue;const ri=b.r*BLACKHOLE.INFLUENCE*b.k;if(ri<R.LOCAL.HOLE_MIN_RI)continue;dyn[nd]=b;grid.insert(nd++,b.x,b.y,ri);}
+    for(let i=0;i<stars.length;i++){const b=stars[i];if(b.dead)continue;dyn[nd]=b;grid.insert(nd++,b.x,b.y,b.r);}
     dyn.length=nd;grid.build();
     const food=this.food,fg=this.foodGrid;
     if(this.foodDirty){fg.clear();for(let i=0;i<food.length;i++){const f=food[i];fg.insert(i,f.x,f.y,f.r);}fg.build();this.foodDirty=false;}
@@ -193,6 +210,7 @@ export class World{
     // ── 6. perigos: asteroides e buracos negros ──
     for(let p=0;p<np;p+=3){const code=pb[p+2];if(code===PP||code===PE||code===EA||code===PM||code===AM||code===MM)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;
       if(code===PA)R.pieceAsteroid(this,A,B);
+      else if(code===PS)R.pieceStar(this,A,B);
       else if(code===AA){const s=A.r+B.r,dx=B.x-A.x,dy=B.y-A.y;if(dx*dx+dy*dy<s*s)resolveBounce(A,B,ASTEROID.E_AST,BOUNCE.POS_CORR);}
       else if(code===PH||code===EH||code===AH||code===MH)R.holePair(this,A,B);}
     const q=this._q;
@@ -202,17 +220,22 @@ export class World{
       if(moved)this.foodDirty=true;}
     // ── 7. comida (ímã, comer) e ejetados (ímã, absorver, alimentar asteroide) ──
     // ímã: comida a d<range anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/range)) px/s (acelera perto = sucção) e fica
-    // marcada MOVED (o snapshot manda UPDATE); ejetados (de terceiros, ou próprios após cdUntil) ganham MAGNET_EJECT_A px/s².
+    // marcada MOVED (o snapshot manda UPDATE); cometa/estrela (comida pesada) andam a MAGNET_HEAVY disso; ejetados
+    // (de terceiros, ou próprios após cdUntil) ganham MAGNET_EJECT_A px/s²; a estrela do mundo se arrasta a MAGNET_STAR.
     const ov=R.LOCAL.FOOD_OVERLAP,PW=POWERUP;
     for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner),magnet=ps.magnetUntil>tick;
       const range=magnet?pc.r*PW.MAGNET_RANGE:pc.r+FOOD.R_MAX*ov,n=fg.query(pc.x,pc.y,range,q);
       for(let k=0;k<n;k++){const f=food[q[k]];if(f.dead)continue;let dx=pc.x-f.x,dy=pc.y-f.y,d2=dx*dx+dy*dy;
-        if(magnet&&d2<range*range&&d2>1e-6){const d=Math.sqrt(d2);let s=PW.MAGNET_PULL*(1+(PW.MAGNET_NEAR-1)*(1-d/range))*DT;if(s>d)s=d;
+        if(magnet&&d2<range*range&&d2>1e-6){const d=Math.sqrt(d2),hv=(f.type===FOOD_TYPE.COMET||f.type===FOOD_TYPE.STAR)?PW.MAGNET_HEAVY:1;
+          let s=PW.MAGNET_PULL*hv*(1+(PW.MAGNET_NEAR-1)*(1-d/range))*DT;if(s>d)s=d;
           f.x+=dx/d*s;f.y+=dy/d*s;f.flags|=FOOD_FLAG.MOVED;this.foodDirty=true;dx=pc.x-f.x;dy=pc.y-f.y;d2=dx*dx+dy*dy;}
         const lim=pc.r+f.r*ov;if(d2<lim*lim)R.eatFood(this,ps,pc,f);}
       if(magnet){const m=grid.query(pc.x,pc.y,range,q);
         for(let k=0;k<m;k++){const e=dyn[q[k]];if(e.kind!==KIND.EJECT||e.dead||(e.owner===pc.owner&&tick<e.cdUntil))continue;
-          const ex=pc.x-e.x,ey=pc.y-e.y,ed2=ex*ex+ey*ey;if(ed2>=range*range||ed2<1e-6)continue;const a=PW.MAGNET_EJECT_A*DT/Math.sqrt(ed2);e.vx+=ex*a;e.vy+=ey*a;}}}
+          const ex=pc.x-e.x,ey=pc.y-e.y,ed2=ex*ex+ey*ey;if(ed2>=range*range||ed2<1e-6)continue;const a=PW.MAGNET_EJECT_A*DT/Math.sqrt(ed2);e.vx+=ex*a;e.vy+=ey*a;}
+        for(let k=0;k<stars.length;k++){const st=stars[k];if(st.dead)continue;const sx=pc.x-st.x,sy=pc.y-st.y,sd2=sx*sx+sy*sy;
+          if(sd2>=range*range||sd2<1e-6)continue;const sd=Math.sqrt(sd2);let sp=PW.MAGNET_PULL*PW.MAGNET_STAR*DT;if(sp>sd)sp=sd;
+          st.x=clamp(st.x+sx/sd*sp,st.r,W-st.r);st.y=clamp(st.y+sy/sd*sp,st.r,H-st.r);}}}
     for(let p=0;p<np;p+=3){const code=pb[p+2];if(code!==PE&&code!==EA)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;
       if(code===PE)R.pieceEject(this,A,B);else R.ejectAsteroid(this,A,B);}
     // ── 8. mísseis: míssil×míssil (O(n²) sobre w.missiles, teste varrido — fora da grade), depois peça×míssil e asteroide×míssil ──
@@ -229,12 +252,13 @@ export class World{
     while(food.length<this.foodCount)this.spawnFood();
     const aq=this.astQueue;if(aq.length){let k=0;for(let i=0;i<aq.length;i++){const e=aq[i];if(e.at<=tick){const a=this.spawnAsteroid(e.belt);ev.push({type:"ASTEROID_RESPAWN",asteroidId:a.id,x:a.x,y:a.y,r:a.r});}else aq[k++]=e;}aq.length=k;}
     while(holes.length<this.holeCount){const h=this.spawnHole();ev.push({type:"HOLE_RESPAWN",holeId:h.id,x:h.x,y:h.y,ex:h.ex,ey:h.ey});}
+    const sq=this.starQueue;if(sq.length){let k=0;for(let i=0;i<sq.length;i++){const e=sq[i];if(e.at<=tick){const st=this.spawnStar();ev.push({type:"STAR_RESPAWN",starId:st.id,x:st.x,y:st.y,r:st.r});}else sq[k++]=e;}sq.length=k;}
     this.tick=tick+1;}
   _compact(){const byId=this.entityById;let foodGone=false;
     const cp=arr=>{let k=0;for(let i=0;i<arr.length;i++){const b=arr[i];if(b.dead)byId.delete(b.id);else arr[k++]=b;}const gone=k!==arr.length;arr.length=k;return gone;};
-    cp(this.pieces);foodGone=cp(this.food);cp(this.ejected);cp(this.asteroids);cp(this.holes);cp(this.missiles);if(foodGone)this.foodDirty=true;
+    cp(this.pieces);foodGone=cp(this.food);cp(this.ejected);cp(this.asteroids);cp(this.holes);cp(this.missiles);cp(this.stars);if(foodGone)this.foodDirty=true;
     for(const ps of this.players.values()){const arr=ps.pieces;let k=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)arr[k++]=arr[i];arr.length=k;}}
 }
 
-/** Cria um mundo determinístico. `food`/`holes` são contagens; `asteroids:false` desliga cinturões e errantes. */
-export function createWorld({seed=1,w=WORLD.w,h=WORLD.h,food=FOOD.COUNT,asteroids=true,holes=BLACKHOLE.COUNT}={}){return new World(seed,w,h,{food,asteroids,holes});}
+/** Cria um mundo determinístico. `food`/`holes`/`stars` são contagens; `asteroids:false` desliga cinturões e errantes. */
+export function createWorld({seed=1,w=WORLD.w,h=WORLD.h,food=FOOD.COUNT,asteroids=true,holes=BLACKHOLE.COUNT,stars=STAR.COUNT}={}){return new World(seed,w,h,{food,asteroids,holes,stars});}

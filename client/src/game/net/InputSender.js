@@ -29,7 +29,8 @@ export function createInputSender({send,getTick,getRtt}){
       for(const p of pending)if(now-p.at>lim){flags|=p.flag;p.at=now;}
       if(hold)flags|=INPUT_FLAG.EJECT_HOLD;
       seq=(seq+1)&0xFFFF;const tick=getTick();
-      for(const f of [INPUT_FLAG.SPLIT,INPUT_FLAG.EJECT,INPUT_FLAG.FIRE])if(flags&f&&!pending.some(p=>p.flag===f))pending.push({flag:f,seq,at:now});
+      for(const f of [INPUT_FLAG.SPLIT,INPUT_FLAG.EJECT,INPUT_FLAG.FIRE])if(flags&f&&!pending.some(p=>p.flag&f))
+        pending.push({flag:f===INPUT_FLAG.FIRE?(flags&(INPUT_FLAG.FIRE|INPUT_FLAG.AIM)):f,seq,at:now});   // FIRE leva o AIM junto: um reenvio não vira tiro teleguiado
       for(const p of pending)if(flags&p.flag)p.seq=seq;
       send(encodeInput({seq,tx,ty,flags,clientTick:tick},buf));
       s.history.push({seq,tick,tx,ty,flags});if(s.history.length>HIST)s.history.splice(0,s.history.length-HIST);

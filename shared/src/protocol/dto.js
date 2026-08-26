@@ -16,9 +16,9 @@
  * @property {number} [flags] PIECE_FLAG.* (PIECE)
  * @property {number} [type] FOOD_TYPE.* (FOOD)
  * @property {number} [hue] 0..11 (FOOD, EJECT)
- * @property {number} [seed] u16 (ASTEROID, BLACKHOLE)
- * @property {number} [influenceR] px inteiros (BLACKHOLE)
- * @property {number} [phase] BH_PHASE.* (BLACKHOLE)
+ * @property {number} [seed] u16 (ASTEROID, BLACKHOLE, STAR)
+ * @property {number} [influenceR] px inteiros: influência (BLACKHOLE) ou halo (STAR)
+ * @property {number} [phase] BH_PHASE.* (BLACKHOLE) ou STAR_PHASE.* (STAR)
  * @property {number} [target] slot alvo (MISSILE)
  */
 /**
@@ -32,8 +32,8 @@
  * @property {number} [vx] UPD.V
  * @property {number} [vy] UPD.V
  * @property {number} [flags] UPD.FLAGS
- * @property {number} [phase] UPD.EXTRA (buraco negro)
- * @property {number} [influenceR] UPD.EXTRA (buraco negro)
+ * @property {number} [phase] UPD.EXTRA (buraco negro, estrela)
+ * @property {number} [influenceR] UPD.EXTRA (buraco negro, estrela)
  */
 /**
  * @typedef {object} EntityRemove

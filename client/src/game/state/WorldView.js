@@ -6,7 +6,7 @@ import {KIND,PLAYER_FLAG,skinById,SKINS} from "@planet/shared";
 export function createWorldView({buffer,predictor}){
   const players=new Map();
   const v={players,mySlot:-1,self:null,room:null,lb:[],lbRaw:[],
-    pieces:[],food:[],ejected:[],asteroids:[],holes:[],missiles:[],
+    pieces:[],food:[],ejected:[],asteroids:[],holes:[],missiles:[],stars:[],
     me(){return players.get(v.mySlot)||null;},
     setPlayers(list){const seen=new Set();
       for(const q of list){seen.add(q.slot);let pl=players.get(q.slot);
@@ -24,12 +24,12 @@ export function createWorldView({buffer,predictor}){
     myRank(){for(const r of v.lb)if(r.me)return r.rank;return 0;},
     playerOf(slot){return players.get(slot)||null;},
     build(){
-      const P=v.pieces,F=v.food,E=v.ejected,A=v.asteroids,H=v.holes,M=v.missiles;P.length=F.length=E.length=A.length=H.length=M.length=0;
+      const P=v.pieces,F=v.food,E=v.ejected,A=v.asteroids,H=v.holes,M=v.missiles,S=v.stars;P.length=F.length=E.length=A.length=H.length=M.length=S.length=0;
       for(const e of buffer.entities.values()){if(e.gone||e.alpha<=0)continue;
         switch(e.kind){
           case KIND.PIECE:if(predictor.isOwn(e))continue;P.push(e);break;
           case KIND.FOOD:F.push(e);break;case KIND.EJECT:E.push(e);break;case KIND.ASTEROID:A.push(e);break;
-          case KIND.BLACKHOLE:H.push(e);break;case KIND.MISSILE:M.push(e);break;}}
+          case KIND.BLACKHOLE:H.push(e);break;case KIND.MISSILE:M.push(e);break;case KIND.STAR:S.push(e);break;}}
       const al=predictor.alpha;predictor.forEach(pc=>{pc.rx=pc.px+(pc.x-pc.px)*al+pc.vox;pc.ry=pc.py+(pc.y-pc.py)*al+pc.voy;pc.rr=pc.r;pc.alpha=1;pc.isMe=true;P.push(pc);});   // interpolado entre passos
       P.sort((a,b)=>a.rr-b.rr);},
     reset(){players.clear();v.self=null;v.lb=[];v.lbRaw=[];v.mySlot=-1;v.room=null;},

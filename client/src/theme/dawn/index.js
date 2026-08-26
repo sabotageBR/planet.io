@@ -28,10 +28,10 @@ export const labels={title:"🪐 PLANET.IO",tagline:"Conquiste a galáxia antes 
   back:"◄",create:"➕ Criar sala",top5:"TOP 5 HOJE"};
 
 // ── fatores de escala: o sprite é assado com raio R/K e desenhado com meia-largura r*K ──
-const PK=sk=>sk.ring?2.05:1.3,FK=2.1,EK=1.5,AK=1.3,BK=2.4,MK=2.6,PROPK=p=>p.ring?2:1.2;
+const PK=sk=>sk.ring?2.05:1.3,FK=2.1,EK=1.5,AK=1.3,BK=2.4,MK=2.6,NK=2,PROPK=p=>p.ring?2:1.2;
 
 export const textures={
-  scale:{planet:PK,food:FK,ejected:EK,asteroid:AK,blackHole:BK,missile:MK,prop:PROPK,star:1},
+  scale:{planet:PK,food:FK,ejected:EK,asteroid:AK,blackHole:BK,missile:MK,nova:NK,prop:PROPK,star:1},
   tier,
   // chave de cache por (tipo, params, size) — mesma granularidade dos mockups
   key(kind,p={},size=0){switch(kind){
@@ -41,6 +41,7 @@ export const textures={
     case "asteroid":return`${id}:a${p.variant}:${size}`;
     case "prop":return`${id}:prop${p.i}`;
     case "star":return`${id}:star${p.variant?1:0}`;
+    case "nova":return`${id}:nova${p.old?"o":""}:${size}`;
     default:return`${id}:${kind}`;}},
 
   // planeta: chapado + crescente de tinta + brilho elíptico + emoji fantasma + contorno (creme se for eu, com fio de tinta por fora)
@@ -87,6 +88,15 @@ export const textures={
     c.strokeStyle=PUR;c.lineWidth=r*.16;c.beginPath();for(let i=0;i<=90;i++){const k=i/90,a=k*6.283*2.2,rr=r*.15+k*r*1.05;i?c.lineTo(Math.cos(a)*rr,Math.sin(a)*rr):c.moveTo(Math.cos(a)*rr,Math.sin(a)*rr);}c.stroke();
     c.strokeStyle=INK;c.lineWidth=r*.04;c.beginPath();for(let i=0;i<=90;i++){const k=i/90,a=k*6.283*2.2,rr=r*.15+k*r*1.05+r*.1;i?c.lineTo(Math.cos(a)*rr,Math.sin(a)*rr):c.moveTo(Math.cos(a)*rr,Math.sin(a)*rr);}c.stroke();
     c.fillStyle=INK;c.beginPath();c.arc(0,0,r*.5,0,6.283);c.fill();c.strokeStyle=PUR;c.lineWidth=r*.08;c.stroke();},
+
+  // estrela do mundo (perigo): disco quente com raios e contorno de tinta; `old` = inchada e vermelha, a caminho da supernova
+  nova(c,size,{old=false}){const r=size/2/NK,core=old?YEL:CREAM,edge=old?ORA:YEL,rays=old?1.85:1.55;c.lineJoin="round";c.lineCap="round";
+    c.strokeStyle=edge;c.lineWidth=Math.max(2,r*.16);
+    for(let i=0;i<12;i++){const a=i/12*6.283+(old?.26:0);c.beginPath();c.moveTo(Math.cos(a)*r*1.05,Math.sin(a)*r*1.05);c.lineTo(Math.cos(a)*r*rays,Math.sin(a)*r*rays);c.stroke();}
+    spikes(c,r*1.22,8,.8,-1.5708);c.fillStyle=edge;c.fill();c.strokeStyle=INK;c.lineWidth=Math.max(2.5,r*.1);c.stroke();
+    c.fillStyle=core;c.beginPath();c.arc(0,0,r*.84,0,6.283);c.fill();c.strokeStyle=INK;c.lineWidth=Math.max(2,r*.08);c.stroke();
+    c.fillStyle="rgba(255,255,255,.5)";c.beginPath();c.arc(-r*.26,-r*.28,r*.24,0,6.283);c.fill();
+    if(old){c.fillStyle="rgba(20,16,38,.22)";c.beginPath();c.arc(r*.3,r*.32,r*.42,0,6.283);c.fill();}},
 
   // estrelas grandes do fundo (2 variantes, pálidas); size padrão 32
   star(c,size,{variant=0}){const R=size/2,v=variant;c.lineJoin="round";spikes(c,R*.9,v?5:4,v?.5:.38,-1.5708);c.fillStyle=v?PALE:CREAM;c.fill();c.strokeStyle=INK;c.lineWidth=2;c.stroke();},
@@ -183,11 +193,23 @@ export const effects={
         P.push({type:"text",x:f.x,y:f.y,text:"BAM!",size:Math.max(11,s*.4),fill:YEL,stroke:INK,font:FONT,alpha:al});break;}
       case "deflect":{P.push({type:"burst",x:f.x,y:f.y,n:7,r0:f.r*(.3+k*1.2),r1:f.r*(.7+k*1.8),color:ROCK_DUST,alpha:a,width:Math.max(2,f.r*.08),phase:(f.nx||0)});   // poeira de rocha
         P.push({type:"star",x:f.x,y:f.y,r:f.r*.5*(1+k),n:7,inner:.5,phase:k,fill:YEL,stroke:INK,width:2,alpha:a});break;}
+      case "starBurst":{const s=f.r*(1+k*1.4),al=Math.min(1,a*1.4);   // planeta estilhaçado pela estrela
+        P.push({type:"star",x:f.x,y:f.y,r:s,n:11,inner:.45,phase:k*.9,fill:YEL,stroke:INK,width:Math.max(2,s*.06),alpha:al});
+        P.push({type:"burst",x:f.x,y:f.y,n:9,r0:f.r*(.8+k*2),r1:f.r*(1.4+k*3),color:ORA,alpha:a,width:Math.max(2,f.r*.12)});
+        P.push({type:"text",x:f.x,y:f.y-f.r*(1.2+k),text:"CRASH!",size:Math.max(11,f.r*.6),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
+      case "supernova":{const s=f.r*(.25+k*.85),al=Math.min(1,a*1.6);   // onda de choque: anéis crescendo + clarão + texto
+        for(let i=0;i<3;i++){const kk=Math.max(0,k-i*.12);P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.15+kk*1.05),color:i?ORA:CREAM,alpha:a*(1-i*.25),width:Math.max(3,f.r*.03*(1-kk))});}
+        P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:16,inner:.45,phase:-k*.5,fill:YEL,stroke:INK,width:Math.max(2,s*.02),alpha:al});
+        P.push({type:"burst",x:f.x,y:f.y,n:14,r0:f.r*(.2+k*.9),r1:f.r*(.35+k*1.15),color:CREAM,alpha:a,width:Math.max(2,f.r*.02)});
+        P.push({type:"text",x:f.x,y:f.y,text:"SUPERNOVA!",size:Math.max(14,f.r*.14),fill:CREAM,stroke:INK,font:FONT,alpha:al});break;}
       case "rock":P.push({type:"ring",x:f.x,y:f.y,r:f.r*.4*(1+k),color:CREAM,alpha:a*.5,width:2});break;}
     return P;},
   missileTrail:{color:CREAM,alphaK:.5,radiusK:.7,every:2},                                   // pontinhos atrás do míssil (alpha=i/n*alphaK, r=m.r*radiusK*i/n)
   missileFlame:{amp:.25,speed:.05},                                                          // escala da chama: 1+amp*sin(t*speed)
   blackHole:{ring:{color:PUR,alpha:[.25,.35],pulse:.004,width:3,dash:[14,18],spinK:-.4},alphaK:1.2},   // anel tracejado no raio de influência + alpha do sprite min(1,k*alphaK)
+  // estrela do mundo: pulso do sprite, giro e coroa tracejada no halo (vermelha e nervosa na fase OLD)
+  star:{ring:{color:YEL,colorOld:ORA,alpha:[.18,.4],pulse:.005,pulseOld:.02,width:3,dash:[18,16],spinK:-.15},pulse:{amp:.06,speed:.004,speedOld:.02},spin:.004,alphaK:1.15},
+  aim:{color:CREAM,width:3,dash:[16,12],head:26,alpha:[.45,.85],pulse:.008},                          // reta pontilhada do tiro mirado
   sparkColor:CREAM,                                                                          // faíscas de comida/pellet comido (Fx.spark)
   // ímã (por frame, t em ms): 3 anéis tracejados contraindo para a peça + 6 traços radiais correndo para dentro
   ambient(kind,t,f){if(kind!=="magnet")return null;const P=[],col=PUR,R1=f.r*1.3;
@@ -203,7 +225,7 @@ export const hud={
     shadow:{color:INK,dx:4,dy:4},face:"#12183a",border:{color:INK,width:4},
     rings:{color:"rgba(63,196,255,.3)",width:1.5,at:[.33,.66],crosshair:true},
     sweep:{fill:"rgba(63,196,255,.16)",line:BLU,width:2,speed:.0025,span:.7},
-    mapK:.72,colors:{me:CREAM,player:YEL,bot:BLU,ast:"rgba(200,180,160,.8)",hole:"rgba(197,107,255,.75)",view:"rgba(255,245,194,.35)"},
+    mapK:.72,colors:{me:CREAM,player:YEL,bot:BLU,ast:"rgba(200,180,160,.8)",hole:"rgba(197,107,255,.75)",star:"rgba(255,194,46,.9)",view:"rgba(255,245,194,.35)"},
     meDot:{fill:CREAM,stroke:INK,width:1.5,r:{desktop:4,portrait:3,landscape:3}},
     label:{text:"RADAR",font:"bold 9px "+FONT,color:BLU,desktopOnly:true,dy:-10}},
   trail:{style:"dashed",color:(skin,isMe)=>`rgba(255,255,255,${isMe?.55:.35})`,width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},

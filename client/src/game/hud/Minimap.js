@@ -24,6 +24,7 @@ export function createMinimap({hud,theme,getScene}){
       c.strokeStyle=R0.sweep.line;c.lineWidth=R0.sweep.width;c.beginPath();c.moveTo(cx,cy);c.lineTo(cx+Math.cos(a)*(R-2),cy+Math.sin(a)*(R-2));c.stroke();}
     const SZ=D*(R0.mapK||.72),mx=cx-SZ/2,my=cy-SZ/2,sc=SZ/WORLD.w,st=R0.colors;c.save();c.beginPath();c.arc(cx,cy,R-2,0,6.283);c.clip();
     for(const h of S.holes){c.fillStyle=st.hole;c.beginPath();c.arc(mx+h.x*sc,my+h.y*sc,Math.max(2.2,h.ri*sc*.5),0,6.283);c.fill();}
+    for(const q of S.stars||[]){c.fillStyle=st.star;c.beginPath();c.arc(mx+q.x*sc,my+q.y*sc,Math.max(2.4,q.r*sc*1.2),0,6.283);c.fill();}
     c.fillStyle=st.ast;for(const q of S.asteroids)c.fillRect(mx+q.x*sc-1,my+q.y*sc-1,2,2);
     for(const p of S.players){if(p.isMe)continue;c.fillStyle=p.isBot?st.bot:st.player;c.fillRect(mx+p.x*sc-1.8,my+p.y*sc-1.8,3.6,3.6);}
     const cam=S.cam,hw=cam.W/(2*cam.scale)*sc,hh=cam.H/(2*cam.scale)*sc;c.strokeStyle=st.view;c.lineWidth=1;c.strokeRect(mx+cam.x*sc-hw,my+cam.y*sc-hh,hw*2,hh*2);

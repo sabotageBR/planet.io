@@ -23,7 +23,7 @@ function randCreate(kind){const e={kind,id:nextId++,x:rx(),y:ry(),r:rr()};
     case KIND.FOOD:Object.assign(e,{type:rng.int(0,7),hue:rng.int(0,11)});break;
     case KIND.EJECT:Object.assign(e,{owner:slot(),hue:rng.int(0,11),vx:rv(),vy:rv()});break;
     case KIND.ASTEROID:Object.assign(e,{seed:u16(),vx:rv(),vy:rv()});break;
-    case KIND.BLACKHOLE:Object.assign(e,{seed:u16(),influenceR:rng.int(0,3000),phase:rng.int(0,2)});break;
+    case KIND.BLACKHOLE:case KIND.STAR:Object.assign(e,{seed:u16(),influenceR:rng.int(0,3000),phase:rng.int(0,2)});break;
     case KIND.MISSILE:Object.assign(e,{owner:slot(),target:slot(),vx:rv(),vy:rv()});break;}
   return e;}
 function assertCreate(got,exp){assert.deepEqual(Object.keys(got).sort(),Object.keys(exp).sort(),"chaves do create");
@@ -80,7 +80,7 @@ test("SNAPSHOT: ida e volta de todos os kinds, máscaras, remoções e self",()=
   const empty=decodeSnapshot(encodeSnapshot(w,{tick:7,ackSeq:3}));
   assert.deepEqual(empty,{tick:7,ackSeq:3,creates:[],updates:[],removes:[],self:{flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,rank:0,mass:0}});});
 test("SNAPSHOT: tamanho do create por kind bate com a conta manual",()=>{
-  const SIZE={[KIND.PIECE]:11+7,[KIND.FOOD]:11+2,[KIND.EJECT]:11+7,[KIND.ASTEROID]:11+6,[KIND.BLACKHOLE]:11+5,[KIND.MISSILE]:11+8};
+  const SIZE={[KIND.PIECE]:11+7,[KIND.FOOD]:11+2,[KIND.EJECT]:11+7,[KIND.ASTEROID]:11+6,[KIND.BLACKHOLE]:11+5,[KIND.MISSILE]:11+8,[KIND.STAR]:11+5};
   for(const k of KINDS)assert.equal(encodeSnapshot(w,{tick:0,ackSeq:0,creates:[randCreate(k)]}).length,SNAPSHOT_HEADER_BYTES+SIZE[k]+SELF_BYTES,`kind ${k}`);
   assert.throws(()=>encodeSnapshot(w,{tick:0,ackSeq:0,creates:[{kind:99,id:1,x:0,y:0,r:1}]}),/kind desconhecido/);});
 test("SNAPSHOT: update só escreve/lê os campos presentes na máscara (32 combinações)",()=>{

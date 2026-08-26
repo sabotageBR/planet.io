@@ -6,7 +6,7 @@
 // com último estado quantizado (UPDATE só se mudou). ?lag=<ms> simula latência nos dois sentidos.
 import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,encodePong,decodeInput,
   MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,
-  WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,PLAYER,BOT,BOT_NAMES,NET,BLACKHOLE,MISSILE,SKINS,FOOD,
+  WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,PLAYER,BOT,BOT_NAMES,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,
   focusOf,zoomFor,viewRect,rectHas,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir} from "@planet/shared";
 import {createWorld,applySplit,liveCount,firstLive} from "@planet/shared/physics/index.js";
 
@@ -34,6 +34,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     else if(b.think%5===0){let bf=null,bd=BOT.FOOD_DIST*BOT.FOOD_DIST;const q=[];const n=w.foodGrid.query(c.x,c.y,BOT.FOOD_DIST,q);
       for(let i=0;i<n;i++){const f=w.food[q[i]];if(!f||f.dead)continue;const dx=f.x-c.x,dy=f.y-c.y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;bf=f;}}if(bf){b.tx=bf.x;b.ty=bf.y;}}
     for(const h of w.holes){const ri=h.r*BLACKHOLE.INFLUENCE*h.k,dx=c.x-h.x,dy=c.y-h.y;if(h.k>.3&&dx*dx+dy*dy<ri*ri*BOT.HOLE_AVOID*BOT.HOLE_AVOID){b.tx=c.x+dx*3;b.ty=c.y+dy*3;}}
+    for(const st of w.stars){const ri=st.r*STAR.HALO,dx=c.x-st.x,dy=c.y-st.y;if(st.k>=STAR.ARM_K&&dx*dx+dy*dy<ri*ri*BOT.HOLE_AVOID*BOT.HOLE_AVOID){b.tx=c.x+dx*3;b.ty=c.y+dy*3;}}
     w.setTarget(slot,clamp(b.tx,40,w.w-40),clamp(b.ty,40,w.h-40));}
   for(let i=0;i<bots;i++)addBot();
   // ── sessões ──
@@ -63,7 +64,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     if(!s||s.slot<0)return;let inp=null;try{inp=decodeInput(d);}catch{return;}
     if(!seqNewer(inp.seq,s.lastSeq))return;s.lastSeq=inp.seq;s.ackSeq=inp.seq;
     const ps=w.players.get(s.slot);if(!ps||!ps.alive)return;w.setTarget(s.slot,inp.tx,inp.ty);
-    if(inp.flags&INPUT_FLAG.SPLIT)w.requestSplit(s.slot);if(inp.flags&INPUT_FLAG.EJECT)w.requestEject(s.slot);if(inp.flags&INPUT_FLAG.FIRE)w.requestFire(s.slot);
+    if(inp.flags&INPUT_FLAG.SPLIT)w.requestSplit(s.slot);if(inp.flags&INPUT_FLAG.EJECT)w.requestEject(s.slot);if(inp.flags&INPUT_FLAG.FIRE)w.requestFire(s.slot,!!(inp.flags&INPUT_FLAG.AIM));
     w.setEjectHold(s.slot,!!(inp.flags&INPUT_FLAG.EJECT_HOLD));}
   function spawn(sess){const slot=sess.slot;meta.set(slot,{slot,name:sess.name,skinId:sess.skinId,isBot:false,registered:false});sess.dead=false;sess.kills=0;sess.maxMass=0;sess.startTick=w.tick;
     if(bench){const x=w.w/2,y=w.h/2;w.addPlayer(slot,{x,y,r:190,missiles:3});const ps=w.players.get(slot);ps.tx=x+300;ps.ty=y+120;
@@ -98,6 +99,8 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
         case "SHIELD_UP":e={kind:EVENT.SHIELD_UP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:65535,extra:ev.level};break;
         case "CLASH":e={kind:EVENT.CLASH,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slotA,slotB:ev.slotB,extra:0};break;
         case "DEFLECT":e={kind:EVENT.DEFLECT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.bySlot<0?65535:ev.bySlot,slotB:65535,extra:packDir(ev.nx,ev.ny,0)};break;
+        case "STAR_BURST":e={kind:EVENT.STAR_BURST,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:65535,extra:ev.starId};break;
+        case "SUPERNOVA":e={kind:EVENT.SUPERNOVA,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:ev.starId};break;
         case "PLAYER_DEAD":{const m=meta.get(ev.slot);
           if(m&&m.isBot){const ps=w.players.get(ev.slot);w.respawnPlayer(ev.slot,{score:Math.floor((ps?ps.score:0)*BOT.RESPAWN_SCORE)});const bp=w.players.get(ev.slot);if(bp)bp.missiles=rng.chance(.3)?1:0;playersDirty=true;}
           else for(const s of sessions)if(s.slot===ev.slot&&!s.dead){s.dead=true;playersDirty=true;const ps=w.players.get(ev.slot),by=meta.get(ev.bySlot),durationS=Math.round((tick-s.startTick)/TICK_HZ);
@@ -124,7 +127,8 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
       if(!rectHas(out,b.x,b.y,rad))return;k.seen=stamp;seenN++;
       const u=toUpdate(b,k,s.slot);if(u)up.push(u);};
     for(const b of w.pieces)visit(b,b.r);for(const b of w.food)visit(b,b.r);for(const b of w.ejected)visit(b,b.r);
-    for(const b of w.asteroids)visit(b,b.r);for(const b of w.holes)visit(b,Math.max(b.r,b.r*BLACKHOLE.INFLUENCE*b.k));for(const b of w.missiles)visit(b,b.r);
+    for(const b of w.asteroids)visit(b,b.r);for(const b of w.holes)visit(b,Math.max(b.r,b.r*BLACKHOLE.INFLUENCE*b.k));
+    for(const b of w.stars)visit(b,b.r*STAR.HALO);for(const b of w.missiles)visit(b,b.r);
     for(const [id,k] of known)if(k.seen!==stamp){const body=w.entityById.get(id);rm.push({id,reason:body&&!body.dead?REMOVE.LEFT_AOI:(reasonMap.has(id)?reasonMap.get(id):REMOVE.DESPAWN)});known.delete(id);}
     const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ps.missiles,powerBits:(ps.magnetUntil>tick?POWER_BIT.magnet:0)|(ps.shieldLv>0?POWER_BIT.shield:0),
       magnetT:Math.max(0,ps.magnetUntil-tick),shieldLv:ps.shieldLv,score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),
@@ -138,15 +142,17 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
       case KIND.EJECT:c.owner=b.owner;c.hue=b.hue;c.vx=b.vx;c.vy=b.vy;break;
       case KIND.ASTEROID:c.seed=Math.floor(b.seed*65535);c.vx=b.vx;c.vy=b.vy;c.hue=b.hue;break;   // hue não vai no fio (variante = seed%3 no cliente)
       case KIND.BLACKHOLE:c.seed=Math.floor(b.seed*65535);c.influenceR=Math.round(b.r*BLACKHOLE.INFLUENCE*b.k);c.phase=b.type;break;
+      case KIND.STAR:c.seed=Math.floor(b.seed*65535);c.influenceR=Math.round(b.r*STAR.HALO*b.k);c.phase=b.type;break;
       case KIND.MISSILE:c.owner=b.owner;c.target=(b.type!==0||b.targetId<0)?65535:b.targetId;c.vx=b.vx;c.vy=b.vy;break;}
     return c;}
+  const extraR=b=>b.kind===KIND.BLACKHOLE?Math.round(b.r*BLACKHOLE.INFLUENCE*b.k):b.kind===KIND.STAR?Math.round(b.r*STAR.HALO*b.k):0;
   function setLast(k,b,me){k.x=qPos(b.x,WORLD.w);k.y=qPos(b.y,WORLD.h);k.r=qR(b.r);k.vx=qV(b.vx);k.vy=qV(b.vy);k.flags=b.kind===KIND.PIECE?(b.flags|(b.owner===me?PIECE_FLAG.ME:0))&255:0;
-    k.phase=b.type;k.ri=b.kind===KIND.BLACKHOLE?Math.round(b.r*BLACKHOLE.INFLUENCE*b.k):0;}
+    k.phase=b.type;k.ri=extraR(b);}
   function toUpdate(b,k,me){let mask=0;const x=qPos(b.x,WORLD.w),y=qPos(b.y,WORLD.h),r=qR(b.r),vx=qV(b.vx),vy=qV(b.vy);
     if(x!==k.x||y!==k.y)mask|=UPD.X_Y;if(r!==k.r)mask|=UPD.R;
     if(b.kind===KIND.PIECE||b.kind===KIND.EJECT||b.kind===KIND.ASTEROID||b.kind===KIND.MISSILE){if(vx!==k.vx||vy!==k.vy)mask|=UPD.V;}
     let flags=0;if(b.kind===KIND.PIECE){flags=(b.flags|(b.owner===me?PIECE_FLAG.ME:0))&255;if(flags!==k.flags)mask|=UPD.FLAGS;}
-    let ri=0;if(b.kind===KIND.BLACKHOLE){ri=Math.round(b.r*BLACKHOLE.INFLUENCE*b.k);if(ri!==k.ri||b.type!==k.phase)mask|=UPD.EXTRA;}
+    let ri=0;if(b.kind===KIND.BLACKHOLE||b.kind===KIND.STAR){ri=extraR(b);if(ri!==k.ri||b.type!==k.phase)mask|=UPD.EXTRA;}
     if(!mask)return null;k.x=x;k.y=y;k.r=r;k.vx=vx;k.vy=vy;k.flags=flags;k.ri=ri;k.phase=b.type;
     const u={id:b.id,mask};if(mask&UPD.X_Y){u.x=b.x;u.y=b.y;}if(mask&UPD.R)u.r=b.r;if(mask&UPD.V){u.vx=b.vx;u.vy=b.vy;}if(mask&UPD.FLAGS)u.flags=flags;if(mask&UPD.EXTRA){u.phase=b.type;u.influenceR=ri;}return u;}
   return{world:w,code,
