@@ -68,8 +68,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 
 Cluster do Evandro: `https://192.168.12.50:6443` (k8s 1.21, 4 nós), ingress-nginx v0.47, cert-manager `letsencrypt-prod`, sem storage dinâmico,
 imagens no Docker Hub. Kubeconfig em `~/.config/OpenLens/kubeconfigs/68c0dd84-fd6a-43f2-bc30-26daccdf7ef4`; `docker` exige `sudo -n`
-(`DOCKER_CMD="sudo -n docker"`). Namespace `planet`; NodePort `30800` (`http://192.168.12.50:30800`). Postgres de produção: `192.168.10.10:5432/planet`
-(liberar `pg_hba` para 192.168.12.0/24). Escalar shards: `replicas` no StatefulSet + `SHARDS` no ConfigMap + um Service por pod novo.
+(`DOCKER_CMD="sudo -n docker"`). Namespace `planet`; NodePort `30800` (`http://192.168.12.50:30800`). Postgres de produção: `192.168.10.10:5432/planet` — **PostgreSQL 9.6** (sem IDENTITY, sem
+`gen_random_uuid`; migrations usam `bigserial`; testar SQL novo contra ele: `npm -w server test` com o `.env` de produção recria o schema
+do zero, use só com o banco vazio). Secret `planet-db` criado via `./scripts/db-secret.sh`. Escalar shards: `replicas` no StatefulSet + `SHARDS` no ConfigMap + um Service por pod novo.
 
 ## Arestas conhecidas
 
