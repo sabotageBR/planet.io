@@ -1,20 +1,24 @@
 // ── AÇÕES: teclado/HUD/mouse → flags do InputSender (split, eject one-shot + hold, fire com mira) ──
-// Tiro: o botão/tecla SEGURADO mira (a reta pontilhada aparece pelo onAim) e o disparo sai ao SOLTAR —
-// segurou ≥ AIM_MS vai com INPUT_FLAG.AIM (míssil reto na direção do ponteiro), clique rápido continua
-// teleguiado/interceptador. Sem munição, o botão de tiro ejeta massa como antes (no `down`).
+// Tiro: a mira só ARMA depois de AIM_MS com o botão/tecla segurado — é aí que a reta pontilhada aparece
+// (onAim(true)) e o disparo, ao SOLTAR, vai com INPUT_FLAG.AIM (o míssil persegue o objeto mais próximo
+// dentro do cone da flecha). Clique rápido (soltar antes de AIM_MS) continua teleguiado/interceptador e
+// nunca desenha reta. Sem munição, o botão de tiro ejeta massa como antes (no `down`).
 import {INPUT_FLAG} from "@planet/shared";
 
 const AIM_MS=160;
 /** prefs(): {holdEject,rightSplit}; ammo(): mísseis atuais; canAct(): vivo e conectado; onAim(on): liga/desliga a reta */
 export function createActions({input,prefs,ammo,canAct,onAim=null}){
-  let aimAt=0;   // performance.now() do início da mira (0 = não está mirando)
-  const setAim=on=>{aimAt=on?performance.now():0;if(onAim)onAim(on);};
-  const act=(action,phase)=>{if(!canAct()){if(phase==="up"){input.setHold(false);if(aimAt)setAim(false);}return;}
+  let held=false,armed=false,timer=0;   // held: botão de tiro apertado; armed: passou de AIM_MS (reta na tela)
+  const setAim=on=>{if(armed===on)return;armed=on;if(onAim)onAim(on);};
+  const disarm=()=>{if(timer){clearTimeout(timer);timer=0;}held=false;setAim(false);};
+  const act=(action,phase)=>{if(!canAct()){if(phase==="up"){input.setHold(false);disarm();}return;}
     if(action==="split"){if(phase==="down")input.press(INPUT_FLAG.SPLIT);}
     else if(action==="eject"){if(phase==="down"){input.press(INPUT_FLAG.EJECT);if(prefs().holdEject!==false)input.setHold(true);}else input.setHold(false);}
     else if(action==="fire"){
-      if(phase==="down"){if(ammo()>0)setAim(true);else input.press(INPUT_FLAG.EJECT);}
-      else if(aimAt){const held=performance.now()-aimAt;setAim(false);input.press(held>=AIM_MS?INPUT_FLAG.FIRE|INPUT_FLAG.AIM:INPUT_FLAG.FIRE);}}};
+      if(phase==="down"){if(held)return;
+        if(ammo()>0){held=true;timer=setTimeout(()=>{timer=0;setAim(true);},AIM_MS);}else input.press(INPUT_FLAG.EJECT);}
+      else if(held){const aimed=armed;disarm();input.press(aimed?INPUT_FLAG.FIRE|INPUT_FLAG.AIM:INPUT_FLAG.FIRE);}}};
   return{act,
     /** botão do ponteiro: 0 = míssil (segurar mira) / ejetar, 2 = dividir (prefs.rightSplit) */
-    button(btn,phase,type){if(type==="touch")return;if(btn===0)act("fire",phase);else if(btn===2&&prefs().rightSplit!==false)act("split",phase);}};}
+    button(btn,phase,type){if(type==="touch")return;if(btn===0)act("fire",phase);else if(btn===2&&prefs().rightSplit!==false)act("split",phase);},
+    destroy(){disarm();}};}

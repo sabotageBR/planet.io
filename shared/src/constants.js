@@ -32,12 +32,14 @@ export const STAR={COUNT:3,R:46,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2
 // Encostar (com k ≥ ARM_K) estilhaça a peça em SHATTER_N pedaços a SHATTER_SPEED (cooldown SHATTER_CD_TICKS por peça; abaixo de
 // SHATTER_MIN_R só empurra a PUSH_TOUCH). Supernova: raio r·NOVA_R — NOVA_PARTICLES ejetados, asteroides a AST_KICK e peças a PUSH (só empurrão).
 export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,R:11,HIT_SHRINK:.78,HIT_DEBRIS:5,DEBRIS_SPEED:540,
-  INTERCEPT_DIST:1100,AST_KICK:420};   // INTERCEPT_DIST: míssil inimigo mirando em mim a menos disso vira o alvo do meu tiro; AST_KICK: Δv (px/s) dado a um asteroide r=R_MIN (escala R_MIN/r)
+  INTERCEPT_DIST:1100,AST_KICK:420,AIM_CONE:.45,AIM_RANGE:2200};   // INTERCEPT_DIST: míssil inimigo mirando em mim a menos disso vira o alvo do meu tiro; AST_KICK: Δv (px/s) dado a um asteroide r=R_MIN (escala R_MIN/r)
+// tiro mirado (segurar o botão): trava no objeto mais próximo dentro do cone ±AIM_CONE rad em volta da flecha e a até AIM_RANGE px; sem nada no cone sai reto
 export const POWERUP={TICKS:420,MAGNET_RANGE:5.5,MAGNET_PULL:170,MAGNET_NEAR:2.2,MAGNET_EJECT_A:900,MAGNET_HEAVY:.45,MAGNET_STAR:.12,
   SHIELD_MAX_LEVEL:3,SHIELD_EVOLVE_TICKS:900};
 // ímã: comida a d<r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s; ejetados ganham MAGNET_EJECT_A px/s² (drag 3.7/s → ~240 px/s)
 // cometa/estrela (comida pesada) andam a MAGNET_HEAVY disso; a estrela do mundo se arrasta a MAGNET_STAR (é um perigo enorme vindo até você)
 // escudo: não expira; nível 1..SHIELD_MAX_LEVEL (N mísseis para destruir), sobe 1 nível a cada SHIELD_EVOLVE_TICKS sem ser atingido; cai ao disparar/dividir
+// ímã e escudo valem POR PEÇA: só a parte que pegou o powerup se beneficia; ao fundir, os poderes das duas se juntam (escudo soma até o teto, ímã soma o tempo restante)
 export const BOT={THINK_TICKS:[25,70],FLEE_RATIO:1.25,FLEE_DIST:620,HUNT_RATIO:1.3,HUNT_DIST:760,FOOD_DIST:420,MAX_PIECES:4,SPLIT_P:.05,FIRE_P:.012,HOLE_AVOID:1.3,RESPAWN_SCORE:.3};
 export const BOT_NAMES=["Nebulox","Vortexia","Cosmara","Drakonis","Stellara","Graviton","Quasara","Pulsaris","Meteora","Darkion","Nexaris","Solaron","Astrophex","Hydraxis","Volcanix","Luminos","Aetheron","Aurorax","Voidrix","Pyronis"];
 export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:150,EXTRAP_MAX_MS:100,SNAP_DIST:120,AOI_PAD:.3,AOI_PAD_OUT:.45,

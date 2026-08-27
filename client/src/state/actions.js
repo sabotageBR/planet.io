@@ -66,7 +66,7 @@ function devQuery() {
   if (s === "account") { go("entry"); openAccount(); }
   else if (s === "game") play({});
   else if (s === "reconn") { play({}); setTimeout(() => setReconn(true, 2), 400); }
-  else if (s === "dead") {
+  else if (s === "dead" || s === "round") {
     if (!import.meta.env.DEV) return;
     app.update({ room: "1ABC", lastMatch: { by: "Nebulox", byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, room: "1ABC", at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
     if (s === "round") app.update({ room: "1ABC", roundResult: { code: "1ABC", mySlot: 3, at: Date.now(), nextInMs: 15000,

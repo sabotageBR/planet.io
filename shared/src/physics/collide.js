@@ -34,7 +34,8 @@ export function separateOwn(a,b){
 /**
  * Funde b em a se ambos podem (tick ≥ mergeAt) e d < max(r)·MERGE.DIST. Conserva momento
  * (v = média ponderada pela massa; posição = centro de massa); a massa é somada com teto
- * PLAYER.MAX_R. Marca b.dead. Retorna true se fundiu.
+ * PLAYER.MAX_R. Os powerups das duas **se juntam** na peça que fica (é o que faz valer a pena reunir as partes):
+ * vale o MAIOR nível de escudo e o MAIOR tempo de ímã das duas. Marca b.dead. Retorna true se fundiu.
  * @param {import("./body.js").Body} a @param {import("./body.js").Body} b
  */
 export function tryMergeOwn(a,b,tick){
@@ -42,7 +43,10 @@ export function tryMergeOwn(a,b,tick){
   const dx=b.x-a.x,dy=b.y-a.y,mr=(a.r>b.r?a.r:b.r)*MERGE.DIST;if(dx*dx+dy*dy>=mr*mr)return false;
   const ma=a.mass,mb=b.mass,m=ma+mb,cap=PLAYER.MAX_R*PLAYER.MAX_R;
   a.vx=(a.vx*ma+b.vx*mb)/m;a.vy=(a.vy*ma+b.vy*mb)/m;a.x=(a.x*ma+b.x*mb)/m;a.y=(a.y*ma+b.y*mb)/m;
-  setMass(a,m>cap?cap:m);b.dead=true;return true;}
+  setMass(a,m>cap?cap:m);
+  if((b.shieldLv|0)>(a.shieldLv|0)){a.shieldLv=b.shieldLv;a.shieldEvolveAt=b.shieldEvolveAt;}   // powerups: fica o melhor dos dois (reunir nunca fabrica poder)
+  if(b.magnetUntil>a.magnetUntil)a.magnetUntil=b.magnetUntil;
+  b.dead=true;return true;}
 
 /**
  * Atração entre duas peças do mesmo dono que JÁ podem fundir: a d < (ra+rb)·MERGE.ATTRACT_RANGE cada uma

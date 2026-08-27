@@ -26,7 +26,8 @@ export class BotBrain{
   act(tick){
     const sim=this.sim,w=sim.world,ps=w.players.get(this.slot);if(!ps||!ps.alive)return;const c=centroid(ps);if(!c)return;const rng=sim.rng;
     if(tick>=this.nextThink){this._think(ps,c);this.nextThink=tick+rng.int(BOT.THINK_TICKS[0],BOT.THINK_TICKS[1]);}
-    let tx=this.wx,ty=this.wy,flags=0;const shielded=ps.shieldLv>0;
+    let tx=this.wx,ty=this.wy,flags=0;let shielded=false;
+    for(let i=0;i<ps.pieces.length;i++){const p=ps.pieces[i];if(!p.dead){shielded=p.shieldLv>0;break;}}   // escudo é por peça: vale o da que atira (1ª viva)
     if(this.mode==='hunt'||this.mode==='flee'){
       const o=w.players.get(this.target),oc=o&&o.alive?centroid(o):null;
       if(!oc){this._wander(w);tx=this.wx;ty=this.wy;}

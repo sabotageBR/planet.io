@@ -7,7 +7,7 @@ import {WORLD,DT,PLAYER,SPEED,SPLIT,EJECT,BOUNCE,WALL,FOOD,FOOD_TYPE,ASTEROID,BL
 import {KIND,PIECE_FLAG,FOOD_FLAG,BH_PHASE,STAR_PHASE} from "../protocol/constants.js";
 import {createRng} from "../rng.js";
 import {clamp} from "../util.js";
-import {createBody,liveCount,firstLive} from "./body.js";
+import {createBody,liveCount} from "./body.js";
 import {createGrid,GRID_CELL} from "./spatial-hash.js";
 import {integratePiece,integrateFree} from "./integrate.js";
 import {resolveBounce,separateOwn,tryMergeOwn,attractOwn} from "./collide.js";
@@ -22,10 +22,7 @@ import * as R from "./rules.js";
  * @property {boolean} alive
  * @property {boolean} isBot
  * @property {Body[]} pieces        refs (ordem de criação; compactada 1×/passo)
- * @property {number} missiles
- * @property {number} magnetUntil    ímã: tick absoluto de expiração
- * @property {number} shieldLv       escudo: nível 0..POWERUP.SHIELD_MAX_LEVEL (0 = sem; não expira)
- * @property {number} shieldEvolveAt tick em que o escudo sobe um nível se não for atingido
+ * @property {number} missiles      munição (do jogador; ímã e escudo são POR PEÇA, ver Body)
  * @property {number} splitCdUntil
  * @property {number} ejectCdUntil
  * @property {boolean} ejectHold
@@ -34,7 +31,7 @@ import * as R from "./rules.js";
  * @property {boolean} splitReq
  * @property {boolean} ejectReq
  * @property {boolean} fireReq
- * @property {boolean} fireAim   tiro mirado (reto na direção do alvo, sem perseguir)
+ * @property {boolean} fireAim   tiro mirado (trava no objeto mais próximo dentro do cone da flecha)
  */
 
 // códigos de par (kind de A << 3 | kind de B); A sempre do grupo inserido antes: peças, ejetados, asteroides, mísseis, buracos
@@ -135,13 +132,13 @@ export class World{
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0}={}){
     let ps=this.players.get(slot);
-    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,pieces:[],missiles,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,splitCdUntil:0,ejectCdUntil:0,
+    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,pieces:[],missiles,splitCdUntil:0,ejectCdUntil:0,
       ejectHold:false,ejectHoldAt:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.missiles=missiles;}
     return this._spawnPiece(ps,x,y,r);}
   _spawnPiece(ps,x,y,r){
     if(Number.isNaN(x)){const s=this._farSpot(PLAYER_MARGIN,this.holes,BLACKHOLE.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE);x=s.x;y=s.y;}
-    ps.alive=true;ps.tx=x;ps.ty=y;ps.magnetUntil=0;ps.shieldLv=0;ps.ejectHold=false;
+    ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;
     const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;return pc;}
   _dropPieces(ps){for(let i=0;i<ps.pieces.length;i++){const pc=ps.pieces[i];pc.dead=true;this.entityById.delete(pc.id);}
     ps.pieces.length=0;const arr=this.pieces;let k=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)arr[k++]=arr[i];arr.length=k;}
@@ -154,7 +151,7 @@ export class World{
   requestSplit(slot){const ps=this.players.get(slot);if(ps)ps.splitReq=true;}
   requestEject(slot){const ps=this.players.get(slot);if(ps)ps.ejectReq=true;}
   setEjectHold(slot,on){const ps=this.players.get(slot);if(!ps)return;if(on&&!ps.ejectHold)ps.ejectHoldAt=this.tick;ps.ejectHold=!!on;}
-  /** `aim`: tiro mirado — sai reto na direção do alvo do ponteiro, sem perseguir nem interceptar. */
+  /** `aim`: tiro mirado — trava no objeto mais próximo dentro do cone em volta da direção do ponteiro (sem nada no cone, sai reto). */
   requestFire(slot,aim=false){const ps=this.players.get(slot);if(ps){ps.fireReq=true;ps.fireAim=!!aim;}}
   massOf(slot){const ps=this.players.get(slot);if(!ps)return 0;let m=0;for(let i=0;i<ps.pieces.length;i++){const p=ps.pieces[i];if(!p.dead)m+=p.mass;}return m;}
   piecesOf(slot){const ps=this.players.get(slot);return ps?ps.pieces:[];}
@@ -169,15 +166,15 @@ export class World{
         if(ps.splitReq&&tick>=ps.splitCdUntil){ps.splitCdUntil=tick+SPLIT.COOLDOWN_TICKS;R.applySplit(this,ps);}
         let ej=ps.ejectReq;if(ps.ejectHold&&tick>=ps.ejectHoldAt){ej=true;ps.ejectHoldAt=tick+EJECT.HOLD_TICKS;}
         if(ej&&tick>=ps.ejectCdUntil){ps.ejectCdUntil=tick+EJECT.COOLDOWN_TICKS;R.applyEject(this,ps);}
-        if(ps.fireReq)R.applyFire(this,ps);
-        if(ps.shieldLv>0&&ps.shieldLv<POWERUP.SHIELD_MAX_LEVEL&&tick>=ps.shieldEvolveAt){ps.shieldLv++;ps.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
-          const pc=firstLive(ps.pieces);if(pc)ev.push({type:"SHIELD_UP",slot:ps.slot,level:ps.shieldLv,x:pc.x,y:pc.y,r:pc.r});}}
+        if(ps.fireReq)R.applyFire(this,ps);}
       ps.splitReq=ps.ejectReq=ps.fireReq=false;ps.fireAim=false;}
     // ── 2. integração ──
     for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner);
       integratePiece(pc,ps.tx,ps.ty,DT,W,H);
+      if(pc.shieldLv>0&&pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL&&tick>=pc.shieldEvolveAt){   // escudo evolui por peça: só quem tem escudo E não apanha sobe de nível
+        pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;ev.push({type:"SHIELD_UP",slot:pc.owner,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
       let f=pc.flags&~(PIECE_FLAG.SHIELD|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK);
-      if(ps.shieldLv>0)f|=PIECE_FLAG.SHIELD|(ps.shieldLv<<PIECE_FLAG.SHIELD_LV_SHIFT);if(ps.magnetUntil>tick)f|=PIECE_FLAG.MAGNET;
+      if(pc.shieldLv>0)f|=PIECE_FLAG.SHIELD|(pc.shieldLv<<PIECE_FLAG.SHIELD_LV_SHIFT);if(pc.magnetUntil>tick)f|=PIECE_FLAG.MAGNET;
       if(pc.mergeAt<=tick&&ps.pieces.length>1)f|=PIECE_FLAG.MERGING;pc.flags=f;}
     for(let i=0;i<ejected.length;i++){const e=ejected[i];if(e.dead)continue;if(tick>=e.life){e.dead=true;continue;}integrateFree(e,EJECT.DRAG,WALL.E_EJECT,DT,W,H);}
     for(let i=0;i<asts.length;i++){const a=asts[i];if(a.dead)continue;
@@ -219,11 +216,11 @@ export class World{
       for(let k=0;k<n;k++){const f=food[q[k]];if(f.dead)continue;const dx=h.x-f.x,dy=h.y-f.y;if(dx*dx+dy*dy>ri*ri)continue;moved=true;if(R.pullFood(h,f,rc,ri))f.dead=true;}
       if(moved)this.foodDirty=true;}
     // ── 7. comida (ímã, comer) e ejetados (ímã, absorver, alimentar asteroide) ──
-    // ímã: comida a d<range anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/range)) px/s (acelera perto = sucção) e fica
+    // ímã (POR PEÇA — só a que pegou o powerup atrai): comida a d<range anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/range)) px/s (acelera perto = sucção) e fica
     // marcada MOVED (o snapshot manda UPDATE); cometa/estrela (comida pesada) andam a MAGNET_HEAVY disso; ejetados
     // (de terceiros, ou próprios após cdUntil) ganham MAGNET_EJECT_A px/s²; a estrela do mundo se arrasta a MAGNET_STAR.
     const ov=R.LOCAL.FOOD_OVERLAP,PW=POWERUP;
-    for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner),magnet=ps.magnetUntil>tick;
+    for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner),magnet=pc.magnetUntil>tick;
       const range=magnet?pc.r*PW.MAGNET_RANGE:pc.r+FOOD.R_MAX*ov,n=fg.query(pc.x,pc.y,range,q);
       for(let k=0;k<n;k++){const f=food[q[k]];if(f.dead)continue;let dx=pc.x-f.x,dy=pc.y-f.y,d2=dx*dx+dy*dy;
         if(magnet&&d2<range*range&&d2>1e-6){const d=Math.sqrt(d2),hv=(f.type===FOOD_TYPE.COMET||f.type===FOOD_TYPE.STAR)?PW.MAGNET_HEAVY:1;

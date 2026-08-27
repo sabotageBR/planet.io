@@ -27,7 +27,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
         else if(mass>om*BOT.HUNT_RATIO&&d2<BOT.HUNT_DIST*BOT.HUNT_DIST&&d2<pd){pd=d2;prey=o.slot;}}
       if(threat>=0){b.st="flee";b.tgt=threat;}else if(prey>=0){b.st="hunt";b.tgt=prey;}else{b.st="wander";b.tx=rng.range(150,w.w-150);b.ty=rng.range(150,w.h-150);}}
     if(b.st==="flee"||b.st==="hunt"){const o=w.players.get(b.tgt),op=o&&o.alive?firstLive(o.pieces):null;
-      const sh=ps.shieldLv>0;   // com escudo não atira nem divide (preserva o escudo)
+      const sh=c.shieldLv>0;   // com escudo não atira nem divide (preserva o escudo; o escudo é por peça — vale o da que atira)
       if(!op)b.st="wander";else if(b.st==="flee"){b.tx=c.x*2-op.x;b.ty=c.y*2-op.y;if(!sh&&ps.missiles&&rng.chance(BOT.FIRE_P))w.requestFire(slot);}
       else{b.tx=op.x;b.ty=op.y;if(!sh&&ps.missiles&&rng.chance(BOT.FIRE_P*.8))w.requestFire(slot);
         const d=Math.hypot(op.x-c.x,op.y-c.y);if(!sh&&d<c.r*3.2&&c.r>op.r*1.5&&liveCount(ps.pieces)<BOT.MAX_PIECES&&rng.chance(BOT.SPLIT_P))w.requestSplit(slot);}}
@@ -140,8 +140,9 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     for(const b of w.asteroids)visit(b,b.r);for(const b of w.holes)visit(b,Math.max(b.r,b.r*BLACKHOLE.INFLUENCE*b.k));
     for(const b of w.stars)visit(b,b.r*STAR.HALO);for(const b of w.missiles)visit(b,b.r);
     for(const [id,k] of known)if(k.seen!==stamp){const body=w.entityById.get(id);rm.push({id,reason:body&&!body.dead?REMOVE.LEFT_AOI:(reasonMap.has(id)?reasonMap.get(id):REMOVE.DESPAWN)});known.delete(id);}
-    const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ps.missiles,powerBits:(ps.magnetUntil>tick?POWER_BIT.magnet:0)|(ps.shieldLv>0?POWER_BIT.shield:0),
-      magnetT:Math.max(0,ps.magnetUntil-tick),shieldLv:ps.shieldLv,score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),
+    let mt=0,sh=0;if(ps)for(const pc of ps.pieces){if(pc.dead)continue;const m=pc.magnetUntil-tick;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}   // powerups por peça: o HUD leva o melhor
+    const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ps.missiles,powerBits:(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0),
+      magnetT:mt,shieldLv:sh,score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),
       rank:rankOf(s.slot),mass:Math.round(w.massOf(s.slot))}:undefined;
     sendBin(s.sock,encodeSnapshot(writer,{tick,ackSeq:s.ackSeq,creates:cr,updates:up,removes:rm,self}));}
   function rankOf(slot){const m=w.massOf(slot);let r=1;for(const o of meta.keys()){if(o===slot)continue;const ps=w.players.get(o);if(ps&&ps.alive&&w.massOf(o)>m)r++;}return r;}

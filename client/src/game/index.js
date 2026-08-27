@@ -6,7 +6,8 @@
 //   onConnection({state:'connecting'|'connected'|'reconnecting'|'closed'|'error', room?, attempt?, code?, message?})
 //   onRoundEnd({code, champion, board, nextInMs}) — o mundo explodiu: a sala acabou e o shell mostra o placar
 //   hudStore.clock: {h,m,leftS} do relógio do espaço (a rodada inteira = um dia; o tema segue essa hora)
-// Tiro: segurar o botão esquerdo mira (reta pontilhada local) e soltar dispara — segurando, o míssil sai reto.
+// Tiro: segurar o botão esquerdo por ~160 ms arma a mira (reta pontilhada local + anel no alvo provável) e soltar
+// dispara — mirado, o míssil persegue o objeto mais próximo dentro do cone da flecha; clique rápido é o tiro de sempre.
 // Fluxo por frame: ponteiro → alvo no mundo → InputSender (30 Hz) · Predictor (60 Hz, peças próprias, render
 // interpolado entre passos) · Interpolator (outros, −100 ms; removidas somem com efeito via onVanish)
 // · WorldView.build · Camera · Renderer (Pixi) · radar 10 Hz · HUD 8 Hz. EVENTs de terceiros esperam o
@@ -17,7 +18,7 @@ import {applyTheme,currentTheme,THEMES} from "../theme/index.js";
 import {api} from "../api/client.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,unpackDir} from "@planet/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,MISSILE,unpackDir} from "@planet/shared";
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
@@ -41,6 +42,7 @@ const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SP
   [EVENT.DEATH]:"death",[EVENT.SHIELD_BREAK]:"shieldBreak",[EVENT.SHIELD_HIT]:"shieldHit",[EVENT.SHIELD_UP]:"shieldUp",[EVENT.CLASH]:"clash",[EVENT.DEFLECT]:"deflect",
   [EVENT.STAR_BURST]:"starBurst",[EVENT.SUPERNOVA]:"supernova"};
 const AIM_LEN=1100;   // comprimento máximo da reta de mira (px de mundo)
+const AIM_COS=Math.cos(MISSILE.AIM_CONE),AIM_R2=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE;
 const DIR_EVENTS=new Set([EVENT.BOUNCE,EVENT.CHIP,EVENT.SHOOT,EVENT.DEFLECT,EVENT.SHIELD_HIT]);
 const shardOf=code=>{const n=parseInt(String(code||"")[0],36);return Number.isFinite(n)?n:0;};
 
@@ -135,7 +137,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};applyQuality();minimap.show(joined&&curPrefs.showMinimap!==false);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
     resize(){if(!renderer)return;renderer.resize();if(conn&&conn.isOpen&&joined){const v=viewSize();if(v.w!==game._vw||v.h!==game._vh){game._vw=v.w;game._vh=v.h;conn.sendJson({t:"view",w:v.w,h:v.h});}}},
-    destroy(){destroyed=true;cancelAnimationFrame(raf);raf=0;game.leave(true);keyboard.destroy();touch.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
+    destroy(){destroyed=true;cancelAnimationFrame(raf);raf=0;game.leave(true);keyboard.destroy();touch.destroy();actions.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("planet:theme",onThemeEvent);if(themeGuard)removeEventListener("planet:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming}),local:()=>local},
@@ -172,6 +174,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const n=Math.ceil(left);   // contagem gigante nos segundos finais (um efeito por segundo)
     if(!roundOver&&n>0&&n<=ROUND.WARN_S&&n!==lastCount){lastCount=n;
       renderer.fx.add("countdown",{x:cam.x,y:cam.y,r:cam.H/cam.scale*.16,n});}}
+  /**
+   * Alvo provável do tiro mirado (mesma regra do servidor — o mais próximo dentro do cone da flecha —, só que com as
+   * posições interpoladas que o cliente vê): serve de aviso na tela; quem decide de verdade é o servidor.
+   */
+  function lockOn(src,ux,uy){let bd=AIM_R2,best=null;
+    const scan=arr=>{for(const e of arr){if(e.owner===view.mySlot)continue;const dx=e.rx-src.rx,dy=e.ry-src.ry,d2=dx*dx+dy*dy;
+      if(d2>=bd||d2<1e-6||(dx*ux+dy*uy)/Math.sqrt(d2)<AIM_COS)continue;bd=d2;best=e;}};
+    scan(view.pieces);scan(view.missiles);scan(view.asteroids);return best?{x:best.rx,y:best.ry,r:best.rr}:null;}
   /** Fim do mundo: clarão de supernova cobrindo a tela (o placar vem pela tela React). */
   function endOfWorld(){if(!renderer)return;renderer.fx.add("supernova",{x:cam.x,y:cam.y,r:cam.W/cam.scale*.6});}
 
@@ -198,10 +208,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(conn.isOpen&&!dead)input.update(now);}
     predictor.update(dt);interp.update(now);view.build();roundTick(now);
     const own=[];predictor.forEach(pc=>own.push(pc));own0=own;cam.W=renderer.W;cam.H=renderer.H;cam.update(own,dt,bodyMode()==="portrait");
-    aim=null;   // reta de mira: da 1ª peça própria (a que dispara no servidor) até o ponteiro
+    aim=null;   // reta de mira: da 1ª peça própria (a que dispara no servidor) até o ponteiro, com o anel no alvo travado
     if(aiming&&joined&&!dead&&own.length&&pointer&&pointer.state.active){const src=own[0],p=cam.toWorld(pointer.state.sx,pointer.state.sy);
       const dx=p.x-src.rx,dy=p.y-src.ry,l=Math.hypot(dx,dy)||1,len=Math.min(AIM_LEN,Math.max(src.rr*2.5,l));
-      aim={x0:src.rx+dx/l*src.rr,y0:src.ry+dy/l*src.rr,x1:src.rx+dx/l*len,y1:src.ry+dy/l*len};}
+      aim={x0:src.rx+dx/l*src.rr,y0:src.ry+dy/l*src.rr,x1:src.rx+dx/l*len,y1:src.ry+dy/l*len,lock:lockOn(src,dx/l,dy/l)};}
     const t1=performance.now();
     renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,parallax:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
       showNames:curPrefs.showNames!==false,showMass:curPrefs.showMass!==false,showTrails:!curPrefs.reduceMotion&&!econ});

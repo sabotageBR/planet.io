@@ -167,10 +167,12 @@ export class Sim{
     rows.sort((a,b)=>b.mass-a.mass);this._lb=rows;this._lbTick=w.tick;return rows;}
   top(n=LB_MAX){const lb=this.leaderboard();return lb.length>n?lb.slice(0,n):lb;}
   rankOf(slot){const lb=this.leaderboard();for(let i=0;i<lb.length;i++)if(lb[i].slot===slot)return i+1;return 0;}
-  /** Bloco `self` do snapshot (preenche `out`). */
+  /** Bloco `self` do snapshot (preenche `out`). Ímã e escudo são por peça: o HUD mostra o MELHOR entre as próprias (cada peça leva o seu nas flags). */
   self(slot,out){const w=this.world,ps=w.players.get(slot),gp=this.players.get(slot),t=w.tick;
     if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.rank=out.mass=0;return out;}
-    const mt=ps.magnetUntil-t,sh=ps.shieldLv,sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t;
+    let mt=0,sh=0;const arr=ps.pieces;
+    for(let i=0;i<arr.length;i++){const pc=arr[i];if(pc.dead)continue;const m=pc.magnetUntil-t;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}
+    const sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t;
     out.flags=gp.dead?SELF_FLAG.DEAD:0;out.missiles=ps.missiles;out.powerBits=(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0);
     out.magnetT=mt>0?mt:0;out.shieldLv=sh;out.score=ps.score;out.splitCd=sc>0?sc:0;out.ejectCd=ec>0?ec:0;
     out.rank=gp.dead?0:this.rankOf(slot);out.mass=gp.dead?0:Math.round(w.massOf(slot));return out;}

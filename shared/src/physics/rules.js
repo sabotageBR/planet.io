@@ -1,8 +1,9 @@
-// ── REGRAS DO JOGO: engolir/quicar (o maior sempre acaba comendo; o escudo só segura a PRIMEIRA batida), comida e powerups (escudo por níveis:
+// ── REGRAS DO JOGO: engolir/quicar (o maior sempre acaba comendo; o escudo só segura a PRIMEIRA batida), comida e powerups POR PEÇA
+//    (ímã e escudo valem só para a parte que pegou o powerup; fundir junta os poderes — ver tryMergeOwn. Escudo por níveis:
 //    não expira, sobe de nível sem ser atingido, perde 1 nível por tiro/míssil/batida forte de asteroide e cai inteiro ao dividir),
 //    estrelas (estilhaçam quem encosta e terminam em supernova), ejetados, asteroides (pop/lasca/alimentar/atirar),
 //    buracos negros (puxar/horizonte/teleporte/ciclo), mísseis (homing em jogador ou em míssil inimigo, impacto em peça/escudo,
-//    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire (tiro reto quando mirado) ──
+//    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire (tiro mirado trava no alvo do cone) ──
 // Todas recebem o mundo `w` (ids, rng, eventos, jogadores); toda aleatoriedade passa por w.rng.
 // @ts-check
 import {DT,PLAYER,SPLIT,EJECT,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR} from "../constants.js";
@@ -43,8 +44,8 @@ export function piecePair(w,A,B){
   const aBig=ra>=rb*EAT.RATIO,bBig=!aBig&&rb>=ra*EAT.RATIO;
   if(aBig||bBig){
     const big=aBig?A:B,small=aBig?B:A,psBig=aBig?psA:psB,psSmall=aBig?psB:psA;
-    if(psSmall.shieldLv>0){
-      if(d2<sum*sum){breakShield(w,psSmall,small,big.owner);const vn=resolveBounce(A,B,BOUNCE.E_SHIELD,BOUNCE.POS_CORR);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}
+    if(small.shieldLv>0){
+      if(d2<sum*sum){breakShield(w,small,big.owner);const vn=resolveBounce(A,B,BOUNCE.E_SHIELD,BOUNCE.POS_CORR);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}
       return;}
     const lim=big.r-small.r*EAT.CENTER;if(lim>0&&d2<lim*lim)eatPiece(w,psBig,big,psSmall,small);
     return;}
@@ -57,16 +58,17 @@ export function eatPiece(w,killer,A,victim,B){
 
 // ── comida ──
 /**
- * Come uma comida: munição, escudo (+1 nível até SHIELD_MAX_LEVEL, reinicia o timer; nunca expira; cada nível
- * aguenta um míssil e a primeira batida de um maior derruba tudo),
- * ímã (POWERUP.TICKS, acumula se já ativo) ou massa. @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} f
+ * Come uma comida: munição (do jogador), escudo (+1 nível até SHIELD_MAX_LEVEL **nesta peça**, reinicia o timer; nunca
+ * expira; cada nível aguenta um míssil e a primeira batida de um maior derruba tudo), ímã (POWERUP.TICKS **nesta peça**,
+ * acumula se já ativo) ou massa. Powerup pego com o planeta dividido vale só para esta parte — as outras não sentem nada.
+ * @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} f
  */
 export function eatFood(w,ps,pc,f){
   f.dead=true;w.foodDirty=true;const t=f.type,tick=w.tick;
   if(t===FOOD_TYPE.AMMO){if(ps.missiles<MISSILE.MAX_AMMO)ps.missiles++;w.events.push({type:"AMMO",slot:ps.slot});}
-  else if(t===FOOD_TYPE.SHIELD){if(ps.shieldLv<POWERUP.SHIELD_MAX_LEVEL)ps.shieldLv++;ps.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
-    w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:ps.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
-  else if(t===FOOD_TYPE.MAGNET){ps.magnetUntil=(ps.magnetUntil>tick?ps.magnetUntil:tick)+POWERUP.TICKS;
+  else if(t===FOOD_TYPE.SHIELD){if(pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL)pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
+    w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
+  else if(t===FOOD_TYPE.MAGNET){pc.magnetUntil=(pc.magnetUntil>tick?pc.magnetUntil:tick)+POWERUP.TICKS;
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"magnet"});}
   else{addMass(pc,f.mass*EAT.FOOD_GAIN,PLAYER.MAX_R);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD);}
   w.events.push({type:"FOOD_EATEN",slot:ps.slot,foodId:f.id,foodType:t,x:f.x,y:f.y});}
@@ -106,7 +108,7 @@ export function pieceAsteroid(w,pc,a){
   const s=pc.r+a.r;if(d2>=s*s||d2<=0)return;
   const vn=resolveBounce(pc,a,ASTEROID.E,BOUNCE.POS_CORR);if(vn<=0)return;
   if(w.tick>=pc.chipUntil){const d=Math.sqrt(d2);
-    if(ps.shieldLv>0){if(vn>=ASTEROID.SHIELD_VN){pc.chipUntil=w.tick+ASTEROID.CHIP_CD_TICKS;hitShield(w,ps,pc,-1,dx/d,dy/d);}}
+    if(pc.shieldLv>0){if(vn>=ASTEROID.SHIELD_VN){pc.chipUntil=w.tick+ASTEROID.CHIP_CD_TICKS;hitShield(w,pc,-1,dx/d,dy/d);}}
     else{pc.chipUntil=w.tick+ASTEROID.CHIP_CD_TICKS;chipPiece(w,ps,pc,a,dx/d,dy/d);}}
   if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,pc,a,vn);}
 /** Estoura a peça em n=clamp(⌊r/POP_DIV⌋,POP_MIN,POP_MAX) filhos (limitado por MAX_PIECES); asteroide morre e respawna depois. */
@@ -228,11 +230,12 @@ export function suckPiece(w,ps,pc,h){
 // ── mísseis ──
 /**
  * Homing: v → lerp(v, dir(alvo)·SPEED, TURN) por tick. type 0: alvo é o slot targetId (primeira peça viva);
- * type 1: alvo é o míssil de id targetId (interceptação) — se ele sumiu, segue reto (type 0, sem alvo). @param {World} w @param {Body} m
+ * type 1: alvo é a entidade de id targetId — míssil (interceptação) ou asteroide (tiro mirado) — e, se ela sumiu,
+ * segue reto (type 0, sem alvo). @param {World} w @param {Body} m
  */
 export function homeMissile(w,m){
   if(m.targetId<0)return;let tx,ty;
-  if(m.type===1){const t=w.entityById.get(m.targetId);if(!t||t.dead||t.kind!==KIND.MISSILE){m.type=0;m.targetId=-1;return;}tx=t.x;ty=t.y;}
+  if(m.type===1){const t=w.entityById.get(m.targetId);if(!t||t.dead||(t.kind!==KIND.MISSILE&&t.kind!==KIND.ASTEROID)){m.type=0;m.targetId=-1;return;}tx=t.x;ty=t.y;}
   else{const t=w.players.get(m.targetId),tp=t&&t.alive?firstLive(t.pieces):null;if(!tp)return;tx=tp.x;ty=tp.y;}
   const dx=tx-m.x,dy=ty-m.y,l=Math.sqrt(dx*dx+dy*dy)||1,k=MISSILE.TURN;
   m.vx+=(dx/l*MISSILE.SPEED-m.vx)*k;m.vy+=(dy/l*MISSILE.SPEED-m.vy)*k;}
@@ -243,8 +246,7 @@ export function homeMissile(w,m){
  */
 export function pieceMissile(w,pc,m){
   if(m.owner===pc.owner)return;const dx=m.x-pc.x,dy=m.y-pc.y,s=pc.r+m.r;if(dx*dx+dy*dy>=s*s)return;
-  const ps=w.players.get(pc.owner);
-  if(ps.shieldLv>0){m.dead=true;const d=Math.sqrt(dx*dx+dy*dy)||1;hitShield(w,ps,pc,m.owner,dx/d,dy/d);return;}
+  if(pc.shieldLv>0){m.dead=true;const d=Math.sqrt(dx*dx+dy*dy)||1;hitShield(w,pc,m.owner,dx/d,dy/d);return;}
   let r=pc.r*MISSILE.HIT_SHRINK;if(r<PLAYER.MIN_PIECE_R)r=PLAYER.MIN_PIECE_R;setR(pc,r);
   const rng=w.rng,er=EJECT.R;
   for(let i=0;i<MISSILE.HIT_DEBRIS;i++){const an=rng.angle();
@@ -272,19 +274,23 @@ export function asteroidMissile(w,a,m){
   a.vx+=ux*k;a.vy+=uy*k;m.dead=true;
   if(a.type>=0&&w.asteroids.length<w.astCap){w.queueAsteroid(a.type,ASTEROID.RESPAWN_TICKS);a.type=-1;}
   w.events.push({type:"DEFLECT",x:m.x,y:m.y,r:a.r,nx:ux,ny:uy,bySlot:m.owner});return true;}
-/** Escudo cai por completo: o dono dividiu (bySlot −1) ou levou a batida de quem pode engoli-lo. @param {World} w @param {PlayerState} ps @param {Body} pc */
-export function breakShield(w,ps,pc,bySlot=-1){ps.shieldLv=0;w.events.push({type:"SHIELD_BREAK",slot:ps.slot,x:pc.x,y:pc.y,r:pc.r,bySlot});}
+/** Escudo DESTA peça cai por completo: ela dividiu (bySlot −1) ou levou a batida de quem pode engoli-la. @param {World} w @param {Body} pc */
+export function breakShield(w,pc,bySlot=-1){pc.shieldLv=0;w.events.push({type:"SHIELD_BREAK",slot:pc.owner,x:pc.x,y:pc.y,r:pc.r,bySlot});}
 /**
- * Escudo perde UM nível e o timer de evolução reinicia: míssil inimigo, batida forte de asteroide ou tiro do próprio
- * dono (bySlot −1). Emite SHIELD_HIT enquanto sobra nível, SHIELD_BREAK quando zera. @param {World} w @param {PlayerState} ps @param {Body} pc
+ * O escudo DESTA peça perde UM nível e o timer de evolução dela reinicia: míssil inimigo, batida forte de asteroide ou
+ * tiro do próprio dono (bySlot −1). Emite SHIELD_HIT enquanto sobra nível, SHIELD_BREAK quando zera. @param {World} w @param {Body} pc
  */
-export function hitShield(w,ps,pc,bySlot=-1,nx=0,ny=0){
-  ps.shieldLv--;ps.shieldEvolveAt=w.tick+POWERUP.SHIELD_EVOLVE_TICKS;
-  if(ps.shieldLv>0)w.events.push({type:"SHIELD_HIT",slot:ps.slot,level:ps.shieldLv,x:pc.x,y:pc.y,r:pc.r,nx,ny,bySlot});
-  else w.events.push({type:"SHIELD_BREAK",slot:ps.slot,x:pc.x,y:pc.y,r:pc.r,bySlot});}
+export function hitShield(w,pc,bySlot=-1,nx=0,ny=0){
+  pc.shieldLv--;pc.shieldEvolveAt=w.tick+POWERUP.SHIELD_EVOLVE_TICKS;
+  if(pc.shieldLv>0)w.events.push({type:"SHIELD_HIT",slot:pc.owner,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r,nx,ny,bySlot});
+  else w.events.push({type:"SHIELD_BREAK",slot:pc.owner,x:pc.x,y:pc.y,r:pc.r,bySlot});}
 
 // ── ações do jogador ──
-/** Split: cada peça r ≥ SPLIT.MIN_R vira duas de massa/2; filho a v_pai + dir·SPEED, pai recua RECOIL. Retorna quantas dividiu. @param {World} w @param {PlayerState} ps */
+/**
+ * Split: cada peça r ≥ SPLIT.MIN_R vira duas de massa/2; filho a v_pai + dir·SPEED, pai recua RECOIL. O filho nasce
+ * **sem powerup** e a peça que dividiu perde o escudo inteiro (o ímã ela mantém). Retorna quantas dividiu.
+ * @param {World} w @param {PlayerState} ps
+ */
 export function applySplit(w,ps){
   const arr=ps.pieces,len=arr.length,tick=w.tick;let count=liveCount(arr),did=0;
   for(let i=0;i<len;i++){const pc=arr[i];if(pc.dead)continue;if(count>=PLAYER.MAX_PIECES)break;if(pc.r<SPLIT.MIN_R)continue;
@@ -292,8 +298,8 @@ export function applySplit(w,ps){
     setR(pc,nr);pc.mergeAt=tick+mergeTicks(nr);pc.vx-=ux*SPLIT.SPEED*SPLIT.RECOIL;pc.vy-=uy*SPLIT.SPEED*SPLIT.RECOIL;
     const q=w.newPiece(ps.slot,pc.x+ux*nr*SPLIT.OFFSET,pc.y+uy*nr*SPLIT.OFFSET,nr);
     q.vx=pc.vx+ux*SPLIT.SPEED;q.vy=pc.vy+uy*SPLIT.SPEED;q.mergeAt=pc.mergeAt;count++;did++;
-    w.events.push({type:"SPLIT",slot:ps.slot,pieceId:pc.id,childId:q.id,x:pc.x,y:pc.y,r:nr});}
-  if(did&&ps.shieldLv>0)breakShield(w,ps,firstLive(arr));
+    w.events.push({type:"SPLIT",slot:ps.slot,pieceId:pc.id,childId:q.id,x:pc.x,y:pc.y,r:nr});
+    if(pc.shieldLv>0)breakShield(w,pc);}
   return did;}
 /**
  * Eject: pellet r=EJECT.R com massa R²·MASS_FACTOR a v_peça + dir·SPEED; recuo exato −dir·SPEED·(m_pellet/m_peça)
@@ -309,16 +315,34 @@ export function applyEject(w,ps){
     w.events.push({type:"EJECT",slot:ps.slot,pieceId:pc.id,ejectId:e.id,x:e.x,y:e.y});}
   return did;}
 /**
- * Fire: gasta 1 míssil e **um nível** do escudo. Sai da primeira peça viva. Com `ps.fireAim` (tiro mirado) vai reto na
- * direção do alvo do ponteiro, sem alvo nenhum. Senão o alvo é, em ordem: míssil inimigo mirando este slot a
+ * Alvo do tiro mirado: o objeto vivo mais próximo dentro do cone ±MISSILE.AIM_CONE em volta da flecha, a até
+ * AIM_RANGE — peça de outro dono (kind 0, alvo = slot), míssil inimigo ou asteroide (kind 1, alvo = id da entidade).
+ * Sem nada no cone devolve [-1,0] e o míssil segue reto. Empate de distância fica com a peça (varrida primeiro).
+ * @param {World} w
+ */
+function aimTarget(w,slot,src,ux,uy,out){
+  const cone=Math.cos(MISSILE.AIM_CONE);let bd=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE,id=-1,kind=0;
+  const inCone=b=>{const dx=b.x-src.x,dy=b.y-src.y,d2=dx*dx+dy*dy;
+    if(d2>=bd||d2<1e-6||(dx*ux+dy*uy)/Math.sqrt(d2)<cone)return false;bd=d2;return true;};
+  const pcs=w.pieces;for(let i=0;i<pcs.length;i++){const p=pcs[i];if(!p.dead&&p.owner!==slot&&inCone(p)){id=p.owner;kind=0;}}
+  const ms=w.missiles;for(let i=0;i<ms.length;i++){const m=ms[i];if(!m.dead&&m.owner!==slot&&inCone(m)){id=m.id;kind=1;}}
+  const as=w.asteroids;for(let i=0;i<as.length;i++){const a=as[i];if(!a.dead&&inCone(a)){id=a.id;kind=1;}}
+  out[0]=id;out[1]=kind;}
+const AIM=[-1,0];
+/**
+ * Fire: gasta 1 míssil e **um nível** do escudo da peça que atira. Sai da primeira peça viva. Com `ps.fireAim`
+ * (tiro mirado, o jogador segurou o botão) o míssil **persegue o objeto mais próximo dentro do cone da flecha**
+ * (peça inimiga ou míssil inimigo) e só vai reto se o cone estiver vazio.
+ * Sem mira o alvo é, em ordem: míssil inimigo mirando este slot a
  * < INTERCEPT_DIST e se aproximando (o mais próximo; ordem do array desempata) → interceptação (type 1);
  * senão o oponente vivo mais próximo (homing, type 0); sem alvo, direção aleatória. @param {World} w @param {PlayerState} ps
  */
 export function applyFire(w,ps){
   if(ps.missiles<=0)return false;const src=firstLive(ps.pieces);if(!src)return false;ps.missiles--;
-  if(ps.shieldLv>0)hitShield(w,ps,src);
-  if(ps.fireAim){dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const m=w.addMissile(src.x,src.y,DIR[0]*MISSILE.SPEED,DIR[1]*MISSILE.SPEED,ps.slot,-1);
-    w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:-1,targetMissile:-1,aimed:true});return true;}
+  if(src.shieldLv>0)hitShield(w,src);
+  if(ps.fireAim){dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const ax=DIR[0],ay=DIR[1];aimTarget(w,ps.slot,src,ax,ay,AIM);
+    const m=w.addMissile(src.x,src.y,ax*MISSILE.SPEED,ay*MISSILE.SPEED,ps.slot,AIM[0]);m.type=AIM[1];
+    w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:AIM[1]?-1:AIM[0],targetMissile:AIM[1]?AIM[0]:-1,aimed:true});return true;}
   const ms=w.missiles;let im=null,id2=MISSILE.INTERCEPT_DIST*MISSILE.INTERCEPT_DIST;
   for(let i=0;i<ms.length;i++){const m=ms[i];if(m.dead||m.owner===ps.slot||m.type!==0||m.targetId!==ps.slot)continue;
     const dx=m.x-src.x,dy=m.y-src.y,d2=dx*dx+dy*dy;if(d2<id2&&dx*m.vx+dy*m.vy<0){id2=d2;im=m;}}

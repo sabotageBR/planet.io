@@ -14,11 +14,11 @@ import {KIND,PIECE_FLAG,FOOD_FLAG,STAR_PHASE} from "../src/protocol/constants.js
 const SRC=join(dirname(fileURLToPath(import.meta.url)),"..","src");
 const empty=(seed=1)=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0});
 const snapshot=w=>JSON.stringify({tick:w.tick,nextId:w.nextId,
-  pieces:w.pieces.map(b=>[b.id,b.owner,b.x,b.y,b.vx,b.vy,b.r,b.mergeAt,b.flags]),
+  pieces:w.pieces.map(b=>[b.id,b.owner,b.x,b.y,b.vx,b.vy,b.r,b.mergeAt,b.flags,b.shieldLv,b.magnetUntil]),
   food:w.food.map(b=>[b.id,b.x,b.y,b.type,b.hue]),ejected:w.ejected.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.life]),
   asteroids:w.asteroids.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.r,b.type,b.ang]),holes:w.holes.map(b=>[b.id,b.x,b.y,b.k,b.type,b.life,b.ex,b.ey]),
   missiles:w.missiles.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.targetId,b.type]),stars:w.stars.map(b=>[b.id,b.x,b.y,b.r,b.k,b.type,b.life]),
-  players:[...w.players.values()].map(p=>[p.slot,p.alive,p.score,p.missiles,p.magnetUntil,p.shieldLv,p.shieldEvolveAt])});
+  players:[...w.players.values()].map(p=>[p.slot,p.alive,p.score,p.missiles])});
 
 // 1. determinismo: mesma seed + mesmos inputs → 3600 passos byte-idênticos
 test("determinismo: duas salas com a mesma seed e os mesmos inputs são idênticas após 3600 passos",()=>{
@@ -160,35 +160,36 @@ test("fusão: sem puxão de longe; atração só a d<(ra+rb)·ATTRACT_RANGE; sep
 
 // 11. escudo por níveis
 test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nível, dividir derruba, escudado quica",()=>{
-  const w=empty(30),pc=w.addPlayer(0,{x:1000,y:1000,r:40}),ps=w.players.get(0);w.setTarget(0,1000,1000);
+  const w=empty(30),pc=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);
   const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=1000;f.y=1000;w.foodDirty=true;w.step();
-  assert.equal(ps.shieldLv,1);assert.ok(w.events.some(e=>e.type==="SHIELD_UP"&&e.level===1));
+  assert.equal(pc.shieldLv,1);assert.ok(w.events.some(e=>e.type==="SHIELD_UP"&&e.level===1));
   w.step();assert.ok(pc.flags&PIECE_FLAG.SHIELD);assert.equal((pc.flags>>PIECE_FLAG.SHIELD_LV_SHIFT)&3,1);
   let ups=0;for(let t=0;t<POWERUP.SHIELD_EVOLVE_TICKS*2+5;t++){w.step();for(const e of w.events)if(e.type==="SHIELD_UP")ups++;}
-  assert.equal(ps.shieldLv,POWERUP.SHIELD_MAX_LEVEL);assert.equal(ups,2);
-  for(let t=0;t<3000;t++)w.step();assert.equal(ps.shieldLv,POWERUP.SHIELD_MAX_LEVEL,"não expira nem passa do teto");
+  assert.equal(pc.shieldLv,POWERUP.SHIELD_MAX_LEVEL);assert.equal(ups,2);
+  for(let t=0;t<3000;t++)w.step();assert.equal(pc.shieldLv,POWERUP.SHIELD_MAX_LEVEL,"não expira nem passa do teto");
   assert.equal((pc.flags>>PIECE_FLAG.SHIELD_LV_SHIFT)&3,3);
-  const f2=w.spawnFood();f2.type=FOOD_TYPE.SHIELD;f2.x=pc.x;f2.y=pc.y;w.foodDirty=true;w.step();assert.equal(ps.shieldLv,3,"outro 🛡️ no teto: continua 3");
+  const f2=w.spawnFood();f2.type=FOOD_TYPE.SHIELD;f2.x=pc.x;f2.y=pc.y;w.foodDirty=true;w.step();assert.equal(pc.shieldLv,3,"outro 🛡️ no teto: continua 3");
   // míssil inimigo tira um nível, sem tirar massa
-  const w3=empty(31),p0=w3.addPlayer(0,{x:1000,y:1000,r:40}),ps0=w3.players.get(0);w3.setTarget(0,1000,1000);ps0.shieldLv=2;ps0.shieldEvolveAt=1e9;
+  const w3=empty(31),p0=w3.addPlayer(0,{x:1000,y:1000,r:40});w3.setTarget(0,1000,1000);p0.shieldLv=2;p0.shieldEvolveAt=1e9;
   w3.addPlayer(1,{x:1400,y:1000,r:40,missiles:2});w3.setTarget(1,1400,1000);
   w3.requestFire(1);let hit=null;for(let t=0;t<60&&!hit;t++){w3.step();hit=w3.events.find(e=>e.type==="SHIELD_HIT")||null;}
-  assert.ok(hit,"SHIELD_HIT");assert.equal(hit.level,1);assert.equal(ps0.shieldLv,1);assert.equal(w3.missiles.length,0);assert.equal(p0.r,40,"massa intacta");
-  assert.ok(ps0.shieldEvolveAt<1e9,"timer de evolução reiniciado");assert.ok(!w3.events.some(e=>e.type==="BOOM"));
+  assert.ok(hit,"SHIELD_HIT");assert.equal(hit.level,1);assert.equal(p0.shieldLv,1);assert.equal(w3.missiles.length,0);assert.equal(p0.r,40,"massa intacta");
+  assert.ok(p0.shieldEvolveAt<1e9,"timer de evolução reiniciado");assert.ok(!w3.events.some(e=>e.type==="BOOM"));
   w3.requestFire(1);let brk=null;for(let t=0;t<60&&!brk;t++){w3.step();brk=w3.events.find(e=>e.type==="SHIELD_BREAK")||null;}
-  assert.ok(brk&&brk.slot===0&&brk.bySlot===1,"segundo míssil destrói");assert.equal(ps0.shieldLv,0);assert.equal(p0.r,40);
+  assert.ok(brk&&brk.slot===0&&brk.bySlot===1,"segundo míssil destrói");assert.equal(p0.shieldLv,0);assert.equal(p0.r,40);
   // cada tiro do dono custa UM nível (sem munição não custa nada); dividir derruba o escudo inteiro
-  const w4=empty(32),q=w4.addPlayer(0,{x:1000,y:1000,r:40,missiles:0}),ps4=w4.players.get(0);w4.setTarget(0,1500,1000);ps4.shieldLv=2;ps4.shieldEvolveAt=1e9;
-  w4.requestFire(0);w4.step();assert.equal(ps4.shieldLv,2,"sem munição não custa escudo");
-  ps4.missiles=2;w4.requestFire(0);w4.step();assert.equal(ps4.shieldLv,1,"1º tiro: −1 nível");assert.ok(w4.events.some(e=>e.type==="SHIELD_HIT"&&e.bySlot===-1));
-  w4.requestFire(0);w4.step();assert.equal(ps4.shieldLv,0,"2º tiro: zera");assert.ok(w4.events.some(e=>e.type==="SHIELD_BREAK"&&e.bySlot===-1));
-  ps4.shieldLv=3;w4.requestSplit(0);w4.step();assert.equal(ps4.shieldLv,0,"dividir derruba inteiro");assert.equal(w4.piecesOf(0).length,2);
+  const w4=empty(32),q=w4.addPlayer(0,{x:1000,y:1000,r:40,missiles:0}),ps4=w4.players.get(0);w4.setTarget(0,1500,1000);q.shieldLv=2;q.shieldEvolveAt=1e9;
+  w4.requestFire(0);w4.step();assert.equal(q.shieldLv,2,"sem munição não custa escudo");
+  ps4.missiles=2;w4.requestFire(0);w4.step();assert.equal(q.shieldLv,1,"1º tiro: −1 nível");assert.ok(w4.events.some(e=>e.type==="SHIELD_HIT"&&e.bySlot===-1));
+  w4.requestFire(0);w4.step();assert.equal(q.shieldLv,0,"2º tiro: zera");assert.ok(w4.events.some(e=>e.type==="SHIELD_BREAK"&&e.bySlot===-1));
+  q.shieldLv=3;q.shieldEvolveAt=1e9;w4.requestSplit(0);w4.step();assert.equal(q.shieldLv,0,"dividir derruba o escudo da peça inteiro");
+  assert.equal(w4.piecesOf(0).length,2);assert.equal(w4.piecesOf(0)[1].shieldLv,0,"a filha nasce sem powerup");
   // grande vs pequeno com escudo nível 3: a 1ª batida derruba o escudo inteiro e quica; depois o grande come
   const w5=empty(33),big=w5.addPlayer(0,{x:1000,y:1000,r:60}),small=w5.addPlayer(1,{x:1085,y:1000,r:30});
-  const ps5=w5.players.get(1);ps5.shieldLv=POWERUP.SHIELD_MAX_LEVEL;ps5.shieldEvolveAt=1e9;w5.setTarget(1,1085,1000);
+  small.shieldLv=POWERUP.SHIELD_MAX_LEVEL;small.shieldEvolveAt=1e9;w5.setTarget(1,1085,1000);
   let quebra=null;for(let t=0;t<120&&!quebra;t++){w5.setTarget(0,small.x,small.y);w5.step();quebra=w5.events.find(e=>e.type==="SHIELD_BREAK")||null;
     assert.ok(!w5.events.some(e=>e.type==="EAT"),"não engole com escudo de pé");}
-  assert.ok(quebra&&quebra.bySlot===0,"a batida do maior derruba o escudo (bySlot = o grande)");assert.equal(ps5.shieldLv,0,"cai inteiro, mesmo no nível 3");
+  assert.ok(quebra&&quebra.bySlot===0,"a batida do maior derruba o escudo (bySlot = o grande)");assert.equal(small.shieldLv,0,"cai inteiro, mesmo no nível 3");
   assert.ok(w5.players.get(1).alive,"sobrevive à batida");assert.ok(Math.hypot(small.vx,small.vy)>0,"foi empurrado (chance de fuga)");
   let eat=null;for(let t=0;t<600&&!eat;t++){w5.setTarget(0,small.x,small.y);w5.step();eat=w5.events.find(e=>e.type==="EAT")||null;}
   assert.ok(eat&&eat.killerSlot===0,"sem escudo, o maior come");assert.ok(!w5.players.get(1).alive);});
@@ -225,11 +226,11 @@ test("míssil×asteroide: desvia o errante (DEFLECT) e tira o de cinturão da ó
 
 // 14. ímã
 test("ímã: comida no alcance é sugada (MOVED, acelerando) e ejetados de terceiros são atraídos; sem ímã nada se move",()=>{
-  const w=empty(60);w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);const ps=w.players.get(0);
+  const w=empty(60),me=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);
   const f=w.spawnFood();f.type=FOOD_TYPE.DUST;f.x=1200;f.y=1000;w.foodDirty=true;
   w.addPlayer(1,{x:3000,y:3000,r:40});const e=w.addEjected(1000,1200,0,0,EJECT.R,EJECT.R*EJECT.R,1,0,EJECT.LIFE_TICKS);
   w.step();assert.equal(f.x,1200,"sem ímã a comida fica");assert.equal(e.vy,0);assert.equal(f.flags&FOOD_FLAG.MOVED,0);
-  ps.magnetUntil=1e9;w.step();
+  me.magnetUntil=1e9;w.step();
   assert.ok(f.x<1200&&(f.flags&FOOD_FLAG.MOVED),"comida puxada e marcada MOVED");assert.ok(e.vy<0,"ejetado atraído");
   const x1=f.x;w.step();assert.ok(x1-f.x>1200-x1,"acelera ao se aproximar (sucção)");
   let eaten=false;for(let t=0;t<120&&!eaten;t++){w.step();eaten=w.events.some(ev=>ev.type==="FOOD_EATEN");}assert.ok(eaten,"chega à boca em < 2 s");});
@@ -275,7 +276,7 @@ test("estrela: GROW→ACTIVE→OLD incha e vira supernova (partículas, asteroid
 
 // 17. ímã mais fraco: comida pesada e a estrela vêm devagar
 test("ímã: cometa/estrela vêm a MAGNET_HEAVY da poeira e a estrela do mundo se arrasta a MAGNET_STAR",()=>{
-  const w=empty(74);w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);const ps=w.players.get(0);ps.magnetUntil=1e9;
+  const w=empty(74),me=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);me.magnetUntil=1e9;
   const d=w.spawnFood();d.type=FOOD_TYPE.DUST;d.x=1150;d.y=1000;
   const c=w.spawnFood();c.type=FOOD_TYPE.COMET;c.x=1150;c.y=1100;w.foodDirty=true;w.step();
   const dd=1150-d.x,dc=1150-c.x;assert.ok(dd>0&&dc>0,"os dois são puxados");
@@ -285,18 +286,56 @@ test("ímã: cometa/estrela vêm a MAGNET_HEAVY da poeira e a estrela do mundo s
   assert.ok(x0-st.x<POWERUP.MAGNET_PULL*DT*.5,"bem mais devagar que a comida");});
 
 // 18. asteroide × escudo e tiro mirado
-test("asteroide: batida forte tira um nível do escudo (sem lascar); tiro mirado sai reto na direção do alvo",()=>{
-  const w=empty(75);const pc=w.addPlayer(0,{x:1000,y:1000,r:40}),ps=w.players.get(0);ps.shieldLv=2;ps.shieldEvolveAt=1e9;
+test("asteroide: batida forte tira um nível do escudo (sem lascar); tiro mirado sem nada no cone sai reto",()=>{
+  const w=empty(75);const pc=w.addPlayer(0,{x:1000,y:1000,r:40});pc.shieldLv=2;pc.shieldEvolveAt=1e9;
   const a=w.spawnAsteroid(-1,1200,1000,60);a.vx=-900;a.vy=0;w.setTarget(0,1000,1000);
   let hit=null;for(let t=0;t<30&&!hit;t++){w.step();hit=w.events.find(e=>e.type==="SHIELD_HIT")||null;}
-  assert.ok(hit,"batida forte tira um nível");assert.equal(ps.shieldLv,1);assert.equal(pc.r,40,"o escudo absorve: sem lasca");
+  assert.ok(hit,"batida forte tira um nível");assert.equal(pc.shieldLv,1);assert.equal(pc.r,40,"o escudo absorve: sem lasca");
   assert.ok(!w.events.some(e=>e.type==="CHIP"));
   // sem escudo, a mesma batida lasca como antes
   const w2=empty(76);const p2=w2.addPlayer(0,{x:1000,y:1000,r:40});const a2=w2.spawnAsteroid(-1,1200,1000,60);
   a2.vx=-900;a2.vy=0;w2.setTarget(0,1000,1000);let chip=null;for(let t=0;t<30&&!chip;t++){w2.step();chip=w2.events.find(e=>e.type==="CHIP")||null;}
   assert.ok(chip&&p2.r<40,"sem escudo lasca");
-  // mira: o míssil sai reto para o alvo do ponteiro, sem perseguir ninguém
+  // mira com o cone vazio: o míssil sai reto para o alvo do ponteiro
   const w3=empty(77);w3.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w3.addPlayer(1,{x:1000,y:2000,r:40});
   w3.setTarget(0,2000,1000);w3.requestFire(0,true);w3.step();
   const m=w3.missiles[0];assert.ok(m,"míssil");assert.equal(m.targetId,-1);assert.ok(m.vx>0&&Math.abs(m.vy)<1e-6,"direção do alvo");
   const vy0=m.vy;for(let t=0;t<30;t++)w3.step();assert.ok(Math.abs(m.vy-vy0)<1e-6,"não curva atrás de ninguém");});
+
+// 19. powerups por peça
+test("powerup por peça: só a parte que pegou o 🛡️/🧲 se beneficia; ao fundir fica o melhor das duas",()=>{
+  const w=empty(80),a=w.addPlayer(0,{x:1000,y:1000,r:60});w.setTarget(0,2000,1000);
+  w.requestSplit(0);w.step();const b=w.piecesOf(0).find(p=>p!==a);assert.ok(b,"dividiu em duas");
+  for(let t=0;t<25;t++)w.step();assert.ok(b.x-a.x>200,"as partes se afastaram");
+  const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=b.x;f.y=b.y;w.foodDirty=true;w.step();
+  assert.equal(b.shieldLv,1,"o escudo é de quem pegou");assert.equal(a.shieldLv,0,"a outra parte não ganha nada");
+  w.step();assert.ok(b.flags&PIECE_FLAG.SHIELD,"a flag vai na peça certa");assert.equal(a.flags&PIECE_FLAG.SHIELD,0);
+  const g=w.spawnFood();g.type=FOOD_TYPE.MAGNET;g.x=b.x;g.y=b.y;w.foodDirty=true;w.step();
+  assert.ok(b.magnetUntil>w.tick&&a.magnetUntil<=w.tick,"o ímã também é só dela");
+  const dust=w.spawnFood();dust.type=FOOD_TYPE.DUST;dust.x=a.x-a.r*3;dust.y=a.y;w.foodDirty=true;const x0=dust.x;   // do lado de fora, longe do alcance de b
+  w.step();assert.equal(dust.x,x0,"a parte sem ímã não puxa comida");
+  // ao fundir, a peça que fica leva o melhor poder das duas
+  a.shieldLv=1;a.shieldEvolveAt=b.shieldEvolveAt=1e9;const mag=b.magnetUntil;a.mergeAt=b.mergeAt=0;w.setTarget(0,(a.x+b.x)/2,1000);
+  let merged=false;for(let t=0;t<600&&!merged;t++){w.step();merged=w.events.some(e=>e.type==="MERGE");}
+  assert.ok(merged,"as partes se juntam");const left=w.piecesOf(0).filter(p=>!p.dead);assert.equal(left.length,1);
+  assert.equal(left[0].shieldLv,1,"fica o maior escudo das duas");assert.equal(left[0].magnetUntil,mag,"e o ímã da outra parte");});
+
+// 20. mira: trava no alvo do cone
+test("tiro mirado: persegue o objeto mais próximo dentro do cone (planeta, míssil ou asteroide)",()=>{
+  const w=empty(81);w.addPlayer(0,{x:1000,y:1000,r:40,missiles:3});w.setTarget(0,2000,1000);
+  w.addPlayer(1,{x:2200,y:1150,r:40});w.setTarget(1,2200,1150);
+  w.requestFire(0,true);w.step();const m=w.missiles[0];
+  assert.ok(m,"míssil");assert.equal(m.type,0);assert.equal(m.targetId,1,"travou no planeta inimigo do cone");
+  let boom=false;for(let t=0;t<300&&!boom;t++){w.step();boom=w.events.some(e=>e.type==="BOOM");}
+  assert.ok(boom,"vai atrás dele até acertar");
+  // asteroide mais perto no mesmo cone rouba a trava
+  const w2=empty(82);w2.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w2.setTarget(0,2000,1000);
+  w2.addPlayer(1,{x:2400,y:1000,r:40});const a=w2.spawnAsteroid(-1,1600,1080,40);a.vx=0;a.vy=0;
+  w2.requestFire(0,true);w2.step();const m2=w2.missiles[0];
+  assert.equal(m2.type,1);assert.equal(m2.targetId,a.id,"o asteroide estava mais perto");
+  let defl=false;for(let t=0;t<120&&!defl;t++){w2.step();defl=w2.events.some(e=>e.type==="DEFLECT");}
+  assert.ok(defl,"o míssil o alcança e o desvia");
+  // sem AIM continua o tiro de sempre: teleguiado no oponente mais próximo, mesmo fora do cone
+  const w3=empty(83);w3.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w3.addPlayer(1,{x:1000,y:2000,r:40});
+  w3.setTarget(0,2000,1000);w3.requestFire(0);w3.step();
+  assert.equal(w3.missiles[0].targetId,1,"clique rápido persegue como antes");});

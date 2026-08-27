@@ -32,18 +32,25 @@ http/peers.js   fetch dos irmãos (PEERS ou PEER_HOST) com timeout 1200 ms
 flags one-shot: `SPLIT`/`EJECT`/`FIRE` executadas uma vez por seq nova (o cliente repete a flag até o ack — o servidor
 ignora repetições porque só processa seq > lastSeq); `EJECT_HOLD` liga/desliga repetição (a cada EJECT.HOLD_TICKS).
 Cooldowns só no servidor (`World.requestSplit/Eject/Fire` já checam). Rate limit: NET.RATE_INPUTS/s, burst NET.RATE_BURST.
-`FIRE` custa **um nível** do escudo (SHIELD_HIT; 0 → SHIELD_BREAK) e `SPLIT` derruba o escudo inteiro. Com `AIM` (o jogador segurou o
-botão) o míssil sai **reto** na direção de `tx,ty`, sem alvo. Sem AIM, `FIRE` mira nesta ordem: míssil inimigo que persegue este slot a
-< MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`), senão o oponente vivo mais próximo.
+`FIRE` custa **um nível** do escudo da peça que atira (a 1ª viva; SHIELD_HIT, 0 → SHIELD_BREAK) e `SPLIT` derruba o escudo inteiro
+**da peça que dividiu**. Com `AIM` (o jogador segurou o botão) o míssil **trava no objeto mais próximo dentro do cone**
+±MISSILE.AIM_CONE em volta de `tx,ty`, até AIM_RANGE — peça de outro dono (`type 0`, alvo = slot), míssil inimigo ou asteroide
+(`type 1`, alvo = id) — e só sai reto se não houver nada no cone. Sem AIM, `FIRE` mira nesta ordem: míssil inimigo que persegue
+este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`), senão o oponente vivo mais próximo.
 
 ## Regras (shared/physics/rules.js — o servidor não tem regra própria)
-- **Escudo por níveis**: pegar 🛡️ = +1 nível (teto POWERUP.SHIELD_MAX_LEVEL), reinicia o timer; não expira; sobe um nível a cada
-  SHIELD_EVOLVE_TICKS sem ser atingido (SHIELD_UP). Míssil inimigo explode no escudo sem tirar massa e tira 1 nível (SHIELD_HIT;
+- **Powerup é da PEÇA**: ímã e escudo ficam no corpo (`Body.magnetUntil`, `shieldLv`, `shieldEvolveAt`), não no jogador — com o
+  planeta dividido, quem pegou o powerup é a única parte que se beneficia. Peça nova (split, pop de asteroide, estilhaço de estrela)
+  nasce **sem** powerup; ao fundir, a peça que fica leva o **melhor** dos dois (maior nível de escudo, maior tempo de ímã).
+  O bloco `self` manda o melhor das peças só para o HUD.
+- **Escudo por níveis**: pegar 🛡️ = +1 nível **naquela peça** (teto POWERUP.SHIELD_MAX_LEVEL), reinicia o timer; não expira; sobe um
+  nível a cada SHIELD_EVOLVE_TICKS sem a peça ser atingida (SHIELD_UP). Míssil inimigo explode no escudo sem tirar massa e tira 1 nível (SHIELD_HIT;
   0 → SHIELD_BREAK) — é contra míssil que o escudo serve. **A regra do maior comer o menor prevalece**: a primeira batida de quem
   pode engolir derruba o escudo inteiro (qualquer nível) e quica com E_SHIELD (chance de fuga); da batida seguinte em diante come
-  normalmente. Disparar ou dividir também derruba o escudo. Bots com escudo não atiram nem dividem.
+  normalmente. Disparar tira um nível e dividir derruba o escudo daquela peça. Bots com escudo (o da peça que atira) não atiram nem dividem.
 - **Fusão**: por par de peças do mesmo dono — separação enquanto uma não pode fundir; quando ambas podem, atração só a
-  d < (ra+rb)·MERGE.ATTRACT_RANGE (sem puxão global ao centróide); merge pareado a d < max(r)·MERGE.DIST.
+  d < (ra+rb)·MERGE.ATTRACT_RANGE (sem puxão global ao centróide); merge pareado a d < max(r)·MERGE.DIST. A peça que fica herda o
+  melhor powerup das duas (ver acima).
 - **Asteroide**: batida forte (vn ≥ ASTEROID.SHIELD_VN) com escudo tira 1 nível em vez de lascar; batida fraca com escudo não faz nada;
   sem escudo, lasca como antes (CHIP).
 - **Estrelas** (STAR.*): perigo estático em 3 fases — GROW (rampa de `k`; só arma acima de ARM_K), ACTIVE e OLD (incha até R·SWELL).
@@ -51,8 +58,8 @@ botão) o míssil sai **reto** na direção de `tx,ty`, sem alvo. Sem AIM, `FIRE
   SHATTER_SPEED com a massa conservada (STAR_BURST). No fim do OLD vira **supernova** num raio r·NOVA_R: NOVA_PARTICLES ejetados sem
   dono, asteroides chutados com AST_KICK·(1−d/blast)·min(1,R_MIN/r) (os de cinturão viram errantes e o cinturão repõe) e peças
   empurradas com PUSH·(1−d/blast) — só empurrão. A estrela morre e outra nasce RESPAWN_TICKS depois.
-- **Powerups**: só ímã (temporário, POWERUP.TICKS) e escudo (níveis). O powerup de velocidade foi removido — a velocidade máxima vem só do raio (`vmaxFor`).
-- **Ímã**: comida a d < r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s e é marcada MOVED (UPDATE X_Y
+- **Powerups**: só ímã (temporário, POWERUP.TICKS) e escudo (níveis), os dois **por peça**. O powerup de velocidade foi removido — a velocidade máxima vem só do raio (`vmaxFor`).
+- **Ímã** (só a peça que o pegou atrai): comida a d < r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s e é marcada MOVED (UPDATE X_Y
   no snapshot) — cometa e estrela (comida pesada) a MAGNET_HEAVY disso; ejetados de terceiros (ou próprios após cdUntil) ganham
   MAGNET_EJECT_A px/s²; a estrela do mundo se arrasta a MAGNET_STAR (vem para cima de você). Flag PIECE_FLAG.MAGNET para todos verem.
 - **Mísseis**: míssil × míssil de donos diferentes com teste varrido (O(n²) sobre w.missiles, fora da grade) → ambos morrem (CLASH);

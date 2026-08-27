@@ -18,7 +18,7 @@ JSON:
 - `{"t":"ping","c":<performance.now() u32>}`
 
 Binário `INPUT` (10 bytes): `u8 0x01 | u16 seq | u16 tx | u16 ty | u8 flags | u16 clientTick(low)`.
-`flags`: `SPLIT=1, EJECT=2, EJECT_HOLD=4, FIRE=8, AIM=16` (AIM acompanha FIRE: tiro **mirado**, reto na direção de `tx,ty`, sem perseguir nem interceptar). `tx,ty` quantizados como posição. Ações são one-shot por `seq`: o
+`flags`: `SPLIT=1, EJECT=2, EJECT_HOLD=4, FIRE=8, AIM=16` (AIM acompanha FIRE: tiro **mirado** — o míssil trava no objeto mais próximo dentro do cone ±MISSILE.AIM_CONE em volta de `tx,ty` (peça inimiga, míssil inimigo ou asteroide, até AIM_RANGE) e só vai reto se o cone estiver vazio). `tx,ty` quantizados como posição. Ações são one-shot por `seq`: o
 servidor processa cada `seq` uma vez (guarda `lastSeq`); o cliente reenvia a flag nos inputs seguintes até `ackSeq >= seq`.
 Taxa: ≤ 30 Hz e só quando muda (>2 px ou flag); keepalive a 10 Hz.
 
@@ -34,7 +34,7 @@ JSON:
 Binário (primeiro byte = tipo):
 - `0x10 SNAPSHOT`: `u8 | u32 tick | u16 ackSeq | u16 nCreate | u16 nUpdate | u16 nRemove | creates | updates | removes | self`
   - create: `u8 kind | u32 id | u16 x | u16 y | u16 r10 |` + por kind:
-    - `PIECE=1`: `u16 ownerSlot | i16 vx | i16 vy | u8 flags(SHIELD=1,LAUNCH=2,MERGING=4,ME=8,MAGNET=16; bits 5–6 = nível do escudo 1..3)`
+    - `PIECE=1`: `u16 ownerSlot | i16 vx | i16 vy | u8 flags(SHIELD=1,LAUNCH=2,MERGING=4,ME=8,MAGNET=16; bits 5–6 = nível do escudo 1..3)` — ímã e escudo são **por peça**: estas flags são a fonte (duas partes do mesmo planeta podem estar diferentes)
     - `FOOD=2`: `u8 type (0 dust,1 comet,2 star,3 rock,4 ammo,6 magnet,7 shield; 5 vago — powerup de velocidade removido) | u8 hue(0..11)`
     - `EJECT=3`: `u16 ownerSlot | u8 hue | i16 vx | i16 vy`
     - `ASTEROID=4`: `u16 seed | i16 vx | i16 vy`
@@ -44,6 +44,7 @@ Binário (primeiro byte = tipo):
   - update: `u32 id | u8 mask` + campos presentes na ordem: `X_Y=1 (u16 x,u16 y)`, `R=2 (u16 r10)`, `V=4 (i16 vx,i16 vy)`, `FLAGS=8 (u8)`, `EXTRA=16 (u8 phase + u16 influenceR — buraco negro e estrela)`
   - remove: `u32 id | u8 reason (0 LEFT_AOI,1 EATEN,2 MERGED,3 POPPED,4 EXPIRED,5 SUCKED,6 DESPAWN)`
   - self: `u8 flags(DEAD=1,RESYNC=2 — descarte as entidades conhecidas antes de aplicar este snapshot) | u8 missiles | u8 powerupBits(magnet=1,shield=2) | u16 magnetT | u8 shieldLv(0..3; o escudo não expira) | u32 score | u8 splitCd | u8 ejectCd | u16 rank | u32 mass` (18 bytes)
+    `magnetT`/`shieldLv`/`powerupBits` são o **melhor** entre as peças próprias (resumo para o HUD) — quem tem o powerup de fato é cada peça, pelas flags dela. `missiles` é do jogador.
 - `0x11 PLAYERS` (no join e quando muda): `u8 | u16 n | [u16 slot | u8 flags(BOT=1,DEAD=2,REG=4) | u8 skinId | u8 nameLen | nameLen bytes utf8 | u32 score]`
 - `0x12 LEADERBOARD` (2 Hz): `u8 | u8 n | [u16 slot | u32 mass]`
 - `0x13 EVENT`: `u8 | u8 kind(0 EAT,1 POP,2 MERGE,3 SPLIT,4 BH_SUCK,5 DEATH,6 CHIP,7 BOUNCE,8 BOOM,9 EXIT,10 SHOOT,11 SHIELD_BREAK,12 CLASH,13 DEFLECT,14 SHIELD_HIT,15 SHIELD_UP,16 STAR_BURST,17 SUPERNOVA) | u16 x | u16 y | u16 r10 | u16 slotA | u16 slotB | u32 extra`

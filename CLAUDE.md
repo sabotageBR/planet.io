@@ -46,8 +46,10 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   batida forte com escudo tira um nível em vez de lascar); estrelas (perigo que estilhaça quem encosta e, ao envelhecer, vira supernova:
   espalha partículas, chuta os asteroides e empurra os planetas por perto);
   buracos negros (força ∝ 1/d², horizonte tira 30% da massa e teleporta para a saída pareada); powerups = só ímã e escudo
-  (o de velocidade foi removido); mísseis (homing no jogador, interceptação de míssil inimigo ou **tiro mirado reto** quando o
-  jogador segura o botão; míssil×míssil varrido = CLASH; míssil desvia asteroide = DEFLECT); ímã suga comida e ejetados
+  (o de velocidade foi removido), **por peça**: quem pegou é a única parte que ganha (Body.magnetUntil/shieldLv), peça nova nasce
+  limpa e a fusão fica com o melhor dos dois; mísseis (homing no jogador, interceptação de míssil inimigo ou **tiro mirado** quando o
+  jogador segura o botão — trava no objeto mais próximo do cone: peça, míssil ou asteroide; míssil×míssil varrido = CLASH;
+  míssil desvia asteroide = DEFLECT); ímã suga comida e ejetados
   (comida movida recebe UPDATE; cometa/estrela mais devagar; a estrela-perigo se arrasta até você); escudo por níveis 1–3 (não expira,
   evolui sem ser atingido, míssil/tiro/batida forte de asteroide tiram um nível, dividir derruba inteiro; contra quem pode engolir só
   segura a 1ª batida — ela derruba o escudo inteiro e quica, depois o maior come); fusão por par (atração só perto, sem puxão ao centróide).
@@ -89,3 +91,5 @@ do zero, use só com o banco vazio). Secret `planet-db` criado via `./scripts/db
 
 - Sem "esqueci a senha" (reset via SQL). Sem merge de contas ao logar num navegador que tinha guest.
 - Mockups são a fonte visual; mudança de tema visual = editar `mockups/v2/src/theme.toon-<id>.js` e rodar `client/src/theme/port.js`.
+- O fundo não tem mais planetas de cenário: `bandLayers()` devolve `props:[]` nos 3 temas (as bolas translúcidas confundiam com
+  planeta de verdade). `textures.prop`/`scale.prop` seguem lá — é só voltar a preencher a lista se quisermos cenário de novo.

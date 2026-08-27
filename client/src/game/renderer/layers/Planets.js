@@ -1,14 +1,13 @@
 // ── PLANETAS: pool {corpo (sprite por tier), Graphics (arco de merge + anéis de powerup),
 //    BitmapText nome/massa}; ordenados por raio (zIndex). Trilhas: um Graphics só, polilinha
 //    tracejada (theme.hud.trail). Fontes bitmap instaladas por tema (nome/massa) com charset pt-BR.
-//    Anéis: próprios pelo bloco self (powerBits + shieldLv); terceiros pelas flags da peça (SHIELD + nível
-//    em 2 bits, MAGNET). Escudo usa theme.hud.cell.powerups.shieldLevels[nível−1]; ímã pede R.ambient("magnet").
+//    Anéis: pelas flags de CADA peça (SHIELD + nível em 2 bits, MAGNET) — powerup é por peça, então duas partes do
+//    mesmo planeta podem estar diferentes. Escudo usa theme.hud.cell.powerups.shieldLevels[nível−1]; ímã pede R.ambient("magnet").
 import {Container,Sprite,Graphics,BitmapText,BitmapFont,Cache} from "pixi.js";
-import {PIECE_FLAG,POWER_BIT,mergeTicks,rectHas} from "@planet/shared";
+import {PIECE_FLAG,mergeTicks,rectHas} from "@planet/shared";
 import {colorOf,fmt,dashPolyline} from "../../util.js";
 
 const FS=48,CHARS=[[" ","~"],["¡","ÿ"],["Ā","ž"],"✓◆✦•–—…"],TRAIL_MAX=12,TRAIL_MIN_V=72;
-const PW_ORDER=["magnet","shield"];
 export function createPlanets(R){
   const root=new Container();root.sortableChildren=true;const trails=new Graphics();
   const views=new Map(),trailMap=new Map(),seg=[],counts=new Map();let frame=0,fontName="",fontMass="",lastTrailTick=-1;
@@ -22,7 +21,7 @@ export function createPlanets(R){
     const name=new BitmapText({text:"",style:{fontFamily:fontName,fontSize:FS}}),mass=new BitmapText({text:"",style:{fontFamily:fontMass,fontSize:FS}});name.anchor.set(.5);mass.anchor.set(.5);
     c.addChild(body,gfx,name,mass);root.addChild(c);return{c,body,gfx,name,mass,lastName:null,lastMassN:-1,f:0};}
   return{root,trails,setTheme,
-    render(f){frame++;const th=R.theme,TX=th.textures,L=th.hud.labels,cell=th.hud.cell,view=f.view,rect=f.rect,rt=f.rt,t=f.t,self=view.self;
+    render(f){frame++;const th=R.theme,TX=th.textures,L=th.hud.labels,cell=th.hud.cell,view=f.view,rect=f.rect,rt=f.rt,t=f.t;
       const showNames=f.showNames,showMass=f.showMass,PK=TX.scale.planet;
       counts.clear();for(const e of view.pieces)counts.set(e.owner,(counts.get(e.owner)||0)+1);
       const trailTick=Math.floor(rt/2),trailStep=trailTick!==lastTrailTick;lastTrailTick=trailTick;
@@ -43,8 +42,7 @@ export function createPlanets(R){
         const g=v.gfx;g.clear();let drew=false;const n=counts.get(e.owner)||1;
         if(n>1&&!(e.flags&PIECE_FLAG.MERGING)){const t0=e.firstTick!=null?e.firstTick:e.createdTick,prog=t0!=null?Math.min(1,Math.max(0,(rt-t0)/mergeTicks(e.rr))):1;
           if(prog<1){const m=cell.merge,col=colorOf(m.color);g.arc(0,0,e.rr*m.radiusK,-1.5708,-1.5708+prog*6.2832);g.stroke({width:m.width(e.rr),color:col.c,alpha:col.a,cap:"round"});drew=true;}}
-        let pws,lv=0;if(isMe&&self){pws=PW_ORDER.filter(k=>self.powerBits&POWER_BIT[k]);lv=self.shieldLv|0;}
-        else{const fl=e.flags;pws=[];if(fl&PIECE_FLAG.MAGNET)pws.push("magnet");if(fl&PIECE_FLAG.SHIELD)pws.push("shield");lv=(fl>>PIECE_FLAG.SHIELD_LV_SHIFT)&3;}
+        const fl=e.flags,pws=[];if(fl&PIECE_FLAG.MAGNET)pws.push("magnet");if(fl&PIECE_FLAG.SHIELD)pws.push("shield");const lv=(fl>>PIECE_FLAG.SHIELD_LV_SHIFT)&3;
         if(pws.length){const pw=cell.powerups,LV=pw.shieldLevels;pws.forEach((k,i)=>{
           const sl=k==="shield"&&LV?LV[Math.min(LV.length,Math.max(1,lv))-1]:null;
           const col=colorOf(sl?sl.color:pw.colors[k]),a0=t*pw.spin*(i%2?-1:1),rr=e.rr*pw.radiusK(i),al0=sl?sl.alpha:pw.alpha;
