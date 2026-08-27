@@ -44,8 +44,12 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   próprias peças (`predict.js`). Determinística: `mulberry32` por sala, tick inteiro, sem gerador nativo. Spatial hash de 128 px.
   Regras: engolir só com `EAT.RATIO` (1.15) e centro dentro; senão quique elástico; asteroides (cinturões + errantes: pop/chip/alimentar/atirar;
   batida forte com escudo tira um nível em vez de lascar); estrelas (perigo que estilhaça quem encosta e, ao envelhecer, vira supernova:
-  espalha partículas, chuta os asteroides e empurra os planetas por perto);
-  buracos negros (força ∝ 1/d², horizonte tira 30% da massa e teleporta para a saída pareada); powerups = só ímã e escudo
+  espalha partículas, chuta os asteroides e empurra os planetas por perto; **míssil e partícula a empurram** e em `STAR.HITS_TO_SPLIT`
+  hits ela racha em `SPLIT_N` estrelas menores — só a 1ª filha herda o lugar na população);
+  buracos negros (força ∝ 1/d² com parte tangencial `SWIRL` = espiral, influência `CORE_R·INFLUENCE` ≈ 570 px, horizonte tira 30% da
+  massa e cospe na saída pareada a `EXIT_SPEED`; o cliente prevê a mesma gravidade nas peças próprias);
+  **arremesso** (split/pop/estilhaço/saída do buraco): acima de `SPEED.LAUNCH_KNEE_V` o arrasto cresce, então o pico some em ~0,15 s
+  e a peça para perto de quem dividiu, sem mexer na velocidade de cruzeiro; powerups = só ímã e escudo
   (o de velocidade foi removido), **por peça**: quem pegou é a única parte que ganha (Body.magnetUntil/shieldLv), peça nova nasce
   limpa e a fusão fica com o melhor dos dois; mísseis (homing no jogador, interceptação de míssil inimigo ou **tiro mirado** quando o
   jogador segura o botão — trava no objeto mais próximo do cone: peça, míssil ou asteroide; míssil×míssil varrido = CLASH;
@@ -59,9 +63,10 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   Cliente: interpolação a −100 ms para os outros, predição + reconciliação para si (`visualOffset` decai; snap > 120 px) com a
   peça própria renderizada interpolada entre passos (sem isso treme a 60/120 Hz); relógio com mediana+slew; removidas somem
   no frame com efeito (`onVanish`); efeitos de terceiros atrasados pelo atraso de interpolação; skins aquecidas no PLAYERS.
-- **Rodada de 10 min** (`ROUND` em constants; `ROUND_TICKS` no env): a sala inteira vale um dia do "relógio do espaço"
-  (começa 05:00 e o tema do céu segue essa hora, dawn→sunset→dusk); no fim o mundo explode, o maior planeta vivo é o campeão,
-  vai um `roundEnd` com o placar, a sala é aposentada e o cliente entra sozinho numa sala nova depois de 15 s (`ui/Round.jsx`).
+- **Rodada de 1 h** (`ROUND` em constants; `ROUND_TICKS` no env): a sala vale `ROUND.DAYS` (4) dias do "relógio do espaço"
+  (começa 05:00; um dia a cada 15 min → 12 trocas de céu, cada uma coberta pelo fade de `client/src/theme/fade.js`); no fim vem o
+  **BIG CRUNCH**, o maior planeta vivo é o campeão, vai um `roundEnd` com o placar, a sala é aposentada e o cliente entra sozinho
+  numa sala nova depois de 15 s (`ui/Round.jsx` mostra o pódio dos 3 primeiros + o resto do placar).
 - **Salas por shard** como na v1: código `1ABC` → shard 1 (1º char base36); nginx roteia `/ws/<shard>` para `planet-server-<shard>`;
   `/api/*` balanceado (qualquer shard responde, tudo stateless no Postgres). `findOrCreateRoom` enche a sala mais cheia com vaga.
 - **Identidade**: token opaco `pt_…` (sha256 no banco), guest por padrão (`POST /api/auth/guest`), reivindicar com senha (scrypt nativo)
@@ -69,6 +74,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (fila com retry, circuit-breaker). Moedas/conquistas só no servidor (`persist/rewards.js`).
 - **Temas por horário** (`docs/design/theme-time.md`): `dawn` 05–16h, `sunset` 16–20h, `dusk` 20–05h; pref `theme: auto|dawn|sunset|dusk`.
   `html[data-theme]` troca o CSS; o Pixi rebaka texturas via `theme.textures.*`. Nenhuma cor fora de `client/src/theme/`.
+- **Skins (75)**: `shared/src/skins.js` guarda `pattern`/`accent` e `client/src/theme/patterns.js` desenha a textura procedural
+  dentro do disco (listras, crateras, continentes, lava, gelo, galáxia, xadrez, escamas, olho…) — nada de imagem, tudo assado uma vez
+  por (skin, tier). O mesmo módulo desenha o buraco negro (`paintHole`) e a estrela (`paintNova`).
 - **Render (PixiJS v8)**: sprites assados por (skin, tier 128/256/512), ParticleContainer para comida/ejetados, fundo em cache por resolução,
   culling manual, HUD e minimapa em DOM (mesmos ids/classes dos mockups — o CSS dos temas depende disso).
 
@@ -91,6 +99,8 @@ do zero, use só com o banco vazio). Secret `planet-db` criado via `./scripts/db
 
 - Sem "esqueci a senha" (reset via SQL). Sem merge de contas ao logar num navegador que tinha guest.
 - Mockups são a fonte visual; mudança de tema visual = editar `mockups/v2/src/theme.toon-<id>.js` e rodar `client/src/theme/port.js`.
+  `client/src/styles/base.css` e os `screens.css`/`hud.css` dos temas são GERADOS por esse script — o que nasceu depois dos mockups
+  (fade da troca de tema, pódio do BIG CRUNCH e a loja nova) mora em `client/src/styles/ui.css`, escrito à mão e fora do port.js.
 - O fundo é só céu + estrelas: `bandLayers()` devolve `props:[]` nos 3 temas e `textures.background()` não desenha mais os planetas
   distantes (dawn) nem as calotas de montes no horizonte (dusk) — as bolas confundiam com planeta de verdade e os montes viravam
   calombos escuros. `textures.prop`/`scale.prop` seguem lá se um dia quisermos cenário de volta.

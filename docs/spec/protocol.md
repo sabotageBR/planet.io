@@ -24,9 +24,9 @@ Taxa: ≤ 30 Hz e só quando muda (>2 px ou flag); keepalive a 10 Hz.
 
 ## Servidor → cliente
 JSON:
-- `{"t":"room","code":"1ABC","shard":1,"slot":3,"sessionId":"uuid","resumeToken":"hex","protocol":4,"tick":123,"world":{"w":7200,"h":7200},"round":{"start":0,"ticks":36000,"dayStart":5,"breakMs":15000}}`
-  - `round`: tick de início e duração da rodada (10 min). O cliente deriva daí o **relógio do espaço** (a rodada inteira = um dia, começando em `dayStart`) e a contagem para o fim do mundo — nada mais vai no fio.
-- `{"t":"roundEnd","code":"1ABC","champion":{…},"board":[{"slot","name","mass","score","kills","isBot","registered","skinId"}],"nextInMs":15000,"tick":36000}` — o mundo explodiu: campeão = maior planeta vivo (1ª linha do placar); a sala é aposentada e o cliente entra numa nova depois de `nextInMs`.
+- `{"t":"room","code":"1ABC","shard":1,"slot":3,"sessionId":"uuid","resumeToken":"hex","protocol":4,"tick":123,"world":{"w":7200,"h":7200},"round":{"start":0,"ticks":216000,"dayStart":5,"breakMs":15000}}`
+  - `round`: tick de início e duração da rodada (1 h). O cliente deriva daí o **relógio do espaço** (a rodada = `ROUND.DAYS` dias, começando em `dayStart` → um dia a cada 15 min, 12 trocas de céu) e a contagem para o fim do mundo — nada mais vai no fio.
+- `{"t":"roundEnd","code":"1ABC","champion":{…},"board":[{"slot","name","mass","score","kills","isBot","registered","skinId"}],"nextInMs":15000,"tick":216000}` — o BIG CRUNCH: campeão = maior planeta vivo (1ª linha do placar); a sala é aposentada e o cliente entra numa nova depois de `nextInMs`.
 - `{"t":"error","code":"VERSION"|"FULL"|"AUTH"|"NICK_RESERVED"|"RATE"|"ROOM","message":"pt-BR","suggestion":"Nick_4821"?}` → o servidor fecha o socket (código 4400+).
 - `{"t":"rewards","saved":true,"coinsEarned":54,"coins":2504,"achievements":[{"key","title"}],"skinsUnlocked":[35],"rank":{"day":37}}` (após a morte; `saved:false` sem banco)
 - `{"t":"dead","by":"Nome","byHole":false,"score":6900,"maxMass":4820,"kills":3,"durationS":372}`
@@ -47,8 +47,8 @@ Binário (primeiro byte = tipo):
     `magnetT`/`shieldLv`/`powerupBits` são o **melhor** entre as peças próprias (resumo para o HUD) — quem tem o powerup de fato é cada peça, pelas flags dela. `missiles` é do jogador.
 - `0x11 PLAYERS` (no join e quando muda): `u8 | u16 n | [u16 slot | u8 flags(BOT=1,DEAD=2,REG=4) | u8 skinId | u8 nameLen | nameLen bytes utf8 | u32 score]`
 - `0x12 LEADERBOARD` (2 Hz): `u8 | u8 n | [u16 slot | u32 mass]`
-- `0x13 EVENT`: `u8 | u8 kind(0 EAT,1 POP,2 MERGE,3 SPLIT,4 BH_SUCK,5 DEATH,6 CHIP,7 BOUNCE,8 BOOM,9 EXIT,10 SHOOT,11 SHIELD_BREAK,12 CLASH,13 DEFLECT,14 SHIELD_HIT,15 SHIELD_UP,16 STAR_BURST,17 SUPERNOVA) | u16 x | u16 y | u16 r10 | u16 slotA | u16 slotB | u32 extra`
-  - `extra`: BOUNCE/CHIP/SHOOT/DEFLECT/SHIELD_HIT = `packDir(nx,ny,vn)` (`shared/util.js`: u8 nx, u8 ny, u16 vn — em SHIELD_HIT vn = nível restante); SHIELD_UP = nível; EAT = pieceId; DEATH = score; STAR_BURST/SUPERNOVA = id da estrela (em SUPERNOVA `r` é o raio da explosão).
+- `0x13 EVENT`: `u8 | u8 kind(0 EAT,1 POP,2 MERGE,3 SPLIT,4 BH_SUCK,5 DEATH,6 CHIP,7 BOUNCE,8 BOOM,9 EXIT,10 SHOOT,11 SHIELD_BREAK,12 CLASH,13 DEFLECT,14 SHIELD_HIT,15 SHIELD_UP,16 STAR_BURST,17 SUPERNOVA,18 STAR_HIT,19 STAR_SPLIT) | u16 x | u16 y | u16 r10 | u16 slotA | u16 slotB | u32 extra`
+  - `extra`: BOUNCE/CHIP/SHOOT/DEFLECT/SHIELD_HIT/STAR_HIT = `packDir(nx,ny,vn)` (`shared/util.js`: u8 nx, u8 ny, u16 vn — em SHIELD_HIT vn = nível restante, em STAR_HIT vn = hits levados); SHIELD_UP = nível; EAT = pieceId (o cliente usa o slotA para achar quem comeu e animar a absorção); DEATH = score; STAR_BURST/SUPERNOVA/STAR_SPLIT = id da estrela (em SUPERNOVA/STAR_SPLIT `r` é o raio da onda).
   - Eventos são filtrados pela AOI da sessão; o cliente atrasa os que não envolvem o próprio slot pelo atraso de interpolação (casam com o sumiço da entidade).
 - `0x14 PONG`: `u8 | u32 clientTime | u32 serverTick`
 

@@ -58,6 +58,19 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   SHATTER_SPEED com a massa conservada (STAR_BURST). No fim do OLD vira **supernova** num raio r·NOVA_R: NOVA_PARTICLES ejetados sem
   dono, asteroides chutados com AST_KICK·(1−d/blast)·min(1,R_MIN/r) (os de cinturão viram errantes e o cinturão repõe) e peças
   empurradas com PUSH·(1−d/blast) — só empurrão. A estrela morre e outra nasce RESPAWN_TICKS depois.
+  **Levar tiro empurra**: míssil (sempre) e partícula ejetada (fora do cooldown HIT_CD_TICKS) somem no impacto, empurram a estrela
+  (HIT_PUSH/EJECT_PUSH, escalados por STAR.R/r — ela desliza com arrasto STAR.DRAG) e contam um hit (STAR_HIT). Em HITS_TO_SPLIT hits
+  ela **racha** (STAR_SPLIT): sopro em r·SPLIT_BLAST (peças empurradas e asteroides chutados, sem estilhaçar) e SPLIT_N estrelas
+  menores (r·SPLIT_R) saindo em leque a SPLIT_SPEED, já ACTIVE e com vida curta. Só a 1ª filha herda o lugar da mãe na população
+  (as outras têm `hue=1` e não enfileiram respawn), então a contagem volta sozinha a STAR.COUNT.
+- **Buracos negros** (BLACKHOLE.*): dentro do raio de influência (CORE_R·INFLUENCE·k ≈ 570 px) tudo é puxado com a = min(G/d², A_MAX)·k
+  (por isso quanto mais perto, mais forte — na borda dá para escapar remando, a partir de ~200 px não dá) mais uma parte tangencial
+  a·SWIRL (sentido fixo pelo seed do buraco) que faz **espiralar** em vez de cair reto. No núcleo a peça perde LOSS da massa e é
+  cuspida na saída pareada a EXIT_SPEED (BH_SUCK + EXIT); peça abaixo de MIN_PIECE_R é destruída. O cliente prevê a MESMA gravidade
+  nas peças próprias (`stepOwnPieces(...,holes)`), senão a peça ficaria borrachuda perto do buraco.
+- **Arremesso** (`integratePiece`): acima de vmax·LAUNCH_THRESH a peça entra no regime de arremesso (steer ×LAUNCH_STEER, sem clamp) e
+  o arrasto CRESCE acima de LAUNCH_KNEE_V px/s — LAUNCH_DRAG+LAUNCH_K·(|v|−KNEE_V)/KNEE_V. O joelho é absoluto (não em vmax), então o
+  pico do split/pop/estilhaço/saída do buraco some em ~0,15 s para qualquer tamanho: sai muito rápido, freia rápido e para perto.
 - **Powerups**: só ímã (temporário, POWERUP.TICKS) e escudo (níveis), os dois **por peça**. O powerup de velocidade foi removido — a velocidade máxima vem só do raio (`vmaxFor`).
 - **Ímã** (só a peça que o pegou atrai): comida a d < r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s e é marcada MOVED (UPDATE X_Y
   no snapshot) — cometa e estrela (comida pesada) a MAGNET_HEAVY disso; ejetados de terceiros (ou próprios após cdUntil) ganham
@@ -67,9 +80,9 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   vira errante e o cinturão reagenda um substituto (DEFLECT).
 
 ## Rodada (fim do mundo)
-Cada sala vive `config.roundTicks` (env `ROUND_TICKS`, padrão ROUND.TICKS = 10 min). O bloco `round` do JSON `room`
-(`{start,ticks,dayStart,breakMs}`) é tudo que o cliente precisa: dele saem o relógio do espaço (a rodada = um dia inteiro
-começando às `dayStart`, e o tema do céu segue essa hora) e a contagem para a explosão. Ao acabar: `Room.endRound()` →
+Cada sala vive `config.roundTicks` (env `ROUND_TICKS`, padrão ROUND.TICKS = 1 h). O bloco `round` do JSON `room`
+(`{start,ticks,dayStart,breakMs}`) é tudo que o cliente precisa: dele saem o relógio do espaço (a rodada = ROUND.DAYS dias
+começando às `dayStart`, ou seja um dia a cada 15 min e 12 trocas de céu por sala, cada uma com fade) e a contagem para o fim. Ao acabar: `Room.endRound()` →
 `Sim.endRound()` fecha a partida de todo humano vivo (mesma persistência da morte, `cause:'round'`, sem `dead`) e devolve o
 placar (vivos por massa; o 1º é o campeão, bots incluídos; humanos já mortos entram no fim). Vai um `roundEnd` para todas as
 sessões, a sala fica `over` (não recebe mais ninguém, não simula) e o RoomManager a remove BREAK_MS depois — o cliente entra
