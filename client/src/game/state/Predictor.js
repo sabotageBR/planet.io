@@ -7,12 +7,14 @@
 // exp(−dt/0.1); |Δ| > NET.SNAP_DIST → snap (sem offset). Peças criadas/removidas pelo servidor entram/saem
 // casando por id; fundidas localmente no replay ficam ocultas (HIDE_TICKS) até o servidor confirmar.
 // lead = RTT/2 + 1 tick; ressincroniza quando deriva > 2 ticks OU quando o lead muda (1º PONG chega ~1 s após o join).
-import {KIND,PIECE_FLAG,SELF_FLAG,NET,DT,TICK_HZ} from "@planet/shared";
+// Os buracos negros conhecidos entram na predição (mesma gravidade do servidor): sem isso a peça própria fica
+// borrachuda dentro da influência, que agora é grande.
+import {KIND,PIECE_FLAG,SELF_FLAG,NET,DT,TICK_HZ,BLACKHOLE} from "@planet/shared";
 import {createBody,stepOwnPieces} from "@planet/shared/physics/index.js";
 
 const TAU=.1,HIDE_TICKS=30;
 export function createPredictor({buffer,input}){
-  const pieces=[],hidden=new Map(),old=new Map(),seen=new Set();   // hidden: id → tick de expiração
+  const pieces=[],hidden=new Map(),old=new Map(),seen=new Set(),holes=[];   // hidden: id → tick de expiração
   let slot=-1,localTick=0,acc=0,synced=false,tx=0,ty=0,dead=false,corrSum=0,corrN=0,lastLead=-1;
   const p={pieces,slot:-1,localTick:0,alpha:0,stats:{corrAvg:0,replaySteps:0,lastCorr:0},
     setSlot(s){slot=p.slot=s;},
@@ -20,9 +22,15 @@ export function createPredictor({buffer,input}){
     get dead(){return dead;},
     /** Casa uma entidade do buffer com as peças próprias. */
     isOwn(e){return e.kind===KIND.PIECE&&(e.owner===slot||(e.flags&PIECE_FLAG.ME)!==0);},
+    /** Buracos negros conhecidos (posição autoritativa mais recente) para a gravidade da predição. */
+    holes(){holes.length=0;
+      for(const e of buffer.entities.values()){if(e.kind!==KIND.BLACKHOLE||e.removed||!e.influenceR)continue;const s=buffer.last(e);if(!s||!s.r)continue;
+        holes.push({x:s.x,y:s.y,r:s.r,k:Math.min(1,e.influenceR/(s.r*BLACKHOLE.INFLUENCE)),seed:(e.seed||0)/65535});}
+      return holes.length?holes:null;},
     /** Avança o relógio local a 60 Hz (chamado por frame); guarda px/py para a interpolação do render. */
     update(dt){if(!synced)return;acc+=dt;if(acc>.25)acc=.25;
-      while(acc>=DT){acc-=DT;localTick++;for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}stepOwnPieces(pieces,{tx,ty},localTick);}
+      const hs=acc>=DT?p.holes():null;
+      while(acc>=DT){acc-=DT;localTick++;for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}stepOwnPieces(pieces,{tx,ty},localTick,DT,undefined,undefined,hs);}
       p.alpha=acc/DT;const k=Math.exp(-dt/TAU);for(const pc of pieces){pc.vox*=k;pc.voy*=k;}},
     /** Reconcilia com o snapshot (após buffer.apply). */
     onSnapshot(snap,rttMs){
@@ -44,9 +52,9 @@ export function createPredictor({buffer,input}){
       for(const [id,exp] of hidden){if(!seen.has(id)||localTick>exp)hidden.delete(id);}
       // replay dos inputs do histórico do tick do servidor até o local
       const h=input?input.history:[];let hi=0,cur=null;while(hi<h.length&&h[hi].tick<=tick){cur=h[hi];hi++;}
-      let steps=0;const st={tx:cur?cur.tx:tx,ty:cur?cur.ty:ty};
+      let steps=0;const st={tx:cur?cur.tx:tx,ty:cur?cur.ty:ty},hs=p.holes();
       for(let t=tick+1;t<=localTick;t++){while(hi<h.length&&h[hi].tick<=t){cur=h[hi];hi++;st.tx=cur.tx;st.ty=cur.ty;}
-        for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}stepOwnPieces(pieces,st,t);steps++;}   // px = posição do passo anterior (mesma fase do render)
+        for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}stepOwnPieces(pieces,st,t,DT,undefined,undefined,hs);steps++;}   // px = posição do passo anterior (mesma fase do render)
       if(!steps)for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}
       p.stats.replaySteps=steps;
       // fundidas localmente durante o replay (sumiram do array): ocultar até o servidor remover
@@ -60,7 +68,7 @@ export function createPredictor({buffer,input}){
     isHidden(id){return hidden.has(id);},
     /** Peças vivas e visíveis (render: px+(x−px)·alpha+vox — ver WorldView.build). */
     forEach(fn){for(const pc of pieces)if(!pc.dead&&!hidden.has(pc.id))fn(pc);},
-    reset(){pieces.length=0;hidden.clear();synced=false;acc=0;dead=false;corrSum=corrN=0;lastLead=-1;p.alpha=0;},
+    reset(){pieces.length=0;holes.length=0;hidden.clear();synced=false;acc=0;dead=false;corrSum=corrN=0;lastLead=-1;p.alpha=0;},
     resetStats(){corrSum=corrN=0;p.stats.corrAvg=p.stats.lastCorr=0;},
   };
   return p;}

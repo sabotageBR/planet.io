@@ -17,7 +17,7 @@ const snapshot=w=>JSON.stringify({tick:w.tick,nextId:w.nextId,
   pieces:w.pieces.map(b=>[b.id,b.owner,b.x,b.y,b.vx,b.vy,b.r,b.mergeAt,b.flags,b.shieldLv,b.magnetUntil]),
   food:w.food.map(b=>[b.id,b.x,b.y,b.type,b.hue]),ejected:w.ejected.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.life]),
   asteroids:w.asteroids.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.r,b.type,b.ang]),holes:w.holes.map(b=>[b.id,b.x,b.y,b.k,b.type,b.life,b.ex,b.ey]),
-  missiles:w.missiles.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.targetId,b.type]),stars:w.stars.map(b=>[b.id,b.x,b.y,b.r,b.k,b.type,b.life]),
+  missiles:w.missiles.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.targetId,b.type]),stars:w.stars.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.r,b.k,b.type,b.life,b.hits,b.hue]),
   players:[...w.players.values()].map(p=>[p.slot,p.alive,p.score,p.missiles])});
 
 // 1. determinismo: mesma seed + mesmos inputs → 3600 passos byte-idênticos
@@ -339,3 +339,71 @@ test("tiro mirado: persegue o objeto mais próximo dentro do cone (planeta, mís
   const w3=empty(83);w3.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w3.addPlayer(1,{x:1000,y:2000,r:40});
   w3.setTarget(0,2000,1000);w3.requestFire(0);w3.step();
   assert.equal(w3.missiles[0].targetId,1,"clique rápido persegue como antes");});
+
+// 21. estrela apanha de míssil/partícula e racha
+test("estrela: míssil e partícula empurram; no 3º hit ela racha em estrelas menores",()=>{
+  const w=empty(84),st=w.spawnStar(true);st.x=3000;st.y=3000;st.life=1e9;st.vx=st.vy=0;
+  const shoot=()=>w.addMissile(st.x-st.r-260,st.y,MISSILE.SPEED,0,9,-1);
+  const until=(type,n=90)=>{for(let t=0;t<n;t++){w.step();const e=w.events.find(x=>x.type===type);if(e)return e;}return null;};
+  shoot();const h1=until("STAR_HIT");
+  assert.ok(h1,"STAR_HIT");assert.equal(st.hits,1);assert.ok(st.vx>0,"empurrada na direção do tiro");
+  assert.equal(w.missiles.filter(m=>!m.dead).length,0,"o míssil morre no impacto");
+  const vx1=st.vx;for(let t=0;t<60;t++)w.step();assert.ok(st.vx<vx1&&st.vx>0,"desliza e freia (STAR.DRAG)");
+  // partícula ejetada também empurra e conta hit
+  const e=w.addEjected(st.x-st.r-20,st.y,EJECT.SPEED,0,EJECT.R,EJECT.R*EJECT.R,-1,0,600);
+  const h2=until("STAR_HIT",20);assert.ok(h2,"partícula conta hit");assert.equal(st.hits,2);assert.ok(e.dead,"a partícula é consumida");
+  shoot();const sp=until("STAR_SPLIT");
+  assert.ok(sp,"STAR_SPLIT no 3º hit");assert.ok(st.dead,"a mãe some");
+  const live=w.stars.filter(x=>!x.dead);assert.equal(live.length,STAR.SPLIT_N,"racha em SPLIT_N estrelas");
+  assert.ok(live.every(x=>Math.abs(x.r-STAR.R*STAR.SPLIT_R)<1e-6),"menores que a mãe");
+  assert.ok(live.every(x=>Math.hypot(x.vx,x.vy)>STAR.SPLIT_SPEED*.7),"saem em leque");
+  assert.equal(live.filter(x=>!x.hue).length,1,"só uma herda o lugar na população");
+  assert.equal(w.starQueue.length,0,"racha não enfileira estrela nova");});
+
+// 22. split: arremesso curto que começa rápido e freia rápido
+test("split: o filho sai muito mais rápido e o pico some em menos de meio segundo",()=>{
+  const w=empty(86),a=w.addPlayer(0,{x:3000,y:3000,r:60});w.setTarget(0,6000,3000);
+  w.requestSplit(0);w.step();const b=w.piecesOf(0).find(p=>p!==a);assert.ok(b,"dividiu");
+  const v0=Math.hypot(b.vx,b.vy),x0=b.x,vmax=vmaxFor(b.r);
+  assert.ok(v0>vmax*2.5,"o pico é bem acima da velocidade de cruzeiro");
+  let vt=0;for(let t=0;t<30;t++){w.step();vt=Math.hypot(b.vx,b.vy);}
+  assert.ok(vt<v0*.65,"perde velocidade rápido");
+  assert.ok(vt<SPEED.LAUNCH_KNEE_V*1.05,"em meio segundo já está no cruzeiro");
+  assert.ok(b.x-x0<SPEED.LAUNCH_KNEE_V*.5+140,"o arremesso some perto: pouco além do que o cruzeiro andaria");
+  // planeta grande (vmax baixo) tem que ser arremessado igual: o joelho do arrasto é absoluto, não em vmax
+  const w2=empty(90),big=w2.addPlayer(0,{x:3000,y:3000,r:120});w2.setTarget(0,6000,3000);
+  w2.requestSplit(0);w2.step();const q=w2.piecesOf(0).find(p=>p!==big);
+  assert.ok(Math.hypot(q.vx,q.vy)>SPLIT.SPEED*.6,"o filho do planeta grande também sai voando");
+  const qx=q.x;for(let t=0;t<30;t++)w2.step();assert.ok(q.x-qx>150,`e cobre um bom pedaço (${(q.x-qx)|0} px)`);});
+
+// 23. buraco negro: puxa de longe, espirala e cospe com impulso
+test("buraco negro: puxa desde a borda da influência, espirala e cospe com impulso pelo outro lado",()=>{
+  const w=empty(87),h=w.spawnHole({x:3000,y:3000,ex:5600,ey:5600,active:true});h.k=1;h.seed=.2;
+  const ri=h.r*BLACKHOLE.INFLUENCE,pc=w.addPlayer(0,{x:3000+ri*.95,y:3000,r:40});
+  pc.cdUntil=0;w.setTarget(0,pc.x,pc.y);w.step();
+  assert.ok(pc.vx<-1,"na borda já é puxado para o buraco");
+  assert.ok(Math.abs(pc.vy)>Math.abs(pc.vx)*.2,"com parte tangencial: espirala, não cai reto");
+  w.setTarget(0,h.x,h.y);   // decidiu entrar (parado na borda o thrust segura a peça a ~200 px do núcleo)
+  let suck=null;for(let t=0;t<900&&!suck;t++){w.step();suck=w.events.find(e=>e.type==="BH_SUCK")||null;}
+  assert.ok(suck,"chega ao horizonte de eventos");assert.ok(!suck.destroyed,"grande o bastante para sobreviver");
+  assert.ok(Math.hypot(pc.x-h.ex,pc.y-h.ey)<200,"saiu pela saída pareada");
+  assert.ok(Math.hypot(pc.vx,pc.vy)>BLACKHOLE.EXIT_SPEED*.8,"impulsionado para longe");
+  // fora da influência nada acontece
+  const w2=empty(88),h2=w2.spawnHole({x:3000,y:3000,ex:5600,ey:5600,active:true});h2.k=1;
+  const far=w2.addPlayer(0,{x:3000+h2.r*BLACKHOLE.INFLUENCE*1.2,y:3000,r:40});w2.setTarget(0,far.x,far.y);
+  for(let t=0;t<60;t++)w2.step();assert.ok(Math.hypot(far.vx,far.vy)<1,"fora do alcance ninguém puxa");});
+
+// 24. predição com buraco negro
+test("predição: stepOwnPieces com os buracos do cliente reproduz o servidor perto de um buraco",()=>{
+  const w=empty(89),h=w.spawnHole({x:3000,y:3000,ex:5600,ey:5600,active:true});h.k=1;h.seed=.7;
+  const pc=w.addPlayer(0,{x:3000+h.r*BLACKHOLE.INFLUENCE*.7,y:3200,r:40});pc.cdUntil=1e9;   // sem sucção: só a gravidade
+  const tx=pc.x+400,ty=pc.y;w.setTarget(0,tx,ty);
+  const mine=[createBody(KIND.PIECE,pc.id,pc.x,pc.y,pc.r)];mine[0].owner=0;
+  const holes=[{x:h.x,y:h.y,r:h.r,k:h.k,seed:h.seed}];
+  for(let t=0;t<120;t++){w.step();holes[0].x=h.x;holes[0].y=h.y;stepOwnPieces(mine,{tx,ty},w.tick,DT,w.w,w.h,holes);}   // o cliente acompanha a deriva do buraco pelos snapshots
+  assert.ok(Math.hypot(mine[0].x-pc.x,mine[0].y-pc.y)<1,"posição prevista bate com a do servidor");
+  const noHoles=[createBody(KIND.PIECE,pc.id+1,3000+h.r*BLACKHOLE.INFLUENCE*.7,3200,40)];noHoles[0].owner=0;
+  const w2=empty(89);const h2=w2.spawnHole({x:3000,y:3000,ex:5600,ey:5600,active:true});h2.k=1;h2.seed=.7;
+  const pc2=w2.addPlayer(0,{x:3000+h2.r*BLACKHOLE.INFLUENCE*.7,y:3200,r:40});pc2.cdUntil=1e9;w2.setTarget(0,tx,ty);
+  for(let t=0;t<120;t++){w2.step();stepOwnPieces(noHoles,{tx,ty},w2.tick,DT,w2.w,w2.h);}
+  assert.ok(Math.hypot(noHoles[0].x-pc2.x,noHoles[0].y-pc2.y)>20,"sem os buracos a predição erraria feio");});

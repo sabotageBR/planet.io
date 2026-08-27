@@ -6,6 +6,7 @@ import http from 'node:http';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {SKINS} from '@planet/shared/skins.js';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.env'),'utf8').split('\n')){const m=/^\s*([A-Z_]+)=(.*)$/.exec(l);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim();}}catch{}}
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';
@@ -40,7 +41,7 @@ after(async()=>{await persist.shutdown();server.close();await db.close();});
 test('migrate: schema completo, idempotente e skins semeadas',async()=>{
   const t=(await db.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY 1`)).rows.map(r=>r.table_name);
   for(const n of ['users','auth_tokens','matches','user_stats','skins','user_skins','user_achievements','coin_ledger','schema_migrations','v_ranking_week','v_ranking_day'])assert.ok(t.includes(n),n);
-  assert.equal((await db.query('SELECT count(*)::int AS n FROM skins')).rows[0].n,50);
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM skins')).rows[0].n,SKINS.length);
   assert.equal((await migrate(db,log)).applied.length,0);
 });
 test('unitários: senha, nick',async()=>{
@@ -82,7 +83,7 @@ test('skins: buy 200/409/402/403, equip 200/403, catálogo',async()=>{
   r=await call('POST','/api/skins/999/buy',{token:S.t3});assert.equal(r.status,404);
   r=await call('POST','/api/skins/1/equip',{token:S.t3});assert.equal(r.status,200);assert.equal(r.body.equippedSkin,1);
   r=await call('POST','/api/skins/2/equip',{token:S.t3});assert.equal(r.status,403);assert.equal(r.body.error,'not_owned');
-  r=await call('GET','/api/skins',{token:S.t3});assert.equal(r.body.skins.length,50);assert.deepEqual(r.body.owned,[0,1]);assert.equal(r.body.equipped,1);
+  r=await call('GET','/api/skins',{token:S.t3});assert.equal(r.body.skins.length,SKINS.length);assert.deepEqual(r.body.owned,[0,1]);assert.equal(r.body.equipped,1);
   r=await call('GET','/api/skins');assert.deepEqual(r.body.owned,[0]);assert.equal(r.body.equipped,0);
   assert.equal(db.health.fails,0,'erros de aplicação não contam no circuit breaker');
 });

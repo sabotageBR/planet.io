@@ -4,23 +4,26 @@ import {SPEED,WALL,WORLD,DT} from "../constants.js";
 import {PIECE_FLAG} from "../protocol/constants.js";
 import {clamp} from "../util.js";
 
-const DRAG_F=Math.exp(-SPEED.DRAG*DT),LAUNCH_F=Math.exp(-SPEED.LAUNCH_DRAG*DT);   // fatores por tick em 60 Hz
+const DRAG_F=Math.exp(-SPEED.DRAG*DT);   // fator por tick em 60 Hz (fora do arremesso o arrasto é constante)
 /** Velocidade máxima de uma peça pelo raio: clamp(K/r, MIN, MAX). */
 export const vmaxFor=r=>clamp(SPEED.K/r,SPEED.MIN,SPEED.MAX);
 
 /**
- * Integra uma peça: thrust em direção a (tx,ty), arrasto, regime de arremesso (emerge da
- * velocidade: |v| > vmax·LAUNCH_THRESH → LAUNCH_DRAG, steer ×LAUNCH_STEER, sem clamp), paredes (WALL.E).
+ * Integra uma peça: thrust em direção a (tx,ty), arrasto, regime de arremesso (emerge da velocidade:
+ * |v| > vmax·LAUNCH_THRESH → steer ×LAUNCH_STEER, sem clamp e arrasto que CRESCE acima de LAUNCH_KNEE_V px/s
+ * — LAUNCH_DRAG+LAUNCH_K·(|v|−KNEE_V)/KNEE_V: o pico do arremesso some rápido e ele fica curto, enquanto a
+ * velocidade de cruzeiro (abaixo do joelho) continua a mesma para qualquer tamanho), paredes (WALL.E).
  * A velocidade máxima vem só do raio (vmaxFor) — não há multiplicador de powerup.
  * Seta/limpa PIECE_FLAG.LAUNCH. Retorna true se estava em arremesso.
  * @param {import("./body.js").Body} pc
  */
 export function integratePiece(pc,tx,ty,dt=DT,w=WORLD.w,h=WORLD.h){
-  const vmax=vmaxFor(pc.r);let vx=pc.vx,vy=pc.vy;
-  const launch=vx*vx+vy*vy>vmax*vmax*SPEED.LAUNCH_THRESH*SPEED.LAUNCH_THRESH;
+  const vmax=vmaxFor(pc.r);let vx=pc.vx,vy=pc.vy;const sp2=vx*vx+vy*vy;
+  const launch=sp2>vmax*vmax*SPEED.LAUNCH_THRESH*SPEED.LAUNCH_THRESH;
   const dx=tx-pc.x,dy=ty-pc.y,len2=dx*dx+dy*dy;
   if(len2>SPEED.STOP_DIST*SPEED.STOP_DIST){const k=vmax*SPEED.ACCEL*dt*(launch?SPEED.LAUNCH_STEER:1)/Math.sqrt(len2);vx+=dx*k;vy+=dy*k;}
-  const f=dt===DT?(launch?LAUNCH_F:DRAG_F):Math.exp(-(launch?SPEED.LAUNCH_DRAG:SPEED.DRAG)*dt);vx*=f;vy*=f;
+  const ex=launch?(Math.sqrt(sp2)-SPEED.LAUNCH_KNEE_V)/SPEED.LAUNCH_KNEE_V:0,drag=launch?SPEED.LAUNCH_DRAG+(ex>0?SPEED.LAUNCH_K*ex:0):SPEED.DRAG;
+  const f=(!launch&&dt===DT)?DRAG_F:Math.exp(-drag*dt);vx*=f;vy*=f;
   if(!launch){const s2=vx*vx+vy*vy;if(s2>vmax*vmax){const s=vmax/Math.sqrt(s2);vx*=s;vy*=s;}}
   let x=pc.x+vx*dt,y=pc.y+vy*dt;const r=pc.r;
   if(x<r){x=r;if(vx<0)vx*=-WALL.E;}else if(x>w-r){x=w-r;if(vx>0)vx*=-WALL.E;}

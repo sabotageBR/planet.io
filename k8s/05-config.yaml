@@ -11,7 +11,7 @@ data:
   PEER_NAME: "planet-server"
   ROOM_MAX: "30"
   ROOM_BOTS: "15"
-  ROUND_TICKS: "36000"   # rodada de 10 min a 60 Hz (fim do mundo + sala nova)
+  ROUND_TICKS: "216000"   # rodada de 1 h a 60 Hz = 4 dias do relógio do espaço (fim do mundo + sala nova)
   PORT: "3000"
   DB_POOL_MAX: "5"
   MIGRATE_ON_START: "1"

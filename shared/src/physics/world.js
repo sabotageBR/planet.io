@@ -37,7 +37,7 @@ import * as R from "./rules.js";
 // códigos de par (kind de A << 3 | kind de B); A sempre do grupo inserido antes: peças, ejetados, asteroides, mísseis, buracos
 const K=KIND,PP=K.PIECE<<3|K.PIECE,PE=K.PIECE<<3|K.EJECT,PA=K.PIECE<<3|K.ASTEROID,PM=K.PIECE<<3|K.MISSILE,PH=K.PIECE<<3|K.BLACKHOLE,
   PS=K.PIECE<<3|K.STAR,EA=K.EJECT<<3|K.ASTEROID,EH=K.EJECT<<3|K.BLACKHOLE,AA=K.ASTEROID<<3|K.ASTEROID,AH=K.ASTEROID<<3|K.BLACKHOLE,
-  AM=K.ASTEROID<<3|K.MISSILE,MM=K.MISSILE<<3|K.MISSILE,MH=K.MISSILE<<3|K.BLACKHOLE;
+  AM=K.ASTEROID<<3|K.MISSILE,MM=K.MISSILE<<3|K.MISSILE,MH=K.MISSILE<<3|K.BLACKHOLE,ES=K.EJECT<<3|K.STAR,MS=K.MISSILE<<3|K.STAR;
 // constantes locais de spawn (margens do mockup; não existem em constants.js)
 const PLAYER_MARGIN=300,PLAYER_SAFE=900,AST_MARGIN=200,BELT_MARGIN=ASTEROID.BELT_RADIUS[1]+200,BELT_RAD_JITTER=40,SPAWN_TRIES=40,STAR_MARGIN=400;
 /** (x,y) está a ≥ min de todos os corpos vivos de arr? (arr null = sim) @param {Body[]|null} arr */
@@ -107,12 +107,14 @@ export class World{
     else{h.type=BH_PHASE.GROW;h.k=0;h.life=this.tick+BLACKHOLE.GROW_TICKS;}
     this.holes.push(h);return this._register(h);}
   /**
-   * Estrela: perigo estático que estilhaça quem encosta e termina em supernova. Nasce em GROW (`k` rampa) longe
-   * das outras (MIN_SEP), dos buracos e dos jogadores (SAFE_SPAWN); `active` pula a fase GROW (só no início do mundo).
+   * Estrela: perigo que estilhaça quem encosta e termina em supernova. Sem posição, nasce em GROW (`k` rampa) longe
+   * das outras (MIN_SEP), dos buracos e dos jogadores (SAFE_SPAWN); `active` pula a fase GROW (início do mundo e
+   * filhas de um racha, que vêm com `{x,y,r,vx,vy,life}`).
    */
-  spawnStar(active=false){const rng=this.rng,s=this._farSpot(STAR_MARGIN,this.stars,STAR.MIN_SEP,this.holes,BLACKHOLE.MIN_SEP,this.pieces,STAR.SAFE_SPAWN);
-    const st=createBody(KIND.STAR,this.newId(),s.x,s.y,STAR.R);st.seed=rng.next();
-    if(active){st.type=STAR_PHASE.ACTIVE;st.k=1;st.life=this.tick+rng.int(STAR.LIFE_TICKS[0],STAR.LIFE_TICKS[1]);}
+  spawnStar(active=false,{x=NaN,y=NaN,r=STAR.R,vx=0,vy=0,life=0}={}){const rng=this.rng;
+    if(Number.isNaN(x)){const s=this._farSpot(STAR_MARGIN,this.stars,STAR.MIN_SEP,this.holes,BLACKHOLE.MIN_SEP,this.pieces,STAR.SAFE_SPAWN);x=s.x;y=s.y;}
+    const st=createBody(KIND.STAR,this.newId(),clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);st.seed=rng.next();st.vx=vx;st.vy=vy;
+    if(active){st.type=STAR_PHASE.ACTIVE;st.k=1;st.life=life||this.tick+rng.int(STAR.LIFE_TICKS[0],STAR.LIFE_TICKS[1]);}
     else{st.type=STAR_PHASE.GROW;st.k=0;st.life=this.tick+STAR.GROW_TICKS;}
     this.stars.push(st);return this._register(st);}
   /** Agenda o nascimento de uma estrela nova daqui a `delay` ticks (depois de uma supernova). */
@@ -184,7 +186,9 @@ export class World{
     for(let i=0;i<missiles.length;i++){const m=missiles[i];if(m.dead)continue;if(tick>=m.life){m.dead=true;continue;}
       R.homeMissile(this,m);if(integrateFree(m,0,0,DT,W,H))m.dead=true;}
     for(let i=0;i<holes.length;i++){const h=holes[i];if(!h.dead)R.tickHole(this,h);}
-    for(let i=0;i<stars.length;i++){const st=stars[i];if(!st.dead)R.tickStar(this,st);}   // fases da estrela (a supernova acontece aqui)
+    for(let i=0;i<stars.length;i++){const st=stars[i];if(st.dead)continue;
+      if(st.vx||st.vy)integrateFree(st,STAR.DRAG,WALL.E,DT,W,H);   // estrela empurrada por míssil/partícula (ou filha de um racha) desliza e freia
+      R.tickStar(this,st);}   // fases da estrela (a supernova acontece aqui)
     // ── 3. grades ──
     const grid=this.grid,dyn=this.dyn;let nd=0;grid.clear();
     for(let i=0;i<pieces.length;i++){const b=pieces[i];if(b.dead)continue;dyn[nd]=b;grid.insert(nd++,b.x,b.y,b.r);}
@@ -208,6 +212,8 @@ export class World{
     for(let p=0;p<np;p+=3){const code=pb[p+2];if(code===PP||code===PE||code===EA||code===PM||code===AM||code===MM)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;
       if(code===PA)R.pieceAsteroid(this,A,B);
       else if(code===PS)R.pieceStar(this,A,B);
+      else if(code===MS)R.missileStar(this,A,B);
+      else if(code===ES)R.ejectStar(this,A,B);
       else if(code===AA){const s=A.r+B.r,dx=B.x-A.x,dy=B.y-A.y;if(dx*dx+dy*dy<s*s)resolveBounce(A,B,ASTEROID.E_AST,BOUNCE.POS_CORR);}
       else if(code===PH||code===EH||code===AH||code===MH)R.holePair(this,A,B);}
     const q=this._q;

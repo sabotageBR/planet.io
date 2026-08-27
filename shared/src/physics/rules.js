@@ -1,7 +1,8 @@
 // ── REGRAS DO JOGO: engolir/quicar (o maior sempre acaba comendo; o escudo só segura a PRIMEIRA batida), comida e powerups POR PEÇA
 //    (ímã e escudo valem só para a parte que pegou o powerup; fundir junta os poderes — ver tryMergeOwn. Escudo por níveis:
 //    não expira, sobe de nível sem ser atingido, perde 1 nível por tiro/míssil/batida forte de asteroide e cai inteiro ao dividir),
-//    estrelas (estilhaçam quem encosta e terminam em supernova), ejetados, asteroides (pop/lasca/alimentar/atirar),
+//    estrelas (estilhaçam quem encosta, apanham de míssil/partícula até rachar em várias e terminam em supernova),
+//    ejetados, asteroides (pop/lasca/alimentar/atirar),
 //    buracos negros (puxar/horizonte/teleporte/ciclo), mísseis (homing em jogador ou em míssil inimigo, impacto em peça/escudo,
 //    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire (tiro mirado trava no alvo do cone) ──
 // Todas recebem o mundo `w` (ids, rng, eventos, jogadores); toda aleatoriedade passa por w.rng.
@@ -168,6 +169,49 @@ export function starShatter(w,ps,pc,st,ux,uy){
   pc.vx+=ux*STAR.SHATTER_SPEED*.5;pc.vy+=uy*STAR.SHATTER_SPEED*.5;
   w.events.push({type:"STAR_BURST",slot:ps.slot,starId:st.id,x:pc.x,y:pc.y,r:pc.r});return true;}
 /**
+ * Míssil acerta a estrela: o míssil morre, empurra a estrela (HIT_PUSH, menos quanto maior ela for) e conta um hit.
+ * @param {World} w @param {Body} m @param {Body} st
+ */
+export function missileStar(w,m,st){
+  const dx=st.x-m.x,dy=st.y-m.y,s=st.r+m.r;if(dx*dx+dy*dy>=s*s)return false;
+  const l=Math.sqrt(m.vx*m.vx+m.vy*m.vy)||1,ux=m.vx/l,uy=m.vy/l,k=STAR.HIT_PUSH*Math.min(1,STAR.R/st.r);
+  st.vx+=ux*k;st.vy+=uy*k;m.dead=true;hitStar(w,st,m.x,m.y,ux,uy,m.owner);return true;}
+/**
+ * Partícula ejetada bate na estrela: é consumida, empurra (EJECT_PUSH) e conta um hit fora do cooldown
+ * HIT_CD_TICKS — dá para rachar a estrela ejetando, mas devagar e de pertinho. @param {World} w @param {Body} e @param {Body} st
+ */
+export function ejectStar(w,e,st){
+  const dx=st.x-e.x,dy=st.y-e.y,s=st.r+e.r;if(dx*dx+dy*dy>=s*s)return false;
+  const l=Math.sqrt(e.vx*e.vx+e.vy*e.vy)||1,ux=e.vx/l,uy=e.vy/l,k=STAR.EJECT_PUSH*Math.min(1,STAR.R/st.r);
+  st.vx+=ux*k;st.vy+=uy*k;e.dead=true;
+  if(w.tick>=e.cdUntil&&w.tick>=st.cdUntil){st.cdUntil=w.tick+STAR.HIT_CD_TICKS;hitStar(w,st,e.x,e.y,ux,uy,e.owner);}
+  return true;}
+/** Contabiliza o hit (STAR_HIT) e racha a estrela ao chegar em HITS_TO_SPLIT. @param {World} w @param {Body} st */
+function hitStar(w,st,x,y,nx,ny,bySlot){
+  st.hits++;w.events.push({type:"STAR_HIT",starId:st.id,x,y,r:st.r,nx,ny,slot:bySlot,hits:st.hits});
+  if(st.hits>=STAR.HITS_TO_SPLIT)starSplit(w,st);}
+/**
+ * A estrela racha: sopro em r·SPLIT_BLAST (peças empurradas, asteroides chutados — **sem** estilhaçar; a supernova
+ * continua sendo o evento grande) e SPLIT_N estrelas menores (r·SPLIT_R) saindo em leque a SPLIT_SPEED, já ACTIVE e
+ * com vida curta. A mãe morre e NÃO enfileira respawn: a população volta a STAR.COUNT quando as filhas explodirem.
+ * @param {World} w @param {Body} st
+ */
+export function starSplit(w,st){
+  const rng=w.rng,blast=st.r*STAR.SPLIT_BLAST,b2=blast*blast,nr=st.r*STAR.SPLIT_R;
+  const pcs=w.pieces;
+  for(let i=0;i<pcs.length;i++){const pc=pcs[i];if(pc.dead)continue;const dx=pc.x-st.x,dy=pc.y-st.y,d2=dx*dx+dy*dy;if(d2>=b2)continue;
+    const d=Math.sqrt(d2)||1,k=STAR.PUSH*.5*(1-d/blast);pc.vx+=dx/d*k;pc.vy+=dy/d*k;}
+  const asts=w.asteroids;
+  for(let i=0;i<asts.length;i++){const a=asts[i];if(a.dead)continue;const dx=a.x-st.x,dy=a.y-st.y,d2=dx*dx+dy*dy;if(d2>=b2)continue;
+    const d=Math.sqrt(d2)||1,k=STAR.AST_KICK*.5*(1-d/blast)*Math.min(1,ASTEROID.R_MIN/a.r);a.vx+=dx/d*k;a.vy+=dy/d*k;}
+  const base=rng.angle();
+  for(let i=0;i<STAR.SPLIT_N;i++){const an=base+i/STAR.SPLIT_N*6.2832,sp=STAR.SPLIT_SPEED*(.8+rng.next()*.4);
+    const c=w.spawnStar(true,{x:st.x+Math.cos(an)*st.r,y:st.y+Math.sin(an)*st.r,r:nr,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp,
+      life:w.tick+rng.int(STAR.SPLIT_LIFE_TICKS[0],STAR.SPLIT_LIFE_TICKS[1])});
+    c.hue=i?1:st.hue;}   // a 1ª filha herda o lugar da mãe na população (hue 0); as outras são extras e não repõem
+  w.events.push({type:"STAR_SPLIT",starId:st.id,x:st.x,y:st.y,r:blast});
+  st.dead=true;}
+/**
  * Supernova: a estrela morre e o mundo sente num raio blast = r·NOVA_R — NOVA_PARTICLES ejetados sem dono (comíveis
  * por qualquer um) espalhados em leque, asteroides chutados para fora com AST_KICK·(1−d/blast)·min(1,R_MIN/r)
  * (os de cinturão viram errantes e o cinturão repõe) e peças empurradas com PUSH·(1−d/blast) — **só empurrão**.
@@ -185,7 +229,7 @@ export function supernova(w,st){
   for(let i=0;i<pcs.length;i++){const pc=pcs[i];if(pc.dead)continue;const dx=pc.x-st.x,dy=pc.y-st.y,d2=dx*dx+dy*dy;if(d2>=b2)continue;
     const d=Math.sqrt(d2)||1,k=STAR.PUSH*(1-d/blast);pc.vx+=dx/d*k;pc.vy+=dy/d*k;}
   w.events.push({type:"SUPERNOVA",starId:st.id,x:st.x,y:st.y,r:blast});
-  st.dead=true;w.queueStar(STAR.RESPAWN_TICKS);}
+  st.dead=true;if(!st.hue)w.queueStar(STAR.RESPAWN_TICKS);}   // filha extra de um racha (hue 1) não repõe: a população volta sozinha a STAR.COUNT
 
 // ── buracos negros ──
 /** Ciclo GROW→ACTIVE→FADE (k), deriva aleatória em ACTIVE; no fim do FADE marca dead (o mundo respawna). @param {World} w @param {Body} h */
@@ -198,11 +242,16 @@ export function tickHole(w,h){
     const m=LOCAL.HOLE_MARGIN;h.x=clamp(h.x+Math.cos(h.ang)*BLACKHOLE.DRIFT*DT,m,w.w-m);h.y=clamp(h.y+Math.sin(h.ang)*BLACKHOLE.DRIFT*DT,m,w.h-m);
     if(tick>=h.life){h.type=BH_PHASE.FADE;h.life=tick+BLACKHOLE.FADE_TICKS;}}
   else{h.k=(h.life-tick)/BLACKHOLE.FADE_TICKS;if(h.k<0)h.k=0;if(tick>=h.life)h.dead=true;}}
-/** Aceleração gravitacional a = min(G/max(d,rc)², A_MAX)·k·mult aplicada a `o` (Δv=a·dt). Retorna d (ou Infinity fora da influência). */
+/**
+ * Aceleração gravitacional a = min(G/max(d,rc)², A_MAX)·k·mult aplicada a `o` (Δv=a·dt), com uma parte tangencial
+ * a·SWIRL (sentido fixo pelo seed do buraco) — é ela que faz o corpo espiralar em vez de cair reto no núcleo.
+ * Retorna d (ou Infinity fora da influência).
+ */
 export function pullBody(h,o,mult,rc,ri){
   const dx=h.x-o.x,dy=h.y-o.y,d2=dx*dx+dy*dy;if(d2>ri*ri||d2<1e-6)return Infinity;
   const d=Math.sqrt(d2),dd=d>rc?d:rc;let a=BLACKHOLE.G/(dd*dd);if(a>BLACKHOLE.A_MAX)a=BLACKHOLE.A_MAX;a*=h.k*mult*DT;
-  o.vx+=dx/d*a;o.vy+=dy/d*a;return d;}
+  const ux=dx/d,uy=dy/d,t=a*BLACKHOLE.SWIRL*(h.seed<.5?1:-1);
+  o.vx+=ux*a-uy*t;o.vy+=uy*a+ux*t;return d;}
 /** Comida: puxão posicional (a·dt²·FOOD_PULL); no núcleo é consumida (o mundo repõe). Retorna true se consumiu. */
 export function pullFood(h,f,rc,ri){
   const dx=h.x-f.x,dy=h.y-f.y,d2=dx*dx+dy*dy;if(d2>ri*ri||d2<1e-6)return false;

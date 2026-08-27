@@ -4,13 +4,18 @@
 export const WORLD={w:7200,h:7200};
 export const TICK_HZ=60,DT=1/60,SNAPSHOT_EVERY=3,LEADERBOARD_EVERY=30,SAMPLE_EVERY=30;
 export const ROOM={MAX:30,BOTS:15,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600};
-export const ROUND={TICKS:36000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10};
-// rodada de 10 min (36000 ticks a 60 Hz) = um dia inteiro no relógio do espaço, começando às DAY_START_H;
+export const ROUND={TICKS:216000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:4,FADE_MS:600};
+// rodada de 1 h (216000 ticks a 60 Hz) = DAYS dias do relógio do espaço (dia de 15 min → 12 trocas de céu por sala),
+// começando às DAY_START_H; a troca de tema é coberta por um fade de FADE_MS (client/src/theme/fade.js);
 // no fim o mundo explode, define-se o campeão (maior planeta vivo) e o placar fica BREAK_MS antes da sala nova.
 // WARN_S: segundos finais com a contagem gigante na tela.
 export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:290,MAX_PIECES:8,BOT_R:[24,58]};
-export const SPEED={K:13200,MIN:48,MAX:360,ACCEL:6,DRAG:9.05,LAUNCH_DRAG:4.7,LAUNCH_STEER:1.5,LAUNCH_THRESH:1.05,STOP_DIST:4};
-export const SPLIT={SPEED:1150,RECOIL:.1,MIN_R:26,COOLDOWN_TICKS:15,ANIM_TICKS:20,OFFSET:.6};
+export const SPEED={K:13200,MIN:48,MAX:360,ACCEL:6,DRAG:9.05,LAUNCH_DRAG:4.7,LAUNCH_K:6,LAUNCH_KNEE_V:620,LAUNCH_STEER:1.5,LAUNCH_THRESH:1.05,STOP_DIST:4};
+// no arremesso o arrasto CRESCE acima de LAUNCH_KNEE_V px/s: LAUNCH_DRAG+LAUNCH_K·(|v|−KNEE_V)/KNEE_V — o pico do split/pop/
+// estilhaço/saída do buraco some em ~0,15 s (arremesso curto, perto de quem dividiu) sem mexer na velocidade de cruzeiro.
+// O joelho é ABSOLUTO (não em vmax): planeta grande tem vmax baixo e o arremesso dele precisa render o mesmo do pequeno.
+// Função pura de (v,r), então a predição do cliente continua idêntica ao servidor
+export const SPLIT={SPEED:1600,RECOIL:.1,MIN_R:26,COOLDOWN_TICKS:15,ANIM_TICKS:20,OFFSET:.6};
 export const EJECT={SPEED:1080,R:9,COOLDOWN_TICKS:6,MIN_R:26,MASS_FACTOR:1.3,OWNER_IMMUNE_TICKS:20,LIFE_TICKS:900,DRAG:3.7,HOLD_TICKS:7};
 export const MERGE={BASE_TICKS:300,PER_R:2.2,DIST:.75,SEPARATE:.92,SEP_CORR:.2,SEP_E:.3,ATTRACT_RANGE:2.2,ATTRACT_A:900};   // atração só entre peças que já podem fundir a d<(ra+rb)·ATTRACT_RANGE (px/s²)
 export const mergeTicks=r=>Math.floor(MERGE.BASE_TICKS+r*MERGE.PER_R);
@@ -23,12 +28,18 @@ export const FOOD_TYPE={DUST:0,COMET:1,STAR:2,ROCK:3,AMMO:4,MAGNET:6,SHIELD:7}; 
 export const ASTEROID={BELTS:4,PER_BELT:6,WANDERERS:16,R_MIN:30,R_MAX:62,MASS_R_MAX:80,BELT_RADIUS:[400,700],BELT_SPEED:[15,25],BELT_SPRING:.24,BELT_DAMP:.96,
   WANDER_SPEED:[20,60],POP_RATIO:1.1,POP_DIST:.82,CHIP:.04,CHIP_CD_TICKS:30,FEED:1.6,SHOOT_AT:72,SHOOT_R:36,CHILD_R:28,CHILD_SPEED:540,
   E:.6,E_AST:.9,SAFE_SPAWN:500,RESPAWN_TICKS:300,MAX_EXTRA:6,SHIELD_VN:240};   // SHIELD_VN: batida com vn acima disso tira um nível do escudo (e o escudo absorve a lasca)
-export const BLACKHOLE={COUNT:3,CORE_R:38,INFLUENCE:9,G:9.4e6,A_MAX:5000,LOSS:.3,EXIT_MIN_DIST:1500,EXIT_SPEED:900,CD_TICKS:60,
-  GROW_TICKS:120,LIFE_TICKS:[2700,5400],FADE_TICKS:180,DRIFT:10,DRIFT_CHANGE_TICKS:240,MIN_SEP:900,SAFE_SPAWN:500,FOOD_PULL:6,EJECT_PULL:1.6,AST_PULL:.5,MISSILE_PULL:.8};
+export const BLACKHOLE={COUNT:3,CORE_R:38,INFLUENCE:15,G:1.2e8,A_MAX:5000,SWIRL:.45,LOSS:.3,EXIT_MIN_DIST:1500,EXIT_SPEED:1500,CD_TICKS:60,
+  GROW_TICKS:120,LIFE_TICKS:[2700,5400],FADE_TICKS:180,DRIFT:10,DRIFT_CHANGE_TICKS:240,MIN_SEP:1100,SAFE_SPAWN:900,FOOD_PULL:2.5,EJECT_PULL:1.6,AST_PULL:.5,MISSILE_PULL:.8};
+// INFLUENCE: raio de influência = CORE_R·INFLUENCE·k (~570 px) — entrou nele, começa a ser puxado (a ∝ 1/d², teto A_MAX);
+// SWIRL: parte tangencial da aceleração (sentido fixo pelo seed do buraco) — é o que faz espiralar em vez de cair reto;
+// EXIT_SPEED: impulso ao sair pelo outro lado (com o arrasto de arremesso, cruza um bom pedaço do mapa antes de frear)
 export const STAR={COUNT:3,R:46,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2400,4200],OLD_TICKS:480,RESPAWN_TICKS:600,HALO:2.2,
   SHATTER_MIN_R:24,SHATTER_N:[3,6],SHATTER_SPEED:900,SHATTER_CD_TICKS:45,PUSH_TOUCH:420,
-  NOVA_R:8,NOVA_PARTICLES:24,NOVA_SPEED:[380,820],NOVA_PART_R:8,NOVA_LIFE_TICKS:900,AST_KICK:1500,PUSH:900,SAFE_SPAWN:700,MIN_SEP:1400};
+  NOVA_R:8,NOVA_PARTICLES:24,NOVA_SPEED:[380,820],NOVA_PART_R:8,NOVA_LIFE_TICKS:900,AST_KICK:1500,PUSH:900,SAFE_SPAWN:700,MIN_SEP:1400,
+  DRAG:1.4,HIT_PUSH:280,EJECT_PUSH:70,HITS_TO_SPLIT:3,HIT_CD_TICKS:30,SPLIT_N:3,SPLIT_R:.62,SPLIT_SPEED:520,SPLIT_BLAST:5,SPLIT_LIFE_TICKS:[900,1500]};
 // estrela: nasce em GROW (k rampa em GROW_TICKS), vive LIFE_TICKS em ACTIVE, incha até R·SWELL em OLD_TICKS e explode.
+// Míssil (sempre) e partícula ejetada (fora do cooldown HIT_CD_TICKS) empurram a estrela — ela anda com arrasto DRAG — e contam um hit:
+// em HITS_TO_SPLIT hits ela racha em SPLIT_N estrelas menores (r·SPLIT_R) a SPLIT_SPEED, com um sopro em r·SPLIT_BLAST (só empurrão).
 // Encostar (com k ≥ ARM_K) estilhaça a peça em SHATTER_N pedaços a SHATTER_SPEED (cooldown SHATTER_CD_TICKS por peça; abaixo de
 // SHATTER_MIN_R só empurra a PUSH_TOUCH). Supernova: raio r·NOVA_R — NOVA_PARTICLES ejetados, asteroides a AST_KICK e peças a PUSH (só empurrão).
 export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,R:11,HIT_SHRINK:.78,HIT_DEBRIS:5,DEBRIS_SPEED:540,

@@ -13,7 +13,7 @@ if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.e
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';process.env.SHARDS='1';process.env.PEERS='';
 const {startServer}=await import('../src/index.js');
 const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG,PROTOCOL_VERSION}=await import('@planet/shared/protocol/index.js');
-const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY}=await import('@planet/shared/constants.js');
+const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE}=await import('@planet/shared/constants.js');
 const {rectHas}=await import('@planet/shared/camera.js');
 const {newCode,shardOf,isValidCode,normalizeCode}=await import('../src/rooms/codes.js');
 const {Bucket}=await import('../src/net/Session.js');
@@ -75,7 +75,8 @@ test('join: room + PLAYERS com bots + snapshots com criações na AOI',async()=>
   assert.ok(food>0&&food<FOOD.COUNT,`comida conhecida ${food} (nunca as ${FOOD.COUNT})`);assert.ok(known>=5&&known<=600,`entidades conhecidas ${known}`);
   // AOI: tudo que o servidor tem dentro do retângulo interno da sessão é conhecido; nada conhecido fora do externo
   const room=roomOf(roomCode),s=room.sessions.get(A.slot),w=room.sim.world;assert.ok(s.rect);
-  let inRect=0,missing=0;for(const f of w.food)if(rectHas(s.rect,f.x,f.y,-f.r*2)){inRect++;if(!A.known.has(f.id))missing++;}
+  const pulled=f=>w.holes.some(h=>{const ri=h.r*BLACKHOLE.INFLUENCE*h.k,dx=h.x-f.x,dy=h.y-f.y;return dx*dx+dy*dy<ri*ri;});   // comida sendo puxada anda entre um snapshot e o outro
+  let inRect=0,missing=0;for(const f of w.food)if(rectHas(s.rect,f.x,f.y,-f.r*2)&&!pulled(f)){inRect++;if(!A.known.has(f.id))missing++;}
   assert.ok(inRect>0);assert.ok(missing<=Math.ceil(inRect*.1)+2,`comida faltando na AOI: ${missing}/${inRect}`);
   for(const a of w.asteroids)if(rectHas(s.rect,a.x,a.y,-a.r))assert.ok(A.known.has(a.id),'asteroide na AOI conhecido');
   for(const h of w.holes)if(rectHas(s.rect,h.x,h.y,-h.r))assert.ok(A.known.has(h.id),'buraco negro na AOI conhecido');

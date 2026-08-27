@@ -15,14 +15,15 @@ import {PLAYER} from "../constants.js";
  * @property {number} owner      slot do dono (peça, ejetado, míssil) ou -1
  * @property {number} mergeAt    peça: tick a partir do qual pode fundir
  * @property {number} flags      peça: PIECE_FLAG.*; comida: FOOD_FLAG.* (interno)
- * @property {number} cdUntil    peça: imune à sucção até; ejetado: dono não come até; buraco: próxima mudança de deriva
+ * @property {number} cdUntil    peça: imune à sucção até; ejetado: dono não come até; buraco: próxima mudança de deriva; estrela: próximo hit de partícula
  * @property {number} chipUntil  peça: próxima lasca permitida (cooldown por peça)
+ * @property {number} hits       estrela: tiros/partículas levados (STAR.HITS_TO_SPLIT racha a estrela)
  * @property {number} magnetUntil     peça: ímã ativo até este tick (powerup POR PEÇA; fundir soma o tempo restante)
  * @property {number} shieldLv        peça: nível do escudo 0..POWERUP.SHIELD_MAX_LEVEL (não expira; fundir soma até o teto)
  * @property {number} shieldEvolveAt  peça: tick em que o escudo sobe um nível se ela não for atingida
  * @property {number} seed       só visual (forma do asteroide, brilho da comida, giro do buraco)
  * @property {number} type       comida: FOOD_TYPE; asteroide: índice do cinturão (-1 = errante); buraco: BH_PHASE; míssil: 0 alvo é slot, 1 alvo é id de entidade (míssil ou asteroide)
- * @property {number} hue        comida: 0..FOOD.HUES-1 (matiz quantizado); asteroide: variante visual
+ * @property {number} hue        comida: 0..FOOD.HUES-1 (matiz quantizado); asteroide: variante visual; estrela: 1 = filha extra de um racha (não repõe a população)
  * @property {number} targetId   míssil: slot do alvo (type 0) ou id da entidade perseguida — míssil ou asteroide (type 1); -1 sem alvo
  * @property {number} life       ejetado/míssil: tick de expiração; buraco: tick em que a fase atual termina
  * @property {number} ax         asteroide: empurrão acumulado em x ("vírus atirador")
@@ -37,7 +38,7 @@ import {PLAYER} from "../constants.js";
 
 /** Cria um corpo com todos os campos (sempre a mesma forma). @returns {Body} */
 export function createBody(kind,id,x,y,r){
-  return{kind,id,x,y,vx:0,vy:0,r,mass:r*r,owner:-1,mergeAt:0,flags:0,cdUntil:0,chipUntil:0,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,seed:0,type:0,hue:0,targetId:-1,life:0,
+  return{kind,id,x,y,vx:0,vy:0,r,mass:r*r,owner:-1,mergeAt:0,flags:0,cdUntil:0,chipUntil:0,hits:0,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,seed:0,type:0,hue:0,targetId:-1,life:0,
     ax:0,ay:0,ang:0,orbitR:0,k:0,ex:0,ey:0,dead:false};}
 /** Define a massa e recalcula o raio (r=√m). @param {Body} b */
 export function setMass(b,m){b.mass=m;b.r=Math.sqrt(m);}
