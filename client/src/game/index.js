@@ -6,6 +6,8 @@
 //   onConnection({state:'connecting'|'connected'|'reconnecting'|'closed'|'error', room?, attempt?, code?, message?})
 //   onRoundEnd({code, champion, board, nextInMs}) — o mundo explodiu: a sala acabou e o shell mostra o placar
 //   hudStore.clock: {h,m,leftS} do relógio do espaço (a rodada inteira = um dia; o tema segue essa hora)
+// Absorção: no EVENT.EAT a vítima é sugada para a peça de quem comeu (fx eat/vanish com destino) e o vencedor dá um
+// "gulp" (renderer.planets.pop). Fim da rodada = BIG CRUNCH (o contrário do big bang), com o pódio na tela React.
 // Tiro: segurar o botão esquerdo por ~160 ms arma a mira (reta pontilhada local + anel no alvo provável) e soltar
 // dispara — mirado, o míssil persegue o objeto mais próximo dentro do cone da flecha; clique rápido é o tiro de sempre.
 // Fluxo por frame: ponteiro → alvo no mundo → InputSender (30 Hz) · Predictor (60 Hz, peças próprias, render
@@ -40,10 +42,10 @@ const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{speed:0
 const PREF_DEFAULTS={quality:"auto",showNames:true,showMass:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false};
 const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SPLIT]:"split",[EVENT.BH_SUCK]:"suck",[EVENT.CHIP]:"chip",[EVENT.BOUNCE]:"bounce",[EVENT.BOOM]:"boom",[EVENT.EXIT]:"exit",[EVENT.SHOOT]:"shoot",
   [EVENT.DEATH]:"death",[EVENT.SHIELD_BREAK]:"shieldBreak",[EVENT.SHIELD_HIT]:"shieldHit",[EVENT.SHIELD_UP]:"shieldUp",[EVENT.CLASH]:"clash",[EVENT.DEFLECT]:"deflect",
-  [EVENT.STAR_BURST]:"starBurst",[EVENT.SUPERNOVA]:"supernova"};
+  [EVENT.STAR_BURST]:"starBurst",[EVENT.SUPERNOVA]:"supernova",[EVENT.STAR_HIT]:"starHit",[EVENT.STAR_SPLIT]:"starSplit"};
 const AIM_LEN=1100;   // comprimento máximo da reta de mira (px de mundo)
 const AIM_COS=Math.cos(MISSILE.AIM_CONE),AIM_R2=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE;
-const DIR_EVENTS=new Set([EVENT.BOUNCE,EVENT.CHIP,EVENT.SHOOT,EVENT.DEFLECT,EVENT.SHIELD_HIT]);
+const DIR_EVENTS=new Set([EVENT.BOUNCE,EVENT.CHIP,EVENT.SHOOT,EVENT.DEFLECT,EVENT.SHIELD_HIT,EVENT.STAR_HIT]);
 const shardOf=code=>{const n=parseInt(String(code||"")[0],36);return Number.isFinite(n)?n:0;};
 
 export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,onRoundEnd,onConnection}){
@@ -66,7 +68,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const view=createWorldView({buffer,predictor});
   const cam=createCamera(),fstats=createFrameStats();
   const canAct=()=>joined&&!dead&&!roundOver&&conn&&conn.isOpen;
-  let aiming=false,aim=null;
+  let aiming=false,aim=null;const pendingEat=new Map();   // id da peça comida → id de quem comeu (destino da sucção no frame do sumiço)
   const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self?view.self.missiles:0),canAct,onAim:on=>{aiming=on;if(!on)aim=null;}});
   const keyboard=createKeyboard({onAction:actions.act,enabled:()=>joined});
   const touch=createTouchButtons(hud,{onAction:actions.act});
@@ -88,7 +90,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
 
   // ── sumiço de entidades (Interpolator, no tempo de render): planeta comido explode, comida/pellet faísca ──
   function onVanish(e){if(!renderer)return;
-    if(e.kind===KIND.PIECE){if(e.reason===REMOVE.EATEN||e.reason===REMOVE.SUCKED){const pl=view.playerOf(e.owner);renderer.fx.add("vanish",{x:e.rx,y:e.ry,r:e.rr,color:pl?pl.skin.color:null});}}
+    if(e.kind===KIND.PIECE){if(e.reason===REMOVE.EATEN||e.reason===REMOVE.SUCKED){const pl=view.playerOf(e.owner);
+      const f={x:e.rx,y:e.ry,r:e.rr,color:pl?pl.skin.color:null},eid=pendingEat.get(e.id);   // quem comeu: o sumiço vira sucção na direção dele
+      if(eid!=null){pendingEat.delete(e.id);for(const p of view.pieces)if(p.id===eid){f.tx=p.rx;f.ty=p.ry;f.tr=p.rr;break;}}
+      renderer.fx.add("vanish",f);}}
     else if((e.kind===KIND.FOOD||e.kind===KIND.EJECT)&&e.reason===REMOVE.EATEN){const pl=e.kind===KIND.EJECT?view.playerOf(e.owner):null;renderer.fx.spark(e.rx,e.ry,e.rr,pl?pl.skin.color:null);}}
   // ── texturas: aquece as skins da sala (tiers 128/256) e a própria (128/256/512, variante isMe) ──
   function warmSkins(){if(!renderer||!joined)return;const skins=[];let me=null;
@@ -110,10 +115,18 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       case MSG.PLAYERS:view.setPlayers(m.players);warmSkins();break;
       case MSG.LEADERBOARD:view.setLeaderboard(m.rows);break;
       case MSG.EVENT:{const kind=FX_OF[m.kind];if(!kind||!renderer)break;const f={x:m.x,y:m.y,r:m.r||10};
-        if(DIR_EVENTS.has(m.kind)){const d=unpackDir(m.extra);f.nx=d.nx;f.ny=d.ny;f.power=Math.min(1,d.vn/480);if(m.kind===EVENT.SHIELD_HIT)f.level=d.vn;}
+        if(DIR_EVENTS.has(m.kind)){const d=unpackDir(m.extra);f.nx=d.nx;f.ny=d.ny;f.power=Math.min(1,d.vn/480);
+          if(m.kind===EVENT.SHIELD_HIT)f.level=d.vn;else if(m.kind===EVENT.STAR_HIT)f.n=d.vn;}
         else if(m.kind===EVENT.SHIELD_UP)f.level=m.extra;
         const mine=m.slotA===view.mySlot||m.slotB===view.mySlot;   // o que envolve a própria peça (já à frente) não espera
-        renderer.fx.add(kind,f,mine?0:interp.delayMs);break;}}}
+        const delay=mine?0:interp.delayMs;
+        if(m.kind===EVENT.EAT){const eater=nearestPieceOf(m.slotA,m.x,m.y);   // absorção: a vítima é sugada para quem comeu, que dá um "gulp" e cresce
+          if(eater){f.tx=eater.rx;f.ty=eater.ry;f.tr=eater.rr;pendingEat.set(m.extra,eater.id);renderer.planets.pop(eater.id,delay);}}
+        renderer.fx.add(kind,f,delay);break;}}}
+  /** Peça viva do slot mais próxima de (x,y) — quem engoliu, para a animação de absorção. */
+  function nearestPieceOf(slot,x,y){let best=null,bd=Infinity;
+    for(const e of view.pieces){if(e.owner!==slot)continue;const dx=e.rx-x,dy=e.ry-y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;best=e;}}
+    return best;}
   function onState(ev){if(ev.state==="connected"){game.resize();}
     if(onConnection)onConnection(ev);}
   function connectWith(makeSocket){conn=createConnection({makeSocket,onJson,onBinary,onState,onOpenSend});conn.open();}
@@ -132,7 +145,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(room)go(shardOf(room));
       else fetch("/api/config",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(c=>go(c&&c.shard!=null?c.shard:0)).catch(()=>go(0));},
     leave(silent){if(conn){const c=conn;conn=null;c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;round=null;roundOver=false;roundClock=null;setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
+      const was=joined;joined=false;dead=false;round=null;roundOver=false;roundClock=null;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};applyQuality();minimap.show(joined&&curPrefs.showMinimap!==false);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -168,7 +181,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   function roundTick(now){
     if(!round||!round.ticks){if(roundClock){roundClock=null;setRoundHour(null);}return;}
     const rt=Math.min(round.ticks,Math.max(0,buffer.tickAt(now)-round.start)),left=(round.ticks-rt)/TICK_HZ;
-    const h=(round.dayStart+24*(rt/round.ticks))%24;roundClock={h:Math.floor(h),m:Math.floor(h%1*60),leftS:Math.max(0,left)};
+    const h=(round.dayStart+24*ROUND.DAYS*(rt/round.ticks))%24;roundClock={h:Math.floor(h),m:Math.floor(h%1*60),leftS:Math.max(0,left)};
     setRoundHour(h);
     if(!renderer||dead)return;
     const n=Math.ceil(left);   // contagem gigante nos segundos finais (um efeito por segundo)
@@ -182,8 +195,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const scan=arr=>{for(const e of arr){if(e.owner===view.mySlot)continue;const dx=e.rx-src.rx,dy=e.ry-src.ry,d2=dx*dx+dy*dy;
       if(d2>=bd||d2<1e-6||(dx*ux+dy*uy)/Math.sqrt(d2)<AIM_COS)continue;bd=d2;best=e;}};
     scan(view.pieces);scan(view.missiles);scan(view.asteroids);return best?{x:best.rx,y:best.ry,r:best.rr}:null;}
-  /** Fim do mundo: clarão de supernova cobrindo a tela (o placar vem pela tela React). */
-  function endOfWorld(){if(!renderer)return;renderer.fx.add("supernova",{x:cam.x,y:cam.y,r:cam.W/cam.scale*.6});}
+  /** Fim do mundo: BIG CRUNCH — tudo colapsa para o centro da tela (o pódio vem pela tela React). */
+  function endOfWorld(){if(!renderer)return;renderer.fx.add("bigCrunch",{x:cam.x,y:cam.y,r:cam.W/cam.scale*.6});}
 
   // ── HUD (8 Hz) ──
   function pushHud(now){const s=view.self,tk=buffer.tickAt(now),el=Math.max(0,tk-selfTick);

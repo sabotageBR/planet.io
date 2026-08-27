@@ -48,7 +48,7 @@ const themePref = () => app.get().session.prefs.theme || "auto";
 export function applyPrefsSideEffects(prefs) {
   const b = document.body.dataset;
   b.reduce = prefs.reduceMotion ? "1" : "0"; b.bigtext = prefs.bigText ? "1" : "0"; b.colorblind = prefs.colorblind || "off";
-  if (prefs.theme !== lastThemePref) { lastThemePref = prefs.theme; applyTheme(resolveThemeId(prefs.theme || "auto")); }
+  if (prefs.theme !== lastThemePref) { lastThemePref = prefs.theme; applyTheme(resolveThemeId(prefs.theme || "auto"), { fade: true }); }   // trocar o tema na mão também passa pelo fade
   if (!themeClock) themeClock = startThemeClock(themePref, null, { getHour: () => clockRef.get().hour });   // dentro da partida o céu segue o relógio da rodada
 }
 
@@ -71,7 +71,8 @@ function devQuery() {
     app.update({ room: "1ABC", lastMatch: { by: "Nebulox", byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, room: "1ABC", at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
     if (s === "round") app.update({ room: "1ABC", roundResult: { code: "1ABC", mySlot: 3, at: Date.now(), nextInMs: 15000,
       champion: { slot: 1, name: "Vortexia", mass: 12400, isBot: true },
-      board: [{ slot: 1, name: "Vortexia", mass: 12400, isBot: true }, { slot: 3, name: "Você", mass: 8200 }, { slot: 5, name: "Drakonis", mass: 3100, isBot: true }] }, rewards: null, rewardsPending: true, screen: "round" });
+      board: [{ slot: 1, name: "Vortexia", mass: 12400, isBot: true, skinId: 30 }, { slot: 3, name: "Você", mass: 8200, skinId: 18 }, { slot: 5, name: "Drakonis", mass: 3100, isBot: true, skinId: 34 },
+        { slot: 7, name: "Cosmara", mass: 2400, isBot: true, skinId: 13 }, { slot: 9, name: "Stellara", mass: 1800, isBot: true, skinId: 26 }, { slot: 11, name: "Graviton", mass: 900, isBot: true, skinId: 20 }] }, rewards: null, rewardsPending: true, screen: "round" });
     setTimeout(() => onRewards({ saved: true, coinsEarned: 54, coins: (app.get().session.user || {}).coins + 54 || 54, achievements: [], skinsUnlocked: [], rank: { day: 35 } }), 1200);
   }
   else go(s);

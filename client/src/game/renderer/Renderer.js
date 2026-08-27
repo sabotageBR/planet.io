@@ -32,7 +32,7 @@ export async function createRenderer({container,theme,prefs}){
   function mount(){world.removeChildren();world.addChild(bg.props,grid.root,hazards.holes,hazards.stars,food.root,ejected.root,hazards.asteroids,missiles.root,planets.trails,planets.root,aim.root,fx.root);}
   function setTheme(t){R.theme=t;R.cache.invalidate();for(const l of layers)l.setTheme();mount();}
   setTheme(theme);app.stage.addChild(bg.root,world);
-  const rd={app,R,canvas,cache:R.cache,fx,kind,
+  const rd={app,R,canvas,cache:R.cache,fx,planets,kind,
     get W(){return R.W;},get H(){return R.H;},
     setTheme,
     resize(){app.resize();const w=app.screen.width,h=app.screen.height;if(w!==R.W||h!==R.H){R.W=w;R.H=h;bg.resize();}},

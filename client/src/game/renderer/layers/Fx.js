@@ -10,7 +10,7 @@ import {rectHas} from "@planet/shared";
 import {colorOf} from "../../util.js";
 
 const MAX=32,TTL={bounce:14,pop:22,boom:24,eat:16,suck:20,exit:20,split:16,merge:18,chip:12,shoot:16,rock:10,death:28,vanish:18,shieldBreak:22,shieldHit:14,shieldUp:24,clash:22,deflect:16,
-  starBurst:22,supernova:45,countdown:52};
+  starBurst:22,supernova:45,countdown:52,starHit:13,starSplit:28,bigCrunch:70};
 const SPARK_MAX=64,SPARK_TTL=10*16.7,TEXT_PRE=4,TS=32,pts=[];
 export function createFx(R){
   const root=new Container(),active=[],gpool=[],tpool=[],sparks=[],ambient=[],sg=new Graphics(),ag=new Graphics();root.addChild(ag,sg);let budget=1;
@@ -29,7 +29,8 @@ export function createFx(R){
   return{root,
     /** Pré-cria os Text do pool (a rasterização da fonte sai do 1º "POW!" da partida). */
     setTheme(){for(let i=0;i<TEXT_PRE;i++)textNode(i).visible=false;},
-    /** kind: bounce|pop|boom|eat|suck|exit|split|merge|chip|shoot|death|vanish|shieldBreak|shieldHit|shieldUp|clash|deflect|starBurst|supernova|countdown; f: {x,y,r,nx?,ny?,power?,level?,color?,n?} */
+    /** kind: bounce|pop|boom|eat|suck|exit|split|merge|chip|shoot|death|vanish|shieldBreak|shieldHit|shieldUp|clash|deflect|starBurst|starHit|starSplit|supernova|bigCrunch|countdown;
+     *  f: {x,y,r,nx?,ny?,power?,level?,color?,n?,tx?,ty?,tr?} — tx/ty/tr = destino da absorção (quem comeu) */
     add(kind,f,delayMs=0){if(!R.prefs.fx)return;if(active.length>=MAX)active.shift();active.push({kind,f,age:-(delayMs||0),ttl:(TTL[kind]||16)*16.7});},
     spark(x,y,r,color){if(!R.prefs.fx)return;if(sparks.length>=SPARK_MAX)sparks.shift();sparks.push({x,y,r,color,age:0});},
     ambient(kind,f){if(R.prefs.fx)ambient.push({kind,f});},

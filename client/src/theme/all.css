@@ -1,7 +1,9 @@
 /* ── CSS completo do cliente: base (estrutura) + os três temas escopados por html[data-theme] ──
    O app importa só este arquivo. A ordem importa: base.css primeiro (sem prefixo), depois os temas
-   (prefixados com :where(html[data-theme="…"]), especificidade zero — cascata idêntica ao mockup). */
+   (prefixados com :where(html[data-theme="…"]), especificidade zero — cascata idêntica ao mockup).
+   ui.css é escrito à mão (pódio, loja nova, fade): o port.js não mexe nele. */
 @import "../styles/base.css";
+@import "../styles/ui.css";
 @import "./dawn/styles.css";
 @import "./sunset/styles.css";
 @import "./dusk/styles.css";
