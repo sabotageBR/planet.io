@@ -15,8 +15,10 @@ export const LABELS = {
   rankTitle: "RANKING", periods: { all: "Geral", week: "Semanal", day: "Diário" }, metrics: { score: "Pontos", mass: "Massa", kills: "Abates" }, you: "Você", rankPos: "posição",
   profileTitle: "PERFIL", history: "HISTÓRICO", achievements: "CONQUISTAS",
   stats: { games: "partidas", kills: "abates", bestScore: "melhor pontuação", bestMass: "maior massa", playTime: "tempo jogado", bestStreak: "melhor sequência" },
-  causes: { eaten: "devorado", blackhole: "buraco negro", left: "saiu", shutdown: "servidor", round: "fim do mundo" },
+  causes: { eaten: "devorado", blackhole: "buraco negro", left: "saiu", shutdown: "servidor", round: "big crunch" },
   shopTitle: "LOJA DE SKINS", shopNote: "Moedas se ganham jogando. Skins de conquista desbloqueiam sozinhas.", filterAll: "Todas", unlocked: "desbloqueadas",
+  shopSearch: "Buscar skin…", onlyMine: "Só as minhas", noSkins: "Nenhuma skin com esse filtro",
+  sortBy: { rarity: "Por raridade", price: "Por preço", name: "Por nome" },
   prefsTitle: "PREFERÊNCIAS", save: "Salvar", reset: "Restaurar padrão", saved: "Preferências salvas",
   accountTitle: "CONTA", claimTab: "Reivindicar", loginTab: "Entrar", nick: "Nick", password: "Senha", password2: "Confirmar senha", email: "E-mail (opcional)",
   claimNote: "Reivindicar a conta trava seu nick e leva skins e moedas para outros dispositivos.", loginNote: "Entre com um nick já reivindicado.",
@@ -25,8 +27,9 @@ export const LABELS = {
   split: "DIVIDIR", eject: "EJETAR", fire: "MÍSSIL", exit: "Sair", keySplit: "ESPAÇO", keyEject: "W", keyFire: "F",
   ammo: "mísseis", powerups: { magnet: "Ímã", shield: "Escudo" }, shieldLevel: "Nv",
   room: "SALA", ping: "ms", fps: "fps", top5: "TOP 5 HOJE", activeRooms: "SALAS ATIVAS",
-  roundTitle: "FIM DO MUNDO", roundIcon: "🌌", roundSub: "— a sala explodiu; a próxima galáxia já está nascendo —",
+  roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— o universo desabou num ponto; a próxima galáxia já está nascendo —",
   champion: "CAMPEÃO DA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar agora", playersWord: "no placar", posWord: "#",
+  podium: "PÓDIO", places: ["1º", "2º", "3º"], restOfBoard: "E o resto da galáxia",
   // extras do shell (não existem no mockup)
   offlineNote: "Sem servidor: jogando em modo local",
   noDbNote: "Servidor sem banco: progresso não é salvo", saving: "salvando…", noRank: "sem posição", loading: "carregando…",
@@ -36,7 +39,7 @@ export const LABELS = {
   passShort: "Senha com pelo menos 6 caracteres", passMismatch: "As senhas não conferem", nickShort: "Nick com 2 a 16 caracteres",
   connLost: "Conexão perdida", roomFull: "Sala cheia", kicked: "Desconectado do servidor",
 };
-const GROUPS = ["periods", "metrics", "stats", "powerups", "causes"];
+const GROUPS = ["periods", "metrics", "stats", "powerups", "causes", "sortBy"];
 export function mergeLabels(over) {
   if (!over) return LABELS;
   const out = { ...LABELS, ...over };
