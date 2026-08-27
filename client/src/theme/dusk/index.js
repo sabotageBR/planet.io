@@ -105,22 +105,19 @@ export const textures={
 
   paintSkin(c,sk,r){const rr2=sk.ring?r*.68:r,d=rr2*PK(sk),size=tier(rr2),k=d*2/size;c.save();c.translate(0,2);c.scale(k,k);textures.planet(c,size,{skin:sk,isMe:false});c.restore();},
 
-  // fundo: marinho → violeta, brasa magenta → laranja queimado só nos ~18% de baixo (sem sol); estrelas no alto (60%) com fade;
-  // 3 calotas de planetas/montes em silhueta no horizonte com fio pêssego
+  // fundo: marinho → violeta, brasa magenta → laranja queimado só nos ~18% de baixo (sem sol); estrelas no alto (60%) com fade
+  // (sem as calotas de montes no horizonte: viravam calombos escuros na tela)
   background(x,W,H,{rng}={}){x.lineJoin="round";x.lineCap="round";
     const gd=x.createLinearGradient(0,0,0,H);gd.addColorStop(0,NAVY);gd.addColorStop(.46,VIO);gd.addColorStop(.7,"#4b2c6c");gd.addColorStop(.84,EMB1);gd.addColorStop(1,EMB2);x.fillStyle=gd;x.fillRect(0,0,W,H);
     const rand=rng||mulberry(5);
-    x.fillStyle=CREAM;for(let i=0;i<80;i++){const y=H*rand()*.6;x.globalAlpha=(.2+rand()*.5)*Math.min(1,(H*.6-y)/(H*.2));x.fillRect(rand()*W,y,2,2);}x.globalAlpha=1;
-    [[.16,.16,.4],[.82,.12,.36],[.5,.26,.3]].forEach(([fx,fr,k])=>{const R=W*fr,cx=W*fx,cy=H+R*(1-k);
-      x.fillStyle="rgba(24,14,52,.85)";x.beginPath();x.arc(cx,cy,R,0,6.283);x.fill();
-      x.strokeStyle="rgba(255,207,154,.4)";x.lineWidth=3;x.beginPath();x.arc(cx,cy,R-1.5,3.4,6.02);x.stroke();});},
+    x.fillStyle=CREAM;for(let i=0;i<80;i++){const y=H*rand()*.6;x.globalAlpha=(.2+rand()*.5)*Math.min(1,(H*.6-y)/(H*.2));x.fillRect(rand()*W,y,2,2);}x.globalAlpha=1;},
 
   // parallax só na parte escura do céu (60% de cima), com fade
   bandLayers({seed=21,WW=3000,WH=3000}={}){const rand=mulberry(seed);
     const layers=[.2,.45].map((f,li)=>({f,color:CREAM,count:li?50:80,size:li?[2.5,4]:[1.5,2.5],alpha:[.35,.75],
       stars:Array.from({length:li?50:80},()=>({x:rand()*T,y:rand()*T,s:li?2.5+rand()*1.5:1.5+rand(),a:+(.35+rand()*.4).toFixed(2)}))}));
     const bigStars={f:.7,count:22,size:[14,26],alpha:1,variants:2,stars:Array.from({length:22},()=>({x:rand()*T,y:rand()*T,s:14+rand()*12,v:rand()<.5?1:0}))};
-    const props=[];for(let i=0;i<10;i++)props.push({x:200+rand()*(WW-400),y:200+rand()*(WH-400),r:80+rand()*120,ring:rand()<.4});
+    const props=[];   // sem planetas de cenário: as bolas translúcidas do fundo confundiam com planeta de verdade (textures.prop segue aqui se um dia voltarem)
     return{tile:T,fade:{y0:.6,d:.2},layers,bigStars,props,propsAlpha:.5};},
 };
 function foodColor(p){const t=foodType(p.type);return FOOD_ICON[t]?(p.color||FOOD_FIXED[t]):WARM[(p.hue|0)%12];}

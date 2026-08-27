@@ -116,7 +116,7 @@ export const textures={
     const layers=[.2,.45].map((f,li)=>({f,color:CREAM,count:li?50:80,size:li?[2.5,4]:[1.5,2.5],alpha:[.35,.75],
       stars:Array.from({length:li?50:80},()=>({x:rand()*T,y:rand()*T,s:li?2.5+rand()*1.5:1.5+rand(),a:+(.35+rand()*.4).toFixed(2)}))}));
     const bigStars={f:.7,count:22,size:[14,26],alpha:1,variants:2,stars:Array.from({length:22},()=>({x:rand()*T,y:rand()*T,s:14+rand()*12,v:rand()<.5?1:0}))};
-    const props=[];for(let i=0;i<10;i++)props.push({x:200+rand()*(WW-400),y:200+rand()*(WH-400),r:80+rand()*120,ring:rand()<.4});
+    const props=[];   // sem planetas de cenário: as bolas translúcidas do fundo confundiam com planeta de verdade (textures.prop segue aqui se um dia voltarem)
     return{tile:T,fade:{y0:.5,d:.2},layers,bigStars,props,propsAlpha:.55};},
 };
 function foodColor(p){const t=foodType(p.type);return FOOD_ICON[t]?(p.color||FOOD_FIXED[t]):WARM[(p.hue|0)%12];}

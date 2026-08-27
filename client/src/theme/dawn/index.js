@@ -120,13 +120,11 @@ export const textures={
   // prévia de skin (entrada/loja/perfil): desenha o planeta centrado na origem atual com raio r (paintSkin do mockup)
   paintSkin(c,sk,r){const rr2=sk.ring?r*.68:r,d=rr2*PK(sk),size=tier(rr2),k=d*2/size;c.save();c.translate(0,2);c.scale(k,k);textures.planet(c,size,{skin:sk,isMe:false});c.restore();},
 
-  // fundo assado por resolução: céu de manhã cedo (marinho → azul céu → pêssego, SEM sol), planetas distantes, estrelas pálidas no terço de cima
+  // fundo assado por resolução: céu de manhã cedo (marinho → azul céu → pêssego, SEM sol) e estrelas pálidas no terço de cima
+  // (sem os planetas distantes: confundiam com planeta de verdade)
   background(x,W,H,{rng}={}){x.lineJoin="round";x.lineCap="round";
     const gd=x.createLinearGradient(0,0,0,H);gd.addColorStop(0,NAVY);gd.addColorStop(.2,"#24407f");gd.addColorStop(.48,SKY);gd.addColorStop(.68,"#a8dcf5");gd.addColorStop(.82,PEACH);gd.addColorStop(1,PALE);x.fillStyle=gd;x.fillRect(0,0,W,H);
     const rand=rng||mulberry(5);
-    for(let i=0;i<3;i++){const r=H*(.05+rand()*.07),px=W*(.1+rand()*.8),py=H*(.5+rand()*.18);
-      x.fillStyle="rgba(77,104,168,.4)";x.beginPath();x.arc(px,py,r,0,6.283);x.fill();
-      x.strokeStyle="rgba(255,233,184,.55)";x.lineWidth=Math.max(2,r*.12);x.beginPath();x.arc(px,py,r*.9,.6,2.5);x.stroke();}
     x.fillStyle=CREAM;for(let i=0;i<50;i++){const y=H*rand()*.3;x.globalAlpha=(.15+rand()*.45)*(1-y/(H*.3));x.fillRect(rand()*W,y,2,2);}x.globalAlpha=1;},
 
   // parallax (init do mockup, seed 21): pontos creme em 2 camadas + 22 estrelas grandes, só no terço de cima com fade; 10 planetas de cenário no mundo
@@ -134,7 +132,7 @@ export const textures={
     const layers=[.2,.45].map((f,li)=>({f,color:CREAM,count:li?50:80,size:li?[2.5,4]:[1.5,2.5],alpha:[.3,.65],
       stars:Array.from({length:li?50:80},()=>({x:rand()*T,y:rand()*T,s:li?2.5+rand()*1.5:1.5+rand(),a:+(.3+rand()*.35).toFixed(2)}))}));
     const bigStars={f:.7,count:22,size:[14,26],alpha:.85,variants:2,stars:Array.from({length:22},()=>({x:rand()*T,y:rand()*T,s:14+rand()*12,v:rand()<.5?1:0}))};
-    const props=[];for(let i=0;i<10;i++)props.push({x:200+rand()*(WW-400),y:200+rand()*(WH-400),r:80+rand()*120,ring:rand()<.4});
+    const props=[];   // sem planetas de cenário: as bolas translúcidas do fundo confundiam com planeta de verdade (textures.prop segue aqui se um dia voltarem)
     return{tile:T,fade:{y0:.32,d:.16},layers,bigStars,props,propsAlpha:.5};},
 };
 function foodColor(p){const t=foodType(p.type);return FOOD_ICON[t]?(p.color||FOOD_FIXED[t]):(p.color||`hsl(${((p.hue|0)%12)*30},80%,68%)`);}

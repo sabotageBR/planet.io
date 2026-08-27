@@ -91,5 +91,6 @@ do zero, use só com o banco vazio). Secret `planet-db` criado via `./scripts/db
 
 - Sem "esqueci a senha" (reset via SQL). Sem merge de contas ao logar num navegador que tinha guest.
 - Mockups são a fonte visual; mudança de tema visual = editar `mockups/v2/src/theme.toon-<id>.js` e rodar `client/src/theme/port.js`.
-- O fundo não tem mais planetas de cenário: `bandLayers()` devolve `props:[]` nos 3 temas (as bolas translúcidas confundiam com
-  planeta de verdade). `textures.prop`/`scale.prop` seguem lá — é só voltar a preencher a lista se quisermos cenário de novo.
+- O fundo é só céu + estrelas: `bandLayers()` devolve `props:[]` nos 3 temas e `textures.background()` não desenha mais os planetas
+  distantes (dawn) nem as calotas de montes no horizonte (dusk) — as bolas confundiam com planeta de verdade e os montes viravam
+  calombos escuros. `textures.prop`/`scale.prop` seguem lá se um dia quisermos cenário de volta.
