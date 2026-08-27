@@ -6,6 +6,7 @@
 // no horizonte (SEM sol), estrelas no alto, nuvens e cenário em silhueta com fio
 // pêssego. Contrato: ver ../dawn/index.js.
 import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED} from "../util.js";
+import {paintPattern,paintHole,paintNova} from "../patterns.js";
 
 const INK="#241238",CREAM="#fff1d6",GOLD="#ffb547",CORAL="#ff5e6c",TEAL="#2ec4b6",PEACH="#ffcf9a",MAG="#e0417f",SIL="#2a1550";
 const NAVY="#141a4a",VIO="#3b2a6e",EMB1="#7a2f63",EMB2="#c8542f";
@@ -42,12 +43,12 @@ export const textures={
     const band=(a0,a1)=>{c.beginPath();c.ellipse(0,0,r*1.85,r*.56,0,a0,a1,false);c.ellipse(0,0,r*1.3,r*.39,0,a1,a0,true);c.closePath();c.fill();c.stroke();};
     if(sk.ring){c.fillStyle=sh(col,.3);c.strokeStyle=INK;c.lineWidth=lw*.7;band(Math.PI,Math.PI*2);}
     c.fillStyle=col;c.beginPath();c.arc(0,0,r,0,6.283);c.fill();
-    c.save();c.beginPath();c.arc(0,0,r,0,6.283);c.clip();
+    c.save();c.beginPath();c.arc(0,0,r,0,6.283);c.clip();const pat=paintPattern(c,r,sk,{ink:INK,light:CREAM});
     c.fillStyle="rgba(59,31,107,.45)";c.beginPath();c.arc(r*.42,r*.44,r*1.05,0,6.283);c.fill();
     c.strokeStyle="rgba(255,207,154,.8)";c.lineWidth=r*.16;c.beginPath();c.arc(0,0,r*.9,-2.95,-.95);c.stroke();
     c.fillStyle="rgba(255,241,214,.42)";c.beginPath();c.ellipse(-r*.36,-r*.38,r*.34,r*.2,-.75,0,6.283);c.fill();
     c.fillStyle="rgba(255,255,255,.3)";c.beginPath();c.arc(-r*.08,-r*.58,r*.08,0,6.283);c.fill();
-    c.globalAlpha=.16;c.font=`${r*1.3}px serif`;c.textAlign="center";c.textBaseline="middle";c.fillText(sk.emoji,r*.05,r*.15);c.globalAlpha=1;
+    if(!pat){c.globalAlpha=.16;c.font=`${r*1.3}px serif`;c.textAlign="center";c.textBaseline="middle";c.fillText(sk.emoji,r*.05,r*.15);c.globalAlpha=1;}   // skin com textura dispensa o emoji fantasma
     c.restore();
     if(sk.ring){c.fillStyle=sh(col,.3);c.strokeStyle=INK;c.lineWidth=lw*.7;band(0,Math.PI);}
     c.strokeStyle=isMe?CREAM:INK;c.lineWidth=lw;c.beginPath();c.arc(0,0,r,0,6.283);c.stroke();
@@ -71,22 +72,11 @@ export const textures={
       c.fillStyle=INK;c.beginPath();c.arc(Math.cos(a)*d,Math.sin(a)*d,c2,0,6.283);c.fill();c.strokeStyle="rgba(255,207,154,.35)";c.lineWidth=Math.max(1.5,r*.04);c.stroke();}
     astPoly(c,r,seed,n);c.strokeStyle=INK;c.lineWidth=Math.max(3,r*.1);c.stroke();},
 
-  blackHole(c,size){const r=size/2/BK;c.lineJoin="round";c.lineCap="round";
-    c.strokeStyle=CORAL;c.lineWidth=r*.12;for(let i=0;i<10;i++){const a=i/10*6.283+.3;c.beginPath();c.moveTo(Math.cos(a)*r*1.55,Math.sin(a)*r*1.55);c.lineTo(Math.cos(a+.25)*r*2.2,Math.sin(a+.25)*r*2.2);c.stroke();}
-    c.fillStyle=INK;c.beginPath();c.arc(0,0,r*1.42,0,6.283);c.fill();
-    c.fillStyle=SIL;c.beginPath();c.arc(0,0,r*1.3,0,6.283);c.fill();c.strokeStyle=GOLD;c.lineWidth=Math.max(3,r*.13);c.stroke();
-    c.strokeStyle="#5a2f8e";c.lineWidth=r*.16;c.beginPath();for(let i=0;i<=90;i++){const k=i/90,a=k*6.283*2.2,rr=r*.15+k*r*1.0;i?c.lineTo(Math.cos(a)*rr,Math.sin(a)*rr):c.moveTo(Math.cos(a)*rr,Math.sin(a)*rr);}c.stroke();
-    c.strokeStyle=INK;c.lineWidth=r*.04;c.beginPath();for(let i=0;i<=90;i++){const k=i/90,a=k*6.283*2.2,rr=r*.15+k*r*1.0+r*.1;i?c.lineTo(Math.cos(a)*rr,Math.sin(a)*rr):c.moveTo(Math.cos(a)*rr,Math.sin(a)*rr);}c.stroke();
-    c.fillStyle=INK;c.beginPath();c.arc(0,0,r*.5,0,6.283);c.fill();c.strokeStyle=GOLD;c.lineWidth=r*.07;c.stroke();},
+  // buraco negro: disco de acreção em perspectiva + horizonte + anel de fóton (../patterns.js; 1 sprite de 256 girado por h.spin)
+  blackHole(c,size){paintHole(c,size/2/BK,{ink:INK,glow:MAG,hot:GOLD,cold:VIO});},
 
-  // estrela do mundo (perigo): disco quente com raios e contorno de tinta; `old` = inchada e vermelha, a caminho da supernova
-  nova(c,size,{old=false}){const r=size/2/NK,core=old?GOLD:CREAM,edge=old?CORAL:GOLD,rays=old?1.85:1.55;c.lineJoin="round";c.lineCap="round";
-    c.strokeStyle=edge;c.lineWidth=Math.max(2,r*.16);
-    for(let i=0;i<12;i++){const a=i/12*6.283+(old?.26:0);c.beginPath();c.moveTo(Math.cos(a)*r*1.05,Math.sin(a)*r*1.05);c.lineTo(Math.cos(a)*r*rays,Math.sin(a)*r*rays);c.stroke();}
-    spikes(c,r*1.22,8,.8,-1.5708);c.fillStyle=edge;c.fill();c.strokeStyle=INK;c.lineWidth=Math.max(2.5,r*.1);c.stroke();
-    c.fillStyle=core;c.beginPath();c.arc(0,0,r*.84,0,6.283);c.fill();c.strokeStyle=INK;c.lineWidth=Math.max(2,r*.08);c.stroke();
-    c.fillStyle="rgba(255,255,255,.5)";c.beginPath();c.arc(-r*.26,-r*.28,r*.24,0,6.283);c.fill();
-    if(old){c.fillStyle="rgba(36,18,56,.22)";c.beginPath();c.arc(r*.3,r*.32,r*.42,0,6.283);c.fill();}},
+  // estrela do mundo (perigo): coroa em camadas, núcleo quente e línguas de plasma; `old` = gigante vermelha rachada, a caminho da supernova
+  nova(c,size,{old=false}){paintNova(c,size/2/NK,old,{ink:INK,core:CREAM,edge:GOLD,deep:CORAL});},
 
   star(c,size,{variant=0}){const R=size/2,v=variant;c.lineJoin="round";spikes(c,R*.9,v?5:4,v?.5:.38,-1.5708);c.fillStyle=v?PEACH:CREAM;c.fill();c.strokeStyle=INK;c.lineWidth=2;c.stroke();},
 
@@ -145,14 +135,33 @@ export const effects={
       case "chip":{const b=Math.atan2(f.ny||0,f.nx||1);for(let i=-1;i<=1;i++){const an=b+i*.5;
         P.push({type:"line",x1:f.x,y1:f.y,x2:f.x+Math.cos(an)*f.r*3*k,y2:f.y+Math.sin(an)*f.r*3*k,color:GOLD,alpha:a,width:3});}break;}
       case "shoot":P.push({type:"burst",x:f.x,y:f.y,n:8,r0:f.r*(1+k),r1:f.r*(1.6+k*1.4),color:CORAL,alpha:a,width:3});break;
-      case "eat":{const s=f.r*(1+k*1.1),al=Math.min(1,a*1.4);   // planeta comido: explosão (estrela + estilhaços + anel + texto)
-        P.push({type:"star",x:f.x,y:f.y,r:s,n:10,inner:.5,phase:k*.8,fill:GOLD,stroke:INK,width:Math.max(2,s*.06),alpha:al});
-        P.push({type:"burst",x:f.x,y:f.y,n:8,r0:f.r*(1.1+k*1.6),r1:f.r*(1.5+k*2.6),color:CREAM,alpha:a,width:Math.max(2,f.r*.08)});
-        P.push({type:"ring",x:f.x,y:f.y,r:f.r*(1.2+k*1.6),color:CREAM,alpha:a,width:3});
-        if(f.r>8)P.push({type:"text",x:f.x,y:f.y-f.r*(1+k*1.5),text:"NHAC!",size:Math.max(10,f.r*.7),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
-      case "vanish":{const col=f.color||CREAM;   // sumiço no mesmo frame: anel que colapsa + 6 estilhaços na cor do planeta
+      case "eat":{const al=Math.min(1,a*1.4),tx=f.tx==null?f.x:f.tx,ty=f.ty==null?f.y:f.ty,tr=f.tr||f.r;   // absorção: a vítima é sugada para quem comeu
+        for(let i=0;i<3;i++){const kk=Math.min(1,k+i*.14),x=f.x+(tx-f.x)*kk,y=f.y+(ty-f.y)*kk;
+          P.push({type:"ring",x,y,r:f.r*(1-kk*.75)+2,color:GOLD,alpha:a*(1-i*.28),width:Math.max(2,f.r*.18*(1-kk))});}
+        P.push({type:"burst",x:f.x,y:f.y,n:8,r0:f.r*(.9+k*.8),r1:f.r*(1.2+k*1.2),color:CREAM,alpha:a*.8,width:Math.max(2,f.r*.07)});
+        P.push({type:"ring",x:tx,y:ty,r:tr*(1.05+k*.35),color:CREAM,alpha:a,width:Math.max(2,tr*.08)});
+        if(f.r>8)P.push({type:"text",x:tx,y:ty-tr*(1+k*.6),text:"NHAC!",size:Math.max(10,tr*.55),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
+      case "vanish":{const col=f.color||CREAM;   // sumiço no mesmo frame: colapsa e, se foi comida, voa para quem comeu
+        if(f.tx!=null){const x=f.x+(f.tx-f.x)*k,y=f.y+(f.ty-f.y)*k;
+          P.push({type:"line",x1:f.x,y1:f.y,x2:x,y2:y,color:col,alpha:a*.45,width:Math.max(1.5,f.r*.14*(1-k))});
+          P.push({type:"ring",x,y,r:f.r*(1-k*.85)+1,color:col,alpha:a,width:Math.max(2,f.r*.2*(1-k))});break;}
         P.push({type:"ring",x:f.x,y:f.y,r:f.r*(1-k*.9)+1,color:col,alpha:a,width:Math.max(3,f.r*.15*(1-k))});
         P.push({type:"burst",x:f.x,y:f.y,n:6,r0:f.r*(.4+k*2),r1:f.r*(.9+k*2.6),color:col,alpha:a,width:Math.max(2,f.r*.1),phase:.5});break;}
+      case "starHit":{const b=Math.atan2(f.ny||0,f.nx||1);   // tiro/partícula empurrou a estrela (o contador vai até rachar)
+        P.push({type:"burst",x:f.x,y:f.y,n:7,r0:f.r*(.9+k*.5),r1:f.r*(1.15+k*.9),color:GOLD,alpha:a,width:Math.max(2,f.r*.06),phase:b});
+        P.push({type:"star",x:f.x,y:f.y,r:f.r*.32*(1+k),n:6,inner:.5,phase:k,fill:CREAM,stroke:INK,width:2,alpha:a});
+        if(f.n)P.push({type:"text",x:f.x,y:f.y-f.r*(1.2+k*.6),text:"×"+f.n,size:Math.max(10,f.r*.34),fill:GOLD,stroke:INK,font:FONT,alpha:a});break;}
+      case "starSplit":{const s=f.r*(.3+k*.7),al=Math.min(1,a*1.5);   // a estrela rachou: clarão e as filhas saindo em leque
+        P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:12,inner:.45,phase:-k*.6,fill:GOLD,stroke:INK,width:Math.max(2,s*.03),alpha:al});
+        P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.2+k*.8),color:CORAL,alpha:a,width:Math.max(3,f.r*.03)});
+        P.push({type:"burst",x:f.x,y:f.y,n:10,r0:f.r*(.2+k*.6),r1:f.r*(.35+k*.95),color:CREAM,alpha:a,width:Math.max(2,f.r*.02)});
+        P.push({type:"text",x:f.x,y:f.y,text:"CRACK!",size:Math.max(12,f.r*.13),fill:CREAM,stroke:INK,font:FONT,alpha:al});break;}
+      case "bigCrunch":{const al=Math.min(1,a*1.6);   // fim da rodada: tudo colapsa num ponto (o contrário do big bang)
+        for(let i=0;i<4;i++){const kk=Math.min(1,k+i*.1);
+          P.push({type:"ring",x:f.x,y:f.y,r:f.r*(1.15-kk)*(1-i*.06)+2,color:i%2?MAG:CREAM,alpha:a*(1-i*.18),width:Math.max(3,f.r*.02*(1+kk))});}
+        P.push({type:"burst",x:f.x,y:f.y,n:16,r0:f.r*(1.1-k)*.9,r1:f.r*(1.15-k),color:CORAL,alpha:a,width:Math.max(2,f.r*.015),phase:k*.4});
+        P.push({type:"star",x:f.x,y:f.y,r:f.r*.06*(1+k*3),n:14,inner:.4,phase:k,fill:CREAM,alpha:al});
+        P.push({type:"text",x:f.x,y:f.y,text:"BIG CRUNCH!",size:Math.max(14,f.r*.14),fill:CREAM,stroke:INK,font:FONT,alpha:al});break;}
       case "death":{const s=f.r*(1+k*2),al=Math.min(1,a*1.3);
         P.push({type:"star",x:f.x,y:f.y,r:s,n:14,inner:.5,phase:k*.4,fill:CORAL,stroke:INK,width:Math.max(3,s*.05),alpha:al});
         P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:14,inner:.5,phase:-k*.4,fill:GOLD,alpha:al});
@@ -190,7 +199,7 @@ export const effects={
     return P;},
   missileTrail:{color:CREAM,alphaK:.5,radiusK:.7,every:2},
   missileFlame:{amp:.25,speed:.05},
-  blackHole:{ring:{color:CORAL,alpha:[.3,.4],pulse:.004,width:3,dash:[14,18],spinK:-.4},alphaK:1.2},
+  blackHole:{ring:{color:CORAL,alpha:[.3,.4],pulse:.004,width:3,dash:[14,18],spinK:-.4},ring2:{color:CORAL,alpha:[.4,.85],pulse:.013,width:3,dash:[10,9],spinK:.9,rK:1.5},alphaK:1.2},   // ring = raio de influência; ring2 = horizonte de eventos (colado no núcleo); alpha do sprite = min(1,k·alphaK)
   // estrela do mundo: pulso do sprite, giro e coroa tracejada no halo (vermelha e nervosa na fase OLD)
   star:{ring:{color:GOLD,colorOld:CORAL,alpha:[.18,.4],pulse:.005,pulseOld:.02,width:3,dash:[18,16],spinK:-.15},pulse:{amp:.06,speed:.004,speedOld:.02},spin:.004,alphaK:1.15},
   aim:{color:CREAM,width:3,dash:[16,12],head:26,alpha:[.45,.85],pulse:.008},                          // reta pontilhada do tiro mirado

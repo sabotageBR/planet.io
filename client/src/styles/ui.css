@@ -1,0 +1,49 @@
+/* ── UI escrita à mão (fora do port.js) ───────────────────────────────────────
+   base.css e os screens.css dos temas são GERADOS a partir de mockups/v2; o que
+   nasceu depois deles (fade da troca de tema, pódio do fim da rodada e a loja
+   nova) mora aqui e usa só os tokens do tema (--bg, --accent, --line…), então
+   funciona nos três céus. Carregado por client/src/theme/all.css. ── */
+
+/* fade da troca de tema (client/src/theme/fade.js): cobre a tela no pico da troca */
+.theme-fade{position:fixed;inset:0;z-index:9000;pointer-events:none;background:var(--bg,#101020);opacity:0;transition:opacity 300ms ease}
+.theme-fade.on{opacity:1}
+
+/* ── pódio do fim da rodada (BIG CRUNCH) ── */
+.podium{display:flex;align-items:flex-end;justify-content:center;gap:10px;width:100%;margin:2px 0 6px}
+.podium .step{flex:1 1 0;max-width:150px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
+.podium .step canvas{width:64px;height:64px}
+.podium .step.p1 canvas{width:86px;height:86px}
+.podium .step b{font-size:.92em;line-height:1.15;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.podium .step i{font-style:normal;opacity:.72;font-size:.8em;font-variant-numeric:tabular-nums}
+.podium .base{width:100%;margin-top:4px;border-radius:var(--radius,10px) var(--radius,10px) 0 0;
+  border:2px solid var(--line,#0006);border-bottom:0;background:var(--surface,#2226);
+  display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:1.3em}
+.podium .p1 .base{height:78px;background:var(--accent,#ffc22e);color:var(--line,#141026)}
+.podium .p2 .base{height:56px}
+.podium .p3 .base{height:42px}
+.podium .step.me b{color:var(--accent,#ffc22e)}
+.podium .step.empty{opacity:.35}
+body[data-mode="portrait"] .podium .step canvas{width:52px;height:52px}
+body[data-mode="portrait"] .podium .step.p1 canvas{width:68px;height:68px}
+
+/* ── loja: busca/ordem, cartões e painel de detalhe ── */
+.shop-tools{grid-area:auto;display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:2px 0 6px}
+.shop-tools input[type="search"]{flex:1 1 120px;min-width:96px;padding:7px 10px;border-radius:var(--radius,10px);
+  border:2px solid var(--line,#0006);background:var(--surface,#2226);color:inherit}
+.shop-tools select{white-space:nowrap;padding:7px 8px;border-radius:var(--radius,10px);border:2px solid var(--line,#0006);background:var(--surface,#2226)}
+.shop-tools .toggle{white-space:nowrap;flex:0 0 auto;font-size:.9em;padding:7px 10px;border-radius:var(--radius,10px);border:2px solid var(--line,#0006);opacity:.7}
+.shop-tools .toggle.on{opacity:1;background:var(--accent,#ffc22e);color:var(--line,#141026)}
+.shop-prog{width:100%;height:6px;border-radius:99px;background:var(--surface,#2226);overflow:hidden;margin-bottom:8px}
+.shop-prog i{display:block;height:100%;background:var(--accent,#ffc22e)}
+.skin-card.sel{outline:3px solid var(--accent,#ffc22e);outline-offset:2px}
+.skin-card .rar-dot{position:absolute;top:6px;left:6px;width:9px;height:9px;border-radius:99px;background:var(--rc,#888);border:2px solid var(--line,#0006)}
+.shop-detail{display:flex;gap:12px;align-items:center;margin-top:8px}
+.shop-detail canvas{width:84px;height:84px;flex:0 0 auto}
+.shop-detail .info{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.shop-detail .info b{font-size:1.05em}
+.shop-detail .info i{font-style:normal;font-size:.85em;color:var(--rc,#888)}
+.shop-detail .info span{opacity:.75;font-size:.85em}
+.shop-detail .act{flex:0 0 auto;padding:10px 14px;border-radius:var(--radius,10px);border:2px solid var(--line,#0006);
+  background:var(--accent,#ffc22e);color:var(--line,#141026);font-weight:bold}
+.shop-detail .act[disabled]{background:var(--surface,#2226);color:inherit}
+body[data-mode="portrait"] .shop-detail canvas{width:64px;height:64px}

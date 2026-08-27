@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+// LOJA: busca, ordenação, filtro de raridade/"só as minhas", grade de cartões e painel de detalhe
+// (comprar/equipar só pelo botão do painel — clicar no cartão apenas seleciona, para ninguém gastar moeda sem querer).
+import React, { useEffect, useMemo, useState } from "react";
 import { SKINS, skinById, RARITY_LABELS, RARITY_ORDER, RARITY_COLORS } from "@planet/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
@@ -8,35 +10,61 @@ import { Nav, ScreenHeader, Screen } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
 import { fmt } from "./format.js";
 
+const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");   // busca sem acento
 export default function Shop({ on }) {
   return <Screen id="shop" on={on} className="shop-wrap">{on ? <Body /> : null}</Screen>;
 }
 function Body() {
   const LB = useLabels(), theme = useTheme(), RC = (theme && theme.rarityColor) || RARITY_COLORS; const session = useStore(app, s => s.session);
-  const user = session.user || {}, owned = session.skins, coins = user.coins || 0, eqId = user.equippedSkin ?? 0, sk = skinById(eqId);
-  const [filter, setFilter] = useState("all");
+  const user = session.user || {}, owned = session.skins, coins = user.coins || 0, eqId = user.equippedSkin ?? 0, eq = skinById(eqId);
+  const [filter, setFilter] = useState("all"), [q, setQ] = useState(""), [sort, setSort] = useState("rarity"), [mineOnly, setMineOnly] = useState(false), [sel, setSel] = useState(eqId);
   useEffect(() => { loadSkins(); }, []);
-  const list = SKINS.filter(s => filter === "all" || s.rarity === filter);
   const stateOf = s => { const own = owned.includes(s.id);
     return s.id === eqId ? "eq" : own ? "owned" : s.rarity === "secret" ? "secret" : s.unlockKey ? "locked" : s.price > coins ? "poor" : "buyable"; };
-  const click = (s, st) => { if (st === "eq") return; if (st === "owned") return equipSkin(s.id); if (st === "buyable") return buySkin(s.id);
-    if (st === "poor") return toast(LB.poorToast); if (st === "secret") return toast(LB.secretToast); return toast(LB.lockedToast + ": " + s.desc); };
+  const list = useMemo(() => {
+    const nq = norm(q);
+    const out = SKINS.filter(s => (filter === "all" || s.rarity === filter) && (!mineOnly || owned.includes(s.id)) && (!nq || norm(s.name).includes(nq)));
+    const ri = s => RARITY_ORDER.indexOf(s.rarity);
+    out.sort(sort === "price" ? (a, b) => a.price - b.price || ri(a) - ri(b)
+      : sort === "name" ? (a, b) => a.name.localeCompare(b.name, "pt-BR")
+      : (a, b) => ri(a) - ri(b) || a.price - b.price);
+    return out;
+  }, [filter, q, sort, mineOnly, owned]);
+  const cur = skinById(sel), curSt = stateOf(cur);
+  const act = () => { if (curSt === "owned") return equipSkin(cur.id); if (curSt === "buyable") return buySkin(cur.id);
+    if (curSt === "poor") return toast(LB.poorToast); if (curSt === "secret") return toast(LB.secretToast); if (curSt === "locked") return toast(LB.lockedToast + ": " + cur.desc); };
+  const actLabel = curSt === "eq" ? LB.equipped : curSt === "owned" ? LB.equip : curSt === "secret" ? "???" : curSt === "locked" ? LB.locked : `${LB.coinIcon} ${fmt(cur.price)}`;
   return <>
     <Nav cur="shop" /><ScreenHeader title={LB.shopTitle} />
-    <div className="card shop-eq"><SkinPreview skin={sk} r={40} />
-      <div className="skinmeta"><b id="s-skin">{sk.name}</b><i id="s-rar" style={{ color: RC[sk.rarity] }}>{RARITY_LABELS[sk.rarity]}</i><span className="hint" id="s-count">{owned.length}/{SKINS.length} {LB.unlocked}</span></div>
+    <div className="card shop-eq"><SkinPreview skin={eq} r={40} />
+      <div className="skinmeta"><b id="s-skin">{eq.name}</b><i id="s-rar" style={{ color: RC[eq.rarity] }}>{RARITY_LABELS[eq.rarity]}</i><span className="hint" id="s-count">{owned.length}/{SKINS.length} {LB.unlocked}</span></div>
       <span className="badge">{LB.equipped}</span></div>
+    <div className="shop-prog"><i style={{ width: Math.round(owned.length / SKINS.length * 100) + "%" }} /></div>
+    <div className="shop-tools">
+      <input type="search" value={q} placeholder={LB.shopSearch} onChange={e => setQ(e.target.value)} aria-label={LB.shopSearch} />
+      <select value={sort} onChange={e => setSort(e.target.value)} aria-label={LB.sortBy.rarity}>
+        {["rarity", "price", "name"].map(k => <option key={k} value={k}>{LB.sortBy[k]}</option>)}
+      </select>
+      <button className={"toggle" + (mineOnly ? " on" : "")} onClick={() => setMineOnly(v => !v)}>{LB.onlyMine}</button>
+    </div>
     <div className="filters" id="shop-filters">
       <button data-f="all" className={filter === "all" ? "on" : ""} onClick={() => setFilter("all")}>{LB.filterAll}</button>
       {RARITY_ORDER.map(r => <button key={r} data-f={r} className={filter === r ? "on" : ""} style={{ "--rc": RC[r] }} onClick={() => setFilter(r)}>{RARITY_LABELS[r]}</button>)}
     </div>
     <div className="shop-grid" id="shop-grid">{list.map(s => { const st = stateOf(s), sec = st === "secret";
-      return <div key={s.id} className={"skin-card " + st} data-skin={s.id} data-rar={s.rarity} style={{ "--rc": RC[s.rarity] }} onClick={() => click(s, st)} role="button" tabIndex={0}
-        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); click(s, st); } }}>
+      return <div key={s.id} className={"skin-card " + st + (s.id === sel ? " sel" : "")} data-skin={s.id} data-rar={s.rarity} style={{ "--rc": RC[s.rarity] }}
+        onClick={() => setSel(s.id)} role="button" tabIndex={0} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSel(s.id); } }}>
+        <span className="rar-dot" />
         {st === "eq" ? <span className="badge">{LB.equipped}</span> : null}
         <SkinPreview skin={s} r={36} className="" secret={sec} />
         <b>{sec ? LB.secret : s.name}</b><i>{RARITY_LABELS[s.rarity]}</i>
-        <em>{st === "eq" ? "" : st === "owned" ? LB.equip : sec ? "???" : st === "locked" ? s.desc : `${LB.coinIcon} ${fmt(s.price)}`}</em></div>; })}</div>
+        <em>{st === "eq" ? "" : st === "owned" ? LB.equip : sec ? "???" : st === "locked" ? s.desc : `${LB.coinIcon} ${fmt(s.price)}`}</em></div>; })}
+      {list.length ? null : <div className="hint">{LB.noSkins}</div>}</div>
+    <div className="card shop-detail" style={{ "--rc": RC[cur.rarity] }}>
+      <SkinPreview skin={cur} r={38} className="" secret={curSt === "secret"} />
+      <div className="info"><b>{curSt === "secret" ? LB.secret : cur.name}</b><i>{RARITY_LABELS[cur.rarity]}</i><span>{cur.desc}</span></div>
+      <button className="act" disabled={curSt === "eq"} onClick={act}>{actLabel}</button>
+    </div>
     <div className="shop-note hint">{LB.shopNote}</div>
   </>;
 }

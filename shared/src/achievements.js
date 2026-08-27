@@ -11,6 +11,8 @@ export const ACHIEVEMENTS=[
   {key:"split100",title:"Divisor",desc:"Divida 100 vezes (total)",coins:100,icon:"✂️"},
   {key:"eject200",title:"Ejector",desc:"Ejete massa 200 vezes (total)",coins:100,icon:"💨"},
   {key:"games10",title:"Veterano",desc:"Jogue 10 partidas",coins:100,icon:"🎖️"},
+  {key:"survive10",title:"Sentinela",desc:"Sobreviva 10 minutos numa vida",coins:200,icon:"⚔️"},
+  {key:"mass10000",title:"Colosso",desc:"Alcance massa 10.000",coins:200,icon:"🗿"},
   {key:"secret1",title:"???",desc:"Segredo oculto",coins:250,icon:"❓",secret:true},
   {key:"secret2",title:"???",desc:"Segredo oculto",coins:250,icon:"❓",secret:true},
   {key:"secret3",title:"???",desc:"Segredo oculto",coins:250,icon:"❓",secret:true},
@@ -25,8 +27,8 @@ export const ACHIEVEMENT_GOALS={eat50:["kills",50],eatbots10:["botKills",10],spl
  * @param {{kills:number,botKills:number,splits:number,ejects:number,games:number}} s
  */
 export function unlockedAchievements(m,s){const out=[];
-  if(m.durationS>=300)out.push("survive5");
-  if(m.maxMass>=5000)out.push("mass5000");
+  if(m.durationS>=300)out.push("survive5");if(m.durationS>=600)out.push("survive10");
+  if(m.maxMass>=5000)out.push("mass5000");if(m.maxMass>=10000)out.push("mass10000");
   if(m.bestStreak>=5)out.push("streak5");
   if(m.top1Ticks>=3*60*60)out.push("top1_3min");
   if(m.quadrants>=4)out.push("explore4");
