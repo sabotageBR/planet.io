@@ -78,8 +78,7 @@ test('join: room + PLAYERS com bots + snapshots com criações na AOI',async()=>
   // AOI: tudo que o servidor tem dentro do retângulo interno da sessão é conhecido; nada conhecido fora do externo
   const room=roomOf(roomCode),s=room.sessions.get(A.slot),w=room.sim.world;assert.ok(s.rect);
   const pulled=f=>w.holes.some(h=>{const ri=h.r*BLACKHOLE.INFLUENCE*h.k,dx=h.x-f.x,dy=h.y-f.y;
-    if(dx*dx+dy*dy<ri*ri)return true;                                                    // sendo puxada: anda entre um snapshot e o outro
-    const ex=h.ex-f.x,ey=h.ey-f.y,sp=BLACKHOLE.EXIT_SPREAD*1.3;return ex*ex+ey*ey<sp*sp;});   // acabou de sair pelo outro lado: nasce em bloco, entra no snapshot seguinte
+    return dx*dx+dy*dy<ri*ri;});                                                         // sendo puxada: anda entre um snapshot e o outro
   // o retângulo de criação é o INTERNO (AOI_PAD); entre ele e s.rect (AOI_PAD_OUT) fica a faixa de histerese, que
   // por projeto ainda não foi criada — medir contra s.rect punia justamente essa faixa (~20% da área)
   const rin=viewRect(s.cx,s.cy,s.scale,s.view.w,s.view.h,NET.AOI_PAD);

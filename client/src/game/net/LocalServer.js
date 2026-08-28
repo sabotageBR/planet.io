@@ -85,13 +85,12 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
           for(const s of sessions)if(s.slot===ev.killerSlot&&ev.lastPiece)s.kills++;break;
         case "EJECT_EATEN":reasonMap.set(ev.ejectId,REMOVE.EATEN);break;
         case "MERGE":reasonMap.set(ev.mergedId,REMOVE.MERGED);e={kind:EVENT.MERGE,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:0,extra:0};break;
-        case "POP":reasonMap.set(ev.asteroidId,REMOVE.POPPED);e={kind:EVENT.POP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:0,extra:0};break;
+        case "POP":reasonMap.set(ev.asteroidId,REMOVE.POPPED);e={kind:EVENT.POP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot<0?0:ev.slot,slotB:0,extra:0};break;
         case "SPLIT":e={kind:EVENT.SPLIT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:0,extra:0};break;
-        case "BH_SUCK":if(ev.destroyed)reasonMap.set(ev.pieceId,REMOVE.SUCKED);e={kind:EVENT.BH_SUCK,x:ev.fromX,y:ev.fromY,r:40,slotA:ev.slot,slotB:0,extra:ev.destroyed?1:0};break;
-        case "EXIT":e={kind:EVENT.EXIT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:0,extra:0};break;
+        case "BH_SUCK":reasonMap.set(ev.pieceId,REMOVE.SUCKED);e={kind:EVENT.BH_SUCK,x:ev.fromX,y:ev.fromY,r:ev.r,slotA:ev.slot,slotB:0,extra:1};break;
         case "CHIP":e={kind:EVENT.CHIP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:0,extra:packDir(ev.nx,ev.ny,0)};break;
         case "BOUNCE":e={kind:EVENT.BOUNCE,x:ev.x,y:ev.y,r:ev.r,slotA:0,slotB:0,extra:packDir(ev.nx,ev.ny,ev.vn)};break;
-        case "BOOM":e={kind:EVENT.BOOM,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot,extra:0};break;
+        case "BOOM":e={kind:EVENT.BOOM,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot<0?0:ev.slot,slotB:ev.bySlot<0?0:ev.bySlot,extra:0};break;
         case "SHOOT":e={kind:EVENT.SHOOT,x:ev.x,y:ev.y,r:36,slotA:0,slotB:0,extra:packDir(ev.nx,ev.ny,0)};break;
         case "SHIELD_BREAK":e={kind:EVENT.SHIELD_BREAK,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot<0?65535:ev.bySlot,extra:0};break;
         case "SHIELD_HIT":e={kind:EVENT.SHIELD_HIT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot<0?65535:ev.bySlot,extra:packDir(ev.nx,ev.ny,ev.level)};break;

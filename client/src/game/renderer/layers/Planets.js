@@ -1,12 +1,13 @@
 // ── PLANETAS: pool {corpo (sprite por tier), Graphics (arco de merge + anéis de powerup),
-//    BitmapText nome/massa}; ordenados por raio (zIndex). Trilhas: um Graphics só, polilinha
-//    tracejada (theme.hud.trail). Fontes bitmap instaladas por tema (nome/massa) com charset pt-BR.
+//    BitmapText do nome}; ordenados por raio (zIndex). Trilhas: um Graphics só, polilinha
+//    tracejada (theme.hud.trail). Fonte bitmap instalada por tema (só o nome) com charset pt-BR.
+//    A massa NÃO é escrita dentro do planeta: o número vive só no HUD e no placar.
 //    Anéis: pelas flags de CADA peça (SHIELD + nível em 2 bits, MAGNET) — powerup é por peça, então duas partes do
 //    mesmo planeta podem estar diferentes. Escudo usa theme.hud.cell.powerups.shieldLevels[nível−1]; ímã pede R.ambient("magnet").
 //    pop(id,delay): "gulp" de quem acabou de engolir alguém — o corpo incha e achata por POP_MS (a absorção do EAT).
 import {Container,Sprite,Graphics,BitmapText,BitmapFont,Cache,MeshPlane} from "pixi.js";
 import {PIECE_FLAG,mergeTicks,rectHas} from "@planet/shared";
-import {colorOf,fmt,dashPolyline,seedUnit} from "../../util.js";
+import {colorOf,dashPolyline,seedUnit} from "../../util.js";
 
 const FS=48,CHARS=[[" ","~"],["¡","ÿ"],["Ā","ž"],"✓◆✦•–—…"],TRAIL_MAX=12,TRAIL_MIN_V=72,POP_MS=280,POP_AMP=.22;
 // ── BLOB (borda de gelatina, estilo agar.io) ──
@@ -19,20 +20,20 @@ const FS=48,CHARS=[[" ","~"],["¡","ÿ"],["Ā","ž"],"✓◆✦•–—…"],TR
 const WOB_N=9,WOB_MIN_PX=15,WOB_MAX=16,WOB_AMP=.018,WOB_LOBES=[3,5],WOB_SPD=[1.7,2.6],SQUASH_K=.06,SQUASH_V=360;
 export function createPlanets(R){
   const root=new Container();root.sortableChildren=true;const trails=new Graphics();
-  const views=new Map(),trailMap=new Map(),seg=[],counts=new Map(),pops=new Map();let frame=0,fontName="",fontMass="",lastTrailTick=-1;
-  function setTheme(){const th=R.theme,L=th.hud.labels;fontName=`pn-${th.id}`;fontMass=`pm-${th.id}`;
+  const views=new Map(),trailMap=new Map(),seg=[],counts=new Map(),pops=new Map();let frame=0,fontName="",lastTrailTick=-1;
+  function setTheme(){const th=R.theme,L=th.hud.labels;fontName=`pn-${th.id}`;
     const sw=L.strokeWidth(FS);
-    // fontes ficam instaladas por tema (nome inclui o id): desinstalar quebra BitmapTexts de outra instância (StrictMode)
-    // skipKerning é OBRIGATÓRIO aqui: o kerning do Pixi é O(n²) sobre o charset (≈324 glifos → ~210 mil measureText por
-    // fonte, num tick só) — era ele que congelava a tela na primeira vez que cada tema aparecia. Nome/massa são textos
-    // curtos e centralizados, então o espaçamento sem kerning não muda nada na prática.
-    for(const [name,fill] of [[fontName,L.nameColor],[fontMass,L.massColor]]){if(Cache.has(name+"-bitmap"))continue;
-      BitmapFont.install({name,skipKerning:true,style:{fontFamily:L.font,fontSize:FS,fontWeight:"bold",fill,stroke:{color:L.stroke,width:sw,join:"round"}},chars:CHARS,resolution:1,padding:Math.ceil(sw)+2});}
-    for(const v of views.values()){v.name.style.fontFamily=fontName;v.mass.style.fontFamily=fontMass;}}
+    // fonte fica instalada por tema (nome inclui o id): desinstalar quebra BitmapTexts de outra instância (StrictMode)
+    // skipKerning é OBRIGATÓRIO aqui: o kerning do Pixi é O(n²) sobre o charset (≈324 glifos → ~210 mil measureText,
+    // num tick só) — era ele que congelava a tela na primeira vez que cada tema aparecia. O nome é curto e
+    // centralizado, então o espaçamento sem kerning não muda nada na prática.
+    if(!Cache.has(fontName+"-bitmap"))
+      BitmapFont.install({name:fontName,skipKerning:true,style:{fontFamily:L.font,fontSize:FS,fontWeight:"bold",fill:L.nameColor,stroke:{color:L.stroke,width:sw,join:"round"}},chars:CHARS,resolution:1,padding:Math.ceil(sw)+2});
+    for(const v of views.values())v.name.style.fontFamily=fontName;}
   function mkView(id){const c=new Container(),body=new Sprite();body.anchor.set(.5);const gfx=new Graphics();
-    const name=new BitmapText({text:"",style:{fontFamily:fontName,fontSize:FS}}),mass=new BitmapText({text:"",style:{fontFamily:fontMass,fontSize:FS}});name.anchor.set(.5);mass.anchor.set(.5);
-    c.addChild(body,gfx,name,mass);root.addChild(c);
-    return{c,body,gfx,name,mass,mesh:null,phase:seedUnit(id)*6.2832,lastName:null,lastMassN:-1,f:0};}
+    const name=new BitmapText({text:"",style:{fontFamily:fontName,fontSize:FS}});name.anchor.set(.5);
+    c.addChild(body,gfx,name);root.addChild(c);
+    return{c,body,gfx,name,mesh:null,phase:seedUnit(id)*6.2832,lastName:null,f:0};}
   /** Malha do blob desta peça (criada na primeira vez que ela fica grande o bastante). */
   function meshOf(v,tex){let m=v.mesh;
     if(!m){m=new MeshPlane({texture:tex,verticesX:WOB_N,verticesY:WOB_N});v.mesh=m;v.c.addChildAt(m,0);}
@@ -62,7 +63,7 @@ export function createPlanets(R){
     /** Marca o "engoliu!" da peça `id` (começa daqui a `delay` ms, o mesmo atraso do efeito de terceiros). */
     pop(id,delay=0){pops.set(id,performance.now()+(delay||0));},
     render(f){frame++;const th=R.theme,TX=th.textures,L=th.hud.labels,cell=th.hud.cell,view=f.view,rect=f.rect,rt=f.rt,t=f.t;
-      const showNames=f.showNames,showMass=f.showMass,PK=TX.scale.planet;
+      const showNames=f.showNames,PK=TX.scale.planet;
       const cam=f.cam,wob=f.wobble!==false&&!R.econ;let blobs=0;
       counts.clear();for(const e of view.pieces)counts.set(e.owner,(counts.get(e.owner)||0)+1);
       const trailTick=Math.floor(rt/2),trailStep=trailTick!==lastTrailTick;lastTrailTick=trailTick;
@@ -80,9 +81,9 @@ export function createPlanets(R){
           const m=meshOf(v,tex);m.visible=true;v.body.visible=false;deform(m,v,e,d,t,sx,sy);}
         else{if(v.mesh)v.mesh.visible=false;v.body.visible=true;v.body.texture=tex;v.body.width=d*2*sx;v.body.height=d*2*sy;}
         // rótulos
-        const lab=e.rr>L.minR&&(showNames||showMass);v.name.visible=lab&&showNames;v.mass.visible=lab&&showMass;
+        const lab=e.rr>L.minR&&showNames;v.name.visible=lab;
         if(lab){const fs=L.size(e.rr);const nm=pl.name+(pl.registered?" ✓":"");if(v.lastName!==nm){v.lastName=nm;v.name.text=nm;}
-          v.name.scale.set(fs/FS);v.name.y=L.nameY(fs);const mn=Math.round(e.rr*e.rr);if(v.lastMassN!==mn){v.lastMassN=mn;v.mass.text=fmt(mn);}v.mass.scale.set(fs*L.massK/FS);v.mass.y=L.massY(fs);}
+          v.name.scale.set(fs/FS);v.name.y=L.nameY(fs);}
         // arco de merge + anéis de powerup
         const g=v.gfx;g.clear();let drew=false;const n=counts.get(e.owner)||1;
         if(n>1&&!(e.flags&PIECE_FLAG.MERGING)){const t0=e.firstTick!=null?e.firstTick:e.createdTick,prog=t0!=null?Math.min(1,Math.max(0,(rt-t0)/mergeTicks(e.rr))):1;

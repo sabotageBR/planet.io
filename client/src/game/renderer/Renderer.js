@@ -8,7 +8,7 @@ import {createBackground} from "./layers/Background.js";
 import {createGrid} from "./layers/Grid.js";
 import {createFood,foodAtlas} from "./layers/Food.js";
 import {createEjected,ejectedAtlas} from "./layers/Ejected.js";
-import {createHazards} from "./layers/Hazards.js";
+import {createHazards,BH_TEX} from "./layers/Hazards.js";
 import {createPlanets} from "./layers/Planets.js";
 import {createMissiles} from "./layers/Missiles.js";
 import {createAim} from "./layers/Aim.js";
@@ -54,8 +54,11 @@ export async function createRenderer({container,theme,prefs}){
     prewarmTheme(th,skins=[],meSkin=null){if(!th||th===R.theme)return;
       bg.prewarm(th);
       const fa=foodAtlas(th),ea=ejectedAtlas(th);R.cache.warmAtlas(fa.key,fa.items);R.cache.warmAtlas(ea.key,ea.items);
-      rd.warmPlanets(skins,meSkin,th);},
-    /** f: {view,cam,now,dt,t,rt,rect,aim,parallax,showGrid,showNames,showMass,showTrails} */
+      rd.warmHazards(th);rd.warmPlanets(skins,meSkin,th);},
+    /** Buraco negro: uma textura 512 por tema, mas é o desenho mais caro do jogo — sem aquecer, ela é assada
+     *  sincronamente no primeiro frame em que um buraco entra na tela, e isso é um engasgo visível. */
+    warmHazards(th=R.theme){const TX=th.textures;R.cache.warm(TX.key("blackHole",{},BH_TEX),BH_TEX,(c,s)=>TX.blackHole(c,s,{}));},
+    /** f: {view,cam,now,dt,t,rt,rect,aim,parallax,showGrid,showNames,showTrails} */
     render(f){R.cache.tick();const cam=f.cam;world.position.set(R.W/2-cam.x*cam.scale,R.H/2-cam.y*cam.scale);world.scale.set(cam.scale);
       for(const l of layers)l.render(f);app.render();},
     counts(){const h=hazards.counts();return{planets:planets.count(),food:food.count(),ejected:ejected.count(),asteroids:h.asteroids,holes:h.holes,stars:h.stars,missiles:missiles.count(),fx:fx.count(),textures:R.cache.size,texMB:(R.cache.bytes/1048576).toFixed(1)};},

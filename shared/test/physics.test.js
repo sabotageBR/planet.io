@@ -19,7 +19,7 @@ const LOCAL_CHIP_MIN=1;   // LOCAL.CHIP_N[0] de rules.js (LOCAL não é exportad
 const snapshot=w=>JSON.stringify({tick:w.tick,nextId:w.nextId,
   pieces:w.pieces.map(b=>[b.id,b.owner,b.x,b.y,b.vx,b.vy,b.r,b.mergeAt,b.flags,b.shieldLv,b.magnetUntil]),
   food:w.food.map(b=>[b.id,b.x,b.y,b.type,b.hue]),ejected:w.ejected.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.life]),
-  asteroids:w.asteroids.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.r,b.type,b.ang]),holes:w.holes.map(b=>[b.id,b.x,b.y,b.k,b.type,b.life,b.ex,b.ey]),
+  asteroids:w.asteroids.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.r,b.type,b.ang]),holes:w.holes.map(b=>[b.id,b.x,b.y,b.k,b.type,b.life]),
   missiles:w.missiles.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.targetId,b.type]),stars:w.stars.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.r,b.k,b.type,b.life,b.hits,b.hue]),
   players:[...w.players.values()].map(p=>[p.slot,p.alive,p.score,p.missiles])});
 
@@ -112,17 +112,20 @@ test("engolir: r60 vs r30 engole com o centro dentro; r40 vs r38 quica sem engol
   assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>=(a.r+b.r)*.9,"quique separou as peças");});
 
 // 7. buraco negro
-test("buraco negro: peça no núcleo é teleportada para a saída com massa ×(1−LOSS); peça pequena é destruída",()=>{
-  const w=empty(11);const h=w.spawnHole({x:2000,y:2000,ex:5000,ey:5000,active:true});
+test("buraco negro: quem cabe no núcleo é esmagado e vira pellets; quem é maior que a bola passa por cima",()=>{
+  const w=empty(11);const h=w.spawnHole({x:2000,y:2000,active:true});const lim=h.r*h.k*BLACKHOLE.CRUSH_K;
   const pc=w.addPlayer(0,{x:2005,y:2000,r:40});pc.cdUntil=0;const m0=pc.mass;w.step();
-  const s=w.events.find(e=>e.type==="BH_SUCK");assert.ok(s,"BH_SUCK");assert.equal(s.slot,0);assert.equal(s.pieceId,pc.id);assert.ok(!s.destroyed);
-  assert.ok(Math.abs(pc.mass-m0*(1-BLACKHOLE.LOSS))<1e-6,"massa ×(1−LOSS)");
-  assert.ok(Math.hypot(pc.x-h.ex,pc.y-h.ey)<=45,"perto da saída");assert.ok(Math.abs(boostLeft(pc)-BLACKHOLE.EXIT_DIST)<1e-6,"arremessado EXIT_DIST px");
-  assert.ok(w.events.some(e=>e.type==="EXIT"&&e.slot===0));assert.ok(w.players.get(0).alive);
-  const tiny=w.addPlayer(1,{x:2003,y:2001,r:17});tiny.cdUntil=0;w.step();
-  const s2=w.events.find(e=>e.type==="BH_SUCK"&&e.slot===1);assert.ok(s2&&s2.destroyed,"peça pequena destruída");
-  assert.ok(w.events.some(e=>e.type==="PLAYER_DEAD"&&e.slot===1&&e.cause==="blackhole"));assert.equal(w.piecesOf(1).length,0);
-  assert.ok(pc.r>=PLAYER.MIN_PIECE_R);});
+  const s=w.events.find(e=>e.type==="BH_SUCK");assert.ok(s,"BH_SUCK");assert.equal(s.slot,0);assert.equal(s.pieceId,pc.id);assert.ok(s.destroyed);
+  assert.ok(w.events.some(e=>e.type==="PLAYER_DEAD"&&e.slot===0&&e.cause==="blackhole"),"não há mais teleporte: é esmagada");
+  assert.equal(w.piecesOf(0).length,0);
+  const pel=w.ejected.filter(e=>e.owner===-1);
+  assert.equal(pel.length,BLACKHOLE.SPAGHETTI_N,"a massa virou pellets");
+  assert.ok(Math.abs(pel.reduce((a,e)=>a+e.mass,0)-m0)<1e-6,"e eles somam EXATAMENTE a massa da peça: nada evapora");
+  const big=w.addPlayer(1,{x:2005,y:2000,r:lim+1});big.cdUntil=0;const bm=big.mass;
+  for(let t=0;t<60;t++)w.step();
+  assert.ok(w.players.get(1).alive&&!big.dead,"maior que rc·CRUSH_K: atravessa o núcleo e nada acontece");
+  assert.ok(Math.abs(big.mass-bm)<1e-6,"e não perde massa nenhuma");
+  assert.ok(Math.hypot(big.vx,big.vy)>1,"mas a gravidade continua puxando o gigante");});
 
 // 8. predição usa as mesmas funções (peça própria isolada = servidor)
 test("predição: stepOwnPieces reproduz o servidor para um jogador isolado",()=>{
@@ -168,7 +171,7 @@ test("fusão: não há atração entre peças próprias (elas se juntam pelo pon
 
 // 11. escudo por níveis
 test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nível, dividir derruba, escudado quica",()=>{
-  const w=empty(30),pc=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);
+  const w=empty(30),pc=w.addPlayer(0,{x:1000,y:1000,r:60});w.setTarget(0,1000,1000);
   const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=1000;f.y=1000;w.foodDirty=true;w.step();
   assert.equal(pc.shieldLv,1);assert.ok(w.events.some(e=>e.type==="SHIELD_UP"&&e.level===1));
   w.step();assert.ok(pc.flags&PIECE_FLAG.SHIELD);assert.equal((pc.flags>>PIECE_FLAG.SHIELD_LV_SHIFT)&3,1);
@@ -179,7 +182,7 @@ test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nív
   const f2=w.spawnFood();f2.type=FOOD_TYPE.SHIELD;f2.x=pc.x;f2.y=pc.y;w.foodDirty=true;w.step();assert.equal(pc.shieldLv,3,"outro 🛡️ no teto: continua 3");
   // míssil inimigo tira um nível, sem tirar massa
   const w3=empty(31),p0=w3.addPlayer(0,{x:1000,y:1000,r:40});w3.setTarget(0,1000,1000);p0.shieldLv=2;p0.shieldEvolveAt=1e9;
-  w3.addPlayer(1,{x:1400,y:1000,r:40,missiles:2});w3.setTarget(1,1400,1000);
+  w3.addPlayer(1,{x:1400,y:1000,r:60,missiles:2});w3.setTarget(1,1400,1000);
   w3.requestFire(1);let hit=null;for(let t=0;t<60&&!hit;t++){w3.step();hit=w3.events.find(e=>e.type==="SHIELD_HIT")||null;}
   assert.ok(hit,"SHIELD_HIT");assert.equal(hit.level,1);assert.equal(p0.shieldLv,1);assert.equal(w3.missiles.length,0);assert.equal(p0.r,40,"massa intacta");
   assert.ok(p0.shieldEvolveAt<1e9,"timer de evolução reiniciado");assert.ok(!w3.events.some(e=>e.type==="BOOM"));
@@ -200,9 +203,31 @@ test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nív
   assert.ok(!w5.players.get(1).alive,"e o pequeno morre");
   assert.ok(!w5.events.some(e=>e.type==="SHIELD_BREAK"),"o escudo nem entra na conta do engolir");});
 
+// 11b. piso de tamanho para atirar e para pegar escudo
+test("piso de tamanho: recém-nascido não atira nem pega escudo — e a comida do escudo fica no chão",()=>{
+  const w=empty(34),pc=w.addPlayer(0,{x:1000,y:1000,r:PLAYER.START_R,missiles:3}),ps=w.players.get(0);
+  w.setTarget(0,1000,1000);w.addPlayer(1,{x:2000,y:1000,r:60});
+  w.requestFire(0);w.step();
+  assert.equal(w.missiles.length,0,"r=START_R (30) não atira");assert.equal(ps.missiles,3,"e nem gasta a munição");
+  const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=1000;f.y=1000;w.foodDirty=true;w.step();
+  assert.equal(pc.shieldLv,0,"nem pega escudo");
+  assert.ok(!f.dead&&w.food.includes(f),"e a comida NEM É CONSUMIDA: fica no chão para quem crescer");
+  setR(pc,MISSILE.MIN_R);w.step();   // cresceu até o piso
+  assert.ok(f.dead&&pc.shieldLv===1,"no piso, o mesmo escudo é pego");
+  w.requestFire(0);w.step();
+  assert.equal(w.missiles.length,1,"e o tiro sai");assert.equal(ps.missiles,2);
+  // picar-se em lascas desarma: o tiro sai da primeira peça viva GRANDE o bastante
+  const w2=empty(35),q=w2.addPlayer(0,{x:1000,y:1000,r:200,missiles:1}),ps2=w2.players.get(0);
+  w2.setTarget(0,1000,1000);w2.addPlayer(1,{x:3000,y:1000,r:60});
+  setR(q,20);const g=w2.newPiece(0,1040,1000,20);g.mergeAt=1e9;q.mergeAt=1e9;
+  w2.requestFire(0);w2.step();assert.equal(w2.missiles.length,0,"todas as peças abaixo do piso: não atira");
+  setR(g,MISSILE.MIN_R+10);w2.requestFire(0);w2.step();
+  assert.equal(w2.missiles.length,1,"basta UMA peça no piso — e é dela que sai o tiro");
+  assert.ok(Math.hypot(w2.missiles[0].x-g.x,w2.missiles[0].y-g.y)<Math.hypot(w2.missiles[0].x-q.x,w2.missiles[0].y-q.y));});
+
 // 12. míssil × míssil
 test("míssil×míssil: interceptação (type 1 mira o míssil inimigo) e choque varrido destroem os dois (CLASH)",()=>{
-  const w=empty(40);w.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w.addPlayer(1,{x:1800,y:1000,r:40,missiles:1});w.setTarget(0,1000,1000);w.setTarget(1,1800,1000);
+  const w=empty(40);w.addPlayer(0,{x:1000,y:1000,r:60,missiles:1});w.addPlayer(1,{x:1800,y:1000,r:60,missiles:1});w.setTarget(0,1000,1000);w.setTarget(1,1800,1000);
   w.requestFire(0);w.step();const mA=w.missiles[0];assert.equal(mA.targetId,1);assert.equal(mA.type,0);
   w.requestFire(1);w.step();const mB=w.missiles[1];assert.equal(mB.type,1);assert.equal(mB.targetId,mA.id);
   let clash=null;for(let t=0;t<60&&!clash;t++){w.step();clash=w.events.find(e=>e.type==="CLASH")||null;}
@@ -216,7 +241,7 @@ test("míssil×míssil: interceptação (type 1 mira o míssil inimigo) e choque
   const w3=empty(42);w3.addPlayer(0,{x:1000,y:1000,r:40});w3.addMissile(1000,1500,MISSILE.SPEED,0,0,-1);w3.addMissile(1600,1500,-MISSILE.SPEED,0,0,-1);
   for(let t=0;t<40;t++){w3.step();assert.ok(!w3.events.some(e=>e.type==="CLASH"));}
   // alvo do interceptador some → segue reto
-  const w4=empty(43);w4.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w4.addPlayer(1,{x:2000,y:1000,r:40,missiles:1});w4.setTarget(0,1000,1000);w4.setTarget(1,2000,1000);
+  const w4=empty(43);w4.addPlayer(0,{x:1000,y:1000,r:60,missiles:1});w4.addPlayer(1,{x:2000,y:1000,r:60,missiles:1});w4.setTarget(0,1000,1000);w4.setTarget(1,2000,1000);
   w4.requestFire(0);w4.step();w4.requestFire(1);w4.step();const i4=w4.missiles[1];assert.equal(i4.type,1);w4.missiles[0].dead=true;w4.step();w4.step();
   assert.equal(i4.type,0);assert.equal(i4.targetId,-1);assert.ok(!i4.dead);assert.equal(w4.missiles.length,1);});
 
@@ -334,14 +359,14 @@ test("asteroide: o escudo paga pela VELOCIDADE da batida (1/2/3 níveis) e rápi
   a2.vx=-900;a2.vy=0;w2.setTarget(0,1000,1000);let chip=null;for(let t=0;t<30&&!chip;t++){w2.step();chip=w2.events.find(e=>e.type==="CHIP")||null;}
   assert.ok(chip&&p2.r<40,"sem escudo lasca");
   // mira com o cone vazio: o míssil sai reto para o alvo do ponteiro
-  const w3=empty(77);w3.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w3.addPlayer(1,{x:1000,y:2000,r:40});
+  const w3=empty(77);w3.addPlayer(0,{x:1000,y:1000,r:60,missiles:1});w3.addPlayer(1,{x:1000,y:2000,r:40});
   w3.setTarget(0,2000,1000);w3.requestFire(0,true);w3.step();
   const m=w3.missiles[0];assert.ok(m,"míssil");assert.equal(m.targetId,-1);assert.ok(m.vx>0&&Math.abs(m.vy)<1e-6,"direção do alvo");
   const vy0=m.vy;for(let t=0;t<30;t++)w3.step();assert.ok(Math.abs(m.vy-vy0)<1e-6,"não curva atrás de ninguém");});
 
 // 19. powerups por peça
 test("powerup por peça: só a parte que pegou o 🛡️/🧲 se beneficia; ao fundir fica o melhor das duas",()=>{
-  const w=empty(80),a=w.addPlayer(0,{x:1000,y:1000,r:60});w.setTarget(0,2000,1000);
+  const w=empty(80),a=w.addPlayer(0,{x:1000,y:1000,r:90});w.setTarget(0,2000,1000);   // r/√2 = 63,6 nas duas: acima de POWERUP.SHIELD_MIN_R
   w.requestSplit(0);w.step();const b=w.piecesOf(0).find(p=>p!==a);assert.ok(b,"dividiu em duas");
   for(let t=0;t<25;t++)w.step();assert.ok(b.x-a.x>120,"as partes se afastaram");
   const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=b.x;f.y=b.y;w.foodDirty=true;w.step();
@@ -359,21 +384,21 @@ test("powerup por peça: só a parte que pegou o 🛡️/🧲 se beneficia; ao f
 
 // 20. mira: trava no alvo do cone
 test("tiro mirado: persegue o objeto mais próximo dentro do cone (planeta, míssil ou asteroide)",()=>{
-  const w=empty(81);w.addPlayer(0,{x:1000,y:1000,r:40,missiles:3});w.setTarget(0,2000,1000);
+  const w=empty(81);w.addPlayer(0,{x:1000,y:1000,r:60,missiles:3});w.setTarget(0,2000,1000);
   w.addPlayer(1,{x:2200,y:1150,r:40});w.setTarget(1,2200,1150);
   w.requestFire(0,true);w.step();const m=w.missiles[0];
   assert.ok(m,"míssil");assert.equal(m.type,0);assert.equal(m.targetId,1,"travou no planeta inimigo do cone");
   let boom=false;for(let t=0;t<300&&!boom;t++){w.step();boom=w.events.some(e=>e.type==="BOOM");}
   assert.ok(boom,"vai atrás dele até acertar");
   // asteroide mais perto no mesmo cone rouba a trava
-  const w2=empty(82);w2.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w2.setTarget(0,2000,1000);
+  const w2=empty(82);w2.addPlayer(0,{x:1000,y:1000,r:60,missiles:1});w2.setTarget(0,2000,1000);
   w2.addPlayer(1,{x:2400,y:1000,r:40});const a=w2.spawnAsteroid(-1,1600,1080,40);a.vx=0;a.vy=0;
   w2.requestFire(0,true);w2.step();const m2=w2.missiles[0];
   assert.equal(m2.type,1);assert.equal(m2.targetId,a.id,"o asteroide estava mais perto");
   let defl=false;for(let t=0;t<120&&!defl;t++){w2.step();defl=w2.events.some(e=>e.type==="DEFLECT");}
   assert.ok(defl,"o míssil o alcança e o desvia");
   // sem AIM continua o tiro de sempre: teleguiado no oponente mais próximo, mesmo fora do cone
-  const w3=empty(83);w3.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w3.addPlayer(1,{x:1000,y:2000,r:40});
+  const w3=empty(83);w3.addPlayer(0,{x:1000,y:1000,r:60,missiles:1});w3.addPlayer(1,{x:1000,y:2000,r:40});
   w3.setTarget(0,2000,1000);w3.requestFire(0);w3.step();
   assert.equal(w3.missiles[0].targetId,1,"clique rápido persegue como antes");});
 
@@ -444,25 +469,24 @@ test("comer: a massa da vítima entra inteira; passar de MAX_R vira auto-split, 
   assert.ok(Math.abs(q.r-PLAYER.MAX_R)<1e-6,`sem vaga, o raio é cortado em MAX_R (ficou ${q.r.toFixed(1)})`);});
 
 // 23. buraco negro: puxa de longe, espirala e cospe com impulso
-test("buraco negro: puxa desde a borda da influência, espirala e cospe com impulso pelo outro lado",()=>{
-  const w=empty(87),h=w.spawnHole({x:3000,y:3000,ex:5600,ey:5600,active:true});h.k=1;h.seed=.2;
+test("buraco negro: puxa desde a borda da influência, espirala e esmaga no núcleo",()=>{
+  const w=empty(87),h=w.spawnHole({x:3000,y:3000,active:true});h.k=1;h.seed=.2;
   const ri=h.r*BLACKHOLE.INFLUENCE,pc=w.addPlayer(0,{x:3000+ri*.95,y:3000,r:40});
   pc.cdUntil=0;w.setTarget(0,pc.x,pc.y);w.step();
   assert.ok(pc.vx<-1,"na borda já é puxado para o buraco");
   assert.ok(Math.abs(pc.vy)>Math.abs(pc.vx)*.2,"com parte tangencial: espirala, não cai reto");
   w.setTarget(0,h.x,h.y);   // decidiu entrar (parado na borda o thrust segura a peça a ~200 px do núcleo)
   let suck=null;for(let t=0;t<900&&!suck;t++){w.step();suck=w.events.find(e=>e.type==="BH_SUCK")||null;}
-  assert.ok(suck,"chega ao horizonte de eventos");assert.ok(!suck.destroyed,"grande o bastante para sobreviver");
-  assert.ok(Math.hypot(pc.x-h.ex,pc.y-h.ey)<200,"saiu pela saída pareada");
-  assert.ok(boostLeft(pc)>BLACKHOLE.EXIT_DIST*.8,"impulsionado para longe");
+  assert.ok(suck&&suck.destroyed,"chega ao núcleo e é esmagada");
+  assert.equal(w.piecesOf(0).length,0,"não sai do outro lado: morre ali");
   // fora da influência nada acontece
-  const w2=empty(88),h2=w2.spawnHole({x:3000,y:3000,ex:5600,ey:5600,active:true});h2.k=1;
+  const w2=empty(88),h2=w2.spawnHole({x:3000,y:3000,active:true});h2.k=1;
   const far=w2.addPlayer(0,{x:3000+h2.r*BLACKHOLE.INFLUENCE*1.2,y:3000,r:40});w2.setTarget(0,far.x,far.y);
   for(let t=0;t<60;t++)w2.step();assert.ok(Math.hypot(far.vx,far.vy)<1,"fora do alcance ninguém puxa");});
 
 // 24. predição com buraco negro
 test("predição: stepOwnPieces com os buracos do cliente reproduz o servidor perto de um buraco",()=>{
-  const w=empty(89),h=w.spawnHole({x:3000,y:3000,ex:5600,ey:5600,active:true});h.k=1;h.seed=.7;
+  const w=empty(89),h=w.spawnHole({x:3000,y:3000,active:true});h.k=1;h.seed=.7;
   const R=200;   // planeta grande = lento, e nascendo a meio raio de influência: fica lá tempo suficiente para a gravidade pesar
   const pc=w.addPlayer(0,{x:3000+h.r*BLACKHOLE.INFLUENCE*.5,y:3200,r:R});pc.cdUntil=1e9;   // sem sucção: só a gravidade
   const tx=pc.x+400,ty=pc.y;w.setTarget(0,tx,ty);
@@ -471,7 +495,7 @@ test("predição: stepOwnPieces com os buracos do cliente reproduz o servidor pe
   for(let t=0;t<120;t++){w.step();holes[0].x=h.x;holes[0].y=h.y;stepOwnPieces(mine,{tx,ty},w.tick,DT,w.w,w.h,holes);}   // o cliente acompanha a deriva do buraco pelos snapshots
   assert.ok(Math.hypot(mine[0].x-pc.x,mine[0].y-pc.y)<1,"posição prevista bate com a do servidor");
   const noHoles=[createBody(KIND.PIECE,pc.id+1,3000+h.r*BLACKHOLE.INFLUENCE*.5,3200,R)];noHoles[0].owner=0;
-  const w2=empty(89);const h2=w2.spawnHole({x:3000,y:3000,ex:5600,ey:5600,active:true});h2.k=1;h2.seed=.7;
+  const w2=empty(89);const h2=w2.spawnHole({x:3000,y:3000,active:true});h2.k=1;h2.seed=.7;
   const pc2=w2.addPlayer(0,{x:3000+h2.r*BLACKHOLE.INFLUENCE*.5,y:3200,r:R});pc2.cdUntil=1e9;w2.setTarget(0,tx,ty);
   for(let t=0;t<120;t++){w2.step();stepOwnPieces(noHoles,{tx,ty},w2.tick,DT,w2.w,w2.h);}
   assert.ok(Math.hypot(noHoles[0].x-pc2.x,noHoles[0].y-pc2.y)>20,"sem os buracos a predição erraria feio");});
@@ -495,7 +519,7 @@ test("supernova: no miolo estilhaça quem está perto — o escudo não salva (s
 // 26. mira em estrela + estrela velha estoura no tiro
 test("estrela: o tiro mirado trava nela e, se já está inchando (OLD), a supernova vem na hora",()=>{
   const w=empty(94),st=w.spawnStar(true);st.x=3000;st.y=3000;st.life=w.tick+1;
-  w.addPlayer(0,{x:3000-900,y:3000,r:40,missiles:1});w.setTarget(0,3000,3000);
+  w.addPlayer(0,{x:3000-900,y:3000,r:60,missiles:1});w.setTarget(0,3000,3000);
   for(let t=0;t<3;t++)w.step();assert.equal(st.type,STAR_PHASE.OLD,"já está inchando");
   w.requestFire(0,true);w.step();
   const m=w.missiles[0];assert.ok(m,"míssil");assert.equal(m.type,1);assert.equal(m.targetId,st.id,"a mira travou na estrela");
@@ -564,27 +588,24 @@ test("ímã: asteroide é atraído (rocha pequena mais rápido que a grande); se
   assert.ok(grande>0&&grande<pequena*.7,`a grande vem bem mais devagar (${grande.toFixed(0)} vs ${pequena.toFixed(0)} px/s)`);});
 
 // 30. buraco negro: o que ele engole atravessa e a massa cobrada fica na entrada
-test("buraco negro: comida e ejetados saem do outro lado; 1/3 da massa vira pellets em volta da entrada",()=>{
-  const w=empty(98),h=w.spawnHole({x:4000,y:4000,ex:7000,ey:7000,active:true});
+test("buraco negro: comida engolida é reposta, pellet engolido some, e o esmagado vira pellets fora da influência",()=>{
+  const w=empty(98),h=w.spawnHole({x:4000,y:4000,active:true});
   const f=w.spawnFood({x:h.x+20,y:h.y});const antes=w.food.length;
-  let warp=null;for(let t=0;t<120&&!warp;t++){w.step();warp=w.events.find(e=>e.type==="FOOD_WARP")||null;}
-  assert.ok(warp,"a comida foi engolida");
-  assert.equal(w.food.length,antes,"a contagem de comida não muda: o que entrou saiu");
-  assert.ok(w.food.some(x=>!x.dead&&Math.hypot(x.x-h.ex,x.y-h.ey)<BLACKHOLE.EXIT_SPREAD*1.2),"e apareceu no cacho da saída");
-  assert.ok(f.dead,"a comida original saiu de cena (remove+create, não teleporte visível)");
-  const w2=empty(99),h2=w2.spawnHole({x:4000,y:4000,ex:7000,ey:7000,active:true});
-  w2.addEjected(h2.x+15,h2.y,0,0,EJECT.R_MIN,EJECT.R_MIN*EJECT.R_MIN,-1,0,EJECT.LIFE_TICKS);
-  let wev=null;for(let t=0;t<120&&!wev;t++){w2.step();wev=w2.events.find(e=>e.type==="WARP")||null;}
-  assert.ok(wev,"o pellet atravessou");
-  assert.ok(w2.ejected.some(e=>!e.dead&&Math.hypot(e.x-h2.ex,e.y-h2.ey)<BLACKHOLE.EXIT_SPREAD*1.3),"e saiu perto da saída");
-  const w3=empty(100),h3=w3.spawnHole({x:4000,y:4000,ex:7000,ey:7000,active:true});
+  let crush=null;for(let t=0;t<120&&!crush;t++){w.step();crush=w.events.find(e=>e.type==="FOOD_CRUSH")||null;}
+  assert.ok(crush&&f.dead,"a comida foi engolida");
+  assert.equal(w.food.length,antes,"a contagem de comida não cai: a reposição a devolve em outro canto do mapa");
+  const w2=empty(99),h2=w2.spawnHole({x:4000,y:4000,active:true});
+  const pel0=w2.addEjected(h2.x+15,h2.y,0,0,EJECT.R_MIN,EJECT.R_MIN*EJECT.R_MIN,-1,0,EJECT.LIFE_TICKS);
+  for(let t=0;t<120&&!pel0.dead;t++)w2.step();
+  assert.ok(pel0.dead,"o pellet é engolido (não atravessa mais)");
+  assert.equal(w2.ejected.filter(e=>!e.dead).length,0,"e nada sai do outro lado");
+  const w3=empty(100),h3=w3.spawnHole({x:4000,y:4000,active:true});
   const pc=w3.addPlayer(0,{x:h3.x-200,y:h3.y,r:90});w3.setTarget(0,h3.x,h3.y);const m0=pc.mass;
   let suck=null;for(let t=0;t<600&&!suck;t++){w3.step();suck=w3.events.find(e=>e.type==="BH_SUCK")||null;}
-  assert.ok(suck,"foi sugado");
-  assert.ok(Math.abs(pc.mass/m0-2/3)<.02,`sobrou 2/3 da massa (${(pc.mass/m0).toFixed(3)})`);
+  assert.ok(suck&&suck.destroyed,"r=90 ainda cabe no buraco (limite rc·CRUSH_K = 91,2): esmagado");
   const pel=w3.ejected.filter(e=>e.owner===-1);
-  assert.equal(pel.length,BLACKHOLE.SPAGHETTI_N,"a massa cobrada virou pellets");
-  assert.ok(Math.abs(pel.reduce((s,e)=>s+e.mass,0)-(m0-pc.mass))<1e-6,"e eles somam exatamente o que foi cobrado");
+  assert.equal(pel.length,BLACKHOLE.SPAGHETTI_N,"a massa INTEIRA virou pellets");
+  assert.ok(Math.abs(pel.reduce((s,e)=>s+e.mass,0)-m0)<1e-6,"e eles somam exatamente a massa que a peça tinha");
   const ri3=h3.r*BLACKHOLE.INFLUENCE*h3.k;
   assert.ok(pel.every(e=>Math.hypot(e.x-h3.x,e.y-h3.y)>ri3),"nascem fora da influência: o buraco não os engole de volta");
   for(let t=0;t<300;t++)w3.step();
@@ -662,7 +683,7 @@ test("massa: lasca de asteroide e dano de míssil não evaporam massa (e no piso
   for(let t=0;t<40;t++)w2.step();
   assert.equal(w2.ejected.length,0,"no piso não sai fragmento");assert.equal(q.r,PLAYER.MIN_PIECE_R);
   // míssil: os HIT_DEBRIS cacos somam exatamente o que foi arrancado
-  const w3=empty(127),big=w3.addPlayer(0,{x:2000,y:2000,r:250}),sh=w3.addPlayer(1,{x:2600,y:2000,r:40});
+  const w3=empty(127),big=w3.addPlayer(0,{x:2000,y:2000,r:250}),sh=w3.addPlayer(1,{x:2600,y:2000,r:60});
   const ps1=w3.players.get(1);ps1.missiles=1;w3.setTarget(0,2000,2000);w3.setTarget(1,2000,2000);w3.requestFire(1,true);
   const mb=big.mass;let boom=null;for(let t=0;t<200&&!boom;t++){w3.step();boom=w3.events.find(e=>e.type==="BOOM")||null;}
   assert.ok(boom,"BOOM");
@@ -681,13 +702,12 @@ test("supernova: os fragmentos valem NOVA_PART_MASS pelotas e vêm marcados FRAG
   assert.ok(f.every(e=>e.type===FRAG_KIND.NOVA),"marcados NOVA (o cliente os desenha brilhando)");
   assert.ok(f.every(e=>Math.abs(e.mass-EJECT_MASS*STAR.NOVA_PART_MASS)<1e-9),"valem NOVA_PART_MASS pelotas comuns");
   assert.ok(f[0].mass>EJECT_MASS&&f[0].r>EJECT.R_MIN,"maiores e mais valiosos que uma pelota comum");
-  // e o valor sobrevive à travessia do buraco negro
-  const w2=empty(129),h=w2.spawnHole({x:2000,y:2000,ex:6000,ey:6000,active:true});
+  // e nem o fragmento de supernova escapa do buraco negro: quem cai no núcleo é engolido, não atravessa
+  const w2=empty(129),h=w2.spawnHole({x:2000,y:2000,active:true});
   const g=w2.addEjected(2000+h.r*.5,2000,0,0,20,1500,-1,0,900,FRAG_KIND.NOVA);
-  let saiu=null;for(let t=0;t<120&&!saiu;t++){w2.step();saiu=w2.events.find(e=>e.type==="WARP")||null;}
-  assert.ok(saiu&&g.dead,"atravessou");
-  const novo=w2.ejected.find(e=>!e.dead);
-  assert.ok(novo&&Math.abs(novo.mass-1500)<1e-9&&novo.type===FRAG_KIND.NOVA,"massa e tier atravessam junto");});
+  for(let t=0;t<120&&!g.dead;t++)w2.step();
+  assert.ok(g.dead,"engolido pelo buraco");
+  assert.equal(w2.ejected.filter(e=>!e.dead).length,0,"e nada sai do outro lado");});
 
 // 38. câmera: a fórmula do cliente do agar.io
 test("câmera: zoom = min(64/ΣR,1)^0.4 × resolução — soma dos raios, potência e mesma área de mundo em qualquer tela",()=>{

@@ -281,7 +281,7 @@ const spr={
   food:f=>sprite(TX.key("food",f),64,(c,s)=>TX.food(c,s,f)),
   ejected:col=>sprite(TX.key("ejected",{color:col}),40,(c,s)=>TX.ejected(c,s,{color:col})),
   asteroid:(v,size)=>sprite(TX.key("asteroid",{variant:v},size),size,(c,s)=>TX.asteroid(c,s,{variant:v})),
-  blackHole:()=>sprite(TX.key("blackHole"),256,(c,s)=>TX.blackHole(c,s,{})),
+  blackHole:()=>sprite(TX.key("blackHole",{},512),512,(c,s)=>TX.blackHole(c,s,{})),
   star:v=>sprite(TX.key("star",{variant:v}),32,(c,s)=>TX.star(c,s,{variant:v})),
   prop:(p,i)=>sprite(TX.key("prop",{i}),256,(c,s)=>TX.prop(c,s,{prop:p,i})),
   missile:()=>sprite(TX.key("missile"),64,(c,s)=>TX.missile(c,s,{})),
@@ -346,7 +346,7 @@ function scene(){const rand=mulberry(7),rnd=(a,b)=>a+rand()*(b-a),sk=i=>SKINS[i%
 function drawScene(c){const S=scene(),cam=S.cam;drawBg(c,cam);
   c.save();c.translate(W/2,H/2);c.scale(cam.scale,cam.scale);c.translate(-cam.x,-cam.y);drawWorld(c,cam);
   const BH=TH.effects.blackHole;S.holes.forEach(h=>{c.strokeStyle=BH.ring.color;c.globalAlpha=BH.ring.alpha[0];c.lineWidth=BH.ring.width;c.setLineDash(BH.ring.dash);c.beginPath();c.arc(h.x,h.y,h.ri,h.spin*BH.ring.spinK,h.spin*BH.ring.spinK+6.283);c.stroke();c.setLineDash([]);c.globalAlpha=1;
-    const R=h.rc*SC.blackHole;c.save();c.translate(h.x,h.y);c.rotate(h.spin);c.drawImage(spr.blackHole(),-R,-R,R*2,R*2);c.restore();});
+    const R=h.rc*SC.blackHole;c.drawImage(spr.blackHole(),h.x-R,h.y-R,R*2,R*2);});   // sem rotate: a perspectiva do disco é fixa (igual ao jogo)
   const FA=TH.world.foodAnim;S.food.forEach(f=>{const p=f.type==="star"?1+Math.sin(t*FA.starPulse.speed+f.seed)*FA.starPulse.amp:1,r=f.r*SC.food*p,s=spr.food(f);
     if(f.type==="rock"||f.type==="comet"){c.save();c.translate(f.x,f.y);c.rotate(f.seed);c.drawImage(s,-r,-r,r*2,r*2);c.restore();return;}
     const bob=f.type.startsWith("p")||f.type==="missile_ammo"?Math.sin(t*FA.bob.speed+f.seed)*FA.bob.amp:0;c.drawImage(s,f.x-r,f.y-r+bob,r*2,r*2);});

@@ -3,7 +3,7 @@
 // (textures.planet faz o clip), em coordenadas centradas com raio r. Nada de imagem —
 // tudo canvas, assado uma vez por (skin, tier) no TextureCache, então custa zero por frame.
 //   paintPattern(c,r,skin,P)   P = {ink,light,shadow} do tema
-//   paintHole(c,r,P)           buraco negro: disco de acreção + anel de fóton + núcleo
+//   paintHole(c,r,P)           buraco negro: sombra + disco de acreção lenteado + anel de fóton (perspectiva FIXA)
 //   paintNova(c,r,old,P)       estrela: coroa em camadas, núcleo quente e línguas de plasma
 // skin.pattern escolhe o desenho; skin.accent é a 2ª cor (quando o padrão usa).
 import {sh,rgba,spikes,mulberry} from "./util.js";
@@ -107,24 +107,42 @@ export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2"}={}){
   c.restore();return true;}
 
 /**
- * Buraco negro: núcleo preto, disco de acreção elíptico em perspectiva (metade de trás por cima do horizonte,
- * metade da frente por baixo), anel de fóton e braços finos de sucção. `P` = {ink,glow,hot,cold}.
+ * Buraco negro (Gargantua/M87): sombra preta GRANDE, disco de acreção quase de perfil com a face de TRÁS lenteada
+ * por cima e por baixo — os dois arcos que abraçam a sombra são o que faz a arte ler "buraco negro" e não "donut" —,
+ * anel de fóton branco colado na borda, faixa da frente cruzando por cima da esfera e Doppler (o lado que vem em
+ * nossa direção sai branco, o que se afasta sai vermelho profundo).
+ * `P` = {ink,glow,hot,cold} — rampa SÓ quente: glow = branco do bordo interno, hot = dourado, cold = vermelho do
+ * bordo externo, ink = a sombra.
+ * O canvas vai até r·2.4 e esse r é o `rc` do buraco na tela, então a arte inteira ocupa exatamente rc·CRUSH_K —
+ * é a promessa de `BLACKHOLE.CRUSH_K`: quem é maior que a bola inteira passa por cima e não morre.
+ * NÃO gire este sprite (Hazards.js mantém rotation=0): a perspectiva é fixa, girar faz a elipse cambalear.
  */
-export function paintHole(c,r,{ink="#141026",glow="#c56bff",hot="#ff8a3d",cold="#7a2fd6"}={}){
+export function paintHole(c,r,{ink="#07040e",glow="#fff3d0",hot="#ff9126",cold="#8c1b06"}={}){
   c.lineJoin="round";c.lineCap="round";
-  const disc=(y0,y1)=>{const g=c.createLinearGradient(-r*2,0,r*2,0);g.addColorStop(0,rgba(cold,.15));g.addColorStop(.32,hot);
-    g.addColorStop(.5,rgba(glow,.95));g.addColorStop(.68,hot);g.addColorStop(1,rgba(cold,.15));c.fillStyle=g;
-    c.beginPath();c.ellipse(0,0,r*2.1,r*.72,0,y0,y1,false);c.ellipse(0,0,r*1.3,r*.42,0,y1,y0,true);c.closePath();c.fill();};
-  c.strokeStyle=rgba(glow,.5);c.lineWidth=r*.06;   // braços de sucção
-  for(let i=0;i<12;i++){const a=i/12*TAU+.2;c.beginPath();c.moveTo(Math.cos(a)*r*1.5,Math.sin(a)*r*1.5*.55);
-    c.lineTo(Math.cos(a+.3)*r*2.3,Math.sin(a+.3)*r*2.3*.55);c.stroke();}
-  disc(Math.PI,TAU);                                  // metade de trás (aparece por cima)
-  c.fillStyle=ink;c.beginPath();c.arc(0,0,r*1.12,0,TAU);c.fill();                       // horizonte
-  c.strokeStyle=rgba(hot,.9);c.lineWidth=r*.09;c.beginPath();c.arc(0,0,r*1.2,0,TAU);c.stroke();   // anel de fóton
-  c.strokeStyle=rgba(glow,.55);c.lineWidth=r*.04;c.beginPath();c.arc(0,0,r*1.34,0,TAU);c.stroke();
-  disc(0,Math.PI);                                    // metade da frente
-  c.fillStyle=ink;c.beginPath();c.arc(0,0,r*.92,0,TAU);c.fill();
-  c.strokeStyle=rgba(glow,.35);c.lineWidth=r*.05;c.beginPath();c.arc(0,0,r*.62,-1.2,2.1);c.stroke();}
+  const SH=r*1.26,PH=r*1.295;   // sombra (o horizonte) e o anel de fóton colado nela
+  /** anel elíptico (setor a0→a1): elipse externa no sentido normal, interna ao contrário = furo */
+  const band=(rxo,ryo,rxi,ryi,a0,a1,fill)=>{c.fillStyle=fill;c.beginPath();
+    c.ellipse(0,0,rxo,ryo,0,a0,a1,false);c.ellipse(0,0,rxi,ryi,0,a1,a0,true);c.closePath();c.fill();};
+  /** rampa horizontal do disco (k = brilho): esquerda = matéria vindo para nós (branca), direita = se afastando */
+  const ramp=k=>{const g=c.createLinearGradient(-r*2.4,0,r*2.4,0);
+    g.addColorStop(0,rgba(cold,.04*k));g.addColorStop(.12,rgba(hot,.5*k));g.addColorStop(.26,rgba(glow,.98*k));
+    g.addColorStop(.42,rgba(hot,.92*k));g.addColorStop(.6,rgba(hot,.66*k));g.addColorStop(.8,rgba(cold,.66*k));
+    g.addColorStop(1,rgba(cold,.04*k));return g;};
+  const bl=c.createRadialGradient(0,0,r*1.1,0,0,r*2.36);   // bloom: o brilho é assado, o cliente não tem filtro nem blend
+  bl.addColorStop(0,rgba(hot,.24));bl.addColorStop(.5,rgba(hot,.08));bl.addColorStop(1,rgba(hot,0));
+  c.fillStyle=bl;arc(c,0,0,r*2.36);
+  band(r*2.3,r*1.9,r*1.6,r*1.42,Math.PI,TAU,ramp(1));       // face de trás lenteada POR CIMA (o arco alto)
+  band(r*2.12,r*1.66,r*1.52,r*1.2,0,Math.PI,ramp(.7));      // e o arco menor POR BAIXO — tem de passar da sombra, senão some
+  c.fillStyle=ink;arc(c,0,0,SH);                            // a sombra tapa o miolo dos dois arcos
+  const ph=c.createRadialGradient(0,0,SH,0,0,r*1.72);ph.addColorStop(0,rgba(glow,.42));ph.addColorStop(1,rgba(glow,0));
+  c.beginPath();c.arc(0,0,r*1.72,0,TAU);c.arc(0,0,SH,0,TAU);c.fillStyle=ph;c.fill("evenodd");   // halo curto do anel de fóton
+  c.strokeStyle=rgba(glow,.85);c.lineWidth=Math.max(1,r*.028);c.beginPath();c.arc(0,0,PH,0,TAU);c.stroke();
+  band(r*2.32,r*.34,r*.5,r*.06,0,Math.PI,ramp(1));          // face da FRENTE: cruza por cima da esfera
+  c.lineWidth=Math.max(1,r*.011);                           // estriações: é o que dá a textura filamentar das fotos
+  for(let i=1;i<8;i++){const t=i/8,od=i%2;c.strokeStyle=rgba(od?ink:glow,od?.26:.11);
+    c.beginPath();c.ellipse(0,0,r*(1.6+t*.7),r*(1.42+t*.48),0,Math.PI,TAU);c.stroke();
+    c.beginPath();c.ellipse(0,0,r*(1.52+t*.6),r*(1.2+t*.46),0,0,Math.PI);c.stroke();
+    c.beginPath();c.ellipse(0,0,r*(.5+t*1.82),r*(.05+t*.27),0,0,Math.PI);c.stroke();}}
 
 /**
  * Estrela do mundo: coroa em 3 camadas, línguas de plasma curvas e núcleo quente. `old` = gigante vermelha

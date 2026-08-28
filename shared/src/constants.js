@@ -97,17 +97,20 @@ export const ASTEROID={BELTS:4,PER_BELT:5,WANDERERS:18,R_MIN:30,R_MAX:62,MASS_R_
 // SMASH_SPEED na casa do CHILD_SPEED: asteroide integra com arrasto ZERO e quica na parede a WALL.E_AST, então
 // caco arremessado a 1500 atravessaria o mapa para sempre. BELT_SAFE: estrela nasce longe do ANEL de todo
 // cinturão (senão o cinturão vira moedor de estrela e a população nunca para de repor).
-export const BLACKHOLE={COUNT:5,CORE_R:38,INFLUENCE:10,G:5.5e7,A_MAX:2200,SWIRL:.6,LOSS:1/3,EXIT_SPREAD:240,SPAGHETTI_N:7,SPAGHETTI_R:1.12,SPAGHETTI_V:90,EXIT_MIN_DIST:1500,EXIT_DIST:570,CD_TICKS:60,
+export const BLACKHOLE={COUNT:5,CORE_R:38,INFLUENCE:10,G:5.5e7,A_MAX:2200,SWIRL:.6,CRUSH_K:2.4,SPAGHETTI_N:7,SPAGHETTI_R:1.12,SPAGHETTI_V:90,CD_TICKS:60,
   GROW_TICKS:120,LIFE_TICKS:[2700,5400],FADE_TICKS:180,DRIFT:10,DRIFT_CHANGE_TICKS:240,MIN_SEP:1100,SAFE_SPAWN:900,FOOD_PULL:2.5,EJECT_PULL:1.6,AST_PULL:.5,MISSILE_PULL:.8};
 // INFLUENCE: raio de influência = CORE_R·INFLUENCE·k (~380 px) — entrou nele, começa a ser puxado (a ∝ 1/d², teto A_MAX);
 // G/A_MAX são fracos de propósito: com o puxão antigo (1.2e8, teto 5000) quem entrava na influência já não saía mais —
 // hoje dá para rasar o horizonte, ganhar impulso e escapar, e é o SWIRL alto que transforma a queda em órbita;
 // SWIRL: parte tangencial da aceleração (sentido fixo pelo seed do buraco) — é o que faz espiralar em vez de cair reto;
-// EXIT_DIST: quantos px a peça é arremessada ao sair pelo outro lado (canal de impulso: sempre freia);
-// LOSS: o horizonte cobra 1/3 da massa — e ela não some: vira SPAGHETTI_N partículas comíveis espalhadas em volta do
-// buraco de ENTRADA (o resto do planeta que não passou). Elas nascem em SPAGHETTI_R do raio de INFLUÊNCIA, ou seja
-// logo FORA do alcance da sucção — dentro dele o buraco as engoliria de volta em segundos e ninguém aproveitaria;
-// EXIT_SPREAD: comida e massa ejetada sugadas não somem, saem pelo outro lado num cacho deste raio em volta da saída
+// CRUSH_K: NÃO existe mais teleporte. Quem chega ao núcleo é esmagado — mas só se `r < CORE_R·k·CRUSH_K` (~91 px),
+// ou seja, só quem é MENOR que a bola do buraco na tela; o gigante atravessa e nada acontece (a gravidade continua
+// puxando todo mundo). 2.4 é o MESMO número de `textures.scale.blackHole` nos 3 temas e do `rK` do anel tracejado
+// do horizonte: é o que faz "seu planeta cabe dentro do tracejado? você morre" ser literalmente verdade na tela —
+// mudar um sem o outro quebra a promessa visual;
+// SPAGHETTI_*: a massa do esmagado não evapora, volta INTEIRA como SPAGHETTI_N partículas comíveis em volta do
+// buraco. Elas nascem em SPAGHETTI_R do raio de INFLUÊNCIA, ou seja logo FORA do alcance da sucção — dentro dele
+// o buraco as engoliria de volta em segundos e ninguém aproveitaria
 export const STAR={COUNT:5,R:46,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2400,4200],OLD_TICKS:480,RESPAWN_TICKS:600,HALO:2.2,
   SHATTER_MIN_R:24,SHATTER_N:[3,6],SHATTER_DIST:342,SHATTER_CD_TICKS:45,PUSH_TOUCH_DIST:160,
   NOVA_R:8,NOVA_SHATTER:.45,NOVA_PARTICLES:24,NOVA_FOOD:16,NOVA_FOOD_R:.3,NOVA_SPEED:[380,820],NOVA_PART_MASS:3,NOVA_LIFE_TICKS:900,AST_KICK:1500,PUSH_DIST:342,SAFE_SPAWN:700,MIN_SEP:1400,
@@ -123,11 +126,16 @@ export const STAR={COUNT:5,R:46,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2
 // raio blast·NOVA_FOOD_R (a estrela morta vira um berçário: ponto de interesse fixo no mapa),
 // asteroides a AST_KICK e peças a PUSH; dentro de r·NOVA_R·NOVA_SHATTER
 // (o miolo) é como encostar na estrela: o escudo cai inteiro e salva, sem escudo a peça estilhaça.
-export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,R:11,HIT_SHRINK:.9,HIT_DEBRIS:5,DEBRIS_SPEED:540,SHATTER_N:[3,6],SHATTER_DIST:342,
-  INTERCEPT_DIST:1100,AST_KICK:420,AIM_CONE:.45,AIM_RANGE:2200};   // INTERCEPT_DIST: míssil inimigo mirando em mim a menos disso vira o alvo do meu tiro; AST_KICK: Δv (px/s) dado a um asteroide r=R_MIN (escala R_MIN/r)
+export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,R:11,MIN_R:60,HIT_SHRINK:.9,HIT_DEBRIS:5,DEBRIS_SPEED:540,SHATTER_N:[3,6],SHATTER_DIST:342,
+  INTERCEPT_DIST:1100,AST_KICK:420,AIM_CONE:.45,AIM_RANGE:2200};
+// MIN_R: só atira quem tem uma peça deste tamanho — o MESMO piso de SPLIT.MIN_R/EJECT.MIN_R. Sem ele o recém-nascido
+// (r=30, START_R) sai do spawn metralhando: não tem massa a perder, o escudo que o tiro cobra ele não tem, e o
+// míssil é a arma anti-gigante. Munição continua sendo COLETÁVEL abaixo do piso (fica guardada para quando crescer).   // INTERCEPT_DIST: míssil inimigo mirando em mim a menos disso vira o alvo do meu tiro; AST_KICK: Δv (px/s) dado a um asteroide r=R_MIN (escala R_MIN/r)
 // tiro mirado (segurar o botão): trava no objeto mais próximo dentro do cone ±AIM_CONE rad em volta da flecha e a até AIM_RANGE px; sem nada no cone sai reto
 export const POWERUP={TICKS:420,MAGNET_MAX_R:160,MAGNET_RANGE:5.5,MAGNET_PULL:170,MAGNET_NEAR:2.2,MAGNET_EJECT_A:900,MAGNET_AST:420,MAGNET_HEAVY:.45,MAGNET_STAR:.12,
-  SHIELD_MAX_LEVEL:3,SHIELD_EVOLVE_TICKS:900};
+  SHIELD_MAX_LEVEL:3,SHIELD_EVOLVE_TICKS:900,SHIELD_MIN_R:60};
+// SHIELD_MIN_R: peça abaixo do piso NÃO pega escudo — e a comida NEM É CONSUMIDA, fica no chão para quem crescer.
+// É o par do MISSILE.MIN_R: sem os dois, o pequeno começa a rodada blindado e atirando, sem nada a perder.
 // ímã: comida a d<r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s; ejetados ganham MAGNET_EJECT_A px/s² (drag 3.7/s → ~240 px/s)
 // MAGNET_MAX_R: acima desse raio a peça NÃO pega nem usa o ímã. O alcance é r·MAGNET_RANGE, então num planetão
 // ele passava de 1500 px e sugava a tela inteira — o powerup deixava de ser uma ajuda e virava um aspirador.

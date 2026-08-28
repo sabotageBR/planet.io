@@ -104,16 +104,17 @@ export class Sim{
         break;}
       case 'FOOD_EATEN':{gone.set(e.foodId,REMOVE.EATEN);const gp=this.players.get(e.slot);if(gp&&!gp.isBot&&gp.sessionId)hooks.onStat({sessionId:gp.sessionId,key:'food'});break;}
       case 'EJECT_EATEN':gone.set(e.ejectId,REMOVE.EATEN);break;
-      case 'POP':gone.set(e.asteroidId,REMOVE.POPPED);this._ev(EVENT.POP,e.x,e.y,e.r,e.slot,NO_SLOT,e.asteroidId);break;
+      case 'POP':gone.set(e.asteroidId,REMOVE.POPPED);this._ev(EVENT.POP,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,NO_SLOT,e.asteroidId);break;
       case 'MERGE':gone.set(e.mergedId,REMOVE.MERGED);this._ev(EVENT.MERGE,e.x,e.y,e.r,e.slot,NO_SLOT,e.pieceId);break;
       case 'SPLIT':this._ev(EVENT.SPLIT,e.x,e.y,e.r,e.slot,NO_SLOT,e.childId);this._stat(e.slot,'split',tick);break;
       case 'EJECT':this._stat(e.slot,'eject',tick);break;
-      case 'BH_SUCK':{if(e.destroyed)gone.set(e.pieceId,REMOVE.SUCKED);const b=w.entityById.get(e.pieceId),r=b?b.r:0;hit.set(e.slot,{x:e.fromX,y:e.fromY,r});
-        this._ev(EVENT.BH_SUCK,e.fromX,e.fromY,r,e.slot,NO_SLOT,e.destroyed?1:0);break;}
-      case 'EXIT':this._ev(EVENT.EXIT,e.x,e.y,e.r,e.slot,NO_SLOT,e.pieceId);break;
+      case 'BH_SUCK':{gone.set(e.pieceId,REMOVE.SUCKED);hit.set(e.slot,{x:e.fromX,y:e.fromY,r:e.r});
+        this._ev(EVENT.BH_SUCK,e.fromX,e.fromY,e.r,e.slot,NO_SLOT,1);break;}
+      // EVENT.EXIT (kind 9) ficou sem emissor quando o buraco deixou de teleportar; o slot NÃO é renumerado
+      // (renumerar custa um PROTOCOL_VERSION novo sem ganho nenhum).
       case 'CHIP':this._ev(EVENT.CHIP,e.x,e.y,e.r,e.slot,NO_SLOT,packDir(e.nx,e.ny,0));break;
       case 'BOUNCE':this._ev(EVENT.BOUNCE,e.x,e.y,e.r,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,e.vn));break;
-      case 'BOOM':this._ev(EVENT.BOOM,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;
+      case 'BOOM':this._ev(EVENT.BOOM,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;
       case 'SHOOT':this._ev(EVENT.SHOOT,e.x,e.y,0,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,0));break;
       case 'SHIELD_BREAK':this._ev(EVENT.SHIELD_BREAK,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;
       case 'SHIELD_HIT':this._ev(EVENT.SHIELD_HIT,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,packDir(e.nx,e.ny,e.level));break;

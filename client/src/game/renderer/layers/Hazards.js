@@ -1,17 +1,22 @@
 // ── PERIGOS: asteroides (sprite por tier, giro por seed+tick), buracos negros e estrelas ────
-// Buraco: núcleo (sprite girando) + anel de influência tracejado + anel do HORIZONTE DE EVENTOS (ring2, girando
-// ao contrário perto do núcleo — é ali que a peça é sugada e cuspida). Graphics redesenhado só quando o raio muda
-// > 1 px; giro/pulso via rotation/alpha. k = influenceR/(r·INFLUENCE).
+// Buraco: núcleo (sprite PARADO — a arte é um disco de acreção em perspectiva, girar o sprite inteiro faz a elipse
+// cambalear) + anel de influência tracejado + ring2 = a LINHA DA MORTE em rc·CRUSH_K (cabe dentro dela, é esmagado)
+// + faíscas orbitando no plano do disco, no MESMO sentido do SWIRL da física (seed<.5) — é delas que vem o movimento
+// que o giro do sprite dava. Graphics dos anéis redesenhado só quando o raio muda > 1 px; pulso via alpha.
+// k = influenceR/(r·INFLUENCE).
 // Estrela: sprite jovem/velha (fase OLD = inchando para a supernova) pulsando + coroa tracejada no halo
 // (+ ring2 opcional na borda quente); k = influenceR/(r·STAR.HALO) dá a rampa de nascimento (escala e alpha).
 import {Container,Sprite,Graphics} from "pixi.js";
 import {BLACKHOLE,STAR,STAR_PHASE,rectHas} from "@planet/shared";
 import {colorOf,seedAngle} from "../../util.js";
 
+export const BH_TEX=512;
+const BH_SIZE=BH_TEX,SPARK_MIN_PX=26;   // 512: as estriações do disco não sobrevivem a 256 (os 5 buracos dividem UMA textura por tema)
+
 export function createHazards(R){
   const asteroids=new Container(),holes=new Container(),stars=new Container();const aById=new Map(),hById=new Map(),sById=new Map();let frame=0;
   return{asteroids,holes,stars,setTheme(){},
-    render(f){frame++;const th=R.theme,TX=th.textures,view=f.view,rect=f.rect,rt=f.rt,t=f.t;
+    render(f){frame++;const th=R.theme,TX=th.textures,view=f.view,rect=f.rect,rt=f.rt,t=f.t,zoom=f.cam.scale;
       const AK=TX.scale.asteroid,BK=TX.scale.blackHole;
       for(const e of view.asteroids){let rec=aById.get(e.id);
         if(!rec){const sp=new Sprite();sp.anchor.set(.5);asteroids.addChild(sp);const w=(.15+(e.seed%7)*.06)*((e.seed&1)?1:-1);rec={sp,a0:seedAngle(e.seed),w,f:0};aById.set(e.id,rec);}
@@ -21,12 +26,12 @@ export function createHazards(R){
       for(const [id,rec] of aById)if(rec.f!==frame){rec.sp.destroy();aById.delete(id);}
       const BH=th.effects.blackHole;
       for(const e of view.holes){let rec=hById.get(e.id);
-        if(!rec){const core=new Sprite();core.anchor.set(.5);const ring=new Graphics(),ring2=new Graphics();holes.addChild(ring,ring2,core);rec={core,ring,ring2,lastRi:-1,lastR2:-1,f:0,a0:seedAngle(e.seed)};hById.set(e.id,rec);}
+        if(!rec){const core=new Sprite();core.anchor.set(.5);const ring=new Graphics(),ring2=new Graphics(),spark=new Graphics();holes.addChild(ring,ring2,core,spark);rec={core,ring,ring2,spark,lastRi:-1,lastR2:-1,f:0,a0:seedAngle(e.seed)};hById.set(e.id,rec);}
         rec.f=frame;const k=Math.min(1,Math.max(0,e.influenceR/(e.rr*BLACKHOLE.INFLUENCE))),rc=e.rr*k,ri=e.influenceR;
-        if(k<=0||!rectHas(rect,e.rx,e.ry,ri)){rec.core.visible=rec.ring.visible=rec.ring2.visible=false;continue;}rec.core.visible=rec.ring.visible=true;
+        if(k<=0||!rectHas(rect,e.rx,e.ry,ri)){rec.core.visible=rec.ring.visible=rec.ring2.visible=rec.spark.visible=false;continue;}rec.core.visible=rec.ring.visible=rec.spark.visible=true;
         const spin=rec.a0+rt*.02;
-        rec.core.texture=R.cache.get(TX.key("blackHole"),256,(c,s)=>TX.blackHole(c,s,{}));const d=rc*BK;rec.core.width=rec.core.height=d*2;
-        rec.core.position.set(e.rx,e.ry);rec.core.rotation=spin;rec.core.alpha=Math.min(1,k*BH.alphaK)*e.alpha;
+        rec.core.texture=R.cache.get(TX.key("blackHole",{},BH_SIZE),BH_SIZE,(c,s)=>TX.blackHole(c,s,{}));const d=rc*BK;rec.core.width=rec.core.height=d*2;
+        rec.core.position.set(e.rx,e.ry);rec.core.alpha=Math.min(1,k*BH.alphaK)*e.alpha;   // rotation FICA em 0: a perspectiva do disco é fixa
         const rg=BH.ring;if(Math.abs(ri-rec.lastRi)>1){rec.lastRi=ri;const g=rec.ring;g.clear();const col=colorOf(rg.color);
           if(rg.dash&&ri>4){const on=rg.dash[0],off=rg.dash[1],circ=6.2832*ri;let a=0;while(a<circ){const a0=a/ri,a1=Math.min(circ,a+on)/ri;g.moveTo(Math.cos(a0)*ri,Math.sin(a0)*ri);g.arc(0,0,ri,a0,a1);a+=on+off;}}
           else g.circle(0,0,ri);g.stroke({width:rg.width,color:col.c,alpha:col.a,cap:"round"});}
@@ -37,8 +42,14 @@ export function createHazards(R){
             if(r2.dash&&rr2>4){const on=r2.dash[0],off=r2.dash[1],circ=6.2832*rr2;let a=0;while(a<circ){const a0=a/rr2,a1=Math.min(circ,a+on)/rr2;g.moveTo(Math.cos(a0)*rr2,Math.sin(a0)*rr2);g.arc(0,0,rr2,a0,a1);a+=on+off;}}
             else g.circle(0,0,rr2);g.stroke({width:r2.width,color:c2.c,alpha:c2.a,cap:"round"});}
           rec.ring2.position.set(e.rx,e.ry);rec.ring2.rotation=spin*r2.spinK;
-          rec.ring2.alpha=(r2.alpha[0]+(r2.alpha[1]-r2.alpha[0])*(.5+.5*Math.sin(t*r2.pulse)))*e.alpha*Math.min(1,k*1.4);}}
-      for(const [id,rec] of hById)if(rec.f!==frame){rec.core.destroy();rec.ring.destroy();rec.ring2.destroy();hById.delete(id);}
+          rec.ring2.alpha=(r2.alpha[0]+(r2.alpha[1]-r2.alpha[0])*(.5+.5*Math.sin(t*r2.pulse)))*e.alpha*Math.min(1,k*1.4);}
+        const sp=BH.spark,g=rec.spark;g.clear();g.position.set(e.rx,e.ry);g.alpha=e.alpha*k;   // faíscas no plano do disco
+        if(sp&&d*zoom>SPARK_MIN_PX){const dir=e.seed<32768?1:-1,   // mesmo sentido do SWIRL da física (seed<.5 → +1)
+          rx=d*sp.rxK,ry=d*sp.ryK,col=colorOf(sp.color);
+          for(let i=0;i<sp.n;i++){const an=rec.a0+dir*rt*sp.speed+i/sp.n*6.2832,cy=Math.sin(an);
+            g.circle(Math.cos(an)*rx,cy*ry,sp.r(d)*(.6+.4*cy));   // maior/mais brilhante quando passa pela FRENTE (cy>0)
+            g.fill({color:col.c,alpha:col.a*(sp.alpha[0]+(sp.alpha[1]-sp.alpha[0])*(.5+.5*cy))});}}}
+      for(const [id,rec] of hById)if(rec.f!==frame){rec.core.destroy();rec.ring.destroy();rec.ring2.destroy();rec.spark.destroy();hById.delete(id);}
       const SK=TX.scale.nova,ST=th.effects.star;
       for(const e of view.stars){let rec=sById.get(e.id);
         if(!rec){const sp=new Sprite();sp.anchor.set(.5);const ring=new Graphics();stars.addChild(ring,sp);rec={sp,ring,lastRi:-1,f:0,a0:seedAngle(e.seed)};sById.set(e.id,rec);}

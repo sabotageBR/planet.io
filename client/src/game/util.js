@@ -4,7 +4,6 @@ import {Color} from "pixi.js";
 const _col=new Map();
 /** cor CSS ("#rrggbb" | "rgba(...)") → {c:number, a:alpha} (cache) */
 export function colorOf(s){let v=_col.get(s);if(v)return v;const c=new Color(s||"#fff");v={c:c.toNumber(),a:c.alpha};_col.set(s,v);return v;}
-export const fmt=n=>Math.round(n||0).toLocaleString("pt-BR");
 /** seed u16 (ou id) → ângulo determinístico */
 export const seedAngle=s=>((s*2654435761)>>>0)/4294967296*6.2832;
 export const seedUnit=s=>((s*2654435761)>>>0)/4294967296;

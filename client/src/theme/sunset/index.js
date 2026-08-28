@@ -21,6 +21,7 @@ export const labels={title:"🪐 PLANET.IO",tagline:"Conquiste a galáxia antes 
 
 // comida em 12 matizes quentes (indexados por hue 0–11) — mantém o cache pequeno
 const WARM=["#ffb547","#ff8a3d","#ff5e6c","#ff7ab3","#ffcf9a","#ffd96b","#ff9e57","#e0417f","#ffc0a0","#f4a261","#ff6f91","#ffe1a8"];
+const BH_INK="#0a0714",BH_HOT="#ff9126",BH_RED="#8e1f10";   // buraco negro: rampa SÓ quente (sombra → vermelho → dourado → branco), como as fotos do M87
 const PK=sk=>sk.ring?2.05:1.3,FK=2.1,EK=1.5,AK=1.3,BK=2.4,MK=2.6,NK=2,PROPK=p=>p.ring?2:1.2;
 
 export const textures={
@@ -34,6 +35,7 @@ export const textures={
     case "prop":return`${id}:prop${p.i}`;
     case "star":return`${id}:star${p.variant?1:0}`;
     case "nova":return`${id}:nova${p.old?"o":""}:${size}`;
+    case "blackHole":return`${id}:bh:${size}`;
     default:return`${id}:${kind}`;}},
 
   // planeta: chapado + crescente roxo (lado oposto ao horizonte) + fio quente + brilho + emoji fantasma + contorno
@@ -78,7 +80,7 @@ export const textures={
     astPoly(c,r,seed,n);c.strokeStyle=INK;c.lineWidth=Math.max(3,r*.1);c.stroke();},
 
   // buraco negro: disco de acreção em perspectiva + horizonte + anel de fóton (../patterns.js; 1 sprite de 256 girado por h.spin)
-  blackHole(c,size){paintHole(c,size/2/BK,{ink:INK,glow:MAG,hot:GOLD,cold:PLUM});},
+  blackHole(c,size){paintHole(c,size/2/BK,{ink:BH_INK,glow:CREAM,hot:GOLD,cold:BH_RED});},
 
   // estrela do mundo (perigo): coroa em camadas, núcleo quente e línguas de plasma; `old` = gigante vermelha rachada, a caminho da supernova
   nova(c,size,{old=false}){paintNova(c,size/2/NK,old,{ink:INK,core:CREAM,edge:GOLD,deep:CORAL});},
@@ -215,7 +217,7 @@ export const effects={
     return P;},
   missileTrail:{color:CREAM,alphaK:.5,radiusK:.7,every:2},
   missileFlame:{amp:.25,speed:.05},
-  blackHole:{ring:{color:CORAL,alpha:[.3,.4],pulse:.004,width:3,dash:[14,18],spinK:-.4},ring2:{color:CORAL,alpha:[.4,.85],pulse:.013,width:3,dash:[10,9],spinK:.9,rK:1.5},alphaK:1.2},   // ring = raio de influência; ring2 = horizonte de eventos (colado no núcleo); alpha do sprite = min(1,k·alphaK)
+  blackHole:{ring:{color:GOLD,alpha:[.16,.26],pulse:.004,width:3,dash:[14,18],spinK:-.4},ring2:{color:CREAM,alpha:[.5,.95],pulse:.013,width:3,dash:[10,9],spinK:.9,rK:2.4},spark:{n:9,speed:.022,rxK:.95,ryK:.14,r:d=>Math.max(1.5,d*.05),color:CREAM,alpha:[.25,.95]},alphaK:1.2},   // ring = raio de influência; ring2 = a LINHA DA MORTE (rK = BLACKHOLE.CRUSH_K): cabe dentro dela, é esmagado; alpha do sprite = min(1,k·alphaK)
   // estrela do mundo: pulso do sprite, giro e coroa tracejada no halo (vermelha e nervosa na fase OLD)
   star:{ring:{color:GOLD,colorOld:CORAL,alpha:[.18,.4],pulse:.005,pulseOld:.02,width:3,dash:[18,16],spinK:-.15},pulse:{amp:.06,speed:.004,speedOld:.02},spin:.004,alphaK:1.15},
   aim:{color:CREAM,width:3,dash:[16,12],head:26,alpha:[.45,.85],pulse:.008},                          // reta pontilhada do tiro mirado
@@ -237,7 +239,7 @@ export const hud={
     meDot:{fill:CREAM,stroke:INK,width:1.5,r:{desktop:4,portrait:3,landscape:3}},
     label:{text:"RADAR",font:"bold 9px "+FONT,color:GOLD,desktopOnly:true,dy:-10}},
   trail:{style:"dashed",color:(skin,isMe)=>rgba(PEACH,isMe?.7:.42),width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},
-  labels:{font:FONT,nameColor:"#fff",massColor:PEACH,stroke:INK,minR:13,size:r=>Math.max(12,r*.34),massK:.68,nameY:fs=>-fs*.28,massY:fs=>fs*.8,strokeWidth:s=>Math.max(2,s*.2)},
+  labels:{font:FONT,nameColor:"#fff",massColor:PEACH,stroke:INK,minR:13,size:r=>Math.max(12,r*.34),massK:.68,nameY:()=>0,massY:fs=>fs*.8,strokeWidth:s=>Math.max(2,s*.2)},
   cell:{merge:{color:GOLD,width:r=>Math.max(3,r*.08),radiusK:1.18},
     powerups:{colors:{magnet:MAG,shield:TEAL},width:r=>Math.min(14,Math.max(3,r*.08)),dash:r=>[Math.min(48,r*.4),Math.min(36,r*.3)],
       ringR:(r,i)=>r+6+i*10,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},

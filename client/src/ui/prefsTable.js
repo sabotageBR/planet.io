@@ -16,7 +16,6 @@ export const PREFS = [
     { key: "volume", label: "Volume", type: "range", min: 0, max: 100 } ] },
   { id: "ui", title: "Interface", items: [
     { key: "showNames", label: "Mostrar nomes", type: "toggle" },
-    { key: "showMass", label: "Mostrar massa nos planetas", type: "toggle" },
     { key: "showMinimap", label: "Minimapa", type: "toggle" },
     { key: "showFps", label: "Mostrar FPS e ping", type: "toggle" },
     { key: "lbSize", label: "Linhas do placar", type: "select", opts: [[5, "5"], [8, "8"], [10, "10"]] } ] },

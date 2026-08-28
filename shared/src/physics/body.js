@@ -35,15 +35,13 @@ import {PLAYER,BOOST} from "../constants.js";
  * @property {number} ang        asteroide de cinturão: ângulo orbital; buraco: direção da deriva
  * @property {number} orbitR     asteroide de cinturão: raio orbital
  * @property {number} k          buraco: intensidade 0..1 (GROW/ACTIVE/FADE)
- * @property {number} ex         buraco: saída pareada (x)
- * @property {number} ey         buraco: saída pareada (y)
  * @property {boolean} dead      removido na compactação ordenada do fim do passo
  */
 
 /** Cria um corpo com todos os campos (sempre a mesma forma). @returns {Body} */
 export function createBody(kind,id,x,y,r){
   return{kind,id,x,y,vx:0,vy:0,svx:0,svy:0,r,mass:r*r,owner:-1,mergeAt:0,flags:0,cdUntil:0,chipUntil:0,hits:0,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,seed:0,type:0,hue:0,targetId:-1,life:0,
-    ax:0,ay:0,ang:0,orbitR:0,k:0,ex:0,ey:0,dead:false};}
+    ax:0,ay:0,ang:0,orbitR:0,k:0,dead:false};}
 /** Define a massa e recalcula o raio (r=√m). @param {Body} b */
 export function setMass(b,m){b.mass=m;b.r=Math.sqrt(m);}
 /** Define o raio e recalcula a massa (m=r²). @param {Body} b */
@@ -87,3 +85,5 @@ export const overlaps=(a,b)=>{const s=a.r+b.r;return dist2b(a,b)<s*s;};
 export function liveCount(arr){let n=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)n++;return n;}
 /** Primeiro corpo vivo do array (ou null). @param {Body[]} arr */
 export function firstLive(arr){for(let i=0;i<arr.length;i++)if(!arr[i].dead)return arr[i];return null;}
+/** Primeiro corpo vivo com raio ≥ `minR` (ou null): quem atira precisa de tamanho, e a 1ª peça pode ser uma lasca. @param {Body[]} arr */
+export function bigEnough(arr,minR){for(let i=0;i<arr.length;i++){const b=arr[i];if(!b.dead&&b.r>=minR)return b;}return null;}

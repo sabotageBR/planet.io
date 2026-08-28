@@ -11,7 +11,7 @@
 import {DT,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR} from "../constants.js";
 import {KIND,BH_PHASE,FOOD_FLAG,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {clamp} from "../util.js";
-import {setR,setMass,addMass,addBoost,boostLeft,capBoost,velX,velY,liveCount,firstLive} from "./body.js";
+import {setR,setMass,addMass,addBoost,boostLeft,capBoost,velX,velY,liveCount,firstLive,bigEnough} from "./body.js";
 import {resolveBounce} from "./collide.js";
 import {vmaxFor} from "./integrate.js";
 
@@ -20,7 +20,7 @@ export const LOCAL={POP_DIV:22,POP_MIN:2,POP_MAX:6,POP_DIST:780,             // 
   CHIP_SPEED:360,CHIP_SPREAD:.6,CHIP_N:[1,2],                              // lascas: 1–2 fragmentos a 360 px/s ±.6 rad (raio/vida vêm de fragR/fragLife pela massa)
   FEED_KICK:.04,SHOOT_OFFSET:40,                                           // asteroide alimentado ganha 4% da v do pellet; filho nasce a r+40
   EJECT_OFFSET:6,DEBRIS_SPREAD:6.2832,                                     // pellet nasce a r+6; debris de míssil sai em todas as direções
-  EXIT_JITTER:30,HOLE_MARGIN:300,HOLE_MIN_RI:10,                            // saída ±30 px; buraco fica a ≥300 px da borda; influência <10 px = inerte
+  HOLE_MARGIN:300,HOLE_MIN_RI:10,                                          // buraco fica a ≥300 px da borda; influência <10 px = inerte
   FOOD_OVERLAP:.5,FEED_OVERLAP:.6};                                         // come comida a d<r+fr·.5; asteroide absorve pellet a d<r+er·.6
 
 /** @typedef {import("./body.js").Body} Body */
@@ -85,7 +85,9 @@ export function eatPiece(w,killer,A,victim,B){
  * @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} f
  */
 export function eatFood(w,ps,pc,f){
-  f.dead=true;w.foodDirty=true;const t=f.type,tick=w.tick;
+  const t=f.type,tick=w.tick;
+  if(t===FOOD_TYPE.SHIELD&&pc.r<POWERUP.SHIELD_MIN_R)return;   // pequeno demais: nem consome, o escudo fica no chão para quem crescer
+  f.dead=true;w.foodDirty=true;
   if(t===FOOD_TYPE.AMMO){if(ps.missiles<MISSILE.MAX_AMMO)ps.missiles++;w.events.push({type:"AMMO",slot:ps.slot});}
   else if(t===FOOD_TYPE.SHIELD){if(pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL)pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
@@ -336,29 +338,24 @@ export function pullFood(h,f,rc,ri){
   const dx=h.x-f.x,dy=h.y-f.y,d2=dx*dx+dy*dy;if(d2>ri*ri||d2<1e-6)return false;
   const d=Math.sqrt(d2),dd=d>rc?d:rc;let a=BLACKHOLE.G/(dd*dd);if(a>BLACKHOLE.A_MAX)a=BLACKHOLE.A_MAX;a*=h.k*DT*DT*BLACKHOLE.FOOD_PULL;
   f.x+=dx/d*a;f.y+=dy/d*a;f.flags|=FOOD_FLAG.MOVED;return d<rc;}
-/** Par (corpo dinâmico, buraco): puxa conforme o tipo; peça no núcleo (fora do cooldown) é sugada; ejetado some; errante respawna. @param {World} w @param {Body} A @param {Body} h */
+/**
+ * Par (corpo dinâmico, buraco): a gravidade puxa TODO MUNDO conforme o tipo; quem chega ao núcleo é ESMAGADO —
+ * não há mais teleporte. A exceção é o tamanho: peça com `r >= rc·CRUSH_K` (a bola do buraco na tela) passa por
+ * cima e não acontece nada — ela continua sendo puxada, só não morre. @param {World} w @param {Body} A @param {Body} h
+ */
 export function holePair(w,A,h){
   const ri=h.r*BLACKHOLE.INFLUENCE*h.k,rc=h.r*h.k;if(ri<LOCAL.HOLE_MIN_RI)return;
   switch(A.kind){
-    case KIND.PIECE:{const d=pullBody(h,A,1,rc,ri);if(d<rc&&w.tick>=A.cdUntil)suckPiece(w,w.players.get(A.owner),A,h);break;}
-    case KIND.EJECT:{if(pullBody(h,A,BLACKHOLE.EJECT_PULL,rc,ri)<rc)warpEject(w,h,A);break;}
-    case KIND.MISSILE:pullBody(h,A,BLACKHOLE.MISSILE_PULL,rc,ri);break;
-    case KIND.ASTEROID:{if(A.type<0&&pullBody(h,A,BLACKHOLE.AST_PULL,rc,ri)<rc){A.dead=true;w.queueAsteroid(-1,0);}break;}}}
+    case KIND.PIECE:{const d=pullBody(h,A,1,rc,ri);
+      if(d<rc&&A.r<rc*BLACKHOLE.CRUSH_K&&w.tick>=A.cdUntil)crushPiece(w,w.players.get(A.owner),A,h);break;}
+    case KIND.EJECT:{if(pullBody(h,A,BLACKHOLE.EJECT_PULL,rc,ri)<rc)A.dead=true;break;}   // pelota é engolida: o buraco é o sumidouro
+    case KIND.MISSILE:{if(pullBody(h,A,BLACKHOLE.MISSILE_PULL,rc,ri)<rc){A.dead=true;
+      w.events.push({type:"BOOM",x:A.x,y:A.y,r:A.r,slot:A.owner,bySlot:-1});}break;}
+    case KIND.ASTEROID:{if(A.type<0&&pullBody(h,A,BLACKHOLE.AST_PULL,rc,ri)<rc){A.dead=true;w.queueAsteroid(-1,0);
+      w.events.push({type:"POP",slot:-1,asteroidId:A.id,x:A.x,y:A.y,r:A.r});}break;}}}
 /**
- * Massa ejetada que caiu no núcleo: some aqui e nasce de novo na saída pareada, dentro do cacho EXIT_SPREAD, com o
- * que restava de vida. Remove+create em vez de teleporte no lugar — assim o cliente vê sumir aqui e aparecer lá.
- * @param {World} w @param {Body} h @param {Body} e
- */
-function warpEject(w,h,e){
-  e.dead=true;const rng=w.rng,an=rng.angle(),d=Math.sqrt(rng.next())*BLACKHOLE.EXIT_SPREAD,life=e.life-w.tick;
-  if(life<=0)return;
-  const x=clamp(h.ex+Math.cos(an)*d,e.r,w.w-e.r),y=clamp(h.ey+Math.sin(an)*d,e.r,w.h-e.r);
-  w.addEjected(x,y,e.vx*.35,e.vy*.35,e.r,e.mass,e.owner,EJECT.OWNER_IMMUNE_TICKS,life,e.type);   // massa E tier atravessam: o fragmento sai do outro lado valendo o mesmo
-  w.events.push({type:"WARP",x,y,r:e.r,holeId:h.id});}
-/**
- * A massa que o horizonte arranca não evapora: vira SPAGHETTI_N pellets sem dono espalhados em volta do buraco de
- * ENTRADA (o pedaço do planeta que não passou), girando no sentido do buraco. Quem estiver esperando ali, lucra.
- * @param {World} w @param {Body} h
+ * O planeta esmagado não evapora: a massa INTEIRA vira SPAGHETTI_N pellets sem dono espalhados em volta do buraco,
+ * girando no sentido dele. Quem estiver rondando, lucra. @param {World} w @param {Body} h
  */
 function spillMass(w,h,mass){
   if(mass<=0)return;const rng=w.rng,n=BLACKHOLE.SPAGHETTI_N,part=mass/n,rr=fragR(part),life=fragLife(part),k=fragKind(part),spin=h.seed<.5?1:-1;
@@ -367,18 +364,14 @@ function spillMass(w,h,mass){
     const x=clamp(h.x+Math.cos(an)*d,rr,w.w-rr),y=clamp(h.y+Math.sin(an)*d,rr,w.h-rr);
     const v=BLACKHOLE.SPAGHETTI_V;
     w.addEjected(x,y,Math.cos(an)*v*.5-Math.sin(an)*v*spin,Math.sin(an)*v*.5+Math.cos(an)*v*spin,rr,part,-1,0,life,k);}}
-/** Horizonte: perde LOSS da massa (que fica em pellets na entrada) e é teleportada para a saída pareada a EXIT_DIST px em direção aleatória; r<MIN_PIECE_R → destruída. */
-export function suckPiece(w,ps,pc,h){
-  const fromX=pc.x,fromY=pc.y,ev=w.events,m0=pc.mass;setMass(pc,pc.mass*(1-BLACKHOLE.LOSS));
-  if(pc.r<PLAYER.MIN_PIECE_R){spillMass(w,h,m0);   // não coube: o planeta inteiro vira pellets na boca do buraco
-    ev.push({type:"BH_SUCK",slot:ps.slot,pieceId:pc.id,fromX,fromY,toX:fromX,toY:fromY,destroyed:true,holeX:h.x,holeY:h.y});
-    w.killPiece(pc,"blackhole",-1);return;}
-  spillMass(w,h,m0-pc.mass);
-  const rng=w.rng,j=LOCAL.EXIT_JITTER;
-  pc.x=clamp(h.ex+rng.range(-j,j),pc.r,w.w-pc.r);pc.y=clamp(h.ey+rng.range(-j,j),pc.r,w.h-pc.r);
-  const an=rng.angle();pc.vx=pc.vy=0;addBoost(pc,Math.cos(an),Math.sin(an),BLACKHOLE.EXIT_DIST);pc.cdUntil=w.tick+BLACKHOLE.CD_TICKS;
-  ev.push({type:"BH_SUCK",slot:ps.slot,pieceId:pc.id,fromX,fromY,toX:pc.x,toY:pc.y,destroyed:false,holeX:h.x,holeY:h.y});
-  ev.push({type:"EXIT",slot:ps.slot,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r});}
+/**
+ * Núcleo: a peça é ESMAGADA — morre e a massa inteira volta ao mundo como pellets em volta do buraco (spillMass).
+ * Sem teleporte e sem pedágio: ou você é maior que a bola do buraco e passa por cima, ou vira comida para os outros.
+ */
+export function crushPiece(w,ps,pc,h){
+  const fromX=pc.x,fromY=pc.y;spillMass(w,h,pc.mass);
+  w.events.push({type:"BH_SUCK",slot:ps.slot,pieceId:pc.id,fromX,fromY,r:pc.r,destroyed:true,holeX:h.x,holeY:h.y});
+  w.killPiece(pc,"blackhole",-1);}
 
 // ── mísseis ──
 /**
@@ -518,7 +511,8 @@ function aimTarget(w,slot,src,ux,uy,out){
   out[0]=id;out[1]=kind;}
 const AIM=[-1,0];
 /**
- * Fire: gasta 1 míssil e **um nível** do escudo da peça que atira. Sai da primeira peça viva. Com `ps.fireAim`
+ * Fire: gasta 1 míssil e **um nível** do escudo da peça que atira. Sai da primeira peça viva **com r ≥ MISSILE.MIN_R**
+ * — sem esse piso o recém-nascido metralha do spawn, sem nada a perder; picar-se em peças minúsculas desarma. Com `ps.fireAim`
  * (tiro mirado, o jogador segurou o botão) o míssil **persegue o objeto mais próximo dentro do cone da flecha**
  * (peça inimiga ou míssil inimigo) e só vai reto se o cone estiver vazio.
  * Sem mira o alvo é, em ordem: míssil inimigo mirando este slot a
@@ -526,7 +520,7 @@ const AIM=[-1,0];
  * senão o oponente vivo mais próximo (homing, type 0); sem alvo, direção aleatória. @param {World} w @param {PlayerState} ps
  */
 export function applyFire(w,ps){
-  if(ps.missiles<=0)return false;const src=firstLive(ps.pieces);if(!src)return false;ps.missiles--;
+  if(ps.missiles<=0)return false;const src=bigEnough(ps.pieces,MISSILE.MIN_R);if(!src)return false;ps.missiles--;
   if(src.shieldLv>0)hitShield(w,src);
   if(ps.fireAim){dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const ax=DIR[0],ay=DIR[1];aimTarget(w,ps.slot,src,ax,ay,AIM);
     const m=w.addMissile(src.x,src.y,ax*MISSILE.SPEED,ay*MISSILE.SPEED,ps.slot,AIM[0]);m.type=AIM[1];

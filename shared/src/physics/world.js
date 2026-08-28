@@ -125,12 +125,10 @@ export class World{
     if(k>=0)a[k].dead=true;}
   /** Agenda o respawn de um asteroide (cinturão `belt` ou -1) daqui a `delay` ticks. */
   queueAsteroid(belt,delay){this.astQueue.push({belt,at:this.tick+delay});}
-  /** Buraco negro: núcleo CORE_R, longe dos outros (MIN_SEP) e dos jogadores (SAFE_SPAWN); saída pareada a ≥ EXIT_MIN_DIST. */
-  spawnHole({x=NaN,y=NaN,ex=NaN,ey=NaN,active=false}={}){const rng=this.rng,m=R.LOCAL.HOLE_MARGIN;
+  /** Buraco negro: núcleo CORE_R, longe dos outros (MIN_SEP) e dos jogadores (SAFE_SPAWN). */
+  spawnHole({x=NaN,y=NaN,active=false}={}){const rng=this.rng,m=R.LOCAL.HOLE_MARGIN;
     if(Number.isNaN(x)){const s=this._farSpot(m,this.holes,BLACKHOLE.MIN_SEP,this.pieces,BLACKHOLE.SAFE_SPAWN);x=s.x;y=s.y;}
     const h=createBody(KIND.BLACKHOLE,this.newId(),x,y,BLACKHOLE.CORE_R);h.seed=rng.next();h.ang=rng.angle();h.cdUntil=this.tick+BLACKHOLE.DRIFT_CHANGE_TICKS;
-    if(Number.isNaN(ex)){this._tmpHole[0]=h;const s=this._farSpot(m,this._tmpHole,BLACKHOLE.EXIT_MIN_DIST);ex=s.x;ey=s.y;}
-    h.ex=ex;h.ey=ey;
     if(active){h.type=BH_PHASE.ACTIVE;h.k=1;const L=BLACKHOLE.LIFE_TICKS;h.life=this.tick+rng.int(Math.floor(L[0]*.5),L[1]);}
     else{h.type=BH_PHASE.GROW;h.k=0;h.life=this.tick+BLACKHOLE.GROW_TICKS;}
     this.holes.push(h);return this._register(h);}
@@ -148,7 +146,6 @@ export class World{
     this.stars.push(st);return this._register(st);}
   /** Agenda o nascimento de uma estrela nova daqui a `delay` ticks (depois de uma supernova). */
   queueStar(delay){this.starQueue.push({at:this.tick+delay});}
-  _tmpHole=[null];
   /** (x,y) está a ≥ BELT_SAFE do ANEL de todo cinturão? (o teste é sobre o anel, não sobre o centro). */
   _notInBelt=(x,y)=>{const m=ASTEROID.BELT_SAFE,bs=this.belts;
     for(let i=0;i<bs.length;i++){const b=bs[i],dx=x-b.cx,dy=y-b.cy,d=Math.sqrt(dx*dx+dy*dy);if(Math.abs(d-b.rad)<m)return false;}return true;};
@@ -259,8 +256,8 @@ export class World{
     for(let i=0;i<holes.length;i++){const h=holes[i];if(h.dead)continue;const ri=h.r*BLACKHOLE.INFLUENCE*h.k,rc=h.r*h.k;if(ri<R.LOCAL.HOLE_MIN_RI)continue;
       const n=fg.query(h.x,h.y,ri,q);let moved=false;
       for(let k=0;k<n;k++){const f=food[q[k]];if(f.dead)continue;const dx=h.x-f.x,dy=h.y-f.y;if(dx*dx+dy*dy>ri*ri)continue;moved=true;
-        if(R.pullFood(h,f,rc,ri)){f.dead=true;this.spawnFood({x:h.ex,y:h.ey,spread:BLACKHOLE.EXIT_SPREAD});   // não some: reaparece do outro lado (remove aqui + create lá, para o cliente não ver a comida "voando" pelo mapa)
-          ev.push({type:"FOOD_WARP",holeId:h.id,x:h.x,y:h.y,toX:h.ex,toY:h.ey});}}
+        if(R.pullFood(h,f,rc,ri)){f.dead=true;this.spawnFood();   // engolida: some aqui e a reposição normal a devolve em outro canto (FOOD.COUNT nunca cai)
+          ev.push({type:"FOOD_CRUSH",holeId:h.id,x:h.x,y:h.y});}}
       if(moved)this.foodDirty=true;}
     // ── 7. comida (ímã, comer) e ejetados (ímã, absorver, alimentar asteroide) ──
     // ímã (POR PEÇA — só a que pegou o powerup atrai): comida a d<range anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/range)) px/s (acelera perto = sucção) e fica
@@ -304,7 +301,7 @@ export class World{
     // ── 11. spawns ──
     while(food.length<this.foodCount)this.spawnFood();
     const aq=this.astQueue;if(aq.length){let k=0;for(let i=0;i<aq.length;i++){const e=aq[i];if(e.at<=tick){const a=this.spawnAsteroid(e.belt);ev.push({type:"ASTEROID_RESPAWN",asteroidId:a.id,x:a.x,y:a.y,r:a.r});}else aq[k++]=e;}aq.length=k;}
-    while(holes.length<this.holeCount){const h=this.spawnHole();ev.push({type:"HOLE_RESPAWN",holeId:h.id,x:h.x,y:h.y,ex:h.ex,ey:h.ey});}
+    while(holes.length<this.holeCount){const h=this.spawnHole();ev.push({type:"HOLE_RESPAWN",holeId:h.id,x:h.x,y:h.y});}
     const sq=this.starQueue;if(sq.length){let k=0;for(let i=0;i<sq.length;i++){const e=sq[i];if(e.at<=tick){const st=this.spawnStar();ev.push({type:"STAR_RESPAWN",starId:st.id,x:st.x,y:st.y,r:st.r});}else sq[k++]=e;}sq.length=k;}
     this.tick=tick+1;}
   _compact(){const byId=this.entityById;let foodGone=false;

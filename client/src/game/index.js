@@ -40,7 +40,7 @@ import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./ben
 import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{speed:0,magnet:0,shield:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null});
-const PREF_DEFAULTS={quality:"auto",showNames:true,showMass:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
+const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
   sound:true,music:false,volume:70};   // som/música/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
 const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SPLIT]:"split",[EVENT.BH_SUCK]:"suck",[EVENT.CHIP]:"chip",[EVENT.BOUNCE]:"bounce",[EVENT.BOOM]:"boom",[EVENT.EXIT]:"exit",[EVENT.SHOOT]:"shoot",
   [EVENT.DEATH]:"death",[EVENT.SHIELD_BREAK]:"shieldBreak",[EVENT.SHIELD_HIT]:"shieldHit",[EVENT.SHIELD_UP]:"shieldUp",[EVENT.CLASH]:"clash",[EVENT.DEFLECT]:"deflect",
@@ -75,7 +75,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const cam=createCamera(),fstats=createFrameStats();
   const canAct=()=>joined&&!dead&&!roundOver&&conn&&conn.isOpen;
   let aiming=false,aim=null;const pendingEat=new Map();   // id da peça comida → id de quem comeu (destino da sucção no frame do sumiço)
-  const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self?view.self.missiles:0),canAct,onAim:on=>{aiming=on;if(!on)aim=null;}});
+  const bigR=()=>{let r=0;for(const p of view.pieces)if(p.isMe&&p.rr>r)r=p.rr;return r;};   // o piso do tiro é por PEÇA, não pela massa total
+  const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self&&bigR()>=MISSILE.MIN_R?view.self.missiles:0),canAct,onAim:on=>{aiming=on;if(!on)aim=null;}});
   const keyboard=createKeyboard({onAction:actions.act,enabled:()=>joined});
   const touch=createTouchButtons(hud,{onAction:actions.act});
   let pointer=null;
@@ -110,7 +111,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── texturas: aquece as skins da sala (tiers 128/256) e a própria (128/256/512, variante isMe) ──
   function warmSkins(){if(!renderer||!joined)return;const skins=[];let me=null;
     for(const pl of view.players.values()){if(!pl.skin)continue;if(pl.slot===view.mySlot)me=pl.skin;else if(!skins.includes(pl.skin))skins.push(pl.skin);}
-    renderer.warmPlanets(skins,me);}
+    renderer.warmHazards();renderer.warmPlanets(skins,me);}
   // ── rede ──
   function viewSize(){return{w:Math.round(renderer?renderer.W:container.clientWidth||innerWidth),h:Math.round(renderer?renderer.H:container.clientHeight||innerHeight)};}
   function onOpenSend(c){if(c.session){buffer.clear();predictor.reset();c.sendJson({t:"resume",sessionId:c.session.sessionId,resumeToken:c.session.resumeToken,view:viewSize()});input.resend();}
@@ -238,7 +239,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── HUD (8 Hz) ──
   function pushHud(now){const s=view.self,tk=buffer.tickAt(now),el=Math.max(0,tk-selfTick);
     const cd=(v,max)=>s?Math.min(1,Math.max(0,(v-el)/max)):0,sec=v=>s?Math.max(0,(v-el)/TICK_HZ):0;
-    hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,
+    hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,canFire:bigR()>=MISSILE.MIN_R,
       powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,clock:roundClock});}
   function statsText(){const c=renderer.counts(),st=predictor.stats;
@@ -267,7 +268,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       aim={x0:src.rx+dx/l*src.rr,y0:src.ry+dy/l*src.rr,x1:src.rx+dx/l*len,y1:src.ry+dy/l*len,lock:lockOn(src,dx/l,dy/l)};}
     const t1=performance.now();
     renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
-      showNames:curPrefs.showNames!==false,showMass:curPrefs.showMass!==false,showTrails:!curPrefs.reduceMotion&&!econ});
+      showNames:curPrefs.showNames!==false,showTrails:!curPrefs.reduceMotion&&!econ});
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU
     if(joined){minimap.update(now);if(now-lastHud>=125){lastHud=now;pushHud(now);}
       const sf=view.self;   // o servidor confirmou: munição a mais = peguei, a menos = atirei; ímã ligando = powerup

@@ -61,6 +61,13 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
 - **Decaimento** (`PLAYER.DECAY`, o `playerDecayRate` do agar): toda peça perde .2% da massa por segundo, com piso
   em `START_R`, aplicado no passo (`world.js`) e espelhado em `predict.js` (a paridade de 1e-6 é o guarda). É o que
   impede o gigante de ser imortal — antes, nenhuma ameaça tirava massa dele com o tempo.
+- **Piso de tamanho para atirar e para o escudo** (`MISSILE.MIN_R` e `POWERUP.SHIELD_MIN_R`, ambos 60 = `SPLIT.MIN_R`):
+  `applyFire` sai da primeira peça viva **com r ≥ MIN_R** (`bigEnough`) — sem nenhuma, não atira e não gasta munição;
+  `eatFood` recusa o 🛡️ abaixo do piso e **nem marca a comida como comida**, então ela fica ali para quem crescer.
+  Sem os dois, quem nasce (r=30) começa a rodada blindado e metralhando: não tem massa a perder, o nível de escudo que o
+  tiro cobra ele não tem, e o míssil é justamente a arma anti-gigante. Munição segue coletável abaixo do piso (fica
+  guardada) e os bots respeitam o mesmo limite, para não gastarem input à toa. O cliente apaga o botão de míssil
+  (`hud.canFire`) e o tiro vira ejeção, igual a quando falta munição.
 - **Escudo defende SÓ de míssil e asteroide**: não impede mais de ser comido (`piecePair` perdeu o ramo que
   interceptava antes do `eatPiece`) e não salva de estrela nem de supernova.
 - **Colisão de rocha = explosão**: em `pieceAsteroid` a rocha SEMPRE morre no contato (POP + respawn). Antes ela
@@ -107,14 +114,13 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   (R_MAX·SMASH_R ≈ 28) fica **abaixo** de SMASH_MIN_R de propósito: sem isso um caco trombaria numa filha e a cascata apagaria as
   estrelas do mapa. Pela mesma razão a estrela agora **nasce a ≥ ASTEROID.BELT_SAFE do anel de qualquer cinturão** — dentro de um,
   o cinturão viraria um moedor e a população nunca pararia de repor.
-- **Cachos de comida**: a comida (e a massa ejetada) que cai no núcleo de um buraco **não some** — reaparece num cacho de raio
-  EXIT_SPREAD em volta da saída pareada (remove aqui + create lá, para o cliente não ver a comida cruzando o mapa). A supernova
-  também deixa NOVA_FOOD comidas permanentes onde a estrela estava: a estrela morta vira berçário.
+- **Comida no buraco**: a que cai no núcleo é engolida e a reposição normal a devolve em outro canto do mapa, então
+  FOOD.COUNT nunca cai. A supernova deixa NOVA_FOOD comidas permanentes onde a estrela estava: a estrela morta vira berçário.
 - **Fragmentos e conservação de massa** (FRAG.*, `fragR`/`fragLife`): tudo que é arrancado de um planeta vira massa ejetada com
   **valor variável** — só o ejetado pode ter `mass ≠ r²` (`World.addEjected`), e o raio é `fragR(mass)`, então **o tamanho na tela
   é o valor**. Conservam exatamente: split, merge, pop de asteroide, estilhaço de estrela, a lasca (CHIP), o dano de míssil
-  (os HIT_DEBRIS cacos somam o que foi arrancado — acertar um planetão deixa uma colheita gorda no chão) e o pedágio do horizonte
-  (SPAGHETTI_N pellets). Reabsorver devolve a massa **inteira** (EAT.EJECT_GAIN = 1): cuspir e recolher fecha em zero, e a
+  (os HIT_DEBRIS cacos somam o que foi arrancado — acertar um planetão deixa uma colheita gorda no chão) e o esmagamento no
+  buraco negro (SPAGHETTI_N pellets com a massa INTEIRA da peça). Reabsorver devolve a massa **inteira** (EAT.EJECT_GAIN = 1): cuspir e recolher fecha em zero, e a
   pontuação do fragmento sai de √mass (o raio satura em FRAG.R_MAX e mentiria sobre o valor). A massa é medida **depois** do piso
   MIN_PIECE_R, então uma peça no mínimo não perde nada e também não cospe fragmento — antes ela criava massa do nada.
   Acima de FRAG.RICH_MASS o fragmento é "gordo": dura o dobro, o ímã o arrasta a FRAG.MAGNET_HEAVY e um asteroide **não** o engole
@@ -122,20 +128,26 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   Comer jogador conserva massa também (EAT.GAIN = 1, a regra do agar.io `size = √(s1²+s2²)`): a vítima entra INTEIRA.
   Continuam sendo fonte/sumidouro **de propósito**: a comida que o mundo repõe sem parar, o
   berçário da supernova e o fragmento que a própria estrela queima (`ejectStar`).
-- **Buracos negros** (BLACKHOLE.*): dentro do raio de influência (CORE_R·INFLUENCE·k ≈ 570 px) tudo é puxado com a = min(G/d², A_MAX)·k
+- **Buracos negros** (BLACKHOLE.*): dentro do raio de influência (CORE_R·INFLUENCE·k ≈ 380 px) tudo é puxado com a = min(G/d², A_MAX)·k
   (por isso quanto mais perto, mais forte — na borda dá para escapar remando, a partir de ~200 px não dá) mais uma parte tangencial
-  a·SWIRL (sentido fixo pelo seed do buraco) que faz **espiralar** em vez de cair reto. No núcleo a peça perde LOSS da massa e é
-  cuspida na saída pareada com um boost de EXIT_DIST px (BH_SUCK + EXIT); peça abaixo de MIN_PIECE_R é destruída. A massa cobrada (LOSS = 1/3)
-  **não evapora**: vira SPAGHETTI_N pellets sem dono num anel a SPAGHETTI_R do raio de influência do buraco de ENTRADA — logo
-  fora do alcance da sucção, senão ele os engoliria de volta em segundos e ninguém aproveitaria. Quem espera na boca do buraco lucra. O cliente prevê a MESMA gravidade
-  nas peças próprias (`stepOwnPieces(...,holes)`), senão a peça ficaria borrachuda perto do buraco.
+  a·SWIRL (sentido fixo pelo seed do buraco) que faz **espiralar** em vez de cair reto. **Não há mais teleporte.** Quem chega ao
+  núcleo é ESMAGADO: morre (`cause:"blackhole"`, evento BH_SUCK) e a massa **inteira** vira SPAGHETTI_N pellets sem dono num anel
+  a SPAGHETTI_R do raio de influência — logo fora do alcance da sucção, senão o buraco os engoliria de volta em segundos e
+  ninguém aproveitaria. Quem ronda a boca do buraco lucra.
+  **O tamanho é a defesa**: só é esmagada a peça com `r < rc·CRUSH_K` (rc = CORE_R·k; CRUSH_K = 2.4 → ~91 px, massa 8.281).
+  Acima disso ela atravessa o núcleo e **nada acontece** — mas continua sendo puxada como todo mundo, porque o campo é
+  do buraco, não da vítima. CRUSH_K é o mesmo número de `textures.scale.blackHole` e do `rK` do anel tracejado do horizonte
+  no cliente: é o que faz "seu planeta cabe dentro do tracejado? você morre" ser verdade na tela.
+  Pellet, míssil e asteroide errante que chegam ao núcleo simplesmente somem (o míssil com BOOM, a rocha com POP).
+  O cliente prevê a MESMA gravidade nas peças próprias (`stepOwnPieces(...,holes)`), senão a peça ficaria borrachuda perto
+  do buraco — mas **nunca** o esmagamento: a peça própria some pelo REMOVE.SUCKED do snapshot.
 - **Movimento: dois canais, sem velocidade de jogador** (`integratePiece`). É o modelo do agar.io:
   1. **direção** — `pos += û(ponteiro)·vmaxFor(r)·min(d,SPEED.RAMP)/SPEED.RAMP·dt`, instantâneo. Sem inércia, sem
      aceleração, sem arrasto: a peça anda SEMPRE na velocidade padrão do seu tamanho e inverte a direção no mesmo tick.
      `vmaxFor = clamp(K/r^EXP, MIN, MAX)` com os números literais de lá (`2.1106/size^0.449`, K = 2110,6).
   2. **impulso** — o canal de BOOST guardado em `Body.vx/vy` (`body.addBoost`), que decai a `BOOST.K` e **sempre chega
      a zero**. Como o decaimento é exponencial puro, o corpo percorre exatamente `|v|/BOOST.K` px: por isso todo empurrão
-     do jogo é declarado em PIXELS (`SPLIT.DIST`, `LOCAL.POP_DIST`, `STAR.SHATTER_DIST`, `BLACKHOLE.EXIT_DIST`,
+     do jogo é declarado em PIXELS (`SPLIT.DIST`, `LOCAL.POP_DIST`, `STAR.SHATTER_DIST`,
      `BOUNCE.DIST_MAX`). `BOOST.K = −ln(.9)/0.04` é o `boostDistance ×0,9 por tick de 40 ms` do agar em 60 Hz, e
      `BOOST.MAX_STEP` é o teto de 78 px/tick de lá (anti-tunelamento).
   O modelo antigo guardava velocidade acumulada: trombada de asteroide, quique e fusão viravam embalo que durava

@@ -44,6 +44,7 @@ export class BotBrain{
 
   act(tick){
     const w=this.w,ps=w.players.get(this.slot);if(!ps||!ps.alive)return;const c=centroid(ps);if(!c)return;const rng=this.rng,p=this.p;
+    const armed=ps.missiles>0&&c.big>=MISSILE.MIN_R;   // abaixo do piso o applyFire recusa: nem gasta o input
     if(tick>=this.nextThink){this._think(ps,c,tick);this.nextThink=tick+rng.int(BOT.THINK_TICKS[0],BOT.THINK_TICKS[1]);}
     let tx=this.wx,ty=this.wy,flags=0,shield=false;
     for(let i=0;i<ps.pieces.length;i++){const q=ps.pieces[i];if(!q.dead){shield=q.shieldLv>0;break;}}   // escudo é por peça: vale o da que atira (1ª viva)
@@ -55,16 +56,16 @@ export class BotBrain{
         const d=Math.hypot(oc.x-c.x,oc.y-c.y);
         // divide só se o salto ALCANÇA (o arremesso é curto) e sobra folga de tamanho para engolir os pedaços
         if(!shield&&d<c.big+oc.big+BOT.SPLIT_REACH&&c.big>oc.big*BOT.HUNT_RATIO*1.15&&c.n<BOT.MAX_PIECES&&rng.chance(BOT.SPLIT_P))flags|=INPUT_FLAG.SPLIT;
-        if(!shield&&ps.missiles>0&&d<MISSILE.AIM_RANGE&&rng.chance(fireP))flags|=INPUT_FLAG.FIRE|(rng.chance(BOT.AIM_CHANCE)?INPUT_FLAG.AIM:0);}
+        if(!shield&&armed&&d<MISSILE.AIM_RANGE&&rng.chance(fireP))flags|=INPUT_FLAG.FIRE|(rng.chance(BOT.AIM_CHANCE)?INPUT_FLAG.AIM:0);}
       else{this._safeDir(c,oc.x,oc.y);
-        if(!shield&&ps.missiles>0&&rng.chance(fireP))flags|=INPUT_FLAG.FIRE;}}   // fugindo atira sem mira: o alvo está atrás
+        if(!shield&&armed&&rng.chance(fireP))flags|=INPUT_FLAG.FIRE;}}   // fugindo atira sem mira: o alvo está atrás
     else if(this.mode==="intercept"){const m=w.entityById.get(this.target);
       if(!m||m.dead)this._wander(c);
-      else{this._safeDir(c,m.x,m.y);if(ps.missiles>0)flags|=INPUT_FLAG.FIRE;}}   // sem AIM: o applyFire escolhe a interceptação
+      else{this._safeDir(c,m.x,m.y);if(armed)flags|=INPUT_FLAG.FIRE;}}   // sem AIM: o applyFire escolhe a interceptação
     else if(this.mode==="food"){const f=w.entityById.get(this.target);
       if(f&&!f.dead){this.wx=f.x;this.wy=f.y;
         // no caminho da comida, se der um tiro de graça em quem está no cone, dá
-        if(!shield&&ps.missiles>=MISSILE.MAX_AMMO&&rng.chance(fireP*.5))flags|=INPUT_FLAG.FIRE|INPUT_FLAG.AIM;}
+        if(!shield&&armed&&ps.missiles>=MISSILE.MAX_AMMO&&rng.chance(fireP*.5))flags|=INPUT_FLAG.FIRE|INPUT_FLAG.AIM;}
       else this._wander(c);}
     else if(Math.hypot(this.wx-c.x,this.wy-c.y)<BOT.WAYPOINT_DONE)this._wander(c);
     tx=this.wx;ty=this.wy;
@@ -84,7 +85,7 @@ export class BotBrain{
         if(!o.isBot&&tick-o.spawnTick<BOT.SPAWN_GRACE_TICKS)continue;   // acabou de cair no mapa: deixa o humano respirar
         const v=oc.big*(o.isBot?1:HUMAN_BONUS)-d*.1;if(v>hv){hv=v;hunt=o.slot;}}}
     // míssil inimigo vindo para cima do bot: virar para ele e derrubar com outro míssil
-    if(ps.missiles>0){const ms=w.missiles;
+    if(ps.missiles>0&&c.big>=MISSILE.MIN_R){const ms=w.missiles;
       for(let i=0;i<ms.length;i++){const m=ms[i];if(m.dead||m.owner===this.slot||m.targetId!==this.slot||m.type!==0)continue;
         const dx=m.x-c.x,dy=m.y-c.y,d2=dx*dx+dy*dy;
         if(d2<BOT.MISSILE_FEAR*BOT.MISSILE_FEAR&&dx*m.vx+dy*m.vy<0){this.mode="intercept";this.target=m.id;return;}}}
@@ -117,7 +118,8 @@ export class BotBrain{
     const w=this.w;let best=null,bd=Infinity;
     const take=(b,ri)=>{const lim=ri*BOT.HOLE_AVOID,dx=c.x-b.x,dy=c.y-b.y,d2=dx*dx+dy*dy;
       if(d2<lim*lim&&d2<bd){bd=d2;best={x:b.x,y:b.y,ri};}};
-    const holes=w.holes;for(let i=0;i<holes.length;i++){const h=holes[i];if(!h.dead&&h.k>0)take(h,h.r*BLACKHOLE.INFLUENCE*h.k);}
+    const holes=w.holes;   // buraco só assusta quem ele consegue esmagar: acima de rc·CRUSH_K a peça passa por cima
+    for(let i=0;i<holes.length;i++){const h=holes[i];if(!h.dead&&h.k>0&&c.big<h.r*h.k*BLACKHOLE.CRUSH_K)take(h,h.r*BLACKHOLE.INFLUENCE*h.k);}
     const stars=w.stars;for(let i=0;i<stars.length;i++){const st=stars[i];if(!st.dead&&st.k>=STAR.ARM_K)take(st,st.r*STAR.HALO);}
     const asts=w.asteroids;   // só assusta quem pode estourá-lo: o pop parte o planeta em vários pedaços
     for(let i=0;i<asts.length;i++){const a=asts[i];if(!a.dead&&c.big>a.r*ASTEROID.POP_RATIO)take(a,a.r*BOT.AST_FEAR);}
