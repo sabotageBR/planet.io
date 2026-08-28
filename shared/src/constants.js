@@ -9,7 +9,13 @@ export const ROUND={TICKS:216000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:4,F
 // começando às DAY_START_H; a troca de tema é coberta por um fade de FADE_MS (client/src/theme/fade.js);
 // no fim o mundo explode, define-se o campeão (maior planeta vivo) e o placar fica BREAK_MS antes da sala nova.
 // WARN_S: segundos finais com a contagem gigante na tela.
-export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:1000,MAX_PIECES:16,BOT_R:[24,58]};
+export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:1000,MAX_PIECES:16,BOT_R:[24,58],DECAY:.002};
+// DECAY é o `playerDecayRate` do agar.io: cada peça perde essa fração da MASSA por segundo, com piso em START_R.
+// Como a taxa é relativa, ela é desprezível para quem é pequeno (1,8/s numa peça de 900, contra os 20–40/s que
+// ela ganha comendo poeira) e cara para quem é enorme (2.000/s numa de 1.000.000, meia-vida de 5,8 min). É o que
+// impede o gigante de ser imortal: sem isso NADA no jogo tira massa dele com o tempo — pop, estilhaço e supernova
+// só REPARTEM (massa conservada, e as peças voltam a fundir), e lasca/míssil/buraco devolvem a massa como
+// fragmentos que ele mesmo recolhe. O único predador possível era alguém 1,15× maior.
 // MAX_R/MAX_PIECES vêm do agar.io: lá a célula para em 1500 num mundo de 14142 (9,4×) e o jogador tem 16 células.
 // Aqui o mundo é 9600, então 1000 mantém a MESMA proporção. Passar do teto NÃO trava o crescimento: a peça se
 // divide sozinha (rules.autoSplit), e só com as 16 peças ocupadas é que o raio é cortado.
@@ -108,7 +114,7 @@ export const STAR={COUNT:5,R:46,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2
 // raio blast·NOVA_FOOD_R (a estrela morta vira um berçário: ponto de interesse fixo no mapa),
 // asteroides a AST_KICK e peças a PUSH; dentro de r·NOVA_R·NOVA_SHATTER
 // (o miolo) é como encostar na estrela: o escudo cai inteiro e salva, sem escudo a peça estilhaça.
-export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,R:11,HIT_SHRINK:.9,HIT_DEBRIS:5,DEBRIS_SPEED:540,
+export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,R:11,HIT_SHRINK:.9,HIT_DEBRIS:5,DEBRIS_SPEED:540,SHATTER_N:[3,6],SHATTER_DIST:342,
   INTERCEPT_DIST:1100,AST_KICK:420,AIM_CONE:.45,AIM_RANGE:2200};   // INTERCEPT_DIST: míssil inimigo mirando em mim a menos disso vira o alvo do meu tiro; AST_KICK: Δv (px/s) dado a um asteroide r=R_MIN (escala R_MIN/r)
 // tiro mirado (segurar o botão): trava no objeto mais próximo dentro do cone ±AIM_CONE rad em volta da flecha e a até AIM_RANGE px; sem nada no cone sai reto
 export const POWERUP={TICKS:420,MAGNET_MAX_R:160,MAGNET_RANGE:5.5,MAGNET_PULL:170,MAGNET_NEAR:2.2,MAGNET_EJECT_A:900,MAGNET_AST:420,MAGNET_HEAVY:.45,MAGNET_STAR:.12,
@@ -131,7 +137,7 @@ export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1
 // SPAWN_GRACE_TICKS: bot não escolhe como presa um humano que acabou de nascer (5 s) — com 24 bots espertos, cair no mapa
 // e ser comido antes de encostar no primeiro grão não é dificuldade, é falta de chance.
 export const BOT_NAMES=["Nebulox","Vortexia","Cosmara","Drakonis","Stellara","Graviton","Quasara","Pulsaris","Meteora","Darkion","Nexaris","Solaron","Astrophex","Hydraxis","Volcanix","Luminos","Aetheron","Aurorax","Voidrix","Pyronis"];
-export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,MAX_VIEW:.55};
+export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,AOI_FOOD_VIEW:.55};
 // zoom EXATO do cliente do agar.io:  S = Σ raio de TODAS as peças próprias;
 //   escala = min(BASE/S, 1)^EXP × max(altura/REF_H, largura/REF_W)
 // Três coisas importam aqui e nenhuma delas é o que havia antes (58/bigR):
@@ -140,9 +146,12 @@ export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.15
 //    (com 58/bigR ele virava uma bolinha e o mundo inteiro aparecia);
 // 3) o multiplicador de resolução mantém a MESMA área de mundo visível em qualquer tela (é a regra anti-widescreen
 //    do agar: tela mais larga não vê mais mundo), e substitui o antigo modo retrato.
-// O piso do zoom é MAX_VIEW da largura do mundo (não o mundo inteiro): é ele que limita a AOI do servidor, e um
-// jogador de 16 peças gigantes chegava a receber 105% do mapa — 3752 entidades por snapshot, que é o que derrubava
-// o cliente para 8 fps. Também é melhor de jogar: ninguém enxerga o mapa todo (para isso existe o radar).
+// A CÂMERA é livre: o piso é só "mostrar o mundo inteiro". Quem tem teto é a AOI, e SÓ para a comida
+// (AOI_FOOD_VIEW = fração da largura do mundo). Foram coisas separadas de propósito: colocar o teto na câmera
+// deixou o jogo injogável — um jogador de 14 peças gigantes não conseguia afastar o bastante para ver as próprias
+// partes, e elas cobriam a tela. A comida é 90% das entidades do snapshot e, no zoom afastado, cada pelota tem
+// 1–2 px: é ela que custa caro e é ela que não faz falta longe. Peças, perigos e mísseis continuam vindo pela
+// visão inteira — sem isso o gigante perderia de vista as próprias peças, que é justamente o bug que isto conserta.
 // TAU_POS/TAU_ZOOM são a suavização do MESMO cliente, convertidas de "por frame" para tempo: lá é
 // `viewX=(viewX+x)/2` (50% por frame → τ=dt/ln2=24 ms) e `scale=(9·scale+s)/10` (10% → τ=158 ms).
 // A posição é quase instantânea de propósito: a câmera fica colada no planeta e só o zoom respira.

@@ -6,7 +6,7 @@ import {fileURLToPath} from "node:url";
 import {dirname,join} from "node:path";
 import {performance} from "node:perf_hooks";
 import {createWorld,createGrid,createBody,setR,addBoost,boostLeft,velX,velY,tryMergeOwn,applyEject,stepOwnPieces} from "../src/physics/index.js";
-import {zoomFor,focusOf} from "../src/camera.js";
+import {zoomFor,focusOf,aoiScaleFood} from "../src/camera.js";
 import {vmaxFor} from "../src/physics/integrate.js";
 import {createRng} from "../src/rng.js";
 import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT} from "../src/constants.js";
@@ -14,7 +14,7 @@ import {KIND,PIECE_FLAG,FOOD_FLAG,STAR_PHASE,INPUT_FLAG,FRAG_KIND} from "../src/
 import {BotBrain} from "../src/bot.js";
 
 const SRC=join(dirname(fileURLToPath(import.meta.url)),"..","src");
-const empty=(seed=1)=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0});
+const empty=(seed=1)=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false});   // laboratório: sem decaimento, que mexeria em toda asserção de massa exata (há teste próprio para ele)
 const LOCAL_CHIP_MIN=1;   // LOCAL.CHIP_N[0] de rules.js (LOCAL não é exportado por constants.js)
 const snapshot=w=>JSON.stringify({tick:w.tick,nextId:w.nextId,
   pieces:w.pieces.map(b=>[b.id,b.owner,b.x,b.y,b.vx,b.vy,b.r,b.mergeAt,b.flags,b.shieldLv,b.magnetUntil]),
@@ -84,10 +84,11 @@ test("sem tunelamento: peça no impulso máximo nunca sai do mundo; contra aster
   const w=empty(5);const pc=w.addPlayer(0,{x:200,y:200,r:30});addBoost(pc,-Math.SQRT1_2,-Math.SQRT1_2,SPLIT.DIST);
   for(let t=0;t<120;t++){w.step();assert.ok(pc.x>=pc.r-1e-9&&pc.x<=w.w-pc.r+1e-9&&pc.y>=pc.r-1e-9&&pc.y<=w.h-pc.r+1e-9,`fora do mundo no tick ${t}`);}
   const w2=empty(6);const small=w2.addPlayer(0,{x:1000,y:1000,r:30});addBoost(small,1,0,SPLIT.DIST);const ast=w2.spawnAsteroid(-1,1300,1000,40);ast.vx=ast.vy=0;
-  let popped=false,bounced=false;
-  for(let t=0;t<120;t++){w2.step();if(w2.events.some(e=>e.type==="POP"))popped=true;if(velX(small)<0)bounced=true;   // velocidade REAL = impulso + direção
+  let bounced=false;
+  for(let t=0;t<120;t++){w2.step();if(velX(small)<0)bounced=true;   // velocidade REAL = impulso + direção
     const d=Math.hypot(small.x-ast.x,small.y-ast.y);assert.ok(d>ast.r,`centro da peça dentro do asteroide no tick ${t} (d=${d.toFixed(1)})`);}
-  assert.ok(!popped,"peça menor não estoura");assert.ok(bounced,"quicou (a velocidade real inverteu em algum momento)");
+  assert.equal(w2.piecesOf(0).filter(p=>!p.dead).length,1,"peça menor não se parte");assert.ok(bounced,"quicou (a velocidade real inverteu em algum momento)");
+  assert.equal(w2.asteroids.filter(a=>!a.dead).length,0,"e a rocha EXPLODIU no contato: não fica batendo de novo");
   assert.ok(small.x<ast.x-ast.r,"voltou para o lado de cá: não atravessou");
   assert.ok(Math.hypot(small.x-ast.x,small.y-ast.y)>=(small.r+ast.r)*.99,"terminou fora do asteroide");
   const w3=empty(7);const big=w3.addPlayer(0,{x:1000,y:1000,r:60});addBoost(big,1,0,SPLIT.DIST);w3.setTarget(0,1600,1000);const ast3=w3.spawnAsteroid(-1,1300,1000,40);ast3.vx=ast3.vy=0;
@@ -125,7 +126,8 @@ test("buraco negro: peça no núcleo é teleportada para a saída com massa ×(1
 
 // 8. predição usa as mesmas funções (peça própria isolada = servidor)
 test("predição: stepOwnPieces reproduz o servidor para um jogador isolado",()=>{
-  const w=empty(12);w.addPlayer(0,{x:3000,y:3000,r:90});w.setTarget(0,3600,3200);w.requestSplit(0);w.step();
+  const w=createWorld({seed:12,food:0,asteroids:false,holes:0,stars:0});   // COM decaimento: a paridade tem que guardar o decayPiece do predict.js também
+  w.addPlayer(0,{x:3000,y:3000,r:90});w.setTarget(0,3600,3200);w.requestSplit(0);w.step();
   const own=w.piecesOf(0).map(p=>({...p})),st={tx:3600,ty:3200};
   for(let t=0;t<400;t++){if(t===100){w.setTarget(0,2800,3300);st.tx=2800;st.ty=3300;}stepOwnPieces(own,st,w.tick);w.step();}
   const real=w.piecesOf(0);assert.equal(own.length,real.length);
@@ -190,15 +192,13 @@ test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nív
   w4.requestFire(0);w4.step();assert.equal(q.shieldLv,0,"2º tiro: zera");assert.ok(w4.events.some(e=>e.type==="SHIELD_BREAK"&&e.bySlot===-1));
   q.shieldLv=3;q.shieldEvolveAt=1e9;w4.requestSplit(0);w4.step();assert.equal(q.shieldLv,0,"dividir derruba o escudo da peça inteiro");
   assert.equal(w4.piecesOf(0).length,2);assert.equal(w4.piecesOf(0)[1].shieldLv,0,"a filha nasce sem powerup");
-  // grande vs pequeno com escudo nível 3: a 1ª batida derruba o escudo inteiro e quica; depois o grande come
+  // o escudo NÃO protege de ser comido: ele defende de míssil e de asteroide, e nada mais
   const w5=empty(33),big=w5.addPlayer(0,{x:1000,y:1000,r:60}),small=w5.addPlayer(1,{x:1085,y:1000,r:30});
   small.shieldLv=POWERUP.SHIELD_MAX_LEVEL;small.shieldEvolveAt=1e9;w5.setTarget(1,1085,1000);
-  let quebra=null;for(let t=0;t<120&&!quebra;t++){w5.setTarget(0,small.x,small.y);w5.step();quebra=w5.events.find(e=>e.type==="SHIELD_BREAK")||null;
-    assert.ok(!w5.events.some(e=>e.type==="EAT"),"não engole com escudo de pé");}
-  assert.ok(quebra&&quebra.bySlot===0,"a batida do maior derruba o escudo (bySlot = o grande)");assert.equal(small.shieldLv,0,"cai inteiro, mesmo no nível 3");
-  assert.ok(w5.players.get(1).alive,"sobrevive à batida");assert.ok(boostLeft(small)>0,"foi empurrado (chance de fuga)");
   let eat=null;for(let t=0;t<600&&!eat;t++){w5.setTarget(0,small.x,small.y);w5.step();eat=w5.events.find(e=>e.type==="EAT")||null;}
-  assert.ok(eat&&eat.killerSlot===0,"sem escudo, o maior come");assert.ok(!w5.players.get(1).alive);});
+  assert.ok(eat&&eat.killerSlot===0,"o maior come mesmo com o escudo no nível 3");
+  assert.ok(!w5.players.get(1).alive,"e o pequeno morre");
+  assert.ok(!w5.events.some(e=>e.type==="SHIELD_BREAK"),"o escudo nem entra na conta do engolir");});
 
 // 12. míssil × míssil
 test("míssil×míssil: interceptação (type 1 mira o míssil inimigo) e choque varrido destroem os dois (CLASH)",()=>{
@@ -258,13 +258,13 @@ test("estrela: encostar estilhaça o planeta em vários pedaços (massa conserva
   const q=w2.addPlayer(0,{x:1000+s2.r+2,y:1000,r:STAR.SHATTER_MIN_R-4});w2.setTarget(0,1000,1000);w2.step();
   assert.ok(!w2.events.some(e=>e.type==="STAR_BURST"),"pequena não estilhaça");assert.ok(q.vx>0&&boostLeft(q)>0,"foi empurrada para fora");
   assert.equal(w2.piecesOf(0).length,1);assert.ok(n1>1);
-  // com escudo o estilhaço não acontece: o escudo cai INTEIRO e segura
+  // o escudo NÃO salva da estrela (ele defende só de míssil e asteroide), e encostar faz a estrela EXPLODIR
   const w3=empty(74),s3=w3.spawnStar(true);s3.x=1000;s3.y=1000;
   const p3=w3.addPlayer(0,{x:1000+s3.r+40,y:1000,r:60});p3.shieldLv=2;p3.shieldEvolveAt=1e9;w3.setTarget(0,s3.x,s3.y);
-  let brk=null;for(let t=0;t<180&&!brk;t++){w3.step();brk=w3.events.find(e=>e.type==="SHIELD_BREAK")||null;}
-  assert.ok(brk,"SHIELD_BREAK");assert.equal(p3.shieldLv,0,"cai inteiro, não um nível");
-  assert.equal(w3.piecesOf(0).filter(p=>!p.dead).length,1,"e a peça não se parte");
-  assert.ok(!w3.events.some(e=>e.type==="STAR_BURST"));});
+  let nova=null;for(let t=0;t<180&&!nova;t++){w3.step();nova=w3.events.find(e=>e.type==="SUPERNOVA")||null;}
+  assert.ok(nova,"encostou: a estrela explode");assert.ok(s3.dead,"e morre");
+  assert.equal(p3.shieldLv,2,"o escudo continua de pé: ele não tem nada a ver com estrela");
+  assert.ok(w3.events.some(e=>e.type==="STAR_BURST"),"e a peça estilhaça assim mesmo");});
 
 // 16. estrela: envelhece e explode em supernova
 test("estrela: GROW→ACTIVE→OLD incha e vira supernova (partículas, asteroides chutados, planeta só empurrado) e outra nasce",()=>{
@@ -477,7 +477,7 @@ test("predição: stepOwnPieces com os buracos do cliente reproduz o servidor pe
   assert.ok(Math.hypot(noHoles[0].x-pc2.x,noHoles[0].y-pc2.y)>20,"sem os buracos a predição erraria feio");});
 
 // 25. supernova: o miolo machuca
-test("supernova: no miolo estilhaça quem não tem escudo e, com escudo, ele cai inteiro e salva",()=>{
+test("supernova: no miolo estilhaça quem está perto — o escudo não salva (só míssil e asteroide)",()=>{
   const mk=(seed,shield)=>{const w=empty(seed),st=w.spawnStar(true);st.x=3000;st.y=3000;st.life=w.tick+1;
     const pc=w.addPlayer(0,{x:3000,y:3000+STAR.R*STAR.SWELL+120,r:60});w.setTarget(0,pc.x,pc.y);   // parada, dentro do miolo mas sem encostar
     pc.shieldLv=shield;if(shield)pc.shieldEvolveAt=1e9;
@@ -488,10 +488,9 @@ test("supernova: no miolo estilhaça quem não tem escudo e, com escudo, ele cai
   assert.ok(wA.piecesOf(0).filter(p=>!p.dead).length>1,"sem escudo: estilhaçou");
   assert.ok(wA.events.some(e=>e.type==="STAR_BURST"),"STAR_BURST");
   const wB=mk(93,2),left=wB.piecesOf(0).filter(p=>!p.dead);
-  assert.equal(left.length,1,"com escudo: continua inteira");
-  assert.equal(left[0].shieldLv,0,"mas perde o escudo todo");
-  assert.ok(wB.events.some(e=>e.type==="SHIELD_BREAK"),"SHIELD_BREAK");
-  assert.ok(!wB.events.some(e=>e.type==="STAR_BURST"));});
+  assert.ok(left.length>1,"com escudo TAMBÉM estilhaça: ele defende só de míssil e asteroide");
+  assert.equal(left[0].shieldLv,2,"e o escudo nem é consumido");
+  assert.ok(wB.events.some(e=>e.type==="STAR_BURST"),"STAR_BURST");});
 
 // 26. mira em estrela + estrela velha estoura no tiro
 test("estrela: o tiro mirado trava nela e, se já está inchando (OLD), a supernova vem na hora",()=>{
@@ -540,7 +539,8 @@ test("asteroide: rocha de raspão ricocheteia no planeta grande; vindo para o mi
     return{w,pc,a,ev,dentro,pico};};
   // raspão: passa a 105 px do centro (dentro do contato, fora da mira do miolo r·POP_DIST≈74)
   const r1=roda(105);
-  assert.ok(!r1.ev.includes("POP"),"de raspão não estoura");
+  assert.equal(r1.w.piecesOf(0).filter(p=>!p.dead).length,1,"de raspão o planeta não se parte");
+  assert.equal(r1.w.asteroids.filter(a=>!a.dead).length,0,"mas a rocha explodiu no contato (não sobra para bater de novo)");
   assert.equal(r1.dentro,0,"e não atravessa o planeta como antes");
   assert.ok(r1.a.vy>100,`a rocha foi DESVIADA para fora (sinuca de raspão): vy ${r1.a.vy.toFixed(0)} px/s`);
   assert.ok(Math.abs(r1.a.vx)<560,`e perdeu parte do avanço: vx ${r1.a.vx.toFixed(0)} (vinha a -600)`);
@@ -667,7 +667,8 @@ test("massa: lasca de asteroide e dano de míssil não evaporam massa (e no piso
   const mb=big.mass;let boom=null;for(let t=0;t<200&&!boom;t++){w3.step();boom=w3.events.find(e=>e.type==="BOOM")||null;}
   assert.ok(boom,"BOOM");
   const d=w3.ejected.filter(e=>!e.dead&&e.owner===0);assert.equal(d.length,MISSILE.HIT_DEBRIS,"HIT_DEBRIS cacos");
-  assert.ok(Math.abs(big.mass+d.reduce((s,e)=>s+e.mass,0)-mb)<1e-6,"míssil conserva");
+  const minhas=w3.piecesOf(big.owner).filter(p=>!p.dead).reduce((t,p)=>t+p.mass,0);   // o tiro ESTILHAÇA: a massa fica repartida entre as peças
+  assert.ok(Math.abs(minhas+d.reduce((s,e)=>s+e.mass,0)-mb)<1e-6,"míssil conserva");
   assert.ok(d.every(e=>e.type===FRAG_KIND.RICH),"caco de planetão é gordo");});
 
 // ── 35. fragmento de supernova: vale mais e vem marcado para brilhar ──
@@ -706,11 +707,13 @@ test("câmera: zoom = min(64/ΣR,1)^0.4 × resolução — soma dos raios, potê
   assert.ok(Math.abs(aw-bw)<1e-6&&Math.abs(ah-bh)<1e-6,"tela menor mostra o mesmo mundo");
   assert.ok(Math.abs(ch-ah)<1e-6,"retrato: a MAIOR dimensão da tela mostra o mesmo que a maior da paisagem");
   assert.ok(cw<aw,"e a menor mostra menos — ninguém ganha visão por esticar a janela");
-  // piso: a janela nunca passa de CAM.MAX_VIEW do mundo — é o que limita a AOI do servidor (um jogador de 16
-  // peças gigantes chegava a receber 105% do mapa, 3752 entidades por snapshot, e derrubava o cliente a 8 fps)
+  // a CÂMERA é livre (piso = mostrar o mundo inteiro): o gigante precisa afastar para ver as próprias peças
   const zf=zoomFor(1e6,W,H);
-  assert.ok(W/zf<=WORLD.w*CAM.MAX_VIEW+1e-6&&H/zf<=WORLD.h*CAM.MAX_VIEW+1e-6,`a janela para em ${Math.round(CAM.MAX_VIEW*100)}% do mundo`);
-  assert.ok(zoomFor(4546,W,H)>zoomFor(1e6,W,H)*.9,"e o jogador de 16 peças gigantes já encosta nesse piso");});
+  assert.ok(W/zf<=WORLD.w+1e-6&&H/zf<=WORLD.h+1e-6,"a janela para no mundo inteiro");
+  // quem tem teto é a AOI da COMIDA, e só ela: é o que evita mandar o mapa inteiro de comida para um cliente
+  assert.ok(aoiScaleFood(zf,W,H)>zf,"no zoom afastado a AOI da comida é MAIS fechada que a câmera");
+  assert.ok(W/aoiScaleFood(zf,W,H)<=WORLD.w*CAM.AOI_FOOD_VIEW+1e-6,`a janela da comida para em ${Math.round(CAM.AOI_FOOD_VIEW*100)}% do mundo`);
+  const perto=zoomFor(300,W,H);assert.equal(aoiScaleFood(perto,W,H),perto,"e no zoom normal a comida usa a visão de verdade");});
 
 // 39. velocidade padrão: sem inércia, sem embalo de graça
 test("velocidade: é SEMPRE a padrão do tamanho — vira na hora, não acelera, não acumula embalo de ninguém",()=>{
@@ -754,3 +757,37 @@ test("ímã: acima de POWERUP.MAGNET_MAX_R a peça não pega nem usa o ímã",()
   setR(pc,POWERUP.MAGNET_MAX_R+60);const x1=longe.x;
   for(let t=0;t<10;t++)w.step();
   assert.ok(Math.abs(longe.x-x1)<1e-9,"depois de crescer além do teto, para de puxar");});
+
+// 41. decaimento: o gigante murcha se parar de comer; o pequeno não sente
+test("decaimento: massa ×(1−PLAYER.DECAY) por segundo, com piso em START_R — é o que tira a imortalidade do gigante",()=>{
+  const roda=(r0,segs)=>{const w=createWorld({seed:400,food:0,asteroids:false,holes:0,stars:0});
+    const p=w.addPlayer(0,{x:4800,y:4800,r:r0});w.setTarget(0,4800,4800);
+    for(let t=0;t<segs*TICK_HZ;t++)w.step();return p;};
+  const gigante=roda(1000,60),esperado=1e6*Math.pow(1-PLAYER.DECAY/TICK_HZ,60*TICK_HZ);
+  assert.ok(Math.abs(gigante.mass-esperado)/esperado<.01,`o gigante murcha: ${Math.round(gigante.mass).toLocaleString("pt-BR")} (esperado ~${Math.round(esperado).toLocaleString("pt-BR")})`);
+  assert.ok(gigante.mass<1e6*.9,"em 1 minuto já perdeu mais de 10%");
+  const pequeno=roda(PLAYER.START_R,60);
+  assert.equal(pequeno.r,PLAYER.START_R,"quem está no tamanho de nascença não murcha (piso em START_R)");
+  const medio=roda(PLAYER.START_R+2,600);
+  assert.ok(Math.abs(medio.r-PLAYER.START_R)<1e-6,"e o piso segura: por mais que passe o tempo, ninguém some");
+  // a taxa é RELATIVA: em 1 s o gigante perde ~1000× mais massa que a peça pequena
+  const perde=r0=>{const a=roda(r0,0),m0=a.mass;const w=createWorld({seed:401,food:0,asteroids:false,holes:0,stars:0});
+    const p=w.addPlayer(0,{x:4800,y:4800,r:r0});w.setTarget(0,4800,4800);const mi=p.mass;
+    for(let t=0;t<TICK_HZ;t++)w.step();return mi-p.mass;};
+  const g=perde(1000),q=perde(40);
+  assert.ok(g>1500&&g<2500,`o gigante perde ~2.000 de massa por segundo (perdeu ${Math.round(g)})`);
+  assert.ok(q<10,`e a peça pequena quase nada (perdeu ${q.toFixed(1)})`);});
+
+// 42. o tiro parte o alvo (arma anti-gigante) e a rocha explode ao encostar
+test("tiro: além de tirar massa, ESTILHAÇA a peça; e a rocha sempre explode no contato",()=>{
+  const w=empty(402),alvo=w.addPlayer(0,{x:3000,y:3000,r:200});w.setTarget(0,3000,3000);
+  const atirador=w.addPlayer(1,{x:3600,y:3000,r:60,missiles:3});w.setTarget(1,3000,3000);
+  const m0=alvo.mass;
+  w.requestFire(1);let boom=null;for(let t=0;t<90&&!boom;t++){w.step();boom=w.events.find(e=>e.type==="BOOM")||null;}
+  assert.ok(boom,"o míssil acerta");
+  const pcs=w.piecesOf(0).filter(p=>!p.dead);
+  assert.ok(pcs.length>1,`o tiro PARTE o alvo em vários (ficaram ${pcs.length} peças)`);
+  assert.ok(pcs.length<=MISSILE.SHATTER_N[1]+1,"dentro de MISSILE.SHATTER_N");
+  const total=pcs.reduce((t,p)=>t+p.mass,0),cacos=w.ejected.filter(e=>e.owner===0&&!e.dead).reduce((t,e)=>t+e.mass,0);
+  assert.ok(Math.abs(total+cacos-m0)<1e-6,"e nada evapora: o que saiu virou caco comível");
+  assert.ok(total<m0,"o alvo perdeu massa de verdade");});

@@ -90,10 +90,10 @@ export function createPlanets(R){
         const fl=e.flags,pws=[];if(fl&PIECE_FLAG.MAGNET)pws.push("magnet");if(fl&PIECE_FLAG.SHIELD)pws.push("shield");const lv=(fl>>PIECE_FLAG.SHIELD_LV_SHIFT)&3;
         if(pws.length){const pw=cell.powerups,LV=pw.shieldLevels;pws.forEach((k,i)=>{
           const sl=k==="shield"&&LV?LV[Math.min(LV.length,Math.max(1,lv))-1]:null;
-          const col=colorOf(sl?sl.color:pw.colors[k]),a0=t*pw.spin*(i%2?-1:1),rr=e.rr*pw.radiusK(i),al0=sl?sl.alpha:pw.alpha;
+          const col=colorOf(sl?sl.color:pw.colors[k]),a0=t*pw.spin*(i%2?-1:1),rr=pw.ringR(e.rr,i),al0=sl?sl.alpha:pw.alpha;
           const al=al0[0]+(al0[1]-al0[0])*(.5+.5*Math.sin(t*(sl?sl.pulse:pw.pulse)+i)),wd=pw.width(e.rr)*(sl?sl.widthK:1);
           dashArc(g,rr,a0,pw.dash(e.rr));g.stroke({width:wd,color:col.c,alpha:col.a*al,cap:"round"});
-          if(sl&&sl.rings>1){dashArc(g,rr*1.12,-a0*1.3,pw.dash(e.rr));g.stroke({width:wd*.6,color:col.c,alpha:col.a*al*.7,cap:"round"});}   // nível 3: 2º anel
+          if(sl&&sl.rings>1){dashArc(g,rr+7,-a0*1.3,pw.dash(e.rr));g.stroke({width:wd*.6,color:col.c,alpha:col.a*al*.7,cap:"round"});}   // nível 3: 2º anel, logo atrás (offset, não múltiplo)
           if(k==="magnet"&&R.ambient)R.ambient("magnet",{x:e.rx,y:e.ry,r:e.rr});});drew=true;}
         g.visible=drew;}
       for(const [id,v] of views)if(v.f!==frame){v.c.destroy({children:true});views.delete(id);pops.delete(id);}   // o mesh é filho do container: destroy({children}) leva junto

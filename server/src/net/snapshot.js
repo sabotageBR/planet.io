@@ -9,7 +9,7 @@
 import {NET,BLACKHOLE,STAR} from '@planet/shared/constants.js';
 import {KIND,UPD,REMOVE,PIECE_FLAG,FOOD_FLAG,SELF_FLAG} from '@planet/shared/protocol/constants.js';
 import {encodeSnapshot,qPos,qR,qV} from '@planet/shared/protocol/index.js';
-import {focusOf,zoomFor,viewRect,rectHas} from '@planet/shared/camera.js';
+import {focusOf,zoomFor,viewRect,rectHas,aoiScaleFood} from '@planet/shared/camera.js';
 let fq=new Int32Array(4096);   // buffer da consulta de comida por retângulo (cresce com o mundo)
 const MAX_BUFFERED=256*1024,SWEEP_EVERY=60,WFLAGS=PIECE_FLAG.SHIELD|PIECE_FLAG.LAUNCH|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK,NO_SLOT=0xffff;
 const DEFAULT_REASON=[0,REMOVE.EATEN,REMOVE.EATEN,REMOVE.EXPIRED,REMOVE.DESPAWN,REMOVE.DESPAWN,REMOVE.EXPIRED,REMOVE.DESPAWN]; // por KIND
@@ -83,7 +83,12 @@ export function createSnapshotter(room){
     const visit=(arr,kind)=>{for(let i=0;i<arr.length;i++){const b=arr[i];if(b.dead)continue;const rad=hasExtra(kind)?Math.max(b.r,extraOf(b,kind)):b.r;
       if(known.has(b.id)){if(!rectHas(rout,b.x,b.y,rad))continue;known.set(b.id,kind|tag);const m=masks.get(b.id);if(m)pushUpdate(b,kind,m,slot);}
       else if(rectHas(rin,b.x,b.y,rad)){known.set(b.id,kind|tag);pushCreate(b,kind,slot,sim);}}};
-    visit(w.pieces,KIND.PIECE);visitFood(w,rin,rout,known,tag,slot,sim);visit(w.ejected,KIND.EJECT);visit(w.asteroids,KIND.ASTEROID);visit(w.holes,KIND.BLACKHOLE);visit(w.stars,KIND.STAR);visit(w.missiles,KIND.MISSILE);
+    // a comida tem retângulo PRÓPRIO, com escala mínima: a câmera pode afastar à vontade, mas não se manda o
+    // mapa inteiro de comida para um cliente só (ver aoiScaleFood). O resto vem pela visão de verdade.
+    const fs=aoiScaleFood(s.scale,s.view.w,s.view.h);
+    const fin=fs===s.scale?rin:viewRect(s.cx,s.cy,fs,s.view.w,s.view.h,NET.AOI_PAD),
+          fout=fs===s.scale?rout:viewRect(s.cx,s.cy,fs,s.view.w,s.view.h,NET.AOI_PAD_OUT);
+    visit(w.pieces,KIND.PIECE);visitFood(w,fin,fout,known,tag,slot,sim);visit(w.ejected,KIND.EJECT);visit(w.asteroids,KIND.ASTEROID);visit(w.holes,KIND.BLACKHOLE);visit(w.stars,KIND.STAR);visit(w.missiles,KIND.MISSILE);
     const gone=sim.gone,byId=w.entityById;
     for(const [id,v] of known){if((v>>>3)===stamp)continue;known.delete(id);
       const g=gone.get(id);pushRemove(id,g!==undefined?g:byId.has(id)?REMOVE.LEFT_AOI:DEFAULT_REASON[v&7]);}

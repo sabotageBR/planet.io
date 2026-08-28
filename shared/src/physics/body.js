@@ -61,6 +61,13 @@ export function addMass(b,dm,maxR=Infinity){let m=b.mass+dm;const cap=maxR*maxR;
  * @param {Body} b
  */
 export const addBoost=(b,ux,uy,dist)=>{const v=dist*BOOST.K;b.vx+=ux*v;b.vy+=uy*v;};
+/**
+ * Decaimento por tick: a peça perde PLAYER.DECAY da massa por segundo, com piso em START_R (ninguém murcha
+ * abaixo do tamanho de nascença). É o `playerDecayRate` do agar (`size = √(size²·(1−rate))`).
+ * @param {Body} b
+ */
+export function decayPiece(b,dt){const min=PLAYER.START_R;if(b.r<=min)return;
+  const m=b.mass*(1-PLAYER.DECAY*dt),floor=min*min;setMass(b,m>floor?m:floor);}
 /** Velocidade real de um corpo: impulso + direção (só a peça tem direção). @param {Body} b */
 export const velX=b=>b.vx+b.svx,velY=b=>b.vy+b.svy;
 /** Impulso do corpo em px: o quanto ainda falta ele ser empurrado. @param {Body} b */

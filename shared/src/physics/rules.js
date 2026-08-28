@@ -57,9 +57,8 @@ function bouncePiece(A,B,e,aPiece,bPiece){
 // ── peça × peça (donos diferentes) ──
 /**
  * Engolir (ra ≥ rb·RATIO e centro do menor a d < ra − rb·CENTER; enquanto só encosta, o maior atravessa) ou
- * quique mass-weighted entre tamanhos parecidos. **A regra do maior comer o menor sempre prevalece**: o escudo
- * (que serve mesmo é contra míssil) só segura a PRIMEIRA batida — ela quebra o escudo inteiro, seja qual for o
- * nível (SHIELD_BREAK), e quica com E_SHIELD dando chance de fuga; da batida seguinte em diante o maior come.
+ * quique mass-weighted entre tamanhos parecidos. O escudo **não interfere aqui**: ele defende de míssil e de
+ * asteroide, e nada mais — quem é maior come, com escudo ou sem.
  * @param {World} w @param {Body} A @param {Body} B
  */
 export function piecePair(w,A,B){
@@ -68,13 +67,7 @@ export function piecePair(w,A,B){
   const aBig=ra>=rb*EAT.RATIO,bBig=!aBig&&rb>=ra*EAT.RATIO;
   if(aBig||bBig){
     const big=aBig?A:B,small=aBig?B:A,psBig=aBig?psA:psB,psSmall=aBig?psB:psA;
-    if(small.shieldLv>0){
-      if(d2<sum*sum){breakShield(w,small,big.owner);const vn=bouncePiece(A,B,BOUNCE.E_SHIELD,true,true);
-        const dx2=small.x-big.x,dy2=small.y-big.y,dd=Math.hypot(dx2,dy2)||1;
-        addBoost(small,dx2/dd,dy2/dd,BOUNCE.DIST_MAX);capBoost(small,BOUNCE.DIST_MAX);   // o escudo CHUTA para fora: como nenhuma peça tem velocidade, sem isto o quique não empurraria nada e não haveria chance de fuga
-        bounceEvent(w,A,B,vn>BOUNCE.FX_MIN_VN?vn:BOUNCE.FX_MIN_VN);}
-      return;}
-    const lim=big.r-small.r*EAT.CENTER;if(lim>0&&d2<lim*lim)eatPiece(w,psBig,big,psSmall,small);
+    const lim=big.r-small.r*EAT.CENTER;if(lim>0&&d2<lim*lim)eatPiece(w,psBig,big,psSmall,small);   // o escudo NÃO impede de ser comido: ele defende só de míssil e asteroide
     return;}
   if(d2<sum*sum){const vn=bouncePiece(A,B,BOUNCE.E,true,true);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}}
 /** A (de killer) engole B (de victim): ma += mb·GAIN (GAIN=1: a massa toda, como no agar), pontos, EAT e talvez PLAYER_DEAD. */
@@ -147,8 +140,10 @@ function impactParam(pc,a){
 /**
  * Peça ≥ POP_RATIO× o asteroide: **pop** quando d < r·POP_DIST — mas só se a rocha vier MIRANDO o miolo
  * (`impactParam` < r·POP_DIST); de raspão ela ricocheteia como bola de sinuca em vez de atravessar o planeta.
- * Quique = e=ASTEROID.E (impulso pela normal do contato, ponderado pela massa: rocha leve sai voando, planeta
- * pesado quase não sente) + lasca (cooldown CHIP_CD_TICKS por peça).
+ * **A rocha SEMPRE morre no contato** (POP + respawn): antes ela sobrevivia ao quique em cinco caminhos (peça
+ * menor que ela, peça blindada, raspão, dono com 16 peças, pop sem vaga) e ficava batendo sem parar no mesmo
+ * planeta. Como ela some, o cooldown `chipUntil` deixou de ser necessário aqui — cada rocha cobra uma vez só.
+ * Quique = e=ASTEROID.E (impulso pela normal, ponderado pela massa) + lasca.
  * **Com escudo o preço é a VELOCIDADE da batida** (`shieldTierFor`, ver ASTEROID.SHIELD_VN): devagar custa 1 nível,
  * média 2, e rápida demais custa o escudo INTEIRO e ainda estoura o planeta — nessa faixa a rocha atravessa como se
  * não houvesse escudo. Abaixo disso o escudo segura de verdade: nada de lasca e nada de pop, só o empurrão do quique
@@ -165,12 +160,12 @@ export function pieceAsteroid(w,pc,a){
     if(d2<lim*lim&&popAsteroid(w,ps,pc,a)){if(pc.shieldLv>0)breakShield(w,pc,-1);return;}   // rápida demais: leva o escudo junto
     if(liveCount(ps.pieces)<PLAYER.MAX_PIECES&&impactParam(pc,a)<lim)return;}   // vindo para o miolo: deixa entrar (vai estourar); de raspão cai no quique
   const s=pc.r+a.r;if(d2>=s*s||d2<=0)return;
-  const vn=bouncePiece(pc,a,ASTEROID.E,true,false);if(vn<=0)return;
-  if(w.tick>=pc.chipUntil){
-    if(pc.shieldLv>0){if(tier>0){pc.chipUntil=w.tick+ASTEROID.CHIP_CD_TICKS;
-      for(let i=0;i<tier&&pc.shieldLv>0;i++)hitShield(w,pc,-1,nx,ny);}}
-    else{pc.chipUntil=w.tick+ASTEROID.CHIP_CD_TICKS;chipPiece(w,ps,pc,a,nx,ny);}}
-  if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,pc,a,vn);}
+  const vn=bouncePiece(pc,a,ASTEROID.E,true,false);
+  if(pc.shieldLv>0){if(tier>0)for(let i=0;i<tier&&pc.shieldLv>0;i++)hitShield(w,pc,-1,nx,ny);}
+  else chipPiece(w,ps,pc,a,nx,ny);
+  if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,pc,a,vn);
+  a.dead=true;w.queueAsteroid(a.type,ASTEROID.RESPAWN_TICKS);   // encostou, EXPLODIU: a rocha nunca sobra para ficar batendo de novo
+  w.events.push({type:"POP",slot:ps.slot,asteroidId:a.id,x:a.x,y:a.y,r:a.r});}
 /** Estoura a peça em n=clamp(⌊r/POP_DIV⌋,POP_MIN,POP_MAX) filhos (limitado por MAX_PIECES); asteroide morre e respawna depois. */
 export function popAsteroid(w,ps,pc,a){
   let n=Math.floor(pc.r/LOCAL.POP_DIV);if(n<LOCAL.POP_MIN)n=LOCAL.POP_MIN;if(n>LOCAL.POP_MAX)n=LOCAL.POP_MAX;
@@ -215,24 +210,27 @@ export function pieceStar(w,pc,st){
   const dx=pc.x-st.x,dy=pc.y-st.y,d2=dx*dx+dy*dy,lim=pc.r+st.r;if(d2>=lim*lim)return;
   const d=Math.sqrt(d2),ux=d>1e-6?dx/d:1,uy=d>1e-6?dy/d:0,tick=w.tick;
   addBoost(pc,ux,uy,STAR.PUSH_TOUCH_DIST);
-  if(tick<pc.chipUntil||pc.r<STAR.SHATTER_MIN_R)return;
-  pc.chipUntil=tick+STAR.SHATTER_CD_TICKS;
-  if(pc.shieldLv>0){breakShield(w,pc,-1);return;}   // o escudo cai INTEIRO e segura o estilhaço (uma vez só)
-  starShatter(w,w.players.get(pc.owner),pc,st,ux,uy);}
+  if(tick>=pc.chipUntil&&pc.r>=STAR.SHATTER_MIN_R){pc.chipUntil=tick+STAR.SHATTER_CD_TICKS;
+    starShatter(w,w.players.get(pc.owner),pc,st,ux,uy);}   // o escudo NÃO salva da estrela: ele só defende de míssil e asteroide
+  supernova(w,st);}   // encostou nela: a estrela explode e morre (a sala repõe uma)
 /**
- * Estilhaça a peça em n+1 pedaços (n de SHATTER_N, limitado por MAX_PIECES e por MIN_PIECE_R): o pai encolhe para
- * r/√(n+1) — massa conservada, como no pop do asteroide — e os filhos saem em leque em volta da direção
- * estrela→peça a SHATTER_DIST px, todos com o cooldown de fusão renovado. STAR_BURST.
- * @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} st
+ * Estilhaça a peça em n+1 pedaços (limitado por MAX_PIECES e por MIN_PIECE_R): o pai encolhe para r/√(n+1)
+ * — massa conservada, como no pop do asteroide — e os filhos saem em leque em volta de (ux,uy) a `dist` px,
+ * todos com o cooldown de fusão renovado. Usada pela estrela E pelo míssil (o tiro parte o alvo).
+ * @param {World} w @param {PlayerState} ps @param {Body} pc
  */
-export function starShatter(w,ps,pc,st,ux,uy){
+export function shatterPiece(w,ps,pc,ux,uy,nWanted,dist){
   const tick=w.tick,rng=w.rng,room=PLAYER.MAX_PIECES-liveCount(ps.pieces);if(room<1)return false;
-  let n=rng.int(STAR.SHATTER_N[0],STAR.SHATTER_N[1]);if(n>room)n=room;
+  let n=nWanted;if(n>room)n=room;
   const maxN=Math.floor(pc.mass/(PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R))-1;if(n>maxN)n=maxN;if(n<1)return false;
   const nr=pc.r/Math.sqrt(n+1),base=Math.atan2(uy,ux);setR(pc,nr);pc.mergeAt=tick+mergeTicks(nr);
-  for(let i=0;i<n;i++){const an=base+(i+1)/(n+1)*6.2832+rng.range(-.25,.25),sp=STAR.SHATTER_DIST*(.8+rng.next()*.4);
+  for(let i=0;i<n;i++){const an=base+(i+1)/(n+1)*6.2832+rng.range(-.25,.25),sp=dist*(.8+rng.next()*.4);
     const q=w.newPiece(ps.slot,pc.x,pc.y,nr);addBoost(q,Math.cos(an),Math.sin(an),sp);q.mergeAt=pc.mergeAt;}
-  addBoost(pc,ux,uy,STAR.SHATTER_DIST*.5);
+  addBoost(pc,ux,uy,dist*.5);return true;}
+/** Estilhaço causado por estrela/supernova: emite STAR_BURST. @param {World} w @param {Body} st */
+export function starShatter(w,ps,pc,st,ux,uy){
+  const n=w.rng.int(STAR.SHATTER_N[0],STAR.SHATTER_N[1]);
+  if(!shatterPiece(w,ps,pc,ux,uy,n,STAR.SHATTER_DIST))return false;
   w.events.push({type:"STAR_BURST",slot:ps.slot,starId:st.id,x:pc.x,y:pc.y,r:pc.r});return true;}
 /**
  * Míssil acerta a estrela: o míssil morre, empurra a estrela (HIT_PUSH, menos quanto maior ela for) e conta um hit.
@@ -300,7 +298,7 @@ export function supernova(w,st){
     const d=Math.sqrt(d2)||1,ux=dx/d,uy=dy/d,k=STAR.PUSH_DIST*(1-d/blast);addBoost(pc,ux,uy,k);
     if(d2>=l2||tick<pc.chipUntil||pc.r<STAR.SHATTER_MIN_R)continue;   // fora do miolo (ou no cooldown de contato) é só o empurrão
     pc.chipUntil=tick+STAR.SHATTER_CD_TICKS;
-    if(pc.shieldLv>0)breakShield(w,pc,-1);else starShatter(w,w.players.get(pc.owner),pc,st,ux,uy);}
+    starShatter(w,w.players.get(pc.owner),pc,st,ux,uy);}   // o escudo não salva da supernova (só míssil e asteroide)
   // berçário: a estrela morta vira um cacho de comida que fica. Ele REALOCA em vez de somar — para cada pelota do
   // cacho some uma de longe, escolhida pelo rng da sala. Sem isso a população subia para sempre (o laço de reposição
   // do mundo só ENCHE até FOOD.COUNT, nunca corta), e em 15 min já eram 6072 comidas no lugar de 5000.
@@ -405,7 +403,9 @@ export function pieceMissile(w,pc,m){
   if(pc.shieldLv>0){m.dead=true;const d=Math.sqrt(dx*dx+dy*dy)||1;hitShield(w,pc,m.owner,dx/d,dy/d);return;}
   const m0=pc.mass;let r=pc.r*MISSILE.HIT_SHRINK;if(r<PLAYER.MIN_PIECE_R)r=PLAYER.MIN_PIECE_R;setR(pc,r);
   spillFrag(w,pc.x,pc.y,1,0,m0-pc.mass,MISSILE.HIT_DEBRIS,MISSILE.DEBRIS_SPEED,LOCAL.DEBRIS_SPREAD,pc.owner,EJECT.OWNER_IMMUNE_TICKS);
-  m.dead=true;w.events.push({type:"BOOM",x:m.x,y:m.y,r:pc.r,slot:pc.owner,bySlot:m.owner});}
+  m.dead=true;w.events.push({type:"BOOM",x:m.x,y:m.y,r:pc.r,slot:pc.owner,bySlot:m.owner});
+  const d=Math.sqrt(dx*dx+dy*dy)||1,n=w.rng.int(MISSILE.SHATTER_N[0],MISSILE.SHATTER_N[1]);
+  shatterPiece(w,w.players.get(pc.owner),pc,-dx/d,-dy/d,n,MISSILE.SHATTER_DIST);}   // o tiro PARTE o alvo, não só arranca massa: é a arma anti-gigante
 /**
  * Míssil × míssil (donos diferentes), teste varrido no último passo: menor distância entre os centros ao longo do
  * movimento relativo do tick (segmento p−v·DT → p) < ra+rb → ambos morrem, CLASH no ponto médio. Retorna true se chocou.

@@ -313,7 +313,7 @@ function drawPlanet(c,p){const sk=p.skin,d=p.r*SC.planet(sk);
   const cell=TH.hud.cell;c.save();c.translate(p.x,p.y);c.lineCap="round";
   if(p.merge){c.strokeStyle=cell.merge.color;c.lineWidth=cell.merge.width(p.r);c.beginPath();c.arc(0,0,p.r*cell.merge.radiusK,-1.5708,-1.5708+p.merge*6.283);c.stroke();}
   (p.powerups||[]).forEach((k,i)=>{const pw=cell.powerups,a0=t*pw.spin*(i%2?-1:1);c.strokeStyle=pw.colors[k];c.lineWidth=pw.width(p.r);c.globalAlpha=pw.alpha[0]+(pw.alpha[1]-pw.alpha[0])*(.5+.5*Math.sin(t*pw.pulse+i));
-    c.setLineDash(pw.dash(p.r));c.beginPath();c.arc(0,0,p.r*pw.radiusK(i),a0,a0+6.283);c.stroke();c.setLineDash([]);c.globalAlpha=1;});
+    c.setLineDash(pw.dash(p.r));c.beginPath();c.arc(0,0,pw.ringR(p.r,i),a0,a0+6.283);c.stroke();c.setLineDash([]);c.globalAlpha=1;});
   c.restore();drawLabels(c,p.x,p.y,p.r,p.name+(p.registered?" ✓":""),p.r*p.r);}
 function drawRadar(c,scene){const R0=TH.hud.radar,D=R0.size[mode]||R0.size.desktop,MP=R0.position.margin,R=D/2,cx=W-MP-R,cy=MP+R;c.setTransform(1,0,0,1,0,0);c.lineJoin="round";
   c.fillStyle=R0.shadow.color;c.beginPath();c.arc(cx+R0.shadow.dx,cy+R0.shadow.dy,R,0,6.283);c.fill();

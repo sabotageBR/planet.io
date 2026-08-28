@@ -183,15 +183,15 @@ export const effects={
         P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:14,inner:.5,phase:-k*.4,fill:GOLD,alpha:al});
         P.push({type:"ring",x:f.x,y:f.y,r:s*1.3,color:"#fff",alpha:a,width:4});
         P.push({type:"text",x:f.x,y:f.y,text:"KABOOM!",size:Math.max(12,s*.3),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
-      case "shieldBreak":{const col=SHIELD_LV[0].color,R0=f.r*1.3;   // anel estilhaça em 8 arcos que voam
+      case "shieldBreak":{const col=SHIELD_LV[0].color,R0=f.r+6;   // anel estilhaça em 8 arcos que voam
         P.push({type:"ring",x:f.x,y:f.y,r:R0*(1+k*.4),color:col,alpha:a*.6,width:3,dash:[R0*.5,R0*.35]});
         P.push({type:"burst",x:f.x,y:f.y,n:8,r0:R0*(1+k*1.2),r1:R0*(1.3+k*1.8),color:col,alpha:a,width:Math.max(3,f.r*.1),phase:.4});
         P.push({type:"text",x:f.x,y:f.y-f.r*1.4,text:"CRACK!",size:Math.max(10,f.r*.5),fill:"#fff",stroke:INK,font:FONT,alpha:a});break;}
-      case "shieldHit":{const col=(SHIELD_LV[(f.level||1)-1]||SHIELD_LV[0]).color,hx=f.x+(f.nx||0)*f.r*1.3,hy=f.y+(f.ny||0)*f.r*1.3;   // flash do anel + impacto na borda
-        P.push({type:"ring",x:f.x,y:f.y,r:f.r*1.3*(1+k*.15),color:col,alpha:a,width:Math.max(4,f.r*.12)});
+      case "shieldHit":{const col=(SHIELD_LV[(f.level||1)-1]||SHIELD_LV[0]).color,hx=f.x+(f.nx||0)*(f.r+6),hy=f.y+(f.ny||0)*(f.r+6);   // flash do anel + impacto na borda
+        P.push({type:"ring",x:f.x,y:f.y,r:(f.r+6)*(1+k*.15),color:col,alpha:a,width:Math.min(16,Math.max(4,f.r*.12))});
         P.push({type:"star",x:hx,y:hy,r:f.r*.45*(1+k),n:6,inner:.5,phase:k,fill:"#fff",stroke:INK,width:2,alpha:a});break;}
       case "shieldUp":{const col=(SHIELD_LV[(f.level||1)-1]||SHIELD_LV[0]).color;
-        P.push({type:"ring",x:f.x,y:f.y,r:f.r*(1.3+k*1.4),color:col,alpha:a,width:4});
+        P.push({type:"ring",x:f.x,y:f.y,r:f.r+6+k*f.r*1.4,color:col,alpha:a,width:4});
         P.push({type:"text",x:f.x,y:f.y-f.r*(1.2+k*.8),text:"NÍVEL "+(f.level||1)+"!",size:Math.max(10,f.r*.5),fill:col,stroke:INK,font:FONT,alpha:a});break;}
       case "clash":{const s=f.r*(2+k*3),al=Math.min(1,a*1.4);   // míssil × míssil
         P.push({type:"star",x:f.x,y:f.y,r:s,n:9,inner:.5,phase:k*.7,fill:CORAL,stroke:INK,width:Math.max(2,s*.06),alpha:al});
@@ -239,7 +239,11 @@ export const hud={
   trail:{style:"dashed",color:(skin,isMe)=>rgba(PEACH,isMe?.7:.42),width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},
   labels:{font:FONT,nameColor:"#fff",massColor:PEACH,stroke:INK,minR:13,size:r=>Math.max(12,r*.34),massK:.68,nameY:fs=>-fs*.28,massY:fs=>fs*.8,strokeWidth:s=>Math.max(2,s*.2)},
   cell:{merge:{color:GOLD,width:r=>Math.max(3,r*.08),radiusK:1.18},
-    powerups:{colors:{magnet:MAG,shield:TEAL},width:r=>Math.max(3,r*.08),dash:r=>[r*.4,r*.3],radiusK:i=>1.3+i*.16,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},
+    powerups:{colors:{magnet:MAG,shield:TEAL},width:r=>Math.min(14,Math.max(3,r*.08)),dash:r=>[Math.min(48,r*.4),Math.min(36,r*.3)],
+      ringR:(r,i)=>r+6+i*10,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},
+    // o anel é OFFSET ABSOLUTO da borda (r+6px), não múltiplo do raio: com `radiusK:1.3` ele ficava 176 px
+    // fora de um planeta de r=587 e com 47 px de traço — parecia outro planeta em volta. Traço e tracejado
+    // também ganharam teto para o anel não virar um aro grosso no planetão.
   skinPreview:{ringK:.68,dy:2},
 };
 

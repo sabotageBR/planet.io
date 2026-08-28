@@ -7,7 +7,7 @@ import {WORLD,DT,PLAYER,SPEED,SPLIT,EJECT,FRAG,BOUNCE,WALL,FOOD,FOOD_TYPE,ASTERO
 import {KIND,PIECE_FLAG,FOOD_FLAG,BH_PHASE,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {createRng} from "../rng.js";
 import {clamp} from "../util.js";
-import {createBody,liveCount} from "./body.js";
+import {createBody,liveCount,decayPiece} from "./body.js";
 import {createGrid,GRID_CELL} from "./spatial-hash.js";
 import {integratePiece,integrateFree} from "./integrate.js";
 import {resolveBounce,separateOwn,tryMergeOwn} from "./collide.js";
@@ -56,7 +56,7 @@ export class World{
     /** @type {any[]} */this.events=[];/** @type {Map<number,Body>} */this.entityById=new Map();
     /** @type {{cx:number,cy:number,rad:number,w:number}[]} */this.belts=[];/** @type {{belt:number,at:number}[]} */this.astQueue=[];
     /** @type {{at:number}[]} */this.starQueue=[];
-    this.foodCount=o.food;this.holeCount=o.holes;this.starCount=o.stars;this.astBase=o.asteroids?ASTEROID.BELTS*ASTEROID.PER_BELT+ASTEROID.WANDERERS:0;this.astCap=this.astBase+ASTEROID.MAX_EXTRA;
+    this.decay=o.decay!==false;this.foodCount=o.food;this.holeCount=o.holes;this.starCount=o.stars;this.astBase=o.asteroids?ASTEROID.BELTS*ASTEROID.PER_BELT+ASTEROID.WANDERERS:0;this.astCap=this.astBase+ASTEROID.MAX_EXTRA;
     this.grid=createGrid(w,h,GRID_CELL);this.foodGrid=createGrid(w,h,GRID_CELL);this.foodDirty=true;
     /** @type {Body[]} */this.dyn=[];this._pairs=new Int32Array(4096*3);/** @type {number[]} */this._q=[];this._spot={x:0,y:0};
     for(let i=0;i<o.food;i++)this.spawnFood();
@@ -205,7 +205,7 @@ export class World{
       ps.splitReq=ps.ejectReq=ps.fireReq=false;ps.fireAim=false;}
     // ── 2. integração ──
     for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner);
-      integratePiece(pc,ps.tx,ps.ty,DT,W,H);
+      integratePiece(pc,ps.tx,ps.ty,DT,W,H);if(this.decay)decayPiece(pc,DT);   // o gigante murcha se parar de comer (PLAYER.DECAY)
       if(pc.shieldLv>0&&pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL&&tick>=pc.shieldEvolveAt){   // escudo evolui por peça: só quem tem escudo E não apanha sobe de nível
         pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;ev.push({type:"SHIELD_UP",slot:pc.owner,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
       let f=pc.flags&~(PIECE_FLAG.SHIELD|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK);
@@ -308,4 +308,7 @@ export class World{
 }
 
 /** Cria um mundo determinístico. `food`/`holes`/`stars` são contagens; `asteroids:false` desliga cinturões e errantes. */
-export function createWorld({seed=1,w=WORLD.w,h=WORLD.h,food=FOOD.COUNT,asteroids=true,holes=BLACKHOLE.COUNT,stars=STAR.COUNT}={}){return new World(seed,w,h,{food,asteroids,holes,stars});}
+export function createWorld({seed=1,w=WORLD.w,h=WORLD.h,food=FOOD.COUNT,asteroids=true,holes=BLACKHOLE.COUNT,stars=STAR.COUNT,decay=true}={}){return new World(seed,w,h,{food,asteroids,holes,stars,decay});}
+// `decay:false` existe para os testes de conservação de massa: o decaimento é uma regra de EQUILÍBRIO e mexeria
+// em toda asserção de "a massa fecha em 1e-6", que é sobre a TRANSFERÊNCIA ser sem perda. O teste do decaimento
+// e o de paridade da predição usam mundo com ele ligado.

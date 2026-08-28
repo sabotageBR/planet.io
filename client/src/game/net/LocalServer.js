@@ -7,7 +7,7 @@
 import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,encodePong,decodeInput,
   MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,
   WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,BOT_NAMES,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,
-  focusOf,zoomFor,viewRect,rectHas,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir} from "@planet/shared";
+  focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir} from "@planet/shared";
 import {createWorld,applySplit} from "@planet/shared/physics/index.js";
 import {BotBrain} from "@planet/shared/bot.js";
 
@@ -137,12 +137,14 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
       if(spp&&spp.length){const f=focusOf(spp);cx=f.cx;cy=f.cy;scale=zoomFor(f.sumR,view.w,view.h);s.cx=cx;s.cy=cy;s.scale=scale;}   // assistindo alguém: a AOI vai junto
       else{if(s.dead)spectate(s,-1);cx=s.cx==null?w.w/2:s.cx;cy=s.cy==null?w.h/2:s.cy;scale=s.scale||.42;}}
     const rect=viewRect(cx,cy,scale,view.w,view.h,NET.AOI_PAD),out=viewRect(cx,cy,scale,view.w,view.h,NET.AOI_PAD_OUT);s.aoi=out;
+    const fs=aoiScaleFood(scale,view.w,view.h);   // comida tem retângulo próprio (idem servidor)
+    const frect=fs===scale?rect:viewRect(cx,cy,fs,view.w,view.h,NET.AOI_PAD),fout=fs===scale?out:viewRect(cx,cy,fs,view.w,view.h,NET.AOI_PAD_OUT);
     cr.length=up.length=rm.length=0;const known=s.known;let seenN=0;const stamp=tick;
-    const visit=(b,rad)=>{if(b.dead)return;let k=known.get(b.id);
-      if(!k){if(!rectHas(rect,b.x,b.y,rad))return;k={x:-1,y:-1,r:-1,vx:0,vy:0,flags:-1,phase:-1,ri:-1,seen:stamp};known.set(b.id,k);cr.push(toCreate(b,s.slot));setLast(k,b,s.slot);seenN++;return;}
-      if(!rectHas(out,b.x,b.y,rad))return;k.seen=stamp;seenN++;
+    const visit=(b,rad,ri=rect,ro=out)=>{if(b.dead)return;let k=known.get(b.id);
+      if(!k){if(!rectHas(ri,b.x,b.y,rad))return;k={x:-1,y:-1,r:-1,vx:0,vy:0,flags:-1,phase:-1,ri:-1,seen:stamp};known.set(b.id,k);cr.push(toCreate(b,s.slot));setLast(k,b,s.slot);seenN++;return;}
+      if(!rectHas(ro,b.x,b.y,rad))return;k.seen=stamp;seenN++;
       const u=toUpdate(b,k,s.slot);if(u)up.push(u);};
-    for(const b of w.pieces)visit(b,b.r);for(const b of w.food)visit(b,b.r);for(const b of w.ejected)visit(b,b.r);
+    for(const b of w.pieces)visit(b,b.r);for(const b of w.food)visit(b,b.r,frect,fout);for(const b of w.ejected)visit(b,b.r);
     for(const b of w.asteroids)visit(b,b.r);for(const b of w.holes)visit(b,Math.max(b.r,b.r*BLACKHOLE.INFLUENCE*b.k));
     for(const b of w.stars)visit(b,b.r*STAR.HALO);for(const b of w.missiles)visit(b,b.r);
     for(const [id,k] of known)if(k.seen!==stamp){const body=w.entityById.get(id);rm.push({id,reason:body&&!body.dead?REMOVE.LEFT_AOI:(reasonMap.has(id)?reasonMap.get(id):REMOVE.DESPAWN)});known.delete(id);}

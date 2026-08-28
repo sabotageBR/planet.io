@@ -7,6 +7,7 @@
 // @ts-check
 import {DT,WORLD,BLACKHOLE} from "../constants.js";
 import {integratePiece} from "./integrate.js";
+import {decayPiece} from "./body.js";
 import {separateOwn,tryMergeOwn} from "./collide.js";
 import {pullBody} from "./rules.js";
 
@@ -18,7 +19,7 @@ import {pullBody} from "./rules.js";
  */
 export function stepOwnPieces(pieces,state,tick,dt=DT,w=WORLD.w,h=WORLD.h,holes=null){
   const n=pieces.length;
-  for(let i=0;i<n;i++)integratePiece(pieces[i],state.tx,state.ty,dt,w,h);
+  for(let i=0;i<n;i++){integratePiece(pieces[i],state.tx,state.ty,dt,w,h);decayPiece(pieces[i],dt);}   // mesmo decaimento do servidor, senão a predição diverge
   if(holes)for(let j=0;j<holes.length;j++){const hb=holes[j],ri=hb.r*BLACKHOLE.INFLUENCE*hb.k,rc=hb.r*hb.k;if(ri<10)continue;   // depois da integração, como no servidor (passo 6)
     for(let i=0;i<n;i++)pullBody(hb,pieces[i],1,rc,ri);}
   if(n>1){

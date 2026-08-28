@@ -51,6 +51,15 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
 - **Fusão**: por par de peças do mesmo dono — separação enquanto uma não pode fundir; quando ambas podem, atração só a
   separação SÓ posicional (sem atração entre peças próprias); merge pareado a d < max(r)·MERGE.DIST. A peça que fica herda o
   melhor powerup das duas (ver acima).
+- **Decaimento** (`PLAYER.DECAY`, o `playerDecayRate` do agar): toda peça perde .2% da massa por segundo, com piso
+  em `START_R`, aplicado no passo (`world.js`) e espelhado em `predict.js` (a paridade de 1e-6 é o guarda). É o que
+  impede o gigante de ser imortal — antes, nenhuma ameaça tirava massa dele com o tempo.
+- **Escudo defende SÓ de míssil e asteroide**: não impede mais de ser comido (`piecePair` perdeu o ramo que
+  interceptava antes do `eatPiece`) e não salva de estrela nem de supernova.
+- **Colisão de rocha = explosão**: em `pieceAsteroid` a rocha SEMPRE morre no contato (POP + respawn). Antes ela
+  sobrevivia ao quique em cinco caminhos e ficava batendo sem parar no mesmo planeta.
+- **Míssil estilhaça** (`shatterPiece`, `MISSILE.SHATTER_N`/`SHATTER_DIST`): além dos `HIT_SHRINK` de dano, o tiro
+  parte o alvo em 3–6 pedaços — é o que dá a alguém a chance de desmontar um planetão.
 - **Estrela: nada se multiplica.** Míssil/partícula empurram e contam hit; em `STAR.HITS_TO_SPLIT` ela **explode
   (supernova) e morre**, e o meteoro grande que trombar nela também a faz explodir (a rocha morre no estouro).
   Antes ela rachava em `SPLIT_N` estrelas menores e a rocha em `SMASH_N` cacos — um motor de população: a sala de 5
