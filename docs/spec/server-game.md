@@ -61,13 +61,13 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
 - **Decaimento** (`PLAYER.DECAY`, o `playerDecayRate` do agar): toda peça perde .2% da massa por segundo, com piso
   em `START_R`, aplicado no passo (`world.js`) e espelhado em `predict.js` (a paridade de 1e-6 é o guarda). É o que
   impede o gigante de ser imortal — antes, nenhuma ameaça tirava massa dele com o tempo.
-- **Piso de tamanho para atirar e para o escudo** (`MISSILE.MIN_R` e `POWERUP.SHIELD_MIN_R`, ambos 60 = `SPLIT.MIN_R`):
-  `applyFire` sai da primeira peça viva **com r ≥ MIN_R** (`bigEnough`) — sem nenhuma, não atira e não gasta munição;
-  `eatFood` recusa o 🛡️ abaixo do piso e **nem marca a comida como comida**, então ela fica ali para quem crescer.
-  Sem os dois, quem nasce (r=30) começa a rodada blindado e metralhando: não tem massa a perder, o nível de escudo que o
-  tiro cobra ele não tem, e o míssil é justamente a arma anti-gigante. Munição segue coletável abaixo do piso (fica
-  guardada) e os bots respeitam o mesmo limite, para não gastarem input à toa. O cliente apaga o botão de míssil
-  (`hud.canFire`) e o tiro vira ejeção, igual a quando falta munição.
+- **Carência de tiro do spawn** (`MISSILE.SPAWN_CD_TICKS` = 600 ticks = 10 s): todo nascimento (`_spawnPiece`, e
+  portanto também o respawn) arma `ps.fireCdUntil = tick + SPAWN_CD_TICKS`, e `applyFire` recusa antes disso — sem
+  atirar e **sem gastar munição**. Sem ela, quem nasce sai do spawn metralhando: não tem massa a perder e o míssil é
+  justamente a arma anti-gigante. É por TEMPO, não por tamanho — planeta pequeno pode atirar, só precisa sobreviver
+  os 10 s. Vale para bot também (o `bot.js` checa o mesmo campo para não gastar input à toa). O que falta vai no
+  `self` do snapshot como `fireCd` (u16 ticks, protocolo 7) e o HUD desenha a contagem regressiva **em cima do ícone
+  da arma**; enquanto corre, o botão de míssil apaga e o clique vira ejeção, igual a quando falta munição.
 - **Escudo defende SÓ de míssil e asteroide**: não impede mais de ser comido (`piecePair` perdeu o ramo que
   interceptava antes do `eatPiece`) e não salva de estrela nem de supernova.
 - **Colisão de rocha = explosão**: em `pieceAsteroid` a rocha SEMPRE morre no contato (POP + respawn). Antes ela

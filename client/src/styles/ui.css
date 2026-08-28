@@ -47,3 +47,12 @@ body[data-mode="portrait"] .podium .step.p1 canvas{width:68px;height:68px}
   background:var(--accent,#ffc22e);color:var(--line,#141026);font-weight:bold}
 .shop-detail .act[disabled]{background:var(--surface,#2226);color:inherit}
 body[data-mode="portrait"] .shop-detail canvas{width:64px;height:64px}
+
+/* ── carência de tiro do spawn (MISSILE.SPAWN_CD_TICKS): a contagem regressiva fica EM CIMA do ícone da arma ──
+   Escrito à mão (fora do port.js, como o resto deste arquivo). O botão já ganha `.cd` — o mesmo cinza do
+   split/eject em recarga —, então aqui só entra o número por cima e o texto do chip do desktop. */
+#t-fire .fire-cd{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:26px;font-weight:800;font-style:normal;line-height:1;color:#fff;
+  text-shadow:0 2px 0 rgba(0,0,0,.6),0 0 10px rgba(0,0,0,.45);pointer-events:none}
+#hud-ammo .fire-cd{font-variant-numeric:tabular-nums}
+body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire .fire-cd{font-size:22px}

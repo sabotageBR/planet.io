@@ -149,7 +149,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     for(const [id,k] of known)if(k.seen!==stamp){const body=w.entityById.get(id);rm.push({id,reason:body&&!body.dead?REMOVE.LEFT_AOI:(reasonMap.has(id)?reasonMap.get(id):REMOVE.DESPAWN)});known.delete(id);}
     let mt=0,sh=0;if(ps)for(const pc of ps.pieces){if(pc.dead)continue;const m=pc.magnetUntil-tick;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}   // powerups por peça: o HUD leva o melhor
     const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ps.missiles,powerBits:(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0),
-      magnetT:mt,shieldLv:sh,score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),
+      magnetT:mt,shieldLv:sh,score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),fireCd:Math.max(0,ps.fireCdUntil-tick),
       rank:rankOf(s.slot),mass:Math.round(w.massOf(s.slot))}:undefined;
     sendBin(s.sock,encodeSnapshot(writer,{tick,ackSeq:s.ackSeq,creates:cr,updates:up,removes:rm,self}));}
   function rankOf(slot){const m=w.massOf(slot);let r=1;for(const o of meta.keys()){if(o===slot)continue;const ps=w.players.get(o);if(ps&&ps.alive&&w.massOf(o)>m)r++;}return r;}

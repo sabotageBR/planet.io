@@ -51,6 +51,7 @@
  * @property {number} score u32
  * @property {number} splitCd ticks (u8 saturado)
  * @property {number} ejectCd
+ * @property {number} fireCd  ticks que faltam da carência de tiro do spawn (u16)
  * @property {number} rank u16 (1 = líder)
  * @property {number} mass u32
  */

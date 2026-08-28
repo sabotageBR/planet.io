@@ -44,7 +44,7 @@ export class BotBrain{
 
   act(tick){
     const w=this.w,ps=w.players.get(this.slot);if(!ps||!ps.alive)return;const c=centroid(ps);if(!c)return;const rng=this.rng,p=this.p;
-    const armed=ps.missiles>0&&c.big>=MISSILE.MIN_R;   // abaixo do piso o applyFire recusa: nem gasta o input
+    const armed=ps.missiles>0&&tick>=ps.fireCdUntil;   // na carência de spawn o applyFire recusa: nem gasta o input
     if(tick>=this.nextThink){this._think(ps,c,tick);this.nextThink=tick+rng.int(BOT.THINK_TICKS[0],BOT.THINK_TICKS[1]);}
     let tx=this.wx,ty=this.wy,flags=0,shield=false;
     for(let i=0;i<ps.pieces.length;i++){const q=ps.pieces[i];if(!q.dead){shield=q.shieldLv>0;break;}}   // escudo é por peça: vale o da que atira (1ª viva)
@@ -85,7 +85,7 @@ export class BotBrain{
         if(!o.isBot&&tick-o.spawnTick<BOT.SPAWN_GRACE_TICKS)continue;   // acabou de cair no mapa: deixa o humano respirar
         const v=oc.big*(o.isBot?1:HUMAN_BONUS)-d*.1;if(v>hv){hv=v;hunt=o.slot;}}}
     // míssil inimigo vindo para cima do bot: virar para ele e derrubar com outro míssil
-    if(ps.missiles>0&&c.big>=MISSILE.MIN_R){const ms=w.missiles;
+    if(ps.missiles>0&&tick>=ps.fireCdUntil){const ms=w.missiles;
       for(let i=0;i<ms.length;i++){const m=ms[i];if(m.dead||m.owner===this.slot||m.targetId!==this.slot||m.type!==0)continue;
         const dx=m.x-c.x,dy=m.y-c.y,d2=dx*dx+dy*dy;
         if(d2<BOT.MISSILE_FEAR*BOT.MISSILE_FEAR&&dx*m.vx+dy*m.vy<0){this.mode="intercept";this.target=m.id;return;}}}

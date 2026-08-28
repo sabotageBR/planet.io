@@ -10,7 +10,7 @@ import { leaveGame } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
 
-const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, canFire: true, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, clock: null };
+const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, clock: null };
 const EMPTY_STORE = { get: () => EMPTY, subscribe: () => () => {} };
 const PW_ICON = { magnet: "🧲", shield: "🛡️" };
 const emit = (el, action, phase) => el.dispatchEvent(new CustomEvent("planet:action", { bubbles: true, detail: { action, phase } }));
@@ -35,8 +35,9 @@ export default function Hud() {
   let shown = rows.slice(0, lbSize); const meRow = rows.find(r => r.me); if (meRow && !shown.includes(meRow)) shown = [...shown, meRow];
   const lbMax = rows.reduce((m, r) => Math.max(m, r.mass || 0), 1);
   const coins = h.coins != null ? h.coins : user.coins || 0;
-  // canFire: abaixo de MISSILE.MIN_R o planeta é pequeno demais para atirar — o botão apaga como se não houvesse munição
-  const ammo = h.ammo || 0, canFire = h.canFire !== false, armed = ammo > 0 && canFire, pw = Object.entries(h.powerups || {}).filter(([, v]) => v > 0);
+  // fireCd: carência de tiro do spawn (MISSILE.SPAWN_CD_TICKS) em segundos — enquanto corre, a contagem regressiva
+  // fica EM CIMA do ícone da arma e o botão apaga como se não houvesse munição (o clique vira ejeção)
+  const ammo = h.ammo || 0, fireCd = Math.ceil(h.fireCd || 0), armed = ammo > 0 && !fireCd, pw = Object.entries(h.powerups || {}).filter(([, v]) => v > 0);
   const splitReady = !(h.splitCd > 0), ejectReady = !(h.ejectCd > 0);
   return <div id="hud" className={screen === "game" ? "" : "hidden"}>
     <div id="hud-top">
@@ -59,7 +60,7 @@ export default function Hud() {
       <div className="score-row"><span className="k">{LB.coinIcon}</span> <b id="v-coins">{fmt(coins)}</b></div>
     </div>
     <div id="hud-status">
-      <div className={"chip" + (armed ? "" : " empty")} id="hud-ammo"><i>🚀</i> <b id="v-ammo">{ammo}</b> <span>{LB.ammo}</span></div>
+      <div className={"chip" + (armed ? "" : " empty")} id="hud-ammo"><i>🚀</i> {fireCd ? <b className="fire-cd">{fireCd}s</b> : <b id="v-ammo">{ammo}</b>} <span>{fireCd ? LB.fireCd : LB.ammo}</span></div>
       <div id="hud-pw">{pw.map(([k, v]) => k === "shield"
         ? <span key={k} className={"pw pw-shield lv-" + v} style={LV && LV[v - 1] ? { background: LV[v - 1].color } : undefined}><i>{PW_ICON.shield}</i>{LB.powerups.shield} <b>{LB.shieldLevel} {v} {"★".repeat(v)}</b></span>
         : <span key={k} className={"pw pw-" + k}><i>{PW_ICON[k] || "✦"}</i>{LB.powerups[k] || k} <b>{Math.ceil(v)}s</b></span>)}</div>
@@ -71,7 +72,7 @@ export default function Hud() {
     <div id="touch">
       <button className={"tbtn" + (splitReady ? "" : " cd")} id="t-split" {...press("split")}><span>{LB.split}</span></button>
       <button className={"tbtn" + (ejectReady ? "" : " cd")} id="t-eject" {...press("eject")}><span>{LB.eject}</span></button>
-      <button className={"tbtn" + (armed ? "" : " empty")} id="t-fire" {...press("fire")}><span>{LB.fire}</span><b id="t-ammo">{ammo}</b></button>
+      <button className={"tbtn" + (armed ? "" : " empty") + (fireCd ? " cd" : "")} id="t-fire" {...press("fire")}><span>{LB.fire}</span><b id="t-ammo">{ammo}</b>{fireCd ? <em className="fire-cd">{fireCd}</em> : null}</button>
     </div>
   </div>;
 }

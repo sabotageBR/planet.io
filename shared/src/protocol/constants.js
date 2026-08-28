@@ -1,6 +1,6 @@
 // ── Enums do fio (ver docs/spec/protocol.md) ──────────────────────────────────
 // @ts-check
-export const PROTOCOL_VERSION=6;   // 6: LEADERBOARD leva x,y de TODOS os vivos (radar com todos os inimigos e placar de 10)
+export const PROTOCOL_VERSION=7;   // 7: `self` leva fireCd (carência de tiro do spawn) · 6: LEADERBOARD leva x,y de TODOS os vivos
 // 5: o `hue` do EJECT deixou de ser o skinId (que o cliente ignorava) e virou FRAG_KIND
 export const MSG={INPUT:0x01,SNAPSHOT:0x10,PLAYERS:0x11,LEADERBOARD:0x12,EVENT:0x13,PONG:0x14};
 export const KIND={PIECE:1,FOOD:2,EJECT:3,ASTEROID:4,BLACKHOLE:5,MISSILE:6,STAR:7};   // 3 bits: entra nos códigos de par do mundo e no `known` do snapshot
@@ -20,4 +20,4 @@ export const STAR_PHASE={GROW:0,ACTIVE:1,OLD:2};   // OLD = inchando para a supe
 export const ERROR_CODE={VERSION:4400,FULL:4402,AUTH:4401,NICK_RESERVED:4409,RATE:4429,ROOM:4404};
 // ── Tamanhos fixos do fio (codec.js) ─────────────────────────────────────────
 export const NAME_MAX_BYTES=32; // nome no PLAYERS: utf-8 truncado em fronteira de code point
-export const INPUT_BYTES=10,SNAPSHOT_HEADER_BYTES=13,SELF_BYTES=18;
+export const INPUT_BYTES=10,SNAPSHOT_HEADER_BYTES=13,SELF_BYTES=20;   // SELF_BYTES: 18 + o u16 do fireCd (protocolo 7)

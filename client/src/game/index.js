@@ -75,8 +75,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const cam=createCamera(),fstats=createFrameStats();
   const canAct=()=>joined&&!dead&&!roundOver&&conn&&conn.isOpen;
   let aiming=false,aim=null;const pendingEat=new Map();   // id da peça comida → id de quem comeu (destino da sucção no frame do sumiço)
-  const bigR=()=>{let r=0;for(const p of view.pieces)if(p.isMe&&p.rr>r)r=p.rr;return r;};   // o piso do tiro é por PEÇA, não pela massa total
-  const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self&&bigR()>=MISSILE.MIN_R?view.self.missiles:0),canAct,onAim:on=>{aiming=on;if(!on)aim=null;}});
+  const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self&&!view.self.fireCd?view.self.missiles:0),canAct,onAim:on=>{aiming=on;if(!on)aim=null;}});
   const keyboard=createKeyboard({onAction:actions.act,enabled:()=>joined});
   const touch=createTouchButtons(hud,{onAction:actions.act});
   let pointer=null;
@@ -239,7 +238,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── HUD (8 Hz) ──
   function pushHud(now){const s=view.self,tk=buffer.tickAt(now),el=Math.max(0,tk-selfTick);
     const cd=(v,max)=>s?Math.min(1,Math.max(0,(v-el)/max)):0,sec=v=>s?Math.max(0,(v-el)/TICK_HZ):0;
-    hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,canFire:bigR()>=MISSILE.MIN_R,
+    hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
       powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,clock:roundClock});}
   function statsText(){const c=renderer.counts(),st=predictor.stats;

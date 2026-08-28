@@ -26,6 +26,7 @@ import * as R from "./rules.js";
  * @property {number} missiles      munição (do jogador; ímã e escudo são POR PEÇA, ver Body)
  * @property {number} splitCdUntil
  * @property {number} ejectCdUntil
+ * @property {number} fireCdUntil   carência de tiro do nascimento (MISSILE.SPAWN_CD_TICKS)
  * @property {boolean} ejectHold
  * @property {number} ejectHoldAt   próximo eject automático do hold
  * @property {number} score
@@ -163,13 +164,13 @@ export class World{
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0}={}){
     let ps=this.players.get(slot);
-    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],missiles,splitCdUntil:0,ejectCdUntil:0,
+    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],missiles,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,
       ejectHold:false,ejectHoldAt:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.missiles=missiles;}
     return this._spawnPiece(ps,x,y,r);}
   _spawnPiece(ps,x,y,r){
     if(Number.isNaN(x)){const s=this._farSpot(PLAYER_MARGIN,this.holes,BLACKHOLE.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE);x=s.x;y=s.y;}
-    ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.spawnTick=this.tick;
+    ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
     const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;return pc;}
   _dropPieces(ps){for(let i=0;i<ps.pieces.length;i++){const pc=ps.pieces[i];pc.dead=true;this.entityById.delete(pc.id);}
     ps.pieces.length=0;const arr=this.pieces;let k=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)arr[k++]=arr[i];arr.length=k;}

@@ -11,7 +11,7 @@
 import {DT,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR} from "../constants.js";
 import {KIND,BH_PHASE,FOOD_FLAG,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {clamp} from "../util.js";
-import {setR,setMass,addMass,addBoost,boostLeft,capBoost,velX,velY,liveCount,firstLive,bigEnough} from "./body.js";
+import {setR,setMass,addMass,addBoost,boostLeft,capBoost,velX,velY,liveCount,firstLive} from "./body.js";
 import {resolveBounce} from "./collide.js";
 import {vmaxFor} from "./integrate.js";
 
@@ -85,9 +85,7 @@ export function eatPiece(w,killer,A,victim,B){
  * @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} f
  */
 export function eatFood(w,ps,pc,f){
-  const t=f.type,tick=w.tick;
-  if(t===FOOD_TYPE.SHIELD&&pc.r<POWERUP.SHIELD_MIN_R)return;   // pequeno demais: nem consome, o escudo fica no chão para quem crescer
-  f.dead=true;w.foodDirty=true;
+  f.dead=true;w.foodDirty=true;const t=f.type,tick=w.tick;
   if(t===FOOD_TYPE.AMMO){if(ps.missiles<MISSILE.MAX_AMMO)ps.missiles++;w.events.push({type:"AMMO",slot:ps.slot});}
   else if(t===FOOD_TYPE.SHIELD){if(pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL)pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
@@ -511,8 +509,8 @@ function aimTarget(w,slot,src,ux,uy,out){
   out[0]=id;out[1]=kind;}
 const AIM=[-1,0];
 /**
- * Fire: gasta 1 míssil e **um nível** do escudo da peça que atira. Sai da primeira peça viva **com r ≥ MISSILE.MIN_R**
- * — sem esse piso o recém-nascido metralha do spawn, sem nada a perder; picar-se em peças minúsculas desarma. Com `ps.fireAim`
+ * Fire: gasta 1 míssil e **um nível** do escudo da peça que atira. Sai da primeira peça viva, e só depois da
+ * carência de spawn (`ps.fireCdUntil`, MISSILE.SPAWN_CD_TICKS): recém-nascido não metralha do spawn. Com `ps.fireAim`
  * (tiro mirado, o jogador segurou o botão) o míssil **persegue o objeto mais próximo dentro do cone da flecha**
  * (peça inimiga ou míssil inimigo) e só vai reto se o cone estiver vazio.
  * Sem mira o alvo é, em ordem: míssil inimigo mirando este slot a
@@ -520,7 +518,7 @@ const AIM=[-1,0];
  * senão o oponente vivo mais próximo (homing, type 0); sem alvo, direção aleatória. @param {World} w @param {PlayerState} ps
  */
 export function applyFire(w,ps){
-  if(ps.missiles<=0)return false;const src=bigEnough(ps.pieces,MISSILE.MIN_R);if(!src)return false;ps.missiles--;
+  if(ps.missiles<=0||w.tick<ps.fireCdUntil)return false;const src=firstLive(ps.pieces);if(!src)return false;ps.missiles--;
   if(src.shieldLv>0)hitShield(w,src);
   if(ps.fireAim){dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const ax=DIR[0],ay=DIR[1];aimTarget(w,ps.slot,src,ax,ay,AIM);
     const m=w.addMissile(src.x,src.y,ax*MISSILE.SPEED,ay*MISSILE.SPEED,ps.slot,AIM[0]);m.type=AIM[1];

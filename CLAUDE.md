@@ -76,11 +76,12 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   imunidade do dono soma `r/vmax(r)`, senão o planetão alcançava a própria cusparada e reengolia tudo;
   powerups = ímã e escudo **por peça** — quem pegou é a única parte que ganha (Body.magnetUntil/shieldLv),
   peça nova nasce limpa e a fusão fica com o melhor dos dois — mais o de **fusão** (`FOOD_TYPE.MERGE`, o índice 5 que era do de velocidade),
-  que zera o `mergeAt` de todas as peças do dono; mísseis (**só atira quem tem uma peça com `r ≥ MISSILE.MIN_R` = 60, o mesmo piso do split** — senão o recém-nascido de
-  r=30 sai do spawn metralhando, sem nada a perder; a munição continua coletável abaixo do piso; homing no jogador, interceptação de míssil inimigo ou **tiro mirado** quando o
+  que zera o `mergeAt` de todas as peças do dono; mísseis (**carência de `MISSILE.SPAWN_CD_TICKS` = 10 s a cada nascimento antes do 1º tiro** — senão o recém-nascido
+  sai do spawn metralhando, sem nada a perder; vai no `self` como `fireCd` e o HUD desenha a contagem regressiva em cima
+  do ícone da arma; homing no jogador, interceptação de míssil inimigo ou **tiro mirado** quando o
   jogador segura o botão — trava no objeto mais próximo do cone: peça, míssil, asteroide ou estrela; míssil×míssil varrido = CLASH;
   míssil desvia asteroide = DEFLECT); ímã (com teto de tamanho `POWERUP.MAGNET_MAX_R`: o alcance é r·MAGNET_RANGE e num planetão sugava a tela inteira) suga comida e ejetados
-  (comida movida recebe UPDATE; cometa/estrela mais devagar; **asteroides também**, escalados por R_MIN/r; a estrela-perigo se arrasta até você); escudo por níveis 1–3 (**só pega quem tem `r ≥ POWERUP.SHIELD_MIN_R` = 60, e abaixo disso a comida NEM É CONSUMIDA**: fica no chão para quem crescer; não expira,
+  (comida movida recebe UPDATE; cometa/estrela mais devagar; **asteroides também**, escalados por R_MIN/r; a estrela-perigo se arrasta até você); escudo por níveis 1–3 (não expira,
   evolui sem ser atingido, míssil/tiro/batida forte de asteroide tiram um nível, dividir derruba inteiro; contra quem pode engolir só
   segura a 1ª batida — ela derruba o escudo inteiro e quica, depois o maior come); fusão por par (atração só perto, sem puxão ao centróide).
   Regras novas = `rules.js` + `predict.js` (peças próprias) + tradução de eventos em `Sim._consume` E `LocalServer.step`.

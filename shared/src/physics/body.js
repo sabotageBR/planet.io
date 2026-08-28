@@ -85,5 +85,3 @@ export const overlaps=(a,b)=>{const s=a.r+b.r;return dist2b(a,b)<s*s;};
 export function liveCount(arr){let n=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)n++;return n;}
 /** Primeiro corpo vivo do array (ou null). @param {Body[]} arr */
 export function firstLive(arr){for(let i=0;i<arr.length;i++)if(!arr[i].dead)return arr[i];return null;}
-/** Primeiro corpo vivo com raio ≥ `minR` (ou null): quem atira precisa de tamanho, e a 1ª peça pode ser uma lasca. @param {Body[]} arr */
-export function bigEnough(arr,minR){for(let i=0;i<arr.length;i++){const b=arr[i];if(!b.dead&&b.r>=minR)return b;}return null;}
