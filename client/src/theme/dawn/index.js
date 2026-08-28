@@ -38,7 +38,7 @@ export const textures={
   key(kind,p={},size=0){switch(kind){
     case "planet":return`${id}:p${p.skin.id}${p.isMe?"m":""}:${size}`;
     case "food":return`${id}:f${foodType(p.type)}${foodColor(p)}`;
-    case "ejected":return`${id}:e${p.color}`;
+    case "ejected":return`${id}:e${p.glow?"nova":p.color}`;
     case "asteroid":return`${id}:a${p.variant}:${size}`;
     case "prop":return`${id}:prop${p.i}`;
     case "star":return`${id}:star${p.variant?1:0}`;
@@ -70,7 +70,13 @@ export const textures={
     c.beginPath();c.arc(0,0,r,0,6.283);c.fill();c.stroke();gl(-r*.3,-r*.32,.26);},
 
   // massa ejetada; size padrão 40
-  ejected(c,size,{color}){const r=size/2/EK;c.fillStyle=color;c.beginPath();c.arc(0,0,r,0,6.283);c.fill();c.strokeStyle=INK;c.lineWidth=Math.max(2,r*.22);c.stroke();
+  ejected(c,size,{color,glow=false}){const r=size/2/EK;
+    if(glow){const R=size/2;   // estilhaço de supernova: coroa quente que VAZA para fora do disco (o brilho é assado — o cliente não tem filtro nem blend)
+      for(let i=3;i>=1;i--){c.fillStyle=rgba(i>2?ORA:YEL,.12+(3-i)*.13);c.beginPath();c.arc(0,0,R*(.52+i*.16),0,6.283);c.fill();}
+      c.fillStyle=YEL;spikes(c,r*1.24,6,.52,-1.5708);c.fill();
+      c.fillStyle=CREAM;c.beginPath();c.arc(0,0,r*.62,0,6.283);c.fill();
+      c.strokeStyle=INK;c.lineWidth=Math.max(1.5,r*.14);c.stroke();return;}
+    c.fillStyle=color;c.beginPath();c.arc(0,0,r,0,6.283);c.fill();c.strokeStyle=INK;c.lineWidth=Math.max(2,r*.22);c.stroke();
     c.fillStyle="rgba(255,255,255,.5)";c.beginPath();c.arc(-r*.3,-r*.32,r*.26,0,6.283);c.fill();},
 
   // asteroide: "batata" marrom-cinza, 3 crateras, contorno de tinta (3 variantes × tier)
@@ -129,7 +135,9 @@ function foodColor(p){const t=foodType(p.type);return FOOD_ICON[t]?(p.color||FOO
 
 // ── mundo (drawWorld): grade creme fraca, borda de tinta + tracejado amarelo ──
 export const world={grid:{step:150,color:"rgba(255,245,194,.09)",width:2},border:[{color:INK,width:18},{color:YEL,width:6,dash:[40,26]}],propsAlpha:.5,
-  foodAnim:{starPulse:{amp:.14,speed:.003},bob:{amp:3,speed:.005}}};
+  foodAnim:{starPulse:{amp:.14,speed:.003},bob:{amp:3,speed:.005}},
+  // fragmentos: o de supernova lateja (é o melhor troco do mapa); o gordo só respira, para dizer que vale mais sem virar pisca-pisca
+  ejectAnim:{novaPulse:{amp:.18,speed:.006},richPulse:{amp:.07,speed:.0025}}};
 
 // ── efeitos (drawFx) como primitivas; k=age/ttl, f={x,y,r,nx,ny,power} ──
 // escudo por nível (1 → 2 → 3): cor, largura, pulso e nº de anéis — usados pelos anéis (Planets.js), pelo HUD e pelos efeitos
@@ -147,7 +155,12 @@ export const effects={
         P.push({type:"star",x:f.x,y:f.y,r:s,n:12,inner:.55,phase:-k*.5,fill:ORA,stroke:INK,width:Math.max(2.5,s*.06),alpha:al});
         P.push({type:"star",x:f.x,y:f.y,r:s*.55,n:12,inner:.55,phase:-k*.5,fill:YEL,alpha:al});
         P.push({type:"text",x:f.x,y:f.y,text:"KABOOM!",size:Math.max(11,s*.34),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
-      case "suck":P.push({type:"ring",x:f.x,y:f.y,r:f.r*(3-k*2.6),color:PUR,alpha:a,width:4});break;
+      case "suck":{const tx=f.tx==null?f.x:f.tx,ty=f.ty==null?f.y:f.ty;   // espaguetificação: o planeta se estica de onde estava até a boca do buraco
+        const dx=tx-f.x,dy=ty-f.y,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d,px=-uy,py=ux,head=Math.min(1,k*1.35);
+        for(let i=-1;i<=1;i++){const off=i*f.r*.6*(1-k*.75);
+          P.push({type:"line",x1:f.x+px*off,y1:f.y+py*off,x2:f.x+ux*d*head+px*off*.15,y2:f.y+uy*d*head+py*off*.15,
+            color:PUR,alpha:a,width:Math.max(2,f.r*.4*(1-k*.65))});}
+        P.push({type:"ring",x:tx,y:ty,r:f.r*(2.2-k*1.8),color:PUR,alpha:a,width:4});break;}
       case "exit":case "split":case "merge":P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.6+k*1.5),color:"#ffffff",alpha:a,width:3});break;
       case "chip":{const b=Math.atan2(f.ny||0,f.nx||1);for(let i=-1;i<=1;i++){const an=b+i*.5;
         P.push({type:"line",x1:f.x,y1:f.y,x2:f.x+Math.cos(an)*f.r*3*k,y2:f.y+Math.sin(an)*f.r*3*k,color:YEL,alpha:a,width:3});}break;}
@@ -168,6 +181,11 @@ export const effects={
         P.push({type:"burst",x:f.x,y:f.y,n:7,r0:f.r*(.9+k*.5),r1:f.r*(1.15+k*.9),color:YEL,alpha:a,width:Math.max(2,f.r*.06),phase:b});
         P.push({type:"star",x:f.x,y:f.y,r:f.r*.32*(1+k),n:6,inner:.5,phase:k,fill:CREAM,stroke:INK,width:2,alpha:a});
         if(f.n)P.push({type:"text",x:f.x,y:f.y-f.r*(1.2+k*.6),text:"×"+f.n,size:Math.max(10,f.r*.34),fill:YEL,stroke:INK,font:FONT,alpha:a});break;}
+      case "smash":{const s=f.r*(1+k*1.6),al=Math.min(1,a*1.5);   // meteoro trombou na estrela: poeira de rocha para trás e clarão
+        P.push({type:"burst",x:f.x,y:f.y,n:9,r0:f.r*(.4+k*1.3),r1:f.r*(.9+k*2.2),color:ROCK_DUST,alpha:a,width:Math.max(2,f.r*.14),phase:Math.atan2(f.ny||0,f.nx||1)});
+        P.push({type:"star",x:f.x,y:f.y,r:s*.55,n:8,inner:.45,phase:k*.8,fill:YEL,stroke:INK,width:Math.max(2,s*.05),alpha:al});
+        P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.5+k*1.6),color:ORA,alpha:a,width:Math.max(2,f.r*.06)});
+        P.push({type:"text",x:f.x,y:f.y-f.r*(1+k),text:"SMASH!",size:Math.max(11,f.r*.55),fill:CREAM,stroke:INK,font:FONT,alpha:al});break;}
       case "starSplit":{const s=f.r*(.3+k*.7),al=Math.min(1,a*1.5);   // a estrela rachou: clarão e as filhas saindo em leque
         P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:12,inner:.45,phase:-k*.6,fill:YEL,stroke:INK,width:Math.max(2,s*.03),alpha:al});
         P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.2+k*.8),color:ORA,alpha:a,width:Math.max(3,f.r*.03)});

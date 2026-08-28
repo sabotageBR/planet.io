@@ -4,28 +4,66 @@
 //    Anéis: pelas flags de CADA peça (SHIELD + nível em 2 bits, MAGNET) — powerup é por peça, então duas partes do
 //    mesmo planeta podem estar diferentes. Escudo usa theme.hud.cell.powerups.shieldLevels[nível−1]; ímã pede R.ambient("magnet").
 //    pop(id,delay): "gulp" de quem acabou de engolir alguém — o corpo incha e achata por POP_MS (a absorção do EAT).
-import {Container,Sprite,Graphics,BitmapText,BitmapFont,Cache} from "pixi.js";
+import {Container,Sprite,Graphics,BitmapText,BitmapFont,Cache,MeshPlane} from "pixi.js";
 import {PIECE_FLAG,mergeTicks,rectHas} from "@planet/shared";
-import {colorOf,fmt,dashPolyline} from "../../util.js";
+import {colorOf,fmt,dashPolyline,seedUnit} from "../../util.js";
 
 const FS=48,CHARS=[[" ","~"],["¡","ÿ"],["Ā","ž"],"✓◆✦•–—…"],TRAIL_MAX=12,TRAIL_MIN_V=72,POP_MS=280,POP_AMP=.22;
+// ── BLOB (borda de gelatina, estilo agar.io) ──
+// O corpo vira uma malha em grade com a MESMA textura assada: deslocando os vértices radialmente, a borda ondula
+// e a arte (contorno e anel da skin, que estão pintados no bitmap) acompanha. O squash estica a malha na direção
+// do movimento — sem girar a arte, porque a deformação é feita nos vértices, não no transform.
+// A amplitude é PEQUENA de propósito (WOB_AMP ≈ 2% do raio, com peso r⁴): é a beirada respirando, não gelatina.
+// Cada malha é um draw call próprio (o sprite entrava num batch), então só as maiores da tela viram blob:
+// WOB_MAX por frame, acima de WOB_MIN_PX na tela, e nada disso no modo econômico ou com "menos movimento".
+const WOB_N=9,WOB_MIN_PX=15,WOB_MAX=16,WOB_AMP=.018,WOB_LOBES=[3,5],WOB_SPD=[1.7,2.6],SQUASH_K=.06,SQUASH_V=360;
 export function createPlanets(R){
   const root=new Container();root.sortableChildren=true;const trails=new Graphics();
   const views=new Map(),trailMap=new Map(),seg=[],counts=new Map(),pops=new Map();let frame=0,fontName="",fontMass="",lastTrailTick=-1;
   function setTheme(){const th=R.theme,L=th.hud.labels;fontName=`pn-${th.id}`;fontMass=`pm-${th.id}`;
     const sw=L.strokeWidth(FS);
     // fontes ficam instaladas por tema (nome inclui o id): desinstalar quebra BitmapTexts de outra instância (StrictMode)
+    // skipKerning é OBRIGATÓRIO aqui: o kerning do Pixi é O(n²) sobre o charset (≈324 glifos → ~210 mil measureText por
+    // fonte, num tick só) — era ele que congelava a tela na primeira vez que cada tema aparecia. Nome/massa são textos
+    // curtos e centralizados, então o espaçamento sem kerning não muda nada na prática.
     for(const [name,fill] of [[fontName,L.nameColor],[fontMass,L.massColor]]){if(Cache.has(name+"-bitmap"))continue;
-      BitmapFont.install({name,style:{fontFamily:L.font,fontSize:FS,fontWeight:"bold",fill,stroke:{color:L.stroke,width:sw,join:"round"}},chars:CHARS,resolution:1,padding:Math.ceil(sw)+2});}
+      BitmapFont.install({name,skipKerning:true,style:{fontFamily:L.font,fontSize:FS,fontWeight:"bold",fill,stroke:{color:L.stroke,width:sw,join:"round"}},chars:CHARS,resolution:1,padding:Math.ceil(sw)+2});}
     for(const v of views.values()){v.name.style.fontFamily=fontName;v.mass.style.fontFamily=fontMass;}}
-  function mkView(){const c=new Container(),body=new Sprite();body.anchor.set(.5);const gfx=new Graphics();
+  function mkView(id){const c=new Container(),body=new Sprite();body.anchor.set(.5);const gfx=new Graphics();
     const name=new BitmapText({text:"",style:{fontFamily:fontName,fontSize:FS}}),mass=new BitmapText({text:"",style:{fontFamily:fontMass,fontSize:FS}});name.anchor.set(.5);mass.anchor.set(.5);
-    c.addChild(body,gfx,name,mass);root.addChild(c);return{c,body,gfx,name,mass,lastName:null,lastMassN:-1,f:0};}
+    c.addChild(body,gfx,name,mass);root.addChild(c);
+    return{c,body,gfx,name,mass,mesh:null,phase:seedUnit(id)*6.2832,lastName:null,lastMassN:-1,f:0};}
+  /** Malha do blob desta peça (criada na primeira vez que ela fica grande o bastante). */
+  function meshOf(v,tex){let m=v.mesh;
+    if(!m){m=new MeshPlane({texture:tex,verticesX:WOB_N,verticesY:WOB_N});v.mesh=m;v.c.addChildAt(m,0);}
+    else if(m.texture!==tex)m.texture=tex;
+    return m;}
+  /**
+   * Reescreve os vértices da malha: ondulação radial na borda (duas senóides defasadas por peça) + squash na
+   * direção do movimento. `sx/sy` é o "gulp" de quem acabou de engolir, aplicado como escala do próprio nó.
+   */
+  function deform(m,v,e,d,t,sx,sy){
+    const pos=m.geometry.positions,n=WOB_N,ph=v.phase;
+    const vx=e.vx||0,vy=e.vy||0,sp=Math.hypot(vx,vy);
+    let ux=1,uy=0,st=0;
+    if(sp>1){ux=vx/sp;uy=vy/sp;st=Math.min(1,sp/SQUASH_V)*SQUASH_K;}
+    const ts=t*.001,a1=ph+ts*WOB_SPD[0],a2=-ph*1.3+ts*WOB_SPD[1];   // t vem em ms (performance.now)
+    for(let j=0,k=0;j<n;j++)for(let i=0;i<n;i++,k+=2){
+      const u=i/(n-1)*2-1,w=j/(n-1)*2-1;let x=u*d,y=w*d;
+      const rad=Math.sqrt(u*u+w*w);
+      if(rad>1e-4){const ang=Math.atan2(w,u),r2=rad>1?1:rad*rad,edge=r2*r2;   // r⁴: o disco fica firme, só a beirada respira
+        const k2=1+WOB_AMP*(Math.sin(ang*WOB_LOBES[0]+a1)+.6*Math.sin(ang*WOB_LOBES[1]+a2))*edge;
+        x*=k2;y*=k2;}
+      const pr=(x*ux+y*uy)*(1+st),pp=(y*ux-x*uy)*(1-st*.6);   // estica no eixo do movimento, comprime no outro
+      pos[k]=pr*ux-pp*uy;pos[k+1]=pr*uy+pp*ux;}
+    m.geometry.getBuffer("aPosition").update();
+    m.scale.set(sx,sy);}
   return{root,trails,setTheme,
     /** Marca o "engoliu!" da peça `id` (começa daqui a `delay` ms, o mesmo atraso do efeito de terceiros). */
     pop(id,delay=0){pops.set(id,performance.now()+(delay||0));},
     render(f){frame++;const th=R.theme,TX=th.textures,L=th.hud.labels,cell=th.hud.cell,view=f.view,rect=f.rect,rt=f.rt,t=f.t;
       const showNames=f.showNames,showMass=f.showMass,PK=TX.scale.planet;
+      const cam=f.cam,wob=f.wobble!==false&&!R.econ;let blobs=0;
       counts.clear();for(const e of view.pieces)counts.set(e.owner,(counts.get(e.owner)||0)+1);
       const trailTick=Math.floor(rt/2),trailStep=trailTick!==lastTrailTick;lastTrailTick=trailTick;
       let idx=0;
@@ -33,12 +71,14 @@ export function createPlanets(R){
         // trilha (antes do culling: rastro continua fora da tela)
         let tr=trailMap.get(e.id);if(!tr){tr={pts:[],f:0,skin,isMe,r:e.rr,x:e.rx,y:e.ry};trailMap.set(e.id,tr);}tr.f=frame;tr.r=e.rr;tr.x=e.rx;tr.y=e.ry;tr.skin=skin;tr.isMe=isMe;
         if(trailStep){const sp=Math.hypot(e.vx||0,e.vy||0);if(sp>TRAIL_MIN_V)tr.pts.push({x:e.rx,y:e.ry});else if(tr.pts.length)tr.pts.shift();if(tr.pts.length>TRAIL_MAX)tr.pts.shift();}
-        let v=views.get(e.id);if(!v){v=mkView();views.set(e.id,v);}v.f=frame;
+        let v=views.get(e.id);if(!v){v=mkView(e.id);views.set(e.id,v);}v.f=frame;
         if(!rectHas(rect,e.rx,e.ry,e.rr*2.4)){v.c.visible=false;continue;}v.c.visible=true;v.c.zIndex=idx++;v.c.position.set(e.rx,e.ry);v.c.alpha=e.alpha;
-        const size=TX.tier(e.rr);v.body.texture=R.cache.get(TX.key("planet",{skin,isMe},size),size,(c,s)=>TX.planet(c,s,{skin,isMe}));
+        const size=TX.tier(e.rr),tex=R.cache.get(TX.key("planet",{skin,isMe},size),size,(c,s)=>TX.planet(c,s,{skin,isMe}));
         const d=e.rr*PK(skin);let sx=1,sy=1;const pat=pops.get(e.id);   // gulp da absorção: incha e achata de leve
         if(pat!=null){const age=t-pat;if(age>POP_MS)pops.delete(e.id);else if(age>=0){const u=Math.sin(age/POP_MS*Math.PI);sx=1+POP_AMP*u;sy=1-POP_AMP*.35*u;}}
-        v.body.width=d*2*sx;v.body.height=d*2*sy;
+        if(wob&&blobs<WOB_MAX&&e.rr*cam.scale>=WOB_MIN_PX){blobs++;   // as maiores da tela viram gelatina (view.pieces vem ordenado por raio)
+          const m=meshOf(v,tex);m.visible=true;v.body.visible=false;deform(m,v,e,d,t,sx,sy);}
+        else{if(v.mesh)v.mesh.visible=false;v.body.visible=true;v.body.texture=tex;v.body.width=d*2*sx;v.body.height=d*2*sy;}
         // rótulos
         const lab=e.rr>L.minR&&(showNames||showMass);v.name.visible=lab&&showNames;v.mass.visible=lab&&showMass;
         if(lab){const fs=L.size(e.rr);const nm=pl.name+(pl.registered?" ✓":"");if(v.lastName!==nm){v.lastName=nm;v.name.text=nm;}
@@ -56,7 +96,7 @@ export function createPlanets(R){
           if(sl&&sl.rings>1){dashArc(g,rr*1.12,-a0*1.3,pw.dash(e.rr));g.stroke({width:wd*.6,color:col.c,alpha:col.a*al*.7,cap:"round"});}   // nível 3: 2º anel
           if(k==="magnet"&&R.ambient)R.ambient("magnet",{x:e.rx,y:e.ry,r:e.rr});});drew=true;}
         g.visible=drew;}
-      for(const [id,v] of views)if(v.f!==frame){v.c.destroy({children:true});views.delete(id);pops.delete(id);}
+      for(const [id,v] of views)if(v.f!==frame){v.c.destroy({children:true});views.delete(id);pops.delete(id);}   // o mesh é filho do container: destroy({children}) leva junto
       // trilhas
       trails.clear();const TR=th.hud.trail;
       for(const [id,tr] of trailMap){if(tr.f!==frame){trailMap.delete(id);continue;}if(tr.pts.length<2||!f.showTrails)continue;

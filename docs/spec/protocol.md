@@ -1,7 +1,7 @@
 # Protocolo de rede planet.io v2
 
 Transporte: WebSocket em `/ws/<shard>`. Mensagens de **controle** são JSON (texto); mensagens de **jogo** são
-binárias (`ArrayBuffer`, little-endian, `DataView`). `PROTOCOL_VERSION = 4` (em `shared/src/protocol/constants.js`).
+binárias (`ArrayBuffer`, little-endian, `DataView`). `PROTOCOL_VERSION = 6` (em `shared/src/protocol/constants.js`). **v5**: o `hue` do EJECT deixou de carregar o `skinId` do dono (que o cliente nunca leu — a cor sai do `owner`) e passou a carregar o **tier do fragmento** (`FRAG_KIND`).
 Slots: cada jogador da sala tem um `slot` u16 estável enquanto está na sala. Ids de entidade: u32 incrementais por sala.
 
 ## Quantização
@@ -24,19 +24,28 @@ Taxa: ≤ 30 Hz e só quando muda (>2 px ou flag); keepalive a 10 Hz.
 
 ## Servidor → cliente
 JSON:
-- `{"t":"room","code":"1ABC","shard":1,"slot":3,"sessionId":"uuid","resumeToken":"hex","protocol":4,"tick":123,"world":{"w":7200,"h":7200},"round":{"start":0,"ticks":216000,"dayStart":5,"breakMs":15000}}`
+- `{"t":"room","code":"1ABC","shard":1,"slot":3,"sessionId":"uuid","resumeToken":"hex","protocol":5,"tick":123,"world":{"w":9600,"h":9600},"round":{"start":0,"ticks":216000,"dayStart":5,"breakMs":15000}}`
   - `round`: tick de início e duração da rodada (1 h). O cliente deriva daí o **relógio do espaço** (a rodada = `ROUND.DAYS` dias, começando em `dayStart` → um dia a cada 15 min, 12 trocas de céu) e a contagem para o fim do mundo — nada mais vai no fio.
 - `{"t":"roundEnd","code":"1ABC","champion":{…},"board":[{"slot","name","mass","score","kills","isBot","registered","skinId"}],"nextInMs":15000,"tick":216000}` — o BIG CRUNCH: campeão = maior planeta vivo (1ª linha do placar); a sala é aposentada e o cliente entra numa nova depois de `nextInMs`.
 - `{"t":"error","code":"VERSION"|"FULL"|"AUTH"|"NICK_RESERVED"|"RATE"|"ROOM","message":"pt-BR","suggestion":"Nick_4821"?}` → o servidor fecha o socket (código 4400+).
 - `{"t":"rewards","saved":true,"coinsEarned":54,"coins":2504,"achievements":[{"key","title"}],"skinsUnlocked":[35],"rank":{"day":37}}` (após a morte; `saved:false` sem banco)
 - `{"t":"dead","by":"Nome","byHole":false,"score":6900,"maxMass":4820,"kills":3,"durationS":372}`
+- `{"t":"spectate","slot":7,"name":"Nome"}` (ou `slot:-1`) — logo depois do `dead` e sempre que o alvo muda: de quem é a cena que
+  continua rodando atrás da tela de morte (quem matou, se ainda vivo; senão o líder). O cliente leva a câmera para esse slot e a
+  **AOI da sessão acompanha o mesmo jogador** (server/src/net/snapshot.js), então o que se vê é a sala de verdade e não um pedaço
+  parado de espaço. Sem alvo vivo (`slot:-1`) a câmera congela onde estava.
 
 Binário (primeiro byte = tipo):
 - `0x10 SNAPSHOT`: `u8 | u32 tick | u16 ackSeq | u16 nCreate | u16 nUpdate | u16 nRemove | creates | updates | removes | self`
   - create: `u8 kind | u32 id | u16 x | u16 y | u16 r10 |` + por kind:
     - `PIECE=1`: `u16 ownerSlot | i16 vx | i16 vy | u8 flags(SHIELD=1,LAUNCH=2,MERGING=4,ME=8,MAGNET=16; bits 5–6 = nível do escudo 1..3)` — ímã e escudo são **por peça**: estas flags são a fonte (duas partes do mesmo planeta podem estar diferentes)
-    - `FOOD=2`: `u8 type (0 dust,1 comet,2 star,3 rock,4 ammo,6 magnet,7 shield; 5 vago — powerup de velocidade removido) | u8 hue(0..11)`
-    - `EJECT=3`: `u16 ownerSlot | u8 hue | i16 vx | i16 vy`
+    - `FOOD=2`: `u8 type (0 dust,1 comet,2 star,3 rock,4 ammo,5 fusão,6 magnet,7 shield) | u8 hue(0..11)` — o 5 era o powerup de velocidade (removido) e hoje é o de **fusão**
+    - `EJECT=3`: `u16 ownerSlot | u8 fragKind | i16 vx | i16 vy` — **fragmento**, não pelota de tamanho fixo: o `r` do
+      cabeçalho é `fragR(mass)` (`shared/constants.js`), então **o tamanho na tela é o valor** — o pedaço arrancado de
+      um planetão chega gordo e engorda muito mais quem o pegar. A massa em si nunca vai no fio (o servidor é quem a
+      credita). `fragKind` = `FRAG_KIND`: `0 PLAIN` (pelota comum), `1 RICH` (pedaço gordo, `mass ≥ FRAG.RICH_MASS`:
+      o ímã o arrasta devagar e ele dura o dobro), `2 NOVA` (estilhaço de supernova — o cliente usa a frame
+      brilhante do atlas e o faz latejar). A **cor** continua vindo do `ownerSlot` (skin do dono); `65535` = sem dono.
     - `ASTEROID=4`: `u16 seed | i16 vx | i16 vy`
     - `BLACKHOLE=5`: `u16 seed | u16 influenceR | u8 phase(0 grow,1 active,2 fade)`
     - `STAR=7`: `u16 seed | u16 haloR (= r·STAR.HALO·k; k dá a rampa de nascimento) | u8 phase(0 grow,1 active,2 old — inchando para a supernova)`
@@ -46,9 +55,11 @@ Binário (primeiro byte = tipo):
   - self: `u8 flags(DEAD=1,RESYNC=2 — descarte as entidades conhecidas antes de aplicar este snapshot) | u8 missiles | u8 powerupBits(magnet=1,shield=2) | u16 magnetT | u8 shieldLv(0..3; o escudo não expira) | u32 score | u8 splitCd | u8 ejectCd | u16 rank | u32 mass` (18 bytes)
     `magnetT`/`shieldLv`/`powerupBits` são o **melhor** entre as peças próprias (resumo para o HUD) — quem tem o powerup de fato é cada peça, pelas flags dela. `missiles` é do jogador.
 - `0x11 PLAYERS` (no join e quando muda): `u8 | u16 n | [u16 slot | u8 flags(BOT=1,DEAD=2,REG=4) | u8 skinId | u8 nameLen | nameLen bytes utf8 | u32 score]`
-- `0x12 LEADERBOARD` (2 Hz): `u8 | u8 n | [u16 slot | u32 mass]`
-- `0x13 EVENT`: `u8 | u8 kind(0 EAT,1 POP,2 MERGE,3 SPLIT,4 BH_SUCK,5 DEATH,6 CHIP,7 BOUNCE,8 BOOM,9 EXIT,10 SHOOT,11 SHIELD_BREAK,12 CLASH,13 DEFLECT,14 SHIELD_HIT,15 SHIELD_UP,16 STAR_BURST,17 SUPERNOVA,18 STAR_HIT,19 STAR_SPLIT) | u16 x | u16 y | u16 r10 | u16 slotA | u16 slotB | u32 extra`
-  - `extra`: BOUNCE/CHIP/SHOOT/DEFLECT/SHIELD_HIT/STAR_HIT = `packDir(nx,ny,vn)` (`shared/util.js`: u8 nx, u8 ny, u16 vn — em SHIELD_HIT vn = nível restante, em STAR_HIT vn = hits levados); SHIELD_UP = nível; EAT = pieceId (o cliente usa o slotA para achar quem comeu e animar a absorção); DEATH = score; STAR_BURST/SUPERNOVA/STAR_SPLIT = id da estrela (em SUPERNOVA/STAR_SPLIT `r` é o raio da onda).
+- `0x12 LEADERBOARD` (2 Hz): `u8 | u8 n | [u16 slot | u32 mass | u16 x | u16 y]` — **todos os vivos da sala**, não só o top 10.
+  É o ÚNICO dado posicional fora da AOI, e é dele que sai o radar com todos os inimigos (o snapshot só conhece a janela
+  da sessão). O HUD corta no top 10 e anexa a própria linha pelo `rank` do bloco `self`.
+- `0x13 EVENT`: `u8 | u8 kind(0 EAT,1 POP,2 MERGE,3 SPLIT,4 BH_SUCK,5 DEATH,6 CHIP,7 BOUNCE,8 BOOM,9 EXIT,10 SHOOT,11 SHIELD_BREAK,12 CLASH,13 DEFLECT,14 SHIELD_HIT,15 SHIELD_UP,16 STAR_BURST,17 SUPERNOVA,18 STAR_HIT,19 STAR_SPLIT,20 SMASH) | u16 x | u16 y | u16 r10 | u16 slotA | u16 slotB | u32 extra`
+  - `extra`: BOUNCE/CHIP/SHOOT/DEFLECT/SHIELD_HIT/STAR_HIT/SMASH = `packDir(nx,ny,vn)` (`shared/util.js`: u8 nx, u8 ny, u16 vn — em SHIELD_HIT vn = nível restante, em STAR_HIT vn = hits levados); SHIELD_UP = nível; EAT = pieceId (o cliente usa o slotA para achar quem comeu e animar a absorção); DEATH = score; STAR_BURST/SUPERNOVA/STAR_SPLIT = id da estrela (em SUPERNOVA/STAR_SPLIT `r` é o raio da onda); SMASH = `packDir(nx,ny,0)` com a direção da batida do meteoro (`r` = raio da rocha que se partiu).
   - Eventos são filtrados pela AOI da sessão; o cliente atrasa os que não envolvem o próprio slot pelo atraso de interpolação (casam com o sumiço da entidade).
 - `0x14 PONG`: `u8 | u32 clientTime | u32 serverTick`
 

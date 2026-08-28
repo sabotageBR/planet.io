@@ -10,6 +10,7 @@ import {NET,BLACKHOLE,STAR} from '@planet/shared/constants.js';
 import {KIND,UPD,REMOVE,PIECE_FLAG,FOOD_FLAG,SELF_FLAG} from '@planet/shared/protocol/constants.js';
 import {encodeSnapshot,qPos,qR,qV} from '@planet/shared/protocol/index.js';
 import {focusOf,zoomFor,viewRect,rectHas} from '@planet/shared/camera.js';
+let fq=new Int32Array(4096);   // buffer da consulta de comida por retângulo (cresce com o mundo)
 const MAX_BUFFERED=256*1024,SWEEP_EVERY=60,WFLAGS=PIECE_FLAG.SHIELD|PIECE_FLAG.LAUNCH|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK,NO_SLOT=0xffff;
 const DEFAULT_REASON=[0,REMOVE.EATEN,REMOVE.EATEN,REMOVE.EXPIRED,REMOVE.DESPAWN,REMOVE.DESPAWN,REMOVE.EXPIRED,REMOVE.DESPAWN]; // por KIND
 const newCreate=()=>({kind:0,id:0,x:0,y:0,r:0,owner:0,vx:0,vy:0,flags:0,type:0,hue:0,seed:0,influenceR:0,phase:0,target:0});
@@ -36,7 +37,7 @@ export function createSnapshotter(room){
     if(ex&&(p.phase!==phase||p.infl!==infl)){m|=UPD.EXTRA;p.phase=phase;p.infl=infl;}
     p.seen=t;if(m)masks.set(b.id,m);}};
   /** Uma vez por tick de snapshot: máscaras de mudança de tudo que se move. */
-  function beginTick(){const w=room.sim.world,t=w.tick;masks.clear();
+  function beginTick(){const w=room.sim.world,t=w.tick;masks.clear();w.ensureFoodGrid();   // a AOI consulta a grade da comida: ela tem que estar coerente com o array depois da compactação
     track(w.pieces,KIND.PIECE,t);track(w.ejected,KIND.EJECT,t);track(w.asteroids,KIND.ASTEROID,t);track(w.holes,KIND.BLACKHOLE,t);track(w.missiles,KIND.MISSILE,t);track(w.stars,KIND.STAR,t);
     const food=w.food;for(let i=0;i<food.length;i++){const f=food[i];if(f.flags&FOOD_FLAG.MOVED){f.flags&=~FOOD_FLAG.MOVED;if(!f.dead)masks.set(f.id,UPD.X_Y);}}
     if(++passes%SWEEP_EVERY===0)for(const [id,p] of prev)if(p.seen!==t)prev.delete(id);}
@@ -45,7 +46,7 @@ export function createSnapshotter(room){
     switch(kind){
       case KIND.PIECE:e.owner=b.owner;e.vx=b.vx;e.vy=b.vy;e.flags=(b.flags&WFLAGS)|(b.owner===slot?PIECE_FLAG.ME:0);break;
       case KIND.FOOD:e.type=b.type;e.hue=b.hue;break;
-      case KIND.EJECT:{e.owner=b.owner<0?NO_SLOT:b.owner;const gp=sim.players.get(b.owner);e.hue=gp?gp.skinId&255:0;e.vx=b.vx;e.vy=b.vy;break;}
+      case KIND.EJECT:e.owner=b.owner<0?NO_SLOT:b.owner;e.hue=b.type;e.vx=b.vx;e.vy=b.vy;break;   // hue = FRAG_KIND (a cor vem do dono, no cliente); o skinId que ia aqui nunca foi lido
       case KIND.ASTEROID:e.seed=(b.seed*65535)|0;e.vx=b.vx;e.vy=b.vy;break;
       case KIND.BLACKHOLE:case KIND.STAR:e.seed=(b.seed*65535)|0;e.influenceR=extraOf(b,kind);e.phase=b.type;break;
       case KIND.MISSILE:e.owner=b.owner<0?NO_SLOT:b.owner;e.target=(b.type!==0||b.targetId<0)?NO_SLOT:b.targetId;e.vx=b.vx;e.vy=b.vy;break;}}   // type 1: alvo é um id de míssil (não vai no fio)
@@ -54,19 +55,35 @@ export function createSnapshotter(room){
     if(m&UPD.FLAGS)u.flags=(b.flags&WFLAGS)|(kind===KIND.PIECE&&b.owner===slot?PIECE_FLAG.ME:0);
     if(m&UPD.EXTRA){u.phase=b.type;u.influenceR=extraOf(b,kind);}}
   function pushRemove(id,reason){const r=rmPool[removes.length]||(rmPool[removes.length]=newRemove());removes.push(r);r.id=id;r.reason=reason;}
+  /**
+   * Comida na AOI pela GRADE, não varrendo o mundo. A comida é de longe a população maior (FOOD.COUNT), e o
+   * laço linear custava O(total × sessões) por snapshot; `foodGrid.queryRect` devolve só o que está no
+   * retângulo externo. Quem saiu da AOI continua sendo removido pela varredura de carimbo do `known`, que
+   * não depende deste laço.
+   */
+  function visitFood(w,rin,rout,known,tag,slot,sim){
+    const food=w.food,fg=w.foodGrid;if(!food.length)return;
+    if(fq.length<food.length)fq=new Int32Array(food.length*2);
+    const n=fg.queryRect(rout.x0,rout.y0,rout.x1,rout.y1,fq);
+    for(let i=0;i<n;i++){const b=food[fq[i]];if(!b||b.dead)continue;
+      if(known.has(b.id)){if(!rectHas(rout,b.x,b.y,b.r))continue;known.set(b.id,KIND.FOOD|tag);const m=masks.get(b.id);if(m)pushUpdate(b,KIND.FOOD,m,slot);}
+      else if(rectHas(rin,b.x,b.y,b.r)){known.set(b.id,KIND.FOOD|tag);pushCreate(b,KIND.FOOD,slot,sim);}}}
   /** Monta e envia o snapshot de uma sessão (nada acontece se o socket está fechado ou atolado). */
   function send(s){
     const ws=s.ws;if(!ws||ws.readyState!==1)return false;
     if(ws.bufferedAmount>MAX_BUFFERED){s.known.clear();s.rect=null;s.resync=true;return false;}   // cliente lento: pula este e esquece o known; o próximo snapshot vai com RESYNC (senão o que já foi enviado vira entidade fantasma eterna no cliente)
     const sim=room.sim,w=sim.world,slot=s.slot,ps=w.players.get(slot),gp=sim.players.get(slot);
     const pcs=ps?ps.pieces:null;
-    if(pcs&&pcs.length){const f=focusOf(pcs);s.cx=f.cx;s.cy=f.cy;s.scale=zoomFor(f.bigR,f.spread,s.view.h>s.view.w);}
+    if(pcs&&pcs.length){const f=focusOf(pcs);s.cx=f.cx;s.cy=f.cy;s.scale=zoomFor(f.sumR,s.view.w,s.view.h);}
+    else if(s.specSlot>=0){const sp=w.players.get(s.specSlot),spp=sp&&sp.alive?sp.pieces.filter(p=>!p.dead):null;   // morto: a AOI acompanha quem ele está assistindo (o cliente move a câmera pelo mesmo slot)
+      if(spp&&spp.length){const f=focusOf(spp);s.cx=f.cx;s.cy=f.cy;s.scale=zoomFor(f.sumR,s.view.w,s.view.h);}
+      else room.spectateTargetFor(s);}   // o alvo morreu: escolhe outro (e avisa o cliente)
     const rin=viewRect(s.cx,s.cy,s.scale,s.view.w,s.view.h,NET.AOI_PAD),rout=viewRect(s.cx,s.cy,s.scale,s.view.w,s.view.h,NET.AOI_PAD_OUT);s.rect=rout;
     const known=s.known,stamp=(++s.stamp)&0xffffff,tag=stamp<<3;creates.length=0;updates.length=0;removes.length=0;
     const visit=(arr,kind)=>{for(let i=0;i<arr.length;i++){const b=arr[i];if(b.dead)continue;const rad=hasExtra(kind)?Math.max(b.r,extraOf(b,kind)):b.r;
       if(known.has(b.id)){if(!rectHas(rout,b.x,b.y,rad))continue;known.set(b.id,kind|tag);const m=masks.get(b.id);if(m)pushUpdate(b,kind,m,slot);}
       else if(rectHas(rin,b.x,b.y,rad)){known.set(b.id,kind|tag);pushCreate(b,kind,slot,sim);}}};
-    visit(w.pieces,KIND.PIECE);visit(w.food,KIND.FOOD);visit(w.ejected,KIND.EJECT);visit(w.asteroids,KIND.ASTEROID);visit(w.holes,KIND.BLACKHOLE);visit(w.stars,KIND.STAR);visit(w.missiles,KIND.MISSILE);
+    visit(w.pieces,KIND.PIECE);visitFood(w,rin,rout,known,tag,slot,sim);visit(w.ejected,KIND.EJECT);visit(w.asteroids,KIND.ASTEROID);visit(w.holes,KIND.BLACKHOLE);visit(w.stars,KIND.STAR);visit(w.missiles,KIND.MISSILE);
     const gone=sim.gone,byId=w.entityById;
     for(const [id,v] of known){if((v>>>3)===stamp)continue;known.delete(id);
       const g=gone.get(id);pushRemove(id,g!==undefined?g:byId.has(id)?REMOVE.LEFT_AOI:DEFAULT_REASON[v&7]);}

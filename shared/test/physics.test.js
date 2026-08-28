@@ -5,14 +5,17 @@ import {readdirSync,readFileSync,statSync} from "node:fs";
 import {fileURLToPath} from "node:url";
 import {dirname,join} from "node:path";
 import {performance} from "node:perf_hooks";
-import {createWorld,createGrid,createBody,tryMergeOwn,applyEject,stepOwnPieces} from "../src/physics/index.js";
+import {createWorld,createGrid,createBody,setR,addBoost,boostLeft,velX,velY,tryMergeOwn,applyEject,stepOwnPieces} from "../src/physics/index.js";
+import {zoomFor,focusOf} from "../src/camera.js";
 import {vmaxFor} from "../src/physics/integrate.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,SPLIT,EJECT,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,SPEED,DT,POWERUP,MERGE,MISSILE,STAR} from "../src/constants.js";
-import {KIND,PIECE_FLAG,FOOD_FLAG,STAR_PHASE} from "../src/protocol/constants.js";
+import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT} from "../src/constants.js";
+import {KIND,PIECE_FLAG,FOOD_FLAG,STAR_PHASE,INPUT_FLAG,FRAG_KIND} from "../src/protocol/constants.js";
+import {BotBrain} from "../src/bot.js";
 
 const SRC=join(dirname(fileURLToPath(import.meta.url)),"..","src");
 const empty=(seed=1)=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0});
+const LOCAL_CHIP_MIN=1;   // LOCAL.CHIP_N[0] de rules.js (LOCAL não é exportado por constants.js)
 const snapshot=w=>JSON.stringify({tick:w.tick,nextId:w.nextId,
   pieces:w.pieces.map(b=>[b.id,b.owner,b.x,b.y,b.vx,b.vy,b.r,b.mergeAt,b.flags,b.shieldLv,b.magnetUntil]),
   food:w.food.map(b=>[b.id,b.x,b.y,b.type,b.hue]),ejected:w.ejected.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.life]),
@@ -69,24 +72,25 @@ test("momento: fusão do mesmo dono e eject conservam momento (1e-6)",()=>{
   assert.ok(tryMergeOwn(a,b,10));assert.ok(b.dead);
   assert.ok(Math.abs(a.mass*a.vx-px)<1e-6&&Math.abs(a.mass*a.vy-py)<1e-6,"fusão");assert.ok(Math.abs(a.mass-m0)<1e-9);
   const w=empty(3),ps=w.players.get(0)||(w.addPlayer(0,{x:1000,y:1000,r:60}),w.players.get(0));const pc=ps.pieces[0];
-  pc.vx=150;pc.vy=-40;w.setTarget(0,1300,1100);const m1=pc.mass,p0x=m1*pc.vx,p0y=m1*pc.vy;
+  w.setTarget(0,1300,1000);const m1=pc.mass;   // a peça não tem velocidade: o pellet sai à (velocidade padrão + SPEED)
   assert.equal(applyEject(w,ps),1);const e=w.ejected[0];
-  const p1x=pc.mass*pc.vx+e.mass*e.vx,p1y=pc.mass*pc.vy+e.mass*e.vy;
-  assert.ok(Math.abs(p1x-p0x)<1e-6&&Math.abs(p1y-p0y)<1e-6,`eject: (${p1x-p0x},${p1y-p0y})`);
   assert.ok(Math.abs(pc.mass+e.mass-m1)<1e-9,"massa conservada");
-  assert.ok(Math.abs(Math.hypot(e.vx-150,e.vy+40)-EJECT.SPEED)<1e-6,"pellet a v_peça + dir·SPEED");});
+  assert.ok(Math.abs(Math.hypot(e.vx,e.vy)-(vmaxFor(Math.sqrt(m1))+EJECT.SPEED))<1,"pellet a vmax + SPEED, na direção do ponteiro");
+  assert.ok(e.vx>0&&Math.abs(e.vy)<1e-6,"para o lado do ponteiro");
+  const recuo=boostLeft(pc);assert.ok(pc.vx<0&&Math.abs(recuo-EJECT.RECOIL_DIST*e.mass/pc.mass)<1e-6,`recuo = RECOIL_DIST·(m_pellet/m_peça) px: ${recuo.toFixed(2)}`);});
 
 // 5. sem tunelamento
-test("sem tunelamento: peça a SPLIT.SPEED nunca sai do mundo; contra asteroide quica ou estoura, nunca termina dentro",()=>{
-  const w=empty(5);const pc=w.addPlayer(0,{x:200,y:200,r:30});pc.vx=-SPLIT.SPEED;pc.vy=-SPLIT.SPEED;
+test("sem tunelamento: peça no impulso máximo nunca sai do mundo; contra asteroide quica ou estoura, nunca termina dentro",()=>{
+  const w=empty(5);const pc=w.addPlayer(0,{x:200,y:200,r:30});addBoost(pc,-Math.SQRT1_2,-Math.SQRT1_2,SPLIT.DIST);
   for(let t=0;t<120;t++){w.step();assert.ok(pc.x>=pc.r-1e-9&&pc.x<=w.w-pc.r+1e-9&&pc.y>=pc.r-1e-9&&pc.y<=w.h-pc.r+1e-9,`fora do mundo no tick ${t}`);}
-  const w2=empty(6);const small=w2.addPlayer(0,{x:1000,y:1000,r:30});small.vx=SPLIT.SPEED;const ast=w2.spawnAsteroid(-1,1300,1000,40);ast.vx=ast.vy=0;
-  let popped=false;
-  for(let t=0;t<120;t++){w2.step();if(w2.events.some(e=>e.type==="POP"))popped=true;
+  const w2=empty(6);const small=w2.addPlayer(0,{x:1000,y:1000,r:30});addBoost(small,1,0,SPLIT.DIST);const ast=w2.spawnAsteroid(-1,1300,1000,40);ast.vx=ast.vy=0;
+  let popped=false,bounced=false;
+  for(let t=0;t<120;t++){w2.step();if(w2.events.some(e=>e.type==="POP"))popped=true;if(velX(small)<0)bounced=true;   // velocidade REAL = impulso + direção
     const d=Math.hypot(small.x-ast.x,small.y-ast.y);assert.ok(d>ast.r,`centro da peça dentro do asteroide no tick ${t} (d=${d.toFixed(1)})`);}
-  assert.ok(!popped,"peça menor não estoura");assert.ok(small.vx<0,"quicou (vx invertido)");
+  assert.ok(!popped,"peça menor não estoura");assert.ok(bounced,"quicou (a velocidade real inverteu em algum momento)");
+  assert.ok(small.x<ast.x-ast.r,"voltou para o lado de cá: não atravessou");
   assert.ok(Math.hypot(small.x-ast.x,small.y-ast.y)>=(small.r+ast.r)*.99,"terminou fora do asteroide");
-  const w3=empty(7);const big=w3.addPlayer(0,{x:1000,y:1000,r:60});big.vx=SPLIT.SPEED;w3.setTarget(0,1600,1000);const ast3=w3.spawnAsteroid(-1,1300,1000,40);ast3.vx=ast3.vy=0;
+  const w3=empty(7);const big=w3.addPlayer(0,{x:1000,y:1000,r:60});addBoost(big,1,0,SPLIT.DIST);w3.setTarget(0,1600,1000);const ast3=w3.spawnAsteroid(-1,1300,1000,40);ast3.vx=ast3.vy=0;
   let pop=null;for(let t=0;t<120&&!pop;t++){w3.step();pop=w3.events.find(e=>e.type==="POP")||null;}
   assert.ok(pop,"peça maior estoura no asteroide");assert.ok(w3.piecesOf(0).length>=3,"pop gerou peças");
   assert.equal(w3.asteroids.length,0,"asteroide some e volta só depois de RESPAWN_TICKS");
@@ -100,10 +104,11 @@ test("engolir: r60 vs r30 engole com o centro dentro; r40 vs r38 quica sem engol
   assert.equal(w.piecesOf(1).length,0);assert.ok(!w.players.get(1).alive);assert.ok(w.piecesOf(0)[0].mass>3600);
   const w2=empty(9);w2.addPlayer(0,{x:1000,y:1000,r:60});w2.addPlayer(1,{x:1052,y:1000,r:30});w2.step();
   assert.ok(!w2.events.some(e=>e.type==="EAT"),"centro fora (d=52 ≥ 60−30·.4=48): não engole");
-  const w3=empty(10);const a=w3.addPlayer(0,{x:1000,y:1000,r:40}),b=w3.addPlayer(1,{x:1070,y:1000,r:38});b.vx=-300;
+  const w3=empty(10);const a=w3.addPlayer(0,{x:1000,y:1000,r:40}),b=w3.addPlayer(1,{x:1070,y:1000,r:38});addBoost(b,-1,0,BOUNCE.DIST_MAX);
+  w3.setTarget(0,1000,1000);w3.setTarget(1,1070,1000);   // ponteiro em cima de cada uma: sem o steering elas voltariam a se encostar
   for(let t=0;t<60;t++){w3.step();assert.ok(!w3.events.some(e=>e.type==="EAT"),"tamanhos parecidos nunca engolem");}
   assert.ok(w3.players.get(0).alive&&w3.players.get(1).alive);
-  assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>=(a.r+b.r)*.98,"quique separou as peças");});
+  assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>=(a.r+b.r)*.9,"quique separou as peças");});
 
 // 7. buraco negro
 test("buraco negro: peça no núcleo é teleportada para a saída com massa ×(1−LOSS); peça pequena é destruída",()=>{
@@ -111,7 +116,7 @@ test("buraco negro: peça no núcleo é teleportada para a saída com massa ×(1
   const pc=w.addPlayer(0,{x:2005,y:2000,r:40});pc.cdUntil=0;const m0=pc.mass;w.step();
   const s=w.events.find(e=>e.type==="BH_SUCK");assert.ok(s,"BH_SUCK");assert.equal(s.slot,0);assert.equal(s.pieceId,pc.id);assert.ok(!s.destroyed);
   assert.ok(Math.abs(pc.mass-m0*(1-BLACKHOLE.LOSS))<1e-6,"massa ×(1−LOSS)");
-  assert.ok(Math.hypot(pc.x-h.ex,pc.y-h.ey)<=45,"perto da saída");assert.ok(Math.abs(Math.hypot(pc.vx,pc.vy)-BLACKHOLE.EXIT_SPEED)<1e-6);
+  assert.ok(Math.hypot(pc.x-h.ex,pc.y-h.ey)<=45,"perto da saída");assert.ok(Math.abs(boostLeft(pc)-BLACKHOLE.EXIT_DIST)<1e-6,"arremessado EXIT_DIST px");
   assert.ok(w.events.some(e=>e.type==="EXIT"&&e.slot===0));assert.ok(w.players.get(0).alive);
   const tiny=w.addPlayer(1,{x:2003,y:2001,r:17});tiny.cdUntil=0;w.step();
   const s2=w.events.find(e=>e.type==="BH_SUCK"&&e.slot===1);assert.ok(s2&&s2.destroyed,"peça pequena destruída");
@@ -120,16 +125,16 @@ test("buraco negro: peça no núcleo é teleportada para a saída com massa ×(1
 
 // 8. predição usa as mesmas funções (peça própria isolada = servidor)
 test("predição: stepOwnPieces reproduz o servidor para um jogador isolado",()=>{
-  const w=empty(12);w.addPlayer(0,{x:3000,y:3000,r:50});w.setTarget(0,3600,3200);w.requestSplit(0);w.step();
+  const w=empty(12);w.addPlayer(0,{x:3000,y:3000,r:90});w.setTarget(0,3600,3200);w.requestSplit(0);w.step();
   const own=w.piecesOf(0).map(p=>({...p})),st={tx:3600,ty:3200};
   for(let t=0;t<400;t++){if(t===100){w.setTarget(0,2800,3300);st.tx=2800;st.ty=3300;}stepOwnPieces(own,st,w.tick);w.step();}
   const real=w.piecesOf(0);assert.equal(own.length,real.length);
   for(let i=0;i<own.length;i++){assert.ok(Math.abs(own[i].x-real[i].x)<1e-6&&Math.abs(own[i].y-real[i].y)<1e-6,`peça ${i} diverge`);}});
 
 // 9. desempenho: sala cheia
-test("desempenho: sala cheia (30×8 peças, 840 comidas, 40 asteroides, 120 ejetados, 3 buracos) — média ≤ 1.5 ms/passo",t=>{
+test("desempenho: sala cheia (30×16 peças, mundo e população de produção, 120 ejetados) — média ≤ 1.5 ms/passo",t=>{
   const w=createWorld({seed:2024}),script=createRng(5);
-  for(let s=0;s<30;s++){w.addPlayer(s,{isBot:s>=5,r:70,missiles:1});w.setTarget(s,script.range(0,WORLD.w),script.range(0,WORLD.h));}
+  for(let s=0;s<30;s++){w.addPlayer(s,{isBot:s>=5,r:280,missiles:1});w.setTarget(s,script.range(0,WORLD.w),script.range(0,WORLD.h));}
   for(let round=0;round<3;round++){for(let s=0;s<30;s++)w.requestSplit(s);for(let i=0;i<SPLIT.COOLDOWN_TICKS+1;i++)w.step();}
   for(let i=0;i<120;i++){const an=script.angle();w.addEjected(script.range(100,WORLD.w-100),script.range(100,WORLD.h-100),Math.cos(an)*200,Math.sin(an)*200,EJECT.R,EJECT.R*EJECT.R,-1,0,EJECT.LIFE_TICKS);}
   for(const pc of w.pieces)pc.mergeAt=1e9;
@@ -138,7 +143,7 @@ test("desempenho: sala cheia (30×8 peças, 840 comidas, 40 asteroides, 120 ejet
     if(i%120===0)for(let s=0;s<30;s++){if(w.piecesOf(s).length<PLAYER.MAX_PIECES)w.requestSplit(s);}
     if(i%200===50)w.requestFire(script.int(0,29));
     const t0=performance.now();w.step();times[i]=performance.now()-t0;if(w.pieces.length>maxPieces)maxPieces=w.pieces.length;
-    for(const e of w.events)if(e.type==="PLAYER_DEAD")w.respawnPlayer(e.slot,{r:70});}
+    for(const e of w.events)if(e.type==="PLAYER_DEAD")w.respawnPlayer(e.slot,{r:280});}
   const sorted=Float64Array.from(times).sort();let sum=0;for(const v of times)sum+=v;const avg=sum/N,p50=sorted[N>>1],p99=sorted[Math.floor(N*.99)],max=sorted[N-1];
   t.diagnostic(`passo: média ${avg.toFixed(3)} ms · p50 ${p50.toFixed(3)} · p99 ${p99.toFixed(3)} · máx ${max.toFixed(3)} · peças máx ${maxPieces} · comida ${w.food.length} · asteroides ${w.asteroids.length} · ejetados ${w.ejected.length}`);
   console.log(`[perf] média ${avg.toFixed(3)} ms · p50 ${p50.toFixed(3)} ms · p99 ${p99.toFixed(3)} ms · máx ${max.toFixed(3)} ms · peças máx ${maxPieces}`);
@@ -146,14 +151,15 @@ test("desempenho: sala cheia (30×8 peças, 840 comidas, 40 asteroides, 120 ejet
   assert.ok(avg<=1.5,`média ${avg.toFixed(3)} ms > 1.5 ms`);});
 
 // 10. fusão por proximidade
-test("fusão: sem puxão de longe; atração só a d<(ra+rb)·ATTRACT_RANGE; separação enquanto não podem fundir",()=>{
+test("fusão: não há atração entre peças próprias (elas se juntam pelo ponteiro) e nenhuma ganha impulso ao fundir",()=>{
   const w=empty(20),a=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);const b=w.newPiece(0,1600,1000,40);a.mergeAt=b.mergeAt=0;
-  w.step();assert.equal(a.vx,0,"a (no alvo, sem thrust) não é puxada de 600 px");
-  assert.ok(Math.abs(b.vx)<=vmaxFor(40)*SPEED.ACCEL*DT+1e-6,"b só tem o thrust do steering");
+  w.step();assert.equal(a.vx,0,"a (no alvo) não é puxada de 600 px");
+  assert.equal(b.vx,0,"e b tampouco ganha impulso: no agar não existe atração entre as próprias peças");
+  assert.ok(b.x<1600,"b anda para o ponteiro na velocidade padrão, não puxada");
   const w2=empty(21),a2=w2.addPlayer(0,{x:1000,y:1000,r:40});w2.setTarget(0,1000,1000);const b2=w2.newPiece(0,1120,1000,40);a2.mergeAt=b2.mergeAt=0;
-  w2.step();assert.ok(a2.vx>0,"a 120 px (< 80·"+MERGE.ATTRACT_RANGE+") a é atraída");
   let merged=false;for(let t=0;t<120&&!merged;t++){w2.step();merged=w2.events.some(e=>e.type==="MERGE");}
-  assert.ok(merged,"fundem em < 2 s");assert.equal(w2.piecesOf(0).length,1);
+  assert.ok(merged,"fundem em < 2 s, só com o steering");assert.equal(w2.piecesOf(0).length,1);
+  assert.equal(boostLeft(w2.piecesOf(0)[0]),0,"e a peça que fica NÃO sai com embalo (era a atração que dava o impulso)");
   const w3=empty(22),a3=w3.addPlayer(0,{x:1000,y:1000,r:40});w3.setTarget(0,1000,1000);const b3=w3.newPiece(0,1030,1000,40);a3.mergeAt=b3.mergeAt=1e9;
   for(let t=0;t<60;t++){w3.step();assert.ok(!w3.events.some(e=>e.type==="MERGE"));}
   assert.ok(Math.hypot(a3.x-b3.x,a3.y-b3.y)>40,"sem cooldown vencido continuam separadas");});
@@ -178,7 +184,7 @@ test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nív
   w3.requestFire(1);let brk=null;for(let t=0;t<60&&!brk;t++){w3.step();brk=w3.events.find(e=>e.type==="SHIELD_BREAK")||null;}
   assert.ok(brk&&brk.slot===0&&brk.bySlot===1,"segundo míssil destrói");assert.equal(p0.shieldLv,0);assert.equal(p0.r,40);
   // cada tiro do dono custa UM nível (sem munição não custa nada); dividir derruba o escudo inteiro
-  const w4=empty(32),q=w4.addPlayer(0,{x:1000,y:1000,r:40,missiles:0}),ps4=w4.players.get(0);w4.setTarget(0,1500,1000);q.shieldLv=2;q.shieldEvolveAt=1e9;
+  const w4=empty(32),q=w4.addPlayer(0,{x:1000,y:1000,r:90,missiles:0}),ps4=w4.players.get(0);w4.setTarget(0,1500,1000);q.shieldLv=2;q.shieldEvolveAt=1e9;
   w4.requestFire(0);w4.step();assert.equal(q.shieldLv,2,"sem munição não custa escudo");
   ps4.missiles=2;w4.requestFire(0);w4.step();assert.equal(q.shieldLv,1,"1º tiro: −1 nível");assert.ok(w4.events.some(e=>e.type==="SHIELD_HIT"&&e.bySlot===-1));
   w4.requestFire(0);w4.step();assert.equal(q.shieldLv,0,"2º tiro: zera");assert.ok(w4.events.some(e=>e.type==="SHIELD_BREAK"&&e.bySlot===-1));
@@ -190,7 +196,7 @@ test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nív
   let quebra=null;for(let t=0;t<120&&!quebra;t++){w5.setTarget(0,small.x,small.y);w5.step();quebra=w5.events.find(e=>e.type==="SHIELD_BREAK")||null;
     assert.ok(!w5.events.some(e=>e.type==="EAT"),"não engole com escudo de pé");}
   assert.ok(quebra&&quebra.bySlot===0,"a batida do maior derruba o escudo (bySlot = o grande)");assert.equal(small.shieldLv,0,"cai inteiro, mesmo no nível 3");
-  assert.ok(w5.players.get(1).alive,"sobrevive à batida");assert.ok(Math.hypot(small.vx,small.vy)>0,"foi empurrado (chance de fuga)");
+  assert.ok(w5.players.get(1).alive,"sobrevive à batida");assert.ok(boostLeft(small)>0,"foi empurrado (chance de fuga)");
   let eat=null;for(let t=0;t<600&&!eat;t++){w5.setTarget(0,small.x,small.y);w5.step();eat=w5.events.find(e=>e.type==="EAT")||null;}
   assert.ok(eat&&eat.killerSlot===0,"sem escudo, o maior come");assert.ok(!w5.players.get(1).alive);});
 
@@ -244,14 +250,21 @@ test("estrela: encostar estilhaça o planeta em vários pedaços (massa conserva
   const parts=w.piecesOf(0).filter(p=>!p.dead);assert.ok(parts.length>=STAR.SHATTER_N[0]+1,"virou vários pedaços");
   const mt=parts.reduce((a,p)=>a+p.mass,0);assert.ok(Math.abs(mt-m0)<1e-6,"massa conservada");
   assert.ok(parts.every(p=>p.mergeAt>w.tick),"não fundem na hora");
-  assert.ok(parts.some(p=>Math.hypot(p.vx,p.vy)>STAR.SHATTER_SPEED*.5),"saem voando");
+  assert.ok(parts.some(p=>boostLeft(p)>STAR.SHATTER_DIST*.5),"saem voando");
   const n1=parts.length;for(let t=0;t<STAR.SHATTER_CD_TICKS-2;t++)w.step();
   assert.equal(w.events.filter(e=>e.type==="STAR_BURST").length,0,"cooldown segura o segundo estilhaço");
   // peça abaixo de SHATTER_MIN_R só é cuspida para fora
   const w2=empty(71),s2=w2.spawnStar(true);s2.x=1000;s2.y=1000;
   const q=w2.addPlayer(0,{x:1000+s2.r+2,y:1000,r:STAR.SHATTER_MIN_R-4});w2.setTarget(0,1000,1000);w2.step();
-  assert.ok(!w2.events.some(e=>e.type==="STAR_BURST"),"pequena não estilhaça");assert.ok(q.vx>0,"foi empurrada para fora");
-  assert.equal(w2.piecesOf(0).length,1);assert.ok(n1>1);});
+  assert.ok(!w2.events.some(e=>e.type==="STAR_BURST"),"pequena não estilhaça");assert.ok(q.vx>0&&boostLeft(q)>0,"foi empurrada para fora");
+  assert.equal(w2.piecesOf(0).length,1);assert.ok(n1>1);
+  // com escudo o estilhaço não acontece: o escudo cai INTEIRO e segura
+  const w3=empty(74),s3=w3.spawnStar(true);s3.x=1000;s3.y=1000;
+  const p3=w3.addPlayer(0,{x:1000+s3.r+40,y:1000,r:60});p3.shieldLv=2;p3.shieldEvolveAt=1e9;w3.setTarget(0,s3.x,s3.y);
+  let brk=null;for(let t=0;t<180&&!brk;t++){w3.step();brk=w3.events.find(e=>e.type==="SHIELD_BREAK")||null;}
+  assert.ok(brk,"SHIELD_BREAK");assert.equal(p3.shieldLv,0,"cai inteiro, não um nível");
+  assert.equal(w3.piecesOf(0).filter(p=>!p.dead).length,1,"e a peça não se parte");
+  assert.ok(!w3.events.some(e=>e.type==="STAR_BURST"));});
 
 // 16. estrela: envelhece e explode em supernova
 test("estrela: GROW→ACTIVE→OLD incha e vira supernova (partículas, asteroides chutados, planeta só empurrado) e outra nasce",()=>{
@@ -264,13 +277,16 @@ test("estrela: GROW→ACTIVE→OLD incha e vira supernova (partículas, asteroid
   assert.ok(nova,"SUPERNOVA");assert.ok(st.dead);assert.ok(nova.r>STAR.R*STAR.NOVA_R,"raio da explosão usa a estrela inchada");
   assert.equal(w.ejected.filter(e=>!e.dead&&e.owner===-1).length,STAR.NOVA_PARTICLES,"partículas espalhadas");
   assert.ok(Math.hypot(a.vx,a.vy)>STAR.AST_KICK*.3,"asteroide impulsionado");assert.ok(a.vx>0,"para longe da estrela");
-  assert.ok(pc.vy>0&&Math.hypot(pc.vx,pc.vy)<STAR.PUSH*1.01,"planeta só empurrado");
+  assert.ok(pc.vy>0&&boostLeft(pc)<STAR.PUSH_DIST*1.01,"planeta só empurrado");
   assert.equal(w.piecesOf(0).length,1,"não se parte com a onda");
   assert.equal(w.stars.filter(s=>!s.dead).length,0);assert.equal(w.starQueue.length,1);
   for(let t=0;t<=STAR.RESPAWN_TICKS;t++)w.step();assert.equal(w.stars.length,1,"outra estrela nasce depois");
-  // de cinturão vira errante e o cinturão repõe
+  // de cinturão vira errante e o cinturão repõe. A estrela fica DENTRO do sopro mas fora do alcance da rocha
+  // (350 px para fora do anel: a rocha orbita, e a estrela ainda incha até R·SWELL) — encostando, a trombada
+  // meteoro×estrela racharia a estrela antes de ela envelhecer (ver o teste 32).
   const w2=createWorld({seed:73,food:0,holes:0,stars:0});const b=w2.asteroids.find(x=>x.type>=0);
-  const s2=w2.spawnStar(true);s2.x=b.x;s2.y=b.y+STAR.R*2;s2.life=w2.tick+1;
+  const bt=w2.belts[b.type],bl=Math.hypot(b.x-bt.cx,b.y-bt.cy)||1;
+  const s2=w2.spawnStar(true);s2.x=b.x+(b.x-bt.cx)/bl*350;s2.y=b.y+(b.y-bt.cy)/bl*350;s2.life=w2.tick+1;
   for(let t=0;t<3+STAR.OLD_TICKS;t++)w2.step();
   assert.ok(w2.events.length>=0);assert.equal(b.type,-1,"o de cinturão virou errante");assert.ok(w2.astQueue.length>=1);});
 
@@ -286,11 +302,32 @@ test("ímã: cometa/estrela vêm a MAGNET_HEAVY da poeira e a estrela do mundo s
   assert.ok(x0-st.x<POWERUP.MAGNET_PULL*DT*.5,"bem mais devagar que a comida");});
 
 // 18. asteroide × escudo e tiro mirado
-test("asteroide: batida forte tira um nível do escudo (sem lascar); tiro mirado sem nada no cone sai reto",()=>{
+test("asteroide: o escudo paga pela VELOCIDADE da batida (1/2/3 níveis) e rápida demais estoura o planeta; tiro mirado sem nada no cone sai reto",()=>{
+  // a rocha custa níveis conforme ASTEROID.SHIELD_VN, e enquanto o escudo aguenta não há lasca nem pop
+  const bate=(vRocha,rPc=40,lv=3)=>{const w=empty(750+vRocha);const pc=w.addPlayer(0,{x:1000,y:1000,r:rPc});
+    pc.shieldLv=lv;pc.shieldEvolveAt=1e9;const a=w.spawnAsteroid(-1,1200,1000,60);a.vx=-vRocha;a.vy=0;
+    w.setTarget(0,1000,1000);   // parado: a velocidade de aproximação é só a da rocha
+    const ev=[];for(let t=0;t<40;t++){w.step();ev.push(...w.events.map(e=>e.type));}
+    return{lv:pc.shieldLv,r:pc.r,ev,pecas:w.piecesOf(0).filter(p=>!p.dead).length,impulso:boostLeft(pc)};};
+  const devagar=bate(300);assert.equal(devagar.lv,2,"devagar (≥SHIELD_VN[0]): 1 nível");
+  const media=bate(600);assert.equal(media.lv,1,"velocidade média (≥SHIELD_VN[1]): 2 níveis");
+  const fraca=bate(100);assert.equal(fraca.lv,3,"muito devagar: nem arranha o escudo");
+  for(const r of [devagar,media,fraca]){assert.equal(r.r,40,"o escudo absorve: sem lasca");assert.ok(!r.ev.includes("CHIP"));
+    assert.equal(r.pecas,1,"e sem estourar: o escudo segura o vírus");}
+  // rápida demais: leva o escudo INTEIRO e ainda estoura o planeta (a rocha atravessa como se não houvesse escudo)
+  const rapida=bate(1400,90);
+  assert.equal(rapida.lv,0,"rápida demais: o escudo inteiro vai embora");
+  assert.ok(rapida.ev.includes("POP")&&rapida.pecas>1,`e o planeta estoura assim mesmo (${rapida.pecas} peças)`);
+  // com o escudo de pé a batida EMPURRA por pouco tempo e a velocidade volta ao padrão
+  const w0=empty(749),p0=w0.addPlayer(0,{x:1000,y:1000,r:40});p0.shieldLv=3;p0.shieldEvolveAt=1e9;
+  const a0=w0.spawnAsteroid(-1,1200,1000,60);a0.vx=-300;a0.vy=0;w0.setTarget(0,1000,1000);
+  let pico=0,quando=-1;for(let t=0;t<200;t++){w0.step();const b=boostLeft(p0);if(b>pico){pico=b;quando=t;}}
+  assert.ok(pico>0&&pico<=BOUNCE.DIST_MAX+1e-6,`o empurrão existe e tem teto: ${pico.toFixed(0)} px`);
+  assert.equal(boostLeft(p0),0,"e some sozinho: a velocidade volta ao padrão do jogo");
   const w=empty(75);const pc=w.addPlayer(0,{x:1000,y:1000,r:40});pc.shieldLv=2;pc.shieldEvolveAt=1e9;
-  const a=w.spawnAsteroid(-1,1200,1000,60);a.vx=-900;a.vy=0;w.setTarget(0,1000,1000);
+  const a=w.spawnAsteroid(-1,1200,1000,60);a.vx=-300;a.vy=0;w.setTarget(0,1000,1000);
   let hit=null;for(let t=0;t<30&&!hit;t++){w.step();hit=w.events.find(e=>e.type==="SHIELD_HIT")||null;}
-  assert.ok(hit,"batida forte tira um nível");assert.equal(pc.shieldLv,1);assert.equal(pc.r,40,"o escudo absorve: sem lasca");
+  assert.ok(hit,"batida emite SHIELD_HIT");assert.equal(pc.shieldLv,1);assert.equal(pc.r,40,"o escudo absorve: sem lasca");
   assert.ok(!w.events.some(e=>e.type==="CHIP"));
   // sem escudo, a mesma batida lasca como antes
   const w2=empty(76);const p2=w2.addPlayer(0,{x:1000,y:1000,r:40});const a2=w2.spawnAsteroid(-1,1200,1000,60);
@@ -306,7 +343,7 @@ test("asteroide: batida forte tira um nível do escudo (sem lascar); tiro mirado
 test("powerup por peça: só a parte que pegou o 🛡️/🧲 se beneficia; ao fundir fica o melhor das duas",()=>{
   const w=empty(80),a=w.addPlayer(0,{x:1000,y:1000,r:60});w.setTarget(0,2000,1000);
   w.requestSplit(0);w.step();const b=w.piecesOf(0).find(p=>p!==a);assert.ok(b,"dividiu em duas");
-  for(let t=0;t<25;t++)w.step();assert.ok(b.x-a.x>200,"as partes se afastaram");
+  for(let t=0;t<25;t++)w.step();assert.ok(b.x-a.x>120,"as partes se afastaram");
   const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=b.x;f.y=b.y;w.foodDirty=true;w.step();
   assert.equal(b.shieldLv,1,"o escudo é de quem pegou");assert.equal(a.shieldLv,0,"a outra parte não ganha nada");
   w.step();assert.ok(b.flags&PIECE_FLAG.SHIELD,"a flag vai na peça certa");assert.equal(a.flags&PIECE_FLAG.SHIELD,0);
@@ -360,21 +397,54 @@ test("estrela: míssil e partícula empurram; no 3º hit ela racha em estrelas m
   assert.equal(live.filter(x=>!x.hue).length,1,"só uma herda o lugar na população");
   assert.equal(w.starQueue.length,0,"racha não enfileira estrela nova");});
 
-// 22. split: arremesso curto que começa rápido e freia rápido
-test("split: o filho sai muito mais rápido e o pico some em menos de meio segundo",()=>{
-  const w=empty(86),a=w.addPlayer(0,{x:3000,y:3000,r:60});w.setTarget(0,6000,3000);
-  w.requestSplit(0);w.step();const b=w.piecesOf(0).find(p=>p!==a);assert.ok(b,"dividiu");
-  const v0=Math.hypot(b.vx,b.vy),x0=b.x,vmax=vmaxFor(b.r);
-  assert.ok(v0>vmax*2.5,"o pico é bem acima da velocidade de cruzeiro");
-  let vt=0;for(let t=0;t<30;t++){w.step();vt=Math.hypot(b.vx,b.vy);}
-  assert.ok(vt<v0*.65,"perde velocidade rápido");
-  assert.ok(vt<SPEED.LAUNCH_KNEE_V*1.05,"em meio segundo já está no cruzeiro");
-  assert.ok(b.x-x0<SPEED.LAUNCH_KNEE_V*.5+140,"o arremesso some perto: pouco além do que o cruzeiro andaria");
-  // planeta grande (vmax baixo) tem que ser arremessado igual: o joelho do arrasto é absoluto, não em vmax
-  const w2=empty(90),big=w2.addPlayer(0,{x:3000,y:3000,r:120});w2.setTarget(0,6000,3000);
-  w2.requestSplit(0);w2.step();const q=w2.piecesOf(0).find(p=>p!==big);
-  assert.ok(Math.hypot(q.vx,q.vy)>SPLIT.SPEED*.6,"o filho do planeta grande também sai voando");
-  const qx=q.x;for(let t=0;t<30;t++)w2.step();assert.ok(q.x-qx>150,`e cobre um bom pedaço (${(q.x-qx)|0} px)`);});
+// 22. split: o arremesso é o BOOST do agar — distância fixa, com freio, e sem tirar o controle
+test("split: o filho é arremessado SPLIT.DIST px, o boost SEMPRE chega a zero e o ponteiro nunca perde o controle",()=>{
+  const w=empty(86),a=w.addPlayer(0,{x:3000,y:3000,r:120});w.setTarget(0,9000,3000);   // ponteiro na direção do arremesso: o pior caso
+  for(let t=0;t<60;t++)w.step();                                                        // já na velocidade padrão
+  w.requestSplit(0);const b0=w.piecesOf(0).length;w.step();
+  const b=w.piecesOf(0).find(p=>p!==a);assert.ok(b&&w.piecesOf(0).length===b0+1,"dividiu");
+  assert.equal(boostLeft(a),0,"quem fica não é empurrado (no agar o split não tem recuo)");
+  const bl=boostLeft(b);assert.ok(bl>SPLIT.DIST*.95&&bl<=SPLIT.DIST+1e-6,`o filho sai com SPLIT.DIST de impulso (menos o tick já integrado): ${bl.toFixed(1)}`);
+  for(let t=0;t<180;t++)w.step();
+  assert.equal(boostLeft(b),0,"em 3 s o arremesso acabou — com o dedo apontado para lá ele NÃO se sustenta");
+  const sep=()=>Math.hypot(b.x-a.x,b.y-a.y),s1=sep();
+  for(let t=0;t<150;t++)w.step();
+  assert.ok(Math.abs(sep()-s1)<b.r,"e daí as duas andam juntas, na mesma velocidade padrão");
+  // controle durante o arremesso: o boost é SOMADO ao ponteiro, não o substitui
+  const wc=empty(88),m=wc.addPlayer(0,{x:5000,y:5000,r:120});wc.setTarget(0,9000,5000);
+  for(let t=0;t<60;t++)wc.step();wc.requestSplit(0);wc.step();
+  const f=wc.piecesOf(0).find(p=>p!==m);wc.setTarget(0,5000,9000);   // vira 90° no meio do arremesso
+  const y0=f.y;for(let t=0;t<20;t++)wc.step();
+  assert.ok(f.y-y0>40,`dá para virar a peça durante o arremesso (andou ${(f.y-y0).toFixed(0)} px no eixo novo)`);
+  // a distância do arremesso é ABSOLUTA: 780 px do planeta inteiro à peça já dividida três vezes
+  const salto=R=>{const ww=empty(87),mm=ww.addPlayer(0,{x:1200,y:4800,r:R});ww.setTarget(0,9500,4800);
+    for(let t=0;t<90;t++)ww.step();
+    ww.requestSplit(0);ww.step();const ff=ww.piecesOf(0).find(p=>p!==mm);const d0=ff.x-mm.x;
+    for(let t=0;t<400;t++)ww.step();
+    return(ff.x-mm.x)-d0;};   // deslocamento EXTRA do filho = o que o boost rendeu
+  const saltos=[240,170,120,85,60].map(salto);
+  for(const k of saltos)assert.ok(k>SPLIT.DIST*.9&&k<SPLIT.DIST*1.1,`salto fora da faixa: ${k.toFixed(0)} px (${saltos.map(x=>x.toFixed(0)).join(", ")})`);
+  assert.ok(Math.max(...saltos)-Math.min(...saltos)<SPLIT.DIST*.1,`e é o mesmo em qualquer tamanho: ${saltos.map(x=>x.toFixed(0)).join(", ")}`);});
+
+// 22b. comer transfere 100% da massa (EAT.GAIN=1) e a peça só para de crescer virando peças novas
+test("comer: a massa da vítima entra inteira; passar de MAX_R vira auto-split, nunca teto silencioso",()=>{
+  const w=empty(88),A2=w.addPlayer(0,{x:3000,y:3000,r:120}),B2=w.addPlayer(1,{x:3040,y:3000,r:60});
+  w.setTarget(0,3040,3000);w.setTarget(1,3040,3000);
+  const m0=A2.mass+B2.mass;
+  let ate=false;for(let t=0;t<60&&!ate;t++){w.step();ate=w.events.some(e=>e.type==="EAT");}
+  assert.ok(ate,"comeu");assert.ok(Math.abs(A2.mass-m0)<1e-6,`massa somada inteira: ${A2.mass.toFixed(1)} vs ${m0.toFixed(1)}`);
+  // auto-split: uma peça acima de MAX_R vira n+1 peças abaixo do teto, sem perder massa
+  const w2=empty(89),p=w2.addPlayer(0,{x:5000,y:5000,r:PLAYER.MAX_R});w2.setTarget(0,5000,5000);
+  setR(p,PLAYER.MAX_R*2);const M=p.mass;w2.step();
+  const pcs=w2.piecesOf(0);assert.ok(pcs.length>1,`repartiu (${pcs.length} peças)`);
+  assert.ok(pcs.every(x=>x.r<=PLAYER.MAX_R),"toda peça abaixo do teto");
+  assert.ok(Math.abs(pcs.reduce((t,x)=>t+x.mass,0)-M)<1e-6,"sem perder massa");
+  // com as MAX_PIECES ocupadas não há para onde repartir: aí sim o raio é cortado
+  const w3=empty(90),q=w3.addPlayer(0,{x:5000,y:5000,r:200});w3.setTarget(0,5000,5000);q.mergeAt=1e9;
+  for(let i=1;i<PLAYER.MAX_PIECES;i++){const x=w3.newPiece(0,600+(i%4)*700,600+((i/4)|0)*700,40);x.mergeAt=1e9;}
+  assert.equal(w3.piecesOf(0).length,PLAYER.MAX_PIECES,"sem vaga de peça");
+  setR(q,PLAYER.MAX_R*1.5);w3.step();
+  assert.ok(Math.abs(q.r-PLAYER.MAX_R)<1e-6,`sem vaga, o raio é cortado em MAX_R (ficou ${q.r.toFixed(1)})`);});
 
 // 23. buraco negro: puxa de longe, espirala e cospe com impulso
 test("buraco negro: puxa desde a borda da influência, espirala e cospe com impulso pelo outro lado",()=>{
@@ -387,7 +457,7 @@ test("buraco negro: puxa desde a borda da influência, espirala e cospe com impu
   let suck=null;for(let t=0;t<900&&!suck;t++){w.step();suck=w.events.find(e=>e.type==="BH_SUCK")||null;}
   assert.ok(suck,"chega ao horizonte de eventos");assert.ok(!suck.destroyed,"grande o bastante para sobreviver");
   assert.ok(Math.hypot(pc.x-h.ex,pc.y-h.ey)<200,"saiu pela saída pareada");
-  assert.ok(Math.hypot(pc.vx,pc.vy)>BLACKHOLE.EXIT_SPEED*.8,"impulsionado para longe");
+  assert.ok(boostLeft(pc)>BLACKHOLE.EXIT_DIST*.8,"impulsionado para longe");
   // fora da influência nada acontece
   const w2=empty(88),h2=w2.spawnHole({x:3000,y:3000,ex:5600,ey:5600,active:true});h2.k=1;
   const far=w2.addPlayer(0,{x:3000+h2.r*BLACKHOLE.INFLUENCE*1.2,y:3000,r:40});w2.setTarget(0,far.x,far.y);
@@ -396,14 +466,274 @@ test("buraco negro: puxa desde a borda da influência, espirala e cospe com impu
 // 24. predição com buraco negro
 test("predição: stepOwnPieces com os buracos do cliente reproduz o servidor perto de um buraco",()=>{
   const w=empty(89),h=w.spawnHole({x:3000,y:3000,ex:5600,ey:5600,active:true});h.k=1;h.seed=.7;
-  const pc=w.addPlayer(0,{x:3000+h.r*BLACKHOLE.INFLUENCE*.7,y:3200,r:40});pc.cdUntil=1e9;   // sem sucção: só a gravidade
+  const R=200;   // planeta grande = lento, e nascendo a meio raio de influência: fica lá tempo suficiente para a gravidade pesar
+  const pc=w.addPlayer(0,{x:3000+h.r*BLACKHOLE.INFLUENCE*.5,y:3200,r:R});pc.cdUntil=1e9;   // sem sucção: só a gravidade
   const tx=pc.x+400,ty=pc.y;w.setTarget(0,tx,ty);
   const mine=[createBody(KIND.PIECE,pc.id,pc.x,pc.y,pc.r)];mine[0].owner=0;
   const holes=[{x:h.x,y:h.y,r:h.r,k:h.k,seed:h.seed}];
   for(let t=0;t<120;t++){w.step();holes[0].x=h.x;holes[0].y=h.y;stepOwnPieces(mine,{tx,ty},w.tick,DT,w.w,w.h,holes);}   // o cliente acompanha a deriva do buraco pelos snapshots
   assert.ok(Math.hypot(mine[0].x-pc.x,mine[0].y-pc.y)<1,"posição prevista bate com a do servidor");
-  const noHoles=[createBody(KIND.PIECE,pc.id+1,3000+h.r*BLACKHOLE.INFLUENCE*.7,3200,40)];noHoles[0].owner=0;
+  const noHoles=[createBody(KIND.PIECE,pc.id+1,3000+h.r*BLACKHOLE.INFLUENCE*.5,3200,R)];noHoles[0].owner=0;
   const w2=empty(89);const h2=w2.spawnHole({x:3000,y:3000,ex:5600,ey:5600,active:true});h2.k=1;h2.seed=.7;
-  const pc2=w2.addPlayer(0,{x:3000+h2.r*BLACKHOLE.INFLUENCE*.7,y:3200,r:40});pc2.cdUntil=1e9;w2.setTarget(0,tx,ty);
+  const pc2=w2.addPlayer(0,{x:3000+h2.r*BLACKHOLE.INFLUENCE*.5,y:3200,r:R});pc2.cdUntil=1e9;w2.setTarget(0,tx,ty);
   for(let t=0;t<120;t++){w2.step();stepOwnPieces(noHoles,{tx,ty},w2.tick,DT,w2.w,w2.h);}
   assert.ok(Math.hypot(noHoles[0].x-pc2.x,noHoles[0].y-pc2.y)>20,"sem os buracos a predição erraria feio");});
+
+// 25. supernova: o miolo machuca
+test("supernova: no miolo estilhaça quem não tem escudo e, com escudo, ele cai inteiro e salva",()=>{
+  const mk=(seed,shield)=>{const w=empty(seed),st=w.spawnStar(true);st.x=3000;st.y=3000;st.life=w.tick+1;
+    const pc=w.addPlayer(0,{x:3000,y:3000+STAR.R*STAR.SWELL+120,r:60});w.setTarget(0,pc.x,pc.y);   // parada, dentro do miolo mas sem encostar
+    pc.shieldLv=shield;if(shield)pc.shieldEvolveAt=1e9;
+    let nova=null;for(let t=0;t<STAR.OLD_TICKS+10&&!nova;t++){w.step();nova=w.events.find(e=>e.type==="SUPERNOVA")||null;}
+    assert.ok(nova,"supernova");assert.ok(Math.hypot(pc.x-3000,pc.y-3000)<nova.r*STAR.NOVA_SHATTER,"a peça estava no miolo");
+    return w;};
+  const wA=mk(92,0);
+  assert.ok(wA.piecesOf(0).filter(p=>!p.dead).length>1,"sem escudo: estilhaçou");
+  assert.ok(wA.events.some(e=>e.type==="STAR_BURST"),"STAR_BURST");
+  const wB=mk(93,2),left=wB.piecesOf(0).filter(p=>!p.dead);
+  assert.equal(left.length,1,"com escudo: continua inteira");
+  assert.equal(left[0].shieldLv,0,"mas perde o escudo todo");
+  assert.ok(wB.events.some(e=>e.type==="SHIELD_BREAK"),"SHIELD_BREAK");
+  assert.ok(!wB.events.some(e=>e.type==="STAR_BURST"));});
+
+// 26. mira em estrela + estrela velha estoura no tiro
+test("estrela: o tiro mirado trava nela e, se já está inchando (OLD), a supernova vem na hora",()=>{
+  const w=empty(94),st=w.spawnStar(true);st.x=3000;st.y=3000;st.life=w.tick+1;
+  w.addPlayer(0,{x:3000-900,y:3000,r:40,missiles:1});w.setTarget(0,3000,3000);
+  for(let t=0;t<3;t++)w.step();assert.equal(st.type,STAR_PHASE.OLD,"já está inchando");
+  w.requestFire(0,true);w.step();
+  const m=w.missiles[0];assert.ok(m,"míssil");assert.equal(m.type,1);assert.equal(m.targetId,st.id,"a mira travou na estrela");
+  let nova=null;for(let t=0;t<STAR.OLD_TICKS&&!nova;t++){w.step();nova=w.events.find(e=>e.type==="SUPERNOVA")||null;}
+  assert.ok(nova,"explodiu ao levar o tiro");
+  assert.ok(!w.events.some(e=>e.type==="STAR_SPLIT"),"não racha em estrelinhas: estoura de vez");
+  assert.ok(st.dead&&w.tick<STAR.OLD_TICKS,"e bem antes da hora dela");});
+
+// 27. bots: o cérebro compartilhado (servidor e LocalServer usam este)
+test("bot: joga sozinho — anda, come, foge do perigo e continua determinístico",()=>{
+  const N=8;
+  const play=seed=>{const w=createWorld({seed}),rng=createRng(seed*13+1),brains=[];
+    const emit=(slot,{tx,ty,flags})=>{w.setTarget(slot,tx,ty);
+      if(flags&INPUT_FLAG.SPLIT)w.requestSplit(slot);if(flags&INPUT_FLAG.EJECT)w.requestEject(slot);
+      if(flags&INPUT_FLAG.FIRE)w.requestFire(slot,(flags&INPUT_FLAG.AIM)!==0);};
+    for(let s=0;s<N;s++){w.addPlayer(s,{r:rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),isBot:true,missiles:1});brains.push(new BotBrain(w,s,rng,emit));}
+    const start=[];for(let s=0;s<N;s++){const p=w.piecesOf(s)[0];start.push({x:p.x,y:p.y,m:p.mass});}
+    for(let t=0;t<1800;t++){for(const b of brains)b.act(w.tick);w.step();}
+    return{w,brains,start};};
+  const {w,brains,start}=play(2100);
+  let moved=0,grew=0;
+  for(let s=0;s<N;s++){const ps=w.players.get(s);assert.ok(ps,"o bot continua na sala");
+    for(const p of ps.pieces){if(p.dead)continue;
+      assert.ok(p.x>=0&&p.x<=w.w&&p.y>=0&&p.y<=w.h,"dentro do mundo");
+      if(Math.hypot(p.x-start[s].x,p.y-start[s].y)>400)moved++;
+      if(p.mass>start[s].m)grew++;}}
+  assert.ok(moved>=N/2,`a maioria saiu do lugar (${moved}/${N})`);
+  assert.ok(grew>0,"pelo menos um engordou comendo");
+  assert.ok(brains.every(b=>BOT.PERSONAS.includes(b.p)),"cada bot tem uma personalidade");
+  // dois mundos com a mesma seed jogam a mesma partida (o cérebro não pode ter aleatoriedade fora do rng)
+  const A=play(2101),B=play(2101),key=x=>x.w.pieces.map(p=>`${p.owner}:${p.x.toFixed(3)}:${p.y.toFixed(3)}:${p.r.toFixed(3)}`).join("|");
+  assert.equal(key(A),key(B),"determinístico");});
+
+// 28. asteroide: bola de sinuca no raspão, vírus no miolo
+test("asteroide: rocha de raspão ricocheteia no planeta grande; vindo para o miolo, entra e estoura",()=>{
+  const roda=(offY,ticks=240)=>{const w=empty(95),pc=w.addPlayer(0,{x:3000,y:3000,r:90});w.setTarget(0,3000,3000);
+    const a=w.spawnAsteroid(-1,3700,3000+offY,32);a.vx=-600;a.vy=0;
+    const ev=[];let dentro=0,pico=0;
+    for(let t=0;t<ticks;t++){w.step();ev.push(...w.events.map(e=>e.type));pico=Math.max(pico,boostLeft(pc));
+      if(!a.dead&&Math.hypot(a.x-pc.x,a.y-pc.y)<pc.r*.8)dentro++;}
+    return{w,pc,a,ev,dentro,pico};};
+  // raspão: passa a 105 px do centro (dentro do contato, fora da mira do miolo r·POP_DIST≈74)
+  const r1=roda(105);
+  assert.ok(!r1.ev.includes("POP"),"de raspão não estoura");
+  assert.equal(r1.dentro,0,"e não atravessa o planeta como antes");
+  assert.ok(r1.a.vy>100,`a rocha foi DESVIADA para fora (sinuca de raspão): vy ${r1.a.vy.toFixed(0)} px/s`);
+  assert.ok(Math.abs(r1.a.vx)<560,`e perdeu parte do avanço: vx ${r1.a.vx.toFixed(0)} (vinha a -600)`);
+  assert.ok(r1.pico>0,"o planeta também sente o impacto (empurrão ponderado pela massa)");
+  assert.ok(r1.pico<=BOUNCE.DIST_MAX+1e-6,`e o empurrão tem TETO de ${BOUNCE.DIST_MAX} px: a trombada é curta, não vira embalo (pico ${r1.pico.toFixed(0)})`);
+  assert.equal(boostLeft(r1.pc),0,"e no fim não sobra nada: a velocidade voltou a ser a padrão");
+  // miolo: mesma rocha, mesma velocidade, mirando o centro → vírus como sempre foi
+  const r2=roda(0);
+  assert.ok(r2.ev.includes("POP"),"vindo para o miolo, estoura");
+  assert.ok(r2.w.piecesOf(0).filter(p=>!p.dead).length>=3,"e parte o planeta em vários pedaços");});
+
+// 29. ímã: puxa a rocha também
+test("ímã: asteroide é atraído (rocha pequena mais rápido que a grande); sem ímã não se move",()=>{
+  const puxa=(r,magnet)=>{const w=empty(97),pc=w.addPlayer(0,{x:3000,y:3000,r:80});w.setTarget(0,3000,3000);
+    if(magnet)pc.magnetUntil=w.tick+POWERUP.TICKS;
+    const a=w.spawnAsteroid(-1,3000+pc.r*POWERUP.MAGNET_RANGE*.9,3000,r);a.vx=a.vy=0;   // longe, mas dentro do alcance: não encosta no planeta
+    for(let t=0;t<40;t++)w.step();return -a.vx;};   // velocidade adquirida na direção do planeta
+  assert.ok(Math.abs(puxa(30,false))<1e-6,"sem ímã a rocha fica parada");
+  const pequena=puxa(30,true),grande=puxa(60,true);
+  assert.ok(pequena>30,`a rocha pequena vem (${pequena.toFixed(0)} px/s)`);
+  assert.ok(grande>0&&grande<pequena*.7,`a grande vem bem mais devagar (${grande.toFixed(0)} vs ${pequena.toFixed(0)} px/s)`);});
+
+// 30. buraco negro: o que ele engole atravessa e a massa cobrada fica na entrada
+test("buraco negro: comida e ejetados saem do outro lado; 1/3 da massa vira pellets em volta da entrada",()=>{
+  const w=empty(98),h=w.spawnHole({x:4000,y:4000,ex:7000,ey:7000,active:true});
+  const f=w.spawnFood({x:h.x+20,y:h.y});const antes=w.food.length;
+  let warp=null;for(let t=0;t<120&&!warp;t++){w.step();warp=w.events.find(e=>e.type==="FOOD_WARP")||null;}
+  assert.ok(warp,"a comida foi engolida");
+  assert.equal(w.food.length,antes,"a contagem de comida não muda: o que entrou saiu");
+  assert.ok(w.food.some(x=>!x.dead&&Math.hypot(x.x-h.ex,x.y-h.ey)<BLACKHOLE.EXIT_SPREAD*1.2),"e apareceu no cacho da saída");
+  assert.ok(f.dead,"a comida original saiu de cena (remove+create, não teleporte visível)");
+  const w2=empty(99),h2=w2.spawnHole({x:4000,y:4000,ex:7000,ey:7000,active:true});
+  w2.addEjected(h2.x+15,h2.y,0,0,EJECT.R,EJECT.R*EJECT.R,-1,0,EJECT.LIFE_TICKS);
+  let wev=null;for(let t=0;t<120&&!wev;t++){w2.step();wev=w2.events.find(e=>e.type==="WARP")||null;}
+  assert.ok(wev,"o pellet atravessou");
+  assert.ok(w2.ejected.some(e=>!e.dead&&Math.hypot(e.x-h2.ex,e.y-h2.ey)<BLACKHOLE.EXIT_SPREAD*1.3),"e saiu perto da saída");
+  const w3=empty(100),h3=w3.spawnHole({x:4000,y:4000,ex:7000,ey:7000,active:true});
+  const pc=w3.addPlayer(0,{x:h3.x-200,y:h3.y,r:90});w3.setTarget(0,h3.x,h3.y);const m0=pc.mass;
+  let suck=null;for(let t=0;t<600&&!suck;t++){w3.step();suck=w3.events.find(e=>e.type==="BH_SUCK")||null;}
+  assert.ok(suck,"foi sugado");
+  assert.ok(Math.abs(pc.mass/m0-2/3)<.02,`sobrou 2/3 da massa (${(pc.mass/m0).toFixed(3)})`);
+  const pel=w3.ejected.filter(e=>e.owner===-1);
+  assert.equal(pel.length,BLACKHOLE.SPAGHETTI_N,"a massa cobrada virou pellets");
+  assert.ok(Math.abs(pel.reduce((s,e)=>s+e.mass,0)-(m0-pc.mass))<1e-6,"e eles somam exatamente o que foi cobrado");
+  const ri3=h3.r*BLACKHOLE.INFLUENCE*h3.k;
+  assert.ok(pel.every(e=>Math.hypot(e.x-h3.x,e.y-h3.y)>ri3),"nascem fora da influência: o buraco não os engole de volta");
+  for(let t=0;t<300;t++)w3.step();
+  assert.equal(w3.ejected.filter(e=>e.owner===-1).length,BLACKHOLE.SPAGHETTI_N,"e continuam lá 5 s depois, para alguém pegar");});
+
+// 31. supernova: a estrela morta deixa um berçário
+test("supernova: além das partículas, semeia um cacho de comida permanente onde a estrela estava",()=>{
+  const w=empty(101);const st=w.spawnStar(true);st.x=4000;st.y=4000;st.life=w.tick+1;
+  const antes=w.food.length;
+  let nova=null;for(let t=0;t<STAR.OLD_TICKS+10&&!nova;t++){w.step();nova=w.events.find(e=>e.type==="SUPERNOVA")||null;}
+  assert.ok(nova,"explodiu");
+  assert.equal(w.food.length-antes,STAR.NOVA_FOOD,"semeou o cacho");
+  const raio=nova.r*STAR.NOVA_FOOD_R*1.1;
+  assert.ok(w.food.every(f=>Math.hypot(f.x-4000,f.y-4000)<raio),"tudo dentro do cacho, no lugar da estrela");
+  for(let t=0;t<900;t++)w.step();
+  assert.equal(w.food.filter(f=>!f.dead).length,STAR.NOVA_FOOD,"comida não expira: o berçário fica");});
+
+// ── 32. meteoro × estrela: os dois se partem em pedaços menores arremessados ──
+test("meteoro×estrela: rocha grande racha a estrela em SPLIT_N e vira cacos arremessados; pedrisco só ricocheteia",()=>{
+  const w=empty(120),st=w.spawnStar(true);st.x=3000;st.y=3000;
+  const a=w.spawnAsteroid(-1,3600,3000,50);a.vx=-600;a.vy=0;
+  let sm=null;for(let t=0;t<80&&!sm;t++){w.step();sm=w.events.find(e=>e.type==="SMASH")||null;}
+  assert.ok(sm&&sm.starId===st.id,"SMASH");
+  assert.ok(a.dead,"a rocha se parte");assert.ok(st.dead,"a estrela racha");
+  assert.ok(w.events.some(e=>e.type==="STAR_SPLIT"),"racha pelo starSplit de sempre");
+  const filhas=w.stars.filter(s=>!s.dead);assert.equal(filhas.length,STAR.SPLIT_N,"SPLIT_N estrelas menores");
+  assert.ok(filhas.every(s=>s.r<STAR.R&&Math.hypot(s.vx,s.vy)>0),"menores e arremessadas");
+  const cacos=w.asteroids.filter(x=>!x.dead);
+  assert.ok(cacos.length>=ASTEROID.SMASH_N[0],"a rocha virou vários cacos");
+  assert.ok(cacos.every(c=>c.r<ASTEROID.SMASH_MIN_R),"caco nenhum consegue trombar de novo (sem cascata)");
+  assert.ok(cacos.every(c=>Math.hypot(c.vx,c.vy)>ASTEROID.SMASH_SPEED*.5),"saem voando");
+  // pedrisco: só quica, ninguém se parte
+  const w2=empty(121),s2=w2.spawnStar(true);s2.x=3000;s2.y=3000;
+  const p=w2.spawnAsteroid(-1,3600,3000,ASTEROID.SMASH_MIN_R-4);p.vx=-600;p.vy=0;
+  for(let t=0;t<80;t++)w2.step();
+  assert.ok(!w2.events.some(e=>e.type==="SMASH"),"pedrisco não racha");
+  assert.ok(!p.dead&&p.vx>0,"ele ricocheteia");assert.equal(w2.stars.filter(x=>!x.dead).length,1,"a estrela continua inteira");
+  // estrela ainda nascendo (GROW, k < ARM_K) é inerte
+  const w3=empty(122),s3=w3.spawnStar(false);s3.x=3000;s3.y=3000;s3.k=0;
+  const q=w3.spawnAsteroid(-1,3000,3000,50);q.vx=q.vy=0;w3.step();
+  assert.ok(!w3.events.some(e=>e.type==="SMASH")&&!q.dead,"estrela em GROW não reage");});
+
+// ── 33. estrela nunca nasce em cima de um cinturão (senão o cinturão vira moedor de estrela) ──
+test("estrela: nasce fora do anel de todo cinturão (BELT_SAFE)",()=>{
+  for(let seed=1;seed<=20;seed++){const w=createWorld({seed,food:0,holes:0});
+    for(const st of w.stars)for(const b of w.belts){const d=Math.hypot(st.x-b.cx,st.y-b.cy);
+      assert.ok(Math.abs(d-b.rad)>=ASTEROID.BELT_SAFE,`seed ${seed}: estrela a ${Math.abs(d-b.rad).toFixed(0)} px do anel`);}}});
+
+// ── 34. conservação: o que sai do planeta volta inteiro ──
+test("massa: cuspir↔reabsorver fecha em zero e o fragmento carrega a massa real (score por √mass)",()=>{
+  const w=empty(123),pc=w.addPlayer(0,{x:2000,y:2000,r:80}),ps=w.players.get(0),m0=pc.mass;
+  w.setTarget(0,3000,2000);assert.equal(applyEject(w,ps),1);
+  const e=w.ejected[0];assert.ok(Math.abs(pc.mass+e.mass-m0)<1e-9,"a pelota leva exatamente o que saiu");
+  assert.equal(e.type,FRAG_KIND.PLAIN,"pelota comum");
+  let ok=false;for(let t=0;t<600&&!ok;t++){w.setTarget(0,e.x,e.y);w.step();ok=e.dead;}
+  assert.ok(ok,"recolhida");assert.ok(Math.abs(pc.mass-m0)<1e-9,`sem perda ao recuperar (${(pc.mass-m0).toFixed(6)})`);
+  // fragmento gordo vale mais para QUEM PEGAR do que um comum
+  const w2=empty(124),A=w2.addPlayer(0,{x:1000,y:1000,r:40}),B=w2.addPlayer(1,{x:5000,y:5000,r:40}),m=A.mass;
+  w2.addEjected(1000,1000,0,0,fragR(4000),4000,-1,0,1800,FRAG_KIND.RICH);
+  w2.addEjected(5000,5000,0,0,EJECT.R,EJECT_MASS,-1,0,900,FRAG_KIND.PLAIN);
+  w2.setTarget(0,1000,1000);w2.setTarget(1,5000,5000);w2.step();
+  assert.ok(Math.abs(A.mass-m-4000)<1e-9&&Math.abs(B.mass-m-EJECT_MASS)<1e-9,"cada um cresce a massa do seu fragmento");
+  assert.ok(A.mass-m>(B.mass-m)*10,"o gordo engorda MUITO mais");});
+
+test("massa: lasca de asteroide e dano de míssil não evaporam massa (e no piso MIN_PIECE_R não criam)",()=>{
+  // lasca: a peça não pode estourar a rocha, senão vira pop (que já conservava)
+  const w=empty(125),pc=w.addPlayer(0,{x:2000,y:2000,r:86}),m0=pc.mass;
+  const a=w.spawnAsteroid(-1,2000+86+80,2000,80);a.vx=-900;a.vy=0;w.setTarget(0,2000,2000);
+  let chip=null;for(let t=0;t<40&&!chip;t++){w.step();chip=w.events.find(e=>e.type==="CHIP")||null;}
+  assert.ok(chip,"CHIP");
+  const frag=w.ejected.filter(e=>!e.dead);assert.ok(frag.length>=LOCAL_CHIP_MIN,"soltou fragmento");
+  assert.ok(Math.abs(pc.mass+frag.reduce((s,e)=>s+e.mass,0)-m0)<1e-9,"lasca conserva");
+  assert.ok(frag.every(e=>Math.abs(e.r-fragR(e.mass))<1e-9),"o raio visual sai da massa (é ele que diz o valor)");
+  // peça no piso: não perde e portanto não cria fragmento nenhum (antes nascia massa do nada)
+  const w2=empty(126),q=w2.addPlayer(0,{x:2000,y:2000,r:PLAYER.MIN_PIECE_R});
+  const a2=w2.spawnAsteroid(-1,2200,2000,40);a2.vx=-900;a2.vy=0;w2.setTarget(0,2000,2000);
+  for(let t=0;t<40;t++)w2.step();
+  assert.equal(w2.ejected.length,0,"no piso não sai fragmento");assert.equal(q.r,PLAYER.MIN_PIECE_R);
+  // míssil: os HIT_DEBRIS cacos somam exatamente o que foi arrancado
+  const w3=empty(127),big=w3.addPlayer(0,{x:2000,y:2000,r:250}),sh=w3.addPlayer(1,{x:2600,y:2000,r:40});
+  const ps1=w3.players.get(1);ps1.missiles=1;w3.setTarget(0,2000,2000);w3.setTarget(1,2000,2000);w3.requestFire(1,true);
+  const mb=big.mass;let boom=null;for(let t=0;t<200&&!boom;t++){w3.step();boom=w3.events.find(e=>e.type==="BOOM")||null;}
+  assert.ok(boom,"BOOM");
+  const d=w3.ejected.filter(e=>!e.dead&&e.owner===0);assert.equal(d.length,MISSILE.HIT_DEBRIS,"HIT_DEBRIS cacos");
+  assert.ok(Math.abs(big.mass+d.reduce((s,e)=>s+e.mass,0)-mb)<1e-6,"míssil conserva");
+  assert.ok(d.every(e=>e.type===FRAG_KIND.RICH),"caco de planetão é gordo");});
+
+// ── 35. fragmento de supernova: vale mais e vem marcado para brilhar ──
+test("supernova: os fragmentos valem NOVA_PART_MASS pelotas e vêm marcados FRAG_KIND.NOVA",()=>{
+  const w=empty(128),st=w.spawnStar(true);st.x=4000;st.y=4000;st.life=w.tick+1;
+  let nova=null;for(let t=0;t<STAR.OLD_TICKS+10&&!nova;t++){w.step();nova=w.events.find(e=>e.type==="SUPERNOVA")||null;}
+  assert.ok(nova,"SUPERNOVA");
+  const f=w.ejected.filter(e=>!e.dead&&e.owner===-1);
+  assert.equal(f.length,STAR.NOVA_PARTICLES,"partículas espalhadas");
+  assert.ok(f.every(e=>e.type===FRAG_KIND.NOVA),"marcados NOVA (o cliente os desenha brilhando)");
+  assert.ok(f.every(e=>Math.abs(e.mass-EJECT_MASS*STAR.NOVA_PART_MASS)<1e-9),"valem NOVA_PART_MASS pelotas comuns");
+  assert.ok(f[0].mass>EJECT_MASS&&f[0].r>EJECT.R,"maiores e mais valiosos que uma pelota comum");
+  // e o valor sobrevive à travessia do buraco negro
+  const w2=empty(129),h=w2.spawnHole({x:2000,y:2000,ex:6000,ey:6000,active:true});
+  const g=w2.addEjected(2000+h.r*.5,2000,0,0,20,1500,-1,0,900,FRAG_KIND.NOVA);
+  let saiu=null;for(let t=0;t<120&&!saiu;t++){w2.step();saiu=w2.events.find(e=>e.type==="WARP")||null;}
+  assert.ok(saiu&&g.dead,"atravessou");
+  const novo=w2.ejected.find(e=>!e.dead);
+  assert.ok(novo&&Math.abs(novo.mass-1500)<1e-9&&novo.type===FRAG_KIND.NOVA,"massa e tier atravessam junto");});
+
+// 38. câmera: a fórmula do cliente do agar.io
+test("câmera: zoom = min(64/ΣR,1)^0.4 × resolução — soma dos raios, potência e mesma área de mundo em qualquer tela",()=>{
+  const W=1920,H=1080,z=r=>zoomFor(r,W,H);
+  assert.ok(Math.abs(z(PLAYER.START_R)-1)<1e-9,"no raio inicial a escala é 1 (ΣR < CAM.BASE, o min() satura)");
+  assert.ok(Math.abs(z(CAM.BASE)-1)<1e-9,"e continua 1 até ΣR = CAM.BASE");
+  for(const [r,e] of [[128,Math.pow(.5,.4)],[256,Math.pow(.25,.4)],[1000,Math.pow(64/1000,.4)]])
+    assert.ok(Math.abs(z(r)-e)<1e-9,`potência .4 em ΣR=${r}`);
+  assert.ok(z(400)>z(1600)&&z(1600)>z(6400),"cresceu, afastou");
+  assert.ok(z(1000)/z(10000)<3,"lei de potência: 10× de raio afasta menos de 3× (com 1/r seriam 10×)");
+  // é a SOMA: 4 peças de 200 afastam mais que uma de 200 (dividir mostra mais mundo, como no agar)
+  const {sumR:s1}=focusOf([{x:0,y:0,r:200}]),{sumR:s4}=focusOf([0,1,2,3].map(i=>({x:i*500,y:0,r:200})));
+  assert.equal(s4,800);assert.ok(z(s4)<z(s1),"4 peças = mais zoom out que 1");
+  // mesma ÁREA de mundo visível em qualquer tela (regra anti-widescreen do agar)
+  const area=(w,h)=>{const s=zoomFor(300,w,h);return[w/s,h/s];};
+  const [aw,ah]=area(1920,1080),[bw,bh]=area(1280,720),[cw,ch]=area(1080,1920);
+  assert.ok(Math.abs(aw-bw)<1e-6&&Math.abs(ah-bh)<1e-6,"tela menor mostra o mesmo mundo");
+  assert.ok(Math.abs(ch-ah)<1e-6,"retrato: a MAIOR dimensão da tela mostra o mesmo que a maior da paisagem");
+  assert.ok(cw<aw,"e a menor mostra menos — ninguém ganha visão por esticar a janela");
+  // piso: nunca mostra mais que o mundo inteiro (é o teto da AOI do servidor)
+  const zf=zoomFor(1e6,W,H);assert.ok(W/zf<=WORLD.w+1e-6&&H/zf<=WORLD.h+1e-6,"a janela nunca passa do mundo");});
+
+// 39. velocidade padrão: sem inércia, sem embalo de graça
+test("velocidade: é SEMPRE a padrão do tamanho — vira na hora, não acelera, não acumula embalo de ninguém",()=>{
+  for(const r of [30,60,120,290,1000]){
+    const w=empty(200+r),p=w.addPlayer(0,{x:4800,y:4800,r});w.setTarget(0,9500,4800);
+    w.step();const x0=p.x;w.step();
+    assert.ok(Math.abs((p.x-x0)*TICK_HZ-vmaxFor(r))<1e-6,`r=${r}: anda exatamente vmaxFor(r) no 1º tick (sem rampa de aceleração)`);
+    for(let t=0;t<120;t++)w.step();
+    const x1=p.x;w.step();
+    assert.ok(Math.abs((p.x-x1)*TICK_HZ-vmaxFor(r))<1e-6,`r=${r}: e continua na mesma velocidade em regime`);
+    w.setTarget(0,100,4800);const x2=p.x;w.step();
+    assert.ok(Math.abs((x2-p.x)*TICK_HZ-vmaxFor(r))<1e-6,`r=${r}: inverter a direção é IMEDIATO — velocidade cheia no sentido contrário já no 1º tick`);
+    assert.equal(boostLeft(p),0,`r=${r}: e andar não gera impulso nenhum`);}
+  // a rampa dos últimos SPEED.RAMP px evita tremer em cima do ponteiro
+  const w=empty(199),p=w.addPlayer(0,{x:1000,y:1000,r:60});w.setTarget(0,1000+SPEED.RAMP/2,1000);
+  const x0=p.x;w.step();assert.ok((p.x-x0)*TICK_HZ<vmaxFor(60),"a meio RAMP do alvo já vai mais devagar");
+  w.setTarget(0,p.x,p.y);const x1=p.x;for(let t=0;t<10;t++)w.step();
+  assert.ok(Math.abs(p.x-x1)<1e-9,"em cima do ponteiro fica PARADA (sem inércia para escorregar)");
+  // todo empurrão do jogo entra no canal de impulso e SEMPRE chega a zero
+  const w2=empty(198),q=w2.addPlayer(0,{x:4800,y:4800,r:60});
+  addBoost(q,1,0,SPLIT.DIST);const d0=q.x;
+  let ticks=0;while(boostLeft(q)>0&&ticks<600){w2.setTarget(0,q.x,q.y);w2.step();ticks++;}   // ponteiro colado na peça: isola o canal de impulso do de direção
+  assert.ok(ticks<600,`o impulso acaba sozinho (${(ticks/TICK_HZ).toFixed(2)} s)`);
+  assert.ok(Math.abs((q.x-d0)-SPLIT.DIST)<SPLIT.DIST*.05,`e rende a distância pedida: ${(q.x-d0).toFixed(0)} de ${SPLIT.DIST} px`);});

@@ -12,7 +12,9 @@ Três temas aprovados, todos da linha Cartoon (mockups/v2): o layout muda com a 
   volta do foco; a troca aplica tokens CSS + classe `data-theme` no `<html>` e invalida o cache de texturas do Pixi.
 - **Dentro da partida a hora é a da rodada**: a sala de 1 h vale `ROUND.DAYS` (4) dias do relógio do espaço — um dia a cada
   15 min, ou seja 12 trocas de céu por sala (Amanhecer ~6,9 min · Crepúsculo ~2,5 min · Anoitecer ~5,6 min por dia).
-- **A troca passa por um fade** (`client/src/theme/fade.js`, `ROUND.FADE_MS`): um overlay na cor do céu cobre a tela, o tema
-  entra no pico (é aí que o CSS troca os tokens e o Pixi rebaka as texturas) e o overlay some. Sem isso o corte pisca feio.
+- **A troca faz um crossfade SÓ do céu** (`client/src/game/renderer/layers/Background.js`, `ROUND.FADE_MS`): o tema entra na hora
+  (CSS troca os tokens, o Pixi rebaka as texturas) e o fundo velho fica num sprite por cima que dissolve em FADE_MS, com as
+  estrelas do parallax aparecendo junto. HUD, telas e o jogo **não** piscam — antes um overlay cobria a tela inteira, o que
+  apagava tudo e voltava. Os tokens de cor do HUD/telas acompanham com uma `transition` curta (`client/src/styles/ui.css`).
 - Cada tema em `client/src/theme/<id>/`: `index.js` (tokens, textures, effects, layout), `tokens.css`, `hud.css`, `screens.css`.
 - Sem sol em nenhum deles (pedido explícito).

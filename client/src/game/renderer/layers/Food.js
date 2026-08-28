@@ -6,18 +6,23 @@ import {FOOD_TYPE,FOOD,rectHas} from "@planet/shared";
 import {seedAngle,seedUnit} from "../../util.js";
 
 const SIZE=64;
+/** Receita do atlas de comida de um tema (também usada no pré-aquecimento do próximo céu). */
+export function foodAtlas(th){const TX=th.textures,items=[];
+  for(let t=FOOD_TYPE.DUST;t<=FOOD_TYPE.ROCK;t++)for(let h=0;h<FOOD.HUES;h++)items.push({key:t+":"+h,size:SIZE,draw:(c,s)=>TX.food(c,s,{type:t,hue:h})});
+  for(const t of [FOOD_TYPE.AMMO,FOOD_TYPE.MERGE,FOOD_TYPE.MAGNET,FOOD_TYPE.SHIELD])items.push({key:t+":0",size:SIZE,draw:(c,s)=>TX.food(c,s,{type:t,hue:0})});
+  return{key:`${th.id}:food`,items};}
 export function createFood(R){
-  let pc=null,atlas=null;const byId=new Map();let frame=0;
-  function setTheme(){const th=R.theme,TX=th.textures,items=[];
-    for(let t=FOOD_TYPE.DUST;t<=FOOD_TYPE.ROCK;t++)for(let h=0;h<FOOD.HUES;h++)items.push({key:t+":"+h,size:SIZE,draw:(c,s)=>TX.food(c,s,{type:t,hue:h})});
-    for(const t of [FOOD_TYPE.AMMO,FOOD_TYPE.MAGNET,FOOD_TYPE.SHIELD])items.push({key:t+":0",size:SIZE,draw:(c,s)=>TX.food(c,s,{type:t,hue:0})});
-    atlas=R.cache.atlas(`${th.id}:food`,items);
+  let pc=null,atlas=null,atlasKey="";const byId=new Map();let frame=0;
+  function setTheme(){const {key,items}=foodAtlas(R.theme);atlasKey=key;
+    const a=R.cache.atlas(key,items);if(a===atlas)return;   // céu já visitado: o atlas continua no cache, nada a refazer
+    atlas=a;
     const old=pc;pc=new ParticleContainer({dynamicProperties:{position:true,vertex:true,color:true,rotation:false,uvs:false},texture:atlas.texture});
     if(old){old.parent&&old.parent.addChildAt(pc,old.parent.getChildIndex(old));old.parent&&old.parent.removeChild(old);old.destroy();}
     byId.clear();L.root=pc;}
   const keyOf=e=>(e.type>=FOOD_TYPE.AMMO?e.type+":0":e.type+":"+(e.hue%FOOD.HUES));
   const L={root:null,setTheme,
-    render(f){frame++;const view=f.view,FA=R.theme.world.foodAnim,K=R.theme.textures.scale.food,t=f.t,rect=f.rect;
+    render(f){frame++;R.cache.keepAlive(atlasKey);   // o atlas vive preso ao ParticleContainer: sem isto a eviction pode destruí-lo em uso
+      const view=f.view,FA=R.theme.world.foodAnim,K=R.theme.textures.scale.food,t=f.t,rect=f.rect;
       for(const e of view.food){let rec=byId.get(e.id);
         if(!rec){const tex=atlas.frames.get(keyOf(e))||atlas.frames.get("0:0"),p=new Particle({texture:tex,anchorX:.5,anchorY:.5});
           if(e.type===FOOD_TYPE.ROCK||e.type===FOOD_TYPE.COMET)p.rotation=seedAngle(e.id);pc.addParticle(p);rec={p,seed:seedUnit(e.id)*6.28,f:0};byId.set(e.id,rec);}

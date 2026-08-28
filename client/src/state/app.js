@@ -10,10 +10,12 @@ export const NAV_SCREENS = ["entry", "lobby", "rank", "profile", "shop", "prefs"
 export const PREF_DEFAULTS = Object.freeze({
   quality: "auto", showNames: true, showMass: true, showGrid: true, showMinimap: true, showFps: true,
   sound: true, music: false, volume: 70, joystick: false, holdEject: true, rightSplit: true,
-  theme: "auto", reduceMotion: false, bigText: false, colorblind: "off", lbSize: 8,
+  theme: "auto", reduceMotion: false, bigText: false, colorblind: "off", lbSize: 10,
 });
 export const PREF_KEYS = Object.keys(PREF_DEFAULTS);
-export const normalizePrefs = p => { const o = { ...PREF_DEFAULTS }; if (p) for (const k of PREF_KEYS) if (p[k] !== undefined && p[k] !== null) o[k] = p[k]; o.volume = +o.volume; o.lbSize = +o.lbSize || 8; return o; };
+// volume: 0..100 no cliente. Perfis antigos guardavam 0..1 (o servidor só aceitava essa faixa e o slider nunca
+// persistia); sem a conversão o ganho do áudio virava 0,007 — ou seja, mudo.
+export const normalizePrefs = p => { const o = { ...PREF_DEFAULTS }; if (p) for (const k of PREF_KEYS) if (p[k] !== undefined && p[k] !== null) o[k] = p[k]; o.volume = +o.volume; if (o.volume > 0 && o.volume <= 1) o.volume *= 100; o.lbSize = +o.lbSize || 10; return o; };
 
 export const EMPTY_STATS = Object.freeze({ games: 0, kills: 0, botKills: 0, splits: 0, ejects: 0, bestScore: 0, bestMass: 0, playTime: 0, bestStreak: 0 });
 /** Aceita camelCase e snake_case vindos do servidor. */

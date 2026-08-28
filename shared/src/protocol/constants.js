@@ -1,18 +1,20 @@
 // ── Enums do fio (ver docs/spec/protocol.md) ──────────────────────────────────
 // @ts-check
-export const PROTOCOL_VERSION=4;
+export const PROTOCOL_VERSION=6;   // 6: LEADERBOARD leva x,y de TODOS os vivos (radar com todos os inimigos e placar de 10)
+// 5: o `hue` do EJECT deixou de ser o skinId (que o cliente ignorava) e virou FRAG_KIND
 export const MSG={INPUT:0x01,SNAPSHOT:0x10,PLAYERS:0x11,LEADERBOARD:0x12,EVENT:0x13,PONG:0x14};
 export const KIND={PIECE:1,FOOD:2,EJECT:3,ASTEROID:4,BLACKHOLE:5,MISSILE:6,STAR:7};   // 3 bits: entra nos códigos de par do mundo e no `known` do snapshot
 export const INPUT_FLAG={SPLIT:1,EJECT:2,EJECT_HOLD:4,FIRE:8,AIM:16};   // AIM acompanha FIRE: tiro mirado (reto na direção do alvo do ponteiro, sem perseguir)
 export const PIECE_FLAG={SHIELD:1,LAUNCH:2,MERGING:4,ME:8,MAGNET:16,SHIELD_LV_SHIFT:5,SHIELD_LV_MASK:96};   // nível do escudo (1..3) = (flags>>SHIELD_LV_SHIFT)&3
 export const FOOD_FLAG={MOVED:1};   // interno ao mundo (ímã/buraco negro moveu a comida desde o último snapshot); não vai no fio
+export const FRAG_KIND={PLAIN:0,RICH:1,NOVA:2};   // ejetado: tier do fragmento, no `hue` do create (PLAIN = pelota comum; RICH = pedaço gordo, mass ≥ FRAG.RICH_MASS; NOVA = estilhaço de supernova, brilha)
 export const PLAYER_FLAG={BOT:1,DEAD:2,REG:4};
 export const SELF_FLAG={DEAD:1,RESYNC:2};   // RESYNC: a sessão esqueceu o que o cliente conhece (socket congestionado) — o cliente descarta tudo e recria com este snapshot
 export const POWER_BIT={magnet:1,shield:2};
 export const UPD={X_Y:1,R:2,V:4,FLAGS:8,EXTRA:16};
 export const REMOVE={LEFT_AOI:0,EATEN:1,MERGED:2,POPPED:3,EXPIRED:4,SUCKED:5,DESPAWN:6};
 export const EVENT={EAT:0,POP:1,MERGE:2,SPLIT:3,BH_SUCK:4,DEATH:5,CHIP:6,BOUNCE:7,BOOM:8,EXIT:9,SHOOT:10,SHIELD_BREAK:11,CLASH:12,DEFLECT:13,SHIELD_HIT:14,SHIELD_UP:15,
-  STAR_BURST:16,SUPERNOVA:17,STAR_HIT:18,STAR_SPLIT:19};   // STAR_HIT: tiro/partícula empurrou a estrela; STAR_SPLIT: 3 hits e ela rachou em várias
+  STAR_BURST:16,SUPERNOVA:17,STAR_HIT:18,STAR_SPLIT:19,SMASH:20};   // STAR_HIT: tiro/partícula empurrou a estrela; STAR_SPLIT: 3 hits e ela rachou em várias; SMASH: meteoro trombou na estrela (os dois se partem)
 export const BH_PHASE={GROW:0,ACTIVE:1,FADE:2};
 export const STAR_PHASE={GROW:0,ACTIVE:1,OLD:2};   // OLD = inchando para a supernova
 export const ERROR_CODE={VERSION:4400,FULL:4402,AUTH:4401,NICK_RESERVED:4409,RATE:4429,ROOM:4404};

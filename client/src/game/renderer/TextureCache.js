@@ -1,7 +1,10 @@
 // ── CACHE DE TEXTURAS: receitas do tema (canvas) → Texture com mipmaps; LRU por bytes ──────
 // Chave = theme.textures.key(kind,params,size) + tamanho. Tiers 128/256/512 (theme.textures.tier).
 // Só entradas sem uso há ≥ 2 s são despejadas (os sprites pedem a textura a cada frame pela chave,
-// então nunca seguram uma textura destruída). invalidate() zera tudo (troca de tema).
+// então nunca seguram uma textura destruída). Quem NÃO pede por frame — atlas de comida/ejetados/parallax
+// e o tile da grade, presos a um ParticleContainer/TilingSprite — tem que chamar keepAlive() por frame,
+// senão a eviction destrói uma textura em uso. A troca de tema NÃO invalida nada: as chaves já são
+// prefixadas com o id do tema, então os temas convivem e o LRU descarta o que ninguém usa.
 // warm(key,size,draw) enfileira um aquecimento: tick() assa ≤ WARM_PER_FRAME por frame e chama
 // `upload(tex)` (o Renderer sobe para a GPU na hora — em Pixi v8 o upload+mipmaps aconteceria no 1º
 // draw, e o pico só mudaria de lugar).
@@ -13,7 +16,11 @@ export function createTextureCache({budgetMB=48,upload=null}={}){
   const mk=(canvas,resolution=1)=>new Texture({source:new CanvasSource({resource:canvas,autoGenerateMipmaps:true,scaleMode:"linear",resolution})});
   const cache={
     get bytes(){return bytes;},get size(){return map.size;},get pending(){return queue.length;},
-    tick(){frame++;for(let i=0;i<WARM_PER_FRAME&&queue.length;i++){const q=queue.shift();if(map.has(q.key))continue;const tex=cache.get(q.key,q.size,q.draw);if(upload)try{upload(tex);}catch{/* sem GPU: fica para o 1º draw */}}},
+    tick(){frame++;for(let i=0;i<WARM_PER_FRAME&&queue.length;i++){const q=queue.shift();if(map.has(q.key))continue;
+      const tex=q.atlasItems?cache.atlas(q.key,q.atlasItems).texture:cache.get(q.key,q.size,q.draw);
+      if(upload)try{upload(tex);}catch{/* sem GPU: fica para o 1º draw */}}},
+    /** Marca a entrada como viva neste frame (para quem segura a textura sem pedi-la de novo). */
+    keepAlive(key){const e=map.get(key);if(e)e.last=frame;},
     /** Enfileira (se ainda não existe) uma textura para assar nos próximos frames. */
     warm(key,size,draw){if(map.has(key))return;for(const q of queue)if(q.key===key)return;queue.push({key,size,draw});},
     /** Textura quadrada `size`; draw(ctx,size) recebe o contexto já transladado ao centro. */
@@ -24,6 +31,8 @@ export function createTextureCache({budgetMB=48,upload=null}={}){
     raw(key,w,h,resolution,draw){let e=map.get(key);if(e){e.last=frame;return e.tex;}
       const c=document.createElement("canvas");c.width=Math.round(w*resolution);c.height=Math.round(h*resolution);const x=c.getContext("2d");x.scale(resolution,resolution);draw(x,w,h);
       const tex=mk(c,resolution);e={tex,bytes:c.width*c.height*4*1.34,last:frame};map.set(key,e);bytes+=e.bytes;evict();return tex;},
+    /** Enfileira um atlas para ser assado nos próximos frames (mesmo orçamento do warm). */
+    warmAtlas(key,items){if(map.has(key))return;for(const q of queue)if(q.key===key)return;queue.push({key,atlasItems:items});},
     /**
      * Atlas: várias receitas num só canvas (uma fonte de textura → ParticleContainer). items: [{key,size,draw}].
      * Devolve {texture, frames: Map key→Texture}. Cache pela `key` do atlas.

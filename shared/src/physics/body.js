@@ -1,6 +1,6 @@
 // ── CORPO: objeto de forma fixa para todas as entidades (monomórfico para o V8) ──
 // @ts-check
-import {PLAYER} from "../constants.js";
+import {PLAYER,BOOST} from "../constants.js";
 
 /**
  * @typedef {object} Body
@@ -8,8 +8,12 @@ import {PLAYER} from "../constants.js";
  * @property {number} id         u32 incremental por mundo
  * @property {number} x
  * @property {number} y
- * @property {number} vx         px/s
+ * @property {number} vx         px/s — PEÇA: canal de IMPULSO (boost), não a velocidade de andar (ver integrate.js)
  * @property {number} vy         px/s
+ * @property {number} svx        PEÇA: velocidade de DIREÇÃO do tick (û·vmax·rampa), escrita por integratePiece.
+ * @property {number} svy        Não vai no fio: quem simula a peça recalcula. É a velocidade "de verdade" dela,
+ *                               e é o que a colisão usa — sem isso um planeta correndo contra uma rocha parada
+ *                               teria velocidade relativa zero e não sentiria a batida.
  * @property {number} r          px — peça/asteroide/comida: r²=mass; ejetado: visual (mass pode ser maior, ver EJECT.MASS_FACTOR)
  * @property {number} mass
  * @property {number} owner      slot do dono (peça, ejetado, míssil) ou -1
@@ -38,14 +42,36 @@ import {PLAYER} from "../constants.js";
 
 /** Cria um corpo com todos os campos (sempre a mesma forma). @returns {Body} */
 export function createBody(kind,id,x,y,r){
-  return{kind,id,x,y,vx:0,vy:0,r,mass:r*r,owner:-1,mergeAt:0,flags:0,cdUntil:0,chipUntil:0,hits:0,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,seed:0,type:0,hue:0,targetId:-1,life:0,
+  return{kind,id,x,y,vx:0,vy:0,svx:0,svy:0,r,mass:r*r,owner:-1,mergeAt:0,flags:0,cdUntil:0,chipUntil:0,hits:0,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,seed:0,type:0,hue:0,targetId:-1,life:0,
     ax:0,ay:0,ang:0,orbitR:0,k:0,ex:0,ey:0,dead:false};}
 /** Define a massa e recalcula o raio (r=√m). @param {Body} b */
 export function setMass(b,m){b.mass=m;b.r=Math.sqrt(m);}
 /** Define o raio e recalcula a massa (m=r²). @param {Body} b */
 export function setR(b,r){b.r=r;b.mass=r*r;}
-/** Soma massa com teto de raio. @param {Body} b */
-export function addMass(b,dm,maxR=PLAYER.MAX_R){let m=b.mass+dm;const cap=maxR*maxR;if(m>cap)m=cap;setMass(b,m);}
+/**
+ * Soma massa. SEM teto por padrão: quem passa de PLAYER.MAX_R é repartido pelo autoSplit (regra do agar.io) em vez
+ * de ter o ganho descartado em silêncio — era isso que travava o crescimento na parede dos 84 100 (MAX_R antigo).
+ * @param {Body} b
+ */
+export function addMass(b,dm,maxR=Infinity){let m=b.mass+dm;const cap=maxR*maxR;if(m>cap)m=cap;setMass(b,m);}
+/**
+ * Empurra o corpo `dist` px na direção unitária (ux,uy) — canal de IMPULSO do agar.io (`setBoost`).
+ * O canal decai sempre (BOOST.K), então `dist` é literalmente o que o corpo vai percorrer a mais: todo
+ * empurrão do jogo (split, pop, estilhaço, quique, saída do buraco) é declarado em PIXELS por causa disso.
+ * @param {Body} b
+ */
+export const addBoost=(b,ux,uy,dist)=>{const v=dist*BOOST.K;b.vx+=ux*v;b.vy+=uy*v;};
+/** Velocidade real de um corpo: impulso + direção (só a peça tem direção). @param {Body} b */
+export const velX=b=>b.vx+b.svx,velY=b=>b.vy+b.svy;
+/** Impulso do corpo em px: o quanto ainda falta ele ser empurrado. @param {Body} b */
+export const boostLeft=b=>Math.sqrt(b.vx*b.vx+b.vy*b.vy)/BOOST.K;
+/**
+ * Limita o impulso do corpo a `maxDist` px sem mudar a direção. Usado no quique: a rocha continua
+ * empurrando enquanto encosta, e sem teto o solavanco de um tick vira embalo de vários.
+ * @param {Body} b
+ */
+export function capBoost(b,maxDist){const m=maxDist*BOOST.K,v2=b.vx*b.vx+b.vy*b.vy;
+  if(v2>m*m){const k=m/Math.sqrt(v2);b.vx*=k;b.vy*=k;}}
 /** Distância² entre centros. @param {Body} a @param {Body} b */
 export const dist2b=(a,b)=>{const dx=a.x-b.x,dy=a.y-b.y;return dx*dx+dy*dy;};
 /** Círculos se sobrepõem? @param {Body} a @param {Body} b */

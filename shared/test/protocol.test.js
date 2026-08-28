@@ -123,9 +123,14 @@ test("PLAYERS: ida e volta com utf-8; nome truncado em ≤ 32 bytes na fronteira
   assert.deepEqual(dl.map(p=>p.name),["a".repeat(32),"a".repeat(31),"é".repeat(16),"a".repeat(30)]);
   for(const p of dl)assert.ok(enc.encode(p.name).length<=NAME_MAX_BYTES);
   assert.equal(encodePlayers(w,[]).length,3);assert.deepEqual(decodePlayers(encodePlayers(w,[])),[]);});
-test("LEADERBOARD: ida e volta exata; > 255 linhas estoura",()=>{
-  const rows=Array.from({length:30},()=>({slot:slot(),mass:u32()}));assert.deepEqual(decodeLeaderboard(encodeLeaderboard(w,rows)),rows);
-  assert.equal(encodeLeaderboard(w,rows).length,2+30*6);assert.throws(()=>encodeLeaderboard(w,new Array(256).fill({slot:0,mass:0})),RangeError);});
+test("LEADERBOARD: ida e volta com posição (é o que dá o radar de todos os inimigos); > 255 linhas estoura",()=>{
+  const rows=Array.from({length:30},()=>({slot:slot(),mass:u32(),x:rx(),y:ry()}));
+  const back=decodeLeaderboard(encodeLeaderboard(w,rows));
+  assert.equal(back.length,rows.length);
+  for(let i=0;i<rows.length;i++){assert.equal(back[i].slot,rows[i].slot);assert.equal(back[i].mass,rows[i].mass);
+    assert.ok(Math.abs(back[i].x-rows[i].x)<=WORLD.w/65535&&Math.abs(back[i].y-rows[i].y)<=WORLD.h/65535,"posição dentro da quantização u16");}
+  assert.equal(encodeLeaderboard(w,rows).length,2+30*10);
+  assert.throws(()=>encodeLeaderboard(w,new Array(256).fill({slot:0,mass:0,x:0,y:0})),RangeError);});
 test("EVENT: ida e volta dentro da quantização",()=>{
   for(let i=0;i<30;i++){const e={kind:rng.int(0,15),x:rx(),y:ry(),r:rr(),slotA:slot(),slotB:slot(),extra:u32()};const b=encodeEvent(w,e);assert.equal(b.length,16);const d=decodeEvent(b);
     assert.equal(d.kind,e.kind);near(d.x,e.x,EPS_POS,"x");near(d.y,e.y,EPS_POS,"y");near(d.r,e.r,EPS_R,"r");assert.equal(d.slotA,e.slotA);assert.equal(d.slotB,e.slotB);assert.equal(d.extra,e.extra);}
@@ -142,7 +147,7 @@ test("decodeMessage despacha pelo primeiro byte; desconhecido/vazio → null",()
   const s=randSnapshot(1,2,1),snapB=encodeSnapshot(w,s).slice();assert.deepEqual(decodeMessage(snapB),{type:MSG.SNAPSHOT,...decodeSnapshot(snapB)});
   const inp={seq:5,tx:dqPos(100,WORLD.w),ty:dqPos(200,WORLD.h),flags:2,clientTick:9};assert.deepEqual(decodeMessage(encodeInput(inp)),{type:MSG.INPUT,...inp});
   const ps=[{slot:1,flags:0,skinId:2,name:"X",score:3}];assert.deepEqual(decodeMessage(encodePlayers(w,ps)),{type:MSG.PLAYERS,players:ps});
-  const rows=[{slot:1,mass:900}];assert.deepEqual(decodeMessage(encodeLeaderboard(w,rows)),{type:MSG.LEADERBOARD,rows});
+  const rows=[{slot:1,mass:900,x:dqPos(qPos(1234,WORLD.w),WORLD.w),y:dqPos(qPos(5678,WORLD.h),WORLD.h)}];assert.deepEqual(decodeMessage(encodeLeaderboard(w,rows)),{type:MSG.LEADERBOARD,rows});
   const ev={kind:EVENT.EAT,x:dqPos(10,WORLD.w),y:dqPos(20,WORLD.h),r:3.5,slotA:1,slotB:2,extra:7};assert.deepEqual(decodeMessage(encodeEvent(w,ev)),{type:MSG.EVENT,...ev});
   const pong={clientTime:1,serverTick:2};assert.deepEqual(decodeMessage(encodePong(w,pong)),{type:MSG.PONG,...pong});
   assert.equal(decodeMessage(new Uint8Array([0x7f,1,2,3])),null);assert.equal(decodeMessage(new Uint8Array(0)),null);assert.equal(decodeMessage(new ArrayBuffer(0)),null);

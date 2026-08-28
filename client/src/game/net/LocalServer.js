@@ -1,4 +1,4 @@
-// ── SERVIDOR LOCAL (na página): World do shared + bots, codificado com o codec real ───────────
+// ── SERVIDOR LOCAL (na página): World do shared + bots (BotBrain do shared), codificado com o codec real ──
 // Serve para ?local=1 (sem servidor), modo offline do app e ?bench. Entrega um socket falso com a
 // mesma interface do WebSocket (onopen/onmessage/onclose/send/close), então a Connection não sabe
 // a diferença. Mensagens: room/error/dead/rewards (JSON) e SNAPSHOT/PLAYERS/LEADERBOARD/EVENT/PONG
@@ -8,7 +8,8 @@ import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,
   MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,
   WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,BOT_NAMES,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,
   focusOf,zoomFor,viewRect,rectHas,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir} from "@planet/shared";
-import {createWorld,applySplit,liveCount,firstLive} from "@planet/shared/physics/index.js";
+import {createWorld,applySplit} from "@planet/shared/physics/index.js";
+import {BotBrain} from "@planet/shared/bot.js";
 
 const seqNewer=(a,b)=>b<0||(((a-b)&0xFFFF)>0&&((a-b)&0xFFFF)<0x8000);
 export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=FOOD.COUNT,code="0LOC",roundTicks=ROUND.TICKS}={}){
@@ -16,26 +17,14 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
   const rng=createRng(seed*7+1),writer=createWriter(1<<16),meta=new Map(),sessions=new Set(),brains=new Map();
   let nextSlot=0,timer=0,acc=0,last=0,playersDirty=true,running=false,over=false;   // over: a rodada acabou (mundo explodido)
   const reasonMap=new Map();
-  // ── bots ──
+  // ── bots ── (mesmo cérebro do servidor: shared/src/bot.js)
+  function botInput(slot,{tx,ty,flags}){w.setTarget(slot,tx,ty);
+    if(flags&INPUT_FLAG.SPLIT)w.requestSplit(slot);
+    if(flags&INPUT_FLAG.EJECT)w.requestEject(slot);
+    if(flags&INPUT_FLAG.FIRE)w.requestFire(slot,(flags&INPUT_FLAG.AIM)!==0);}
   function addBot(x=NaN,y=NaN){const slot=nextSlot++;const r=rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]);w.addPlayer(slot,{x,y,r,isBot:true,missiles:rng.chance(.3)?1:0});
     meta.set(slot,{slot,name:BOT_NAMES[slot%BOT_NAMES.length]+(slot>=BOT_NAMES.length?"-"+slot:""),skinId:rng.int(0,34),isBot:true,registered:false});
-    brains.set(slot,{think:0,st:"wander",tgt:-1,tx:w.w/2,ty:w.h/2});playersDirty=true;return slot;}
-  function botThink(slot,b){const ps=w.players.get(slot);if(!ps||!ps.alive)return;const c=firstLive(ps.pieces);if(!c)return;b.think--;
-    if(b.think<=0){b.think=rng.int(BOT.THINK_TICKS[0],BOT.THINK_TICKS[1]);const mass=w.massOf(slot);let threat=-1,prey=-1,td=1e18,pd=1e18;
-      for(const o of w.players.values()){if(o.slot===slot||!o.alive)continue;const op=firstLive(o.pieces);if(!op)continue;const om=w.massOf(o.slot),dx=op.x-c.x,dy=op.y-c.y,d2=dx*dx+dy*dy;
-        if(om>mass*BOT.FLEE_RATIO&&d2<BOT.FLEE_DIST*BOT.FLEE_DIST&&d2<td){td=d2;threat=o.slot;}
-        else if(mass>om*BOT.HUNT_RATIO&&d2<BOT.HUNT_DIST*BOT.HUNT_DIST&&d2<pd){pd=d2;prey=o.slot;}}
-      if(threat>=0){b.st="flee";b.tgt=threat;}else if(prey>=0){b.st="hunt";b.tgt=prey;}else{b.st="wander";b.tx=rng.range(150,w.w-150);b.ty=rng.range(150,w.h-150);}}
-    if(b.st==="flee"||b.st==="hunt"){const o=w.players.get(b.tgt),op=o&&o.alive?firstLive(o.pieces):null;
-      const sh=c.shieldLv>0;   // com escudo não atira nem divide (preserva o escudo; o escudo é por peça — vale o da que atira)
-      if(!op)b.st="wander";else if(b.st==="flee"){b.tx=c.x*2-op.x;b.ty=c.y*2-op.y;if(!sh&&ps.missiles&&rng.chance(BOT.FIRE_P))w.requestFire(slot);}
-      else{b.tx=op.x;b.ty=op.y;if(!sh&&ps.missiles&&rng.chance(BOT.FIRE_P*.8))w.requestFire(slot);
-        const d=Math.hypot(op.x-c.x,op.y-c.y);if(!sh&&d<c.r*3.2&&c.r>op.r*1.5&&liveCount(ps.pieces)<BOT.MAX_PIECES&&rng.chance(BOT.SPLIT_P))w.requestSplit(slot);}}
-    else if(b.think%5===0){let bf=null,bd=BOT.FOOD_DIST*BOT.FOOD_DIST;const q=[];const n=w.foodGrid.query(c.x,c.y,BOT.FOOD_DIST,q);
-      for(let i=0;i<n;i++){const f=w.food[q[i]];if(!f||f.dead)continue;const dx=f.x-c.x,dy=f.y-c.y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;bf=f;}}if(bf){b.tx=bf.x;b.ty=bf.y;}}
-    for(const h of w.holes){const ri=h.r*BLACKHOLE.INFLUENCE*h.k,dx=c.x-h.x,dy=c.y-h.y;if(h.k>.3&&dx*dx+dy*dy<ri*ri*BOT.HOLE_AVOID*BOT.HOLE_AVOID){b.tx=c.x+dx*3;b.ty=c.y+dy*3;}}
-    for(const st of w.stars){const ri=st.r*STAR.HALO,dx=c.x-st.x,dy=c.y-st.y;if(st.k>=STAR.ARM_K&&dx*dx+dy*dy<ri*ri*BOT.HOLE_AVOID*BOT.HOLE_AVOID){b.tx=c.x+dx*3;b.ty=c.y+dy*3;}}
-    w.setTarget(slot,clamp(b.tx,40,w.w-40),clamp(b.ty,40,w.h-40));}
+    brains.set(slot,new BotBrain(w,slot,rng,botInput));playersDirty=true;return slot;}
   for(let i=0;i<bots;i++)addBot();
   // ── sessões ──
   function mkSocket(){const sock={readyState:0,binaryType:"arraybuffer",onopen:null,onmessage:null,onclose:null,onerror:null,
@@ -52,7 +41,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     if(typeof d==="string"){let m=null;try{m=JSON.parse(d);}catch{return;}
       if(m.t==="join"||m.t==="resume"){let sess=s;
         if(!sess&&m.t==="resume")for(const o of sessions)if("local-"+o.slot===m.sessionId){sess=o;sess.sock=sock;break;}   // religa a sessão caída
-        if(!sess){sess={sock,slot:-1,known:new Map(),lastSeq:-1,ackSeq:0,view:{w:1280,h:720},dead:false,kills:0,maxMass:0,startTick:w.tick,name:"",skinId:0};sessions.add(sess);}
+        if(!sess){sess={sock,slot:-1,known:new Map(),lastSeq:-1,ackSeq:0,view:{w:1280,h:720},dead:false,specSlot:-1,kills:0,maxMass:0,startTick:w.tick,name:"",skinId:0};sessions.add(sess);}
         if(m.view)sess.view=m.view;if(m.t==="join"){sess.name=(m.fallbackNick||"Viajante").slice(0,16);sess.skinId=m.skinId|0;}
         if(sess.slot<0){sess.slot=nextSlot++;spawn(sess);}else if(m.t==="join"&&sess.dead){spawn(sess);}
         sendJson(sock,{t:"room",code,shard:0,slot:sess.slot,sessionId:"local-"+sess.slot,resumeToken:"local",protocol:PROTOCOL_VERSION,tick:w.tick,world:{w:w.w,h:w.h},
@@ -67,7 +56,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     const ps=w.players.get(s.slot);if(!ps||!ps.alive)return;w.setTarget(s.slot,inp.tx,inp.ty);
     if(inp.flags&INPUT_FLAG.SPLIT)w.requestSplit(s.slot);if(inp.flags&INPUT_FLAG.EJECT)w.requestEject(s.slot);if(inp.flags&INPUT_FLAG.FIRE)w.requestFire(s.slot,!!(inp.flags&INPUT_FLAG.AIM));
     w.setEjectHold(s.slot,!!(inp.flags&INPUT_FLAG.EJECT_HOLD));}
-  function spawn(sess){const slot=sess.slot;meta.set(slot,{slot,name:sess.name,skinId:sess.skinId,isBot:false,registered:false});sess.dead=false;sess.kills=0;sess.maxMass=0;sess.startTick=w.tick;
+  function spawn(sess){const slot=sess.slot;meta.set(slot,{slot,name:sess.name,skinId:sess.skinId,isBot:false,registered:false});sess.dead=false;sess.specSlot=-1;sess.kills=0;sess.maxMass=0;sess.startTick=w.tick;
     if(bench){const x=w.w/2,y=w.h/2;w.addPlayer(slot,{x,y,r:190,missiles:3});const ps=w.players.get(slot);ps.tx=x+300;ps.ty=y+120;
       for(let i=0;i<3;i++)applySplit(w,ps);ps.splitCdUntil=0;
       let i=0;for(const b of brains.keys()){const a=i/brains.size*6.283,d=900+(i%3)*400;const bp=w.players.get(b);if(bp)w.respawnPlayer(b,{x:x+Math.cos(a)*d,y:y+Math.sin(a)*d,r:40+(i%4)*12});i++;}
@@ -88,7 +77,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     const msg={t:"roundEnd",code,champion:board[0]||null,board:board.slice(0,20),nextInMs:ROUND.BREAK_MS,tick:w.tick};
     for(const s of sessions)if(s.slot>=0)sendJson(s.sock,msg);}
   function step(){if(over)return;if(w.tick>=roundTicks)return endRound();
-    for(const [slot,b] of brains)botThink(slot,b);w.step();
+    for(const b of brains.values())b.act(w.tick);w.step();
     reasonMap.clear();const tick=w.tick;
     for(const ev of w.events){let e=null;
       switch(ev.type){
@@ -112,26 +101,41 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
         case "STAR_BURST":e={kind:EVENT.STAR_BURST,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:65535,extra:ev.starId};break;
         case "STAR_HIT":e={kind:EVENT.STAR_HIT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot<0?65535:ev.slot,slotB:65535,extra:packDir(ev.nx,ev.ny,ev.hits)};break;
         case "STAR_SPLIT":e={kind:EVENT.STAR_SPLIT,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:ev.starId};break;
+        case "SMASH":reasonMap.set(ev.asteroidId,REMOVE.POPPED);e={kind:EVENT.SMASH,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:packDir(ev.nx,ev.ny,0)};break;
         case "SUPERNOVA":e={kind:EVENT.SUPERNOVA,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:ev.starId};break;
         case "PLAYER_DEAD":{const m=meta.get(ev.slot);
           if(m&&m.isBot){const ps=w.players.get(ev.slot);w.respawnPlayer(ev.slot,{score:Math.floor((ps?ps.score:0)*BOT.RESPAWN_SCORE)});const bp=w.players.get(ev.slot);if(bp)bp.missiles=rng.chance(.3)?1:0;playersDirty=true;}
           else for(const s of sessions)if(s.slot===ev.slot&&!s.dead){s.dead=true;playersDirty=true;const ps=w.players.get(ev.slot),by=meta.get(ev.bySlot),durationS=Math.round((tick-s.startTick)/TICK_HZ);
             const info={by:ev.cause==="blackhole"?"buraco negro":(by?by.name:"?"),byHole:ev.cause==="blackhole",score:ps?ps.score:0,maxMass:Math.round(s.maxMass),kills:s.kills,durationS};
             sendJson(s.sock,{t:"dead",...info});const coins=SCORE_COINS(info.score,info.kills,0,durationS);
-            setTimeout(()=>sendJson(s.sock,{t:"rewards",saved:false,coinsEarned:coins,coins:null,achievements:[],skinsUnlocked:[],rank:{day:null}}),600);}
+            setTimeout(()=>sendJson(s.sock,{t:"rewards",saved:false,coinsEarned:coins,coins:null,achievements:[],skinsUnlocked:[],rank:{day:null}}),600);
+            spectate(s,ev.bySlot);}
           e={kind:EVENT.DEATH,x:0,y:0,r:0,slotA:ev.slot,slotB:ev.bySlot<0?0:ev.bySlot,extra:0};break;}}
-      if(e){const u8=encodeEvent(writer,e);for(const s of sessions)if(s.slot>=0&&(e.kind===EVENT.DEATH||!s.aoi||rectHas(s.aoi,e.x,e.y,e.r*3+200)))sendBin(s.sock,u8);}}
+      if(e){const u8=encodeEvent(writer,e);
+        for(const s of sessions)if(s.slot>=0&&(e.kind===EVENT.DEATH||e.slotA===s.slot||e.slotB===s.slot||!s.aoi||rectHas(s.aoi,e.x,e.y,e.r*3+200)))sendBin(s.sock,u8);}}   // o que é sobre mim sempre chega (ver Room.flushEvents)
     if(playersDirty){playersDirty=false;const u8=encodePlayers(writer,playerList());for(const s of sessions)if(s.slot>=0)sendBin(s.sock,u8);}
     if(tick%SNAPSHOT_EVERY===0)for(const s of sessions)if(s.slot>=0)snapshot(s);
-    if(tick%LEADERBOARD_EVERY===0){const rows=[];for(const slot of meta.keys()){const ps=w.players.get(slot);if(ps&&ps.alive)rows.push({slot,mass:Math.round(w.massOf(slot))});}
-      rows.sort((a,b)=>b.mass-a.mass);const top=rows.slice(0,10);for(const s of sessions)if(s.slot>=0&&!top.some(r=>r.slot===s.slot)){const mine=rows.find(r=>r.slot===s.slot);if(mine)top.push(mine);}
-      const u8=encodeLeaderboard(writer,top);for(const s of sessions)if(s.slot>=0)sendBin(s.sock,u8);}}
+    if(tick%LEADERBOARD_EVERY===0){const rows=[];   // TODOS os vivos com posição, como o servidor: o HUD corta no top 10 e o radar usa a lista inteira
+      for(const slot of meta.keys()){const ps=w.players.get(slot);if(!ps||!ps.alive)continue;
+        let sx=0,sy=0,n=0;for(const pc of ps.pieces){if(pc.dead)continue;sx+=pc.x;sy+=pc.y;n++;}
+        if(n)rows.push({slot,mass:Math.round(w.massOf(slot)),x:sx/n,y:sy/n});}
+      rows.sort((a,b)=>b.mass-a.mass);
+      const u8=encodeLeaderboard(writer,rows);for(const s of sessions)if(s.slot>=0)sendBin(s.sock,u8);}}
+  /** Alvo do espectador de uma sessão morta: quem matou (se vivo) ou o líder; só avisa quando muda (ver Room.spectateTargetFor). */
+  function spectate(s,prefer=-1){
+    const alive=sl=>{const ps=w.players.get(sl);return !!(ps&&ps.alive&&ps.pieces.some(p=>!p.dead));};
+    let slot=prefer>=0&&alive(prefer)?prefer:-1;
+    if(slot<0){let bm=-1;for(const ps of w.players.values()){if(!ps.alive)continue;const m=w.massOf(ps.slot);if(m>bm){bm=m;slot=ps.slot;}}}
+    if(slot!==s.specSlot){s.specSlot=slot;const m=slot>=0?meta.get(slot):null;sendJson(s.sock,{t:"spectate",slot,name:m?m.name:null});}
+    return slot;}
   // ── snapshot por sessão ──
   const cr=[],up=[],rm=[];
   function snapshot(s){const ps=w.players.get(s.slot),tick=w.tick,view=s.view;let cx,cy,scale;
     const alive=ps&&ps.alive?ps.pieces.filter(p=>!p.dead):[];
-    if(alive.length){const f=focusOf(alive);cx=f.cx;cy=f.cy;scale=zoomFor(f.bigR,f.spread,view.h>view.w);s.cx=cx;s.cy=cy;s.scale=scale;s.maxMass=Math.max(s.maxMass,w.massOf(s.slot));}
-    else{cx=s.cx==null?w.w/2:s.cx;cy=s.cy==null?w.h/2:s.cy;scale=s.scale||.42;}
+    if(alive.length){const f=focusOf(alive);cx=f.cx;cy=f.cy;scale=zoomFor(f.sumR,view.w,view.h);s.cx=cx;s.cy=cy;s.scale=scale;s.maxMass=Math.max(s.maxMass,w.massOf(s.slot));}
+    else{const sp=s.specSlot>=0?w.players.get(s.specSlot):null,spp=sp&&sp.alive?sp.pieces.filter(p=>!p.dead):null;
+      if(spp&&spp.length){const f=focusOf(spp);cx=f.cx;cy=f.cy;scale=zoomFor(f.sumR,view.w,view.h);s.cx=cx;s.cy=cy;s.scale=scale;}   // assistindo alguém: a AOI vai junto
+      else{if(s.dead)spectate(s,-1);cx=s.cx==null?w.w/2:s.cx;cy=s.cy==null?w.h/2:s.cy;scale=s.scale||.42;}}
     const rect=viewRect(cx,cy,scale,view.w,view.h,NET.AOI_PAD),out=viewRect(cx,cy,scale,view.w,view.h,NET.AOI_PAD_OUT);s.aoi=out;
     cr.length=up.length=rm.length=0;const known=s.known;let seenN=0;const stamp=tick;
     const visit=(b,rad)=>{if(b.dead)return;let k=known.get(b.id);
@@ -152,7 +156,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     switch(b.kind){
       case KIND.PIECE:c.owner=b.owner;c.vx=b.vx;c.vy=b.vy;c.flags=b.flags|(b.owner===me?PIECE_FLAG.ME:0);break;
       case KIND.FOOD:c.type=b.type;c.hue=b.hue;break;
-      case KIND.EJECT:c.owner=b.owner;c.hue=b.hue;c.vx=b.vx;c.vy=b.vy;break;
+      case KIND.EJECT:c.owner=b.owner;c.hue=b.type;c.vx=b.vx;c.vy=b.vy;break;   // hue = FRAG_KIND (idem servidor)
       case KIND.ASTEROID:c.seed=Math.floor(b.seed*65535);c.vx=b.vx;c.vy=b.vy;c.hue=b.hue;break;   // hue não vai no fio (variante = seed%3 no cliente)
       case KIND.BLACKHOLE:c.seed=Math.floor(b.seed*65535);c.influenceR=Math.round(b.r*BLACKHOLE.INFLUENCE*b.k);c.phase=b.type;break;
       case KIND.STAR:c.seed=Math.floor(b.seed*65535);c.influenceR=Math.round(b.r*STAR.HALO*b.k);c.phase=b.type;break;

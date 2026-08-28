@@ -4,9 +4,9 @@
    nova) mora aqui e usa só os tokens do tema (--bg, --accent, --line…), então
    funciona nos três céus. Carregado por client/src/theme/all.css. ── */
 
-/* fade da troca de tema (client/src/theme/fade.js): cobre a tela no pico da troca */
-.theme-fade{position:fixed;inset:0;z-index:9000;pointer-events:none;background:var(--bg,#101020);opacity:0;transition:opacity 300ms ease}
-.theme-fade.on{opacity:1}
+/* troca de tema: o fade é só do céu, dentro do Pixi (renderer/layers/Background.js). Aqui o HUD e as telas
+   acompanham a paleta nova sem corte seco — só cor, nada de layout. */
+#hud,#hud *,.screen,.card,.btn-primary,.btn-secondary{transition:background-color .35s ease,color .35s ease,border-color .35s ease}
 
 /* ── pódio do fim da rodada (BIG CRUNCH) ── */
 .podium{display:flex;align-items:flex-end;justify-content:center;gap:10px;width:100%;margin:2px 0 6px}

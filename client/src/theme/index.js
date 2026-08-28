@@ -8,7 +8,6 @@
 //   import "./theme/all.css";
 //   applyTheme(resolveThemeId(prefs.theme));           // antes do primeiro paint
 //   const stop=startThemeClock(()=>prefs.theme,(id,theme)=>renderer.invalidateTextures());
-import {fadeSwap} from "./fade.js";
 import dawn from "./dawn/index.js";
 import sunset from "./sunset/index.js";
 import dusk from "./dusk/index.js";
@@ -26,14 +25,14 @@ export function resolveThemeId(pref="auto",when=new Date()){
   for(const s of SCHEDULE){if(h>=s.from&&h<s.to)return s.id;if(s.to>24&&h+24>=s.from&&h+24<s.to)return s.id;}
   return DEFAULT_THEME;}
 
-let current=null,pending=null;   // pending: tema já decidido, esperando o pico do fade para entrar
+let current=null;
 // aplica o tema no <html> (data-theme); as variáveis CSS vêm de tokens.css, nada é setado em style.
 // Emite window 'planet:theme' {detail:{id,theme,prev}} só quando o tema muda de fato.
-// `fade`: a troca espera a tela ser coberta (theme/fade.js) — é o que a rodada usa a cada virada do céu.
-export function applyTheme(id,{fade=false}={}){
-  const th=THEMES[id]||THEMES[DEFAULT_THEME];
-  if(fade&&current&&current.id!==th.id&&typeof document!=="undefined"){pending=th.id;fadeSwap(()=>{pending=null;swapTheme(th);});return current;}
-  pending=null;return swapTheme(th);}
+// `fade`: a troca é imediata; quem faz o fade é SÓ o céu, dentro do Pixi (renderer/layers/Background.js), que ao
+// receber o `planet:theme` guarda o céu velho num sprite por cima e o dissolve em ROUND.FADE_MS. Nada de overlay
+// cobrindo a tela: HUD, telas e o jogo continuam visíveis durante a virada.
+export function applyTheme(id,{fade=false}={}){   // `fade` continua na assinatura (os chamadores pedem a troca suave), mas quem faz o fade é o céu
+  return swapTheme(THEMES[id]||THEMES[DEFAULT_THEME]);}
 function swapTheme(th){
   const prev=current,root=typeof document!=="undefined"?document.documentElement:null;
   const same=prev&&prev.id===th.id&&(!root||root.dataset.theme===th.id);
@@ -43,8 +42,8 @@ function swapTheme(th){
   return th;}
 
 export function currentTheme(){return current||THEMES[resolveThemeId("auto")];}
-/** Tema que vale agora para quem decide trocas (inclui o que está esperando o fade). */
-export function currentThemeId(){return pending||(current?current.id:null);}
+/** Tema que vale agora para quem decide trocas. */
+export function currentThemeId(){return current?current.id:null;}
 
 // Reavalia a cada `interval` e na volta do foco (visibilitychange → visible); getPref() devolve 'auto'|id.
 // getHour() (opcional) devolve a hora do relógio do espaço da rodada (0..24) ou null fora da partida — dentro
@@ -53,7 +52,7 @@ export function currentThemeId(){return pending||(current?current.id:null);}
 // Devolve stop(); stop.check() força uma reavaliação.
 export function startThemeClock(getPref=()=>"auto",onChange=null,{interval=1000,getHour=null}={}){
   const check=()=>{const h=getHour?getHour():null,id=resolveThemeId(getPref(),h==null?new Date():h),cur=currentThemeId();
-    if(cur!==id||(!pending&&typeof document!=="undefined"&&document.documentElement.dataset.theme!==id)){applyTheme(id,{fade:!!current});if(onChange)onChange(id,current);}
+    if(cur!==id||(typeof document!=="undefined"&&document.documentElement.dataset.theme!==id)){applyTheme(id,{fade:!!current});if(onChange)onChange(id,current);}
     return id;};
   check();
   const timer=setInterval(check,interval);

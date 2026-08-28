@@ -265,7 +265,7 @@ td{font-size:13px;border-bottom:2px solid rgba(20,16,38,.35)}
 #lb-rows{display:flex;flex-direction:column;gap:9px;align-items:flex-start;padding-left:8px}
 .lb-row{position:relative;background:var(--surface);border:3px solid var(--line);border-radius:14px;padding:5px 12px 5px 6px;gap:8px;color:#fff;font-size:13px;box-shadow:3px 3px 0 var(--line);min-width:172px;max-width:240px}
 .lb-row::after{content:"";position:absolute;left:-9px;top:9px;width:10px;height:10px;background:inherit;border-left:3px solid var(--line);border-bottom:3px solid var(--line);transform:rotate(45deg)}
-.lb-row:nth-child(n+4):not(.mine){display:none}
+.lb-row:nth-child(n+11):not(.mine){display:none}
 .lb-pos{flex:none;width:24px;min-width:24px;height:24px;border-radius:50%;background:#8fa0d8;color:var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid var(--line)}
 .lb-row:nth-child(1){font-size:15px;min-width:204px}
 .lb-row:nth-child(2){min-width:188px}
@@ -429,7 +429,7 @@ input[type=range]{accent-color:var(--accent)}
 .prefs-wrap .nav{margin-top:4px}
 .prefs-foot button{padding:10px 20px;font-size:14px}
 /* ── MORTE ── */
-#s-dead{background:rgba(20,16,38,.38)}
+#s-dead{background:transparent}   /* sem véu: a sala onde o jogador morreu tem que aparecer nítida atrás do card */
 #s-dead .dead-card{position:absolute;left:auto;right:0;top:0;bottom:0;transform:none;width:min(480px,100%);height:100%;max-height:none;overflow:auto;border-radius:24px 0 0 24px;border:5px solid var(--line);border-right:0;
   background:#1a2350;padding:20px 20px 22px 28px;gap:10px;justify-content:safe center;box-shadow:-10px 0 40px rgba(0,0,0,.45)}
 #s-dead .dead-card::before{content:"";position:absolute;left:6px;top:50%;width:8px;height:64px;margin-top:-32px;border-radius:99px;background:var(--line);flex:none}

@@ -16,12 +16,14 @@ export function createWorldView({buffer,predictor}){
       v.rebuildLb();},
     setLeaderboard(rows){v.lbRaw=rows;v.rebuildLb();},
     rebuildLb(){const rows=v.lbRaw,out=new Array(rows.length);
-      for(let i=0;i<rows.length;i++){const r=rows[i],pl=players.get(r.slot);out[i]={slot:r.slot,name:pl?pl.name:"?",mass:r.mass,isBot:pl?pl.isBot:false,registered:pl?pl.registered:false,me:r.slot===v.mySlot,rank:i+1};}
+      for(let i=0;i<rows.length;i++){const r=rows[i],pl=players.get(r.slot);out[i]={slot:r.slot,name:pl?pl.name:"?",mass:r.mass,x:r.x,y:r.y,isBot:pl?pl.isBot:false,registered:pl?pl.registered:false,me:r.slot===v.mySlot,rank:i+1};}
       // fora do top: anexa a própria linha (rank/massa vêm do bloco self do snapshot)
       if(v.mySlot>=0&&v.self&&v.self.rank>0&&!out.some(r=>r.me)){const pl=players.get(v.mySlot);
-        out.push({slot:v.mySlot,name:pl?pl.name:"",mass:v.self.mass,isBot:false,registered:pl?pl.registered:false,me:true,rank:v.self.rank});}
+        out.push({slot:v.mySlot,name:pl?pl.name:"",mass:v.self.mass,x:0,y:0,isBot:false,registered:pl?pl.registered:false,me:true,rank:v.self.rank});}
       v.lb=out;},
     myRank(){for(const r of v.lb)if(r.me)return r.rank;return 0;},
+    /** Linhas do placar COM posição (o servidor manda todos os vivos): é a fonte do radar. */
+    lbRows(){return v.lbRaw;},
     playerOf(slot){return players.get(slot)||null;},
     build(){
       const P=v.pieces,F=v.food,E=v.ejected,A=v.asteroids,H=v.holes,M=v.missiles,S=v.stars;P.length=F.length=E.length=A.length=H.length=M.length=S.length=0;

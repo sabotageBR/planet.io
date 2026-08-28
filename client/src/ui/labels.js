@@ -25,7 +25,7 @@ export const LABELS = {
   confirm: "Confirmar", cancel: "Cancelar",
   reconnTitle: "CONEXÃO PERDIDA", reconnSub: "Reconectando… tentativa {n}/5",
   split: "DIVIDIR", eject: "EJETAR", fire: "MÍSSIL", exit: "Sair", keySplit: "ESPAÇO", keyEject: "W", keyFire: "F",
-  ammo: "mísseis", powerups: { magnet: "Ímã", shield: "Escudo" }, shieldLevel: "Nv",
+  ammo: "mísseis", powerups: { magnet: "Ímã", shield: "Escudo", merge: "Fusão" }, shieldLevel: "Nv",
   room: "SALA", ping: "ms", fps: "fps", top5: "TOP 5 HOJE", activeRooms: "SALAS ATIVAS",
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— o universo desabou num ponto; a próxima galáxia já está nascendo —",
   champion: "CAMPEÃO DA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar agora", playersWord: "no placar", posWord: "#",

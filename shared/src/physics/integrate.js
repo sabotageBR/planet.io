@@ -1,36 +1,45 @@
-// ── INTEGRAÇÃO: thrust/arrasto/regime de arremesso/paredes (unidades px, s, px/s) ──
+// ── INTEGRAÇÃO: os dois canais de movimento do agar.io (direção + impulso) + paredes ──
+// A peça NÃO tem velocidade de andar. Cada tick soma dois deslocamentos:
+//   1. direção  = û(ponteiro) · vmax(r) · min(d,RAMP)/RAMP · dt   → instantâneo, sem inércia nem arrasto
+//   2. impulso  = o canal de boost guardado em (vx,vy), que decai sempre e some sozinho
+// Assim a velocidade é SEMPRE a padrão do tamanho: quique, fusão e gravidade empurram por um instante e
+// devolvem o controle, em vez de virar embalo acumulado. Ver o bloco SPEED/BOOST em constants.js.
 // @ts-check
-import {SPEED,WALL,WORLD,DT} from "../constants.js";
+import {SPEED,BOOST,WALL,WORLD,DT} from "../constants.js";
 import {PIECE_FLAG} from "../protocol/constants.js";
 import {clamp} from "../util.js";
 
-const DRAG_F=Math.exp(-SPEED.DRAG*DT);   // fator por tick em 60 Hz (fora do arremesso o arrasto é constante)
-/** Velocidade máxima de uma peça pelo raio: clamp(K/r, MIN, MAX). */
-export const vmaxFor=r=>clamp(SPEED.K/r,SPEED.MIN,SPEED.MAX);
+const BOOST_F=Math.exp(-BOOST.K*DT),BOOST_STEP=(1-BOOST_F)/BOOST.K,STOP2=BOOST.STOP*BOOST.STOP;
+/** Velocidade padrão de uma peça pelo raio: clamp(K/r^EXP, MIN, MAX) — a curva do agar.io (EXP=.449). */
+export const vmaxFor=r=>clamp(SPEED.K/Math.pow(r,SPEED.EXP),SPEED.MIN,SPEED.MAX);
 
 /**
- * Integra uma peça: thrust em direção a (tx,ty), arrasto, regime de arremesso (emerge da velocidade:
- * |v| > vmax·LAUNCH_THRESH → steer ×LAUNCH_STEER, sem clamp e arrasto que CRESCE acima de LAUNCH_KNEE_V px/s
- * — LAUNCH_DRAG+LAUNCH_K·(|v|−KNEE_V)/KNEE_V: o pico do arremesso some rápido e ele fica curto, enquanto a
- * velocidade de cruzeiro (abaixo do joelho) continua a mesma para qualquer tamanho), paredes (WALL.E).
- * A velocidade máxima vem só do raio (vmaxFor) — não há multiplicador de powerup.
- * Seta/limpa PIECE_FLAG.LAUNCH. Retorna true se estava em arremesso.
+ * Integra uma peça: impulso (boost) + direção (ponteiro) + paredes (WALL.E reflete o impulso, como o
+ * `clipVelocity` do agar). Retorna true se ainda havia impulso — é o PIECE_FLAG.LAUNCH.
  * @param {import("./body.js").Body} pc
  */
 export function integratePiece(pc,tx,ty,dt=DT,w=WORLD.w,h=WORLD.h){
-  const vmax=vmaxFor(pc.r);let vx=pc.vx,vy=pc.vy;const sp2=vx*vx+vy*vy;
-  const launch=sp2>vmax*vmax*SPEED.LAUNCH_THRESH*SPEED.LAUNCH_THRESH;
-  const dx=tx-pc.x,dy=ty-pc.y,len2=dx*dx+dy*dy;
-  if(len2>SPEED.STOP_DIST*SPEED.STOP_DIST){const k=vmax*SPEED.ACCEL*dt*(launch?SPEED.LAUNCH_STEER:1)/Math.sqrt(len2);vx+=dx*k;vy+=dy*k;}
-  const ex=launch?(Math.sqrt(sp2)-SPEED.LAUNCH_KNEE_V)/SPEED.LAUNCH_KNEE_V:0,drag=launch?SPEED.LAUNCH_DRAG+(ex>0?SPEED.LAUNCH_K*ex:0):SPEED.DRAG;
-  const f=(!launch&&dt===DT)?DRAG_F:Math.exp(-drag*dt);vx*=f;vy*=f;
-  if(!launch){const s2=vx*vx+vy*vy;if(s2>vmax*vmax){const s=vmax/Math.sqrt(s2);vx*=s;vy*=s;}}
-  let x=pc.x+vx*dt,y=pc.y+vy*dt;const r=pc.r;
+  let vx=pc.vx,vy=pc.vy,sx=0,sy=0;
+  // ── 1. impulso: passo = ∫v·e^(−K·t) = v·(1−f)/K (exato, então o percurso total é |v0|/K) ──
+  const boost=vx*vx+vy*vy>STOP2;
+  if(boost){const f=dt===DT?BOOST_F:Math.exp(-BOOST.K*dt),step=dt===DT?BOOST_STEP:(1-f)/BOOST.K;
+    sx=vx*step;sy=vy*step;
+    const s2=sx*sx+sy*sy,cap=BOOST.MAX_STEP*(dt/DT);   // teto por passo: o mesmo anti-tunelamento do agar
+    if(s2>cap*cap){const k=cap/Math.sqrt(s2);sx*=k;sy*=k;}
+    vx*=f;vy*=f;if(vx*vx+vy*vy<=STOP2){vx=0;vy=0;}}
+  else{vx=0;vy=0;}
+  // ── 2. direção: velocidade PADRÃO na hora, com a rampa dos últimos RAMP px ──
+  const dx=tx-pc.x,dy=ty-pc.y,d2=dx*dx+dy*dy;
+  if(d2>1e-12){const d=Math.sqrt(d2),v=vmaxFor(pc.r)*(d<SPEED.RAMP?d/SPEED.RAMP:1)/d;
+    pc.svx=dx*v;pc.svy=dy*v;sx+=dx*v*dt;sy+=dy*v*dt;}   // svx/svy: a velocidade de direção deste tick, para a colisão enxergar o quanto a peça está correndo
+  else{pc.svx=0;pc.svy=0;}
+  // ── 3. posição e paredes ──
+  let x=pc.x+sx,y=pc.y+sy;const r=pc.r;
   if(x<r){x=r;if(vx<0)vx*=-WALL.E;}else if(x>w-r){x=w-r;if(vx>0)vx*=-WALL.E;}
   if(y<r){y=r;if(vy<0)vy*=-WALL.E;}else if(y>h-r){y=h-r;if(vy>0)vy*=-WALL.E;}
   pc.x=x;pc.y=y;pc.vx=vx;pc.vy=vy;
-  pc.flags=launch?pc.flags|PIECE_FLAG.LAUNCH:pc.flags&~PIECE_FLAG.LAUNCH;
-  return launch;}
+  pc.flags=boost?pc.flags|PIECE_FLAG.LAUNCH:pc.flags&~PIECE_FLAG.LAUNCH;
+  return boost;}
 
 /**
  * Integra um corpo livre (ejetado, asteroide, míssil): arrasto exponencial `drag` (1/s, 0 = nenhum),

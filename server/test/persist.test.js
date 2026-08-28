@@ -88,9 +88,9 @@ test('skins: buy 200/409/402/403, equip 200/403, catálogo',async()=>{
   assert.equal(db.health.fails,0,'erros de aplicação não contam no circuit breaker');
 });
 test('prefs: whitelist e merge',async()=>{
-  let r=await call('PATCH','/api/me/prefs',{token:S.t3,body:{theme:'dusk',volume:0.5,showFps:true,hack:1,lbSize:99,quality:'low'}});
-  assert.equal(r.status,200);assert.deepEqual(r.body.prefs,{theme:'dusk',volume:0.5,showFps:true,quality:'low'});
-  r=await call('PATCH','/api/me/prefs',{token:S.t3,body:{music:false}});assert.deepEqual(r.body.prefs,{theme:'dusk',volume:0.5,showFps:true,quality:'low',music:false});
+  let r=await call('PATCH','/api/me/prefs',{token:S.t3,body:{theme:'dusk',volume:50,showFps:true,hack:1,lbSize:99,quality:'low'}});
+  assert.equal(r.status,200);assert.deepEqual(r.body.prefs,{theme:'dusk',volume:50,showFps:true,quality:'low'});   // 0..100, a unidade do cliente
+  r=await call('PATCH','/api/me/prefs',{token:S.t3,body:{music:false}});assert.deepEqual(r.body.prefs,{theme:'dusk',volume:50,showFps:true,quality:'low',music:false});
 });
 test('ranking vazio + validação',async()=>{
   let r=await call('GET','/api/ranking?period=week&by=score',{token:S.t3});assert.equal(r.status,200);assert.deepEqual(r.body.rows,[]);assert.equal(r.body.me,null);

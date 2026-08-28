@@ -15,7 +15,7 @@
  * @property {number} [vy]
  * @property {number} [flags] PIECE_FLAG.* (PIECE)
  * @property {number} [type] FOOD_TYPE.* (FOOD)
- * @property {number} [hue] 0..11 (FOOD, EJECT)
+ * @property {number} [hue] FOOD: 0..11 (matiz). EJECT: FRAG_KIND (tier do fragmento — PLAIN/RICH/NOVA)
  * @property {number} [seed] u16 (ASTEROID, BLACKHOLE, STAR)
  * @property {number} [influenceR] px inteiros: influência (BLACKHOLE) ou halo (STAR)
  * @property {number} [phase] BH_PHASE.* (BLACKHOLE) ou STAR_PHASE.* (STAR)
@@ -81,7 +81,7 @@
  * @property {number} flags INPUT_FLAG.*
  * @property {number} clientTick só os 16 bits baixos
  */
-/** @typedef {{slot:number,mass:number}} LeaderboardRow */
+/** @typedef {{slot:number,mass:number,x:number,y:number}} LeaderboardRow */   // x,y = centro das peças vivas (para o radar)
 /** @typedef {{kind:number,x:number,y:number,r:number,slotA:number,slotB:number,extra:number}} GameEvent */
 /** @typedef {{clientTime:number,serverTick:number}} Pong */
 export {};

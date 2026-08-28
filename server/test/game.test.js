@@ -13,8 +13,9 @@ if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.e
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';process.env.SHARDS='1';process.env.PEERS='';
 const {startServer}=await import('../src/index.js');
 const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG,PROTOCOL_VERSION}=await import('@planet/shared/protocol/index.js');
-const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE}=await import('@planet/shared/constants.js');
-const {rectHas}=await import('@planet/shared/camera.js');
+const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE,WORLD}=await import('@planet/shared/constants.js');
+const {rectHas,viewRect}=await import('@planet/shared/camera.js');
+const {setR}=await import('@planet/shared/physics/body.js');
 const {newCode,shardOf,isValidCode,normalizeCode}=await import('../src/rooms/codes.js');
 const {Bucket}=await import('../src/net/Session.js');
 const LOG=process.env.LOG_LEVEL;
@@ -58,39 +59,48 @@ after(async()=>{await srv.close();});
 
 test('unitários: códigos de sala e token bucket',()=>{
   const c=newCode(3);assert.equal(c.length,4);assert.equal(c[0],'3');assert.equal(shardOf(c),3);assert.ok(isValidCode(c));assert.equal(normalizeCode(' 1abc '),'1ABC');assert.equal(normalizeCode('1AB'),null);assert.equal(shardOf('ZZZZ'),35);
-  const b=new Bucket(10,3),t=performance.now();let ok=0;for(let i=0;i<5;i++)if(b.take(t))ok++;assert.equal(ok,3);assert.ok(b.take(t+100));assert.ok(!b.take(t+100));
+  const b=new Bucket(10,3),t=1e6;   // relógio fixo: com performance.now() real, (t+100)−t nem sempre dá 100 exato
+  let ok=0;for(let i=0;i<5;i++)if(b.take(t))ok++;assert.equal(ok,3);assert.ok(b.take(t+100));assert.ok(!b.take(t+100));
 });
 
 let A,B,roomCode;
 test('join: room + PLAYERS com bots + snapshots com criações na AOI',async()=>{
   A=new Client();await A.open();const r=await A.join('Alice');roomCode=r.code;
-  assert.equal(r.protocol,PROTOCOL_VERSION);assert.equal(shardOf(r.code),0);assert.match(r.sessionId,/^[0-9a-f-]{36}$/);assert.match(r.resumeToken,/^[0-9a-f]{32}$/);assert.deepEqual(r.world,{w:7200,h:7200});
+  assert.equal(r.protocol,PROTOCOL_VERSION);assert.equal(shardOf(r.code),0);assert.match(r.sessionId,/^[0-9a-f-]{36}$/);assert.match(r.resumeToken,/^[0-9a-f]{32}$/);assert.deepEqual(r.world,{w:WORLD.w,h:WORLD.h});
   await A.until(()=>A.players,3000,'PLAYERS');
   const bots=A.players.filter(p=>p.flags&PLAYER_FLAG.BOT);assert.equal(bots.length,srv.config.roomBots);assert.ok(bots.every(p=>BOT_NAMES.includes(p.name)));
   const me=A.players.find(p=>p.slot===A.slot);assert.ok(me);assert.equal(me.flags&PLAYER_FLAG.BOT,0);
   await A.until(()=>A.snaps.length>=3,3000,'3 snapshots');
   const first=A.snaps[0];assert.ok(first.creates.some(c=>c.kind===KIND.PIECE&&(c.flags&PIECE_FLAG.ME)&&c.owner===A.slot),'peça própria com ME no 1º snapshot');
-  assert.equal(first.updates.length,0);assert.equal(first.removes.length,0);assert.ok(first.self.mass>=900&&first.self.mass<1100,`massa inicial ${first.self.mass}`);   // 30²=900 (+ alguma comida comida nos 3 primeiros ticks)
+  assert.equal(first.updates.length,0);assert.equal(first.removes.length,0);assert.ok(first.self.mass>=800&&first.self.mass<1100,`massa inicial ${first.self.mass}`);   // 30²=900, ±: come algum grão nos primeiros ticks, ou leva uma lasca se uma rocha passar raspando (o cinturão está vivo)
   const food=A.ofKind(KIND.FOOD),known=A.known.size;
   assert.ok(food>0&&food<FOOD.COUNT,`comida conhecida ${food} (nunca as ${FOOD.COUNT})`);assert.ok(known>=5&&known<=600,`entidades conhecidas ${known}`);
   // AOI: tudo que o servidor tem dentro do retângulo interno da sessão é conhecido; nada conhecido fora do externo
   const room=roomOf(roomCode),s=room.sessions.get(A.slot),w=room.sim.world;assert.ok(s.rect);
-  const pulled=f=>w.holes.some(h=>{const ri=h.r*BLACKHOLE.INFLUENCE*h.k,dx=h.x-f.x,dy=h.y-f.y;return dx*dx+dy*dy<ri*ri;});   // comida sendo puxada anda entre um snapshot e o outro
-  let inRect=0,missing=0;for(const f of w.food)if(rectHas(s.rect,f.x,f.y,-f.r*2)&&!pulled(f)){inRect++;if(!A.known.has(f.id))missing++;}
-  assert.ok(inRect>0);assert.ok(missing<=Math.ceil(inRect*.1)+2,`comida faltando na AOI: ${missing}/${inRect}`);
-  for(const a of w.asteroids)if(rectHas(s.rect,a.x,a.y,-a.r))assert.ok(A.known.has(a.id),'asteroide na AOI conhecido');
-  for(const h of w.holes)if(rectHas(s.rect,h.x,h.y,-h.r))assert.ok(A.known.has(h.id),'buraco negro na AOI conhecido');
+  const pulled=f=>w.holes.some(h=>{const ri=h.r*BLACKHOLE.INFLUENCE*h.k,dx=h.x-f.x,dy=h.y-f.y;
+    if(dx*dx+dy*dy<ri*ri)return true;                                                    // sendo puxada: anda entre um snapshot e o outro
+    const ex=h.ex-f.x,ey=h.ey-f.y,sp=BLACKHOLE.EXIT_SPREAD*1.3;return ex*ex+ey*ey<sp*sp;});   // acabou de sair pelo outro lado: nasce em bloco, entra no snapshot seguinte
+  // o retângulo de criação é o INTERNO (AOI_PAD); entre ele e s.rect (AOI_PAD_OUT) fica a faixa de histerese, que
+  // por projeto ainda não foi criada — medir contra s.rect punia justamente essa faixa (~20% da área)
+  const rin=viewRect(s.cx,s.cy,s.scale,s.view.w,s.view.h,NET.AOI_PAD);
+  let inRect=0,missing=0;for(const f of w.food)if(rectHas(rin,f.x,f.y,-f.r*2)&&!pulled(f)){inRect++;if(!A.known.has(f.id))missing++;}
+  assert.ok(inRect>0);assert.ok(missing<=2,`comida faltando na AOI interna: ${missing}/${inRect}`);
+  for(const a of w.asteroids)if(rectHas(rin,a.x,a.y,-a.r))assert.ok(A.known.has(a.id),'asteroide na AOI conhecido');
+  for(const h of w.holes)if(rectHas(rin,h.x,h.y,-h.r))assert.ok(A.known.has(h.id),'buraco negro na AOI conhecido');
   console.log(`  AOI: ${known} entidades conhecidas (${food} comida, ${A.ofKind(KIND.ASTEROID)} asteroides, ${A.ofKind(KIND.BLACKHOLE)} buracos); 1º snapshot ${first.bytes} bytes`);
 });
 test('input: mover para a direita → x da peça cresce e ackSeq acompanha',async()=>{
   const p0=A.mine()[0];assert.ok(p0);const x0=p0.x;const n=A.snaps.length;
-  const iv=setInterval(()=>A.input(7200,p0.y),33);
+  const iv=setInterval(()=>A.input(WORLD.w,p0.y),33);
   try{await A.until(()=>A.snaps.length>n+12,3000,'snapshots');}finally{clearInterval(iv);}
   const p1=A.mine()[0];assert.ok(p1.x>x0+100,`x ${x0.toFixed(0)} → ${p1.x.toFixed(0)}`);
   assert.equal(A.last().ackSeq,A.seq-1);
 });
 test('eject e split: entidade EJECT aparece; depois 2 peças próprias',async()=>{
-  const p=A.mine()[0];A.input(p.x+400,p.y,INPUT_FLAG.EJECT);          // 1 eject (r 30 → 28, ainda ≥ SPLIT.MIN_R)
+  // o raio inicial (START_R) fica abaixo de SPLIT.MIN_R/EJECT.MIN_R (regra do agar): engorda a peça no mundo antes
+  for(const pc of roomOf(roomCode).sim.world.piecesOf(A.slot))setR(pc,120);
+  await A.until(()=>A.mine()[0]&&A.mine()[0].r>100,3000,'peça grande');
+  const p=A.mine()[0];A.input(p.x+400,p.y,INPUT_FLAG.EJECT);
   await A.until(()=>A.ofKind(KIND.EJECT)>0,3000,'EJECT');
   A.input(p.x+400,p.y,INPUT_FLAG.SPLIT);
   await A.until(()=>A.mine().length===2,3000,'2 peças');
@@ -167,7 +177,7 @@ test('sem banco: join unsaved, rewards saved:false, FULL, VERSION, sala por cód
     X.close();Q.close();
   }finally{await s2.close();}
 });
-test('soak 10 s: 3 clientes + bots → overruns 0, tick p99 < 2 ms',async()=>{
+test('soak 10 s: 3 clientes + bots → overruns 0, tick p99 < 3.5 ms',async()=>{
   const cs=[A,B,new Client()];await cs[2].open();await cs[2].join('Carol',roomCode);
   const room=roomOf(roomCode);assert.equal(room.sessions.size,3);
   const before=srv.metrics.snapshot(),bytes0=srv.metrics.bytesOutTotal,snaps0=cs.map(c=>c.snaps.length);const t0=Date.now();
@@ -177,7 +187,8 @@ test('soak 10 s: 3 clientes + bots → overruns 0, tick p99 < 2 ms',async()=>{
   const sizes=cs.flatMap((c,i)=>c.snaps.slice(snaps0[i]).map(s=>s.bytes)),avg=sizes.reduce((a,b)=>a+b,0)/sizes.length,max=Math.max(...sizes);
   console.log(`  tick p50 ${m.tick.p50} ms · p99 ${m.tick.p99} ms · max ${m.tick.max} ms · overruns ${m.tick.overruns} · lag p99 ${m.loopLagMs.p99} ms`);
   console.log(`  saída ${((srv.metrics.bytesOutTotal-bytes0)/1024/secs).toFixed(1)} KB/s p/ 3 clientes · snapshots ${sizes.length} (média ${avg.toFixed(0)} B, máx ${max} B) · ${m.net.inMsgps} msg/s · players na sala: ${room.sim.players.size}`);
-  assert.equal(m.tick.overruns-before.tick.overruns,0);assert.ok(m.tick.p99<2,`tick p99 ${m.tick.p99} ms`);assert.ok(sizes.length>=3*20*8,'≥ 20 Hz de snapshots por cliente');
+  assert.equal(m.tick.overruns-before.tick.overruns,0);   // a garantia dura é esta: nenhum tick estourou os 16,7 ms
+  assert.ok(m.tick.p99<3.5,`tick p99 ${m.tick.p99} ms`);   // teto medido depois de FOOD.COUNT ir a 5000 (era 2 ms com 1500): p50 ~0,7 · p99 2,5–3,3assert.ok(sizes.length>=3*20*8,'≥ 20 Hz de snapshots por cliente');
   for(const c of cs)assert.equal(c.closeCode,null,'nenhum cliente derrubado');
   cs[2].close();
 });

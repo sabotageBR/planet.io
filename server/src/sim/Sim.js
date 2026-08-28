@@ -12,7 +12,7 @@ import {EVENT,REMOVE,PLAYER_FLAG,SELF_FLAG,POWER_BIT,INPUT_FLAG} from '@planet/s
 import {createRng} from '@planet/shared/rng.js';
 import {packDir} from '@planet/shared/util.js';
 import {NOOP_HOOKS} from './hooks.js';
-import {BotBrain} from './bots.js';
+import {BotBrain} from '@planet/shared/bot.js';
 
 export const NO_SLOT=0xffff;
 const LB_MAX=10,EVENTS_MAX=256;
@@ -63,7 +63,9 @@ export class Sim{
   addBot(slot,{name,skinId=0}){
     if(this.players.has(slot))this.remove(slot);
     this.world.addPlayer(slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),isBot:true,missiles:0});
-    const gp=this._mk(slot,{name,skinId,isBot:true});gp.brain=new BotBrain(this,slot);this.players.set(slot,gp);this.playersDirty=true;return gp;}
+    const gp=this._mk(slot,{name,skinId,isBot:true});gp.brain=new BotBrain(this.world,slot,this.rng,this._botInput);this.players.set(slot,gp);this.playersDirty=true;return gp;}
+  /** Porta de entrada dos bots: o cérebro (shared/bot.js) só produz {tx,ty,flags} e cai no mesmo applyInput do humano. */
+  _botInput=(slot,cmd)=>{this.applyInput(slot,cmd);};
   remove(slot){const gp=this.players.get(slot);if(!gp)return;
     for(const pc of this.world.piecesOf(slot))if(!pc.dead)this.gone.set(pc.id,REMOVE.DESPAWN);
     this.world.removePlayer(slot);this.players.delete(slot);this.playersDirty=true;}
@@ -121,6 +123,7 @@ export class Sim{
       case 'STAR_BURST':this._ev(EVENT.STAR_BURST,e.x,e.y,e.r,e.slot,NO_SLOT,e.starId);break;
       case 'STAR_HIT':this._ev(EVENT.STAR_HIT,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,NO_SLOT,packDir(e.nx,e.ny,e.hits));break;
       case 'STAR_SPLIT':this._ev(EVENT.STAR_SPLIT,e.x,e.y,e.r,NO_SLOT,NO_SLOT,e.starId);break;
+      case 'SMASH':gone.set(e.asteroidId,REMOVE.POPPED);this._ev(EVENT.SMASH,e.x,e.y,e.r,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,0));break;
       case 'SUPERNOVA':this._ev(EVENT.SUPERNOVA,e.x,e.y,e.r,NO_SLOT,NO_SLOT,e.starId);break;
       case 'PLAYER_DEAD':deaths.push(e);break;}}
     for(let i=0;i<deaths.length;i++)this._died(deaths[i]);
@@ -133,7 +136,7 @@ export class Sim{
     if(gp.isBot){w.respawnPlayer(e.slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),score:Math.floor(gp.score*BOT.RESPAWN_SCORE)});gp.score=Math.floor(gp.score*BOT.RESPAWN_SCORE);if(gp.brain)gp.brain.reset();return;}
     gp.dead=true;
     const byHole=e.cause==='blackhole',durationMs=Math.round((w.tick-gp.joinedTick)*1000/TICK_HZ),maxMass=Math.round(gp.maxMass);
-    const info={slot:e.slot,by:by?by.name:null,byHole,score:gp.score,maxMass,kills:gp.kills+gp.botKills,durationS:Math.round(durationMs/1000)};
+    const info={slot:e.slot,by:by?by.name:null,bySlot:by?by.slot:-1,byHole,score:gp.score,maxMass,kills:gp.kills+gp.botKills,durationS:Math.round(durationMs/1000)};
     gp.deathInfo=info;this._emit('death',info);
     const sessionId=gp.sessionId,done=r=>this._emit('rewards',{slot:e.slot,sessionId,rewards:r||null});
     Promise.resolve().then(()=>this.hooks.onMatchEnd({sessionId,cause:byHole?'blackhole':'eaten',killedBySessionId:by&&!by.isBot?by.sessionId:null,score:gp.score,maxMass,durationMs}))
@@ -165,7 +168,10 @@ export class Sim{
   // ── consultas ──
   /** Todas as linhas vivas ordenadas por massa (cache por tick). */
   leaderboard(){const w=this.world;if(this._lbTick===w.tick)return this._lb;const rows=[];
-    for(const ps of w.players.values()){if(!ps.alive)continue;rows.push({slot:ps.slot,mass:Math.round(w.massOf(ps.slot))});}
+    for(const ps of w.players.values()){if(!ps.alive)continue;
+      let sx=0,sy=0,n=0;for(const pc of ps.pieces){if(pc.dead)continue;sx+=pc.x;sy+=pc.y;n++;}
+      if(!n)continue;
+      rows.push({slot:ps.slot,mass:Math.round(w.massOf(ps.slot)),x:sx/n,y:sy/n});}   // x,y: o mesmo centro que a câmera usa — é o que o radar desenha
     rows.sort((a,b)=>b.mass-a.mass);this._lb=rows;this._lbTick=w.tick;return rows;}
   top(n=LB_MAX){const lb=this.leaderboard();return lb.length>n?lb.slice(0,n):lb;}
   rankOf(slot){const lb=this.leaderboard();for(let i=0;i<lb.length;i++)if(lb[i].slot===slot)return i+1;return 0;}

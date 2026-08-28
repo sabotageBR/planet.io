@@ -20,7 +20,7 @@ export class Session{
     this.slot=-1;this.room=null;this.sessionId=null;this.userId=null;this.name='';this.unsaved=true;
     this.resumeToken=randomBytes(16).toString('hex');
     /** @type {Map<number,number>} id → kind | (carimbo da passada << 3) */this.known=new Map();this.stamp=0;this.resync=false;
-    this.view={w:1280,h:720};this.cx=WORLD.w/2;this.cy=WORLD.h/2;this.scale=1;this.rect=null;
+    this.view={w:1280,h:720};this.cx=WORLD.w/2;this.cy=WORLD.h/2;this.scale=1;this.rect=null;this.specSlot=-1;   // morto: slot que ele está assistindo (a AOI segue esse jogador)
     this.inputs=new Bucket(NET.RATE_INPUTS,NET.RATE_BURST);this.json=new Bucket(NET.RATE_JSON,NET.RATE_JSON*2);
     /** @type {number[]} */this.violations=[];this.lastPong=Date.now();this.disconnectedAt=0;this.pendingRewards=null;this.joining=false;this.kicked=false;this.connectedAt=Date.now();}
   get connected(){return !!this.ws&&this.ws.readyState===1;}

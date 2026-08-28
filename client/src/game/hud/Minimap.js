@@ -1,4 +1,6 @@
 // ── RADAR: canvas 2D pequeno (#radar dentro de #hud), 10 Hz, desenhado por theme.hud.radar ──
+// Os inimigos vêm do PLACAR (todos os vivos, com posição, a 2 Hz) e não da AOI: o radar mostra o mapa inteiro.
+// Perigos e peças próprias continuam vindo da cena, que é o que o cliente enxerga de verdade.
 // Posicionado por estilo inline conforme radar.position/size do modo atual (não há CSS de #radar).
 import {WORLD} from "@planet/shared";
 import {bodyMode} from "../util.js";
@@ -26,9 +28,13 @@ export function createMinimap({hud,theme,getScene}){
     for(const h of S.holes){c.fillStyle=st.hole;c.beginPath();c.arc(mx+h.x*sc,my+h.y*sc,Math.max(2.2,h.ri*sc*.5),0,6.283);c.fill();}
     for(const q of S.stars||[]){c.fillStyle=st.star;c.beginPath();c.arc(mx+q.x*sc,my+q.y*sc,Math.max(2.4,q.r*sc*1.2),0,6.283);c.fill();}
     c.fillStyle=st.ast;for(const q of S.asteroids)c.fillRect(mx+q.x*sc-1,my+q.y*sc-1,2,2);
-    for(const p of S.players){if(p.isMe)continue;c.fillStyle=p.isBot?st.bot:st.player;c.fillRect(mx+p.x*sc-1.8,my+p.y*sc-1.8,3.6,3.6);}
+    // TODOS os inimigos vivos do mapa (vêm do placar, não da AOI); o ponto cresce com a massa, então dá para
+    // ver de longe quem é ameaça — √mass·sc é o raio real no mundo, com um piso para o ponto não sumir
+    for(const p of S.enemies){c.fillStyle=p.isBot?st.bot:st.player;const rr=Math.max(2,Math.sqrt(p.mass||1)*sc);
+      c.beginPath();c.arc(mx+p.x*sc,my+p.y*sc,rr,0,6.283);c.fill();}
     const cam=S.cam,hw=cam.W/(2*cam.scale)*sc,hh=cam.H/(2*cam.scale)*sc;c.strokeStyle=st.view;c.lineWidth=1;c.strokeRect(mx+cam.x*sc-hw,my+cam.y*sc-hh,hw*2,hh*2);
-    const me=S.players.find(p=>p.isMe);if(me){const md=R0.meDot;c.fillStyle=md.fill;c.strokeStyle=md.stroke;c.lineWidth=md.width;c.beginPath();c.arc(mx+me.x*sc,my+me.y*sc,md.r[m]||3,0,6.283);c.fill();c.stroke();}
+    const md=R0.meDot;c.fillStyle=md.fill;c.strokeStyle=md.stroke;c.lineWidth=md.width;
+    for(const p of S.mine){c.beginPath();c.arc(mx+p.x*sc,my+p.y*sc,Math.max(md.r[m]||3,p.r*sc),0,6.283);c.fill();c.stroke();}
     c.restore();
     if(R0.label&&(!R0.label.desktopOnly||m==="desktop")){c.font=R0.label.font;c.fillStyle=R0.label.color;c.textAlign="center";c.textBaseline="middle";c.fillText(R0.label.text,cx,cy+R+R0.label.dy+14);}}
   return{canvas:cv,

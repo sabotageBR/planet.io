@@ -6,8 +6,8 @@ import {Application,Container} from "pixi.js";
 import {createTextureCache} from "./TextureCache.js";
 import {createBackground} from "./layers/Background.js";
 import {createGrid} from "./layers/Grid.js";
-import {createFood} from "./layers/Food.js";
-import {createEjected} from "./layers/Ejected.js";
+import {createFood,foodAtlas} from "./layers/Food.js";
+import {createEjected,ejectedAtlas} from "./layers/Ejected.js";
 import {createHazards} from "./layers/Hazards.js";
 import {createPlanets} from "./layers/Planets.js";
 import {createMissiles} from "./layers/Missiles.js";
@@ -30,7 +30,11 @@ export async function createRenderer({container,theme,prefs}){
   const world=new Container();
   const layers=[bg,grid,food,ejected,hazards,planets,missiles,aim,fx];
   function mount(){world.removeChildren();world.addChild(bg.props,grid.root,hazards.holes,hazards.stars,food.root,ejected.root,hazards.asteroids,missiles.root,planets.trails,planets.root,aim.root,fx.root);}
-  function setTheme(t){R.theme=t;R.cache.invalidate();for(const l of layers)l.setTheme();mount();}
+  // A troca de tema NÃO invalida o cache: as chaves de textura já são prefixadas com o id do tema, então os
+  // temas convivem, voltar a um céu já visto é acerto de cache e nada é reassado dentro do frame da virada.
+  // Quem segura textura sem pedi-la por frame chama cache.keepAlive() (ver TextureCache).
+  let themed=false;
+  function setTheme(t){if(!t||(themed&&t===R.theme))return;themed=true;R.theme=t;for(const l of layers)l.setTheme();mount();}
   setTheme(theme);app.stage.addChild(bg.root,world);
   const rd={app,R,canvas,cache:R.cache,fx,planets,kind,
     get W(){return R.W;},get H(){return R.H;},
@@ -40,9 +44,17 @@ export async function createRenderer({container,theme,prefs}){
     setResolution(r){r=Math.max(.5,Math.min(2,r));if(app.renderer.resolution===r)return;app.renderer.resolution=r;R.res=r;app.resize();bg.resize();},
     setEcon(lv){R.econ=lv>0;R.econLevel=lv|0;fx.setBudget(lv?(lv>1?.25:.5):1);},
     /** Aquece as texturas de planeta das skins presentes (tiers 128/256; a própria também em 512 e na variante isMe). */
-    warmPlanets(skins,meSkin){const TX=R.theme.textures;
+    warmPlanets(skins,meSkin,th=R.theme){const TX=th.textures;
       for(const sk of skins)for(const size of [128,256])R.cache.warm(TX.key("planet",{skin:sk,isMe:false},size),size,(c,s)=>TX.planet(c,s,{skin:sk,isMe:false}));
       if(meSkin)for(const size of [128,256,512])R.cache.warm(TX.key("planet",{skin:meSkin,isMe:true},size),size,(c,s)=>TX.planet(c,s,{skin:meSkin,isMe:true}));},
+    /**
+     * Deixa o PRÓXIMO céu pronto antes da virada: o fundo é assado na hora (é o item caro) e os atlas de comida
+     * e de ejetados entram na fila do cache (2 por frame). Com isso a troca de tema não assa nada e não trava.
+     */
+    prewarmTheme(th,skins=[],meSkin=null){if(!th||th===R.theme)return;
+      bg.prewarm(th);
+      const fa=foodAtlas(th),ea=ejectedAtlas(th);R.cache.warmAtlas(fa.key,fa.items);R.cache.warmAtlas(ea.key,ea.items);
+      rd.warmPlanets(skins,meSkin,th);},
     /** f: {view,cam,now,dt,t,rt,rect,aim,parallax,showGrid,showNames,showMass,showTrails} */
     render(f){R.cache.tick();const cam=f.cam;world.position.set(R.W/2-cam.x*cam.scale,R.H/2-cam.y*cam.scale);world.scale.set(cam.scale);
       for(const l of layers)l.render(f);app.render();},

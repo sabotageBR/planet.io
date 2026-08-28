@@ -7,7 +7,7 @@ loop.js         UM Scheduler 60 Hz por processo: acumulador performance.now(), s
 metrics.js      ring buffers (600 amostras): tick ms p50/p99/max, loopLag, bytes out/s, msgs in/s, rateLimitHits
 sim/Sim.js      World (shared/physics) + estado de jogo por slot {slot,sessionId,userId,name,registered,skinId,isBot,dead,score,stats,input:{seq,tx,ty,flags},missiles…}
                 consome world.events → score, kills, mortes, respawn de bots, eventos de alto nível; chama hooks (docs/spec/hooks.md)
-sim/bots.js     BotBrain: wander/hunt/flee + evitar buracos negros, estrelas e asteroides maiores; produz input como humano (applyInput)
+                (o BotBrain vive em shared/src/bot.js: o LocalServer do cliente usa o mesmo cérebro)
 sim/hooks.js    NOOP_HOOKS
 rooms/codes.js  newCode(shard) (1º char = shard base36 + 3 de "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"), shardOf(code)
 rooms/Room.js   {code, shard, sim, sessions, snapshotter, createdAt, roundStart, over}; step(tick): fim da rodada → endRound(); senão sim.step(); a cada SNAPSHOT_EVERY → snapshots; a cada LEADERBOARD_EVERY → leaderboard
@@ -49,32 +49,96 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   pode engolir derruba o escudo inteiro (qualquer nível) e quica com E_SHIELD (chance de fuga); da batida seguinte em diante come
   normalmente. Disparar tira um nível e dividir derruba o escudo daquela peça. Bots com escudo (o da peça que atira) não atiram nem dividem.
 - **Fusão**: por par de peças do mesmo dono — separação enquanto uma não pode fundir; quando ambas podem, atração só a
-  d < (ra+rb)·MERGE.ATTRACT_RANGE (sem puxão global ao centróide); merge pareado a d < max(r)·MERGE.DIST. A peça que fica herda o
+  separação SÓ posicional (sem atração entre peças próprias); merge pareado a d < max(r)·MERGE.DIST. A peça que fica herda o
   melhor powerup das duas (ver acima).
-- **Asteroide**: batida forte (vn ≥ ASTEROID.SHIELD_VN) com escudo tira 1 nível em vez de lascar; batida fraca com escudo não faz nada;
+- **Asteroide × escudo — o preço é a VELOCIDADE da batida** (`shieldTierFor`, `ASTEROID.SHIELD_VN = [220,520,900]`):
+  devagar tira **1 nível**, média **2**, e rápida demais tira o escudo **inteiro E estoura o planeta** (nessa faixa a
+  rocha atravessa como se não houvesse escudo). Abaixo do 1º limiar o escudo nem sente. Enquanto ele aguenta, a rocha
+  **não lasca e não estoura** — só empurra, e o empurrão é curto (boost com teto `BOUNCE.DIST_MAX`, some sozinho).
+  A velocidade de aproximação soma o quanto o PLANETA está correndo contra a rocha (`velX/velY` = impulso + direção),
+  não só a dela: correr para cima de uma pedra parada é uma batida de verdade;
   sem escudo, lasca como antes (CHIP).
+  **Sinuca**: quando a peça é maior que a rocha, ela só ATRAVESSA (para estourar) se a trajetória relativa da rocha mirar o miolo —
+  o parâmetro de impacto (distância do centro da peça à reta que a rocha percorre) tem que ser menor que r·POP_DIST. De raspão a
+  rocha ricocheteia por `resolveBounce` com e=ASTEROID.E, impulso ponderado pela massa: a pedra sai voando, o planeta quase não sente.
 - **Estrelas** (STAR.*): perigo estático em 3 fases — GROW (rampa de `k`; só arma acima de ARM_K), ACTIVE e OLD (incha até R·SWELL).
   Encostar empurra a peça (PUSH_TOUCH) e, fora do cooldown de contato e com r ≥ SHATTER_MIN_R, **estilhaça** em SHATTER_N+1 pedaços a
-  SHATTER_SPEED com a massa conservada (STAR_BURST). No fim do OLD vira **supernova** num raio r·NOVA_R: NOVA_PARTICLES ejetados sem
-  dono, asteroides chutados com AST_KICK·(1−d/blast)·min(1,R_MIN/r) (os de cinturão viram errantes e o cinturão repõe) e peças
-  empurradas com PUSH·(1−d/blast) — só empurrão. A estrela morre e outra nasce RESPAWN_TICKS depois.
+  SHATTER_DIST px com a massa conservada (STAR_BURST) — a não ser que ela tenha **escudo**, que cai inteiro (SHIELD_BREAK) e segura o
+  estilhaço. No fim do OLD vira **supernova** num raio r·NOVA_R: NOVA_PARTICLES ejetados sem dono, asteroides chutados com
+  AST_KICK·(1−d/blast)·min(1,R_MIN/r) (os de cinturão viram errantes e o cinturão repõe) e peças empurradas com PUSH·(1−d/blast).
+  Cada fragmento da supernova vale NOVA_PART_MASS pelotas comuns e vai marcado FRAG_KIND.NOVA — o cliente os desenha **brilhando e
+  latejando**: é o melhor troco do mapa, e estar por perto na hora certa é o prêmio de ter arriscado.
+  No **miolo** (d < blast·NOVA_SHATTER) a onda machuca como o contato: escudo cai inteiro e salva, sem escudo a peça estilhaça.
+  A estrela morre e outra nasce RESPAWN_TICKS depois.
   **Levar tiro empurra**: míssil (sempre) e partícula ejetada (fora do cooldown HIT_CD_TICKS) somem no impacto, empurram a estrela
-  (HIT_PUSH/EJECT_PUSH, escalados por STAR.R/r — ela desliza com arrasto STAR.DRAG) e contam um hit (STAR_HIT). Em HITS_TO_SPLIT hits
+  (HIT_PUSH/EJECT_PUSH, escalados por STAR.R/r — ela desliza com arrasto STAR.DRAG) e contam um hit (STAR_HIT). Se ela já está em
+  **OLD**, o hit não conta: a supernova acontece **na hora** (dá para adiantar a explosão com um míssil — e a mira trava em estrela).
+  Em HITS_TO_SPLIT hits
   ela **racha** (STAR_SPLIT): sopro em r·SPLIT_BLAST (peças empurradas e asteroides chutados, sem estilhaçar) e SPLIT_N estrelas
   menores (r·SPLIT_R) saindo em leque a SPLIT_SPEED, já ACTIVE e com vida curta. Só a 1ª filha herda o lugar da mãe na população
   (as outras têm `hue=1` e não enfileiram respawn), então a contagem volta sozinha a STAR.COUNT.
+  **Meteoro × estrela** (SMASH): rocha com r ≥ ASTEROID.SMASH_MIN_R que encosta numa estrela armada parte os dois — a rocha vira
+  SMASH_N cacos de r·SMASH_R arremessados para trás a SMASH_SPEED (se era de cinturão, o cinturão repõe) e a estrela **racha** pelo
+  mesmo `starSplit`, cujo sopro já chuta os cacos para longe das filhas. Rocha menor apenas ricocheteia. O maior caco possível
+  (R_MAX·SMASH_R ≈ 28) fica **abaixo** de SMASH_MIN_R de propósito: sem isso um caco trombaria numa filha e a cascata apagaria as
+  estrelas do mapa. Pela mesma razão a estrela agora **nasce a ≥ ASTEROID.BELT_SAFE do anel de qualquer cinturão** — dentro de um,
+  o cinturão viraria um moedor e a população nunca pararia de repor.
+- **Cachos de comida**: a comida (e a massa ejetada) que cai no núcleo de um buraco **não some** — reaparece num cacho de raio
+  EXIT_SPREAD em volta da saída pareada (remove aqui + create lá, para o cliente não ver a comida cruzando o mapa). A supernova
+  também deixa NOVA_FOOD comidas permanentes onde a estrela estava: a estrela morta vira berçário.
+- **Fragmentos e conservação de massa** (FRAG.*, `fragR`/`fragLife`): tudo que é arrancado de um planeta vira massa ejetada com
+  **valor variável** — só o ejetado pode ter `mass ≠ r²` (`World.addEjected`), e o raio é `fragR(mass)`, então **o tamanho na tela
+  é o valor**. Conservam exatamente: split, merge, pop de asteroide, estilhaço de estrela, a lasca (CHIP), o dano de míssil
+  (os HIT_DEBRIS cacos somam o que foi arrancado — acertar um planetão deixa uma colheita gorda no chão) e o pedágio do horizonte
+  (SPAGHETTI_N pellets). Reabsorver devolve a massa **inteira** (EAT.EJECT_GAIN = 1): cuspir e recolher fecha em zero, e a
+  pontuação do fragmento sai de √mass (o raio satura em FRAG.R_MAX e mentiria sobre o valor). A massa é medida **depois** do piso
+  MIN_PIECE_R, então uma peça no mínimo não perde nada e também não cospe fragmento — antes ela criava massa do nada.
+  Acima de FRAG.RICH_MASS o fragmento é "gordo": dura o dobro, o ímã o arrasta a FRAG.MAGNET_HEAVY e um asteroide **não** o engole
+  (a rocha comer um pedaço de planeta seria o maior sumidouro do jogo). O fio manda o tier no `hue` do EJECT (FRAG_KIND).
+  Comer jogador conserva massa também (EAT.GAIN = 1, a regra do agar.io `size = √(s1²+s2²)`): a vítima entra INTEIRA.
+  Continuam sendo fonte/sumidouro **de propósito**: a comida que o mundo repõe sem parar, o
+  berçário da supernova e o fragmento que a própria estrela queima (`ejectStar`).
 - **Buracos negros** (BLACKHOLE.*): dentro do raio de influência (CORE_R·INFLUENCE·k ≈ 570 px) tudo é puxado com a = min(G/d², A_MAX)·k
   (por isso quanto mais perto, mais forte — na borda dá para escapar remando, a partir de ~200 px não dá) mais uma parte tangencial
   a·SWIRL (sentido fixo pelo seed do buraco) que faz **espiralar** em vez de cair reto. No núcleo a peça perde LOSS da massa e é
-  cuspida na saída pareada a EXIT_SPEED (BH_SUCK + EXIT); peça abaixo de MIN_PIECE_R é destruída. O cliente prevê a MESMA gravidade
+  cuspida na saída pareada com um boost de EXIT_DIST px (BH_SUCK + EXIT); peça abaixo de MIN_PIECE_R é destruída. A massa cobrada (LOSS = 1/3)
+  **não evapora**: vira SPAGHETTI_N pellets sem dono num anel a SPAGHETTI_R do raio de influência do buraco de ENTRADA — logo
+  fora do alcance da sucção, senão ele os engoliria de volta em segundos e ninguém aproveitaria. Quem espera na boca do buraco lucra. O cliente prevê a MESMA gravidade
   nas peças próprias (`stepOwnPieces(...,holes)`), senão a peça ficaria borrachuda perto do buraco.
-- **Arremesso** (`integratePiece`): acima de vmax·LAUNCH_THRESH a peça entra no regime de arremesso (steer ×LAUNCH_STEER, sem clamp) e
-  o arrasto CRESCE acima de LAUNCH_KNEE_V px/s — LAUNCH_DRAG+LAUNCH_K·(|v|−KNEE_V)/KNEE_V. O joelho é absoluto (não em vmax), então o
-  pico do split/pop/estilhaço/saída do buraco some em ~0,15 s para qualquer tamanho: sai muito rápido, freia rápido e para perto.
-- **Powerups**: só ímã (temporário, POWERUP.TICKS) e escudo (níveis), os dois **por peça**. O powerup de velocidade foi removido — a velocidade máxima vem só do raio (`vmaxFor`).
+- **Movimento: dois canais, sem velocidade de jogador** (`integratePiece`). É o modelo do agar.io:
+  1. **direção** — `pos += û(ponteiro)·vmaxFor(r)·min(d,SPEED.RAMP)/SPEED.RAMP·dt`, instantâneo. Sem inércia, sem
+     aceleração, sem arrasto: a peça anda SEMPRE na velocidade padrão do seu tamanho e inverte a direção no mesmo tick.
+     `vmaxFor = clamp(K/r^EXP, MIN, MAX)` com os números literais de lá (`2.1106/size^0.449`, K = 2110,6).
+  2. **impulso** — o canal de BOOST guardado em `Body.vx/vy` (`body.addBoost`), que decai a `BOOST.K` e **sempre chega
+     a zero**. Como o decaimento é exponencial puro, o corpo percorre exatamente `|v|/BOOST.K` px: por isso todo empurrão
+     do jogo é declarado em PIXELS (`SPLIT.DIST`, `LOCAL.POP_DIST`, `STAR.SHATTER_DIST`, `BLACKHOLE.EXIT_DIST`,
+     `BOUNCE.DIST_MAX`). `BOOST.K = −ln(.9)/0.04` é o `boostDistance ×0,9 por tick de 40 ms` do agar em 60 Hz, e
+     `BOOST.MAX_STEP` é o teto de 78 px/tick de lá (anti-tunelamento).
+  O modelo antigo guardava velocidade acumulada: trombada de asteroide, quique e fusão viravam embalo que durava
+  segundos, e o arremesso do split roubava o controle do ponteiro (`LAUNCH_STEER`). Nada disso existe mais.
+- **Quique** (`rules.bouncePiece`): a correção posicional é a de sempre e o impulso elástico do `resolveBounce` cai no
+  canal de boost da peça, com **teto de `BOUNCE.DIST_MAX` px** — a rocha dá o solavanco e a velocidade padrão volta.
+  Entre peças próprias não há impulso nenhum: só separação posicional, e **não existe atração** (era ela que dava o
+  empurrão ao reintegrar). As partes se juntam sozinhas porque todas correm para o mesmo ponteiro e a menor é mais rápida.
+- **Arremesso do split**: o filho recebe `addBoost(SPLIT.DIST)` = 780 px, o pai não é empurrado, e o ponteiro mantém
+  **controle total** durante o arremesso (o boost é somado ao movimento, não o substitui). Medido: 744–779 px de r=60 a
+  r=240, ou seja a mesma distância em qualquer tamanho, com o impulso terminando em zero.
+- **Divisão e teto** (`applySplit`/`autoSplit`): cada peça r ≥ SPLIT.MIN_R (60, o `playerMinSplitSize`) vira duas de r/√2, até
+  PLAYER.MAX_PIECES = 16. A espera para voltar a fundir é `mergeTicks(r)` = max(30 s, 0,2·r s), a fórmula do agar — dividir é um
+  compromisso longo, não um golpe grátis. Passar de PLAYER.MAX_R (1000, a mesma proporção mundo/célula do agar: 9600/1000 ≈ 14142/1500)
+  **não trava o crescimento**: `autoSplit` reparte a peça em ⌊mass/MAX_R²⌋ filhos em leque. Só com as 16 peças ocupadas é que o raio
+  é cortado — é o único ponto do jogo em que massa de jogador se perde. Antes o teto era 290 (massa 84 100) e `addMass` descartava
+  o ganho em silêncio: o jogador simplesmente parava de comer por volta dos 80 mil.
+- **Powerups**: ímã (temporário, POWERUP.TICKS) e escudo (níveis) são **por peça**; **fusão** (FOOD_TYPE.MERGE, o índice que era do
+  powerup de velocidade) zera o `mergeAt` de TODAS as peças do dono — quem foi picado por estrela ou asteroide se junta na hora.
+  A velocidade máxima vem só do raio (`vmaxFor`); não há powerup de velocidade.
+- **Comida**: FOOD.COUNT no mundo todo, reposta na hora. FOOD.NEAR_HAZARD_P dela nasce num anel (NEAR_HAZARD_R) em volta de uma
+  estrela ou buraco negro e nunca como poeira — é sempre cometa/rocha graúda ou powerup: chegar perto do perigo compensa.
 - **Ímã** (só a peça que o pegou atrai): comida a d < r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s e é marcada MOVED (UPDATE X_Y
   no snapshot) — cometa e estrela (comida pesada) a MAGNET_HEAVY disso; ejetados de terceiros (ou próprios após cdUntil) ganham
-  MAGNET_EJECT_A px/s²; a estrela do mundo se arrasta a MAGNET_STAR (vem para cima de você). Flag PIECE_FLAG.MAGNET para todos verem.
+  MAGNET_EJECT_A px/s²; **asteroides** ganham MAGNET_AST px/s² escalados por min(1,R_MIN/r) (rocha pequena vem voando, rocha grande
+  se arrasta); a estrela do mundo se arrasta a MAGNET_STAR (vem para cima de você). O ímã não escolhe o que puxa: traz comida e
+  perigo junto. Flag PIECE_FLAG.MAGNET para todos verem.
 - **Mísseis**: míssil × míssil de donos diferentes com teste varrido (O(n²) sobre w.missiles, fora da grade) → ambos morrem (CLASH);
   míssil × asteroide → o míssil morre e o asteroide ganha Δv = AST_KICK·min(1, R_MIN/r) na direção do míssil; asteroide de cinturão
   vira errante e o cinturão reagenda um substituto (DEFLECT).
@@ -96,6 +160,16 @@ sozinho numa sala nova quando o contador do placar zera.
 ## Bots
 `ROOM.BOTS` por sala, nomes de BOT_NAMES, skinId aleatório (rng da sala), `BOT.*` do constants; renascem no lugar com `score*RESPAWN_SCORE`.
 Não têm Session nem hooks. `registered` false, `flags BOT`.
+
+O cérebro é **um só** (`shared/src/bot.js`), usado pelo Sim e pelo LocalServer do cliente: ele só produz `{tx,ty,flags}` — quem aplica
+é o `emit` de quem o criou (`sim.applyInput` no servidor, o World no LocalServer) — e toda aleatoriedade sai do rng recebido, então
+continua determinístico. Modos: **flee** (alguém maior perto) > **intercept** (míssil vindo: vira e derruba com outro míssil) >
+**hunt** (presa; divide só quando o salto do split alcança de verdade e usa tiro mirado) > **food** (melhor comida do alcance por
+valor/distância, pela grade de comida — powerup e munição valem mais que poeira, e os **fragmentos** entram na mesma conta valendo
+√mass: um pedaço de planetão no chão vale mais que qualquer grão) > **wander**. Perigo colado (buraco negro, estrela
+armada, asteroide que ele estouraria) é override em cima de qualquer modo, e a fuga escolhe entre BOT.DIRS direções a que menos o
+joga contra parede ou perigo. Cada bot sorteia uma **personalidade** (BOT.PERSONAS) que pesa caça, fuga, coleta e frequência de
+míssil. Humano que acabou de nascer não é escolhido como presa por BOT.SPAWN_GRACE_TICKS.
 
 ## /healthz
 `{ok:true, shard, rooms, players, tick:{p50,p99,max,overruns}, loopLagMs:{p50,p99}, net:{outKBps,inMsgps,rateLimitHits}, db, queue, protocol}` — sempre 200 (readiness não depende do banco).

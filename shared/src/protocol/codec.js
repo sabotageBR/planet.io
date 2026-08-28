@@ -114,14 +114,17 @@ function readPlayers(rd){expect(rd,MSG.PLAYERS);const n=rd.u16(),ps=new Array(n)
 export const decodePlayers=view=>readPlayers(createReader(view));
 
 // ── LEADERBOARD (0x12) ───────────────────────────────────────────────────────
+// Leva a POSIÇÃO de cada jogador vivo: é o único dado posicional que não passa pela AOI, e é dele que o
+// radar tira "todos os inimigos" (o snapshot só manda quem está na janela da sessão). Como já é um
+// broadcast de sala a 2 Hz, mandar a sala inteira custa ~10 B por jogador.
 /** @param {Writer} w @param {LeaderboardRow[]} rows @returns {Uint8Array} */
 export function encodeLeaderboard(w,rows){if(rows.length>255)throw new RangeError("leaderboard: mais de 255 linhas");
   w.reset().u8(MSG.LEADERBOARD).u8(rows.length);
-  for(let i=0;i<rows.length;i++)w.u16(rows[i].slot|0).u32(u32c(rows[i].mass));
+  for(let i=0;i<rows.length;i++){const r=rows[i];w.u16(r.slot|0).u32(u32c(r.mass)).u16(qPos(r.x||0,W)).u16(qPos(r.y||0,H));}
   return w.toBuffer();}
 /** @param {Reader} rd @returns {LeaderboardRow[]} */
 function readLeaderboard(rd){expect(rd,MSG.LEADERBOARD);const n=rd.u8(),rows=new Array(n);
-  for(let i=0;i<n;i++)rows[i]={slot:rd.u16(),mass:rd.u32()};return rows;}
+  for(let i=0;i<n;i++)rows[i]={slot:rd.u16(),mass:rd.u32(),x:dqPos(rd.u16(),W),y:dqPos(rd.u16(),H)};return rows;}
 /** @param {Bytes} view */
 export const decodeLeaderboard=view=>readLeaderboard(createReader(view));
 
