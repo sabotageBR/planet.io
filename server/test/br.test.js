@@ -258,6 +258,47 @@ test('sem respawn: bot morto no Battle Royale fica morto (no Livre ele volta)',a
   c.close();
 });
 
+test('espectador: o morto troca de câmera, e alvo inválido cai na escolha automática',async()=>{
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Morto',mode:MODE.BR,teamSize:1,room:newRoom()});
+  const room=roomOf(r.code);room.lobbyUntil=room.sim.tick+60;room.lobbyStart=room.sim.tick;
+  await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'largada');
+  room.sim.kill(r.slot,{cause:'eaten'});
+  const sp0=await c.until(()=>c.of('spectate'),4000,'spectate');
+  assert.ok(sp0.slot>=0,'o servidor escolhe o primeiro alvo sozinho');
+  assert.ok(sp0.name,'e diz de quem é a câmera');
+  const sess=[...room.sessions.values()].find(s=>s.slot===r.slot);
+  const alvo0=sess.specSlot;
+  c.send({t:'spectate',dir:1});
+  const sp1=await c.until(()=>c.all('spectate').find(x=>x.slot!==alvo0),4000,'troca');
+  assert.notEqual(sp1.slot,alvo0,'a seta anda na lista de vivos');
+  assert.equal(sess.specSlot,sp1.slot,'e a AOI da sessão acompanha — senão a câmera olharia para o vazio');
+  const vivo=room.sim.leaderboard().some(x=>x.slot===sp1.slot);
+  assert.ok(vivo,'o alvo novo está VIVO');
+  // pular direto para alguém do placar
+  const outro=room.sim.leaderboard().find(x=>x.slot!==sp1.slot);
+  c.send({t:'spectate',slot:outro.slot});
+  const sp2=await c.until(()=>c.all('spectate').find(x=>x.slot===outro.slot),4000,'pulo direto');
+  assert.equal(sp2.slot,outro.slot);
+  // alvo morto/inexistente não deixa a câmera num fantasma
+  c.send({t:'spectate',slot:60000});
+  await sleep(250);
+  assert.ok(room.sim.leaderboard().some(x=>x.slot===sess.specSlot),'alvo inválido cai num vivo, não num fantasma');
+  c.close();
+});
+test('espectador: quem está VIVO não troca de câmera (tem as próprias peças)',async()=>{
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Vivo',mode:MODE.BR,teamSize:1,room:newRoom()});
+  const room=roomOf(r.code);room.lobbyUntil=room.sim.tick+60;room.lobbyStart=room.sim.tick;
+  await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'largada');
+  const sess=[...room.sessions.values()].find(s=>s.slot===r.slot);
+  c.send({t:'spectate',dir:1});
+  await sleep(250);
+  assert.equal(sess.specSlot,-1,'jogador vivo não vira espectador');
+  assert.equal(c.of('spectate'),null);
+  c.close();
+});
+
 // ── 5. chat ──────────────────────────────────────────────────────────────────
 test('chat: no Livre a sala inteira ouve; em equipe só o companheiro',async()=>{
   const a=new C(wsUrl),b=new C(wsUrl);await a.open();await b.open();

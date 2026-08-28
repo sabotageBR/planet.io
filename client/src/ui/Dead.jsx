@@ -1,15 +1,30 @@
-import React, { useEffect } from "react";
-import { useStore } from "../state/store.js";
+import React, { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
+import { gameRef } from "../state/game.js";
 import { play, leaveGame } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { fmt, fmtTime, ord } from "./format.js";
 import { sfx } from "../audio/index.js";
 
+const EMPTY_SPEC = { get: () => ({ spec: null }), subscribe: () => () => {} };
+
 export default function Dead({ on }) {
   const LB = useLabels();
   const m = useStore(app, s => s.lastMatch), r = useStore(app, s => s.rewards), pending = useStore(app, s => s.rewardsPending), before = useStore(app, s => s.session.dayRank);
   const after = r && r.rank ? r.rank.day : null;
+  // de quem é a cena que continua rodando atrás da tela: o servidor escolhe, mas o morto pode trocar
+  const game = useStore(gameRef, s => s.game);
+  const store = useMemo(() => (game && game.hudStore ? throttleStore(game.hudStore, 200) : EMPTY_SPEC), [game]);
+  const spec = (useSyncExternalStore(store.subscribe, store.get, store.get) || {}).spec;
+  const trocar = dir => { if (game && game.spectate) game.spectate({ dir }); };
+  useEffect(() => {   // as setas do teclado também trocam (o motor ignora tudo com foco num campo de texto)
+    if (!on || !game || !game.spectate) return;
+    const kd = e => { const a = document.activeElement; if (a && /INPUT|TEXTAREA/.test(a.tagName)) return;
+      if (e.key === "ArrowLeft") { e.preventDefault(); trocar(-1); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); trocar(1); } };
+    addEventListener("keydown", kd); return () => removeEventListener("keydown", kd);
+  }, [on, game]);
   useEffect(() => { if (on) sfx("deadScreen"); }, [on]);   // a tela de KABOOM tem som próprio (o `death` é o do mundo, lá atrás)
   return <div className={"screen" + (on ? " on" : "")} id="s-dead">{on && m ? <div className="card dead-card">
     <div className="dead-icon">{LB.deadIcon}</div>
@@ -27,6 +42,11 @@ export default function Dead({ on }) {
     </div>
     <div className="dead-rank"><span>{LB.rankWord}</span><b id="d-rank">
       {pending && !r ? LB.saving : after != null ? (before != null && before !== after ? <>{ord(before)} <span className="arrow">→</span> {ord(after)}</> : ord(after)) : before != null ? ord(before) : (r && r.saved === false ? LB.noRank : "—")}</b></div>
+    {spec && spec.slot >= 0 ? <div className="dead-spec">
+      <button className="spec-arrow" onClick={() => trocar(-1)} aria-label={LB.specPrev}>‹</button>
+      <div className="spec-who"><i>{LB.watching}</i><b>{spec.name || "—"}</b></div>
+      <button className="spec-arrow" onClick={() => trocar(1)} aria-label={LB.specNext}>›</button>
+    </div> : null}
     <div className="dead-actions"><button className="btn-primary" data-go="play" onClick={() => play({ room: m.room })}>{LB.respawn}</button><button className="btn-secondary" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.toLobby}</button></div>
   </div> : null}</div>;
 }

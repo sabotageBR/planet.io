@@ -16,6 +16,7 @@ JSON:
   - `mode`: `MODE.FREE` (0, padrão) ou `MODE.BR` (1). Id desconhecido cai no Livre — cliente antigo nunca muda de jogo.
   - `party`: código do lobby de equipe; todos os membros caem na MESMA sala e na MESMA equipe (`Room._teamFor`).
 - `{"t":"chat","text":"…"}` — o ESCOPO é do servidor (sala no Livre e no Battle Royale solo; equipe em equipe).
+- `{"t":"spectate","dir":1|-1}` ou `{"t":"spectate","slot":7}` — só de quem já morreu: troca a câmera. `dir` anda na lista de VIVOS por massa (a mesma do placar); alvo morto/inexistente cai na escolha automática do servidor, em vez de deixar a câmera num fantasma.
 - `{"t":"resume","sessionId":"uuid","resumeToken":"hex","view":{"w","h"}}`
 - `{"t":"view","w":…,"h":…}` (resize)
 - `{"t":"ping","c":<performance.now() u32>}`
@@ -40,7 +41,7 @@ JSON:
 - `{"t":"error","code":"VERSION"|"FULL"|"AUTH"|"NICK_RESERVED"|"RATE"|"ROOM","message":"pt-BR","suggestion":"Nick_4821"?}` → o servidor fecha o socket (código 4400+).
 - `{"t":"rewards","saved":true,"coinsEarned":54,"coins":2504,"achievements":[{"key","title"}],"skinsUnlocked":[35],"rank":{"day":37}}` (após a morte; `saved:false` sem banco)
 - `{"t":"dead","by":"Nome","byHole":false,"byZone":false,"score":6900,"maxMass":4820,"kills":3,"durationS":372,"placement":7,"players":50}` — `byZone`: a zona alcançou; `placement`/`players` só no Battle Royale.
-- `{"t":"spectate","slot":7,"name":"Nome"}` (ou `slot:-1`) — logo depois do `dead` e sempre que o alvo muda: de quem é a cena que
+- `{"t":"spectate","slot":7,"name":"Nome","vivos":31}` (ou `slot:-1`) — logo depois do `dead` e sempre que o alvo muda: de quem é a cena que
   continua rodando atrás da tela de morte (quem matou, se ainda vivo; senão o líder). O cliente leva a câmera para esse slot e a
   **AOI da sessão acompanha o mesmo jogador** (server/src/net/snapshot.js), então o que se vê é a sala de verdade e não um pedaço
   parado de espaço. Sem alvo vivo (`slot:-1`) a câmera congela onde estava.

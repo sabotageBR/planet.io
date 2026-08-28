@@ -121,8 +121,20 @@ export class Room{
       if(mim&&mim.team>=0)for(const gp of sim.players.values())if(gp.team===mim.team&&gp.slot!==session.slot&&alive(gp.slot)){slot=gp.slot;break;}}
     if(slot<0){const lb=sim.top(1);if(lb.length&&alive(lb[0].slot))slot=lb[0].slot;}
     if(slot!==session.specSlot){session.specSlot=slot;const gp=slot>=0?sim.players.get(slot):null;
-      session.sendJson({t:'spectate',slot,name:gp?gp.name:null});}
+      session.sendJson({t:'spectate',slot,name:gp?gp.name:null,vivos:sim.aliveCount()});}
     return slot;}
+  /**
+   * O morto escolhe quem assistir. `slot` explícito (clicou no placar) ou `dir` ±1 para andar na lista de
+   * VIVOS ordenada por massa — a mesma do placar, então "próximo" na tela é "próximo" aqui. Alvo inválido
+   * ou morto cai na escolha automática de sempre, em vez de deixar a câmera parada num fantasma.
+   */
+  spectatePick(session,{slot=-1,dir=0}={}){
+    const sim=this.sim,lb=sim.leaderboard();
+    if(!lb.length)return this.spectateTargetFor(session,-1);
+    if(dir){const i=lb.findIndex(r=>r.slot===session.specSlot);
+      const n=lb.length,j=((i<0?0:i+dir)%n+n)%n;
+      return this.spectateTargetFor(session,lb[j].slot);}
+    return this.spectateTargetFor(session,slot);}
   /** JSON `dead` da vida atual (null se vivo). */
   deadMsg(slot){const gp=this.sim.players.get(slot);if(!gp||!gp.dead||!gp.deathInfo)return null;const i=gp.deathInfo;
     return{t:'dead',by:i.by,byHole:i.byHole,byZone:i.byZone,score:i.score,maxMass:i.maxMass,kills:i.kills,durationS:i.durationS,placement:i.placement,players:i.players};}

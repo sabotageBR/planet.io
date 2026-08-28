@@ -6,7 +6,7 @@ import {createWorld,stepOwnPieces} from "../src/physics/index.js";
 import {sameTeam,zoneBurn,outOfZone,zoneMass,applyFire} from "../src/physics/rules.js";
 import {createZone,stepZone,zoneAt,zoneR} from "../src/zone.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,ZONE,PLAYER,DT,MISSILE,WEAPON,WEAPONS,FOOD_TYPE,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood} from "../src/constants.js";
+import {WORLD,ZONE,PLAYER,DT,EJECT,MISSILE,WEAPON,WEAPONS,FOOD_TYPE,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood} from "../src/constants.js";
 import {KIND} from "../src/protocol/constants.js";
 
 const empty=(seed=1,o={})=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false,...o});
@@ -91,6 +91,44 @@ test("zona: a predição do cliente usa a MESMA conta do servidor (paridade 1e-9
     stepOwnPieces(espelho,st,w.tick-1,DT,w.w,w.h,null,null,w.zoneNow());}
   assert.ok(Math.abs(espelho[0].mass-pc.mass)<1e-9,`massa divergiu: ${espelho[0].mass} vs ${pc.mass}`);
   assert.ok(Math.abs(espelho[0].r-pc.r)<1e-9,"o RAIO é o que aparece na tela: divergir aqui faz a peça pulsar na borda");});
+test("zona: o gás ARRANCA pelotas da peça, para FORA, e a transferência é exata",()=>{
+  const w=empty(31);w.addPlayer(0,{x:1000,y:1000,r:150});
+  w.setZone({x0:8000,y0:8000,r0:500,x1:8000,y1:8000,r1:500,t0:0,t1:Infinity});
+  const pc=w.piecesOf(0)[0],cx=8000,cy=8000;
+  // `pc.shed` é a massa EM TRÂNSITO: já saiu da peça (a conta é contínua, para a predição do cliente
+  // espelhá-la) e ainda não virou pelota. Contá-la é o que prova que nada evapora pelo caminho.
+  const total=()=>massa(w,0)+pc.shed+w.ejected.reduce((a,e)=>a+(e.dead?0:e.mass),0);
+  const antes=total();
+  // janela curta: dentro da vida da pelota, nada expira, então o que sai da peça tem que estar no chão
+  for(let i=0;i<180;i++){w.setTarget(0,1000,1000);w.step();}
+  const pelotas=w.ejected.filter(e=>!e.dead);
+  assert.ok(pelotas.length>=4,`o gás tem que soltar pelotas (soltou ${pelotas.length})`);
+  assert.ok(massa(w,0)<antes,"e a peça encolheu");
+  assert.ok(Math.abs(total()-antes)<1e-6,`transferência exata: ${total()} vs ${antes}`);
+  // saem para LONGE do centro da zona: recuperá-las custa entrar mais fundo no gás
+  const dPeca=Math.hypot(pc.x-cx,pc.y-cy);
+  const maisLonge=pelotas.filter(e=>Math.hypot(e.x-cx,e.y-cy)>dPeca).length;
+  assert.ok(maisLonge>=pelotas.length*.7,`a maioria tem que sair para fora (${maisLonge}/${pelotas.length})`);
+  for(const e of pelotas)assert.equal(e.owner,0,"a pelota é minha: dá para voltar e pegar, pagando o preço");});
+test("zona: quem morre no gás larga TUDO ali, sem dono",()=>{
+  const w=empty(32);w.addPlayer(0,{x:1000,y:1000});
+  w.setZone({x0:8000,y0:8000,r0:400,x1:8000,y1:8000,r1:400,t0:0,t1:Infinity});
+  const ps=w.players.get(0);let t=0;
+  while(ps.alive&&t<60*60){w.setTarget(0,1000,1000);w.step();t++;}
+  assert.equal(ps.alive,false);
+  const perto=w.ejected.filter(e=>!e.dead&&Math.hypot(e.x-1000,e.y-1000)<900);
+  assert.ok(perto.length>=4,`o espólio fica onde ele caiu (${perto.length} pelotas)`);
+  const semDono=perto.filter(e=>e.owner===-1);
+  assert.ok(semDono.length>=ZONE.SHED_N_DEATH,`a morte larga ${ZONE.SHED_N_DEATH} pelotas SEM DONO — quem chegar primeiro leva (achei ${semDono.length})`);});
+test("zona: a cadência de desprendimento respeita o teto de população dos ejetados",()=>{
+  const w=empty(33);
+  for(let i=0;i<12;i++)w.addPlayer(i,{x:900+i*30,y:900,r:180});   // 12 planetões queimando ao mesmo tempo
+  w.setZone({x0:8000,y0:8000,r0:400,x1:8000,y1:8000,r1:400,t0:0,t1:Infinity});
+  let pico=0;
+  for(let i=0;i<600;i++){for(let s=0;s<12;s++)w.setTarget(s,900,900);w.step();
+    pico=Math.max(pico,w.ejected.filter(e=>!e.dead).length);}
+  assert.ok(pico<=EJECT.MAX,`a população de ejetados não pode estourar o teto (pico ${pico} de ${EJECT.MAX})`);
+  assert.ok(pico>20,`mas tem que soltar de verdade (pico ${pico})`);});
 test("zoneMass/outOfZone: o critério é o CENTRO da peça dentro do círculo",()=>{
   const zc={x:0,y:0,r:100};
   assert.equal(outOfZone({x:99,y:0},zc),false);assert.equal(outOfZone({x:101,y:0},zc),true);

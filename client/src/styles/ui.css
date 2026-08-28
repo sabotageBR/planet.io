@@ -189,3 +189,12 @@ body[data-mode="portrait"] .brl-count b{font-size:2.2em}
    ainda não começou, e o jogador não tem corpo nenhum para eles descreverem */
 #hud:has(#br-lobby) > *:not(#br-lobby){opacity:0;pointer-events:none}
 #hud:has(#br-lobby) > canvas#radar{opacity:0}
+
+/* trocar de câmera depois de morrer: o servidor escolhe o primeiro alvo, e daqui se anda pela lista de vivos */
+.dead-spec{display:flex;align-items:center;justify-content:center;gap:10px;margin:6px 0 2px}
+.dead-spec .spec-arrow{width:34px;height:34px;border-radius:99px;border:2px solid var(--line,#0006);
+  background:var(--surface,#2226);color:inherit;font-size:1.3em;line-height:1;padding:0}
+.dead-spec .spec-arrow:hover{background:var(--accent,#ffc22e);color:var(--line,#141026)}
+.dead-spec .spec-who{display:flex;flex-direction:column;align-items:center;min-width:140px}
+.dead-spec .spec-who i{font-style:normal;font-size:.72em;opacity:.6;letter-spacing:.1em}
+.dead-spec .spec-who b{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

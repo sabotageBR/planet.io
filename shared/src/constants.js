@@ -35,7 +35,7 @@ export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
 // inteira (ZONE) fecha em 21 300 ticks ≈ 5 min 55 s.
 export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
   HOLD_TICKS:[3600,2700,2100,1500,900,600],SHRINK_TICKS:[2400,2100,1800,1500,1200,900],
-  DRIFT:.45,BURN:.06,WARN_TICKS:180,MIN_R:60};
+  DRIFT:.45,BURN:.06,WARN_TICKS:180,MIN_R:60,SHED_TICKS:24,SHED_SPEED:260,SHED_SPREAD:.85,SHED_MIN:1,SHED_N_DEATH:7};
 // zona = círculo. R é o RAIO como fração de WORLD.w: começa em .62 (5 952 px — cobre o mapa, cujo
 // centro→canto é 6 788) e fecha em .015 (144 px). Cada etapa i: HOLD_TICKS[i] parada em R[i], depois
 // SHRINK_TICKS[i] interpolando até R[i+1]. DRIFT limita o deslocamento do centro a essa fração de
@@ -44,6 +44,13 @@ export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
 // de START_R (massa 900) ao piso MIN_PIECE_R (256) em ~21 s — tempo de correr, não de acampar. Ao contrário
 // da queimadura de estrela, esta NÃO tem piso: no piso a peça morre (é o que fecha a partida).
 // WARN_TICKS: aviso antes de cada fechamento começar.
+// SHED_*: a massa queimada NÃO evapora — ela é ARRANCADA em pelotas, a cada SHED_TICKS (2,5×/s), jogadas
+// para FORA (para longe do centro da zona) a SHED_SPEED. Ver quem está no gás perdendo pedaços é o aviso
+// mais claro que existe, e a massa continua no mundo: quem tiver coragem de entrar atrás dela, leva. Ir
+// buscar custa entrar MAIS FUNDO no gás — a direção para fora é o que faz o preço ser real.
+// A cadência (e o piso SHED_MIN, uma pelota inteira) existem por causa do teto EJECT.MAX: soltar a cada
+// tick, com meia sala no gás no fim da partida, estouraria a população e despejaria os fragmentos dos outros.
+// Peça pequena queima devagar e solta raro; planetão solta o tempo todo — que é exatamente a leitura certa.
 export const MODES=[
   {id:0,key:"free",label:"Livre",max:ROOM.MAX,bots:ROOM.BOTS,roundTicks:ROUND.TICKS,
     lobby:false,respawnBots:true,lastAlive:false,zone:false,weapons:false,chat:"room",teamSizes:[1],anonBots:false},

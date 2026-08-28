@@ -81,6 +81,17 @@ Fora dela a peça queima `ZONE.BURN` da massa por segundo e, no piso `MIN_PIECE_
 única coisa do jogo que mata sozinha, e é o que fecha a partida. A conta usa o CENTRO da peça: "meu ponto está
 dentro do círculo?" é o que o jogador lê na tela.
 
+**A massa queimada não evapora: ela é ARRANCADA em pelotas.** A cada `ZONE.SHED_TICKS` (2,5×/s) o que foi
+queimado sai como um fragmento de verdade, jogado para **fora** — na direção que se afasta do centro da zona.
+Duas coisas saem de graça daí: ver alguém no gás perdendo pedaços é o aviso mais claro que existe, e a massa
+continua no mundo para quem tiver coragem de entrar atrás dela. A direção é o que faz o preço ser real —
+buscar o espólio custa ir MAIS FUNDO no gás. Quem morre lá dentro larga tudo no lugar, **sem dono**.
+
+A conta de massa continua contínua (é a que `predict.js` espelha, e a paridade é testada); só a *entrega* é em
+pedaços, por causa do teto `EJECT.MAX`: soltar a cada tick, com meia sala no gás no fim da partida, estouraria a
+população e despejaria os fragmentos de todo mundo. O acumulador `Body.shed` é a massa em trânsito — já saiu da
+peça, ainda não virou pelota — e é contá-la que prova que nada se perde pelo caminho.
+
 A queimadura roda na física compartilhada e **também na predição** (`stepOwnPieces` recebe o círculo): ela muda o
 RAIO, e sem prever, a correção do servidor chegaria 20×/s numa peça que está encolhendo — ela pulsaria de tamanho
 justo na borda, que é onde o jogador mais olha.
@@ -137,6 +148,17 @@ render target. Some no modo econômico e com "menos movimento": é enfeite, e en
 
 A queda do gradiente é rápida de propósito. Na primeira tentativa (halo largo e opaco) o aditivo saturava para
 branco e a tela virava névoa leitosa — sumia o contraste que faz enxergar a comida.
+
+## Morrer é virar câmera
+
+Ao morrer, o servidor escolhe quem você assiste (quem te comeu, se vivo; em equipe, o companheiro; senão o
+líder) e a AOI da sessão passa a seguir esse jogador — o que aparece atrás da tela de morte é a sala de
+verdade, não um pedaço parado de espaço.
+
+Agora dá para **trocar**: as setas ‹ › da tela de morte (e as do teclado) andam pela lista de VIVOS ordenada
+por massa — a mesma do placar, então "próximo" na tela é "próximo" aqui —, e `{t:'spectate',slot}` pula direto
+para alguém. Quem decide continua sendo o SERVIDOR: alvo morto ou inexistente cai na escolha automática, em vez
+de deixar a câmera olhando para um fantasma. Jogador vivo não vira espectador — ele tem as próprias peças.
 
 ## O que ficou de fora
 

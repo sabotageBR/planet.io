@@ -76,7 +76,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,slowSince=0,econAt=0,statsOv=null;
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
   // ── modo, equipe, zona, chat e voz ──
-  let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0,lobby=null;   // `lobby` = o estado da tela de espera (JSON `lobby`, em ms)
+  let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0,lobby=null,spec=null;   // `lobby` = o estado da tela de espera (JSON `lobby`, em ms)
   let zone=null,zoneShown={x:0,y:0,r:0},lastShrink=0,lastHurt=false,lobbyBeep=false;   // `zone` = o par de círculos do fio; `zoneShown` é o interpolado do frame
   /** @type {{slot:number,name:string,team:number|null,text:string,at:number}[]} */let chatLog=[];
   const mic=createMic({audio,send:d=>conn&&conn.send(d),onState:st=>{hudStore.update(h=>({...h,talk:st}));}});
@@ -101,6 +101,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // PUSH-TO-TALK: segurar grava, soltar manda. Não passa pelo `actions` porque não é ação de jogo —
     // não vira flag de INPUT nem é predita; é uma mensagem própria (MSG.VOICE_UP).
     if(a==="talk"){if(ph==="down"){if(joined&&!dead&&curPrefs.voice!==false)mic.start();}else mic.stop();return;}
+    if(a==="specPrev"||a==="specNext"){if(ph==="down")game.spectate({dir:a==="specNext"?1:-1});return;}
     actions.act(a,ph);};
   /** Botão do ponteiro: sem munição (ou na carência) o esquerdo cospe em vez de atirar — e isso também soa. */
   const button=(btn,ph,type)=>{
@@ -152,7 +153,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       round=m.round||null;roundOver=false;lastCount=-1;warmedSky=null;lastAmmo=0;lastMagnet=false;
       modeId=m.mode|0;teamSize=m.teamSize||1;myTeam=m.team==null?-1:m.team;roomCap=m.cap||0;
       phase=(m.round&&m.round.phase)||"live";startsAt=(m.round&&m.round.startsAt)||0;
-      view.setMyTeam(myTeam);chatLog=[];talking.clear();lobby=null;
+      view.setMyTeam(myTeam);chatLog=[];talking.clear();lobby=null;spec=null;
       audio.resume();audio.play("join",{mine:true});}
     else if(m.t==="lobby"){   // a sala enchendo: contagem em MS, porque no lobby não há snapshot para sincronizar o tick
       lobby={filled:m.filled,cap:m.cap,humans:m.humans,startsInMs:m.startsInMs,waitMs:m.waitMs,at:performance.now()};
@@ -165,7 +166,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     else if(m.t==="roundEnd"){roundOver=true;input.setHold(false);endOfWorld();pushHud(performance.now());if(onRoundEnd)onRoundEnd({...m,mySlot:view.mySlot});}
     else if(m.t==="dead"){dead=true;input.setHold(false);mic.cancel();pushHud(performance.now());
       if(onDead)onDead({by:m.by,byHole:!!m.byHole,byZone:!!m.byZone,score:m.score,maxMass:m.maxMass,kills:m.kills,durationS:m.durationS,placement:m.placement||0,players:m.players||0});}
-    else if(m.t==="spectate")specSlot=m.slot>=0?m.slot:-1;   // morto: de quem é a cena que continua rodando atrás da tela de KABOOM
+    else if(m.t==="spectate"){specSlot=m.slot>=0?m.slot:-1;spec={slot:specSlot,name:m.name||null,vivos:m.vivos|0};pushHud(performance.now());}   // morto: de quem é a cena que continua rodando atrás da tela de KABOOM
     else if(m.t==="rewards"){if(onRewards)onRewards(m);}}
   function onBinary(m){const now=performance.now();
     switch(m.type){
@@ -233,6 +234,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     sendChat(text){const t=String(text||"").trim();if(!t||!conn||!joined)return false;conn.sendJson({t:"chat",text:t.slice(0,240)});return true;},
     /** Push-to-talk pelo botão de toque (o espelho do Ctrl para o mobile). */
     talk(on){if(!joined||dead)return;if(on)mic.start();else mic.stop();},
+    /**
+     * Morto: troca de quem é a câmera. `dir` ±1 anda na lista de vivos por massa (a mesma do placar) e
+     * `slot` pula direto para alguém. Quem decide é o SERVIDOR — a AOI da sessão segue o mesmo alvo, senão
+     * a câmera olharia para um pedaço de espaço que o servidor não está mandando.
+     */
+    spectate({slot=-1,dir=0}={}){if(!conn||!joined||!dead)return;conn.sendJson({t:"spectate",slot,dir});},
     join({token,fallbackNick,room,local:useLocal,skinId,mode,teamSize:ts,party}={}){
       game.leave(true);joined=true;dead=false;specSlot=-1;selfTick=0;
       const user=(appStore.get().session||{}).user||{};
@@ -248,7 +255,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(room)go(shardOf(room));
       else fetch("/api/config",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(c=>go(c&&c.shard!=null?c.shard:0)).catch(()=>go(0));},
     leave(silent){if(conn){const c=conn;conn=null;c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;specSlot=-1;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];talking.clear();phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
+      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];talking.clear();phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};applyQuality();audio.setPrefs(curPrefs);minimap.show(joined&&curPrefs.showMinimap!==false);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -385,7 +392,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         waitMs:lobby.waitMs?Math.max(0,lobby.waitMs-(now-lobby.at)):0,
         roster:[...view.players.values()].map(p=>({slot:p.slot,name:p.name,skinId:p.skinId,me:p.slot===view.mySlot}))}:null,
       alive:s?s.alive:0,weapon:s?s.weapon|0:0,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
-      talk:mic.state,chat:chatLog});}
+      talk:mic.state,chat:chatLog,spec});}
   function statsText(){const c=renderer.counts(),st=predictor.stats;
     const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
     return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · estrelas ${c.stars} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}

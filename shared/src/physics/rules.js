@@ -58,10 +58,22 @@ export const zoneMass=(m,dt)=>m*(1-ZONE.BURN*dt);
 export function zoneBurn(w,pc,zc,dt){
   if(!outOfZone(pc,zc))return false;
   const m0=pc.mass,m=zoneMass(m0,dt),floor=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;
-  if(m<=floor){w.events.push({type:"ZONE_BURN",slot:pc.owner,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r,lost:m0,died:true});
+  // "para fora": a direção do centro da zona para a peça. É por onde as pelotas saem, e é o que faz
+  // recuperá-las custar entrar mais fundo no gás em vez de ser lucro de graça na beirada.
+  const dx=pc.x-zc.x,dy=pc.y-zc.y,d=Math.sqrt(dx*dx+dy*dy)||1,ux=dx/d,uy=dy/d;
+  if(m<=floor){   // chegou no piso: morre e larga TUDO o que ainda tinha, ali mesmo no gás
+    const resto=pc.shed+m0;pc.shed=0;
+    w.events.push({type:"ZONE_BURN",slot:pc.owner,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r,lost:m0,died:true});
+    spillFrag(w,pc.x,pc.y,ux,uy,resto,ZONE.SHED_N_DEATH,ZONE.SHED_SPEED*1.6,6.2832,-1,0);
     w.killPiece(pc,"zone",-1);return true;}
   setMass(pc,m);
-  if((w.tick+pc.id)%30===0)w.events.push({type:"ZONE_BURN",slot:pc.owner,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r,lost:m0-m,died:false});
+  // a massa arrancada se acumula e vira UMA pelota a cada SHED_TICKS: a conta continua contínua (é a que a
+  // predição do cliente espelha), só a entrega é em pedaços — soltar a cada tick estouraria EJECT.MAX.
+  pc.shed+=m0-m;
+  if((w.tick+pc.id)%ZONE.SHED_TICKS===0&&pc.shed>=ZONE.SHED_MIN*EJECT_MASS){
+    const lost=pc.shed;pc.shed=0;
+    spillFrag(w,pc.x+ux*pc.r,pc.y+uy*pc.r,ux,uy,lost,1,ZONE.SHED_SPEED,ZONE.SHED_SPREAD,pc.owner,ownerImmune(pc.r));
+    w.events.push({type:"ZONE_BURN",slot:pc.owner,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r,lost,died:false});}
   return false;}
 
 // ── util ──
