@@ -209,7 +209,7 @@ export class World{
       if(pc.shieldLv>0&&pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL&&tick>=pc.shieldEvolveAt){   // escudo evolui por peça: só quem tem escudo E não apanha sobe de nível
         pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;ev.push({type:"SHIELD_UP",slot:pc.owner,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
       let f=pc.flags&~(PIECE_FLAG.SHIELD|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK);
-      if(pc.shieldLv>0)f|=PIECE_FLAG.SHIELD|(pc.shieldLv<<PIECE_FLAG.SHIELD_LV_SHIFT);if(pc.magnetUntil>tick)f|=PIECE_FLAG.MAGNET;
+      if(pc.shieldLv>0)f|=PIECE_FLAG.SHIELD|(pc.shieldLv<<PIECE_FLAG.SHIELD_LV_SHIFT);if(pc.magnetUntil>tick&&pc.r<=POWERUP.MAGNET_MAX_R)f|=PIECE_FLAG.MAGNET;
       if(pc.mergeAt<=tick&&ps.pieces.length>1)f|=PIECE_FLAG.MERGING;pc.flags=f;}
     for(let i=0;i<ejected.length;i++){const e=ejected[i];if(e.dead)continue;if(tick>=e.life){e.dead=true;continue;}integrateFree(e,EJECT.DRAG,WALL.E_EJECT,DT,W,H);}
     for(let i=0;i<asts.length;i++){const a=asts[i];if(a.dead)continue;
@@ -263,7 +263,7 @@ export class World{
     // por R_MIN/r (a rocha vem junto — o ímã não escolhe o que puxa); a estrela do mundo se arrasta a MAGNET_STAR;
     // fragmento gordo (mass ≥ FRAG.RICH_MASS) vem a FRAG.MAGNET_HEAVY disso — o prêmio grande custa a chegar.
     const ov=R.LOCAL.FOOD_OVERLAP,PW=POWERUP;
-    for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner),magnet=pc.magnetUntil>tick;
+    for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner),magnet=pc.magnetUntil>tick&&pc.r<=PW.MAGNET_MAX_R;   // cresceu demais: o ímã para de valer (ver POWERUP.MAGNET_MAX_R)
       const range=magnet?pc.r*PW.MAGNET_RANGE:pc.r+FOOD.R_MAX*ov,n=fg.query(pc.x,pc.y,range,q);
       for(let k=0;k<n;k++){const f=food[q[k]];if(f.dead)continue;let dx=pc.x-f.x,dy=pc.y-f.y,d2=dx*dx+dy*dy;
         if(magnet&&d2<range*range&&d2>1e-6){const d=Math.sqrt(d2),hv=(f.type===FOOD_TYPE.COMET||f.type===FOOD_TYPE.STAR)?PW.MAGNET_HEAVY:1;

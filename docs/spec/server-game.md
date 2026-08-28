@@ -51,6 +51,14 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
 - **Fusão**: por par de peças do mesmo dono — separação enquanto uma não pode fundir; quando ambas podem, atração só a
   separação SÓ posicional (sem atração entre peças próprias); merge pareado a d < max(r)·MERGE.DIST. A peça que fica herda o
   melhor powerup das duas (ver acima).
+- **Estrela: nada se multiplica.** Míssil/partícula empurram e contam hit; em `STAR.HITS_TO_SPLIT` ela **explode
+  (supernova) e morre**, e o meteoro grande que trombar nela também a faz explodir (a rocha morre no estouro).
+  Antes ela rachava em `SPLIT_N` estrelas menores e a rocha em `SMASH_N` cacos — um motor de população: a sala de 5
+  estrelas chegava a 16 sozinha, e com jogadores atirando (cada 3 acertos triplicando) o mapa lotava e o cliente caía
+  para 6 fps. O berçário da supernova também **realoca** comida em vez de somar: para cada pelota do cacho some uma
+  de longe, senão a população subia para sempre (o laço de reposição só enche até `FOOD.COUNT`, nunca corta).
+- **Ímã com teto de tamanho** (`POWERUP.MAGNET_MAX_R`): acima desse raio a peça não pega nem usa o ímã. O alcance é
+  `r·MAGNET_RANGE`, então num planetão passava de 1500 px e sugava a tela inteira.
 - **Asteroide × escudo — o preço é a VELOCIDADE da batida** (`shieldTierFor`, `ASTEROID.SHIELD_VN = [220,520,900]`):
   devagar tira **1 nível**, média **2**, e rápida demais tira o escudo **inteiro E estoura o planeta** (nessa faixa a
   rocha atravessa como se não houvesse escudo). Abaixo do 1º limiar o escudo nem sente. Enquanto ele aguenta, a rocha

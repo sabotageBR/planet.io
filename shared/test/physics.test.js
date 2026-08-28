@@ -378,7 +378,7 @@ test("tiro mirado: persegue o objeto mais próximo dentro do cone (planeta, mís
   assert.equal(w3.missiles[0].targetId,1,"clique rápido persegue como antes");});
 
 // 21. estrela apanha de míssil/partícula e racha
-test("estrela: míssil e partícula empurram; no 3º hit ela racha em estrelas menores",()=>{
+test("estrela: míssil e partícula empurram; no 3º hit ela EXPLODE e morre (não se multiplica)",()=>{
   const w=empty(84),st=w.spawnStar(true);st.x=3000;st.y=3000;st.life=1e9;st.vx=st.vy=0;
   const shoot=()=>w.addMissile(st.x-st.r-260,st.y,MISSILE.SPEED,0,9,-1);
   const until=(type,n=90)=>{for(let t=0;t<n;t++){w.step();const e=w.events.find(x=>x.type===type);if(e)return e;}return null;};
@@ -389,13 +389,10 @@ test("estrela: míssil e partícula empurram; no 3º hit ela racha em estrelas m
   // partícula ejetada também empurra e conta hit
   const e=w.addEjected(st.x-st.r-20,st.y,EJECT.SPEED,0,EJECT.R,EJECT.R*EJECT.R,-1,0,600);
   const h2=until("STAR_HIT",20);assert.ok(h2,"partícula conta hit");assert.equal(st.hits,2);assert.ok(e.dead,"a partícula é consumida");
-  shoot();const sp=until("STAR_SPLIT");
-  assert.ok(sp,"STAR_SPLIT no 3º hit");assert.ok(st.dead,"a mãe some");
-  const live=w.stars.filter(x=>!x.dead);assert.equal(live.length,STAR.SPLIT_N,"racha em SPLIT_N estrelas");
-  assert.ok(live.every(x=>Math.abs(x.r-STAR.R*STAR.SPLIT_R)<1e-6),"menores que a mãe");
-  assert.ok(live.every(x=>Math.hypot(x.vx,x.vy)>STAR.SPLIT_SPEED*.7),"saem em leque");
-  assert.equal(live.filter(x=>!x.hue).length,1,"só uma herda o lugar na população");
-  assert.equal(w.starQueue.length,0,"racha não enfileira estrela nova");});
+  shoot();const sp=until("SUPERNOVA");
+  assert.ok(sp,"no 3º hit ela EXPLODE");assert.ok(st.dead,"e morre");
+  assert.equal(w.stars.filter(x=>!x.dead).length,0,"não deixa estrelinhas para trás: nada se multiplica");
+  assert.equal(w.starQueue.length,1,"e uma estrela nova entra na fila — a população volta a STAR.COUNT, nunca sobe");});
 
 // 22. split: o arremesso é o BOOST do agar — distância fixa, com freio, e sem tirar o controle
 test("split: o filho é arremessado SPLIT.DIST px, o boost SEMPRE chega a zero e o ponteiro nunca perde o controle",()=>{
@@ -606,19 +603,17 @@ test("supernova: além das partículas, semeia um cacho de comida permanente ond
   assert.equal(w.food.filter(f=>!f.dead).length,STAR.NOVA_FOOD,"comida não expira: o berçário fica");});
 
 // ── 32. meteoro × estrela: os dois se partem em pedaços menores arremessados ──
-test("meteoro×estrela: rocha grande racha a estrela em SPLIT_N e vira cacos arremessados; pedrisco só ricocheteia",()=>{
+test("meteoro×estrela: a estrela EXPLODE e morre, a rocha morre junto — nada se multiplica; pedrisco só ricocheteia",()=>{
   const w=empty(120),st=w.spawnStar(true);st.x=3000;st.y=3000;
+  const astes0=w.asteroids.filter(x=>!x.dead).length;
   const a=w.spawnAsteroid(-1,3600,3000,50);a.vx=-600;a.vy=0;
   let sm=null;for(let t=0;t<80&&!sm;t++){w.step();sm=w.events.find(e=>e.type==="SMASH")||null;}
   assert.ok(sm&&sm.starId===st.id,"SMASH");
-  assert.ok(a.dead,"a rocha se parte");assert.ok(st.dead,"a estrela racha");
-  assert.ok(w.events.some(e=>e.type==="STAR_SPLIT"),"racha pelo starSplit de sempre");
-  const filhas=w.stars.filter(s=>!s.dead);assert.equal(filhas.length,STAR.SPLIT_N,"SPLIT_N estrelas menores");
-  assert.ok(filhas.every(s=>s.r<STAR.R&&Math.hypot(s.vx,s.vy)>0),"menores e arremessadas");
-  const cacos=w.asteroids.filter(x=>!x.dead);
-  assert.ok(cacos.length>=ASTEROID.SMASH_N[0],"a rocha virou vários cacos");
-  assert.ok(cacos.every(c=>c.r<ASTEROID.SMASH_MIN_R),"caco nenhum consegue trombar de novo (sem cascata)");
-  assert.ok(cacos.every(c=>Math.hypot(c.vx,c.vy)>ASTEROID.SMASH_SPEED*.5),"saem voando");
+  assert.ok(a.dead,"a rocha morre no estouro");assert.ok(st.dead,"a estrela morre");
+  assert.ok(w.events.some(e=>e.type==="SUPERNOVA"),"ela EXPLODE (supernova), não racha");
+  assert.equal(w.stars.filter(s=>!s.dead).length,0,"nenhuma estrela filha: a população não sobe");
+  assert.equal(w.starQueue.length,1,"e a sala repõe UMA no lugar");
+  assert.ok(w.asteroids.filter(x=>!x.dead).length<=astes0,"e a rocha não virou vários cacos");
   // pedrisco: só quica, ninguém se parte
   const w2=empty(121),s2=w2.spawnStar(true);s2.x=3000;s2.y=3000;
   const p=w2.spawnAsteroid(-1,3600,3000,ASTEROID.SMASH_MIN_R-4);p.vx=-600;p.vy=0;
@@ -698,9 +693,9 @@ test("câmera: zoom = min(64/ΣR,1)^0.4 × resolução — soma dos raios, potê
   const W=1920,H=1080,z=r=>zoomFor(r,W,H);
   assert.ok(Math.abs(z(PLAYER.START_R)-1)<1e-9,"no raio inicial a escala é 1 (ΣR < CAM.BASE, o min() satura)");
   assert.ok(Math.abs(z(CAM.BASE)-1)<1e-9,"e continua 1 até ΣR = CAM.BASE");
-  for(const [r,e] of [[128,Math.pow(.5,.4)],[256,Math.pow(.25,.4)],[1000,Math.pow(64/1000,.4)]])
+  for(const [r,e] of [[128,Math.pow(.5,.4)],[256,Math.pow(.25,.4)]])
     assert.ok(Math.abs(z(r)-e)<1e-9,`potência .4 em ΣR=${r}`);
-  assert.ok(z(400)>z(1600)&&z(1600)>z(6400),"cresceu, afastou");
+  assert.ok(z(100)>z(200)&&z(200)>z(400),"cresceu, afastou");
   assert.ok(z(1000)/z(10000)<3,"lei de potência: 10× de raio afasta menos de 3× (com 1/r seriam 10×)");
   // é a SOMA: 4 peças de 200 afastam mais que uma de 200 (dividir mostra mais mundo, como no agar)
   const {sumR:s1}=focusOf([{x:0,y:0,r:200}]),{sumR:s4}=focusOf([0,1,2,3].map(i=>({x:i*500,y:0,r:200})));
@@ -711,8 +706,11 @@ test("câmera: zoom = min(64/ΣR,1)^0.4 × resolução — soma dos raios, potê
   assert.ok(Math.abs(aw-bw)<1e-6&&Math.abs(ah-bh)<1e-6,"tela menor mostra o mesmo mundo");
   assert.ok(Math.abs(ch-ah)<1e-6,"retrato: a MAIOR dimensão da tela mostra o mesmo que a maior da paisagem");
   assert.ok(cw<aw,"e a menor mostra menos — ninguém ganha visão por esticar a janela");
-  // piso: nunca mostra mais que o mundo inteiro (é o teto da AOI do servidor)
-  const zf=zoomFor(1e6,W,H);assert.ok(W/zf<=WORLD.w+1e-6&&H/zf<=WORLD.h+1e-6,"a janela nunca passa do mundo");});
+  // piso: a janela nunca passa de CAM.MAX_VIEW do mundo — é o que limita a AOI do servidor (um jogador de 16
+  // peças gigantes chegava a receber 105% do mapa, 3752 entidades por snapshot, e derrubava o cliente a 8 fps)
+  const zf=zoomFor(1e6,W,H);
+  assert.ok(W/zf<=WORLD.w*CAM.MAX_VIEW+1e-6&&H/zf<=WORLD.h*CAM.MAX_VIEW+1e-6,`a janela para em ${Math.round(CAM.MAX_VIEW*100)}% do mundo`);
+  assert.ok(zoomFor(4546,W,H)>zoomFor(1e6,W,H)*.9,"e o jogador de 16 peças gigantes já encosta nesse piso");});
 
 // 39. velocidade padrão: sem inércia, sem embalo de graça
 test("velocidade: é SEMPRE a padrão do tamanho — vira na hora, não acelera, não acumula embalo de ninguém",()=>{
@@ -737,3 +735,22 @@ test("velocidade: é SEMPRE a padrão do tamanho — vira na hora, não acelera,
   let ticks=0;while(boostLeft(q)>0&&ticks<600){w2.setTarget(0,q.x,q.y);w2.step();ticks++;}   // ponteiro colado na peça: isola o canal de impulso do de direção
   assert.ok(ticks<600,`o impulso acaba sozinho (${(ticks/TICK_HZ).toFixed(2)} s)`);
   assert.ok(Math.abs((q.x-d0)-SPLIT.DIST)<SPLIT.DIST*.05,`e rende a distância pedida: ${(q.x-d0).toFixed(0)} de ${SPLIT.DIST} px`);});
+
+// 40. o ímã tem teto de tamanho: planetão não vira aspirador de tela
+test("ímã: acima de POWERUP.MAGNET_MAX_R a peça não pega nem usa o ímã",()=>{
+  const pega=r=>{const w=empty(300+r),pc=w.addPlayer(0,{x:3000,y:3000,r});w.setTarget(0,3000,3000);
+    const f=w.spawnFood();f.type=FOOD_TYPE.MAGNET;f.x=3000;f.y=3000;w.foodDirty=true;w.step();w.step();   // 2 passos: o flag é escrito na integração do tick seguinte ao que comeu
+    return{ativo:pc.magnetUntil>w.tick,flag:!!(pc.flags&PIECE_FLAG.MAGNET)};};
+  const pequeno=pega(POWERUP.MAGNET_MAX_R-40);
+  assert.ok(pequeno.ativo&&pequeno.flag,"abaixo do teto o ímã liga normalmente");
+  const grande=pega(POWERUP.MAGNET_MAX_R+40);
+  assert.ok(!grande.ativo,"acima do teto a peça come o powerup mas NÃO ganha o ímã");
+  assert.ok(!grande.flag,"e o HUD não mostra ímã ligado");
+  // quem já tinha o ímã e cresceu além do teto para de sugar (o alcance é r·MAGNET_RANGE: sugaria a tela toda)
+  const w=empty(299),pc=w.addPlayer(0,{x:3000,y:3000,r:POWERUP.MAGNET_MAX_R-20});w.setTarget(0,3000,3000);
+  pc.magnetUntil=w.tick+POWERUP.TICKS;
+  const longe=w.spawnFood({x:3000+pc.r*3,y:3000});longe.type=FOOD_TYPE.DUST;w.foodDirty=true;
+  const x0=longe.x;w.step();assert.ok(longe.x<x0,"no tamanho certo, o ímã puxa a comida");
+  setR(pc,POWERUP.MAGNET_MAX_R+60);const x1=longe.x;
+  for(let t=0;t<10;t++)w.step();
+  assert.ok(Math.abs(longe.x-x1)<1e-9,"depois de crescer além do teto, para de puxar");});

@@ -57,10 +57,11 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (parâmetro de impacto < r·POP_DIST) — de raspão ela ricocheteia com impulso pela massa, efeito bola de sinuca, em vez de atravessar); estrelas (perigo que estilhaça quem encosta — **escudo cai inteiro e segura** — e,
   ao envelhecer, vira supernova: espalha fragmentos brilhantes que valem `NOVA_PART_MASS` pelotas, chuta os asteroides,
   empurra os planetas por perto e, no miolo `NOVA_SHATTER`,
-  estilhaça quem está lá como se tivesse encostado; **míssil e partícula a empurram** e em `STAR.HITS_TO_SPLIT` hits ela racha em
-  `SPLIT_N` estrelas menores — só a 1ª filha herda o lugar na população —, mas um tiro nela já inchando (fase OLD) **adianta a supernova**;
-  **meteoro grande** (r ≥ `ASTEROID.SMASH_MIN_R`) que trombar nela parte os dois: a rocha vira cacos arremessados e ela racha —
-  o caco maior possível fica abaixo de `SMASH_MIN_R` e a estrela nasce longe do anel dos cinturões (`BELT_SAFE`), senão vira cascata/moedor);
+  estilhaça quem está lá como se tivesse encostado; **míssil e partícula a empurram** e em `STAR.HITS_TO_SPLIT` hits ela **EXPLODE e morre** (um tiro nela já inchando,
+  fase OLD, adianta a supernova). Nada de rachar em estrelas menores: isso era um MOTOR DE POPULAÇÃO — cada acerto
+  triplicava as estrelas, e com jogadores atirando o mapa virava um mar de estrelas a 6 fps;
+  **meteoro grande** (r ≥ `ASTEROID.SMASH_MIN_R`) que trombar nela faz a estrela explodir e morrer, e a rocha morre
+  junto — também sem multiplicar; a estrela nasce longe do anel dos cinturões (`BELT_SAFE`), senão vira moedor);
   buracos negros (força ∝ 1/d² com parte tangencial `SWIRL` = espiral, influência `CORE_R·INFLUENCE` ≈ 570 px; o horizonte cobra
   1/3 da massa — que não some: vira `SPAGHETTI_N` pellets comíveis num anel logo FORA da influência do buraco de entrada — e cospe
   na saída pareada com um boost de `EXIT_DIST`; comida e massa ejetada sugadas também atravessam, formando um cacho na saída (`EXIT_SPREAD`)
@@ -71,7 +72,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   peça nova nasce limpa e a fusão fica com o melhor dos dois — mais o de **fusão** (`FOOD_TYPE.MERGE`, o índice 5 que era do de velocidade),
   que zera o `mergeAt` de todas as peças do dono; mísseis (homing no jogador, interceptação de míssil inimigo ou **tiro mirado** quando o
   jogador segura o botão — trava no objeto mais próximo do cone: peça, míssil, asteroide ou estrela; míssil×míssil varrido = CLASH;
-  míssil desvia asteroide = DEFLECT); ímã suga comida e ejetados
+  míssil desvia asteroide = DEFLECT); ímã (com teto de tamanho `POWERUP.MAGNET_MAX_R`: o alcance é r·MAGNET_RANGE e num planetão sugava a tela inteira) suga comida e ejetados
   (comida movida recebe UPDATE; cometa/estrela mais devagar; **asteroides também**, escalados por R_MIN/r; a estrela-perigo se arrasta até você); escudo por níveis 1–3 (não expira,
   evolui sem ser atingido, míssil/tiro/batida forte de asteroide tiram um nível, dividir derruba inteiro; contra quem pode engolir só
   segura a 1ª batida — ela derruba o escudo inteiro e quica, depois o maior come); fusão por par (atração só perto, sem puxão ao centróide).
@@ -87,7 +88,8 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (=`EJECT.MIN_R`), fusão em `max(30 s, 0,2·r s)`, arremesso de 780 px absolutos com controle total do ponteiro durante ele.
   `PLAYER.MAX_R`=1000 (mesma proporção mundo/célula do agar) e passar dele **não trava**: `rules.autoSplit` reparte em
   ⌊mass/MAX_R²⌋ filhos; só sem vaga de peça o raio é cortado. Câmera (`shared/camera.js`):
-  `min(CAM.BASE/ΣR, 1)^0.4 × max(H/1080, W/1920)` com suavização `CAM.TAU_POS`/`TAU_ZOOM` (24 ms / 158 ms — o
+  `min(CAM.BASE/ΣR, 1)^0.4 × max(H/1080, W/1920)`, com piso em `CAM.MAX_VIEW` do mundo (é ele que limita a AOI:
+  um jogador de 16 peças gigantes recebia 105% do mapa, 3752 entidades por snapshot) e suavização `CAM.TAU_POS`/`TAU_ZOOM` (24 ms / 158 ms — o
   `(view+x)/2` e `(9·scale+s)/10` por frame do cliente de lá): a SOMA dos raios (dividir afasta a câmera), lei de potência
   (crescer 10× afasta 2,5×, não 10×), mesma área de mundo em qualquer tela e piso em mostrar o mundo inteiro.
 - **Placar e radar**: `LEADERBOARD` (2 Hz) leva `{slot,mass,x,y}` de **todos os vivos** — é o único dado posicional fora da AOI.

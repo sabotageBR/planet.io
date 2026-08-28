@@ -3,13 +3,13 @@
 import {CAM,WORLD} from "./constants.js";
 /**
  * Escala (px de tela por px de mundo) — a fórmula do cliente do agar.io, ver o bloco CAM em constants.js:
- * `min(BASE/ΣR, 1)^EXP × max(H/REF_H, W/REF_W)`, com piso no zoom que já mostra o mundo inteiro.
+ * `min(BASE/ΣR, 1)^EXP × max(H/REF_H, W/REF_W)`, com piso em CAM.MAX_VIEW do mundo (limita a AOI do servidor).
  * @param {number} sumR soma dos raios de TODAS as peças próprias @param {number} W @param {number} H tela em px
  */
 export function zoomFor(sumR,W,H){
   const k=sumR>CAM.BASE?CAM.BASE/sumR:1;
   const z=Math.pow(k,CAM.EXP)*Math.max(H/CAM.REF_H,W/CAM.REF_W);
-  const zmin=Math.max(W/WORLD.w,H/WORLD.h);   // nunca mostra mais que o mundo inteiro
+  const zmin=Math.max(W/(WORLD.w*CAM.MAX_VIEW),H/(WORLD.h*CAM.MAX_VIEW));   // teto de janela: nunca mostra mais que MAX_VIEW do mundo (limita a AOI)
   return z<zmin?zmin:z;}
 /** Centro, maior raio, dispersão e SOMA dos raios de um conjunto de peças. @param {Array<{x:number,y:number,r:number}>} pieces */
 export function focusOf(pieces){let sx=0,sy=0,big=0,sum=0;for(const p of pieces){sx+=p.x;sy+=p.y;sum+=p.r;if(p.r>big)big=p.r;}

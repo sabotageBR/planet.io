@@ -96,7 +96,7 @@ export function eatFood(w,ps,pc,f){
   if(t===FOOD_TYPE.AMMO){if(ps.missiles<MISSILE.MAX_AMMO)ps.missiles++;w.events.push({type:"AMMO",slot:ps.slot});}
   else if(t===FOOD_TYPE.SHIELD){if(pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL)pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
-  else if(t===FOOD_TYPE.MAGNET){pc.magnetUntil=(pc.magnetUntil>tick?pc.magnetUntil:tick)+POWERUP.TICKS;
+  else if(t===FOOD_TYPE.MAGNET){if(pc.r<=POWERUP.MAGNET_MAX_R)pc.magnetUntil=(pc.magnetUntil>tick?pc.magnetUntil:tick)+POWERUP.TICKS;   // planeta grande não pega ímã: o alcance é r·MAGNET_RANGE e sugaria a tela inteira
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"magnet"});}
   else if(t===FOOD_TYPE.MERGE){const arr=ps.pieces;for(let i=0;i<arr.length;i++){const q=arr[i];if(!q.dead)q.mergeAt=tick;}   // vale para TODAS as peças: o poder é justamente juntar quem foi picado
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"merge"});}
@@ -253,58 +253,31 @@ export function ejectStar(w,e,st){
   if(w.tick>=e.cdUntil&&w.tick>=st.cdUntil){st.cdUntil=w.tick+STAR.HIT_CD_TICKS;hitStar(w,st,e.x,e.y,ux,uy,e.owner);}
   return true;}
 /**
- * **Meteoro × estrela**: os dois se partem em pedaços menores arremessados.
- * A rocha (só a partir de ASTEROID.SMASH_MIN_R — pedrisco apenas ricocheteia) vira SMASH_N cacos de r·SMASH_R
- * saindo em leque a SMASH_SPEED, e a estrela racha pelo `starSplit` de sempre: SPLIT_N estrelas menores em
- * leque, com o sopro que já chuta os asteroides de perto para fora — é ele que separa os cacos das filhas.
- * O caco maior possível fica ABAIXO de SMASH_MIN_R de propósito: assim ele não pode trombar de novo numa
- * filha e virar uma cascata que apaga as estrelas do mapa. Estrela ainda nascendo (k < ARM_K) é inerte.
+ * **Meteoro × estrela**: a estrela EXPLODE (supernova) e morre, e a rocha morre no estouro. Nada se multiplica.
+ * Antes os dois se partiam — a rocha em SMASH_N cacos e a estrela em SPLIT_N estrelas menores — e isso era um
+ * MOTOR DE POPULAÇÃO: cada trombada deixava mais estrelas no mapa do que tinha antes, a população de 5 chegava a
+ * 16, e cada estrela a mais vira mais supernova, mais partícula e mais entidade na tela.
+ * Só rocha r ≥ ASTEROID.SMASH_MIN_R derruba a estrela; pedrisco apenas ricocheteia. Estrela nascendo (k < ARM_K) é inerte.
  * @param {World} w @param {Body} a @param {Body} st
  */
 export function asteroidStar(w,a,st){
   if(st.k<STAR.ARM_K)return false;
   const dx=st.x-a.x,dy=st.y-a.y,d2=dx*dx+dy*dy,s=st.r+a.r;if(d2>=s*s)return false;
   if(a.r<ASTEROID.SMASH_MIN_R){const vn=resolveBounce(a,st,ASTEROID.E,BOUNCE.POS_CORR);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,a,st,vn);return false;}
-  const rng=w.rng,l=Math.sqrt(a.vx*a.vx+a.vy*a.vy);
+  const l=Math.sqrt(a.vx*a.vx+a.vy*a.vy);
   const d=Math.sqrt(d2)||1,ux=l>1e-3?a.vx/l:dx/d,uy=l>1e-3?a.vy/l:dy/d;   // direção da batida (parada, vale a linha rocha→estrela)
-  const nr=a.r*ASTEROID.SMASH_R,n=rng.int(ASTEROID.SMASH_N[0],ASTEROID.SMASH_N[1]),base=Math.atan2(-uy,-ux);
-  for(let i=0;i<n;i++){if(w.asteroids.length>=w.astCap)break;
-    const an=base+(i/n-.5)*3.1416+rng.range(-.2,.2),sp=ASTEROID.SMASH_SPEED*(.8+rng.next()*.4);   // leque para TRÁS: os cacos ricocheteiam da estrela
-    const c=w.spawnAsteroid(-1,a.x+Math.cos(an)*(a.r+nr),a.y+Math.sin(an)*(a.r+nr),nr);
-    c.vx=Math.cos(an)*sp;c.vy=Math.sin(an)*sp;}
   a.dead=true;if(a.type>=0)w.queueAsteroid(a.type,ASTEROID.RESPAWN_TICKS);   // era de cinturão: o cinturão repõe
   w.events.push({type:"SMASH",asteroidId:a.id,starId:st.id,x:a.x,y:a.y,r:a.r,nx:ux,ny:uy});
-  starSplit(w,st);return true;}
+  supernova(w,st);return true;}
 /**
- * Contabiliza o hit (STAR_HIT) e racha a estrela ao chegar em HITS_TO_SPLIT. Se ela já está em OLD (inchando para a
- * supernova), o tiro **adianta a explosão**: nada de racha, ela estoura na hora. @param {World} w @param {Body} st
+ * Contabiliza o hit (STAR_HIT) e **explode** a estrela ao chegar em HITS_TO_SPLIT — antes ela rachava em estrelas
+ * menores, o que multiplicava a população. Na fase OLD qualquer tiro já adianta a explosão. @param {World} w @param {Body} st
  */
 function hitStar(w,st,x,y,nx,ny,bySlot){
   w.events.push({type:"STAR_HIT",starId:st.id,x,y,r:st.r,nx,ny,slot:bySlot,hits:st.hits+1});
   if(st.type===STAR_PHASE.OLD){supernova(w,st);return;}
   st.hits++;
-  if(st.hits>=STAR.HITS_TO_SPLIT)starSplit(w,st);}
-/**
- * A estrela racha: sopro em r·SPLIT_BLAST (peças empurradas, asteroides chutados — **sem** estilhaçar; a supernova
- * continua sendo o evento grande) e SPLIT_N estrelas menores (r·SPLIT_R) saindo em leque a SPLIT_SPEED, já ACTIVE e
- * com vida curta. A mãe morre e NÃO enfileira respawn: a população volta a STAR.COUNT quando as filhas explodirem.
- * @param {World} w @param {Body} st
- */
-export function starSplit(w,st){
-  const rng=w.rng,blast=st.r*STAR.SPLIT_BLAST,b2=blast*blast,nr=st.r*STAR.SPLIT_R;
-  const pcs=w.pieces;
-  for(let i=0;i<pcs.length;i++){const pc=pcs[i];if(pc.dead)continue;const dx=pc.x-st.x,dy=pc.y-st.y,d2=dx*dx+dy*dy;if(d2>=b2)continue;
-    const d=Math.sqrt(d2)||1,k=STAR.PUSH_DIST*.5*(1-d/blast);addBoost(pc,dx/d,dy/d,k);}
-  const asts=w.asteroids;
-  for(let i=0;i<asts.length;i++){const a=asts[i];if(a.dead)continue;const dx=a.x-st.x,dy=a.y-st.y,d2=dx*dx+dy*dy;if(d2>=b2)continue;
-    const d=Math.sqrt(d2)||1,k=STAR.AST_KICK*.5*(1-d/blast)*Math.min(1,ASTEROID.R_MIN/a.r);a.vx+=dx/d*k;a.vy+=dy/d*k;}
-  const base=rng.angle();
-  for(let i=0;i<STAR.SPLIT_N;i++){const an=base+i/STAR.SPLIT_N*6.2832,sp=STAR.SPLIT_SPEED*(.8+rng.next()*.4);
-    const c=w.spawnStar(true,{x:st.x+Math.cos(an)*st.r,y:st.y+Math.sin(an)*st.r,r:nr,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp,
-      life:w.tick+rng.int(STAR.SPLIT_LIFE_TICKS[0],STAR.SPLIT_LIFE_TICKS[1])});
-    c.hue=i?1:st.hue;}   // a 1ª filha herda o lugar da mãe na população (hue 0); as outras são extras e não repõem
-  w.events.push({type:"STAR_SPLIT",starId:st.id,x:st.x,y:st.y,r:blast});
-  st.dead=true;}
+  if(st.hits>=STAR.HITS_TO_SPLIT)supernova(w,st);}
 /**
  * Supernova: a estrela morre e o mundo sente num raio blast = r·NOVA_R — NOVA_PARTICLES fragmentos sem dono
  * (comíveis por qualquer um) valendo NOVA_PART_MASS pelotas comuns cada e marcados FRAG_KIND.NOVA (o cliente os
@@ -328,9 +301,16 @@ export function supernova(w,st){
     if(d2>=l2||tick<pc.chipUntil||pc.r<STAR.SHATTER_MIN_R)continue;   // fora do miolo (ou no cooldown de contato) é só o empurrão
     pc.chipUntil=tick+STAR.SHATTER_CD_TICKS;
     if(pc.shieldLv>0)breakShield(w,pc,-1);else starShatter(w,w.players.get(pc.owner),pc,st,ux,uy);}
-  for(let i=0;i<STAR.NOVA_FOOD;i++)w.spawnFood({x:st.x,y:st.y,spread:blast*STAR.NOVA_FOOD_R});   // berçário: a estrela morta vira um cacho de comida que fica
+  // berçário: a estrela morta vira um cacho de comida que fica. Ele REALOCA em vez de somar — para cada pelota do
+  // cacho some uma de longe, escolhida pelo rng da sala. Sem isso a população subia para sempre (o laço de reposição
+  // do mundo só ENCHE até FOOD.COUNT, nunca corta), e em 15 min já eram 6072 comidas no lugar de 5000.
+  const longe=blast*STAR.NOVA_FOOD_R*3,longe2=longe*longe,pool=w.food;
+  for(let i=0;i<STAR.NOVA_FOOD;i++){
+    for(let k=0;k<8;k++){const f=pool[rng.int(0,pool.length-1)];if(!f||f.dead)continue;
+      const fx=f.x-st.x,fy=f.y-st.y;if(fx*fx+fy*fy<longe2)continue;f.dead=true;w.foodDirty=true;break;}
+    w.spawnFood({x:st.x,y:st.y,spread:blast*STAR.NOVA_FOOD_R});}
   w.events.push({type:"SUPERNOVA",starId:st.id,x:st.x,y:st.y,r:blast});
-  st.dead=true;if(!st.hue)w.queueStar(STAR.RESPAWN_TICKS);}   // filha extra de um racha (hue 1) não repõe: a população volta sozinha a STAR.COUNT
+  st.dead=true;w.queueStar(STAR.RESPAWN_TICKS);}
 
 // ── buracos negros ──
 /** Ciclo GROW→ACTIVE→FADE (k), deriva aleatória em ACTIVE; no fim do FADE marca dead (o mundo respawna). @param {World} w @param {Body} h */
