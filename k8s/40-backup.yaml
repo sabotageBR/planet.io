@@ -1,0 +1,62 @@
+# ── BACKUP DIÁRIO DO POSTGRES DE PRODUÇÃO ────────────────────────────────────
+# Existe porque em 28/08/2026 o schema de produção foi apagado e NÃO havia backup nenhum: nem script, nem
+# cron, nem CronJob. O `server/test/persist.test.js` faz `DROP SCHEMA public CASCADE` e, sem DATABASE_URL no
+# ambiente, lia o `.env` da raiz — que aponta para produção. O teste ganhou uma guarda; isto aqui é a outra
+# metade, para o próximo acidente (de quem for) ser reversível.
+#
+# Quatro restrições deste cluster (ver CLAUDE.md § Kubernetes) que definem o formato:
+#  1. NÃO há storage dinâmico. Um PVC ficaria Pending para sempre e o CronJob acumularia Jobs falhos em
+#     silêncio — por isso `hostPath` + `nodeName` FIXO. Sem fixar o nó o backup se espalha por 4 nós e
+#     ninguém sabe onde está o último. Para trocar de nó, mude o `nodeName` abaixo.
+#  2. Produção é PostgreSQL 9.6. `pg_dump` 16 lê servidor 9.6 (o contrário não), e a tag é FIXA de propósito:
+#     com `postgres:latest` um upgrade que ninguém pediu quebraria o backup sozinho.
+#  3. A senha vive só no Secret `planet-db` (criado por scripts/db-secret.sh). Estes YAML são versionados,
+#     então nada de credencial aqui — `secretRef` entrega a DATABASE_URL como variável de ambiente.
+#  4. k8s 1.21: `batch/v1` CronJob já é GA (graduou nesta versão), não precisa de `batch/v1beta1`.
+#
+# Restaurar:  gunzip -c planet-AAAAMMDD-HHMMSS.sql.gz | psql "$DATABASE_URL"
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: planet-db-backup
+  namespace: planet
+spec:
+  schedule: "0 3 * * *"          # 03:00, fuso do nó
+  concurrencyPolicy: Forbid      # um dump lento não pode encavalar com o seguinte
+  startingDeadlineSeconds: 3600  # nó ocupado na hora marcada: ainda roda dentro de 1 h
+  successfulJobsHistoryLimit: 1  # histórico curto: o valor está no disco, não no etcd
+  failedJobsHistoryLimit: 3      # falhas ficam mais tempo — é o que se quer olhar
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          nodeName: 192.168.12.51            # FIXO: é onde os dumps ficam (ver restrição 1)
+          securityContext: {runAsUser: 0}    # hostPath DirectoryOrCreate nasce root:root; o uid 999 da imagem não escreveria
+          containers:
+            - name: dump
+              image: postgres:16-alpine      # tag fixa (ver restrição 2)
+              envFrom:
+                - secretRef: {name: planet-db}
+              volumeMounts:
+                - {name: backup, mountPath: /backup}
+              command: ["/bin/sh","-c"]
+              args:
+                - |
+                  set -eu
+                  test -n "${DATABASE_URL:-}" || { echo "sem DATABASE_URL: o Secret planet-db existe?"; exit 1; }
+                  f="/backup/planet-$(date +%Y%m%d-%H%M%S).sql.gz"
+                  # dump em arquivo ANTES de comprimir: num pipe o `set -e` veria o status do gzip, não o do
+                  # pg_dump, e um dump truncado viraria "backup ok". O .tmp só vira definitivo depois do gzip -t.
+                  pg_dump "$DATABASE_URL" --no-owner --no-privileges > /tmp/d.sql
+                  gzip -9 -c /tmp/d.sql > "$f.tmp"
+                  gzip -t "$f.tmp"
+                  mv "$f.tmp" "$f"
+                  rm -f /tmp/d.sql
+                  find /backup -name 'planet-*.sql.gz' -mtime +14 -delete    # rotação: backup que enche o disco do nó é o próximo incidente
+                  find /backup -name 'planet-*.sql.gz.tmp' -mtime +1 -delete # lixo de execução interrompida
+                  echo "ok $f ($(wc -c < "$f") bytes) — $(find /backup -name 'planet-*.sql.gz' | wc -l) dumps guardados"
+          volumes:
+            - name: backup
+              hostPath: {path: /var/backups/planet, type: DirectoryOrCreate}
