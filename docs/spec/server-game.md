@@ -51,6 +51,13 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
 - **Fusão**: por par de peças do mesmo dono — separação enquanto uma não pode fundir; quando ambas podem, atração só a
   separação SÓ posicional (sem atração entre peças próprias); merge pareado a d < max(r)·MERGE.DIST. A peça que fica herda o
   melhor powerup das duas (ver acima).
+- **Cuspir (W)**: a pelota tem raio `ejectR(pc.r)` = `EJECT.R_K` do raio de quem cospe, com piso `R_MIN` e teto
+  `R_MAX`, e massa `r²·MASS_FACTOR`. Assim qualquer tamanho se esvazia em ~34 cusparadas (com o raio fixo de
+  antes, um planeta de 360 mil precisava de 3.419) — o mesmo efeito com muito menos corpos. `EJECT.MAX` limita a
+  população (era a ÚNICA lista dinâmica sem teto: asteroide tem `astCap`, comida tem `FOOD.COUNT`) matando o mais
+  antigo, e segurar o W com 16 peças ia a ~2.000 pelotas vivas. A imunidade do dono (`ownerImmune`) soma
+  `r/vmax(r)` em ticks: fixa em .33 s o planetão alcançava a própria cusparada e reengolia — medido, 63 de 86
+  voltavam e 10 s de W tiravam .7% da massa; agora tiram 88%.
 - **Decaimento** (`PLAYER.DECAY`, o `playerDecayRate` do agar): toda peça perde .2% da massa por segundo, com piso
   em `START_R`, aplicado no passo (`world.js`) e espelhado em `predict.js` (a paridade de 1e-6 é o guarda). É o que
   impede o gigante de ser imortal — antes, nenhuma ameaça tirava massa dele com o tempo.

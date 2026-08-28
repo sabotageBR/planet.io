@@ -9,7 +9,7 @@ import {createWorld,createGrid,createBody,setR,addBoost,boostLeft,velX,velY,tryM
 import {zoomFor,focusOf,aoiScaleFood} from "../src/camera.js";
 import {vmaxFor} from "../src/physics/integrate.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT} from "../src/constants.js";
+import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,ejectR,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT} from "../src/constants.js";
 import {KIND,PIECE_FLAG,FOOD_FLAG,STAR_PHASE,INPUT_FLAG,FRAG_KIND} from "../src/protocol/constants.js";
 import {BotBrain} from "../src/bot.js";
 
@@ -138,7 +138,7 @@ test("desempenho: sala cheia (30×16 peças, mundo e população de produção, 
   const w=createWorld({seed:2024}),script=createRng(5);
   for(let s=0;s<30;s++){w.addPlayer(s,{isBot:s>=5,r:280,missiles:1});w.setTarget(s,script.range(0,WORLD.w),script.range(0,WORLD.h));}
   for(let round=0;round<3;round++){for(let s=0;s<30;s++)w.requestSplit(s);for(let i=0;i<SPLIT.COOLDOWN_TICKS+1;i++)w.step();}
-  for(let i=0;i<120;i++){const an=script.angle();w.addEjected(script.range(100,WORLD.w-100),script.range(100,WORLD.h-100),Math.cos(an)*200,Math.sin(an)*200,EJECT.R,EJECT.R*EJECT.R,-1,0,EJECT.LIFE_TICKS);}
+  for(let i=0;i<120;i++){const an=script.angle();w.addEjected(script.range(100,WORLD.w-100),script.range(100,WORLD.h-100),Math.cos(an)*200,Math.sin(an)*200,EJECT.R_MIN,EJECT.R_MIN*EJECT.R_MIN,-1,0,EJECT.LIFE_TICKS);}
   for(const pc of w.pieces)pc.mergeAt=1e9;
   const N=600,times=new Float64Array(N);let maxPieces=0;
   for(let i=0;i<N;i++){if(i%60===0)for(let s=0;s<30;s++)w.setTarget(s,script.range(0,WORLD.w),script.range(0,WORLD.h));
@@ -234,7 +234,7 @@ test("míssil×asteroide: desvia o errante (DEFLECT) e tira o de cinturão da ó
 test("ímã: comida no alcance é sugada (MOVED, acelerando) e ejetados de terceiros são atraídos; sem ímã nada se move",()=>{
   const w=empty(60),me=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);
   const f=w.spawnFood();f.type=FOOD_TYPE.DUST;f.x=1200;f.y=1000;w.foodDirty=true;
-  w.addPlayer(1,{x:3000,y:3000,r:40});const e=w.addEjected(1000,1200,0,0,EJECT.R,EJECT.R*EJECT.R,1,0,EJECT.LIFE_TICKS);
+  w.addPlayer(1,{x:3000,y:3000,r:40});const e=w.addEjected(1000,1200,0,0,EJECT.R_MIN,EJECT.R_MIN*EJECT.R_MIN,1,0,EJECT.LIFE_TICKS);
   w.step();assert.equal(f.x,1200,"sem ímã a comida fica");assert.equal(e.vy,0);assert.equal(f.flags&FOOD_FLAG.MOVED,0);
   me.magnetUntil=1e9;w.step();
   assert.ok(f.x<1200&&(f.flags&FOOD_FLAG.MOVED),"comida puxada e marcada MOVED");assert.ok(e.vy<0,"ejetado atraído");
@@ -387,7 +387,7 @@ test("estrela: míssil e partícula empurram; no 3º hit ela EXPLODE e morre (n�
   assert.equal(w.missiles.filter(m=>!m.dead).length,0,"o míssil morre no impacto");
   const vx1=st.vx;for(let t=0;t<60;t++)w.step();assert.ok(st.vx<vx1&&st.vx>0,"desliza e freia (STAR.DRAG)");
   // partícula ejetada também empurra e conta hit
-  const e=w.addEjected(st.x-st.r-20,st.y,EJECT.SPEED,0,EJECT.R,EJECT.R*EJECT.R,-1,0,600);
+  const e=w.addEjected(st.x-st.r-20,st.y,EJECT.SPEED,0,EJECT.R_MIN,EJECT.R_MIN*EJECT.R_MIN,-1,0,600);
   const h2=until("STAR_HIT",20);assert.ok(h2,"partícula conta hit");assert.equal(st.hits,2);assert.ok(e.dead,"a partícula é consumida");
   shoot();const sp=until("SUPERNOVA");
   assert.ok(sp,"no 3º hit ela EXPLODE");assert.ok(st.dead,"e morre");
@@ -573,7 +573,7 @@ test("buraco negro: comida e ejetados saem do outro lado; 1/3 da massa vira pell
   assert.ok(w.food.some(x=>!x.dead&&Math.hypot(x.x-h.ex,x.y-h.ey)<BLACKHOLE.EXIT_SPREAD*1.2),"e apareceu no cacho da saída");
   assert.ok(f.dead,"a comida original saiu de cena (remove+create, não teleporte visível)");
   const w2=empty(99),h2=w2.spawnHole({x:4000,y:4000,ex:7000,ey:7000,active:true});
-  w2.addEjected(h2.x+15,h2.y,0,0,EJECT.R,EJECT.R*EJECT.R,-1,0,EJECT.LIFE_TICKS);
+  w2.addEjected(h2.x+15,h2.y,0,0,EJECT.R_MIN,EJECT.R_MIN*EJECT.R_MIN,-1,0,EJECT.LIFE_TICKS);
   let wev=null;for(let t=0;t<120&&!wev;t++){w2.step();wev=w2.events.find(e=>e.type==="WARP")||null;}
   assert.ok(wev,"o pellet atravessou");
   assert.ok(w2.ejected.some(e=>!e.dead&&Math.hypot(e.x-h2.ex,e.y-h2.ey)<BLACKHOLE.EXIT_SPREAD*1.3),"e saiu perto da saída");
@@ -642,7 +642,7 @@ test("massa: cuspir↔reabsorver fecha em zero e o fragmento carrega a massa rea
   // fragmento gordo vale mais para QUEM PEGAR do que um comum
   const w2=empty(124),A=w2.addPlayer(0,{x:1000,y:1000,r:40}),B=w2.addPlayer(1,{x:5000,y:5000,r:40}),m=A.mass;
   w2.addEjected(1000,1000,0,0,fragR(4000),4000,-1,0,1800,FRAG_KIND.RICH);
-  w2.addEjected(5000,5000,0,0,EJECT.R,EJECT_MASS,-1,0,900,FRAG_KIND.PLAIN);
+  w2.addEjected(5000,5000,0,0,EJECT.R_MIN,EJECT_MASS,-1,0,900,FRAG_KIND.PLAIN);
   w2.setTarget(0,1000,1000);w2.setTarget(1,5000,5000);w2.step();
   assert.ok(Math.abs(A.mass-m-4000)<1e-9&&Math.abs(B.mass-m-EJECT_MASS)<1e-9,"cada um cresce a massa do seu fragmento");
   assert.ok(A.mass-m>(B.mass-m)*10,"o gordo engorda MUITO mais");});
@@ -680,7 +680,7 @@ test("supernova: os fragmentos valem NOVA_PART_MASS pelotas e vêm marcados FRAG
   assert.equal(f.length,STAR.NOVA_PARTICLES,"partículas espalhadas");
   assert.ok(f.every(e=>e.type===FRAG_KIND.NOVA),"marcados NOVA (o cliente os desenha brilhando)");
   assert.ok(f.every(e=>Math.abs(e.mass-EJECT_MASS*STAR.NOVA_PART_MASS)<1e-9),"valem NOVA_PART_MASS pelotas comuns");
-  assert.ok(f[0].mass>EJECT_MASS&&f[0].r>EJECT.R,"maiores e mais valiosos que uma pelota comum");
+  assert.ok(f[0].mass>EJECT_MASS&&f[0].r>EJECT.R_MIN,"maiores e mais valiosos que uma pelota comum");
   // e o valor sobrevive à travessia do buraco negro
   const w2=empty(129),h=w2.spawnHole({x:2000,y:2000,ex:6000,ey:6000,active:true});
   const g=w2.addEjected(2000+h.r*.5,2000,0,0,20,1500,-1,0,900,FRAG_KIND.NOVA);
@@ -791,3 +791,23 @@ test("tiro: além de tirar massa, ESTILHAÇA a peça; e a rocha sempre explode n
   const total=pcs.reduce((t,p)=>t+p.mass,0),cacos=w.ejected.filter(e=>e.owner===0&&!e.dead).reduce((t,e)=>t+e.mass,0);
   assert.ok(Math.abs(total+cacos-m0)<1e-6,"e nada evapora: o que saiu virou caco comível");
   assert.ok(total<m0,"o alvo perdeu massa de verdade");});
+
+// 43. cuspir (W): pelota proporcional ao planeta, com teto de população, e custa massa de verdade
+test("eject: a pelota é proporcional a quem cospe, segurar o W esvazia o planeta e a população tem teto",()=>{
+  // o raio da pelota acompanha o do planeta, com piso e teto
+  const pelota=r=>{const w=empty(500+r),p=w.addPlayer(0,{x:3000,y:3000,r});w.setTarget(0,9000,3000);
+    const ps=w.players.get(0);assert.equal(applyEject(w,ps),1);const e=w.ejected[w.ejected.length-1];
+    return{r:e.r,mass:e.mass};};
+  assert.ok(Math.abs(pelota(EJECT.MIN_R).r-EJECT.R_MIN)<1e-6,"no menor planeta que pode cuspir, a pelota é a mínima");
+  assert.ok(Math.abs(pelota(300).r-300*EJECT.R_K)<1e-6,"no meio, é R_K do raio do planeta");
+  assert.equal(pelota(2000).r,EJECT.R_MAX,"e satura em R_MAX (a pelota não pode virar um planeta)");
+  assert.ok(pelota(300).mass>pelota(120).mass*4,"planeta maior cospe pelota MUITO mais valiosa (massa vai com r²)");
+  // segurar o W esvazia de verdade — com raio fixo um planetão perdia 0,7% em 10 s
+  const w=empty(501),p=w.addPlayer(0,{x:1000,y:4800,r:600});p.r=600;p.mass=360000;
+  const ps=w.players.get(0);w.setTarget(0,9000,4800);const m0=p.mass;
+  let n=0;for(let t=0;t<600;t++){ps.ejectHold=true;w.step();n+=w.events.filter(e=>e.type==="EJECT").length;}
+  assert.ok(n>=80,`cospe sem parar enquanto segura (${n} em 10 s)`);
+  assert.ok(p.mass<m0*.3,`e o planeta esvazia de verdade: ${Math.round(m0)} → ${Math.round(p.mass)}`);
+  // teto de população: nenhuma rajada pode encher o mundo de pelotas
+  const w2=empty(502);for(let i=0;i<EJECT.MAX+200;i++)w2.addEjected(3000+i%50,3000,0,0,9,105,-1,0,EJECT.LIFE_TICKS);
+  assert.ok(w2.ejected.filter(e=>!e.dead).length<=EJECT.MAX,`a lista para em EJECT.MAX (${EJECT.MAX})`);});

@@ -39,10 +39,19 @@ export const SPLIT={DIST:780,MIN_R:60,COOLDOWN_TICKS:15,OFFSET:.6};
 // pequeno voa dezenas de raios e o planetão menos de um. Quem fica não é empurrado (lá não há recuo), e como
 // as duas metades andam na mesma velocidade padrão, o vão final é exatamente DIST.
 // MIN_R=60 é o `playerMinSplitSize` do agar (lá 60 para um raio inicial de 32; aqui 60 para START_R=30).
-export const EJECT={SPEED:1080,RECOIL_DIST:410,R:9,COOLDOWN_TICKS:6,MIN_R:60,MASS_FACTOR:1.3,OWNER_IMMUNE_TICKS:20,LIFE_TICKS:900,DRAG:3.7,HOLD_TICKS:7};
+export const EJECT={SPEED:1080,RECOIL_DIST:410,R_K:.15,R_MIN:9,R_MAX:60,MAX:600,COOLDOWN_TICKS:6,MIN_R:60,MASS_FACTOR:1.3,OWNER_IMMUNE_TICKS:20,LIFE_TICKS:900,DRAG:3.7,HOLD_TICKS:7};
+/** Raio da pelota cuspida, PELO TAMANHO de quem cospe (com piso e teto). */
+export const ejectR=r=>{const v=r*EJECT.R_K;return v<EJECT.R_MIN?EJECT.R_MIN:v>EJECT.R_MAX?EJECT.R_MAX:v;};
+// A pelota era de raio FIXO (9 px, massa 105): um planeta de 360.000 precisava de 3.419 cusparadas para se
+// esvaziar, então segurar o W só enchia a tela de pontinhos sem mudar nada. Proporcional (R_K do raio), qualquer
+// tamanho se esvazia em ~34 cusparadas — mesmo efeito com MUITO menos corpos.
+// MAX é o teto de população, que faltava: ejetado era a ÚNICA população dinâmica sem limite (asteroide tem
+// astCap, comida tem FOOD.COUNT). Segurando o W com 16 peças saíam 137 pelotas/s e, com 15 s de vida, o regime
+// batia em ~2.057 vivas — quase a comida do mundo inteiro — e era isso que engasgava a imagem.
+// HOLD_TICKS: 60/7 = 8,6 cusparadas/s enquanto a tecla está segurada (COOLDOWN_TICKS limita o toque avulso a 10/s).
 export const FRAG={R_MIN:5,R_MAX:24,RICH_MASS:600,LIFE_TICKS:900,RICH_LIFE_TICKS:1800,MAGNET_HEAVY:.45};
-/** Massa de uma pelota cuspida — a unidade de valor de todo fragmento. */
-export const EJECT_MASS=EJECT.R*EJECT.R*EJECT.MASS_FACTOR;
+/** Massa da pelota MÍNIMA — a unidade de valor de todo fragmento (a cuspida de verdade escala com ejectR). */
+export const EJECT_MASS=EJECT.R_MIN*EJECT.R_MIN*EJECT.MASS_FACTOR;
 /** Raio VISUAL de um fragmento pela massa: o TAMANHO na tela é o que diz o valor (satura em R_MAX). */
 export const fragR=m=>{const r=Math.sqrt(m);return r<FRAG.R_MIN?FRAG.R_MIN:r>FRAG.R_MAX?FRAG.R_MAX:r;};
 /** Fragmento gordo dura o dobro: o pedaço de um planetão sumiria antes de dar tempo de dar meia-volta. */

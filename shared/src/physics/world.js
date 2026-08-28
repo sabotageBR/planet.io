@@ -75,7 +75,9 @@ export class World{
   newPiece(slot,x,y,r){const ps=this.players.get(slot);const b=createBody(KIND.PIECE,this.newId(),x,y,r);b.owner=slot;b.mergeAt=this.tick;
     this.pieces.push(b);if(ps)ps.pieces.push(b);return this._register(b);}
   /** Cria um fragmento/pellet (mass pode diferir de r² — é o que dá VALOR VARIÁVEL a cada um; `kind` = FRAG_KIND, vai no fio). */
-  addEjected(x,y,vx,vy,r,mass,owner,immuneTicks,lifeTicks,kind=FRAG_KIND.PLAIN){const b=createBody(KIND.EJECT,this.newId(),x,y,r);b.mass=mass;b.vx=vx;b.vy=vy;b.owner=owner;b.type=kind;
+  addEjected(x,y,vx,vy,r,mass,owner,immuneTicks,lifeTicks,kind=FRAG_KIND.PLAIN){
+    if(this.ejected.length>=EJECT.MAX)this._dropOldestEject();   // teto de população: era a única lista sem limite, e segurar o W chegava a ~2.000 pelotas vivas
+    const b=createBody(KIND.EJECT,this.newId(),x,y,r);b.mass=mass;b.vx=vx;b.vy=vy;b.owner=owner;b.type=kind;
     b.cdUntil=this.tick+immuneTicks;b.life=this.tick+lifeTicks;this.ejected.push(b);return this._register(b);}
   addMissile(x,y,vx,vy,owner,targetSlot){const b=createBody(KIND.MISSILE,this.newId(),x,y,MISSILE.R);b.vx=vx;b.vy=vy;b.owner=owner;b.targetId=targetSlot;
     b.life=this.tick+MISSILE.LIFE_TICKS;this.missiles.push(b);return this._register(b);}
@@ -117,6 +119,10 @@ export class World{
     else{if(x>0||y>0){a.x=x;a.y=y;}else{const s=this._farSpot(AST_MARGIN,this.pieces,ASTEROID.SAFE_SPAWN);a.x=s.x;a.y=s.y;}
       const an=rng.angle(),sp=rng.range(ASTEROID.WANDER_SPEED[0],ASTEROID.WANDER_SPEED[1]);a.vx=Math.cos(an)*sp;a.vy=Math.sin(an)*sp;}
     a.x=clamp(a.x,a.r,this.w-a.r);a.y=clamp(a.y,a.r,this.h-a.r);this.asteroids.push(a);return this._register(a);}
+  /** Mata o ejetado vivo mais antigo (o de menor `life`): é o que abre vaga quando a lista bate em EJECT.MAX. */
+  _dropOldestEject(){const a=this.ejected;let k=-1,best=Infinity;
+    for(let i=0;i<a.length;i++){const b=a[i];if(b.dead)continue;if(b.life<best){best=b.life;k=i;}}
+    if(k>=0)a[k].dead=true;}
   /** Agenda o respawn de um asteroide (cinturão `belt` ou -1) daqui a `delay` ticks. */
   queueAsteroid(belt,delay){this.astQueue.push({belt,at:this.tick+delay});}
   /** Buraco negro: núcleo CORE_R, longe dos outros (MIN_SEP) e dos jogadores (SAFE_SPAWN); saída pareada a ≥ EXIT_MIN_DIST. */

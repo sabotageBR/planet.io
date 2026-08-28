@@ -8,7 +8,7 @@
 //    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire (tiro mirado trava no alvo do cone) ──
 // Todas recebem o mundo `w` (ids, rng, eventos, jogadores); toda aleatoriedade passa por w.rng.
 // @ts-check
-import {DT,PLAYER,SPLIT,shieldTierFor,EJECT,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR} from "../constants.js";
+import {DT,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR} from "../constants.js";
 import {KIND,BH_PHASE,FOOD_FLAG,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {clamp} from "../util.js";
 import {setR,setMass,addMass,addBoost,boostLeft,capBoost,velX,velY,liveCount,firstLive} from "./body.js";
@@ -477,17 +477,26 @@ export function autoSplit(w,ps){
     did++;}
   return did;}
 /**
- * Eject: pellet r=EJECT.R com massa R²·MASS_FACTOR a (velocidade padrão da peça) + dir·SPEED — a peça não tem
+ * Quanto tempo o dono fica sem poder recolher a própria cusparada. Fixo em 20 ticks (0,33 s) o planetão
+ * alcançava a pelota e a re-engolia — medido, 63 de 86 voltavam e a massa mal caía. Agora soma o tempo que
+ * ele leva para percorrer o próprio raio (r/vmax), então cuspir custa massa de verdade em qualquer tamanho.
+ */
+const ownerImmune=r=>EJECT.OWNER_IMMUNE_TICKS+Math.round(r/vmaxFor(r)/DT);
+/**
+ * Eject: pellet r=ejectR(pc.r) — PROPORCIONAL a quem cospe — com massa r²·MASS_FACTOR, a (velocidade padrão da
+ * peça) + dir·SPEED. Com raio fixo, um planeta de 360.000 precisava de 3.419 cusparadas para se esvaziar, e
+ * segurar o W só enchia a tela de pontinhos. A peça não tem
  * mais velocidade própria, então a do movimento entra explícita (vmaxFor) para o pellet continuar saindo à
  * frente de quem está correndo. O recuo é um empurrão curto de RECOIL_DIST·(m_pellet/m_peça) px, no canal de
  * impulso. Retorna quantos pellets. @param {World} w @param {PlayerState} ps
  */
 export function applyEject(w,ps){
-  const arr=ps.pieces,len=arr.length,mp=EJECT.R*EJECT.R*EJECT.MASS_FACTOR,minM=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;let did=0;
-  for(let i=0;i<len;i++){const pc=arr[i];if(pc.dead||pc.r<EJECT.MIN_R)continue;const m1=pc.mass-mp;if(m1<minM)continue;
+  const arr=ps.pieces,len=arr.length,minM=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;let did=0;
+  for(let i=0;i<len;i++){const pc=arr[i];if(pc.dead||pc.r<EJECT.MIN_R)continue;
+    const er=ejectR(pc.r),mp=er*er*EJECT.MASS_FACTOR,m1=pc.mass-mp;if(m1<minM)continue;
     dirTo(pc.x,pc.y,ps.tx,ps.ty,DIR);const ux=DIR[0],uy=DIR[1],r1=Math.sqrt(m1),vp=vmaxFor(pc.r);
     const e=w.addEjected(pc.x+ux*(r1+LOCAL.EJECT_OFFSET),pc.y+uy*(r1+LOCAL.EJECT_OFFSET),ux*(vp+EJECT.SPEED),uy*(vp+EJECT.SPEED),
-      EJECT.R,mp,ps.slot,EJECT.OWNER_IMMUNE_TICKS,EJECT.LIFE_TICKS);
+      er,mp,ps.slot,ownerImmune(pc.r),EJECT.LIFE_TICKS);
     setMass(pc,m1);addBoost(pc,-ux,-uy,EJECT.RECOIL_DIST*mp/m1);did++;
     w.events.push({type:"EJECT",slot:ps.slot,pieceId:pc.id,ejectId:e.id,x:e.x,y:e.y});}
   return did;}

@@ -68,6 +68,10 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   em vez de sumir; o cliente prevê a mesma gravidade nas peças próprias);
   **arremesso** (split/pop/estilhaço/saída do buraco/quique): tudo é o canal de IMPULSO, declarado em PIXELS —
   `SPLIT.DIST` 780, `LOCAL.POP_DIST`, `STAR.SHATTER_DIST`, `BLACKHOLE.EXIT_DIST`, `BOUNCE.DIST_MAX` 120 (ver Movimento);
+  **cuspir (W)** cospe uma pelota PROPORCIONAL a quem cuspiu (`ejectR`: `EJECT.R_K` do raio, com piso/teto) — com o
+  raio fixo de antes um planeta de 360 mil precisava de 3.419 cusparadas para se esvaziar e segurar o W só enchia a
+  tela de pontinhos; a lista de ejetados ganhou teto (`EJECT.MAX`, era a única população dinâmica sem um) e a
+  imunidade do dono soma `r/vmax(r)`, senão o planetão alcançava a própria cusparada e reengolia tudo;
   powerups = ímã e escudo **por peça** — quem pegou é a única parte que ganha (Body.magnetUntil/shieldLv),
   peça nova nasce limpa e a fusão fica com o melhor dos dois — mais o de **fusão** (`FOOD_TYPE.MERGE`, o índice 5 que era do de velocidade),
   que zera o `mergeAt` de todas as peças do dono; mísseis (homing no jogador, interceptação de míssil inimigo ou **tiro mirado** quando o
