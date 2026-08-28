@@ -32,7 +32,9 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
-          nodeName: 192.168.12.51            # FIXO: é onde os dumps ficam (ver restrição 1)
+          nodeName: kube-worker-1            # FIXO: é onde os dumps ficam (ver restrição 1). É o NOME do nó
+                                             # (`kubectl get nodes`), não o IP: com um IP aqui o Pod nunca é
+                                             # agendado e o CronJob acumula Jobs Pending em silêncio.
           securityContext: {runAsUser: 0}    # hostPath DirectoryOrCreate nasce root:root; o uid 999 da imagem não escreveria
           containers:
             - name: dump

@@ -2,6 +2,7 @@
 """Aplica manifestos no cluster via API (server-side apply) — sem depender de kubectl.
 
 uso:  python3 scripts/k8s_apply.py k8s/.rendered/*.yaml
+      python3 scripts/k8s_apply.py --dry-run k8s/*.yaml        # valida no servidor sem gravar
       python3 scripts/k8s_apply.py --status            # espera os pods ficarem prontos
       python3 scripts/k8s_apply.py --get pods          # lista os pods do namespace
       python3 scripts/k8s_apply.py --exists Secret planet-db   # exit 0 se existe, 1 se não
@@ -27,6 +28,7 @@ RESOURCES = {
     "Deployment":  ("apis/apps/v1", "deployments", True),
     "StatefulSet": ("apis/apps/v1", "statefulsets", True),
     "Ingress":     ("apis/networking.k8s.io/v1", "ingresses", True),
+    "CronJob":     ("apis/batch/v1", "cronjobs", True),   # batch/v1 é GA desde o k8s 1.21 (este cluster)
 }
 
 
@@ -79,16 +81,21 @@ def path_for(kind, name=None, ns=NS):
     return base + (f"/{urllib.parse.quote(name)}" if name else "")
 
 
-def apply(cl, doc):
+def apply(cl, doc, dry_run=False):
     kind = doc["kind"]
     name = doc["metadata"]["name"]
     ns = doc["metadata"].get("namespace", NS)
-    p = path_for(kind, name, ns) + f"?fieldManager={FIELD_MANAGER}&force=true"
+    # kind fora da tabela: reporta e segue. Antes isto estourava um KeyError no meio do laço e derrubava o
+    # deploy INTEIRO — um manifesto novo levava o app junto, que é o oposto do que se quer de um applier.
+    if kind not in RESOURCES:
+        print(f"  ERRO  {kind}/{name}: kind desconhecido (acrescente em RESOURCES)")
+        return False
+    p = path_for(kind, name, ns) + f"?fieldManager={FIELD_MANAGER}&force=true" + ("&dryRun=All" if dry_run else "")
     res = cl.request("PATCH", p, yaml.safe_dump(doc), "application/apply-patch+yaml")
     if res.get("kind") == "Status" and res.get("status") == "Failure":
         print(f"  ERRO  {kind}/{name}: {res.get('message','')[:200]}")
         return False
-    print(f"  ok    {kind}/{name}")
+    print(f"  ok    {kind}/{name}{' (dry-run)' if dry_run else ''}")
     return True
 
 
@@ -147,11 +154,15 @@ if __name__ == "__main__":
             print(f"  {args[1]}/{args[2]}: {'existe' if ok else 'NÃO existe'}")
             sys.exit(0 if ok else 1)
         else:
+            # --dry-run: valida os manifestos contra o servidor sem gravar nada (bom antes de um deploy)
+            dry = args[0] == "--dry-run"
+            if dry:
+                args = args[1:]
             falhas = 0
             for f in args:
                 print(f"{f}:")
                 for doc in yaml.safe_load_all(open(f)):
-                    if doc and not apply(cl, doc):
+                    if doc and not apply(cl, doc, dry):
                         falhas += 1
             sys.exit(1 if falhas else 0)
     finally:
