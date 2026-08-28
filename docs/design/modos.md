@@ -98,17 +98,23 @@ justo na borda, que é onde o jogador mais olha.
 
 ## Armas
 
-Uma por jogador; pegar outra **troca** e reabastece. Por isso o INPUT continua com 10 bytes — não há seleção de arma.
+O jogador **carrega várias** e troca com uma tecla (`Q`, o botão de toque, ou clicando no chip da arma):
+`ps.ammo[arma]` guarda a munição de cada uma e `ps.weapon` diz qual está na mão. O míssil é a arma base e nunca
+sai do cinto — nem quando zera, senão daria para ficar preso numa arma vazia sem poder voltar. Pegar uma arma
+já a coloca na mão (pegar e não ver nada acontecer é pior que não pegar) e a comida `AMMO` abastece a que está
+na mão. Coube num BIT do INPUT que já sobrava, então ele continua com 10 bytes.
 
 | id | nome | raridade | o que faz | o que reaproveita |
 |---|---|---|---|---|
 | 0 | Míssil | comum | o de sempre (homing, dano, estilhaço) | — |
 | 1 | Rajada | comum | 6 projéteis retos, arranham e empurram | `addMissile` × n |
-| 2 | Mina | incomum | poço parado que puxa e estilhaça | o **BLACKHOLE inteiro**, dormente desde `COUNT:0` |
-| 3 | Cacho | raro | vira 4 homing perto do alvo | `homeMissile` |
-| 4 | Nova | épico | onda que empurra e estilhaça o miolo, sem me atingir | o laço da `supernova` |
+| 2 | Cacho | raro | vira 4 homing perto do alvo | `homeMissile` |
+| 3 | Nova | épico | onda que empurra e estilhaça o miolo, sem me atingir | o laço da `supernova` |
 
-Cada uma custou ~10 linhas porque nenhuma inventou sistema novo. As comidas entram em `FOOD_TYPE` **8..11**
+(A **Mina gravitacional** existiu por uma rodada e saiu a pedido: reacendia o buraco negro, que já tinha sido
+desligado por não ficar bom. O código do BLACKHOLE continua dormente onde estava.)
+
+Cada uma custou ~10 linhas porque nenhuma inventou sistema novo. As comidas entram em `FOOD_TYPE` **8..10**
 (no fim: três testes de faixa dependem da ordem do enum) e a raridade é a tabela de peso `WEAPON_DROPS` em `world.js`.
 
 ## Chat
@@ -148,6 +154,23 @@ render target. Some no modo econômico e com "menos movimento": é enfeite, e en
 
 A queda do gradiente é rápida de propósito. Na primeira tentativa (halo largo e opaco) o aditivo saturava para
 branco e a tela virava névoa leitosa — sumia o contraste que faz enxergar a comida.
+
+## Ganhar tem fogos
+
+Quem termina a partida como campeão vê a **salva sair do próprio planeta** — que é justamente quem fica na tela
+atrás do pódio. São 14 foguetes agendados com o `delayMs` que o `fx` já aceita, em cadência irregular, com
+altura, inclinação, carga e cor sorteadas: salva regular soa a efeito repetido, e é a irregularidade que faz
+parecer show.
+
+A física está em `theme/util.js` (`fireworkPrims`) e é compartilhada pelos três céus — o que muda por tema é só
+a paleta. O que faz parecer de verdade, em ordem: cada faísca é um **traço** do ponto anterior ao atual (fogo
+real vira risco, não ponto); o raio **satura por arrasto**, então abre rápido e freia; a **gravidade** transforma
+a esfera em sino e a derruba; a cor passa por **três tempos** (branco quente → carga → brasa); parte das faíscas
+**cintila** em alta frequência; e o foguete **desacelera** até parar no ápice, que é onde estoura. O som
+acompanha cada um — assobio no lançamento, estouro no ápice —, senão o áudio descola da imagem.
+
+No modo Livre o BIG CRUNCH continua acontecendo (o mundo acaba por tempo); no battle royale, quem venceu não vê
+o mundo explodir, vê os fogos.
 
 ## Morrer é virar câmera
 

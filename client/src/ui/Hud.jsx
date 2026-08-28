@@ -14,8 +14,8 @@ import BrLobby from "./BrLobby.jsx";
 import { MODE, weaponOf } from "@planet/shared";
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, clock: null,
-  mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, zoneHurt: false, talk: null, chat: [], lobby: null };
-const WEAPON_ICON = ["🚀", "✳️", "🕳️", "💥", "🌟"];   // mesma ordem de WEAPONS (o id indexa direto)
+  mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, talk: null, chat: [], lobby: null };
+const WEAPON_ICON = ["🚀", "✳️", "💥", "🌟"];   // mesma ordem de WEAPONS (o id indexa direto)
 /** Anel do push-to-talk: o arco encolhe com o tempo que sobra do clipe. */
 function TalkRing({ k }) {
   const R = 22, C = 2 * Math.PI * R, resta = Math.max(0, 1 - k);
@@ -56,6 +56,9 @@ export default function Hud() {
   const br = h.mode === MODE.BR, noLobby = !!h.lobby;
   const arma = weaponOf(h.weapon || 0), armaIco = WEAPON_ICON[h.weapon | 0] || WEAPON_ICON[0];
   const falando = h.talk && h.talk.on;
+  // cinto: as armas com munição (bit 0 = míssil, sempre presente). Com mais de uma, o chip vira botão de troca.
+  const cinto = WEAPON_ICON.map((_, i) => i).filter(i => ((h.owned | 1) >> i) & 1);
+  const podeTrocar = cinto.length > 1;
   return <div id="hud" className={screen === "game" ? "" : "hidden"}>
     <div id="hud-top">
       <span className="chip" id="h-room"><i>{LB.room}</i> <b id="v-room">{h.room || room || "—"}</b></span>
@@ -77,7 +80,11 @@ export default function Hud() {
       <div className="score-row"><span className="k">{LB.coinIcon}</span> <b id="v-coins">{fmt(coins)}</b></div>
     </div>
     <div id="hud-status">
-      <div className={"chip" + (armed ? "" : " empty")} id="hud-ammo"><i>{armaIco}</i> {fireCd ? <b className="fire-cd">{fireCd}s</b> : <b id="v-ammo">{ammo}</b>} <span>{fireCd ? LB.fireCd : (LB.weapons[arma.key] || LB.ammo)}</span></div>
+      <button className={"chip belt" + (armed ? "" : " empty") + (podeTrocar ? " swap" : "")} id="hud-ammo"
+        title={podeTrocar ? `${LB.swapWeapon} (${LB.keySwap})` : undefined} {...press("swap")}>
+        <i>{armaIco}</i> {fireCd ? <b className="fire-cd">{fireCd}s</b> : <b id="v-ammo">{ammo}</b>} <span>{fireCd ? LB.fireCd : (LB.weapons[arma.key] || LB.ammo)}</span>
+        {podeTrocar ? <em className="belt-alt">{cinto.map(w => <span key={w} className={"belt-ico" + (w === (h.weapon | 0) ? " on" : "")}>{WEAPON_ICON[w]}</span>)}</em> : null}
+      </button>
       <div id="hud-pw">{pw.map(([k, v]) => k === "shield"
         ? <span key={k} className={"pw pw-shield lv-" + v} style={LV && LV[v - 1] ? { background: LV[v - 1].color } : undefined}><i>{PW_ICON.shield}</i>{LB.powerups.shield} <b>{LB.shieldLevel} {v} {"★".repeat(v)}</b></span>
         : <span key={k} className={"pw pw-" + k}><i>{PW_ICON[k] || "✦"}</i>{LB.powerups[k] || k} <b>{Math.ceil(v)}s</b></span>)}</div>
@@ -98,6 +105,7 @@ export default function Hud() {
       <button className={"tbtn" + (ejectReady ? "" : " cd")} id="t-eject" {...press("eject")}><span>{LB.eject}</span></button>
       <button className={"tbtn" + (armed ? "" : " empty") + (fireCd ? " cd" : "")} id="t-fire" {...press("fire")}><span>{LB.fire}</span><b id="t-ammo">{ammo}</b>{fireCd ? <em className="fire-cd">{fireCd}</em> : null}</button>
       <button className={"tbtn talk" + (falando ? " on" : "")} id="t-talk" {...press("talk")}><span>🎤</span></button>
+      {podeTrocar ? <button className="tbtn swap" id="t-swap" {...press("swap")}><span>{armaIco}</span><em>⇄</em></button> : null}
     </div>
   </div>;
 }

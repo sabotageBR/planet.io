@@ -136,8 +136,8 @@ export const BOUNCE={E:.55,E_SHIELD:.9,POS_CORR:.3,FX_MIN_VN:96,PUSH_S:.3,DIST_M
 // Curto de propósito: a trombada do asteroide tem que dar o solavanco e devolver a velocidade padrão na hora.
 export const WALL={E:.4,E_AST:.9,E_EJECT:.5};
 export const FOOD={COUNT:2500,R_MIN:6,R_MAX:15,SPECIAL_R:13,AMMO_P:.055,POWER_P:.045,HUES:12,MARGIN:40,NEAR_HAZARD_P:.22,NEAR_HAZARD_R:[260,620],
-  TYPES:["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield","w_burst","w_mine","w_cluster","w_nova"]};   // índice = FOOD_TYPE
-export const FOOD_TYPE={DUST:0,COMET:1,STAR:2,ROCK:3,AMMO:4,MERGE:5,MAGNET:6,SHIELD:7,W_BURST:8,W_MINE:9,W_CLUSTER:10,W_NOVA:11};   // 5 era o powerup de velocidade (removido); hoje é o de FUSÃO
+  TYPES:["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield","w_burst","w_cluster","w_nova"]};   // índice = FOOD_TYPE
+export const FOOD_TYPE={DUST:0,COMET:1,STAR:2,ROCK:3,AMMO:4,MERGE:5,MAGNET:6,SHIELD:7,W_BURST:8,W_CLUSTER:9,W_NOVA:10};   // 5 era o powerup de velocidade (removido); hoje é o de FUSÃO
 // As armas entram no FIM (8..11) porque o enum é DENSO e três testes de faixa dependem da ordem:
 // `type<=ROCK` ("é comida base, posso reescrever", world.js) e `type>=AMMO` ("é especial", world.js e o
 // atlas do cliente). Índice novo no meio quebraria os três de uma vez, em silêncio.
@@ -214,16 +214,16 @@ export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,R:11,SPAWN_CD
 // AIM_RANGE px de quem atira e a menos de AIM_PICK px do cursor; sem nada perto do cursor o míssil sai reto.
 // Era um CONE de ±0,45 rad escolhendo o mais próximo da PEÇA: o ângulo só abria o portão e mexer o mouse dentro
 // dele não trocava o alvo. Agora o alvo segue o cursor e troca sozinho quando ele passa por cima de outra bolinha.
-export const WEAPON={MISSILE:0,BURST:1,MINE:2,CLUSTER:3,NOVA:4};
+export const WEAPON={MISSILE:0,BURST:1,CLUSTER:2,NOVA:3};
 export const WEAPONS=[
   {id:0,key:"missile",label:"Míssil",  rarity:"comum",  weight:0, food:FOOD_TYPE.AMMO,     ammo:MISSILE.MAX_AMMO,cd:0,  shatter:true},
   {id:1,key:"burst",  label:"Rajada",  rarity:"comum",  weight:44,food:FOOD_TYPE.W_BURST,  ammo:4,cd:20, shatter:false,shrink:.975,n:6,spread:.17,speed:1180,life:96},
-  {id:2,key:"mine",   label:"Mina",    rarity:"incomum",weight:28,food:FOOD_TYPE.W_MINE,   ammo:2,cd:90, life:600,mineR:22,shatterN:[3,5],shatterDist:342,drop:200},
-  {id:3,key:"cluster",label:"Cacho",   rarity:"raro",   weight:19,food:FOOD_TYPE.W_CLUSTER,ammo:2,cd:60, shatter:true,n:4,splitD:560,spread:.55},
-  {id:4,key:"nova",   label:"Nova",    rarity:"épico",  weight:9, food:FOOD_TYPE.W_NOVA,   ammo:1,cd:150,blast:900,push:520,core:.34},
+  {id:2,key:"cluster",label:"Cacho",   rarity:"raro",   weight:30,food:FOOD_TYPE.W_CLUSTER,ammo:2,cd:60, shatter:true,n:4,splitD:560,spread:.55},
+  {id:3,key:"nova",   label:"Nova",    rarity:"épico",  weight:14,food:FOOD_TYPE.W_NOVA,   ammo:1,cd:150,blast:900,push:520,core:.34},
 ];
-// UMA arma por jogador: pegar outra TROCA e enche a munição (`ps.weapon`/`ps.missiles`). Por isso o INPUT
-// não precisa de seleção de arma e continua com 10 bytes. O míssil (weight 0) fica fora do sorteio de arma —
+// O jogador CARREGA VÁRIAS e troca com uma tecla (INPUT_FLAG.SWAP): `ps.ammo[arma]` guarda a munição de cada
+// uma e `ps.weapon` diz qual está na mão. O míssil é a arma base e nunca sai do cinto; as outras entram ao
+// pegar a comida correspondente (que já equipa a nova, senão o jogador pega e não vê nada acontecer). O míssil (weight 0) fica fora do sorteio de arma —
 // ele já cai como FOOD_TYPE.AMMO, que é a munição básica do jogo e existe nos dois modos.
 // Todas reaproveitam mecânica que já existe, em vez de inventar sistema novo:
 //   RAJADA  n projéteis retos e rápidos, sem homing e sem estilhaço (só HIT_SHRINK·shrink): é a arma de perto.

@@ -34,6 +34,61 @@ export function outText(c,txt,x,y,size,fill,stroke,w){
 // faixa de tamanho do sprite (128/256/512) por raio em pixels de mundo
 export const tier=r=>r<=44?128:r<=120?256:512;
 /**
+ * FOGOS DE ARTIFÍCIO (a comemoração de quem vence o battle royale) — devolve as primitivas de um FOGUETE
+ * inteiro para o instante `k` (0..1 da vida do efeito), do lançamento à queda das faíscas.
+ * Está aqui, e não copiado nos três temas, porque a FÍSICA é a mesma; o que muda por céu é só a paleta.
+ *
+ * O que faz parecer de verdade, em ordem de importância:
+ *  1. RASTRO — cada faísca é um traço do ponto anterior até o atual, não um ponto. Fogo real é registrado
+ *     como risco porque a faísca anda mais que o olho integra; um campo de pontinhos parece confete.
+ *  2. ARRASTO — o raio satura (`v/λ·(1−e^{−λu})`), então a explosão abre rápido e freia. Expansão linear
+ *     parece um pisca-pisca saindo do centro.
+ *  3. GRAVIDADE — o `+G·u²` faz a esfera virar sino e cair. É o que dá peso à cena.
+ *  4. COR EM TRÊS TEMPOS — branco quente → cor da carga → brasa. A faísca esfria enquanto cai.
+ *  5. CINTILAÇÃO — parte das faíscas pisca em alta frequência (o "crepitar" do estrôncio/magnésio).
+ *  6. SUBIDA COM DESACELERAÇÃO — o foguete chega ao ápice com velocidade quase zero, e é ali que estoura.
+ * @param {number} k 0..1 @param {{x:number,y:number,h:number,dx:number,n:number,seed:number,willow:boolean}} f
+ * @param {{hot:string,body:string,ember:string,trail:string}} pal
+ */
+export function fireworkPrims(k,f,pal){
+  const P=[],RISE=.28,n=f.n||40,rnd=mulberry((f.seed|0)+1);
+  // sorteio determinístico por faísca (mesma semente ⇒ mesmo desenho todo frame)
+  const A=[],V=[],T=[];
+  for(let i=0;i<n;i++){A.push(rnd()*6.2832);V.push(.55+rnd()*.45);T.push(rnd());}
+  const apice={x:f.x+f.dx*f.h,y:f.y-f.h};
+  if(k<RISE){                                        // ── subida ──
+    const u=k/RISE,e=1-(1-u)*(1-u);                  // desacelera até parar no ápice
+    const x=f.x+(apice.x-f.x)*e,y=f.y+(apice.y-f.y)*e;
+    const passo=f.h*.055;
+    for(let i=0;i<4;i++){const b=Math.max(0,e-i*.045),bx=f.x+(apice.x-f.x)*b,by=f.y+(apice.y-f.y)*b;
+      P.push({type:"line",x1:bx,y1:by,x2:bx+(x-bx)*.6,y2:by+(y-by)*.6,color:i?pal.trail:pal.hot,
+        alpha:(1-i*.24)*(.35+.65*u),width:Math.max(1.5,passo*(1-i*.2)*.5)});}
+    P.push({type:"ring",x,y,r:passo*(.9+u*.5),color:pal.hot,alpha:.9,width:Math.max(1.5,passo*.35)});
+    return P;}
+  // ── estouro ──
+  const u=(k-RISE)/(1-RISE),LAM=1.5,G=f.willow?.95:.55;
+  const dist=uu=>(1-Math.exp(-LAM*uu))/LAM;          // arrasto: o raio satura
+  // R0/LAM ≈ .55·h de raio final: a bola tem que abrir MAIS LARGA que meia subida, senão parece faísca de vela
+  const R0=f.h*(f.willow?1.25:1.05),du=.085;
+  const flash=u<.10?1-u/.10:0;
+  if(flash>0){                                        // clarão do estouro
+    P.push({type:"star",x:apice.x,y:apice.y,r:R0*.10*(1+u*4),n:14,inner:.22,phase:u,fill:pal.hot,alpha:flash*.85});
+    P.push({type:"ring",x:apice.x,y:apice.y,r:R0*(.06+u*3.2),color:pal.body,alpha:flash*.5,width:Math.max(1.5,R0*.02)});}
+  const fade=u<.78?1:1-(u-.78)/.22;                   // as faíscas apagam no fim
+  for(let i=0;i<n;i++){
+    const a=A[i],v=V[i]*R0,ca=Math.cos(a),sa=Math.sin(a);
+    const dd=du*(1-u*.6);                             // o rastro encurta enquanto a faísca perde velocidade
+    const d1=dist(u)*v,d0=dist(Math.max(0,u-dd))*v;
+    const g1=G*R0*u*u,g0=G*R0*Math.max(0,u-dd)**2;
+    const x1=apice.x+ca*d1,y1=apice.y+sa*d1+g1,x0=apice.x+ca*d0,y0=apice.y+sa*d0+g0;
+    // cor em três tempos + cintilação em parte das faíscas
+    const cor=u<.18?pal.hot:u<.62?pal.body:pal.ember;
+    const cint=T[i]>.55?(.55+.45*Math.sin(u*46+i*2.1)):1;
+    P.push({type:"line",x1:x0,y1:y0,x2:x1,y2:y1,color:cor,
+      alpha:Math.max(0,fade*cint*(1-u*.35)),width:Math.max(1,R0*.014*(1-u*.45))});}
+  return P;}
+
+/**
  * HALO assado (o brilho das partículas): gradiente radial da cor da bolinha até transparente, desenhado no
  * frame INTEIRO do atlas — o corpo ocupa só `size/2/K`, então o resto da moldura é exatamente a sobra por
  * onde o brilho vaza para fora do disco.
@@ -58,12 +113,12 @@ export function paintGlow(c,size,color,{core=.26,k=.40}={}){
 
 // tipos de comida: o mockup usa strings; shared/src/constants.js FOOD_TYPE usa índices. Aceita os dois.
 const FOOD_NAMES=["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield",
-  "w_burst","w_mine","w_cluster","w_nova"];   // 8..11 = as armas do Battle Royale (índice = FOOD_TYPE)
+  "w_burst","w_cluster","w_nova"];   // 8..10 = as armas do Battle Royale (índice = FOOD_TYPE)
 export const foodType=t=>typeof t==="number"?(FOOD_NAMES[t]||"dust"):(t||"dust");
 export const FOOD_ICON={missile_ammo:"🚀",powerup_merge:"⚛️",powerup_magnet:"🧲",powerup_shield:"🛡️",
-  w_burst:"✳️",w_mine:"🕳️",w_cluster:"💥",w_nova:"🌟"};
+  w_burst:"✳️",w_cluster:"💥",w_nova:"🌟"};
 export const FOOD_FIXED={powerup_merge:"#5cf08a",powerup_magnet:"#ff66ff",powerup_shield:"#44aaff",missile_ammo:"#ff6600",
-  w_burst:"#ffd24a",w_mine:"#9b6bff",w_cluster:"#ff5c8a",w_nova:"#66f0ff"};   // cores dos especiais (engine2 mkFood); a raridade sobe na escala quente→fria
+  w_burst:"#ffd24a",w_cluster:"#ff5c8a",w_nova:"#66f0ff"};   // cores dos especiais (engine2 mkFood); a raridade sobe na escala quente→fria
 
 // desenha as primitivas de effects.fx() num contexto 2D (referência; o Pixi faz o equivalente)
 export function drawPrims(c,prims){

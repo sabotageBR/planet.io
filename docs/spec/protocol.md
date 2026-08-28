@@ -1,7 +1,7 @@
 # Protocolo de rede planet.io v2
 
 Transporte: WebSocket em `/ws/<shard>`. Mensagens de **controle** são JSON (texto); mensagens de **jogo** são
-binárias (`ArrayBuffer`, little-endian, `DataView`). `PROTOCOL_VERSION = 9` (em `shared/src/protocol/constants.js`). **v9**: MODOS DE JOGO — o PLAYERS ganhou `team`, o `self` ganhou `weapon`/`alive` (22 → 24 bytes), o create de MISSILE ganhou `weapon` e entraram as mensagens `ZONE`, `VOICE` e `VOICE_UP`. **v8**: o `self` ganhou `threat`/`threatDir` (alerta de míssil teleguiado vindo em mim), 20 → 22 bytes. **v7**: o `self` ganhou `fireCd` (carência de tiro do spawn), 18 → 20 bytes. **v6**: o LEADERBOARD passou a levar x,y de TODOS os vivos. **v5**: o `hue` do EJECT deixou de carregar o `skinId` do dono (que o cliente nunca leu — a cor sai do `owner`) e passou a carregar o **tier do fragmento** (`FRAG_KIND`).
+binárias (`ArrayBuffer`, little-endian, `DataView`). `PROTOCOL_VERSION = 10` (em `shared/src/protocol/constants.js`). **v10**: cinto de armas — o INPUT ganhou a flag `SWAP` (num bit que já sobrava, então continua com 10 bytes) e o `self` ganhou `owned`, o bitmask do que dá para chavear (24 → 25 bytes). **v9**: MODOS DE JOGO — o PLAYERS ganhou `team`, o `self` ganhou `weapon`/`alive` (22 → 24 bytes), o create de MISSILE ganhou `weapon` e entraram as mensagens `ZONE`, `VOICE` e `VOICE_UP`. **v8**: o `self` ganhou `threat`/`threatDir` (alerta de míssil teleguiado vindo em mim), 20 → 22 bytes. **v7**: o `self` ganhou `fireCd` (carência de tiro do spawn), 18 → 20 bytes. **v6**: o LEADERBOARD passou a levar x,y de TODOS os vivos. **v5**: o `hue` do EJECT deixou de carregar o `skinId` do dono (que o cliente nunca leu — a cor sai do `owner`) e passou a carregar o **tier do fragmento** (`FRAG_KIND`).
 Slots: cada jogador da sala tem um `slot` u16 estável enquanto está na sala. Ids de entidade: u32 incrementais por sala.
 
 ## Quantização
@@ -24,7 +24,7 @@ JSON:
 Binário `VOICE_UP` (0x02): `u8 0x02 | u8 codec | u16 durMs | u16 len | bytes`. Clipe de push-to-talk (Ctrl). `codec 0` = µ-law 8 kHz mono. O servidor NÃO decodifica: valida tamanho (`VOICE.MAX_BYTES`), duração (`MIN_MS`..`MAX_MS`), o cooldown do jogador (`CD_MS`) e o teto da sala (`ROOM_CPS`), e relaya. O `maxPayload` do WS acompanha `VOICE.MAX_BYTES` — com os 4 KB de antes o `ws` derrubava o frame e a conexão junto.
 
 Binário `INPUT` (10 bytes): `u8 0x01 | u16 seq | u16 tx | u16 ty | u8 flags | u16 clientTick(low)`.
-`flags`: `SPLIT=1, EJECT=2, EJECT_HOLD=4, FIRE=8, AIM=16` (AIM acompanha FIRE: tiro **mirado** — o míssil trava no objeto mais próximo dentro do cone ±MISSILE.AIM_CONE em volta de `tx,ty` (peça inimiga, míssil inimigo ou asteroide, até AIM_RANGE) e só vai reto se o cone estiver vazio). `tx,ty` quantizados como posição. Ações são one-shot por `seq`: o
+`flags`: `SPLIT=1, EJECT=2, EJECT_HOLD=4, FIRE=8, AIM=16, SWAP=32` (SWAP troca para a próxima arma com munição; o míssil está sempre na roda, mesmo zerado) (AIM acompanha FIRE: tiro **mirado** — o míssil trava no objeto mais próximo dentro do cone ±MISSILE.AIM_CONE em volta de `tx,ty` (peça inimiga, míssil inimigo ou asteroide, até AIM_RANGE) e só vai reto se o cone estiver vazio). `tx,ty` quantizados como posição. Ações são one-shot por `seq`: o
 servidor processa cada `seq` uma vez (guarda `lastSeq`); o cliente reenvia a flag nos inputs seguintes até `ackSeq >= seq`.
 Taxa: ≤ 30 Hz e só quando muda (>2 px ou flag); keepalive a 10 Hz.
 
@@ -64,7 +64,7 @@ Binário (primeiro byte = tipo):
   - update: `u32 id | u8 mask` + campos presentes na ordem: `X_Y=1 (u16 x,u16 y)`, `R=2 (u16 r10)`, `V=4 (i16 vx,i16 vy)`, `FLAGS=8 (u8)`, `EXTRA=16 (u8 phase + u16 influenceR — buraco negro e estrela)`
   - remove: `u32 id | u8 reason (0 LEFT_AOI,1 EATEN,2 MERGED,3 POPPED,4 EXPIRED,5 SUCKED,6 DESPAWN)`
   - self: `u8 flags(DEAD=1,RESYNC=2 — descarte as entidades conhecidas antes de aplicar este snapshot) | u8 missiles | u8 powerupBits(magnet=1,shield=2) | u16 magnetT | u8 shieldLv(0..3; o escudo não expira) | u32 score | u8 splitCd | u8 ejectCd | u16 fireCd(carência de tiro do spawn, ticks) | u16 rank | u32 mass | u8 threat | u8 threatDir` (22 bytes)
-    - `weapon`: a arma equipada (uma por jogador; pegar outra troca e reabastece) — `missiles` é a munição DELA. `alive`: quantos jogadores ainda estão vivos (o "restam N" do Battle Royale).
+    - `weapon`: a arma NA MÃO; `missiles` é a munição dela. `owned` é o bitmask das armas com munição (bit 0 = míssil, sempre ligado) — é o que o HUD acende para dizer o que dá para chavear com o SWAP. `alive`: quantos jogadores ainda estão vivos (o "restam N" do Battle Royale).
     - `flags` ganhou `LOBBY=4` (a partida não começou) e `ZONE_HURT=8` (estou fora da zona, queimando).
     - `threat`: 0 = nada vindo; 1..255 = quão perto está o míssil teleguiado que mira NESTE slot e está se aproximando (255 = colado), medido em `MISSILE.ALERT_DIST`. `threatDir`: ângulo peça→míssil em 1/256 de volta.
       Vem do servidor de propósito: a AOI de um jogador pequeno tem meia-largura ~1250 px e o míssil nasce muito além disso, então um alerta puramente client-side chegaria com menos de 2 s de sobra. Dentro da AOI o cliente prefere a direção do míssil de verdade (é exata) e só usa `threatDir` fora dela.

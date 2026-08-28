@@ -11,7 +11,7 @@
 //   textures.bandLayers()          camadas de parallax + estrelas grandes + planetas de cenário (seed fixa)
 //   effects.fx(kind,k,f)           primitivas {ring|star|text|line|burst} do drawFx (k=age/ttl)
 //   hud / world                    números do drawHud / drawTrail / drawCell / drawWorld
-import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow} from "../util.js";
+import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow,fireworkPrims} from "../util.js";
 import {paintPattern,paintHole,paintNova} from "../patterns.js";
 
 const INK="#141026",CREAM="#fff5c2",YEL="#ffc22e",ORA="#ff6b4a",BLU="#3fc4ff",PUR="#c56bff",GRN="#3ddc5f";
@@ -149,9 +149,13 @@ export const world={grid:{step:150,color:"rgba(255,245,194,.09)",width:2},border
 // ── efeitos (drawFx) como primitivas; k=age/ttl, f={x,y,r,nx,ny,power} ──
 // escudo por nível (1 → 2 → 3): cor, largura, pulso e nº de anéis — usados pelos anéis (Planets.js), pelo HUD e pelos efeitos
 const SHIELD_LV=[{color:BLU,widthK:1,pulse:.012,alpha:[.6,1],rings:1},{color:PUR,widthK:1.25,pulse:.02,alpha:[.7,1],rings:1},{color:YEL,widthK:1.5,pulse:.03,alpha:[.85,1],rings:2}],ROCK_DUST="#b8a898";
+// paletas dos fogos da vitória: a FÍSICA é compartilhada (fireworkPrims em theme/util.js), aqui só a cor.
+// Cinco cargas diferentes para a salva não sair monocromática — é o que separa "fogos" de "um efeito repetido".
+const FOGOS=[{hot:"#fffdf0",body:YEL,ember:ORA,trail:"#ffd9a0"},{hot:"#fffdf0",body:BLU,ember:"#2f7fc0",trail:"#c6ecff"},{hot:"#fffdf0",body:PUR,ember:"#7a3fb0",trail:"#e6ccff"},{hot:"#fffdf0",body:GRN,ember:"#2a8f42",trail:"#ccffd8"},{hot:"#fffdf0",body:ORA,ember:"#a33a12",trail:"#ffd2b0"}];
 export const effects={
   fx(kind,k,f){const a=1-k,P=[];
     switch(kind){
+      case "firework":return fireworkPrims(k,f,FOGOS[(f.seed|0)%FOGOS.length]);
       case "bounce":{const s=f.r*(.7+k*.3)*(.6+(f.power||1)*.5),rot=(f.nx||0)*.6;
         P.push({type:"star",x:f.x,y:f.y,r:s,n:8,inner:.55,phase:0,rot,fill:YEL,stroke:INK,width:Math.max(2,s*.08)});
         P.push({type:"text",x:f.x,y:f.y,text:"POW!",size:Math.max(10,s*.5),fill:"#fff",stroke:INK,font:FONT,rot});break;}

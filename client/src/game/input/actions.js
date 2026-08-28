@@ -1,4 +1,4 @@
-// ── AÇÕES: teclado/HUD/mouse → flags do InputSender (split, eject one-shot + hold, fire com mira) ──
+// ── AÇÕES: teclado/HUD/mouse → flags do InputSender (split, eject one-shot + hold, fire com mira, swap) ──
 // CANCELAR o tiro: com a mira carregada, o ESPAÇO (e o botão direito, que é a mesma ação "split") desarma em vez
 // de dividir — e como o `down` do tiro não manda NADA para o servidor, cancelar é 100% local: some a reta, e o
 // `up` do botão cai fora do `if(held)` e não dispara. O preço é não dar para dividir com um tiro carregado.
@@ -17,6 +17,7 @@ export function createActions({input,prefs,ammo,canAct,onAim=null,onCancel=null}
   const act=(action,phase)=>{if(!canAct()){if(phase==="up"){input.setHold(false);disarm();}return;}
     if(action==="split"){if(phase==="down"){if(held){disarm();if(onCancel)onCancel();return;}input.press(INPUT_FLAG.SPLIT);}}
     else if(action==="eject"){if(phase==="down"){input.press(INPUT_FLAG.EJECT);if(prefs().holdEject!==false)input.setHold(true);}else input.setHold(false);}
+    else if(action==="swap"){if(phase==="down"){disarm();input.press(INPUT_FLAG.SWAP);}}   // trocar com a mira carregada desarma: a arma nova não herda o alvo
     else if(action==="fire"){
       if(phase==="down"){if(held)return;
         if(ammo()>0){held=true;timer=setTimeout(()=>{timer=0;setAim(true);},AIM_MS);}else input.press(INPUT_FLAG.EJECT);}

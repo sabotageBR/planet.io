@@ -10,7 +10,7 @@ import {rectHas} from "@planet/shared";
 import {colorOf} from "../../util.js";
 
 const MAX=32,TTL={bounce:14,pop:22,boom:24,eat:16,suck:20,exit:20,split:16,merge:18,chip:12,shoot:16,rock:10,death:28,vanish:18,shieldBreak:22,shieldHit:14,shieldUp:24,clash:22,deflect:16,
-  starBurst:22,supernova:45,countdown:52,starHit:13,starSplit:28,smash:24,bigCrunch:70};
+  starBurst:22,supernova:45,countdown:52,starHit:13,starSplit:28,smash:24,bigCrunch:70,firework:150};   // fogo: ~2,5 s do lançamento à queda das faíscas
 const SPARK_MAX=64,SPARK_TTL=10*16.7,TEXT_PRE=4,TS=32,pts=[];
 export function createFx(R){
   const root=new Container(),active=[],gpool=[],tpool=[],sparks=[],ambient=[],sg=new Graphics(),ag=new Graphics();root.addChild(ag,sg);let budget=1;

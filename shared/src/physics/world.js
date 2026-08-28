@@ -25,8 +25,9 @@ import * as R from "./rules.js";
  * @property {Body[]} pieces        refs (ordem de criação; compactada 1×/passo)
  * @property {number} team          equipe (-1 = sem equipe: todo mundo é inimigo). Fogo amigo e "quem come quem"
  *                                 saem daqui, não do bot — ver rules.sameTeam
- * @property {number} weapon        WEAPON.* equipada; `missiles` é a munição DELA (pegar outra arma troca e reabastece)
- * @property {number} missiles      munição (do jogador; ímã e escudo são POR PEÇA, ver Body)
+ * @property {number} weapon        WEAPON.* na mão (troca com INPUT_FLAG.SWAP)
+ * @property {number[]} ammo        munição POR ARMA (o jogador carrega várias); `self.missiles` no fio é o
+ *                                  espelho de ammo[weapon]. Ímã e escudo continuam POR PEÇA, ver Body
  * @property {number} splitCdUntil
  * @property {number} ejectCdUntil
  * @property {number} fireCdUntil   carência de tiro do nascimento (MISSILE.SPAWN_CD_TICKS)
@@ -50,6 +51,8 @@ const POWER_TYPES=[FOOD_TYPE.MAGNET,FOOD_TYPE.SHIELD];   // sorteados com peso i
 // Armas (só no Battle Royale, `o.weapons`): tabela CUMULATIVA de pesos — é onde mora a raridade. O míssil
 // tem peso 0 e fica de fora: ele já cai como FOOD_TYPE.AMMO, a munição básica que existe nos dois modos.
 const WEAPON_DROPS=WEAPONS.filter(x=>x.weight>0),WEAPON_TOTAL=WEAPON_DROPS.reduce((a,x)=>a+x.weight,0);
+/** Cinto zerado com `n` de munição de míssil (a arma base, que o jogador nunca perde). */
+const newAmmo=n=>{const a=new Array(WEAPONS.length).fill(0);a[WEAPON.MISSILE]=n|0;return a;};
 const rollWeapon=rng=>{let v=rng.next()*WEAPON_TOTAL;for(const x of WEAPON_DROPS){v-=x.weight;if(v<=0)return x.food;}return WEAPON_DROPS[0].food;};
 // FOOD_TYPE.MERGE saiu do sorteio: ele só zerava o `mergeAt` das peças, então com o planeta INTEIRO — a maior
 // parte do tempo — o efeito era zero, e como caía no ramo de powerup ele nem dava massa nem pontos: a bola
@@ -182,9 +185,9 @@ export class World{
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true}={}){
     let ps=this.players.get(slot);
-    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,missiles,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,
-      ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false};this.players.set(slot,ps);}
-    else{this._dropPieces(ps);ps.isBot=isBot;ps.missiles=missiles;ps.team=team;ps.weapon=weapon;}
+    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,
+      ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false};this.players.set(slot,ps);}
+    else{this._dropPieces(ps);ps.isBot=isBot;ps.ammo=newAmmo(missiles);ps.team=team;ps.weapon=weapon;}
     // `spawn:false` = entrou na SALA mas ainda não no MAPA. É o lobby do battle royale: o jogador existe
     // (ocupa vaga, aparece no PLAYERS, escolhe equipe) e só ganha corpo na largada, via respawnPlayer.
     // Sem isso a única forma de "esperar" seria estar no mundo, comendo — que é outro jogo.
@@ -202,7 +205,7 @@ export class World{
   removePlayer(slot){const ps=this.players.get(slot);if(!ps)return;this._dropPieces(ps);ps.alive=false;this.players.delete(slot);}
   /** Renasce com uma peça nova (score zera salvo `score`). Retorna a peça ou null se o slot não existe. */
   respawnPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,score=0}={}){const ps=this.players.get(slot);if(!ps)return null;
-    this._dropPieces(ps);ps.score=score;ps.splitCdUntil=ps.ejectCdUntil=0;ps.weapon=WEAPON.MISSILE;return this._spawnPiece(ps,x,y,r);}
+    this._dropPieces(ps);ps.score=score;ps.splitCdUntil=ps.ejectCdUntil=0;ps.weapon=WEAPON.MISSILE;ps.ammo=newAmmo(0);return this._spawnPiece(ps,x,y,r);}
   setTarget(slot,tx,ty){const ps=this.players.get(slot);if(!ps)return;ps.tx=clamp(tx,0,this.w);ps.ty=clamp(ty,0,this.h);}
   requestSplit(slot){const ps=this.players.get(slot);if(ps)ps.splitReq=true;}
   requestEject(slot){const ps=this.players.get(slot);if(ps)ps.ejectReq=true;}
@@ -210,6 +213,8 @@ export class World{
     if(!on&&ps.ejectHold)ps.ejectRamp=0;ps.ejectHold=!!on;}   // soltou o W: a próxima cusparada volta a sair perto
   /** `aim`: tiro mirado — trava na bolinha mais próxima do ponteiro (cursor no vazio: sai reto). */
   requestFire(slot,aim=false){const ps=this.players.get(slot);if(ps){ps.fireReq=true;ps.fireAim=!!aim;}}
+  /** Chavear de arma (one-shot por seq, como split/eject/fire). */
+  requestSwap(slot){const ps=this.players.get(slot);if(ps)ps.swapReq=true;}
   /**
    * Reconstrói a grade da comida se algo mudou (spawn, ímã, buraco negro, compactação). Os índices dela
    * apontam para `this.food`, então quem consulta fora do passo — a AOI do snapshot — precisa chamar isto
@@ -239,8 +244,9 @@ export class World{
           if(tick>ps.ejectCdUntil+EJECT.RAMP_RESET_TICKS)ps.ejectRamp=0;   // parou de cuspir: a força recomeça do início
           ps.ejectCdUntil=tick+EJECT.COOLDOWN_TICKS;
           if(R.applyEject(this,ps)&&ps.ejectRamp<EJECT.RAMP_N)ps.ejectRamp++;}
+        if(ps.swapReq)R.swapWeapon(this,ps);   // trocar antes de atirar: no mesmo tick, o tiro sai com a arma nova
         if(ps.fireReq)R.applyFire(this,ps);}
-      ps.splitReq=ps.ejectReq=ps.fireReq=false;ps.fireAim=false;}
+      ps.splitReq=ps.ejectReq=ps.fireReq=ps.swapReq=false;ps.fireAim=false;}
     // ── 2. integração ──
     const zc=this.zoneNow();
     for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner);

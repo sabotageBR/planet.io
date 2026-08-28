@@ -8,7 +8,7 @@
 import {BOT,BLACKHOLE,STAR,ASTEROID,MISSILE,FOOD_TYPE,ZONE,WEAPONS,weaponOf} from "./constants.js";
 import {INPUT_FLAG} from "./protocol/constants.js";
 import {clamp} from "./util.js";
-import {incomingMissile,sameTeam,outOfZone} from "./physics/rules.js";
+import {incomingMissile,sameTeam,outOfZone,ammoOf} from "./physics/rules.js";
 
 const HUMAN_BONUS=1.5;   // entre duas presas iguais, a humana vale mais (bot que caça bot é chato de ver)
 const TAU=6.28318;
@@ -24,7 +24,7 @@ function centroid(ps){let sx=0,sy=0,big=0,n=0;const arr=ps.pieces;
 /** Quanto uma comida vale para este bot agora (0 = ignora); powerup só vale se ele puder usar. @param {Body} f */
 function foodValue(f,ps,c){
   switch(f.type){
-    case FOOD_TYPE.AMMO:return ps.missiles<weaponOf(ps.weapon).ammo?36:4;
+    case FOOD_TYPE.AMMO:return ammoOf(ps)<weaponOf(ps.weapon).ammo?36:4;
     case FOOD_TYPE.SHIELD:return 40;
     case FOOD_TYPE.MAGNET:return 26;
     default:
@@ -49,7 +49,7 @@ export class BotBrain{
 
   act(tick){
     const w=this.w,ps=w.players.get(this.slot);if(!ps||!ps.alive)return;const c=centroid(ps);if(!c)return;const rng=this.rng,p=this.p;
-    const armed=ps.missiles>0&&tick>=ps.fireCdUntil;   // na carência de spawn o applyFire recusa: nem gasta o input
+    const armed=ammoOf(ps)>0&&tick>=ps.fireCdUntil;   // na carência de spawn o applyFire recusa: nem gasta o input
     if(tick>=this.nextThink){this._think(ps,c,tick);this.nextThink=tick+rng.int(BOT.THINK_TICKS[0],BOT.THINK_TICKS[1]);}
     let tx=this.wx,ty=this.wy,flags=0,shield=false;
     for(let i=0;i<ps.pieces.length;i++){const q=ps.pieces[i];if(!q.dead){shield=q.shieldLv>0;break;}}   // escudo é por peça: vale o da que atira (1ª viva)
@@ -70,7 +70,7 @@ export class BotBrain{
     else if(this.mode==="food"){const f=w.entityById.get(this.target);
       if(f&&!f.dead){this.wx=f.x;this.wy=f.y;
         // no caminho da comida, se der um tiro de graça em quem está no cone, dá
-        if(!shield&&armed&&ps.missiles>=MISSILE.MAX_AMMO&&rng.chance(fireP*.5))flags|=INPUT_FLAG.FIRE|INPUT_FLAG.AIM;}
+        if(!shield&&armed&&ammoOf(ps)>=weaponOf(ps.weapon).ammo&&rng.chance(fireP*.5))flags|=INPUT_FLAG.FIRE|INPUT_FLAG.AIM;}
       else this._wander(c);}
     else if(Math.hypot(this.wx-c.x,this.wy-c.y)<BOT.WAYPOINT_DONE)this._wander(c);
     tx=this.wx;ty=this.wy;
@@ -94,7 +94,7 @@ export class BotBrain{
         if(!o.isBot&&tick-o.spawnTick<BOT.SPAWN_GRACE_TICKS)continue;   // acabou de cair no mapa: deixa o humano respirar
         const v=oc.big*(o.isBot?1:HUMAN_BONUS)-d*.1;if(v>hv){hv=v;hunt=o.slot;}}}
     // míssil inimigo vindo para cima do bot: virar para ele e derrubar com outro míssil (mesmo predicado do alerta do humano)
-    if(ps.missiles>0&&tick>=ps.fireCdUntil){const m=incomingMissile(w,this.slot,c.x,c.y,BOT.MISSILE_FEAR);
+    if(ammoOf(ps)>0&&tick>=ps.fireCdUntil){const m=incomingMissile(w,this.slot,c.x,c.y,BOT.MISSILE_FEAR);
       if(m){this.mode="intercept";this.target=m.id;return;}}
     if(flee>=0){this.mode="flee";this.target=flee;return;}
     if(hunt>=0){this.mode="hunt";this.target=hunt;return;}

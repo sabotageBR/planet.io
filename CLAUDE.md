@@ -156,8 +156,12 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   cliente. O servidor continua sabendo (kills × botKills, economia, conquistas); quem não sabe é a tela.
   **Aliado é regra de FÍSICA** (`rules.sameTeam`, nos 6 pontos de
   decisão), não do bot; compartilhar partículas já funcionava de graça (o cooldown do ejetado é só do DONO).
-  **Armas** (`WEAPONS`): míssil + Rajada/Mina/Cacho/Nova, todas em cima de mecânica existente — a Mina é o
-  BLACKHOLE dormente, a Nova é o laço da supernova. `acceptsJoin()` é a porta única de entrada da sala.
+  **Armas** (`WEAPONS`): míssil + Rajada/Cacho/Nova, em cima de mecânica existente (a Nova é o laço da supernova).
+  O jogador CARREGA VÁRIAS: `ps.ammo[arma]` é a munição de cada uma, `ps.weapon` a que está na mão, e a troca é
+  `INPUT_FLAG.SWAP` (tecla Q / chip do HUD / botão de toque) — coube num bit que já sobrava, o INPUT segue com
+  10 bytes. O míssil nunca sai do cinto, nem zerado. `acceptsJoin()` é a porta única de entrada da sala.
+  **Vitória tem fogos**: quem vence vê a salva sair do próprio planeta (`fireworkPrims` em theme/util.js —
+  física compartilhada, paleta por tema; traço em vez de ponto, arrasto, gravidade, cor em 3 tempos, cintilação).
 - **Chat e voz** (`CHAT`/`VOICE` em constants): chat de sala ou de equipe (o escopo é do servidor), painel na
   faixa esquerda do HUD. Voz é push-to-talk no **Ctrl**, clipes curtos em **µ-law 8 kHz** — não Opus, porque o
   Safari não decodifica o webm que o Chrome grava e metade da sala ficaria muda. O servidor é relay puro (não

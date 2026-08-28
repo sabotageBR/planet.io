@@ -3,7 +3,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {createWorld,stepOwnPieces} from "../src/physics/index.js";
-import {sameTeam,zoneBurn,outOfZone,zoneMass,applyFire} from "../src/physics/rules.js";
+import {sameTeam,zoneBurn,outOfZone,zoneMass,applyFire,ammoOf,ownedMask} from "../src/physics/rules.js";
 import {createZone,stepZone,zoneAt,zoneR} from "../src/zone.js";
 import {createRng} from "../src/rng.js";
 import {WORLD,ZONE,PLAYER,DT,EJECT,MISSILE,WEAPON,WEAPONS,FOOD_TYPE,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood} from "../src/constants.js";
@@ -189,6 +189,7 @@ test("partículas: a cusparada vai direto para o companheiro, sem cooldown e sem
 // ── 4. armas ────────────────────────────────────────────────────────────────
 test("WEAPONS: a tabela é coerente e cada arma tem uma comida própria",()=>{
   assert.equal(WEAPONS.length,WEAPON.NOVA+1);
+  assert.equal(WEAPONS.find(x=>x.key==="mine"),undefined,"a mina saiu do jogo");
   WEAPONS.forEach((x,i)=>assert.equal(x.id,i,"o índice é o id (weaponOf indexa direto)"));
   assert.equal(WEAPONS[WEAPON.MISSILE].weight,0,"o míssil fica fora do sorteio: ele já cai como AMMO");
   const foods=new Set();for(const x of WEAPONS){assert.ok(!foods.has(x.food),`comida repetida: ${x.food}`);foods.add(x.food);}
@@ -196,24 +197,45 @@ test("WEAPONS: a tabela é coerente e cada arma tem uma comida própria",()=>{
     assert.ok(WEAPONS[i].food>=FOOD_TYPE.W_BURST,"arma entra no FIM do enum de comida (world/cliente testam faixas)");}
   assert.equal(weaponOfFood(FOOD_TYPE.DUST),-1);
   assert.equal(weaponOf(99).id,WEAPON.MISSILE,"arma desconhecida cai no míssil");});
-test("pegar arma TROCA a equipada e reabastece; AMMO respeita o teto da arma atual",()=>{
-  const w=empty(11);w.addPlayer(0,{x:4000,y:4000,r:100});
+test("cinto: a arma pega entra E vem na mão, sem jogar fora a que eu já tinha",()=>{
+  const w=empty(11);w.addPlayer(0,{x:4000,y:4000,r:100,missiles:2});
   const ps=w.players.get(0),pc=w.piecesOf(0)[0];
-  assert.equal(ps.weapon,WEAPON.MISSILE);
+  assert.equal(ps.weapon,WEAPON.MISSILE);assert.equal(ammoOf(ps),2);
   const solta=type=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;w.foodDirty=true;w.step();};
-  solta(FOOD_TYPE.W_NOVA);
-  assert.equal(ps.weapon,WEAPON.NOVA);assert.equal(ps.missiles,WEAPONS[WEAPON.NOVA].ammo);
-  solta(FOOD_TYPE.AMMO);
-  assert.equal(ps.missiles,WEAPONS[WEAPON.NOVA].ammo,"a Nova tem 1 de teto: AMMO não empilha acima dele");
   solta(FOOD_TYPE.W_BURST);
-  assert.equal(ps.weapon,WEAPON.BURST,"a arma nova troca a anterior — só se carrega uma");
-  assert.equal(ps.missiles,WEAPONS[WEAPON.BURST].ammo);});
+  assert.equal(ps.weapon,WEAPON.BURST,"pegar uma arma já a coloca na mão (pegar e não ver nada acontecer é pior que não pegar)");
+  assert.equal(ammoOf(ps),WEAPONS[WEAPON.BURST].ammo);
+  assert.equal(ps.ammo[WEAPON.MISSILE],2,"e o míssil continua no cinto, com a munição dele");
+  solta(FOOD_TYPE.AMMO);
+  assert.equal(ammoOf(ps),WEAPONS[WEAPON.BURST].ammo,"AMMO abastece a arma NA MÃO, respeitando o teto dela");});
+test("chavear: Q anda pelas armas com munição, e o míssil está sempre na roda",()=>{
+  const w=empty(41);w.addPlayer(0,{x:4000,y:4000,r:100,missiles:0});
+  const ps=w.players.get(0),pc=w.piecesOf(0)[0];
+  w.requestSwap(0);w.step();
+  assert.equal(ps.weapon,WEAPON.MISSILE,"só o míssil no cinto: trocar não muda nada");
+  const f=w.spawnFood();f.type=FOOD_TYPE.W_BURST;f.x=pc.x;f.y=pc.y;w.foodDirty=true;w.step();
+  assert.equal(ps.weapon,WEAPON.BURST);
+  w.requestSwap(0);w.step();
+  assert.equal(ps.weapon,WEAPON.MISSILE,"volta para o míssil mesmo com munição zero — é a arma base, não dá para ficar preso fora dela");
+  w.requestSwap(0);w.step();
+  assert.equal(ps.weapon,WEAPON.BURST,"e volta para a rajada: a roda é circular");
+  assert.equal(ownedMask(ps),(1<<WEAPON.MISSILE)|(1<<WEAPON.BURST),"o bitmask do HUD diz o que dá para chavear");});
+test("chavear: arma que zerou sai da roda (mas o míssil fica)",()=>{
+  const w=empty(42);w.addPlayer(0,{x:4000,y:4000,r:100,missiles:1});
+  const ps=w.players.get(0);
+  ps.ammo[WEAPON.BURST]=1;ps.weapon=WEAPON.BURST;arma(w);
+  w.setTarget(0,5000,4000);w.requestFire(0);w.step();
+  assert.equal(ps.ammo[WEAPON.BURST],0,"gastou a última rajada");
+  w.requestSwap(0);w.step();
+  assert.equal(ps.weapon,WEAPON.MISSILE);
+  w.requestSwap(0);w.step();
+  assert.equal(ps.weapon,WEAPON.MISSILE,"a rajada vazia saiu da roda");});
 test("RAJADA: sai um leque de projéteis retos, gasta 1 de munição e não estilhaça o alvo",()=>{
   const w=empty(12);w.addPlayer(0,{x:4000,y:4000,r:100});w.addPlayer(1,{x:5000,y:4000,r:300});arma(w);
-  const ps=w.players.get(0);ps.weapon=WEAPON.BURST;ps.missiles=WEAPONS[WEAPON.BURST].ammo;
+  const ps=w.players.get(0);ps.weapon=WEAPON.BURST;ps.ammo[WEAPON.BURST]=WEAPONS[WEAPON.BURST].ammo;
   w.setTarget(0,5000,4000);w.requestFire(0);w.step();
   assert.equal(w.missiles.filter(m=>!m.dead).length,WEAPONS[WEAPON.BURST].n,"n projéteis de uma vez");
-  assert.equal(ps.missiles,WEAPONS[WEAPON.BURST].ammo-1,"custa UMA munição, não uma por projétil");
+  assert.equal(ammoOf(ps),WEAPONS[WEAPON.BURST].ammo-1,"custa UMA munição, não uma por projétil");
   for(const m of w.missiles)assert.equal(m.hue,WEAPON.BURST,"o projétil carrega a arma (é o que vai no fio)");
   const antes=w.piecesOf(1).length,m0=w.massOf(1);
   let bateu=false;
@@ -229,7 +251,7 @@ test("RAJADA: sai um leque de projéteis retos, gasta 1 de munição e não esti
   assert.ok(Math.abs(chao-arrancado)<1e-6,`a massa arrancada tem que estar no chão: ${chao} vs ${arrancado}`);});
 test("CACHO: abre perto do alvo e os filhos NÃO abrem de novo (nada de bomba de população)",()=>{
   const w=empty(13);w.addPlayer(0,{x:2000,y:4000,r:100,missiles:3});w.addPlayer(1,{x:4000,y:4000,r:300});arma(w);
-  const ps=w.players.get(0);ps.weapon=WEAPON.CLUSTER;ps.missiles=1;
+  const ps=w.players.get(0);ps.weapon=WEAPON.CLUSTER;ps.ammo[WEAPON.CLUSTER]=1;
   w.setTarget(0,4000,4000);w.requestFire(0);w.step();
   assert.equal(w.missiles.filter(m=>!m.dead).length,1,"sai UM míssil");
   let pico=1;
@@ -241,25 +263,13 @@ test("NOVA: empurra e estilhaça inimigo perto, e não encosta em mim nem no ali
   const w=empty(14);
   // o miolo da Nova é blast·core ≈ 306 px: o inimigo entra nele, o companheiro fica fora do miolo mas dentro do sopro
   w.addPlayer(0,{x:4000,y:4000,r:120,team:1});w.addPlayer(1,{x:4000,y:4300,r:120,team:1});w.addPlayer(2,{x:4250,y:4000,r:120,team:2});arma(w);
-  const ps=w.players.get(0);ps.weapon=WEAPON.NOVA;ps.missiles=1;
+  const ps=w.players.get(0);ps.weapon=WEAPON.NOVA;ps.ammo[WEAPON.NOVA]=1;
   const meu=w.piecesOf(0).length,ali=w.piecesOf(1).length;
   w.setTarget(0,9000,4000);w.requestFire(0);w.step();
   assert.equal(w.piecesOf(0).length,meu,"a minha nova não me estilhaça");
   assert.equal(w.piecesOf(1).length,ali,"nem o companheiro");
   assert.ok(w.piecesOf(2).length>ali,"o inimigo no miolo é partido");
   assert.ok(w.events.some(e=>e.type==="SUPERNOVA"),"reusa a onda que o cliente já sabe desenhar");});
-test("MINA: vira um poço que estilhaça quem encosta, sem esmagar, e some sozinha",()=>{
-  const w=empty(15);w.addPlayer(0,{x:4000,y:4000,r:100,team:1});w.addPlayer(1,{x:4600,y:4000,r:100,team:2});arma(w);
-  const ps=w.players.get(0);ps.weapon=WEAPON.MINE;ps.missiles=1;
-  w.setTarget(0,4400,4000);w.requestFire(0);w.step();
-  const h=w.holes.find(x=>!x.dead);assert.ok(h,"a mina existe");assert.equal(h.hue,1,"marcada como mina");
-  assert.equal(h.srcSlot,0,"guarda o dono — é como ela sabe não ferir a própria equipe");
-  const antes=w.piecesOf(1).length;
-  for(let i=0;i<200;i++){w.setTarget(0,4000,4000);w.setTarget(1,h.x,h.y);w.step();}
-  assert.ok(w.piecesOf(1).length>antes,"quem encosta é ESTILHAÇADO");
-  assert.equal(w.players.get(1).alive,true,"e não morre: mina não é buraco negro");
-  for(let i=0;i<WEAPONS[WEAPON.MINE].life+120;i++)w.step();
-  assert.equal(w.holes.filter(x=>!x.dead).length,0,"a mina expira; a sala não acumula poços para sempre");});
 test("armas só caem no Battle Royale (o mundo Livre nunca sorteia uma)",()=>{
   const livre=createWorld({seed:16,asteroids:false,holes:0,stars:0});
   assert.equal(livre.food.some(f=>f.type>=FOOD_TYPE.W_BURST),false,"modo Livre: nenhuma arma no chão");
@@ -272,7 +282,7 @@ test("armas só caem no Battle Royale (o mundo Livre nunca sorteia uma)",()=>{
 test("a carência de tiro do nascimento continua valendo para TODAS as armas",()=>{
   const w=empty(17);w.addPlayer(0,{x:4000,y:4000,r:100});
   const ps=w.players.get(0);
-  for(const id of [WEAPON.MISSILE,WEAPON.BURST,WEAPON.MINE,WEAPON.CLUSTER,WEAPON.NOVA]){
-    ps.weapon=id;ps.missiles=2;ps.fireCdUntil=w.tick+MISSILE.SPAWN_CD_TICKS;
+  for(const id of [WEAPON.MISSILE,WEAPON.BURST,WEAPON.CLUSTER,WEAPON.NOVA]){
+    ps.weapon=id;ps.ammo[id]=2;ps.fireCdUntil=w.tick+MISSILE.SPAWN_CD_TICKS;
     assert.equal(applyFire(w,ps),false,`${WEAPONS[id].key} atirou dentro da carência`);
-    assert.equal(ps.missiles,2,"e nem gastou munição");}});
+    assert.equal(ammoOf(ps),2,"e nem gastou munição");}});

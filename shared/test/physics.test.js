@@ -22,7 +22,7 @@ const snapshot=w=>JSON.stringify({tick:w.tick,nextId:w.nextId,
   food:w.food.map(b=>[b.id,b.x,b.y,b.type,b.hue]),ejected:w.ejected.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.life]),
   asteroids:w.asteroids.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.r,b.type,b.ang]),holes:w.holes.map(b=>[b.id,b.x,b.y,b.k,b.type,b.life]),
   missiles:w.missiles.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.targetId,b.type]),stars:w.stars.map(b=>[b.id,b.x,b.y,b.vx,b.vy,b.r,b.k,b.type,b.life,b.hits,b.hue]),
-  players:[...w.players.values()].map(p=>[p.slot,p.alive,p.score,p.missiles])});
+  players:[...w.players.values()].map(p=>[p.slot,p.alive,p.score,p.ammo[0]])});
 
 // 1. determinismo: mesma seed + mesmos inputs → 3600 passos byte-idênticos
 test("determinismo: duas salas com a mesma seed e os mesmos inputs são idênticas após 3600 passos",()=>{
@@ -210,7 +210,7 @@ test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nív
   // cada tiro do dono custa UM nível (sem munição não custa nada); dividir derruba o escudo inteiro
   const w4=empty(32),q=w4.addPlayer(0,{x:1000,y:1000,r:90,missiles:0}),ps4=w4.players.get(0);w4.setTarget(0,1500,1000);q.shieldLv=2;q.shieldEvolveAt=1e9;
   arma(w4);w4.requestFire(0);w4.step();assert.equal(q.shieldLv,2,"sem munição não custa escudo");
-  ps4.missiles=2;w4.requestFire(0);w4.step();assert.equal(q.shieldLv,1,"1º tiro: −1 nível");assert.ok(w4.events.some(e=>e.type==="SHIELD_HIT"&&e.bySlot===-1));
+  ps4.ammo[0]=2;w4.requestFire(0);w4.step();assert.equal(q.shieldLv,1,"1º tiro: −1 nível");assert.ok(w4.events.some(e=>e.type==="SHIELD_HIT"&&e.bySlot===-1));
   w4.requestFire(0);w4.step();assert.equal(q.shieldLv,0,"2º tiro: zera");assert.ok(w4.events.some(e=>e.type==="SHIELD_BREAK"&&e.bySlot===-1));
   q.shieldLv=3;q.shieldEvolveAt=1e9;w4.requestSplit(0);w4.step();assert.equal(q.shieldLv,0,"dividir derruba o escudo da peça inteiro");
   assert.equal(w4.piecesOf(0).length,2);assert.equal(w4.piecesOf(0)[1].shieldLv,0,"a filha nasce sem powerup");
@@ -228,15 +228,15 @@ test("carência de tiro: ninguém nasce atirando — MISSILE.SPAWN_CD_TICKS a ca
   w.setTarget(0,1000,1000);w.addPlayer(1,{x:2000,y:1000,r:40});
   assert.equal(ps.fireCdUntil,w.tick+MISSILE.SPAWN_CD_TICKS,"a carência começa no nascimento");
   w.requestFire(0);w.step();
-  assert.equal(w.missiles.length,0,"na carência não sai tiro");assert.equal(ps.missiles,3,"e nem gasta a munição");
+  assert.equal(w.missiles.length,0,"na carência não sai tiro");assert.equal(ps.ammo[0],3,"e nem gasta a munição");
   while(w.tick<ps.fireCdUntil)w.step();
   w.requestFire(0);w.step();
-  assert.equal(w.missiles.length,1,"passados os 10 s, atira");assert.equal(ps.missiles,2);
+  assert.equal(w.missiles.length,1,"passados os 10 s, atira");assert.equal(ps.ammo[0],2);
   // renascer devolve a carência (senão bastava morrer para voltar armado)
   const pc=w.piecesOf(0)[0];w.killPiece(pc,"test",-1);const novo=w.respawnPlayer(0,{x:1000,y:1000,r:40});
   assert.ok(novo&&ps.fireCdUntil===w.tick+MISSILE.SPAWN_CD_TICKS,"renasceu: carência de novo");
-  ps.missiles=1;w.requestFire(0);w.step();assert.equal(w.missiles.filter(m=>!m.dead).length,1,"e não atira de novo (o míssil vivo é o de antes)");
-  assert.equal(ps.missiles,1,"munição intacta");
+  ps.ammo[0]=1;w.requestFire(0);w.step();assert.equal(w.missiles.filter(m=>!m.dead).length,1,"e não atira de novo (o míssil vivo é o de antes)");
+  assert.equal(ps.ammo[0],1,"munição intacta");
   // o tamanho NÃO é mais critério: r=START_R atira, desde que a carência tenha passado
   const w2=empty(35),p2=w2.addPlayer(0,{x:1000,y:1000,r:PLAYER.START_R,missiles:1}),ps2=w2.players.get(0);
   w2.setTarget(0,1000,1000);w2.addPlayer(1,{x:3000,y:1000,r:40});ps2.fireCdUntil=0;
@@ -728,7 +728,7 @@ test("massa: lasca de asteroide e dano de míssil não evaporam massa (e no piso
   assert.equal(w2.ejected.length,0,"no piso não sai fragmento");assert.equal(q.r,PLAYER.MIN_PIECE_R);
   // míssil: os HIT_DEBRIS cacos somam exatamente o que foi arrancado
   const w3=empty(127),big=w3.addPlayer(0,{x:2000,y:2000,r:250}),sh=w3.addPlayer(1,{x:2600,y:2000,r:40});
-  const ps1=w3.players.get(1);ps1.missiles=1;w3.setTarget(0,2000,2000);w3.setTarget(1,2000,2000);arma(w3);w3.requestFire(1,true);
+  const ps1=w3.players.get(1);ps1.ammo[0]=1;w3.setTarget(0,2000,2000);w3.setTarget(1,2000,2000);arma(w3);w3.requestFire(1,true);
   const mb=big.mass;let boom=null;for(let t=0;t<200&&!boom;t++){w3.step();boom=w3.events.find(e=>e.type==="BOOM")||null;}
   assert.ok(boom,"BOOM");
   const d=w3.ejected.filter(e=>!e.dead&&e.owner===0);assert.equal(d.length,MISSILE.HIT_DEBRIS,"HIT_DEBRIS cacos");

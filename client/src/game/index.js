@@ -102,6 +102,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // não vira flag de INPUT nem é predita; é uma mensagem própria (MSG.VOICE_UP).
     if(a==="talk"){if(ph==="down"){if(joined&&!dead&&curPrefs.voice!==false)mic.start();}else mic.stop();return;}
     if(a==="specPrev"||a==="specNext"){if(ph==="down")game.spectate({dir:a==="specNext"?1:-1});return;}
+    if(a==="swap"&&ph==="down")audio.play("weapon",{mine:true});
     actions.act(a,ph);};
   /** Botão do ponteiro: sem munição (ou na carência) o esquerdo cospe em vez de atirar — e isso também soa. */
   const button=(btn,ph,type)=>{
@@ -163,7 +164,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       pushHud(performance.now());   // na hora: o HUD roda a 8 Hz e a tela do lobby ficaria até 125 ms por cima da partida já em curso
       if(phase==="live"){audio.play("matchStart",{mine:true});chatSys("A partida começou!");}}
     else if(m.t==="chat"){pushChat(m);}
-    else if(m.t==="roundEnd"){roundOver=true;input.setHold(false);endOfWorld();pushHud(performance.now());if(onRoundEnd)onRoundEnd({...m,mySlot:view.mySlot});}
+    else if(m.t==="roundEnd"){roundOver=true;input.setHold(false);
+      const venci=m.champion&&m.champion.slot===view.mySlot;
+      if(venci)celebrate();                                   // ganhei: o planeta comemora
+      if(!venci||m.reason!=="lastAlive")endOfWorld();          // o mundo só explode quando acabou o TEMPO (ou quando não fui eu)
+      pushHud(performance.now());if(onRoundEnd)onRoundEnd({...m,mySlot:view.mySlot});}
     else if(m.t==="dead"){dead=true;input.setHold(false);mic.cancel();pushHud(performance.now());
       if(onDead)onDead({by:m.by,byHole:!!m.byHole,byZone:!!m.byZone,score:m.score,maxMass:m.maxMass,kills:m.kills,durationS:m.durationS,placement:m.placement||0,players:m.players||0});}
     else if(m.t==="spectate"){specSlot=m.slot>=0?m.slot:-1;spec={slot:specSlot,name:m.name||null,vivos:m.vivos|0};pushHud(performance.now());}   // morto: de quem é a cena que continua rodando atrás da tela de KABOOM
@@ -264,7 +269,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("planet:theme",onThemeEvent);if(themeGuard)removeEventListener("planet:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,
-      hud:()=>hudStore.get(),estado:()=>({modeId,teamSize,myTeam,phase,startsAt,roomCap,lobby,zone})},
+      hud:()=>hudStore.get(),estado:()=>({modeId,teamSize,myTeam,phase,startsAt,roomCap,lobby,zone}),
+      fogos:()=>celebrate()},   // aprovar a salva de olho sem ter de vencer um battle royale
   };
 
   // ── qualidade / modo econômico (0 = cheio, 1 = econômico, 2 = mínimo) ──
@@ -378,6 +384,31 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         urgency:roundClock&&roundClock.leftS<60?1-roundClock.leftS/60:0});}}   // mesma lista do aimTarget do servidor
   /** Fim do mundo: BIG CRUNCH — tudo colapsa para o centro da tela (o pódio vem pela tela React). */
   function endOfWorld(){if(!renderer)return;renderer.fx.add("bigCrunch",{x:cam.x,y:cam.y,r:cam.W/cam.scale*.6});audio.play("bigCrunch",{mine:true});}
+  /**
+   * VITÓRIA: a salva de fogos sai do MEU planeta, que é quem fica na tela atrás do pódio.
+   * Os foguetes são agendados com atraso (o `delayMs` que o fx já aceita para os eventos de terceiros), em
+   * pares e trios, com altura, inclinação, carga e cor sorteadas — uma salva regular soa a efeito repetido,
+   * e é justamente a irregularidade que faz parecer show de verdade. O som acompanha cada um: assobio na
+   * hora do lançamento e estouro no ápice (RISE do fireworkPrims), senão o áudio descola da imagem.
+   */
+  function celebrate(){
+    if(!renderer||!renderer.R.prefs.fx)return;
+    const mine=own0&&own0.length?own0:view.pieces.filter(p=>p.owner===view.mySlot);
+    if(!mine.length)return;
+    let big=mine[0];for(const p of mine)if(p.rr>big.rr)big=p;
+    const R=Math.max(60,big.rr),vista=cam.H/cam.scale;
+    const N=14,rnd=Math.random;let t=180;
+    for(let i=0;i<N;i++){
+      const h=vista*(.30+rnd()*.34),dx=(rnd()*2-1)*.45;
+      const f={x:big.rx+(rnd()*2-1)*R*.85,y:big.ry-R*.15,h,dx,r:h,n:34+((rnd()*14)|0),
+        seed:(rnd()*1e6)|0,willow:rnd()<.35};
+      renderer.fx.add("firework",f,t);
+      const dt=t,ap=t+150*16.7*.28;   // 0,28 da vida é a subida (RISE), onde o estouro acontece
+      setTimeout(()=>audio.play("fireUp",{x:f.x,y:f.y,cam,r:0}),dt);
+      setTimeout(()=>audio.play("fireBoom",{x:f.x,y:f.y-h,cam,r:h*.25}),ap);
+      t+=180+rnd()*420;   // cadência irregular, às vezes quase junto
+    }
+    setTimeout(()=>{if(joined)audio.play("podium",{mine:true});},600);}
 
   // ── HUD (8 Hz) ──
   function pushHud(now){const s=view.self,tk=buffer.tickAt(now),el=Math.max(0,tk-selfTick);
@@ -391,7 +422,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         startsInMs:lobby.startsInMs?Math.max(0,lobby.startsInMs-(now-lobby.at)):0,
         waitMs:lobby.waitMs?Math.max(0,lobby.waitMs-(now-lobby.at)):0,
         roster:[...view.players.values()].map(p=>({slot:p.slot,name:p.name,skinId:p.skinId,me:p.slot===view.mySlot}))}:null,
-      alive:s?s.alive:0,weapon:s?s.weapon|0:0,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
+      alive:s?s.alive:0,weapon:s?s.weapon|0:0,owned:s?s.owned|1:1,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
       talk:mic.state,chat:chatLog,spec});}
   function statsText(){const c=renderer.counts(),st=predictor.stats;
     const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";

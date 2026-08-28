@@ -3,7 +3,7 @@
 // ameixa → magenta → laranja SEM sol, nuvens em silhueta com fio pêssego, cenário em
 // silhueta. Estrutura: gaveta pela direita no desktop/paisagem, folhas no retrato.
 // Placar dourado, radar quente, botões teal/ouro/coral. Contrato: ver ../dawn/index.js.
-import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow} from "../util.js";
+import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow,fireworkPrims} from "../util.js";
 import {paintPattern,paintHole,paintNova} from "../patterns.js";
 
 const INK="#241238",CREAM="#fff1d6",GOLD="#ffb547",CORAL="#ff5e6c",TEAL="#2ec4b6",PEACH="#ffcf9a",PLUM="#3b1f6b",MAG="#e0417f",ORA="#ff8a3d",SIL="#2a1550";
@@ -130,9 +130,13 @@ export const world={grid:{step:150,color:"rgba(255,207,154,.09)",width:2},border
 
 // escudo por nível (1 → 2 → 3): cor, largura, pulso e nº de anéis — usados pelos anéis (Planets.js), pelo HUD e pelos efeitos
 const SHIELD_LV=[{color:TEAL,widthK:1,pulse:.012,alpha:[.6,1],rings:1},{color:MAG,widthK:1.25,pulse:.02,alpha:[.7,1],rings:1},{color:GOLD,widthK:1.5,pulse:.03,alpha:[.85,1],rings:2}],ROCK_DUST="#b8a898";
+// paletas dos fogos da vitória: a FÍSICA é compartilhada (fireworkPrims em theme/util.js), aqui só a cor.
+// Cinco cargas diferentes para a salva não sair monocromática — é o que separa "fogos" de "um efeito repetido".
+const FOGOS=[{hot:"#fffdf0",body:GOLD,ember:ORA,trail:"#ffe2b0"},{hot:"#fffdf0",body:CORAL,ember:"#a3243a",trail:"#ffc9cf"},{hot:"#fffdf0",body:TEAL,ember:"#12786f",trail:"#bdf4ee"},{hot:"#fffdf0",body:MAG,ember:"#8a1f4c",trail:"#ffc2de"},{hot:"#fffdf0",body:PEACH,ember:"#b26a2a",trail:"#ffe7cd"}];
 export const effects={
   fx(kind,k,f){const a=1-k,P=[];
     switch(kind){
+      case "firework":return fireworkPrims(k,f,FOGOS[(f.seed|0)%FOGOS.length]);
       case "bounce":{const s=f.r*(.7+k*.3)*(.6+(f.power||1)*.5),rot=(f.nx||0)*.6;
         P.push({type:"star",x:f.x,y:f.y,r:s,n:8,inner:.55,phase:0,rot,fill:GOLD,stroke:INK,width:Math.max(2,s*.08)});
         P.push({type:"text",x:f.x,y:f.y,text:"POW!",size:Math.max(10,s*.5),fill:CREAM,stroke:INK,font:FONT,rot});break;}

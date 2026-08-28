@@ -143,6 +143,12 @@ export const KIT={
               {t:"tom",type:"sine",f0:1760,dur:.06,gain:.05,at:.04}],
   micOn:     [{t:"tom",type:"sine",f0:660,f1:990,dur:.09,gain:.11}],                        // o microfone abriu (confirmação tátil do Ctrl)
   micOff:    [{t:"tom",type:"sine",f0:880,f1:520,dur:.1,gain:.09}],
+  fireUp:    [{t:"ruido",f0:900,f1:2600,dur:.55,gain:.05,q:6},                                // assobio da subida: ruído bem estreito subindo
+              {t:"tom",type:"sine",f0:520,f1:1500,dur:.55,gain:.05}],
+  fireBoom:  [{t:"ruido",f0:120,f1:40,dur:.5,gain:.34,q:.5},                                  // o estouro: grave que desaba
+              {t:"tom",type:"sine",f0:110,f1:38,dur:.42,gain:.26},
+              {t:"ruido",f0:2600,f1:900,dur:.14,gain:.14,q:1.1},                               // o "tá" seco do primeiro instante
+              {t:"ruido",f0:3200,dur:.05,gain:.07,q:3,rep:9,gap:.075,at:.16}],                 // crepitação das faíscas caindo
   weapon:    [{t:"ruido",f0:600,f1:2400,dur:.1,gain:.12,q:1.4},                             // arma nova no cinto: metálico, sobe
               {t:"tom",type:"square",f0:330,f1:660,dur:.14,gain:.12},
               {t:"tom",type:"triangle",f0:990,dur:.2,gain:.1,at:.08}],
@@ -150,14 +156,14 @@ export const KIT={
 
 /** Intervalo mínimo por tipo (ms): o que acontece muito não pode empilhar e virar metralhadora. */
 export const GAP={food:45,chip:70,bounce:60,starHit:80,shieldHit:70,deflect:70,ammo:120,countdown:200,smash:150,
-  eject:55,lock:70,hurt:180,uiHover:60,uiClick:40,toast:200,zoneBurn:400,chatIn:120,weapon:150};
+  eject:55,lock:70,hurt:180,uiHover:60,uiClick:40,toast:200,zoneBurn:400,chatIn:120,weapon:150,fireUp:90,fireBoom:90};
 
 /**
  * Prioridade por som (padrão 1). No teto de vozes o som novo ROUBA a voz de menor prioridade em vez de ser
  * descartado — antes o `play()` simplesmente desistia, então justo o que mais importa (o alerta de míssil, a
  * própria morte) sumia na hora em que a tela estava mais cheia, que é quando ele mais importa.
  */
-export const PRIO={uiHover:0,food:0,bounce:0,chip:0,starHit:0,chatIn:0,zoneBurn:1,
+export const PRIO={uiHover:0,food:0,bounce:0,chip:0,starHit:0,chatIn:0,zoneBurn:1,fireUp:2,fireBoom:4,
   death:5,deadScreen:5,hurt:4,boom:4,supernova:4,bigCrunch:5,podium:4,starBurst:3,shieldBreak:3,countdown:3,ready:2,lock:2,cancel:2,error:2,
   zoneShrink:4,matchStart:5,weapon:3,micOn:2,micOff:2};   // o fechamento da zona é aviso de morte: não pode ser roubado pela poeira
 

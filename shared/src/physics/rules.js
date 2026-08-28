@@ -138,15 +138,15 @@ export function eatPiece(w,killer,A,victim,B){
  */
 export function eatFood(w,ps,pc,f){
   f.dead=true;w.foodDirty=true;const t=f.type,tick=w.tick;
-  if(t===FOOD_TYPE.AMMO){const cap=weaponOf(ps.weapon).ammo;if(ps.missiles<cap)ps.missiles++;w.events.push({type:"AMMO",slot:ps.slot});}   // munição é da arma EQUIPADA (no míssil o teto é o MAX_AMMO de sempre)
+  if(t===FOOD_TYPE.AMMO){const cap=weaponOf(ps.weapon).ammo;if(ammoOf(ps)<cap)addAmmo(ps,1);w.events.push({type:"AMMO",slot:ps.slot});}   // munição é da arma EQUIPADA (no míssil o teto é o MAX_AMMO de sempre)
   else if(t===FOOD_TYPE.SHIELD){if(pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL)pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
   else if(t===FOOD_TYPE.MAGNET){if(pc.r<=POWERUP.MAGNET_MAX_R)pc.magnetUntil=(pc.magnetUntil>tick?pc.magnetUntil:tick)+POWERUP.TICKS;   // planeta grande não pega ímã: o alcance é r·MAGNET_RANGE e sugaria a tela inteira
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"magnet"});}
   else if(t===FOOD_TYPE.MERGE){const arr=ps.pieces;for(let i=0;i<arr.length;i++){const q=arr[i];if(!q.dead)q.mergeAt=tick;}   // vale para TODAS as peças: o poder é justamente juntar quem foi picado
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"merge"});}
-  else if(t>=FOOD_TYPE.W_BURST){const wi=weaponOfFood(t);   // arma nova TROCA a atual e reabastece: só se carrega uma
-    if(wi>0){ps.weapon=wi;ps.missiles=WEAPONS[wi].ammo;w.events.push({type:"POWERUP",slot:ps.slot,kind:"weapon",weapon:wi});}}
+  else if(t>=FOOD_TYPE.W_BURST){const wi=weaponOfFood(t);   // entra no cinto E já vem na mão (pegar e não ver nada acontecer é pior que não pegar)
+    if(wi>0){ps.ammo[wi]=WEAPONS[wi].ammo;ps.weapon=wi;w.events.push({type:"POWERUP",slot:ps.slot,kind:"weapon",weapon:wi});}}
   else{addMass(pc,f.mass*EAT.FOOD_GAIN);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD);}
   w.events.push({type:"FOOD_EATEN",slot:ps.slot,foodId:f.id,foodType:t,x:f.x,y:f.y});}
 
@@ -418,12 +418,6 @@ export function holePair(w,A,h){
   const ri=h.r*BLACKHOLE.INFLUENCE*h.k,rc=h.r*h.k;if(ri<LOCAL.HOLE_MIN_RI)return;
   switch(A.kind){
     case KIND.PIECE:{const d=pullBody(h,A,1,rc,ri);
-      if(h.hue===1){   // MINA (arma): não esmaga ninguém — quem encosta no núcleo é ESTILHAÇADO, com o cooldown de contato da estrela
-        if(d<rc&&!sameTeam(w,h.srcSlot,A.owner)&&w.tick>=A.chipUntil&&A.r>=STAR.SHATTER_MIN_R){
-          const wp=WEAPONS[WEAPON.MINE],dx=A.x-h.x,dy=A.y-h.y,dd=Math.sqrt(dx*dx+dy*dy)||1;
-          A.chipUntil=w.tick+STAR.SHATTER_CD_TICKS;
-          shatterPiece(w,w.players.get(A.owner),A,dx/dd,dy/dd,w.rng.int(wp.shatterN[0],wp.shatterN[1]),wp.shatterDist);}
-        break;}
       if(d<rc&&A.r<rc*BLACKHOLE.CRUSH_K&&w.tick>=A.cdUntil)crushPiece(w,w.players.get(A.owner),A,h);break;}
     case KIND.EJECT:{if(pullBody(h,A,BLACKHOLE.EJECT_PULL,rc,ri)<rc)A.dead=true;break;}   // pelota é engolida: o buraco é o sumidouro
     case KIND.MISSILE:{if(pullBody(h,A,BLACKHOLE.MISSILE_PULL,rc,ri)<rc){A.dead=true;
@@ -670,14 +664,29 @@ const AIM=[-1,0];
  * mandou um deles (type 0) — mais um interceptador no mesmo míssil seria desperdício, e quem atirou está por
  * perto; (3) senão o oponente vivo mais próximo; sem ninguém, direção aleatória. @param {World} w @param {PlayerState} ps
  */
+/** Munição da arma na mão. `ps.ammo` é a fonte única — `missiles` no fio é só o espelho dela. */
+export const ammoOf=ps=>ps.ammo[ps.weapon]|0;
+export const addAmmo=(ps,n)=>{ps.ammo[ps.weapon]=Math.max(0,(ps.ammo[ps.weapon]|0)+n);};
+/** Bitmask das armas com munição (o HUD acende os ícones do que dá para chavear). O míssil está sempre lá. */
+export const ownedMask=ps=>{let m=1;for(let i=1;i<ps.ammo.length;i++)if(ps.ammo[i]>0)m|=1<<i;return m;};
+/**
+ * Troca de arma (INPUT_FLAG.SWAP): vai para a PRÓXIMA com munição, em círculo. O míssil entra na roda mesmo
+ * zerado — é a arma base, e ficar preso numa arma vazia sem poder voltar para ela seria pior que não trocar.
+ * @param {PlayerState} ps
+ */
+export function swapWeapon(w,ps){
+  const n=ps.ammo.length;
+  for(let i=1;i<=n;i++){const cand=(ps.weapon+i)%n;
+    if(cand===WEAPON.MISSILE||ps.ammo[cand]>0){if(cand===ps.weapon)return false;
+      ps.weapon=cand;w.events.push({type:"SWAP",slot:ps.slot,weapon:cand});return true;}}
+  return false;}
 export function applyFire(w,ps){
-  if(ps.missiles<=0||w.tick<ps.fireCdUntil)return false;const src=firstLive(ps.pieces);if(!src)return false;
-  const wp=weaponOf(ps.weapon);ps.missiles--;
+  if(ammoOf(ps)<=0||w.tick<ps.fireCdUntil)return false;const src=firstLive(ps.pieces);if(!src)return false;
+  const wp=weaponOf(ps.weapon);addAmmo(ps,-1);
   if(wp.cd)ps.fireCdUntil=w.tick+wp.cd;   // a cadência da arma reusa o MESMO campo da carência de nascimento (e o mesmo `fireCd` do HUD)
   if(src.shieldLv>0)hitShield(w,src);     // um nível por PUXÃO de gatilho, não por projétil
   switch(ps.weapon){
     case WEAPON.BURST:return fireBurst(w,ps,src,wp);
-    case WEAPON.MINE:return fireMine(w,ps,src,wp);
     case WEAPON.NOVA:return fireNova(w,ps,src,wp);
     default:return fireHoming(w,ps,src);}}
 /** Míssil e Cacho: o teleguiado de sempre. O `hue` do corpo carrega a arma (é livre no míssil) e vai no fio. */
@@ -708,19 +717,6 @@ function fireBurst(w,ps,src,wp){
     const m=w.addMissile(src.x+ux*off,src.y+uy*off,ux*wp.speed,uy*wp.speed,ps.slot,-1);
     m.type=1;m.hue=WEAPON.BURST;m.life=w.tick+wp.life;}
   w.events.push({type:"FIRE",slot:ps.slot,missileId:-1,x:src.x,y:src.y,targetSlot:-1,targetMissile:-1,weapon:WEAPON.BURST});
-  return true;}
-/**
- * MINA GRAVITACIONAL: larga um poço parado à frente. É o BLACKHOLE inteiro — que está dormente no jogo
- * (BLACKHOLE.COUNT = 0) e cujo código nunca saiu — com raio menor (mineR, então a influência r·INFLUENCE
- * também encolhe), vida curta e o ESMAGAMENTO desligado: `hue = 1` marca "sou mina", e o holePair estilhaça
- * em vez de engolir. Reaproveitar isso é o que faz a arma custar ~10 linhas em vez de um sistema novo.
- */
-function fireMine(w,ps,src,wp){
-  dirTo(src.x,src.y,ps.tx,ps.ty,DIR);
-  const x=clamp(src.x+DIR[0]*(src.r+wp.drop),wp.mineR,w.w-wp.mineR),y=clamp(src.y+DIR[1]*(src.r+wp.drop),wp.mineR,w.h-wp.mineR);
-  const h=w.spawnHole({x,y,active:true});
-  setR(h,wp.mineR);h.life=w.tick+wp.life;h.hue=1;h.srcSlot=ps.slot;
-  w.events.push({type:"FIRE",slot:ps.slot,missileId:h.id,x,y,targetSlot:-1,targetMissile:-1,weapon:WEAPON.MINE});
   return true;}
 /**
  * NOVA PORTÁTIL: a onda da supernova, centrada em MIM e sem me atingir — empurra tudo em `blast` com

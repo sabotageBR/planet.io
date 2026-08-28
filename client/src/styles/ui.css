@@ -198,3 +198,12 @@ body[data-mode="portrait"] .brl-count b{font-size:2.2em}
 .dead-spec .spec-who{display:flex;flex-direction:column;align-items:center;min-width:140px}
 .dead-spec .spec-who i{font-style:normal;font-size:.72em;opacity:.6;letter-spacing:.1em}
 .dead-spec .spec-who b{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* cinto de armas: o chip da arma vira botão de troca quando há mais de uma (tecla Q faz o mesmo) */
+#hud-ammo.belt{cursor:pointer;position:relative;border:0;font:inherit;color:inherit}
+#hud-ammo.belt.swap::after{content:"⇄";margin-left:6px;opacity:.55;font-size:.9em}
+#hud-ammo .belt-alt{display:flex;gap:3px;position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 4px);
+  padding:2px 6px;border-radius:99px;background:var(--surface,#2226);border:2px solid var(--line,#0006);font-style:normal}
+#hud-ammo .belt-ico{opacity:.4;font-size:.85em;line-height:1}
+#hud-ammo .belt-ico.on{opacity:1;transform:scale(1.15)}
+#touch .tbtn.swap em{position:absolute;right:6px;bottom:4px;font-style:normal;font-size:.7em;opacity:.7}

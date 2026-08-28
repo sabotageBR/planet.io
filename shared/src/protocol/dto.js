@@ -59,6 +59,8 @@
  * @property {number} threatDir  direção peça→míssil em 1/256 de volta (só vale com threat > 0)
  * @property {number} weapon  WEAPON.* — a arma equipada; `missiles` é a munição DELA (u8)
  * @property {number} alive   quantos jogadores ainda estão vivos na sala (u8 saturado; o "restam N" do Battle Royale)
+ * @property {number} owned   bitmask das armas com munição (bit 0 = míssil, sempre ligado): é o que o HUD
+ *                            acende para dizer o que dá para chavear com a tecla de troca
  */
 /**
  * @typedef {object} Snapshot

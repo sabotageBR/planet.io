@@ -22,11 +22,11 @@ const KINDS=Object.values(KIND);
 function randCreate(kind){const e={kind,id:nextId++,x:rx(),y:ry(),r:rr()};
   switch(kind){
     case KIND.PIECE:Object.assign(e,{owner:slot(),vx:rv(),vy:rv(),flags:rng.int(0,15)});break;
-    case KIND.FOOD:Object.assign(e,{type:rng.int(0,11),hue:rng.int(0,11)});break;
+    case KIND.FOOD:Object.assign(e,{type:rng.int(0,10),hue:rng.int(0,11)});break;
     case KIND.EJECT:Object.assign(e,{owner:slot(),hue:rng.int(0,11),vx:rv(),vy:rv()});break;
     case KIND.ASTEROID:Object.assign(e,{seed:u16(),vx:rv(),vy:rv()});break;
     case KIND.BLACKHOLE:case KIND.STAR:Object.assign(e,{seed:u16(),influenceR:rng.int(0,3000),phase:rng.int(0,2)});break;
-    case KIND.MISSILE:Object.assign(e,{owner:slot(),target:slot(),vx:rv(),vy:rv(),weapon:rng.int(0,4)});break;}
+    case KIND.MISSILE:Object.assign(e,{owner:slot(),target:slot(),vx:rv(),vy:rv(),weapon:rng.int(0,3)});break;}
   return e;}
 function assertCreate(got,exp){assert.deepEqual(Object.keys(got).sort(),Object.keys(exp).sort(),"chaves do create");
   assert.equal(got.kind,exp.kind);assert.equal(got.id,exp.id);near(got.x,exp.x,EPS_POS,"x");near(got.y,exp.y,EPS_POS,"y");near(got.r,exp.r,EPS_R,"r");
@@ -40,7 +40,7 @@ function assertUpdate(got,exp){assert.deepEqual(Object.keys(got).sort(),Object.k
   if("x"in exp){near(got.x,exp.x,EPS_POS,"x");near(got.y,exp.y,EPS_POS,"y");}if("r"in exp)near(got.r,exp.r,EPS_R,"r");
   if("vx"in exp){near(got.vx,exp.vx,EPS_V,"vx");near(got.vy,exp.vy,EPS_V,"vy");}
   if("flags"in exp)assert.equal(got.flags,exp.flags);if("phase"in exp){assert.equal(got.phase,exp.phase);assert.equal(got.influenceR,exp.influenceR);}}
-const randSelf=()=>({flags:rng.int(0,1),missiles:rng.int(0,3),powerBits:rng.int(0,3),magnetT:u16(),shieldLv:rng.int(0,3),score:u32(),splitCd:rng.int(0,255),ejectCd:rng.int(0,255),fireCd:u16(),rank:rng.int(0,30),mass:u32(),threat:rng.int(0,255),threatDir:rng.int(0,255),weapon:rng.int(0,4),alive:rng.int(0,255)});
+const randSelf=()=>({flags:rng.int(0,1),missiles:rng.int(0,3),powerBits:rng.int(0,3),magnetT:u16(),shieldLv:rng.int(0,3),score:u32(),splitCd:rng.int(0,255),ejectCd:rng.int(0,255),fireCd:u16(),rank:rng.int(0,30),mass:u32(),threat:rng.int(0,255),threatDir:rng.int(0,255),weapon:rng.int(0,3),alive:rng.int(0,255),owned:rng.int(0,255)});
 const randRemove=()=>({id:rng.int(1,1e6),reason:rng.int(0,6)});
 const randSnapshot=(nPerKind=6,nU=30,nR=10)=>({tick:u32(),ackSeq:u16(),creates:KINDS.flatMap(k=>Array.from({length:nPerKind},()=>randCreate(k))),
   updates:Array.from({length:nU},()=>randUpdate()),removes:Array.from({length:nR},randRemove),self:randSelf()});
@@ -80,7 +80,7 @@ test("SNAPSHOT: ida e volta de todos os kinds, máscaras, remoções e self",()=
     s.creates.forEach((e,i)=>assertCreate(d.creates[i],e));s.updates.forEach((u,i)=>assertUpdate(d.updates[i],u));
     assert.deepEqual(d.removes,s.removes);assert.deepEqual(d.self,s.self);}
   const empty=decodeSnapshot(encodeSnapshot(w,{tick:7,ackSeq:3}));
-  assert.deepEqual(empty,{tick:7,ackSeq:3,creates:[],updates:[],removes:[],self:{flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0}});});
+  assert.deepEqual(empty,{tick:7,ackSeq:3,creates:[],updates:[],removes:[],self:{flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0,owned:1}});});
 test("SNAPSHOT: tamanho do create por kind bate com a conta manual",()=>{
   const SIZE={[KIND.PIECE]:11+7,[KIND.FOOD]:11+2,[KIND.EJECT]:11+7,[KIND.ASTEROID]:11+6,[KIND.BLACKHOLE]:11+5,[KIND.MISSILE]:11+9,[KIND.STAR]:11+5};
   for(const k of KINDS)assert.equal(encodeSnapshot(w,{tick:0,ackSeq:0,creates:[randCreate(k)]}).length,SNAPSHOT_HEADER_BYTES+SIZE[k]+SELF_BYTES,`kind ${k}`);
@@ -98,9 +98,9 @@ test("SNAPSHOT: update só escreve/lê os campos presentes na máscara (32 combi
   assert.equal(b.length,SNAPSHOT_HEADER_BYTES+7+SELF_BYTES);assert.deepEqual(decodeSnapshot(b).updates[0],{id:5,mask:UPD.R,r:40});});
 test("SNAPSHOT: magnitudes saturam, contadores dão wrap",()=>{
   const d=decodeSnapshot(encodeSnapshot(w,{tick:2**32+5,ackSeq:65536+9,creates:[{kind:KIND.PIECE,id:1,x:-10,y:99999,r:99999,vx:-99999,vy:99999,flags:15}],
-    self:{flags:1,missiles:999,powerBits:3,magnetT:-1,shieldLv:NaN,score:2**40,splitCd:400,ejectCd:-3,fireCd:99999,rank:1e6,mass:2**33,threat:400,threatDir:259,weapon:3,alive:999}}));
+    self:{flags:1,missiles:999,powerBits:3,magnetT:-1,shieldLv:NaN,score:2**40,splitCd:400,ejectCd:-3,fireCd:99999,rank:1e6,mass:2**33,threat:400,threatDir:259,weapon:3,alive:999,owned:5}}));
   assert.equal(d.tick,5);assert.equal(d.ackSeq,9);const p=d.creates[0];assert.equal(p.x,0);assert.equal(p.y,WORLD.h);assert.equal(p.r,6553.5);assert.equal(p.vx,-32767);assert.equal(p.vy,32767);
-  assert.deepEqual(d.self,{flags:1,missiles:255,powerBits:3,magnetT:0,shieldLv:0,score:4294967295,splitCd:255,ejectCd:0,fireCd:65535,rank:65535,mass:4294967295,threat:255,threatDir:3,weapon:3,alive:255});
+  assert.deepEqual(d.self,{flags:1,missiles:255,powerBits:3,magnetT:0,shieldLv:0,score:4294967295,splitCd:255,ejectCd:0,fireCd:65535,rank:65535,mass:4294967295,threat:255,threatDir:3,weapon:3,alive:255,owned:5});
 });
 test("SNAPSHOT: orçamento — 150 PIECE + 100 FOOD + 100 updates(X_Y|V) + 20 removes ≤ 6 KB",t=>{
   const s={tick:1234,ackSeq:77,creates:[...Array.from({length:150},()=>randCreate(KIND.PIECE)),...Array.from({length:100},()=>randCreate(KIND.FOOD))],

@@ -13,7 +13,7 @@ import {createRng} from '@planet/shared/rng.js';
 import {packDir} from '@planet/shared/util.js';
 import {NOOP_HOOKS} from './hooks.js';
 import {BotBrain} from '@planet/shared/bot.js';
-import {incomingMissile} from '@planet/shared/physics/rules.js';
+import {incomingMissile,ammoOf,ownedMask} from '@planet/shared/physics/rules.js';
 import {firstLive} from '@planet/shared/physics/body.js';
 
 export const NO_SLOT=0xffff;
@@ -89,7 +89,8 @@ export class Sim{
     if(seq!=null){const s=seq&0xffff;if(gp.gotInput){const d=(s-gp.lastInput.seq)&0xffff;if(!(d>0&&d<32768))return false;}gp.gotInput=true;gp.lastInput.seq=s;}
     const w=this.world,li=gp.lastInput;li.tx=tx;li.ty=ty;li.flags=flags;w.setTarget(slot,tx,ty);
     if(flags&INPUT_FLAG.SPLIT)w.requestSplit(slot);if(flags&INPUT_FLAG.EJECT)w.requestEject(slot);
-    w.setEjectHold(slot,(flags&INPUT_FLAG.EJECT_HOLD)!==0);if(flags&INPUT_FLAG.FIRE)w.requestFire(slot,(flags&INPUT_FLAG.AIM)!==0);return true;}
+    w.setEjectHold(slot,(flags&INPUT_FLAG.EJECT_HOLD)!==0);if(flags&INPUT_FLAG.SWAP)w.requestSwap(slot);
+    if(flags&INPUT_FLAG.FIRE)w.requestFire(slot,(flags&INPUT_FLAG.AIM)!==0);return true;}
   /** Mata o slot fora do passo (testes/admin): peças mortas + fluxo de morte normal. */
   kill(slot,{bySlot=-1,cause='eaten'}={}){const w=this.world,ps=w.players.get(slot),gp=this.players.get(slot);if(!ps||!gp||!ps.alive)return false;
     const pc=ps.pieces.find(p=>!p.dead);if(pc)this._hit.set(slot,{x:pc.x,y:pc.y,r:pc.r});
@@ -208,14 +209,14 @@ export class Sim{
    * client-side o aviso chegaria com menos de 2 s de sobra.
    */
   self(slot,out){const w=this.world,ps=w.players.get(slot),gp=this.players.get(slot),t=w.tick;
-    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.fireCd=out.rank=out.mass=out.threat=out.threatDir=out.weapon=out.alive=0;return out;}
+    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.fireCd=out.rank=out.mass=out.threat=out.threatDir=out.weapon=out.alive=0;out.owned=1;return out;}
     let mt=0,sh=0;const arr=ps.pieces;
     for(let i=0;i<arr.length;i++){const pc=arr[i];if(pc.dead)continue;const m=pc.magnetUntil-t;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}
     const sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t,fc=ps.fireCdUntil-t;
-    out.flags=(gp.dead?SELF_FLAG.DEAD:0)|(w.peace?SELF_FLAG.LOBBY:0);out.weapon=ps.weapon|0;out.alive=this.aliveCount();
+    out.flags=(gp.dead?SELF_FLAG.DEAD:0)|(w.peace?SELF_FLAG.LOBBY:0);out.weapon=ps.weapon|0;out.alive=this.aliveCount();out.owned=ownedMask(ps);
     const zc=w.zoneNow();if(zc&&!gp.dead){const me0=firstLive(ps.pieces);
       if(me0){const dx=me0.x-zc.x,dy=me0.y-zc.y;if(dx*dx+dy*dy>zc.r*zc.r)out.flags|=SELF_FLAG.ZONE_HURT;}}
-    out.missiles=ps.missiles;out.powerBits=(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0);
+    out.missiles=ammoOf(ps);out.powerBits=(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0);
     out.magnetT=mt>0?mt:0;out.shieldLv=sh;out.score=ps.score;out.splitCd=sc>0?sc:0;out.ejectCd=ec>0?ec:0;out.fireCd=fc>0?fc:0;
     out.rank=gp.dead?0:this.rankOf(slot);out.mass=gp.dead?0:Math.round(w.massOf(slot));
     out.threat=out.threatDir=0;const me=gp.dead?null:firstLive(ps.pieces);
