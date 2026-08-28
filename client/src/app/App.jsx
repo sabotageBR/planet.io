@@ -17,10 +17,12 @@ import Round from "../ui/Round.jsx";
 import AccountModal from "../ui/AccountModal.jsx";
 import ReconnOverlay from "../ui/ReconnOverlay.jsx";
 import Toast from "../ui/Toast.jsx";
+import { sfx } from "../audio/index.js";
 
 let booted = false; // StrictMode monta o efeito duas vezes em dev
 export default function App() {
   useViewportMode();
+  const hoverRef = React.useRef(null);
   const screen = useStore(app, s => s.screen), overlays = useStore(app, s => s.overlays), online = useStore(app, s => s.session.online);
   useEffect(() => { if (!booted) { booted = true; boot(); } }, []);
   useEffect(() => { document.body.dataset.screen = screen; }, [screen]);
@@ -28,6 +30,16 @@ export default function App() {
   useEffect(() => {
     const onKey = e => { if (e.code === "Escape" && escape()) e.preventDefault(); };
     addEventListener("keydown", onKey); return () => removeEventListener("keydown", onKey);
+  }, []);
+  // Som das telas por DELEGAÇÃO: um listener só, em vez de espalhar `sfx()` por dez componentes. O canvas do
+  // jogo (#game) fica de fora — lá quem manda é o som da partida, e um clique de UI no meio do tiroteio confunde.
+  useEffect(() => {
+    const alvo = e => { const t = e.target.closest?.("button,.btn,[role=button],.skin-card,.tab"); return t && !t.closest("#game") && !t.disabled ? t : null; };
+    const onDown = e => { if (alvo(e)) sfx("uiClick"); };
+    const onOver = e => { const t = alvo(e); if (t && t !== hoverRef.current) { hoverRef.current = t; sfx("uiHover"); } };
+    const onOut = e => { if (hoverRef.current && !e.relatedTarget?.closest?.("button,.btn,[role=button],.skin-card,.tab")) hoverRef.current = null; };
+    addEventListener("pointerdown", onDown, true); addEventListener("pointerover", onOver, true); addEventListener("pointerout", onOut, true);
+    return () => { removeEventListener("pointerdown", onDown, true); removeEventListener("pointerover", onOver, true); removeEventListener("pointerout", onOut, true); };
   }, []);
   return <>
     <GameHost />

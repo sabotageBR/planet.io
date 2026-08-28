@@ -8,7 +8,7 @@
 //    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire (tiro mirado trava no alvo do cone) ──
 // Todas recebem o mundo `w` (ids, rng, eventos, jogadores); toda aleatoriedade passa por w.rng.
 // @ts-check
-import {DT,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR} from "../constants.js";
+import {DT,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,aimScore,POWERUP,STAR} from "../constants.js";
 import {KIND,BH_PHASE,FOOD_FLAG,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {clamp} from "../util.js";
 import {setR,setMass,addMass,addBoost,boostLeft,capBoost,velX,velY,liveCount,firstLive} from "./body.js";
@@ -202,7 +202,9 @@ export function tickStar(w,st){
     if(tick>=st.life)supernova(w,st);}}
 /**
  * Peça encosta na estrela armada: sempre é cuspida para fora (PUSH_TOUCH) e, fora do cooldown de dano de contato
- * (`chipUntil`) e com r ≥ SHATTER_MIN_R, estilhaça — a não ser que tenha escudo, que cai inteiro e segura.
+ * (`chipUntil`) e com r ≥ SHATTER_MIN_R, **queima STAR.BURN da massa** e estilhaça o que sobrou (starShatter).
+ * O escudo não salva: ele só defende de míssil e asteroide.
+ * A estrela morre no contato, mas a supernova sai com `rammed` — quem trombou não leva o berçário junto.
  * @param {World} w @param {Body} pc @param {Body} st
  */
 export function pieceStar(w,pc,st){
@@ -212,7 +214,7 @@ export function pieceStar(w,pc,st){
   addBoost(pc,ux,uy,STAR.PUSH_TOUCH_DIST);
   if(tick>=pc.chipUntil&&pc.r>=STAR.SHATTER_MIN_R){pc.chipUntil=tick+STAR.SHATTER_CD_TICKS;
     starShatter(w,w.players.get(pc.owner),pc,st,ux,uy);}   // o escudo NÃO salva da estrela: ele só defende de míssil e asteroide
-  supernova(w,st);}   // encostou nela: a estrela explode e morre (a sala repõe uma)
+  supernova(w,st,true);}   // encostou nela: a estrela explode e morre (a sala repõe uma) — sem prêmio para quem trombou
 /**
  * Estilhaça a peça em n+1 pedaços (limitado por MAX_PIECES e por MIN_PIECE_R): o pai encolhe para r/√(n+1)
  * — massa conservada, como no pop do asteroide — e os filhos saem em leque em volta de (ux,uy) a `dist` px,
@@ -227,11 +229,22 @@ export function shatterPiece(w,ps,pc,ux,uy,nWanted,dist){
   for(let i=0;i<n;i++){const an=base+(i+1)/(n+1)*6.2832+rng.range(-.25,.25),sp=dist*(.8+rng.next()*.4);
     const q=w.newPiece(ps.slot,pc.x,pc.y,nr);addBoost(q,Math.cos(an),Math.sin(an),sp);q.mergeAt=pc.mergeAt;}
   addBoost(pc,ux,uy,dist*.5);return true;}
-/** Estilhaço causado por estrela/supernova: emite STAR_BURST. @param {World} w @param {Body} st */
+/**
+ * A estrela te queimou (contato ou miolo da supernova): **QUEIMA STAR.BURN da massa** e estilhaça o que sobrou.
+ * A massa queimada não vira fragmento nem pellet — ela some do mundo. É a única coisa do jogo que DESTRÓI massa
+ * fora do PLAYER.DECAY: pop/estilhaço só repartem (massa conservada) e lasca/míssil devolvem como fragmento que o
+ * próprio dono recolhe. Sem isso, atropelar estrela era lucro para o gigante. Piso em MIN_PIECE_R: ninguém morre.
+ * Queima ANTES de repartir de propósito — o `maxN` de shatterPiece é ⌊mass/MIN_PIECE_R²⌋−1, então a peça pequena
+ * já sai com menos cacos sem precisar de regra nova. Emite STAR_BURST sempre (com o raio e a massa de ANTES), mesmo
+ * quando não há vaga de peça para estilhaçar: a queimadura precisa de retorno na tela e no som.
+ * @param {World} w @param {Body} st
+ */
 export function starShatter(w,ps,pc,st,ux,uy){
+  const m0=pc.mass,r0=pc.r,floor=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R,keep=m0*(1-STAR.BURN);
+  setMass(pc,keep>floor?keep:floor);const burn=m0-pc.mass;   // medido ANTES do estilhaço, que reparte o que sobrou
   const n=w.rng.int(STAR.SHATTER_N[0],STAR.SHATTER_N[1]);
-  if(!shatterPiece(w,ps,pc,ux,uy,n,STAR.SHATTER_DIST))return false;
-  w.events.push({type:"STAR_BURST",slot:ps.slot,starId:st.id,x:pc.x,y:pc.y,r:pc.r});return true;}
+  shatterPiece(w,ps,pc,ux,uy,n,STAR.SHATTER_DIST);
+  w.events.push({type:"STAR_BURST",slot:ps.slot,starId:st.id,x:pc.x,y:pc.y,r:r0,burn});return true;}
 /**
  * Míssil acerta a estrela: o míssil morre, empurra a estrela (HIT_PUSH, menos quanto maior ela for) e conta um hit.
  * @param {World} w @param {Body} m @param {Body} st
@@ -282,12 +295,16 @@ function hitStar(w,st,x,y,nx,ny,bySlot){
  * desenha brilhando: o estilhaço de estrela é o melhor troco do mapa) espalhados em leque, asteroides chutados para fora com AST_KICK·(1−d/blast)·min(1,R_MIN/r)
  * (os de cinturão viram errantes e o cinturão repõe) e peças empurradas com PUSH·(1−d/blast). No **miolo**
  * (d < blast·NOVA_SHATTER) quem estava perto demais paga como se tivesse encostado na estrela: o escudo cai inteiro
- * e salva, sem escudo a peça estilhaça. Uma estrela nova entra na fila para RESPAWN_TICKS. @param {World} w @param {Body} st
+ * e salva, sem escudo a peça estilhaça. Uma estrela nova entra na fila para RESPAWN_TICKS.
+ * `rammed` = foi um PLANETA que trombou nela: com STAR.RAM_REWARD desligado, essa supernova não larga nem os
+ * fragmentos nem o berçário — senão quem paga a queimadura colhe o prêmio no mesmo lugar e atropelar volta a
+ * compensar. O empurrão, o AST_KICK e o estilhaço do miolo continuam: aquilo é perigo, não prêmio.
+ * @param {World} w @param {Body} st @param {boolean} [rammed]
  */
-export function supernova(w,st){
+export function supernova(w,st,rammed=false){
   const rng=w.rng,blast=st.r*STAR.NOVA_R,b2=blast*blast,N=STAR.NOVA_PARTICLES;
-  const pm=EJECT_MASS*STAR.NOVA_PART_MASS,pr=fragR(pm);
-  for(let i=0;i<N;i++){const an=i/N*6.2832+rng.range(-.12,.12),sp=rng.range(STAR.NOVA_SPEED[0],STAR.NOVA_SPEED[1]),cx=Math.cos(an),cy=Math.sin(an);
+  const pm=EJECT_MASS*STAR.NOVA_PART_MASS,pr=fragR(pm),premio=!rammed||STAR.RAM_REWARD;
+  if(premio)for(let i=0;i<N;i++){const an=i/N*6.2832+rng.range(-.12,.12),sp=rng.range(STAR.NOVA_SPEED[0],STAR.NOVA_SPEED[1]),cx=Math.cos(an),cy=Math.sin(an);
     w.addEjected(st.x+cx*st.r,st.y+cy*st.r,cx*sp,cy*sp,pr,pm,-1,0,STAR.NOVA_LIFE_TICKS,FRAG_KIND.NOVA);}
   const asts=w.asteroids;
   for(let i=0;i<asts.length;i++){const a=asts[i];if(a.dead)continue;const dx=a.x-st.x,dy=a.y-st.y,d2=dx*dx+dy*dy;if(d2>=b2)continue;
@@ -303,7 +320,7 @@ export function supernova(w,st){
   // cacho some uma de longe, escolhida pelo rng da sala. Sem isso a população subia para sempre (o laço de reposição
   // do mundo só ENCHE até FOOD.COUNT, nunca corta), e em 15 min já eram 6072 comidas no lugar de 5000.
   const longe=blast*STAR.NOVA_FOOD_R*3,longe2=longe*longe,pool=w.food;
-  for(let i=0;i<STAR.NOVA_FOOD;i++){
+  if(premio)for(let i=0;i<STAR.NOVA_FOOD;i++){
     for(let k=0;k<8;k++){const f=pool[rng.int(0,pool.length-1)];if(!f||f.dead)continue;
       const fx=f.x-st.x,fy=f.y-st.y;if(fx*fx+fy*fy<longe2)continue;f.dead=true;w.foodDirty=true;break;}
     w.spawnFood({x:st.x,y:st.y,spread:blast*STAR.NOVA_FOOD_R});}
@@ -475,44 +492,64 @@ export function autoSplit(w,ps){
 const ownerImmune=r=>EJECT.OWNER_IMMUNE_TICKS+Math.round(r/vmaxFor(r)/DT);
 /**
  * Eject: pellet r=ejectR(pc.r) — PROPORCIONAL a quem cospe — com massa r²·MASS_FACTOR, a (velocidade padrão da
- * peça) + dir·SPEED. Com raio fixo, um planeta de 360.000 precisava de 3.419 cusparadas para se esvaziar, e
+ * peça) + dir·sp. Com raio fixo, um planeta de 360.000 precisava de 3.419 cusparadas para se esvaziar, e
  * segurar o W só enchia a tela de pontinhos. A peça não tem
  * mais velocidade própria, então a do movimento entra explícita (vmaxFor) para o pellet continuar saindo à
  * frente de quem está correndo. O recuo é um empurrão curto de RECOIL_DIST·(m_pellet/m_peça) px, no canal de
- * impulso. Retorna quantos pellets. @param {World} w @param {PlayerState} ps
+ * impulso — e ele NÃO ramba, senão o W viraria propulsor e mexeria no balanço de movimento.
+ * `sp` sobe de SPEED a SPEED_MAX conforme `ps.ejectRamp` (o mundo incrementa a cada cusparada e zera na pausa):
+ * como o ejetado integra com arrasto puro, o alcance é v/DRAG, então a cusparada sai cada vez mais LONGE e forma
+ * um rastro. Com o SPEED fixo de antes toda pelota parava a 292 px e o resultado era um monte amontoado.
+ * Retorna quantos pellets. @param {World} w @param {PlayerState} ps
  */
 export function applyEject(w,ps){
   const arr=ps.pieces,len=arr.length,minM=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;let did=0;
+  const k=ps.ejectRamp/EJECT.RAMP_N,sp=EJECT.SPEED+(EJECT.SPEED_MAX-EJECT.SPEED)*(k<1?k:1);   // força crescente do hold
   for(let i=0;i<len;i++){const pc=arr[i];if(pc.dead||pc.r<EJECT.MIN_R)continue;
     const er=ejectR(pc.r),mp=er*er*EJECT.MASS_FACTOR,m1=pc.mass-mp;if(m1<minM)continue;
     dirTo(pc.x,pc.y,ps.tx,ps.ty,DIR);const ux=DIR[0],uy=DIR[1],r1=Math.sqrt(m1),vp=vmaxFor(pc.r);
-    const e=w.addEjected(pc.x+ux*(r1+LOCAL.EJECT_OFFSET),pc.y+uy*(r1+LOCAL.EJECT_OFFSET),ux*(vp+EJECT.SPEED),uy*(vp+EJECT.SPEED),
+    const e=w.addEjected(pc.x+ux*(r1+LOCAL.EJECT_OFFSET),pc.y+uy*(r1+LOCAL.EJECT_OFFSET),ux*(vp+sp),uy*(vp+sp),
       er,mp,ps.slot,ownerImmune(pc.r),EJECT.LIFE_TICKS);
     setMass(pc,m1);addBoost(pc,-ux,-uy,EJECT.RECOIL_DIST*mp/m1);did++;
     w.events.push({type:"EJECT",slot:ps.slot,pieceId:pc.id,ejectId:e.id,x:e.x,y:e.y});}
   return did;}
 /**
- * Alvo do tiro mirado: o objeto vivo mais próximo dentro do cone ±MISSILE.AIM_CONE em volta da flecha, a até
- * AIM_RANGE — peça de outro dono (kind 0, alvo = slot), míssil inimigo, asteroide ou estrela (kind 1, alvo = id da
- * entidade; mirar numa estrela já inchando adianta a supernova).
- * Sem nada no cone devolve [-1,0] e o míssil segue reto. Empate de distância fica com a peça (varrida primeiro).
+ * Míssil teleguiado que está vindo para cima de `slot`: o mais próximo de (x,y), a menos de `dist`, mirando neste
+ * slot (type 0) e **se aproximando** (produto escalar da separação com a velocidade negativo). null se não há.
+ * Este predicado estava escrito três vezes igual — no cérebro do bot, na interceptação automática do applyFire e
+ * agora no alerta que vai no `self`. Uma cópia só, para não divergirem. @param {World} w @returns {Body|null}
+ */
+export function incomingMissile(w,slot,x,y,dist){
+  const ms=w.missiles;let best=null,bd=dist*dist;
+  for(let i=0;i<ms.length;i++){const m=ms[i];if(m.dead||m.owner===slot||m.type!==0||m.targetId!==slot)continue;
+    const dx=m.x-x,dy=m.y-y,d2=dx*dx+dy*dy;if(d2<bd&&dx*m.vx+dy*m.vy<0){bd=d2;best=m;}}
+  return best;}
+/**
+ * Alvo do tiro mirado: a bolinha mais próxima do **PONTEIRO** (peso `aimScore` = distância do cursor à BORDA dela,
+ * então a bola grande é mais fácil de agarrar), entre as que estão a até AIM_RANGE de quem atira e a menos de
+ * AIM_PICK do cursor — peça de outro dono (kind 0, alvo = slot), míssil inimigo, asteroide ou estrela (kind 1,
+ * alvo = id da entidade; mirar numa estrela já inchando adianta a supernova).
+ * Cursor no vazio devolve [-1,0] e o míssil segue reto. Empate fica com a peça (varrida primeiro).
+ * Antes era um CONE de ±AIM_CONE em volta da flecha escolhendo o mais próximo da PEÇA: o ângulo só abria o portão,
+ * então varrer o mouse dentro do cone não trocava o alvo. Agora o alvo acompanha o cursor e troca sozinho assim que
+ * ele passa por cima de outra bolinha — o cliente recalcula isso todo frame e o anel pula junto (ver lockOn).
  * @param {World} w
  */
-function aimTarget(w,slot,src,ux,uy,out){
-  const cone=Math.cos(MISSILE.AIM_CONE);let bd=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE,id=-1,kind=0;
-  const inCone=b=>{const dx=b.x-src.x,dy=b.y-src.y,d2=dx*dx+dy*dy;
-    if(d2>=bd||d2<1e-6||(dx*ux+dy*uy)/Math.sqrt(d2)<cone)return false;bd=d2;return true;};
-  const pcs=w.pieces;for(let i=0;i<pcs.length;i++){const p=pcs[i];if(!p.dead&&p.owner!==slot&&inCone(p)){id=p.owner;kind=0;}}
-  const ms=w.missiles;for(let i=0;i<ms.length;i++){const m=ms[i];if(!m.dead&&m.owner!==slot&&inCone(m)){id=m.id;kind=1;}}
-  const as=w.asteroids;for(let i=0;i<as.length;i++){const a=as[i];if(!a.dead&&inCone(a)){id=a.id;kind=1;}}
-  const sts=w.stars;for(let i=0;i<sts.length;i++){const st=sts[i];if(!st.dead&&inCone(st)){id=st.id;kind=1;}}
+function aimTarget(w,slot,src,tx,ty,out){
+  const rr=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE;let bs=MISSILE.AIM_PICK,id=-1,kind=0;
+  const perto=b=>{const dx=b.x-src.x,dy=b.y-src.y;if(dx*dx+dy*dy>=rr)return false;   // fora do alcance da arma
+    const sc=aimScore(b.x-tx,b.y-ty,b.r);if(sc>=bs)return false;bs=sc;return true;};
+  const pcs=w.pieces;for(let i=0;i<pcs.length;i++){const p=pcs[i];if(!p.dead&&p.owner!==slot&&perto(p)){id=p.owner;kind=0;}}
+  const ms=w.missiles;for(let i=0;i<ms.length;i++){const m=ms[i];if(!m.dead&&m.owner!==slot&&perto(m)){id=m.id;kind=1;}}
+  const as=w.asteroids;for(let i=0;i<as.length;i++){const a=as[i];if(!a.dead&&perto(a)){id=a.id;kind=1;}}
+  const sts=w.stars;for(let i=0;i<sts.length;i++){const st=sts[i];if(!st.dead&&perto(st)){id=st.id;kind=1;}}
   out[0]=id;out[1]=kind;}
 const AIM=[-1,0];
 /**
  * Fire: gasta 1 míssil e **um nível** do escudo da peça que atira. Sai da primeira peça viva, e só depois da
  * carência de spawn (`ps.fireCdUntil`, MISSILE.SPAWN_CD_TICKS): recém-nascido não metralha do spawn. Com `ps.fireAim`
- * (tiro mirado, o jogador segurou o botão) o míssil **persegue o objeto mais próximo dentro do cone da flecha**
- * (peça inimiga ou míssil inimigo) e só vai reto se o cone estiver vazio.
+ * (tiro mirado, o jogador segurou o botão) o míssil **persegue a bolinha mais próxima do ponteiro** (peça, míssil,
+ * asteroide ou estrela) e só vai reto se não houver nada perto do cursor.
  * Sem mira o alvo é, em ordem: míssil inimigo mirando este slot a
  * < INTERCEPT_DIST e se aproximando (o mais próximo; ordem do array desempata) → interceptação (type 1);
  * senão o oponente vivo mais próximo (homing, type 0); sem alvo, direção aleatória. @param {World} w @param {PlayerState} ps
@@ -520,12 +557,10 @@ const AIM=[-1,0];
 export function applyFire(w,ps){
   if(ps.missiles<=0||w.tick<ps.fireCdUntil)return false;const src=firstLive(ps.pieces);if(!src)return false;ps.missiles--;
   if(src.shieldLv>0)hitShield(w,src);
-  if(ps.fireAim){dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const ax=DIR[0],ay=DIR[1];aimTarget(w,ps.slot,src,ax,ay,AIM);
+  if(ps.fireAim){dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const ax=DIR[0],ay=DIR[1];aimTarget(w,ps.slot,src,ps.tx,ps.ty,AIM);
     const m=w.addMissile(src.x,src.y,ax*MISSILE.SPEED,ay*MISSILE.SPEED,ps.slot,AIM[0]);m.type=AIM[1];
     w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:AIM[1]?-1:AIM[0],targetMissile:AIM[1]?AIM[0]:-1,aimed:true});return true;}
-  const ms=w.missiles;let im=null,id2=MISSILE.INTERCEPT_DIST*MISSILE.INTERCEPT_DIST;
-  for(let i=0;i<ms.length;i++){const m=ms[i];if(m.dead||m.owner===ps.slot||m.type!==0||m.targetId!==ps.slot)continue;
-    const dx=m.x-src.x,dy=m.y-src.y,d2=dx*dx+dy*dy;if(d2<id2&&dx*m.vx+dy*m.vy<0){id2=d2;im=m;}}
+  const im=incomingMissile(w,ps.slot,src.x,src.y,MISSILE.INTERCEPT_DIST);
   let ux,uy,best=-1,kind=0;
   if(im){dirTo(src.x,src.y,im.x,im.y,DIR);ux=DIR[0];uy=DIR[1];best=im.id;kind=1;}
   else{let bd=Infinity,bx=0,by=0;

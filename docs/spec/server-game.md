@@ -33,9 +33,14 @@ flags one-shot: `SPLIT`/`EJECT`/`FIRE` executadas uma vez por seq nova (o client
 ignora repetições porque só processa seq > lastSeq); `EJECT_HOLD` liga/desliga repetição (a cada EJECT.HOLD_TICKS).
 Cooldowns só no servidor (`World.requestSplit/Eject/Fire` já checam). Rate limit: NET.RATE_INPUTS/s, burst NET.RATE_BURST.
 `FIRE` custa **um nível** do escudo da peça que atira (a 1ª viva; SHIELD_HIT, 0 → SHIELD_BREAK) e `SPLIT` derruba o escudo inteiro
-**da peça que dividiu**. Com `AIM` (o jogador segurou o botão) o míssil **trava no objeto mais próximo dentro do cone**
-±MISSILE.AIM_CONE em volta de `tx,ty`, até AIM_RANGE — peça de outro dono (`type 0`, alvo = slot), míssil inimigo ou asteroide
-(`type 1`, alvo = id) — e só sai reto se não houver nada no cone. Sem AIM, `FIRE` mira nesta ordem: míssil inimigo que persegue
+**da peça que dividiu**. Com `AIM` (o jogador segurou o botão) o míssil **trava na bolinha mais próxima do PONTEIRO** —
+peso `aimScore` = distância do cursor à BORDA dela (bola grande é mais fácil de agarrar), entre as que estão a até AIM_RANGE de
+quem atira e a menos de AIM_PICK do cursor: peça de outro dono (`type 0`, alvo = slot), míssil inimigo, asteroide ou estrela
+(`type 1`, alvo = id) — e só sai reto com o cursor no vazio. Era um CONE de ±AIM_CONE em volta da flecha escolhendo o mais próximo
+da PEÇA: o ângulo só abria o portão, então varrer o mouse dentro dele não trocava o alvo. Agora o alvo acompanha o cursor, e o
+cliente recalcula a mesma conta todo frame (`lockOn`), então o anel pula de bolinha em bolinha junto com o mouse.
+No cliente, o ESPAÇO (ou o botão direito) com o tiro carregado **cancela** em vez de dividir — o `down` do tiro não manda nada
+ao servidor, então cancelar é puramente local. Sem AIM, `FIRE` mira nesta ordem: míssil inimigo que persegue
 este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`), senão o oponente vivo mais próximo.
 
 ## Regras (shared/physics/rules.js — o servidor não tem regra própria)
@@ -52,7 +57,13 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   separação SÓ posicional (sem atração entre peças próprias); merge pareado a d < max(r)·MERGE.DIST. A peça que fica herda o
   melhor powerup das duas (ver acima).
 - **Cuspir (W)**: a pelota tem raio `ejectR(pc.r)` = `EJECT.R_K` do raio de quem cospe, com piso `R_MIN` e teto
-  `R_MAX`, e massa `r²·MASS_FACTOR`. Assim qualquer tamanho se esvazia em ~34 cusparadas (com o raio fixo de
+  `R_MAX`, e massa `r²·MASS_FACTOR`. A **força cresce enquanto o W está segurado** (`ps.ejectRamp`, 0..`EJECT.RAMP_N`):
+  a velocidade vai de `EJECT.SPEED` a `EJECT.SPEED_MAX` e, como o ejetado integra com arrasto exponencial puro
+  (`integrateFree`, sem o teto `BOOST.MAX_STEP`, que é só do canal de impulso das peças), o alcance é exatamente
+  `v/DRAG`: 351 px na primeira e 811 px da 12ª em diante. Com a velocidade fixa de antes **toda** pelota parava a
+  292 px e segurar o W só empilhava um monte no mesmo lugar; agora sai um rastro que se estica. `RAMP_RESET_TICKS`
+  (meio segundo sem cuspir) devolve a força ao início, então o toque avulso sai sempre perto. O **recuo não ramba**:
+  deixá-lo crescer transformaria o W num propulsor e mexeria no balanço de movimento. Assim qualquer tamanho se esvazia em ~34 cusparadas (com o raio fixo de
   antes, um planeta de 360 mil precisava de 3.419) — o mesmo efeito com muito menos corpos. `EJECT.MAX` limita a
   população (era a ÚNICA lista dinâmica sem teto: asteroide tem `astCap`, comida tem `FOOD.COUNT`) matando o mais
   antigo, e segurar o W com 16 peças ia a ~2.000 pelotas vivas. A imunidade do dono (`ownerImmune`) soma
@@ -93,21 +104,28 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   o parâmetro de impacto (distância do centro da peça à reta que a rocha percorre) tem que ser menor que r·POP_DIST. De raspão a
   rocha ricocheteia por `resolveBounce` com e=ASTEROID.E, impulso ponderado pela massa: a pedra sai voando, o planeta quase não sente.
 - **Estrelas** (STAR.*): perigo estático em 3 fases — GROW (rampa de `k`; só arma acima de ARM_K), ACTIVE e OLD (incha até R·SWELL).
-  Encostar empurra a peça (PUSH_TOUCH) e, fora do cooldown de contato e com r ≥ SHATTER_MIN_R, **estilhaça** em SHATTER_N+1 pedaços a
-  SHATTER_DIST px com a massa conservada (STAR_BURST) — a não ser que ela tenha **escudo**, que cai inteiro (SHIELD_BREAK) e segura o
-  estilhaço. No fim do OLD vira **supernova** num raio r·NOVA_R: NOVA_PARTICLES ejetados sem dono, asteroides chutados com
+  Encostar empurra a peça (PUSH_TOUCH) e, fora do cooldown de contato e com r ≥ SHATTER_MIN_R, **QUEIMA STAR.BURN da massa** e
+  estilhaça o que sobrou em SHATTER_N+1 pedaços a SHATTER_DIST px (STAR_BURST, que leva o `burn`). O **escudo não salva**: ele só
+  defende de míssil e asteroide.
+  A massa queimada **some do mundo** — não vira fragmento nem pellet. É a única coisa do jogo que DESTRÓI massa fora do
+  PLAYER.DECAY, e é de propósito: o estilhaço conserva massa (r/√(n+1)) e as peças voltam a fundir, então antes disso atropelar
+  uma estrela saía de graça para o gigante — e ele ainda colhia o berçário da supernova no mesmo lugar. Piso em MIN_PIECE_R:
+  ninguém morre de estrela. No fim do OLD vira **supernova** num raio r·NOVA_R: NOVA_PARTICLES ejetados sem dono, asteroides chutados com
   AST_KICK·(1−d/blast)·min(1,R_MIN/r) (os de cinturão viram errantes e o cinturão repõe) e peças empurradas com PUSH·(1−d/blast).
   Cada fragmento da supernova vale NOVA_PART_MASS pelotas comuns e vai marcado FRAG_KIND.NOVA — o cliente os desenha **brilhando e
   latejando**: é o melhor troco do mapa, e estar por perto na hora certa é o prêmio de ter arriscado.
-  No **miolo** (d < blast·NOVA_SHATTER) a onda machuca como o contato: escudo cai inteiro e salva, sem escudo a peça estilhaça.
+  No **miolo** (d < blast·NOVA_SHATTER) a onda machuca como o contato: queima STAR.BURN e estilhaça (o escudo também não salva aí).
   A estrela morre e outra nasce RESPAWN_TICKS depois.
+  **Supernova de trombada não larga prêmio** (`STAR.RAM_REWARD` = false): quando quem detonou a estrela foi um PLANETA encostando
+  nela, os NOVA_PARTICLES e o berçário NOVA_FOOD não caem. Sem isso o gigante pagava a queimadura e colhia o prêmio no mesmo
+  lugar, e atropelar voltava a compensar. O empurrão, o AST_KICK e o estilhaço do miolo continuam — aquilo é perigo, não prêmio.
+  Supernova de fim de vida, de 3 hits ou de meteoro (SMASH) larga tudo, como sempre.
   **Levar tiro empurra**: míssil (sempre) e partícula ejetada (fora do cooldown HIT_CD_TICKS) somem no impacto, empurram a estrela
   (HIT_PUSH/EJECT_PUSH, escalados por STAR.R/r — ela desliza com arrasto STAR.DRAG) e contam um hit (STAR_HIT). Se ela já está em
   **OLD**, o hit não conta: a supernova acontece **na hora** (dá para adiantar a explosão com um míssil — e a mira trava em estrela).
-  Em HITS_TO_SPLIT hits
-  ela **racha** (STAR_SPLIT): sopro em r·SPLIT_BLAST (peças empurradas e asteroides chutados, sem estilhaçar) e SPLIT_N estrelas
-  menores (r·SPLIT_R) saindo em leque a SPLIT_SPEED, já ACTIVE e com vida curta. Só a 1ª filha herda o lugar da mãe na população
-  (as outras têm `hue=1` e não enfileiram respawn), então a contagem volta sozinha a STAR.COUNT.
+  Em HITS_TO_SPLIT hits ela **EXPLODE e morre** (supernova), sem se multiplicar. O racha em SPLIT_N estrelas menores foi removido:
+  era um MOTOR DE POPULAÇÃO — cada acerto triplicava as estrelas e, com gente atirando, o mapa virava um mar de estrelas a 6 fps.
+  `EVENT.STAR_SPLIT` (kind 19) e as constantes `STAR.SPLIT_*` continuam declaradas mas **sem emissor**, como o `EVENT.EXIT`.
   **Meteoro × estrela** (SMASH): rocha com r ≥ ASTEROID.SMASH_MIN_R que encosta numa estrela armada parte os dois — a rocha vira
   SMASH_N cacos de r·SMASH_R arremessados para trás a SMASH_SPEED (se era de cinturão, o cinturão repõe) e a estrela **racha** pelo
   mesmo `starSplit`, cujo sopro já chuta os cacos para longe das filhas. Rocha menor apenas ricocheteia. O maior caco possível
@@ -128,7 +146,10 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   Comer jogador conserva massa também (EAT.GAIN = 1, a regra do agar.io `size = √(s1²+s2²)`): a vítima entra INTEIRA.
   Continuam sendo fonte/sumidouro **de propósito**: a comida que o mundo repõe sem parar, o
   berçário da supernova e o fragmento que a própria estrela queima (`ejectStar`).
-- **Buracos negros** (BLACKHOLE.*): dentro do raio de influência (CORE_R·INFLUENCE·k ≈ 380 px) tudo é puxado com a = min(G/d², A_MAX)·k
+- **Buracos negros** (BLACKHOLE.*) — **DESLIGADOS por enquanto** (`BLACKHOLE.COUNT = 0`): a mecânica não ficou boa e o perigo
+  que ela fazia foi para as estrelas (`STAR.COUNT` = 12). O código continua inteiro e volta trocando esse número; todos os
+  consumidores são laços sobre `w.holes`, que viram no-op com a lista vazia. Ficam dormentes `EVENT.BH_SUCK`, `REMOVE.SUCKED`
+  e `cause:'blackhole'`. Como era (e voltará a ser): dentro do raio de influência (CORE_R·INFLUENCE·k ≈ 380 px) tudo é puxado com a = min(G/d², A_MAX)·k
   (por isso quanto mais perto, mais forte — na borda dá para escapar remando, a partir de ~200 px não dá) mais uma parte tangencial
   a·SWIRL (sentido fixo pelo seed do buraco) que faz **espiralar** em vez de cair reto. **Não há mais teleporte.** Quem chega ao
   núcleo é ESMAGADO: morre (`cause:"blackhole"`, evento BH_SUCK) e a massa **inteira** vira SPAGHETTI_N pellets sem dono num anel

@@ -14,4 +14,10 @@ if (import.meta.env.DEV) {
   console.error = (...a) => { push("console.error: " + a.map(x => (x && x.message) || String(x)).join(" ").slice(0, 300)); origErr(...a); };
 }
 
-createRoot(document.getElementById("app")).render(<React.StrictMode><App /></React.StrictMode>);
+// ?sfx = mesa de som (aprovar o pacote de áudio de ouvido, sem entrar em partida). Import dinâmico: o painel
+// e o catálogo não entram no bundle de quem só quer jogar.
+if (new URLSearchParams(location.search).has("sfx")) {
+  import("./audio/audition.js").then(m => m.mountAudition());
+} else {
+  createRoot(document.getElementById("app")).render(<React.StrictMode><App /></React.StrictMode>);
+}

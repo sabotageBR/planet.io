@@ -7,12 +7,14 @@ import { play, leaveGame } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
 import { fmt } from "./format.js";
+import { sfx } from "../audio/index.js";
 
 const ORDER = [1, 0, 2];   // 2º | 1º | 3º
 export default function Round({ on }) {
   const LB = useLabels();
   const r = useStore(app, s => s.roundResult), rew = useStore(app, s => s.rewards), pending = useStore(app, s => s.rewardsPending);
   const [left, setLeft] = useState(0), fired = useRef(false);
+  useEffect(() => { if (on && r) sfx("podium"); }, [on, r]);   // pódio: três notas subindo
   useEffect(() => {
     if (!on || !r) return;
     fired.current = false;

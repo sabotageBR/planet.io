@@ -13,6 +13,7 @@ export const PREFS = [
   { id: "sound", title: "Som", items: [
     { key: "sound", label: "Efeitos sonoros", type: "toggle" },
     { key: "music", label: "Música", type: "toggle" },
+    { key: "ambience", label: "Ambiência", type: "toggle" },
     { key: "volume", label: "Volume", type: "range", min: 0, max: 100 } ] },
   { id: "ui", title: "Interface", items: [
     { key: "showNames", label: "Mostrar nomes", type: "toggle" },

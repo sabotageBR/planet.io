@@ -39,7 +39,7 @@ export const SPLIT={DIST:780,MIN_R:60,COOLDOWN_TICKS:15,OFFSET:.6};
 // pequeno voa dezenas de raios e o planetão menos de um. Quem fica não é empurrado (lá não há recuo), e como
 // as duas metades andam na mesma velocidade padrão, o vão final é exatamente DIST.
 // MIN_R=60 é o `playerMinSplitSize` do agar (lá 60 para um raio inicial de 32; aqui 60 para START_R=30).
-export const EJECT={SPEED:1080,RECOIL_DIST:410,R_K:.15,R_MIN:9,R_MAX:60,MAX:600,COOLDOWN_TICKS:6,MIN_R:60,MASS_FACTOR:1.3,OWNER_IMMUNE_TICKS:20,LIFE_TICKS:900,DRAG:3.7,HOLD_TICKS:7};
+export const EJECT={SPEED:1300,SPEED_MAX:3000,RAMP_N:12,RAMP_RESET_TICKS:30,RECOIL_DIST:410,R_K:.15,R_MIN:9,R_MAX:60,MAX:600,COOLDOWN_TICKS:6,MIN_R:60,MASS_FACTOR:1.3,OWNER_IMMUNE_TICKS:20,LIFE_TICKS:900,DRAG:3.7,HOLD_TICKS:7};
 /** Raio da pelota cuspida, PELO TAMANHO de quem cospe (com piso e teto). */
 export const ejectR=r=>{const v=r*EJECT.R_K;return v<EJECT.R_MIN?EJECT.R_MIN:v>EJECT.R_MAX?EJECT.R_MAX:v;};
 // A pelota era de raio FIXO (9 px, massa 105): um planeta de 360.000 precisava de 3.419 cusparadas para se
@@ -49,6 +49,11 @@ export const ejectR=r=>{const v=r*EJECT.R_K;return v<EJECT.R_MIN?EJECT.R_MIN:v>E
 // astCap, comida tem FOOD.COUNT). Segurando o W com 16 peças saíam 137 pelotas/s e, com 15 s de vida, o regime
 // batia em ~2.057 vivas — quase a comida do mundo inteiro — e era isso que engasgava a imagem.
 // HOLD_TICKS: 60/7 = 8,6 cusparadas/s enquanto a tecla está segurada (COOLDOWN_TICKS limita o toque avulso a 10/s).
+// SPEED→SPEED_MAX: a pelota sai com FORÇA CRESCENTE enquanto o W está segurado (`ps.ejectRamp`, satura em RAMP_N).
+// Como o ejetado integra com arrasto exponencial puro (integrateFree, sem o teto MAX_STEP do canal de impulso),
+// o alcance é exatamente v/DRAG: 1300/3,7 = 351 px na 1ª e 3000/3,7 = 811 px da 12ª em diante. Com o SPEED fixo
+// de antes TODA pelota parava a 292 px e segurar o W só empilhava um monte no mesmo lugar; agora sai um RASTRO
+// que se estica. RAMP_RESET_TICKS: meio segundo sem cuspir e a força volta ao início (toque avulso sai sempre perto).
 export const FRAG={R_MIN:5,R_MAX:24,RICH_MASS:600,LIFE_TICKS:900,RICH_LIFE_TICKS:1800,MAGNET_HEAVY:.45};
 /** Massa da pelota MÍNIMA — a unidade de valor de todo fragmento (a cuspida de verdade escala com ejectR). */
 export const EJECT_MASS=EJECT.R_MIN*EJECT.R_MIN*EJECT.MASS_FACTOR;
@@ -97,8 +102,11 @@ export const ASTEROID={BELTS:4,PER_BELT:5,WANDERERS:18,R_MIN:30,R_MAX:62,MASS_R_
 // SMASH_SPEED na casa do CHILD_SPEED: asteroide integra com arrasto ZERO e quica na parede a WALL.E_AST, então
 // caco arremessado a 1500 atravessaria o mapa para sempre. BELT_SAFE: estrela nasce longe do ANEL de todo
 // cinturão (senão o cinturão vira moedor de estrela e a população nunca para de repor).
-export const BLACKHOLE={COUNT:5,CORE_R:38,INFLUENCE:10,G:5.5e7,A_MAX:2200,SWIRL:.6,CRUSH_K:2.4,SPAGHETTI_N:7,SPAGHETTI_R:1.12,SPAGHETTI_V:90,CD_TICKS:60,
+export const BLACKHOLE={COUNT:0,CORE_R:38,INFLUENCE:10,G:5.5e7,A_MAX:2200,SWIRL:.6,CRUSH_K:2.4,SPAGHETTI_N:7,SPAGHETTI_R:1.12,SPAGHETTI_V:90,CD_TICKS:60,
   GROW_TICKS:120,LIFE_TICKS:[2700,5400],FADE_TICKS:180,DRIFT:10,DRIFT_CHANGE_TICKS:240,MIN_SEP:1100,SAFE_SPAWN:900,FOOD_PULL:2.5,EJECT_PULL:1.6,AST_PULL:.5,MISSILE_PULL:.8};
+// COUNT:0 — o buraco negro está DESLIGADO por enquanto (a mecânica não ficou boa); o código continua inteiro e
+// volta trocando este número. Todos os ~25 consumidores são laços sobre `w.holes`, que viram no-op com a lista
+// vazia. O perigo que ele fazia foi para as estrelas (STAR.COUNT).
 // INFLUENCE: raio de influência = CORE_R·INFLUENCE·k (~380 px) — entrou nele, começa a ser puxado (a ∝ 1/d², teto A_MAX);
 // G/A_MAX são fracos de propósito: com o puxão antigo (1.2e8, teto 5000) quem entrava na influência já não saía mais —
 // hoje dá para rasar o horizonte, ganhar impulso e escapar, e é o SWIRL alto que transforma a queda em órbita;
@@ -111,7 +119,7 @@ export const BLACKHOLE={COUNT:5,CORE_R:38,INFLUENCE:10,G:5.5e7,A_MAX:2200,SWIRL:
 // SPAGHETTI_*: a massa do esmagado não evapora, volta INTEIRA como SPAGHETTI_N partículas comíveis em volta do
 // buraco. Elas nascem em SPAGHETTI_R do raio de INFLUÊNCIA, ou seja logo FORA do alcance da sucção — dentro dele
 // o buraco as engoliria de volta em segundos e ninguém aproveitaria
-export const STAR={COUNT:5,R:46,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2400,4200],OLD_TICKS:480,RESPAWN_TICKS:600,HALO:2.2,
+export const STAR={COUNT:12,R:46,BURN:.30,RAM_REWARD:false,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2400,4200],OLD_TICKS:480,RESPAWN_TICKS:600,HALO:2.2,
   SHATTER_MIN_R:24,SHATTER_N:[3,6],SHATTER_DIST:342,SHATTER_CD_TICKS:45,PUSH_TOUCH_DIST:160,
   NOVA_R:8,NOVA_SHATTER:.45,NOVA_PARTICLES:24,NOVA_FOOD:16,NOVA_FOOD_R:.3,NOVA_SPEED:[380,820],NOVA_PART_MASS:3,NOVA_LIFE_TICKS:900,AST_KICK:1500,PUSH_DIST:342,SAFE_SPAWN:700,MIN_SEP:1400,
   DRAG:1.4,HIT_PUSH:280,EJECT_PUSH:70,HITS_TO_SPLIT:3,HIT_CD_TICKS:30,SPLIT_N:3,SPLIT_R:.62,SPLIT_SPEED:520,SPLIT_BLAST:5,SPLIT_LIFE_TICKS:[900,1500]};
@@ -119,20 +127,36 @@ export const STAR={COUNT:5,R:46,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2
 // Míssil (sempre) e partícula ejetada (fora do cooldown HIT_CD_TICKS) empurram a estrela — ela anda com arrasto DRAG — e contam um hit:
 // em HITS_TO_SPLIT hits ela racha em SPLIT_N estrelas menores (r·SPLIT_R) a SPLIT_SPEED, com um sopro em r·SPLIT_BLAST (só empurrão).
 // Um hit na fase OLD (a estrela já inchando) NÃO conta: ela explode na hora — dá para adiantar a supernova com um míssil.
-// Encostar (com k ≥ ARM_K) estilhaça a peça em SHATTER_N pedaços arremessados SHATTER_DIST px (cooldown SHATTER_CD_TICKS por peça; abaixo de
-// SHATTER_MIN_R só empurra a PUSH_TOUCH); com escudo, ele cai INTEIRO e segura o estilhaço.
+// Encostar (com k ≥ ARM_K) QUEIMA BURN da massa da peça e estilhaça o que sobrou em SHATTER_N pedaços arremessados
+// SHATTER_DIST px (cooldown SHATTER_CD_TICKS por peça; abaixo de SHATTER_MIN_R só empurra a PUSH_TOUCH). O escudo
+// NÃO salva da estrela — ele só defende de míssil e asteroide.
+// BURN é a primeira coisa do jogo que DESTRÓI massa: ela não vira fragmento nem pellet, some do mundo (piso em
+// MIN_PIECE_R, então ninguém morre de estrela). Sem ela, atropelar estrela era LUCRO para o gigante — o estilhaço
+// conserva massa (r/√(n+1)) e ele fundia de volta, e ainda colhia o berçário da supernova no mesmo lugar.
+// RAM_REWARD:false = a supernova causada por uma TROMBADA de planeta não larga NOVA_PARTICLES nem NOVA_FOOD:
+// quem pagou o pedágio não leva o prêmio junto. O empurrão, o AST_KICK e o estilhaço do miolo continuam (é perigo,
+// não prêmio). Supernova de fim de vida ou de meteoro (SMASH) larga tudo, como sempre.
 // Supernova: raio r·NOVA_R — NOVA_PARTICLES fragmentos brilhantes (que expiram) valendo NOVA_PART_MASS pelotas
 // comuns cada (o prêmio de estar por perto quando a estrela morre) e NOVA_FOOD comidas PERMANENTES num cacho de
 // raio blast·NOVA_FOOD_R (a estrela morta vira um berçário: ponto de interesse fixo no mapa),
 // asteroides a AST_KICK e peças a PUSH; dentro de r·NOVA_R·NOVA_SHATTER
 // (o miolo) é como encostar na estrela: o escudo cai inteiro e salva, sem escudo a peça estilhaça.
 export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,R:11,SPAWN_CD_TICKS:600,HIT_SHRINK:.9,HIT_DEBRIS:5,DEBRIS_SPEED:540,SHATTER_N:[3,6],SHATTER_DIST:342,
-  INTERCEPT_DIST:1100,AST_KICK:420,AIM_CONE:.45,AIM_RANGE:2200};
+  INTERCEPT_DIST:1100,ALERT_DIST:2600,AST_KICK:420,AIM_PICK:700,AIM_RANGE:2200};
 // SPAWN_CD_TICKS: carência de 10 s a cada nascimento antes do primeiro tiro (vale para bot também). Sem ela o
 // recém-nascido sai do spawn metralhando — não tem massa a perder e o míssil é a arma anti-gigante. É por TEMPO,
 // não por tamanho: quem quiser atirar pequeno pode, só precisa sobreviver os 10 s primeiro. Vai no `self` do
 // snapshot (fireCd, u16 ticks) para o HUD desenhar a contagem regressiva em cima do ícone da arma.   // INTERCEPT_DIST: míssil inimigo mirando em mim a menos disso vira o alvo do meu tiro; AST_KICK: Δv (px/s) dado a um asteroide r=R_MIN (escala R_MIN/r)
-// tiro mirado (segurar o botão): trava no objeto mais próximo dentro do cone ±AIM_CONE rad em volta da flecha e a até AIM_RANGE px; sem nada no cone sai reto
+// ALERT_DIST: a que distância um míssil teleguiado mirando em mim já acende o alerta (~3,6 s de voo a SPEED).
+// O aviso NÃO pode ser só do cliente: a AOI de um jogador pequeno tem meia-largura ~1250 px e o míssil nasce a
+// até AIM_RANGE (ou a qualquer distância, sem mira), então ele apareceria na tela com menos de 2 s de sobra.
+// Por isso a ameaça é medida no servidor e vai no `self` (threat/threatDir).
+// tiro mirado (segurar o botão): trava na bolinha mais próxima do PONTEIRO (aimScore), entre as que estão a até
+// AIM_RANGE px de quem atira e a menos de AIM_PICK px do cursor; sem nada perto do cursor o míssil sai reto.
+// Era um CONE de ±0,45 rad escolhendo o mais próximo da PEÇA: o ângulo só abria o portão e mexer o mouse dentro
+// dele não trocava o alvo. Agora o alvo segue o cursor e troca sozinho quando ele passa por cima de outra bolinha.
+/** Peso do alvo do tiro mirado: distância do PONTEIRO à BORDA da bolinha (bola grande é mais fácil de agarrar). */
+export const aimScore=(dx,dy,r)=>Math.sqrt(dx*dx+dy*dy)-r;
 export const POWERUP={TICKS:420,MAGNET_MAX_R:160,MAGNET_RANGE:5.5,MAGNET_PULL:170,MAGNET_NEAR:2.2,MAGNET_EJECT_A:900,MAGNET_AST:420,MAGNET_HEAVY:.45,MAGNET_STAR:.12,
   SHIELD_MAX_LEVEL:3,SHIELD_EVOLVE_TICKS:900};
 // ímã: comida a d<r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s; ejetados ganham MAGNET_EJECT_A px/s² (drag 3.7/s → ~240 px/s)
@@ -144,12 +168,15 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:160,MAGNET_RANGE:5.5,MAGNET_PULL:17
 // escudo: não expira; nível 1..SHIELD_MAX_LEVEL (N mísseis para destruir), sobe 1 nível a cada SHIELD_EVOLVE_TICKS sem ser atingido; cai ao disparar/dividir
 // ímã e escudo valem POR PEÇA: só a parte que pegou o powerup se beneficia; ao fundir, os poderes das duas se juntam (escudo soma até o teto, ímã soma o tempo restante)
 export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1.3,HUNT_DIST:900,FOOD_DIST:520,MAX_PIECES:8,SPLIT_P:.06,FIRE_P:.014,
-  HOLE_AVOID:1.3,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:420,SPLIT_REACH:780,AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
+  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:420,SPLIT_REACH:780,AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
   PERSONAS:[{id:"cacador",hunt:1.15,flee:.85,food:.7,fire:1.4},{id:"fazendeiro",hunt:.8,flee:1.25,food:1.45,fire:.7},{id:"oportunista",hunt:1,flee:1,food:1,fire:1}]};
 // bot: PERSONAS dá sabor sem lógica nova — hunt/flee mexem nas razões de raio, food no alcance da coleta, fire na frequência do míssil.
 // SPLIT_REACH: quanto o arremesso do split cobre de fato (ver SPEED.LAUNCH_*) — o bot só divide se o alvo estiver dentro disso.
 // DIRS: candidatos de direção avaliados na fuga (o melhor foge do caçador SEM entrar em estrela/buraco/parede).
 // AST_FEAR: asteroide vira perigo quando o bot é grande o bastante para estourá-lo (o pop parte o planeta em vários).
+// STAR_FEAR: o medo de estrela usava o HOLE_AVOID do buraco, e r·HALO·1,3 dava só ~132 px — perto demais, já que
+// pieceStar machuca em r_peça+r_estrela. Com 12 estrelas no mapa e a queimadura de STAR.BURN, os bots raspariam
+// em estrela o tempo todo. Agora a estrela tem o multiplicador dela.
 // SPAWN_GRACE_TICKS: bot não escolhe como presa um humano que acabou de nascer (5 s) — com 24 bots espertos, cair no mapa
 // e ser comido antes de encostar no primeiro grão não é dificuldade, é falta de chance.
 export const BOT_NAMES=["Nebulox","Vortexia","Cosmara","Drakonis","Stellara","Graviton","Quasara","Pulsaris","Meteora","Darkion","Nexaris","Solaron","Astrophex","Hydraxis","Volcanix","Luminos","Aetheron","Aurorax","Voidrix","Pyronis"];

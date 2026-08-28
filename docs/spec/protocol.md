@@ -1,7 +1,7 @@
 # Protocolo de rede planet.io v2
 
 Transporte: WebSocket em `/ws/<shard>`. Mensagens de **controle** são JSON (texto); mensagens de **jogo** são
-binárias (`ArrayBuffer`, little-endian, `DataView`). `PROTOCOL_VERSION = 7` (em `shared/src/protocol/constants.js`). **v7**: o `self` ganhou `fireCd` (carência de tiro do spawn), 18 → 20 bytes. **v6**: o LEADERBOARD passou a levar x,y de TODOS os vivos. **v5**: o `hue` do EJECT deixou de carregar o `skinId` do dono (que o cliente nunca leu — a cor sai do `owner`) e passou a carregar o **tier do fragmento** (`FRAG_KIND`).
+binárias (`ArrayBuffer`, little-endian, `DataView`). `PROTOCOL_VERSION = 8` (em `shared/src/protocol/constants.js`). **v8**: o `self` ganhou `threat`/`threatDir` (alerta de míssil teleguiado vindo em mim), 20 → 22 bytes. **v7**: o `self` ganhou `fireCd` (carência de tiro do spawn), 18 → 20 bytes. **v6**: o LEADERBOARD passou a levar x,y de TODOS os vivos. **v5**: o `hue` do EJECT deixou de carregar o `skinId` do dono (que o cliente nunca leu — a cor sai do `owner`) e passou a carregar o **tier do fragmento** (`FRAG_KIND`).
 Slots: cada jogador da sala tem um `slot` u16 estável enquanto está na sala. Ids de entidade: u32 incrementais por sala.
 
 ## Quantização
@@ -52,7 +52,9 @@ Binário (primeiro byte = tipo):
     - `MISSILE=6`: `u16 ownerSlot | u16 targetSlot (65535 = sem alvo ou alvo é outro míssil) | i16 vx | i16 vy`
   - update: `u32 id | u8 mask` + campos presentes na ordem: `X_Y=1 (u16 x,u16 y)`, `R=2 (u16 r10)`, `V=4 (i16 vx,i16 vy)`, `FLAGS=8 (u8)`, `EXTRA=16 (u8 phase + u16 influenceR — buraco negro e estrela)`
   - remove: `u32 id | u8 reason (0 LEFT_AOI,1 EATEN,2 MERGED,3 POPPED,4 EXPIRED,5 SUCKED,6 DESPAWN)`
-  - self: `u8 flags(DEAD=1,RESYNC=2 — descarte as entidades conhecidas antes de aplicar este snapshot) | u8 missiles | u8 powerupBits(magnet=1,shield=2) | u16 magnetT | u8 shieldLv(0..3; o escudo não expira) | u32 score | u8 splitCd | u8 ejectCd | u16 fireCd(carência de tiro do spawn, ticks) | u16 rank | u32 mass` (20 bytes)
+  - self: `u8 flags(DEAD=1,RESYNC=2 — descarte as entidades conhecidas antes de aplicar este snapshot) | u8 missiles | u8 powerupBits(magnet=1,shield=2) | u16 magnetT | u8 shieldLv(0..3; o escudo não expira) | u32 score | u8 splitCd | u8 ejectCd | u16 fireCd(carência de tiro do spawn, ticks) | u16 rank | u32 mass | u8 threat | u8 threatDir` (22 bytes)
+    - `threat`: 0 = nada vindo; 1..255 = quão perto está o míssil teleguiado que mira NESTE slot e está se aproximando (255 = colado), medido em `MISSILE.ALERT_DIST`. `threatDir`: ângulo peça→míssil em 1/256 de volta.
+      Vem do servidor de propósito: a AOI de um jogador pequeno tem meia-largura ~1250 px e o míssil nasce muito além disso, então um alerta puramente client-side chegaria com menos de 2 s de sobra. Dentro da AOI o cliente prefere a direção do míssil de verdade (é exata) e só usa `threatDir` fora dela.
     `magnetT`/`shieldLv`/`powerupBits` são o **melhor** entre as peças próprias (resumo para o HUD) — quem tem o powerup de fato é cada peça, pelas flags dela. `missiles` é do jogador.
 - `0x11 PLAYERS` (no join e quando muda): `u8 | u16 n | [u16 slot | u8 flags(BOT=1,DEAD=2,REG=4) | u8 skinId | u8 nameLen | nameLen bytes utf8 | u32 score]`
 - `0x12 LEADERBOARD` (2 Hz): `u8 | u8 n | [u16 slot | u32 mass | u16 x | u16 y]` — **todos os vivos da sala**, não só o top 10.

@@ -1,14 +1,16 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { play, leaveGame } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { fmt, fmtTime, ord } from "./format.js";
+import { sfx } from "../audio/index.js";
 
 export default function Dead({ on }) {
   const LB = useLabels();
   const m = useStore(app, s => s.lastMatch), r = useStore(app, s => s.rewards), pending = useStore(app, s => s.rewardsPending), before = useStore(app, s => s.session.dayRank);
   const after = r && r.rank ? r.rank.day : null;
+  useEffect(() => { if (on) sfx("deadScreen"); }, [on]);   // a tela de KABOOM tem som próprio (o `death` é o do mundo, lá atrás)
   return <div className={"screen" + (on ? " on" : "")} id="s-dead">{on && m ? <div className="card dead-card">
     <div className="dead-icon">{LB.deadIcon}</div>
     <div className="dead-title">{LB.dead}</div>

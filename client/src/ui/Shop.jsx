@@ -5,6 +5,7 @@ import { SKINS, skinById, RARITY_LABELS, RARITY_ORDER, RARITY_COLORS } from "@pl
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { buySkin, equipSkin, loadSkins, toast } from "../state/actions.js";
+import { sfx } from "../audio/index.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { Nav, ScreenHeader, Screen } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
@@ -31,7 +32,8 @@ function Body() {
     return out;
   }, [filter, q, sort, mineOnly, owned]);
   const cur = skinById(sel), curSt = stateOf(cur);
-  const act = () => { if (curSt === "owned") return equipSkin(cur.id); if (curSt === "buyable") return buySkin(cur.id);
+  const act = () => { if (curSt === "owned") { sfx("equip"); return equipSkin(cur.id); } if (curSt === "buyable") { sfx("buy"); return buySkin(cur.id); }
+    sfx("error");   // sem moeda / secreta / travada: o "não pode" tem que soar diferente do "pode"
     if (curSt === "poor") return toast(LB.poorToast); if (curSt === "secret") return toast(LB.secretToast); if (curSt === "locked") return toast(LB.lockedToast + ": " + cur.desc); };
   const actLabel = curSt === "eq" ? LB.equipped : curSt === "owned" ? LB.equip : curSt === "secret" ? "???" : curSt === "locked" ? LB.locked : `${LB.coinIcon} ${fmt(cur.price)}`;
   return <>

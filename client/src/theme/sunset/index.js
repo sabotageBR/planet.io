@@ -221,6 +221,7 @@ export const effects={
   // estrela do mundo: pulso do sprite, giro e coroa tracejada no halo (vermelha e nervosa na fase OLD)
   star:{ring:{color:GOLD,colorOld:CORAL,alpha:[.18,.4],pulse:.005,pulseOld:.02,width:3,dash:[18,16],spinK:-.15},pulse:{amp:.06,speed:.004,speedOld:.02},spin:.004,alphaK:1.15},
   aim:{color:CREAM,width:3,dash:[16,12],head:26,alpha:[.45,.85],pulse:.008},                          // reta pontilhada do tiro mirado
+  threat:{color:CORAL,width:5,size:34,margin:54,alpha:[.35,1],pulse:.012},                            // seta do míssil teleguiado vindo em mim (pisca mais rápido quanto mais perto)
   sparkColor:CREAM,                                                                          // faíscas de comida/pellet comido (Fx.spark)
   // ímã (por frame, t em ms): 3 anéis tracejados contraindo para a peça + 6 traços radiais correndo para dentro
   ambient(kind,t,f){if(kind!=="magnet")return null;const P=[],col=MAG,R1=f.r*1.3;
@@ -235,7 +236,7 @@ export const hud={
     shadow:{color:INK,dx:4,dy:4},face:"#5a2450",border:{color:INK,width:4},
     rings:{color:"rgba(255,207,154,.3)",width:1.5,at:[.33,.66],crosshair:true},
     sweep:{fill:"rgba(255,181,71,.2)",line:GOLD,width:2,speed:.0025,span:.7},
-    mapK:.72,colors:{me:CREAM,player:GOLD,bot:TEAL,ast:"rgba(255,207,154,.75)",hole:"rgba(255,94,108,.85)",star:"rgba(255,181,71,.9)",view:"rgba(255,241,214,.35)"},
+    mapK:.72,colors:{me:CREAM,player:GOLD,bot:TEAL,ast:"rgba(255,207,154,.75)",hole:"rgba(255,94,108,.85)",star:"rgba(255,181,71,.9)",missile:"rgba(255,94,108,.95)",view:"rgba(255,241,214,.35)"},
     meDot:{fill:CREAM,stroke:INK,width:1.5,r:{desktop:4,portrait:3,landscape:3}},
     label:{text:"RADAR",font:"bold 9px "+FONT,color:GOLD,desktopOnly:true,dy:-10}},
   trail:{style:"dashed",color:(skin,isMe)=>rgba(PEACH,isMe?.7:.42),width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},

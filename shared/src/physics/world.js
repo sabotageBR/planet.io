@@ -29,11 +29,12 @@ import * as R from "./rules.js";
  * @property {number} fireCdUntil   carência de tiro do nascimento (MISSILE.SPAWN_CD_TICKS)
  * @property {boolean} ejectHold
  * @property {number} ejectHoldAt   próximo eject automático do hold
+ * @property {number} ejectRamp     cusparadas seguidas (0..EJECT.RAMP_N): a força/alcance da pelota sobe com ela
  * @property {number} score
  * @property {boolean} splitReq
  * @property {boolean} ejectReq
  * @property {boolean} fireReq
- * @property {boolean} fireAim   tiro mirado (trava no objeto mais próximo dentro do cone da flecha)
+ * @property {boolean} fireAim   tiro mirado (trava na bolinha mais próxima do ponteiro)
  */
 
 // códigos de par (kind de A << 3 | kind de B); A sempre do grupo inserido antes: peças, ejetados, asteroides, mísseis, buracos
@@ -165,12 +166,14 @@ export class World{
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0}={}){
     let ps=this.players.get(slot);
     if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],missiles,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,
-      ejectHold:false,ejectHoldAt:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false};this.players.set(slot,ps);}
+      ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.missiles=missiles;}
     return this._spawnPiece(ps,x,y,r);}
   _spawnPiece(ps,x,y,r){
-    if(Number.isNaN(x)){const s=this._farSpot(PLAYER_MARGIN,this.holes,BLACKHOLE.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE);x=s.x;y=s.y;}
-    ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
+    // nasce longe de ESTRELA (era do buraco negro, que saiu de cena): com 12 estrelas e a queimadura de STAR.BURN,
+    // cair colado numa delas custaria 30% da massa antes de encostar no primeiro grão.
+    if(Number.isNaN(x)){const s=this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE);x=s.x;y=s.y;}
+    ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.ejectRamp=0;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
     const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;return pc;}
   _dropPieces(ps){for(let i=0;i<ps.pieces.length;i++){const pc=ps.pieces[i];pc.dead=true;this.entityById.delete(pc.id);}
     ps.pieces.length=0;const arr=this.pieces;let k=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)arr[k++]=arr[i];arr.length=k;}
@@ -182,8 +185,9 @@ export class World{
   setTarget(slot,tx,ty){const ps=this.players.get(slot);if(!ps)return;ps.tx=clamp(tx,0,this.w);ps.ty=clamp(ty,0,this.h);}
   requestSplit(slot){const ps=this.players.get(slot);if(ps)ps.splitReq=true;}
   requestEject(slot){const ps=this.players.get(slot);if(ps)ps.ejectReq=true;}
-  setEjectHold(slot,on){const ps=this.players.get(slot);if(!ps)return;if(on&&!ps.ejectHold)ps.ejectHoldAt=this.tick;ps.ejectHold=!!on;}
-  /** `aim`: tiro mirado — trava no objeto mais próximo dentro do cone em volta da direção do ponteiro (sem nada no cone, sai reto). */
+  setEjectHold(slot,on){const ps=this.players.get(slot);if(!ps)return;if(on&&!ps.ejectHold)ps.ejectHoldAt=this.tick;
+    if(!on&&ps.ejectHold)ps.ejectRamp=0;ps.ejectHold=!!on;}   // soltou o W: a próxima cusparada volta a sair perto
+  /** `aim`: tiro mirado — trava na bolinha mais próxima do ponteiro (cursor no vazio: sai reto). */
   requestFire(slot,aim=false){const ps=this.players.get(slot);if(ps){ps.fireReq=true;ps.fireAim=!!aim;}}
   /**
    * Reconstrói a grade da comida se algo mudou (spawn, ímã, buraco negro, compactação). Os índices dela
@@ -204,7 +208,10 @@ export class World{
       if(ps.alive){
         if(ps.splitReq&&tick>=ps.splitCdUntil){ps.splitCdUntil=tick+SPLIT.COOLDOWN_TICKS;R.applySplit(this,ps);}
         let ej=ps.ejectReq;if(ps.ejectHold&&tick>=ps.ejectHoldAt){ej=true;ps.ejectHoldAt=tick+EJECT.HOLD_TICKS;}
-        if(ej&&tick>=ps.ejectCdUntil){ps.ejectCdUntil=tick+EJECT.COOLDOWN_TICKS;R.applyEject(this,ps);}
+        if(ej&&tick>=ps.ejectCdUntil){
+          if(tick>ps.ejectCdUntil+EJECT.RAMP_RESET_TICKS)ps.ejectRamp=0;   // parou de cuspir: a força recomeça do início
+          ps.ejectCdUntil=tick+EJECT.COOLDOWN_TICKS;
+          if(R.applyEject(this,ps)&&ps.ejectRamp<EJECT.RAMP_N)ps.ejectRamp++;}
         if(ps.fireReq)R.applyFire(this,ps);}
       ps.splitReq=ps.ejectReq=ps.fireReq=false;ps.fireAim=false;}
     // ── 2. integração ──

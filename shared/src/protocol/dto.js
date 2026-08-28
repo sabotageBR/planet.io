@@ -54,6 +54,8 @@
  * @property {number} fireCd  ticks que faltam da carência de tiro do spawn (u16)
  * @property {number} rank u16 (1 = líder)
  * @property {number} mass u32
+ * @property {number} threat  0 = nada vindo; 1..255 = quão perto está o míssil teleguiado que MIRA em mim (255 = colado)
+ * @property {number} threatDir  direção peça→míssil em 1/256 de volta (só vale com threat > 0)
  */
 /**
  * @typedef {object} Snapshot

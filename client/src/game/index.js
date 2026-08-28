@@ -21,7 +21,7 @@ import {createAudio} from "../audio/index.js";
 import {api} from "../api/client.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,MISSILE,unpackDir} from "@planet/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,MISSILE,PLAYER,STAR,aimScore,unpackDir} from "@planet/shared";
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
@@ -41,13 +41,15 @@ import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{speed:0,magnet:0,shield:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null});
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
-  sound:true,music:false,volume:70};   // som/música/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
+  sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
 const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SPLIT]:"split",[EVENT.BH_SUCK]:"suck",[EVENT.CHIP]:"chip",[EVENT.BOUNCE]:"bounce",[EVENT.BOOM]:"boom",[EVENT.EXIT]:"exit",[EVENT.SHOOT]:"shoot",
   [EVENT.DEATH]:"death",[EVENT.SHIELD_BREAK]:"shieldBreak",[EVENT.SHIELD_HIT]:"shieldHit",[EVENT.SHIELD_UP]:"shieldUp",[EVENT.CLASH]:"clash",[EVENT.DEFLECT]:"deflect",
   [EVENT.STAR_BURST]:"starBurst",[EVENT.SUPERNOVA]:"supernova",[EVENT.STAR_HIT]:"starHit",[EVENT.STAR_SPLIT]:"starSplit",[EVENT.SMASH]:"smash"};
 const AIM_LEN=1100;   // comprimento máximo da reta de mira (px de mundo)
 const PREWARM_S=12;   // com quantos segundos de antecedência o céu seguinte é assado (fora da virada, para ela não custar nada)
-const AIM_COS=Math.cos(MISSILE.AIM_CONE),AIM_R2=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE;
+const AIM_R2=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE;
+const MASS_STEP=1.6;   // de quanto em quanto a massa toca o carrilhão de "cresci" (marcos geométricos: sempre a mesma sensação de avanço)
+const AMB_MS=200;      // a ambiência é reajustada 5×/s: ela responde a estado, não a evento
 const DIR_EVENTS=new Set([EVENT.BOUNCE,EVENT.CHIP,EVENT.SHOOT,EVENT.DEFLECT,EVENT.SHIELD_HIT,EVENT.STAR_HIT,EVENT.SMASH]);
 const shardOf=code=>{const n=parseInt(String(code||"")[0],36);return Number.isFinite(n)?n:0;};
 
@@ -57,6 +59,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const hudStore=createStore(initialHud());
   let curPrefs={...PREF_DEFAULTS,...prefs},curTheme=theme||currentTheme();
   const audio=createAudio(curPrefs);let lastAmmo=0,lastMagnet=false;   // som: o que o cliente descobre sozinho (atirar/munição/ímã) sai do self
+  let lastMass=0,marco=0,lastFireCd=0,lastDead=false,lastLock=-1,ambT=0,threat=null;   // marcos de massa, arma pronta, dano, troca de alvo e a ameaça do míssil
+  let ejHold=false,ejT=0,ejN=0;   // cusparada: o som sai do gesto local (não há evento no fio), com a rampa de força junto
   const wakeAudio=()=>audio.resume();   // fica armado: o contexto pode ser suspenso de novo (aba em segundo plano, política do navegador)
   if(typeof addEventListener==="function"){addEventListener("pointerdown",wakeAudio);addEventListener("keydown",wakeAudio);}
   // ?theme= força um tema (dev/screenshots); o relógio do app pode tentar voltar — reaplica uma vez por evento
@@ -75,9 +79,23 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const cam=createCamera(),fstats=createFrameStats();
   const canAct=()=>joined&&!dead&&!roundOver&&conn&&conn.isOpen;
   let aiming=false,aim=null;const pendingEat=new Map();   // id da peça comida → id de quem comeu (destino da sucção no frame do sumiço)
-  const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self&&!view.self.fireCd?view.self.missiles:0),canAct,onAim:on=>{aiming=on;if(!on)aim=null;}});
-  const keyboard=createKeyboard({onAction:actions.act,enabled:()=>joined});
-  const touch=createTouchButtons(hud,{onAction:actions.act});
+  const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self&&!view.self.fireCd?view.self.missiles:0),canAct,
+    onAim:on=>{aiming=on;if(!on){aim=null;lastLock=-1;audio.stopLoop("aimCharge");}else audio.startLoop("aimCharge",{k:0});},
+    onCancel:()=>audio.play("cancel",{mine:true})});
+  /** Envelope das ações: repassa tudo e, de quebra, marca o hold do W para o som da cusparada. */
+  const somEject=()=>{const m=view.self?view.self.mass:0;
+    if(m<EJECT.MIN_R*EJECT.MIN_R)return;   // pequeno demais para cuspir (applyEject recusa): não pode sair som de uma cusparada que não houve
+    audio.play("eject",{mine:true,pitch:pitchOf(m)});};
+  const act=(a,ph)=>{
+    if(a==="eject"){if(ph==="down"){if(canAct()){ejHold=curPrefs.holdEject!==false;ejN=0;ejT=performance.now();somEject();}}
+      else ejHold=false;}
+    actions.act(a,ph);};
+  /** Botão do ponteiro: sem munição (ou na carência) o esquerdo cospe em vez de atirar — e isso também soa. */
+  const button=(btn,ph,type)=>{
+    if(btn===0&&ph==="down"&&canAct()&&!(view.self&&!view.self.fireCd&&view.self.missiles>0))somEject();
+    actions.button(btn,ph,type);};
+  const keyboard=createKeyboard({onAction:act,enabled:()=>joined});
+  const touch=createTouchButtons(hud,{onAction:act});
   let pointer=null;
   const minimap=createMinimap({hud,theme:()=>curTheme,getScene:()=>{if(!joined)return null;
     // inimigos: vêm do PLACAR (que traz TODOS os vivos com posição, a 2 Hz), não da AOI — o snapshot só
@@ -86,7 +104,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     for(const r of view.lbRows()){if(r.slot===me)continue;const pl=view.playerOf(r.slot);
       enemies.push({x:r.x,y:r.y,mass:r.mass,isBot:pl?pl.isBot:false});}
     const mine=[];for(const p of view.pieces)if(p.isMe)mine.push({x:p.rx,y:p.ry,r:p.rr});
-    return{enemies,mine,asteroids:view.asteroids.map(a=>({x:a.rx,y:a.ry})),holes:view.holes.map(h=>({x:h.rx,y:h.ry,ri:h.influenceR})),
+    const ms=[];for(const m of view.missiles)ms.push({x:m.rx,y:m.ry,mira:m.target===me});   // o teleguiado que vem em mim pisca no radar
+    return{enemies,mine,missiles:ms,asteroids:view.asteroids.map(a=>({x:a.rx,y:a.ry})),holes:view.holes.map(h=>({x:h.rx,y:h.ry,ri:h.influenceR})),
       stars:view.stars.map(st=>({x:st.rx,y:st.ry,r:st.rr})),cam};}});
   minimap.show(false);
   if(isStats())statsOv=createOverlay(hud);
@@ -94,7 +113,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── renderer (assíncrono: Pixi init) ──
   let destroyed=false;   // StrictMode destrói a 1ª instância com o init do Pixi ainda pendente: não pode sobrar um canvas zumbi
   createRenderer({container,theme:curTheme,prefs:{fx:!curPrefs.reduceMotion}}).then(r=>{if(destroyed){r.destroy();return;}renderer=r;ready=true;
-    pointer=createPointer(r.canvas,{onButton:actions.button});applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();warmSkins();
+    pointer=createPointer(r.canvas,{onButton:button});applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();warmSkins();
     if(!raf)raf=requestAnimationFrame(frame);}).catch(e=>{console.error("[game] renderer",e&&e.stack||e);container.innerHTML=`<div style="padding:20px;color:#fff">Não foi possível iniciar o renderizador (WebGL indisponível): ${e.message}</div>`;});
   const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(()=>game.resize()):null;if(ro)ro.observe(container);
   const onVis=()=>{visible=document.visibilityState!=="hidden";lastT=performance.now();if(visible){frames=0;fpsT=lastT;}};document.addEventListener("visibilitychange",onVis);
@@ -106,7 +125,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(eid!=null){pendingEat.delete(e.id);for(const p of view.pieces)if(p.id===eid){f.tx=p.rx;f.ty=p.ry;f.tr=p.rr;break;}}
       renderer.fx.add("vanish",f);}}
     else if((e.kind===KIND.FOOD||e.kind===KIND.EJECT)&&e.reason===REMOVE.EATEN){const pl=e.kind===KIND.EJECT?view.playerOf(e.owner):null;renderer.fx.spark(e.rx,e.ry,e.rr,pl?pl.skin.color:null);
-      if(own0.some(p=>Math.hypot(p.rx-e.rx,p.ry-e.ry)<p.rr+e.rr+18))audio.play("food",{mine:true});}}   // só o grão que EU comi faz barulho
+      if(own0.some(p=>Math.hypot(p.rx-e.rx,p.ry-e.ry)<p.rr+e.rr+18))audio.play("food",{mine:true,ladder:true});}}   // só o grão que EU comi faz barulho — e a fila sobe a escada
   // ── texturas: aquece as skins da sala (tiers 128/256) e a própria (128/256/512, variante isMe) ──
   function warmSkins(){if(!renderer||!joined)return;const skins=[];let me=null;
     for(const pl of view.players.values()){if(!pl.skin)continue;if(pl.slot===view.mySlot)me=pl.skin;else if(!skins.includes(pl.skin))skins.push(pl.skin);}
@@ -138,7 +157,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         else if(m.kind===EVENT.BH_SUCK){const h=nearestHole(m.x,m.y);   // espaguetificação: o planeta se estica de onde estava até a boca do buraco
           if(h){f.tx=h.rx;f.ty=h.ry;}}
         renderer.fx.add(kind,f,delay);
-        if(delay)setTimeout(()=>audio.play(kind,{x:f.x,y:f.y,r:f.r,mine,cam}),delay);else audio.play(kind,{x:f.x,y:f.y,r:f.r,mine,cam});   // o som acompanha o efeito (terceiros esperam o atraso de interpolação)
+        const pitch=mine?pitchOf(view.self?view.self.mass:0):1;   // o que é MEU soa mais grave quanto maior eu estou
+        const som=()=>audio.play(kind,{x:f.x,y:f.y,r:f.r,mine,cam,pitch});
+        if(delay)setTimeout(som,delay);else som();   // o som acompanha o efeito (terceiros esperam o atraso de interpolação)
         break;}}}
   /** Buraco negro mais próximo de (x,y) — para onde o planeta sugado se estica. */
   function nearestHole(x,y){let best=null,bd=Infinity;
@@ -225,13 +246,63 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     for(const pl of view.players.values()){if(!pl.skin)continue;if(pl.slot===view.mySlot)me=pl.skin;else if(!skins.includes(pl.skin))skins.push(pl.skin);}
     renderer.prewarmTheme(THEMES[next],skins,me);}
   /**
-   * Alvo provável do tiro mirado (mesma regra do servidor — o mais próximo dentro do cone da flecha —, só que com as
+   * Alvo provável do tiro mirado — a bolinha mais próxima do PONTEIRO (mesmo `aimScore` do servidor, só que com as
    * posições interpoladas que o cliente vê): serve de aviso na tela; quem decide de verdade é o servidor.
+   * Roda todo frame, então o anel PULA de bolinha em bolinha conforme o mouse anda — que é a graça da mira nova.
    */
-  function lockOn(src,ux,uy){let bd=AIM_R2,best=null;
-    const scan=arr=>{for(const e of arr){if(e.owner===view.mySlot)continue;const dx=e.rx-src.rx,dy=e.ry-src.ry,d2=dx*dx+dy*dy;
-      if(d2>=bd||d2<1e-6||(dx*ux+dy*uy)/Math.sqrt(d2)<AIM_COS)continue;bd=d2;best=e;}};
-    scan(view.pieces);scan(view.missiles);scan(view.asteroids);scan(view.stars);return best?{x:best.rx,y:best.ry,r:best.rr}:null;}   // mesma lista do aimTarget do servidor
+  function lockOn(src,tx,ty){let bs=MISSILE.AIM_PICK,best=null;
+    const scan=arr=>{for(const e of arr){if(e.owner===view.mySlot)continue;
+      const ax=e.rx-src.rx,ay=e.ry-src.ry;if(ax*ax+ay*ay>=AIM_R2)continue;   // fora do alcance da arma
+      const sc=aimScore(e.rx-tx,e.ry-ty,e.rr);if(sc>=bs)continue;bs=sc;best=e;}};
+    scan(view.pieces);scan(view.missiles);scan(view.asteroids);scan(view.stars);
+    return best?{x:best.rx,y:best.ry,r:best.rr,id:best.id}:null;}
+  // ── som derivado de ESTADO (não de evento): tamanho, perigo, ameaça, rampa do W ──
+  const massK=m=>Math.min(1,Math.sqrt(Math.max(0,m))/PLAYER.MAX_R);       // 0 = recém-nascido, 1 = no teto de raio
+  const pitchOf=m=>1/(1+massK(m)*1.1);                                     // o TAMANHO vira som: o gigante soa quase uma oitava abaixo
+  /** Quão perto estou da estrela mais próxima (0..1): é o que faz a ambiência ficar tensa. */
+  function perigo(){if(!own0.length)return 0;const p=own0[0];let k=0;
+    for(const st of view.stars){const lim=st.rr*STAR.HALO*2,d=Math.hypot(st.rx-p.rx,st.ry-p.ry)-p.rr-st.rr;
+      if(d<lim){const v=1-Math.max(0,d)/lim;if(v>k)k=v;}}
+    return k;}
+  /**
+   * Alerta de míssil teleguiado. O QUANTO vem do servidor (`self.threat`), porque o míssil nasce muito além da
+   * AOI; a DIREÇÃO usa o míssil de verdade quando ele já está na janela (é exata) e cai no `threatDir` quando não.
+   */
+  function ameaca(sf){
+    const t=sf.threat|0;
+    if(!t||dead){if(threat){threat=null;audio.stopLoop("alert");}return;}
+    const k=(t-1)/254,ang=sf.threatDir/256*6.2831853;
+    let nx=Math.cos(ang),ny=Math.sin(ang);
+    const me=own0.length?own0[0]:null;
+    if(me){let bd=Infinity,b=null;
+      for(const m of view.missiles){if(m.target!==view.mySlot)continue;const d=Math.hypot(m.rx-me.rx,m.ry-me.ry);if(d<bd){bd=d;b=m;}}
+      if(b){const dx=b.rx-me.rx,dy=b.ry-me.ry,l=Math.hypot(dx,dy)||1;nx=dx/l;ny=dy/l;}}
+    threat={nx,ny,k};
+    audio.startLoop("alert",{k,pan:Math.max(-.9,Math.min(.9,nx))});}
+  /**
+   * Tudo que o cliente descobre sozinho olhando o `self`: munição, tiro, ímã, arma pronta, marcos de massa,
+   * dano, morte/renascimento, a ameaça e a ambiência. É o gancho para som de ESTADO — o de evento vem do EVENT.
+   */
+  function somDoSelf(sf,now){
+    if(sf.missiles>lastAmmo)audio.play("ammo",{mine:true});
+    else if(sf.missiles<lastAmmo&&!dead)audio.play("fire",{mine:true,pitch:pitchOf(sf.mass)});
+    const mag=sf.magnetT>0;
+    if(mag&&!lastMagnet){audio.play("powerup",{mine:true});audio.startLoop("magnet",{k:1});}
+    else if(!mag&&lastMagnet)audio.stopLoop("magnet");
+    if(lastFireCd>0&&!sf.fireCd&&sf.missiles>0&&!dead)audio.play("ready",{mine:true});   // a carência de spawn acabou
+    if(sf.mass>0){
+      const mk=Math.floor(Math.log(sf.mass)/Math.log(MASS_STEP));
+      if(!lastMass||sf.mass<lastMass*.5)marco=mk;                                        // nasci/renasci/fui partido: recalibra sem tocar nada
+      else{if(mk>marco){marco=mk;audio.play("grow",{mine:true,pitch:pitchOf(sf.mass)});}
+        else if(mk<marco)marco=mk;
+        if(sf.mass<lastMass*.88&&!dead)audio.play("hurt",{mine:true,pitch:pitchOf(sf.mass)});}}   // levei um tombo de massa (queimadura, míssil, lasca)
+    if(dead&&!lastDead){audio.stopLoop("alert");audio.stopLoop("magnet");threat=null;}
+    else if(!dead&&lastDead)audio.play("respawn",{mine:true});
+    lastDead=dead;lastAmmo=sf.missiles;lastMagnet=mag;lastFireCd=sf.fireCd;lastMass=sf.mass;
+    ameaca(sf);
+    if(now-ambT>AMB_MS){ambT=now;
+      audio.setLoop("ambience",{mass:massK(sf.mass),danger:dead?0:perigo(),
+        urgency:roundClock&&roundClock.leftS<60?1-roundClock.leftS/60:0});}}   // mesma lista do aimTarget do servidor
   /** Fim do mundo: BIG CRUNCH — tudo colapsa para o centro da tela (o pódio vem pela tela React). */
   function endOfWorld(){if(!renderer)return;renderer.fx.add("bigCrunch",{x:cam.x,y:cam.y,r:cam.W/cam.scale*.6});audio.play("bigCrunch",{mine:true});}
 
@@ -264,15 +335,20 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     aim=null;   // reta de mira: da 1ª peça própria (a que dispara no servidor) até o ponteiro, com o anel no alvo travado
     if(aiming&&joined&&!dead&&own.length&&pointer&&pointer.state.active){const src=own[0],p=cam.toWorld(pointer.state.sx,pointer.state.sy);
       const dx=p.x-src.rx,dy=p.y-src.ry,l=Math.hypot(dx,dy)||1,len=Math.min(AIM_LEN,Math.max(src.rr*2.5,l));
-      aim={x0:src.rx+dx/l*src.rr,y0:src.ry+dy/l*src.rr,x1:src.rx+dx/l*len,y1:src.ry+dy/l*len,lock:lockOn(src,dx/l,dy/l)};}
+      aim={x0:src.rx+dx/l*src.rr,y0:src.ry+dy/l*src.rr,x1:src.rx+dx/l*len,y1:src.ry+dy/l*len,lock:lockOn(src,p.x,p.y)};}
+    const lk=aim&&aim.lock?aim.lock.id:-1;   // trocou de bolinha: um "tk" seco e o zumbido da carga sobe — é o que faz a mira sentir viva
+    if(lk!==lastLock){if(lk>=0&&aiming)audio.play("lock",{mine:true});lastLock=lk;if(aiming)audio.setLoop("aimCharge",{k:lk>=0?1:0});}
     const t1=performance.now();
-    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
+    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
       showNames:curPrefs.showNames!==false,showTrails:!curPrefs.reduceMotion&&!econ});
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU
     if(joined){minimap.update(now);if(now-lastHud>=125){lastHud=now;pushHud(now);}
-      const sf=view.self;   // o servidor confirmou: munição a mais = peguei, a menos = atirei; ímã ligando = powerup
-      if(sf){if(sf.missiles>lastAmmo)audio.play("ammo",{mine:true});else if(sf.missiles<lastAmmo&&!dead)audio.play("fire",{mine:true});
-        const mag=sf.magnetT>0;if(mag&&!lastMagnet)audio.play("powerup",{mine:true});
-        lastAmmo=sf.missiles;lastMagnet=mag;}}
+      const sf=view.self;if(sf)somDoSelf(sf,now);
+      // cuspir não tem evento no fio (seriam ~9 por segundo por jogador, só para um "pft"): o som sai do MEU
+      // gesto, na mesma cadência do servidor, e a altura sobe com a rampa — dá para OUVIR a força aumentando.
+      if(ejHold&&canAct()&&now-ejT>=EJECT.HOLD_TICKS/TICK_HZ*1000){ejT=now;
+        const m=sf?sf.mass:0;
+        if(m>=EJECT.MIN_R*EJECT.MIN_R){audio.play("eject",{mine:true,pitch:pitchOf(m)*(1+.55*Math.min(1,ejN/EJECT.RAMP_N))});
+          if(ejN<EJECT.RAMP_N)ejN++;}}}
     if(statsOv){if(now-bytesT>1000){bytesRate=conn?(conn.bytesIn-bytesLast)*1000/(now-bytesT):0;bytesLast=conn?conn.bytesIn:0;bytesT=now;}statsOv.update(now,statsText());}}
   return game;}

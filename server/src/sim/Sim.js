@@ -7,12 +7,14 @@
 // espelhamos (uma fonte só, sem contar duas vezes).
 // @ts-check
 import {createWorld} from '@planet/shared/physics/world.js';
-import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT} from '@planet/shared/constants.js';
+import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT,MISSILE} from '@planet/shared/constants.js';
 import {EVENT,REMOVE,PLAYER_FLAG,SELF_FLAG,POWER_BIT,INPUT_FLAG} from '@planet/shared/protocol/constants.js';
 import {createRng} from '@planet/shared/rng.js';
 import {packDir} from '@planet/shared/util.js';
 import {NOOP_HOOKS} from './hooks.js';
 import {BotBrain} from '@planet/shared/bot.js';
+import {incomingMissile} from '@planet/shared/physics/rules.js';
+import {firstLive} from '@planet/shared/physics/body.js';
 
 export const NO_SLOT=0xffff;
 const LB_MAX=10,EVENTS_MAX=256;
@@ -176,15 +178,26 @@ export class Sim{
     rows.sort((a,b)=>b.mass-a.mass);this._lb=rows;this._lbTick=w.tick;return rows;}
   top(n=LB_MAX){const lb=this.leaderboard();return lb.length>n?lb.slice(0,n):lb;}
   rankOf(slot){const lb=this.leaderboard();for(let i=0;i<lb.length;i++)if(lb[i].slot===slot)return i+1;return 0;}
-  /** Bloco `self` do snapshot (preenche `out`). Ímã e escudo são por peça: o HUD mostra o MELHOR entre as próprias (cada peça leva o seu nas flags). */
+  /**
+   * Bloco `self` do snapshot (preenche `out`). Ímã e escudo são por peça: o HUD mostra o MELHOR entre as próprias
+   * (cada peça leva o seu nas flags). `threat`/`threatDir` são o alerta de míssil teleguiado: têm que vir do
+   * SERVIDOR porque a AOI de um jogador pequeno tem meia-largura ~1250 px e o míssil nasce muito mais longe —
+   * client-side o aviso chegaria com menos de 2 s de sobra.
+   */
   self(slot,out){const w=this.world,ps=w.players.get(slot),gp=this.players.get(slot),t=w.tick;
-    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.fireCd=out.rank=out.mass=0;return out;}
+    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.fireCd=out.rank=out.mass=out.threat=out.threatDir=0;return out;}
     let mt=0,sh=0;const arr=ps.pieces;
     for(let i=0;i<arr.length;i++){const pc=arr[i];if(pc.dead)continue;const m=pc.magnetUntil-t;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}
     const sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t,fc=ps.fireCdUntil-t;
     out.flags=gp.dead?SELF_FLAG.DEAD:0;out.missiles=ps.missiles;out.powerBits=(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0);
     out.magnetT=mt>0?mt:0;out.shieldLv=sh;out.score=ps.score;out.splitCd=sc>0?sc:0;out.ejectCd=ec>0?ec:0;out.fireCd=fc>0?fc:0;
-    out.rank=gp.dead?0:this.rankOf(slot);out.mass=gp.dead?0:Math.round(w.massOf(slot));return out;}
+    out.rank=gp.dead?0:this.rankOf(slot);out.mass=gp.dead?0:Math.round(w.massOf(slot));
+    out.threat=out.threatDir=0;const me=gp.dead?null:firstLive(ps.pieces);
+    if(me){const m=incomingMissile(w,slot,me.x,me.y,MISSILE.ALERT_DIST);
+      if(m){const dx=m.x-me.x,dy=m.y-me.y,d=Math.hypot(dx,dy);
+        out.threat=1+Math.round(254*(1-Math.min(1,d/MISSILE.ALERT_DIST)));   // 255 = colado
+        out.threatDir=Math.round(Math.atan2(dy,dx)/6.2831853*256)&255;}}
+    return out;}
   /** Linhas do PLAYERS. */
   playersInfo(){const out=[];for(const gp of this.players.values())
     out.push({slot:gp.slot,flags:(gp.isBot?PLAYER_FLAG.BOT:0)|(gp.dead?PLAYER_FLAG.DEAD:0)|(gp.registered?PLAYER_FLAG.REG:0),skinId:gp.skinId&255,name:gp.name,score:gp.score});return out;}

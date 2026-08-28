@@ -10,7 +10,7 @@ const bool=v=>typeof v==='boolean'?v:undefined;
 /** whitelist de prefs: chave → validador (undefined = rejeita) */
 export const PREFS={
   quality:v=>QUALITIES.includes(v)?v:undefined,
-  showNames:bool,showMass:bool,showGrid:bool,showMinimap:bool,showFps:bool,sound:bool,music:bool,joystick:bool,holdEject:bool,rightSplit:bool,reduceMotion:bool,bigText:bool,
+  showNames:bool,showMass:bool,showGrid:bool,showMinimap:bool,showFps:bool,sound:bool,music:bool,ambience:bool,joystick:bool,holdEject:bool,rightSplit:bool,reduceMotion:bool,bigText:bool,
   volume:v=>typeof v==='number'&&v>=0&&v<=100?Math.round(v):undefined,   // 0..100, a mesma unidade do cliente (state/app.js e audio/index.js dividem por 100); com o antigo 0..1 o slider era descartado em silêncio e nunca persistia
   theme:v=>THEMES.includes(v)?v:undefined,
   colorblind:v=>typeof v==='boolean'?v:typeof v==='string'&&/^[a-z]{1,16}$/.test(v)?v:undefined,

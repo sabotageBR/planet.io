@@ -6,7 +6,7 @@ export const LABELS = {
   coinIcon: "🪙", coinWord: "moedas", nameLabel: "Nome do seu planeta", swap: "Trocar",
   play: "🚀 JOGAR", playAuto: "🚀 Jogar (auto)", rooms: "Salas", ranking: "Ranking", profile: "Perfil", shop: "Loja", prefs: "Opções", home: "Início",
   guestNote: "Jogando como convidado", claim: "Reivindicar conta", login: "Entrar", logout: "Sair", guest: "convidado", registered: "conta protegida",
-  hint: "mouse = mover · ESPAÇO = dividir · W = ejetar · F/clique = míssil · botão direito = dividir",
+  hint: "mouse = mover · ESPAÇO = dividir · W = ejetar · F/clique = míssil (segure para mirar, ESPAÇO cancela) · botão direito = dividir",
   back: "◄ Voltar", equipped: "EQUIPADA", equip: "Equipar", buy: "Comprar", locked: "Bloqueada", secret: "???",
   lbTitle: "PLACAR", massLabel: "MASSA", scoreLabel: "pontos", youLabel: "planeta", killsWord: "abates", botTag: "◆", regTag: "✓",
   dead: "ABSORVIDO", deadIcon: "💥", deadSub: "— a galáxia continua sem você —", eatenBy: "DEVORADO POR", suckedBy: "SUGADO POR",

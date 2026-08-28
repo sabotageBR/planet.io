@@ -8,7 +8,7 @@ import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,
   MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,
   WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,BOT_NAMES,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,
   focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir} from "@planet/shared";
-import {createWorld,applySplit} from "@planet/shared/physics/index.js";
+import {createWorld,applySplit,incomingMissile,firstLive} from "@planet/shared/physics/index.js";
 import {BotBrain} from "@planet/shared/bot.js";
 
 const seqNewer=(a,b)=>b<0||(((a-b)&0xFFFF)>0&&((a-b)&0xFFFF)<0x8000);
@@ -150,8 +150,13 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     let mt=0,sh=0;if(ps)for(const pc of ps.pieces){if(pc.dead)continue;const m=pc.magnetUntil-tick;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}   // powerups por peça: o HUD leva o melhor
     const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ps.missiles,powerBits:(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0),
       magnetT:mt,shieldLv:sh,score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),fireCd:Math.max(0,ps.fireCdUntil-tick),
-      rank:rankOf(s.slot),mass:Math.round(w.massOf(s.slot))}:undefined;
+      rank:rankOf(s.slot),mass:Math.round(w.massOf(s.slot)),...ameaca(ps)}:undefined;
     sendBin(s.sock,encodeSnapshot(writer,{tick,ackSeq:s.ackSeq,creates:cr,updates:up,removes:rm,self}));}
+  /** Alerta de míssil teleguiado — o mesmo cálculo do `self` do servidor (Sim.self). */
+  function ameaca(ps){const me=ps.alive?firstLive(ps.pieces):null;if(!me)return{threat:0,threatDir:0};
+    const m=incomingMissile(w,ps.slot,me.x,me.y,MISSILE.ALERT_DIST);if(!m)return{threat:0,threatDir:0};
+    const dx=m.x-me.x,dy=m.y-me.y,d=Math.hypot(dx,dy);
+    return{threat:1+Math.round(254*(1-Math.min(1,d/MISSILE.ALERT_DIST))),threatDir:Math.round(Math.atan2(dy,dx)/6.2831853*256)&255};}
   function rankOf(slot){const m=w.massOf(slot);let r=1;for(const o of meta.keys()){if(o===slot)continue;const ps=w.players.get(o);if(ps&&ps.alive&&w.massOf(o)>m)r++;}return r;}
   function toCreate(b,me){const c={kind:b.kind,id:b.id,x:b.x,y:b.y,r:b.r};
     switch(b.kind){

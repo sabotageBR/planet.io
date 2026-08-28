@@ -12,6 +12,7 @@ import {createHazards,BH_TEX} from "./layers/Hazards.js";
 import {createPlanets} from "./layers/Planets.js";
 import {createMissiles} from "./layers/Missiles.js";
 import {createAim} from "./layers/Aim.js";
+import {createThreat} from "./layers/Threat.js";
 import {createFx} from "./layers/Fx.js";
 
 export async function createRenderer({container,theme,prefs}){
@@ -25,11 +26,11 @@ export async function createRenderer({container,theme,prefs}){
   container.appendChild(canvas);
   const upload=tex=>{const r=app.renderer;if(r.prepare&&r.prepare.upload)r.prepare.upload(tex);else if(r.texture&&r.texture.initSource)r.texture.initSource(tex.source);};
   const R={app,canvas,kind,cache:createTextureCache({budgetMB:48,upload}),theme,prefs:{fx:true,...prefs},W:app.screen.width,H:app.screen.height,res:dpr,econ:false,econLevel:0,ambient:null};
-  const bg=createBackground(R),grid=createGrid(R),food=createFood(R),ejected=createEjected(R),hazards=createHazards(R),planets=createPlanets(R),missiles=createMissiles(R),aim=createAim(R),fx=createFx(R);
+  const bg=createBackground(R),grid=createGrid(R),food=createFood(R),ejected=createEjected(R),hazards=createHazards(R),planets=createPlanets(R),missiles=createMissiles(R),aim=createAim(R),threat=createThreat(R),fx=createFx(R);
   R.ambient=(kind,f)=>fx.ambient(kind,f);   // camadas pedem efeitos contínuos (ímã) sem conhecer a camada de fx
   const world=new Container();
-  const layers=[bg,grid,food,ejected,hazards,planets,missiles,aim,fx];
-  function mount(){world.removeChildren();world.addChild(bg.props,grid.root,hazards.holes,hazards.stars,food.root,ejected.root,hazards.asteroids,missiles.root,planets.trails,planets.root,aim.root,fx.root);}
+  const layers=[bg,grid,food,ejected,hazards,planets,missiles,aim,threat,fx];
+  function mount(){world.removeChildren();world.addChild(bg.props,grid.root,hazards.holes,hazards.stars,food.root,ejected.root,hazards.asteroids,missiles.root,planets.trails,planets.root,aim.root,threat.root,fx.root);}
   // A troca de tema NÃO invalida o cache: as chaves de textura já são prefixadas com o id do tema, então os
   // temas convivem, voltar a um céu já visto é acerto de cache e nada é reassado dentro do frame da virada.
   // Quem segura textura sem pedi-la por frame chama cache.keepAlive() (ver TextureCache).
@@ -58,7 +59,7 @@ export async function createRenderer({container,theme,prefs}){
     /** Buraco negro: uma textura 512 por tema, mas é o desenho mais caro do jogo — sem aquecer, ela é assada
      *  sincronamente no primeiro frame em que um buraco entra na tela, e isso é um engasgo visível. */
     warmHazards(th=R.theme){const TX=th.textures;R.cache.warm(TX.key("blackHole",{},BH_TEX),BH_TEX,(c,s)=>TX.blackHole(c,s,{}));},
-    /** f: {view,cam,now,dt,t,rt,rect,aim,parallax,showGrid,showNames,showTrails} */
+    /** f: {view,cam,now,dt,t,rt,rect,aim,threat,parallax,showGrid,showNames,showTrails} */
     render(f){R.cache.tick();const cam=f.cam;world.position.set(R.W/2-cam.x*cam.scale,R.H/2-cam.y*cam.scale);world.scale.set(cam.scale);
       for(const l of layers)l.render(f);app.render();},
     counts(){const h=hazards.counts();return{planets:planets.count(),food:food.count(),ejected:ejected.count(),asteroids:h.asteroids,holes:h.holes,stars:h.stars,missiles:missiles.count(),fx:fx.count(),textures:R.cache.size,texMB:(R.cache.bytes/1048576).toFixed(1)};},

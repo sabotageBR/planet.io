@@ -9,7 +9,7 @@ export const NAV_SCREENS = ["entry", "lobby", "rank", "profile", "shop", "prefs"
 /** Whitelist de PATCH /api/me/prefs (docs/spec/api.md) com os padrões do cliente. */
 export const PREF_DEFAULTS = Object.freeze({
   quality: "auto", showNames: true, showGrid: true, showMinimap: true, showFps: true,
-  sound: true, music: false, volume: 70, joystick: false, holdEject: true, rightSplit: true,
+  sound: true, music: false, ambience: true, volume: 70, joystick: false, holdEject: true, rightSplit: true,
   theme: "auto", reduceMotion: false, bigText: false, colorblind: "off", lbSize: 10,
 });
 export const PREF_KEYS = Object.keys(PREF_DEFAULTS);

@@ -8,6 +8,7 @@
 import {BOT,BLACKHOLE,STAR,ASTEROID,MISSILE,FOOD_TYPE} from "./constants.js";
 import {INPUT_FLAG} from "./protocol/constants.js";
 import {clamp} from "./util.js";
+import {incomingMissile} from "./physics/rules.js";
 
 const HUMAN_BONUS=1.5;   // entre duas presas iguais, a humana vale mais (bot que caça bot é chato de ver)
 const TAU=6.28318;
@@ -84,11 +85,9 @@ export class BotBrain{
       else if(c.big>=oc.big*huntRatio&&d<BOT.HUNT_DIST){
         if(!o.isBot&&tick-o.spawnTick<BOT.SPAWN_GRACE_TICKS)continue;   // acabou de cair no mapa: deixa o humano respirar
         const v=oc.big*(o.isBot?1:HUMAN_BONUS)-d*.1;if(v>hv){hv=v;hunt=o.slot;}}}
-    // míssil inimigo vindo para cima do bot: virar para ele e derrubar com outro míssil
-    if(ps.missiles>0&&tick>=ps.fireCdUntil){const ms=w.missiles;
-      for(let i=0;i<ms.length;i++){const m=ms[i];if(m.dead||m.owner===this.slot||m.targetId!==this.slot||m.type!==0)continue;
-        const dx=m.x-c.x,dy=m.y-c.y,d2=dx*dx+dy*dy;
-        if(d2<BOT.MISSILE_FEAR*BOT.MISSILE_FEAR&&dx*m.vx+dy*m.vy<0){this.mode="intercept";this.target=m.id;return;}}}
+    // míssil inimigo vindo para cima do bot: virar para ele e derrubar com outro míssil (mesmo predicado do alerta do humano)
+    if(ps.missiles>0&&tick>=ps.fireCdUntil){const m=incomingMissile(w,this.slot,c.x,c.y,BOT.MISSILE_FEAR);
+      if(m){this.mode="intercept";this.target=m.id;return;}}
     if(flee>=0){this.mode="flee";this.target=flee;return;}
     if(hunt>=0){this.mode="hunt";this.target=hunt;return;}
     const f=this._bestFood(ps,c);
@@ -120,7 +119,7 @@ export class BotBrain{
       if(d2<lim*lim&&d2<bd){bd=d2;best={x:b.x,y:b.y,ri};}};
     const holes=w.holes;   // buraco só assusta quem ele consegue esmagar: acima de rc·CRUSH_K a peça passa por cima
     for(let i=0;i<holes.length;i++){const h=holes[i];if(!h.dead&&h.k>0&&c.big<h.r*h.k*BLACKHOLE.CRUSH_K)take(h,h.r*BLACKHOLE.INFLUENCE*h.k);}
-    const stars=w.stars;for(let i=0;i<stars.length;i++){const st=stars[i];if(!st.dead&&st.k>=STAR.ARM_K)take(st,st.r*STAR.HALO);}
+    const stars=w.stars;for(let i=0;i<stars.length;i++){const st=stars[i];if(!st.dead&&st.k>=STAR.ARM_K)take(st,st.r*STAR.HALO*BOT.STAR_FEAR/BOT.HOLE_AVOID);}
     const asts=w.asteroids;   // só assusta quem pode estourá-lo: o pop parte o planeta em vários pedaços
     for(let i=0;i<asts.length;i++){const a=asts[i];if(!a.dead&&c.big>a.r*ASTEROID.POP_RATIO)take(a,a.r*BOT.AST_FEAR);}
     return best;}
@@ -139,8 +138,8 @@ export class BotBrain{
       s-=Math.max(0,m-Math.min(x,y,w.w-x,w.h-y))*3;                                    // encostar na parede é armadilha
       const holes=w.holes;for(let j=0;j<holes.length;j++){const h=holes[j];if(h.dead||h.k<=0)continue;
         const ri=h.r*BLACKHOLE.INFLUENCE*h.k,d=Math.hypot(x-h.x,y-h.y);if(d<ri*BOT.HOLE_AVOID)s-=(ri*BOT.HOLE_AVOID-d)*4;}
-      const stars=w.stars;for(let j=0;j<stars.length;j++){const st=stars[j];if(st.dead||st.k<STAR.ARM_K)continue;
-        const ri=st.r*STAR.HALO,d=Math.hypot(x-st.x,y-st.y);if(d<ri*BOT.HOLE_AVOID)s-=(ri*BOT.HOLE_AVOID-d)*4;}
+      const stars=w.stars;for(let j=0;j<stars.length;j++){const st=stars[j];if(st.dead||st.k<STAR.ARM_K)continue;   // encostar QUEIMA STAR.BURN: vale fugir de longe
+        const ri=st.r*STAR.HALO,d=Math.hypot(x-st.x,y-st.y);if(d<ri*BOT.STAR_FEAR)s-=(ri*BOT.STAR_FEAR-d)*4;}
       if(s>bs){bs=s;bx=clamp(x,m,w.w-m);by=clamp(y,m,w.h-m);}}
     this.wx=bx;this.wy=by;return{x:bx,y:by};}
 

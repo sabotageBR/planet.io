@@ -1,18 +1,21 @@
 // ── AÇÕES: teclado/HUD/mouse → flags do InputSender (split, eject one-shot + hold, fire com mira) ──
+// CANCELAR o tiro: com a mira carregada, o ESPAÇO (e o botão direito, que é a mesma ação "split") desarma em vez
+// de dividir — e como o `down` do tiro não manda NADA para o servidor, cancelar é 100% local: some a reta, e o
+// `up` do botão cai fora do `if(held)` e não dispara. O preço é não dar para dividir com um tiro carregado.
 // Tiro: a mira só ARMA depois de AIM_MS com o botão/tecla segurado — é aí que a reta pontilhada aparece
-// (onAim(true)) e o disparo, ao SOLTAR, vai com INPUT_FLAG.AIM (o míssil persegue o objeto mais próximo
-// dentro do cone da flecha). Clique rápido (soltar antes de AIM_MS) continua teleguiado/interceptador e
+// (onAim(true)) e o disparo, ao SOLTAR, vai com INPUT_FLAG.AIM (o míssil persegue a bolinha mais próxima
+// do ponteiro). Clique rápido (soltar antes de AIM_MS) continua teleguiado/interceptador e
 // nunca desenha reta. Sem munição, o botão de tiro ejeta massa como antes (no `down`).
 import {INPUT_FLAG} from "@planet/shared";
 
 const AIM_MS=160;
-/** prefs(): {holdEject,rightSplit}; ammo(): mísseis atuais; canAct(): vivo e conectado; onAim(on): liga/desliga a reta */
-export function createActions({input,prefs,ammo,canAct,onAim=null}){
+/** prefs(): {holdEject,rightSplit}; ammo(): mísseis atuais; canAct(): vivo e conectado; onAim(on): liga/desliga a reta; onCancel(): o tiro foi cancelado */
+export function createActions({input,prefs,ammo,canAct,onAim=null,onCancel=null}){
   let held=false,armed=false,timer=0;   // held: botão de tiro apertado; armed: passou de AIM_MS (reta na tela)
   const setAim=on=>{if(armed===on)return;armed=on;if(onAim)onAim(on);};
   const disarm=()=>{if(timer){clearTimeout(timer);timer=0;}held=false;setAim(false);};
   const act=(action,phase)=>{if(!canAct()){if(phase==="up"){input.setHold(false);disarm();}return;}
-    if(action==="split"){if(phase==="down")input.press(INPUT_FLAG.SPLIT);}
+    if(action==="split"){if(phase==="down"){if(held){disarm();if(onCancel)onCancel();return;}input.press(INPUT_FLAG.SPLIT);}}
     else if(action==="eject"){if(phase==="down"){input.press(INPUT_FLAG.EJECT);if(prefs().holdEject!==false)input.setHold(true);}else input.setHold(false);}
     else if(action==="fire"){
       if(phase==="down"){if(held)return;

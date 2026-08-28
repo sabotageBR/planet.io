@@ -28,6 +28,10 @@ export function createMinimap({hud,theme,getScene}){
     for(const h of S.holes){c.fillStyle=st.hole;c.beginPath();c.arc(mx+h.x*sc,my+h.y*sc,Math.max(2.2,h.ri*sc*.5),0,6.283);c.fill();}
     for(const q of S.stars||[]){c.fillStyle=st.star;c.beginPath();c.arc(mx+q.x*sc,my+q.y*sc,Math.max(2.4,q.r*sc*1.2),0,6.283);c.fill();}
     c.fillStyle=st.ast;for(const q of S.asteroids)c.fillRect(mx+q.x*sc-1,my+q.y*sc-1,2,2);
+    // mísseis: o que está MIRANDO em mim pisca e vem maior — é o mesmo alerta da seta e do bipe, no mapa
+    for(const q of S.missiles||[]){const pisca=q.mira?(.45+.55*(.5+.5*Math.sin(t*.012))):.7;
+      c.globalAlpha=pisca;c.fillStyle=st.missile||st.player;c.beginPath();c.arc(mx+q.x*sc,my+q.y*sc,q.mira?3.2:1.8,0,6.283);c.fill();}
+    c.globalAlpha=1;
     // TODOS os inimigos vivos do mapa (vêm do placar, não da AOI); o ponto cresce com a massa, então dá para
     // ver de longe quem é ameaça — √mass·sc é o raio real no mundo, com um piso para o ponto não sumir
     for(const p of S.enemies){c.fillStyle=p.isBot?st.bot:st.player;const rr=Math.max(2,Math.sqrt(p.mass||1)*sc);

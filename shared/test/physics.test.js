@@ -5,7 +5,7 @@ import {readdirSync,readFileSync,statSync} from "node:fs";
 import {fileURLToPath} from "node:url";
 import {dirname,join} from "node:path";
 import {performance} from "node:perf_hooks";
-import {createWorld,createGrid,createBody,setR,addBoost,boostLeft,velX,velY,tryMergeOwn,applyEject,stepOwnPieces} from "../src/physics/index.js";
+import {createWorld,createGrid,createBody,setR,addBoost,boostLeft,velX,velY,tryMergeOwn,applyEject,stepOwnPieces,incomingMissile} from "../src/physics/index.js";
 import {zoomFor,focusOf,aoiScaleFood} from "../src/camera.js";
 import {vmaxFor} from "../src/physics/integrate.js";
 import {createRng} from "../src/rng.js";
@@ -269,13 +269,17 @@ test("ímã: comida no alcance é sugada (MOVED, acelerando) e ejetados de terce
   let eaten=false;for(let t=0;t<120&&!eaten;t++){w.step();eaten=w.events.some(ev=>ev.type==="FOOD_EATEN");}assert.ok(eaten,"chega à boca em < 2 s");});
 
 // 15. estrela: estilhaço ao encostar
-test("estrela: encostar estilhaça o planeta em vários pedaços (massa conservada), com cooldown; peça pequena só é empurrada",()=>{
+test("estrela: encostar QUEIMA STAR.BURN da massa e estilhaça o resto, com cooldown; peça pequena só é empurrada",()=>{
   const w=empty(70);const st=w.spawnStar(true);st.x=1000;st.y=1000;
   const pc=w.addPlayer(0,{x:1000+st.r+40,y:1000,r:60}),ps=w.players.get(0);w.setTarget(0,st.x,st.y);
   const m0=pc.mass;let burst=null;for(let t=0;t<180&&!burst;t++){w.step();burst=w.events.find(e=>e.type==="STAR_BURST")||null;}
   assert.ok(burst&&burst.slot===0,"STAR_BURST");
   const parts=w.piecesOf(0).filter(p=>!p.dead);assert.ok(parts.length>=STAR.SHATTER_N[0]+1,"virou vários pedaços");
-  const mt=parts.reduce((a,p)=>a+p.mass,0);assert.ok(Math.abs(mt-m0)<1e-6,"massa conservada");
+  const mt=parts.reduce((a,p)=>a+p.mass,0);
+  assert.ok(mt<m0,"a estrela DESTRÓI massa (era o buraco do jogo: atropelar estrela saía de graça)");
+  assert.ok(Math.abs(mt-m0*(1-STAR.BURN))<1e-6,"queimou exatamente STAR.BURN, e o resto foi repartido");
+  assert.equal(w.ejected.filter(e=>!e.dead).length,0,"a massa queimada SOME: não vira fragmento para o dono recolher");
+  assert.ok(burst.burn>0&&Math.abs(burst.burn-m0*STAR.BURN)<1e-6,"o evento leva quanto queimou (o FX/som usa isso)");
   assert.ok(parts.every(p=>p.mergeAt>w.tick),"não fundem na hora");
   assert.ok(parts.some(p=>boostLeft(p)>STAR.SHATTER_DIST*.5),"saem voando");
   const n1=parts.length;for(let t=0;t<STAR.SHATTER_CD_TICKS-2;t++)w.step();
@@ -384,22 +388,26 @@ test("powerup por peça: só a parte que pegou o 🛡️/🧲 se beneficia; ao f
   assert.ok(merged,"as partes se juntam");const left=w.piecesOf(0).filter(p=>!p.dead);assert.equal(left.length,1);
   assert.equal(left[0].shieldLv,1,"fica o maior escudo das duas");assert.equal(left[0].magnetUntil,mag,"e o ímã da outra parte");});
 
-// 20. mira: trava no alvo do cone
-test("tiro mirado: persegue o objeto mais próximo dentro do cone (planeta, míssil ou asteroide)",()=>{
-  const w=empty(81);w.addPlayer(0,{x:1000,y:1000,r:40,missiles:3});w.setTarget(0,2000,1000);
+// 20. mira: trava na bolinha mais próxima do PONTEIRO e troca quando o mouse anda
+test("tiro mirado: trava na bolinha mais próxima do ponteiro e TROCA de alvo quando o mouse anda",()=>{
+  const w=empty(81);w.addPlayer(0,{x:1000,y:1000,r:40,missiles:2});
   w.addPlayer(1,{x:2200,y:1150,r:40});w.setTarget(1,2200,1150);
-  arma(w);w.requestFire(0,true);w.step();const m=w.missiles[0];
-  assert.ok(m,"míssil");assert.equal(m.type,0);assert.equal(m.targetId,1,"travou no planeta inimigo do cone");
-  let boom=false;for(let t=0;t<300&&!boom;t++){w.step();boom=w.events.some(e=>e.type==="BOOM");}
-  assert.ok(boom,"vai atrás dele até acertar");
-  // asteroide mais perto no mesmo cone rouba a trava
-  const w2=empty(82);w2.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w2.setTarget(0,2000,1000);
-  w2.addPlayer(1,{x:2400,y:1000,r:40});const a=w2.spawnAsteroid(-1,1600,1080,40);a.vx=0;a.vy=0;
-  arma(w2);w2.requestFire(0,true);w2.step();const m2=w2.missiles[0];
-  assert.equal(m2.type,1);assert.equal(m2.targetId,a.id,"o asteroide estava mais perto");
-  let defl=false;for(let t=0;t<120&&!defl;t++){w2.step();defl=w2.events.some(e=>e.type==="DEFLECT");}
-  assert.ok(defl,"o míssil o alcança e o desvia");
-  // sem AIM continua o tiro de sempre: teleguiado no oponente mais próximo, mesmo fora do cone
+  const a=w.spawnAsteroid(-1,1300,1000,40);a.vx=a.vy=0;arma(w);
+  // o asteroide está MUITO mais perto de quem atira, mas o cursor está em cima do inimigo: quem manda é o cursor
+  w.setTarget(0,2200,1150);w.requestFire(0,true);w.step();
+  const m=w.missiles[0];assert.ok(m,"míssil");
+  assert.equal(m.type,0);assert.equal(m.targetId,1,"o ponteiro manda, não a distância até a peça");
+  // mesmo jogador, mouse do outro lado: o alvo troca sozinho
+  w.setTarget(0,a.x,a.y);w.requestFire(0,true);w.step();
+  const m2=w.missiles[1];assert.ok(m2,"2º míssil");
+  assert.equal(m2.type,1);assert.equal(m2.targetId,a.id,"mexeu o mouse, mudou a bolinha mirada");
+  let defl=false;for(let t=0;t<120&&!defl;t++){w.step();defl=w.events.some(e=>e.type==="DEFLECT");}
+  assert.ok(defl,"e vai atrás dela até desviá-la");
+  // cursor no vazio (nada a menos de AIM_PICK dele): não trava, o míssil sai reto
+  const w2=empty(82);w2.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w2.addPlayer(1,{x:5000,y:5000,r:40});
+  arma(w2);w2.setTarget(0,1000+MISSILE.AIM_PICK*2,1000);w2.requestFire(0,true);w2.step();
+  assert.equal(w2.missiles[0].targetId,-1,"cursor no vazio: o míssil segue reto");
+  // sem AIM continua o tiro de sempre: teleguiado no oponente mais próximo, mesmo longe do ponteiro
   const w3=empty(83);w3.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w3.addPlayer(1,{x:1000,y:2000,r:40});
   arma(w3);w3.setTarget(0,2000,1000);w3.requestFire(0);w3.step();
   assert.equal(w3.missiles[0].targetId,1,"clique rápido persegue como antes");});
@@ -833,3 +841,51 @@ test("eject: a pelota é proporcional a quem cospe, segurar o W esvazia o planet
   // teto de população: nenhuma rajada pode encher o mundo de pelotas
   const w2=empty(502);for(let i=0;i<EJECT.MAX+200;i++)w2.addEjected(3000+i%50,3000,0,0,9,105,-1,0,EJECT.LIFE_TICKS);
   assert.ok(w2.ejected.filter(e=>!e.dead).length<=EJECT.MAX,`a lista para em EJECT.MAX (${EJECT.MAX})`);});
+
+// 33. cuspir: a força cresce com o hold
+test("cuspir: a força SOBE enquanto o W está segurado, satura em RAMP_N e zera na pausa",()=>{
+  const w=empty(90);w.addPlayer(0,{x:4000,y:4000,r:220});const ps=w.players.get(0);w.setTarget(0,9000,4000);
+  const vel=[],seen=new Set();
+  const colher=()=>{for(const e of w.ejected)if(!e.dead&&!seen.has(e.id)){seen.add(e.id);vel.push(Math.hypot(e.vx,e.vy));}};
+  w.setEjectHold(0,true);
+  for(let t=0;t<EJECT.HOLD_TICKS*(EJECT.RAMP_N+2);t++){w.step();colher();}
+  assert.ok(vel.length>=EJECT.RAMP_N,`saíram cusparadas bastantes para a rampa saturar (${vel.length})`);
+  assert.equal(ps.ejectRamp,EJECT.RAMP_N,"a rampa satura em RAMP_N e não passa disso");
+  const v0=vel[0],vN=vel[vel.length-1];
+  assert.ok(vN>v0*1.5,`a última sai MUITO mais forte que a primeira (${v0.toFixed(0)} → ${vN.toFixed(0)} px/s) — antes eram idênticas`);
+  // alcance: o ejetado integra com arrasto puro, então distância = v/DRAG. É isso que desfaz o amontoado.
+  assert.ok((vN-v0)/EJECT.DRAG>300,"a diferença de alcance entre a 1ª e a última passa de 300 px");
+  // soltar o W zera a força
+  w.setEjectHold(0,false);assert.equal(ps.ejectRamp,0,"soltou o W: a força recomeça do início");
+  for(let t=0;t<EJECT.COOLDOWN_TICKS+1;t++)w.step();
+  w.requestEject(0);w.step();colher();
+  assert.ok(vel[vel.length-1]<vN*.75,"e o toque avulso depois da pausa sai fraco de novo");});
+
+// 34. estrela: quem trombou não leva o prêmio da supernova
+test("estrela: a supernova de quem TROMBOU não larga prêmio (nem fragmento nem berçário)",()=>{
+  // morte natural (fim da fase OLD): prêmio completo, como sempre
+  const w=empty(91),st=w.spawnStar(true);st.x=3000;st.y=3000;st.life=w.tick+2;
+  for(let t=0;t<600&&!st.dead;t++)w.step();
+  assert.ok(st.dead,"a estrela morreu de velha");
+  assert.equal(w.ejected.filter(e=>!e.dead).length,STAR.NOVA_PARTICLES,"prêmio completo: os fragmentos brilhantes caem");
+  assert.equal(w.food.filter(f=>!f.dead).length,STAR.NOVA_FOOD,"e o berçário fica no lugar da estrela");
+  // trombada de planeta: a MESMA explosão, sem prêmio nenhum
+  const w2=empty(92),s2=w2.spawnStar(true);s2.x=3000;s2.y=3000;s2.life=1e9;
+  w2.addPlayer(0,{x:3000+s2.r+40,y:3000,r:80});w2.setTarget(0,s2.x,s2.y);
+  let nova=null;for(let t=0;t<180&&!nova;t++){w2.step();nova=w2.events.find(e=>e.type==="SUPERNOVA")||null;}
+  assert.ok(nova&&s2.dead,"trombou: a estrela explodiu e morreu igual");
+  assert.equal(w2.ejected.filter(e=>!e.dead).length,0,"mas quem pagou a queimadura NÃO leva os fragmentos");
+  assert.equal(w2.food.filter(f=>!f.dead).length,0,"nem o berçário — senão atropelar volta a compensar");});
+
+// 35. alerta: o predicado de "míssil vindo em mim" é um só
+test("incomingMissile: pega só o teleguiado inimigo que está MIRANDO em mim e se APROXIMANDO",()=>{
+  const w=empty(93);w.addPlayer(0,{x:3000,y:3000,r:40});w.addPlayer(1,{x:6000,y:3000,r:40});
+  const vindo=w.addMissile(4200,3000,-MISSILE.SPEED,0,1,0);         // do inimigo, mirando em mim, se aproximando
+  const indo=w.addMissile(4400,3000,MISSILE.SPEED,0,1,0);            // mirando em mim, mas se afastando
+  const outro=w.addMissile(3300,3000,-MISSILE.SPEED,0,1,1);          // perto, mas mirando em OUTRO slot
+  const meu=w.addMissile(3200,3000,-MISSILE.SPEED,0,0,0);            // meu próprio míssil
+  outro.type=meu.type=indo.type=vindo.type=0;
+  assert.equal(incomingMissile(w,0,3000,3000,MISSILE.ALERT_DIST),vindo,"só o que vem em cima de mim conta");
+  assert.equal(incomingMissile(w,0,3000,3000,900),null,"e só dentro do alcance pedido");
+  vindo.dead=true;
+  assert.equal(incomingMissile(w,0,3000,3000,MISSILE.ALERT_DIST),null,"morreu, acabou o alerta");});
