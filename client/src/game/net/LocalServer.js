@@ -157,7 +157,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     const m=incomingMissile(w,ps.slot,me.x,me.y,MISSILE.ALERT_DIST);if(!m)return{threat:0,threatDir:0};
     const dx=m.x-me.x,dy=m.y-me.y,d=Math.hypot(dx,dy);
     return{threat:1+Math.round(254*(1-Math.min(1,d/MISSILE.ALERT_DIST))),threatDir:Math.round(Math.atan2(dy,dx)/6.2831853*256)&255};}
-  /** "Restam N" do `self` (protocolo 9). No modo Livre o número só é informativo — aqui não há Sobrevivência. */
+  /** "Restam N" do `self` (protocolo 9). No modo Livre o número só é informativo — aqui não há Battle Royale. */
   function aliveCount(){let n=0;for(const slot of meta.keys()){const ps=w.players.get(slot);if(ps&&ps.alive)n++;}return n;}
   function rankOf(slot){const m=w.massOf(slot);let r=1;for(const o of meta.keys()){if(o===slot)continue;const ps=w.players.get(o);if(ps&&ps.alive&&w.massOf(o)>m)r++;}return r;}
   function toCreate(b,me){const c={kind:b.kind,id:b.id,x:b.x,y:b.y,r:b.r};

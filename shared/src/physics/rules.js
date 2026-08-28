@@ -32,7 +32,7 @@ export const LOCAL={POP_DIV:22,POP_MIN:2,POP_MAX:6,POP_DIST:780,             // 
  * `a` e `b` são aliados? É a ÚNICA fonte da resposta — o cérebro do bot só otimiza o comportamento; quem
  * impede de comer, de acertar e de mirar é isto, chamado nos seis pontos de decisão (piecePair, pieceMissile,
  * missileMissile, incomingMissile, aimTarget e a busca de alvo do applyFire).
- * `w.peace` é o aquecimento do Sobrevivência: enquanto ele está ligado TODO MUNDO é aliado, então a espera
+ * `w.peace` é o aquecimento do Battle Royale: enquanto ele está ligado TODO MUNDO é aliado, então a espera
  * não precisou de nenhuma regra própria. Sem equipe (team −1, o modo Livre inteiro) ninguém é aliado de ninguém.
  * @param {World} w
  */

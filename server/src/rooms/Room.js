@@ -8,7 +8,7 @@
 // cada encode devolve uma vista reutilizada; se um socket ficou com bytes pendentes trocamos de
 // writer (o antigo fica com o socket até drenar) em vez de copiar a cada envio.
 // @ts-check
-import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT_NAMES,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,SURVIVAL,CHAT,VOICE} from '@planet/shared/constants.js';
+import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT_NAMES,botNick,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,VOICE} from '@planet/shared/constants.js';
 import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent,encodeZone,encodeVoice} from '@planet/shared/protocol/index.js';
 import {rectHas} from '@planet/shared/camera.js';
 import {createRng} from '@planet/shared/rng.js';
@@ -27,15 +27,18 @@ export class Room{
     /** @type {Map<number,import('../net/Session.js').Session>} */this.sessions=new Map();
     this.createdAt=Date.now();this.lastHumanAt=Date.now();this.running=false;
     // Livre: o env continua mandando (roomMax/roomBots), senão publicar este arquivo mudaria o balanço em produção.
-    // Sobrevivência: quem manda é o modo, e a capacidade fecha no tamanho de equipe (modeCap).
-    this.max=this.mode.warmup?modeCap(this.modeId,this.teamSize):config.roomMax;
-    this.botCount=this.mode.warmup?0:config.roomBots;
-    this.roundTicks=this.mode.warmup?this.mode.roundTicks:(config.roundTicks||ROUND.TICKS);
-    this.warmupTicks=config.warmupTicks||SURVIVAL.WARMUP_TICKS;   // env WARMUP_TICKS: testar o começo da partida sem esperar 45 s
-    this.phase=this.mode.warmup?'warmup':'live';this.warmupUntil=0;this.fullAt=0;this.zone=null;
-    // a paz vale desde o tick ZERO do aquecimento: deixá-la para o primeiro step abria uma janela em que
-    // quem entrasse podia ser comido antes de a partida existir
-    this.sim.world.peace=this.phase==='warmup';
+    // Battle Royale: quem manda é o modo, e a capacidade fecha no tamanho de equipe (modeCap).
+    this.max=this.mode.lobby?modeCap(this.modeId,this.teamSize):config.roomMax;
+    this.botCount=this.mode.lobby?0:config.roomBots;
+    this.roundTicks=this.mode.lobby?this.mode.roundTicks:(config.roundTicks||ROUND.TICKS);
+    this.lobbyTicks=config.lobbyTicks||BR.LOBBY_TICKS;   // env LOBBY_TICKS: testar a largada sem esperar 30 s
+    // lobby: ninguém está no MAPA ainda. `lobbyUntil` é a janela em que os humanos que procuram battle
+    // royale caem juntos; `startsAt` só é escrito quando a contagem regressiva começa (0 = ainda enchendo).
+    this.phase=this.mode.lobby?'lobby':'live';this.lobbyStart=0;this.lobbyUntil=0;this.startsAt=0;this.nextBotAt=0;this.zone=null;
+    this.usedNicks=new Set();this.lobbyAt=0;
+    // ninguém tem peça no lobby, mas a paz fica ligada como cinto de segurança: se um dia alguém nascer
+    // cedo por engano, não vira almoço antes de a partida existir
+    this.sim.world.peace=this.phase==='lobby';
     /** @type {Map<string,number>} código de party → equipe (para os amigos caírem juntos) */this.parties=new Map();
     this.roundStart=0;this.over=false;this.endedAt=0;this.endReason='time';this.champion=null;this.voiceAt=0;this.voiceN=0;
     this.writer=createWriter(WRITER_SIZE);this.snapshotter=createSnapshotter(this);this._botName=this.rng.int(0,BOT_NAMES.length-1);this.onRewards=onRewards;
@@ -49,7 +52,7 @@ export class Room{
   stop(){this.running=false;}
   topUpBots(team=-1){let have=this.sim.botCount();
     for(;have<this.botCount;have++)this.sim.addBot(this.freeSlot(),{name:BOT_NAMES[this._botName++%BOT_NAMES.length],skinId:this.rng.int(0,BOT_SKINS-1),team});}
-  /** Par que faltava do topUpBots: tira bots (o Sobrevivência abre vaga para humano até o último segundo). */
+  /** Par que faltava do topUpBots: tira bots (o Battle Royale abre vaga para humano até o último segundo). */
   trimBots(n){let k=n;
     for(const gp of [...this.sim.players.values()])
       if(k>0&&gp.isBot){this.sim.remove(gp.slot);k--;}   // Sim.remove marca as peças com REMOVE.DESPAWN, que o snapshot já traduz
@@ -59,10 +62,16 @@ export class Room{
   isFull(){return this.sessions.size>=this.max;}
   /**
    * Porta ÚNICA de entrada da sala (o RoomManager e o wsServer perguntam só isto). No Livre é o `isFull` de
-   * sempre; no Sobrevivência ela fecha quando a partida começa — quem morreu não volta para a mesma sala,
+   * sempre; no Battle Royale ela fecha quando a partida começa — quem morreu não volta para a mesma sala,
    * vai para uma nova, que é exatamente o que "sem respawn" quer dizer.
    */
-  acceptsJoin(){return !this.over&&!this.isFull()&&(this.phase!=='live'||!this.mode.warmup);}
+  acceptsJoin(){
+    if(this.over)return false;
+    // No LOBBY a vaga é sempre do humano: se está cheio de preenchimento, um deles sai (ver join). Sem isto
+    // dois amigos que procuram com 10 s de diferença cairiam em salas separadas — o oposto do que o
+    // matchmaking existe para fazer.
+    if(this.phase==='lobby')return this.sessions.size<this.max;
+    return !this.isFull()&&!this.mode.lobby;}
   info(){return{code:this.code,shard:this.shard,mode:this.modeId,teamSize:this.teamSize,phase:this.phase,open:this.acceptsJoin(),
     players:this.sessions.size,max:this.max,bots:this.sim.botCount(),round:this.roundLeft()};}
   /** Bloco `round` do JSON `room`: tick de início, duração e hora do relógio do espaço no início. */
@@ -70,18 +79,21 @@ export class Room{
     phase:this.phase,
     // TICK absoluto, não "faltam N ms": o cliente já sincroniza o relógio do servidor, e uma duração relativa
     // o obrigaria a saber há quanto tempo a mensagem chegou — que é justamente onde a contagem errava.
-    startsAt:this.phase==='warmup'?(this.fullAt||this.warmupUntil||0):0};}
+    startsAt:this.startsAt||0};}
   /** Segundos restantes da rodada (0 se já acabou). */
   roundLeft(){const left=(this.roundStart+this.roundTicks-this.sim.tick)/TICK_HZ;return left>0?Math.round(left):0;}
   // ── sessões ──
   /** Entra no menor slot livre. Devolve o slot. */
   join(session,{name,registered=false,skinId=0,sessionId=null,userId=null,party=null}){
+    const lobby=this.phase==='lobby';
+    if(lobby&&this.sim.players.size>=this.max)this.trimBots(1);   // a vaga é do humano
     const slot=this.freeSlot(),team=this._teamFor(party);
-    this.sim.addHuman(slot,{name,registered,skinId,sessionId,userId,team});
-    if(this.mode.warmup&&!this.warmupUntil)this.warmupUntil=this.sim.tick+this.warmupTicks;   // o relógio da espera começa no PRIMEIRO humano
+    this.usedNicks.add(String(name||'').toLowerCase());           // o preenchimento não pode repetir o nick de quem está na sala
+    this.sim.addHuman(slot,{name,registered,skinId,sessionId,userId,team,spawn:!lobby});
+    if(lobby&&!this.lobbyUntil){this.lobbyStart=this.sim.tick;this.lobbyUntil=this.sim.tick+this.lobbyTicks;}   // a janela começa no PRIMEIRO humano
     const pc=this.sim.world.piecesOf(slot)[0];if(pc){session.cx=pc.x;session.cy=pc.y;}
     session.room=this;session.slot=slot;session.known.clear();session.rect=null;session.specSlot=-1;this.sessions.set(slot,session);this.lastHumanAt=Date.now();
-    if(this.phase==='warmup')this.broadcastPhase();
+    if(lobby)this.broadcastLobby();
     return slot;}
   /** Sai de vez: onMatchEnd(cause) se ainda vivo, remove do mundo. */
   leave(session,cause='left'){
@@ -138,16 +150,12 @@ export class Room{
    * ele nascia 0 e nunca mudava, e é justamente esse campo que o relógio, a contagem e o céu do cliente derivam.
    */
   begin(){
-    if(this.phase!=='warmup')return;
+    if(this.phase!=='lobby')return;
     const sim=this.sim,w=sim.world;
-    // 1. bots preenchem os buracos: primeiro as equipes incompletas, depois as vazias
-    if(this.teamCount>0){
-      for(let t=0;t<this.teamCount;t++){let falta=this.teamSize-this._teamSizeAll(t);
-        while(falta-->0&&sim.players.size<SURVIVAL.PLAYERS)
-          sim.addBot(this.freeSlot(),{name:BOT_NAMES[this._botName++%BOT_NAMES.length],skinId:this.rng.int(0,BOT_SKINS-1),team:t});}}
-    else{this.botCount=sim.botCount()+Math.max(0,SURVIVAL.PLAYERS-sim.players.size);this.topUpBots(-1);}   // PLAYERS é o TOTAL: humanos já ocupam parte das vagas
+    // 1. fecha o que faltou (a curva do lobby já deve ter enchido quase tudo; isto é a borda)
+    this.fillTo(this.max);   // PLAYERS é o TOTAL: humanos já ocupam parte das vagas
     // 2. todo mundo recomeça igual, num anel espaçado (companheiros lado a lado)
-    const cx=w.w/2,cy=w.h/2,rad=Math.min(w.w,w.h)*SURVIVAL.SPAWN_RING;
+    const cx=w.w/2,cy=w.h/2,rad=Math.min(w.w,w.h)*BR.SPAWN_RING;
     const grupos=new Map();
     for(const gp of sim.players.values()){const k=gp.team>=0?`t${gp.team}`:`s${gp.slot}`;
       if(!grupos.has(k))grupos.set(k,[]);grupos.get(k).push(gp);}
@@ -156,18 +164,78 @@ export class Room{
       const gx=cx+Math.cos(an)*rad,gy=cy+Math.sin(an)*rad;
       arr.forEach((gp,j)=>{const off=j*90,a2=an+Math.PI/2;
         w.respawnPlayer(gp.slot,{x:gx+Math.cos(a2)*off,y:gy+Math.sin(a2)*off,r:PLAYER.START_R,score:0});
-        const ps=w.players.get(gp.slot);if(ps)ps.missiles=SURVIVAL.START_AMMO;
+        const ps=w.players.get(gp.slot);if(ps)ps.missiles=BR.START_AMMO;
         gp.score=0;gp.maxMass=0;gp.joinedTick=w.tick;});}
     // 3. a partida começa: relógio, zona e fim da paz
-    this.roundStart=w.tick;this.zone=createZone(w.tick);w.setZone(this.zone);w.peace=false;this.phase='live';
+    this.roundStart=w.tick;this.zone=createZone(w.tick);w.setZone(this.zone);w.peace=false;this.phase='live';this.startsAt=0;
     sim.playersDirty=true;
     this.broadcastPhase();this.broadcastZone();
-    this.log.info(`sala ${this.code}: partida começou — ${sim.humanCount()} humano(s), ${sim.botCount()} bot(s), equipes de ${this.teamSize}`);}
+    this.log.info(`sala ${this.code}: largada — ${sim.humanCount()} humano(s), ${sim.botCount()} preenchimento(s), equipes de ${this.teamSize}`);}
   _teamSizeAll(t){let n=0;for(const gp of this.sim.players.values())if(gp.team===t)n++;return n;}
-  /** O `room` de novo, agora com a fase nova: relógio, contagem e céu do cliente saem todos do bloco `round`. */
+  /**
+   * Estado do LOBBY para a tela de espera. Vai em MILISSEGUNDOS, não em ticks: no lobby o cliente não
+   * recebe snapshot nenhum (ninguém tem peça), então o relógio de tick dele nunca sincroniza — uma contagem
+   * em ticks ficaria parada. A 2 Hz basta; quem suaviza o número é o cliente.
+   */
+  broadcastLobby(){
+    const msg={t:'lobby',code:this.code,mode:this.modeId,teamSize:this.teamSize,
+      filled:this.sim.players.size,cap:this.max,humans:this.sim.humanCount(),
+      startsInMs:this.startsAt?Math.max(0,Math.round((this.startsAt-this.sim.tick)*1000/TICK_HZ)):0,
+      waitMs:this.lobbyUntil?Math.max(0,Math.round((this.lobbyUntil-this.sim.tick)*1000/TICK_HZ)):0};
+    for(const s of this.sessions.values())s.sendJson(msg);}
+  /** A largada: o `room` de novo, com a fase nova (relógio, contagem e céu saem todos do bloco `round`). */
   broadcastPhase(){const msg={t:'phase',code:this.code,phase:this.phase,round:this.roundInfo(),
     players:this.sim.humanCount(),cap:this.max,teamSize:this.teamSize,mode:this.modeId};
     for(const s of this.sessions.values())s.sendJson(msg);}
+  /**
+   * Preenche até `n` jogadores com participantes controlados pelo servidor. No battle royale eles entram
+   * com nome de gente (BOT_NICKS) e sem o flag BOT no fio — ver Sim.playersInfo e `anonBots` no MODES.
+   * Em equipe, fecha primeiro os times incompletos, para ninguém jogar 2 contra 3.
+   */
+  fillTo(n){
+    const sim=this.sim,lobby=this.phase==='lobby';
+    const nome=()=>this.mode.anonBots?botNick(this.rng,this.usedNicks):BOT_NAMES[this._botName++%BOT_NAMES.length];
+    if(this.teamCount>0)
+      for(let t=0;t<this.teamCount&&sim.players.size<n;t++){
+        let falta=this.teamSize-this._teamSizeAll(t);
+        while(falta-->0&&sim.players.size<n)
+          sim.addBot(this.freeSlot(),{name:nome(),skinId:this.rng.int(0,BOT_SKINS-1),team:t,spawn:!lobby});}
+    while(sim.players.size<n)
+      sim.addBot(this.freeSlot(),{name:nome(),skinId:this.rng.int(0,BOT_SKINS-1),team:this._teamFor(null),spawn:!lobby});}
+  /**
+   * Um passo da máquina do lobby: chegam participantes, a sala enche à vista, e quando lota (ou a janela
+   * fecha) começa a contagem regressiva. Sala sem humano nenhum não conta — o RoomManager a recolhe sozinho.
+   */
+  lobbyTick(){
+    const sim=this.sim,tick=sim.tick;
+    if(sim.humanCount()<BR.MIN_HUMANS){this.lobbyUntil=0;this.startsAt=0;return;}
+    if(!this.lobbyUntil){this.lobbyStart=tick;this.lobbyUntil=tick+this.lobbyTicks;}
+    if(!this.startsAt){
+      this.fillStep(tick);
+      if(tick>=this.lobbyUntil)this.fillTo(this.max);   // janela fechada: completa de uma vez, senão a contagem começaria em 49/50 e o número pularia na largada
+      if(sim.players.size>=this.max||tick>=this.lobbyUntil){   // lotou, ou a janela fechou
+        this.startsAt=tick+BR.COUNTDOWN_TICKS;this.broadcastLobby();
+        this.log.info(`sala ${this.code}: lobby cheio (${sim.humanCount()} humano(s) de ${sim.players.size}) — largada em ${Math.round(BR.COUNTDOWN_TICKS/TICK_HZ)} s`);}}
+    else if(tick>=this.startsAt){this.begin();return;}
+    if(tick-this.lobbyAt>=TICK_HZ/2){this.lobbyAt=tick;this.broadcastLobby();}}   // 2 Hz: é uma tela, não uma simulação
+  /**
+   * Chegada dos participantes ao LONGO da janela, não de uma vez no fim. A curva é `progresso^FILL_EXP`
+   * (lenta no começo, acelerando), que é como uma fila de verdade se comporta: encher instantaneamente
+   * entrega o jogo, e encher tudo no último segundo também. O jitter quebra a cadência — chegadas em
+   * intervalos exatos são o outro jeito de denunciar que não é gente.
+   */
+  fillStep(tick){
+    const sim=this.sim,span=Math.max(1,this.lobbyUntil-this.lobbyStart);
+    const k=Math.min(1,Math.max(0,(tick-this.lobbyStart)/span));
+    const alvo=Math.round(this.max*Math.pow(k,BR.FILL_EXP));
+    const falta=Math.min(alvo,this.max)-sim.players.size;
+    if(falta<=0)return;
+    // o jitter dá o RITMO, mas não pode atrasar a fila: com 2 ou mais em atraso, alcança na hora. Sem isso a
+    // sala fechava a janela em 40/50 e o contador dava um pulo feio para 50 na largada.
+    if(falta===1&&tick<this.nextBotAt)return;
+    this.fillTo(sim.players.size+1);
+    const passo=span/Math.max(1,this.max);
+    this.nextBotAt=tick+Math.max(1,Math.round(passo*(1+(this.rng.next()*2-1)*BR.ARRIVE_JITTER)));}
   // ── zona ──
   broadcastZone(){if(this.zone)this.broadcast(encodeZone(this.writer,this.zone));}
   tickZone(){
@@ -178,7 +246,7 @@ export class Room{
       this.sim.wireEvents.push({kind:EVENT.ZONE_SHRINK,x:c.x,y:c.y,r:this.zone.r1,slotA:0xffff,slotB:0xffff,extra:(this.zone.t1-this.zone.t0)>>>0});}}
   // ── chat ──
   /**
-   * Uma linha de chat. O escopo vem do MODE (`room` no Livre e no Sobrevivência solo, `team` em equipe) — em
+   * Uma linha de chat. O escopo vem do MODE (`room` no Livre e no Battle Royale solo, `team` em equipe) — em
    * equipe o chat é a ferramenta tática e virar megafone de 50 pessoas o mataria. Morto lê, não escreve.
    * Devolve false quando a mensagem foi engolida (vazia, longa demais ou fora do intervalo).
    */
@@ -266,10 +334,13 @@ export class Room{
     // ── AQUECIMENTO: a sala roda de verdade (o jogador cai no mundo e come), mas ninguém morre e não há zona.
     // É a fila do matchmaking sendo jogável, em vez de uma tela de espera com um contador. `w.peace` faz todo
     // mundo virar aliado, então a espera não precisou de nenhuma regra própria.
-    if(this.phase==='warmup'){
+    // ── LOBBY: o mundo roda (comida, asteroides, estrelas ficam prontos), mas ninguém tem peça. O jogador
+    // vê a sala ENCHENDO e a contagem. Nada de snapshot aqui: sem peça não há o que enquadrar, e o foco da
+    // AOI de um jogador sem corpo seria NaN.
+    if(this.phase==='lobby'){
       sim.step();
-      this._flush(sim);
-      if(this.readyToStart())this.begin();
+      if(sim.playersDirty){sim.playersDirty=false;this.broadcastPlayers();}
+      this.lobbyTick();
       return;}
     if(this.mode.zone&&this.zone)this.tickZone();
     if(sim.tick-this.roundStart>=this.roundTicks){this.endRound('time');return;}
@@ -287,14 +358,5 @@ export class Room{
     if(t%SNAPSHOT_EVERY===0){this.snapshotter.beginTick();for(const s of this.sessions.values())this.snapshotter.send(s);this.flushEvents();sim.gone.clear();}
     else if(sim.wireEvents.length>=200)this.flushEvents();
     if(t%LEADERBOARD_EVERY===0){this.broadcastLeaderboard();if(this.zone)this.broadcastZone();}}
-  /**
-   * A espera acabou? Lotou → FULL_START_TICKS de contagem; senão, WARMUP_TICKS desde o primeiro humano.
-   * Sala vazia nunca começa (e o RoomManager a recolhe sozinho depois de ROOM.STOP_AFTER_MS).
-   */
-  readyToStart(){
-    const n=this.sim.humanCount();
-    if(n<SURVIVAL.MIN_HUMANS)return false;
-    if(n>=this.max){if(!this.fullAt)this.fullAt=this.sim.tick+SURVIVAL.FULL_START_TICKS;return this.sim.tick>=this.fullAt;}
-    this.fullAt=0;
-    return this.warmupUntil>0&&this.sim.tick>=this.warmupUntil;}
+
 }

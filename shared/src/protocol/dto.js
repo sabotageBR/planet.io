@@ -58,7 +58,7 @@
  * @property {number} threat  0 = nada vindo; 1..255 = quão perto está o míssil teleguiado que MIRA em mim (255 = colado)
  * @property {number} threatDir  direção peça→míssil em 1/256 de volta (só vale com threat > 0)
  * @property {number} weapon  WEAPON.* — a arma equipada; `missiles` é a munição DELA (u8)
- * @property {number} alive   quantos jogadores ainda estão vivos na sala (u8 saturado; o "restam N" do Sobrevivência)
+ * @property {number} alive   quantos jogadores ainda estão vivos na sala (u8 saturado; o "restam N" do Battle Royale)
  */
 /**
  * @typedef {object} Snapshot
@@ -75,7 +75,7 @@
  * @property {number} slot
  * @property {number} flags PLAYER_FLAG.*
  * @property {number} skinId u8
- * @property {number} team equipe (u8; NO_TEAM = 255 no Livre e no Sobrevivência solo)
+ * @property {number} team equipe (u8; NO_TEAM = 255 no Livre e no Battle Royale solo)
  * @property {string} name utf-8 ≤ NAME_MAX_BYTES
  * @property {number} score u32
  */
@@ -92,7 +92,7 @@
 /** @typedef {{kind:number,x:number,y:number,r:number,slotA:number,slotB:number,extra:number}} GameEvent */
 /** @typedef {{clientTime:number,serverTick:number}} Pong */
 /**
- * Zona do Sobrevivência: círculo de origem, de destino e os ticks das pontas (o cliente interpola).
+ * Zona do Battle Royale: círculo de origem, de destino e os ticks das pontas (o cliente interpola).
  * Parada = origem igual ao destino. `t1` Infinity = fechou tudo e não muda mais.
  * @typedef {{x0:number,y0:number,r0:number,x1:number,y1:number,r1:number,t0:number,t1:number}} ZoneWire
  */

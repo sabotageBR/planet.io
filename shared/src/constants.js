@@ -11,20 +11,26 @@ export const ROUND={TICKS:216000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:4,F
 // WARN_S: segundos finais com a contagem gigante na tela.
 // ── MODOS DE JOGO ────────────────────────────────────────────────────────────
 // O modo é um DESCRITOR, não um `if` espalhado: sala, Sim e regras leem os mesmos campos daqui.
-// LIVRE é o jogo de sempre (respawn, rodada de 1 h, todo mundo contra todo mundo). SOBREVIVÊNCIA é
-// último-vivo: sala de SURVIVAL.PLAYERS, aquecimento até encher (ou estourar o relógio), sem respawn,
-// zona que encolhe e armas. `bots` aqui é só o DEFAULT — o servidor continua deixando o env mandar
+// LIVRE é o jogo de sempre (respawn, rodada de 1 h, todo mundo contra todo mundo). BATTLE ROYALE é
+// último-vivo: LOBBY que enche até BR.PLAYERS, contagem regressiva, largada, sem respawn, zona que
+// encolhe e armas. `bots` aqui é só o DEFAULT — o servidor continua deixando o env mandar
 // (config.roomBots), senão trocar este arquivo mudaria o balanço da sala livre em produção.
-export const MODE={FREE:0,SURVIVAL:1};
-export const SURVIVAL={PLAYERS:50,TEAM_SIZES:[1,2,3,4],WARMUP_TICKS:2700,FULL_START_TICKS:300,MIN_HUMANS:1,
+export const MODE={FREE:0,BR:1};
+export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
+  LOBBY_TICKS:1800,COUNTDOWN_TICKS:300,FILL_EXP:1.7,ARRIVE_JITTER:.55,
   SPAWN_RING:.44,START_AMMO:1,ROUND_TICKS:27000,WEAPON_P:.05,JOIN_GRACE_TICKS:120};
 // PLAYERS é o total (humanos + bots): a sala livre já roda 30 humanos + 15 bots = 45, então 50 é o MESMO
 // regime de tick, não um salto de escala. Capacidade efetiva = PLAYERS − PLAYERS%teamSize (50/50/48/48):
 // equipe incompleta contra equipes cheias não é dificuldade, é sorteio.
-// WARMUP_TICKS (45 s) conta do PRIMEIRO humano; lotou antes, FULL_START_TICKS (5 s) de contagem e começa.
-// A espera acontece DENTRO de uma sala de verdade (fase 'warmup'): o jogador cai no mundo e come enquanto
-// espera. Uma fila fora da sala precisaria de um estado de sessão sem sala e de um segundo caminho de
-// snapshot — aqui join/AOI/HUD/predição são exatamente os mesmos.
+//
+// O LOBBY (fase 'lobby') é uma tela de espera de verdade: ninguém está no mundo ainda, e o jogador vê a
+// sala ENCHENDO. LOBBY_TICKS (30 s) é a janela em que os humanos que estão procurando battle royale caem
+// na MESMA sala (findOrCreateRoom junta na mais cheia que ainda aceita). O resto das vagas é completado
+// ao longo dessa janela, não de uma vez no fim: FILL_EXP > 1 deixa a curva lenta no começo e rápida no
+// fim, que é como uma fila de verdade se comporta, e ARRIVE_JITTER quebra a cadência para as chegadas não
+// saírem em intervalos exatos. Quando lota (ou a janela fecha), COUNTDOWN_TICKS (5 s) de contagem e larga.
+// Vaga é sempre do humano: quem entra num lobby cheio DERRUBA um preenchimento (ver Room.join) — sem isso,
+// dois amigos procurando com 10 s de diferença cairiam em salas separadas.
 // ROUND_TICKS (7,5 min) é só a rede de segurança: a partida acaba por último-vivo bem antes, e a zona
 // inteira (ZONE) fecha em 21 300 ticks ≈ 5 min 55 s.
 export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
@@ -40,10 +46,14 @@ export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
 // WARN_TICKS: aviso antes de cada fechamento começar.
 export const MODES=[
   {id:0,key:"free",label:"Livre",max:ROOM.MAX,bots:ROOM.BOTS,roundTicks:ROUND.TICKS,
-    warmup:false,respawnBots:true,lastAlive:false,zone:false,weapons:false,chat:"room",teamSizes:[1]},
-  {id:1,key:"survival",label:"Sobrevivência",max:SURVIVAL.PLAYERS,bots:SURVIVAL.PLAYERS,roundTicks:SURVIVAL.ROUND_TICKS,
-    warmup:true,respawnBots:false,lastAlive:true,zone:true,weapons:true,chat:"team",teamSizes:SURVIVAL.TEAM_SIZES},
+    lobby:false,respawnBots:true,lastAlive:false,zone:false,weapons:false,chat:"room",teamSizes:[1],anonBots:false},
+  {id:1,key:"br",label:"Battle Royale",max:BR.PLAYERS,bots:BR.PLAYERS,roundTicks:BR.ROUND_TICKS,
+    lobby:true,respawnBots:false,lastAlive:true,zone:true,weapons:true,chat:"team",teamSizes:BR.TEAM_SIZES,anonBots:true},
 ];
+// `anonBots`: no Battle Royale o flag BOT **não vai no fio** e os preenchimentos usam nome de jogador
+// (BOT_NICKS), então a sala parece cheia de gente. É o padrão do gênero, e a alternativa — mostrar "◆ bot"
+// ao lado de 40 dos 50 nomes — transformaria a partida numa tela de treino. O servidor continua sabendo
+// quem é quem (economia, conquistas e `botKills` não mudam); quem não sabe é a TELA.
 /** Descritor do modo (id inválido → Livre: o cliente antigo e o `?local=1` caem sempre no jogo de sempre). */
 export const modeOf=id=>MODES[id]||MODES[MODE.FREE];
 /** Capacidade da sala arredondada para baixo no tamanho de equipe. */
@@ -215,7 +225,7 @@ export const WEAPONS=[
 //   CACHO   míssil que, a splitD do alvo, vira n homing menores em leque — o anti-gigante caro.
 //   NOVA    onda em `blast` centrada em MIM: empurra todos e estilhaça no miolo (shatter), sem me atingir.
 //           É o laço de `supernova` (rules.js) com outro emissor.
-// `weight` é o peso do sorteio dentro de SURVIVAL.WEAPON_P (só o Sobrevivência larga arma); `cd` é o
+// `weight` é o peso do sorteio dentro de BR.WEAPON_P (só o Battle Royale larga arma); `cd` é o
 // intervalo entre tiros em ticks, além da carência de nascimento (MISSILE.SPAWN_CD_TICKS), que vale para todas.
 /** Descritor da arma (id inválido → míssil: cliente antigo e modo Livre nunca veem outra coisa). */
 export const weaponOf=id=>WEAPONS[id]||WEAPONS[WEAPON.MISSILE];
@@ -245,7 +255,36 @@ export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1
 // em estrela o tempo todo. Agora a estrela tem o multiplicador dela.
 // SPAWN_GRACE_TICKS: bot não escolhe como presa um humano que acabou de nascer (5 s) — com 24 bots espertos, cair no mapa
 // e ser comido antes de encostar no primeiro grão não é dificuldade, é falta de chance.
+// ── NOMES ────────────────────────────────────────────────────────────────────
+// BOT_NAMES é a lista TEMÁTICA do modo Livre, onde o bot é assumido (o HUD marca "◆" ao lado).
 export const BOT_NAMES=["Nebulox","Vortexia","Cosmara","Drakonis","Stellara","Graviton","Quasara","Pulsaris","Meteora","Darkion","Nexaris","Solaron","Astrophex","Hydraxis","Volcanix","Luminos","Aetheron","Aurorax","Voidrix","Pyronis"];
+// BOT_NICKS é a lista do Battle Royale, onde o preenchimento NÃO se identifica: são apelidos no estilo do
+// que um jogador de verdade escolhe (pt-BR, com e sem número), e não nomes de nave espacial. Com 20 nomes
+// temáticos numa sala de 50 a farsa cairia na primeira olhada no placar — repetidos, todos do mesmo tema.
+// São 96 aqui, mais o sufixo numérico de `botNick`, o que dá folga de sobra para 50 sem repetir.
+export const BOT_NICKS=[
+  "Lucas","Pedro","Gabi","Rafa","Bia","Thiago","Mari","Caio","Duda","Vitor","Lele","Bruno","Nanda","Igor","Manu","Leo",
+  "Ju","Felipe","Carol","Diego","Alice","Murilo","Sofia","Enzo","Lara","Davi","Isa","Otavio","Nina","Arthur","Cleo","Tom",
+  "Zeca","Kiko","Nando","Dedé","Binho","Teteu","Gugu","Lipe","Mila","Rick","Cacau","Juca","Bel","Nego","Tuca","Vivi",
+  "ninja","dragao","lobo","tigre","corvo","raposa","panda","coruja","alpha","turbo","sombra","trovao","gelo","fenix",
+  "kraken","vespa","cobra","falcao","urso","onca","piloto","capitao","mestre","doutor","chefe","rei","lorde","barao",
+  "pixel","glitch","turbo9","noob","pro","gamer","player","sniper","tank","rush","clutch","combo","hyper","mega",
+  "zen","neo","max","ace","vex","jinx"];
+/**
+ * Apelido de preenchimento, determinístico pelo rng da sala. Mistura três formatos porque uma lista só de
+ * nomes limpos também denuncia: gente de verdade usa número, underline e caixa maluca.
+ * `usados` evita repetir (inclusive contra os nicks dos humanos que já estão na sala).
+ */
+export function botNick(rng,usados){
+  for(let t=0;t<40;t++){
+    const base=BOT_NICKS[rng.int(0,BOT_NICKS.length-1)],r=rng.next();
+    const n=r<.34?base
+      :r<.62?base+rng.int(2,99)
+      :r<.78?base+"_"+rng.int(10,999)
+      :r<.9?base.toUpperCase()
+      :"xX"+base+"Xx";
+    if(!usados.has(n.toLowerCase())){usados.add(n.toLowerCase());return n.slice(0,16);}}
+  return("j"+rng.int(1000,999999)).slice(0,16);}
 export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,AOI_FOOD_VIEW:.55};
 // zoom EXATO do cliente do agar.io:  S = Σ raio de TODAS as peças próprias;
 //   escala = min(BASE/S, 1)^EXP × max(altura/REF_H, largura/REF_W)
@@ -267,7 +306,7 @@ export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.15
 export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:150,EXTRAP_MAX_MS:100,SNAP_DIST:120,AOI_PAD:.3,AOI_PAD_OUT:.45,
   RATE_INPUTS:40,RATE_BURST:60,RATE_JSON:5,HEARTBEAT_MS:5000,DEAD_MS:15000,RESUME_MS:10000};
 export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40};
-// chat de sala (Livre e Sobrevivência solo) ou de equipe (Sobrevivência em equipe), pelo `chat` do MODE.
+// chat de sala (Livre e Battle Royale solo) ou de equipe (Battle Royale em equipe), pelo `chat` do MODE.
 // Sem histórico no servidor: quem entra não recebe o que já passou. RATE_MS/BURST ficam POR CIMA do balde
 // de JSON que a sessão já tem (NET.RATE_JSON), porque aquele existe para proteger o servidor e este para
 // não deixar um jogador encher a tela dos outros. FADE_MS: a linha some sozinha — o painel não pode virar
@@ -283,7 +322,7 @@ export const VOICE={MAX_MS:5000,MIN_MS:300,CD_MS:3000,RATE_HZ:8000,MAX_BYTES:440
 // MIN_MS mata o toque acidental no Ctrl; CD_MS e ROOM_CPS (clipes por segundo na sala) seguram o abuso.
 export const SCORE_COINS=(score,kills,botKills,durationS)=>Math.min(500,Math.floor(score/300)+2*kills+botKills+(durationS>=300?25:0));
 /**
- * Bônus de colocação do Sobrevivência: lá o placar não é a massa, é ONDE você parou. Sem isto, morrer em 2º
+ * Bônus de colocação do Battle Royale: lá o placar não é a massa, é ONDE você parou. Sem isto, morrer em 2º
  * de 50 pagaria igual a morrer em 49º — e a corrida pelo topo, que é o modo inteiro, não valeria nada.
  * Vitória dobra o teto normal de moedas; do 10º para baixo a curva some depressa.
  */

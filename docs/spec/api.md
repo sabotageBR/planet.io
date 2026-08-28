@@ -30,11 +30,11 @@ Regras de nick: 2–16 chars, NFKC, espaços colapsados; registrado único case-
 registrado (checado em guest/PATCH/join) — sugestão `Nick_NNNN`; guest sem nick → `Viajante-NNNN`.
 Rate limit em memória por pod: guest 5/h/IP · login 10/15min/IP e 5 falhas/15min/nick · claim/PATCH 10/min/token · demais 60/min/IP.
 Economia (servidor): `coins = ⌊score/300⌋ + 2·kills + 1·botKills + (duração ≥ 300 s ? 25 : 0)`, cap 500/partida; +100 por conquista nova.
-No **Sobrevivência** soma o bônus de COLOCAÇÃO (`PLACE_COINS`: 250 no 1º, 120 até o 3º, 60 até o 10º, 20 na metade de cima):
+No **Battle Royale** soma o bônus de COLOCAÇÃO (`PLACE_COINS`: 250 no 1º, 120 até o 3º, 60 até o 10º, 20 na metade de cima):
 lá o que vale é onde você parou, não a massa — sem ele, 2º de 50 pagaria o mesmo que 49º.
 Conquistas (fim de partida): survive5 (≥300 s), mass5000, streak5 (≥5 abates na vida), top1_3min (≥ 3·60·60 ticks em 1º),
 explore4 (4 quadrantes), eat50/eatbots10/split100/eject200/games10 (cumulativos em user_stats); secret1–4 = false.
-Sobrevivência (só com `players ≥ 10`, para vencer numa sala de 3 não valer o mesmo): br_win (1º), br_top10, br_team_win (1º em equipe).
+Battle Royale (só com `players ≥ 10`, para vencer numa sala de 3 não valer o mesmo): br_win (1º), br_top10, br_team_win (1º em equipe).
 
 **Lobby de equipe** (`/api/party*`): mora no servidor de JOGO, não na API de persistência — é estado de sala
 (memória do shard, TTL de 20 min), funciona **sem banco** e vale para convidado. A pessoa é identificada pelo

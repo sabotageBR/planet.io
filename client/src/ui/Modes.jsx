@@ -1,10 +1,10 @@
 // Escolha do modo: o funil que estava faltando entre a Entrada e o `play()`.
-// LIVRE é o jogo de sempre (um clique e entra). SOBREVIVÊNCIA solo entra direto na fila (que é o aquecimento
-// dentro de uma sala de verdade). EM EQUIPE passa pelo lobby de convite (Party.jsx), porque aí o jogador
-// precisa de um código para mandar aos amigos antes de qualquer sala existir.
-// Offline (`api.server === false`) o Sobrevivência fica desabilitado: o `?local=1` só sabe rodar o Livre.
+// LIVRE é o jogo de sempre (um clique e entra). BATTLE ROYALE solo cai direto no lobby de matchmaking, que
+// enche com quem estiver procurando na mesma hora. EM EQUIPE passa antes pelo lobby de convite (Party.jsx),
+// porque aí o jogador precisa de um código para mandar aos amigos antes de qualquer sala existir.
+// Offline (`api.server === false`) o Battle Royale fica desabilitado: o `?local=1` só sabe rodar o Livre.
 import React, { useState } from "react";
-import { MODE, SURVIVAL } from "@planet/shared";
+import { MODE, BR } from "@planet/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { api } from "../api/client.js";
@@ -31,11 +31,11 @@ function Body() {
         <span>{LB.modeFreeSub}</span>
       </button>
       <button className={"mode-card" + (offline ? " off" : "")} data-mode="solo" disabled={offline}
-        onClick={() => { setMode(MODE.SURVIVAL, 1); play({ mode: MODE.SURVIVAL, teamSize: 1, party: null }); }}>
+        onClick={() => { setMode(MODE.BR, 1); play({ mode: MODE.BR, teamSize: 1, party: null }); }}>
         <i className="mode-ico">☄️</i>
         <b>{LB.modeSolo}</b>
         <span>{LB.modeSoloSub}</span>
-        <em className="mode-tag">{SURVIVAL.PLAYERS} · {LB.soloWord}</em>
+        <em className="mode-tag">{BR.PLAYERS} · {LB.soloWord}</em>
       </button>
       <div className={"mode-card team" + (offline ? " off" : "")} data-mode="team">
         <i className="mode-ico">🛰️</i>
@@ -43,7 +43,7 @@ function Body() {
         <span>{LB.modeTeamSub}</span>
         <div className="team-sizes" role="radiogroup" aria-label={LB.teamSizeLabel}>
           {SIZES.map(([n, l]) => <button key={n} className={"chip-btn" + (ts === n ? " on" : "")} disabled={offline}
-            onClick={() => setMode(MODE.SURVIVAL, n)}>{l}</button>)}
+            onClick={() => setMode(MODE.BR, n)}>{l}</button>)}
         </div>
         <button className="btn-primary" disabled={offline} onClick={() => createParty(ts)}>{LB.createParty}</button>
         <div className="code-row">

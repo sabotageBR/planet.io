@@ -10,10 +10,11 @@ import { leaveGame } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
 import Chat from "./Chat.jsx";
+import BrLobby from "./BrLobby.jsx";
 import { MODE, weaponOf } from "@planet/shared";
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, clock: null,
-  mode: 0, teamSize: 1, team: -1, phase: "live", startsInMs: 0, alive: 0, weapon: 0, zoneHurt: false, talk: null, chat: [] };
+  mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, zoneHurt: false, talk: null, chat: [], lobby: null };
 const WEAPON_ICON = ["🚀", "✳️", "🕳️", "💥", "🌟"];   // mesma ordem de WEAPONS (o id indexa direto)
 /** Anel do push-to-talk: o arco encolhe com o tempo que sobra do clipe. */
 function TalkRing({ k }) {
@@ -52,7 +53,7 @@ export default function Hud() {
   // fica EM CIMA do ícone da arma e o botão apaga como se não houvesse munição (o clique vira ejeção)
   const ammo = h.ammo || 0, fireCd = Math.ceil(h.fireCd || 0), armed = ammo > 0 && !fireCd, pw = Object.entries(h.powerups || {}).filter(([, v]) => v > 0);
   const splitReady = !(h.splitCd > 0), ejectReady = !(h.ejectCd > 0);
-  const sobrevivencia = h.mode === MODE.SURVIVAL, aquecendo = h.phase === "warmup";
+  const br = h.mode === MODE.BR, noLobby = !!h.lobby;
   const arma = weaponOf(h.weapon || 0), armaIco = WEAPON_ICON[h.weapon | 0] || WEAPON_ICON[0];
   const falando = h.talk && h.talk.on;
   return <div id="hud" className={screen === "game" ? "" : "hidden"}>
@@ -81,12 +82,11 @@ export default function Hud() {
         ? <span key={k} className={"pw pw-shield lv-" + v} style={LV && LV[v - 1] ? { background: LV[v - 1].color } : undefined}><i>{PW_ICON.shield}</i>{LB.powerups.shield} <b>{LB.shieldLevel} {v} {"★".repeat(v)}</b></span>
         : <span key={k} className={"pw pw-" + k}><i>{PW_ICON[k] || "✦"}</i>{LB.powerups[k] || k} <b>{Math.ceil(v)}s</b></span>)}</div>
     </div>
-    {sobrevivencia ? <div id="hud-mode" className={h.zoneHurt ? "hurt" : ""}>
-      {aquecendo
-        ? <span className="chip warmup"><i>⏳</i> <b>{LB.warmup}</b> <span>{LB.warmupSub} {Math.ceil((h.startsInMs || 0) / 1000)}s</span> <em>{h.lb.length}/{h.cap || 0}</em></span>
-        : <span className="chip alive"><i>💀</i> <b>{h.alive || 0}</b> <span>{LB.aliveLeft}</span></span>}
+    {br && !noLobby ? <div id="hud-mode" className={h.zoneHurt ? "hurt" : ""}>
+      <span className="chip alive"><i>💀</i> <b>{h.alive || 0}</b> <span>{LB.aliveLeft}</span></span>
       {h.zoneHurt ? <span className="chip zone-out">{LB.zoneOut}</span> : null}
     </div> : null}
+    <BrLobby lobby={h.lobby} />
     {falando ? <div id="talk"><TalkRing k={h.talk.k} /><span>{LB.talkOn}</span></div> : null}
     <Chat h={h} />
     <div id="hud-cd">

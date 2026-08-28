@@ -227,7 +227,7 @@ export const effects={
   star:{ring:{color:GOLD,colorOld:CORAL,alpha:[.18,.4],pulse:.005,pulseOld:.02,width:3,dash:[18,16],spinK:-.15},pulse:{amp:.06,speed:.004,speedOld:.02},spin:.004,alphaK:1.15},
   aim:{color:CREAM,width:3,dash:[16,12],head:26,alpha:[.45,.85],pulse:.008},                          // reta pontilhada do tiro mirado
   threat:{color:CORAL,width:5,size:34,margin:54,alpha:[.35,1],pulse:.012},
-  // ZONA do Sobrevivência: o anel vermelho pulsa, o tracejado mostra o destino e `dim` tinge só o lado de FORA.
+  // ZONA do Battle Royale: o anel vermelho pulsa, o tracejado mostra o destino e `dim` tinge só o lado de FORA.
   // Baixo de propósito — o jogador tem que continuar enxergando o inimigo fora da zona, não só o vermelho.
   zone:{color:"#ff4d3a",warn:"#ffd24a",width:5,dash:70,alpha:[.5,.95],dim:.24,pulse:.0022},                            // seta do míssil teleguiado vindo em mim (pisca mais rápido quanto mais perto)
   sparkColor:CREAM,                                                                          // faíscas de comida/pellet comido (Fx.spark)

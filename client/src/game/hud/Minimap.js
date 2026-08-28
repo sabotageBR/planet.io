@@ -40,7 +40,7 @@ export function createMinimap({hud,theme,getScene}){
     // TODOS os inimigos vivos do mapa (vêm do placar, não da AOI); o ponto cresce com a massa, então dá para
     // ver de longe quem é ameaça — √mass·sc é o raio real no mundo, com um piso para o ponto não sumir
     for(const p of S.enemies){c.fillStyle=p.ally?((st.ally)||"#66e08a"):(p.isBot?st.bot:st.player);const rr=Math.max(2,Math.sqrt(p.mass||1)*sc);
-      c.beginPath();c.arc(mx+p.x*sc,my+p.y*sc,rr,0,6.283);c.fill();}   // companheiro em cor própria: no Sobrevivência em equipe, saber onde ele está é metade do jogo
+      c.beginPath();c.arc(mx+p.x*sc,my+p.y*sc,rr,0,6.283);c.fill();}   // companheiro em cor própria: no Battle Royale em equipe, saber onde ele está é metade do jogo
     const cam=S.cam,hw=cam.W/(2*cam.scale)*sc,hh=cam.H/(2*cam.scale)*sc;c.strokeStyle=st.view;c.lineWidth=1;c.strokeRect(mx+cam.x*sc-hw,my+cam.y*sc-hh,hw*2,hh*2);
     const md=R0.meDot;c.fillStyle=md.fill;c.strokeStyle=md.stroke;c.lineWidth=md.width;
     for(const p of S.mine){c.beginPath();c.arc(mx+p.x*sc,my+p.y*sc,Math.max(md.r[m]||3,p.r*sc),0,6.283);c.fill();c.stroke();}

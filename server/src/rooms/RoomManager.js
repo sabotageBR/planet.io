@@ -21,7 +21,7 @@ export function createRoomManager({config,hooks,log,metrics,scheduler}){
   /**
    * A sala mais cheia que ainda ACEITA gente (`acceptsJoin`: sem vaga, terminada ou já em partida ficam de fora),
    * dentro do mesmo modo e tamanho de equipe — agrupa em vez de espalhar, que é o que faz a espera do
-   * Sobrevivência encher rápido. Nenhuma dá: cria uma.
+   * Battle Royale encher rápido. Nenhuma dá: cria uma.
    */
   function findOrCreateRoom({mode=MODE.FREE,teamSize=1}={}){
     let best=null;

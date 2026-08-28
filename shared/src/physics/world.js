@@ -3,7 +3,7 @@
 // pares de donos diferentes → perigos (asteroides, buracos, estrelas) → comida/ejetados → mísseis → fusões →
 // compactação ordenada → spawns → tick++. Remoção só por `dead` + compactação (ordem estável).
 // @ts-check
-import {WORLD,DT,PLAYER,SPEED,SPLIT,EJECT,FRAG,BOUNCE,WALL,FOOD,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR,WEAPON,WEAPONS,SURVIVAL,ZONE} from "../constants.js";
+import {WORLD,DT,PLAYER,SPEED,SPLIT,EJECT,FRAG,BOUNCE,WALL,FOOD,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR,WEAPON,WEAPONS,BR,ZONE} from "../constants.js";
 import {KIND,PIECE_FLAG,FOOD_FLAG,BH_PHASE,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {createRng} from "../rng.js";
 import {clamp} from "../util.js";
@@ -47,7 +47,7 @@ const K=KIND,PP=K.PIECE<<3|K.PIECE,PE=K.PIECE<<3|K.EJECT,PA=K.PIECE<<3|K.ASTEROI
 // constantes locais de spawn (margens do mockup; não existem em constants.js)
 const PLAYER_MARGIN=300,PLAYER_SAFE=1500,AST_MARGIN=200,BELT_MARGIN=ASTEROID.BELT_RADIUS[1]+200,BELT_RAD_JITTER=40,SPAWN_TRIES=40,STAR_MARGIN=400;
 const POWER_TYPES=[FOOD_TYPE.MAGNET,FOOD_TYPE.SHIELD];   // sorteados com peso igual dentro de FOOD.POWER_P
-// Armas (só no Sobrevivência, `o.weapons`): tabela CUMULATIVA de pesos — é onde mora a raridade. O míssil
+// Armas (só no Battle Royale, `o.weapons`): tabela CUMULATIVA de pesos — é onde mora a raridade. O míssil
 // tem peso 0 e fica de fora: ele já cai como FOOD_TYPE.AMMO, a munição básica que existe nos dois modos.
 const WEAPON_DROPS=WEAPONS.filter(x=>x.weight>0),WEAPON_TOTAL=WEAPON_DROPS.reduce((a,x)=>a+x.weight,0);
 const rollWeapon=rng=>{let v=rng.next()*WEAPON_TOTAL;for(const x of WEAPON_DROPS){v-=x.weight;if(v<=0)return x.food;}return WEAPON_DROPS[0].food;};
@@ -70,7 +70,7 @@ export class World{
     /** @type {any[]} */this.events=[];/** @type {Map<number,Body>} */this.entityById=new Map();
     /** @type {{cx:number,cy:number,rad:number,w:number}[]} */this.belts=[];/** @type {{belt:number,at:number}[]} */this.astQueue=[];
     /** @type {{at:number}[]} */this.starQueue=[];
-    // Zona do modo Sobrevivência (null = sem zona, que é o modo Livre inteiro). `peace` é o aquecimento:
+    // Zona do modo Battle Royale (null = sem zona, que é o modo Livre inteiro). `peace` é o aquecimento:
     // enquanto true TODO MUNDO é aliado, então a espera não precisa de regra própria — reusa sameTeam.
     /** @type {{x0:number,y0:number,r0:number,x1:number,y1:number,r1:number,t0:number,t1:number}|null} */this.zone=null;
     this.peace=false;this._zc={x:0,y:0,r:0};
@@ -108,7 +108,7 @@ export class World{
    */
   spawnFood({x=NaN,y=NaN,spread=0}={}){const rng=this.rng,roll=rng.next();let type,r;
     if(roll<FOOD.AMMO_P){type=FOOD_TYPE.AMMO;r=FOOD.SPECIAL_R;}
-    else if(this.weapons&&roll<FOOD.AMMO_P+SURVIVAL.WEAPON_P){type=rollWeapon(rng);r=FOOD.SPECIAL_R;}
+    else if(this.weapons&&roll<FOOD.AMMO_P+BR.WEAPON_P){type=rollWeapon(rng);r=FOOD.SPECIAL_R;}
     else if(roll<FOOD.AMMO_P+FOOD.POWER_P){type=POWER_TYPES[rng.int(0,POWER_TYPES.length-1)];r=FOOD.SPECIAL_R;}
     else{type=rng.int(FOOD_TYPE.DUST,FOOD_TYPE.ROCK);r=rng.range(FOOD.R_MIN,FOOD.R_MAX);}
     const posta=!Number.isNaN(x);
@@ -180,11 +180,15 @@ export class World{
 
   // ── jogadores ──
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
-  addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE}={}){
+  addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true}={}){
     let ps=this.players.get(slot);
     if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,missiles,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,
       ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.missiles=missiles;ps.team=team;ps.weapon=weapon;}
+    // `spawn:false` = entrou na SALA mas ainda não no MAPA. É o lobby do battle royale: o jogador existe
+    // (ocupa vaga, aparece no PLAYERS, escolhe equipe) e só ganha corpo na largada, via respawnPlayer.
+    // Sem isso a única forma de "esperar" seria estar no mundo, comendo — que é outro jogo.
+    if(!spawn){ps.alive=false;return null;}
     return this._spawnPiece(ps,x,y,r);}
   _spawnPiece(ps,x,y,r){
     // nasce longe de ESTRELA (era do buraco negro, que saiu de cena): com 12 estrelas e a queimadura de STAR.BURN,

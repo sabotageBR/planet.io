@@ -1,11 +1,11 @@
-# Modos de jogo, equipes, chat e voz
+# Modos de jogo: Livre e Battle Royale
 
 ## O que existe
 
-| | **Livre** (`MODE.FREE`) | **Sobrevivência** (`MODE.SURVIVAL`) |
+| | **Livre** (`MODE.FREE`) | **Battle Royale** (`MODE.BR`) |
 |---|---|---|
 | sala | 30 humanos + 15 bots (env) | 50 no total (humanos primeiro, bots completam) |
-| entrada | direto, sala em andamento | **aquecimento** até lotar ou estourar o relógio |
+| entrada | direto, sala em andamento | **LOBBY** que enche à vista, depois contagem e largada |
 | respawn | sim (humano e bot) | não — quem morre assiste |
 | fim | 1 h (BIG CRUNCH) | última equipe (ou último jogador) de pé |
 | zona | não | sim, fecha em ~6 min |
@@ -16,20 +16,45 @@
 O descritor está em `shared/src/constants.js` (`MODE`, `MODES`, `modeOf`, `modeCap`). **Nada de `if (modo === …)`
 espalhado**: sala, Sim e regras leem os mesmos campos (`warmup`, `respawnBots`, `lastAlive`, `zone`, `weapons`, `chat`).
 
-## A espera É o aquecimento
+## O lobby
 
-Não há fila fora da sala. A sala de Sobrevivência nasce na fase `warmup`: o jogador **cai no mundo e come**, mas
-ninguém morre e não há zona. Quando lota (ou o relógio estoura), `Room.begin()` completa com bots, sorteia as
-equipes, reposiciona todo mundo num anel e arma a zona.
+Não há fila fora da sala nem tela de "procurando partida" mentindo sobre o que acontece. A sala de battle
+royale nasce na fase `lobby`: o jogador **está na sala mas não no mapa** (`World.addPlayer({spawn:false})`),
+vê o contador subir — 1/50, 12/50, 37/50 —, os nomes chegando um a um, e quando enche (ou a janela de
+`BR.LOBBY_TICKS` fecha) vem a contagem regressiva e a largada, com todo mundo nascendo junto num anel.
 
-Por que assim: uma fila de verdade exigiria um estado de sessão **sem sala** e um segundo caminho de snapshot.
-Aqui o join, a AOI, o HUD e a predição são exatamente os mesmos — e a espera vira jogo em vez de tela de espera.
+Por que os participantes chegam AOS POUCOS: encher instantaneamente entrega o jogo, e encher tudo no último
+segundo também. A curva é `progresso^FILL_EXP` (lenta no começo, acelerando), com jitter na cadência —
+chegadas em intervalos exatos são o outro jeito de denunciar que não é gente. Se a fila atrasa em 2 ou mais,
+ela alcança na hora: sem isso a janela fechava em 40/50 e o número dava um pulo feio na largada.
 
-O truque que faz isso caber: `Room.roundStart` nascia 0 e **nunca era escrito**. Agora ele é escrito em `begin()`,
-e como relógio do espaço, contagem do fim e troca de céu do cliente saem todos dele, tudo se ajusta sozinho.
+**A vaga é sempre do humano.** Quem entra num lobby já cheio derruba um preenchimento (`Room.join` →
+`trimBots(1)`). Sem isso, dois amigos que procuram com 10 s de diferença cairiam em salas separadas — o
+oposto do que o matchmaking existe para fazer.
 
-`w.peace` (o mundo em paz) faz TODO MUNDO virar aliado durante o aquecimento — a espera não precisou de uma
-única regra própria, reusa o caminho de equipe.
+Quem dá o ritmo é `Room.lobbyTick()`; nenhum snapshot é enviado nessa fase (sem peça não há o que enquadrar,
+e o foco da AOI de um jogador sem corpo seria NaN). O estado do lobby vai num JSON próprio, em
+**milissegundos** e a 2 Hz: sem snapshot o relógio de tick do cliente nunca sincroniza, então uma contagem
+em ticks ficaria parada na tela. Quem suaviza o número é o cliente.
+
+O gancho que fez isso caber: `Room.roundStart` nascia 0 e **nunca era escrito**. Escrevê-lo na largada faz
+relógio do espaço, contagem do fim e troca de céu se ajustarem sozinhos.
+
+## Os outros 49 não se apresentam
+
+O preenchimento entra com **nome de jogador** (`BOT_NICKS` + `botNick`: "Lipe", "sniper3", "xXraposaXx",
+"BARAO") e **sem o flag `PLAYER_FLAG.BOT` no fio** (`anonBots` no descritor do modo). Como o `◆` do placar e
+a cor do radar saem justamente desse flag, os dois param de distinguir sozinhos — nenhuma linha de cliente
+precisou mudar.
+
+É o padrão do gênero, e a alternativa é pior: marcar "◆ bot" ao lado de 40 dos 50 nomes transformaria a
+partida numa tela de treino. O **servidor continua sabendo** quem é quem — `kills` × `botKills`, economia e
+conquistas não mudaram uma linha. Quem não sabe é a TELA.
+
+Duas armadilhas que a lista de nomes evita: a lista temática do modo Livre (`BOT_NAMES`: "Nebulox",
+"Vortexia") tem 20 nomes e todos do mesmo tema — numa sala de 50 a farsa cairia na primeira olhada no
+placar, por repetição e por estilo. E nomes limpos demais também denunciam: gente de verdade usa número,
+underline e caixa maluca, então `botNick` mistura cinco formatos.
 
 ## Aliado é regra de FÍSICA
 
@@ -42,6 +67,9 @@ Dar quique entre companheiros transformaria correr em grupo num pinball.
 
 **Compartilhar partículas já funcionava**: `pieceEject` só impõe cooldown ao DONO da pelota, e `EAT.EJECT_GAIN` é 1.
 Cuspir W para o companheiro entrega a massa inteira, no mesmo tick. Não foi preciso escrever regra nenhuma.
+
+`w.peace` (o mundo em paz) fica ligado durante o lobby como cinto de segurança: ninguém tem peça ali, mas se
+um dia alguém nascer cedo por engano, não vira almoço antes de a partida existir.
 
 ## A zona
 
@@ -113,6 +141,6 @@ branco e a tela virava névoa leitosa — sumia o contraste que faz enxergar a c
 ## O que ficou de fora
 
 - **O `?local=1` e o modo offline continuam só Livre.** O `LocalServer` é uma segunda implementação da sala
-  (duplica o `_consume` e o `self`), e a tela de modos desabilita Sobrevivência com `api.server === false`.
+  (duplica o `_consume` e o `self`), e a tela de modos desabilita Battle Royale com `api.server === false`.
 - Filtro de palavrão, denúncia e moderação de servidor.
 - Lista de amigos persistida (hoje o convite é o código do lobby, que basta e funciona para convidado).

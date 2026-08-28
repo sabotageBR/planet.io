@@ -16,7 +16,7 @@ const GRUPOS=[
   ["Estrelas",       ["starBurst","starHit","starSplit","smash","supernova"]],
   ["Buraco negro",   ["suck","exit"]],
   ["Vida e rodada",  ["death","respawn","countdown","bigCrunch","join","matchStart"]],
-  ["Zona (Sobrevivência)",["zoneShrink","zoneBurn"]],
+  ["Zona (Battle Royale)",["zoneShrink","zoneBurn"]],
   ["Chat e voz",     ["chatIn","micOn","micOff"]],
   ["Telas",          ["uiHover","uiClick","uiOpen","uiClose","buy","equip","error","toast","deadScreen","podium"]],
 ];

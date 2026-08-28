@@ -1,4 +1,4 @@
-// ── ZONA (Sobrevivência): o círculo que fecha e queima quem fica de fora ─────
+// ── ZONA (Battle Royale): o círculo que fecha e queima quem fica de fora ─────
 // Desenha DUAS coisas: o anel da zona atual (grosso, pulsando) e, enquanto ela está fechando, o círculo de
 // DESTINO tracejado — é o que diz "corra para cá", e sem ele o jogador só descobre para onde ir quando já
 // está queimando. O tinto de FORA é um CÍRCULO COM CONTORNO GROSSO (raio r+W/2, espessura W ≥ diagonal da

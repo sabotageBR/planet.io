@@ -13,9 +13,9 @@ Slots: cada jogador da sala tem um `slot` u16 estável enquanto está na sala. I
 ## Cliente → servidor
 JSON:
 - `{"t":"join","token":"pt_…","room":"1ABC"|null,"view":{"w":1280,"h":720},"fallbackNick":"Evandro","mode":0|1,"teamSize":1..4,"party":"0ABC"|null}`
-  - `mode`: `MODE.FREE` (0, padrão) ou `MODE.SURVIVAL` (1). Id desconhecido cai no Livre — cliente antigo nunca muda de jogo.
+  - `mode`: `MODE.FREE` (0, padrão) ou `MODE.BR` (1). Id desconhecido cai no Livre — cliente antigo nunca muda de jogo.
   - `party`: código do lobby de equipe; todos os membros caem na MESMA sala e na MESMA equipe (`Room._teamFor`).
-- `{"t":"chat","text":"…"}` — o ESCOPO é do servidor (sala no Livre e no Sobrevivência solo; equipe em equipe).
+- `{"t":"chat","text":"…"}` — o ESCOPO é do servidor (sala no Livre e no Battle Royale solo; equipe em equipe).
 - `{"t":"resume","sessionId":"uuid","resumeToken":"hex","view":{"w","h"}}`
 - `{"t":"view","w":…,"h":…}` (resize)
 - `{"t":"ping","c":<performance.now() u32>}`
@@ -29,16 +29,17 @@ Taxa: ≤ 30 Hz e só quando muda (>2 px ou flag); keepalive a 10 Hz.
 
 ## Servidor → cliente
 JSON:
-- `{"t":"room","code":"1ABC","shard":1,"slot":3,"sessionId":"uuid","resumeToken":"hex","protocol":9,"tick":123,"world":{"w":9600,"h":9600},"round":{"start":0,"ticks":216000,"dayStart":5,"breakMs":15000,"phase":"live"|"warmup","startsAt":<tick>},"mode":0,"teamSize":1,"cap":30,"team":-1}`
-  - `phase`/`startsAt`: no Sobrevivência a sala nasce em **aquecimento** — o jogador cai no mundo e come, mas ninguém morre e não há zona. `startsAt` é o TICK em que a partida começa (absoluto, não "faltam N ms": o cliente já sincroniza o relógio do servidor, e uma duração relativa envelheceria no caminho).
+- `{"t":"room","code":"1ABC","shard":1,"slot":3,"sessionId":"uuid","resumeToken":"hex","protocol":9,"tick":123,"world":{"w":9600,"h":9600},"round":{"start":0,"ticks":216000,"dayStart":5,"breakMs":15000,"phase":"live"|"lobby","startsAt":<tick>},"mode":0,"teamSize":1,"cap":30,"team":-1}`
+  - `phase`/`startsAt`: no Battle Royale a sala nasce em **lobby** — o jogador está na SALA, não no MAPA (sem peça, sem snapshot). `startsAt` é o TICK da largada, e só existe depois que a contagem começa.
   - `team`: minha equipe (−1 = sem equipe). Quem é aliado de quem sai daqui e do `team` de cada linha do PLAYERS.
-- `{"t":"phase","phase":"live","round":{…},"players":12,"cap":50,"teamSize":2,"mode":1}` — a espera acabou: a sala encheu de bots, sorteou as equipes, reposicionou todo mundo e armou a zona.
+- `{"t":"lobby","code":"1ABC","mode":1,"teamSize":1,"filled":37,"cap":50,"humans":2,"startsInMs":0,"waitMs":11500}` (2 Hz) — a sala ENCHENDO. Vai em **milissegundos**, não em ticks: no lobby não há snapshot nenhum, então o relógio de tick do cliente nunca sincronizaria e uma contagem em ticks ficaria parada. `startsInMs > 0` = a contagem regressiva já começou; `waitMs` é o que resta da janela de espera.
+- `{"t":"phase","phase":"live","round":{…},"players":12,"cap":50,"teamSize":2,"mode":1}` — a LARGADA: a sala completou, sorteou as equipes, fez todo mundo nascer num anel e armou a zona.
 - `{"t":"chat","slot":3,"name":"Evandro","team":2|null,"text":"…","at":1699999999}` — já filtrado pelo escopo do modo.
   - `round`: tick de início e duração da rodada (1 h). O cliente deriva daí o **relógio do espaço** (a rodada = `ROUND.DAYS` dias, começando em `dayStart` → um dia a cada 15 min, 12 trocas de céu) e a contagem para o fim do mundo — nada mais vai no fio.
 - `{"t":"roundEnd","code":"1ABC","reason":"time"|"lastAlive","mode":0,"teamSize":1,"champion":{…},"champTeam":null,"board":[{"slot","name","mass","score","kills","isBot","registered","skinId","team","placement"}],"nextInMs":15000,"tick":216000}` — o BIG CRUNCH: campeão = maior planeta vivo (1ª linha do placar); a sala é aposentada e o cliente entra numa nova depois de `nextInMs`.
 - `{"t":"error","code":"VERSION"|"FULL"|"AUTH"|"NICK_RESERVED"|"RATE"|"ROOM","message":"pt-BR","suggestion":"Nick_4821"?}` → o servidor fecha o socket (código 4400+).
 - `{"t":"rewards","saved":true,"coinsEarned":54,"coins":2504,"achievements":[{"key","title"}],"skinsUnlocked":[35],"rank":{"day":37}}` (após a morte; `saved:false` sem banco)
-- `{"t":"dead","by":"Nome","byHole":false,"byZone":false,"score":6900,"maxMass":4820,"kills":3,"durationS":372,"placement":7,"players":50}` — `byZone`: a zona alcançou; `placement`/`players` só no Sobrevivência.
+- `{"t":"dead","by":"Nome","byHole":false,"byZone":false,"score":6900,"maxMass":4820,"kills":3,"durationS":372,"placement":7,"players":50}` — `byZone`: a zona alcançou; `placement`/`players` só no Battle Royale.
 - `{"t":"spectate","slot":7,"name":"Nome"}` (ou `slot:-1`) — logo depois do `dead` e sempre que o alvo muda: de quem é a cena que
   continua rodando atrás da tela de morte (quem matou, se ainda vivo; senão o líder). O cliente leva a câmera para esse slot e a
   **AOI da sessão acompanha o mesmo jogador** (server/src/net/snapshot.js), então o que se vê é a sala de verdade e não um pedaço
@@ -62,13 +63,14 @@ Binário (primeiro byte = tipo):
   - update: `u32 id | u8 mask` + campos presentes na ordem: `X_Y=1 (u16 x,u16 y)`, `R=2 (u16 r10)`, `V=4 (i16 vx,i16 vy)`, `FLAGS=8 (u8)`, `EXTRA=16 (u8 phase + u16 influenceR — buraco negro e estrela)`
   - remove: `u32 id | u8 reason (0 LEFT_AOI,1 EATEN,2 MERGED,3 POPPED,4 EXPIRED,5 SUCKED,6 DESPAWN)`
   - self: `u8 flags(DEAD=1,RESYNC=2 — descarte as entidades conhecidas antes de aplicar este snapshot) | u8 missiles | u8 powerupBits(magnet=1,shield=2) | u16 magnetT | u8 shieldLv(0..3; o escudo não expira) | u32 score | u8 splitCd | u8 ejectCd | u16 fireCd(carência de tiro do spawn, ticks) | u16 rank | u32 mass | u8 threat | u8 threatDir` (22 bytes)
-    - `weapon`: a arma equipada (uma por jogador; pegar outra troca e reabastece) — `missiles` é a munição DELA. `alive`: quantos jogadores ainda estão vivos (o "restam N" do Sobrevivência).
-    - `flags` ganhou `WARMUP=4` (a partida não começou) e `ZONE_HURT=8` (estou fora da zona, queimando).
+    - `weapon`: a arma equipada (uma por jogador; pegar outra troca e reabastece) — `missiles` é a munição DELA. `alive`: quantos jogadores ainda estão vivos (o "restam N" do Battle Royale).
+    - `flags` ganhou `LOBBY=4` (a partida não começou) e `ZONE_HURT=8` (estou fora da zona, queimando).
     - `threat`: 0 = nada vindo; 1..255 = quão perto está o míssil teleguiado que mira NESTE slot e está se aproximando (255 = colado), medido em `MISSILE.ALERT_DIST`. `threatDir`: ângulo peça→míssil em 1/256 de volta.
       Vem do servidor de propósito: a AOI de um jogador pequeno tem meia-largura ~1250 px e o míssil nasce muito além disso, então um alerta puramente client-side chegaria com menos de 2 s de sobra. Dentro da AOI o cliente prefere a direção do míssil de verdade (é exata) e só usa `threatDir` fora dela.
     `magnetT`/`shieldLv`/`powerupBits` são o **melhor** entre as peças próprias (resumo para o HUD) — quem tem o powerup de fato é cada peça, pelas flags dela. `missiles` é do jogador.
 - `0x11 PLAYERS` (no join e quando muda): `u8 | u16 n | [u16 slot | u8 flags(BOT=1,DEAD=2,REG=4,TALK=8) | u8 skinId | u8 team | u8 nameLen | nameLen bytes utf8 | u32 score]`
   - `team`: 255 (`NO_TEAM`) = sem equipe. É por aqui que o cliente pinta o aliado, separa o radar e escolhe quem ouve a voz. `TALK` acende o ícone de quem está falando.
+  - ⚠️ No Battle Royale o flag `BOT` **nunca é setado** (`anonBots` no descritor do modo): o preenchimento entra com nome de jogador e o cliente não tem como distingui-lo. Como o `◆` do placar e a cor do radar saem desse flag, os dois param de distinguir sozinhos. O servidor continua sabendo (kills × botKills, economia, conquistas).
 - `0x12 LEADERBOARD` (2 Hz): `u8 | u8 n | [u16 slot | u32 mass | u16 x | u16 y]` — **todos os vivos da sala**, não só o top 10.
   É o ÚNICO dado posicional fora da AOI, e é dele que sai o radar com todos os inimigos (o snapshot só conhece a janela
   da sessão). O HUD corta no top 10 e anexa a própria linha pelo `rank` do bloco `self`.

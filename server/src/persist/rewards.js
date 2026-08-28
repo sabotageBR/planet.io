@@ -5,11 +5,11 @@ import {unlockedAchievements,ACHIEVEMENT_BY_KEY} from '@planet/shared/achievemen
 import {SKINS} from '@planet/shared/skins.js';
 export const ACHIEVEMENT_COINS=100;
 /**
- * Moedas da partida: a fórmula de sempre (cap 500) mais, SÓ no Sobrevivência, o bônus de COLOCAÇÃO — lá o
+ * Moedas da partida: a fórmula de sempre (cap 500) mais, SÓ no Battle Royale, o bônus de COLOCAÇÃO — lá o
  * que vale é onde você parou, não a massa que juntou, e sem o bônus terminar em 2º de 50 pagaria o mesmo
  * que terminar em 49º.
  */
-export const matchCoins=m=>SCORE_COINS(m.score,m.kills,m.botKills,m.durationS)+(m.mode===MODE.SURVIVAL?PLACE_COINS(m.placement,m.players):0);
+export const matchCoins=m=>SCORE_COINS(m.score,m.kills,m.botKills,m.durationS)+(m.mode===MODE.BR?PLACE_COINS(m.placement,m.players):0);
 /** moedas de uma conquista (catálogo; default 100) */
 export const achievementCoins=key=>{const a=ACHIEVEMENT_BY_KEY.get(key);return a&&a.coins?a.coins:ACHIEVEMENT_COINS;};
 /**

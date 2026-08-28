@@ -6,7 +6,7 @@
 // (Room._teamFor). Vaga que sobrar na equipe é preenchida por BOT aliado no começo da partida (autopreencher).
 // Convidado (guest) participa: quem identifica é o token, não a conta.
 // @ts-check
-import {MODE,MODES,modeOf,SURVIVAL} from '@planet/shared/constants.js';
+import {MODE,MODES,modeOf,BR} from '@planet/shared/constants.js';
 import {newCode,normalizeCode,shardOf} from './codes.js';
 const TTL_MS=20*60*1000,SWEEP_MS=30000;
 
@@ -21,7 +21,7 @@ export function createPartyManager({config,log}){
     slots:p.teamSize,free:Math.max(0,p.teamSize-p.members.length)});
 
   /** Cria o lobby. `key` identifica a pessoa (hash do token) e vira o líder. */
-  function create({key,nick,skinId=0,registered=false,mode=MODE.SURVIVAL,teamSize=2}){
+  function create({key,nick,skinId=0,registered=false,mode=MODE.BR,teamSize=2}){
     const m=modeOf(mode),ts=m.teamSizes.includes(teamSize)?teamSize:2;
     if(ts<2)return{error:'bad_team_size',message:'equipe precisa de 2 a 4 jogadores'};
     let code=newCode(config.shard);while(parties.has(code))code=newCode(config.shard);

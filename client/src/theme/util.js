@@ -58,7 +58,7 @@ export function paintGlow(c,size,color,{core=.26,k=.40}={}){
 
 // tipos de comida: o mockup usa strings; shared/src/constants.js FOOD_TYPE usa índices. Aceita os dois.
 const FOOD_NAMES=["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield",
-  "w_burst","w_mine","w_cluster","w_nova"];   // 8..11 = as armas do Sobrevivência (índice = FOOD_TYPE)
+  "w_burst","w_mine","w_cluster","w_nova"];   // 8..11 = as armas do Battle Royale (índice = FOOD_TYPE)
 export const foodType=t=>typeof t==="number"?(FOOD_NAMES[t]||"dust"):(t||"dust");
 export const FOOD_ICON={missile_ammo:"🚀",powerup_merge:"⚛️",powerup_magnet:"🧲",powerup_shield:"🛡️",
   w_burst:"✳️",w_mine:"🕳️",w_cluster:"💥",w_nova:"🌟"};

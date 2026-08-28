@@ -13,10 +13,10 @@ export const PIECE_FLAG={SHIELD:1,LAUNCH:2,MERGING:4,ME:8,MAGNET:16,SHIELD_LV_SH
 export const FOOD_FLAG={MOVED:1};   // interno ao mundo (ímã/buraco negro moveu a comida desde o último snapshot); não vai no fio
 export const FRAG_KIND={PLAIN:0,RICH:1,NOVA:2};   // ejetado: tier do fragmento, no `hue` do create (PLAIN = pelota comum; RICH = pedaço gordo, mass ≥ FRAG.RICH_MASS; NOVA = estilhaço de supernova, brilha)
 export const PLAYER_FLAG={BOT:1,DEAD:2,REG:4,TALK:8};   // TALK: está mandando áudio agora (o cliente acende o ícone)
-export const NO_TEAM=255;   // linha do PLAYERS: sem equipe (modo Livre e Sobrevivência solo)
-export const SELF_FLAG={DEAD:1,RESYNC:2,WARMUP:4,ZONE_HURT:8};
+export const NO_TEAM=255;   // linha do PLAYERS: sem equipe (modo Livre e Battle Royale solo)
+export const SELF_FLAG={DEAD:1,RESYNC:2,LOBBY:4,ZONE_HURT:8};
 // RESYNC: a sessão esqueceu o que o cliente conhece (socket congestionado) — o cliente descarta tudo e recria com este snapshot
-// WARMUP: a partida ainda não começou (ninguém morre); ZONE_HURT: estou FORA da zona, queimando
+// LOBBY: a partida ainda não começou (o jogador está na sala, não no mapa); ZONE_HURT: estou FORA da zona, queimando
 export const POWER_BIT={magnet:1,shield:2};
 export const UPD={X_Y:1,R:2,V:4,FLAGS:8,EXTRA:16};
 export const REMOVE={LEFT_AOI:0,EATEN:1,MERGED:2,POPPED:3,EXPIRED:4,SUCKED:5,DESPAWN:6};

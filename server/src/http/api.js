@@ -46,8 +46,8 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
       if(p==='/api/rooms'){const all=(await allRooms()).sort(byPlayers),md=url.searchParams.get('mode');
         return sendJson(res,200,{rooms:md==null?all:all.filter(r=>(r.mode|0)===(+md|0))});}
       if(p==='/api/auto'){
-        // ?mode= e ?teamSize=: o Sobrevivência tem pool próprio por tamanho de equipe, senão o jogador cairia
-        // numa sala de outro formato. O filtro é `open` (= Room.acceptsJoin), não `players<max`: no Sobrevivência
+        // ?mode= e ?teamSize=: o Battle Royale tem pool próprio por tamanho de equipe, senão o jogador cairia
+        // numa sala de outro formato. O filtro é `open` (= Room.acceptsJoin), não `players<max`: no Battle Royale
         // uma sala com vaga mas já EM PARTIDA não recebe mais ninguém, e o peer só nos conta o que o info() diz.
         const mode=+(url.searchParams.get('mode')||0)|0,teamSize=+(url.searchParams.get('teamSize')||1)|0;
         const open=(await allRooms()).filter(r=>(r.open!==undefined?r.open:r.players<r.max)&&(r.mode|0)===mode&&(mode===0||(r.teamSize|0)===teamSize)).sort(byPlayers);

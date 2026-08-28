@@ -33,7 +33,7 @@ export default function Chat({ h }) {
   if (prefs.chat === false) return null;
   const agora = Date.now();
   const vivas = linhas.filter(l => open || agora - l.at < CHAT.FADE_MS);
-  const equipe = h.mode === MODE.SURVIVAL && h.team >= 0;
+  const equipe = h.mode === MODE.BR && h.team >= 0;
   const enviar = () => {
     const t = text.trim();
     if (t && game && game.sendChat) game.sendChat(t);

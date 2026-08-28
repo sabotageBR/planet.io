@@ -26,7 +26,7 @@ export function createPredictor({buffer,input}){
     setSlot(s){slot=p.slot=s;},
     setTarget(x,y){tx=x;ty=y;},
     /**
-     * Círculo da zona (Sobrevivência) no tick local. Precisa entrar na predição pela mesma razão do
+     * Círculo da zona (Battle Royale) no tick local. Precisa entrar na predição pela mesma razão do
      * decaimento: ela muda o RAIO da peça, e sem prever a correção do servidor chegaria 20×/s numa peça
      * que está encolhendo — ela pulsaria de tamanho justo na borda, que é onde o jogador mais olha.
      */

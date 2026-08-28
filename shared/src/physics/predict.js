@@ -23,7 +23,7 @@ import {pullBody,ejectPiece,outOfZone,zoneMass} from "./rules.js";
  * @param {{hold:boolean,req:boolean,cdUntil:number,holdAt:number}|null} [ej]  agenda da cusparada, ESPELHO do
  *   PlayerState do servidor (ejectHold/ejectReq/ejectCdUntil/ejectHoldAt). Mutado no lugar: o chamador o carrega
  *   entre os ticks e o reancora a cada snapshot pelo `self.ejectCd`, que já vem no fio.
- * @param {{x:number,y:number,r:number}|null} [zc]  círculo da zona no tick (Sobrevivência). A queimadura precisa
+ * @param {{x:number,y:number,r:number}|null} [zc]  círculo da zona no tick (Battle Royale). A queimadura precisa
  *   estar aqui pelo mesmo motivo do decaimento: ela muda o RAIO, e sem prever o servidor corrigiria 20×/s numa
  *   peça que está encolhendo — a peça pulsaria de tamanho na borda. A MORTE continua só do servidor (chega pelo
  *   REMOVE do snapshot), exatamente como o esmagamento do buraco negro: aqui a massa só encosta no piso.

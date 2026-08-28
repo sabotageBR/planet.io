@@ -150,7 +150,7 @@ function readPong(rd){expect(rd,MSG.PONG);return{clientTime:rd.u32(),serverTick:
 export const decodePong=view=>readPong(createReader(view));
 
 // ── ZONE (0x15) ──────────────────────────────────────────────────────────────
-// A zona do modo Sobrevivência, na cadência do LEADERBOARD (2 Hz): o círculo de ORIGEM, o de DESTINO e
+// A zona do modo Battle Royale, na cadência do LEADERBOARD (2 Hz): o círculo de ORIGEM, o de DESTINO e
 // os ticks das duas pontas. O cliente interpola sozinho — não roda a máquina de fases (shared/zone.js),
 // que é do servidor. Parada = origem e destino iguais. `t1` infinito (fim de tudo) vai como 0xffffffff.
 /** @param {Writer} w @param {ZoneWire} z @returns {Uint8Array} */

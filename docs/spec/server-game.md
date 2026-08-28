@@ -11,7 +11,7 @@ sim/Sim.js      World (shared/physics) + estado de jogo por slot {slot,sessionId
 sim/hooks.js    NOOP_HOOKS
 rooms/codes.js  newCode(shard) (1º char = shard base36 + 3 de "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"), shardOf(code)
 rooms/Room.js   {code, shard, mode, teamSize, phase, zone, sim, sessions, snapshotter, roundStart, over}; step(tick):
-                fase 'warmup' → sim.step() + snapshots e readyToStart()/begin(); senão zona → fim da rodada ou
+                fase 'lobby' → sim.step() + PLAYERS + lobbyTick() (enche, conta e larga, SEM snapshot); senão zona → fim da rodada ou
                 último-vivo → endRound(); a cada SNAPSHOT_EVERY → snapshots; a cada LEADERBOARD_EVERY → placar + ZONE.
                 Também: chat(session,text) e voice(session,clipe) — ver docs/design/modos.md
 rooms/Party.js  lobby de equipe por CÓDIGO, em memória com TTL (o convite que vai por link). Sem banco, vale para convidado.
@@ -205,11 +205,11 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   vira errante e o cinturão reagenda um substituto (DEFLECT).
 
 ## Modos (ver docs/design/modos.md)
-`MODES` em shared/src/constants.js é o descritor: `warmup`, `respawnBots`, `lastAlive`, `zone`, `weapons`, `chat`,
-`teamSizes`. **Livre continua idêntico** — inclusive os bots, que seguem vindo do env (`config.roomBots`), porque
+`MODES` em shared/src/constants.js é o descritor: `lobby`, `respawnBots`, `lastAlive`, `zone`, `weapons`, `chat`,
+`teamSizes`, `anonBots`. **Livre continua idêntico** — inclusive os bots, que seguem vindo do env (`config.roomBots`), porque
 trocar isso pelo descritor mudaria o balanço da sala em produção. `acceptsJoin()` é a porta ÚNICA de entrada
 (cheia, terminada e "partida já em andamento" num lugar só) e é o que faz "sem respawn" ser verdade: quem morre
-no Sobrevivência não volta para a mesma sala.
+no Battle Royale não volta para a mesma sala.
 
 `sameTeam` (rules.js) é a única fonte de "somos aliados", usada em seis pontos; `w.peace` liga isso para todo
 mundo durante o aquecimento. A zona vive em `World.zone` + `rules.zoneBurn` (e na predição do cliente, com a

@@ -54,7 +54,7 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         const opts={mode:mode.id,teamSize};
         let room=null;
         if(msg.room){room=rooms.getRoom(msg.room,opts);
-          // `acceptsJoin` é a porta única: cobre cheia, terminada E partida já em andamento (Sobrevivência)
+          // `acceptsJoin` é a porta única: cobre cheia, terminada E partida já em andamento (Battle Royale)
           if(room&&!room.acceptsJoin()){if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});return s.error('FULL',`sala ${room.code} indisponível`);}
           if(room&&room.modeId!==mode.id){if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});return s.error('MODE',`a sala ${room.code} é de outro modo`);}}
         if(!room)room=rooms.findOrCreateRoom(opts);

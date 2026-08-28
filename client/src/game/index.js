@@ -76,8 +76,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,slowSince=0,econAt=0,statsOv=null;
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
   // ── modo, equipe, zona, chat e voz ──
-  let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0;
-  let zone=null,zoneShown={x:0,y:0,r:0},lastShrink=0,lastHurt=false;   // `zone` = o par de círculos do fio; `zoneShown` é o interpolado do frame
+  let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0,lobby=null;   // `lobby` = o estado da tela de espera (JSON `lobby`, em ms)
+  let zone=null,zoneShown={x:0,y:0,r:0},lastShrink=0,lastHurt=false,lobbyBeep=false;   // `zone` = o par de círculos do fio; `zoneShown` é o interpolado do frame
   /** @type {{slot:number,name:string,team:number|null,text:string,at:number}[]} */let chatLog=[];
   const mic=createMic({audio,send:d=>conn&&conn.send(d),onState:st=>{hudStore.update(h=>({...h,talk:st}));}});
   const talking=new Map();   // slot → performance.now() em que o clipe termina (o ícone de "falando" no planeta)
@@ -152,10 +152,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       round=m.round||null;roundOver=false;lastCount=-1;warmedSky=null;lastAmmo=0;lastMagnet=false;
       modeId=m.mode|0;teamSize=m.teamSize||1;myTeam=m.team==null?-1:m.team;roomCap=m.cap||0;
       phase=(m.round&&m.round.phase)||"live";startsAt=(m.round&&m.round.startsAt)||0;
-      view.setMyTeam(myTeam);chatLog=[];talking.clear();
+      view.setMyTeam(myTeam);chatLog=[];talking.clear();lobby=null;
       audio.resume();audio.play("join",{mine:true});}
-    else if(m.t==="phase"){   // o aquecimento virou partida: relógio, contagem e céu saem todos do bloco `round` novo
-      phase=m.phase;round=m.round||round;startsAt=(m.round&&m.round.startsAt)||0;lastCount=-1;
+    else if(m.t==="lobby"){   // a sala enchendo: contagem em MS, porque no lobby não há snapshot para sincronizar o tick
+      lobby={filled:m.filled,cap:m.cap,humans:m.humans,startsInMs:m.startsInMs,waitMs:m.waitMs,at:performance.now()};
+      if(m.startsInMs&&!lobbyBeep){lobbyBeep=true;audio.play("countdown",{mine:true});}}
+    else if(m.t==="phase"){   // largada: relógio, contagem e céu saem todos do bloco `round` novo
+      phase=m.phase;round=m.round||round;startsAt=(m.round&&m.round.startsAt)||0;lastCount=-1;lobby=null;lobbyBeep=false;
+      pushHud(performance.now());   // na hora: o HUD roda a 8 Hz e a tela do lobby ficaria até 125 ms por cima da partida já em curso
       if(phase==="live"){audio.play("matchStart",{mine:true});chatSys("A partida começou!");}}
     else if(m.t==="chat"){pushChat(m);}
     else if(m.t==="roundEnd"){roundOver=true;input.setHold(false);endOfWorld();pushHud(performance.now());if(onRoundEnd)onRoundEnd({...m,mySlot:view.mySlot});}
@@ -249,10 +253,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};applyQuality();audio.setPrefs(curPrefs);minimap.show(joined&&curPrefs.showMinimap!==false);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
     resize(){if(!renderer)return;renderer.resize();if(conn&&conn.isOpen&&joined){const v=viewSize();if(v.w!==game._vw||v.h!==game._vh){game._vw=v.w;game._vh=v.h;conn.sendJson({t:"view",w:v.w,h:v.h});}}},
-    destroy(){destroyed=true;cancelAnimationFrame(raf);raf=0;game.leave(true);audio.suspend();removeEventListener("pointerdown",wakeAudio);removeEventListener("keydown",wakeAudio);keyboard.destroy();touch.destroy();actions.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
+    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__planet;cancelAnimationFrame(raf);raf=0;game.leave(true);audio.suspend();removeEventListener("pointerdown",wakeAudio);removeEventListener("keydown",wakeAudio);keyboard.destroy();touch.destroy();actions.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("planet:theme",onThemeEvent);if(themeGuard)removeEventListener("planet:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
-    debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local},
+    debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,
+      hud:()=>hudStore.get(),estado:()=>({modeId,teamSize,myTeam,phase,startsAt,roomCap,lobby,zone})},
   };
 
   // ── qualidade / modo econômico (0 = cheio, 1 = econômico, 2 = mínimo) ──
@@ -374,7 +379,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,clock:roundClock,
       mode:modeId,teamSize,team:myTeam,phase,cap:roomCap,
-      startsInMs:phase==="warmup"&&startsAt?Math.max(0,Math.round((startsAt-tk)*1000/TICK_HZ)):0,
+      lobby:lobby?{...lobby,
+        // o servidor manda a 2 Hz; aqui o número desce liso, descontando o tempo desde que a mensagem chegou
+        startsInMs:lobby.startsInMs?Math.max(0,lobby.startsInMs-(now-lobby.at)):0,
+        waitMs:lobby.waitMs?Math.max(0,lobby.waitMs-(now-lobby.at)):0,
+        roster:[...view.players.values()].map(p=>({slot:p.slot,name:p.name,skinId:p.skinId,me:p.slot===view.mySlot}))}:null,
       alive:s?s.alive:0,weapon:s?s.weapon|0:0,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
       talk:mic.state,chat:chatLog});}
   function statsText(){const c=renderer.counts(),st=predictor.stats;
@@ -418,4 +427,5 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         if(m>=EJECT.MIN_R*EJECT.MIN_R){audio.play("eject",{mine:true,pitch:pitchOf(m)*(1+.55*Math.min(1,ejN/EJECT.RAMP_N))});
           if(ejN<EJECT.RAMP_N)ejN++;}}}
     if(statsOv){if(now-bytesT>1000){bytesRate=conn?(conn.bytesIn-bytesLast)*1000/(now-bytesT):0;bytesLast=conn?conn.bytesIn:0;bytesT=now;}statsOv.update(now,statsText());}}
+  if(import.meta.env&&import.meta.env.DEV&&typeof window!=="undefined")window.__planet=game.debug;   // só em dev: inspecionar hudStore/estado pelo console
   return game;}

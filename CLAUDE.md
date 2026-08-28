@@ -21,14 +21,14 @@ npm run build                # client/dist (vite build)
 
 Dev sem servidor: o cliente cai em modo offline (perfil local em `localStorage`) e `?local=1` roda um servidor
 falso na própria página (`client/src/game/net/LocalServer.js`) — **só o modo Livre**; a tela de modos desabilita
-Sobrevivência offline. `WARMUP_TICKS=420` no servidor encurta a espera do Sobrevivência para testar. `?bench` = pior caso de render; `?stats` = overlay de rede;
+Battle Royale offline. `LOBBY_TICKS=600` no servidor encurta o lobby do Battle Royale para testar. `?bench` = pior caso de render; `?stats` = overlay de rede;
 `?sfx` = mesa de som (toca todo o `KIT`, sem entrar em partida).
 Mockups aprovados continuam em `mockups/v2/` (CommonJS; `node mockups/v2/src/build.js`) — são a referência visual.
 
 ## Layout
 
 ```
-shared/src/    constants.js (ÚNICA fonte de tunables) · skins.js (75 skins) · achievements.js · rng.js · camera.js · util.js · zone.js (a zona do Sobrevivência) · bot.js (cérebro dos bots, usado pelo servidor e pelo LocalServer)
+shared/src/    constants.js (ÚNICA fonte de tunables) · skins.js (75 skins) · achievements.js · rng.js · camera.js · util.js · zone.js (a zona do Battle Royale) · bot.js (cérebro dos bots, usado pelo servidor e pelo LocalServer)
                physics/ (body, spatial-hash, integrate, collide, rules, world, predict) · protocol/ (constants, quant, writer, reader, codec, dto)
 server/src/    index.js (composition root + startServer) · loop.js (scheduler 60 Hz) · metrics.js
                sim/ (Sim, hooks) · rooms/ (codes, Room, RoomManager, Party) · net/ (Session, wsServer, snapshot) · http/ (api, peers)
@@ -135,13 +135,19 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   peça própria renderizada interpolada entre passos (sem isso treme a 60/120 Hz); relógio com mediana+slew; removidas somem
   no frame com efeito (`onVanish`); efeitos de terceiros atrasados pelo atraso de interpolação; skins aquecidas no PLAYERS.
 - **Modos de jogo** (`MODE`/`MODES` em constants, `docs/design/modos.md`): **Livre** é o jogo de sempre e não mudou.
-  **Sobrevivência** é sala de 50 (humanos primeiro, bots completam), **sem respawn**, com **zona que encolhe**
-  (`shared/src/zone.js`; fora dela a peça queima `ZONE.BURN`/s e MORRE no piso — a única coisa que mata sozinha) e
-  vitória do último vivo. Solo ou equipe de 2/3/4, com lobby por **código de convite** (`rooms/Party.js`, memória
-  com TTL, funciona sem banco e para convidado). A ESPERA é o aquecimento: a sala roda de verdade em `phase:'warmup'`
-  e ninguém morre (`w.peace` faz todo mundo virar aliado) — foi o que evitou um estado de sessão sem sala e um
-  segundo caminho de snapshot. `Room.roundStart`, que nascia 0 e nunca era escrito, é o gancho: escrevê-lo em
-  `begin()` ajusta relógio, contagem e céu sozinho. **Aliado é regra de FÍSICA** (`rules.sameTeam`, nos 6 pontos de
+  **Battle Royale** é sala de 50, **sem respawn**, com **zona que encolhe** (`shared/src/zone.js`; fora dela a peça
+  queima `ZONE.BURN`/s e MORRE no piso — a única coisa que mata sozinha) e vitória do último vivo. Solo ou equipe
+  de 2/3/4, com convite por **código** (`rooms/Party.js`, memória com TTL, funciona sem banco e para convidado).
+  Entra por um **LOBBY** (`phase:'lobby'`): o jogador está na SALA, não no MAPA (`addPlayer({spawn:false})`), vê o
+  contador subir e os nomes chegando, e a largada vem quando enche ou a janela `BR.LOBBY_TICKS` fecha. Os
+  participantes chegam AOS POUCOS (curva `progresso^FILL_EXP` com jitter) porque encher de uma vez entrega o jogo;
+  a vaga é sempre do humano (quem chega derruba um preenchimento). Nenhum snapshot nessa fase — sem peça não há o
+  que enquadrar —, então o estado do lobby vai em JSON e em MILISSEGUNDOS. `Room.roundStart`, que nascia 0 e nunca
+  era escrito, é o gancho: escrevê-lo na largada ajusta relógio, contagem e céu sozinho.
+  **O preenchimento não se identifica** (`anonBots`): nome de jogador (`BOT_NICKS`/`botNick`) e o flag `PLAYER_FLAG.BOT`
+  NÃO vai no fio — como o `◆` do placar e a cor do radar saem dele, os dois param de distinguir sem uma linha de
+  cliente. O servidor continua sabendo (kills × botKills, economia, conquistas); quem não sabe é a tela.
+  **Aliado é regra de FÍSICA** (`rules.sameTeam`, nos 6 pontos de
   decisão), não do bot; compartilhar partículas já funcionava de graça (o cooldown do ejetado é só do DONO).
   **Armas** (`WEAPONS`): míssil + Rajada/Mina/Cacho/Nova, todas em cima de mecânica existente — a Mina é o
   BLACKHOLE dormente, a Nova é o laço da supernova. `acceptsJoin()` é a porta única de entrada da sala.

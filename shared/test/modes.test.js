@@ -6,7 +6,7 @@ import {createWorld,stepOwnPieces} from "../src/physics/index.js";
 import {sameTeam,zoneBurn,outOfZone,zoneMass,applyFire} from "../src/physics/rules.js";
 import {createZone,stepZone,zoneAt,zoneR} from "../src/zone.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,ZONE,PLAYER,DT,MISSILE,WEAPON,WEAPONS,FOOD_TYPE,MODE,MODES,modeOf,modeCap,SURVIVAL,weaponOf,weaponOfFood} from "../src/constants.js";
+import {WORLD,ZONE,PLAYER,DT,MISSILE,WEAPON,WEAPONS,FOOD_TYPE,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood} from "../src/constants.js";
 import {KIND} from "../src/protocol/constants.js";
 
 const empty=(seed=1,o={})=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false,...o});
@@ -17,17 +17,29 @@ const massa=(w,slot)=>Math.round(w.massOf(slot)*1e6)/1e6;
 test("MODES: o Livre é o jogo de sempre e id inválido cai nele",()=>{
   const free=modeOf(MODE.FREE);
   assert.equal(free.key,"free");assert.equal(free.respawnBots,true);assert.equal(free.lastAlive,false);
-  assert.equal(free.zone,false);assert.equal(free.weapons,false);assert.equal(free.warmup,false);
+  assert.equal(free.zone,false);assert.equal(free.weapons,false);assert.equal(free.lobby,false);assert.equal(free.anonBots,false);
   assert.equal(modeOf(99).key,"free","modo desconhecido (cliente antigo) NUNCA cai num modo estranho");
   assert.equal(modeOf(undefined).key,"free");
-  const sv=modeOf(MODE.SURVIVAL);
-  assert.equal(sv.lastAlive,true);assert.equal(sv.respawnBots,false);assert.equal(sv.zone,true);
-  assert.deepEqual(sv.teamSizes,SURVIVAL.TEAM_SIZES);});
+  const br=modeOf(MODE.BR);
+  assert.equal(br.lastAlive,true);assert.equal(br.respawnBots,false);assert.equal(br.zone,true);
+  assert.equal(br.lobby,true,"o battle royale entra por um LOBBY, não direto no mapa");
+  assert.equal(br.anonBots,true,"e o preenchimento não se identifica como bot");
+  assert.deepEqual(br.teamSizes,BR.TEAM_SIZES);});
+test("botNick: apelidos de gente, sem repetir, e cabendo no limite de nick",()=>{
+  const rng=createRng(7),usados=new Set(),nomes=[];
+  for(let i=0;i<BR.PLAYERS;i++)nomes.push(botNick(rng,usados));
+  assert.equal(new Set(nomes.map(n=>n.toLowerCase())).size,BR.PLAYERS,"50 nomes sem repetição");
+  for(const n of nomes){assert.ok(n.length>=2&&n.length<=16,`nick fora de 2..16: ${n}`);
+    assert.ok(!BOT_NAMES.includes(n),`${n} é da lista TEMÁTICA — essa denuncia o bot no battle royale`);}
+  // um nick já em uso na sala nunca é reaproveitado (o humano chega antes e reserva o dele)
+  const u2=new Set(["lucas"]),n2=[];const r2=createRng(3);
+  for(let i=0;i<60;i++)n2.push(botNick(r2,u2));
+  assert.ok(!n2.some(n=>n.toLowerCase()==="lucas"),"não repete o nick de quem já está na sala");});
 test("modeCap: a capacidade fecha no tamanho de equipe (equipe incompleta não entra em campo)",()=>{
-  assert.equal(modeCap(MODE.SURVIVAL,1),50);assert.equal(modeCap(MODE.SURVIVAL,2),50);
-  assert.equal(modeCap(MODE.SURVIVAL,3),48);assert.equal(modeCap(MODE.SURVIVAL,4),48);
-  for(const t of SURVIVAL.TEAM_SIZES)assert.equal(modeCap(MODE.SURVIVAL,t)%t,0,`cap divisível por ${t}`);
-  assert.equal(modeCap(MODE.SURVIVAL,0),modeOf(MODE.SURVIVAL).max,"teamSize 0 não divide por zero");});
+  assert.equal(modeCap(MODE.BR,1),50);assert.equal(modeCap(MODE.BR,2),50);
+  assert.equal(modeCap(MODE.BR,3),48);assert.equal(modeCap(MODE.BR,4),48);
+  for(const t of BR.TEAM_SIZES)assert.equal(modeCap(MODE.BR,t)%t,0,`cap divisível por ${t}`);
+  assert.equal(modeCap(MODE.BR,0),modeOf(MODE.BR).max,"teamSize 0 não divide por zero");});
 
 // ── 2. zona ─────────────────────────────────────────────────────────────────
 test("zona: a máquina fecha em 21 300 ticks e o círculo novo SEMPRE cabe dentro do anterior",()=>{
@@ -210,11 +222,11 @@ test("MINA: vira um poço que estilhaça quem encosta, sem esmagar, e some sozin
   assert.equal(w.players.get(1).alive,true,"e não morre: mina não é buraco negro");
   for(let i=0;i<WEAPONS[WEAPON.MINE].life+120;i++)w.step();
   assert.equal(w.holes.filter(x=>!x.dead).length,0,"a mina expira; a sala não acumula poços para sempre");});
-test("armas só caem no Sobrevivência (o mundo Livre nunca sorteia uma)",()=>{
+test("armas só caem no Battle Royale (o mundo Livre nunca sorteia uma)",()=>{
   const livre=createWorld({seed:16,asteroids:false,holes:0,stars:0});
   assert.equal(livre.food.some(f=>f.type>=FOOD_TYPE.W_BURST),false,"modo Livre: nenhuma arma no chão");
   const sv=createWorld({seed:16,asteroids:false,holes:0,stars:0,weapons:true});
-  assert.ok(sv.food.some(f=>f.type>=FOOD_TYPE.W_BURST),"Sobrevivência larga arma");
+  assert.ok(sv.food.some(f=>f.type>=FOOD_TYPE.W_BURST),"Battle Royale larga arma");
   const tipos=new Set(sv.food.filter(f=>f.type>=FOOD_TYPE.W_BURST).map(f=>f.type));
   assert.ok(tipos.size>=3,`a raridade tem que espalhar os tipos (saíram ${tipos.size})`);
   const n=sv.food.filter(f=>f.type>=FOOD_TYPE.W_BURST).length;

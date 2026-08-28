@@ -1,6 +1,6 @@
 // ── CONFIG (env → objeto único; defaults de dev) ──────────────────────────────
 // @ts-check
-import {ROUND,SURVIVAL} from '@planet/shared/constants.js';
+import {ROUND,BR} from '@planet/shared/constants.js';
 const env=process.env;
 const str=(k,d)=>env[k]!=null&&env[k]!==''?env[k]:d;
 const num=(k,d)=>{const v=Number(env[k]);return env[k]!=null&&env[k]!==''&&Number.isFinite(v)?v:d;};
@@ -25,7 +25,7 @@ export const config=Object.freeze({
   roomMax:num('ROOM_MAX',30),
   roomBots:num('ROOM_BOTS',15),
   roundTicks:Math.max(60,num('ROUND_TICKS',ROUND.TICKS)),   // duração da rodada em ticks (os testes usam rodadas curtas)
-  warmupTicks:Math.max(60,num('WARMUP_TICKS',SURVIVAL.WARMUP_TICKS)),   // espera do Sobrevivência (mesmo motivo: testar sem esperar 45 s)
+  lobbyTicks:Math.max(60,num('LOBBY_TICKS',BR.LOBBY_TICKS)),   // janela do lobby do Battle Royale (mesmo motivo do ROUND_TICKS: testar sem esperar 30 s)
   logLevel:str('LOG_LEVEL','info'),
   role,
   staticDir:str('STATIC_DIR',''),

@@ -1,4 +1,4 @@
-// ── ZONA QUE ENCOLHE (modo Sobrevivência) ────────────────────────────────────
+// ── ZONA QUE ENCOLHE (modo Battle Royale) ────────────────────────────────────
 // Círculo que fecha em ZONE.STAGES etapas: HOLD_TICKS[i] parada em R[i], depois SHRINK_TICKS[i]
 // interpolando até R[i+1]. Fora dele a peça QUEIMA ZONE.BURN da massa por segundo, sem piso — no
 // MIN_PIECE_R ela morre. É o que força o encontro e fecha a partida; sem isso 50 jogadores num mapa

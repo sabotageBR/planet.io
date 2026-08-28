@@ -27,7 +27,7 @@ const LB_MAX=10,EVENTS_MAX=256;
  * @property {boolean} registered
  * @property {number} skinId
  * @property {number} team          equipe (-1 = sem equipe). A verdade da regra está no PlayerState do World; aqui é o espelho para o fio e o placar
- * @property {number} deathTick     tick em que morreu (-1 vivo) — é dele que sai a COLOCAÇÃO no Sobrevivência
+ * @property {number} deathTick     tick em que morreu (-1 vivo) — é dele que sai a COLOCAÇÃO no Battle Royale
  * @property {number} placement     posição final (1 = campeão), preenchida no fim
  * @property {number} talkUntil     tick até quando o ícone de "falando" fica aceso
  * @property {boolean} isBot
@@ -64,13 +64,13 @@ export class Sim{
     team:o.team==null?-1:o.team|0,deathTick:-1,placement:0,talkUntil:0,
     dead:false,score:0,kills:0,botKills:0,streak:0,joinedTick:this.world.tick,maxMass:0,top1Ticks:0,quadrants:new Set(),lastInput:{seq:0,tx:0,ty:0,flags:0},gotInput:false,brain:null,deathInfo:null};}
   /** Humano: peça START_R longe de perigos. Devolve o GamePlayer (peça inicial em world.piecesOf(slot)[0]). */
-  addHuman(slot,{name='Viajante',registered=false,skinId=0,sessionId=null,userId=null,team=-1}={}){
+  addHuman(slot,{name='Viajante',registered=false,skinId=0,sessionId=null,userId=null,team=-1,spawn=true}={}){
     if(this.players.has(slot))this.remove(slot);
-    this.world.addPlayer(slot,{r:PLAYER.START_R,isBot:false,missiles:0,team});
+    this.world.addPlayer(slot,{r:PLAYER.START_R,isBot:false,missiles:0,team,spawn});
     const gp=this._mk(slot,{name,registered,skinId,sessionId,userId,isBot:false,team});this.players.set(slot,gp);this.playersDirty=true;return gp;}
-  addBot(slot,{name,skinId=0,team=-1}){
+  addBot(slot,{name,skinId=0,team=-1,spawn=true}={}){
     if(this.players.has(slot))this.remove(slot);
-    this.world.addPlayer(slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),isBot:true,missiles:0,team});
+    this.world.addPlayer(slot,{r:spawn?this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]):PLAYER.START_R,isBot:true,missiles:0,team,spawn});
     const gp=this._mk(slot,{name,skinId,isBot:true,team});gp.brain=new BotBrain(this.world,slot,this.rng,this._botInput);this.players.set(slot,gp);this.playersDirty=true;return gp;}
   /** Equipe de um slot (a fonte é o PlayerState do World; o GamePlayer é só o espelho do fio). */
   setTeam(slot,team){const gp=this.players.get(slot),ps=this.world.players.get(slot);
@@ -147,7 +147,7 @@ export class Sim{
     const ps=w.players.get(e.slot);if(ps)gp.score=ps.score;
     this._ev(EVENT.DEATH,h?h.x:0,h?h.y:0,h?h.r:0,e.slot,by?by.slot:NO_SLOT,gp.score);
     gp.streak=0;this.playersDirty=true;
-    // Sem respawn (Sobrevivência): o bot morre de vez, como todo mundo. É a ÚNICA linha que ressuscitava alguém.
+    // Sem respawn (Battle Royale): o bot morre de vez, como todo mundo. É a ÚNICA linha que ressuscitava alguém.
     if(gp.isBot&&this.mode.respawnBots){w.respawnPlayer(e.slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),score:Math.floor(gp.score*BOT.RESPAWN_SCORE)});gp.score=Math.floor(gp.score*BOT.RESPAWN_SCORE);if(gp.brain)gp.brain.reset();return;}
     gp.dead=true;gp.deathTick=w.tick;gp.placement=0;this._elim++;
     if(gp.isBot)return;   // bot eliminado não tem sessão, hooks nem tela de morte: o caminho abaixo é só de humano
@@ -170,7 +170,7 @@ export class Sim{
       registered:gp.registered,skinId:gp.skinId,team:gp.team<0?null:gp.team});
     for(const r of rows){const gp=this.players.get(r.slot);if(!gp)continue;seen.add(gp.slot);board.push(row(gp,r.mass));}
     // Mortos entram por ORDEM DE ELIMINAÇÃO invertida (quem caiu por último fica na frente): é o "7º de 50" do
-    // Sobrevivência. No Livre o bot renasce e nunca chega aqui, então a lista continua sendo só a de humanos.
+    // Battle Royale. No Livre o bot renasce e nunca chega aqui, então a lista continua sendo só a de humanos.
     const mortos=[];
     for(const gp of this.players.values()){if(seen.has(gp.slot))continue;if(gp.isBot&&this.mode.respawnBots)continue;mortos.push(gp);}
     mortos.sort((a,b)=>b.deathTick-a.deathTick);
@@ -212,7 +212,7 @@ export class Sim{
     let mt=0,sh=0;const arr=ps.pieces;
     for(let i=0;i<arr.length;i++){const pc=arr[i];if(pc.dead)continue;const m=pc.magnetUntil-t;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}
     const sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t,fc=ps.fireCdUntil-t;
-    out.flags=(gp.dead?SELF_FLAG.DEAD:0)|(w.peace?SELF_FLAG.WARMUP:0);out.weapon=ps.weapon|0;out.alive=this.aliveCount();
+    out.flags=(gp.dead?SELF_FLAG.DEAD:0)|(w.peace?SELF_FLAG.LOBBY:0);out.weapon=ps.weapon|0;out.alive=this.aliveCount();
     const zc=w.zoneNow();if(zc&&!gp.dead){const me0=firstLive(ps.pieces);
       if(me0){const dx=me0.x-zc.x,dy=me0.y-zc.y;if(dx*dx+dy*dy>zc.r*zc.r)out.flags|=SELF_FLAG.ZONE_HURT;}}
     out.missiles=ps.missiles;out.powerBits=(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0);
@@ -225,15 +225,22 @@ export class Sim{
         out.threatDir=Math.round(Math.atan2(dy,dx)/6.2831853*256)&255;}}
     return out;}
   /** Linhas do PLAYERS. */
-  playersInfo(){const out=[],t=this.world.tick;for(const gp of this.players.values())
-    out.push({slot:gp.slot,flags:(gp.isBot?PLAYER_FLAG.BOT:0)|(gp.dead?PLAYER_FLAG.DEAD:0)|(gp.registered?PLAYER_FLAG.REG:0)|(gp.talkUntil>t?PLAYER_FLAG.TALK:0),
-      skinId:gp.skinId&255,team:gp.team<0?NO_TEAM:gp.team&255,name:gp.name,score:gp.score});return out;}
+  /**
+   * Linhas do PLAYERS. No modo com `anonBots` (battle royale) o flag BOT **não vai no fio**: os
+   * preenchimentos entram com nome de jogador e o cliente não tem como distingui-los. O servidor continua
+   * sabendo (kills × botKills, economia, conquistas) — quem não sabe é a TELA.
+   */
+  playersInfo(){const out=[],t=this.world.tick,anon=this.mode.anonBots;
+    for(const gp of this.players.values())
+      out.push({slot:gp.slot,flags:((gp.isBot&&!anon)?PLAYER_FLAG.BOT:0)|(gp.dead?PLAYER_FLAG.DEAD:0)|(gp.registered?PLAYER_FLAG.REG:0)|(gp.talkUntil>t?PLAYER_FLAG.TALK:0),
+        skinId:gp.skinId&255,team:gp.team<0?NO_TEAM:gp.team&255,name:gp.name,score:gp.score});
+    return out;}
   humanCount(){let n=0;for(const gp of this.players.values())if(!gp.isBot)n++;return n;}
   botCount(){let n=0;for(const gp of this.players.values())if(gp.isBot)n++;return n;}
   /** Quantos jogadores ainda estão vivos (é o "restam N" do HUD, e vai no `self`). */
   aliveCount(){return this.leaderboard().length;}
   /**
-   * Quantas EQUIPES ainda têm alguém vivo. Sem equipe (Livre e Sobrevivência solo) cada jogador é a própria
+   * Quantas EQUIPES ainda têm alguém vivo. Sem equipe (Livre e Battle Royale solo) cada jogador é a própria
    * equipe, então isto vale como "quantos restam" e o teste de vitória é o mesmo nos dois casos.
    */
   aliveTeams(){const lb=this.leaderboard(),ts=new Set();
