@@ -5,7 +5,7 @@
 // encodeSnapshot não aloca nada além da vista de saída. Decoders devolvem objetos simples em
 // unidades de mundo (px, px/s). Contadores (seq/ackSeq/clientTick/tick) dão wrap; magnitudes saturam.
 import {WORLD} from "../constants.js";
-import {MSG,KIND,UPD,NAME_MAX_BYTES,INPUT_BYTES} from "./constants.js";
+import {MSG,KIND,UPD,NAME_MAX_BYTES,INPUT_BYTES,NO_TEAM} from "./constants.js";
 import {qPos,dqPos,qR,dqR,qV,dqV,qTicks8} from "./quant.js";
 import {createReader} from "./reader.js";
 /** @typedef {import("./writer.js").Writer} Writer */
@@ -20,12 +20,15 @@ import {createReader} from "./reader.js";
 /** @typedef {import("./dto.js").LeaderboardRow} LeaderboardRow */
 /** @typedef {import("./dto.js").GameEvent} GameEvent */
 /** @typedef {import("./dto.js").Pong} Pong */
+/** @typedef {import("./dto.js").ZoneWire} ZoneWire */
+/** @typedef {import("./dto.js").VoiceClip} VoiceClip */
+/** @typedef {import("./dto.js").VoiceUp} VoiceUp */
 /** @typedef {ArrayBuffer|ArrayBufferView} Bytes */
 
 const W=WORLD.w,H=WORLD.h;
 const u8c=v=>v>0?(v>255?255:Math.round(v)):0,u16c=v=>v>0?(v>65535?65535:Math.round(v)):0,u32c=v=>v>0?(v>4294967295?4294967295:Math.round(v)):0;
 /** @type {never[]} */const EMPTY=[];
-/** @type {SelfState} */const SELF0={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0};
+/** @type {SelfState} */const SELF0={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0};
 /** @param {Reader} rd @param {number} type */
 const expect=(rd,type)=>{const t=rd.u8();if(t!==type)throw new Error(`tipo de mensagem 0x${t.toString(16)} ≠ 0x${type.toString(16)}`);};
 
@@ -49,7 +52,7 @@ function writeCreate(w,e){w.u8(e.kind).u32(e.id>>>0).u16(qPos(e.x,W)).u16(qPos(e
     case KIND.EJECT:w.u16(e.owner|0).u8(e.hue|0).i16(qV(e.vx)).i16(qV(e.vy));break;
     case KIND.ASTEROID:w.u16(e.seed|0).i16(qV(e.vx)).i16(qV(e.vy));break;
     case KIND.BLACKHOLE:case KIND.STAR:w.u16(e.seed|0).u16(u16c(e.influenceR)).u8(e.phase|0);break;
-    case KIND.MISSILE:w.u16(e.owner|0).u16(e.target|0).i16(qV(e.vx)).i16(qV(e.vy));break;
+    case KIND.MISSILE:w.u16(e.owner|0).u16(e.target|0).i16(qV(e.vx)).i16(qV(e.vy)).u8(e.weapon|0);break;
     default:throw new Error(`kind desconhecido: ${e.kind}`);}}
 /** @param {Reader} rd @returns {EntityCreate} */
 function readCreate(rd){const kind=rd.u8(),id=rd.u32(),x=dqPos(rd.u16(),W),y=dqPos(rd.u16(),H),r=dqR(rd.u16());
@@ -59,7 +62,7 @@ function readCreate(rd){const kind=rd.u8(),id=rd.u32(),x=dqPos(rd.u16(),W),y=dqP
     case KIND.EJECT:return{kind,id,x,y,r,owner:rd.u16(),hue:rd.u8(),vx:dqV(rd.i16()),vy:dqV(rd.i16())};
     case KIND.ASTEROID:return{kind,id,x,y,r,seed:rd.u16(),vx:dqV(rd.i16()),vy:dqV(rd.i16())};
     case KIND.BLACKHOLE:case KIND.STAR:return{kind,id,x,y,r,seed:rd.u16(),influenceR:rd.u16(),phase:rd.u8()};
-    case KIND.MISSILE:return{kind,id,x,y,r,owner:rd.u16(),target:rd.u16(),vx:dqV(rd.i16()),vy:dqV(rd.i16())};
+    case KIND.MISSILE:return{kind,id,x,y,r,owner:rd.u16(),target:rd.u16(),vx:dqV(rd.i16()),vy:dqV(rd.i16()),weapon:rd.u8()};
     default:throw new Error(`kind desconhecido: ${kind}`);}}
 /** @param {Writer} w @param {EntityUpdate} u */
 function writeUpdate(w,u){const m=u.mask|0;w.u32(u.id>>>0).u8(m);
@@ -79,9 +82,9 @@ function readUpdate(rd){const id=rd.u32(),mask=rd.u8();/** @type {EntityUpdate} 
 /** @param {Writer} w @param {SelfState} s */
 function writeSelf(w,s){w.u8(s.flags|0).u8(u8c(s.missiles)).u8(s.powerBits|0).u16(u16c(s.magnetT)).u8(u8c(s.shieldLv))
   .u32(u32c(s.score)).u8(qTicks8(s.splitCd)).u8(qTicks8(s.ejectCd)).u16(u16c(s.fireCd)).u16(u16c(s.rank)).u32(u32c(s.mass))
-  .u8(u8c(s.threat)).u8((s.threatDir|0)&255);}
+  .u8(u8c(s.threat)).u8((s.threatDir|0)&255).u8(s.weapon|0).u8(u8c(s.alive));}
 /** @param {Reader} rd @returns {SelfState} */
-function readSelf(rd){return{flags:rd.u8(),missiles:rd.u8(),powerBits:rd.u8(),magnetT:rd.u16(),shieldLv:rd.u8(),score:rd.u32(),splitCd:rd.u8(),ejectCd:rd.u8(),fireCd:rd.u16(),rank:rd.u16(),mass:rd.u32(),threat:rd.u8(),threatDir:rd.u8()};}
+function readSelf(rd){return{flags:rd.u8(),missiles:rd.u8(),powerBits:rd.u8(),magnetT:rd.u16(),shieldLv:rd.u8(),score:rd.u32(),splitCd:rd.u8(),ejectCd:rd.u8(),fireCd:rd.u16(),rank:rd.u16(),mass:rd.u32(),threat:rd.u8(),threatDir:rd.u8(),weapon:rd.u8(),alive:rd.u8()};}
 /** @param {Writer} w @param {Partial<Snapshot>&{tick:number,ackSeq:number}} s @returns {Uint8Array} */
 export function encodeSnapshot(w,s){
   const cr=s.creates||EMPTY,up=s.updates||EMPTY,rm=s.removes||EMPTY;
@@ -106,11 +109,11 @@ export const decodeSnapshot=view=>readSnapshot(createReader(view));
 /** @param {Writer} w @param {PlayerInfo[]} ps @returns {Uint8Array} */
 export function encodePlayers(w,ps){if(ps.length>65535)throw new RangeError("players: mais de 65535 linhas");
   w.reset().u8(MSG.PLAYERS).u16(ps.length);
-  for(let i=0;i<ps.length;i++){const p=ps[i];w.u16(p.slot|0).u8(p.flags|0).u8(p.skinId|0).str8(p.name||"",NAME_MAX_BYTES).u32(u32c(p.score));}
+  for(let i=0;i<ps.length;i++){const p=ps[i];w.u16(p.slot|0).u8(p.flags|0).u8(p.skinId|0).u8(p.team==null?NO_TEAM:p.team&255).str8(p.name||"",NAME_MAX_BYTES).u32(u32c(p.score));}
   return w.toBuffer();}
 /** @param {Reader} rd @returns {PlayerInfo[]} */
 function readPlayers(rd){expect(rd,MSG.PLAYERS);const n=rd.u16(),ps=new Array(n);
-  for(let i=0;i<n;i++)ps[i]={slot:rd.u16(),flags:rd.u8(),skinId:rd.u8(),name:rd.str8(),score:rd.u32()};return ps;}
+  for(let i=0;i<n;i++)ps[i]={slot:rd.u16(),flags:rd.u8(),skinId:rd.u8(),team:rd.u8(),name:rd.str8(),score:rd.u32()};return ps;}
 /** @param {Bytes} view */
 export const decodePlayers=view=>readPlayers(createReader(view));
 
@@ -146,11 +149,52 @@ function readPong(rd){expect(rd,MSG.PONG);return{clientTime:rd.u32(),serverTick:
 /** @param {Bytes} view */
 export const decodePong=view=>readPong(createReader(view));
 
+// ── ZONE (0x15) ──────────────────────────────────────────────────────────────
+// A zona do modo Sobrevivência, na cadência do LEADERBOARD (2 Hz): o círculo de ORIGEM, o de DESTINO e
+// os ticks das duas pontas. O cliente interpola sozinho — não roda a máquina de fases (shared/zone.js),
+// que é do servidor. Parada = origem e destino iguais. `t1` infinito (fim de tudo) vai como 0xffffffff.
+/** @param {Writer} w @param {ZoneWire} z @returns {Uint8Array} */
+export function encodeZone(w,z){
+  return w.reset().u8(MSG.ZONE).u16(qPos(z.x0,W)).u16(qPos(z.y0,H)).u16(qR(z.r0))
+    .u16(qPos(z.x1,W)).u16(qPos(z.y1,H)).u16(qR(z.r1))
+    .u32(z.t0>>>0).u32(Number.isFinite(z.t1)?z.t1>>>0:0xffffffff).toBuffer();}
+/** @param {Reader} rd @returns {ZoneWire} */
+function readZone(rd){expect(rd,MSG.ZONE);
+  const x0=dqPos(rd.u16(),W),y0=dqPos(rd.u16(),H),r0=dqR(rd.u16());
+  const x1=dqPos(rd.u16(),W),y1=dqPos(rd.u16(),H),r1=dqR(rd.u16());
+  const t0=rd.u32(),t1=rd.u32();
+  return{x0,y0,r0,x1,y1,r1,t0,t1:t1===0xffffffff?Infinity:t1};}
+/** @param {Bytes} view */
+export const decodeZone=view=>readZone(createReader(view));
+
+// ── VOICE_UP (0x02, cliente→servidor) e VOICE (0x16, servidor→cliente) ───────
+// `data` são bytes OPACOS: o servidor não decodifica nem guarda, só valida tamanho/duração/cooldown e
+// reenvia a quem tem que ouvir. `codec` deixa trocar o formato depois sem versionar o fio de novo
+// (0 = µ-law 8 kHz mono, o único que toca em qualquer navegador — ver o bloco VOICE em constants.js).
+// No VOICE, `x,y` é de onde o som vem; `slot` NO_SLOT/65535 nunca acontece (áudio sempre tem dono).
+/** @param {Writer} w @param {VoiceUp} v @returns {Uint8Array} */
+export function encodeVoiceUp(w,v){
+  return w.reset().u8(MSG.VOICE_UP).u8(v.codec|0).u16(u16c(v.durMs)).u16(v.data.length).bytes(v.data).toBuffer();}
+/** @param {Reader} rd @returns {VoiceUp} */
+function readVoiceUp(rd){expect(rd,MSG.VOICE_UP);const codec=rd.u8(),durMs=rd.u16(),n=rd.u16();return{codec,durMs,data:rd.bytes(n)};}
+/** @param {Bytes} view */
+export const decodeVoiceUp=view=>readVoiceUp(createReader(view));
+/** @param {Writer} w @param {VoiceClip} v @returns {Uint8Array} */
+export function encodeVoice(w,v){
+  return w.reset().u8(MSG.VOICE).u16(v.slot|0).u8(v.codec|0).u16(u16c(v.durMs))
+    .u16(qPos(v.x||0,W)).u16(qPos(v.y||0,H)).u16(v.data.length).bytes(v.data).toBuffer();}
+/** @param {Reader} rd @returns {VoiceClip} */
+function readVoice(rd){expect(rd,MSG.VOICE);
+  const slot=rd.u16(),codec=rd.u8(),durMs=rd.u16(),x=dqPos(rd.u16(),W),y=dqPos(rd.u16(),H),n=rd.u16();
+  return{slot,codec,durMs,x,y,data:rd.bytes(n)};}
+/** @param {Bytes} view */
+export const decodeVoice=view=>readVoice(createReader(view));
+
 // ── Despacho pelo primeiro byte ──────────────────────────────────────────────
 /**
  * Decodifica qualquer mensagem binária; `null` para tipo desconhecido ou buffer vazio.
  * @param {Bytes} src
- * @returns {({type:number}&(Input|Snapshot|Pong|GameEvent|{players:PlayerInfo[]}|{rows:LeaderboardRow[]}))|null}
+ * @returns {({type:number}&(Input|Snapshot|Pong|GameEvent|VoiceClip|VoiceUp|{players:PlayerInfo[]}|{rows:LeaderboardRow[]}|{zone:ZoneWire}))|null}
  */
 export function decodeMessage(src){const rd=createReader(src);if(rd.remaining()<1)return null;const t=rd.u8();rd.pos=0;
   switch(t){
@@ -160,4 +204,7 @@ export function decodeMessage(src){const rd=createReader(src);if(rd.remaining()<
     case MSG.LEADERBOARD:return{type:t,rows:readLeaderboard(rd)};
     case MSG.EVENT:return{type:t,...readEvent(rd)};
     case MSG.PONG:return{type:t,...readPong(rd)};
+    case MSG.ZONE:return{type:t,zone:readZone(rd)};
+    case MSG.VOICE:return{type:t,...readVoice(rd)};
+    case MSG.VOICE_UP:return{type:t,...readVoiceUp(rd)};
     default:return null;}}

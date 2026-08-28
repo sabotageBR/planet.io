@@ -3,7 +3,7 @@
 // última partida e recompensas. A simulação vive no módulo do jogo (hudStore), não aqui.
 import { createStore } from "./store.js";
 
-export const SCREENS = ["entry", "lobby", "rank", "profile", "shop", "prefs", "game", "dead", "round"];
+export const SCREENS = ["entry", "modes", "party", "lobby", "rank", "profile", "shop", "prefs", "game", "dead", "round"];
 export const NAV_SCREENS = ["entry", "lobby", "rank", "profile", "shop", "prefs"];
 
 /** Whitelist de PATCH /api/me/prefs (docs/spec/api.md) com os padrões do cliente. */
@@ -11,6 +11,7 @@ export const PREF_DEFAULTS = Object.freeze({
   quality: "auto", showNames: true, showGrid: true, showMinimap: true, showFps: true,
   sound: true, music: false, ambience: true, volume: 70, joystick: false, holdEject: true, rightSplit: true,
   theme: "auto", reduceMotion: false, bigText: false, colorblind: "off", lbSize: 10,
+  chat: true, voice: true, voiceVolume: 85,   // chat e voz: desligáveis, como todo o resto do som
 });
 export const PREF_KEYS = Object.keys(PREF_DEFAULTS);
 // volume: 0..100 no cliente. Perfis antigos guardavam 0..1 (o servidor só aceitava essa faixa e o slider nunca
@@ -33,7 +34,12 @@ export const initialState = {
   overlays: { account: false, reconn: false },
   reconnAttempt: 0,
   room: null,            // código da sala atual (do evento `room` do jogo)
-  pendingJoin: null,     // {room, n} — GameHost faz o join quando muda
+  pendingJoin: null,     // {room, mode, teamSize, party, n} — GameHost faz o join quando muda
+  gameMode: 0,           // MODE.* escolhido na tela de modos (NÃO confundir com `mode`, que é a orientação da tela)
+  teamSize: 1,           // 1 = solo; 2..4 = equipe
+  party: null,           // {code,shard,teamSize,members,...} do lobby de equipe (GET /api/party/:code)
+  partyMe: null,         // {key,leader} — quem EU sou nesse lobby (só o servidor sabe: a chave é o hash do token)
+  partyError: null,
   conn: "idle",          // idle|connecting|connected|reconnecting|closed
   toast: null,           // {msg, n}
   mode: "desktop",       // desktop|portrait|landscape (body[data-mode])

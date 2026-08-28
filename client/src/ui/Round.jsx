@@ -29,8 +29,10 @@ export default function Round({ on }) {
   const board = r.board || [], mine = r.mySlot, rest = board.slice(3), places = LB.places || ["1º", "2º", "3º"];
   return <div className="screen on" id="s-round"><div className="card dead-card">
     <div className="dead-icon">{LB.roundIcon}</div>
-    <div className="dead-title">{LB.roundTitle}</div>
-    <div className="dead-sub">{LB.roundSub}</div>
+    <div className="dead-title">{r.reason === "lastAlive" ? LB.lastAliveTitle : LB.roundTitle}</div>
+    <div className="dead-sub">{r.reason === "lastAlive"
+      ? (r.champTeam != null ? `${LB.champTeam} ${r.champTeam + 1}` : (r.champion ? r.champion.name : LB.roundSub))
+      : LB.roundSub}</div>
     <div className="podium">{ORDER.map(i => { const b = board[i];
       return <div key={i} className={"step p" + (i + 1) + (b ? "" : " empty") + (b && b.slot === mine ? " me" : "")}>
         <SkinPreview skin={skinById(b ? b.skinId : 0)} r={i === 0 ? 32 : 26} size={112} className="" />

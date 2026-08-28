@@ -20,7 +20,7 @@ function Body() {
   useEffect(() => { setNickLocal(user.nick || ""); }, [user.nick]);
   useInterval(() => { loadRooms(); loadTop5(); }, 5000, true);
   const commit = async () => { if (nick.trim() !== (user.nick || "")) { const r = await setNick(nick); if (!r.ok) setNickLocal(user.nick || ""); } };
-  const links = [["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
+  const links = [["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
   return <>
     <div className="brand-block"><div className="brand">{LB.title}</div><div className="tagline">{LB.tagline}</div></div>
     <div className="card entry-main">
@@ -30,7 +30,7 @@ function Body() {
       <div className="skinrow"><SkinPreview skin={sk} r={40} />
         <div className="skinmeta"><b id="m-skin">{sk.name}</b><i id="m-rar" style={{ color: RC[sk.rarity] || "#999" }}>{RARITY_LABELS[sk.rarity] || sk.rarity}</i></div>
         <button className="btn-mini" data-go="shop" onClick={() => go("shop")}>{LB.swap}</button></div>
-      <button className="btn-primary" data-go="play" onClick={() => { commit(); play({}); }}>{LB.play}</button>
+      <button className="btn-primary" data-go="modes" onClick={() => { commit(); go("modes"); }}>{LB.play}</button>   {/* o JOGAR agora abre a escolha de modo; o play() ficou para o fim do funil */}
       <div className="entry-links">{links.map(([s, l]) => <button key={s} className="btn-secondary" data-go={s} onClick={() => go(s)}>{l}</button>)}</div>
       <div className="guest-note" data-kind={guest ? "guest" : "registered"}>
         <span className="gn-txt">{guest ? LB.guestNote : LB.registered}{session.online === false ? ` · ${session.server === false ? LB.offlineNote : LB.noDbNote}` : ""}</span>

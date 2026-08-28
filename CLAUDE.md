@@ -11,6 +11,8 @@ cp .env.example .env         # DATABASE_URL etc. (Postgres de dev: sudo -n docke
 npm run migrate              # aplica server/src/db/migrations/*.sql + seed de skins (também roda no boot com MIGRATE_ON_START=1)
 npm run dev                  # server em :3001 (node --watch) + Vite em :5173 com proxy de /api e /ws
 npm test                     # node --test: shared/test (física, protocolo) + server/test (persistência, jogo)
+                             # ⚠️ persist.test.js faz DROP SCHEMA: exige DATABASE_URL em host LOCAL (guarda no
+                             # topo do arquivo). Rode: DATABASE_URL=postgres://planet:planet@127.0.0.1:5433/planet npm test
 npm run build                # client/dist (vite build)
 ./scripts/db-secret.sh       # cria o Secret planet-db (DATABASE_URL do .env) no cluster
 ./scripts/build-push.sh      # builda (contexto = raiz, -f server/Dockerfile / client/Dockerfile) e publica evandromoura/planet-io-{server,client}
@@ -18,23 +20,24 @@ npm run build                # client/dist (vite build)
 ```
 
 Dev sem servidor: o cliente cai em modo offline (perfil local em `localStorage`) e `?local=1` roda um servidor
-falso na própria página (`client/src/game/net/LocalServer.js`). `?bench` = pior caso de render; `?stats` = overlay de rede;
+falso na própria página (`client/src/game/net/LocalServer.js`) — **só o modo Livre**; a tela de modos desabilita
+Sobrevivência offline. `WARMUP_TICKS=420` no servidor encurta a espera do Sobrevivência para testar. `?bench` = pior caso de render; `?stats` = overlay de rede;
 `?sfx` = mesa de som (toca todo o `KIT`, sem entrar em partida).
 Mockups aprovados continuam em `mockups/v2/` (CommonJS; `node mockups/v2/src/build.js`) — são a referência visual.
 
 ## Layout
 
 ```
-shared/src/    constants.js (ÚNICA fonte de tunables) · skins.js (50 skins) · achievements.js · rng.js · camera.js · util.js · bot.js (cérebro dos bots, usado pelo servidor e pelo LocalServer)
+shared/src/    constants.js (ÚNICA fonte de tunables) · skins.js (75 skins) · achievements.js · rng.js · camera.js · util.js · zone.js (a zona do Sobrevivência) · bot.js (cérebro dos bots, usado pelo servidor e pelo LocalServer)
                physics/ (body, spatial-hash, integrate, collide, rules, world, predict) · protocol/ (constants, quant, writer, reader, codec, dto)
 server/src/    index.js (composition root + startServer) · loop.js (scheduler 60 Hz) · metrics.js
-               sim/ (Sim, hooks) · rooms/ (codes, Room, RoomManager) · net/ (Session, wsServer, snapshot) · http/ (api, peers)
+               sim/ (Sim, hooks) · rooms/ (codes, Room, RoomManager, Party) · net/ (Session, wsServer, snapshot) · http/ (api, peers)
                config.js · log.js · db/ (pool, migrate, migrations/) · auth/ (tokens, password, nick, ratelimit) · repos/ · api/ (router + rotas) · persist/ (session, rewards, queue, hooks)
-client/src/    main.jsx · app/ (App, theme bridge) · ui/ (telas React: mesmo DOM dos mockups + Round.jsx do fim do mundo) · api/client.js · state/ (store) · hooks/
-               audio/ (index.js motor: 3 barramentos, prioridade de vozes, loops · kit.js receitas · audition.js a mesa de som do ?sfx)
+client/src/    main.jsx · app/ (App, theme bridge) · ui/ (telas React: mesmo DOM dos mockups + Round.jsx do fim do mundo, Modes/Party/Chat) · api/client.js · state/ (store) · hooks/
+               audio/ (index.js motor: 4 barramentos, prioridade de vozes, loops · kit.js receitas · mic.js push-to-talk · audition.js a mesa de som do ?sfx)
                theme/ (index.js + dawn|sunset|dusk: tokens/hud/screens.css gerados por port.js, index.js com textures/effects/hud) · styles/base.css
                game/ (index.js createGame · net/ · state/ · renderer/ · input/ · hud/ · bench.js)
-docs/spec/     protocol.md · api.md · hooks.md · server-game.md · client-game.md      docs/design/  telas.md · theme-time.md · rodada-1.md · som.md
+docs/spec/     protocol.md · api.md · hooks.md · server-game.md · client-game.md      docs/design/  telas.md · theme-time.md · rodada-1.md · som.md · modos.md
 k8s/           00-namespace · 05-config (ConfigMap) · 10-server (StatefulSet 3 shards, envFrom ConfigMap+Secret) · 20-client · 30-ingress
 scripts/       build-push.sh · deploy.sh · db-secret.sh · k8s_apply.py (apply via API; Secret, --exists)
 legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só referência
@@ -131,6 +134,22 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   Cliente: interpolação a −100 ms para os outros, predição + reconciliação para si (`visualOffset` decai; snap > 120 px) com a
   peça própria renderizada interpolada entre passos (sem isso treme a 60/120 Hz); relógio com mediana+slew; removidas somem
   no frame com efeito (`onVanish`); efeitos de terceiros atrasados pelo atraso de interpolação; skins aquecidas no PLAYERS.
+- **Modos de jogo** (`MODE`/`MODES` em constants, `docs/design/modos.md`): **Livre** é o jogo de sempre e não mudou.
+  **Sobrevivência** é sala de 50 (humanos primeiro, bots completam), **sem respawn**, com **zona que encolhe**
+  (`shared/src/zone.js`; fora dela a peça queima `ZONE.BURN`/s e MORRE no piso — a única coisa que mata sozinha) e
+  vitória do último vivo. Solo ou equipe de 2/3/4, com lobby por **código de convite** (`rooms/Party.js`, memória
+  com TTL, funciona sem banco e para convidado). A ESPERA é o aquecimento: a sala roda de verdade em `phase:'warmup'`
+  e ninguém morre (`w.peace` faz todo mundo virar aliado) — foi o que evitou um estado de sessão sem sala e um
+  segundo caminho de snapshot. `Room.roundStart`, que nascia 0 e nunca era escrito, é o gancho: escrevê-lo em
+  `begin()` ajusta relógio, contagem e céu sozinho. **Aliado é regra de FÍSICA** (`rules.sameTeam`, nos 6 pontos de
+  decisão), não do bot; compartilhar partículas já funcionava de graça (o cooldown do ejetado é só do DONO).
+  **Armas** (`WEAPONS`): míssil + Rajada/Mina/Cacho/Nova, todas em cima de mecânica existente — a Mina é o
+  BLACKHOLE dormente, a Nova é o laço da supernova. `acceptsJoin()` é a porta única de entrada da sala.
+- **Chat e voz** (`CHAT`/`VOICE` em constants): chat de sala ou de equipe (o escopo é do servidor), painel na
+  faixa esquerda do HUD. Voz é push-to-talk no **Ctrl**, clipes curtos em **µ-law 8 kHz** — não Opus, porque o
+  Safari não decodifica o webm que o Chrome grava e metade da sala ficaria muda. O servidor é relay puro (não
+  decodifica, não guarda) e o áudio toca num 4º barramento, fora do teto de vozes. ⚠️ o `maxPayload` do WS
+  acompanha `VOICE.MAX_BYTES`: com 4 KB o `ws` derrubava o frame e a conexão junto.
 - **Rodada de 1 h** (`ROUND` em constants; `ROUND_TICKS` no env): a sala vale `ROUND.DAYS` (4) dias do "relógio do espaço"
   (começa 05:00; um dia a cada 15 min → 12 trocas de céu, cada uma com o **crossfade do céu** feito dentro do Pixi por
   `renderer/layers/Background.js` — só o fundo dissolve; HUD, telas e o jogo continuam visíveis); no fim vem o
@@ -159,6 +178,11 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 - **Skins (75)**: `shared/src/skins.js` guarda `pattern`/`accent` e `client/src/theme/patterns.js` desenha a textura procedural
   dentro do disco (listras, crateras, continentes, lava, gelo, galáxia, xadrez, escamas, olho…) — nada de imagem, tudo assado uma vez
   por (skin, tier). O mesmo módulo desenha o buraco negro (`paintHole`) e a estrela (`paintNova`).
+- **Brilho das partículas** (estilo wormate.io): comida e fragmentos ganham um halo ADITIVO — um segundo
+  `ParticleContainer` com `blendMode:"add"` por baixo do corpo, sobre o halo assado (`paintGlow` em `theme/util.js`).
+  São 2 draw calls no total, não um por partícula, e nada de filtro/blur (proibidos: custam render target).
+  A queda do gradiente é rápida de propósito — halo largo e opaco satura para branco e a tela vira névoa.
+  Some no modo econômico e com "menos movimento".
 - **Render (PixiJS v8)**: sprites assados por (skin, tier 128/256/512), ParticleContainer para comida/ejetados, fundo em cache por resolução,
   culling manual, HUD e minimapa em DOM (mesmos ids/classes dos mockups — o CSS dos temas depende disso).
   **Troca de tema sem pausa**: o cache NÃO é invalidado (as chaves já têm o id do tema, então os céus convivem e voltar a um é acerto),
@@ -177,6 +201,11 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 - Não versionar `.env`; o Secret do banco vive só no cluster.
 
 ## Kubernetes
+
+⚠️ **`npm test` já apagou o banco de PRODUÇÃO uma vez.** `server/test/persist.test.js` faz `DROP SCHEMA public
+CASCADE` no `before` (é o preço de testar a migração do zero) e, sem `DATABASE_URL` no ambiente, lia o `.env` da
+raiz — que aponta para produção. Hoje há uma guarda no topo do arquivo: host não-local só com `ALLOW_REMOTE_DB=1`.
+Nunca remova essa guarda; se um dia precisar rodar contra staging, passe a variável explicitamente.
 
 Cluster do Evandro: `https://192.168.12.50:6443` (k8s 1.21, 4 nós), ingress-nginx v0.47, cert-manager `letsencrypt-prod`, sem storage dinâmico,
 imagens no Docker Hub. Kubeconfig em `~/.config/OpenLens/kubeconfigs/68c0dd84-fd6a-43f2-bc30-26daccdf7ef4`; `docker` exige `sudo -n`

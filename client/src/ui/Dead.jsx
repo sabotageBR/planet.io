@@ -15,7 +15,10 @@ export default function Dead({ on }) {
     <div className="dead-icon">{LB.deadIcon}</div>
     <div className="dead-title">{LB.dead}</div>
     <div className="dead-sub">{LB.deadSub}</div>
-    <div className="dead-by"><span id="d-by-lab">{m.byHole ? LB.suckedBy : LB.eatenBy}</span><b id="d-by">{m.by || "—"}</b></div>
+    {m.byZone
+      ? <div className="dead-by zone"><b id="d-by">{LB.deadByZone}</b></div>
+      : <div className="dead-by"><span id="d-by-lab">{m.byHole ? LB.suckedBy : LB.eatenBy}</span><b id="d-by">{m.by || "—"}</b></div>}
+    {m.placement ? <div className="dead-place"><b>{ord(m.placement)}</b><i>{LB.placementWord} {m.players ? `de ${m.players}` : ""}</i></div> : null}
     <div className="dead-stats">
       <div><b id="d-mass">{fmt(m.maxMass)}</b><i>{LB.massLabel}</i></div>
       <div><b id="d-kills">{m.kills || 0}</b><i>{LB.killsWord}</i></div>

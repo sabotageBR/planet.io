@@ -5,10 +5,10 @@
 // perigo colado (estrela, buraco, asteroide que ele estouraria) é override em cima de qualquer modo.
 // A cada personalidade (BOT.PERSONAS) muda o quanto ele caça, foge, coleta e atira — a lógica é a mesma.
 // @ts-check
-import {BOT,BLACKHOLE,STAR,ASTEROID,MISSILE,FOOD_TYPE} from "./constants.js";
+import {BOT,BLACKHOLE,STAR,ASTEROID,MISSILE,FOOD_TYPE,ZONE,WEAPONS,weaponOf} from "./constants.js";
 import {INPUT_FLAG} from "./protocol/constants.js";
 import {clamp} from "./util.js";
-import {incomingMissile} from "./physics/rules.js";
+import {incomingMissile,sameTeam,outOfZone} from "./physics/rules.js";
 
 const HUMAN_BONUS=1.5;   // entre duas presas iguais, a humana vale mais (bot que caça bot é chato de ver)
 const TAU=6.28318;
@@ -24,11 +24,15 @@ function centroid(ps){let sx=0,sy=0,big=0,n=0;const arr=ps.pieces;
 /** Quanto uma comida vale para este bot agora (0 = ignora); powerup só vale se ele puder usar. @param {Body} f */
 function foodValue(f,ps,c){
   switch(f.type){
-    case FOOD_TYPE.AMMO:return ps.missiles<MISSILE.MAX_AMMO?36:4;
-    case FOOD_TYPE.MERGE:return c.n>1?46:3;                                  // juntar as peças só interessa a quem está picado
+    case FOOD_TYPE.AMMO:return ps.missiles<weaponOf(ps.weapon).ammo?36:4;
     case FOOD_TYPE.SHIELD:return 40;
     case FOOD_TYPE.MAGNET:return 26;
-    default:return f.r;}}
+    default:
+      // arma no chão vale pela raridade (a épica vale um desvio; a comum, quase nada se já tenho outra):
+      // o peso do sorteio é o inverso da raridade, então 700/weight ordena Nova > Cacho > Mina > Rajada.
+      if(f.type>=FOOD_TYPE.W_BURST){const wp=WEAPONS.find(x=>x.food===f.type);
+        return wp?(f.type===weaponOf(ps.weapon).food?12:700/wp.weight):f.r;}
+      return f.r;}}
 
 export class BotBrain{
   /**
@@ -70,6 +74,10 @@ export class BotBrain{
       else this._wander(c);}
     else if(Math.hypot(this.wx-c.x,this.wy-c.y)<BOT.WAYPOINT_DONE)this._wander(c);
     tx=this.wx;ty=this.wy;
+    // ESTAR FORA DA ZONA tem prioridade sobre tudo: é o único perigo que mata sozinho, sem depender de ninguém.
+    // O alvo é o CENTRO do círculo (correr para o miolo é sempre a saída mais curta), e nada de dividir no caminho.
+    const zc=w.zoneNow();
+    if(zc&&outOfZone(c,zc)){tx=zc.x;ty=zc.y;this.wx=tx;this.wy=ty;flags&=~INPUT_FLAG.SPLIT;this.emit(this.slot,{tx,ty,flags});return;}
     // perigo colado tem a última palavra: sai de perto e não divide de jeito nenhum
     const hz=this._nearestHazard(c);
     if(hz){this._safeDir(c,hz.x,hz.y);tx=this.wx;ty=this.wy;flags&=~INPUT_FLAG.SPLIT;}
@@ -79,7 +87,7 @@ export class BotBrain{
   _think(ps,c,tick){
     const w=this.w,p=this.p,fleeRatio=BOT.FLEE_RATIO/p.flee,huntRatio=BOT.HUNT_RATIO/p.hunt;
     let flee=-1,fd=Infinity,hunt=-1,hv=-Infinity;
-    for(const o of w.players.values()){if(o===ps||!o.alive)continue;const oc=centroid(o);if(!oc)continue;
+    for(const o of w.players.values()){if(o===ps||!o.alive||sameTeam(w,o.slot,this.slot))continue;const oc=centroid(o);if(!oc)continue;
       const d=Math.hypot(oc.x-c.x,oc.y-c.y);
       if(oc.big>=c.big*fleeRatio){if(d<BOT.FLEE_DIST&&d<fd){fd=d;flee=o.slot;}}
       else if(c.big>=oc.big*huntRatio&&d<BOT.HUNT_DIST){
@@ -140,6 +148,7 @@ export class BotBrain{
         const ri=h.r*BLACKHOLE.INFLUENCE*h.k,d=Math.hypot(x-h.x,y-h.y);if(d<ri*BOT.HOLE_AVOID)s-=(ri*BOT.HOLE_AVOID-d)*4;}
       const stars=w.stars;for(let j=0;j<stars.length;j++){const st=stars[j];if(st.dead||st.k<STAR.ARM_K)continue;   // encostar QUEIMA STAR.BURN: vale fugir de longe
         const ri=st.r*STAR.HALO,d=Math.hypot(x-st.x,y-st.y);if(d<ri*BOT.STAR_FEAR)s-=(ri*BOT.STAR_FEAR-d)*4;}
+      const zc=w.zoneNow();if(zc){const d=Math.hypot(x-zc.x,y-zc.y);if(d>zc.r*.92)s-=(d-zc.r*.92)*6;}   // fugir para fora da zona é trocar o predador pela morte certa
       if(s>bs){bs=s;bx=clamp(x,m,w.w-m);by=clamp(y,m,w.h-m);}}
     this.wx=bx;this.wy=by;return{x:bx,y:by};}
 

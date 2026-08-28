@@ -5,9 +5,10 @@ export const statsToPublic=s=>s?{games:s.games,kills:s.kills,botKills:s.bot_kill
 export function createMatches(db){
   /** idempotente por session_id; devolve {id,inserted} */
   async function insert(c,m){
-    const r=await c.query(`INSERT INTO matches(session_id,user_id,room_code,shard,started_at,ended_at,duration_s,score,max_mass,kills,bot_kills,splits,ejects,food_eaten,best_streak,top1_ticks,cause,killed_by_user_id,coins_earned,skin_id)
-      VALUES($1,$2,$3,$4,$5,now(),$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,0,$18) ON CONFLICT (session_id) DO NOTHING RETURNING id`,
-      [m.sessionId,m.userId,m.roomCode||null,m.shard||0,new Date(m.startedAt),m.durationS,m.score,m.maxMass,m.kills,m.botKills,m.splits,m.ejects,m.food,m.bestStreak,m.top1Ticks,m.cause,m.killedByUserId||null,m.skinId||0]);
+    const r=await c.query(`INSERT INTO matches(session_id,user_id,room_code,shard,started_at,ended_at,duration_s,score,max_mass,kills,bot_kills,splits,ejects,food_eaten,best_streak,top1_ticks,cause,killed_by_user_id,coins_earned,skin_id,mode,team_size,team,placement,players)
+      VALUES($1,$2,$3,$4,$5,now(),$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,0,$18,$19,$20,$21,$22,$23) ON CONFLICT (session_id) DO NOTHING RETURNING id`,
+      [m.sessionId,m.userId,m.roomCode||null,m.shard||0,new Date(m.startedAt),m.durationS,m.score,m.maxMass,m.kills,m.botKills,m.splits,m.ejects,m.food,m.bestStreak,m.top1Ticks,m.cause,m.killedByUserId||null,m.skinId||0,
+       m.mode|0,m.teamSize||1,m.team==null?null:m.team|0,m.placement?m.placement|0:null,m.players?m.players|0:null]);
     if(r.rows[0])return{id:Number(r.rows[0].id),inserted:true};
     const old=await c.query(`SELECT id,coins_earned FROM matches WHERE session_id=$1`,[m.sessionId]);
     return{id:Number(old.rows[0].id),inserted:false,coinsEarned:old.rows[0].coins_earned};
@@ -24,8 +25,8 @@ export function createMatches(db){
     [m.userId,m.kills,m.botKills,m.splits,m.ejects,m.food,m.score,m.maxMass,m.durationS,m.bestStreak,m.score]).then(r=>r.rows[0]);
   const statsFor=(userId,c=db)=>c.query(`SELECT * FROM user_stats WHERE user_id=$1`,[userId]).then(r=>r.rows[0]||null);
   /** histórico paginado por id decrescente */
-  const history=(userId,{limit=20,before=null}={})=>db.query(`SELECT m.id,m.ended_at,m.score,m.max_mass,m.kills,m.bot_kills,m.duration_s,m.cause,m.coins_earned,m.room_code,k.nick AS by
+  const history=(userId,{limit=20,before=null}={})=>db.query(`SELECT m.id,m.ended_at,m.score,m.max_mass,m.kills,m.bot_kills,m.duration_s,m.cause,m.coins_earned,m.room_code,m.mode,m.placement,m.players,k.nick AS by
       FROM matches m LEFT JOIN users k ON k.id=m.killed_by_user_id WHERE m.user_id=$1 AND ($2::bigint IS NULL OR m.id<$2) ORDER BY m.id DESC LIMIT $3`,[userId,before,limit])
-    .then(r=>r.rows.map(x=>({id:Number(x.id),endedAt:x.ended_at,score:x.score,maxMass:x.max_mass,kills:x.kills,botKills:x.bot_kills,durationS:x.duration_s,cause:x.cause,coinsEarned:x.coins_earned,roomCode:x.room_code,by:x.by})));
+    .then(r=>r.rows.map(x=>({id:Number(x.id),endedAt:x.ended_at,score:x.score,maxMass:x.max_mass,kills:x.kills,botKills:x.bot_kills,durationS:x.duration_s,cause:x.cause,coinsEarned:x.coins_earned,roomCode:x.room_code,mode:x.mode,placement:x.placement,players:x.players,by:x.by})));
   return{insert,setCoins,upsertStats,statsFor,history};
 }

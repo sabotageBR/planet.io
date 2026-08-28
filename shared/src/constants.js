@@ -9,6 +9,45 @@ export const ROUND={TICKS:216000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:4,F
 // começando às DAY_START_H; a troca de tema é coberta por um fade de FADE_MS (client/src/theme/fade.js);
 // no fim o mundo explode, define-se o campeão (maior planeta vivo) e o placar fica BREAK_MS antes da sala nova.
 // WARN_S: segundos finais com a contagem gigante na tela.
+// ── MODOS DE JOGO ────────────────────────────────────────────────────────────
+// O modo é um DESCRITOR, não um `if` espalhado: sala, Sim e regras leem os mesmos campos daqui.
+// LIVRE é o jogo de sempre (respawn, rodada de 1 h, todo mundo contra todo mundo). SOBREVIVÊNCIA é
+// último-vivo: sala de SURVIVAL.PLAYERS, aquecimento até encher (ou estourar o relógio), sem respawn,
+// zona que encolhe e armas. `bots` aqui é só o DEFAULT — o servidor continua deixando o env mandar
+// (config.roomBots), senão trocar este arquivo mudaria o balanço da sala livre em produção.
+export const MODE={FREE:0,SURVIVAL:1};
+export const SURVIVAL={PLAYERS:50,TEAM_SIZES:[1,2,3,4],WARMUP_TICKS:2700,FULL_START_TICKS:300,MIN_HUMANS:1,
+  SPAWN_RING:.44,START_AMMO:1,ROUND_TICKS:27000,WEAPON_P:.05,JOIN_GRACE_TICKS:120};
+// PLAYERS é o total (humanos + bots): a sala livre já roda 30 humanos + 15 bots = 45, então 50 é o MESMO
+// regime de tick, não um salto de escala. Capacidade efetiva = PLAYERS − PLAYERS%teamSize (50/50/48/48):
+// equipe incompleta contra equipes cheias não é dificuldade, é sorteio.
+// WARMUP_TICKS (45 s) conta do PRIMEIRO humano; lotou antes, FULL_START_TICKS (5 s) de contagem e começa.
+// A espera acontece DENTRO de uma sala de verdade (fase 'warmup'): o jogador cai no mundo e come enquanto
+// espera. Uma fila fora da sala precisaria de um estado de sessão sem sala e de um segundo caminho de
+// snapshot — aqui join/AOI/HUD/predição são exatamente os mesmos.
+// ROUND_TICKS (7,5 min) é só a rede de segurança: a partida acaba por último-vivo bem antes, e a zona
+// inteira (ZONE) fecha em 21 300 ticks ≈ 5 min 55 s.
+export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
+  HOLD_TICKS:[3600,2700,2100,1500,900,600],SHRINK_TICKS:[2400,2100,1800,1500,1200,900],
+  DRIFT:.45,BURN:.06,WARN_TICKS:180,MIN_R:60};
+// zona = círculo. R é o RAIO como fração de WORLD.w: começa em .62 (5 952 px — cobre o mapa, cujo
+// centro→canto é 6 788) e fecha em .015 (144 px). Cada etapa i: HOLD_TICKS[i] parada em R[i], depois
+// SHRINK_TICKS[i] interpolando até R[i+1]. DRIFT limita o deslocamento do centro a essa fração de
+// (r−r_novo), então o círculo NOVO sempre cabe dentro do velho — ninguém é pego por uma zona que pulou
+// para trás. BURN é a fração da massa por segundo fora dela: .06/s é 30× o PLAYER.DECAY, e leva uma peça
+// de START_R (massa 900) ao piso MIN_PIECE_R (256) em ~21 s — tempo de correr, não de acampar. Ao contrário
+// da queimadura de estrela, esta NÃO tem piso: no piso a peça morre (é o que fecha a partida).
+// WARN_TICKS: aviso antes de cada fechamento começar.
+export const MODES=[
+  {id:0,key:"free",label:"Livre",max:ROOM.MAX,bots:ROOM.BOTS,roundTicks:ROUND.TICKS,
+    warmup:false,respawnBots:true,lastAlive:false,zone:false,weapons:false,chat:"room",teamSizes:[1]},
+  {id:1,key:"survival",label:"Sobrevivência",max:SURVIVAL.PLAYERS,bots:SURVIVAL.PLAYERS,roundTicks:SURVIVAL.ROUND_TICKS,
+    warmup:true,respawnBots:false,lastAlive:true,zone:true,weapons:true,chat:"team",teamSizes:SURVIVAL.TEAM_SIZES},
+];
+/** Descritor do modo (id inválido → Livre: o cliente antigo e o `?local=1` caem sempre no jogo de sempre). */
+export const modeOf=id=>MODES[id]||MODES[MODE.FREE];
+/** Capacidade da sala arredondada para baixo no tamanho de equipe. */
+export const modeCap=(id,teamSize=1)=>{const m=modeOf(id),t=teamSize>0?teamSize|0:1;return m.max-m.max%t;};
 export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:1000,MAX_PIECES:16,BOT_R:[24,58],DECAY:.002};
 // DECAY é o `playerDecayRate` do agar.io: cada peça perde essa fração da MASSA por segundo, com piso em START_R.
 // Como a taxa é relativa, ela é desprezível para quem é pequeno (1,8/s numa peça de 900, contra os 20–40/s que
@@ -80,8 +119,11 @@ export const BOUNCE={E:.55,E_SHIELD:.9,POS_CORR:.3,FX_MIN_VN:96,PUSH_S:.3,DIST_M
 // Curto de propósito: a trombada do asteroide tem que dar o solavanco e devolver a velocidade padrão na hora.
 export const WALL={E:.4,E_AST:.9,E_EJECT:.5};
 export const FOOD={COUNT:2500,R_MIN:6,R_MAX:15,SPECIAL_R:13,AMMO_P:.055,POWER_P:.045,HUES:12,MARGIN:40,NEAR_HAZARD_P:.22,NEAR_HAZARD_R:[260,620],
-  TYPES:["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield"]};   // índice = FOOD_TYPE
-export const FOOD_TYPE={DUST:0,COMET:1,STAR:2,ROCK:3,AMMO:4,MERGE:5,MAGNET:6,SHIELD:7};   // 5 era o powerup de velocidade (removido); hoje é o de FUSÃO
+  TYPES:["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield","w_burst","w_mine","w_cluster","w_nova"]};   // índice = FOOD_TYPE
+export const FOOD_TYPE={DUST:0,COMET:1,STAR:2,ROCK:3,AMMO:4,MERGE:5,MAGNET:6,SHIELD:7,W_BURST:8,W_MINE:9,W_CLUSTER:10,W_NOVA:11};   // 5 era o powerup de velocidade (removido); hoje é o de FUSÃO
+// As armas entram no FIM (8..11) porque o enum é DENSO e três testes de faixa dependem da ordem:
+// `type<=ROCK` ("é comida base, posso reescrever", world.js) e `type>=AMMO` ("é especial", world.js e o
+// atlas do cliente). Índice novo no meio quebraria os três de uma vez, em silêncio.
 // risco × recompensa: NEAR_HAZARD_P da comida nasce num anel NEAR_HAZARD_R em volta de uma estrela ou buraco negro, e sempre
 // como coisa boa (cometa/rocha ou powerup) — chegar perto do perigo tem que valer a pena
 // POP_DIST vale como MIRA: a rocha só entra (e estoura) se a trajetória dela passar a menos de r·POP_DIST do centro
@@ -155,6 +197,30 @@ export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,R:11,SPAWN_CD
 // AIM_RANGE px de quem atira e a menos de AIM_PICK px do cursor; sem nada perto do cursor o míssil sai reto.
 // Era um CONE de ±0,45 rad escolhendo o mais próximo da PEÇA: o ângulo só abria o portão e mexer o mouse dentro
 // dele não trocava o alvo. Agora o alvo segue o cursor e troca sozinho quando ele passa por cima de outra bolinha.
+export const WEAPON={MISSILE:0,BURST:1,MINE:2,CLUSTER:3,NOVA:4};
+export const WEAPONS=[
+  {id:0,key:"missile",label:"Míssil",  rarity:"comum",  weight:0, food:FOOD_TYPE.AMMO,     ammo:MISSILE.MAX_AMMO,cd:0,  shatter:true},
+  {id:1,key:"burst",  label:"Rajada",  rarity:"comum",  weight:44,food:FOOD_TYPE.W_BURST,  ammo:4,cd:20, shatter:false,shrink:.975,n:6,spread:.17,speed:1180,life:96},
+  {id:2,key:"mine",   label:"Mina",    rarity:"incomum",weight:28,food:FOOD_TYPE.W_MINE,   ammo:2,cd:90, life:600,mineR:22,shatterN:[3,5],shatterDist:342,drop:200},
+  {id:3,key:"cluster",label:"Cacho",   rarity:"raro",   weight:19,food:FOOD_TYPE.W_CLUSTER,ammo:2,cd:60, shatter:true,n:4,splitD:560,spread:.55},
+  {id:4,key:"nova",   label:"Nova",    rarity:"épico",  weight:9, food:FOOD_TYPE.W_NOVA,   ammo:1,cd:150,blast:900,push:520,core:.34},
+];
+// UMA arma por jogador: pegar outra TROCA e enche a munição (`ps.weapon`/`ps.missiles`). Por isso o INPUT
+// não precisa de seleção de arma e continua com 10 bytes. O míssil (weight 0) fica fora do sorteio de arma —
+// ele já cai como FOOD_TYPE.AMMO, que é a munição básica do jogo e existe nos dois modos.
+// Todas reaproveitam mecânica que já existe, em vez de inventar sistema novo:
+//   RAJADA  n projéteis retos e rápidos, sem homing e sem estilhaço (só HIT_SHRINK·shrink): é a arma de perto.
+//   MINA    solta um poço de gravidade parado — é o BLACKHOLE inteiro, hoje dormente (COUNT:0), com `life`
+//           curta, influência menor e o esmagamento DESLIGADO: ela puxa e estilhaça, não engole.
+//   CACHO   míssil que, a splitD do alvo, vira n homing menores em leque — o anti-gigante caro.
+//   NOVA    onda em `blast` centrada em MIM: empurra todos e estilhaça no miolo (shatter), sem me atingir.
+//           É o laço de `supernova` (rules.js) com outro emissor.
+// `weight` é o peso do sorteio dentro de SURVIVAL.WEAPON_P (só o Sobrevivência larga arma); `cd` é o
+// intervalo entre tiros em ticks, além da carência de nascimento (MISSILE.SPAWN_CD_TICKS), que vale para todas.
+/** Descritor da arma (id inválido → míssil: cliente antigo e modo Livre nunca veem outra coisa). */
+export const weaponOf=id=>WEAPONS[id]||WEAPONS[WEAPON.MISSILE];
+/** Arma que um powerup de comida entrega (-1 se a comida não é arma). */
+export const weaponOfFood=t=>{for(let i=1;i<WEAPONS.length;i++)if(WEAPONS[i].food===t)return i;return -1;};
 /** Peso do alvo do tiro mirado: distância do PONTEIRO à BORDA da bolinha (bola grande é mais fácil de agarrar). */
 export const aimScore=(dx,dy,r)=>Math.sqrt(dx*dx+dy*dy)-r;
 export const POWERUP={TICKS:420,MAGNET_MAX_R:160,MAGNET_RANGE:5.5,MAGNET_PULL:170,MAGNET_NEAR:2.2,MAGNET_EJECT_A:900,MAGNET_AST:420,MAGNET_HEAVY:.45,MAGNET_STAR:.12,
@@ -200,4 +266,30 @@ export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.15
 // A posição é quase instantânea de propósito: a câmera fica colada no planeta e só o zoom respira.
 export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:150,EXTRAP_MAX_MS:100,SNAP_DIST:120,AOI_PAD:.3,AOI_PAD_OUT:.45,
   RATE_INPUTS:40,RATE_BURST:60,RATE_JSON:5,HEARTBEAT_MS:5000,DEAD_MS:15000,RESUME_MS:10000};
+export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40};
+// chat de sala (Livre e Sobrevivência solo) ou de equipe (Sobrevivência em equipe), pelo `chat` do MODE.
+// Sem histórico no servidor: quem entra não recebe o que já passou. RATE_MS/BURST ficam POR CIMA do balde
+// de JSON que a sessão já tem (NET.RATE_JSON), porque aquele existe para proteger o servidor e este para
+// não deixar um jogador encher a tela dos outros. FADE_MS: a linha some sozinha — o painel não pode virar
+// uma parede permanente em cima do jogo.
+export const VOICE={MAX_MS:5000,MIN_MS:300,CD_MS:3000,RATE_HZ:8000,MAX_BYTES:44000,ROOM_CPS:4,LISTENERS:8,DIST:3200,PAN:1600};
+// áudio curto de push-to-talk (Ctrl): o servidor é RELAY PURO — valida tamanho/duração/cooldown e reenvia
+// os bytes, sem decodificar e sem gravar nada. Equipe ouve sempre; no Livre ouvem os LISTENERS mais
+// próximos dentro de DIST, com volume e estéreo pela distância (o mesmo cálculo dos efeitos).
+// RATE_HZ/formato: µ-law 8 bits a 8 kHz mono = 8 000 B/s, então MAX_MS dá 40 KB (MAX_BYTES tem a folga).
+// É 4× mais gordo que Opus e é de propósito: MediaRecorder grava webm/opus no Chrome/Firefox e mp4/aac no
+// Safari, e o Safari NÃO decodifica webm — um clipe de Chrome sairia mudo lá. µ-law monta o AudioBuffer na
+// mão e toca em qualquer navegador. O byte `codec` do fio já está reservado para trocar por Opus depois.
+// MIN_MS mata o toque acidental no Ctrl; CD_MS e ROOM_CPS (clipes por segundo na sala) seguram o abuso.
 export const SCORE_COINS=(score,kills,botKills,durationS)=>Math.min(500,Math.floor(score/300)+2*kills+botKills+(durationS>=300?25:0));
+/**
+ * Bônus de colocação do Sobrevivência: lá o placar não é a massa, é ONDE você parou. Sem isto, morrer em 2º
+ * de 50 pagaria igual a morrer em 49º — e a corrida pelo topo, que é o modo inteiro, não valeria nada.
+ * Vitória dobra o teto normal de moedas; do 10º para baixo a curva some depressa.
+ */
+export const PLACE_COINS=(placement,players)=>{
+  if(!placement||!players||placement<1)return 0;
+  if(placement===1)return 250;
+  if(placement<=3)return 120;
+  if(placement<=10)return 60;
+  return placement<=Math.ceil(players/2)?20:0;};

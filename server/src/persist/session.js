@@ -17,14 +17,15 @@ export class MatchSession{
   kill({victimIsBot}){if(this.ended)return;if(victimIsBot)this.botKills++;else this.kills++;this.streak++;if(this.streak>this.bestStreak)this.bestStreak=this.streak;}
   sample({mass,rank,quadrant}){if(this.ended)return;if(mass>this.maxMass)this.maxMass=mass;if(rank===1)this.top1Ticks+=SAMPLE_EVERY;if(quadrant!=null)this.quadrants.add(quadrant);}
   /** idempotente: 1ª chamada fecha e gera o resumo; as seguintes devolvem o mesmo */
-  end({cause='left',score=0,maxMass=0,durationMs=null,killedByUserId=null}={}){
+  end({cause='left',score=0,maxMass=0,durationMs=null,killedByUserId=null,mode=0,team=null,placement=0,players=0,teamSize=1}={}){
     if(this.ended)return this.summary;this.ended=true;
     const viaKill=this.kills+this.botKills>0||this.statKills+this.statBotKills===0;
     const kills=viaKill?this.kills:this.statKills,botKills=viaKill?this.botKills:this.statBotKills;
     const ms=durationMs!=null?durationMs:Date.now()-this.startedAt;
     this.summary={sessionId:this.sessionId,userId:this.userId,nick:this.nick,roomCode:this.roomCode,shard:this.shard,skinId:this.skinId,startedAt:this.startedAt,
       durationMs:ms,durationS:Math.max(0,Math.round(ms/1000)),score:Math.max(0,Math.round(score||0)),maxMass:Math.max(0,Math.round(Math.max(maxMass||0,this.maxMass))),
-      kills,botKills,splits:this.splits,ejects:this.ejects,food:this.food,bestStreak:this.bestStreak,top1Ticks:this.top1Ticks,quadrants:this.quadrants.size,cause,killedByUserId};
+      kills,botKills,splits:this.splits,ejects:this.ejects,food:this.food,bestStreak:this.bestStreak,top1Ticks:this.top1Ticks,quadrants:this.quadrants.size,cause,killedByUserId,
+      mode:mode|0,team:team==null?null:team|0,placement:placement|0,players:players|0,teamSize:teamSize||1};
     return this.summary;
   }
 }

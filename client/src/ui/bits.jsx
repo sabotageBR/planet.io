@@ -8,7 +8,7 @@ import { fmt } from "./format.js";
 
 export function Nav({ cur }) {
   const LB = useLabels();
-  const NAV = [["entry", LB.home], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
+  const NAV = [["entry", LB.home], ["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
   return <nav className="nav">{NAV.map(([s, l]) =>
     <button key={s} className={"nav-btn" + (s === cur ? " on" : "")} data-go={s} data-nav={s} onClick={() => go(s)}><i className="nav-ico"></i><span>{l}</span></button>)}</nav>;
 }

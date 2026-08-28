@@ -2,6 +2,22 @@
 // Copiados de mockups/v2/src/engine2.js. O tema pode sobrescrever qualquer chave
 // (currentTheme().labels); os grupos aninhados são mesclados chave a chave (mergeLabels).
 export const LABELS = {
+  // ── modos, equipe, chat e voz ──
+  modesTitle: "ESCOLHA O MODO", modesShort: "Modos", partyTitle: "SUA EQUIPE",
+  modeFree: "LIVRE", modeFreeSub: "O jogo de sempre: cresça, coma e sobreviva até o fim do mundo.",
+  modeSolo: "SOBREVIVÊNCIA", modeSoloSub: "50 planetas, sem renascer, a zona fechando. O último vivo ganha.",
+  modeTeam: "EM EQUIPE", modeTeamSub: "Mesma coisa, mas com quem você chamar — vocês não se comem e dividem massa.",
+  teamSizeLabel: "TAMANHO DA EQUIPE", duo: "DUPLA", trio: "TRIO", quad: "QUARTETO",
+  soloWord: "Solo", teamWord: "Equipe", createParty: "➕ CRIAR EQUIPE", joinParty: "Entrar por código", partyCode: "Código",
+  copyLink: "📋 Copiar convite", linkCopied: "Convite copiado!", fillBots: "Preencher com bots", botAlly: "bot aliado", leaveParty: "Sair da equipe",
+  partyHint: "Mande o convite para os amigos. Quem faltar vira bot aliado quando a partida começar.",
+  partyLeader: "líder", waitingFriends: "esperando os amigos…", startMatch: "🚀 JOGAR",
+  warmup: "AQUECIMENTO", warmupSub: "começa em", waitingPlayers: "esperando jogadores",
+  aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ FORA DA ZONA", zoneShrinking: "A ZONA ESTÁ FECHANDO",
+  chatTitle: "CHAT", chatHint: "Enter para falar", chatTeam: "equipe", chatPlaceholder: "Mensagem…",
+  talkHint: "Ctrl = falar", talkOn: "GRAVANDO", micDenied: "O navegador negou o microfone.", micUnsupported: "Este navegador não grava áudio.",
+  weapons: { missile: "Míssil", burst: "Rajada", mine: "Mina", cluster: "Cacho", nova: "Nova" },
+  deadByZone: "A ZONA TE ALCANÇOU", champTeam: "EQUIPE CAMPEÃ", lastAliveTitle: "ÚLTIMO PLANETA DE PÉ",
   title: "🪐 PLANET.IO", tagline: "CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   coinIcon: "🪙", coinWord: "moedas", nameLabel: "Nome do seu planeta", swap: "Trocar",
   play: "🚀 JOGAR", playAuto: "🚀 Jogar (auto)", rooms: "Salas", ranking: "Ranking", profile: "Perfil", shop: "Loja", prefs: "Opções", home: "Início",

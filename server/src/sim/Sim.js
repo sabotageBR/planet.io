@@ -7,8 +7,8 @@
 // espelhamos (uma fonte só, sem contar duas vezes).
 // @ts-check
 import {createWorld} from '@planet/shared/physics/world.js';
-import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT,MISSILE} from '@planet/shared/constants.js';
-import {EVENT,REMOVE,PLAYER_FLAG,SELF_FLAG,POWER_BIT,INPUT_FLAG} from '@planet/shared/protocol/constants.js';
+import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT,MISSILE,MODE,modeOf} from '@planet/shared/constants.js';
+import {EVENT,REMOVE,PLAYER_FLAG,SELF_FLAG,POWER_BIT,INPUT_FLAG,NO_TEAM} from '@planet/shared/protocol/constants.js';
 import {createRng} from '@planet/shared/rng.js';
 import {packDir} from '@planet/shared/util.js';
 import {NOOP_HOOKS} from './hooks.js';
@@ -26,6 +26,10 @@ const LB_MAX=10,EVENTS_MAX=256;
  * @property {string} name
  * @property {boolean} registered
  * @property {number} skinId
+ * @property {number} team          equipe (-1 = sem equipe). A verdade da regra está no PlayerState do World; aqui é o espelho para o fio e o placar
+ * @property {number} deathTick     tick em que morreu (-1 vivo) — é dele que sai a COLOCAÇÃO no Sobrevivência
+ * @property {number} placement     posição final (1 = campeão), preenchida no fim
+ * @property {number} talkUntil     tick até quando o ícone de "falando" fica aceso
  * @property {boolean} isBot
  * @property {boolean} dead
  * @property {number} score
@@ -43,29 +47,34 @@ const LB_MAX=10,EVENTS_MAX=256;
  */
 export class Sim{
   /** @param {{seed?:number,hooks?:any,log?:any,rng?:any}} [o] */
-  constructor({seed=1,hooks=NOOP_HOOKS,log=null,rng=null}={}){
-    this.world=createWorld({seed});this.hooks=hooks;this.log=log;this.rng=rng||createRng((seed^0x9e3779b9)>>>0);
+  constructor({seed=1,hooks=NOOP_HOOKS,log=null,rng=null,mode=MODE.FREE}={}){
+    this.mode=modeOf(mode);this.modeId=this.mode.id;
+    this.world=createWorld({seed,weapons:this.mode.weapons});this.hooks=hooks;this.log=log;this.rng=rng||createRng((seed^0x9e3779b9)>>>0);
     /** @type {Map<number,GamePlayer>} */this.players=new Map();
     /** @type {{kind:number,x:number,y:number,r:number,slotA:number,slotB:number,extra:number}[]} */this.wireEvents=[];
     /** @type {Map<number,number>} id → REMOVE.* desde o último snapshot */this.gone=new Map();
     this.playersDirty=true;
-    this._listeners=new Map();this._lb=[];this._lbTick=-1;this._hit=new Map();this._statTick=new Map();this._deaths=[];}
+    this._listeners=new Map();this._lb=[];this._lbTick=-1;this._hit=new Map();this._statTick=new Map();this._deaths=[];this._elim=0;}
   get tick(){return this.world.tick;}
   // ── emissor mínimo ──
   on(ev,fn){const l=this._listeners.get(ev);if(l)l.push(fn);else this._listeners.set(ev,[fn]);return this;}
   _emit(ev,arg){const l=this._listeners.get(ev);if(!l)return;for(const fn of l){try{fn(arg);}catch(e){if(this.log)this.log.error(`listener ${ev}:`,e);}}}
   // ── jogadores ──
   _mk(slot,o){return{slot,sessionId:o.sessionId||null,userId:o.userId??null,name:String(o.name||'Viajante'),registered:!!o.registered,skinId:o.skinId|0,isBot:!!o.isBot,
+    team:o.team==null?-1:o.team|0,deathTick:-1,placement:0,talkUntil:0,
     dead:false,score:0,kills:0,botKills:0,streak:0,joinedTick:this.world.tick,maxMass:0,top1Ticks:0,quadrants:new Set(),lastInput:{seq:0,tx:0,ty:0,flags:0},gotInput:false,brain:null,deathInfo:null};}
   /** Humano: peça START_R longe de perigos. Devolve o GamePlayer (peça inicial em world.piecesOf(slot)[0]). */
-  addHuman(slot,{name='Viajante',registered=false,skinId=0,sessionId=null,userId=null}={}){
+  addHuman(slot,{name='Viajante',registered=false,skinId=0,sessionId=null,userId=null,team=-1}={}){
     if(this.players.has(slot))this.remove(slot);
-    this.world.addPlayer(slot,{r:PLAYER.START_R,isBot:false,missiles:0});
-    const gp=this._mk(slot,{name,registered,skinId,sessionId,userId,isBot:false});this.players.set(slot,gp);this.playersDirty=true;return gp;}
-  addBot(slot,{name,skinId=0}){
+    this.world.addPlayer(slot,{r:PLAYER.START_R,isBot:false,missiles:0,team});
+    const gp=this._mk(slot,{name,registered,skinId,sessionId,userId,isBot:false,team});this.players.set(slot,gp);this.playersDirty=true;return gp;}
+  addBot(slot,{name,skinId=0,team=-1}){
     if(this.players.has(slot))this.remove(slot);
-    this.world.addPlayer(slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),isBot:true,missiles:0});
-    const gp=this._mk(slot,{name,skinId,isBot:true});gp.brain=new BotBrain(this.world,slot,this.rng,this._botInput);this.players.set(slot,gp);this.playersDirty=true;return gp;}
+    this.world.addPlayer(slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),isBot:true,missiles:0,team});
+    const gp=this._mk(slot,{name,skinId,isBot:true,team});gp.brain=new BotBrain(this.world,slot,this.rng,this._botInput);this.players.set(slot,gp);this.playersDirty=true;return gp;}
+  /** Equipe de um slot (a fonte é o PlayerState do World; o GamePlayer é só o espelho do fio). */
+  setTeam(slot,team){const gp=this.players.get(slot),ps=this.world.players.get(slot);
+    if(gp)gp.team=team;if(ps)ps.team=team;this.playersDirty=true;}
   /** Porta de entrada dos bots: o cérebro (shared/bot.js) só produz {tx,ty,flags} e cai no mesmo applyInput do humano. */
   _botInput=(slot,cmd)=>{this.applyInput(slot,cmd);};
   remove(slot){const gp=this.players.get(slot);if(!gp)return;
@@ -128,6 +137,8 @@ export class Sim{
       case 'STAR_SPLIT':this._ev(EVENT.STAR_SPLIT,e.x,e.y,e.r,NO_SLOT,NO_SLOT,e.starId);break;
       case 'SMASH':gone.set(e.asteroidId,REMOVE.POPPED);this._ev(EVENT.SMASH,e.x,e.y,e.r,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,0));break;
       case 'SUPERNOVA':this._ev(EVENT.SUPERNOVA,e.x,e.y,e.r,NO_SLOT,NO_SLOT,e.starId);break;
+      case 'ZONE_BURN':{if(e.died)gone.set(e.pieceId,REMOVE.EXPIRED);
+        this._ev(EVENT.ZONE_BURN,e.x,e.y,e.r,e.slot,NO_SLOT,Math.round(e.lost));break;}
       case 'PLAYER_DEAD':deaths.push(e);break;}}
     for(let i=0;i<deaths.length;i++)this._died(deaths[i]);
     hit.clear();}
@@ -136,30 +147,42 @@ export class Sim{
     const ps=w.players.get(e.slot);if(ps)gp.score=ps.score;
     this._ev(EVENT.DEATH,h?h.x:0,h?h.y:0,h?h.r:0,e.slot,by?by.slot:NO_SLOT,gp.score);
     gp.streak=0;this.playersDirty=true;
-    if(gp.isBot){w.respawnPlayer(e.slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),score:Math.floor(gp.score*BOT.RESPAWN_SCORE)});gp.score=Math.floor(gp.score*BOT.RESPAWN_SCORE);if(gp.brain)gp.brain.reset();return;}
-    gp.dead=true;
+    // Sem respawn (Sobrevivência): o bot morre de vez, como todo mundo. É a ÚNICA linha que ressuscitava alguém.
+    if(gp.isBot&&this.mode.respawnBots){w.respawnPlayer(e.slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),score:Math.floor(gp.score*BOT.RESPAWN_SCORE)});gp.score=Math.floor(gp.score*BOT.RESPAWN_SCORE);if(gp.brain)gp.brain.reset();return;}
+    gp.dead=true;gp.deathTick=w.tick;gp.placement=0;this._elim++;
+    if(gp.isBot)return;   // bot eliminado não tem sessão, hooks nem tela de morte: o caminho abaixo é só de humano
     const byHole=e.cause==='blackhole',durationMs=Math.round((w.tick-gp.joinedTick)*1000/TICK_HZ),maxMass=Math.round(gp.maxMass);
-    const info={slot:e.slot,by:by?by.name:null,bySlot:by?by.slot:-1,byHole,score:gp.score,maxMass,kills:gp.kills+gp.botKills,durationS:Math.round(durationMs/1000)};
+    const info={slot:e.slot,by:by?by.name:null,bySlot:by?by.slot:-1,byHole,byZone:e.cause==='zone',score:gp.score,maxMass,kills:gp.kills+gp.botKills,durationS:Math.round(durationMs/1000),
+      placement:this.mode.lastAlive?this.players.size-this._elim+1:0,players:this.mode.lastAlive?this.players.size:0};
     gp.deathInfo=info;this._emit('death',info);
     const sessionId=gp.sessionId,done=r=>this._emit('rewards',{slot:e.slot,sessionId,rewards:r||null});
-    Promise.resolve().then(()=>this.hooks.onMatchEnd({sessionId,cause:byHole?'blackhole':'eaten',killedBySessionId:by&&!by.isBot?by.sessionId:null,score:gp.score,maxMass,durationMs}))
+    Promise.resolve().then(()=>this.hooks.onMatchEnd({sessionId,cause:e.cause==='zone'?'zone':byHole?'blackhole':this.mode.lastAlive?'eliminated':'eaten',
+      killedBySessionId:by&&!by.isBot?by.sessionId:null,score:gp.score,maxMass,durationMs,mode:this.modeId,team:gp.team,placement:this._elim?this.players.size-this._elim+1:0,players:this.players.size}))
       .then(done,err=>{if(this.log)this.log.warn(`onMatchEnd (${gp.name}) falhou:`,err&&err.message);done(null);});}
   /**
    * Fim de rodada (o mundo explodiu): fecha a partida de todo humano vivo pelo mesmo caminho de persistência da morte
    * (`cause:'round'`, sem mandar `dead` — quem manda o placar é a Room) e devolve o placar final: vivos por massa
    * (o 1º é o campeão) e, no fim, os humanos que já tinham morrido.
    */
-  endRound(){
+  endRound(reason='time'){
     const w=this.world,rows=this.leaderboard(),board=[],seen=new Set();
-    const row=(gp,mass)=>({slot:gp.slot,name:gp.name,mass,score:gp.score,kills:gp.kills+gp.botKills,isBot:gp.isBot,registered:gp.registered,skinId:gp.skinId});
+    const row=(gp,mass)=>({slot:gp.slot,name:gp.name,mass,score:gp.score,kills:gp.kills+gp.botKills,isBot:gp.isBot,
+      registered:gp.registered,skinId:gp.skinId,team:gp.team<0?null:gp.team});
     for(const r of rows){const gp=this.players.get(r.slot);if(!gp)continue;seen.add(gp.slot);board.push(row(gp,r.mass));}
-    for(const gp of this.players.values())if(!gp.isBot&&!seen.has(gp.slot))board.push(row(gp,0));
+    // Mortos entram por ORDEM DE ELIMINAÇÃO invertida (quem caiu por último fica na frente): é o "7º de 50" do
+    // Sobrevivência. No Livre o bot renasce e nunca chega aqui, então a lista continua sendo só a de humanos.
+    const mortos=[];
+    for(const gp of this.players.values()){if(seen.has(gp.slot))continue;if(gp.isBot&&this.mode.respawnBots)continue;mortos.push(gp);}
+    mortos.sort((a,b)=>b.deathTick-a.deathTick);
+    for(const gp of mortos)board.push(row(gp,0));
+    board.forEach((b,i)=>{b.placement=i+1;const gp=this.players.get(b.slot);if(gp)gp.placement=i+1;});
     for(const gp of this.players.values()){
       if(gp.isBot||gp.dead)continue;
       const ps=w.players.get(gp.slot);if(ps){gp.score=ps.score;ps.alive=false;}
       gp.dead=true;const sessionId=gp.sessionId,maxMass=Math.round(gp.maxMass),durationMs=Math.round((w.tick-gp.joinedTick)*1000/TICK_HZ);
       const done=r=>this._emit('rewards',{slot:gp.slot,sessionId,rewards:r||null});
-      Promise.resolve().then(()=>this.hooks.onMatchEnd({sessionId,cause:'round',killedBySessionId:null,score:gp.score,maxMass,durationMs}))
+      Promise.resolve().then(()=>this.hooks.onMatchEnd({sessionId,cause:reason==='lastAlive'?'survived':'round',killedBySessionId:null,score:gp.score,maxMass,durationMs,
+        mode:this.modeId,team:gp.team,placement:gp.placement,players:board.length}))
         .then(done,err=>{if(this.log)this.log.warn(`onMatchEnd (rodada, ${gp.name}) falhou:`,err&&err.message);done(null);});}
     this.playersDirty=true;return board;}
   _sample(){
@@ -185,11 +208,14 @@ export class Sim{
    * client-side o aviso chegaria com menos de 2 s de sobra.
    */
   self(slot,out){const w=this.world,ps=w.players.get(slot),gp=this.players.get(slot),t=w.tick;
-    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.fireCd=out.rank=out.mass=out.threat=out.threatDir=0;return out;}
+    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.fireCd=out.rank=out.mass=out.threat=out.threatDir=out.weapon=out.alive=0;return out;}
     let mt=0,sh=0;const arr=ps.pieces;
     for(let i=0;i<arr.length;i++){const pc=arr[i];if(pc.dead)continue;const m=pc.magnetUntil-t;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}
     const sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t,fc=ps.fireCdUntil-t;
-    out.flags=gp.dead?SELF_FLAG.DEAD:0;out.missiles=ps.missiles;out.powerBits=(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0);
+    out.flags=(gp.dead?SELF_FLAG.DEAD:0)|(w.peace?SELF_FLAG.WARMUP:0);out.weapon=ps.weapon|0;out.alive=this.aliveCount();
+    const zc=w.zoneNow();if(zc&&!gp.dead){const me0=firstLive(ps.pieces);
+      if(me0){const dx=me0.x-zc.x,dy=me0.y-zc.y;if(dx*dx+dy*dy>zc.r*zc.r)out.flags|=SELF_FLAG.ZONE_HURT;}}
+    out.missiles=ps.missiles;out.powerBits=(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0);
     out.magnetT=mt>0?mt:0;out.shieldLv=sh;out.score=ps.score;out.splitCd=sc>0?sc:0;out.ejectCd=ec>0?ec:0;out.fireCd=fc>0?fc:0;
     out.rank=gp.dead?0:this.rankOf(slot);out.mass=gp.dead?0:Math.round(w.massOf(slot));
     out.threat=out.threatDir=0;const me=gp.dead?null:firstLive(ps.pieces);
@@ -199,8 +225,21 @@ export class Sim{
         out.threatDir=Math.round(Math.atan2(dy,dx)/6.2831853*256)&255;}}
     return out;}
   /** Linhas do PLAYERS. */
-  playersInfo(){const out=[];for(const gp of this.players.values())
-    out.push({slot:gp.slot,flags:(gp.isBot?PLAYER_FLAG.BOT:0)|(gp.dead?PLAYER_FLAG.DEAD:0)|(gp.registered?PLAYER_FLAG.REG:0),skinId:gp.skinId&255,name:gp.name,score:gp.score});return out;}
+  playersInfo(){const out=[],t=this.world.tick;for(const gp of this.players.values())
+    out.push({slot:gp.slot,flags:(gp.isBot?PLAYER_FLAG.BOT:0)|(gp.dead?PLAYER_FLAG.DEAD:0)|(gp.registered?PLAYER_FLAG.REG:0)|(gp.talkUntil>t?PLAYER_FLAG.TALK:0),
+      skinId:gp.skinId&255,team:gp.team<0?NO_TEAM:gp.team&255,name:gp.name,score:gp.score});return out;}
   humanCount(){let n=0;for(const gp of this.players.values())if(!gp.isBot)n++;return n;}
   botCount(){let n=0;for(const gp of this.players.values())if(gp.isBot)n++;return n;}
+  /** Quantos jogadores ainda estão vivos (é o "restam N" do HUD, e vai no `self`). */
+  aliveCount(){return this.leaderboard().length;}
+  /**
+   * Quantas EQUIPES ainda têm alguém vivo. Sem equipe (Livre e Sobrevivência solo) cada jogador é a própria
+   * equipe, então isto vale como "quantos restam" e o teste de vitória é o mesmo nos dois casos.
+   */
+  aliveTeams(){const lb=this.leaderboard(),ts=new Set();
+    for(const r of lb){const gp=this.players.get(r.slot);ts.add(gp&&gp.team>=0?`t${gp.team}`:`s${r.slot}`);}
+    return ts.size;}
+  /** A equipe (ou o slot) que ainda respira — quem vence por último-vivo. null se ninguém. */
+  lastAliveKey(){const lb=this.leaderboard();if(!lb.length)return null;
+    const gp=this.players.get(lb[0].slot);return gp&&gp.team>=0?{team:gp.team}:{slot:lb[0].slot};}
 }

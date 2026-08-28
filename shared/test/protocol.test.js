@@ -5,9 +5,11 @@ import assert from "node:assert/strict";
 import {packDir,unpackDir} from "../src/util.js";
 import {WORLD} from "../src/constants.js";
 import {createRng} from "../src/rng.js";
-import {PIECE_FLAG,MSG,KIND,UPD,EVENT,NAME_MAX_BYTES,INPUT_BYTES,SNAPSHOT_HEADER_BYTES,SELF_BYTES,
+import {PIECE_FLAG,MSG,KIND,UPD,EVENT,NAME_MAX_BYTES,INPUT_BYTES,SNAPSHOT_HEADER_BYTES,SELF_BYTES,ZONE_BYTES,
+  VOICE_HEADER_BYTES,VOICE_UP_HEADER_BYTES,NO_TEAM,
   createWriter,createReader,qPos,dqPos,encodeInput,decodeInput,encodeSnapshot,decodeSnapshot,encodePlayers,decodePlayers,
-  encodeLeaderboard,decodeLeaderboard,encodeEvent,decodeEvent,encodePong,decodePong,decodeMessage} from "../src/protocol/index.js";
+  encodeLeaderboard,decodeLeaderboard,encodeEvent,decodeEvent,encodePong,decodePong,decodeMessage,
+  encodeZone,decodeZone,encodeVoice,decodeVoice,encodeVoiceUp,decodeVoiceUp} from "../src/protocol/index.js";
 
 // ── Utilidades: erro máximo de quantização e geradores determinísticos ───────
 const EPS_POS=WORLD.w/65535,EPS_R=.05,EPS_V=.5;
@@ -20,15 +22,15 @@ const KINDS=Object.values(KIND);
 function randCreate(kind){const e={kind,id:nextId++,x:rx(),y:ry(),r:rr()};
   switch(kind){
     case KIND.PIECE:Object.assign(e,{owner:slot(),vx:rv(),vy:rv(),flags:rng.int(0,15)});break;
-    case KIND.FOOD:Object.assign(e,{type:rng.int(0,7),hue:rng.int(0,11)});break;
+    case KIND.FOOD:Object.assign(e,{type:rng.int(0,11),hue:rng.int(0,11)});break;
     case KIND.EJECT:Object.assign(e,{owner:slot(),hue:rng.int(0,11),vx:rv(),vy:rv()});break;
     case KIND.ASTEROID:Object.assign(e,{seed:u16(),vx:rv(),vy:rv()});break;
     case KIND.BLACKHOLE:case KIND.STAR:Object.assign(e,{seed:u16(),influenceR:rng.int(0,3000),phase:rng.int(0,2)});break;
-    case KIND.MISSILE:Object.assign(e,{owner:slot(),target:slot(),vx:rv(),vy:rv()});break;}
+    case KIND.MISSILE:Object.assign(e,{owner:slot(),target:slot(),vx:rv(),vy:rv(),weapon:rng.int(0,4)});break;}
   return e;}
 function assertCreate(got,exp){assert.deepEqual(Object.keys(got).sort(),Object.keys(exp).sort(),"chaves do create");
   assert.equal(got.kind,exp.kind);assert.equal(got.id,exp.id);near(got.x,exp.x,EPS_POS,"x");near(got.y,exp.y,EPS_POS,"y");near(got.r,exp.r,EPS_R,"r");
-  for(const k of ["owner","flags","type","hue","seed","influenceR","phase","target"])if(k in exp)assert.equal(got[k],exp[k],k);
+  for(const k of ["owner","flags","type","hue","seed","influenceR","phase","target","weapon"])if(k in exp)assert.equal(got[k],exp[k],k);
   for(const k of ["vx","vy"])if(k in exp)near(got[k],exp[k],EPS_V,k);}
 function randUpdate(mask=rng.int(0,31)){const u={id:rng.int(1,1e6),mask};
   if(mask&UPD.X_Y){u.x=rx();u.y=ry();}if(mask&UPD.R)u.r=rr();if(mask&UPD.V){u.vx=rv();u.vy=rv();}
@@ -38,7 +40,7 @@ function assertUpdate(got,exp){assert.deepEqual(Object.keys(got).sort(),Object.k
   if("x"in exp){near(got.x,exp.x,EPS_POS,"x");near(got.y,exp.y,EPS_POS,"y");}if("r"in exp)near(got.r,exp.r,EPS_R,"r");
   if("vx"in exp){near(got.vx,exp.vx,EPS_V,"vx");near(got.vy,exp.vy,EPS_V,"vy");}
   if("flags"in exp)assert.equal(got.flags,exp.flags);if("phase"in exp){assert.equal(got.phase,exp.phase);assert.equal(got.influenceR,exp.influenceR);}}
-const randSelf=()=>({flags:rng.int(0,1),missiles:rng.int(0,3),powerBits:rng.int(0,3),magnetT:u16(),shieldLv:rng.int(0,3),score:u32(),splitCd:rng.int(0,255),ejectCd:rng.int(0,255),fireCd:u16(),rank:rng.int(0,30),mass:u32(),threat:rng.int(0,255),threatDir:rng.int(0,255)});
+const randSelf=()=>({flags:rng.int(0,1),missiles:rng.int(0,3),powerBits:rng.int(0,3),magnetT:u16(),shieldLv:rng.int(0,3),score:u32(),splitCd:rng.int(0,255),ejectCd:rng.int(0,255),fireCd:u16(),rank:rng.int(0,30),mass:u32(),threat:rng.int(0,255),threatDir:rng.int(0,255),weapon:rng.int(0,4),alive:rng.int(0,255)});
 const randRemove=()=>({id:rng.int(1,1e6),reason:rng.int(0,6)});
 const randSnapshot=(nPerKind=6,nU=30,nR=10)=>({tick:u32(),ackSeq:u16(),creates:KINDS.flatMap(k=>Array.from({length:nPerKind},()=>randCreate(k))),
   updates:Array.from({length:nU},()=>randUpdate()),removes:Array.from({length:nR},randRemove),self:randSelf()});
@@ -78,9 +80,9 @@ test("SNAPSHOT: ida e volta de todos os kinds, máscaras, remoções e self",()=
     s.creates.forEach((e,i)=>assertCreate(d.creates[i],e));s.updates.forEach((u,i)=>assertUpdate(d.updates[i],u));
     assert.deepEqual(d.removes,s.removes);assert.deepEqual(d.self,s.self);}
   const empty=decodeSnapshot(encodeSnapshot(w,{tick:7,ackSeq:3}));
-  assert.deepEqual(empty,{tick:7,ackSeq:3,creates:[],updates:[],removes:[],self:{flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0}});});
+  assert.deepEqual(empty,{tick:7,ackSeq:3,creates:[],updates:[],removes:[],self:{flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0}});});
 test("SNAPSHOT: tamanho do create por kind bate com a conta manual",()=>{
-  const SIZE={[KIND.PIECE]:11+7,[KIND.FOOD]:11+2,[KIND.EJECT]:11+7,[KIND.ASTEROID]:11+6,[KIND.BLACKHOLE]:11+5,[KIND.MISSILE]:11+8,[KIND.STAR]:11+5};
+  const SIZE={[KIND.PIECE]:11+7,[KIND.FOOD]:11+2,[KIND.EJECT]:11+7,[KIND.ASTEROID]:11+6,[KIND.BLACKHOLE]:11+5,[KIND.MISSILE]:11+9,[KIND.STAR]:11+5};
   for(const k of KINDS)assert.equal(encodeSnapshot(w,{tick:0,ackSeq:0,creates:[randCreate(k)]}).length,SNAPSHOT_HEADER_BYTES+SIZE[k]+SELF_BYTES,`kind ${k}`);
   assert.throws(()=>encodeSnapshot(w,{tick:0,ackSeq:0,creates:[{kind:99,id:1,x:0,y:0,r:1}]}),/kind desconhecido/);});
 test("SNAPSHOT: update só escreve/lê os campos presentes na máscara (32 combinações)",()=>{
@@ -96,9 +98,9 @@ test("SNAPSHOT: update só escreve/lê os campos presentes na máscara (32 combi
   assert.equal(b.length,SNAPSHOT_HEADER_BYTES+7+SELF_BYTES);assert.deepEqual(decodeSnapshot(b).updates[0],{id:5,mask:UPD.R,r:40});});
 test("SNAPSHOT: magnitudes saturam, contadores dão wrap",()=>{
   const d=decodeSnapshot(encodeSnapshot(w,{tick:2**32+5,ackSeq:65536+9,creates:[{kind:KIND.PIECE,id:1,x:-10,y:99999,r:99999,vx:-99999,vy:99999,flags:15}],
-    self:{flags:1,missiles:999,powerBits:3,magnetT:-1,shieldLv:NaN,score:2**40,splitCd:400,ejectCd:-3,fireCd:99999,rank:1e6,mass:2**33,threat:400,threatDir:259}}));
+    self:{flags:1,missiles:999,powerBits:3,magnetT:-1,shieldLv:NaN,score:2**40,splitCd:400,ejectCd:-3,fireCd:99999,rank:1e6,mass:2**33,threat:400,threatDir:259,weapon:3,alive:999}}));
   assert.equal(d.tick,5);assert.equal(d.ackSeq,9);const p=d.creates[0];assert.equal(p.x,0);assert.equal(p.y,WORLD.h);assert.equal(p.r,6553.5);assert.equal(p.vx,-32767);assert.equal(p.vy,32767);
-  assert.deepEqual(d.self,{flags:1,missiles:255,powerBits:3,magnetT:0,shieldLv:0,score:4294967295,splitCd:255,ejectCd:0,fireCd:65535,rank:65535,mass:4294967295,threat:255,threatDir:3});
+  assert.deepEqual(d.self,{flags:1,missiles:255,powerBits:3,magnetT:0,shieldLv:0,score:4294967295,splitCd:255,ejectCd:0,fireCd:65535,rank:65535,mass:4294967295,threat:255,threatDir:3,weapon:3,alive:255});
 });
 test("SNAPSHOT: orçamento — 150 PIECE + 100 FOOD + 100 updates(X_Y|V) + 20 removes ≤ 6 KB",t=>{
   const s={tick:1234,ackSeq:77,creates:[...Array.from({length:150},()=>randCreate(KIND.PIECE)),...Array.from({length:100},()=>randCreate(KIND.FOOD))],
@@ -115,10 +117,10 @@ test("SNAPSHOT: 250 creates + 200 updates — estabilidade com writer reutilizad
 
 // ── PLAYERS / LEADERBOARD / EVENT / PONG ─────────────────────────────────────
 test("PLAYERS: ida e volta com utf-8; nome truncado em ≤ 32 bytes na fronteira do code point",()=>{
-  const ps=[{slot:0,flags:0,skinId:3,name:"Evandro",score:1234},{slot:1,flags:1,skinId:0,name:"Nebulox",score:0},{slot:2,flags:6,skinId:255,name:"Zé Ção 日本",score:4294967295},
-    {slot:65535,flags:2,skinId:9,name:"😀😀😀😀😀😀😀😀",score:42},{slot:4,flags:0,skinId:1,name:"",score:1}];
+  const ps=[{slot:0,flags:0,skinId:3,team:NO_TEAM,name:"Evandro",score:1234},{slot:1,flags:1,skinId:0,team:0,name:"Nebulox",score:0},{slot:2,flags:6,skinId:255,team:11,name:"Zé Ção 日本",score:4294967295},
+    {slot:65535,flags:2,skinId:9,team:24,name:"😀😀😀😀😀😀😀😀",score:42},{slot:4,flags:0,skinId:1,team:NO_TEAM,name:"",score:1}];
   const d=decodePlayers(encodePlayers(w,ps));assert.deepEqual(d,ps);
-  const long=[{slot:1,flags:0,skinId:0,name:"a".repeat(40),score:0},{slot:2,flags:0,skinId:0,name:"a".repeat(31)+"😀",score:0},{slot:3,flags:0,skinId:0,name:"é".repeat(20),score:0},{slot:4,flags:0,skinId:0,name:"a".repeat(30)+"😀😀",score:0}];
+  const long=[{slot:1,flags:0,skinId:0,team:NO_TEAM,name:"a".repeat(40),score:0},{slot:2,flags:0,skinId:0,team:NO_TEAM,name:"a".repeat(31)+"😀",score:0},{slot:3,flags:0,skinId:0,team:NO_TEAM,name:"é".repeat(20),score:0},{slot:4,flags:0,skinId:0,team:NO_TEAM,name:"a".repeat(30)+"😀😀",score:0}];
   const dl=decodePlayers(encodePlayers(w,long));const enc=new TextEncoder();
   assert.deepEqual(dl.map(p=>p.name),["a".repeat(32),"a".repeat(31),"é".repeat(16),"a".repeat(30)]);
   for(const p of dl)assert.ok(enc.encode(p.name).length<=NAME_MAX_BYTES);
@@ -142,13 +144,40 @@ test("EVENT: ida e volta dentro da quantização",()=>{
   assert.equal(c.flags,PIECE_FLAG.SHIELD|PIECE_FLAG.MAGNET|96);assert.equal((c.flags>>PIECE_FLAG.SHIELD_LV_SHIFT)&3,3);});
 test("PONG: ida e volta exata",()=>{for(let i=0;i<10;i++){const p={clientTime:u32(),serverTick:u32()};const b=encodePong(w,p);assert.equal(b.length,9);assert.deepEqual(decodePong(b),p);}});
 
+// ── ZONE / VOICE ─────────────────────────────────────────────────────────────
+test("ZONE: ida e volta do círculo, e t1 infinito sobrevive ao fio",()=>{
+  const z={x0:rx(),y0:ry(),r0:5952,x1:rx(),y1:ry(),r1:144,t0:u32(),t1:u32()};
+  const b=encodeZone(w,z);assert.equal(b.length,ZONE_BYTES);
+  const d=decodeZone(b);
+  near(d.x0,z.x0,EPS_POS,"x0");near(d.y0,z.y0,EPS_POS,"y0");near(d.r0,z.r0,EPS_R,"r0");
+  near(d.x1,z.x1,EPS_POS,"x1");near(d.y1,z.y1,EPS_POS,"y1");near(d.r1,z.r1,EPS_R,"r1");
+  assert.equal(d.t0,z.t0);assert.equal(d.t1,z.t1);
+  const fim=decodeZone(encodeZone(w,{...z,t1:Infinity}));
+  assert.equal(fim.t1,Infinity,"zona parada de vez volta como Infinity, não como 4294967295");});
+test("VOICE: os bytes do áudio atravessam intactos (o servidor nunca decodifica)",()=>{
+  const data=new Uint8Array(Array.from({length:4000},(_,i)=>(i*7+i%13)&255));
+  const up=encodeVoiceUp(w,{codec:0,durMs:2500,data});
+  assert.equal(up.length,VOICE_UP_HEADER_BYTES+data.length);
+  const du=decodeVoiceUp(up);assert.equal(du.codec,0);assert.equal(du.durMs,2500);assert.deepEqual([...du.data],[...data]);
+  const down=encodeVoice(w,{slot:7,codec:0,durMs:2500,x:1234,y:5678,data});
+  assert.equal(down.length,VOICE_HEADER_BYTES+data.length);
+  const dd=decodeVoice(down);assert.equal(dd.slot,7);assert.equal(dd.durMs,2500);
+  near(dd.x,1234,EPS_POS,"x");near(dd.y,5678,EPS_POS,"y");assert.deepEqual([...dd.data],[...data]);
+  const vazio=decodeVoiceUp(encodeVoiceUp(w,{codec:1,durMs:0,data:new Uint8Array(0)}));
+  assert.equal(vazio.data.length,0);});
+
 // ── decodeMessage ────────────────────────────────────────────────────────────
 test("decodeMessage despacha pelo primeiro byte; desconhecido/vazio → null",()=>{
   const s=randSnapshot(1,2,1),snapB=encodeSnapshot(w,s).slice();assert.deepEqual(decodeMessage(snapB),{type:MSG.SNAPSHOT,...decodeSnapshot(snapB)});
   const inp={seq:5,tx:dqPos(100,WORLD.w),ty:dqPos(200,WORLD.h),flags:2,clientTick:9};assert.deepEqual(decodeMessage(encodeInput(inp)),{type:MSG.INPUT,...inp});
-  const ps=[{slot:1,flags:0,skinId:2,name:"X",score:3}];assert.deepEqual(decodeMessage(encodePlayers(w,ps)),{type:MSG.PLAYERS,players:ps});
+  const ps=[{slot:1,flags:0,skinId:2,team:NO_TEAM,name:"X",score:3}];assert.deepEqual(decodeMessage(encodePlayers(w,ps)),{type:MSG.PLAYERS,players:ps});
   const rows=[{slot:1,mass:900,x:dqPos(qPos(1234,WORLD.w),WORLD.w),y:dqPos(qPos(5678,WORLD.h),WORLD.h)}];assert.deepEqual(decodeMessage(encodeLeaderboard(w,rows)),{type:MSG.LEADERBOARD,rows});
   const ev={kind:EVENT.EAT,x:dqPos(10,WORLD.w),y:dqPos(20,WORLD.h),r:3.5,slotA:1,slotB:2,extra:7};assert.deepEqual(decodeMessage(encodeEvent(w,ev)),{type:MSG.EVENT,...ev});
   const pong={clientTime:1,serverTick:2};assert.deepEqual(decodeMessage(encodePong(w,pong)),{type:MSG.PONG,...pong});
+  const zw={x0:0,y0:0,r0:100,x1:0,y1:0,r1:100,t0:1,t1:2};assert.deepEqual(decodeMessage(encodeZone(w,zw)),{type:MSG.ZONE,zone:decodeZone(encodeZone(w,zw))});
+  const vc={slot:3,codec:0,durMs:900,x:0,y:0,data:new Uint8Array([1,2,3])};const vb=encodeVoice(w,vc).slice();
+  assert.deepEqual(decodeMessage(vb),{type:MSG.VOICE,...decodeVoice(vb)});
+  const vu={codec:0,durMs:900,data:new Uint8Array([9,8])};const ub=encodeVoiceUp(w,vu).slice();
+  assert.deepEqual(decodeMessage(ub),{type:MSG.VOICE_UP,...decodeVoiceUp(ub)});
   assert.equal(decodeMessage(new Uint8Array([0x7f,1,2,3])),null);assert.equal(decodeMessage(new Uint8Array(0)),null);assert.equal(decodeMessage(new ArrayBuffer(0)),null);
 });

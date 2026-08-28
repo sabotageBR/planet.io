@@ -5,7 +5,7 @@
 // (binário). AOI por sessão = viewRect da câmera + NET.AOI_PAD (histerese AOI_PAD_OUT), `known` por id
 // com último estado quantizado (UPDATE só se mudou). ?lag=<ms> simula latência nos dois sentidos.
 import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,encodePong,decodeInput,
-  MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,
+  MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,NO_TEAM,
   WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,BOT_NAMES,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,
   focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir} from "@planet/shared";
 import {createWorld,applySplit,incomingMissile,firstLive} from "@planet/shared/physics/index.js";
@@ -63,7 +63,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
       w.holes.forEach((h,j)=>{h.x=x+Math.cos(j*2.1)*1100;h.y=y+Math.sin(j*2.1)*900;h.type=1;h.k=1;h.life=w.tick+5000;});
       w.asteroids.forEach((a,j)=>{if(j%2)return;a.x=x+Math.cos(j*.7)*(500+j*40);a.y=y+Math.sin(j*.7)*(400+j*30);});}
     else w.addPlayer(slot,{missiles:0});playersDirty=true;}
-  function playerList(){const out=[];for(const [slot,m] of meta){const ps=w.players.get(slot);out.push({slot,flags:(m.isBot?PLAYER_FLAG.BOT:0)|(ps&&!ps.alive?PLAYER_FLAG.DEAD:0)|(m.registered?PLAYER_FLAG.REG:0),skinId:m.skinId,name:m.name,score:ps?ps.score:0});}return out;}
+  function playerList(){const out=[];for(const [slot,m] of meta){const ps=w.players.get(slot);out.push({slot,flags:(m.isBot?PLAYER_FLAG.BOT:0)|(ps&&!ps.alive?PLAYER_FLAG.DEAD:0)|(m.registered?PLAYER_FLAG.REG:0),skinId:m.skinId,team:NO_TEAM,name:m.name,score:ps?ps.score:0});}return out;}   // `?local=1` é só Livre: ninguém tem equipe
   // ── passo ──
   function start(){if(running)return;running=true;last=performance.now();acc=0;timer=setInterval(loop,8);}
   function stopLoop(){running=false;clearInterval(timer);timer=0;}
@@ -150,13 +150,15 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     let mt=0,sh=0;if(ps)for(const pc of ps.pieces){if(pc.dead)continue;const m=pc.magnetUntil-tick;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}   // powerups por peça: o HUD leva o melhor
     const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ps.missiles,powerBits:(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0),
       magnetT:mt,shieldLv:sh,score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),fireCd:Math.max(0,ps.fireCdUntil-tick),
-      rank:rankOf(s.slot),mass:Math.round(w.massOf(s.slot)),...ameaca(ps)}:undefined;
+      rank:rankOf(s.slot),mass:Math.round(w.massOf(s.slot)),weapon:ps.weapon|0,alive:aliveCount(),...ameaca(ps)}:undefined;
     sendBin(s.sock,encodeSnapshot(writer,{tick,ackSeq:s.ackSeq,creates:cr,updates:up,removes:rm,self}));}
   /** Alerta de míssil teleguiado — o mesmo cálculo do `self` do servidor (Sim.self). */
   function ameaca(ps){const me=ps.alive?firstLive(ps.pieces):null;if(!me)return{threat:0,threatDir:0};
     const m=incomingMissile(w,ps.slot,me.x,me.y,MISSILE.ALERT_DIST);if(!m)return{threat:0,threatDir:0};
     const dx=m.x-me.x,dy=m.y-me.y,d=Math.hypot(dx,dy);
     return{threat:1+Math.round(254*(1-Math.min(1,d/MISSILE.ALERT_DIST))),threatDir:Math.round(Math.atan2(dy,dx)/6.2831853*256)&255};}
+  /** "Restam N" do `self` (protocolo 9). No modo Livre o número só é informativo — aqui não há Sobrevivência. */
+  function aliveCount(){let n=0;for(const slot of meta.keys()){const ps=w.players.get(slot);if(ps&&ps.alive)n++;}return n;}
   function rankOf(slot){const m=w.massOf(slot);let r=1;for(const o of meta.keys()){if(o===slot)continue;const ps=w.players.get(o);if(ps&&ps.alive&&w.massOf(o)>m)r++;}return r;}
   function toCreate(b,me){const c={kind:b.kind,id:b.id,x:b.x,y:b.y,r:b.r};
     switch(b.kind){
@@ -166,7 +168,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
       case KIND.ASTEROID:c.seed=Math.floor(b.seed*65535);c.vx=b.vx;c.vy=b.vy;c.hue=b.hue;break;   // hue não vai no fio (variante = seed%3 no cliente)
       case KIND.BLACKHOLE:c.seed=Math.floor(b.seed*65535);c.influenceR=Math.round(b.r*BLACKHOLE.INFLUENCE*b.k);c.phase=b.type;break;
       case KIND.STAR:c.seed=Math.floor(b.seed*65535);c.influenceR=Math.round(b.r*STAR.HALO*b.k);c.phase=b.type;break;
-      case KIND.MISSILE:c.owner=b.owner;c.target=(b.type!==0||b.targetId<0)?65535:b.targetId;c.vx=b.vx;c.vy=b.vy;break;}
+      case KIND.MISSILE:c.owner=b.owner;c.target=(b.type!==0||b.targetId<0)?65535:b.targetId;c.vx=b.vx;c.vy=b.vy;c.weapon=b.hue|0;break;}   // `hue` do míssil = arma (protocolo 9)
     return c;}
   const extraR=b=>b.kind===KIND.BLACKHOLE?Math.round(b.r*BLACKHOLE.INFLUENCE*b.k):b.kind===KIND.STAR?Math.round(b.r*STAR.HALO*b.k):0;
   function setLast(k,b,me){k.x=qPos(b.x,WORLD.w);k.y=qPos(b.y,WORLD.h);k.r=qR(b.r);k.vx=qV(b.vx);k.vy=qV(b.vy);k.flags=b.kind===KIND.PIECE?(b.flags|(b.owner===me?PIECE_FLAG.ME:0))&255:0;

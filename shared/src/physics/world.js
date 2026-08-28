@@ -3,7 +3,7 @@
 // pares de donos diferentes → perigos (asteroides, buracos, estrelas) → comida/ejetados → mísseis → fusões →
 // compactação ordenada → spawns → tick++. Remoção só por `dead` + compactação (ordem estável).
 // @ts-check
-import {WORLD,DT,PLAYER,SPEED,SPLIT,EJECT,FRAG,BOUNCE,WALL,FOOD,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR} from "../constants.js";
+import {WORLD,DT,PLAYER,SPEED,SPLIT,EJECT,FRAG,BOUNCE,WALL,FOOD,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR,WEAPON,WEAPONS,SURVIVAL,ZONE} from "../constants.js";
 import {KIND,PIECE_FLAG,FOOD_FLAG,BH_PHASE,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {createRng} from "../rng.js";
 import {clamp} from "../util.js";
@@ -23,6 +23,9 @@ import * as R from "./rules.js";
  * @property {boolean} isBot
  * @property {number} spawnTick    tick do último nascimento (graça de spawn dos bots)
  * @property {Body[]} pieces        refs (ordem de criação; compactada 1×/passo)
+ * @property {number} team          equipe (-1 = sem equipe: todo mundo é inimigo). Fogo amigo e "quem come quem"
+ *                                 saem daqui, não do bot — ver rules.sameTeam
+ * @property {number} weapon        WEAPON.* equipada; `missiles` é a munição DELA (pegar outra arma troca e reabastece)
  * @property {number} missiles      munição (do jogador; ímã e escudo são POR PEÇA, ver Body)
  * @property {number} splitCdUntil
  * @property {number} ejectCdUntil
@@ -43,7 +46,16 @@ const K=KIND,PP=K.PIECE<<3|K.PIECE,PE=K.PIECE<<3|K.EJECT,PA=K.PIECE<<3|K.ASTEROI
   AM=K.ASTEROID<<3|K.MISSILE,MM=K.MISSILE<<3|K.MISSILE,MH=K.MISSILE<<3|K.BLACKHOLE,ES=K.EJECT<<3|K.STAR,MS=K.MISSILE<<3|K.STAR,AS=K.ASTEROID<<3|K.STAR;
 // constantes locais de spawn (margens do mockup; não existem em constants.js)
 const PLAYER_MARGIN=300,PLAYER_SAFE=1500,AST_MARGIN=200,BELT_MARGIN=ASTEROID.BELT_RADIUS[1]+200,BELT_RAD_JITTER=40,SPAWN_TRIES=40,STAR_MARGIN=400;
-const POWER_TYPES=[FOOD_TYPE.MERGE,FOOD_TYPE.MAGNET,FOOD_TYPE.SHIELD];   // sorteados com peso igual dentro de FOOD.POWER_P
+const POWER_TYPES=[FOOD_TYPE.MAGNET,FOOD_TYPE.SHIELD];   // sorteados com peso igual dentro de FOOD.POWER_P
+// Armas (só no Sobrevivência, `o.weapons`): tabela CUMULATIVA de pesos — é onde mora a raridade. O míssil
+// tem peso 0 e fica de fora: ele já cai como FOOD_TYPE.AMMO, a munição básica que existe nos dois modos.
+const WEAPON_DROPS=WEAPONS.filter(x=>x.weight>0),WEAPON_TOTAL=WEAPON_DROPS.reduce((a,x)=>a+x.weight,0);
+const rollWeapon=rng=>{let v=rng.next()*WEAPON_TOTAL;for(const x of WEAPON_DROPS){v-=x.weight;if(v<=0)return x.food;}return WEAPON_DROPS[0].food;};
+// FOOD_TYPE.MERGE saiu do sorteio: ele só zerava o `mergeAt` das peças, então com o planeta INTEIRO — a maior
+// parte do tempo — o efeito era zero, e como caía no ramo de powerup ele nem dava massa nem pontos: a bola
+// verde era literalmente pior que comer poeira. Sem HUD, sem som e sem evento, o jogador não tinha como saber.
+// Eram ~37 delas vivas no mapa o tempo todo. O índice 5 fica declarado (já foi do powerup de velocidade
+// removido) e volta ao sorteio com uma linha; `eatFood` mantém o ramo, dormente.
 /** (x,y) está a ≥ min de todos os corpos vivos de arr? (arr null = sim) @param {Body[]|null} arr */
 function farFrom(arr,min,x,y){if(!arr)return true;const m2=min*min;
   for(let i=0;i<arr.length;i++){const b=arr[i];if(!b||b.dead)continue;const dx=b.x-x,dy=b.y-y;if(dx*dx+dy*dy<m2)return false;}return true;}
@@ -58,7 +70,11 @@ export class World{
     /** @type {any[]} */this.events=[];/** @type {Map<number,Body>} */this.entityById=new Map();
     /** @type {{cx:number,cy:number,rad:number,w:number}[]} */this.belts=[];/** @type {{belt:number,at:number}[]} */this.astQueue=[];
     /** @type {{at:number}[]} */this.starQueue=[];
-    this.decay=o.decay!==false;this.foodCount=o.food;this.holeCount=o.holes;this.starCount=o.stars;this.astBase=o.asteroids?ASTEROID.BELTS*ASTEROID.PER_BELT+ASTEROID.WANDERERS:0;this.astCap=this.astBase+ASTEROID.MAX_EXTRA;
+    // Zona do modo Sobrevivência (null = sem zona, que é o modo Livre inteiro). `peace` é o aquecimento:
+    // enquanto true TODO MUNDO é aliado, então a espera não precisa de regra própria — reusa sameTeam.
+    /** @type {{x0:number,y0:number,r0:number,x1:number,y1:number,r1:number,t0:number,t1:number}|null} */this.zone=null;
+    this.peace=false;this._zc={x:0,y:0,r:0};
+    this.decay=o.decay!==false;this.weapons=!!o.weapons;this.foodCount=o.food;this.holeCount=o.holes;this.starCount=o.stars;this.astBase=o.asteroids?ASTEROID.BELTS*ASTEROID.PER_BELT+ASTEROID.WANDERERS:0;this.astCap=this.astBase+ASTEROID.MAX_EXTRA;
     this.grid=createGrid(w,h,GRID_CELL);this.foodGrid=createGrid(w,h,GRID_CELL);this.foodDirty=true;
     /** @type {Body[]} */this.dyn=[];this._pairs=new Int32Array(4096*3);/** @type {number[]} */this._q=[];this._spot={x:0,y:0};
     for(let i=0;i<o.food;i++)this.spawnFood();
@@ -92,6 +108,7 @@ export class World{
    */
   spawnFood({x=NaN,y=NaN,spread=0}={}){const rng=this.rng,roll=rng.next();let type,r;
     if(roll<FOOD.AMMO_P){type=FOOD_TYPE.AMMO;r=FOOD.SPECIAL_R;}
+    else if(this.weapons&&roll<FOOD.AMMO_P+SURVIVAL.WEAPON_P){type=rollWeapon(rng);r=FOOD.SPECIAL_R;}
     else if(roll<FOOD.AMMO_P+FOOD.POWER_P){type=POWER_TYPES[rng.int(0,POWER_TYPES.length-1)];r=FOOD.SPECIAL_R;}
     else{type=rng.int(FOOD_TYPE.DUST,FOOD_TYPE.ROCK);r=rng.range(FOOD.R_MIN,FOOD.R_MAX);}
     const posta=!Number.isNaN(x);
@@ -163,11 +180,11 @@ export class World{
 
   // ── jogadores ──
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
-  addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0}={}){
+  addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE}={}){
     let ps=this.players.get(slot);
-    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],missiles,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,
+    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,missiles,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,
       ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false};this.players.set(slot,ps);}
-    else{this._dropPieces(ps);ps.isBot=isBot;ps.missiles=missiles;}
+    else{this._dropPieces(ps);ps.isBot=isBot;ps.missiles=missiles;ps.team=team;ps.weapon=weapon;}
     return this._spawnPiece(ps,x,y,r);}
   _spawnPiece(ps,x,y,r){
     // nasce longe de ESTRELA (era do buraco negro, que saiu de cena): com 12 estrelas e a queimadura de STAR.BURN,
@@ -181,7 +198,7 @@ export class World{
   removePlayer(slot){const ps=this.players.get(slot);if(!ps)return;this._dropPieces(ps);ps.alive=false;this.players.delete(slot);}
   /** Renasce com uma peça nova (score zera salvo `score`). Retorna a peça ou null se o slot não existe. */
   respawnPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,score=0}={}){const ps=this.players.get(slot);if(!ps)return null;
-    this._dropPieces(ps);ps.score=score;ps.splitCdUntil=ps.ejectCdUntil=0;return this._spawnPiece(ps,x,y,r);}
+    this._dropPieces(ps);ps.score=score;ps.splitCdUntil=ps.ejectCdUntil=0;ps.weapon=WEAPON.MISSILE;return this._spawnPiece(ps,x,y,r);}
   setTarget(slot,tx,ty){const ps=this.players.get(slot);if(!ps)return;ps.tx=clamp(tx,0,this.w);ps.ty=clamp(ty,0,this.h);}
   requestSplit(slot){const ps=this.players.get(slot);if(ps)ps.splitReq=true;}
   requestEject(slot){const ps=this.players.get(slot);if(ps)ps.ejectReq=true;}
@@ -196,6 +213,12 @@ export class World{
    */
   ensureFoodGrid(){if(!this.foodDirty)return;const fg=this.foodGrid,food=this.food;
     fg.clear();for(let i=0;i<food.length;i++){const f=food[i];fg.insert(i,f.x,f.y,f.r);}fg.build();this.foodDirty=false;}
+  /** Liga/desliga a zona (o servidor manda o círculo já pronto; a máquina de fases é do Room, ver shared/zone.js). */
+  setZone(z){this.zone=z||null;}
+  /** Círculo da zona no tick atual (null sem zona). Reusa um objeto só: isto roda por peça, todo tick. */
+  zoneNow(){const z=this.zone;if(!z)return null;const out=this._zc,span=z.t1-z.t0;
+    let u=span>0&&Number.isFinite(span)?(this.tick-z.t0)/span:1;u=u<0?0:u>1?1:u;
+    out.x=z.x0+(z.x1-z.x0)*u;out.y=z.y0+(z.y1-z.y0)*u;out.r=z.r0+(z.r1-z.r0)*u;return out;}
   massOf(slot){const ps=this.players.get(slot);if(!ps)return 0;let m=0;for(let i=0;i<ps.pieces.length;i++){const p=ps.pieces[i];if(!p.dead)m+=p.mass;}return m;}
   piecesOf(slot){const ps=this.players.get(slot);return ps?ps.pieces:[];}
 
@@ -215,8 +238,10 @@ export class World{
         if(ps.fireReq)R.applyFire(this,ps);}
       ps.splitReq=ps.ejectReq=ps.fireReq=false;ps.fireAim=false;}
     // ── 2. integração ──
+    const zc=this.zoneNow();
     for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner);
       integratePiece(pc,ps.tx,ps.ty,DT,W,H);if(this.decay)decayPiece(pc,DT);   // o gigante murcha se parar de comer (PLAYER.DECAY)
+      if(zc&&R.zoneBurn(this,pc,zc,DT))continue;   // fora da zona: queima e, no piso, MORRE (é o que fecha a partida)
       if(pc.shieldLv>0&&pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL&&tick>=pc.shieldEvolveAt){   // escudo evolui por peça: só quem tem escudo E não apanha sobe de nível
         pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;ev.push({type:"SHIELD_UP",slot:pc.owner,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
       let f=pc.flags&~(PIECE_FLAG.SHIELD|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK);
@@ -319,7 +344,7 @@ export class World{
 }
 
 /** Cria um mundo determinístico. `food`/`holes`/`stars` são contagens; `asteroids:false` desliga cinturões e errantes. */
-export function createWorld({seed=1,w=WORLD.w,h=WORLD.h,food=FOOD.COUNT,asteroids=true,holes=BLACKHOLE.COUNT,stars=STAR.COUNT,decay=true}={}){return new World(seed,w,h,{food,asteroids,holes,stars,decay});}
+export function createWorld({seed=1,w=WORLD.w,h=WORLD.h,food=FOOD.COUNT,asteroids=true,holes=BLACKHOLE.COUNT,stars=STAR.COUNT,decay=true,weapons=false}={}){return new World(seed,w,h,{food,asteroids,holes,stars,decay,weapons});}
 // `decay:false` existe para os testes de conservação de massa: o decaimento é uma regra de EQUILÍBRIO e mexeria
 // em toda asserção de "a massa fecha em 1e-6", que é sobre a TRANSFERÊNCIA ser sem perda. O teste do decaimento
 // e o de paridade da predição usam mundo com ele ligado.

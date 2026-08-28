@@ -137,6 +137,24 @@ test("predição: stepOwnPieces reproduz o servidor para um jogador isolado",()=
   const real=w.piecesOf(0);assert.equal(own.length,real.length);
   for(let i=0;i<own.length;i++){assert.ok(Math.abs(own[i].x-real[i].x)<1e-6&&Math.abs(own[i].y-real[i].y)<1e-6,`peça ${i} diverge`);}});
 
+// 8b. predição COM o W segurado: era a maior fonte de erro do jogo
+test("predição: com o W segurado a peça própria continua batendo com o servidor (o recuo entrou no stepOwnPieces)",()=>{
+  const w=createWorld({seed:12,food:0,asteroids:false,holes:0,stars:0});
+  w.addPlayer(0,{x:2000,y:4800,r:220});w.setTarget(0,9000,4800);w.requestSplit(0);w.step();
+  const ps=w.players.get(0);w.setEjectHold(0,true);
+  const own=w.piecesOf(0).map(p=>({...p})),st={tx:9000,ty:4800};
+  const ej={hold:true,req:false,cdUntil:ps.ejectCdUntil,holdAt:ps.ejectHoldAt};   // espelho do PlayerState (o cliente reancora pelo self.ejectCd)
+  let pior=0,piorR=0,n=0;
+  for(let t=0;t<400;t++){
+    stepOwnPieces(own,st,w.tick,undefined,undefined,undefined,null,ej);w.step();
+    for(const e of w.ejected)e.dead=true;   // a pelota é entidade do servidor: o cliente não a prevê nem a recolhe
+    const real=w.piecesOf(0);assert.equal(own.length,real.length,`contagem divergiu no tick ${t}`);
+    for(let i=0;i<own.length;i++){pior=Math.max(pior,Math.hypot(own[i].x-real[i].x,own[i].y-real[i].y));piorR=Math.max(piorR,Math.abs(own[i].r-real[i].r));}
+    if(own[0].r<ps.pieces[0].r)n++;}
+  assert.ok(pior<1e-6,`posição diverge ${pior.toFixed(3)} px (sem prever o eject dava ~106 px/s de erro)`);
+  assert.ok(piorR<1e-6,`raio diverge ${piorR.toExponential(2)}: a massa da pelota também tem que sair na predição`);
+  assert.ok(own[0].r<100,`o planeta esvaziou de verdade durante o teste (r final ${own[0].r.toFixed(0)})`);});
+
 // 9. desempenho: sala cheia
 test("desempenho: sala cheia (30×16 peças, mundo e população de produção, 120 ejetados) — média ≤ 1.5 ms/passo",t=>{
   const w=createWorld({seed:2024}),script=createRng(5);
@@ -242,10 +260,26 @@ test("míssil×míssil: interceptação (type 1 mira o míssil inimigo) e choque
   // mesmo dono não colide
   const w3=empty(42);w3.addPlayer(0,{x:1000,y:1000,r:40});w3.addMissile(1000,1500,MISSILE.SPEED,0,0,-1);w3.addMissile(1600,1500,-MISSILE.SPEED,0,0,-1);
   for(let t=0;t<40;t++){w3.step();assert.ok(!w3.events.some(e=>e.type==="CLASH"));}
-  // alvo do interceptador some → segue reto
+  // alvo do interceptador some → vai atrás de QUEM ATIROU (antes virava tiro perdido voando reto até expirar)
   const w4=empty(43);w4.addPlayer(0,{x:1000,y:1000,r:40,missiles:1});w4.addPlayer(1,{x:2000,y:1000,r:40,missiles:1});w4.setTarget(0,1000,1000);w4.setTarget(1,2000,1000);
-  arma(w4);w4.requestFire(0);w4.step();w4.requestFire(1);w4.step();const i4=w4.missiles[1];assert.equal(i4.type,1);w4.missiles[0].dead=true;w4.step();w4.step();
-  assert.equal(i4.type,0);assert.equal(i4.targetId,-1);assert.ok(!i4.dead);assert.equal(w4.missiles.length,1);});
+  arma(w4);w4.requestFire(0);w4.step();w4.requestFire(1);w4.step();const i4=w4.missiles[1];
+  assert.equal(i4.type,1);assert.equal(i4.srcSlot,0,"guardou o dono do míssil que ia interceptar");
+  w4.missiles[0].dead=true;w4.step();w4.step();
+  assert.equal(i4.type,0);assert.equal(i4.targetId,0,"órfão re-mira no atacante");assert.ok(!i4.dead);assert.equal(w4.missiles.length,1);});
+
+// 14b. dois tiros contra o MESMO míssil entrante
+test("dois tiros no mesmo entrante: o 1º intercepta e o 2º vai no ATACANTE (nenhum vira tiro perdido)",()=>{
+  const w=empty(44);w.addPlayer(0,{x:1000,y:1000,r:40,missiles:2});w.addPlayer(1,{x:1900,y:1000,r:40,missiles:1});   // 900 px: dentro de INTERCEPT_DIST
+  w.setTarget(0,1000,1000);w.setTarget(1,1900,1000);arma(w);
+  w.requestFire(1);w.step();const inimigo=w.missiles[0];
+  assert.equal(inimigo.owner,1);assert.equal(inimigo.targetId,0,"o inimigo mira em mim");
+  w.requestFire(0);w.step();const m1=w.missiles[1];
+  assert.equal(m1.type,1);assert.equal(m1.targetId,inimigo.id,"1º tiro: intercepta de frente");
+  w.requestFire(0);w.step();const m2=w.missiles[2];
+  assert.equal(m2.type,0);assert.equal(m2.targetId,1,"2º tiro: o entrante já tem interceptador, então vai no atacante");
+  // e o predicado cru continua enxergando o entrante (o bot e o alerta não usam a flag)
+  assert.equal(incomingMissile(w,0,1000,1000,MISSILE.INTERCEPT_DIST),inimigo,"sem `livres`, o entrante continua contando");
+  assert.equal(incomingMissile(w,0,1000,1000,MISSILE.INTERCEPT_DIST,true),null,"com `livres`, ele já está coberto");});
 
 // 13. míssil × asteroide
 test("míssil×asteroide: desvia o errante (DEFLECT) e tira o de cinturão da órbita (vira errante, cinturão repõe)",()=>{

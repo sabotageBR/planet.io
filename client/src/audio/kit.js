@@ -23,9 +23,6 @@ export const KIT={
   merge:     [{t:"ruido",f0:900,f1:260,dur:.1,gain:.07,q:1.5},                              // as duas partes encaixando
               {t:"tom",type:"sine",f0:300,f1:520,dur:.18,gain:.24},
               {t:"tom",type:"sine",f0:150,f1:260,dur:.28,gain:.13,at:.02}],
-  mergeReady:[{t:"tom",type:"square",f0:900,dur:.03,gain:.1},                               // powerup de fusão: "click-clack" de destravar
-              {t:"tom",type:"square",f0:1200,dur:.03,gain:.1,at:.07},
-              {t:"tom",type:"triangle",f0:520,f1:780,dur:.16,gain:.13,at:.1}],
   // ── mover-se ────────────────────────────────────────────────────────────
   split:     [{t:"tom",type:"square",f0:190,f1:120,dur:.05,gain:.13},                       // "chunk" mecânico do corte
               {t:"ruido",f0:600,f1:2400,dur:.15,gain:.19,q:3},                              // whoosh do arremesso
@@ -130,19 +127,39 @@ export const KIT={
               {t:"tom",type:"triangle",f0:659,dur:.22,gain:.15,at:.2},
               {t:"tom",type:"triangle",f0:784,dur:.5,gain:.17,at:.4},
               {t:"tom",type:"sine",f0:1568,dur:.6,gain:.06,at:.4}],
+
+  // ── modos, zona, chat e voz ─────────────────────────────────────────────
+  matchStart:[{t:"tom",type:"triangle",f0:392,dur:.16,gain:.2},                             // acorde ascendente: a espera acabou
+              {t:"tom",type:"triangle",f0:523,dur:.18,gain:.2,at:.12},
+              {t:"tom",type:"sine",f0:784,f1:880,dur:.5,gain:.22,at:.24},
+              {t:"ruido",f0:2600,f1:600,dur:.3,gain:.06,q:1.2,at:.24}],
+  zoneShrink:[{t:"ruido",f0:240,f1:90,dur:.9,gain:.16,q:.7},                                // o mundo apertando: grave que desce e não resolve
+              {t:"tom",type:"sawtooth",f0:98,f1:73,dur:1.1,gain:.14},
+              {t:"tom",type:"sine",f0:196,f1:146,dur:1.2,gain:.08,at:.06},
+              {t:"ruido",f0:1800,f1:400,dur:.22,gain:.07,q:2,at:.02}],                      // o "chiado" do anel fechando
+  zoneBurn:  [{t:"ruido",f0:900,f1:2600,dur:.22,gain:.09,q:.9},                             // queimando fora: sibilo agudo, curto e repetido
+              {t:"tom",type:"sawtooth",f0:220,f1:330,dur:.14,gain:.06}],
+  chatIn:    [{t:"tom",type:"sine",f0:1320,dur:.045,gain:.07},                              // discreto de propósito: o chat não pode competir com o jogo
+              {t:"tom",type:"sine",f0:1760,dur:.06,gain:.05,at:.04}],
+  micOn:     [{t:"tom",type:"sine",f0:660,f1:990,dur:.09,gain:.11}],                        // o microfone abriu (confirmação tátil do Ctrl)
+  micOff:    [{t:"tom",type:"sine",f0:880,f1:520,dur:.1,gain:.09}],
+  weapon:    [{t:"ruido",f0:600,f1:2400,dur:.1,gain:.12,q:1.4},                             // arma nova no cinto: metálico, sobe
+              {t:"tom",type:"square",f0:330,f1:660,dur:.14,gain:.12},
+              {t:"tom",type:"triangle",f0:990,dur:.2,gain:.1,at:.08}],
 };
 
 /** Intervalo mínimo por tipo (ms): o que acontece muito não pode empilhar e virar metralhadora. */
 export const GAP={food:45,chip:70,bounce:60,starHit:80,shieldHit:70,deflect:70,ammo:120,countdown:200,smash:150,
-  eject:55,lock:70,hurt:180,uiHover:60,uiClick:40,toast:200};
+  eject:55,lock:70,hurt:180,uiHover:60,uiClick:40,toast:200,zoneBurn:400,chatIn:120,weapon:150};
 
 /**
  * Prioridade por som (padrão 1). No teto de vozes o som novo ROUBA a voz de menor prioridade em vez de ser
  * descartado — antes o `play()` simplesmente desistia, então justo o que mais importa (o alerta de míssil, a
  * própria morte) sumia na hora em que a tela estava mais cheia, que é quando ele mais importa.
  */
-export const PRIO={uiHover:0,food:0,bounce:0,chip:0,starHit:0,
-  death:5,deadScreen:5,hurt:4,boom:4,supernova:4,bigCrunch:5,podium:4,starBurst:3,shieldBreak:3,countdown:3,ready:2,lock:2,cancel:2,error:2};
+export const PRIO={uiHover:0,food:0,bounce:0,chip:0,starHit:0,chatIn:0,zoneBurn:1,
+  death:5,deadScreen:5,hurt:4,boom:4,supernova:4,bigCrunch:5,podium:4,starBurst:3,shieldBreak:3,countdown:3,ready:2,lock:2,cancel:2,error:2,
+  zoneShrink:4,matchStart:5,weapon:3,micOn:2,micOff:2};   // o fechamento da zona é aviso de morte: não pode ser roubado pela poeira
 
 /** Escala pentatônica maior: a sequência de grãos sobe por ela e reseta na pausa (a recompensa de comer em fila). */
 export const ESCADA=[1,1.125,1.25,1.5,1.6875,2,2.25,2.5];

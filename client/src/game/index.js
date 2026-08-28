@@ -21,10 +21,11 @@ import {createAudio} from "../audio/index.js";
 import {api} from "../api/client.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,MISSILE,PLAYER,STAR,aimScore,unpackDir} from "@planet/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,MISSILE,PLAYER,STAR,MODE,aimScore,unpackDir} from "@planet/shared";
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
+import {createMic} from "../audio/mic.js";
 import {createSnapshotBuffer} from "./state/SnapshotBuffer.js";
 import {createInterpolator} from "./state/Interpolator.js";
 import {createPredictor} from "./state/Predictor.js";
@@ -39,12 +40,14 @@ import {createMinimap} from "./hud/Minimap.js";
 import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./bench.js";
 import {Q,qflag,bodyMode} from "./util.js";
 
-const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{speed:0,magnet:0,shield:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null});
+const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
+  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[]});
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
   sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
 const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SPLIT]:"split",[EVENT.BH_SUCK]:"suck",[EVENT.CHIP]:"chip",[EVENT.BOUNCE]:"bounce",[EVENT.BOOM]:"boom",[EVENT.EXIT]:"exit",[EVENT.SHOOT]:"shoot",
   [EVENT.DEATH]:"death",[EVENT.SHIELD_BREAK]:"shieldBreak",[EVENT.SHIELD_HIT]:"shieldHit",[EVENT.SHIELD_UP]:"shieldUp",[EVENT.CLASH]:"clash",[EVENT.DEFLECT]:"deflect",
-  [EVENT.STAR_BURST]:"starBurst",[EVENT.SUPERNOVA]:"supernova",[EVENT.STAR_HIT]:"starHit",[EVENT.STAR_SPLIT]:"starSplit",[EVENT.SMASH]:"smash"};
+  [EVENT.STAR_BURST]:"starBurst",[EVENT.SUPERNOVA]:"supernova",[EVENT.STAR_HIT]:"starHit",[EVENT.STAR_SPLIT]:"starSplit",[EVENT.SMASH]:"smash",
+  [EVENT.ZONE_SHRINK]:"zoneShrink",[EVENT.ZONE_BURN]:"zoneBurn"};
 const AIM_LEN=1100;   // comprimento máximo da reta de mira (px de mundo)
 const PREWARM_S=12;   // com quantos segundos de antecedência o céu seguinte é assado (fora da virada, para ela não custar nada)
 const AIM_R2=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE;
@@ -72,6 +75,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const buffer=createSnapshotBuffer();
   let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,slowSince=0,econAt=0,statsOv=null;
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
+  // ── modo, equipe, zona, chat e voz ──
+  let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0;
+  let zone=null,zoneShown={x:0,y:0,r:0},lastShrink=0,lastHurt=false;   // `zone` = o par de círculos do fio; `zoneShown` é o interpolado do frame
+  /** @type {{slot:number,name:string,team:number|null,text:string,at:number}[]} */let chatLog=[];
+  const mic=createMic({audio,send:d=>conn&&conn.send(d),onState:st=>{hudStore.update(h=>({...h,talk:st}));}});
+  const talking=new Map();   // slot → performance.now() em que o clipe termina (o ícone de "falando" no planeta)
   const input=createInputSender({send:d=>conn&&conn.send(d),getTick:()=>predictor.localTick,getRtt:()=>conn?conn.rttAvg:0});
   const predictor=createPredictor({buffer,input});
   const interp=createInterpolator(buffer,{isOwn:e=>predictor.isOwn(e),onVanish});
@@ -89,6 +98,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const act=(a,ph)=>{
     if(a==="eject"){if(ph==="down"){if(canAct()){ejHold=curPrefs.holdEject!==false;ejN=0;ejT=performance.now();somEject();}}
       else ejHold=false;}
+    // PUSH-TO-TALK: segurar grava, soltar manda. Não passa pelo `actions` porque não é ação de jogo —
+    // não vira flag de INPUT nem é predita; é uma mensagem própria (MSG.VOICE_UP).
+    if(a==="talk"){if(ph==="down"){if(joined&&!dead&&curPrefs.voice!==false)mic.start();}else mic.stop();return;}
     actions.act(a,ph);};
   /** Botão do ponteiro: sem munição (ou na carência) o esquerdo cospe em vez de atirar — e isso também soa. */
   const button=(btn,ph,type)=>{
@@ -102,7 +114,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // conhece quem está na janela da sessão, e o radar tem que mostrar o mapa inteiro.
     const me=view.mySlot,enemies=[];
     for(const r of view.lbRows()){if(r.slot===me)continue;const pl=view.playerOf(r.slot);
-      enemies.push({x:r.x,y:r.y,mass:r.mass,isBot:pl?pl.isBot:false});}
+      enemies.push({x:r.x,y:r.y,mass:r.mass,isBot:pl?pl.isBot:false,ally:pl?pl.ally:false});}
     const mine=[];for(const p of view.pieces)if(p.isMe)mine.push({x:p.rx,y:p.ry,r:p.rr});
     const ms=[];for(const m of view.missiles)ms.push({x:m.rx,y:m.ry,mira:m.target===me});   // o teleguiado que vem em mim pisca no radar
     return{enemies,mine,missiles:ms,asteroids:view.asteroids.map(a=>({x:a.rx,y:a.ry})),holes:view.holes.map(h=>({x:h.rx,y:h.ry,ri:h.influenceR})),
@@ -133,18 +145,30 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── rede ──
   function viewSize(){return{w:Math.round(renderer?renderer.W:container.clientWidth||innerWidth),h:Math.round(renderer?renderer.H:container.clientHeight||innerHeight)};}
   function onOpenSend(c){if(c.session){buffer.clear();predictor.reset();c.sendJson({t:"resume",sessionId:c.session.sessionId,resumeToken:c.session.resumeToken,view:viewSize()});input.resend();}
-    else c.sendJson({t:"join",token:joinOpts.token||null,room:joinOpts.room||null,view:viewSize(),fallbackNick:joinOpts.fallbackNick||"Viajante",skinId:joinOpts.skinId|0});}
+    else c.sendJson({t:"join",token:joinOpts.token||null,room:joinOpts.room||null,view:viewSize(),fallbackNick:joinOpts.fallbackNick||"Viajante",skinId:joinOpts.skinId|0,
+      mode:joinOpts.mode|0,teamSize:joinOpts.teamSize|0,party:joinOpts.party||null});}
   function onJson(m){
     if(m.t==="room"){view.mySlot=m.slot;predictor.setSlot(m.slot);view.room=m.code;view.rebuildLb();warmSkins();
-      round=m.round||null;roundOver=false;lastCount=-1;warmedSky=null;lastAmmo=0;lastMagnet=false;audio.resume();audio.play("join",{mine:true});}
+      round=m.round||null;roundOver=false;lastCount=-1;warmedSky=null;lastAmmo=0;lastMagnet=false;
+      modeId=m.mode|0;teamSize=m.teamSize||1;myTeam=m.team==null?-1:m.team;roomCap=m.cap||0;
+      phase=(m.round&&m.round.phase)||"live";startsAt=(m.round&&m.round.startsAt)||0;
+      view.setMyTeam(myTeam);chatLog=[];talking.clear();
+      audio.resume();audio.play("join",{mine:true});}
+    else if(m.t==="phase"){   // o aquecimento virou partida: relógio, contagem e céu saem todos do bloco `round` novo
+      phase=m.phase;round=m.round||round;startsAt=(m.round&&m.round.startsAt)||0;lastCount=-1;
+      if(phase==="live"){audio.play("matchStart",{mine:true});chatSys("A partida começou!");}}
+    else if(m.t==="chat"){pushChat(m);}
     else if(m.t==="roundEnd"){roundOver=true;input.setHold(false);endOfWorld();pushHud(performance.now());if(onRoundEnd)onRoundEnd({...m,mySlot:view.mySlot});}
-    else if(m.t==="dead"){dead=true;input.setHold(false);pushHud(performance.now());if(onDead)onDead({by:m.by,byHole:!!m.byHole,score:m.score,maxMass:m.maxMass,kills:m.kills,durationS:m.durationS});}
+    else if(m.t==="dead"){dead=true;input.setHold(false);mic.cancel();pushHud(performance.now());
+      if(onDead)onDead({by:m.by,byHole:!!m.byHole,byZone:!!m.byZone,score:m.score,maxMass:m.maxMass,kills:m.kills,durationS:m.durationS,placement:m.placement||0,players:m.players||0});}
     else if(m.t==="spectate")specSlot=m.slot>=0?m.slot:-1;   // morto: de quem é a cena que continua rodando atrás da tela de KABOOM
     else if(m.t==="rewards"){if(onRewards)onRewards(m);}}
   function onBinary(m){const now=performance.now();
     switch(m.type){
       case MSG.SNAPSHOT:if(m.self.flags&SELF_FLAG.RESYNC)buffer.clear();buffer.apply(m,now);predictor.onSnapshot(m,conn.rttAvg);view.self=m.self;selfTick=m.tick;if(m.self.flags&SELF_FLAG.DEAD)dead=true;break;
       case MSG.PLAYERS:view.setPlayers(m.players);warmSkins();break;
+      case MSG.ZONE:zone=m.zone;predictor.setZone(zone);break;
+      case MSG.VOICE:onVoice(m);break;
       case MSG.LEADERBOARD:view.setLeaderboard(m.rows);break;
       case MSG.EVENT:{const kind=FX_OF[m.kind];if(!kind||!renderer)break;const f={x:m.x,y:m.y,r:m.r||10};
         if(DIR_EVENTS.has(m.kind)){const d=unpackDir(m.extra);f.nx=d.nx;f.ny=d.ny;f.power=Math.min(1,d.vn/480);
@@ -161,6 +185,34 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         const som=()=>audio.play(kind,{x:f.x,y:f.y,r:f.r,mine,cam,pitch});
         if(delay)setTimeout(som,delay);else som();   // o som acompanha o efeito (terceiros esperam o atraso de interpolação)
         break;}}}
+  // ── chat ──
+  function pushChat(m){
+    chatLog.push({slot:m.slot,name:m.name,team:m.team==null?null:m.team,text:m.text,at:m.at||Date.now(),mine:m.slot===view.mySlot});
+    if(chatLog.length>40)chatLog.shift();
+    hudStore.update(h=>({...h,chat:chatLog.slice()}));
+    if(m.slot!==view.mySlot)audio.play("chatIn",{mine:true,bus:"ui"});}
+  const chatSys=text=>pushChat({slot:-1,name:null,team:null,text,at:Date.now()});
+  // ── voz ──
+  /**
+   * Clipe de outro jogador: decodifica os bytes (µ-law → AudioBuffer, sem depender de codec do navegador) e
+   * toca no barramento próprio, com volume/estéreo pela distância. Companheiro chega com `x,y` do servidor;
+   * no Livre a distância é a de verdade, e o motor usa o MESMO cálculo dos efeitos.
+   */
+  function onVoice(m){
+    const eu=modeId!==MODE.FREE&&myTeam>=0&&teamMate(m.slot);
+    audio.playVoice(m.data,m.codec,{x:m.x,y:m.y,cam,mine:eu});
+    talking.set(m.slot,performance.now()+m.durMs);
+    const pl=view.players.get(m.slot);
+    if(pl)chatSys(`🎤 ${pl.name}`);}
+  const teamMate=slot=>{const a=view.players.get(slot);return !!(a&&myTeam>=0&&a.team===myTeam);};
+  // ── zona ──
+  /** Círculo da zona no tick de render (o servidor manda origem+destino; a interpolação é local, como em tudo). */
+  function zoneNow(tk){
+    if(!zone)return null;
+    const span=zone.t1-zone.t0;
+    let u=span>0&&Number.isFinite(span)?(tk-zone.t0)/span:1;u=u<0?0:u>1?1:u;
+    zoneShown.x=zone.x0+(zone.x1-zone.x0)*u;zoneShown.y=zone.y0+(zone.y1-zone.y0)*u;zoneShown.r=zone.r0+(zone.r1-zone.r0)*u;
+    return zoneShown;}
   /** Buraco negro mais próximo de (x,y) — para onde o planeta sugado se estica. */
   function nearestHole(x,y){let best=null,bd=Infinity;
     for(const h of view.holes){const dx=h.rx-x,dy=h.ry-y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;best=h;}}
@@ -173,10 +225,15 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(onConnection)onConnection(ev);}
   function connectWith(makeSocket){conn=createConnection({makeSocket,onJson,onBinary,onState,onOpenSend});conn.open();}
   const game={hudStore,
-    join({token,fallbackNick,room,local:useLocal,skinId}={}){
+    /** Manda uma linha de chat (a tela React chama isto). O escopo — sala ou equipe — é do servidor. */
+    sendChat(text){const t=String(text||"").trim();if(!t||!conn||!joined)return false;conn.sendJson({t:"chat",text:t.slice(0,240)});return true;},
+    /** Push-to-talk pelo botão de toque (o espelho do Ctrl para o mobile). */
+    talk(on){if(!joined||dead)return;if(on)mic.start();else mic.stop();},
+    join({token,fallbackNick,room,local:useLocal,skinId,mode,teamSize:ts,party}={}){
       game.leave(true);joined=true;dead=false;specSlot=-1;selfTick=0;
       const user=(appStore.get().session||{}).user||{};
-      joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0)};
+      joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
+        mode:mode|0,teamSize:ts||1,party:party||null};
       buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();hudStore.set({...initialHud(),room:room||null});minimap.show(curPrefs.showMinimap!==false);
       if(pointer&&renderer)pointer.center(renderer.W,renderer.H);
       const isLocal=useLocal||qflag("local")||isBench()||api.server===false;
@@ -187,7 +244,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(room)go(shardOf(room));
       else fetch("/api/config",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(c=>go(c&&c.shard!=null?c.shard:0)).catch(()=>go(0));},
     leave(silent){if(conn){const c=conn;conn=null;c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;specSlot=-1;audio.stop();round=null;roundOver=false;roundClock=null;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
+      const was=joined;joined=false;dead=false;specSlot=-1;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];talking.clear();phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};applyQuality();audio.setPrefs(curPrefs);minimap.show(joined&&curPrefs.showMinimap!==false);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -296,7 +353,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       else{if(mk>marco){marco=mk;audio.play("grow",{mine:true,pitch:pitchOf(sf.mass)});}
         else if(mk<marco)marco=mk;
         if(sf.mass<lastMass*.88&&!dead)audio.play("hurt",{mine:true,pitch:pitchOf(sf.mass)});}}   // levei um tombo de massa (queimadura, míssil, lasca)
-    if(dead&&!lastDead){audio.stopLoop("alert");audio.stopLoop("magnet");threat=null;}
+    const fora=!dead&&!!(sf.flags&SELF_FLAG.ZONE_HURT);   // o servidor é quem diz: o círculo do cliente é interpolado e ficaria discordando na borda
+    if(fora&&!lastHurt)audio.startLoop("alert",{k:.55});
+    else if(!fora&&lastHurt&&!threat)audio.stopLoop("alert");
+    lastHurt=fora;
+    if(dead&&!lastDead){audio.stopLoop("alert");audio.stopLoop("magnet");threat=null;lastHurt=false;}
     else if(!dead&&lastDead)audio.play("respawn",{mine:true});
     lastDead=dead;lastAmmo=sf.missiles;lastMagnet=mag;lastFireCd=sf.fireCd;lastMass=sf.mass;
     ameaca(sf);
@@ -311,7 +372,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const cd=(v,max)=>s?Math.min(1,Math.max(0,(v-el)/max)):0,sec=v=>s?Math.max(0,(v-el)/TICK_HZ):0;
     hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
       powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
-      lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,clock:roundClock});}
+      lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,clock:roundClock,
+      mode:modeId,teamSize,team:myTeam,phase,cap:roomCap,
+      startsInMs:phase==="warmup"&&startsAt?Math.max(0,Math.round((startsAt-tk)*1000/TICK_HZ)):0,
+      alive:s?s.alive:0,weapon:s?s.weapon|0:0,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
+      talk:mic.state,chat:chatLog});}
   function statsText(){const c=renderer.counts(),st=predictor.stats;
     const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
     return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · estrelas ${c.stars} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}
@@ -339,10 +404,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const lk=aim&&aim.lock?aim.lock.id:-1;   // trocou de bolinha: um "tk" seco e o zumbido da carga sobe — é o que faz a mira sentir viva
     if(lk!==lastLock){if(lk>=0&&aiming)audio.play("lock",{mine:true});lastLock=lk;if(aiming)audio.setLoop("aimCharge",{k:lk>=0?1:0});}
     const t1=performance.now();
-    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
+    const zc=zoneNow(interp.renderTick);
+    const zoneDraw=zc?{x:zc.x,y:zc.y,r:zc.r,tx:zone.x1,ty:zone.y1,tr:zone.r1}:null;
+    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,zone:zoneDraw,talking,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
       showNames:curPrefs.showNames!==false,showTrails:!curPrefs.reduceMotion&&!econ});
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU
-    if(joined){minimap.update(now);if(now-lastHud>=125){lastHud=now;pushHud(now);}
+    if(joined){minimap.update(now,zoneDraw);if(now-lastHud>=125){lastHud=now;pushHud(now);}
       const sf=view.self;if(sf)somDoSelf(sf,now);
       // cuspir não tem evento no fio (seriam ~9 por segundo por jogador, só para um "pft"): o som sai do MEU
       // gesto, na mesma cadência do servidor, e a altura sobe com a rampa — dá para OUVIR a força aumentando.

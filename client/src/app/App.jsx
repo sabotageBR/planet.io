@@ -8,6 +8,8 @@ import GameHost from "../ui/GameHost.jsx";
 import Hud from "../ui/Hud.jsx";
 import Entry from "../ui/Entry.jsx";
 import Lobby from "../ui/Lobby.jsx";
+import Modes from "../ui/Modes.jsx";
+import Party from "../ui/Party.jsx";
 import Rank from "../ui/Rank.jsx";
 import Profile from "../ui/Profile.jsx";
 import Shop from "../ui/Shop.jsx";
@@ -46,6 +48,8 @@ export default function App() {
     <Hud />
     <Entry on={screen === "entry"} />
     <Lobby on={screen === "lobby"} />
+      <Modes on={screen === "modes"} />
+      <Party on={screen === "party"} />
     <Rank on={screen === "rank"} />
     <Profile on={screen === "profile"} />
     <Shop on={screen === "shop"} />

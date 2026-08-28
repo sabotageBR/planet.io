@@ -9,16 +9,28 @@
 // lead = RTT/2 + 1 tick; ressincroniza quando deriva > 2 ticks OU quando o lead muda (1º PONG chega ~1 s após o join).
 // Os buracos negros conhecidos entram na predição (mesma gravidade do servidor): sem isso a peça própria fica
 // borrachuda dentro da influência, que agora é grande.
-import {KIND,PIECE_FLAG,SELF_FLAG,NET,DT,TICK_HZ,BLACKHOLE} from "@planet/shared";
+// A CUSPARADA também entra (`ej`, espelho do PlayerState do servidor): cada uma tira a massa da pelota e dá 12,35 px
+// de recuo, 8,57×/s = 106 px/s. Sem prever isso a correção de cada snapshot sacudia a tela inteira (a câmera segue
+// as peças próprias) — era o "travamento" de segurar o W. A FASE vem do `self.ejectCd`, que já vinha no fio: o
+// servidor grava ejectCdUntil = tick + COOLDOWN a CADA cusparada, então dá para saber quando foi a última e,
+// com HOLD_TICKS, quando será a próxima. Reancorado a cada snapshot, não acumula erro.
+import {KIND,PIECE_FLAG,SELF_FLAG,INPUT_FLAG,NET,DT,TICK_HZ,BLACKHOLE,EJECT} from "@planet/shared";
 import {createBody,stepOwnPieces} from "@planet/shared/physics/index.js";
 
 const TAU=.1,HIDE_TICKS=30;
 export function createPredictor({buffer,input}){
   const pieces=[],hidden=new Map(),old=new Map(),seen=new Set(),holes=[];   // hidden: id → tick de expiração
-  let slot=-1,localTick=0,acc=0,synced=false,tx=0,ty=0,dead=false,corrSum=0,corrN=0,lastLead=-1;
+  const ej={hold:false,req:false,cdUntil:0,holdAt:0};   // agenda da cusparada (ver cabeçalho)
+  let slot=-1,localTick=0,acc=0,synced=false,tx=0,ty=0,dead=false,corrSum=0,corrN=0,lastLead=-1,zone=null;
   const p={pieces,slot:-1,localTick:0,alpha:0,stats:{corrAvg:0,replaySteps:0,lastCorr:0},
     setSlot(s){slot=p.slot=s;},
     setTarget(x,y){tx=x;ty=y;},
+    /**
+     * Círculo da zona (Sobrevivência) no tick local. Precisa entrar na predição pela mesma razão do
+     * decaimento: ela muda o RAIO da peça, e sem prever a correção do servidor chegaria 20×/s numa peça
+     * que está encolhendo — ela pulsaria de tamanho justo na borda, que é onde o jogador mais olha.
+     */
+    setZone(z){zone=z||null;},
     get dead(){return dead;},
     /** Casa uma entidade do buffer com as peças próprias. */
     isOwn(e){return e.kind===KIND.PIECE&&(e.owner===slot||(e.flags&PIECE_FLAG.ME)!==0);},
@@ -30,7 +42,11 @@ export function createPredictor({buffer,input}){
     /** Avança o relógio local a 60 Hz (chamado por frame); guarda px/py para a interpolação do render. */
     update(dt){if(!synced)return;acc+=dt;if(acc>.25)acc=.25;
       const hs=acc>=DT?p.holes():null;
-      while(acc>=DT){acc-=DT;localTick++;for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}stepOwnPieces(pieces,{tx,ty},localTick,DT,undefined,undefined,hs);}
+      // ao vivo, o hold LOCAL é o que o servidor vai ver. O toque avulso (EJECT sem hold) fica só para o replay:
+      // ele custa um único recuo de 12 px, corrigido no snapshot seguinte — nada perto dos 106 px/s do hold.
+      if(input)ej.hold=input.hold;
+      while(acc>=DT){acc-=DT;localTick++;for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}
+        stepOwnPieces(pieces,{tx,ty},localTick,DT,undefined,undefined,hs,ej,zone);}
       p.alpha=acc/DT;const k=Math.exp(-dt/TAU);for(const pc of pieces){pc.vox*=k;pc.voy*=k;}},
     /** Reconcilia com o snapshot (após buffer.apply). */
     onSnapshot(snap,rttMs){
@@ -51,10 +67,14 @@ export function createPredictor({buffer,input}){
       pieces.length=k;
       for(const [id,exp] of hidden){if(!seen.has(id)||localTick>exp)hidden.delete(id);}
       // replay dos inputs do histórico do tick do servidor até o local
+      const cd=self.ejectCd|0;ej.cdUntil=tick+cd;                                   // reancora a agenda da cusparada no estado autoritativo
+      if(cd>0)ej.holdAt=tick+cd-EJECT.COOLDOWN_TICKS+EJECT.HOLD_TICKS;               // cd>0 ⇒ a última cusparada foi em tick+cd−COOLDOWN
       const h=input?input.history:[];let hi=0,cur=null;while(hi<h.length&&h[hi].tick<=tick){cur=h[hi];hi++;}
       let steps=0;const st={tx:cur?cur.tx:tx,ty:cur?cur.ty:ty},hs=p.holes();
-      for(let t=tick+1;t<=localTick;t++){while(hi<h.length&&h[hi].tick<=t){cur=h[hi];hi++;st.tx=cur.tx;st.ty=cur.ty;}
-        for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}stepOwnPieces(pieces,st,t,DT,undefined,undefined,hs);steps++;}   // px = posição do passo anterior (mesma fase do render)
+      if(cur)ej.hold=(cur.flags&INPUT_FLAG.EJECT_HOLD)!==0;ej.req=false;
+      for(let t=tick+1;t<=localTick;t++){while(hi<h.length&&h[hi].tick<=t){cur=h[hi];hi++;st.tx=cur.tx;st.ty=cur.ty;
+          ej.hold=(cur.flags&INPUT_FLAG.EJECT_HOLD)!==0;if(cur.flags&INPUT_FLAG.EJECT)ej.req=true;}
+        for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}stepOwnPieces(pieces,st,t,DT,undefined,undefined,hs,ej,zone);steps++;}   // px = posição do passo anterior (mesma fase do render)
       if(!steps)for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}
       p.stats.replaySteps=steps;
       // fundidas localmente durante o replay (sumiram do array): ocultar até o servidor remover
@@ -68,7 +88,8 @@ export function createPredictor({buffer,input}){
     isHidden(id){return hidden.has(id);},
     /** Peças vivas e visíveis (render: px+(x−px)·alpha+vox — ver WorldView.build). */
     forEach(fn){for(const pc of pieces)if(!pc.dead&&!hidden.has(pc.id))fn(pc);},
-    reset(){pieces.length=0;holes.length=0;hidden.clear();synced=false;acc=0;dead=false;corrSum=corrN=0;lastLead=-1;p.alpha=0;},
+    reset(){pieces.length=0;holes.length=0;hidden.clear();synced=false;acc=0;dead=false;corrSum=corrN=0;lastLead=-1;zone=null;p.alpha=0;
+      ej.hold=ej.req=false;ej.cdUntil=ej.holdAt=0;},
     resetStats(){corrSum=corrN=0;p.stats.corrAvg=p.stats.lastCorr=0;},
   };
   return p;}

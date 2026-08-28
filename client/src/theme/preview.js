@@ -47,7 +47,7 @@ const LABELS={
   confirm:"Confirmar",cancel:"Cancelar",
   reconnTitle:"CONEXÃO PERDIDA",reconnSub:"Reconectando… tentativa {n}/5",
   split:"DIVIDIR",eject:"EJETAR",fire:"MÍSSIL",exit:"Sair",keySplit:"ESPAÇO",keyEject:"W",keyFire:"F",
-  ammo:"mísseis",powerups:{speed:"Velocidade",magnet:"Ímã",shield:"Escudo"},
+  ammo:"mísseis",powerups:{magnet:"Ímã",shield:"Escudo"},
   room:"SALA",ping:"ms",fps:"fps",top5:"TOP 5 HOJE",activeRooms:"SALAS ATIVAS",
 };
 const LB=Object.assign({},LABELS,TH.labels||{});
@@ -260,7 +260,7 @@ $("#lb-rows").innerHTML=LBROWS.map(r=>`<div class="lb-row ${r.me?"mine":""} ${r.
   <span class="lb-pos">${r.rank}</span><span class="lb-name">${r.name}${r.isBot?` <i class="bot">${LB.botTag}</i>`:""}${r.registered?` <i class="reg">${LB.regTag}</i>`:""}</span><b class="lb-val">${fmt(r.mass)}</b></div>`).join("");
 $("#v-mass").textContent=fmt(2704);$("#v-score").textContent=fmt(1832);$("#v-name").textContent=ME.nick;$("#v-coins").textContent=fmt(ME.coins);
 $("#v-ammo").textContent=2;$("#t-ammo").textContent=2;
-$("#hud-pw").innerHTML=[["speed",5],["shield",7]].map(([k,s])=>`<span class="pw pw-${k}"><i>${{speed:"⚡",magnet:"🧲",shield:"🛡️"}[k]}</i>${LB.powerups[k]} <b>${s}s</b></span>`).join("");
+$("#hud-pw").innerHTML=[["magnet",5],["shield",7]].map(([k,s])=>`<span class="pw pw-${k}"><i>${{magnet:"🧲",shield:"🛡️"}[k]}</i>${LB.powerups[k]} <b>${s}s</b></span>`).join("");
 $("#cd-split").style.setProperty("--p","1");$("#cd-eject").style.setProperty("--p",".4");
 
 // ── tela pedida ───────────────────────────────────────────────────────────────
@@ -332,7 +332,7 @@ function drawRadar(c,scene){const R0=TH.hud.radar,D=R0.size[mode]||R0.size.deskt
   if(!R0.label.desktopOnly||mode==="desktop"){c.font=R0.label.font;c.fillStyle=R0.label.color;c.textAlign="center";c.textBaseline="middle";c.fillText(R0.label.text,cx,cy+R+R0.label.dy);}}
 
 function scene(){const rand=mulberry(7),rnd=(a,b)=>a+rand()*(b-a),sk=i=>SKINS[i%SKINS.length];
-  const me={x:1500,y:1500,r:52,skin:mySkin,isMe:true,name:ME.nick,powerups:["speed","shield"],trail:Array.from({length:14},(_,i)=>({x:1500-i*22-Math.sin(i*.5)*8,y:1500+i*14}))};
+  const me={x:1500,y:1500,r:52,skin:mySkin,isMe:true,name:ME.nick,powerups:["magnet","shield"],trail:Array.from({length:14},(_,i)=>({x:1500-i*22-Math.sin(i*.5)*8,y:1500+i*14}))};
   const bots=[[1,-330,-90,44,"Vortexia",true],[6,300,190,38,"Kaique",false,true],[10,-140,270,30,"Drakonis",true],[13,520,-260,26,"luana_x",false,true],[3,-520,220,20,"Cosmara",true],[22,140,-360,58,"Stellara",true],[7,-600,-300,16,"nina.s",false]]
     .map(([s,dx,dy,r,name,isBot,reg])=>({x:1500+dx,y:1500+dy,r,skin:sk(s),isBot,name,registered:!!reg,merge:isBot?0:.6,trail:Array.from({length:8},(_,i)=>({x:1500+dx+i*10,y:1500+dy-i*6}))}));
   const food=Array.from({length:120},()=>{const roll=rand();const type=roll<.06?"missile_ammo":roll<.11?["powerup_magnet","powerup_shield"][Math.floor(rand()*3)]:["dust","comet","star","rock"][Math.floor(rand()*4)];

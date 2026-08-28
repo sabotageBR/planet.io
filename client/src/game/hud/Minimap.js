@@ -16,7 +16,7 @@ export function createMinimap({hud,theme,getScene}){
     cv.style.top=c.startsWith("top")?mg+"px":"auto";cv.style.bottom=c.startsWith("bottom")?mg+"px":"auto";
     cv.style.right=c.endsWith("right")?mg+"px":"auto";cv.style.left=c.endsWith("left")?mg+"px":"auto";}
   layout();
-  function draw(now){const R0=th.hud.radar,m=bodyMode();if(m!==mode)layout();const S=getScene();if(!S)return;
+  function draw(now,zone){const R0=th.hud.radar,m=bodyMode();if(m!==mode)layout();const S=getScene();if(!S)return;
     const c=ctx,R=D/2,cx=R+1,cy=R+1,t=now;c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,cv.width,cv.height);c.lineJoin="round";
     if(R0.shadow){c.fillStyle=R0.shadow.color;c.beginPath();c.arc(cx+R0.shadow.dx,cy+R0.shadow.dy,R,0,6.283);c.fill();}
     c.fillStyle=R0.face;c.beginPath();c.arc(cx,cy,R,0,6.283);c.fill();c.strokeStyle=R0.border.color;c.lineWidth=R0.border.width;c.stroke();
@@ -25,6 +25,11 @@ export function createMinimap({hud,theme,getScene}){
     if(R0.sweep){const a=t*R0.sweep.speed;c.fillStyle=R0.sweep.fill;c.beginPath();c.moveTo(cx,cy);c.arc(cx,cy,R-2,a-R0.sweep.span,a);c.closePath();c.fill();
       c.strokeStyle=R0.sweep.line;c.lineWidth=R0.sweep.width;c.beginPath();c.moveTo(cx,cy);c.lineTo(cx+Math.cos(a)*(R-2),cy+Math.sin(a)*(R-2));c.stroke();}
     const SZ=D*(R0.mapK||.72),mx=cx-SZ/2,my=cy-SZ/2,sc=SZ/WORLD.w,st=R0.colors;c.save();c.beginPath();c.arc(cx,cy,R-2,0,6.283);c.clip();
+    // a ZONA vem primeiro: é o pano de fundo de tudo o mais no radar, e é para onde o jogador tem que correr
+    if(zone){const zs=(R0.colors&&R0.colors.zone)||"#ff4d5e";
+      c.save();c.strokeStyle=zs;c.lineWidth=1.6;c.beginPath();c.arc(mx+zone.x*sc,my+zone.y*sc,Math.max(2,zone.r*sc),0,6.283);c.stroke();
+      if(zone.tr<zone.r-1){c.setLineDash([3,3]);c.lineWidth=1.2;c.beginPath();c.arc(mx+zone.tx*sc,my+zone.ty*sc,Math.max(2,zone.tr*sc),0,6.283);c.stroke();}
+      c.restore();}
     for(const h of S.holes){c.fillStyle=st.hole;c.beginPath();c.arc(mx+h.x*sc,my+h.y*sc,Math.max(2.2,h.ri*sc*.5),0,6.283);c.fill();}
     for(const q of S.stars||[]){c.fillStyle=st.star;c.beginPath();c.arc(mx+q.x*sc,my+q.y*sc,Math.max(2.4,q.r*sc*1.2),0,6.283);c.fill();}
     c.fillStyle=st.ast;for(const q of S.asteroids)c.fillRect(mx+q.x*sc-1,my+q.y*sc-1,2,2);
@@ -34,15 +39,15 @@ export function createMinimap({hud,theme,getScene}){
     c.globalAlpha=1;
     // TODOS os inimigos vivos do mapa (vêm do placar, não da AOI); o ponto cresce com a massa, então dá para
     // ver de longe quem é ameaça — √mass·sc é o raio real no mundo, com um piso para o ponto não sumir
-    for(const p of S.enemies){c.fillStyle=p.isBot?st.bot:st.player;const rr=Math.max(2,Math.sqrt(p.mass||1)*sc);
-      c.beginPath();c.arc(mx+p.x*sc,my+p.y*sc,rr,0,6.283);c.fill();}
+    for(const p of S.enemies){c.fillStyle=p.ally?((st.ally)||"#66e08a"):(p.isBot?st.bot:st.player);const rr=Math.max(2,Math.sqrt(p.mass||1)*sc);
+      c.beginPath();c.arc(mx+p.x*sc,my+p.y*sc,rr,0,6.283);c.fill();}   // companheiro em cor própria: no Sobrevivência em equipe, saber onde ele está é metade do jogo
     const cam=S.cam,hw=cam.W/(2*cam.scale)*sc,hh=cam.H/(2*cam.scale)*sc;c.strokeStyle=st.view;c.lineWidth=1;c.strokeRect(mx+cam.x*sc-hw,my+cam.y*sc-hh,hw*2,hh*2);
     const md=R0.meDot;c.fillStyle=md.fill;c.strokeStyle=md.stroke;c.lineWidth=md.width;
     for(const p of S.mine){c.beginPath();c.arc(mx+p.x*sc,my+p.y*sc,Math.max(md.r[m]||3,p.r*sc),0,6.283);c.fill();c.stroke();}
     c.restore();
     if(R0.label&&(!R0.label.desktopOnly||m==="desktop")){c.font=R0.label.font;c.fillStyle=R0.label.color;c.textAlign="center";c.textBaseline="middle";c.fillText(R0.label.text,cx,cy+R+R0.label.dy+14);}}
   return{canvas:cv,
-    update(now){if(now-last<100)return;last=now;draw(now);},
+    update(now,zone){if(now-last<100)return;last=now;draw(now,zone);},
     setTheme(t){th=t;layout();},
     show(on){cv.style.display=on?"":"none";},
     destroy(){cv.remove();}};}

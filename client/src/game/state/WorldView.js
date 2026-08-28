@@ -1,25 +1,29 @@
 // ── VISÃO DO MUNDO: players (PLAYERS), placar (LEADERBOARD), self e listas prontas p/ render ──
 // build(now) junta o Interpolator (outros) e o Predictor (próprias peças) em arrays reutilizados
 // por tipo; cada item tem {id,kind,rx,ry,rr,alpha,flags,owner,…} — a mesma forma para os dois.
-import {KIND,PLAYER_FLAG,skinById,SKINS} from "@planet/shared";
+import {KIND,PLAYER_FLAG,NO_TEAM,skinById,SKINS} from "@planet/shared";
 
 export function createWorldView({buffer,predictor}){
   const players=new Map();
-  const v={players,mySlot:-1,self:null,room:null,lb:[],lbRaw:[],
+  const v={players,mySlot:-1,myTeam:-1,self:null,room:null,lb:[],lbRaw:[],
     pieces:[],food:[],ejected:[],asteroids:[],holes:[],missiles:[],stars:[],
     me(){return players.get(v.mySlot)||null;},
     setPlayers(list){const seen=new Set();
       for(const q of list){seen.add(q.slot);let pl=players.get(q.slot);
-        if(!pl){pl={slot:q.slot,name:"",skinId:0,skin:SKINS[0],isBot:false,dead:false,registered:false,score:0};players.set(q.slot,pl);}
-        pl.name=q.name;pl.skinId=q.skinId;pl.skin=skinById(q.skinId);pl.isBot=!!(q.flags&PLAYER_FLAG.BOT);pl.dead=!!(q.flags&PLAYER_FLAG.DEAD);pl.registered=!!(q.flags&PLAYER_FLAG.REG);pl.score=q.score;}
+        if(!pl){pl={slot:q.slot,name:"",skinId:0,skin:SKINS[0],isBot:false,dead:false,registered:false,score:0,team:-1,ally:false,talking:false};players.set(q.slot,pl);}
+        pl.name=q.name;pl.skinId=q.skinId;pl.skin=skinById(q.skinId);pl.isBot=!!(q.flags&PLAYER_FLAG.BOT);pl.dead=!!(q.flags&PLAYER_FLAG.DEAD);pl.registered=!!(q.flags&PLAYER_FLAG.REG);pl.score=q.score;
+        pl.team=q.team===NO_TEAM?-1:q.team;pl.talking=!!(q.flags&PLAYER_FLAG.TALK);
+        pl.ally=pl.team>=0&&pl.team===v.myTeam&&q.slot!==v.mySlot;}   // aliado: é assim que o render pinta o companheiro e o radar o separa do inimigo
       for(const s of players.keys())if(!seen.has(s))players.delete(s);
       v.rebuildLb();},
     setLeaderboard(rows){v.lbRaw=rows;v.rebuildLb();},
+    /** Minha equipe (do JSON `room`): recalcula quem é aliado sem esperar o próximo PLAYERS. */
+    setMyTeam(t){v.myTeam=t;for(const pl of players.values())pl.ally=pl.team>=0&&pl.team===t&&pl.slot!==v.mySlot;},
     rebuildLb(){const rows=v.lbRaw,out=new Array(rows.length);
-      for(let i=0;i<rows.length;i++){const r=rows[i],pl=players.get(r.slot);out[i]={slot:r.slot,name:pl?pl.name:"?",mass:r.mass,x:r.x,y:r.y,isBot:pl?pl.isBot:false,registered:pl?pl.registered:false,me:r.slot===v.mySlot,rank:i+1};}
+      for(let i=0;i<rows.length;i++){const r=rows[i],pl=players.get(r.slot);out[i]={slot:r.slot,name:pl?pl.name:"?",mass:r.mass,x:r.x,y:r.y,isBot:pl?pl.isBot:false,registered:pl?pl.registered:false,ally:pl?pl.ally:false,talking:pl?pl.talking:false,me:r.slot===v.mySlot,rank:i+1};}
       // fora do top: anexa a própria linha (rank/massa vêm do bloco self do snapshot)
       if(v.mySlot>=0&&v.self&&v.self.rank>0&&!out.some(r=>r.me)){const pl=players.get(v.mySlot);
-        out.push({slot:v.mySlot,name:pl?pl.name:"",mass:v.self.mass,x:0,y:0,isBot:false,registered:pl?pl.registered:false,me:true,rank:v.self.rank});}
+        out.push({slot:v.mySlot,name:pl?pl.name:"",mass:v.self.mass,x:0,y:0,isBot:false,registered:pl?pl.registered:false,ally:false,talking:false,me:true,rank:v.self.rank});}
       v.lb=out;},
     myRank(){for(const r of v.lb)if(r.me)return r.rank;return 0;},
     /** Linhas do placar COM posição (o servidor manda todos os vivos): é a fonte do radar. */
@@ -34,6 +38,6 @@ export function createWorldView({buffer,predictor}){
           case KIND.BLACKHOLE:H.push(e);break;case KIND.MISSILE:M.push(e);break;case KIND.STAR:S.push(e);break;}}
       const al=predictor.alpha;predictor.forEach(pc=>{pc.rx=pc.px+(pc.x-pc.px)*al+pc.vox;pc.ry=pc.py+(pc.y-pc.py)*al+pc.voy;pc.rr=pc.r;pc.alpha=1;pc.isMe=true;P.push(pc);});   // interpolado entre passos
       P.sort((a,b)=>a.rr-b.rr);},
-    reset(){players.clear();v.self=null;v.lb=[];v.lbRaw=[];v.mySlot=-1;v.room=null;},
+    reset(){players.clear();v.self=null;v.lb=[];v.lbRaw=[];v.mySlot=-1;v.myTeam=-1;v.room=null;},
   };
   return v;}

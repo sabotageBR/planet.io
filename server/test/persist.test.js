@@ -1,15 +1,31 @@
 // ── Teste de integração: migrate do zero → API → hooks → invariantes (node --test) ──
-// precisa do Postgres de dev (.env na raiz: DATABASE_URL=postgres://planet:planet@127.0.0.1:5433/planet)
+// precisa do Postgres de dev (DATABASE_URL=postgres://planet:planet@127.0.0.1:5433/planet).
+//
+// ⚠️ ESTE TESTE APAGA O SCHEMA (`DROP SCHEMA public CASCADE` no `before`). Ele é o preço de testar a
+// migração DO ZERO, e por isso só pode rodar contra um banco LOCAL. A guarda abaixo existe porque o
+// contrário já aconteceu: sem DATABASE_URL no ambiente o arquivo lia o `.env` da raiz — que aponta para
+// PRODUÇÃO — e `npm test` derrubava o banco de verdade, em silêncio e com o jogo no ar.
+// Para rodar contra um host remoto de propósito (banco vazio, staging), passe ALLOW_REMOTE_DB=1.
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {SKINS} from '@planet/shared/skins.js';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.env'),'utf8').split('\n')){const m=/^\s*([A-Z_]+)=(.*)$/.exec(l);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim();}}catch{}}
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';
+// ── guarda do banco: DROP SCHEMA só em host local ──
+const LOCAL=/^(localhost|127(\.\d+){3}|\[?::1\]?|0\.0\.0\.0)$/;
+{
+  const url=process.env.DATABASE_URL||'';
+  if(!url)throw new Error('persist.test.js precisa de um Postgres: DATABASE_URL=postgres://planet:planet@127.0.0.1:5433/planet');
+  let host='';try{host=new URL(url).hostname;}catch{throw new Error(`DATABASE_URL inválida: ${url}`);}
+  if(!LOCAL.test(host)&&process.env.ALLOW_REMOTE_DB!=='1')
+    throw new Error(`RECUSADO: este teste faz DROP SCHEMA e a DATABASE_URL aponta para o host remoto "${host}". `
+      +'Rode com DATABASE_URL=postgres://planet:planet@127.0.0.1:5433/planet, ou ALLOW_REMOTE_DB=1 se o banco remoto for descartável.');
+}
 const {config}=await import('../src/config.js');
 const {createLogger}=await import('../src/log.js');
 const {createDb}=await import('../src/db/pool.js');
@@ -30,7 +46,10 @@ const call=async(method,p,{body,token,ip='10.0.0.1'}={})=>{
 before(async()=>{
   db=createDb(config,log);
   await db.query('DROP SCHEMA public CASCADE');await db.query('CREATE SCHEMA public');
-  const {applied}=await migrate(db,log);assert.equal(applied.length,2);   // 0001_init + 0002_round_cause
+  const {applied}=await migrate(db,log);
+  // conta os arquivos em vez de fixar um número: cada migração nova quebrava este teste sem nenhum motivo
+  const dir=path.join(ROOT,'server','src','db','migrations');
+  assert.equal(applied.length,readdirSync(dir).filter(f=>/^\d+_.+\.sql$/.test(f)).length,'todas as migrações aplicadas do zero');
   persist=createPersistence({db,log,config:{...config,noCleanup:true}});
   api=createApi({db,log,config,persist});
   server=http.createServer(async(req,res)=>{if(await api(req,res))return;res.writeHead(404);res.end();});

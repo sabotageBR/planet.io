@@ -3,7 +3,7 @@
 // ameixa → magenta → laranja SEM sol, nuvens em silhueta com fio pêssego, cenário em
 // silhueta. Estrutura: gaveta pela direita no desktop/paisagem, folhas no retrato.
 // Placar dourado, radar quente, botões teal/ouro/coral. Contrato: ver ../dawn/index.js.
-import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED} from "../util.js";
+import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow} from "../util.js";
 import {paintPattern,paintHole,paintNova} from "../patterns.js";
 
 const INK="#241238",CREAM="#fff1d6",GOLD="#ffb547",CORAL="#ff5e6c",TEAL="#2ec4b6",PEACH="#ffcf9a",PLUM="#3b1f6b",MAG="#e0417f",ORA="#ff8a3d",SIL="#2a1550";
@@ -31,6 +31,7 @@ export const textures={
     case "planet":return`${id}:p${p.skin.id}${p.isMe?"m":""}:${size}`;
     case "food":return`${id}:f${foodType(p.type)}${foodColor(p)}`;
     case "ejected":return`${id}:e${p.glow?"nova":p.color}`;
+    case "glow":return`${id}:g${p.color}${p.k||""}`;
     case "asteroid":return`${id}:a${p.variant}:${size}`;
     case "prop":return`${id}:prop${p.i}`;
     case "star":return`${id}:star${p.variant?1:0}`;
@@ -61,6 +62,10 @@ export const textures={
     if(type==="comet"){c.beginPath();c.moveTo(-r*2,0);c.lineTo(-r*.15,-r*.8);c.arc(0,0,r*.85,-1.4,1.4);c.lineTo(-r*.15,r*.8);c.closePath();c.fill();c.stroke();gl(-r*.2,-r*.3,.25);return;}
     if(type==="rock"){c.rotate(.45);rr(c,-r,-r,r*2,r*2,r*.3);c.fill();c.stroke();gl(-r*.4,-r*.4,.24);return;}
     c.beginPath();c.arc(0,0,r,0,6.283);c.fill();c.stroke();gl(-r*.3,-r*.32,.26);},
+
+  // HALO das partículas (comida e fragmentos): a moldura inteira, em blendMode "add" por baixo do corpo.
+  // É o brilho no estilo dos .io modernos — assado, porque aqui não há filtro nem blur (ver paintGlow).
+  glow(c,size,{color,k}){paintGlow(c,size,color,k==null?undefined:{k});},
 
   ejected(c,size,{color,glow=false}){const r=size/2/EK;
     if(glow){const R=size/2;   // estilhaço de supernova: coroa quente que VAZA para fora do disco (o brilho é assado — o cliente não tem filtro nem blend)
@@ -221,7 +226,10 @@ export const effects={
   // estrela do mundo: pulso do sprite, giro e coroa tracejada no halo (vermelha e nervosa na fase OLD)
   star:{ring:{color:GOLD,colorOld:CORAL,alpha:[.18,.4],pulse:.005,pulseOld:.02,width:3,dash:[18,16],spinK:-.15},pulse:{amp:.06,speed:.004,speedOld:.02},spin:.004,alphaK:1.15},
   aim:{color:CREAM,width:3,dash:[16,12],head:26,alpha:[.45,.85],pulse:.008},                          // reta pontilhada do tiro mirado
-  threat:{color:CORAL,width:5,size:34,margin:54,alpha:[.35,1],pulse:.012},                            // seta do míssil teleguiado vindo em mim (pisca mais rápido quanto mais perto)
+  threat:{color:CORAL,width:5,size:34,margin:54,alpha:[.35,1],pulse:.012},
+  // ZONA do Sobrevivência: o anel vermelho pulsa, o tracejado mostra o destino e `dim` tinge só o lado de FORA.
+  // Baixo de propósito — o jogador tem que continuar enxergando o inimigo fora da zona, não só o vermelho.
+  zone:{color:"#ff4d3a",warn:"#ffd24a",width:5,dash:70,alpha:[.5,.95],dim:.24,pulse:.0022},                            // seta do míssil teleguiado vindo em mim (pisca mais rápido quanto mais perto)
   sparkColor:CREAM,                                                                          // faíscas de comida/pellet comido (Fx.spark)
   // ímã (por frame, t em ms): 3 anéis tracejados contraindo para a peça + 6 traços radiais correndo para dentro
   ambient(kind,t,f){if(kind!=="magnet")return null;const P=[],col=MAG,R1=f.r*1.3;
@@ -250,4 +258,5 @@ export const hud={
   skinPreview:{ringK:.68,dy:2},
 };
 
-export default {id,name,schedule,tokens,layout,labels,rarityColor,textures,world,effects,hud};
+export {foodColor};   // o atlas do BRILHO precisa da cor da bolinha, e cor não sai de theme/
+export default {id,name,schedule,tokens,layout,labels,rarityColor,textures,world,effects,hud,foodColor};

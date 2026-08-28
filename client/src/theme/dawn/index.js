@@ -11,7 +11,7 @@
 //   textures.bandLayers()          camadas de parallax + estrelas grandes + planetas de cenário (seed fixa)
 //   effects.fx(kind,k,f)           primitivas {ring|star|text|line|burst} do drawFx (k=age/ttl)
 //   hud / world                    números do drawHud / drawTrail / drawCell / drawWorld
-import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED} from "../util.js";
+import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow} from "../util.js";
 import {paintPattern,paintHole,paintNova} from "../patterns.js";
 
 const INK="#141026",CREAM="#fff5c2",YEL="#ffc22e",ORA="#ff6b4a",BLU="#3fc4ff",PUR="#c56bff",GRN="#3ddc5f";
@@ -40,6 +40,7 @@ export const textures={
     case "planet":return`${id}:p${p.skin.id}${p.isMe?"m":""}:${size}`;
     case "food":return`${id}:f${foodType(p.type)}${foodColor(p)}`;
     case "ejected":return`${id}:e${p.glow?"nova":p.color}`;
+    case "glow":return`${id}:g${p.color}${p.k||""}`;
     case "asteroid":return`${id}:a${p.variant}:${size}`;
     case "prop":return`${id}:prop${p.i}`;
     case "star":return`${id}:star${p.variant?1:0}`;
@@ -70,6 +71,10 @@ export const textures={
     if(type==="comet"){c.beginPath();c.moveTo(-r*2,0);c.lineTo(-r*.15,-r*.8);c.arc(0,0,r*.85,-1.4,1.4);c.lineTo(-r*.15,r*.8);c.closePath();c.fill();c.stroke();gl(-r*.2,-r*.3,.25);return;}
     if(type==="rock"){c.rotate(.45);rr(c,-r,-r,r*2,r*2,r*.3);c.fill();c.stroke();gl(-r*.4,-r*.4,.24);return;}
     c.beginPath();c.arc(0,0,r,0,6.283);c.fill();c.stroke();gl(-r*.3,-r*.32,.26);},
+
+  // HALO das partículas (comida e fragmentos): a moldura inteira, em blendMode "add" por baixo do corpo.
+  // É o brilho no estilo dos .io modernos — assado, porque aqui não há filtro nem blur (ver paintGlow).
+  glow(c,size,{color,k}){paintGlow(c,size,color,k==null?undefined:{k});},
 
   // massa ejetada; size padrão 40
   ejected(c,size,{color,glow=false}){const r=size/2/EK;
@@ -240,7 +245,10 @@ export const effects={
   // estrela do mundo: pulso do sprite, giro e coroa tracejada no halo (vermelha e nervosa na fase OLD)
   star:{ring:{color:YEL,colorOld:ORA,alpha:[.18,.4],pulse:.005,pulseOld:.02,width:3,dash:[18,16],spinK:-.15},pulse:{amp:.06,speed:.004,speedOld:.02},spin:.004,alphaK:1.15},
   aim:{color:CREAM,width:3,dash:[16,12],head:26,alpha:[.45,.85],pulse:.008},                          // reta pontilhada do tiro mirado
-  threat:{color:ORA,width:5,size:34,margin:54,alpha:[.35,1],pulse:.012},                            // seta do míssil teleguiado vindo em mim (pisca mais rápido quanto mais perto)
+  threat:{color:ORA,width:5,size:34,margin:54,alpha:[.35,1],pulse:.012},
+  // ZONA do Sobrevivência: o anel vermelho pulsa, o tracejado mostra o destino e `dim` tinge só o lado de FORA.
+  // Baixo de propósito — o jogador tem que continuar enxergando o inimigo fora da zona, não só o vermelho.
+  zone:{color:"#ff3d5a",warn:"#ffc22e",width:5,dash:70,alpha:[.5,.95],dim:.22,pulse:.0022},                            // seta do míssil teleguiado vindo em mim (pisca mais rápido quanto mais perto)
   sparkColor:CREAM,                                                                          // faíscas de comida/pellet comido (Fx.spark)
   // ímã (por frame, t em ms): 3 anéis tracejados contraindo para a peça + 6 traços radiais correndo para dentro
   ambient(kind,t,f){if(kind!=="magnet")return null;const P=[],col=PUR,R1=f.r*1.3;
@@ -270,4 +278,5 @@ export const hud={
   skinPreview:{ringK:.68,dy:2},
 };
 
-export default {id,name,schedule,tokens,layout,labels,rarityColor,textures,world,effects,hud};
+export {foodColor};   // o atlas do BRILHO precisa da cor da bolinha, e cor não sai de theme/
+export default {id,name,schedule,tokens,layout,labels,rarityColor,textures,world,effects,hud,foodColor};

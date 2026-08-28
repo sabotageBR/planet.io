@@ -9,8 +9,21 @@ import { gameRef } from "../state/game.js";
 import { leaveGame } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
+import Chat from "./Chat.jsx";
+import { MODE, weaponOf } from "@planet/shared";
 
-const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, clock: null };
+const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, clock: null,
+  mode: 0, teamSize: 1, team: -1, phase: "live", startsInMs: 0, alive: 0, weapon: 0, zoneHurt: false, talk: null, chat: [] };
+const WEAPON_ICON = ["🚀", "✳️", "🕳️", "💥", "🌟"];   // mesma ordem de WEAPONS (o id indexa direto)
+/** Anel do push-to-talk: o arco encolhe com o tempo que sobra do clipe. */
+function TalkRing({ k }) {
+  const R = 22, C = 2 * Math.PI * R, resta = Math.max(0, 1 - k);
+  return <svg className="talk-ring" viewBox="0 0 56 56" width="56" height="56" aria-hidden="true">
+    <circle cx="28" cy="28" r={R} className="tr-bg" />
+    <circle cx="28" cy="28" r={R} className={"tr-arc" + (resta < .25 ? " low" : "")}
+      strokeDasharray={C} strokeDashoffset={C * (1 - resta)} transform="rotate(-90 28 28)" />
+  </svg>;
+}
 const EMPTY_STORE = { get: () => EMPTY, subscribe: () => () => {} };
 const PW_ICON = { magnet: "🧲", shield: "🛡️" };
 const emit = (el, action, phase) => el.dispatchEvent(new CustomEvent("planet:action", { bubbles: true, detail: { action, phase } }));
@@ -39,6 +52,9 @@ export default function Hud() {
   // fica EM CIMA do ícone da arma e o botão apaga como se não houvesse munição (o clique vira ejeção)
   const ammo = h.ammo || 0, fireCd = Math.ceil(h.fireCd || 0), armed = ammo > 0 && !fireCd, pw = Object.entries(h.powerups || {}).filter(([, v]) => v > 0);
   const splitReady = !(h.splitCd > 0), ejectReady = !(h.ejectCd > 0);
+  const sobrevivencia = h.mode === MODE.SURVIVAL, aquecendo = h.phase === "warmup";
+  const arma = weaponOf(h.weapon || 0), armaIco = WEAPON_ICON[h.weapon | 0] || WEAPON_ICON[0];
+  const falando = h.talk && h.talk.on;
   return <div id="hud" className={screen === "game" ? "" : "hidden"}>
     <div id="hud-top">
       <span className="chip" id="h-room"><i>{LB.room}</i> <b id="v-room">{h.room || room || "—"}</b></span>
@@ -47,9 +63,9 @@ export default function Hud() {
       <button className="btn-mini" id="h-exit" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.exit}</button>
     </div>
     <div className="panel" id="hud-lb"><div className="ph">{LB.lbTitle}</div><div id="lb-rows">
-      {shown.map(r => <div key={r.slot != null ? r.slot : r.name} className={"lb-row" + (r.me ? " mine" : "") + (r.rank <= 3 ? " top" : "")} style={{ "--p": ((r.mass || 0) / lbMax).toFixed(3) }}>
+      {shown.map(r => <div key={r.slot != null ? r.slot : r.name} className={"lb-row" + (r.me ? " mine" : "") + (r.ally ? " ally" : "") + (r.rank <= 3 ? " top" : "")} style={{ "--p": ((r.mass || 0) / lbMax).toFixed(3) }}>
         <span className="lb-pos">{r.rank}</span>
-        <span className="lb-name">{r.name}{r.isBot ? <> <i className="bot">{LB.botTag}</i></> : null}{r.registered ? <> <i className="reg">{LB.regTag}</i></> : null}</span>
+        <span className="lb-name">{r.talking ? <i className="talk-dot">🎤</i> : null}{r.name}{r.isBot ? <> <i className="bot">{LB.botTag}</i></> : null}{r.registered ? <> <i className="reg">{LB.regTag}</i></> : null}</span>
         <b className="lb-val">{fmt(r.mass)}</b></div>)}
     </div></div>
     <div className="panel" id="hud-score">
@@ -60,11 +76,19 @@ export default function Hud() {
       <div className="score-row"><span className="k">{LB.coinIcon}</span> <b id="v-coins">{fmt(coins)}</b></div>
     </div>
     <div id="hud-status">
-      <div className={"chip" + (armed ? "" : " empty")} id="hud-ammo"><i>🚀</i> {fireCd ? <b className="fire-cd">{fireCd}s</b> : <b id="v-ammo">{ammo}</b>} <span>{fireCd ? LB.fireCd : LB.ammo}</span></div>
+      <div className={"chip" + (armed ? "" : " empty")} id="hud-ammo"><i>{armaIco}</i> {fireCd ? <b className="fire-cd">{fireCd}s</b> : <b id="v-ammo">{ammo}</b>} <span>{fireCd ? LB.fireCd : (LB.weapons[arma.key] || LB.ammo)}</span></div>
       <div id="hud-pw">{pw.map(([k, v]) => k === "shield"
         ? <span key={k} className={"pw pw-shield lv-" + v} style={LV && LV[v - 1] ? { background: LV[v - 1].color } : undefined}><i>{PW_ICON.shield}</i>{LB.powerups.shield} <b>{LB.shieldLevel} {v} {"★".repeat(v)}</b></span>
         : <span key={k} className={"pw pw-" + k}><i>{PW_ICON[k] || "✦"}</i>{LB.powerups[k] || k} <b>{Math.ceil(v)}s</b></span>)}</div>
     </div>
+    {sobrevivencia ? <div id="hud-mode" className={h.zoneHurt ? "hurt" : ""}>
+      {aquecendo
+        ? <span className="chip warmup"><i>⏳</i> <b>{LB.warmup}</b> <span>{LB.warmupSub} {Math.ceil((h.startsInMs || 0) / 1000)}s</span> <em>{h.lb.length}/{h.cap || 0}</em></span>
+        : <span className="chip alive"><i>💀</i> <b>{h.alive || 0}</b> <span>{LB.aliveLeft}</span></span>}
+      {h.zoneHurt ? <span className="chip zone-out">{LB.zoneOut}</span> : null}
+    </div> : null}
+    {falando ? <div id="talk"><TalkRing k={h.talk.k} /><span>{LB.talkOn}</span></div> : null}
+    <Chat h={h} />
     <div id="hud-cd">
       <div className={"cd" + (splitReady ? " ready" : "")} id="cd-split" style={{ "--p": (1 - (h.splitCd || 0)).toFixed(2) }}><i className="cd-fill"></i><span>{LB.split}</span><em>{LB.keySplit}</em></div>
       <div className={"cd" + (ejectReady ? " ready" : "")} id="cd-eject" style={{ "--p": (1 - (h.ejectCd || 0)).toFixed(2) }}><i className="cd-fill"></i><span>{LB.eject}</span><em>{LB.keyEject}</em></div>
@@ -73,6 +97,7 @@ export default function Hud() {
       <button className={"tbtn" + (splitReady ? "" : " cd")} id="t-split" {...press("split")}><span>{LB.split}</span></button>
       <button className={"tbtn" + (ejectReady ? "" : " cd")} id="t-eject" {...press("eject")}><span>{LB.eject}</span></button>
       <button className={"tbtn" + (armed ? "" : " empty") + (fireCd ? " cd" : "")} id="t-fire" {...press("fire")}><span>{LB.fire}</span><b id="t-ammo">{ammo}</b>{fireCd ? <em className="fire-cd">{fireCd}</em> : null}</button>
+      <button className={"tbtn talk" + (falando ? " on" : "")} id="t-talk" {...press("talk")}><span>🎤</span></button>
     </div>
   </div>;
 }

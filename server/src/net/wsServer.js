@@ -7,12 +7,15 @@
 // @ts-check
 import {randomUUID} from 'node:crypto';
 import {WebSocketServer} from 'ws';
-import {NET,WORLD} from '@planet/shared/constants.js';
-import {PROTOCOL_VERSION,MSG} from '@planet/shared/protocol/constants.js';
-import {decodeInput,encodePong,createWriter} from '@planet/shared/protocol/index.js';
+import {NET,WORLD,MODE,modeOf,VOICE} from '@planet/shared/constants.js';
+import {PROTOCOL_VERSION,MSG,VOICE_UP_HEADER_BYTES} from '@planet/shared/protocol/constants.js';
+import {decodeInput,decodeVoiceUp,encodePong,createWriter} from '@planet/shared/protocol/index.js';
 import {Session} from './Session.js';
 import {clientIp} from '../api/router.js';
-const JOIN_TIMEOUT_MS=3000,MAX_PAYLOAD=4096,WS_PATH=/^\/ws(\/\d+)?\/?$/;
+// MAX_PAYLOAD tem que caber o maior clipe de voz (VOICE.MAX_BYTES + cabeçalho): com os 4 KB de antes o `ws`
+// derrubava o frame — e a conexão junto — antes de o servidor poder recusá-lo. A folga é pequena de propósito:
+// o INPUT tem 10 bytes e o JSON de controle é minúsculo, então este teto existe só para a voz.
+const JOIN_TIMEOUT_MS=3000,MAX_PAYLOAD=VOICE.MAX_BYTES+VOICE_UP_HEADER_BYTES+64,WS_PATH=/^\/ws(\/\d+)?\/?$/;
 const withTimeout=(p,ms)=>new Promise((res,rej)=>{const t=setTimeout(()=>rej(new Error('timeout')),ms);Promise.resolve(p).then(v=>{clearTimeout(t);res(v);},e=>{clearTimeout(t);rej(e);});});
 const unsaved=nick=>({ok:true,userId:null,nick:String(nick||'Viajante').slice(0,16)||'Viajante',registered:false,skinId:0,prefs:{},sessionId:null,unsaved:true});
 const NICK_RE=/^[\p{L}\p{N} _.\-]{2,16}$/u;
@@ -28,7 +31,9 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
     wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws,req));});
   wss.on('connection',(ws,req)=>{
     let s=new Session({ws,metrics,log,remoteAddr:clientIp(req),userAgent:req.headers['user-agent']||null});live.add(s);
-    const roomMsg=room=>({t:'room',code:room.code,shard:room.shard,slot:s.slot,sessionId:s.sessionId,resumeToken:s.resumeToken,protocol:PROTOCOL_VERSION,tick:room.sim.tick,world:{w:WORLD.w,h:WORLD.h},round:room.roundInfo()});
+    const roomMsg=room=>({t:'room',code:room.code,shard:room.shard,slot:s.slot,sessionId:s.sessionId,resumeToken:s.resumeToken,protocol:PROTOCOL_VERSION,
+      tick:room.sim.tick,world:{w:WORLD.w,h:WORLD.h},round:room.roundInfo(),
+      mode:room.modeId,teamSize:room.teamSize,cap:room.max,team:(room.sim.players.get(s.slot)||{team:-1}).team});   // JSON: modo e equipe não custam versão de protocolo
     const rate=()=>{if(s.violation())s.error('RATE','muitas mensagens; conexão encerrada');};
     async function join(msg){
       if(s.joining)return;
@@ -43,13 +48,19 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         if(!res)res=unsaved(fallbackNick);
         if(s.ws!==ws||ws.readyState!==1)return;                       // fechou enquanto esperava
         if(!res.ok)return s.error(res.code||'AUTH',res.message||'não autorizado',res.suggestion?{suggestion:res.suggestion}:undefined);
+        // modo e tamanho de equipe: id desconhecido cai no Livre (modeOf), tamanho inválido cai no 1º válido do modo
+        const mode=modeOf(msg.mode|0),teamSize=mode.teamSizes.includes(msg.teamSize|0)?msg.teamSize|0:mode.teamSizes[0];
+        const party=typeof msg.party==='string'&&msg.party?msg.party.toUpperCase().slice(0,8):null;
+        const opts={mode:mode.id,teamSize};
         let room=null;
-        if(msg.room){room=rooms.getRoom(msg.room);
-          if(room&&room.isFull()){if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});return s.error('FULL',`sala ${room.code} cheia`);}}
-        if(!room)room=rooms.findOrCreateRoom();
+        if(msg.room){room=rooms.getRoom(msg.room,opts);
+          // `acceptsJoin` é a porta única: cobre cheia, terminada E partida já em andamento (Sobrevivência)
+          if(room&&!room.acceptsJoin()){if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});return s.error('FULL',`sala ${room.code} indisponível`);}
+          if(room&&room.modeId!==mode.id){if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});return s.error('MODE',`a sala ${room.code} é de outro modo`);}}
+        if(!room)room=rooms.findOrCreateRoom(opts);
         if(s.room)s.room.leave(s,'left');                            // join de novo (depois de morrer): sai da sala atual
         s.sessionId=res.sessionId||randomUUID();s.userId=res.userId??null;s.name=res.nick||fallbackNick;s.unsaved=!!res.unsaved;
-        room.join(s,{name:s.name,registered:!!res.registered,skinId:res.skinId|0,sessionId:s.sessionId,userId:s.userId});
+        room.join(s,{name:s.name,registered:!!res.registered,skinId:res.skinId|0,sessionId:s.sessionId,userId:s.userId,party});
         s.sendJson(roomMsg(room));room.sendPlayers(s);
         log.info(`${s.name} entrou na sala ${room.code} (slot ${s.slot}, ${room.humanCount}/${room.max}${s.unsaved?', sem persistência':''})`);
       }catch(e){log.error('join:',e);s.error('ROOM','falha ao entrar na sala');}
@@ -69,12 +80,17 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         case 'join':join(msg);break;
         case 'resume':resume(msg);break;
         case 'view':s.setView(msg.w,msg.h);break;
-        case 'ping':s.sendCopy(encodePong(pongWriter,{clientTime:Number(msg.c)>>>0,serverTick:s.room?s.room.sim.tick:0}));break;}}
+        case 'ping':s.sendCopy(encodePong(pongWriter,{clientTime:Number(msg.c)>>>0,serverTick:s.room?s.room.sim.tick:0}));break;
+        case 'chat':if(s.room&&s.slot>=0)s.room.chat(s,msg.text);break;}}
+    /**
+     * Binário: despacha pelo PRIMEIRO BYTE. Antes só havia INPUT, então bastava compará-lo; agora o cliente
+     * também sobe clipes de voz (VOICE_UP), que são bytes opacos — o servidor valida e reenvia sem decodificar.
+     */
     function onInput(data){
       if(!s.inputs.take())return rate();metrics.msgIn();
-      if(!s.room||s.slot<0||data.length<1||data[0]!==MSG.INPUT)return;
-      let inp;try{inp=decodeInput(data);}catch{return;}
-      s.room.sim.applyInput(s.slot,inp);}
+      if(!s.room||s.slot<0||data.length<1)return;
+      if(data[0]===MSG.INPUT){let inp;try{inp=decodeInput(data);}catch{return;}s.room.sim.applyInput(s.slot,inp);return;}
+      if(data[0]===MSG.VOICE_UP){let v;try{v=decodeVoiceUp(data);}catch{return;}s.room.voice(s,v);}}
     ws.on('message',(data,isBinary)=>{s.lastPong=Date.now();if(isBinary)onInput(data);else onJson(data);});
     ws.on('pong',()=>{s.lastPong=Date.now();});
     ws.on('error',e=>log.debug('ws:',e&&e.message));

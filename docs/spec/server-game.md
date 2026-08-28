@@ -10,8 +10,12 @@ sim/Sim.js      World (shared/physics) + estado de jogo por slot {slot,sessionId
                 (o BotBrain vive em shared/src/bot.js: o LocalServer do cliente usa o mesmo cérebro)
 sim/hooks.js    NOOP_HOOKS
 rooms/codes.js  newCode(shard) (1º char = shard base36 + 3 de "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"), shardOf(code)
-rooms/Room.js   {code, shard, sim, sessions, snapshotter, createdAt, roundStart, over}; step(tick): fim da rodada → endRound(); senão sim.step(); a cada SNAPSHOT_EVERY → snapshots; a cada LEADERBOARD_EVERY → leaderboard
-rooms/RoomManager.js  findOrCreateRoom (mais cheia com vaga, ignorando as que já acabaram), getRoom(code), listRooms, reap (30 s sem humanos → para; 35 s → remove; sala terminada → remove BREAK_MS depois)
+rooms/Room.js   {code, shard, mode, teamSize, phase, zone, sim, sessions, snapshotter, roundStart, over}; step(tick):
+                fase 'warmup' → sim.step() + snapshots e readyToStart()/begin(); senão zona → fim da rodada ou
+                último-vivo → endRound(); a cada SNAPSHOT_EVERY → snapshots; a cada LEADERBOARD_EVERY → placar + ZONE.
+                Também: chat(session,text) e voice(session,clipe) — ver docs/design/modos.md
+rooms/Party.js  lobby de equipe por CÓDIGO, em memória com TTL (o convite que vai por link). Sem banco, vale para convidado.
+rooms/RoomManager.js  findOrCreateRoom({mode,teamSize}) (mais cheia que ainda ACEITA — `Room.acceptsJoin`, dentro do mesmo modo/tamanho de equipe), getRoom(code,{mode,teamSize}), listRooms, reap (30 s sem humanos → para; 35 s → remove; sala terminada → remove BREAK_MS depois)
 net/Session.js  ws + slot + seq/ack + known:Set<id> + AOI rect + token bucket + view{w,h} + resumeToken + lastSeen
 net/wsServer.js upgrade em /ws/<shard> (o nginx já roteia), dispatch join/resume/view/ping (JSON) e INPUT (binário), heartbeat, rate limit, close codes
 net/snapshot.js por sessão: AOI (shared/camera.viewRect + NET.AOI_PAD/AOI_PAD_OUT com histerese), CREATE/UPDATE-se-mudou/REMOVE, self block; usa encodeSnapshot do shared/protocol
@@ -199,6 +203,17 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
 - **Mísseis**: míssil × míssil de donos diferentes com teste varrido (O(n²) sobre w.missiles, fora da grade) → ambos morrem (CLASH);
   míssil × asteroide → o míssil morre e o asteroide ganha Δv = AST_KICK·min(1, R_MIN/r) na direção do míssil; asteroide de cinturão
   vira errante e o cinturão reagenda um substituto (DEFLECT).
+
+## Modos (ver docs/design/modos.md)
+`MODES` em shared/src/constants.js é o descritor: `warmup`, `respawnBots`, `lastAlive`, `zone`, `weapons`, `chat`,
+`teamSizes`. **Livre continua idêntico** — inclusive os bots, que seguem vindo do env (`config.roomBots`), porque
+trocar isso pelo descritor mudaria o balanço da sala em produção. `acceptsJoin()` é a porta ÚNICA de entrada
+(cheia, terminada e "partida já em andamento" num lugar só) e é o que faz "sem respawn" ser verdade: quem morre
+no Sobrevivência não volta para a mesma sala.
+
+`sameTeam` (rules.js) é a única fonte de "somos aliados", usada em seis pontos; `w.peace` liga isso para todo
+mundo durante o aquecimento. A zona vive em `World.zone` + `rules.zoneBurn` (e na predição do cliente, com a
+mesma conta — a paridade é testada).
 
 ## Rodada (fim do mundo)
 Cada sala vive `config.roundTicks` (env `ROUND_TICKS`, padrão ROUND.TICKS = 1 h). O bloco `round` do JSON `room`

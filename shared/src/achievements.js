@@ -13,6 +13,9 @@ export const ACHIEVEMENTS=[
   {key:"games10",title:"Veterano",desc:"Jogue 10 partidas",coins:100,icon:"🎖️"},
   {key:"survive10",title:"Sentinela",desc:"Sobreviva 10 minutos numa vida",coins:200,icon:"⚔️"},
   {key:"mass10000",title:"Colosso",desc:"Alcance massa 10.000",coins:200,icon:"🗿"},
+  {key:"br_win",title:"Último de Pé",desc:"Vença uma partida de Sobrevivência",coins:300,icon:"👑"},
+  {key:"br_top10",title:"Finalista",desc:"Termine no top 10 do Sobrevivência",coins:150,icon:"🎗️"},
+  {key:"br_team_win",title:"Esquadrão",desc:"Vença o Sobrevivência em equipe",coins:300,icon:"🛰️"},
   {key:"secret1",title:"???",desc:"Segredo oculto",coins:250,icon:"❓",secret:true},
   {key:"secret2",title:"???",desc:"Segredo oculto",coins:250,icon:"❓",secret:true},
   {key:"secret3",title:"???",desc:"Segredo oculto",coins:250,icon:"❓",secret:true},
@@ -23,7 +26,7 @@ export const ACHIEVEMENT_BY_KEY=new Map(ACHIEVEMENTS.map(a=>[a.key,a]));
 export const ACHIEVEMENT_GOALS={eat50:["kills",50],eatbots10:["botKills",10],split100:["splits",100],eject200:["ejects",200],games10:["games",10]};
 /**
  * Regras avaliadas no fim da partida. `m` = resumo da partida, `s` = user_stats já atualizado.
- * @param {{durationS:number,maxMass:number,bestStreak:number,top1Ticks:number,quadrants:number}} m
+ * @param {{durationS:number,maxMass:number,bestStreak:number,top1Ticks:number,quadrants:number,mode?:number,placement?:number,players?:number,teamSize?:number}} m
  * @param {{kills:number,botKills:number,splits:number,ejects:number,games:number}} s
  */
 export function unlockedAchievements(m,s){const out=[];
@@ -34,4 +37,9 @@ export function unlockedAchievements(m,s){const out=[];
   if(m.quadrants>=4)out.push("explore4");
   if(s.kills>=50)out.push("eat50");if(s.botKills>=10)out.push("eatbots10");
   if(s.splits>=100)out.push("split100");if(s.ejects>=200)out.push("eject200");if(s.games>=10)out.push("games10");
+  // Sobrevivência (mode 1): o que conta lá é ONDE se parou, não a massa. `players` guarda contra a partida
+  // pequena — vencer com 3 na sala não é o mesmo que vencer com 50, e sem esse piso a conquista sairia de graça.
+  if(m.mode===1&&m.placement>0&&m.players>=10){
+    if(m.placement===1){out.push("br_win");if(m.teamSize>1)out.push("br_team_win");}
+    if(m.placement<=10)out.push("br_top10");}
   return out;}

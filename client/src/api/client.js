@@ -126,7 +126,15 @@ export const api = {
     return request("GET", `/api/ranking?period=${period}&by=${by}&limit=${limit}`);
   },
   async rooms() { if (!api.online) return { rooms: [] }; return request("GET", "/api/rooms"); },
-  async auto() { if (!api.online) return null; return request("GET", "/api/auto"); },
+  async auto({ mode = 0, teamSize = 1 } = {}) { if (!api.online) return null; return request("GET", `/api/auto?mode=${mode | 0}&teamSize=${teamSize | 0}`); },
+  // ── lobby de equipe (código de convite) ──
+  // Mora no servidor de JOGO, não na API de persistência: é estado de sala (memória do shard, com TTL) e
+  // funciona para convidado — quem identifica a pessoa é o hash do mesmo token `pt_…` do jogo.
+  async partyCreate({ mode, teamSize, nick, skinId }) { return request("POST", "/api/party", { mode, teamSize, nick, skinId }); },
+  async partyGet(code) { return request("GET", `/api/party/${encodeURIComponent(code)}`); },
+  async partyJoin(code, { nick, skinId }) { return request("POST", `/api/party/${encodeURIComponent(code)}/join`, { nick, skinId }); },
+  async partyLeave(code) { return request("POST", `/api/party/${encodeURIComponent(code)}/leave`, {}); },
+  async partyStart(code, room) { return request("POST", `/api/party/${encodeURIComponent(code)}/start`, { room }); },
   async config() { if (!api.online) return { shards: 1, shard: 0, roomMax: 30, protocol: 1 }; return request("GET", "/api/config"); },
 
   /** Só no modo offline: acumula uma partida no perfil local (o stub do jogo chama via actions). */

@@ -14,12 +14,15 @@ export const PREFS = [
     { key: "sound", label: "Efeitos sonoros", type: "toggle" },
     { key: "music", label: "Música", type: "toggle" },
     { key: "ambience", label: "Ambiência", type: "toggle" },
-    { key: "volume", label: "Volume", type: "range", min: 0, max: 100 } ] },
+    { key: "volume", label: "Volume", type: "range", min: 0, max: 100 },
+    { key: "voice", label: "Voz dos jogadores (Ctrl para falar)", type: "toggle" },
+    { key: "voiceVolume", label: "Volume da voz", type: "range", min: 0, max: 100 } ] },
   { id: "ui", title: "Interface", items: [
     { key: "showNames", label: "Mostrar nomes", type: "toggle" },
     { key: "showMinimap", label: "Minimapa", type: "toggle" },
     { key: "showFps", label: "Mostrar FPS e ping", type: "toggle" },
-    { key: "lbSize", label: "Linhas do placar", type: "select", opts: [[5, "5"], [8, "8"], [10, "10"]] } ] },
+    { key: "lbSize", label: "Linhas do placar", type: "select", opts: [[5, "5"], [8, "8"], [10, "10"]] },
+    { key: "chat", label: "Chat", type: "toggle" } ] },
   { id: "a11y", title: "Acessibilidade", items: [
     { key: "colorblind", label: "Modo daltonismo", type: "select", opts: [["off", "Desligado"], ["deutan", "Deuteranopia"], ["protan", "Protanopia"], ["tritan", "Tritanopia"]] },
     { key: "reduceMotion", label: "Reduzir movimento", type: "toggle" },

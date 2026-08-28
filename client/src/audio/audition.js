@@ -8,14 +8,16 @@ import {KIT} from "./kit.js";
 import {getAudio} from "./index.js";
 
 const GRUPOS=[
-  ["Comer e crescer",["food","eat","grow","merge","mergeReady"]],
+  ["Comer e crescer",["food","eat","grow","merge"]],
   ["Mover-se",       ["split","eject","bounce"]],
-  ["Coletar",        ["ammo","powerup","shieldUp"]],
+  ["Coletar",        ["ammo","powerup","shieldUp","weapon"]],
   ["Arma",           ["fire","lock","cancel","ready","shoot","deflect","clash"]],
   ["Apanhar",        ["boom","pop","chip","hurt","shieldHit","shieldBreak"]],
   ["Estrelas",       ["starBurst","starHit","starSplit","smash","supernova"]],
   ["Buraco negro",   ["suck","exit"]],
-  ["Vida e rodada",  ["death","respawn","countdown","bigCrunch","join"]],
+  ["Vida e rodada",  ["death","respawn","countdown","bigCrunch","join","matchStart"]],
+  ["Zona (Sobrevivência)",["zoneShrink","zoneBurn"]],
+  ["Chat e voz",     ["chatIn","micOn","micOff"]],
   ["Telas",          ["uiHover","uiClick","uiOpen","uiClose","buy","equip","error","toast","deadScreen","podium"]],
 ];
 const LOOPS=[["alert","alerta de míssil"],["magnet","ímã ligado"],["aimCharge","carga da mira"]];

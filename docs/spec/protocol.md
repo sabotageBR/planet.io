@@ -1,7 +1,7 @@
 # Protocolo de rede planet.io v2
 
 Transporte: WebSocket em `/ws/<shard>`. Mensagens de **controle** são JSON (texto); mensagens de **jogo** são
-binárias (`ArrayBuffer`, little-endian, `DataView`). `PROTOCOL_VERSION = 8` (em `shared/src/protocol/constants.js`). **v8**: o `self` ganhou `threat`/`threatDir` (alerta de míssil teleguiado vindo em mim), 20 → 22 bytes. **v7**: o `self` ganhou `fireCd` (carência de tiro do spawn), 18 → 20 bytes. **v6**: o LEADERBOARD passou a levar x,y de TODOS os vivos. **v5**: o `hue` do EJECT deixou de carregar o `skinId` do dono (que o cliente nunca leu — a cor sai do `owner`) e passou a carregar o **tier do fragmento** (`FRAG_KIND`).
+binárias (`ArrayBuffer`, little-endian, `DataView`). `PROTOCOL_VERSION = 9` (em `shared/src/protocol/constants.js`). **v9**: MODOS DE JOGO — o PLAYERS ganhou `team`, o `self` ganhou `weapon`/`alive` (22 → 24 bytes), o create de MISSILE ganhou `weapon` e entraram as mensagens `ZONE`, `VOICE` e `VOICE_UP`. **v8**: o `self` ganhou `threat`/`threatDir` (alerta de míssil teleguiado vindo em mim), 20 → 22 bytes. **v7**: o `self` ganhou `fireCd` (carência de tiro do spawn), 18 → 20 bytes. **v6**: o LEADERBOARD passou a levar x,y de TODOS os vivos. **v5**: o `hue` do EJECT deixou de carregar o `skinId` do dono (que o cliente nunca leu — a cor sai do `owner`) e passou a carregar o **tier do fragmento** (`FRAG_KIND`).
 Slots: cada jogador da sala tem um `slot` u16 estável enquanto está na sala. Ids de entidade: u32 incrementais por sala.
 
 ## Quantização
@@ -12,10 +12,15 @@ Slots: cada jogador da sala tem um `slot` u16 estável enquanto está na sala. I
 
 ## Cliente → servidor
 JSON:
-- `{"t":"join","token":"pt_…","room":"1ABC"|null,"view":{"w":1280,"h":720},"fallbackNick":"Evandro"}`
+- `{"t":"join","token":"pt_…","room":"1ABC"|null,"view":{"w":1280,"h":720},"fallbackNick":"Evandro","mode":0|1,"teamSize":1..4,"party":"0ABC"|null}`
+  - `mode`: `MODE.FREE` (0, padrão) ou `MODE.SURVIVAL` (1). Id desconhecido cai no Livre — cliente antigo nunca muda de jogo.
+  - `party`: código do lobby de equipe; todos os membros caem na MESMA sala e na MESMA equipe (`Room._teamFor`).
+- `{"t":"chat","text":"…"}` — o ESCOPO é do servidor (sala no Livre e no Sobrevivência solo; equipe em equipe).
 - `{"t":"resume","sessionId":"uuid","resumeToken":"hex","view":{"w","h"}}`
 - `{"t":"view","w":…,"h":…}` (resize)
 - `{"t":"ping","c":<performance.now() u32>}`
+
+Binário `VOICE_UP` (0x02): `u8 0x02 | u8 codec | u16 durMs | u16 len | bytes`. Clipe de push-to-talk (Ctrl). `codec 0` = µ-law 8 kHz mono. O servidor NÃO decodifica: valida tamanho (`VOICE.MAX_BYTES`), duração (`MIN_MS`..`MAX_MS`), o cooldown do jogador (`CD_MS`) e o teto da sala (`ROOM_CPS`), e relaya. O `maxPayload` do WS acompanha `VOICE.MAX_BYTES` — com os 4 KB de antes o `ws` derrubava o frame e a conexão junto.
 
 Binário `INPUT` (10 bytes): `u8 0x01 | u16 seq | u16 tx | u16 ty | u8 flags | u16 clientTick(low)`.
 `flags`: `SPLIT=1, EJECT=2, EJECT_HOLD=4, FIRE=8, AIM=16` (AIM acompanha FIRE: tiro **mirado** — o míssil trava no objeto mais próximo dentro do cone ±MISSILE.AIM_CONE em volta de `tx,ty` (peça inimiga, míssil inimigo ou asteroide, até AIM_RANGE) e só vai reto se o cone estiver vazio). `tx,ty` quantizados como posição. Ações são one-shot por `seq`: o
@@ -24,12 +29,16 @@ Taxa: ≤ 30 Hz e só quando muda (>2 px ou flag); keepalive a 10 Hz.
 
 ## Servidor → cliente
 JSON:
-- `{"t":"room","code":"1ABC","shard":1,"slot":3,"sessionId":"uuid","resumeToken":"hex","protocol":5,"tick":123,"world":{"w":9600,"h":9600},"round":{"start":0,"ticks":216000,"dayStart":5,"breakMs":15000}}`
+- `{"t":"room","code":"1ABC","shard":1,"slot":3,"sessionId":"uuid","resumeToken":"hex","protocol":9,"tick":123,"world":{"w":9600,"h":9600},"round":{"start":0,"ticks":216000,"dayStart":5,"breakMs":15000,"phase":"live"|"warmup","startsAt":<tick>},"mode":0,"teamSize":1,"cap":30,"team":-1}`
+  - `phase`/`startsAt`: no Sobrevivência a sala nasce em **aquecimento** — o jogador cai no mundo e come, mas ninguém morre e não há zona. `startsAt` é o TICK em que a partida começa (absoluto, não "faltam N ms": o cliente já sincroniza o relógio do servidor, e uma duração relativa envelheceria no caminho).
+  - `team`: minha equipe (−1 = sem equipe). Quem é aliado de quem sai daqui e do `team` de cada linha do PLAYERS.
+- `{"t":"phase","phase":"live","round":{…},"players":12,"cap":50,"teamSize":2,"mode":1}` — a espera acabou: a sala encheu de bots, sorteou as equipes, reposicionou todo mundo e armou a zona.
+- `{"t":"chat","slot":3,"name":"Evandro","team":2|null,"text":"…","at":1699999999}` — já filtrado pelo escopo do modo.
   - `round`: tick de início e duração da rodada (1 h). O cliente deriva daí o **relógio do espaço** (a rodada = `ROUND.DAYS` dias, começando em `dayStart` → um dia a cada 15 min, 12 trocas de céu) e a contagem para o fim do mundo — nada mais vai no fio.
-- `{"t":"roundEnd","code":"1ABC","champion":{…},"board":[{"slot","name","mass","score","kills","isBot","registered","skinId"}],"nextInMs":15000,"tick":216000}` — o BIG CRUNCH: campeão = maior planeta vivo (1ª linha do placar); a sala é aposentada e o cliente entra numa nova depois de `nextInMs`.
+- `{"t":"roundEnd","code":"1ABC","reason":"time"|"lastAlive","mode":0,"teamSize":1,"champion":{…},"champTeam":null,"board":[{"slot","name","mass","score","kills","isBot","registered","skinId","team","placement"}],"nextInMs":15000,"tick":216000}` — o BIG CRUNCH: campeão = maior planeta vivo (1ª linha do placar); a sala é aposentada e o cliente entra numa nova depois de `nextInMs`.
 - `{"t":"error","code":"VERSION"|"FULL"|"AUTH"|"NICK_RESERVED"|"RATE"|"ROOM","message":"pt-BR","suggestion":"Nick_4821"?}` → o servidor fecha o socket (código 4400+).
 - `{"t":"rewards","saved":true,"coinsEarned":54,"coins":2504,"achievements":[{"key","title"}],"skinsUnlocked":[35],"rank":{"day":37}}` (após a morte; `saved:false` sem banco)
-- `{"t":"dead","by":"Nome","byHole":false,"score":6900,"maxMass":4820,"kills":3,"durationS":372}`
+- `{"t":"dead","by":"Nome","byHole":false,"byZone":false,"score":6900,"maxMass":4820,"kills":3,"durationS":372,"placement":7,"players":50}` — `byZone`: a zona alcançou; `placement`/`players` só no Sobrevivência.
 - `{"t":"spectate","slot":7,"name":"Nome"}` (ou `slot:-1`) — logo depois do `dead` e sempre que o alvo muda: de quem é a cena que
   continua rodando atrás da tela de morte (quem matou, se ainda vivo; senão o líder). O cliente leva a câmera para esse slot e a
   **AOI da sessão acompanha o mesmo jogador** (server/src/net/snapshot.js), então o que se vê é a sala de verdade e não um pedaço
@@ -49,21 +58,26 @@ Binário (primeiro byte = tipo):
     - `ASTEROID=4`: `u16 seed | i16 vx | i16 vy`
     - `BLACKHOLE=5`: `u16 seed | u16 influenceR | u8 phase(0 grow,1 active,2 fade)`
     - `STAR=7`: `u16 seed | u16 haloR (= r·STAR.HALO·k; k dá a rampa de nascimento) | u8 phase(0 grow,1 active,2 old — inchando para a supernova)`
-    - `MISSILE=6`: `u16 ownerSlot | u16 targetSlot (65535 = sem alvo ou alvo é outro míssil) | i16 vx | i16 vy`
+    - `MISSILE=6`: `u16 ownerSlot | u16 targetSlot (65535 = sem alvo ou alvo é outro míssil) | i16 vx | i16 vy | u8 weapon` — `weapon` = `WEAPON.*` (o `hue` do corpo, que é livre no míssil): é o que faz a Rajada e o Cacho terem sprite e som próprios
   - update: `u32 id | u8 mask` + campos presentes na ordem: `X_Y=1 (u16 x,u16 y)`, `R=2 (u16 r10)`, `V=4 (i16 vx,i16 vy)`, `FLAGS=8 (u8)`, `EXTRA=16 (u8 phase + u16 influenceR — buraco negro e estrela)`
   - remove: `u32 id | u8 reason (0 LEFT_AOI,1 EATEN,2 MERGED,3 POPPED,4 EXPIRED,5 SUCKED,6 DESPAWN)`
   - self: `u8 flags(DEAD=1,RESYNC=2 — descarte as entidades conhecidas antes de aplicar este snapshot) | u8 missiles | u8 powerupBits(magnet=1,shield=2) | u16 magnetT | u8 shieldLv(0..3; o escudo não expira) | u32 score | u8 splitCd | u8 ejectCd | u16 fireCd(carência de tiro do spawn, ticks) | u16 rank | u32 mass | u8 threat | u8 threatDir` (22 bytes)
+    - `weapon`: a arma equipada (uma por jogador; pegar outra troca e reabastece) — `missiles` é a munição DELA. `alive`: quantos jogadores ainda estão vivos (o "restam N" do Sobrevivência).
+    - `flags` ganhou `WARMUP=4` (a partida não começou) e `ZONE_HURT=8` (estou fora da zona, queimando).
     - `threat`: 0 = nada vindo; 1..255 = quão perto está o míssil teleguiado que mira NESTE slot e está se aproximando (255 = colado), medido em `MISSILE.ALERT_DIST`. `threatDir`: ângulo peça→míssil em 1/256 de volta.
       Vem do servidor de propósito: a AOI de um jogador pequeno tem meia-largura ~1250 px e o míssil nasce muito além disso, então um alerta puramente client-side chegaria com menos de 2 s de sobra. Dentro da AOI o cliente prefere a direção do míssil de verdade (é exata) e só usa `threatDir` fora dela.
     `magnetT`/`shieldLv`/`powerupBits` são o **melhor** entre as peças próprias (resumo para o HUD) — quem tem o powerup de fato é cada peça, pelas flags dela. `missiles` é do jogador.
-- `0x11 PLAYERS` (no join e quando muda): `u8 | u16 n | [u16 slot | u8 flags(BOT=1,DEAD=2,REG=4) | u8 skinId | u8 nameLen | nameLen bytes utf8 | u32 score]`
+- `0x11 PLAYERS` (no join e quando muda): `u8 | u16 n | [u16 slot | u8 flags(BOT=1,DEAD=2,REG=4,TALK=8) | u8 skinId | u8 team | u8 nameLen | nameLen bytes utf8 | u32 score]`
+  - `team`: 255 (`NO_TEAM`) = sem equipe. É por aqui que o cliente pinta o aliado, separa o radar e escolhe quem ouve a voz. `TALK` acende o ícone de quem está falando.
 - `0x12 LEADERBOARD` (2 Hz): `u8 | u8 n | [u16 slot | u32 mass | u16 x | u16 y]` — **todos os vivos da sala**, não só o top 10.
   É o ÚNICO dado posicional fora da AOI, e é dele que sai o radar com todos os inimigos (o snapshot só conhece a janela
   da sessão). O HUD corta no top 10 e anexa a própria linha pelo `rank` do bloco `self`.
-- `0x13 EVENT`: `u8 | u8 kind(0 EAT,1 POP,2 MERGE,3 SPLIT,4 BH_SUCK,5 DEATH,6 CHIP,7 BOUNCE,8 BOOM,9 EXIT (sem emissor: o buraco não teleporta mais; o slot NÃO é renumerado para não versionar o protocolo),10 SHOOT,11 SHIELD_BREAK,12 CLASH,13 DEFLECT,14 SHIELD_HIT,15 SHIELD_UP,16 STAR_BURST,17 SUPERNOVA,18 STAR_HIT,19 STAR_SPLIT,20 SMASH) | u16 x | u16 y | u16 r10 | u16 slotA | u16 slotB | u32 extra`
+- `0x13 EVENT`: `u8 | u8 kind(0 EAT,1 POP,2 MERGE,3 SPLIT,4 BH_SUCK,5 DEATH,6 CHIP,7 BOUNCE,8 BOOM,9 EXIT (sem emissor: o buraco não teleporta mais; o slot NÃO é renumerado para não versionar o protocolo),10 SHOOT,11 SHIELD_BREAK,12 CLASH,13 DEFLECT,14 SHIELD_HIT,15 SHIELD_UP,16 STAR_BURST,17 SUPERNOVA,18 STAR_HIT,19 STAR_SPLIT,20 SMASH,21 ZONE_SHRINK,22 ZONE_BURN) | u16 x | u16 y | u16 r10 | u16 slotA | u16 slotB | u32 extra`
   - `extra`: BOUNCE/CHIP/SHOOT/DEFLECT/SHIELD_HIT/STAR_HIT/SMASH = `packDir(nx,ny,vn)` (`shared/util.js`: u8 nx, u8 ny, u16 vn — em SHIELD_HIT vn = nível restante, em STAR_HIT vn = hits levados); SHIELD_UP = nível; EAT = pieceId (o cliente usa o slotA para achar quem comeu e animar a absorção); DEATH = score; STAR_BURST/SUPERNOVA/STAR_SPLIT = id da estrela (em SUPERNOVA/STAR_SPLIT `r` é o raio da onda); SMASH = `packDir(nx,ny,0)` com a direção da batida do meteoro (`r` = raio da rocha que se partiu).
   - Eventos são filtrados pela AOI da sessão; o cliente atrasa os que não envolvem o próprio slot pelo atraso de interpolação (casam com o sumiço da entidade).
 - `0x14 PONG`: `u8 | u32 clientTime | u32 serverTick`
+- `0x15 ZONE` (2 Hz, junto do LEADERBOARD): `u8 | u16 x0 | u16 y0 | u16 r0_10 | u16 x1 | u16 y1 | u16 r1_10 | u32 t0 | u32 t1` — o círculo de ORIGEM, o de DESTINO e os ticks das pontas; o cliente interpola. Parada = origem igual ao destino; `t1 = 0xffffffff` = fechou de vez. A máquina de fases (`shared/src/zone.js`) é só do servidor.
+- `0x16 VOICE`: `u8 | u16 slot | u8 codec | u16 durMs | u16 x | u16 y | u16 len | bytes` — clipe relayado. Companheiro de equipe ouve sempre; no Livre e no solo ouvem os `VOICE.LISTENERS` mais próximos dentro de `VOICE.DIST`, e o cliente faz volume/estéreo pela distância com o MESMO cálculo dos efeitos.
 
 ## Snapshots e AOI
 Sim 60 Hz; snapshot a cada 3 ticks (20 Hz). Área de interesse por sessão = retângulo da câmera (`shared/camera.viewRect`)

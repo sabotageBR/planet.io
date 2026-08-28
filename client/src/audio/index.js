@@ -3,10 +3,14 @@
 //   sfx  efeitos disparados por evento (o `kind` do efeito visual é a chave da receita)
 //   amb  contínuos: ambiência reativa, alerta de míssil, zumbido do ímã, carga do tiro
 //   ui   telas React (cliques, loja, morte) — separado para nunca competir com o jogo
+//   voz  clipes de push-to-talk de outros jogadores — o único som que NÃO é sintetizado aqui (chega em
+//        µ-law pelo fio) e o único que não pode ser roubado pelo teto de vozes: perder a fala do
+//        companheiro justo quando a tela enche é o pior momento possível para perdê-la
 // Todos → master (volume) → DynamicsCompressor (evita estouro quando várias explosões coincidem) → saída.
 // O contexto nasce no primeiro gesto do jogador (política de autoplay); o clique em JOGAR já serve.
 // @ts-check
 import {KIT,GAP,PRIO,ESCADA,ESCADA_RESET_MS} from "./kit.js";
+import {muDecodeTo} from "./mic.js";
 
 const VOICES=24;            // vozes simultâneas (acima disso o som novo ROUBA a de menor prioridade)
 const FAR=2600;             // distância (px de mundo) em que o som já não se ouve
@@ -19,7 +23,8 @@ export function createAudio(prefs={}){
   if(atual){atual.setPrefs(prefs);return atual;}
   let ctx=null,master=null,limiter=null,buses=null;
   let on=prefs.sound!==false,vol=(prefs.volume==null?70:prefs.volume)/100;
-  let music=!!prefs.music,ambOn=prefs.ambience!==false;
+  let music=!!prefs.music,ambOn=prefs.ambience!==false,voiceOn=prefs.voice!==false,voiceVol=(prefs.voiceVolume==null?85:prefs.voiceVolume)/100;
+  let falando=0;   // quantos clipes de voz estão tocando (o duck só volta quando o último acaba)
   const ultimo=new Map();
   /** @type {{prio:number,src:any,g:any,out:any,morta:boolean}[]} */const vivas=[];
   const loops=new Map();
@@ -34,7 +39,7 @@ export function createAudio(prefs={}){
     master=ctx.createGain();master.gain.value=vol;
     master.connect(limiter);limiter.connect(ctx.destination);
     const mk=v=>{const g=ctx.createGain();g.gain.value=v;g.connect(master);return g;};
-    buses={sfx:mk(1),amb:mk(1),ui:mk(1)};
+    buses={sfx:mk(1),amb:mk(1),ui:mk(1),voice:mk(1)};
     startLoop("ambience");
     return ctx;}
   const noiseBuf=()=>{const n=Math.floor(ctx.sampleRate*1.6),b=ctx.createBuffer(1,n,ctx.sampleRate),d=b.getChannelData(0);
@@ -168,7 +173,8 @@ export function createAudio(prefs={}){
     setPrefs(p){if(!p)return;
       on=p.sound!==false;vol=(p.volume==null?70:p.volume)/100;
       if(master)master.gain.value=vol;
-      music=!!p.music;ambOn=p.ambience!==false;
+      music=!!p.music;ambOn=p.ambience!==false;voiceOn=p.voice!==false;voiceVol=(p.voiceVolume==null?85:p.voiceVolume)/100;
+      if(buses)buses.voice.gain.value=voiceVol;
       if(!on)stopLoops();else if(ctx){startLoop("ambience");setLoop("ambience",{});}},
     /**
      * Toca um efeito. `x,y` (mundo) + `cam` posicionam; `mine` toca em volume cheio (é comigo).
@@ -199,16 +205,44 @@ export function createAudio(prefs={}){
         for(let i=0;i<n;i++)voz(v,t0+at+i*(v.gap||.08),g,pan,dest,prio,pitch);}},
     /** Som de tela (menus, loja, morte): vai no barramento `ui`, nunca compete com o jogo. */
     ui(kind){audio.play(kind,{mine:true,bus:"ui"});},
+    /** O contexto (o microfone grava no MESMO: dois AudioContext custam caro e brigam pelo dispositivo). */
+    ctx(){return ensure();},
+    /**
+     * Clipe de voz de outro jogador. Reusa LITERALMENTE o cálculo de posição do `play()` (ganho pelo
+     * quadrado da distância até FAR, pan por dx/PAN) e vai no barramento `voice`, fora do teto de vozes —
+     * como o alerta, pelo mesmo motivo. `mine` = companheiro de equipe: volume cheio, venha de onde vier.
+     * @param {Uint8Array} data µ-law @param {number} codec 0 = µ-law 8 kHz
+     */
+    playVoice(data,codec,{x=null,y=null,cam=null,mine=false}={}){
+      if(!on||!voiceOn||codec!==0||!data||!data.length)return false;
+      const c=ensure();if(!c)return false;
+      if(c.state!=="running"){audio.resume();return false;}
+      let g=1,pan=0;
+      if(!mine&&x!=null&&cam){const dx=x-cam.x,dy=y-cam.y,d=Math.hypot(dx,dy);
+        if(d>FAR)return false;
+        g=1-d/FAR;g*=g;
+        pan=Math.max(-.8,Math.min(.8,dx/PAN));}
+      const buf=c.createBuffer(1,data.length,VOICE_HZ);   // 8 kHz: o navegador reamostra na hora de tocar
+      muDecodeTo(data,buf.getChannelData(0));
+      const srcN=c.createBufferSource();srcN.buffer=buf;
+      const gn=c.createGain();gn.gain.value=g;
+      let out=gn;
+      if(pan&&c.createStereoPanner){const pn=c.createStereoPanner();pn.pan.value=pan;gn.connect(pn);out=pn;}
+      srcN.connect(gn);out.connect(buses.voice);
+      falando++;if(falando===1)alvo(buses.sfx.gain,VOICE_DUCK,.1);
+      srcN.onended=()=>{falando--;if(falando<=0){falando=0;alvo(buses.sfx.gain,1,.2);}try{gn.disconnect();if(out!==gn)out.disconnect();}catch{}};
+      srcN.start();
+      return true;},
     startLoop,setLoop,stopLoop,
     /** Estado interno (overlay ?stats e depuração). */
-    get info(){return{contexto:ctx?ctx.state:"não criado",vozes:vivas.length,loops:[...loops.keys()],ligado:on,volume:vol,musica:music,ambiencia:ambOn};},
+    get info(){return{contexto:ctx?ctx.state:"não criado",vozes:vivas.length,loops:[...loops.keys()],ligado:on,volume:vol,musica:music,ambiencia:ambOn,voz:voiceOn,falando};},
     /**
      * Solta os contínuos e zera a contagem de vozes (troca de sala/saída). NÃO suspende o contexto: `join()`
      * começa com um `leave()`, e suspender ali derrubava o som da partida inteira. O contador precisa ser
      * zerado porque as vozes agendadas e cortadas nunca disparam `onended` — sem isso ele só sobe e, ao
      * chegar em VOICES, `play()` para de tocar mesmo com o contexto saudável.
      */
-    stop(){stopLoops();vivas.length=0;ultimo.clear();escadaN=0;duck(false);},
+    stop(){stopLoops();vivas.length=0;ultimo.clear();escadaN=0;duck(false);falando=0;if(buses)alvo(buses.sfx.gain,1,.1);},
     /** Suspende de verdade (só ao destruir o jogo: libera o áudio do navegador). */
     suspend(){stopLoops();vivas.length=0;if(ctx&&ctx.state==="running")try{ctx.suspend();}catch{}},
   };

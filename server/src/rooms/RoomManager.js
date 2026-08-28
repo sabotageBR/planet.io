@@ -5,7 +5,7 @@
 // remove após ROOM.REMOVE_AFTER_MS; ao voltar a ser usada, religa e completa os bots.
 // @ts-check
 import {randomInt} from 'node:crypto';
-import {ROOM,ROUND} from '@planet/shared/constants.js';
+import {ROOM,ROUND,MODE,modeOf} from '@planet/shared/constants.js';
 import {Room} from './Room.js';
 import {newCode,normalizeCode,shardOf} from './codes.js';
 import {fetchPeerRooms} from '../http/peers.js';
@@ -15,15 +15,23 @@ export function createRoomManager({config,hooks,log,metrics,scheduler}){
   const onRewards=(sessionId,rewards)=>{const s=findSession(sessionId);if(s)s.deliverRewards(rewards);};
   function start(room){if(room.running)return;room.start();scheduler.add(room);}
   function stop(room){room.stop();scheduler.remove(room);}
-  function create(code){const room=new Room({code,shard:config.shard,seed:randomInt(1,0x7fffffff),hooks,log,metrics,config,onRewards});rooms.set(code,room);start(room);
-    log.info(`sala criada: ${code} (${rooms.size} sala(s))`);return room;}
-  /** A sala mais cheia com vaga (salas que já explodiram ficam de fora), ou uma nova. */
-  function findOrCreateRoom(){let best=null;for(const r of rooms.values())if(!r.over&&!r.isFull()&&(!best||r.humanCount>best.humanCount))best=r;
+  function create(code,{mode=MODE.FREE,teamSize=1}={}){const room=new Room({code,shard:config.shard,seed:randomInt(1,0x7fffffff),hooks,log,metrics,config,onRewards,mode,teamSize});
+    rooms.set(code,room);start(room);
+    log.info(`sala criada: ${code} ${modeOf(mode).key}${teamSize>1?`/${teamSize}`:''} (${rooms.size} sala(s))`);return room;}
+  /**
+   * A sala mais cheia que ainda ACEITA gente (`acceptsJoin`: sem vaga, terminada ou já em partida ficam de fora),
+   * dentro do mesmo modo e tamanho de equipe — agrupa em vez de espalhar, que é o que faz a espera do
+   * Sobrevivência encher rápido. Nenhuma dá: cria uma.
+   */
+  function findOrCreateRoom({mode=MODE.FREE,teamSize=1}={}){
+    let best=null;
+    for(const r of rooms.values()){if(r.modeId!==mode||(mode!==MODE.FREE&&r.teamSize!==teamSize))continue;
+      if(r.acceptsJoin()&&(!best||r.humanCount>best.humanCount))best=r;}
     if(best){start(best);return best;}
-    let code=newCode(config.shard);while(rooms.has(code))code=newCode(config.shard);return create(code);}
+    let code=newCode(config.shard);while(rooms.has(code))code=newCode(config.shard);return create(code,{mode,teamSize});}
   /** Sala pelo código: existente (mesmo cheia — quem chama decide), ou nova se o código é deste shard; null se é de outro shard/inválido. */
-  function getRoom(code){const c=normalizeCode(code);if(!c)return null;const r=rooms.get(c);if(r)return r.over?null:(start(r),r);   // sala que explodiu: quem chama cai na automática
-    if(shardOf(c)!==config.shard)return null;return create(c);}
+  function getRoom(code,opts={}){const c=normalizeCode(code);if(!c)return null;const r=rooms.get(c);if(r)return r.over?null:(start(r),r);   // sala que explodiu: quem chama cai na automática
+    if(shardOf(c)!==config.shard)return null;return create(c,opts);}
   const listRooms=()=>[...rooms.values()].map(r=>r.info());
   async function allRooms(){const mine=listRooms();if(!config.peers.length)return mine;return mine.concat(await fetchPeerRooms(config.peers,{log}));}
   function findSession(sessionId){if(!sessionId)return null;for(const r of rooms.values())for(const s of r.sessions.values())if(s.sessionId===sessionId)return s;return null;}

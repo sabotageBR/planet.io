@@ -68,10 +68,10 @@ export function createPersistence({db,log,config}){
     let day=null;try{const r=await ranking.rankOf({period:'day',by:'score',userId:m.userId});day=r?r.rank:null;}catch{}
     return{...rewards,rank:{day}};
   }
-  async function onMatchEnd({sessionId,cause='left',killedBySessionId=null,score=0,maxMass=0,durationMs=null}={}){
+  async function onMatchEnd({sessionId,cause='left',killedBySessionId=null,score=0,maxMass=0,durationMs=null,mode=0,team=null,placement=0,players=0,teamSize=1}={}){
     const s=sessions.get(sessionId);if(!s)return null;
     forget(s);
-    const m=s.end({cause,score,maxMass,durationMs,killedByUserId:userOf(killedBySessionId)});
+    const m=s.end({cause,score,maxMass,durationMs,killedByUserId:userOf(killedBySessionId),mode,team,placement,players,teamSize});
     if(!m.userId)return NO_REWARDS();
     try{return await queue.push(`match ${m.sessionId.slice(0,8)} (#${m.userId})`,()=>finishMatch(m));}
     catch(e){log.warn(`match #${m.userId} não salvo: ${e.message}`);return NO_REWARDS();}

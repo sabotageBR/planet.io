@@ -29,6 +29,7 @@ import {PLAYER,BOOST} from "../constants.js";
  * @property {number} type       comida: FOOD_TYPE; asteroide: índice do cinturão (-1 = errante); buraco: BH_PHASE; míssil: 0 alvo é slot, 1 alvo é id de entidade (míssil ou asteroide)
  * @property {number} hue        comida: 0..FOOD.HUES-1 (matiz quantizado); asteroide: variante visual; estrela: 1 = filha extra de um racha (não repõe a população)
  * @property {number} targetId   míssil: slot do alvo (type 0) ou id da entidade perseguida — míssil ou asteroide (type 1); -1 sem alvo
+ * @property {number} srcSlot    míssil interceptador: slot de QUEM ATIROU o míssil perseguido — quando o alvo some, ele vai atrás do atacante em vez de virar tiro perdido; -1 sem
  * @property {number} life       ejetado/míssil: tick de expiração; buraco: tick em que a fase atual termina
  * @property {number} ax         asteroide: empurrão acumulado em x ("vírus atirador")
  * @property {number} ay         asteroide: empurrão acumulado em y
@@ -40,7 +41,7 @@ import {PLAYER,BOOST} from "../constants.js";
 
 /** Cria um corpo com todos os campos (sempre a mesma forma). @returns {Body} */
 export function createBody(kind,id,x,y,r){
-  return{kind,id,x,y,vx:0,vy:0,svx:0,svy:0,r,mass:r*r,owner:-1,mergeAt:0,flags:0,cdUntil:0,chipUntil:0,hits:0,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,seed:0,type:0,hue:0,targetId:-1,life:0,
+  return{kind,id,x,y,vx:0,vy:0,svx:0,svy:0,r,mass:r*r,owner:-1,mergeAt:0,flags:0,cdUntil:0,chipUntil:0,hits:0,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,seed:0,type:0,hue:0,targetId:-1,srcSlot:-1,life:0,
     ax:0,ay:0,ang:0,orbitR:0,k:0,dead:false};}
 /** Define a massa e recalcula o raio (r=√m). @param {Body} b */
 export function setMass(b,m){b.mass=m;b.r=Math.sqrt(m);}

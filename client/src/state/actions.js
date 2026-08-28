@@ -58,6 +58,8 @@ export async function boot() {
   app.update({ booted: true });
   if (api.server === false) toast(LABELS.offlineNote, 3200); else if (api.online === false) toast(LABELS.noDbNote, 3200);
   loadConfig(); loadTop5(); loadRooms();
+  const conv = Q.get("party");
+  if (conv) { history.replaceState(null, "", location.pathname); joinParty(conv); return; }   // link de convite: cai direto no lobby da equipe do amigo
   devQuery();
 }
 /** ?screen=<id> (entry|account|lobby|rank|profile|shop|prefs|game|dead|round|reconn) — atalho de desenvolvimento. */
@@ -176,11 +178,52 @@ export async function buySkin(id) {
 
 // ── partida ──────────────────────────────────────────────────────────────────
 /** Entra numa sala: `room` explícito, senão GET /api/auto (offline → sala local do stub). */
-export async function play({ room } = {}) {
+export async function play({ room, mode, teamSize, party } = {}) {
+  const st = app.get();
+  const md = mode != null ? mode | 0 : st.gameMode | 0, ts = teamSize != null ? teamSize | 0 : st.teamSize || 1;
+  const pt = party !== undefined ? party : (st.party ? st.party.code : null);
   let code = room ? String(room).toUpperCase() : null;
-  if (!code) { try { const a = await api.auto(); if (a && a.code) code = a.code; } catch (e) { if (!isUnreachable(e)) toast(e.message, 2500); } }
+  if (!code) { try { const a = await api.auto({ mode: md, teamSize: ts }); if (a && a.code) code = a.code; } catch (e) { if (!isUnreachable(e)) toast(e.message, 2500); } }
   app.update(s => ({ ...s, screen: "game", rewards: null, rewardsPending: false, overlays: { account: false, reconn: false }, conn: "connecting",
-    pendingJoin: { room: code, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
+    gameMode: md, teamSize: ts,
+    pendingJoin: { room: code, mode: md, teamSize: ts, party: pt, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
+}
+// ── modos e lobby de equipe ────────────────────────────────────────────────
+export function setMode(mode, teamSize = 1) { app.update({ gameMode: mode | 0, teamSize: teamSize | 0 || 1 }); }
+const meNick = () => (app.get().session.user || {}).nick || "Viajante";
+const meSkin = () => (app.get().session.user || {}).equippedSkin | 0;
+export async function createParty(teamSize) {
+  try { const r = await api.partyCreate({ mode: 1, teamSize, nick: meNick(), skinId: meSkin() });
+    app.update({ party: r.party, partyMe: r.you || null, partyError: null, gameMode: 1, teamSize: r.party.teamSize, screen: "party" }); return r.party; }
+  catch (e) { toast(e.message, 2800); return null; }
+}
+export async function joinParty(code) {
+  const c = String(code || "").trim().toUpperCase();
+  if (c.length !== 4) { toast(LABELS.partyCode + ": 4 caracteres"); return null; }
+  try { const r = await api.partyJoin(c, { nick: meNick(), skinId: meSkin() });
+    app.update({ party: r.party, partyMe: r.you || null, partyError: null, gameMode: 1, teamSize: r.party.teamSize, screen: "party" }); return r.party; }
+  catch (e) { toast(e.message, 2800); return null; }
+}
+/** Recarrega o lobby (a tela faz polling a 1 Hz — é um lobby, não precisa de WebSocket). */
+export async function refreshParty() {
+  const p = app.get().party; if (!p) return;
+  try { const r = await api.partyGet(p.code); app.update({ party: r.party, partyMe: r.you || app.get().partyMe });
+    // o líder já começou: quem estava esperando entra na MESMA sala
+    if (r.party.started && r.party.room && app.get().screen === "party") play({ room: r.party.room, mode: 1, teamSize: r.party.teamSize, party: r.party.code }); }
+  catch { app.update({ party: null, partyError: "gone" }); toast(LABELS.partyGone || "A equipe se desfez.", 2500); go("modes"); }
+}
+export async function leaveParty() {
+  const p = app.get().party; if (!p) { go("modes"); return; }
+  try { await api.partyLeave(p.code); } catch { /* já expirou */ }
+  app.update({ party: null, partyMe: null }); go("modes");
+}
+/** O líder começa: escolhe a sala e avisa o lobby, para os companheiros caírem no mesmo código. */
+export async function startParty() {
+  const p = app.get().party; if (!p) return;
+  let code = null;
+  try { const a = await api.auto({ mode: 1, teamSize: p.teamSize }); if (a && a.code) code = a.code; } catch { /* cai no auto do play */ }
+  try { await api.partyStart(p.code, code); } catch (e) { toast(e.message, 2500); return; }
+  play({ room: code, mode: 1, teamSize: p.teamSize, party: p.code });
 }
 export function leaveGame(screen = "lobby") {
   app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));

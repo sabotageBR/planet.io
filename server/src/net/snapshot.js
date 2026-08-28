@@ -13,7 +13,7 @@ import {focusOf,zoomFor,viewRect,rectHas,aoiScaleFood} from '@planet/shared/came
 let fq=new Int32Array(4096);   // buffer da consulta de comida por retângulo (cresce com o mundo)
 const MAX_BUFFERED=256*1024,SWEEP_EVERY=60,WFLAGS=PIECE_FLAG.SHIELD|PIECE_FLAG.LAUNCH|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK,NO_SLOT=0xffff;
 const DEFAULT_REASON=[0,REMOVE.EATEN,REMOVE.EATEN,REMOVE.EXPIRED,REMOVE.DESPAWN,REMOVE.DESPAWN,REMOVE.EXPIRED,REMOVE.DESPAWN]; // por KIND
-const newCreate=()=>({kind:0,id:0,x:0,y:0,r:0,owner:0,vx:0,vy:0,flags:0,type:0,hue:0,seed:0,influenceR:0,phase:0,target:0});
+const newCreate=()=>({kind:0,id:0,x:0,y:0,r:0,owner:0,vx:0,vy:0,flags:0,type:0,hue:0,seed:0,influenceR:0,phase:0,target:0,weapon:0});
 const newUpdate=()=>({id:0,mask:0,x:0,y:0,r:0,vx:0,vy:0,flags:0,phase:0,influenceR:0});
 const newRemove=()=>({id:0,reason:0});
 const influenceOf=h=>h.r*BLACKHOLE.INFLUENCE*h.k,haloOf=st=>st.r*STAR.HALO*st.k;   // halo carrega o k: o cliente lê a rampa de nascimento dele
@@ -25,7 +25,7 @@ export function createSnapshotter(room){
   /** @type {Map<number,{x:number,y:number,r:number,vx:number,vy:number,flags:number,phase:number,infl:number,seen:number}>} */const prev=new Map();
   /** @type {Map<number,number>} */const masks=new Map();
   const crPool=[],upPool=[],rmPool=[],creates=[],updates=[],removes=[];
-  const self={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0};
+  const self={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0};
   const snap={tick:0,ackSeq:0,creates,updates,removes,self};
   let passes=0;
   const track=(arr,kind,t)=>{for(let i=0;i<arr.length;i++){const b=arr[i];if(b.dead)continue;
@@ -49,7 +49,7 @@ export function createSnapshotter(room){
       case KIND.EJECT:e.owner=b.owner<0?NO_SLOT:b.owner;e.hue=b.type;e.vx=b.vx;e.vy=b.vy;break;   // hue = FRAG_KIND (a cor vem do dono, no cliente); o skinId que ia aqui nunca foi lido
       case KIND.ASTEROID:e.seed=(b.seed*65535)|0;e.vx=b.vx;e.vy=b.vy;break;
       case KIND.BLACKHOLE:case KIND.STAR:e.seed=(b.seed*65535)|0;e.influenceR=extraOf(b,kind);e.phase=b.type;break;
-      case KIND.MISSILE:e.owner=b.owner<0?NO_SLOT:b.owner;e.target=(b.type!==0||b.targetId<0)?NO_SLOT:b.targetId;e.vx=b.vx;e.vy=b.vy;break;}}   // type 1: alvo é um id de míssil (não vai no fio)
+      case KIND.MISSILE:e.owner=b.owner<0?NO_SLOT:b.owner;e.target=(b.type!==0||b.targetId<0)?NO_SLOT:b.targetId;e.vx=b.vx;e.vy=b.vy;e.weapon=b.hue|0;break;}}   // `hue` é livre no míssil: é onde a ARMA viaja   // type 1: alvo é um id de míssil (não vai no fio)
   function pushUpdate(b,kind,m,slot){const u=upPool[updates.length]||(upPool[updates.length]=newUpdate());updates.push(u);u.id=b.id;u.mask=m;
     if(m&UPD.X_Y){u.x=b.x;u.y=b.y;}if(m&UPD.R)u.r=b.r;if(m&UPD.V){u.vx=b.vx;u.vy=b.vy;}
     if(m&UPD.FLAGS)u.flags=(b.flags&WFLAGS)|(kind===KIND.PIECE&&b.owner===slot?PIECE_FLAG.ME:0);

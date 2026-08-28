@@ -8,11 +8,11 @@
 //    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire (tiro mirado trava no alvo do cone) ──
 // Todas recebem o mundo `w` (ids, rng, eventos, jogadores); toda aleatoriedade passa por w.rng.
 // @ts-check
-import {DT,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,aimScore,POWERUP,STAR} from "../constants.js";
+import {DT,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,aimScore,POWERUP,STAR,ZONE,WEAPON,WEAPONS,weaponOf,weaponOfFood} from "../constants.js";
 import {KIND,BH_PHASE,FOOD_FLAG,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {clamp} from "../util.js";
 import {setR,setMass,addMass,addBoost,boostLeft,capBoost,velX,velY,liveCount,firstLive} from "./body.js";
-import {resolveBounce} from "./collide.js";
+import {resolveBounce,separateOwn} from "./collide.js";
 import {vmaxFor} from "./integrate.js";
 
 /** Constantes locais — vêm do mockup/v1 e não existem em constants.js (ver relatório). */
@@ -26,6 +26,43 @@ export const LOCAL={POP_DIV:22,POP_MIN:2,POP_MAX:6,POP_DIST:780,             // 
 /** @typedef {import("./body.js").Body} Body */
 /** @typedef {import("./world.js").World} World */
 /** @typedef {import("./world.js").PlayerState} PlayerState */
+
+// ── EQUIPES E ZONA ───────────────────────────────────────────────────────────
+/**
+ * `a` e `b` são aliados? É a ÚNICA fonte da resposta — o cérebro do bot só otimiza o comportamento; quem
+ * impede de comer, de acertar e de mirar é isto, chamado nos seis pontos de decisão (piecePair, pieceMissile,
+ * missileMissile, incomingMissile, aimTarget e a busca de alvo do applyFire).
+ * `w.peace` é o aquecimento do Sobrevivência: enquanto ele está ligado TODO MUNDO é aliado, então a espera
+ * não precisou de nenhuma regra própria. Sem equipe (team −1, o modo Livre inteiro) ninguém é aliado de ninguém.
+ * @param {World} w
+ */
+export function sameTeam(w,a,b){
+  if(a<0||b<0)return false;   // sem dono (-1) não é aliado de ninguém — nem de outro sem dono: `-1===-1` diria que sim
+  if(a===b)return true;
+  if(w.peace)return true;
+  const pa=w.players.get(a),pb=w.players.get(b);
+  return !!(pa&&pb&&pa.team>=0&&pa.team===pb.team);}
+
+/**
+ * Fora da zona a peça QUEIMA ZONE.BURN da massa por segundo e, ao chegar no piso MIN_PIECE_R, MORRE — sem
+ * piso, ao contrário da queimadura de estrela. É o único jeito de a partida acabar sozinha, e é de propósito
+ * que a conta usa o CENTRO da peça: "meu ponto está dentro do círculo?" é o que o jogador lê na tela.
+ * O evento é estrangulado a 1×/s por peça (o `(tick+id)%30` espalha as emissões entre as peças, em vez de
+ * despejar 800 eventos no mesmo tick e estourar o teto de `wireEvents`); a morte sempre emite.
+ * Devolve true se a peça morreu — o laço de integração pula o resto dela.
+ * @param {World} w @param {Body} pc @param {{x:number,y:number,r:number}} zc
+ */
+export const outOfZone=(pc,zc)=>{const dx=pc.x-zc.x,dy=pc.y-zc.y;return dx*dx+dy*dy>zc.r*zc.r;};
+/** Massa depois de um tick fora: a MESMA conta no servidor e na predição do cliente (a paridade é testada). */
+export const zoneMass=(m,dt)=>m*(1-ZONE.BURN*dt);
+export function zoneBurn(w,pc,zc,dt){
+  if(!outOfZone(pc,zc))return false;
+  const m0=pc.mass,m=zoneMass(m0,dt),floor=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;
+  if(m<=floor){w.events.push({type:"ZONE_BURN",slot:pc.owner,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r,lost:m0,died:true});
+    w.killPiece(pc,"zone",-1);return true;}
+  setMass(pc,m);
+  if((w.tick+pc.id)%30===0)w.events.push({type:"ZONE_BURN",slot:pc.owner,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r,lost:m0-m,died:false});
+  return false;}
 
 // ── util ──
 function bounceEvent(w,A,B,vn){const dx=B.x-A.x,dy=B.y-A.y,d=Math.sqrt(dx*dx+dy*dy)||1,nx=dx/d,ny=dy/d;
@@ -64,6 +101,9 @@ function bouncePiece(A,B,e,aPiece,bPiece){
 export function piecePair(w,A,B){
   const psA=w.players.get(A.owner),psB=w.players.get(B.owner);
   const dx=B.x-A.x,dy=B.y-A.y,d2=dx*dx+dy*dy,ra=A.r,rb=B.r,sum=ra+rb;if(d2<=0)return;
+  // aliado (ou aquecimento): mesmo tratamento das peças do MESMO dono — separação só posicional, sem impulso.
+  // Dar quique entre companheiros transformaria correr em grupo num pinball, e é o empurrão que dava embalo de graça.
+  if(sameTeam(w,A.owner,B.owner)){if(d2<sum*sum)separateOwn(A,B);return;}
   const aBig=ra>=rb*EAT.RATIO,bBig=!aBig&&rb>=ra*EAT.RATIO;
   if(aBig||bBig){
     const big=aBig?A:B,small=aBig?B:A,psBig=aBig?psA:psB,psSmall=aBig?psB:psA;
@@ -86,13 +126,15 @@ export function eatPiece(w,killer,A,victim,B){
  */
 export function eatFood(w,ps,pc,f){
   f.dead=true;w.foodDirty=true;const t=f.type,tick=w.tick;
-  if(t===FOOD_TYPE.AMMO){if(ps.missiles<MISSILE.MAX_AMMO)ps.missiles++;w.events.push({type:"AMMO",slot:ps.slot});}
+  if(t===FOOD_TYPE.AMMO){const cap=weaponOf(ps.weapon).ammo;if(ps.missiles<cap)ps.missiles++;w.events.push({type:"AMMO",slot:ps.slot});}   // munição é da arma EQUIPADA (no míssil o teto é o MAX_AMMO de sempre)
   else if(t===FOOD_TYPE.SHIELD){if(pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL)pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
   else if(t===FOOD_TYPE.MAGNET){if(pc.r<=POWERUP.MAGNET_MAX_R)pc.magnetUntil=(pc.magnetUntil>tick?pc.magnetUntil:tick)+POWERUP.TICKS;   // planeta grande não pega ímã: o alcance é r·MAGNET_RANGE e sugaria a tela inteira
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"magnet"});}
   else if(t===FOOD_TYPE.MERGE){const arr=ps.pieces;for(let i=0;i<arr.length;i++){const q=arr[i];if(!q.dead)q.mergeAt=tick;}   // vale para TODAS as peças: o poder é justamente juntar quem foi picado
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"merge"});}
+  else if(t>=FOOD_TYPE.W_BURST){const wi=weaponOfFood(t);   // arma nova TROCA a atual e reabastece: só se carrega uma
+    if(wi>0){ps.weapon=wi;ps.missiles=WEAPONS[wi].ammo;w.events.push({type:"POWERUP",slot:ps.slot,kind:"weapon",weapon:wi});}}
   else{addMass(pc,f.mass*EAT.FOOD_GAIN);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD);}
   w.events.push({type:"FOOD_EATEN",slot:ps.slot,foodId:f.id,foodType:t,x:f.x,y:f.y});}
 
@@ -153,6 +195,7 @@ function impactParam(pc,a){
  */
 export function pieceAsteroid(w,pc,a){
   const dx=a.x-pc.x,dy=a.y-pc.y,d2=dx*dx+dy*dy,ps=w.players.get(pc.owner);
+  if(w.peace){const s0=pc.r+a.r;if(d2<s0*s0&&d2>0){const vn=bouncePiece(pc,a,ASTEROID.E,true,false);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,pc,a,vn);}return;}   // aquecimento: a rocha quica e pronto
   const dd=Math.sqrt(d2)||1,nx=dx/dd,ny=dy/dd;
   const vin=(velX(pc)-velX(a))*nx+(velY(pc)-velY(a))*ny;   // >0: estão se aproximando
   const tier=shieldTierFor(vin),blindada=pc.shieldLv>0&&tier<POWERUP.SHIELD_MAX_LEVEL;
@@ -212,6 +255,7 @@ export function pieceStar(w,pc,st){
   const dx=pc.x-st.x,dy=pc.y-st.y,d2=dx*dx+dy*dy,lim=pc.r+st.r;if(d2>=lim*lim)return;
   const d=Math.sqrt(d2),ux=d>1e-6?dx/d:1,uy=d>1e-6?dy/d:0,tick=w.tick;
   addBoost(pc,ux,uy,STAR.PUSH_TOUCH_DIST);
+  if(w.peace)return;   // aquecimento: a estrela empurra, mas não queima nem explode — a partida ainda não começou
   if(tick>=pc.chipUntil&&pc.r>=STAR.SHATTER_MIN_R){pc.chipUntil=tick+STAR.SHATTER_CD_TICKS;
     starShatter(w,w.players.get(pc.owner),pc,st,ux,uy);}   // o escudo NÃO salva da estrela: ele só defende de míssil e asteroide
   supernova(w,st,true);}   // encostou nela: a estrela explode e morre (a sala repõe uma) — sem prêmio para quem trombou
@@ -362,6 +406,12 @@ export function holePair(w,A,h){
   const ri=h.r*BLACKHOLE.INFLUENCE*h.k,rc=h.r*h.k;if(ri<LOCAL.HOLE_MIN_RI)return;
   switch(A.kind){
     case KIND.PIECE:{const d=pullBody(h,A,1,rc,ri);
+      if(h.hue===1){   // MINA (arma): não esmaga ninguém — quem encosta no núcleo é ESTILHAÇADO, com o cooldown de contato da estrela
+        if(d<rc&&!sameTeam(w,h.srcSlot,A.owner)&&w.tick>=A.chipUntil&&A.r>=STAR.SHATTER_MIN_R){
+          const wp=WEAPONS[WEAPON.MINE],dx=A.x-h.x,dy=A.y-h.y,dd=Math.sqrt(dx*dx+dy*dy)||1;
+          A.chipUntil=w.tick+STAR.SHATTER_CD_TICKS;
+          shatterPiece(w,w.players.get(A.owner),A,dx/dd,dy/dd,w.rng.int(wp.shatterN[0],wp.shatterN[1]),wp.shatterDist);}
+        break;}
       if(d<rc&&A.r<rc*BLACKHOLE.CRUSH_K&&w.tick>=A.cdUntil)crushPiece(w,w.players.get(A.owner),A,h);break;}
     case KIND.EJECT:{if(pullBody(h,A,BLACKHOLE.EJECT_PULL,rc,ri)<rc)A.dead=true;break;}   // pelota é engolida: o buraco é o sumidouro
     case KIND.MISSILE:{if(pullBody(h,A,BLACKHOLE.MISSILE_PULL,rc,ri)<rc){A.dead=true;
@@ -391,15 +441,39 @@ export function crushPiece(w,ps,pc,h){
 // ── mísseis ──
 /**
  * Homing: v → lerp(v, dir(alvo)·SPEED, TURN) por tick. type 0: alvo é o slot targetId (primeira peça viva);
- * type 1: alvo é a entidade de id targetId — míssil (interceptação), asteroide ou estrela (tiro mirado) — e, se ela
- * sumiu, segue reto (type 0, sem alvo). @param {World} w @param {Body} m
+ * type 1: alvo é a entidade de id targetId — míssil (interceptação), asteroide ou estrela (tiro mirado).
+ * Se o alvo sumiu, o interceptador **vai atrás de quem atirou** (`srcSlot`) em vez de virar tiro perdido: o CLASH
+ * mata os dois mísseis, e antes disto o segundo interceptador voava reto até expirar. Sem `srcSlot`, segue reto.
+ * @param {World} w @param {Body} m
  */
 export function homeMissile(w,m){
+  if(m.hue===WEAPON.CLUSTER&&clusterSplit(w,m))return;
   if(m.targetId<0)return;let tx,ty;
-  if(m.type===1){const t=w.entityById.get(m.targetId);if(!t||t.dead||(t.kind!==KIND.MISSILE&&t.kind!==KIND.ASTEROID&&t.kind!==KIND.STAR)){m.type=0;m.targetId=-1;return;}tx=t.x;ty=t.y;}
+  if(m.type===1){const t=w.entityById.get(m.targetId);
+    if(!t||t.dead||(t.kind!==KIND.MISSILE&&t.kind!==KIND.ASTEROID&&t.kind!==KIND.STAR)){m.type=0;m.targetId=m.srcSlot;m.srcSlot=-1;return;}
+    tx=t.x;ty=t.y;}
   else{const t=w.players.get(m.targetId),tp=t&&t.alive?firstLive(t.pieces):null;if(!tp)return;tx=tp.x;ty=tp.y;}
   const dx=tx-m.x,dy=ty-m.y,l=Math.sqrt(dx*dx+dy*dy)||1,k=MISSILE.TURN;
   m.vx+=(dx/l*MISSILE.SPEED-m.vx)*k;m.vy+=(dy/l*MISSILE.SPEED-m.vy)*k;}
+/**
+ * CACHO: a `splitD` do alvo o míssil se abre em `n` teleguiados menores em leque, todos no mesmo alvo. Cada
+ * filho já nasce como míssil comum (hue MISSILE), então nenhum deles se abre de novo — sem isso a arma
+ * seria uma bomba de população, o mesmo erro que a estrela que rachava em estrelas. Devolve true se abriu.
+ * @param {World} w @param {Body} m
+ */
+function clusterSplit(w,m){
+  if(m.targetId<0)return false;
+  let tx,ty;
+  if(m.type===0){const ps=w.players.get(m.targetId),p=ps&&ps.alive?firstLive(ps.pieces):null;if(!p)return false;tx=p.x;ty=p.y;}
+  else{const e=w.entityById.get(m.targetId);if(!e||e.dead)return false;tx=e.x;ty=e.y;}
+  const wp=WEAPONS[WEAPON.CLUSTER],dx=tx-m.x,dy=ty-m.y;
+  if(dx*dx+dy*dy>wp.splitD*wp.splitD)return false;
+  const a0=Math.atan2(m.vy,m.vx);
+  for(let i=0;i<wp.n;i++){const an=a0+(i/(wp.n-1)-.5)*wp.spread,ux=Math.cos(an),uy=Math.sin(an);
+    const q=w.addMissile(m.x,m.y,ux*MISSILE.SPEED,uy*MISSILE.SPEED,m.owner,m.targetId);
+    q.type=m.type;q.srcSlot=m.srcSlot;q.hue=WEAPON.MISSILE;q.life=m.life;}
+  m.dead=true;w.events.push({type:"SHOOT",x:m.x,y:m.y,nx:Math.cos(a0),ny:Math.sin(a0)});
+  return true;}
 /**
  * Impacto em peça de outro dono: com escudo, o míssil explode no escudo e tira 1 nível (SHIELD_HIT, ou SHIELD_BREAK ao
  * chegar a 0; o timer de evolução reinicia; massa intacta). Sem escudo: peça encolhe para r·HIT_SHRINK (mín. MIN_PIECE_R)
@@ -407,11 +481,13 @@ export function homeMissile(w,m){
  * colheita gorda no chão em vez de evaporar 39% dele. O míssil morre nos dois casos. @param {World} w @param {Body} pc @param {Body} m
  */
 export function pieceMissile(w,pc,m){
-  if(m.owner===pc.owner)return;const dx=m.x-pc.x,dy=m.y-pc.y,s=pc.r+m.r;if(dx*dx+dy*dy>=s*s)return;
+  if(sameTeam(w,m.owner,pc.owner))return;const dx=m.x-pc.x,dy=m.y-pc.y,s=pc.r+m.r;if(dx*dx+dy*dy>=s*s)return;
   if(pc.shieldLv>0){m.dead=true;const d=Math.sqrt(dx*dx+dy*dy)||1;hitShield(w,pc,m.owner,dx/d,dy/d);return;}
-  const m0=pc.mass;let r=pc.r*MISSILE.HIT_SHRINK;if(r<PLAYER.MIN_PIECE_R)r=PLAYER.MIN_PIECE_R;setR(pc,r);
+  const wp=weaponOf(m.hue),shrink=wp.shrink==null?MISSILE.HIT_SHRINK:wp.shrink;
+  const m0=pc.mass;let r=pc.r*shrink;if(r<PLAYER.MIN_PIECE_R)r=PLAYER.MIN_PIECE_R;setR(pc,r);
   spillFrag(w,pc.x,pc.y,1,0,m0-pc.mass,MISSILE.HIT_DEBRIS,MISSILE.DEBRIS_SPEED,LOCAL.DEBRIS_SPREAD,pc.owner,EJECT.OWNER_IMMUNE_TICKS);
   m.dead=true;w.events.push({type:"BOOM",x:m.x,y:m.y,r:pc.r,slot:pc.owner,bySlot:m.owner});
+  if(!wp.shatter)return;   // a Rajada arranha e empurra; PARTIR o alvo é privilégio do míssil e do cacho
   const d=Math.sqrt(dx*dx+dy*dy)||1,n=w.rng.int(MISSILE.SHATTER_N[0],MISSILE.SHATTER_N[1]);
   shatterPiece(w,w.players.get(pc.owner),pc,-dx/d,-dy/d,n,MISSILE.SHATTER_DIST);}   // o tiro PARTE o alvo, não só arranca massa: é a arma anti-gigante
 /**
@@ -420,7 +496,7 @@ export function pieceMissile(w,pc,m){
  * @param {World} w @param {Body} A @param {Body} B
  */
 export function missileMissile(w,A,B){
-  if(A.owner===B.owner)return false;
+  if(sameTeam(w,A.owner,B.owner))return false;
   const px=B.x-A.x,py=B.y-A.y,vx=(B.vx-A.vx)*DT,vy=(B.vy-A.vy)*DT,qx=px-vx,qy=py-vy,v2=vx*vx+vy*vy;
   let s=1;if(v2>1e-9){s=-(qx*vx+qy*vy)/v2;if(s<0)s=0;else if(s>1)s=1;}
   const cx=qx+vx*s,cy=qy+vy*s,rr=A.r+B.r;if(cx*cx+cy*cy>=rr*rr)return false;
@@ -502,28 +578,55 @@ const ownerImmune=r=>EJECT.OWNER_IMMUNE_TICKS+Math.round(r/vmaxFor(r)/DT);
  * um rastro. Com o SPEED fixo de antes toda pelota parava a 292 px e o resultado era um monte amontoado.
  * Retorna quantos pellets. @param {World} w @param {PlayerState} ps
  */
+const EJ=[0,0,0,0,0];   // ux,uy,er,mp,r0 — saída de ejectPiece (sem alocar no laço quente)
+/**
+ * O que a PEÇA sente ao cuspir: perde a massa da pelota e leva o recuo de RECOIL_DIST·(mp/m1) px para trás.
+ * Está separado de `applyEject` porque é EXATAMENTE isto que o cliente prevê (predict.js) — sem criar pelota,
+ * que é entidade do servidor e chega pelo snapshot. Uma cópia só da regra, para as duas não divergirem.
+ * Sem esta predição o cliente errava 12,35 px por cusparada (constante para 60 ≤ r ≤ 400, porque `ejectR` é
+ * proporcional) × 8,57/s = 106 px/s — até 74% da velocidade da própria peça —, e o servidor corrigia isso
+ * 20×/s em puxões de ~5 px. Como a câmera segue as peças próprias, era a TELA INTEIRA que vibrava.
+ * Preenche `out` com [ux,uy,er,mp,r0] (r0 = raio ANTES de encolher: é dele que saem `vmaxFor` e `ownerImmune`).
+ * @param {Body} pc @returns {boolean} cuspiu de fato
+ */
+export function ejectPiece(pc,tx,ty,out=EJ){
+  if(pc.dead||pc.r<EJECT.MIN_R)return false;
+  const r0=pc.r,er=ejectR(r0),mp=er*er*EJECT.MASS_FACTOR,m1=pc.mass-mp;
+  if(m1<PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R)return false;
+  dirTo(pc.x,pc.y,tx,ty,DIR);const ux=DIR[0],uy=DIR[1];
+  setMass(pc,m1);addBoost(pc,-ux,-uy,EJECT.RECOIL_DIST*mp/m1);
+  out[0]=ux;out[1]=uy;out[2]=er;out[3]=mp;out[4]=r0;return true;}
 export function applyEject(w,ps){
-  const arr=ps.pieces,len=arr.length,minM=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;let did=0;
+  const arr=ps.pieces,len=arr.length;let did=0;
   const k=ps.ejectRamp/EJECT.RAMP_N,sp=EJECT.SPEED+(EJECT.SPEED_MAX-EJECT.SPEED)*(k<1?k:1);   // força crescente do hold
-  for(let i=0;i<len;i++){const pc=arr[i];if(pc.dead||pc.r<EJECT.MIN_R)continue;
-    const er=ejectR(pc.r),mp=er*er*EJECT.MASS_FACTOR,m1=pc.mass-mp;if(m1<minM)continue;
-    dirTo(pc.x,pc.y,ps.tx,ps.ty,DIR);const ux=DIR[0],uy=DIR[1],r1=Math.sqrt(m1),vp=vmaxFor(pc.r);
-    const e=w.addEjected(pc.x+ux*(r1+LOCAL.EJECT_OFFSET),pc.y+uy*(r1+LOCAL.EJECT_OFFSET),ux*(vp+sp),uy*(vp+sp),
-      er,mp,ps.slot,ownerImmune(pc.r),EJECT.LIFE_TICKS);
-    setMass(pc,m1);addBoost(pc,-ux,-uy,EJECT.RECOIL_DIST*mp/m1);did++;
+  for(let i=0;i<len;i++){const pc=arr[i];if(!ejectPiece(pc,ps.tx,ps.ty,EJ))continue;
+    const ux=EJ[0],uy=EJ[1],er=EJ[2],mp=EJ[3],r0=EJ[4],v=vmaxFor(r0)+sp,off=pc.r+LOCAL.EJECT_OFFSET;   // pc.r já é o raio novo (= √m1)
+    const e=w.addEjected(pc.x+ux*off,pc.y+uy*off,ux*v,uy*v,er,mp,ps.slot,ownerImmune(r0),EJECT.LIFE_TICKS);
+    did++;
     w.events.push({type:"EJECT",slot:ps.slot,pieceId:pc.id,ejectId:e.id,x:e.x,y:e.y});}
   return did;}
 /**
  * Míssil teleguiado que está vindo para cima de `slot`: o mais próximo de (x,y), a menos de `dist`, mirando neste
  * slot (type 0) e **se aproximando** (produto escalar da separação com a velocidade negativo). null se não há.
  * Este predicado estava escrito três vezes igual — no cérebro do bot, na interceptação automática do applyFire e
- * agora no alerta que vai no `self`. Uma cópia só, para não divergirem. @param {World} w @returns {Body|null}
+ * no alerta que vai no `self`. Uma cópia só, para não divergirem.
+ * Com `livres`, pula o entrante que JÁ tem um interceptador meu a caminho: sem isso dois disparos seguidos
+ * travavam no mesmo alvo, o primeiro fazia CLASH e o segundo ficava órfão voando reto. O bot é quem mais sofria
+ * — em modo intercept ele manda FIRE em todos os ticks e despejava a munição inteira no mesmo míssil.
+ * Bot e alerta chamam SEM a flag: para eles a pergunta é "tem míssil vindo?", não "sobrou alvo?".
+ * @param {World} w @returns {Body|null}
  */
-export function incomingMissile(w,slot,x,y,dist){
+export function incomingMissile(w,slot,x,y,dist,livres=false){
   const ms=w.missiles;let best=null,bd=dist*dist;
-  for(let i=0;i<ms.length;i++){const m=ms[i];if(m.dead||m.owner===slot||m.type!==0||m.targetId!==slot)continue;
-    const dx=m.x-x,dy=m.y-y,d2=dx*dx+dy*dy;if(d2<bd&&dx*m.vx+dy*m.vy<0){bd=d2;best=m;}}
+  for(let i=0;i<ms.length;i++){const m=ms[i];if(m.dead||sameTeam(w,m.owner,slot)||m.type!==0||m.targetId!==slot)continue;
+    const dx=m.x-x,dy=m.y-y,d2=dx*dx+dy*dy;if(d2>=bd||dx*m.vx+dy*m.vy>=0)continue;
+    if(livres&&coberto(w,slot,m.id))continue;
+    bd=d2;best=m;}
   return best;}
+/** Já mandei um interceptador atrás deste míssil? (no máximo MAX_AMMO meus vivos, então o laço é curto) */
+function coberto(w,slot,id){const ms=w.missiles;
+  for(let i=0;i<ms.length;i++){const m=ms[i];if(!m.dead&&m.owner===slot&&m.type===1&&m.targetId===id)return true;}
+  return false;}
 /**
  * Alvo do tiro mirado: a bolinha mais próxima do **PONTEIRO** (peso `aimScore` = distância do cursor à BORDA dela,
  * então a bola grande é mais fácil de agarrar), entre as que estão a até AIM_RANGE de quem atira e a menos de
@@ -539,8 +642,8 @@ function aimTarget(w,slot,src,tx,ty,out){
   const rr=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE;let bs=MISSILE.AIM_PICK,id=-1,kind=0;
   const perto=b=>{const dx=b.x-src.x,dy=b.y-src.y;if(dx*dx+dy*dy>=rr)return false;   // fora do alcance da arma
     const sc=aimScore(b.x-tx,b.y-ty,b.r);if(sc>=bs)return false;bs=sc;return true;};
-  const pcs=w.pieces;for(let i=0;i<pcs.length;i++){const p=pcs[i];if(!p.dead&&p.owner!==slot&&perto(p)){id=p.owner;kind=0;}}
-  const ms=w.missiles;for(let i=0;i<ms.length;i++){const m=ms[i];if(!m.dead&&m.owner!==slot&&perto(m)){id=m.id;kind=1;}}
+  const pcs=w.pieces;for(let i=0;i<pcs.length;i++){const p=pcs[i];if(!p.dead&&!sameTeam(w,p.owner,slot)&&perto(p)){id=p.owner;kind=0;}}
+  const ms=w.missiles;for(let i=0;i<ms.length;i++){const m=ms[i];if(!m.dead&&!sameTeam(w,m.owner,slot)&&perto(m)){id=m.id;kind=1;}}
   const as=w.asteroids;for(let i=0;i<as.length;i++){const a=as[i];if(!a.dead&&perto(a)){id=a.id;kind=1;}}
   const sts=w.stars;for(let i=0;i<sts.length;i++){const st=sts[i];if(!st.dead&&perto(st)){id=st.id;kind=1;}}
   out[0]=id;out[1]=kind;}
@@ -550,22 +653,80 @@ const AIM=[-1,0];
  * carência de spawn (`ps.fireCdUntil`, MISSILE.SPAWN_CD_TICKS): recém-nascido não metralha do spawn. Com `ps.fireAim`
  * (tiro mirado, o jogador segurou o botão) o míssil **persegue a bolinha mais próxima do ponteiro** (peça, míssil,
  * asteroide ou estrela) e só vai reto se não houver nada perto do cursor.
- * Sem mira o alvo é, em ordem: míssil inimigo mirando este slot a
- * < INTERCEPT_DIST e se aproximando (o mais próximo; ordem do array desempata) → interceptação (type 1);
- * senão o oponente vivo mais próximo (homing, type 0); sem alvo, direção aleatória. @param {World} w @param {PlayerState} ps
+ * Sem mira o alvo é, em ordem: (1) míssil inimigo mirando este slot a < INTERCEPT_DIST, se aproximando e AINDA
+ * SEM interceptador meu → interceptação (type 1); (2) se todos os entrantes já estão cobertos, o ATACANTE que
+ * mandou um deles (type 0) — mais um interceptador no mesmo míssil seria desperdício, e quem atirou está por
+ * perto; (3) senão o oponente vivo mais próximo; sem ninguém, direção aleatória. @param {World} w @param {PlayerState} ps
  */
 export function applyFire(w,ps){
-  if(ps.missiles<=0||w.tick<ps.fireCdUntil)return false;const src=firstLive(ps.pieces);if(!src)return false;ps.missiles--;
-  if(src.shieldLv>0)hitShield(w,src);
+  if(ps.missiles<=0||w.tick<ps.fireCdUntil)return false;const src=firstLive(ps.pieces);if(!src)return false;
+  const wp=weaponOf(ps.weapon);ps.missiles--;
+  if(wp.cd)ps.fireCdUntil=w.tick+wp.cd;   // a cadência da arma reusa o MESMO campo da carência de nascimento (e o mesmo `fireCd` do HUD)
+  if(src.shieldLv>0)hitShield(w,src);     // um nível por PUXÃO de gatilho, não por projétil
+  switch(ps.weapon){
+    case WEAPON.BURST:return fireBurst(w,ps,src,wp);
+    case WEAPON.MINE:return fireMine(w,ps,src,wp);
+    case WEAPON.NOVA:return fireNova(w,ps,src,wp);
+    default:return fireHoming(w,ps,src);}}
+/** Míssil e Cacho: o teleguiado de sempre. O `hue` do corpo carrega a arma (é livre no míssil) e vai no fio. */
+function fireHoming(w,ps,src){
   if(ps.fireAim){dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const ax=DIR[0],ay=DIR[1];aimTarget(w,ps.slot,src,ps.tx,ps.ty,AIM);
-    const m=w.addMissile(src.x,src.y,ax*MISSILE.SPEED,ay*MISSILE.SPEED,ps.slot,AIM[0]);m.type=AIM[1];
-    w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:AIM[1]?-1:AIM[0],targetMissile:AIM[1]?AIM[0]:-1,aimed:true});return true;}
-  const im=incomingMissile(w,ps.slot,src.x,src.y,MISSILE.INTERCEPT_DIST);
-  let ux,uy,best=-1,kind=0;
-  if(im){dirTo(src.x,src.y,im.x,im.y,DIR);ux=DIR[0];uy=DIR[1];best=im.id;kind=1;}
-  else{let bd=Infinity,bx=0,by=0;
-    for(const o of w.players.values()){if(o===ps||!o.alive)continue;const op=firstLive(o.pieces);if(!op)continue;
+    const m=w.addMissile(src.x,src.y,ax*MISSILE.SPEED,ay*MISSILE.SPEED,ps.slot,AIM[0]);m.type=AIM[1];m.hue=ps.weapon;
+    w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:AIM[1]?-1:AIM[0],targetMissile:AIM[1]?AIM[0]:-1,aimed:true,weapon:ps.weapon});return true;}
+  const im=incomingMissile(w,ps.slot,src.x,src.y,MISSILE.INTERCEPT_DIST,true);
+  let ux,uy,best=-1,kind=0,foe=-1;
+  if(im){dirTo(src.x,src.y,im.x,im.y,DIR);ux=DIR[0];uy=DIR[1];best=im.id;kind=1;foe=im.owner;}
+  else{
+    const cob=incomingMissile(w,ps.slot,src.x,src.y,MISSILE.INTERCEPT_DIST);   // todos cobertos: vai no dono
+    let bd=Infinity,bx=0,by=0;
+    if(cob&&cob.owner>=0){const o=w.players.get(cob.owner),op=o&&o.alive?firstLive(o.pieces):null;
+      if(op){best=cob.owner;bx=op.x;by=op.y;bd=0;}}
+    if(best<0)for(const o of w.players.values()){if(o===ps||!o.alive||sameTeam(w,o.slot,ps.slot))continue;const op=firstLive(o.pieces);if(!op)continue;
       const dx=op.x-src.x,dy=op.y-src.y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;best=o.slot;bx=op.x;by=op.y;}}
     if(best>=0){dirTo(src.x,src.y,bx,by,DIR);ux=DIR[0];uy=DIR[1];}else{const an=w.rng.angle();ux=Math.cos(an);uy=Math.sin(an);}}
-  const m=w.addMissile(src.x,src.y,ux*MISSILE.SPEED,uy*MISSILE.SPEED,ps.slot,best);m.type=kind;
-  w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:kind?-1:best,targetMissile:kind?best:-1});return true;}
+  const m=w.addMissile(src.x,src.y,ux*MISSILE.SPEED,uy*MISSILE.SPEED,ps.slot,best);m.type=kind;m.srcSlot=foe;m.hue=ps.weapon;
+  w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:kind?-1:best,targetMissile:kind?best:-1,weapon:ps.weapon});return true;}
+/**
+ * RAJADA: `n` projéteis retos (sem alvo) em leque de ±spread/2 na direção do ponteiro, rápidos e de vida curta.
+ * Não estilhaça (wp.shatter false) e arranha pouco (wp.shrink): é a arma de perto, o troco de quem não tem massa.
+ */
+function fireBurst(w,ps,src,wp){
+  dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const a0=Math.atan2(DIR[1],DIR[0]),off=src.r+MISSILE.R+2;
+  for(let i=0;i<wp.n;i++){const an=a0+(i/(wp.n-1)-.5)*wp.spread,ux=Math.cos(an),uy=Math.sin(an);
+    const m=w.addMissile(src.x+ux*off,src.y+uy*off,ux*wp.speed,uy*wp.speed,ps.slot,-1);
+    m.type=1;m.hue=WEAPON.BURST;m.life=w.tick+wp.life;}
+  w.events.push({type:"FIRE",slot:ps.slot,missileId:-1,x:src.x,y:src.y,targetSlot:-1,targetMissile:-1,weapon:WEAPON.BURST});
+  return true;}
+/**
+ * MINA GRAVITACIONAL: larga um poço parado à frente. É o BLACKHOLE inteiro — que está dormente no jogo
+ * (BLACKHOLE.COUNT = 0) e cujo código nunca saiu — com raio menor (mineR, então a influência r·INFLUENCE
+ * também encolhe), vida curta e o ESMAGAMENTO desligado: `hue = 1` marca "sou mina", e o holePair estilhaça
+ * em vez de engolir. Reaproveitar isso é o que faz a arma custar ~10 linhas em vez de um sistema novo.
+ */
+function fireMine(w,ps,src,wp){
+  dirTo(src.x,src.y,ps.tx,ps.ty,DIR);
+  const x=clamp(src.x+DIR[0]*(src.r+wp.drop),wp.mineR,w.w-wp.mineR),y=clamp(src.y+DIR[1]*(src.r+wp.drop),wp.mineR,w.h-wp.mineR);
+  const h=w.spawnHole({x,y,active:true});
+  setR(h,wp.mineR);h.life=w.tick+wp.life;h.hue=1;h.srcSlot=ps.slot;
+  w.events.push({type:"FIRE",slot:ps.slot,missileId:h.id,x,y,targetSlot:-1,targetMissile:-1,weapon:WEAPON.MINE});
+  return true;}
+/**
+ * NOVA PORTÁTIL: a onda da supernova, centrada em MIM e sem me atingir — empurra tudo em `blast` com
+ * push·(1−d/blast) e estilhaça quem estiver no miolo (blast·core), exatamente como o miolo de uma estrela
+ * que explode. Aliado não sente nada. É a carta de fuga do cercado.
+ */
+function fireNova(w,ps,src,wp){
+  const R0=wp.blast,core=R0*wp.core,rng=w.rng,pcs=w.pieces;
+  for(let i=0;i<pcs.length;i++){const q=pcs[i];if(q.dead||sameTeam(w,q.owner,ps.slot))continue;
+    const dx=q.x-src.x,dy=q.y-src.y,d=Math.sqrt(dx*dx+dy*dy);if(d>=R0)continue;
+    const ux=d>1e-6?dx/d:1,uy=d>1e-6?dy/d:0;addBoost(q,ux,uy,wp.push*(1-d/R0));
+    if(d<core&&w.tick>=q.chipUntil&&q.r>=STAR.SHATTER_MIN_R){q.chipUntil=w.tick+STAR.SHATTER_CD_TICKS;
+      shatterPiece(w,w.players.get(q.owner),q,ux,uy,rng.int(STAR.SHATTER_N[0],STAR.SHATTER_N[1]),STAR.SHATTER_DIST);}}
+  const asts=w.asteroids;
+  for(let i=0;i<asts.length;i++){const a=asts[i];if(a.dead)continue;
+    const dx=a.x-src.x,dy=a.y-src.y,d=Math.sqrt(dx*dx+dy*dy);if(d>=R0||d<1e-6)continue;
+    const k=STAR.AST_KICK*(1-d/R0)*Math.min(1,ASTEROID.R_MIN/a.r);a.vx+=dx/d*k;a.vy+=dy/d*k;
+    if(a.type>=0&&w.asteroids.length<w.astCap){w.queueAsteroid(a.type,ASTEROID.RESPAWN_TICKS);a.type=-1;}}
+  w.events.push({type:"SUPERNOVA",x:src.x,y:src.y,r:R0,starId:0,rammed:false});   // o cliente já sabe desenhar esta onda
+  w.events.push({type:"FIRE",slot:ps.slot,missileId:-1,x:src.x,y:src.y,targetSlot:-1,targetMissile:-1,weapon:WEAPON.NOVA});
+  return true;}

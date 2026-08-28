@@ -33,12 +33,37 @@ export function outText(c,txt,x,y,size,fill,stroke,w){
   c.fillStyle=fill||"#fff";c.fillText(txt,x,y);}
 // faixa de tamanho do sprite (128/256/512) por raio em pixels de mundo
 export const tier=r=>r<=44?128:r<=120?256:512;
+/**
+ * HALO assado (o brilho das partículas): gradiente radial da cor da bolinha até transparente, desenhado no
+ * frame INTEIRO do atlas — o corpo ocupa só `size/2/K`, então o resto da moldura é exatamente a sobra por
+ * onde o brilho vaza para fora do disco.
+ * Vai numa TEXTURA, e não num filtro: o renderer não usa filtro nem blur (custam render target e são o que
+ * derrubava o fps), e o precedente já existia no estilhaço de supernova. Quem soma de verdade é o
+ * ParticleContainer do brilho, que é desenhado em blendMode "add" por baixo do normal.
+ * `core` = fração do raio em que o halo ainda está no máximo; `k` = intensidade.
+ */
+export function paintGlow(c,size,color,{core=.26,k=.40}={}){
+  const R=size/2,n=parseInt(color.slice(1),16),r=n>>16,g=n>>8&255,b=n&255;
+  const gr=c.createRadialGradient(0,0,R*core*.3,0,0,R);
+  gr.addColorStop(0,`rgba(${r},${g},${b},${k})`);
+  gr.addColorStop(core,`rgba(${r},${g},${b},${k*.42})`);
+  gr.addColorStop(.5,`rgba(${r},${g},${b},${k*.11})`);
+  gr.addColorStop(.78,`rgba(${r},${g},${b},${k*.02})`);
+  gr.addColorStop(1,`rgba(${r},${g},${b},0)`);
+  c.fillStyle=gr;c.beginPath();c.arc(0,0,R,0,6.283);c.fill();}
+// A queda é RÁPIDA de propósito. Com um halo largo e opaco (a primeira tentativa: k .85 e meia-queda em .62)
+// o aditivo satura para branco e a tela vira névoa leitosa — some o contraste que faz enxergar a comida. Aqui
+// o brilho é uma auréola justa em volta do disco: dá o "neon" dos .io modernos e a bolinha continua nítida.
+
 
 // tipos de comida: o mockup usa strings; shared/src/constants.js FOOD_TYPE usa índices. Aceita os dois.
-const FOOD_NAMES=["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield"];
+const FOOD_NAMES=["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield",
+  "w_burst","w_mine","w_cluster","w_nova"];   // 8..11 = as armas do Sobrevivência (índice = FOOD_TYPE)
 export const foodType=t=>typeof t==="number"?(FOOD_NAMES[t]||"dust"):(t||"dust");
-export const FOOD_ICON={missile_ammo:"🚀",powerup_merge:"⚛️",powerup_magnet:"🧲",powerup_shield:"🛡️"};
-export const FOOD_FIXED={powerup_merge:"#5cf08a",powerup_magnet:"#ff66ff",powerup_shield:"#44aaff",missile_ammo:"#ff6600"};   // cores dos especiais (engine2 mkFood)
+export const FOOD_ICON={missile_ammo:"🚀",powerup_merge:"⚛️",powerup_magnet:"🧲",powerup_shield:"🛡️",
+  w_burst:"✳️",w_mine:"🕳️",w_cluster:"💥",w_nova:"🌟"};
+export const FOOD_FIXED={powerup_merge:"#5cf08a",powerup_magnet:"#ff66ff",powerup_shield:"#44aaff",missile_ammo:"#ff6600",
+  w_burst:"#ffd24a",w_mine:"#9b6bff",w_cluster:"#ff5c8a",w_nova:"#66f0ff"};   // cores dos especiais (engine2 mkFood); a raridade sobe na escala quente→fria
 
 // desenha as primitivas de effects.fx() num contexto 2D (referência; o Pixi faz o equivalente)
 export function drawPrims(c,prims){
