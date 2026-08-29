@@ -30,7 +30,10 @@ export const textures={
   scale:{planet:PK,food:FK,ejected:EK,asteroid:AK,blackHole:BK,missile:MK,nova:NK,prop:PROPK,star:1},
   tier,
   key(kind,p={},size=0){switch(kind){
-    case "planet":return`${id}:p${p.skin.id}${p.isMe?"m":""}:${size}`;
+    // A versão do AVATAR entra na chave: sem ela, dois jogadores com fotos diferentes e a mesma skin
+    // colidiriam na mesma textura — e é ela também que faz a foto aparecer sozinha quando o bitmap chega,
+    // porque a chave muda e o cache assa a nova (não existe invalidação no TextureCache).
+    case "planet":return`${id}:p${p.skin.id}${p.isMe?"m":""}${p.avatar?"@"+p.avatar:""}:${size}`;
     case "food":return`${id}:f${foodType(p.type)}${foodColor(p)}`;
     case "ejected":return`${id}:e${p.glow?"nova":p.color}`;
     case "glow":return`${id}:g${p.color}${p.k||""}`;
@@ -46,7 +49,7 @@ export const textures={
     const band=(a0,a1)=>{c.beginPath();c.ellipse(0,0,r*1.85,r*.56,0,a0,a1,false);c.ellipse(0,0,r*1.3,r*.39,0,a1,a0,true);c.closePath();c.fill();c.stroke();};
     if(sk.ring){c.fillStyle=sh(col,.3);c.strokeStyle=INK;c.lineWidth=lw*.7;band(Math.PI,Math.PI*2);}
     c.fillStyle=col;c.beginPath();c.arc(0,0,r,0,6.283);c.fill();
-    c.save();c.beginPath();c.arc(0,0,r,0,6.283);c.clip();const pat=paintPattern(c,r,sk,{ink:INK,light:CREAM});
+    c.save();c.beginPath();c.arc(0,0,r,0,6.283);c.clip();const pat=paintPattern(c,r,sk,{ink:INK,light:CREAM,avatar:p.avatarBmp||null});
     c.fillStyle="rgba(59,31,107,.45)";c.beginPath();c.arc(r*.42,r*.44,r*1.05,0,6.283);c.fill();
     c.strokeStyle="rgba(255,207,154,.8)";c.lineWidth=r*.16;c.beginPath();c.arc(0,0,r*.9,-2.95,-.95);c.stroke();
     c.fillStyle="rgba(255,241,214,.42)";c.beginPath();c.ellipse(-r*.36,-r*.38,r*.34,r*.2,-.75,0,6.283);c.fill();
@@ -246,12 +249,12 @@ export const effects={
 };
 
 export const hud={
-  radar:{shape:"circle",size:{desktop:150,portrait:92,landscape:84},position:{corner:"top-right",margin:12},
+  radar:{shape:"circle",size:{desktop:150,tablet:120,portrait:92,landscape:84},position:{corner:"top-left",margin:12},
     shadow:{color:INK,dx:4,dy:4},face:SIL,border:{color:INK,width:4},
     rings:{color:"rgba(255,207,154,.3)",width:1.5,at:[.33,.66],crosshair:true},
     sweep:{fill:"rgba(255,181,71,.2)",line:GOLD,width:2,speed:.0025,span:.7},
     mapK:.72,colors:{me:CREAM,player:GOLD,bot:TEAL,ast:"rgba(255,207,154,.75)",hole:"rgba(255,94,108,.85)",star:"rgba(255,181,71,.9)",missile:"rgba(255,94,108,.95)",view:"rgba(255,241,214,.35)"},
-    meDot:{fill:CREAM,stroke:INK,width:1.5,r:{desktop:4,portrait:3,landscape:3}},
+    meDot:{fill:CREAM,stroke:INK,width:1.5,r:{desktop:4,tablet:4,portrait:3,landscape:3}},
     label:{text:"RADAR",font:"bold 9px "+FONT,color:GOLD,desktopOnly:true,dy:-10}},
   trail:{style:"dashed",color:(skin,isMe)=>rgba(PEACH,isMe?.7:.42),width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},
   labels:{font:FONT,nameColor:"#fff",massColor:PEACH,stroke:INK,minR:13,size:r=>Math.max(12,r*.34),massK:.68,nameY:()=>0,massY:fs=>fs*.8,strokeWidth:s=>Math.max(2,s*.2)},

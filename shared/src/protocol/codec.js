@@ -106,14 +106,18 @@ function readSnapshot(rd){expect(rd,MSG.SNAPSHOT);
 export const decodeSnapshot=view=>readSnapshot(createReader(view));
 
 // ── PLAYERS (0x11) ───────────────────────────────────────────────────────────
+// `level` (u8, 0 = sem nível: bot, convidado ou modo sem persistência) custa 1 byte numa mensagem que só é
+// difundida quando o roster MUDA — e é o que acende o badge no placar, no chat e no kill feed de uma vez.
+// O AVATAR não vem por aqui: é raro (skin de 25 mil moedas e nível 30) e viaja em JSON de controle, porque
+// 4 bytes por linha em todo broadcast seriam pagar por zeros em 49 dos 50 jogadores.
 /** @param {Writer} w @param {PlayerInfo[]} ps @returns {Uint8Array} */
 export function encodePlayers(w,ps){if(ps.length>65535)throw new RangeError("players: mais de 65535 linhas");
   w.reset().u8(MSG.PLAYERS).u16(ps.length);
-  for(let i=0;i<ps.length;i++){const p=ps[i];w.u16(p.slot|0).u8(p.flags|0).u8(p.skinId|0).u8(p.team==null?NO_TEAM:p.team&255).str8(p.name||"",NAME_MAX_BYTES).u32(u32c(p.score));}
+  for(let i=0;i<ps.length;i++){const p=ps[i];w.u16(p.slot|0).u8(p.flags|0).u8(p.skinId|0).u8(p.team==null?NO_TEAM:p.team&255).u8(Math.min(255,Math.max(0,p.level|0))).str8(p.name||"",NAME_MAX_BYTES).u32(u32c(p.score));}
   return w.toBuffer();}
 /** @param {Reader} rd @returns {PlayerInfo[]} */
 function readPlayers(rd){expect(rd,MSG.PLAYERS);const n=rd.u16(),ps=new Array(n);
-  for(let i=0;i<n;i++)ps[i]={slot:rd.u16(),flags:rd.u8(),skinId:rd.u8(),team:rd.u8(),name:rd.str8(),score:rd.u32()};return ps;}
+  for(let i=0;i<n;i++)ps[i]={slot:rd.u16(),flags:rd.u8(),skinId:rd.u8(),team:rd.u8(),level:rd.u8(),name:rd.str8(),score:rd.u32()};return ps;}
 /** @param {Bytes} view */
 export const decodePlayers=view=>readPlayers(createReader(view));
 

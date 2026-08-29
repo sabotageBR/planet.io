@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { skinById, ACHIEVEMENTS, ACHIEVEMENT_GOALS } from "@planet/shared";
+import { skinById, ACHIEVEMENTS, ACHIEVEMENT_GOALS, COUNTRIES, POPULAR, flagOf, countryName } from "@planet/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { openAccount, loadHistory, logout } from "../state/actions.js";
+import { openAccount, loadHistory, logout, setCountry } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
-import { Nav, ScreenHeader, Screen } from "./bits.jsx";
+import { Nav, ScreenHeader, Screen, Select } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
 import { fmt, fmtTime, fmtDate, ord } from "./format.js";
 
@@ -16,7 +16,11 @@ function Body() {
   const user = session.user || {}, st = session.stats, sk = skinById(user.equippedSkin ?? 0), guest = user.kind !== "registered";
   const [hist, setHist] = useState(null);
   useEffect(() => { let alive = true; loadHistory(20).then(m => { if (alive) setHist(m); }); return () => { alive = false; }; }, [user.id]);
-  const stats = [["games", st.games], ["kills", st.kills], ["bestScore", fmt(st.bestScore)], ["bestMass", fmt(st.bestMass)], ["playTime", fmtTime(st.playTime)], ["bestStreak", st.bestStreak]];
+  // `foodEaten` era gravado no banco desde sempre e nunca chegou à tela — agora chega, junto com mortes e K/D.
+  const stats = [["games", st.games], ["kills", st.kills], ["deaths", st.deaths], ["kd", (st.kd || 0).toFixed(2)],
+    ["foodEaten", fmt(st.foodEaten)], ["bestScore", fmt(st.bestScore)], ["bestMass", fmt(st.bestMass)],
+    ["playTime", fmtTime(st.playTime)], ["bestStreak", st.bestStreak]];
+  const listaPaises = [...POPULAR, ...COUNTRIES.map(([c]) => c).filter(c => !POPULAR.includes(c))];
   const cause = h => { const c = h.cause || (h.by ? "eaten" : "left"); return { c, label: LB.causes[c] || c }; };
   return <>
     <Nav cur="profile" /><ScreenHeader title={LB.profileTitle} />
@@ -25,6 +29,21 @@ function Body() {
       <div className="pf-meta"><b className="v-nick pf-nick">{user.nick}</b><i className="v-kind pf-kind" data-kind={guest ? "guest" : "registered"}>{guest ? LB.guest : LB.registered}</i><span className="coinbar">{LB.coinIcon} <b className="v-coins">{fmt(user.coins)}</b></span></div>
       {guest ? <button className="btn-secondary pf-claim" data-go="account" onClick={openAccount}>{LB.claim}</button>
         : <button className="btn-secondary pf-logout" onClick={() => logout().catch(e => console.warn(e))}>{LB.logout}</button>}
+    </div>
+    {/* NÍVEL: a barra é o progresso dentro do nível atual — `levelInto/levelNeed` vêm prontos do servidor,
+        derivados do XP por uma curva que mora num lugar só (shared/src/levels.js). */}
+    <div className="card pf-level">
+      <div className="lv-head"><b className="lv-n">{LB.levelWord} {st.level}</b>
+        <span className="hint">{fmt(st.levelInto)} / {fmt(st.levelNeed)} {LB.xpWord}</span></div>
+      <span className="lv-bar"><i style={{ "--p": Math.max(0, Math.min(1, st.levelPct || 0)) }} /></span>
+      <div className="lv-country">
+        <Select id="pf-country" label={LB.countryLabel} value={user.country || ""}
+          onChange={e => setCountry(e.target.value || null)}>
+          <option value="">—</option>
+          {listaPaises.map(c => <option key={c} value={c}>{flagOf(c)} {countryName(c)}</option>)}
+        </Select>
+        {!user.country ? <span className="hint">{LB.countryHint}</span> : null}
+      </div>
     </div>
     <div className="stat-cards" id="pf-stats">{stats.map(([k, v]) => <div className="stat card" key={k}><b>{v}</b><i>{LB.stats[k]}</i></div>)}</div>
     <div className="card pf-hist"><div className="ph">{LB.history}</div><table id="pf-table">

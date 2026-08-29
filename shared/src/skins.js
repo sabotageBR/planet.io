@@ -2,12 +2,16 @@
 // `pattern` é a textura procedural desenhada por client/src/theme/patterns.js dentro do disco (nada de imagem:
 // tudo canvas, assado uma vez por skin/tier). `accent` é a 2ª cor do padrão; `ring` desenha o anel de Saturno.
 // Padrões: plain·stripes·clouds·storm·swirl·galaxy·craters·continents·lava·ice·poison·aurora·checker·crystal·
-// rings2·eye·sparkle·void·nebula·metal·scales·plasma. Ids nunca mudam (o banco guarda o que cada um comprou).
+// rings2·eye·sparkle·void·nebula·metal·scales·plasma; as LENDÁRIAS de nível acrescentam
+// belt·magma·prism·orbits·tide·crown·phoenix·singular, `avatar` é a foto do jogador e `face` são as
+// caricaturas dos easter eggs (o `egg` de shared/src/eggs.js escolhe qual, pelo id da skin).
+// `levelReq` (opcional) é o nível MÍNIMO para comprar: quem valida é POST /api/skins/:id/buy, e o
+// `seedSkins` do migrate replica a coluna para o banco. Ids nunca mudam (o banco guarda o que cada um comprou).
 // @ts-check
 export const RARITY_LABELS={"free":"Grátis","common":"Comum","rare":"Raro","epic":"Épico","legendary":"Lendário","earned":"Conquista","secret":"Secreto"};
 export const RARITY_ORDER=["free","common","rare","epic","legendary","earned","secret"];
 export const RARITY_COLORS={"free":"#aaaaaa","common":"#88ccff","rare":"#44aaff","epic":"#aa44ff","legendary":"#ffcc00","earned":"#44ffaa","secret":"#ff4488"};
-/** @type {Array<{id:number,name:string,emoji:string,rarity:string,price:number,color:string,ring:boolean,glow:string,desc:string,pattern?:string,accent?:string,unlockKey?:string}>} */
+/** @type {Array<{id:number,name:string,emoji:string,rarity:string,price:number,color:string,ring:boolean,glow:string,desc:string,pattern?:string,accent?:string,unlockKey?:string,levelReq?:number}>} */
 export const SKINS=[
   {"id": 0, "name": "Planeta Padrão", "emoji": "🪐", "rarity": "free", "price": 0, "color": "#4ECDC4", "ring": false, "glow": "#4ECDC4", "desc": "Seu ponto de partida", "pattern": "clouds", "accent": "#a9f3ec"},
   {"id": 1, "name": "Marte", "emoji": "🔴", "rarity": "common", "price": 200, "color": "#c1440e", "ring": false, "glow": "#ff6644", "desc": "O planeta vermelho", "pattern": "craters", "accent": "#e07a4a"},
@@ -83,8 +87,31 @@ export const SKINS=[
   {"id": 71, "name": "Aurora Eterna", "emoji": "🎆", "rarity": "legendary", "price": 12000, "color": "#35e0c0", "ring": true, "glow": "#a8fff0", "desc": "A noite que nunca apaga", "pattern": "aurora", "accent": "#b388ff"},
   {"id": 72, "name": "Dragão de Obsidiana", "emoji": "🐲", "rarity": "legendary", "price": 16000, "color": "#241a3a", "ring": false, "glow": "#ff4d2a", "desc": "Escamas de vidro vulcânico", "pattern": "scales", "accent": "#ff4d2a"},
   {"id": 73, "name": "Sentinela", "emoji": "⚔️", "rarity": "earned", "price": 0, "color": "#6b8cff", "ring": false, "glow": "#b8caff", "desc": "Sobreviva 10 min numa vida", "pattern": "metal", "accent": "#dfe8ff", "unlockKey": "survive10"},
-  {"id": 74, "name": "Colosso", "emoji": "🗿", "rarity": "earned", "price": 0, "color": "#a8b0c0", "ring": false, "glow": "#dfe4ee", "desc": "Alcance massa 10.000", "pattern": "craters", "accent": "#6b7488", "unlockKey": "mass10000"}
+  {"id": 74, "name": "Colosso", "emoji": "🗿", "rarity": "earned", "price": 0, "color": "#a8b0c0", "ring": false, "glow": "#dfe4ee", "desc": "Alcance massa 10.000", "pattern": "craters", "accent": "#6b7488", "unlockKey": "mass10000"},
+  {"id": 75, "name": "Cinturão de Órion", "emoji": "🎽", "rarity": "legendary", "price": 6000, "levelReq": 10, "color": "#2a2f6b", "ring": false, "glow": "#ffe98a", "desc": "Três estrelas em fila", "pattern": "belt", "accent": "#ffe98a"},
+  {"id": 76, "name": "Coração de Magma", "emoji": "🌋", "rarity": "legendary", "price": 8000, "levelReq": 15, "color": "#1c0d0d", "ring": false, "glow": "#ff5a1f", "desc": "Racha de dentro para fora", "pattern": "magma", "accent": "#ff5a1f"},
+  {"id": 77, "name": "Prisma Quântico", "emoji": "🔷", "rarity": "legendary", "price": 10000, "levelReq": 20, "color": "#0e1030", "ring": false, "glow": "#7cf5ff", "desc": "Seis faces, uma luz", "pattern": "prism", "accent": "#7cf5ff"},
+  {"id": 78, "name": "Anéis de Vênus", "emoji": "💫", "rarity": "legendary", "price": 12000, "levelReq": 25, "color": "#e8c87a", "ring": true, "glow": "#fff0c0", "desc": "Três luas em órbita", "pattern": "orbits", "accent": "#fff0c0"},
+  {"id": 79, "name": "Maré Abissal", "emoji": "🌊", "rarity": "legendary", "price": 14000, "levelReq": 30, "color": "#04263f", "ring": false, "glow": "#37d6c1", "desc": "O oceano que não tem fundo", "pattern": "tide", "accent": "#37d6c1"},
+  {"id": 80, "name": "Coroa de Ferro", "emoji": "⚙️", "rarity": "legendary", "price": 16000, "levelReq": 35, "color": "#3a3f4d", "ring": false, "glow": "#c8d4e6", "desc": "Pesada de usar", "pattern": "crown", "accent": "#c8d4e6"},
+  {"id": 81, "name": "Fênix Solar", "emoji": "🔥", "rarity": "legendary", "price": 20000, "levelReq": 40, "color": "#ff7a1f", "ring": false, "glow": "#fff3c0", "desc": "Renasce toda rodada", "pattern": "phoenix", "accent": "#fff3c0"},
+  {"id": 82, "name": "Singularidade", "emoji": "🕳️", "rarity": "legendary", "price": 30000, "levelReq": 50, "color": "#0a0612", "ring": true, "glow": "#c56bff", "desc": "O fim de todas as órbitas", "pattern": "singular", "accent": "#c56bff"},
+  {"id": 83, "name": "Retrato", "emoji": "🖼️", "rarity": "legendary", "price": 25000, "levelReq": 30, "color": "#2b2540", "ring": true, "glow": "#ffd479", "desc": "Sua foto dentro do planeta", "pattern": "avatar", "accent": "#ffd479"},
+  {"id": 84, "name": "Trump", "emoji": "🇺🇸", "rarity": "secret", "price": 0, "color": "#e8a05a", "ring": false, "glow": "#f2d16b", "desc": "Segredo oculto", "pattern": "face", "accent": "#f2d16b"},
+  {"id": 85, "name": "Bruxo", "emoji": "🪄", "rarity": "secret", "price": 0, "color": "#7a4a2a", "ring": false, "glow": "#2ecc71", "desc": "Segredo oculto", "pattern": "face", "accent": "#2ecc71"},
+  {"id": 86, "name": "Lula", "emoji": "🇧🇷", "rarity": "secret", "price": 0, "color": "#d9b48a", "ring": false, "glow": "#e03b3b", "desc": "Segredo oculto", "pattern": "face", "accent": "#e03b3b"},
+  {"id": 87, "name": "Bolsonaro", "emoji": "🫡", "rarity": "secret", "price": 0, "color": "#d9b48a", "ring": false, "glow": "#1f8a4c", "desc": "Segredo oculto", "pattern": "face", "accent": "#1f8a4c"},
+  {"id": 88, "name": "Putin", "emoji": "🇷🇺", "rarity": "secret", "price": 0, "color": "#e2cdbd", "ring": false, "glow": "#b03030", "desc": "Segredo oculto", "pattern": "face", "accent": "#b03030"},
+  {"id": 89, "name": "Milei", "emoji": "🇦🇷", "rarity": "secret", "price": 0, "color": "#dcb894", "ring": false, "glow": "#6fc3e8", "desc": "Segredo oculto", "pattern": "face", "accent": "#6fc3e8"},
+  {"id": 90, "name": "Macron", "emoji": "🇫🇷", "rarity": "secret", "price": 0, "color": "#e3c3a6", "ring": false, "glow": "#2b4bd0", "desc": "Segredo oculto", "pattern": "face", "accent": "#2b4bd0"},
+  {"id": 91, "name": "Xi Jinping", "emoji": "🇨🇳", "rarity": "secret", "price": 0, "color": "#e6c9a3", "ring": false, "glow": "#d81f26", "desc": "Segredo oculto", "pattern": "face", "accent": "#d81f26"},
+  {"id": 92, "name": "Modi", "emoji": "🇮🇳", "rarity": "secret", "price": 0, "color": "#c08a5a", "ring": false, "glow": "#ff9933", "desc": "Segredo oculto", "pattern": "face", "accent": "#ff9933"},
+  {"id": 93, "name": "Zelensky", "emoji": "🇺🇦", "rarity": "secret", "price": 0, "color": "#d8b394", "ring": false, "glow": "#ffd700", "desc": "Segredo oculto", "pattern": "face", "accent": "#ffd700"}
 ];
 export const SKIN_BY_ID=new Map(SKINS.map(s=>[s.id,s]));
 export const skinById=id=>SKIN_BY_ID.get(id)||SKINS[0];
 export const isPurchasable=s=>s.price>0&&!s.unlockKey;
+/** Nível mínimo para comprar (0 = nenhum). */
+export const levelReqOf=s=>(s&&s.levelReq)|0;
+/** Skin que o jogador nunca vê na loja (easter egg ou conquista secreta): não entra na conta de progresso. */
+export const isHiddenSkin=s=>s.rarity==="secret";

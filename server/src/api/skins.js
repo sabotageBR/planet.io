@@ -3,18 +3,28 @@
 import {err} from './router.js';
 import {SKINS} from '@planet/shared/skins.js';
 import {InsufficientCoins} from '../repos/ledger.js';
-const CATALOG=SKINS.map(s=>({id:s.id,name:s.name,emoji:s.emoji,rarity:s.rarity,price:s.price,color:s.color,ring:s.ring,glow:s.glow,desc:s.desc,...(s.unlockKey?{unlockKey:s.unlockKey}:{})}));
-export function mountSkins(router,{db,users,skins,ledger,requireUser,optionalUser,log}){
+import {levelFromXp} from '@planet/shared/levels.js';
+const CATALOG=SKINS.map(s=>({id:s.id,name:s.name,emoji:s.emoji,rarity:s.rarity,price:s.price,color:s.color,ring:s.ring,glow:s.glow,desc:s.desc,...(s.levelReq?{levelReq:s.levelReq}:{}),...(s.unlockKey?{unlockKey:s.unlockKey}:{})}));
+export function mountSkins(router,{db,users,skins,ledger,matches,requireUser,optionalUser,log}){
   // GET /api/skins (🔒 opcional)
   router.add('GET',/^\/api\/skins$/,async ctx=>{
     const me=await optionalUser(ctx);
-    return{skins:CATALOG,owned:me?await skins.ownedIds(me.id):[0],equipped:me?me.equipped_skin_id:0};
+    // O NÍVEL vem junto para a loja poder mostrar "🔒 Nv 20" sem uma segunda chamada. `u.xp` já veio do
+    // RESOLVE_SQL do token — não há ida extra ao banco.
+    return{skins:CATALOG,owned:me?await skins.ownedIds(me.id):[0],equipped:me?me.equipped_skin_id:0,
+      level:me?levelFromXp(Number(me.xp||0)):0};
   });
   // POST /api/skins/:id/buy 🔒 → {coins,owned}
   router.add('POST',/^\/api\/skins\/(?<id>\d+)\/buy$/,async ctx=>{
     const me=await requireUser(ctx);const id=Number(ctx.params.id);
     const skin=await skins.byId(id);if(!skin)throw err(404,'skin_not_found','skin não existe');
     if(!(skin.price>0&&!skin.unlock_key))throw err(403,'not_purchasable','essa skin não está à venda');
+    // Gate de NÍVEL, fora da transação de propósito: nível só SOBE, então uma leitura defasada só pode ser
+    // mais rígida que a verdade — nunca mais frouxa. Dentro da transação seria uma query a mais no caminho
+    // que já segura o saldo.
+    if(skin.level_req>0){
+      const lvl=levelFromXp(Number(me.xp||0));
+      if(lvl<skin.level_req)throw err(403,'level_required',`precisa de nível ${skin.level_req} (você tem ${lvl})`,{levelReq:skin.level_req,level:lvl});}
     const out=await db.tx(async c=>{
       if(await skins.has(me.id,id,c))throw err(409,'already_owned','você já tem essa skin');
       let r;try{r=await ledger.apply(c,{userId:me.id,delta:-skin.price,reason:'skin_purchase',refType:'skin',refId:id});}

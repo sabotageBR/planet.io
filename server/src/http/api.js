@@ -42,7 +42,10 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
       const url=new URL(req.url||'/','http://x'),p=url.pathname;
       if(p==='/healthz')return sendJson(res,200,health());
       if(p==='/internal/rooms')return sendJson(res,200,{shard:config.shard,rooms:rooms?rooms.listRooms():[]});
-      if(p==='/api/config')return sendJson(res,200,{shards:config.shards,shard:config.shard,roomMax:config.roomMax,protocol:PROTOCOL_VERSION});
+      // `googleClientId` vazio é o interruptor do login com Google: o cliente só desenha o botão quando ele
+      // vem preenchido, então sem credencial nada aparece e a rota nem é procurada.
+      if(p==='/api/config')return sendJson(res,200,{shards:config.shards,shard:config.shard,roomMax:config.roomMax,
+        protocol:PROTOCOL_VERSION,googleClientId:config.googleClientId||''});
       if(p==='/api/rooms'){const all=(await allRooms()).sort(byPlayers),md=url.searchParams.get('mode');
         return sendJson(res,200,{rooms:md==null?all:all.filter(r=>(r.mode|0)===(+md|0))});}
       if(p==='/api/auto'){

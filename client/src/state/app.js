@@ -21,13 +21,18 @@ export const PREF_KEYS = Object.keys(PREF_DEFAULTS);
 // persistia); sem a conversão o ganho do áudio virava 0,007 — ou seja, mudo.
 export const normalizePrefs = p => { const o = { ...PREF_DEFAULTS }; if (p) for (const k of PREF_KEYS) if (p[k] !== undefined && p[k] !== null) o[k] = p[k]; o.volume = +o.volume; if (o.volume > 0 && o.volume <= 1) o.volume *= 100; o.lbSize = +o.lbSize || 10; return o; };
 
-export const EMPTY_STATS = Object.freeze({ games: 0, kills: 0, botKills: 0, splits: 0, ejects: 0, bestScore: 0, bestMass: 0, playTime: 0, bestStreak: 0 });
+export const EMPTY_STATS = Object.freeze({ games: 0, kills: 0, botKills: 0, splits: 0, ejects: 0, bestScore: 0, bestMass: 0, playTime: 0, bestStreak: 0,
+  foodEaten: 0, deaths: 0, kd: 0, xp: 0, level: 1, levelInto: 0, levelNeed: 1, levelPct: 0 });
 /** Aceita camelCase e snake_case vindos do servidor. */
 export function normalizeStats(s) {
   if (!s) return EMPTY_STATS;
   const pick = (...ks) => { for (const k of ks) if (s[k] != null) return +s[k] || 0; return 0; };
   return { games: pick("games", "matches"), kills: pick("kills"), botKills: pick("botKills", "bot_kills"), splits: pick("splits"), ejects: pick("ejects"),
-    bestScore: pick("bestScore", "best_score"), bestMass: pick("bestMass", "best_mass"), playTime: pick("playTime", "play_time", "playTimeS", "play_time_s"), bestStreak: pick("bestStreak", "best_streak") };
+    bestScore: pick("bestScore", "best_score"), bestMass: pick("bestMass", "best_mass"), playTime: pick("playTime", "play_time", "playTimeS", "play_time_s"), bestStreak: pick("bestStreak", "best_streak"),
+    // `foodEaten` era gravado no banco e devolvido pela API desde sempre, e MORRIA aqui: sem a chave, o
+    // perfil nunca mostrou uma partícula comida. Os outros quatro são novos.
+    foodEaten: pick("foodEaten", "food_eaten"), deaths: pick("deaths"), kd: pick("kd"), xp: pick("xp"),
+    level: pick("level") || 1, levelInto: pick("levelInto"), levelNeed: pick("levelNeed") || 1, levelPct: pick("levelPct") };
 }
 
 export const initialState = {

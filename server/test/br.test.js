@@ -500,21 +500,25 @@ test('fala gerada: o bot responde a quem o CHAMA, e o orçamento segura o resto'
     const resp=await c.until(()=>c.json.slice(n).find(m=>m.t==='chat'&&m.slot===bot.slot),5000,'resposta do bot citado');
     assert.equal(resp.name,bot.name,'quem responde é o bot chamado, com o nome de jogador dele');
     assert.equal(resp.text,`eu ouvi, ${eu}`);
-    assert.equal(pedidos.length,1);
-    assert.equal(pedidos[0].nome,bot.name);
-    assert.equal(pedidos[0].quem,eu,'o prompt sabe COM QUEM está falando');
-    assert.ok(pedidos[0].historico.some(l=>l.text.includes('vem ca')),'e leva a conversa junto — o servidor não guardava uma linha antes disto');
+    // Só as gerações de RESPOSTA: com `rng.chance` forçado a true, os gatilhos espontâneos (kill, líder,
+    // caçado…) também passam pela mesma LLM falsa, e contá-los aqui mediria outra coisa.
+    const chamados=()=>pedidos.filter(p=>p.kind==='mention'||p.kind==='coro'||p.kind==='cadeia');
+    assert.equal(chamados().length,1,'um bot citado, uma resposta');
+    assert.equal(chamados()[0].nome,bot.name);
+    assert.equal(chamados()[0].quem,eu,'o prompt sabe COM QUEM está falando');
+    assert.ok(chamados()[0].historico.some(l=>l.text.includes('vem ca')),'e leva a conversa junto — o servidor não guardava uma linha antes disto');
+    assert.ok(chamados()[0].historia&&chamados()[0].historia.quem,'e sabe QUEM ele é: a persona vai no prompt');
     // orçamento da sala: chamar de novo no mesmo instante não vira coro
     n=c.json.length;
     c.send({t:'chat',text:`${bot.name} responde de novo`});
     await sleep(400);
     assert.equal(c.json.slice(n).filter(m=>m.t==='chat'&&m.slot===bot.slot).length,0,'duas respostas na mesma janela: o chat vira dois bots conversando sozinhos');
     // e sem citação nenhuma ninguém se dá por chamado
-    room.mencaoAt=-1e9;room.ultimoBot=null;
-    n=c.json.length;const antes=pedidos.length;
-    c.send({t:'chat',text:'boa sorte pra todo mundo ai'});
+    room.mencaoAt=-1e9;room.ultimoBot=null;room.falaFila.length=0;
+    n=c.json.length;const antes=chamados().length;
+    c.send({t:'chat',text:'olha o tamanho desse planeta ali'});   // frase solta: sem citação e sem vocativo coletivo
     await sleep(400);
-    assert.equal(pedidos.length,antes,'mensagem que não cita ninguém não acorda bot nenhum');
+    assert.equal(chamados().length,antes,'mensagem que não cita ninguém não acorda bot nenhum');
   }finally{room.rng.chance=chance;room.botChat=null;}
   c.close();
 });
@@ -529,4 +533,91 @@ test('/api/auto separa os pools por modo e por tamanho de equipe',async()=>{
   assert.equal(quad.body.max,modeCap(MODE.BR,4));
   const rooms=await api(`/api/rooms?mode=${MODE.BR}`);
   assert.ok(rooms.body.rooms.every(r=>r.mode===MODE.BR),'a listagem filtra por modo');
+});
+
+// ── CORO E CORRENTE ──────────────────────────────────────────────────────────
+test('corrente bot↔bot TERMINA, mesmo com uma LLM que sempre cita outro bot',async()=>{
+  // Pior caso adversarial de propósito: a LLM falsa devolve sempre uma frase que CITA outro bot vivo pelo
+  // nome, que é a única condição que faz a corrente continuar. Se a terminação depender de sorte, este
+  // teste a expõe; se depender das guardas (profundidade, `cadeia`, orçamento por bot), ele passa sempre.
+  const {citou}=await import('../src/rooms/botChat.js');
+  const {BOT_LLM}=await import('@planet/shared/constants.js');
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Humano',room:newRoom()});
+  const room=roomOf(r.code);
+  const bots=[...room.sim.players.values()].filter(g=>g.isBot&&!g.dead);
+  assert.ok(bots.length>=3,'o teste precisa de bots para a corrente ter para onde ir');
+  const agendas=[];
+  room.botChat={ativo:()=>true,citou,
+    gerar:async ctx=>{const outro=bots.find(b=>b.name!==ctx.nome);return `${outro.name} vem ca`;}};
+  const agenda=room._agenda.bind(room);
+  room._agenda=(gp,g,ms)=>{agendas.push({slot:gp.slot,depth:g.depth|0,cadeia:(g.cadeia||[]).slice()});return agenda(gp,g,ms);};
+  const chance=room.rng.chance.bind(room.rng);room.rng.chance=()=>true;   // nada pode depender do sorteio
+  try{
+    c.send({t:'chat',text:`${bots[0].name} vem ca seu covarde`});
+    await sleep(2500);                       // tempo de sobra para toda a corrente possível se desenrolar
+    assert.ok(agendas.length>0,'nem a primeira resposta saiu');
+    // A invariante é POR CORRENTE, não por sala: uma fala espontânea que cita alguém abre uma corrente
+    // nova e legítima, e somar todas as linhas mediria outra coisa.
+    for(const a of agendas){
+      assert.ok(a.depth<=BOT_LLM.CADEIA_MAX,`profundidade ${a.depth} passou de CADEIA_MAX`);
+      assert.ok(!a.cadeia.includes(a.slot),`slot ${a.slot} reentrou na própria corrente`);
+      assert.equal(new Set(a.cadeia).size===a.cadeia.length||a.cadeia.length<=2,true,'cadeia com slot repetido');
+      assert.ok(a.cadeia.length<=BOT_LLM.CADEIA_MAX+2,`cadeia de ${a.cadeia.length}: não fechou`);}
+    await c.until(()=>room.falaFila.length===0,3000,'a fila drenar');
+    assert.equal(room.falaFila.length,0,'a fila ficou com resto pendurado');
+  }finally{room.rng.chance=chance;room._agenda=agenda;room.botChat=null;}
+  c.close();
+});
+
+test('pergunta aberta vira coro escalonado; frase solta, não',async()=>{
+  const {citou}=await import('../src/rooms/botChat.js');
+  const {BOT_LLM}=await import('@planet/shared/constants.js');
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Humano',room:newRoom()});
+  const room=roomOf(r.code);
+  room.botChat={ativo:()=>true,citou,gerar:async()=>'tudo certo'};
+  const agendados=[];
+  const agenda=room._agenda.bind(room);
+  room._agenda=(gp,g,ms)=>{agendados.push({slot:gp.slot,kind:g.kind,ms});return agenda(gp,g,ms);};
+  try{
+    room.chat({slot:r.slot,chatAt:[]},'e aí galera, tudo bem?');
+    assert.ok(agendados.length>=1&&agendados.length<=3,`coro de ${agendados.length}: fora de 1..3`);
+    assert.equal(new Set(agendados.map(a=>a.slot)).size,agendados.length,'o mesmo bot foi escolhido duas vezes');
+    // ESCALONADO: atrasos estritamente crescentes. Simultâneo daria valores iguais — e três respostas no
+    // mesmo tick é exatamente o coro de robô que o agendamento existe para evitar.
+    for(let i=1;i<agendados.length;i++)
+      assert.ok(agendados[i].ms>agendados[i-1].ms,'as respostas saíram no mesmo instante');
+    assert.ok(agendados[0].ms>=BOT_LLM.CORO_D0_MS[0],'a primeira resposta saiu instantânea');
+    agendados.length=0;room.mencaoAt=-1e9;room.falaFila.length=0;
+    room.chat({slot:r.slot,chatAt:[]},'olha o tamanho daquele planeta ali');
+    assert.equal(agendados.length,0,'frase solta não deve acordar coro nenhum');
+  }finally{room._agenda=agenda;room.botChat=null;}
+  c.close();
+});
+
+test('ninguém fica mudo: chamado pelo nome com a LLM fora, sai o repertório',async()=>{
+  // Era o buraco: o fallback da menção devolvia null, então bot chamado pelo nome com o disjuntor aberto
+  // simplesmente não respondia — que é o que mais denuncia um preenchimento.
+  const {citou}=await import('../src/rooms/botChat.js');
+  const {BOT_CHAT,BOT_TALK}=await import('@planet/shared/constants.js');
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Humano',room:newRoom()});
+  const room=roomOf(r.code);
+  const bot=[...room.sim.players.values()].find(g=>g.isBot);
+  let vivo=true;
+  room.botChat={ativo:()=>vivo,citou,gerar:async()=>null};
+  const chance=room.rng.chance.bind(room.rng);
+  // true em tudo MENOS no sorteio do erro de digitação: `botTypo` dobra uma letra de propósito, e comparar
+  // a frase estropiada com o repertório seria testar o typo, não o fallback.
+  room.rng.chance=p=>p!==BOT_TALK.TYPO_P;
+  try{
+    const n=c.json.length;
+    c.send({t:'chat',text:`${bot.name} vem ca`});
+    await sleep(120);vivo=false;                 // o disjuntor abre entre o agendamento e o despacho
+    const resp=await c.until(()=>c.json.slice(n).find(m=>m.t==='chat'&&m.slot===bot.slot),5000,'resposta enlatada');
+    assert.ok(BOT_CHAT.resposta.includes(resp.text),
+      `"${resp.text}" não veio do repertório de resposta`);
+  }finally{room.rng.chance=chance;room.botChat=null;}
+  c.close();
 });

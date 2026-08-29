@@ -21,7 +21,7 @@ import {createAudio} from "../audio/index.js";
 import {api} from "../api/client.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,MISSILE,PLAYER,STAR,MODE,NET,aimScore,unpackDir} from "@planet/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,aimScore,unpackDir} from "@planet/shared";
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
@@ -42,7 +42,7 @@ import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./ben
 import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
-  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[]});
+  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[]});
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
   sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
 const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SPLIT]:"split",[EVENT.BH_SUCK]:"suck",[EVENT.CHIP]:"chip",[EVENT.BOUNCE]:"bounce",[EVENT.BOOM]:"boom",[EVENT.EXIT]:"exit",[EVENT.SHOOT]:"shoot",
@@ -87,6 +87,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0,lobby=null,spec=null;   // `lobby` = o estado da tela de espera (JSON `lobby`, em ms)
   let zone=null,zoneShown={x:0,y:0,r:0},lastShrink=0,lastHurt=false,lobbyBeep=false;   // `zone` = o par de círculos do fio; `zoneShown` é o interpolado do frame
   /** @type {{slot:number,name:string,team:number|null,text:string,at:number}[]} */let chatLog=[];
+  /** @type {{id:number,at:number,k:string,how:string,n:number,a:object|null,b:object|null,assist:object|null,mine:boolean}[]} */
+  let feedLog=[],feedSeq=0;
   const mic=createMic({audio,send:d=>conn&&conn.send(d),onState:st=>{hudStore.update(h=>({...h,talk:st}));},
     // O ícone de "falando" tem que acender no INSTANTE do Ctrl, não quando o áudio chega (o clipe só sai ao
     // soltar a tecla). Vai como JSON de controle: o servidor repassa para os mesmos ouvintes do clipe.
@@ -172,7 +174,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       round=m.round||null;roundOver=false;lastCount=-1;warmedSky=null;lastAmmo=0;lastMagnet=false;
       modeId=m.mode|0;teamSize=m.teamSize||1;myTeam=m.team==null?-1:m.team;roomCap=m.cap||0;
       phase=(m.round&&m.round.phase)||"live";startsAt=(m.round&&m.round.startsAt)||0;
-      view.setMyTeam(myTeam);chatLog=[];lobby=null;spec=null;
+      view.setMyTeam(myTeam);chatLog=[];feedLog=[];lobby=null;spec=null;
       audio.resume();audio.play("join",{mine:true});}
     else if(m.t==="lobby"){   // a sala enchendo: contagem em MS, porque no lobby não há snapshot para sincronizar o tick
       lobby={filled:m.filled,cap:m.cap,humans:m.humans,startsInMs:m.startsInMs,waitMs:m.waitMs,at:performance.now()};
@@ -183,6 +185,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(phase==="live"){audio.play("matchStart",{mine:true});chatSys("A partida começou!");}}
     else if(m.t==="chat"){pushChat(m);}
     else if(m.t==="talk"){view.setTalking(m.slot,!!m.on);}   // push-to-talk de outro: acende/apaga o ícone no planeta dele
+    else if(m.t==="feed"){pushFeed(m);}
+    else if(m.t==="avatars"){view.setAvatars(m.list);}
     else if(m.t==="roundEnd"){roundOver=true;input.setHold(false);
       const venci=m.champion&&m.champion.slot===view.mySlot;
       if(venci)celebrate();                                   // ganhei: o planeta comemora
@@ -221,6 +225,21 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     hudStore.update(h=>({...h,chat:chatLog.slice()}));
     if(m.slot!==view.mySlot)audio.play("chatIn",{mine:true,bus:"ui"});}
   const chatSys=text=>pushChat({slot:-1,name:null,team:null,text,at:Date.now()});
+  // ── kill feed ──
+  /**
+   * Uma leva de linhas do feed. Os nomes são resolvidos AQUI, na chegada, e não na renderização: quem sai
+   * da sala desaparece de `view.players` no PLAYERS seguinte, e uma linha de 8 s atrás mostraria "?"
+   * justamente para quem acabou de ser morto e fechou a aba. O HUD é renderizador burro em todo o resto.
+   */
+  function pushFeed(m){
+    const quem=sl=>{if(sl==null||sl<0)return null;const p=view.playerOf(sl);
+      return{slot:sl,name:p?p.name:"?",bot:p?p.isBot:false,ally:p?p.ally:false,level:p?p.level|0:0,me:sl===view.mySlot};};
+    for(const it of (m.v||[])){
+      const a=quem(it.a),b=quem(it.b),as=quem(it.by);
+      feedLog.push({id:feedSeq++,at:m.at||Date.now(),k:it.k,how:it.how,byHow:it.byHow||null,n:it.n|0,a,b,assist:as,
+        mine:!!((a&&a.me)||(b&&b.me)||(as&&as.me))});}
+    if(feedLog.length>FEED.KEEP)feedLog.splice(0,feedLog.length-FEED.KEEP);
+    hudStore.update(h=>({...h,feed:feedLog.slice()}));}   // no EVENTO, não no relógio de 8 Hz: abate é do instante
   // ── voz ──
   /**
    * Clipe de outro jogador: decodifica os bytes (µ-law → AudioBuffer, sem depender de codec do navegador) e
@@ -278,7 +297,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(room)go(shardOf(room));
       else fetch("/api/config",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(c=>go(c&&c.shard!=null?c.shard:0)).catch(()=>go(0));},
     leave(silent){if(conn){const c=conn;conn=null;c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
+      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);minimap.show(joined&&curPrefs.showMinimap!==false);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -320,7 +339,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   function roundTick(now){
     if(!round||!round.ticks){if(roundClock){roundClock=null;setRoundHour(null);}return;}
     const rt=Math.min(round.ticks,Math.max(0,buffer.tickAt(now)-round.start)),left=(round.ticks-rt)/TICK_HZ;
-    const h=(round.dayStart+24*ROUND.DAYS*(rt/round.ticks))%24;roundClock={h:Math.floor(h),m:Math.floor(h%1*60),leftS:Math.max(0,left)};
+    // `days` vem do JSON `room` do servidor: os ticks da rodada saem do env (ROUND_TICKS) e os dias eram
+    // constante do CLIENTE — cliente novo com env velho desenhava o relógio do espaço na metade da velocidade.
+    const dias=round.days||ROUND.DAYS;
+    const h=(round.dayStart+24*dias*(rt/round.ticks))%24;roundClock={h:Math.floor(h),m:Math.floor(h%1*60),leftS:Math.max(0,left)};
     setRoundHour(h);
     prewarmNextSky(h);
     if(!renderer||dead)return;
@@ -335,7 +357,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   function prewarmNextSky(h){
     if(!renderer||!round||!round.ticks)return;
     if((curPrefs.theme||"auto")!=="auto")return;
-    const dh=24*ROUND.DAYS/(round.ticks/TICK_HZ)*PREWARM_S;   // quantas horas do relógio do espaço andam em PREWARM_S reais
+    const dh=24*(round.days||ROUND.DAYS)/(round.ticks/TICK_HZ)*PREWARM_S;   // quantas horas do relógio do espaço andam em PREWARM_S reais
     const next=resolveThemeId("auto",(h+dh)%24);
     if(next===warmedSky||!THEMES[next]||next===(curTheme&&curTheme.id))return;
     warmedSky=next;
@@ -445,7 +467,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         waitMs:lobby.waitMs?Math.max(0,lobby.waitMs-(now-lobby.at)):0,
         roster:[...view.players.values()].map(p=>({slot:p.slot,name:p.name,skinId:p.skinId,me:p.slot===view.mySlot}))}:null,
       alive:s?s.alive:0,weapon:s?s.weapon|0:0,owned:s?s.owned|1:1,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
-      talk:mic.state,chat:chatLog,spec});}
+      talk:mic.state,chat:chatLog,feed:feedLog,spec});}
   function statsText(){const c=renderer.counts(),st=predictor.stats;
     const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
     return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · estrelas ${c.stars} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}

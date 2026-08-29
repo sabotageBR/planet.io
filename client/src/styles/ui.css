@@ -110,13 +110,57 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 #hud-lb .lb-row.ally{box-shadow:inset 3px 0 0 var(--ok,#3ddc5f)}
 #hud-lb .lb-name .talk-dot{font-style:normal;margin-right:3px;animation:zonepulse .9s ease-in-out infinite}
 
-/* ── CHAT: faixa vertical à ESQUERDA, na sobra ENTRE o bloco de massa e o placar — os dois já ocupam os
-   cantos esquerdos nos três temas, e o painel se encaixa no vão em vez de empurrar (ou cobrir) qualquer um.
-   dawn/sunset: massa em cima, placar embaixo → o vão é logo abaixo da massa.
-   dusk: placar em cima, massa embaixo → o vão é logo acima da massa. */
-#chat{position:absolute;left:12px;top:136px;bottom:auto;width:min(280px,26vw);max-height:26vh;
+/* ── HUD ESTILO COUNTER-STRIKE ───────────────────────────────────────────────────────────────────
+   ESQUERDA: radar em cima, chat logo abaixo.   DIREITA: kill feed, meu placar, top 10.
+   Rodapé central: arma e powerups (onde já estavam).
+
+   ⚠️ Especificidade, e é o que faz este bloco inteiro funcionar: `theme/all.css` importa ESTE arquivo
+   ANTES dos temas, e o `port.js` prefixa os seletores deles com `:where(...)`, que soma ZERO. Ou seja,
+   `#hud-lb` do tema e `#hud-lb` daqui empatam em (1,0,0) — e, no empate, quem vem depois vence: o tema.
+   Por isso tudo aqui mira `#hud #x` (2,0,0). Uma regra sem o `#hud ` na frente é ignorada em silêncio.
+   Editar o hud.css dos temas também não resolveria: aquele arquivo é GERADO pelo port.js. */
+#hud-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;
+  left:auto;right:12px;top:12px;bottom:auto;max-height:calc(100% - 24px);overflow:hidden;pointer-events:none}
+/* base.css:29 (`#hud>*{position:absolute}`) casa só o filho DIRETO; sem esta linha os netos continuariam
+   absolutos com o `left:12px` que o tema dá a eles e desabariam por cima do radar. */
+#hud>#hud-right>*{position:static;left:auto;right:auto;top:auto;bottom:auto;transform:none;max-width:100%}
+/* o placar nasceu para a ESQUERDA nos três temas: o rabinho do balão e o alinhamento das linhas invertem */
+#hud #hud-right #lb-rows{align-items:flex-end}
+#hud #hud-right .lb-row::after{left:auto;right:-9px;transform:rotate(225deg)}
+#hud #hud-right .lb-row,#hud #hud-right .panel{max-width:100%}
+
+/* ── KILL FEED ── */
+#kill-feed{display:flex;flex-direction:column;align-items:flex-end;gap:4px;max-width:min(340px,32vw);pointer-events:none}
+#kill-feed .kf-row{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:var(--radius,10px);
+  border:1px solid var(--line,#0004);background:color-mix(in srgb,var(--surface,#2226) 78%,transparent);
+  font-size:.84em;line-height:1.25;white-space:nowrap;max-width:100%;animation:kfin .18s ease}
+#kill-feed .kf-who{display:inline-flex;align-items:center;gap:4px;max-width:11ch;overflow:hidden;text-overflow:ellipsis}
+#kill-feed .kf-who .nk{overflow:hidden;text-overflow:ellipsis}
+#kill-feed .kf-who.dim{opacity:.6}
+#kill-feed .kf-how{display:inline-flex;align-items:center;gap:2px}
+#kill-feed .kf-ico{font-style:normal}
+#kill-feed .kf-ico.assist{opacity:.5;font-size:.85em}   /* quem AMOLECEU antes de alguém colher */
+#kill-feed .kf-sys{opacity:.82;font-style:italic}
+#kill-feed .kf-row.ally{box-shadow:inset -3px 0 0 var(--ok,#3ddc5f)}   /* espelho do #hud-lb .lb-row.ally */
+/* CS: a linha em que EU apareço vem destacada — é o que faz o feed valer a atenção num canto da tela */
+#kill-feed .kf-row.mine{border-color:var(--accent,#ffc22e);background:color-mix(in srgb,var(--accent,#ffc22e) 22%,var(--surface,#2226))}
+#kill-feed .kf-row.mine .kf-who.me .nk{color:var(--accent,#ffc22e);font-weight:bold}
+#kill-feed .kf-row:nth-child(n+7){display:none}
+@keyframes kfin{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
+
+/* ── BADGE DE NÍVEL (placar, feed e chat usam a MESMA marcação: <Nick> de bits.jsx) ── */
+.lvl{font-style:normal;font-size:.66em;font-weight:bold;line-height:1;padding:1px 4px;border-radius:99px;
+  background:var(--accent,#ffc22e);color:var(--line,#141026);vertical-align:middle;margin-right:3px}
+#hud-score .score-row .lvl{margin-left:5px;margin-right:0}
+
+/* ── CHAT: logo ABAIXO do radar, na coluna esquerda ──────────────────────────────────────────────
+   O offset acompanha a ALTURA REAL do radar, publicada por Minimap.layout() em `--radar-h`: o tamanho dele
+   muda por tema e por data-mode, e repetir 150/120/92/84 aqui à mão sairia do ar na primeira mudança.
+   (Havia um hack por tema: o `dusk` empurrava o chat para `bottom:136px` porque placar e massa trocavam de
+   canto conforme o RELÓGIO. Com as colunas fixas ele perdeu a razão de ser e saiu.) */
+#hud #chat{position:absolute;left:12px;top:calc(12px + var(--radar-h,166px) + 10px);bottom:auto;
+  right:auto;width:min(280px,26vw);max-height:26vh;
   display:flex;flex-direction:column;justify-content:flex-end;gap:4px;z-index:6;pointer-events:none}
-:where(html[data-theme="dusk"]) #chat{top:auto;bottom:136px}
 #chat .chat-head{display:flex;align-items:baseline;gap:6px;font-size:.7em;letter-spacing:.14em;opacity:.55}
 #chat .chat-scope{font-style:normal;padding:1px 6px;border-radius:99px;background:var(--ok,#3ddc5f);color:var(--line,#141026);letter-spacing:.06em}
 #chat .chat-lines{display:flex;flex-direction:column;gap:3px;overflow:hidden;justify-content:flex-end}
@@ -146,7 +190,42 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 /* mobile: o chat vira uma faixa curta no alto e o painel de modo encolhe */
 /* o chat empilha ACIMA do bloco de arma/powerups: em 96px ele cobria o #hud-status nos três celulares
    testados (96×52 px de sobreposição). 150px passa da altura do status e ainda deixa o placar livre. */
-body[data-mode="portrait"] #chat,body[data-mode="landscape"] #chat{left:8px;top:auto;bottom:150px;width:min(220px,44vw);max-height:18vh}
+body[data-mode="portrait"] #hud #chat,body[data-mode="landscape"] #hud #chat{left:8px;top:auto;bottom:150px;width:min(220px,44vw);max-height:18vh}
+/* landscape: altura é o recurso escasso — o feed encolhe, a coluna sobe e para acima dos botões de toque */
+/* Celular DEITADO é o caso mais apertado do jogo: 375 px de altura para topo, feed, massa, placar e ainda
+   os botões de toque. Aqui a coluna mostra o essencial — duas linhas de feed e três do placar. */
+body[data-mode="landscape"] #hud-right{top:52px;right:8px;gap:4px;max-width:min(42vw,260px)}
+body[data-mode="landscape"] #kill-feed .kf-row:nth-child(n+3){display:none}
+body[data-mode="landscape"] #hud #hud-right .lb-row:nth-child(n+4):not(.mine){display:none}
+body[data-mode="landscape"] #hud #hud-right .score-row{display:none}
+body[data-mode="landscape"] #hud #hud-right .ph{display:none}
+
+/* ── RETRATO: o #hud-top vira COLUNA À DIREITA nos três temas (`right:12px;top:112px`), exatamente onde
+   agora mora a coluna do CS. Em vez de espremer os dois no mesmo canto, o topo volta a ser o que é em
+   todo o resto do layout: uma FAIXA no alto. Aí a coluna direita começa logo abaixo dela.
+   Precisa de (2,0,0) para vencer o tema — ver a nota de especificidade lá em cima. */
+body[data-mode="portrait"] #hud #hud-top{left:50%;right:auto;top:8px;transform:translateX(-50%);
+  flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 16px)}
+body[data-mode="portrait"] #hud-right{top:112px;right:8px;gap:6px;max-width:min(56vw,240px)}
+body[data-mode="portrait"] #kill-feed{max-width:100%}
+body[data-mode="portrait"] #kill-feed .kf-row:nth-child(n+3){display:none}
+body[data-mode="portrait"] #hud #hud-right .score-row{display:none}   /* fica só o número grande */
+
+/* Dedo: a coluna direita NÃO pode descer até os botões de toque, que moram no canto inferior direito
+   (`#touch{bottom:16px;right:16px}` nos três temas) e são altos. O teto sai da altura deles mais a folga —
+   sem isto o placar entrava por baixo dos botões em tablet deitado e em celular. */
+body[data-pointer="coarse"] #hud-right{max-height:calc(100% - 2*var(--tbtn,66px) - 64px)}
+body[data-mode="portrait"] #hud-right{max-height:calc(100% - 2*var(--tbtn,66px) - 190px)}
+/* ⚠️ `overflow:hidden` na coluna esconde o excesso, mas NÃO encolhe a caixa do filho — e é a caixa que
+   colide (e que a matriz de responsividade mede). Quem tem que encolher é a LISTA: no dedo o placar mostra
+   menos linhas, e a própria continua sempre (é a regra que os três temas já usam para o top 10). */
+body[data-pointer="coarse"] #hud #hud-right .lb-row:nth-child(n+7):not(.mine){display:none}
+
+/* Bloco de arma/powerups × botões de toque, em retrato: o #touch ocupa duas colunas no canto inferior
+   direito e o #hud-status cresce para a direita com cada powerup ativo. Um teto de largura resolve — e é
+   um problema que já existia, mas que só apareceu quando a matriz passou a medir a tela de jogo com dados. */
+body[data-mode="portrait"] #hud #hud-status{max-width:calc(100% - 2*var(--tbtn,66px) - 44px)}
+body[data-mode="portrait"] #hud #hud-status #hud-pw{flex-wrap:wrap}
 body[data-mode="portrait"] #hud-mode{bottom:118px}
 body[data-mode="portrait"] #talk,body[data-mode="landscape"] #talk{bottom:190px}
 body[data-mode="portrait"] .modes{grid-template-columns:1fr}
@@ -191,6 +270,10 @@ body[data-mode="portrait"] .brl-count b{font-size:2.2em}
    ainda não começou, e o jogador não tem corpo nenhum para eles descreverem */
 #hud:has(#br-lobby) > *:not(#br-lobby){opacity:0;pointer-events:none}
 #hud:has(#br-lobby) > canvas#radar{opacity:0}
+/* `opacity` NÃO se aplica a `display:contents` (o elemento não gera caixa), então a regra acima nunca
+   escondeu os filhos do #hud-left. O #hud-right é caixa de verdade e já estava coberto; esta linha fecha
+   o outro lado. */
+#hud:has(#br-lobby) > #hud-left > *{opacity:0;pointer-events:none}
 
 /* trocar de câmera depois de morrer: o servidor escolhe o primeiro alvo, e daqui se anda pela lista de vivos */
 .dead-spec{display:flex;align-items:center;justify-content:center;gap:10px;margin:6px 0 2px}
@@ -398,3 +481,55 @@ body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(sa
 /* `100%` em html/body é o `vh` de sempre: no Safari móvel ele conta a barra que está recolhida, e a folha
    escorrega para fora da tela conforme a barra aparece. `dvh` é a altura que existe AGORA. */
 @supports (height:100dvh){html,body{height:100dvh}}
+
+/* o "+" entre o ícone de quem amoleceu e o de quem finalizou */
+#kill-feed .kf-plus{opacity:.4;font-size:.8em;margin:0 1px}
+
+/* ── DESTAQUES DA SALA (#s-round): campeão · mais partículas · mais abates · maior K/D ────────────
+   Nasceram depois dos mockups, como o resto de #s-round, então moram aqui e usam só tokens do tema. */
+.awards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;margin:6px 0 2px}
+.award{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 6px;
+  border-radius:var(--radius,10px);border:2px solid var(--line,#0006);background:var(--surface,#2226);text-align:center}
+.award.me{border-color:var(--accent,#ffc22e)}
+.award.empty{opacity:.4}
+.award .aw-ico{font-style:normal;font-size:1.2em;line-height:1}
+.award .aw-k{font-size:.62em;letter-spacing:.08em;opacity:.7;text-transform:uppercase}
+.award .aw-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9em}
+.award .aw-val{font-style:normal;font-size:.8em;color:var(--accent,#ffc22e)}
+.award canvas{width:28px;height:28px}
+/* quem saiu antes do fim continua listado — jogou a rodada, e o placar é da SALA, não de quem sobrou */
+#s-round tr.left{opacity:.62}
+#s-round .left-tag{font-style:normal;font-size:.7em;opacity:.6;letter-spacing:.06em}
+body[data-mode="portrait"] .awards{grid-template-columns:repeat(2,1fr)}
+body[data-mode="portrait"] #s-round .c-food,body[data-mode="portrait"] #s-round .c-kd{display:none}
+/* ── RANKING: colunas novas (nível, partículas, abates, K/D) ── */
+#rk-table .c-lvl,#rk-table .c-food,#rk-table .c-kills,#rk-table .c-kd{font-variant-numeric:tabular-nums}
+#rk-table .flag{font-style:normal;margin-right:5px}
+body[data-mode="portrait"] #rk-table .c-food,body[data-mode="portrait"] #rk-table .c-kd{display:none}
+
+/* ── FOTO DO JOGADOR (skin "Retrato"), no painel de detalhe da loja ── */
+.avatar-picker{display:flex;flex-direction:column;gap:8px;width:100%}
+.avatar-picker .ap-head{display:flex;flex-direction:column;gap:2px}
+.avatar-picker .ap-body{display:flex;gap:12px;align-items:center}
+.avatar-picker .ap-prev{width:88px;height:88px;border-radius:50%;overflow:hidden;flex:0 0 auto;
+  border:3px solid var(--line,#0006);background:var(--bg,#1114);display:flex;align-items:center;justify-content:center}
+.avatar-picker .ap-prev img{width:100%;height:100%;object-fit:cover}
+.avatar-picker .ap-empty{font-size:1.8em;opacity:.4}
+.avatar-picker .ap-ctrl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1 1 auto}
+.avatar-picker .ap-range{display:flex;align-items:center;gap:6px;font-size:.8em;opacity:.8}
+.avatar-picker .ap-range input{width:110px}
+.avatar-picker .dim{opacity:.55;font-size:.72em}
+/* nível insuficiente: o cadeado tem que soar diferente de "junte moedas" */
+.skin-card.lowlevel{opacity:.72}
+.skin-card.lowlevel em{color:var(--danger,#ff3d5a)}
+
+/* ── NÍVEL E PAÍS, no perfil ── */
+.pf-level{display:flex;flex-direction:column;gap:8px;width:100%}
+.pf-level .lv-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.pf-level .lv-n{font-size:1.1em;color:var(--accent,#ffc22e)}
+.pf-level .lv-bar{display:block;height:10px;border-radius:99px;border:2px solid var(--line,#0006);background:var(--bg,#1116);overflow:hidden}
+.pf-level .lv-bar i{display:block;height:100%;width:calc(var(--p) * 100%);background:var(--accent,#ffc22e);transition:width .4s ease}
+.pf-level .lv-country{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.pf-level .lv-country .field{flex:0 1 260px}
+.field select{padding:8px 10px;border-radius:var(--radius,10px);border:2px solid var(--line,#0006);
+  background:var(--bg,#111c);color:inherit;font:inherit;width:100%}

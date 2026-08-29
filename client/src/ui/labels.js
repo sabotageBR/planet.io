@@ -30,11 +30,27 @@ export const LABELS = {
   back: "◄ Voltar", equipped: "EQUIPADA", equip: "Equipar", buy: "Comprar", locked: "Bloqueada", secret: "???",
   lbTitle: "PLACAR", massLabel: "MASSA", scoreLabel: "pontos", youLabel: "planeta", killsWord: "abates", botTag: "◆", regTag: "✓",
   dead: "ABSORVIDO", deadIcon: "💥", deadSub: "— a galáxia continua sem você —", eatenBy: "DEVORADO POR", suckedBy: "SUGADO POR",
+  // ── KILL FEED ──  (o nome do grupo está em GROUPS lá embaixo: sem isso um tema que sobrescreva UMA
+  // chave apagaria o objeto inteiro, porque `mergeLabels` só faz merge profundo no que está em GROUPS)
+  killFeed: {
+    eat: "devorou", missile: "míssil", burst: "rajada", cluster: "cacho", nova: "nova",
+    star: "estrela", asteroid: "asteroide", zone: "gás", hole: "buraco negro", supernova: "supernova",
+    assist: "amoleceu", world: "o espaço",
+    // prefixo `sys_` porque `zone` é as DUAS coisas: o perigo que matou alguém e o marco "o gás virou"
+    sys_start: "A partida começou", sys_lead: "{n} assumiu a liderança", sys_crunch: "BIG CRUNCH em {n}",
+    sys_zone: "O gás está avançando", sys_few: "Restam {n}", sys_streak: "{n} abates seguidos",
+  },
   respawn: "⟳ RENASCER", toLobby: "Lobby", timeWord: "tempo", rankWord: "ranking diário", coinsEarned: "moedas ganhas",
   lobbyTitle: "SALAS", roomCode: "CÓDIGO", enter: "Entrar", create: "Criar sala", autoNote: "Entra na sala mais cheia com vaga", shard: "shard", botsWord: "bots",
-  rankTitle: "RANKING", periods: { all: "Geral", week: "Semanal", day: "Diário" }, metrics: { score: "Pontos", mass: "Massa", kills: "Abates" }, you: "Você", rankPos: "posição",
+  rankTitle: "RANKING", scopeGlobal: "Global", scopeCountry: "Meu país", noCountry: "escolha seu país no perfil",
+  countryLabel: "País", countryHint: "Escolha seu país para entrar no ranking regional.",
+  levelWord: "nível", xpWord: "XP", levelUp: "SUBIU DE NÍVEL!", levelReq: "Nível {n}",
+  lowlevelToast: "essa skin pede nível {n} — você tem {v}",
+  avatarTitle: "Sua foto", avatarPick: "Escolher imagem", avatarRemove: "Remover", avatarHint: "Aparece dentro do seu planeta. Quadrada, até 256 px.",
+  awards: { champion: "Campeão", food: "Mais partículas", kills: "Mais abates", kd: "Maior K/D" }, leftTag: "saiu", periods: { all: "Geral", week: "Semanal", day: "Diário" }, metrics: { score: "Pontos", mass: "Massa", kills: "Abates", xp: "Nível", food: "Partículas", kd: "K/D" }, you: "Você", rankPos: "posição",
   profileTitle: "PERFIL", history: "HISTÓRICO", achievements: "CONQUISTAS",
-  stats: { games: "partidas", kills: "abates", bestScore: "melhor pontuação", bestMass: "maior massa", playTime: "tempo jogado", bestStreak: "melhor sequência" },
+  stats: { games: "partidas", kills: "abates", deaths: "mortes", kd: "K/D", foodEaten: "partículas", level: "nível", xp: "XP",
+    bestScore: "melhor pontuação", bestMass: "maior massa", playTime: "tempo jogado", bestStreak: "melhor sequência" },
   causes: { eaten: "devorado", blackhole: "buraco negro", left: "saiu", shutdown: "servidor", round: "big crunch" },
   shopTitle: "LOJA DE SKINS", shopNote: "Moedas se ganham jogando. Skins de conquista desbloqueiam sozinhas.", filterAll: "Todas", unlocked: "desbloqueadas",
   shopSearch: "Buscar skin…", onlyMine: "Só as minhas", noSkins: "Nenhuma skin com esse filtro",
@@ -60,7 +76,7 @@ export const LABELS = {
   passShort: "Senha com pelo menos 6 caracteres", passMismatch: "As senhas não conferem", nickShort: "Nick com 2 a 16 caracteres",
   connLost: "Conexão perdida", roomFull: "Sala cheia", kicked: "Desconectado do servidor",
 };
-const GROUPS = ["periods", "metrics", "stats", "powerups", "causes", "sortBy"];
+const GROUPS = ["periods", "metrics", "stats", "powerups", "causes", "sortBy", "killFeed", "awards"];
 export function mergeLabels(over) {
   if (!over) return LABELS;
   const out = { ...LABELS, ...over };

@@ -5,6 +5,7 @@ import {LIMITS} from '../auth/ratelimit.js';
 import {normalizeNick,suggestNick,isReservedByOther} from '../auth/nick.js';
 import {toPublic} from '../repos/users.js';
 import {statsToPublic} from '../repos/matches.js';
+import {isCountry} from '@planet/shared/countries.js';
 const THEMES=['auto','dawn','sunset','dusk'],QUALITIES=['auto','low','medium','high'];
 const bool=v=>typeof v==='boolean'?v:undefined;
 /** whitelist de prefs: chave → validador (undefined = rejeita) */
@@ -12,6 +13,7 @@ export const PREFS={
   quality:v=>QUALITIES.includes(v)?v:undefined,
   showNames:bool,showMass:bool,showGrid:bool,showMinimap:bool,showFps:bool,sound:bool,music:bool,ambience:bool,joystick:bool,holdEject:bool,rightSplit:bool,reduceMotion:bool,bigText:bool,
   chat:bool,voice:bool,   // chat e voz são desligáveis como todo o resto do som
+  eggs:bool,              // easter egg por nick (quem se chama Bruxo e comprou uma lendária pode desligar)
   volume:v=>typeof v==='number'&&v>=0&&v<=100?Math.round(v):undefined,
   voiceVolume:v=>typeof v==='number'&&v>=0&&v<=100?Math.round(v):undefined,   // 0..100, a mesma unidade do cliente (state/app.js e audio/index.js dividem por 100); com o antigo 0..1 o slider era descartado em silêncio e nunca persistia
   theme:v=>THEMES.includes(v)?v:undefined,
@@ -29,12 +31,21 @@ export function mountMe(router,{db,users,skins,matches,achievements,requireUser}
     const [owned,stats,ach]=await Promise.all([skins.ownedIds(me.id),matches.statsFor(me.id),achievements.keysFor(me.id)]);
     return{user:toPublic(me),skins:owned,prefs:me.prefs||{},stats:statsToPublic(stats),achievements:ach};
   });
-  // PATCH /api/me {nick} 🔒
+  // PATCH /api/me {nick?, country?} 🔒 — pelo menos um dos dois
   router.add('PATCH',/^\/api\/me$/,async ctx=>{
     const me=await requireUser(ctx);
-    const nick=normalizeNick(ctx.body.nick);if(!nick)throw err(400,'invalid_nick','nick deve ter de 2 a 16 caracteres');
-    if(await isReservedByOther(db,nick,me.id))throw err(409,'nick_reserved','esse nick pertence a um jogador registrado',{suggestion:suggestNick(nick)});
-    let u;try{u=await users.setNick(me.id,nick);}catch(e){if(e.code==='23505')throw err(409,'nick_reserved','esse nick pertence a um jogador registrado',{suggestion:suggestNick(nick)});throw e;}
+    const temNick='nick' in (ctx.body||{}),temPais='country' in (ctx.body||{});
+    if(!temNick&&!temPais)throw err(400,'bad_request','informe nick e/ou country');
+    let u=me;
+    if(temNick){
+      const nick=normalizeNick(ctx.body.nick);if(!nick)throw err(400,'invalid_nick','nick deve ter de 2 a 16 caracteres');
+      if(await isReservedByOther(db,nick,me.id))throw err(409,'nick_reserved','esse nick pertence a um jogador registrado',{suggestion:suggestNick(nick)});
+      try{u=await users.setNick(me.id,nick);}catch(e){if(e.code==='23505')throw err(409,'nick_reserved','esse nick pertence a um jogador registrado',{suggestion:suggestNick(nick)});throw e;}}
+    if(temPais){
+      // `null`/'' LIMPA: entrar no ranking regional é opcional, e sair dele também tem que ser.
+      const c=ctx.body.country;
+      if(c!=null&&c!==''&&!isCountry(String(c).toUpperCase()))throw err(400,'bad_country','country deve ser um código ISO de 2 letras');
+      u=await users.setCountry(me.id,c==null||c===''?null:String(c).toUpperCase());}
     return{user:toPublic(u)};
   },{rate:{scope:'token',lim:LIMITS.tokenWrite}});
   // PATCH /api/me/prefs {…} 🔒

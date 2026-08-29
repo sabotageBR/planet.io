@@ -23,6 +23,21 @@ export function ScreenHeader({ title }) {
 export function Field({ id, label, type = "text", ...rest }) {
   return <div className="field"><label htmlFor={id}>{label}</label><input id={id} type={type} {...rest} /></div>;
 }
+/** Irmão do Field para listas (país). Mesmo DOM, para o CSS dos temas pegar os dois. */
+export function Select({ id, label, children, ...rest }) {
+  return <div className="field"><label htmlFor={id}>{label}</label><select id={id} {...rest}>{children}</select></div>;
+}
+/**
+ * Um NOME de jogador com o badge de nível — a MESMA marcação no placar, no kill feed e no chat. Um só
+ * componente porque três lugares que precisam concordar sobre como um nick se parece acabam discordando.
+ * `level 0` (bot, convidado, sala sem persistência) simplesmente não desenha badge.
+ */
+export function Nick({ p, tag = null }) {
+  if (!p) return null;
+  return <span className={"kf-who" + (p.me ? " me" : "") + (p.ally ? " ally" : "")}>
+    {p.level > 0 ? <i className="lvl" title={`nível ${p.level}`}>{p.level}</i> : null}
+    <b className="nk">{p.name}</b>{tag}</span>;
+}
 /** Top N do ranking diário (.mini-rank > .mr-row). */
 export function MiniRank({ id, rows, n = 5 }) {
   const LB = useLabels();

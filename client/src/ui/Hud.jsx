@@ -10,12 +10,14 @@ import { leaveGame } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
 import Chat from "./Chat.jsx";
+import KillFeed from "./KillFeed.jsx";
+import { Nick } from "./bits.jsx";
+import { WEAPON_ICON } from "./icons.js";
 import BrLobby from "./BrLobby.jsx";
 import { MODE, weaponOf } from "@planet/shared";
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, clock: null,
-  mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, talk: null, chat: [], lobby: null };
-const WEAPON_ICON = ["🚀", "✳️", "💥", "🌟"];   // mesma ordem de WEAPONS (o id indexa direto)
+  mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, talk: null, chat: [], feed: [], lobby: null };
 const TALK_MSG = { cd: "micCooldown", denied: "micDenied", unsupported: "micUnsupported", audio: "micFail", fail: "micFail" };   // motivo → chave da label
 /** Anel do push-to-talk: o arco encolhe com o tempo que sobra do clipe. */
 function TalkRing({ k }) {
@@ -50,6 +52,7 @@ export default function Hud() {
   let shown = rows.slice(0, lbSize); const meRow = rows.find(r => r.me); if (meRow && !shown.includes(meRow)) shown = [...shown, meRow];
   const lbMax = rows.reduce((m, r) => Math.max(m, r.mass || 0), 1);
   const coins = h.coins != null ? h.coins : user.coins || 0;
+  const nivel = (session.stats && session.stats.level) | 0;
   // fireCd: carência de tiro do spawn (MISSILE.SPAWN_CD_TICKS) em segundos — enquanto corre, a contagem regressiva
   // fica EM CIMA do ícone da arma e o botão apaga como se não houvesse munição (o clique vira ejeção)
   const ammo = h.ammo || 0, fireCd = Math.ceil(h.fireCd || 0), armed = ammo > 0 && !fireCd, pw = Object.entries(h.powerups || {}).filter(([, v]) => v > 0);
@@ -70,12 +73,25 @@ export default function Hud() {
       <span className="chip" id="h-net" style={prefs.showFps ? undefined : { display: "none" }}><b id="v-ping">{h.ping || 0}</b><i>{LB.ping}</i> <b id="v-fps">{h.fps || 0}</b><i>{LB.fps}</i></span>
       <button className="btn-mini" id="h-exit" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.exit}</button>
     </div>
+    {/* Coluna DIREITA (kill feed · meu placar · top 10), no arranjo do Counter-Strike. É uma caixa flex de
+        verdade — e não `display:contents` como a coluna esquerda —, porque aqui os três blocos empilham
+        SEMPRE, em qualquer modo, e uma caixa real resolve isso sem depender do que cada tema escreveu. */}
+    <div id="hud-right">
+    <KillFeed h={h} />
+    <div className="panel" id="hud-score">
+      <div className="score-big"><span id="v-mass">{fmt(h.mass)}</span></div>
+      <div className="score-sub">{LB.massLabel}</div>
+      <div className="score-row"><span className="k">{LB.scoreLabel}</span> <b id="v-score">{fmt(h.score)}</b></div>
+      <div className="score-row"><span className="k">{LB.youLabel}</span> <b id="v-name">{user.nick || ""}</b>{nivel > 0 ? <i className="lvl">{nivel}</i> : null}</div>
+      <div className="score-row"><span className="k">{LB.coinIcon}</span> <b id="v-coins">{fmt(coins)}</b></div>
+    </div>
     <div className="panel" id="hud-lb"><div className="ph">{LB.lbTitle}</div><div id="lb-rows">
       {shown.map(r => <div key={r.slot != null ? r.slot : r.name} className={"lb-row" + (r.me ? " mine" : "") + (r.ally ? " ally" : "") + (r.rank <= 3 ? " top" : "")} style={{ "--p": ((r.mass || 0) / lbMax).toFixed(3) }}>
         <span className="lb-pos">{r.rank}</span>
-        <span className="lb-name">{r.talking ? <i className="talk-dot">🎤</i> : null}{r.name}{r.isBot ? <> <i className="bot">{LB.botTag}</i></> : null}{r.registered ? <> <i className="reg">{LB.regTag}</i></> : null}</span>
+        <span className="lb-name">{r.talking ? <i className="talk-dot">🎤</i> : null}{r.level > 0 ? <i className="lvl">{r.level}</i> : null}{r.name}{r.isBot ? <> <i className="bot">{LB.botTag}</i></> : null}{r.registered ? <> <i className="reg">{LB.regTag}</i></> : null}</span>
         <b className="lb-val">{fmt(r.mass)}</b></div>)}
     </div></div>
+    </div>
     {/* Coluna esquerda: no DESKTOP este div é `display:contents` e some da conta (cada bloco fica exatamente
         onde o tema o coloca). No DEDO ele vira uma pilha flex — porque #hud-status CRESCE com os powerups
         ativos, e qualquer `bottom` fixo para o chat voltava a colidir assim que um ímã entrava. */}
@@ -90,13 +106,6 @@ export default function Hud() {
       <div id="hud-pw">{pw.map(([k, v]) => k === "shield"
         ? <span key={k} className={"pw pw-shield lv-" + v} style={LV && LV[v - 1] ? { background: LV[v - 1].color } : undefined}><i>{PW_ICON.shield}</i>{LB.powerups.shield} <b>{LB.shieldLevel} {v} {"★".repeat(v)}</b></span>
         : <span key={k} className={"pw pw-" + k}><i>{PW_ICON[k] || "✦"}</i>{LB.powerups[k] || k} <b>{Math.ceil(v)}s</b></span>)}</div>
-    </div>
-    <div className="panel" id="hud-score">
-      <div className="score-big"><span id="v-mass">{fmt(h.mass)}</span></div>
-      <div className="score-sub">{LB.massLabel}</div>
-      <div className="score-row"><span className="k">{LB.scoreLabel}</span> <b id="v-score">{fmt(h.score)}</b></div>
-      <div className="score-row"><span className="k">{LB.youLabel}</span> <b id="v-name">{user.nick || ""}</b></div>
-      <div className="score-row"><span className="k">{LB.coinIcon}</span> <b id="v-coins">{fmt(coins)}</b></div>
     </div>
     </div>
     {br && !noLobby ? <div id="hud-mode" className={h.zoneHurt ? "hurt" : ""}>

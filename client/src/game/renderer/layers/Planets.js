@@ -6,6 +6,7 @@
 //    mesmo planeta podem estar diferentes. Escudo usa theme.hud.cell.powerups.shieldLevels[nível−1]; ímã pede R.ambient("magnet").
 //    pop(id,delay): "gulp" de quem acabou de engolir alguém — o corpo incha e achata por POP_MS (a absorção do EAT).
 import {Container,Sprite,Graphics,BitmapText,BitmapFont,Cache,MeshPlane} from "pixi.js";
+import {ensureAvatar,avatarBitmap,avatarKey} from "../../../theme/avatars.js";
 import {PIECE_FLAG,mergeTicks,rectHas} from "@planet/shared";
 import {colorOf,dashPolyline,seedUnit} from "../../util.js";
 import {paintTalk} from "../../../theme/util.js";
@@ -87,7 +88,12 @@ export function createPlanets(R){
         if(trailStep){const sp=Math.hypot(e.vx||0,e.vy||0);if(sp>TRAIL_MIN_V)tr.pts.push({x:e.rx,y:e.ry});else if(tr.pts.length)tr.pts.shift();if(tr.pts.length>TRAIL_MAX)tr.pts.shift();}
         let v=views.get(e.id);if(!v){v=mkView(e.id);views.set(e.id,v);}v.f=frame;
         if(!rectHas(rect,e.rx,e.ry,e.rr*2.4)){v.c.visible=false;continue;}v.c.visible=true;v.c.zIndex=idx++;v.c.position.set(e.rx,e.ry);v.c.alpha=e.alpha;
-        const size=TX.tier(e.rr),tex=R.cache.get(TX.key("planet",{skin,isMe},size),size,(c,s)=>TX.planet(c,s,{skin,isMe}));
+        // FOTO do jogador (skin "Retrato"): a versão entra na chave, então enquanto o bitmap não chega o
+        // planeta é assado com a silhueta e, quando chega, a chave muda e a textura nova sai sozinha.
+        const av=pl&&pl.avatar?pl.avatar:null;if(av)ensureAvatar(av);
+        const avV=av?avatarKey(av):null,avBmp=av?avatarBitmap(av):null;
+        const size=TX.tier(e.rr),tex=R.cache.get(TX.key("planet",{skin,isMe,avatar:avBmp?avV:null},size),size,
+          (c,s)=>TX.planet(c,s,{skin,isMe,avatarBmp:avBmp}));
         const d=e.rr*PK(skin);let sx=1,sy=1;const pat=pops.get(e.id);   // gulp da absorção: incha e achata de leve
         if(pat!=null){const age=t-pat;if(age>POP_MS)pops.delete(e.id);else if(age>=0){const u=Math.sin(age/POP_MS*Math.PI);sx=1+POP_AMP*u;sy=1-POP_AMP*.35*u;}}
         if(wob&&blobs<WOB_MAX&&e.rr*cam.scale>=WOB_MIN_PX){blobs++;   // as maiores da tela viram gelatina (view.pieces vem ordenado por raio)

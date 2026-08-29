@@ -4,9 +4,10 @@
 // Esses dois são pura função e é o que este arquivo trava. node --test server/test/botchat.test.js
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {citou,baseNick,sanitiza,normalizar,montaPrompt,detectaIdioma,createBotChat} from '../src/rooms/botChat.js';
+import {citou,baseNick,sanitiza,normalizar,montaPrompt,detectaIdioma,createBotChat,aberta,estadoLinha,agressorLinha} from '../src/rooms/botChat.js';
+import {PERSONAS,pickPersona} from '../src/rooms/botPersonas.js';
 import {createRng} from '@planet/shared/rng.js';
-import {botNick,BOT_LLM} from '@planet/shared/constants.js';
+import {botNick,BOT_LLM,CHAT} from '@planet/shared/constants.js';
 import * as CONST from '@planet/shared/constants.js';
 
 test('menção: a raiz do apelido sobrevive aos cinco formatos de botNick', () => {
@@ -139,4 +140,80 @@ test('cliente: sem URL o Ollama nunca é chamado (é o que mantém os testes e o
   const morto=createOllama({url:'http://127.0.0.1:1',model:'m',timeoutMs:250});
   assert.equal(await morto.chat({system:'s',user:'u'}),null);
   assert.ok(BOT_LLM.TIMEOUT_MS>0&&BOT_LLM.STALE_MS>BOT_LLM.TIMEOUT_MS,'o descarte por idade tem que ser mais frouxo que o timeout');
+});
+
+// ── O "THINKING": o que o bot está vivendo entra no prompt ───────────────────
+test('estado: o que o brain já sabia e ninguém lia vira uma oração',()=>{
+  assert.match(estadoLinha({modo:'flee',alvo:'Evandro',press:.5}),/running away from Evandro/);
+  assert.match(estadoLinha({modo:'flee',alvo:'Evandro',press:1.4}),/right on top of you/);
+  assert.match(estadoLinha({modo:'hunt',alvo:'Zeca'}),/chasing Zeca/);
+  assert.match(estadoLinha({modo:'zone',zu:.8}),/gas ring/);
+  assert.equal(estadoLinha({modo:'wander'}),'','andar por aí não vale o token que ocuparia');
+  assert.equal(estadoLinha(null),'');
+  assert.match(agressorLinha({nome:'Evandro',k:'tiro',n:3,recente:true}),/keeps shooting you/);
+  assert.match(agressorLinha({nome:'Evandro',k:'tiro',n:1,recente:true}),/just shot you/);
+  assert.equal(agressorLinha(null),'');
+});
+
+test('prompt: fugir DE quem atira em mim vira UMA oração, não duas',()=>{
+  // É a frase mais forte do prompt inteiro e a razão de existir do "me deixa em paz, evandro!".
+  // Duas orações dizendo quase a mesma coisa gastam token e diluem a que importa.
+  const p=montaPrompt({nome:'Solares',kind:'mention',quem:'Evandro',texto:'vou te pegar',
+    estado:{modo:'flee',alvo:'Evandro',press:1.5},agressor:{nome:'Evandro',k:'tiro',n:3,recente:true},historico:[]});
+  const linha=p.user.split('\n').find(l=>l.startsWith('[right now:'));
+  assert.ok(linha,'o bloco de estado não saiu');
+  assert.match(linha,/running away from Evandro and he keeps shooting you/);
+  assert.equal(linha.split('Evandro').length-1,1,'o nome apareceu duas vezes na mesma linha');
+  // e quando são pessoas DIFERENTES, as duas orações aparecem
+  const q=montaPrompt({nome:'Solares',kind:'kill',estado:{modo:'flee',alvo:'Zeca'},
+    agressor:{nome:'Evandro',k:'tiro',n:1,recente:true},historico:[]});
+  const l2=q.user.split('\n').find(l=>l.startsWith('[right now:'));
+  assert.match(l2,/Zeca/);assert.match(l2,/Evandro/);
+});
+
+test('prompt: a persona entra e o pior caso cabe no teto de caracteres',()=>{
+  const pior=PERSONAS.reduce((a,b)=>(b.quem+b.jeito).length>(a.quem+a.jeito).length?b:a);
+  const hist=Array.from({length:BOT_LLM.HIST+4},(_,i)=>({name:'Jogador'+i,text:'x'.repeat(CHAT.MAX_CHARS)}));
+  const p=montaPrompt({nome:'x'.repeat(16),historia:pior,rank:1,vivos:50,kind:'mention',
+    quem:'y'.repeat(16),texto:'z'.repeat(CHAT.MAX_CHARS),
+    estado:{modo:'flee',alvo:'y'.repeat(16),press:2},agressor:{nome:'w'.repeat(16),k:'tiro',n:5,recente:true},
+    historico:hist});
+  assert.ok(p.user.includes(pior.quem),'a história do bot não chegou ao prompt');
+  assert.ok(p.system.includes(pior.bordao),'o bordão mora no SYSTEM (string estável, reaproveitada)');
+  assert.ok(p.user.length<=BOT_LLM.PROMPT_MAX_CHARS,
+    `prompt de ${p.user.length} chars passou de PROMPT_MAX_CHARS (${BOT_LLM.PROMPT_MAX_CHARS}) — prompt gordo é prompt lento`);
+  // mensagem dirigida corta MAIS o histórico: a linha dirigida vale mais que o backlog
+  assert.ok(p.user.split('\n').filter(l=>l.startsWith('Jogador')).length<=BOT_LLM.HIST_DIRIGIDA);
+});
+
+test('aberta: o que é convite para a sala e o que é frase solta',()=>{
+  assert.equal(aberta('e aí galera, tudo bem?'),'pergunta');
+  assert.equal(aberta('eu vou matar todo mundo'),'pergunta');
+  assert.equal(aberta('alguem ai?'),'pergunta');
+  assert.equal(aberta('opa'),'pergunta');
+  assert.equal(aberta('boa'),'solta');
+  assert.equal(aberta('olha o tamanho desse planeta'),'solta');
+  assert.equal(aberta('Solares eu vou te pegar',true),null,'quem cita alguém não é convite para a sala');
+});
+
+test('persona: determinística pela semente, sem repetir e sempre completa',()=>{
+  const seq=r=>{const u=new Set();return Array.from({length:PERSONAS.length},()=>pickPersona(createRng(0),u).id);};
+  const rngA=createRng(1234),uA=new Set(),a=Array.from({length:6},()=>pickPersona(rngA,uA).id);
+  const rngB=createRng(1234),uB=new Set(),b=Array.from({length:6},()=>pickPersona(rngB,uB).id);
+  assert.deepEqual(a,b,'a mesma semente tem que dar a mesma escalação');
+  assert.equal(new Set(a).size,a.length,'repetiu persona com pool sobrando');
+  const u=new Set();for(let i=0;i<PERSONAS.length+3;i++)assert.ok(pickPersona(createRng(i),u),'esgotado o pool, ainda tem que devolver alguém');
+  for(const p of PERSONAS){
+    assert.ok(p.id&&p.quem&&p.jeito&&p.bordao,`persona ${p.id} incompleta`);
+    assert.ok(p.bordao.length<=16,`bordão de ${p.id} longo demais`);
+    assert.ok(/^[\x20-\x7e]+$/.test(p.quem+p.jeito),`${p.id}: quem/jeito precisam ser ASCII (vão no prompt em inglês)`);}
+});
+
+test('peneira: provocação passa, insulto sexual e xingamento de família não',()=>{
+  // Medido na bancada (scripts/llm-bench.mjs): o SYSTEM pede e o modelo obedece na maioria das vezes —
+  // e "na maioria" não serve para o que aparece na tela de uma sala de 50. Quem garante é a peneira.
+  for(const t of ['evandro, sua puta! nao me encosta','vou comer teu bunda','vem tomar no cu','you asshole','seu corno'])
+    assert.equal(sanitiza(t),null,`"${t}" passou`);
+  for(const t of ['evandro, sua bala e lenta kkkk','calma evandro, vai chorar no fim','trash? i am winning u idiot','peguei','vem pro meio'])
+    assert.ok(sanitiza(t),`"${t}" foi bloqueada e não devia`);
 });

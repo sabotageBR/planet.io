@@ -4,6 +4,11 @@ import {isDbUnavailable} from '../db/pool.js';
 import {LIMITS} from '../auth/ratelimit.js';
 import {hashToken} from '../auth/tokens.js';
 export const BODY_MAX=16*1024;
+/**
+ * Handler que JÁ escreveu a resposta (bytes crus: imagem, 304). Devolver isto diz ao router para não
+ * tentar serializar nada por cima.
+ */
+export const RAW=Symbol('raw');
 export class ApiError extends Error{constructor(status,error,message,extra){super(message||error);this.status=status;this.error=error;this.extra=extra;}}
 export const err=(status,error,message,extra)=>new ApiError(status,error,message,extra);
 export const clientIp=req=>{const xf=req.headers['x-forwarded-for'];const ip=xf?String(xf).split(',')[0].trim():req.socket.remoteAddress||'?';return ip.replace(/^::ffff:/,'');};
@@ -17,6 +22,20 @@ export function readJson(req){
     req.on('error',reject);
   });
 }
+/**
+ * Corpo CRU com teto próprio. Existe para a rota do avatar: um WebP de 12 KB em base64 estoura os 16 KB do
+ * `readJson`, e subir o BODY_MAX global enfraqueceria TODAS as rotas por causa de uma. Aqui o cliente manda
+ * o Blob direto (Content-Type: image/webp) — sem multipart, sem FormData, sem dependência nova.
+ */
+export function readRaw(req,max){
+  return new Promise((resolve,reject)=>{
+    const len=Number(req.headers['content-length']||0);if(len>max)return reject(err(413,'payload_too_large',`corpo acima de ${max} bytes`));
+    const chunks=[];let size=0;
+    req.on('data',c=>{size+=c.length;if(size>max){reject(err(413,'payload_too_large',`corpo acima de ${max} bytes`));req.destroy();return;}chunks.push(c);});
+    req.on('end',()=>resolve(Buffer.concat(chunks)));
+    req.on('error',reject);
+  });
+}
 export function sendJson(res,status,body,headers){
   const data=body===undefined?'':JSON.stringify(body);
   res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data),...headers});
@@ -25,7 +44,7 @@ export function sendJson(res,status,body,headers){
 /**
  * @param {{log:any,limiter:any,prefixes:RegExp}} o
  * Handler: async (ctx) → body (200) | [status, body?] ; ctx = {req,res,params,query,body,token,ip,userAgent}
- * Rota: {method, re, handler, rate?:{scope:'ip'|'token',lim}} — rate default 60/min/IP
+ * Rota: {method, re, handler, rate?:{scope:'ip'|'token',lim}, raw?:{max}} — rate default 60/min/IP
  */
 export function createRouter({log,limiter,prefixes}){
   const routes=[];
@@ -41,9 +60,14 @@ export function createRouter({log,limiter,prefixes}){
       const rate=r.rate||{scope:'ip',lim:LIMITS.default};
       if(limiter){const key=rate.scope==='token'?`t:${r.re.source}:${token?hashToken(token).slice(0,24):ip}`:`ip:${r.rate?r.re.source:'*'}:${ip}`;
         if(!limiter.take(key,rate.lim))throw err(429,'rate_limited','muitas requisições; tente de novo em instantes',{retryAfter:limiter.retryAfterS(key,rate.lim)});}
-      const body=(req.method==='POST'||req.method==='PATCH'||req.method==='PUT')?await readJson(req):{};
-      const ctx={req,res,params:m.groups||{},query:url.searchParams,body,token,ip,userAgent:req.headers['user-agent']||null};
+      const temCorpo=req.method==='POST'||req.method==='PATCH'||req.method==='PUT';
+      const body=temCorpo&&!r.raw?await readJson(req):{};
+      const raw=temCorpo&&r.raw?await readRaw(req,r.raw.max):null;
+      const ctx={req,res,params:m.groups||{},query:url.searchParams,body,raw,
+        contentType:String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase(),
+        token,ip,userAgent:req.headers['user-agent']||null};
       const out=await r.handler(ctx);
+      if(out===RAW)return true;                      // o handler já escreveu a resposta (bytes, 304)
       if(Array.isArray(out))sendJson(res,out[0],out[1]);else sendJson(res,200,out??{});
     }catch(e){
       if(e instanceof ApiError){const h=e.extra&&e.extra.retryAfter?{'Retry-After':String(e.extra.retryAfter)}:undefined;sendJson(res,e.status,{error:e.error,message:e.message,...(e.extra&&!e.extra.retryAfter?e.extra:{})},h);}

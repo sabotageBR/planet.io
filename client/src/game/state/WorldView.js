@@ -10,8 +10,10 @@ export function createWorldView({buffer,predictor}){
     me(){return players.get(v.mySlot)||null;},
     setPlayers(list){const seen=new Set();
       for(const q of list){seen.add(q.slot);let pl=players.get(q.slot);
-        if(!pl){pl={slot:q.slot,name:"",skinId:0,skin:SKINS[0],isBot:false,dead:false,registered:false,score:0,team:-1,ally:false,talkWire:false,talkUntil:0};players.set(q.slot,pl);}
-        pl.name=q.name;pl.skinId=q.skinId;pl.skin=skinById(q.skinId);pl.isBot=!!(q.flags&PLAYER_FLAG.BOT);pl.dead=!!(q.flags&PLAYER_FLAG.DEAD);pl.registered=!!(q.flags&PLAYER_FLAG.REG);pl.score=q.score;
+        if(!pl){pl={slot:q.slot,name:"",skinId:0,skin:SKINS[0],level:0,avatar:null,isBot:false,dead:false,registered:false,score:0,team:-1,ally:false,talkWire:false,talkUntil:0};players.set(q.slot,pl);}
+        pl.name=q.name;pl.skinId=q.skinId;pl.skin=skinById(q.skinId);
+        pl.level=q.level|0;   // 0 = sem nível (bot, convidado ou sala sem persistência): a UI esconde o badge
+        pl.isBot=!!(q.flags&PLAYER_FLAG.BOT);pl.dead=!!(q.flags&PLAYER_FLAG.DEAD);pl.registered=!!(q.flags&PLAYER_FLAG.REG);pl.score=q.score;
         pl.team=q.team===NO_TEAM?-1:q.team;pl.talkWire=!!(q.flags&PLAYER_FLAG.TALK);
         pl.ally=pl.team>=0&&pl.team===v.myTeam&&q.slot!==v.mySlot;}   // aliado: é assim que o render pinta o companheiro e o radar o separa do inimigo
       for(const s of players.keys())if(!seen.has(s))players.delete(s);
@@ -30,14 +32,20 @@ export function createWorldView({buffer,predictor}){
     /** Minha equipe (do JSON `room`): recalcula quem é aliado sem esperar o próximo PLAYERS. */
     setMyTeam(t){v.myTeam=t;for(const pl of players.values())pl.ally=pl.team>=0&&pl.team===t&&pl.slot!==v.mySlot;},
     rebuildLb(){const rows=v.lbRaw,out=new Array(rows.length);
-      for(let i=0;i<rows.length;i++){const r=rows[i],pl=players.get(r.slot);out[i]={slot:r.slot,name:pl?pl.name:"?",mass:r.mass,x:r.x,y:r.y,isBot:pl?pl.isBot:false,registered:pl?pl.registered:false,ally:pl?pl.ally:false,talking:v.talkingNow(pl),me:r.slot===v.mySlot,rank:i+1};}
+      for(let i=0;i<rows.length;i++){const r=rows[i],pl=players.get(r.slot);out[i]={slot:r.slot,name:pl?pl.name:"?",mass:r.mass,x:r.x,y:r.y,level:pl?pl.level:0,isBot:pl?pl.isBot:false,registered:pl?pl.registered:false,ally:pl?pl.ally:false,talking:v.talkingNow(pl),me:r.slot===v.mySlot,rank:i+1};}
       // fora do top: anexa a própria linha (rank/massa vêm do bloco self do snapshot)
       if(v.mySlot>=0&&v.self&&v.self.rank>0&&!out.some(r=>r.me)){const pl=players.get(v.mySlot);
-        out.push({slot:v.mySlot,name:pl?pl.name:"",mass:v.self.mass,x:0,y:0,isBot:false,registered:pl?pl.registered:false,ally:false,talking:false,me:true,rank:v.self.rank});}
+        out.push({slot:v.mySlot,name:pl?pl.name:"",mass:v.self.mass,x:0,y:0,level:pl?pl.level:0,isBot:false,registered:pl?pl.registered:false,ally:false,talking:false,me:true,rank:v.self.rank});}
       v.lb=out;},
     myRank(){for(const r of v.lb)if(r.me)return r.rank;return 0;},
     /** Linhas do placar COM posição (o servidor manda todos os vivos): é a fonte do radar. */
     lbRows(){return v.lbRaw;},
+    /**
+     * Avatares (a skin "Retrato"). Vem em JSON de controle e não no fio: é uma skin de 25 mil moedas e
+     * nível 30, então 4 bytes por linha em TODO broadcast de PLAYERS seriam pagar por zeros em 49 dos 50.
+     */
+    setAvatars(list){for(const pl of players.values())pl.avatar=null;
+      for(const a of list||[]){const pl=players.get(a.slot);if(pl)pl.avatar=a.userId&&a.v?{userId:a.userId,v:a.v}:null;}},
     playerOf(slot){return players.get(slot)||null;},
     build(){
       const P=v.pieces,F=v.food,E=v.ejected,A=v.asteroids,H=v.holes,M=v.missiles,S=v.stars;P.length=F.length=E.length=A.length=H.length=M.length=S.length=0;

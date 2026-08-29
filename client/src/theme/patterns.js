@@ -54,7 +54,7 @@ function cracks(c,r,color,width,n,seed,glow){const g=mulberry(seed*57+5);c.lineC
  * quem chama usa isso para decidir se ainda põe o emoji fantasma.
  * @param {CanvasRenderingContext2D} c @param {number} r
  */
-export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2"}={}){
+export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2",avatar=null}={}){
   const p=sk&&sk.pattern,col=sk.color,acc=sk.accent||sh(col,.35),seed=(sk.id|0)+1;
   if(!p||p==="plain")return false;
   c.save();c.lineJoin="round";
@@ -103,8 +103,154 @@ export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2"}={}){
       for(let i=0;i<7;i++){const a=i/7*TAU;c.beginPath();c.moveTo(Math.cos(a)*r*.15,Math.sin(a)*r*.15);
         c.quadraticCurveTo(Math.cos(a+.5)*r*.6,Math.sin(a+.5)*r*.6,Math.cos(a)*r*.95,Math.sin(a)*r*.95);c.stroke();}
       c.fillStyle=rgba(light,.8);arc(c,0,0,r*.3);break;}
+    // ── LENDÁRIAS POR NÍVEL ──────────────────────────────────────────────────
+    // Estas não são texturas de planeta como as 22 acima: são EMBLEMAS. Figura central forte, duas cores,
+    // simetria e contraste alto — é o que faz uma skin premium ser legível a 24 px no meio da partida, e é
+    // também o que as separa do catálogo comum (nenhuma delas parece um planeta).
+    case "belt":{c.save();c.rotate(-.5);
+      for(let i=-1;i<=1;i++){c.fillStyle=rgba(acc,i?.55:.85);c.fillRect(-r,i*r*.34-r*.06,r*2,r*.12);}
+      c.fillStyle=light;for(let i=-1;i<=1;i++){c.save();c.translate(i*r*.42,i*r*.34);spikes(c,r*(i?.16:.22),4,.3,0);c.fill();c.restore();}
+      c.restore();break;}
+    case "magma":{c.fillStyle=sh(col,-.72);arc(c,0,0,r);
+      blobs(c,r,sh(col,-.45),4,seed,.5);
+      c.fillStyle=rgba(acc,.9);arc(c,0,0,r*.3);c.fillStyle=rgba(light,.85);arc(c,0,0,r*.15);
+      // rachaduras saindo do NÚCLEO para fora: o oposto de `lava`, que racha a casca
+      {const g=mulberry(seed*13+1);c.lineCap="round";
+        for(let i=0;i<7;i++){const a=i/7*TAU+g()*.4;let x=Math.cos(a)*r*.28,y=Math.sin(a)*r*.28,an=a;
+          c.strokeStyle=rgba(acc,.75);c.lineWidth=Math.max(1.5,r*.05);c.beginPath();c.moveTo(x,y);
+          for(let k=0;k<4;k++){an+=g()*.7-.35;const st=r*.2;x+=Math.cos(an)*st;y+=Math.sin(an)*st;c.lineTo(x,y);}
+          c.stroke();}}
+      break;}
+    case "prism":{// seis cunhas em ângulos FIXOS: é a simetria que lê "premium", e não o ruído
+      for(let i=0;i<6;i++){const a=i/6*TAU-Math.PI/2;
+        c.fillStyle=rgba(i%2?acc:light,i%2?.55:.3);c.beginPath();c.moveTo(0,0);
+        c.lineTo(Math.cos(a)*r,Math.sin(a)*r);c.lineTo(Math.cos(a+TAU/6)*r,Math.sin(a+TAU/6)*r);c.closePath();c.fill();
+        c.strokeStyle=rgba(light,.5);c.lineWidth=Math.max(1,r*.02);c.stroke();}
+      c.fillStyle=rgba(light,.95);arc(c,0,0,r*.18);break;}
+    case "orbits":{c.strokeStyle=rgba(light,.5);
+      const incl=[-.3,.9,2.1],raio=[.5,.72,.94];
+      for(let i=0;i<3;i++){c.lineWidth=Math.max(1.5,r*.045);c.beginPath();
+        c.ellipse(0,0,r*raio[i],r*raio[i]*.4,incl[i],0,TAU);c.stroke();
+        const a=i*2.1+.6,x=Math.cos(a)*r*raio[i],y=Math.sin(a)*r*raio[i]*.4;
+        c.save();c.rotate(incl[i]);c.fillStyle=acc;arc(c,x,y,r*.09);c.restore();}
+      c.fillStyle=rgba(acc,.9);arc(c,0,0,r*.26);break;}
+    case "tide":{for(let i=0;i<3;i++){
+        c.fillStyle=rgba(i===2?light:acc,i===2?.35:.3+i*.18);c.beginPath();c.moveTo(-r,r);
+        for(let k=0;k<=28;k++){const x=-r+k/28*r*2,y=(i-1.2)*r*.34+Math.sin(k/28*4.4+i*1.7)*r*.13;
+          k?c.lineTo(x,y):c.lineTo(x,y);}
+        c.lineTo(r,r);c.closePath();c.fill();}
+      c.fillStyle=rgba(light,.9);arc(c,r*.3,-r*.42,r*.08);break;}
+    case "crown":{for(let i=0;i<4;i++){c.fillStyle=rgba(light,i%2?.1:.2);c.fillRect(-r,-r+i*r*.5,r*2,r*.25);}
+      c.fillStyle=acc;c.strokeStyle=ink;c.lineWidth=Math.max(2,r*.05);c.lineJoin="round";
+      c.beginPath();c.moveTo(-r*.72,r*.28);
+      for(let i=0;i<5;i++){const x0=-r*.72+i*r*.36;c.lineTo(x0+r*.18,-r*.5);c.lineTo(x0+r*.36,r*.1);}
+      c.lineTo(r*.72,r*.28);c.closePath();c.fill();c.stroke();
+      c.fillStyle=light;for(let i=0;i<5;i++)arc(c,-r*.54+i*r*.36,-r*.34,r*.06);break;}
+    case "phoenix":{c.strokeStyle=rgba(acc,.85);c.lineCap="round";c.lineWidth=r*.14;
+      for(let i=0;i<5;i++){const a=-Math.PI+ (i+.5)/5*Math.PI;
+        c.beginPath();c.moveTo(0,r*.2);
+        c.quadraticCurveTo(Math.cos(a)*r*.9,Math.sin(a)*r*.9,Math.cos(a)*r*.55,r*.2);c.stroke();}
+      c.strokeStyle=rgba(light,.7);c.lineWidth=r*.07;
+      c.beginPath();c.arc(-r*.34,r*.05,r*.4,Math.PI*1.05,Math.PI*1.95);c.stroke();
+      c.beginPath();c.arc(r*.34,r*.05,r*.4,Math.PI*1.05,Math.PI*1.95);c.stroke();
+      c.fillStyle=light;c.save();c.translate(0,-r*.24);spikes(c,r*.24,5,.42,-Math.PI/2);c.fill();c.restore();break;}
+    case "singular":{c.fillStyle=ink;arc(c,0,0,r*.99);
+      c.strokeStyle=rgba(acc,.95);c.lineWidth=r*.11;c.beginPath();c.ellipse(0,0,r*.88,r*.28,-.35,0,TAU);c.stroke();
+      c.strokeStyle=rgba(light,.5);c.lineWidth=r*.04;c.beginPath();c.arc(0,0,r*.44,0,TAU);c.stroke();
+      c.fillStyle=ink;arc(c,0,0,r*.3);
+      {const g=mulberry(seed*19);c.fillStyle=rgba(light,.9);
+        for(let i=0;i<10;i++){const a=g()*TAU,d=r*(.5+g()*.45);c.save();c.translate(Math.cos(a)*d,Math.sin(a)*d);
+          spikes(c,r*(.04+g()*.05),4,.3,g()*TAU);c.fill();c.restore();}}
+      break;}
+    // ── EASTER EGG: a caricatura escolhida pelo NICK (shared/src/eggs.js) ──────
+    case "face":face(c,r,sk,{ink,light});break;
+    // ── A FOTO DO JOGADOR (skin "Retrato") ────────────────────────────────────
+    // `paintPattern` é SÍNCRONO (roda dentro de cache.get/warm), então a imagem tem que chegar já
+    // decodificada em `P.avatar`. Enquanto não chega, desenha a silhueta e devolve `true` — devolver
+    // `false` faria cair no emoji fantasma, que é pior que um lugar reservado.
+    case "avatar":{
+      if(avatar){c.drawImage(avatar,-r,-r,r*2,r*2);
+        c.strokeStyle=rgba(acc,.9);c.lineWidth=Math.max(2,r*.07);c.beginPath();c.arc(0,0,r*.96,0,TAU);c.stroke();}
+      else{c.fillStyle=rgba(light,.18);arc(c,0,0,r);
+        c.fillStyle=rgba(ink,.45);arc(c,0,-r*.22,r*.3);
+        c.beginPath();c.ellipse(0,r*.55,r*.5,r*.34,0,Math.PI,TAU);c.fill();}
+      break;}
     default:c.restore();return false;}
   c.restore();return true;}
+
+
+// ── CARICATURAS DOS EASTER EGGS ──────────────────────────────────────────────
+// Arte ORIGINAL, desenhada em canvas com as mesmas primitivas do resto do arquivo — nada de foto de
+// terceiros. Cada uma é reconhecida por UM traço, não por semelhança: o topete e a gravata, o sorrisão e a
+// faixa verde-e-amarela, a barba e a estrela, a juba e as costeletas, a bandeira dividida.
+// Acrescentar um nome é uma linha em shared/src/eggs.js + uma entrada em CARAS.
+//   pele · cabelo (null = careca) · corte: "topete"|"repartido"|"liso"|"juba"|"touca"|"nenhum"
+//   barba: null|"cheia"|"curta"|"costeleta" · marca: o identificador final
+const CARAS={
+  84:{pele:"#e8a05a",cabelo:"#f2d16b",corte:"topete",marca:"gravata",acc:"#c62828"},                 // Trump
+  85:{pele:"#7a4a2a",cabelo:"#1a1008",corte:"juba",marca:"faixaBR",sorriso:true,acc:"#2ecc71"},      // Bruxo
+  86:{pele:"#d9b48a",cabelo:null,corte:"nenhum",barba:"cheia",barbaCor:"#dcdcdc",marca:"estrela",acc:"#e03b3b"},   // Lula
+  87:{pele:"#d9b48a",cabelo:"#2b2b2b",corte:"liso",marca:"faixaBR",acc:"#1f8a4c"},                   // Bolsonaro
+  88:{pele:"#e2cdbd",cabelo:null,corte:"nenhum",marca:"terno",acc:"#b03030"},                        // Putin
+  89:{pele:"#dcb894",cabelo:"#3a2a1a",corte:"juba",barba:"costeleta",marca:"faixaAR",acc:"#6fc3e8"}, // Milei
+  90:{pele:"#e3c3a6",cabelo:"#2a2018",corte:"repartido",marca:"tricolorFR",acc:"#2b4bd0"},           // Macron
+  91:{pele:"#e6c9a3",cabelo:"#141414",corte:"liso",marca:"estrelaCN",acc:"#d81f26"},                 // Xi
+  92:{pele:"#c08a5a",cabelo:"#f2f2f2",corte:"touca",barba:"cheia",barbaCor:"#f4f4f4",marca:"tricolorIN",acc:"#ff9933"},  // Modi
+  93:{pele:"#d8b394",cabelo:"#3a2c1e",corte:"liso",barba:"curta",barbaCor:"#4a3828",marca:"bandeiraUA",acc:"#ffd700"},   // Zelensky
+};
+function face(c,r,sk,{ink,light}){
+  const f=CARAS[sk.id]||{pele:sk.color,cabelo:"#333",corte:"liso",marca:null,acc:sk.accent||"#fff"};
+  const acc=f.acc||sk.accent||"#fff";
+  // fundo/marca de país primeiro: em vários casos é ELA que identifica antes do rosto
+  if(f.marca==="bandeiraUA"){c.fillStyle="#0057b7";c.fillRect(-r,-r,r*2,r);c.fillStyle="#ffd700";c.fillRect(-r,0,r*2,r);}
+  else if(f.marca==="estrelaCN"){c.fillStyle="#d81f26";c.fillRect(-r,-r,r*2,r*.62);
+    c.fillStyle="#ffde00";c.save();c.translate(-r*.55,-r*.66);spikes(c,r*.18,5,.42,-Math.PI/2);c.fill();c.restore();}
+  else if(f.marca==="tricolorFR"){const w=r*2/3;["#2b4bd0","#f2f2f2","#c62828"].forEach((k,i)=>{c.fillStyle=k;c.fillRect(-r+i*w,r*.5,w,r*.5);});}
+  else if(f.marca==="tricolorIN"){["#ff9933","#f5f5f5","#138808"].forEach((k,i)=>{c.fillStyle=k;c.fillRect(-r,r*.34+i*r*.22,r*2,r*.22);});
+    c.strokeStyle="#0a3d91";c.lineWidth=Math.max(1,r*.03);c.beginPath();c.arc(0,r*.67,r*.1,0,TAU);c.stroke();}
+  else if(f.marca==="faixaAR"){["#74acdf","#f5f5f5","#74acdf"].forEach((k,i)=>{c.fillStyle=k;c.fillRect(-r,r*.42+i*r*.2,r*2,r*.2);});}
+  else if(f.marca==="faixaBR"){c.fillStyle="#009c3b";c.fillRect(-r,r*.5,r*2,r*.24);c.fillStyle="#ffdf00";c.fillRect(-r,r*.74,r*2,r*.24);}
+  // rosto
+  c.fillStyle=f.pele;c.beginPath();c.ellipse(0,-r*.05,r*.62,r*.7,0,0,TAU);c.fill();
+  // cabelo
+  if(f.corte==="topete"){c.fillStyle=f.cabelo;
+    c.beginPath();c.ellipse(0,-r*.55,r*.66,r*.3,0,Math.PI,TAU);c.fill();
+    c.beginPath();c.moveTo(-r*.6,-r*.55);c.quadraticCurveTo(-r*.2,-r*1.05,r*.62,-r*.6);c.quadraticCurveTo(r*.2,-r*.55,-r*.6,-r*.48);c.fill();}
+  else if(f.corte==="repartido"){c.fillStyle=f.cabelo;
+    c.beginPath();c.ellipse(0,-r*.5,r*.64,r*.34,0,Math.PI,TAU);c.fill();
+    c.strokeStyle=rgba(light,.5);c.lineWidth=Math.max(1,r*.03);c.beginPath();c.moveTo(-r*.16,-r*.8);c.lineTo(-r*.24,-r*.5);c.stroke();}
+  else if(f.corte==="liso"){c.fillStyle=f.cabelo;c.beginPath();c.ellipse(0,-r*.48,r*.64,r*.32,0,Math.PI,TAU);c.fill();}
+  else if(f.corte==="juba"){c.fillStyle=f.cabelo;blobs(c,r,f.cabelo,5,sk.id+3,.4);
+    c.beginPath();c.ellipse(0,-r*.42,r*.72,r*.42,0,Math.PI,TAU);c.fill();
+    c.beginPath();c.ellipse(-r*.62,-r*.1,r*.2,r*.36,0,0,TAU);c.fill();
+    c.beginPath();c.ellipse(r*.62,-r*.1,r*.2,r*.36,0,0,TAU);c.fill();}
+  else if(f.corte==="touca"){c.fillStyle="#f2f2f2";c.beginPath();c.ellipse(0,-r*.52,r*.5,r*.26,0,Math.PI,TAU);c.fill();}
+  // barba
+  if(f.barba==="cheia"||f.barba==="curta"){c.fillStyle=f.barbaCor||"#666";
+    c.beginPath();c.ellipse(0,r*.16,r*.56,f.barba==="cheia"?r*.5:r*.36,0,0,Math.PI);c.fill();}
+  if(f.barba==="costeleta"){c.fillStyle=f.cabelo;
+    c.beginPath();c.moveTo(-r*.6,-r*.2);c.lineTo(-r*.4,-r*.2);c.lineTo(-r*.5,r*.28);c.closePath();c.fill();
+    c.beginPath();c.moveTo(r*.6,-r*.2);c.lineTo(r*.4,-r*.2);c.lineTo(r*.5,r*.28);c.closePath();c.fill();}
+  // olhos e sobrancelhas
+  c.fillStyle=light;c.beginPath();c.ellipse(-r*.22,-r*.14,r*.13,r*.1,0,0,TAU);c.fill();
+  c.beginPath();c.ellipse(r*.22,-r*.14,r*.13,r*.1,0,0,TAU);c.fill();
+  c.fillStyle=ink;arc(c,-r*.2,-r*.13,r*.055);arc(c,r*.24,-r*.13,r*.055);
+  c.fillStyle=ink;c.save();c.translate(-r*.22,-r*.32);c.rotate(-.12);c.fillRect(-r*.16,-r*.04,r*.32,r*.07);c.restore();
+  c.save();c.translate(r*.22,-r*.32);c.rotate(.12);c.fillRect(-r*.16,-r*.04,r*.32,r*.07);c.restore();
+  // boca
+  if(f.sorriso){c.fillStyle=light;c.beginPath();c.ellipse(0,r*.16,r*.3,r*.18,0,0,Math.PI);c.fill();
+    c.strokeStyle=ink;c.lineWidth=Math.max(1.5,r*.035);c.stroke();
+    c.beginPath();c.moveTo(-r*.1,r*.16);c.lineTo(-r*.1,r*.3);c.moveTo(r*.1,r*.16);c.lineTo(r*.1,r*.29);c.stroke();}
+  else if(!f.barba){c.strokeStyle=ink;c.lineWidth=Math.max(1.5,r*.04);c.lineCap="round";
+    c.beginPath();c.moveTo(-r*.16,r*.2);c.lineTo(r*.16,r*.2);c.stroke();}
+  // marca final por cima
+  if(f.marca==="gravata"){c.fillStyle=acc;c.beginPath();
+    c.moveTo(0,r*.5);c.lineTo(r*.11,r*.64);c.lineTo(0,r*1);c.lineTo(-r*.11,r*.64);c.closePath();c.fill();
+    c.strokeStyle=ink;c.lineWidth=Math.max(1,r*.03);c.stroke();}
+  else if(f.marca==="terno"){c.fillStyle=ink;c.beginPath();c.moveTo(-r*.7,r*1);c.lineTo(0,r*.44);c.lineTo(r*.7,r*1);c.closePath();c.fill();
+    c.fillStyle=acc;c.beginPath();c.moveTo(0,r*.5);c.lineTo(r*.09,r*.62);c.lineTo(0,r*.96);c.lineTo(-r*.09,r*.62);c.closePath();c.fill();}
+  else if(f.marca==="estrela"){c.fillStyle=acc;c.save();c.translate(-r*.55,r*.6);spikes(c,r*.24,5,.42,-Math.PI/2);c.fill();c.restore();}
+}
 
 /**
  * Buraco negro (Gargantua/M87): sombra preta GRANDE, disco de acreção quase de perfil com a face de TRÁS lenteada

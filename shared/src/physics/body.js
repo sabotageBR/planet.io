@@ -21,7 +21,9 @@ import {PLAYER,BOOST} from "../constants.js";
  * @property {number} flags      peça: PIECE_FLAG.*; comida: FOOD_FLAG.* (interno)
  * @property {number} cdUntil    peça: imune à sucção até; ejetado: dono não come até; buraco: próxima mudança de deriva; estrela: próximo hit de partícula
  * @property {number} chipUntil  peça: próxima lasca permitida (cooldown por peça)
- * @property {number} hits       estrela: tiros/partículas levados (STAR.HITS_TO_SPLIT racha a estrela)
+ * @property {number} hits       estrela: tiros/partículas levados (STAR.HITS_TO_SPLIT racha a estrela).
+ *                              MÍSSIL: a ARMA de ORIGEM (WEAPON.*), porque o filho do Cacho tem `hue` de
+ *                              míssil simples de propósito — significado por kind, como `hue` e `type`.
  * @property {number} magnetUntil     peça: ímã ativo até este tick (powerup POR PEÇA; fundir soma o tempo restante)
  * @property {number} shieldLv        peça: nível do escudo 0..POWERUP.SHIELD_MAX_LEVEL (não expira; fundir soma até o teto)
  * @property {number} shieldEvolveAt  peça: tick em que o escudo sobe um nível se ela não for atingida

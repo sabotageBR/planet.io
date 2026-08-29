@@ -16,12 +16,14 @@ const ls = { get(k) { try { return localStorage.getItem(k); } catch { return nul
 export const getToken = () => ls.get(TOKEN_KEY);
 const setToken = t => ls.set(TOKEN_KEY, t);
 
-async function request(method, path, body, { auth = true } = {}) {
+async function request(method, path, body, { auth = true, raw = false, contentType = null } = {}) {
   const headers = { Accept: "application/json" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // `raw`: o corpo vai como está (um Blob de imagem). Serializar em base64 dentro de JSON custaria 33% a
+  // mais e estouraria o teto de corpo do router — a rota do avatar tem limite próprio justamente por isso.
+  if (body !== undefined) headers["Content-Type"] = raw ? (contentType || "application/octet-stream") : "application/json";
   const tok = getToken(); if (auth && tok) headers.Authorization = "Bearer " + tok;
   let res;
-  try { res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), cache: "no-store" }); }
+  try { res = await fetch(path, { method, headers, body: body === undefined ? undefined : (raw ? body : JSON.stringify(body)), cache: "no-store" }); }
   catch (e) { throw new NetworkError(e.message || "rede"); }
   if (res.status === 204) return null;
   const text = await res.text(); let data = null;
@@ -36,8 +38,9 @@ async function request(method, path, body, { auth = true } = {}) {
 // ── perfil local (offline) ───────────────────────────────────────────────────
 const rand4 = () => String(1000 + Math.floor(Math.random() * 9000));
 function freshProfile() {
-  return { user: { id: "local", nick: "Viajante-" + rand4(), kind: "guest", coins: 0, equippedSkin: 0, createdAt: new Date().toISOString() },
-    skins: [0], prefs: {}, stats: { games: 0, kills: 0, botKills: 0, splits: 0, ejects: 0, bestScore: 0, bestMass: 0, playTime: 0, bestStreak: 0 }, achievements: [], matches: [] };
+  return { user: { id: "local", nick: "Viajante-" + rand4(), kind: "guest", coins: 0, equippedSkin: 0, country: null, avatar: null, createdAt: new Date().toISOString() },
+    skins: [0], prefs: {}, stats: { games: 0, kills: 0, botKills: 0, splits: 0, ejects: 0, bestScore: 0, bestMass: 0, playTime: 0, bestStreak: 0,
+      foodEaten: 0, deaths: 0, kd: 0, xp: 0, level: 1 }, achievements: [], matches: [] };
 }
 function localProfile() {
   const raw = ls.get(LOCAL_KEY);
@@ -121,10 +124,26 @@ export const api = {
     if (!api.online) { const p = localProfile(); if (!p.skins.includes(id)) throw offline("not_owned", "Você não tem essa skin."); p.user.equippedSkin = id; saveLocal(p); return { equippedSkin: id }; }
     return request("POST", `/api/skins/${id}/equip`);
   },
-  async ranking(period = "all", by = "score", limit = 50) {
-    if (!api.online) return { period, by, rows: [], me: null };
-    return request("GET", `/api/ranking?period=${period}&by=${by}&limit=${limit}`);
+  async ranking(period = "all", by = "score", limit = 50, country = null) {
+    if (!api.online) return { period, by, country, rows: [], me: null };
+    return request("GET", `/api/ranking?period=${period}&by=${by}&limit=${limit}${country ? `&country=${country}` : ""}`);
   },
+  /** País do ranking regional. `null` limpa — entrar no recorte é opcional, e sair também. */
+  async setCountry(country) {
+    if (!api.online) { const p = localProfile(); p.user.country = country || null; saveLocal(p); return { user: p.user }; }
+    return request("PATCH", "/api/me", { country: country || null });
+  },
+  /**
+   * Sobe a foto da skin "Retrato". Vai o Blob CRU, não base64 nem multipart: 12 KB em base64 estouram o
+   * teto de JSON do router, e o servidor tem uma rota com limite próprio justamente para isto.
+   */
+  async uploadAvatar(blob) {
+    if (!api.online) throw offline("offline", "Sem servidor: a foto precisa de conta.");
+    return request("POST", "/api/me/avatar", blob, { raw: true, contentType: blob.type });
+  },
+  async removeAvatar() { if (!api.online) return {}; return request("DELETE", "/api/me/avatar"); },
+  /** URL pública da foto de alguém. O hash entra na query: foto nova = URL nova, então o cache é eterno. */
+  avatarUrl(userId, v) { return `/api/avatar/${userId}${v ? `?v=${v}` : ""}`; },   // relativo: o nginx faz o proxy de /api/
   async rooms() { if (!api.online) return { rooms: [] }; return request("GET", "/api/rooms"); },
   async auto({ mode = 0, teamSize = 1 } = {}) { if (!api.online) return null; return request("GET", `/api/auto?mode=${mode | 0}&teamSize=${teamSize | 0}`); },
   // ── lobby de equipe (código de convite) ──

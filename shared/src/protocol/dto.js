@@ -78,6 +78,7 @@
  * @property {number} flags PLAYER_FLAG.*
  * @property {number} skinId u8
  * @property {number} team equipe (u8; NO_TEAM = 255 no Livre e no Battle Royale solo)
+ * @property {number} level nível do jogador (u8; 0 = sem nível — bot, convidado ou sala sem persistência)
  * @property {string} name utf-8 ≤ NAME_MAX_BYTES
  * @property {number} score u32
  */

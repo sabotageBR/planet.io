@@ -38,9 +38,12 @@ export async function startServer(overrides={}){
   const game=cfg.role!=='api';
   let botChat=null;
   if(game&&cfg.botChatLlm&&cfg.ollamaUrl){
-    const llm=createOllama({url:cfg.ollamaUrl,model:cfg.ollamaModel,timeoutMs:cfg.ollamaTimeoutMs,log});
-    botChat=createBotChat({llm,log});
-    llm.warmup().catch(()=>{});}
+    const llm=createOllama({url:cfg.ollamaUrl,model:cfg.ollamaModel,timeoutMs:cfg.ollamaTimeoutMs,
+      maxInflight:cfg.ollamaMaxInflight,metrics,log});
+    metrics.llmSource(()=>llm.inflight,()=>llm.breakerOpen);
+    botChat=createBotChat({llm,log,metrics});
+    llm.warmup().catch(()=>{});
+    log.info(`fala dos bots por LLM: ${cfg.ollamaModel} em ${cfg.ollamaUrl} (até ${cfg.ollamaMaxInflight} ao mesmo tempo)`);}
   else if(game&&cfg.ollamaUrl)log.info('BOT_CHAT_LLM desligado: a fala dos bots usa o repertório fixo');
   // ── salas + laço ──
   const scheduler=game?new Scheduler({metrics,log}):null;

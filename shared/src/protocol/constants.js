@@ -1,6 +1,7 @@
 // ── Enums do fio (ver docs/spec/protocol.md) ──────────────────────────────────
 // @ts-check
-export const PROTOCOL_VERSION=10;   // 10: cinto de armas — INPUT ganhou SWAP e o `self` ganhou `owned` (bitmask do que dá para chavear)
+export const PROTOCOL_VERSION=11;   // 11: NÍVEL do jogador — PLAYERS ganhou `level` (u8), o badge ao lado do nick no placar, no chat e no kill feed
+// 10: cinto de armas — INPUT ganhou SWAP e o `self` ganhou `owned` (bitmask do que dá para chavear)
 // 9: MODOS DE JOGO — PLAYERS leva `team`, `self` leva `weapon`/`alive`, MISSILE leva `weapon`, e entram ZONE/VOICE/VOICE_UP
 // 8: `self` leva threat/threatDir (míssil teleguiado vindo em mim) · 7: fireCd (carência de tiro do spawn) · 6: LEADERBOARD leva x,y de TODOS os vivos
 // 5: o `hue` do EJECT deixou de ser o skinId (que o cliente ignorava) e virou FRAG_KIND

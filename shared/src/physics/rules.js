@@ -216,7 +216,7 @@ export function pieceAsteroid(w,pc,a){
     if(liveCount(ps.pieces)<PLAYER.MAX_PIECES&&impactParam(pc,a)<lim)return;}   // vindo para o miolo: deixa entrar (vai estourar); de raspão cai no quique
   const s=pc.r+a.r;if(d2>=s*s||d2<=0)return;
   const vn=bouncePiece(pc,a,ASTEROID.E,true,false);
-  if(pc.shieldLv>0){if(tier>0)for(let i=0;i<tier&&pc.shieldLv>0;i++)hitShield(w,pc,-1,nx,ny);}
+  if(pc.shieldLv>0){if(tier>0)for(let i=0;i<tier&&pc.shieldLv>0;i++)hitShield(w,pc,-1,nx,ny,WEAPON_ASTEROIDE);}
   else chipPiece(w,ps,pc,a,nx,ny);
   if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,pc,a,vn);
   a.dead=true;w.queueAsteroid(a.type,ASTEROID.RESPAWN_TICKS);   // encostou, EXPLODIU: a rocha nunca sobra para ficar batendo de novo
@@ -421,7 +421,7 @@ export function holePair(w,A,h){
       if(d<rc&&A.r<rc*BLACKHOLE.CRUSH_K&&w.tick>=A.cdUntil)crushPiece(w,w.players.get(A.owner),A,h);break;}
     case KIND.EJECT:{if(pullBody(h,A,BLACKHOLE.EJECT_PULL,rc,ri)<rc)A.dead=true;break;}   // pelota é engolida: o buraco é o sumidouro
     case KIND.MISSILE:{if(pullBody(h,A,BLACKHOLE.MISSILE_PULL,rc,ri)<rc){A.dead=true;
-      w.events.push({type:"BOOM",x:A.x,y:A.y,r:A.r,slot:A.owner,bySlot:-1});}break;}
+      w.events.push({type:"BOOM",x:A.x,y:A.y,r:A.r,slot:A.owner,bySlot:-1,weapon:armaDoMissil(A)});}break;}
     case KIND.ASTEROID:{if(A.type<0&&pullBody(h,A,BLACKHOLE.AST_PULL,rc,ri)<rc){A.dead=true;w.queueAsteroid(-1,0);
       w.events.push({type:"POP",slot:-1,asteroidId:A.id,x:A.x,y:A.y,r:A.r});}break;}}}
 /**
@@ -467,6 +467,17 @@ export function homeMissile(w,m){
  * seria uma bomba de população, o mesmo erro que a estrela que rachava em estrelas. Devolve true se abriu.
  * @param {World} w @param {Body} m
  */
+/**
+ * Com que ARMA aquele míssil foi disparado. Existe porque `clusterSplit` zera o `hue` do filho para
+ * WEAPON.MISSILE de propósito (senão o filho se abriria de novo — é a proteção contra bomba de população),
+ * e sem isto todo abate de Cacho apareceria no kill feed como míssil. A marca de origem vai no `hits`, que
+ * para KIND.MISSILE não tem uso nenhum (só a ESTRELA conta `hits`), seguindo a mesma convenção de
+ * significado-por-kind que `hue` e `type` já usam — acrescentar um campo ao createBody custaria um slot em
+ * CADA grão de comida, e são milhares.
+ */
+export const WEAPON_ASTEROIDE=-2;   // "não foi arma de jogador": a rocha
+const armaDoMissil=m=>(m&&m.hits)?m.hits:(m?m.hue:WEAPON.MISSILE);
+
 function clusterSplit(w,m){
   if(m.targetId<0)return false;
   let tx,ty;
@@ -477,7 +488,7 @@ function clusterSplit(w,m){
   const a0=Math.atan2(m.vy,m.vx);
   for(let i=0;i<wp.n;i++){const an=a0+(i/(wp.n-1)-.5)*wp.spread,ux=Math.cos(an),uy=Math.sin(an);
     const q=w.addMissile(m.x,m.y,ux*MISSILE.SPEED,uy*MISSILE.SPEED,m.owner,m.targetId);
-    q.type=m.type;q.srcSlot=m.srcSlot;q.hue=WEAPON.MISSILE;q.life=m.life;}
+    q.type=m.type;q.srcSlot=m.srcSlot;q.hue=WEAPON.MISSILE;q.hits=WEAPON.CLUSTER;q.life=m.life;}   // hue = como ele se COMPORTA (míssil simples); hits = de onde ele VEIO (cacho), para o kill feed
   m.dead=true;w.events.push({type:"SHOOT",x:m.x,y:m.y,nx:Math.cos(a0),ny:Math.sin(a0)});
   return true;}
 /**
@@ -488,11 +499,11 @@ function clusterSplit(w,m){
  */
 export function pieceMissile(w,pc,m){
   if(sameTeam(w,m.owner,pc.owner))return;const dx=m.x-pc.x,dy=m.y-pc.y,s=pc.r+m.r;if(dx*dx+dy*dy>=s*s)return;
-  if(pc.shieldLv>0){m.dead=true;const d=Math.sqrt(dx*dx+dy*dy)||1;hitShield(w,pc,m.owner,dx/d,dy/d);return;}
+  if(pc.shieldLv>0){m.dead=true;const d=Math.sqrt(dx*dx+dy*dy)||1;hitShield(w,pc,m.owner,dx/d,dy/d,armaDoMissil(m));return;}
   const wp=weaponOf(m.hue),shrink=wp.shrink==null?MISSILE.HIT_SHRINK:wp.shrink;
   const m0=pc.mass;let r=pc.r*shrink;if(r<PLAYER.MIN_PIECE_R)r=PLAYER.MIN_PIECE_R;setR(pc,r);
   spillFrag(w,pc.x,pc.y,1,0,m0-pc.mass,MISSILE.HIT_DEBRIS,MISSILE.DEBRIS_SPEED,LOCAL.DEBRIS_SPREAD,pc.owner,EJECT.OWNER_IMMUNE_TICKS);
-  m.dead=true;w.events.push({type:"BOOM",x:m.x,y:m.y,r:pc.r,slot:pc.owner,bySlot:m.owner});
+  m.dead=true;w.events.push({type:"BOOM",x:m.x,y:m.y,r:pc.r,slot:pc.owner,bySlot:m.owner,weapon:armaDoMissil(m)});
   if(!wp.shatter)return;   // a Rajada arranha e empurra; PARTIR o alvo é privilégio do míssil e do cacho
   const d=Math.sqrt(dx*dx+dy*dy)||1,n=w.rng.int(MISSILE.SHATTER_N[0],MISSILE.SHATTER_N[1]);
   shatterPiece(w,w.players.get(pc.owner),pc,-dx/d,-dy/d,n,MISSILE.SHATTER_DIST);}   // o tiro PARTE o alvo, não só arranca massa: é a arma anti-gigante
@@ -519,15 +530,15 @@ export function asteroidMissile(w,a,m){
   if(a.type>=0&&w.asteroids.length<w.astCap){w.queueAsteroid(a.type,ASTEROID.RESPAWN_TICKS);a.type=-1;}
   w.events.push({type:"DEFLECT",x:m.x,y:m.y,r:a.r,nx:ux,ny:uy,bySlot:m.owner});return true;}
 /** Escudo DESTA peça cai por completo: ela dividiu (bySlot −1) ou levou a batida de quem pode engoli-la. @param {World} w @param {Body} pc */
-export function breakShield(w,pc,bySlot=-1){pc.shieldLv=0;w.events.push({type:"SHIELD_BREAK",slot:pc.owner,x:pc.x,y:pc.y,r:pc.r,bySlot});}
+export function breakShield(w,pc,bySlot=-1,weapon=-1){pc.shieldLv=0;w.events.push({type:"SHIELD_BREAK",slot:pc.owner,x:pc.x,y:pc.y,r:pc.r,bySlot,weapon});}
 /**
  * O escudo DESTA peça perde UM nível e o timer de evolução dela reinicia: míssil inimigo, batida forte de asteroide ou
  * tiro do próprio dono (bySlot −1). Emite SHIELD_HIT enquanto sobra nível, SHIELD_BREAK quando zera. @param {World} w @param {Body} pc
  */
-export function hitShield(w,pc,bySlot=-1,nx=0,ny=0){
+export function hitShield(w,pc,bySlot=-1,nx=0,ny=0,weapon=-1){
   pc.shieldLv--;pc.shieldEvolveAt=w.tick+POWERUP.SHIELD_EVOLVE_TICKS;
-  if(pc.shieldLv>0)w.events.push({type:"SHIELD_HIT",slot:pc.owner,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r,nx,ny,bySlot});
-  else w.events.push({type:"SHIELD_BREAK",slot:pc.owner,x:pc.x,y:pc.y,r:pc.r,bySlot});}
+  if(pc.shieldLv>0)w.events.push({type:"SHIELD_HIT",slot:pc.owner,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r,nx,ny,bySlot,weapon});
+  else w.events.push({type:"SHIELD_BREAK",slot:pc.owner,x:pc.x,y:pc.y,r:pc.r,bySlot,weapon});}
 
 // ── ações do jogador ──
 /**
@@ -729,7 +740,11 @@ function fireNova(w,ps,src,wp){
     const dx=q.x-src.x,dy=q.y-src.y,d=Math.sqrt(dx*dx+dy*dy);if(d>=R0)continue;
     const ux=d>1e-6?dx/d:1,uy=d>1e-6?dy/d:0;addBoost(q,ux,uy,wp.push*(1-d/R0));
     if(d<core&&w.tick>=q.chipUntil&&q.r>=STAR.SHATTER_MIN_R){q.chipUntil=w.tick+STAR.SHATTER_CD_TICKS;
-      shatterPiece(w,w.players.get(q.owner),q,ux,uy,rng.int(STAR.SHATTER_N[0],STAR.SHATTER_N[1]),STAR.SHATTER_DIST);}}
+      shatterPiece(w,w.players.get(q.owner),q,ux,uy,rng.int(STAR.SHATTER_N[0],STAR.SHATTER_N[1]),STAR.SHATTER_DIST);
+      // Quem estilhaçou quem. A supernova de ESTRELA já diz isso por STAR_BURST (via starShatter); a Nova
+      // portátil não dizia nada por vítima, e sem isto a arma mais cara do jogo seria a única sem crédito
+      // no kill feed. Só dispara para quem está no miolo de uma Nova disparada — não é caminho quente.
+      w.events.push({type:"NOVA_HIT",slot:q.owner,bySlot:ps.slot,x:q.x,y:q.y,r:q.r});}}
   const asts=w.asteroids;
   for(let i=0;i<asts.length;i++){const a=asts[i];if(a.dead)continue;
     const dx=a.x-src.x,dy=a.y-src.y,d=Math.sqrt(dx*dx+dy*dy);if(d>=R0||d<1e-6)continue;

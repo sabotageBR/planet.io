@@ -7,9 +7,10 @@
 // espelhamos (uma fonte só, sem contar duas vezes).
 // @ts-check
 import {createWorld} from '@planet/shared/physics/world.js';
-import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT,BOT_TALK,MISSILE,MODE,modeOf} from '@planet/shared/constants.js';
+import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT,BOT_TALK,BOT_LLM,FEED,MISSILE,MODE,modeOf,WEAPON,WEAPONS} from '@planet/shared/constants.js';
 import {EVENT,REMOVE,PLAYER_FLAG,SELF_FLAG,POWER_BIT,INPUT_FLAG,NO_TEAM} from '@planet/shared/protocol/constants.js';
 import {createRng} from '@planet/shared/rng.js';
+import {kdOf} from '@planet/shared/levels.js';
 import {packDir} from '@planet/shared/util.js';
 import {NOOP_HOOKS} from './hooks.js';
 import {BotBrain} from '@planet/shared/bot.js';
@@ -18,6 +19,9 @@ import {firstLive} from '@planet/shared/physics/body.js';
 
 export const NO_SLOT=0xffff;
 const LB_MAX=10,EVENTS_MAX=256;
+/** WEAPON.* → a chave que o kill feed e o hook de persistência usam. -2 (a rocha) e desconhecido caem em asteroide/míssil. */
+const ARMA=['missile','burst','cluster','nova'];
+const armaKey=w=>w===-2?'asteroid':(ARMA[w|0]||'missile');
 /**
  * @typedef {object} GamePlayer
  * @property {number} slot
@@ -55,6 +59,8 @@ export class Sim{
     /** @type {Map<number,number>} id → REMOVE.* desde o último snapshot */this.gone=new Map();
     /** @type {{slot:number,kind:string,quem:string|null}[]} fila de gatilhos de fala dos preenchimentos (a sala drena) */this.botTalk=[];
     this.playersDirty=true;
+    /** @type {{k:string,a:number,b:number,how:string,by:number|null,n?:number}[]} fila do KILL FEED (a sala drena e difunde) */this.feed=[];
+    /** @type {Map<number,{by:number,how:string,tick:number}>} último dano levado por slot: quem AMOLECEU antes de alguém colher */this._lastHit=new Map();
     this._listeners=new Map();this._lb=[];this._lbTick=-1;this._hit=new Map();this._statTick=new Map();this._deaths=[];this._elim=0;}
   get tick(){return this.world.tick;}
   // ── emissor mínimo ──
@@ -62,17 +68,26 @@ export class Sim{
   _emit(ev,arg){const l=this._listeners.get(ev);if(!l)return;for(const fn of l){try{fn(arg);}catch(e){if(this.log)this.log.error(`listener ${ev}:`,e);}}}
   // ── jogadores ──
   _mk(slot,o){return{slot,sessionId:o.sessionId||null,userId:o.userId??null,name:String(o.name||'Viajante'),registered:!!o.registered,skinId:o.skinId|0,isBot:!!o.isBot,
-    team:o.team==null?-1:o.team|0,deathTick:-1,placement:0,talkUntil:0,
-    dead:false,score:0,kills:0,botKills:0,streak:0,joinedTick:this.world.tick,maxMass:0,top1Ticks:0,quadrants:new Set(),lastInput:{seq:0,tx:0,ty:0,flags:0},gotInput:false,brain:null,deathInfo:null};}
+    team:o.team==null?-1:o.team|0,deathTick:-1,placement:0,talkUntil:0,level:o.level|0,
+    dead:false,score:0,kills:0,botKills:0,deaths:0,food:0,streak:0,joinedTick:this.world.tick,maxMass:0,top1Ticks:0,quadrants:new Set(),lastInput:{seq:0,tx:0,ty:0,flags:0},gotInput:false,brain:null,deathInfo:null,
+    // ── fala (a Room é quem gasta; aqui só existem para o objeto ter FORMA estável) ──
+    // Eram criados no primeiro uso lá na Room, o que deixava o GamePlayer polimórfico e não dava lugar
+    // nenhum para documentar o que cada um significa.
+    persona:null,mem:null,rosterFolded:false,
+    talked:0,talkedAt:-1e9,mencaoAt:-1e9,mencoes:0};}
   /** Humano: peça START_R longe de perigos. Devolve o GamePlayer (peça inicial em world.piecesOf(slot)[0]). */
-  addHuman(slot,{name='Viajante',registered=false,skinId=0,sessionId=null,userId=null,team=-1,spawn=true}={}){
+  addHuman(slot,{name='Viajante',registered=false,skinId=0,sessionId=null,userId=null,team=-1,level=0,spawn=true}={}){
     if(this.players.has(slot))this.remove(slot);
+    this._lastHit.delete(slot);
     this.world.addPlayer(slot,{r:PLAYER.START_R,isBot:false,missiles:0,team,spawn});
-    const gp=this._mk(slot,{name,registered,skinId,sessionId,userId,isBot:false,team});this.players.set(slot,gp);this.playersDirty=true;return gp;}
-  addBot(slot,{name,skinId=0,team=-1,spawn=true}={}){
+    const gp=this._mk(slot,{name,registered,skinId,sessionId,userId,isBot:false,team,level});this.players.set(slot,gp);this.playersDirty=true;return gp;}
+  addBot(slot,{name,skinId=0,team=-1,level=0,spawn=true}={}){
     if(this.players.has(slot))this.remove(slot);
     this.world.addPlayer(slot,{r:spawn?this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]):PLAYER.START_R,isBot:true,missiles:0,team,spawn});
-    const gp=this._mk(slot,{name,skinId,isBot:true,team});gp.brain=new BotBrain(this.world,slot,this.rng,this._botInput);this.players.set(slot,gp);this.playersDirty=true;return gp;}
+    const gp=this._mk(slot,{name,skinId,isBot:true,team,level});gp.brain=new BotBrain(this.world,slot,this.rng,this._botInput);
+    // Só bot ganha o anel de memória: são 6 objetos por bot, e 30 humanos não têm o que fazer com ele.
+    gp.mem={i:0,n:0,buf:Array.from({length:BOT_LLM.MEM_N},()=>({k:'',slot:-1,at:0}))};
+    this.players.set(slot,gp);this.playersDirty=true;return gp;}
   /** Equipe de um slot (a fonte é o PlayerState do World; o GamePlayer é só o espelho do fio). */
   setTeam(slot,team){const gp=this.players.get(slot),ps=this.world.players.get(slot);
     if(gp)gp.team=team;if(ps)ps.team=team;this.playersDirty=true;}
@@ -80,7 +95,7 @@ export class Sim{
   _botInput=(slot,cmd)=>{this.applyInput(slot,cmd);};
   remove(slot){const gp=this.players.get(slot);if(!gp)return;
     for(const pc of this.world.piecesOf(slot))if(!pc.dead)this.gone.set(pc.id,REMOVE.DESPAWN);
-    this.world.removePlayer(slot);this.players.delete(slot);this.playersDirty=true;}
+    this.world.removePlayer(slot);this.players.delete(slot);this._lastHit.delete(slot);this.playersDirty=true;}
   /**
    * INPUT de humano (seq u16 com wrap: aceita se (seq-lastSeq)&0xffff ∈ (0,32768)) ou de bot (seq null).
    * Flags one-shot SPLIT/EJECT/FIRE valem uma vez por seq nova; EJECT_HOLD liga/desliga a repetição.
@@ -113,6 +128,28 @@ export class Sim{
     // `quem` é o outro lado do evento (a vítima, o algoz). Não custa nada — o nome já está em escopo nos
     // dois pontos de chamada — e é a diferença entre "boa" e "ate mais, Zeca".
     if(this.botTalk.length<BOT_TALK.QUEUE_MAX)this.botTalk.push({slot,kind,quem:quem||null});}
+  /**
+   * KILL FEED. Fila de linhas já resolvidas; quem difunde é a Room (JSON de controle, não o fio binário).
+   * Só SLOTS vão daqui — o cliente resolve o nome por `view.playerOf`, e é isso que faz o feed respeitar
+   * `anonBots` do Battle Royale sem uma linha a mais.
+   */
+  _feed(o){if(this.feed.length<FEED.QUEUE_MAX)this.feed.push(o);}
+  /**
+   * Carimba o ÚLTIMO dano levado por `slot`. Chamado de dentro do `switch` que o `_consume` já percorre —
+   * uma escrita em Map por evento que já estava sendo traduzido, sem laço novo e sem varredura.
+   * É o que permite ao feed dizer "🚀 amoleceu · Fulano devorou" em vez de mentir "morreu de míssil":
+   * `w.killPiece` só é chamado com `eaten`, `zone` e `blackhole` — arma nenhuma mata sozinha.
+   */
+  _mark(slot,by,how){if(slot<0)return;const t=this.world.tick,h=this._lastHit.get(slot);
+    if(h){h.by=by;h.how=how;h.tick=t;}else this._lastHit.set(slot,{by,how,tick:t});}
+  /**
+   * Memória curta do BOT: o que aconteceu com ele e por causa de quem. Anel de BOT_LLM.MEM_N, escrita O(1)
+   * e sem alocar. Não há varredura de expiração — quem LÊ (Room._agressor) ignora o que passou do TTL.
+   * É daqui que sai o "me deixa em paz, evandro!": sem isto o bot não faz ideia de quem atirou nele.
+   */
+  _memo(slot,k,bySlot){if(bySlot<0||slot<0)return;const gp=this.players.get(slot);if(!gp||!gp.mem)return;
+    const m=gp.mem,e=m.buf[m.i];e.k=k;e.slot=bySlot;e.at=this.world.tick;
+    m.i=(m.i+1)%m.buf.length;if(m.n<m.buf.length)m.n++;}
   _ev(kind,x,y,r,slotA,slotB,extra){const out=this.wireEvents;if(out.length>=EVENTS_MAX)return;out.push({kind,x,y,r,slotA,slotB,extra:extra>>>0});}
   _stat(slot,key,tick){const gp=this.players.get(slot);if(!gp||gp.isBot||!gp.sessionId)return;const k=slot*4+(key==='split'?0:key==='eject'?1:2);
     if(this._statTick.get(k)===tick)return;this._statTick.set(k,tick);this.hooks.onStat({sessionId:gp.sessionId,key});}
@@ -120,12 +157,19 @@ export class Sim{
     const w=this.world,ev=w.events,hooks=this.hooks,tick=w.tick,gone=this.gone,hit=this._hit,deaths=this._deaths;deaths.length=0;
     for(let i=0;i<ev.length;i++){const e=ev[i];switch(e.type){
       case 'EAT':{gone.set(e.pieceId,REMOVE.EATEN);hit.set(e.victimSlot,e);this._ev(EVENT.EAT,e.x,e.y,e.r,e.killerSlot,e.victimSlot,e.pieceId);
+        if(!e.lastPiece){this._mark(e.victimSlot,e.killerSlot,'eat');this._memo(e.victimSlot,'mordida',e.killerSlot);}
         if(e.lastPiece){const k=this.players.get(e.killerSlot),v=this.players.get(e.victimSlot);if(k&&v){if(v.isBot)k.botKills++;else k.kills++;k.streak++;this._talk(e.killerSlot,'kill',v.name);
-          if(!k.isBot&&k.sessionId)hooks.onKill({sessionId:k.sessionId,killerSessionId:k.sessionId,victimSessionId:v.sessionId,victimIsBot:v.isBot,weapon:'eat',tick});}}
+          // `weapon` era 'eat' fixo. O carimbo de `_lastHit` já sabe com o que a vítima foi amolecida, então
+          // a estatística de arma passa a existir de graça (e o kill feed usa a mesma conta).
+          const lh0=this._lastHit.get(e.victimSlot);
+          const arma=(lh0&&(tick-lh0.tick)<=FEED.HIT_TTL_TICKS&&lh0.by===e.killerSlot&&lh0.how!=='eat')?lh0.how:'eat';
+          if(!k.isBot&&k.sessionId)hooks.onKill({sessionId:k.sessionId,killerSessionId:k.sessionId,victimSessionId:v.sessionId,victimIsBot:v.isBot,weapon:arma,tick});}}
         break;}
-      case 'FOOD_EATEN':{gone.set(e.foodId,REMOVE.EATEN);const gp=this.players.get(e.slot);if(gp&&!gp.isBot&&gp.sessionId)hooks.onStat({sessionId:gp.sessionId,key:'food'});break;}
+      case 'FOOD_EATEN':{gone.set(e.foodId,REMOVE.EATEN);const gp=this.players.get(e.slot);
+        if(gp)gp.food++;   // o placar da SALA precisa disto para bot e para quem joga sem conta; o hook abaixo é só persistência
+        if(gp&&!gp.isBot&&gp.sessionId)hooks.onStat({sessionId:gp.sessionId,key:'food'});break;}
       case 'EJECT_EATEN':gone.set(e.ejectId,REMOVE.EATEN);break;
-      case 'POP':gone.set(e.asteroidId,REMOVE.POPPED);this._ev(EVENT.POP,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,NO_SLOT,e.asteroidId);break;
+      case 'POP':gone.set(e.asteroidId,REMOVE.POPPED);this._mark(e.slot,-1,'asteroid');this._ev(EVENT.POP,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,NO_SLOT,e.asteroidId);break;
       case 'MERGE':gone.set(e.mergedId,REMOVE.MERGED);this._ev(EVENT.MERGE,e.x,e.y,e.r,e.slot,NO_SLOT,e.pieceId);break;
       case 'SPLIT':this._ev(EVENT.SPLIT,e.x,e.y,e.r,e.slot,NO_SLOT,e.childId);this._stat(e.slot,'split',tick);break;
       case 'EJECT':this._stat(e.slot,'eject',tick);break;
@@ -133,30 +177,58 @@ export class Sim{
         this._ev(EVENT.BH_SUCK,e.fromX,e.fromY,e.r,e.slot,NO_SLOT,1);break;}
       // EVENT.EXIT (kind 9) ficou sem emissor quando o buraco deixou de teleportar; o slot NÃO é renumerado
       // (renumerar custa um PROTOCOL_VERSION novo sem ganho nenhum).
-      case 'CHIP':this._ev(EVENT.CHIP,e.x,e.y,e.r,e.slot,NO_SLOT,packDir(e.nx,e.ny,0));break;
+      case 'CHIP':this._mark(e.slot,-1,'asteroid');this._ev(EVENT.CHIP,e.x,e.y,e.r,e.slot,NO_SLOT,packDir(e.nx,e.ny,0));break;
       case 'BOUNCE':this._ev(EVENT.BOUNCE,e.x,e.y,e.r,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,e.vn));break;
-      case 'BOOM':this._ev(EVENT.BOOM,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;
+      case 'BOOM':this._mark(e.slot,e.bySlot,armaKey(e.weapon));this._memo(e.slot,'tiro',e.bySlot);
+        this._ev(EVENT.BOOM,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;
       case 'SHOOT':this._ev(EVENT.SHOOT,e.x,e.y,0,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,0));break;
-      case 'SHIELD_BREAK':this._ev(EVENT.SHIELD_BREAK,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;
-      case 'SHIELD_HIT':this._ev(EVENT.SHIELD_HIT,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,packDir(e.nx,e.ny,e.level));break;
+      case 'SHIELD_BREAK':this._mark(e.slot,e.bySlot,armaKey(e.weapon));this._memo(e.slot,'escudo',e.bySlot);
+        this._ev(EVENT.SHIELD_BREAK,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;
+      case 'SHIELD_HIT':this._mark(e.slot,e.bySlot,armaKey(e.weapon));this._memo(e.slot,'tiro',e.bySlot);
+        this._ev(EVENT.SHIELD_HIT,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,packDir(e.nx,e.ny,e.level));break;
       case 'SHIELD_UP':this._ev(EVENT.SHIELD_UP,e.x,e.y,e.r,e.slot,NO_SLOT,e.level);break;
       case 'CLASH':this._ev(EVENT.CLASH,e.x,e.y,e.r,e.slotA,e.slotB,0);break;
       case 'DEFLECT':this._ev(EVENT.DEFLECT,e.x,e.y,e.r,e.bySlot<0?NO_SLOT:e.bySlot,NO_SLOT,packDir(e.nx,e.ny,0));break;
-      case 'STAR_BURST':this._ev(EVENT.STAR_BURST,e.x,e.y,e.r,e.slot,NO_SLOT,e.starId);break;
+      case 'STAR_BURST':this._mark(e.slot,-1,'star');this._ev(EVENT.STAR_BURST,e.x,e.y,e.r,e.slot,NO_SLOT,e.starId);break;
       case 'STAR_HIT':this._ev(EVENT.STAR_HIT,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,NO_SLOT,packDir(e.nx,e.ny,e.hits));break;
       case 'STAR_SPLIT':this._ev(EVENT.STAR_SPLIT,e.x,e.y,e.r,NO_SLOT,NO_SLOT,e.starId);break;
       case 'SMASH':gone.set(e.asteroidId,REMOVE.POPPED);this._ev(EVENT.SMASH,e.x,e.y,e.r,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,0));break;
       case 'SUPERNOVA':this._ev(EVENT.SUPERNOVA,e.x,e.y,e.r,NO_SLOT,NO_SLOT,e.starId);break;
-      case 'ZONE_BURN':{if(e.died)gone.set(e.pieceId,REMOVE.EXPIRED);
+      case 'ZONE_BURN':{if(e.died)gone.set(e.pieceId,REMOVE.EXPIRED);this._mark(e.slot,-1,'zone');
         this._ev(EVENT.ZONE_BURN,e.x,e.y,e.r,e.slot,NO_SLOT,Math.round(e.lost));break;}
+      case 'NOVA_HIT':this._mark(e.slot,e.bySlot,'nova');this._memo(e.slot,'tiro',e.bySlot);break;
       case 'PLAYER_DEAD':deaths.push(e);break;}}
     for(let i=0;i<deaths.length;i++)this._died(deaths[i]);
     hit.clear();}
+  /**
+   * Uma morte vira UMA linha do kill feed. A causa base é o que a física diz (`zone`/`eaten`/`blackhole`);
+   * o carimbo de `_lastHit`, se ainda fresco, refina:
+   *   • mesmo algoz e arma → o ícone é a ARMA        ("Fodao 🚀 Stellara")
+   *   • perigo do mapa (by −1) → o ícone é o PERIGO  ("Stellara ⭐ devorada por Fodao")
+   *   • outro jogador amoleceu → ASSISTÊNCIA         (o `by` da linha)
+   * Fora do TTL, é só "devorou" — porque a essa altura já não foi por causa daquele dano.
+   */
+  _feedMorte(e,gp,by){
+    const t=this.world.tick,lh=this._lastHit.get(e.slot),fresco=lh&&(t-lh.tick)<=FEED.HIT_TTL_TICKS;
+    let how=e.cause==='zone'?'zone':e.cause==='blackhole'?'hole':'eat',assist=-1,byHow=null;
+    if(how==='eat'&&fresco){
+      if(lh.by>=0&&lh.by===e.bySlot&&lh.how!=='eat')how=lh.how;
+      else if(lh.by<0)how=lh.how;
+      else if(lh.by>=0&&lh.by!==e.bySlot){assist=lh.by;byHow=lh.how;}}
+    this._lastHit.delete(e.slot);
+    // `byHow` é a arma de quem AMOLECEU: sem ela, a linha com assistência desenhava o mesmo ícone duas
+    // vezes ("🍴🍴"), porque `how` continua sendo 'eat' — quem finalizou foi uma boca.
+    this._feed({k:e.bySlot>=0?'kill':'hazard',a:by?by.slot:-1,b:e.slot,how,by:assist<0?null:assist,byHow:assist<0?null:byHow});
+    if(by&&by.streak&&FEED.STREAK_AT.includes(by.streak))this._feed({k:'sys',a:by.slot,b:-1,how:'streak',by:null,n:by.streak});}
   _died(e){
     const gp=this.players.get(e.slot);if(!gp||gp.dead)return;const w=this.world,h=this._hit.get(e.slot),by=e.bySlot>=0?this.players.get(e.bySlot):null;
     const ps=w.players.get(e.slot);if(ps)gp.score=ps.score;
     this._ev(EVENT.DEATH,h?h.x:0,h?h.y:0,h?h.r:0,e.slot,by?by.slot:NO_SLOT,gp.score);
-    gp.streak=0;this.playersDirty=true;this._talk(e.slot,e.cause==='zone'?'zona':'morte',by?by.name:null);
+    gp.streak=0;gp.deaths++;this.playersDirty=true;this._talk(e.slot,e.cause==='zone'?'zona':'morte',by?by.name:null);
+    this._memo(e.slot,'morte',e.bySlot);
+    this._feedMorte(e,gp,by);
+    // ⚠️ O feed sai ACIMA do respawn de bot: no modo Livre o bot renasce e o `return` abaixo engoliria a
+    // linha — e abate de bot é a MAIORIA dos abates da sala.
     // Sem respawn (Battle Royale): o bot morre de vez, como todo mundo. É a ÚNICA linha que ressuscitava alguém.
     if(gp.isBot&&this.mode.respawnBots){w.respawnPlayer(e.slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),score:Math.floor(gp.score*BOT.RESPAWN_SCORE)});gp.score=Math.floor(gp.score*BOT.RESPAWN_SCORE);if(gp.brain)gp.brain.reset();return;}
     gp.dead=true;gp.deathTick=w.tick;gp.placement=0;this._elim++;
@@ -176,8 +248,12 @@ export class Sim{
    */
   endRound(reason='time'){
     const w=this.world,rows=this.leaderboard(),board=[],seen=new Set();
-    const row=(gp,mass)=>({slot:gp.slot,name:gp.name,mass,score:gp.score,kills:gp.kills+gp.botKills,isBot:gp.isBot,
-      registered:gp.registered,skinId:gp.skinId,team:gp.team<0?null:gp.team});
+    // ⚠️ `isBot` era mandado cru mesmo com `anonBots`: o PLAYERS escondia o preenchimento a partida inteira
+    // e o PÓDIO entregava os 40 no fim, com o ◆ que Round.jsx desenha. O placar segue a mesma regra da tela.
+    const anon=this.mode.anonBots;
+    const row=(gp,mass)=>({slot:gp.slot,name:gp.name,mass,score:gp.score,kills:gp.kills+gp.botKills,
+      deaths:gp.deaths|0,food:gp.food|0,kd:kdOf(gp.kills+gp.botKills,gp.deaths|0),level:gp.level|0,
+      isBot:gp.isBot&&!anon,registered:gp.registered,skinId:gp.skinId,team:gp.team<0?null:gp.team});
     for(const r of rows){const gp=this.players.get(r.slot);if(!gp)continue;seen.add(gp.slot);board.push(row(gp,r.mass));}
     // Mortos entram por ORDEM DE ELIMINAÇÃO invertida (quem caiu por último fica na frente): é o "7º de 50" do
     // Battle Royale. No Livre o bot renasce e nunca chega aqui, então a lista continua sendo só a de humanos.
@@ -243,7 +319,7 @@ export class Sim{
   playersInfo(){const out=[],t=this.world.tick,anon=this.mode.anonBots;
     for(const gp of this.players.values())
       out.push({slot:gp.slot,flags:((gp.isBot&&!anon)?PLAYER_FLAG.BOT:0)|(gp.dead?PLAYER_FLAG.DEAD:0)|(gp.registered?PLAYER_FLAG.REG:0)|(gp.talkUntil>t?PLAYER_FLAG.TALK:0),
-        skinId:gp.skinId&255,team:gp.team<0?NO_TEAM:gp.team&255,name:gp.name,score:gp.score});
+        skinId:gp.skinId&255,team:gp.team<0?NO_TEAM:gp.team&255,level:gp.level&255,name:gp.name,score:gp.score});
     return out;}
   humanCount(){let n=0;for(const gp of this.players.values())if(!gp.isBot)n++;return n;}
   botCount(){let n=0;for(const gp of this.players.values())if(gp.isBot)n++;return n;}

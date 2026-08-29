@@ -3,7 +3,13 @@
 import {SCORE_COINS,PLACE_COINS,MODE} from '@planet/shared/constants.js';
 import {unlockedAchievements,ACHIEVEMENT_BY_KEY} from '@planet/shared/achievements.js';
 import {SKINS} from '@planet/shared/skins.js';
+import {matchXp,isDeath} from '@planet/shared/levels.js';
 export const ACHIEVEMENT_COINS=100;
+// XP e MORTE reexportados daqui para que `finishMatch` tenha uma porta só de "o que esta partida rendeu".
+// A fórmula e a política moram em shared/src/levels.js — o SQL das views repete a lista de causas, e um
+// teste cobra que as duas batam.
+export {matchXp};
+export const matchDeaths=m=>isDeath(m&&m.cause)?1:0;
 /**
  * Moedas da partida: a fórmula de sempre (cap 500) mais, SÓ no Battle Royale, o bônus de COLOCAÇÃO — lá o
  * que vale é onde você parou, não a massa que juntou, e sem o bônus terminar em 2º de 50 pagaria o mesmo

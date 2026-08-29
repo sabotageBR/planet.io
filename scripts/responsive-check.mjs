@@ -60,7 +60,9 @@ const SONDA=`(()=>{
   if(dedo)for(const el of document.querySelectorAll('button,a[href],input,select,[role=button]')){
     if(!vis(el))continue;const r=el.getBoundingClientRect();
     if(r.width<44||r.height<44)pequenos.push(nome(el)+' '+Math.round(r.width)+'x'+Math.round(r.height));}
-  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-mode','touch','chat','talk','radar','toast'];
+  // Só blocos com CAIXA própria: os wrappers (#hud-left é display:contents no desktop, #hud-right contém
+  // os três da direita) colidiriam com os próprios filhos e dariam falso positivo o tempo todo.
+  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-mode','touch','chat','talk','radar','toast','kill-feed'];
   const cai=ids.map(i=>document.getElementById(i)).filter(e=>e&&vis(e)),cx=[];
   for(let a=0;a<cai.length;a++)for(let b=a+1;b<cai.length;b++){
     const A=cai[a].getBoundingClientRect(),B=cai[b].getBoundingClientRect();
@@ -107,8 +109,13 @@ for(const [nome,w,h,toque,modo] of APARELHOS){
   for(const t of TELAS){
     if(t==="game"){await ev(`(()=>{const b=document.querySelector('[data-go="entry"]');if(b)b.click();})()`);
           await new Promise(r=>setTimeout(r,200));
-          await ev(`(()=>{const s=document.querySelector('.screen.on');if(s)s.classList.remove('on');})()`);
-          await new Promise(r=>setTimeout(r,250));}
+          // `__hudDemo` põe a tela em "game" DE VERDADE e enche o hudStore com dados sintéticos. Só remover
+          // o `.on` da tela não bastava: sem partida, #hud-lb / #hud-score / #kill-feed ficam com 0 linhas e
+          // altura zero, o `vis()` da sonda os descarta, e a coluna inteira passava sem ser medida. Pior:
+          // `Hud.jsx` escreve `className={screen==="game"?"":"hidden"}`, então qualquer re-render desfazia
+          // o `classList.remove('hidden')` que a sonda fazia na mão.
+          await ev(`window.__hudDemo&&window.__hudDemo()`);
+          await new Promise(r=>setTimeout(r,300));}
     else if(t==="dead"||t==="round"){await ev(IR(t));await new Promise(r=>setTimeout(r,420));}
     else if(t==="entry@rail"){await ev(IR("entry"));await new Promise(r=>setTimeout(r,220));
           await ev(`document.body.dataset.shell="rail"`);await new Promise(r=>setTimeout(r,320));}

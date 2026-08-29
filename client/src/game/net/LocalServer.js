@@ -6,16 +6,18 @@
 // com último estado quantizado (UPDATE só se mudou). ?lag=<ms> simula latência nos dois sentidos.
 import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,encodePong,decodeInput,
   MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,NO_TEAM,
-  WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,BOT_NAMES,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,
-  focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir} from "@planet/shared";
+  WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,botNick,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,
+  focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir,FEED} from "@planet/shared";
 import {createWorld,applySplit,incomingMissile,firstLive} from "@planet/shared/physics/index.js";
 import {ammoOf,ownedMask} from "@planet/shared/physics/rules.js";
 import {BotBrain} from "@planet/shared/bot.js";
+const ARMA=["missile","burst","cluster","nova"];   // WEAPON.* → a chave do kill feed (a mesma tabela do Sim)
 
 const seqNewer=(a,b)=>b<0||(((a-b)&0xFFFF)>0&&((a-b)&0xFFFF)<0x8000);
 export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=FOOD.COUNT,code="0LOC",roundTicks=ROUND.TICKS}={}){
   const w=createWorld({seed,food:bench?Math.max(food,1800):food,holes:BLACKHOLE.COUNT});
   const rng=createRng(seed*7+1),writer=createWriter(1<<16),meta=new Map(),sessions=new Set(),brains=new Map();
+  const nicksUsados=new Set();   // o gerador de apelidos não repete nome na mesma sala
   let nextSlot=0,timer=0,acc=0,last=0,playersDirty=true,running=false,over=false;   // over: a rodada acabou (mundo explodido)
   const reasonMap=new Map();
   // ── bots ── (mesmo cérebro do servidor: shared/src/bot.js)
@@ -28,7 +30,10 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     if(flags&INPUT_FLAG.SWAP)w.requestSwap(slot);
     if(flags&INPUT_FLAG.FIRE)w.requestFire(slot,(flags&INPUT_FLAG.AIM)!==0);}
   function addBot(x=NaN,y=NaN){const slot=nextSlot++;const r=rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]);w.addPlayer(slot,{x,y,r,isBot:true,missiles:rng.chance(.3)?1:0});
-    meta.set(slot,{slot,name:BOT_NAMES[slot%BOT_NAMES.length]+(slot>=BOT_NAMES.length?"-"+slot:""),skinId:rng.int(0,34),isBot:true,registered:false});
+    // Apelido de gente (o mesmo gerador do servidor), e não os nomes temáticos de BOT_NAMES: eles
+    // denunciavam o preenchimento pelo NOME antes de qualquer movimento denunciar. `level` sorteado pelo
+    // mesmo motivo — badge zerado ao lado de um apelido plausível voltaria a entregar quem é quem.
+    meta.set(slot,{slot,name:botNick(rng,nicksUsados),skinId:rng.int(0,34),level:rng.int(1,35),isBot:true,registered:false});
     brains.set(slot,new BotBrain(w,slot,rng,botInput));playersDirty=true;return slot;}
   for(let i=0;i<bots;i++)addBot();
   // ── sessões ──
@@ -68,7 +73,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
       w.holes.forEach((h,j)=>{h.x=x+Math.cos(j*2.1)*1100;h.y=y+Math.sin(j*2.1)*900;h.type=1;h.k=1;h.life=w.tick+5000;});
       w.asteroids.forEach((a,j)=>{if(j%2)return;a.x=x+Math.cos(j*.7)*(500+j*40);a.y=y+Math.sin(j*.7)*(400+j*30);});}
     else w.addPlayer(slot,{missiles:0});playersDirty=true;}
-  function playerList(){const out=[];for(const [slot,m] of meta){const ps=w.players.get(slot);out.push({slot,flags:(m.isBot?PLAYER_FLAG.BOT:0)|(ps&&!ps.alive?PLAYER_FLAG.DEAD:0)|(m.registered?PLAYER_FLAG.REG:0),skinId:m.skinId,team:NO_TEAM,name:m.name,score:ps?ps.score:0});}return out;}   // `?local=1` é só Livre: ninguém tem equipe
+  function playerList(){const out=[];for(const [slot,m] of meta){const ps=w.players.get(slot);out.push({slot,flags:(m.isBot?PLAYER_FLAG.BOT:0)|(ps&&!ps.alive?PLAYER_FLAG.DEAD:0)|(m.registered?PLAYER_FLAG.REG:0),skinId:m.skinId,team:NO_TEAM,level:m.level|0,name:m.name,score:ps?ps.score:0});}return out;}   // `?local=1` é só Livre: ninguém tem equipe
   // ── passo ──
   function start(){if(running)return;running=true;last=performance.now();acc=0;timer=setInterval(loop,8);}
   function stopLoop(){running=false;clearInterval(timer);timer=0;}
@@ -81,33 +86,52 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     for(const s of sessions)if(s.slot>=0&&!board.some(b=>b.slot===s.slot))board.push({slot:s.slot,name:s.name,mass:0,score:0,kills:s.kills,isBot:false,registered:false,skinId:s.skinId});
     const msg={t:"roundEnd",code,champion:board[0]||null,board:board.slice(0,20),nextInMs:ROUND.BREAK_MS,tick:w.tick};
     for(const s of sessions)if(s.slot>=0)sendJson(s.sock,msg);}
+  // ── KILL FEED (espelho do servidor) ──
+  // Sem isto o modo offline diverge EM SILÊNCIO: o `switch` abaixo não tem `default`, então tipo de evento
+  // desconhecido é ignorado sem erro — é exatamente assim que o `botInput` já divergiu uma vez.
+  const lastHit=new Map();   // slot → {by,how,tick}
+  const mark=(slot,by,how)=>{if(slot>=0)lastHit.set(slot,{by,how,tick:w.tick});};
+  const feed=[];
+  const pushFeed=o=>{if(feed.length<FEED.QUEUE_MAX)feed.push(o);};
+  const flushFeed=()=>{if(!feed.length)return;const v=feed.slice(-FEED.MAX_PER_FLUSH);feed.length=0;
+    for(const s of sessions)if(s.slot>=0)sendJson(s.sock,{t:"feed",v,at:Date.now()});};
+  let feedLider=-1,feedCrunch=0;
   function step(){if(over)return;if(w.tick>=roundTicks)return endRound();
     for(const b of brains.values())b.act(w.tick);w.step();
     reasonMap.clear();const tick=w.tick;
     for(const ev of w.events){let e=null;
       switch(ev.type){
-        case "EAT":reasonMap.set(ev.pieceId,REMOVE.EATEN);e={kind:EVENT.EAT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.killerSlot,slotB:ev.victimSlot,extra:ev.lastPiece?1:0};
+        case "EAT":reasonMap.set(ev.pieceId,REMOVE.EATEN);if(!ev.lastPiece)mark(ev.victimSlot,ev.killerSlot,"eat");e={kind:EVENT.EAT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.killerSlot,slotB:ev.victimSlot,extra:ev.lastPiece?1:0};
           for(const s of sessions)if(s.slot===ev.killerSlot&&ev.lastPiece)s.kills++;break;
         case "EJECT_EATEN":reasonMap.set(ev.ejectId,REMOVE.EATEN);break;
         case "MERGE":reasonMap.set(ev.mergedId,REMOVE.MERGED);e={kind:EVENT.MERGE,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:0,extra:0};break;
-        case "POP":reasonMap.set(ev.asteroidId,REMOVE.POPPED);e={kind:EVENT.POP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot<0?0:ev.slot,slotB:0,extra:0};break;
+        case "POP":reasonMap.set(ev.asteroidId,REMOVE.POPPED);mark(ev.slot,-1,"asteroid");e={kind:EVENT.POP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot<0?0:ev.slot,slotB:0,extra:0};break;
         case "SPLIT":e={kind:EVENT.SPLIT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:0,extra:0};break;
         case "BH_SUCK":reasonMap.set(ev.pieceId,REMOVE.SUCKED);e={kind:EVENT.BH_SUCK,x:ev.fromX,y:ev.fromY,r:ev.r,slotA:ev.slot,slotB:0,extra:1};break;
-        case "CHIP":e={kind:EVENT.CHIP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:0,extra:packDir(ev.nx,ev.ny,0)};break;
+        case "CHIP":mark(ev.slot,-1,"asteroid");e={kind:EVENT.CHIP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:0,extra:packDir(ev.nx,ev.ny,0)};break;
         case "BOUNCE":e={kind:EVENT.BOUNCE,x:ev.x,y:ev.y,r:ev.r,slotA:0,slotB:0,extra:packDir(ev.nx,ev.ny,ev.vn)};break;
-        case "BOOM":e={kind:EVENT.BOOM,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot<0?0:ev.slot,slotB:ev.bySlot<0?0:ev.bySlot,extra:0};break;
+        case "BOOM":mark(ev.slot,ev.bySlot,ARMA[ev.weapon|0]||"missile");e={kind:EVENT.BOOM,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot<0?0:ev.slot,slotB:ev.bySlot<0?0:ev.bySlot,extra:0};break;
         case "SHOOT":e={kind:EVENT.SHOOT,x:ev.x,y:ev.y,r:36,slotA:0,slotB:0,extra:packDir(ev.nx,ev.ny,0)};break;
-        case "SHIELD_BREAK":e={kind:EVENT.SHIELD_BREAK,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot<0?65535:ev.bySlot,extra:0};break;
-        case "SHIELD_HIT":e={kind:EVENT.SHIELD_HIT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot<0?65535:ev.bySlot,extra:packDir(ev.nx,ev.ny,ev.level)};break;
+        case "SHIELD_BREAK":mark(ev.slot,ev.bySlot,ARMA[ev.weapon|0]||"missile");e={kind:EVENT.SHIELD_BREAK,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot<0?65535:ev.bySlot,extra:0};break;
+        case "SHIELD_HIT":mark(ev.slot,ev.bySlot,ARMA[ev.weapon|0]||"missile");e={kind:EVENT.SHIELD_HIT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot<0?65535:ev.bySlot,extra:packDir(ev.nx,ev.ny,ev.level)};break;
         case "SHIELD_UP":e={kind:EVENT.SHIELD_UP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:65535,extra:ev.level};break;
         case "CLASH":e={kind:EVENT.CLASH,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slotA,slotB:ev.slotB,extra:0};break;
         case "DEFLECT":e={kind:EVENT.DEFLECT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.bySlot<0?65535:ev.bySlot,slotB:65535,extra:packDir(ev.nx,ev.ny,0)};break;
-        case "STAR_BURST":e={kind:EVENT.STAR_BURST,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:65535,extra:ev.starId};break;
+        case "STAR_BURST":mark(ev.slot,-1,"star");e={kind:EVENT.STAR_BURST,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:65535,extra:ev.starId};break;
         case "STAR_HIT":e={kind:EVENT.STAR_HIT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot<0?65535:ev.slot,slotB:65535,extra:packDir(ev.nx,ev.ny,ev.hits)};break;
         case "STAR_SPLIT":e={kind:EVENT.STAR_SPLIT,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:ev.starId};break;
         case "SMASH":reasonMap.set(ev.asteroidId,REMOVE.POPPED);e={kind:EVENT.SMASH,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:packDir(ev.nx,ev.ny,0)};break;
+        case "NOVA_HIT":mark(ev.slot,ev.bySlot,"nova");break;
         case "SUPERNOVA":e={kind:EVENT.SUPERNOVA,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:ev.starId};break;
         case "PLAYER_DEAD":{const m=meta.get(ev.slot);
+          {const lh=lastHit.get(ev.slot),fresco=lh&&(tick-lh.tick)<=FEED.HIT_TTL_TICKS;
+            let how=ev.cause==="zone"?"zone":ev.cause==="blackhole"?"hole":"eat",assist=-1,byHow=null;
+            if(how==="eat"&&fresco){
+              if(lh.by>=0&&lh.by===ev.bySlot&&lh.how!=="eat")how=lh.how;
+              else if(lh.by<0)how=lh.how;
+              else if(lh.by>=0&&lh.by!==ev.bySlot){assist=lh.by;byHow=lh.how;}}
+            lastHit.delete(ev.slot);
+            pushFeed({k:ev.bySlot>=0?"kill":"hazard",a:ev.bySlot>=0?ev.bySlot:-1,b:ev.slot,how,by:assist<0?null:assist,byHow:assist<0?null:byHow});}
           if(m&&m.isBot){const ps=w.players.get(ev.slot);w.respawnPlayer(ev.slot,{score:Math.floor((ps?ps.score:0)*BOT.RESPAWN_SCORE)});const bp=w.players.get(ev.slot);if(bp)bp.ammo[0]=rng.chance(.3)?1:0;playersDirty=true;}
           else for(const s of sessions)if(s.slot===ev.slot&&!s.dead){s.dead=true;playersDirty=true;const ps=w.players.get(ev.slot),by=meta.get(ev.bySlot),durationS=Math.round((tick-s.startTick)/TICK_HZ);
             const info={by:ev.cause==="blackhole"?"buraco negro":(by?by.name:"?"),byHole:ev.cause==="blackhole",score:ps?ps.score:0,maxMass:Math.round(s.maxMass),kills:s.kills,durationS};
@@ -124,7 +148,16 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
         let sx=0,sy=0,n=0;for(const pc of ps.pieces){if(pc.dead)continue;sx+=pc.x;sy+=pc.y;n++;}
         if(n)rows.push({slot,mass:Math.round(w.massOf(slot)),x:sx/n,y:sy/n});}
       rows.sort((a,b)=>b.mass-a.mass);
-      const u8=encodeLeaderboard(writer,rows);for(const s of sessions)if(s.slot>=0)sendBin(s.sock,u8);}}
+      const u8=encodeLeaderboard(writer,rows);for(const s of sessions)if(s.slot>=0)sendBin(s.sock,u8);
+      // marcos: troca de líder (com margem, para dois gigantes empatados não piscarem) e BIG CRUNCH
+      if(rows.length){const topo=rows[0];
+        if(feedLider<0)feedLider=topo.slot;
+        else if(topo.slot!==feedLider){const ant=rows.find(r=>r.slot===feedLider);
+          if(!ant||topo.mass>=ant.mass*(1+FEED.LEAD_MARGIN)){feedLider=topo.slot;pushFeed({k:"sys",a:topo.slot,b:-1,how:"lead",by:null});}}}
+      const resta=Math.round((roundTicks-tick)/TICK_HZ);
+      while(feedCrunch<FEED.CRUNCH_AT_S.length&&resta<=FEED.CRUNCH_AT_S[feedCrunch]){
+        pushFeed({k:"sys",a:-1,b:-1,how:"crunch",by:null,n:FEED.CRUNCH_AT_S[feedCrunch]});feedCrunch++;}}
+    flushFeed();}
   /** Alvo do espectador de uma sessão morta: quem matou (se vivo) ou o líder; só avisa quando muda (ver Room.spectateTargetFor). */
   function spectate(s,prefer=-1){
     const alive=sl=>{const ps=w.players.get(sl);return !!(ps&&ps.alive&&ps.pieces.some(p=>!p.dead));};

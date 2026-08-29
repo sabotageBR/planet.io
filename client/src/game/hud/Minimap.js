@@ -1,7 +1,9 @@
 // ── RADAR: canvas 2D pequeno (#radar dentro de #hud), 10 Hz, desenhado por theme.hud.radar ──
 // Os inimigos vêm do PLACAR (todos os vivos, com posição, a 2 Hz) e não da AOI: o radar mostra o mapa inteiro.
 // Perigos e peças próprias continuam vindo da cena, que é o que o cliente enxerga de verdade.
-// Posicionado por estilo inline conforme radar.position/size do modo atual (não há CSS de #radar).
+// Posicionado por estilo inline conforme radar.position/size do modo atual (não há CSS de #radar) — por
+// isso MOVER o radar é editar `hud.radar.position.corner` nos três theme/<id>/index.js (que NÃO são
+// gerados pelo port.js), e não escrever CSS: estilo inline vence qualquer folha.
 import {WORLD} from "@planet/shared";
 import {bodyMode} from "../util.js";
 
@@ -14,7 +16,12 @@ export function createMinimap({hud,theme,getScene}){
     cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);cv.style.width=w+"px";cv.style.height=h+"px";
     const P=R0.position||{corner:"top-right",margin:12},mg=P.margin==null?12:P.margin,c=P.corner||"top-right";
     cv.style.top=c.startsWith("top")?mg+"px":"auto";cv.style.bottom=c.startsWith("bottom")?mg+"px":"auto";
-    cv.style.right=c.endsWith("right")?mg+"px":"auto";cv.style.left=c.endsWith("left")?mg+"px":"auto";}
+    cv.style.right=c.endsWith("right")?mg+"px":"auto";cv.style.left=c.endsWith("left")?mg+"px":"auto";
+    // Publica a altura MEDIDA para o CSS: o chat fica logo abaixo do radar, e o tamanho dele muda por tema
+    // e por data-mode. Repetir 150/120/92/84 no ui.css sairia do ar na primeira mudança de tema.
+    // (Seguro porque Hud.jsx renderiza #hud sem prop `style`: o React não gerencia esse atributo e não o
+    // reverte no próximo render.)
+    if(hud&&hud.style)hud.style.setProperty("--radar-h",h+"px");}
   layout();
   function draw(now,zone){const R0=th.hud.radar,m=bodyMode();if(m!==mode)layout();const S=getScene();if(!S)return;
     const c=ctx,R=D/2,cx=R+1,cy=R+1,t=now;c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,cv.width,cv.height);c.lineJoin="round";

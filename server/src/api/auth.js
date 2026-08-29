@@ -6,7 +6,7 @@ import {normalizeNick,randomGuestNick,suggestNick,isReservedByOther} from '../au
 import {hashPassword,verifyPassword,validPassword,dummyHash,PASSWORD_MIN} from '../auth/password.js';
 import {toPublic} from '../repos/users.js';
 const EMAIL_RE=/^[^\s@]{1,64}@[^\s@]{1,255}$/;
-export function mountAuth(router,{db,config,users,tokens,ledger,skins,limiter,requireUser,log}){
+export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities,google,limiter,requireUser,optionalUser,log}){
   const nickOf=async(raw,userId)=>{const nick=normalizeNick(raw);if(!nick)throw err(400,'invalid_nick','nick deve ter de 2 a 16 caracteres');
     if(await isReservedByOther(db,nick,userId))throw err(409,'nick_reserved','esse nick pertence a um jogador registrado',{suggestion:suggestNick(nick)});return nick;};
   // POST /api/auth/guest {nick?} → 201 {token,user}
@@ -53,4 +53,44 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,limiter,re
   },{rate:{scope:'ip',lim:LIMITS.loginIp}});
   // POST /api/auth/logout 🔒 → 204
   router.add('POST',/^\/api\/auth\/logout$/,async ctx=>{await requireUser(ctx);await tokens.revoke(ctx.token);return[204];});
+  /**
+   * POST /api/auth/google {idToken, nick?} → {token,user}
+   * INERTE sem GOOGLE_CLIENT_ID: devolve 503, e como `/api/config` não expõe o clientId, o botão nem
+   * aparece na tela. Três caminhos, nesta ordem:
+   *   1. identidade conhecida → emite token e pronto;
+   *   2. identidade nova E veio Bearer de um GUEST → promove aquele guest (é a fusão de contas que a lista
+   *      de arestas do CLAUDE.md diz não existir; este é o lugar natural dela, e evita que quem já jogou
+   *      como convidado perca moedas e skins ao entrar com Google pela primeira vez);
+   *   3. identidade nova e sem token → conta nova, com o mesmo bônus de boas-vindas do guest.
+   * A conta só-Google não tem senha: é por isso que a migração 0006 troca o CHECK de `users`.
+   */
+  router.add('POST',/^\/api\/auth\/google$/,async ctx=>{
+    if(!google||!google.enabled)throw err(503,'google_disabled','login com Google não está configurado neste servidor');
+    let id;try{id=await google.verify(ctx.body.idToken);}
+    catch(e){log.warn(`google: ${e&&e.message}`);throw err(401,'invalid_credentials','não deu para validar sua conta Google');}
+    const existente=await identities.find('google',id.subject);
+    if(existente){
+      const u=await users.byId(existente.user_id);
+      if(!u)throw err(401,'invalid_credentials','conta não encontrada');
+      const token=await tokens.issue(u.id,'session',ctx.userAgent);
+      await identities.touch('google',id.subject);users.touchSeen(u.id).catch(()=>{});
+      return{token,user:toPublic(u)};}
+    const atual=ctx.token?await optionalUser(ctx):null;
+    const out=await db.tx(async c=>{
+      let u;
+      if(atual&&atual.kind==='guest'){
+        const nick=await nickOf(ctx.body.nick||atual.nick,atual.id);
+        u=(await c.query(`UPDATE users SET kind='registered',email=COALESCE($2,email),nick=$3 WHERE id=$1 RETURNING *`,
+          [atual.id,id.email,nick])).rows[0];}
+      else{
+        const nick=await nickOf(ctx.body.nick||id.name||randomGuestNick(),null);
+        u=(await c.query(`INSERT INTO users(kind,nick,email) VALUES('registered',$1,$2) RETURNING *`,[nick,id.email])).rows[0];
+        await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
+        if(config.signupCoins>0){const {coins}=await ledger.apply(c,{userId:u.id,delta:config.signupCoins,reason:'signup'});u.coins=coins;}}
+      await identities.link(c,{userId:u.id,provider:'google',subject:id.subject,email:id.email});
+      const token=await tokens.issue(u.id,'session',ctx.userAgent,c);
+      return{token,user:toPublic(u)};});
+    log.info(`google: #${out.user.id} ${out.user.nick} (${atual&&atual.kind==='guest'?'guest promovido':'conta nova'})`);
+    return out;
+  },{rate:{scope:'ip',lim:LIMITS.loginIp}});
 }

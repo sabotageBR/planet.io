@@ -10,9 +10,13 @@ import {createAchievements} from '../repos/achievements.js';
 import {createRanking} from '../repos/ranking.js';
 import {MatchSession} from './session.js';
 import {createQueue} from './queue.js';
-import {matchCoins,achievementCoins,newAchievements,skinsForAchievements,achievementTitle} from './rewards.js';
+import {matchCoins,achievementCoins,newAchievements,skinsForAchievements,achievementTitle,matchXp,matchDeaths} from './rewards.js';
+import {levelFromXp,levelProgress} from '@planet/shared/levels.js';
+import {eggSkinFor} from '@planet/shared/eggs.js';
 const JOIN_TIMEOUT_MS=3000,DRAIN_MS=10000,CLEAN_LOCK=727002,HOUR=3600e3,DAY=24*HOUR;
-const UNSAVED=(nick)=>({ok:true,userId:null,nick,registered:false,skinId:0,prefs:{},unsaved:true});
+// Sem banco não há skin equipada nem nível — mas o EASTER EGG continua valendo: ele depende só do nick,
+// e é justamente no modo sem persistência (e no ?local=1) que ele é mais visível.
+const UNSAVED=(nick)=>({ok:true,userId:null,nick,registered:false,skinId:eggSkinFor(nick)||0,level:0,avatar:null,prefs:{},unsaved:true});
 const NO_REWARDS=()=>({saved:false,coinsEarned:0,coins:null,achievements:[],skinsUnlocked:[],rank:null});
 const withTimeout=(p,ms)=>new Promise((res,rej)=>{const t=setTimeout(()=>rej(Object.assign(new Error('timeout'),{code:'ETIMEDOUT'})),ms);p.then(v=>{clearTimeout(t);res(v);},e=>{clearTimeout(t);rej(e);});});
 /**
@@ -39,9 +43,16 @@ export function createPersistence({db,log,config}){
     catch(e){log.warn(`join sem persistência (${remoteAddr||'?'}): ${e.message}`);return UNSAVED(fb);}
     if(!u)return{ok:false,code:'AUTH',message:'token inválido ou expirado'};
     if(u.nick_reserved)return{ok:false,code:'NICK_RESERVED',message:'esse nick pertence a um jogador registrado',suggestion:suggestNick(u.nick)};
-    const s=new MatchSession({userId:Number(u.id),nick:u.nick,kind:u.kind,skinId:u.equipped_skin_id,roomCode,shard:config.shard});
+    // EASTER EGG: quem entra como "Bruxo" joga com a caricatura do Ronaldinho. Decidido AQUI, e não na
+    // Room, para que `matches.skin_id` grave a skin realmente usada — e ele NUNCA escreve em
+    // `users.equipped_skin_id`: é substituição de uma vida só, e trocar o nick devolve a skin comprada.
+    // `prefs.eggs:false` desliga, para quem gastou 30 mil moedas e por acaso se chama Bruxo.
+    const prefs=u.prefs||{};
+    const egg=prefs.eggs===false?null:eggSkinFor(u.nick);
+    const s=new MatchSession({userId:Number(u.id),nick:u.nick,kind:u.kind,skinId:egg!=null?egg:u.equipped_skin_id,roomCode,shard:config.shard});
     sessions.set(s.sessionId,s);
-    return{ok:true,userId:s.userId,nick:s.nick,registered:s.registered,skinId:s.skinId,prefs:u.prefs||{},sessionId:s.sessionId,unsaved:false};
+    return{ok:true,userId:s.userId,nick:s.nick,registered:s.registered,skinId:s.skinId,
+      level:levelFromXp(Number(u.xp||0)),avatar:u.avatar_hash||null,prefs,sessionId:s.sessionId,unsaved:false};
   }
   /** sessão "sem banco" para quem entrou em modo unsaved e quer mesmo assim um sessionId/rewards {saved:false} */
   function openUnsavedSession({nick,roomCode=null}={}){const s=new MatchSession({userId:null,nick:nick||'Viajante',kind:'guest',roomCode,shard:config.shard});sessions.set(s.sessionId,s);return s.sessionId;}
@@ -52,6 +63,9 @@ export function createPersistence({db,log,config}){
   // ── fim da partida: uma transação ──
   async function finishMatch(m){
     const rewards=await db.tx(async c=>{
+      // XP e mortes entram no MESMO objeto que já vai para as duas tabelas: a partida grava o que rendeu
+      // (matches.xp) e o acumulado soma (user_stats.xp/deaths), tudo na transação que já existia.
+      m.xp=matchXp(m);m.deaths=matchDeaths(m);
       const ins=await matches.insert(c,m);
       if(!ins.inserted){const u=await users.byId(m.userId,c);return{saved:true,duplicate:true,coinsEarned:ins.coinsEarned,coins:u?u.coins:null,achievements:[],skinsUnlocked:[]};}
       const stats=await matches.upsertStats(c,m);
@@ -63,10 +77,19 @@ export function createPersistence({db,log,config}){
       for(const k of fresh){const d=achievementCoins(k);coins=(await ledger.apply(c,{userId:m.userId,delta:d,reason:'achievement',refType:'achievement',refId:k})).coins;earned+=d;}
       if(coins==null){const u=await users.byId(m.userId,c);coins=u?u.coins:null;}
       await matches.setCoins(c,ins.id,earned);
-      return{saved:true,matchId:ins.id,coinsEarned:earned,coins,achievements:fresh.map(k=>({key:k,title:achievementTitle(k)})),skinsUnlocked};
+      // O nível é DERIVADO do XP acumulado (nunca guardado), e `prevLevel` sai do total menos o ganho —
+      // é assim que a tela sabe dizer "subiu de nível" sem precisar de um segundo campo no banco.
+      const total=Number(stats.xp||0),level=levelFromXp(total),prev=levelFromXp(total-m.xp);
+      const p=levelProgress(total);
+      return{saved:true,matchId:ins.id,coinsEarned:earned,coins,achievements:fresh.map(k=>({key:k,title:achievementTitle(k)})),skinsUnlocked,
+        xp:{gained:m.xp,total,level,prevLevel:prev,leveledUp:level>prev,into:p.into,need:p.need,pct:p.pct}};
     });
-    let day=null;try{const r=await ranking.rankOf({period:'day',by:'score',userId:m.userId});day=r?r.rank:null;}catch{}
-    return{...rewards,rank:{day}};
+    let day=null,pais=null;try{const r=await ranking.rankOf({period:'day',by:'score',userId:m.userId});day=r?r.rank:null;}catch{}
+    // "3º do Brasil hoje" vale mais que "3.412º do mundo" — e é a única razão de alguém preencher o país.
+    try{const u=await users.byId(m.userId);
+      if(u&&u.country){const r=await ranking.rankOf({period:'day',by:'score',userId:m.userId,country:u.country});
+        pais=r?{rank:r.rank,country:u.country}:null;}}catch{}
+    return{...rewards,rank:{day,country:pais}};
   }
   async function onMatchEnd({sessionId,cause='left',killedBySessionId=null,score=0,maxMass=0,durationMs=null,mode=0,team=null,placement=0,players=0,teamSize=1}={}){
     const s=sessions.get(sessionId);if(!s)return null;

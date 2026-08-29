@@ -11,12 +11,20 @@ async function listMigrations(){
   const files=(await readdir(DIR)).filter(f=>/^\d+_.+\.sql$/.test(f)).sort();
   return files.map(f=>{const m=/^(\d+)_(.+)\.sql$/.exec(f);return{version:Number(m[1]),name:m[2],file:path.join(DIR,f)};});
 }
-/** semeia/atualiza a tabela skins a partir do catálogo compartilhado; skins fora do catálogo ficam active=false */
+/**
+ * Semeia/atualiza a tabela skins a partir do catálogo compartilhado; skins fora do catálogo ficam active=false.
+ * ⚠️ OPERACIONAL: essa última linha é uma faca. Um pod com o `shared/skins.js` ANTIGO DESATIVA as skins
+ * novas, e `skins.byId` filtra por `active` — a compra passa a dar 404. Com 3 shards e MIGRATE_ON_START=1,
+ * um rollout parcial fica ligando e desligando as skins novas a cada restart. Os três shards têm que estar
+ * na MESMA imagem antes de qualquer skin nova ficar comprável.
+ */
 export async function seedSkins(c){
   const vals=[],params=[];
-  SKINS.forEach((s,i)=>{const b=i*5;vals.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5})`);params.push(s.id,s.name,s.rarity,s.price,s.unlockKey||null);});
-  await c.query(`INSERT INTO skins(id,name,rarity,price,unlock_key) VALUES ${vals.join(',')}
-    ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,rarity=EXCLUDED.rarity,price=EXCLUDED.price,unlock_key=EXCLUDED.unlock_key,active=true`,params);
+  SKINS.forEach((s,i)=>{const b=i*6;vals.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6})`);
+    params.push(s.id,s.name,s.rarity,s.price,s.unlockKey||null,s.levelReq|0);});
+  await c.query(`INSERT INTO skins(id,name,rarity,price,unlock_key,level_req) VALUES ${vals.join(',')}
+    ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,rarity=EXCLUDED.rarity,price=EXCLUDED.price,
+      unlock_key=EXCLUDED.unlock_key,level_req=EXCLUDED.level_req,active=true`,params);
   await c.query(`UPDATE skins SET active=false WHERE id<>ALL($1::int[]) AND active`,[SKINS.map(s=>s.id)]);
 }
 /**

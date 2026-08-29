@@ -14,16 +14,21 @@
 import {BOT_LLM} from '@planet/shared/constants.js';
 
 /**
- * @param {{url:string,model:string,timeoutMs?:number,log?:any}} o
+ * @param {{url:string,model:string,timeoutMs?:number,maxInflight?:number,metrics?:any,log?:any}} o
+ * `maxInflight` é o teto de gerações simultâneas por PROCESSO (todas as salas do shard somam aqui) e vem do
+ * env OLLAMA_MAX_INFLIGHT. ⚠️ Subi-lo não adianta nada se o `OLLAMA_NUM_PARALLEL` da máquina do Ollama for
+ * menor: os pedidos enfileiram lá dentro e cada um paga o timeout inteiro.
  */
-export function createOllama({url,model,timeoutMs=BOT_LLM.TIMEOUT_MS,log=null}){
+export function createOllama({url,model,timeoutMs=BOT_LLM.TIMEOUT_MS,maxInflight=BOT_LLM.MAX_INFLIGHT,metrics=null,log=null}){
   const base=String(url||'').replace(/\/+$/,'');
   let falhas=0,abertoAte=0,voando=0,aquecendo=false;
   const cli={
     get model(){return model;},
     get url(){return base;},
     /** Dá para tentar agora? (configurado, disjuntor fechado e sem fila de gerações) */
-    ok(){return !!base&&!!model&&Date.now()>=abertoAte&&voando<BOT_LLM.MAX_INFLIGHT;},
+    ok(){return !!base&&!!model&&Date.now()>=abertoAte&&voando<maxInflight;},
+    get maxInflight(){return maxInflight;},
+    get breakerOpen(){return Date.now()<abertoAte;},
     get inflight(){return voando;},
     /**
      * Uma resposta curta. Devolve o texto cru (quem limpa é o botChat) ou `null` em qualquer tropeço.
@@ -32,7 +37,7 @@ export function createOllama({url,model,timeoutMs=BOT_LLM.TIMEOUT_MS,log=null}){
     async chat({system,user,numPredict=BOT_LLM.NUM_PREDICT,temp=BOT_LLM.TEMP,timeoutMs:tm=timeoutMs,force=false}){
       if(!force&&!cli.ok())return null;
       if(force&&!base)return null;
-      voando++;
+      voando++;const t0=Date.now();
       try{
         const r=await fetch(`${base}/api/chat`,{method:'POST',headers:{'content-type':'application/json'},
           signal:AbortSignal.timeout(tm),
@@ -43,8 +48,10 @@ export function createOllama({url,model,timeoutMs=BOT_LLM.TIMEOUT_MS,log=null}){
         const j=await r.json();
         const txt=j&&j.message&&typeof j.message.content==='string'?j.message.content:null;
         falhas=0;
+        if(metrics)metrics.llm('ok',Date.now()-t0);
         return txt;
       }catch(e){
+        if(metrics)metrics.llm('fail',Date.now()-t0);
         if(++falhas>=BOT_LLM.FAILS_OPEN){abertoAte=Date.now()+BOT_LLM.BREAKER_MS;falhas=0;
           if(log)log.warn(`ollama fora (${e&&e.message}): fala dos bots volta ao repertório fixo por ${BOT_LLM.BREAKER_MS/1000}s`);
           // O motivo mais comum de estourar o prazo não é o Ollama estar fora: é o MODELO ter saído da

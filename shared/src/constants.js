@@ -4,11 +4,19 @@
 export const WORLD={w:9600,h:9600};
 export const TICK_HZ=60,DT=1/60,SNAPSHOT_EVERY=3,LEADERBOARD_EVERY=30,SAMPLE_EVERY=30;
 export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600};
-export const ROUND={TICKS:216000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:4,FADE_MS:600};
-// rodada de 1 h (216000 ticks a 60 Hz) = DAYS dias do relógio do espaço (dia de 15 min → 12 trocas de céu por sala),
+export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,FADE_MS:600,BOARD_MAX:60,AWARD_MIN_KILLS:3};
+// rodada de 30 min (108000 ticks a 60 Hz) = DAYS dias do relógio do espaço (dia de 15 min → 6 trocas de céu por sala),
 // começando às DAY_START_H; a troca de tema é coberta por um fade de FADE_MS (client/src/theme/fade.js);
 // no fim o mundo explode, define-se o campeão (maior planeta vivo) e o placar fica BREAK_MS antes da sala nova.
 // WARN_S: segundos finais com a contagem gigante na tela.
+// Era 1 h / 4 dias. Cortar para 30 min mantendo DAYS=4 dobraria a velocidade do céu (troca a cada 2,5 min),
+// então DAYS cai junto para 2 e o DIA continua com os mesmos 15 min de sempre.
+// ⚠️ TICKS aqui é só o DEFAULT: quem manda em produção é o env ROUND_TICKS (k8s/05-config.yaml), lido em
+// config.js e usado por Room.js. E DAYS é constante do CLIENTE enquanto os ticks vêm do SERVIDOR — por isso
+// roundInfo() passou a mandar `days` no JSON: cliente novo com env velho desenharia o céu na metade da
+// velocidade, e o jogador veria o relógio do espaço mentir sem ninguém saber por quê.
+// BOARD_MAX: teto de linhas do placar da sala (com respawn, 30 min rendem mais de 100 participantes).
+// AWARD_MIN_KILLS: piso para disputar "maior K/D" da sala — sem ele o prêmio é sempre de quem fez 1 e não morreu.
 // ── MODOS DE JOGO ────────────────────────────────────────────────────────────
 // O modo é um DESCRITOR, não um `if` espalhado: sala, Sim e regras leem os mesmos campos daqui.
 // LIVRE é o jogo de sempre (respawn, rodada de 1 h, todo mundo contra todo mundo). BATTLE ROYALE é
@@ -53,14 +61,19 @@ export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
 // Peça pequena queima devagar e solta raro; planetão solta o tempo todo — que é exatamente a leitura certa.
 export const MODES=[
   {id:0,key:"free",label:"Livre",max:ROOM.MAX,bots:ROOM.BOTS,roundTicks:ROUND.TICKS,
-    lobby:false,respawnBots:true,lastAlive:false,zone:false,weapons:false,chat:"room",teamSizes:[1],anonBots:false},
+    lobby:false,respawnBots:true,lastAlive:false,zone:false,weapons:false,chat:"room",teamSizes:[1],anonBots:false,realNicks:true},
   {id:1,key:"br",label:"Battle Royale",max:BR.PLAYERS,bots:BR.PLAYERS,roundTicks:BR.ROUND_TICKS,
-    lobby:true,respawnBots:false,lastAlive:true,zone:true,weapons:true,chat:"team",teamSizes:BR.TEAM_SIZES,anonBots:true},
+    lobby:true,respawnBots:false,lastAlive:true,zone:true,weapons:true,chat:"team",teamSizes:BR.TEAM_SIZES,anonBots:true,realNicks:true},
 ];
-// `anonBots`: no Battle Royale o flag BOT **não vai no fio** e os preenchimentos usam nome de jogador
-// (BOT_NICKS), então a sala parece cheia de gente. É o padrão do gênero, e a alternativa — mostrar "◆ bot"
-// ao lado de 40 dos 50 nomes — transformaria a partida numa tela de treino. O servidor continua sabendo
-// quem é quem (economia, conquistas e `botKills` não mudam); quem não sabe é a TELA.
+// `realNicks` e `anonBots` são coisas SEPARADAS, e separá-las é o que permite escolher uma sem a outra:
+//   realNicks → o nome vem de BOT_NICKS/botNick (apelidos de gente: "trovao_137", "xXzecaXx") em vez dos
+//               60 nomes temáticos de BOT_NAMES ("Nebulox", "Cassiona"), que gritavam "isto é um bot"
+//               mesmo com o ◆ escondido. Vale nos DOIS modos.
+//   anonBots  → o flag BOT não vai no fio, então nem o ◆ do placar nem a cor do radar distinguem.
+//               Só no Battle Royale: lá, mostrar "◆ bot" em 40 dos 50 nomes viraria uma tela de treino.
+// No Livre o ◆ CONTINUA aparecendo (o jogo nunca escondeu que a sala tem preenchimento) — o que muda é o
+// nome deixar de parecer catálogo de planeta. O servidor sempre soube quem é quem (economia, conquistas e
+// `botKills` não mudam); quem não sabe, quando `anonBots` está ligado, é a TELA.
 /** Descritor do modo (id inválido → Livre: o cliente antigo e o `?local=1` caem sempre no jogo de sempre). */
 export const modeOf=id=>MODES[id]||MODES[MODE.FREE];
 /** Capacidade da sala arredondada para baixo no tamanho de equipe. */
@@ -351,8 +364,22 @@ export const BOT_CHAT={
   morte:["ah nao","kkkk","fui","boa ai","tava perdido","errei feio","de novo nao","travou","eita","foi mal"],
   zona:["o gas","corre","to fora","vem pro meio","ta fechando","fui pego","sai dai","cuidado com o gas"],
   poucos:["quantos faltam","ta apertado","chegando la","aguenta","top 5","calma ai","gg","boa sorte ai"],
-  equipe:["vem","to fraco","cuidado","atras de voce","me segue","toma massa","juntos","corre","espera","to indo"]};
-export const BOT_TALK={ROOM_CD_TICKS:420,BOT_CD_TICKS:2400,MAX_PER_MATCH:3,NO_REPEAT:6,P:{start:.35,kill:.22,morte:.3,zona:.18,poucos:.3,equipe:.28},TYPO_P:.12,QUEUE_MAX:12};
+  equipe:["vem","to fraco","cuidado","atras de voce","me segue","toma massa","juntos","corre","espera","to indo"],
+  // Gatilhos novos: sem pool próprio o `||BOT_CHAT.kill` de _fraseFixa faria o bot dizer "peguei" ao LEVAR um míssil.
+  tiro:["quem atirou","ei","para com isso","serio isso","vou lembrar disso","me erra","ta me caçando?","calma la"],
+  escudo:["la se foi o escudo","perdi o escudo","ih","aguenta","to sem escudo","era meu escudo"],
+  cacado:["me deixa","sai de mim","to encurralado","socorro","ta colado em mim","nao me segue"],
+  lider:["to em primeiro","olha eu ai","cheguei","topo","vem me tirar dai","primeiro lugar"],
+  // Resposta ENLATADA a quem chamou pelo nome. Existe porque ser chamado e ficar mudo é o que mais denuncia
+  // um bot — e a LLM cai (disjuntor, teto de geração, fila cheia) com muito mais frequência do que se imagina.
+  resposta:["fala ai","que isso mano","kkkk","calma ai","vem entao","pode vir","que foi","to aqui",
+            "sei nao hein","fala serio","era so o que faltava","ta bom ne"]};
+export const BOT_TALK={ROOM_CD_TICKS:420,BOT_CD_TICKS:2400,MAX_PER_MATCH:3,NO_REPEAT:6,
+  P:{start:.35,kill:.22,morte:.3,zona:.18,poucos:.3,equipe:.28,tiro:.10,escudo:.14,cacado:.06,lider:.12},
+  TYPO_P:.12,QUEUE_MAX:12};
+// Gatilho novo NÃO aumenta o número de linhas: todos passam por botChatTick, que sorteia UM da fila e joga o
+// resto fora, e por ROOM_CD_TICKS/BOT_CD_TICKS/MAX_PER_MATCH. O que ele aumenta é a chance de a única linha
+// que sai ser sobre o que acabou de acontecer com AQUELE bot.
 // ── FALA GERADA (Ollama) ─────────────────────────────────────────────────────
 // O repertório acima continua sendo o CHÃO: é o que sai sem LLM configurada, com ela fora do ar ou quando a
 // resposta demora. O que a LLM acrescenta é o que uma lista fixa não tem — reagir ao que foi DITO, responder
@@ -363,8 +390,10 @@ export const BOT_TALK={ROOM_CD_TICKS:420,BOT_CD_TICKS:2400,MAX_PER_MATCH:3,NO_RE
 export const BOT_LLM={
   TIMEOUT_MS:2500,      // o que não chegou aqui não chega a tempo de ser resposta
   STALE_MS:4000,        // e o que chega depois disto é comentário atrasado: vai fora (a fala é do INSTANTE)
-  MAX_INFLIGHT:2,       // gerações ao mesmo tempo por PROCESSO (todas as salas do shard somam aqui)
-  HIST:8,               // linhas de chat que entram no prompt
+  MAX_INFLIGHT:4,       // gerações ao mesmo tempo por PROCESSO (todas as salas do shard somam aqui); env OLLAMA_MAX_INFLIGHT
+  MAX_INFLIGHT_ROOM:2,  // ...e por SALA: sem este, uma sala movimentada come o orçamento inteiro do shard
+  HIST:6,               // linhas de chat que entram no prompt (era 8: as 2 linhas que sobraram pagam o estado e a persona)
+  HIST_DIRIGIDA:4,      // quando falaram COM o bot, a linha dirigida vale mais que o backlog
   MAX_WORDS:14,MAX_CHARS:90,   // teto do que sai: acima disso vira parágrafo, e ninguém digita parágrafo em partida
   TEMP:1.05,NUM_PREDICT:48,
   MENTION_ROOM_CD_TICKS:150,   // 2,5 s: responder a quem chama é esperado, então a sala segura bem menos
@@ -372,8 +401,34 @@ export const BOT_LLM={
   MENTION_P:.92,               // citado pelo nome, quase sempre responde
   REPLY_P:.16,                 // sem citação, só quem falou por último tem direito de réplica — e raramente
   MAX_MENTION_PER_MATCH:6,
+  // ── CORO: quantos bots respondem à MESMA mensagem ──
+  // Uma pergunta jogada para a sala ("e aí galera, tudo bem?") com UMA resposta parece script; com três
+  // chegando em tempos diferentes parece gente digitando. Provocação dirigida a um bot continua sendo dele.
+  CORO_N_W:[.35,.40,.25],      // pesos de 1, 2 ou 3 respostas numa pergunta aberta
+  CORO_MAX_CITADOS:2,          // citados pelo nome: no máximo dois respondem
+  CORO_D0_MS:[300,900],        // atraso da PRIMEIRA resposta (menção dirigida cai sempre nesta faixa)
+  CORO_D_MS:[700,1500],        // acréscimo de cada resposta seguinte
+  CORO_WAIT_MS:3500,           // item que envelheceu NA FILA é descartado antes de gastar geração
+  CORO_POP_MAX:2,              // itens despachados por tick (o step() é de 60 Hz e é de TODAS as salas)
+  FILA_MAX:6,                  // fila de fala agendada por sala; cheia, o NOVO é descartado
+  // ── CORRENTE: bot respondendo a bot ──
+  // Liberado, mas curto: só continua quando a linha CITA alguém pelo nome, e a profundidade é limitada.
+  CADEIA_MAX:2,                // no máximo 2 réplicas depois da linha do humano
+  CADEIA_P:.75,                // mesmo citado, às vezes a corrente simplesmente morre
+  CADEIA_SCAN_MAX:24,          // teto de candidatos varridos por `citou` (Levenshtein por palavra)
+  // ── MEMÓRIA CURTA do bot (quem atirou nele, quem o mordeu) ──
+  MEM_N:6,                     // anel por bot; a leitura ignora o que passou do TTL, então não há varredura
+  MEM_TTL_TICKS:900,           // 15 s: mais que isso e "o Evandro atirou em mim" já não é sobre agora
+  MEM_QUENTE_TICKS:300,        // 5 s: dentro disto a fala é "acabou de atirar", não "vive atirando"
+  PROMPT_MAX_CHARS:1100,       // teto do `user` no pior caso — prompt gordo é prompt lento (ver TIMEOUT_MS)
+  // 1100 não é chute: é o pior caso MEDIDO (1026 chars ≈ 260 tokens) com a persona mais longa, o histórico
+  // cheio de linhas no tamanho máximo e a mensagem dirigida inteira, mais uma folga. Existe para que
+  // acrescentar contexto ao prompt tenha que passar por um teste, em vez de engordar em silêncio.
   KEEP_ALIVE:'30m',            // carregar o modelo custa ~27 s; descarregá-lo entre partidas seria fatal
-  FAILS_OPEN:4,BREAKER_MS:30000};   // N falhas seguidas → desiste por um tempo, em vez de pagar o timeout a cada gatilho
+  FAILS_OPEN:6,BREAKER_MS:30000};   // N falhas seguidas → desiste por um tempo, em vez de pagar o timeout a cada gatilho
+// FAILS_OPEN subiu de 4 para 6 por causa do coro: três respostas que estourem o prazo já eram 3 falhas
+// seguidas e quase abriam o disjuntor sozinhas. (Frase recusada pela PENEIRA não conta como falha: `sanitiza`
+// roda no botChat, fora do cliente HTTP.)
 // ROOM_CD_TICKS: 7 s entre duas falas QUAISQUER da sala — sem isso um abate múltiplo vira coro. BOT_CD_TICKS:
 // 40 s por bot. MAX_PER_MATCH: ninguém fala mais que 3 vezes na partida inteira. TYPO_P: de vez em quando
 // escapa uma letra dobrada ou trocada, que é como gente digita com pressa. NO_REPEAT: quantas frases
@@ -412,6 +467,34 @@ export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:
 // a predição. O teto corta o ANEL DE FORA (o mais longe do jogador, onde o grão tem 1–2 px na tela): o que
 // está perto entra sempre, e quem já é conhecido nunca some por causa do teto (sumir seria pior que faltar).
 export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40};
+
+// ── KILL FEED (estilo Counter-Strike) ────────────────────────────────────────
+// "Quem matou quem" no canto superior direito. Vai em JSON de controle (`{t:"feed",v:[...]}`), NÃO no fio
+// binário: o EVENT tem 13 bytes fixos com o `extra` já ocupado pelo score da vítima (não cabe a arma), marco
+// de rodada não tem x/y, e difundir EVENT.DEATH faria o cliente instanciar efeito e SOM de mortes do outro
+// lado do mapa. Só SLOTS viajam — o cliente resolve o nome por view.playerOf(), o que de quebra faz o feed
+// respeitar `anonBots` do Battle Royale sem uma linha a mais.
+//
+// ⚠️ Fato da física que decide o formato: `w.killPiece` só é chamado em TRÊS lugares (rules.js), com causa
+// `eaten`, `zone` e `blackhole` — este último dormente. Míssil, estrela, asteroide e supernova NUNCA matam
+// sozinhos: todos param no piso MIN_PIECE_R. Eles AMOLECEM, e quem finaliza é sempre uma boca (ou o gás).
+// Por isso `how` (com o quê) e `a` (quem colheu) são campos separados, e existe `by` (a assistência): a
+// linha honesta é "⭐ amoleceu · Fulano devorou", não "morreu na estrela".
+export const FEED={KEEP:12,ROWS:6,TTL_MS:9000,HIT_TTL_TICKS:300,QUEUE_MAX:32,MAX_PER_FLUSH:4,
+  LEAD_HOLD_TICKS:180,LEAD_MARGIN:.05,LEAD_CD_TICKS:1200,CRUNCH_AT_S:[600,300,60],STREAK_AT:[3,5,10]};
+// KEEP/ROWS/TTL_MS: buffer do cliente, linhas na tela e quanto tempo cada uma dura.
+// HIT_TTL_TICKS (5 s): o carimbo de "quem me amoleceu" vale por esse tempo; depois disso o abate é só "eat".
+// QUEUE_MAX/MAX_PER_FLUSH: uma supernova ou o fecho final do gás mata muita gente no MESMO tick — o feed
+// manda no máximo 4 por lote e descarta as mais velhas, senão a tela vira parede.
+// LEAD_*: trocar de líder só é notícia se o novo segurar o topo por 3 s E passar o antigo por 5% de massa E
+// a sala não tiver anunciado nos últimos 20 s. Sem os três, dois gigantes empatados enchem a tela a 2 Hz.
+
+// ── AVATAR (a skin "Retrato": a foto do jogador dentro da bolinha) ───────────
+// O cliente recorta em círculo e reduz para SIZE, e a busca de qualidade do WebP desce até caber em
+// MAX_BYTES. 12 KB porque um rosto 256² em WebP q0,8 dá 6–10 KB — e o teto é o que torna viável guardar os
+// bytes no Postgres, que é o ÚNICO armazenamento durável do cluster (StatefulSet sem PVC, sem storage
+// dinâmico). O upload é ≤13 KB, bem abaixo do 1 MB padrão do nginx: nada de infra nova.
+export const AVATAR={SIZE:256,MIN:64,MAX_BYTES:12*1024,MIME:["image/webp","image/png"],FALLBACK_SIZE:128};
 // chat de sala (Livre e Battle Royale solo) ou de equipe (Battle Royale em equipe), pelo `chat` do MODE.
 // Sem histórico no servidor: quem entra não recebe o que já passou. RATE_MS/BURST ficam POR CIMA do balde
 // de JSON que a sessão já tem (NET.RATE_JSON), porque aquele existe para proteger o servidor e este para

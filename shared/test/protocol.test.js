@@ -117,10 +117,10 @@ test("SNAPSHOT: 250 creates + 200 updates — estabilidade com writer reutilizad
 
 // ── PLAYERS / LEADERBOARD / EVENT / PONG ─────────────────────────────────────
 test("PLAYERS: ida e volta com utf-8; nome truncado em ≤ 32 bytes na fronteira do code point",()=>{
-  const ps=[{slot:0,flags:0,skinId:3,team:NO_TEAM,name:"Evandro",score:1234},{slot:1,flags:1,skinId:0,team:0,name:"Nebulox",score:0},{slot:2,flags:6,skinId:255,team:11,name:"Zé Ção 日本",score:4294967295},
-    {slot:65535,flags:2,skinId:9,team:24,name:"😀😀😀😀😀😀😀😀",score:42},{slot:4,flags:0,skinId:1,team:NO_TEAM,name:"",score:1}];
+  const ps=[{slot:0,flags:0,skinId:3,team:NO_TEAM,level:27,name:"Evandro",score:1234},{slot:1,flags:1,skinId:0,team:0,level:0,name:"Nebulox",score:0},{slot:2,flags:6,skinId:255,team:11,level:255,name:"Zé Ção 日本",score:4294967295},
+    {slot:65535,flags:2,skinId:9,team:24,level:60,name:"😀😀😀😀😀😀😀😀",score:42},{slot:4,flags:0,skinId:1,team:NO_TEAM,level:1,name:"",score:1}];
   const d=decodePlayers(encodePlayers(w,ps));assert.deepEqual(d,ps);
-  const long=[{slot:1,flags:0,skinId:0,team:NO_TEAM,name:"a".repeat(40),score:0},{slot:2,flags:0,skinId:0,team:NO_TEAM,name:"a".repeat(31)+"😀",score:0},{slot:3,flags:0,skinId:0,team:NO_TEAM,name:"é".repeat(20),score:0},{slot:4,flags:0,skinId:0,team:NO_TEAM,name:"a".repeat(30)+"😀😀",score:0}];
+  const long=[{slot:1,flags:0,skinId:0,team:NO_TEAM,level:0,name:"a".repeat(40),score:0},{slot:2,flags:0,skinId:0,team:NO_TEAM,level:0,name:"a".repeat(31)+"😀",score:0},{slot:3,flags:0,skinId:0,team:NO_TEAM,level:0,name:"é".repeat(20),score:0},{slot:4,flags:0,skinId:0,team:NO_TEAM,level:0,name:"a".repeat(30)+"😀😀",score:0}];
   const dl=decodePlayers(encodePlayers(w,long));const enc=new TextEncoder();
   assert.deepEqual(dl.map(p=>p.name),["a".repeat(32),"a".repeat(31),"é".repeat(16),"a".repeat(30)]);
   for(const p of dl)assert.ok(enc.encode(p.name).length<=NAME_MAX_BYTES);
@@ -170,7 +170,7 @@ test("VOICE: os bytes do áudio atravessam intactos (o servidor nunca decodifica
 test("decodeMessage despacha pelo primeiro byte; desconhecido/vazio → null",()=>{
   const s=randSnapshot(1,2,1),snapB=encodeSnapshot(w,s).slice();assert.deepEqual(decodeMessage(snapB),{type:MSG.SNAPSHOT,...decodeSnapshot(snapB)});
   const inp={seq:5,tx:dqPos(100,WORLD.w),ty:dqPos(200,WORLD.h),flags:2,clientTick:9};assert.deepEqual(decodeMessage(encodeInput(inp)),{type:MSG.INPUT,...inp});
-  const ps=[{slot:1,flags:0,skinId:2,team:NO_TEAM,name:"X",score:3}];assert.deepEqual(decodeMessage(encodePlayers(w,ps)),{type:MSG.PLAYERS,players:ps});
+  const ps=[{slot:1,flags:0,skinId:2,team:NO_TEAM,level:9,name:"X",score:3}];assert.deepEqual(decodeMessage(encodePlayers(w,ps)),{type:MSG.PLAYERS,players:ps});
   const rows=[{slot:1,mass:900,x:dqPos(qPos(1234,WORLD.w),WORLD.w),y:dqPos(qPos(5678,WORLD.h),WORLD.h)}];assert.deepEqual(decodeMessage(encodeLeaderboard(w,rows)),{type:MSG.LEADERBOARD,rows});
   const ev={kind:EVENT.EAT,x:dqPos(10,WORLD.w),y:dqPos(20,WORLD.h),r:3.5,slotA:1,slotB:2,extra:7};assert.deepEqual(decodeMessage(encodeEvent(w,ev)),{type:MSG.EVENT,...ev});
   const pong={clientTime:1,serverTick:2};assert.deepEqual(decodeMessage(encodePong(w,pong)),{type:MSG.PONG,...pong});

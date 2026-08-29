@@ -68,7 +68,12 @@ test('join: room + PLAYERS com bots + snapshots com criações na AOI',async()=>
   A=new Client();await A.open();const r=await A.join('Alice');roomCode=r.code;
   assert.equal(r.protocol,PROTOCOL_VERSION);assert.equal(shardOf(r.code),0);assert.match(r.sessionId,/^[0-9a-f-]{36}$/);assert.match(r.resumeToken,/^[0-9a-f]{32}$/);assert.deepEqual(r.world,{w:WORLD.w,h:WORLD.h});
   await A.until(()=>A.players,3000,'PLAYERS');
-  const bots=A.players.filter(p=>p.flags&PLAYER_FLAG.BOT);assert.equal(bots.length,srv.config.roomBots);assert.ok(bots.every(p=>BOT_NAMES.includes(p.name)));
+  const bots=A.players.filter(p=>p.flags&PLAYER_FLAG.BOT);assert.equal(bots.length,srv.config.roomBots);
+  // O Livre passou a usar APELIDO de gente (realNicks), como o Battle Royale: os 60 nomes temáticos de
+  // BOT_NAMES denunciavam o preenchimento pelo nome. O ◆ continua vindo no fio — o que muda é só o nome.
+  assert.ok(bots.every(p=>p.name&&p.name.length<=16),'nick de preenchimento fora do formato');
+  assert.equal(new Set(bots.map(p=>p.name)).size,bots.length,'dois preenchimentos com o mesmo nick');
+  assert.ok(bots.some(p=>!BOT_NAMES.includes(p.name)),'os nomes continuam saindo do catálogo temático');
   const me=A.players.find(p=>p.slot===A.slot);assert.ok(me);assert.equal(me.flags&PLAYER_FLAG.BOT,0);
   await A.until(()=>A.snaps.length>=3,3000,'3 snapshots');
   const first=A.snaps[0];assert.ok(first.creates.some(c=>c.kind===KIND.PIECE&&(c.flags&PIECE_FLAG.ME)&&c.owner===A.slot),'peça própria com ME no 1º snapshot');
@@ -157,7 +162,12 @@ test('resync: sessão que esqueceu o known avisa o cliente e recria tudo',async(
 test('/healthz: tick p99, overruns, db, protocol',async()=>{
   const h=await (await fetch(base+'/healthz')).json();assert.equal(h.ok,true);assert.equal(h.shard,0);assert.ok(h.rooms>=1);assert.ok(h.players>=2);
   assert.equal(typeof h.tick.p99,'number');assert.equal(typeof h.tick.overruns,'number');assert.equal(typeof h.loopLagMs.p99,'number');assert.ok(['ok','down','none'].includes(h.db));assert.equal(h.protocol,PROTOCOL_VERSION);assert.ok(h.net.outKBps>0);
-  const cfg=await (await fetch(base+'/api/config')).json();assert.deepEqual(cfg,{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION});
+  const cfg=await (await fetch(base+'/api/config')).json();
+  // `googleClientId` vazio é o interruptor do login com Google: o cliente só desenha o botão quando vem preenchido.
+  assert.deepEqual(cfg,{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:''});
+  // o bloco de métricas da fala gerada sobe junto — é por ele que dá para ver, em produção, se a LLM está
+  // realmente falando ou se a sala inteira caiu no repertório fixo
+  assert.equal(typeof h.llm,'object');assert.equal(typeof h.llm.ask,'number');assert.equal(typeof h.llm.fallback,'number');
   assert.equal((await (await fetch(base+'/internal/rooms')).json()).rooms[0].code,roomCode);
   assert.equal((await (await fetch(base+'/api/auto')).json()).code,roomCode);
   assert.equal((await fetch(base+'/nada')).status,404);

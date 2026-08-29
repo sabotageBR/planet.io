@@ -8,9 +8,13 @@ export const TOKEN_RE=/^pt_[A-Za-z0-9_-]{43}$/;
 export const newToken=()=>'pt_'+randomBytes(32).toString('base64url');
 export const hashToken=t=>createHash('sha256').update(t).digest('hex');
 export const ttlSql=kind=>`now()+interval '${kind==='device'?365:30} days'`;
+// `st.xp` entra por LEFT JOIN em PK: custo zero numa query que já roda em todo join de WS, e é o que faz o
+// badge de nível existir sem uma segunda ida ao banco no caminho mais quente do servidor.
 const RESOLVE_SQL=`SELECT u.*, t.id AS token_id, t.kind AS token_kind, t.last_used_at AS token_used_at,
+  COALESCE(st.xp,0) AS xp,
   EXISTS(SELECT 1 FROM users r WHERE r.kind='registered' AND lower(r.nick)=lower(u.nick) AND r.id<>u.id) AS nick_reserved
   FROM auth_tokens t JOIN users u ON u.id=t.user_id
+  LEFT JOIN user_stats st ON st.user_id=u.id
   WHERE t.token_hash=$1 AND t.revoked_at IS NULL AND t.expires_at>now()`;
 /** @param {{query:Function}} db */
 export function createTokens(db,log){

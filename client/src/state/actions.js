@@ -5,7 +5,7 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { LABELS } from "../ui/labels.js";
 import { skinById } from "@planet/shared";
-import { clockRef } from "./game.js";
+import { clockRef, gameRef } from "./game.js";
 
 const Q = new URLSearchParams(location.search);
 const NICK_RE = /^.{2,16}$/;
@@ -68,7 +68,34 @@ function devQuery() {
   // A matriz de responsividade (scripts/responsive-check.mjs) precisa passar por `dead` e `round`, que não
   // têm botão de navegação nenhum — e recarregar a página com ?screen= a cada uma das ~400 combinações
   // levaria minutos. Em DEV, o mesmo atalho fica pendurado no window.
-  if (import.meta.env.DEV) window.__tela = mostrarTela;
+  if (import.meta.env.DEV) { window.__tela = mostrarTela; window.__hudDemo = hudDemo; }
+}
+/**
+ * HUD de mentira, só em DEV. A matriz de responsividade precisa MEDIR a tela `game` — mas sem partida o
+ * placar tem 0 linhas, o kill feed está vazio e o bloco de massa não tem número: os três ficam com altura
+ * zero, o `vis()` da sonda os descarta, e a coluna direita inteira passava despercebida pelas ~400
+ * combinações. Aqui a tela vira "game" de verdade (o `Hud` só some quando `screen!=="game"`) e o hudStore
+ * recebe dados no pior formato plausível: nomes longos, números grandes, feed cheio.
+ */
+function hudDemo() {
+  const g = gameRef.get().game;
+  app.update({ screen: "game", played: true });
+  if (!g || !g.hudStore) return;
+  const nome = i => ["Fodao","Stellara","Astrophex","Hydraxis","Darkion","Meteora","Nexaris","Volcanix","Nebulox","Quasara","xXcapitaoXx","trovao_137"][i % 12];
+  const lb = Array.from({ length: 12 }, (_, i) => ({ slot: i, name: nome(i), mass: 183273 - i * 12000, level: 60 - i * 3, isBot: i % 3 === 0, registered: i % 4 === 0, me: i === 0, rank: i + 1 }));
+  const quem = i => ({ slot: i, name: nome(i), level: 40 - i * 5, me: i === 0, bot: false, ally: i === 1 });
+  const agora = Date.now();
+  const feed = [
+    { id: 1, at: agora, k: "kill", how: "missile", a: quem(0), b: quem(1), assist: null, mine: true },
+    { id: 2, at: agora, k: "kill", how: "eat", byHow: "star", a: quem(2), b: quem(3), assist: quem(4), mine: false },
+    { id: 3, at: agora, k: "hazard", how: "zone", a: null, b: quem(5), assist: null, mine: false },
+    { id: 4, at: agora, k: "sys", how: "lead", a: quem(0), b: null, assist: null, n: 0, mine: true },
+    { id: 5, at: agora, k: "sys", how: "crunch", a: null, b: null, assist: null, n: 300, mine: false },
+    { id: 6, at: agora, k: "kill", how: "cluster", a: quem(6), b: quem(7), assist: null, mine: false },
+  ];
+  g.hudStore.update(h => ({ ...h, mass: 183273, score: 139933, rank: 1, coins: 2087, ammo: 3, weapon: 0, owned: 3,
+    powerups: { magnet: 12, shield: 3 }, lb, feed, room: "253A", ping: 49, fps: 60,
+    clock: { h: 16, m: 16, leftS: 2276 }, alive: 24 }));
 }
 function mostrarTela(s) {
   if (s === "account") { go("entry"); openAccount(); }
@@ -127,6 +154,16 @@ export async function login({ login: l, password }) {
   await api.login({ login: l, password });
   applySession(await api.bootstrap());
   closeAccount(); toast(LABELS.loggedIn); loadTop5();
+}
+/**
+ * País do ranking regional. Otimista (a lista responde na hora) e reverte no erro, como as ações da loja.
+ * `null` limpa: entrar no recorte é opcional, e sair também tem que ser.
+ */
+export async function setCountry(country) {
+  const antes = app.get().session.user;
+  app.update(s => ({ ...s, session: { ...s.session, user: { ...s.session.user, country: country || null } } }));
+  try { const r = await api.setCountry(country); app.update(s => ({ ...s, session: { ...s.session, user: { ...s.session.user, ...(r.user || {}) } } })); }
+  catch (e) { app.update(s => ({ ...s, session: { ...s.session, user: antes } })); toast(e.message || "não deu para salvar o país"); }
 }
 export async function logout() {
   await api.logout(); applySession(await api.bootstrap()); toast(LABELS.loggedOut); go("entry");
@@ -258,9 +295,16 @@ export function onRewards(r) {
       if (r.achievements && r.achievements.length) sess.achievements = [...new Set([...sess.achievements, ...r.achievements.map(a => (a && a.key) || a)])];
       if (r.skinsUnlocked && r.skinsUnlocked.length) sess.skins = [...new Set([...sess.skins, ...r.skinsUnlocked])];
       if (r.rank && r.rank.day != null) sess.dayRank = r.rank.day;
+      if (r.rank && r.rank.country) sess.countryRank = r.rank.country;
+      // XP/nível: o servidor manda o total e o nível já derivados (a curva mora em shared/src/levels.js),
+      // então aqui só se guarda — nada de recalcular e arriscar duas verdades.
+      if (r.xp) sess.stats = { ...sess.stats, xp: r.xp.total, level: r.xp.level,
+        levelInto: r.xp.into, levelNeed: r.xp.need, levelPct: r.xp.pct };
     }
     return { ...s, session: sess, rewards: r || null, rewardsPending: false };
   });
+  // Subir de nível é a única coisa desta tela que o jogador não vai ver de novo: merece um aviso próprio.
+  if (r && r.xp && r.xp.leveledUp) toast(`${LABELS.levelUp} ${LABELS.levelWord} ${r.xp.level}`, 3200);
   if (api.online === false && app.get().lastMatch) {
     const m = app.get().lastMatch, u = app.get().session.user;
     const p = api.localMatchEnd({ endedAt: new Date(m.at).toISOString(), score: m.score, maxMass: m.maxMass, kills: m.kills, durationS: m.durationS, cause: m.byHole ? "blackhole" : "eaten", by: m.by, coinsEarned: r ? r.coinsEarned : 0, roomCode: m.room }, r ? { ...r, coins: u ? u.coins : 0 } : null);

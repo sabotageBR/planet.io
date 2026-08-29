@@ -8,6 +8,7 @@
 import {randomUUID} from 'node:crypto';
 import {WebSocketServer} from 'ws';
 import {NET,WORLD,MODE,modeOf,VOICE} from '@planet/shared/constants.js';
+import {eggSkinFor} from '@planet/shared/eggs.js';
 import {PROTOCOL_VERSION,MSG,VOICE_UP_HEADER_BYTES} from '@planet/shared/protocol/constants.js';
 import {decodeInput,decodeVoiceUp,encodePong,createWriter} from '@planet/shared/protocol/index.js';
 import {Session} from './Session.js';
@@ -17,7 +18,9 @@ import {clientIp} from '../api/router.js';
 // o INPUT tem 10 bytes e o JSON de controle é minúsculo, então este teto existe só para a voz.
 const JOIN_TIMEOUT_MS=3000,MAX_PAYLOAD=VOICE.MAX_BYTES+VOICE_UP_HEADER_BYTES+64,WS_PATH=/^\/ws(\/\d+)?\/?$/;
 const withTimeout=(p,ms)=>new Promise((res,rej)=>{const t=setTimeout(()=>rej(new Error('timeout')),ms);Promise.resolve(p).then(v=>{clearTimeout(t);res(v);},e=>{clearTimeout(t);rej(e);});});
-const unsaved=nick=>({ok:true,userId:null,nick:String(nick||'Viajante').slice(0,16)||'Viajante',registered:false,skinId:0,prefs:{},sessionId:null,unsaved:true});
+const unsaved=nick=>{const n=String(nick||'Viajante').slice(0,16)||'Viajante';
+  // mesmo easter egg do caminho com banco (persist/hooks.js): ele depende só do nick
+  return{ok:true,userId:null,nick:n,registered:false,skinId:eggSkinFor(n)||0,level:0,avatar:null,prefs:{},sessionId:null,unsaved:true};};
 const NICK_RE=/^[\p{L}\p{N} _.\-]{2,16}$/u;
 const cleanNick=n=>{const s=String(n??'').normalize('NFKC').replace(/\s+/g,' ').trim().slice(0,16);return NICK_RE.test(s)?s:'Viajante';};
 /** @param {{server:any,config:any,rooms:any,hooks:any,log:any,metrics:any}} o */
@@ -60,8 +63,10 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         if(!room)room=rooms.findOrCreateRoom(opts);
         if(s.room)s.room.leave(s,'left');                            // join de novo (depois de morrer): sai da sala atual
         s.sessionId=res.sessionId||randomUUID();s.userId=res.userId??null;s.name=res.nick||fallbackNick;s.unsaved=!!res.unsaved;
-        room.join(s,{name:s.name,registered:!!res.registered,skinId:res.skinId|0,sessionId:s.sessionId,userId:s.userId,party});
+        s.level=res.level|0;s.avatar=res.avatar||null;
+        room.join(s,{name:s.name,registered:!!res.registered,skinId:res.skinId|0,sessionId:s.sessionId,userId:s.userId,level:s.level,party});
         s.sendJson(roomMsg(room));room.sendPlayers(s);
+        if(room.avatars&&room.avatars.size)room.broadcastAvatars();   // quem entra precisa saber quem já tem foto
         log.info(`${s.name} entrou na sala ${room.code} (slot ${s.slot}, ${room.humanCount}/${room.max}${s.unsaved?', sem persistência':''})`);
       }catch(e){log.error('join:',e);s.error('ROOM','falha ao entrar na sala');}
       finally{s.joining=false;}}

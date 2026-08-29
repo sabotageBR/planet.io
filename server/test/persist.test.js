@@ -13,6 +13,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {SKINS} from '@planet/shared/skins.js';
+import crypto from 'node:crypto';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.env'),'utf8').split('\n')){const m=/^\s*([A-Z_]+)=(.*)$/.exec(l);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim();}}catch{}}
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';
@@ -56,6 +57,14 @@ before(async()=>{
   await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;
 });
 after(async()=>{await persist.shutdown();server.close();await db.close();});
+
+// ── helpers dos testes de progressão (os de cima usam `call` direto) ──
+const randomUUID=()=>crypto.randomUUID();
+/** Cria um convidado e devolve {token,userId}. */
+const novoGuest=async nick=>{const r=await call('POST','/api/auth/guest',{body:{nick}});
+  assert.equal(r.status,201,JSON.stringify(r.body));return{token:r.body.token,userId:r.body.user.id};};
+const req=(method,p,body,token)=>call(method,p,{body:body===null?undefined:body,token});
+
 
 test('migrate: schema completo, idempotente e skins semeadas',async()=>{
   const t=(await db.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY 1`)).rows.map(r=>r.table_name);
@@ -198,7 +207,7 @@ test('banco fora: onPlayerJoin volta unsaved em < 3,5 s; healthFields db:down; A
   for(const url of ['postgres://planet:planet@127.0.0.1:1/planet','postgres://planet:planet@192.0.2.1:5432/planet']){
     const bad=createDb({...config,databaseUrl:url,dbPoolMax:2},log);const p=createPersistence({db:bad,log,config:{...config,noCleanup:true}});
     const t0=Date.now();const r=await p.hooks.onPlayerJoin({token:S.t3,fallbackNick:'Evandro'});const dt=Date.now()-t0;
-    assert.ok(dt<3500,`demorou ${dt} ms (${url})`);assert.deepEqual(r,{ok:true,userId:null,nick:'Evandro',registered:false,skinId:0,prefs:{},unsaved:true});
+    assert.ok(dt<3500,`demorou ${dt} ms (${url})`);assert.deepEqual(r,{ok:true,userId:null,nick:'Evandro',registered:false,skinId:0,level:0,avatar:null,prefs:{},unsaved:true});
     await p.hooks.onPlayerJoin({token:S.t3,fallbackNick:'E'});await p.hooks.onPlayerJoin({token:S.t3,fallbackNick:'E'});
     await new Promise(r=>setTimeout(r,100));  // o cap de 3 s do join vence a corrida por ~5 ms; a rejeição do pg (que abre o circuito) chega logo depois
     assert.equal(bad.health.down,true,'3 falhas → circuito aberto');assert.deepEqual(healthFields({db:bad,persist:p}),{db:'down',queue:0});
@@ -207,4 +216,126 @@ test('banco fora: onPlayerJoin volta unsaved em < 3,5 s; healthFields db:down; A
     const res=await fetch(`http://127.0.0.1:${srv.address().port}/api/me`,{headers:{authorization:`Bearer ${S.t3}`}});assert.equal(res.status,503);assert.equal((await res.json()).error,'db_unavailable');
     srv.close();await p.shutdown();await bad.close();
   }
+});
+
+// ── PROGRESSÃO, PAÍS, GATE DE NÍVEL, AVATAR E EASTER EGG ─────────────────────
+test('XP e mortes entram na mesma transação da partida, e o nível é derivado',async()=>{
+  const {matchXp}=await import('@planet/shared/levels.js');
+  const {levelFromXp}=await import('@planet/shared/levels.js');
+  const t=await novoGuest('Progresso');
+  const m={sessionId:randomUUID(),userId:t.userId,startedAt:Date.now()-60000,durationS:600,score:25000,maxMass:9000,
+    kills:5,botKills:6,splits:3,ejects:4,food:900,bestStreak:3,top1Ticks:10800,quadrants:2,cause:'eaten',
+    mode:0,teamSize:1,team:null,placement:0,players:0,skinId:0};
+  const r1=await persist.finishMatch({...m});
+  const esperado=matchXp(m);
+  assert.equal(r1.xp.gained,esperado,'o XP da partida não bateu com a fórmula pura');
+  assert.equal(r1.xp.total,esperado);
+  assert.equal(r1.xp.level,levelFromXp(esperado));
+  const st=await api.repos.matches.statsFor(t.userId);
+  assert.equal(Number(st.xp),esperado);
+  assert.equal(st.deaths,1,'`eaten` é morte');
+  // idempotência: o mesmo sessionId não pode creditar duas vezes
+  const r2=await persist.finishMatch({...m});
+  assert.ok(r2.duplicate);
+  assert.equal(Number((await api.repos.matches.statsFor(t.userId)).xp),esperado,'creditou duas vezes');
+  // sair da sala NÃO é morrer
+  await persist.finishMatch({...m,sessionId:randomUUID(),cause:'left',durationS:5,score:0,kills:0,botKills:0,food:0,top1Ticks:0});
+  assert.equal((await api.repos.matches.statsFor(t.userId)).deaths,1,'`left` foi contado como morte');
+});
+
+test('a política de morte do código e a do SQL das views são a MESMA lista',async()=>{
+  // O SQL duplica a lista por necessidade; este teste é o antídoto: uma causa nova sem classificação
+  // passaria despercebida e sumiria do K/D de todo mundo.
+  const {DEATH_CAUSES}=await import('@planet/shared/levels.js');
+  for(const v of ['v_ranking_day','v_ranking_week']){
+    const def=(await db.query(`SELECT pg_get_viewdef($1::regclass) AS d`,[v])).rows[0].d;
+    for(const c of DEATH_CAUSES)assert.ok(def.includes(`'${c}'`),`${v} não conhece a causa ${c}`);}
+});
+
+test('país: PATCH aceita, valida e limpa; o ranking regional filtra',async()=>{
+  const t=await novoGuest('Brasileiro');
+  assert.equal((await req('PATCH','/api/me',{country:'br'},t.token)).body.user.country,'BR','minúsculo tem que ser aceito');
+  assert.equal((await req('PATCH','/api/me',{country:'ZZ'},t.token)).status,400);
+  assert.equal((await req('PATCH','/api/me',{country:null},t.token)).body.user.country,null,'null limpa');
+  assert.equal((await req('PATCH','/api/me',{},t.token)).status,400,'PATCH vazio não faz sentido');
+  await req('PATCH','/api/me',{country:'BR'},t.token);
+  assert.equal((await req('GET','/api/ranking?country=XX')).status,400);
+  assert.equal((await req('GET','/api/ranking?country=BR')).body.country,'BR');
+});
+
+test('ranking: o país entra na CHAVE do cache (senão o Brasil vê o ranking do mundo)',async()=>{
+  // Foi a regressão mais provável de toda esta frente: o cache é de 10 s e a chave não tinha o país.
+  const t=await novoGuest('Cacheado');
+  await req('PATCH','/api/me',{country:'PT'},t.token);
+  await persist.finishMatch({sessionId:randomUUID(),userId:t.userId,startedAt:Date.now()-1000,durationS:10,score:999999,
+    maxMass:1,kills:0,botKills:0,splits:0,ejects:0,food:0,bestStreak:0,top1Ticks:0,quadrants:0,cause:'left',mode:0,teamSize:1,skinId:0});
+  const global=(await req('GET','/api/ranking?by=score&limit=50')).body.rows;
+  const pt=(await req('GET','/api/ranking?by=score&limit=50&country=PT')).body.rows;   // dentro dos 10 s do cache
+  assert.ok(global.length>=pt.length);
+  assert.ok(pt.every(r=>r.country==='PT'),'o recorte de país devolveu gente de fora');
+  assert.ok(pt.some(r=>r.userId===t.userId));
+});
+
+test('skin lendária: o nível é gate de verdade, e ele destrava com XP',async()=>{
+  const {SKINS}=await import('@planet/shared/skins.js');
+  const alvo=SKINS.find(s=>s.levelReq>0&&s.price>0);
+  const t=await novoGuest('SemNivel');
+  await db.query(`UPDATE users SET coins=$2 WHERE id=$1`,[t.userId,alvo.price+1000]);
+  const nao=await req('POST',`/api/skins/${alvo.id}/buy`,{},t.token);
+  assert.equal(nao.status,403);assert.equal(nao.body.error,'level_required');
+  assert.equal(nao.body.levelReq,alvo.levelReq);
+  const {xpForLevel}=await import('@planet/shared/levels.js');
+  await db.query(`INSERT INTO user_stats(user_id,xp) VALUES($1,$2) ON CONFLICT (user_id) DO UPDATE SET xp=$2`,[t.userId,xpForLevel(alvo.levelReq)]);
+  const sim=await req('POST',`/api/skins/${alvo.id}/buy`,{},t.token);
+  assert.equal(sim.status,200,JSON.stringify(sim.body));
+  assert.ok(sim.body.owned.includes(alvo.id));
+  // e a loja recebe o nível junto do catálogo, para não precisar de uma segunda chamada
+  const cat=await req('GET','/api/skins',null,t.token);
+  assert.equal(cat.body.level,alvo.levelReq);
+  assert.ok(cat.body.skins.find(s=>s.id===alvo.id).levelReq===alvo.levelReq);
+});
+
+test('easter egg: o nick escolhe a skin da VIDA, sem tocar na skin equipada',async()=>{
+  const {eggSkinFor}=await import('@planet/shared/eggs.js');
+  const t=await novoGuest('Bruxo');
+  const r=await persist.hooks.onPlayerJoin({token:t.token,fallbackNick:'Bruxo'});
+  assert.equal(r.skinId,eggSkinFor('Bruxo'),'entrou como Bruxo e não veio a caricatura');
+  const u=await api.repos.users.byId(t.userId);
+  assert.equal(u.equipped_skin_id,0,'o easter egg NÃO pode escrever na skin equipada');
+  // prefs.eggs:false desliga
+  await req('PATCH','/api/me/prefs',{eggs:false},t.token);
+  assert.equal((await persist.hooks.onPlayerJoin({token:t.token,fallbackNick:'Bruxo'})).skinId,0);
+  // e um nick comum continua com a skin de sempre
+  const t2=await novoGuest('Fulano');
+  assert.equal((await persist.hooks.onPlayerJoin({token:t2.token,fallbackNick:'Fulano'})).skinId,0);
+});
+
+test('avatar: valida pelo CONTEÚDO, guarda, serve com ETag e 304',async()=>{
+  const {AVATAR}=await import('@planet/shared/constants.js');
+  const t=await novoGuest('Retratado');
+  const png=(w,h)=>{const b=Buffer.alloc(2048);b.write('\x89PNG\r\n\x1a\n','latin1');b.writeUInt32BE(13,8);b.write('IHDR',12,'latin1');
+    b.writeUInt32BE(w,16);b.writeUInt32BE(h,20);b[24]=8;b[25]=6;return b;};
+  const post=(buf,ct='image/png')=>fetch(`${base}/api/me/avatar`,{method:'POST',
+    headers:{authorization:`Bearer ${t.token}`,'content-type':ct},body:buf});
+  assert.equal((await post(Buffer.from('<html>não sou imagem</html>'))).status,415,'HTML disfarçado passou');
+  assert.equal((await post(Buffer.from([0xff,0xd8,0xff,0xe0,...Array(60).fill(0)]),'image/jpeg')).status,415,'JPEG não é aceito');
+  assert.equal((await post(png(256,128))).status,400,'imagem não quadrada passou');
+  assert.equal((await post(png(512,512))).status,400,'imagem grande demais passou');
+  assert.equal((await post(Buffer.alloc(AVATAR.MAX_BYTES+2048))).status,413);
+  const ok=await post(png(256,256));
+  assert.equal(ok.status,200);const {avatar}=await ok.json();
+  assert.match(avatar,/^[0-9a-f]{32}$/);
+  assert.equal((await req('GET','/api/me',null,t.token)).body.user.avatar,avatar);
+  const g=await fetch(`${base}/api/avatar/${t.userId}`);
+  assert.equal(g.status,200);assert.equal(g.headers.get('content-type'),'image/png');
+  assert.equal(g.headers.get('x-content-type-options'),'nosniff','sem nosniff um políglota executaria');
+  const etag=g.headers.get('etag');assert.ok(etag);
+  assert.equal((await fetch(`${base}/api/avatar/${t.userId}`,{headers:{'if-none-match':etag}})).status,304);
+  assert.equal((await fetch(`${base}/api/me/avatar`,{method:'DELETE',headers:{authorization:`Bearer ${t.token}`}})).status,204);
+  assert.equal((await fetch(`${base}/api/avatar/${t.userId}`)).status,404);
+});
+
+test('google: a rota existe e responde 503 enquanto não há credencial',async()=>{
+  const r=await req('POST','/api/auth/google',{idToken:'x'});
+  assert.equal(r.status,503);assert.equal(r.body.error,'google_disabled');
 });

@@ -11,7 +11,7 @@ data:
   PEER_NAME: "planet-server"
   ROOM_MAX: "30"
   ROOM_BOTS: "15"
-  ROUND_TICKS: "216000"   # rodada de 1 h a 60 Hz = 4 dias do relógio do espaço (fim do mundo + sala nova)
+  ROUND_TICKS: "108000"   # rodada de 30 min a 60 Hz = 2 dias do relógio do espaço (fim do mundo + sala nova)
   PORT: "3000"
   DB_POOL_MAX: "5"
   MIGRATE_ON_START: "1"
@@ -21,4 +21,5 @@ data:
   # Fora do ar, o chat cai sozinho no repertório fixo — nada aqui é obrigatório para o jogo subir.
   OLLAMA_URL: "http://192.168.8.251:11434"
   OLLAMA_MODEL: "qwen3.6:35b-a3b"
+  OLLAMA_MAX_INFLIGHT: "4"   # gerações simultâneas por PROCESSO; ⚠️ inútil acima do OLLAMA_NUM_PARALLEL da máquina do Ollama
   BOT_CHAT_LLM: "1"

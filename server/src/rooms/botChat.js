@@ -9,21 +9,13 @@
 // de idioma do nosso lado. Foi verificado com pt/en/es antes de escrever isto.
 // @ts-check
 import {BOT_LLM,CHAT} from '@planet/shared/constants.js';
+import {normalizar,baseNick} from '@planet/shared/util.js';
 
 // ── nomes ────────────────────────────────────────────────────────────────────
-/** Reduz a comparável: sem acento, minúsculo, só letras e números (o resto vira espaço). */
-export function normalizar(s){
-  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
-/**
- * A RAIZ de um apelido. `botNick` monta os nicks em cinco formatos (`base`, `base42`, `base_137`, `BASE`,
- * `xXbaseXx`) — quem escreve no chat digita a raiz, não o enfeite: quem chama "Trovao_137" chama de
- * "trovao". Sem desmontar isso, metade das menções passaria batida.
- */
-export function baseNick(nick){
-  let n=normalizar(nick).replace(/\s+/g,'');
-  const xx=n.match(/^xx(.+)xx$/);if(xx&&xx[1].length>=3)n=xx[1];   // xXbaseXx → xxbasexx depois de normalizar
-  n=n.replace(/[0-9]+$/,'');                                     // base42 / base_137
-  return n;}
+// `normalizar` e `baseNick` mudaram para shared/src/util.js quando os easter eggs (shared/src/eggs.js)
+// passaram a precisar da MESMA raiz — shared não pode importar de server. Reexportados aqui para que
+// `citou()` e os testes continuem lendo do mesmo lugar de sempre.
+export {normalizar,baseNick} from '@planet/shared/util.js';
 /** Levenshtein sem alocar matriz. Só é usado em palavras curtas de chat. */
 function dist(a,b){
   const n=a.length,m=b.length;if(!n)return m;if(!m)return n;
@@ -79,6 +71,19 @@ export function citou(texto,nick){
 // Duas famílias: quem se declara assistente em qualquer ponto da frase, e o PREFÁCIO ("sure, here is…"),
 // que só conta no começo — "claro" no meio de uma zoeira é português normal, não um modelo se apresentando.
 const SUSPEITO=/(\bas an ai\b|\bi'?m an ai\b|language model|\bassistant\b|como uma ia|sou uma ia|^\s*(sure|certainly|of course|here'?s|here is|claro|aqui est[áa])\b)/i;
+
+// ── LIMITE DO PALAVREADO ─────────────────────────────────────────────────────
+// A provocação é metade da graça e fica; o que sai é insulto sexual, xingamento de família e slur. Isto
+// mora AQUI, na peneira, e não só no SYSTEM, porque a instrução do prompt é um PEDIDO: medindo na bancada
+// (scripts/llm-bench.mjs), o modelo obedecia na maioria das vezes e escapava numa a cada dez — e "na
+// maioria das vezes" não serve para o que aparece na tela de todo mundo numa sala de 50.
+// Recusar aqui não deixa ninguém mudo: quem chama `sanitiza` cai no repertório fixo de BOT_CHAT.
+const OFENSA=new RegExp('\\b('+[
+  'put[ao]s?','viado[s]?','veado[s]?','bicha[s]?','corno[s]?','vagabund[ao]s?','piranha[s]?','cuzao','cuzão',
+  'buceta[s]?','pinto','pau no','rola','bunda','cu\\b','foder','fuder','trepar','chupa[r]?','mamar',
+  'fdp','filho da','vai se','vtnc','tnc','arrombad[ao]s?','desgraçad[ao]s?','retardad[ao]s?','mongol[oó]ide',
+  'ass\\b','asshole','bitch','cunt','fag','faggot','whore','slut','dick','pussy','suck my','blow me','retard',
+].join('|')+')\\b','i');
 /**
  * A saída de um modelo não é uma linha de chat até provar que é. Corta no primeiro `\n` (ele adora listar),
  * tira aspas e asteriscos de "narração", derruba emoji (o repertório do jogo não usa) e recusa qualquer
@@ -93,6 +98,7 @@ export function sanitiza(txt){
   s=s.replace(/\s+/g,' ').trim();
   if(!s)return null;
   if(SUSPEITO.test(s))return null;
+  if(OFENSA.test(s))return null;
   if(s.split(' ').length>BOT_LLM.MAX_WORDS)return null;    // parágrafo não é fala de partida: melhor calar
   if(s.length>Math.min(BOT_LLM.MAX_CHARS,CHAT.MAX_CHARS))return null;
   return s;}
@@ -118,20 +124,81 @@ export function detectaIdioma(texto){
     if(n>max){max=n;melhor=lang;empate=false;}else if(n===max&&n>0)empate=true;}
   return max>=1&&!empate?melhor:null;}
 
+// ── quem a mensagem chama ────────────────────────────────────────────────────
+// Um vocativo coletivo ("e aí galera, tudo bem?") ou uma provocação à sala ("eu vou matar todo mundo") é
+// convite para VÁRIOS responderem; uma frase solta não é. Quem cita alguém pelo nome não passa por aqui —
+// esse caso é do `citou`, e a resposta é de quem foi chamado.
+const COLETIVO=/\b(galera|pessoal|gente|povo|turma|geral|alguem|todo mundo|todos|guys|everyone|anyone|yall)\b/;
+const SAUDACAO=/^(e ?ai|eai|opa|salve|oi|ola|fala|hey|yo|hi|hello|boa noite|bom dia|boa tarde)\b/;
+const PROVOCA=/\b(vou (matar|pegar|comer|acabar)|quem (quer|vem|ta|manda)|bora|se acha|medo|desafio|apanhar|facil)\b/;
+/**
+ * 'pergunta' = mensagem jogada para a SALA (vale coro) · 'solta' = comentário qualquer · null = cita alguém.
+ * @param {string} texto @param {boolean} temCitacao
+ */
+export function aberta(texto,temCitacao=false){
+  if(temCitacao)return null;
+  const t=normalizar(texto);
+  if(!t)return 'solta';
+  if(/\?\s*$/.test(String(texto).trim()))return 'pergunta';
+  if(COLETIVO.test(t)||SAUDACAO.test(t)||PROVOCA.test(t))return 'pergunta';
+  return 'solta';}
+
 // ── prompt ───────────────────────────────────────────────────────────────────
 const SYSTEM=[
   'You are a player in a fast multiplayer .io game about planets that eat each other. You are NOT an assistant.',
   'Write ONE short chat line, like a real player typing mid-match: max 10 words, lowercase is fine, typos are fine.',
-  'Be funny and cocky. Trash talk, mockery and swearing are allowed and welcome.',
+  'Be funny and cocky. Trash talk and mockery are welcome, and mild swearing is fine.',
+  'Hard limit: no sexual insults, no slurs, nothing about anyone\'s family, body or identity. Provoke about the GAME.',
   'LANGUAGE RULE, follow it strictly: when a message is addressed to you, reply in THAT message\'s language,',
   'even if the rest of the chat is in another one. Otherwise use the language of the recent chat.',
   'With no chat at all, use Brazilian Portuguese.',
-  'If someone is talking to you, answer them directly.',
+  'If someone is talking to you, answer them directly, and use their name if they used yours.',
+  'React to what is happening to you in the match: if someone is chasing or shooting you, say it TO THEM, by name.',
+  'Stay in character. You are typing, not narrating.',
   'Never explain yourself, never use quotes, never use emoji, never mention being an AI, never write more than one line.',
 ].join(' ');
 /** Estilo do bot em palavras que o modelo entende (persona = como joga, perícia = quão bem). */
 const PERSONA={cacador:'aggressive hunter',fazendeiro:'cautious farmer',oportunista:'opportunist'};
 const PERICIA={ruim:'clumsy and losing',medio:'average',bom:'good',fera:'dominating the match'};
+/**
+ * O que o bot está VIVENDO agora, em uma oração. Sai de `gp.brain`, que o `_think` já preenche todo tick
+ * e que ninguém lia — custo zero. `wander` devolve string vazia de propósito: "andando por aí" não vale
+ * o token que ocuparia.
+ * @param {{modo?:string,alvo?:string|null,press?:number,zu?:number,open?:number}} e
+ */
+export function estadoLinha(e){
+  if(!e||!e.modo)return '';
+  switch(e.modo){
+    case 'flee':return e.alvo
+      ?`you are running away from ${e.alvo}`+((e.press||0)>1.2?' and he is right on top of you':'')
+      :'you are running for your life';
+    case 'hunt':return e.alvo?`you are chasing ${e.alvo}`:'you are hunting someone smaller';
+    case 'zone':return (e.zu||0)>=.6?'you are caught outside the gas ring':'';
+    case 'intercept':return 'a missile is coming at you';
+    case 'food':return 'you are farming, minding your own business';
+    case 'hold':return 'you are standing still waiting to merge';
+    default:return '';}}
+/**
+ * Quem vem batendo nele, a partir de `gp.mem`. É a metade que falta para sair "me deixa em paz, evandro!":
+ * o estado dá o verbo, isto dá o agente.
+ * @param {{nome:string,k:string,n:number,recente:boolean}|null} a
+ */
+export function agressorLinha(a){
+  if(!a||!a.nome)return '';
+  if(a.n>=3)return `${a.nome} keeps shooting you, all match long`;
+  switch(a.k){
+    case 'tiro':return a.recente?`${a.nome} just shot you`:`${a.nome} has been shooting at you`;
+    case 'mordida':return `${a.nome} just bit a piece off you`;
+    case 'escudo':return `${a.nome} broke your shield`;
+    case 'morte':return `${a.nome} killed you before`;
+    default:return `${a.nome} is after you`;}}
+/** Tamanho relativo em palavras. O número cru (`your size: 4820`) o modelo não sabia usar. */
+export function rankLinha(rank,vivos){
+  if(!rank||!vivos)return '';
+  if(rank===1)return 'the biggest in the room';
+  if(rank<=5)return 'near the top';
+  if(rank<=Math.ceil(vivos/2))return 'mid-table';
+  return 'small and losing';}
 /** O evento que acabou de acontecer com ESTE bot, em uma linha que o modelo entende. */
 function evento(c){
   switch(c.kind){
@@ -143,13 +210,45 @@ function evento(c){
     case 'equipe':return 'you are talking to your teammates';
     case 'mention':return c.quem?`${c.quem} is talking to you in the chat`:'someone is talking to you in the chat';
     case 'reply':return 'the chat is talking and you feel like answering';
+    case 'cadeia':return c.quem?`${c.quem} answered you in the chat`:'someone answered you in the chat';
+    case 'coro':return c.quem?`${c.quem} asked something to everyone`:'someone asked something to everyone';
+    case 'tiro':return c.quem?`${c.quem} just hit you with a missile`:'a missile just hit you';
+    case 'escudo':return c.quem?`${c.quem} just broke your shield`:'your shield just broke';
+    case 'cacado':return c.quem?`${c.quem} is hunting you down right now`:'someone is hunting you down right now';
+    case 'lider':return 'you just took the lead';
     default:return 'the match is going on';}}
-/** @param {{nome:string,persona?:string,pericia?:string,massa?:number,vivos?:number,modo?:string,equipe?:boolean,kind:string,quem?:string,texto?:string,historico?:{name:string,text:string}[]}} c */
+/**
+ * @param {{nome:string,persona?:string,pericia?:string,historia?:{quem:string,jeito:string,bordao:string}|null,
+ *   rank?:number,vivos?:number,modo?:string,equipe?:boolean,kind:string,quem?:string,texto?:string,
+ *   estado?:object,agressor?:object|null,historico?:{name:string,text:string}[]}} c
+ *
+ * Ordem do `user`, e por que ela é essa: quem ele é → o que está vivendo AGORA → quem está batendo nele →
+ * o gatilho → a conversa → a linha dirigida a ele. O que está mais perto do fim pesa mais na resposta, e a
+ * linha dirigida é justamente a que o modelo precisa não perder de vista.
+ */
 export function montaPrompt(c){
+  const h=c.historia;
   const estilo=[PERSONA[c.persona||'']||null,PERICIA[c.pericia||'']||null].filter(Boolean).join(', ');
-  const cab=`[you are "${c.nome}", ${estilo||'a player'}, in a ${c.modo||'free-for-all'} match`
-    +(c.massa?`. your size: ${c.massa}`:'')+(c.equipe?'. this chat is your team only':'')+']';
-  const hist=(c.historico||[]).slice(-BOT_LLM.HIST).map(l=>`${l.name}: ${l.text}`).join('\n');
+  // A HISTÓRIA (server-only) entra no lugar dos dois ids de estilo quando existe: "aggressive hunter,
+  // dominating" descreve como o bot JOGA, e nunca deu personalidade nenhuma à fala.
+  const quemSou=h?`${h.quem}. ${h.jeito}`:(estilo||'a player');
+  const tam=rankLinha(c.rank,c.vivos);
+  const cab=`[you are "${c.nome}", ${quemSou}`+(tam?`. you are ${tam}`:'')
+    +(c.equipe?'. this chat is your team only':'')+']';
+  // As duas linhas do "thinking". Quando o agressor É o mesmo de quem ele foge, funde tudo numa oração só:
+  // duas frases dizendo quase a mesma coisa gastam token e diluem a mais forte do prompt inteiro.
+  const est=estadoLinha(c.estado),agr=agressorLinha(c.agressor);
+  const mesmo=c.estado&&c.agressor&&c.estado.modo==='flee'&&c.estado.alvo&&c.estado.alvo===c.agressor.nome;
+  const agora=mesmo
+    ?`you are running away from ${c.agressor.nome} and he ${c.agressor.n>=3?'keeps shooting you':'just hit you'}`
+    :[est,agr].filter(Boolean).join('; ');
+  const dirigida=c.kind==='mention'||c.kind==='reply'||c.kind==='coro'||c.kind==='cadeia';
+  const nHist=dirigida?BOT_LLM.HIST_DIRIGIDA:BOT_LLM.HIST;
+  // Cada linha do histórico é aparada: uma frase de 140 chars é legítima no chat, mas quatro delas são
+  // 560 chars de contexto de baixo valor competindo com o TIMEOUT_MS. A mensagem DIRIGIDA (lá embaixo)
+  // não é aparada — essa é a que o bot precisa responder.
+  const corta=t=>{const x=String(t||'');return x.length>BOT_LLM.MAX_CHARS?x.slice(0,BOT_LLM.MAX_CHARS-1)+'…':x;};
+  const hist=(c.historico||[]).slice(-nHist).map(l=>`${l.name}: ${corta(l.text)}`).join('\n');
   // A mensagem dirigida REPETIDA no fim, sozinha e com a ordem de idioma colada nela. Enterrada no meio do
   // histórico ela perdia: numa sala onde os bots vinham falando português, um "hey X, you are trash" era
   // respondido em português — o modelo seguia a maioria das linhas, não quem estava falando com ele.
@@ -157,12 +256,15 @@ export function montaPrompt(c){
   // instrução genérica, que é o que o modelo já fazia bem sozinho.
   const lang=c.texto?detectaIdioma(c.texto):detectaIdioma((c.historico||[]).slice(-3).map(l=>l.text).join(' '));
   const ordem=lang?`[write your line in ${lang}]`:'[answer in the SAME LANGUAGE as that message]';
-  const alvo=(c.kind==='mention'||c.kind==='reply')&&c.texto
+  const alvo=dirigida&&c.texto
     ?`[${c.quem||'someone'} says to YOU: "${c.texto}"]\n${ordem}\n`
     :(lang?`${ordem}\n`:'');
-  return{system:SYSTEM,user:`${cab}\n[what just happened: ${evento(c)}]\n`
+  const sys=h?`${SYSTEM} You sometimes end your line with "${h.bordao}", but rarely.`:SYSTEM;
+  const user=`${cab}\n`+(agora?`[right now: ${agora}]\n`:'')
+    +`[what just happened: ${evento(c)}]\n`
     +(hist?`[recent chat]\n${hist}\n`:'[the chat is empty]\n')
-    +alvo+'Your line:'};}
+    +alvo+'Your line:';
+  return{system:sys,user};}
 
 // ── fábrica ──────────────────────────────────────────────────────────────────
 /**
@@ -170,15 +272,17 @@ export function montaPrompt(c){
  * `gerar(ctx)` devolve a linha pronta ou `null` — e `null` é uma resposta legítima: quem chama volta ao
  * repertório fixo (ou fica calado, no caso da menção).
  */
-export function createBotChat({llm,log=null}){
+export function createBotChat({llm,log=null,metrics=null}){
   return{
     ativo(){return !!(llm&&llm.ok());},
-    citou,sanitiza,montaPrompt,baseNick,
+    citou,sanitiza,montaPrompt,baseNick,aberta,estadoLinha,agressorLinha,
     async gerar(ctx){
       if(!llm||!llm.ok())return null;
       const {system,user}=montaPrompt(ctx);
+      if(metrics)metrics.llm('ask');
       const cru=await llm.chat({system,user});
       const txt=sanitiza(cru);
-      if(!txt&&cru&&log)log.debug(`fala descartada: ${JSON.stringify(String(cru).slice(0,120))}`);
+      if(!txt&&cru){if(metrics)metrics.llm('veto');
+        if(log)log.debug(`fala descartada: ${JSON.stringify(String(cru).slice(0,120))}`);}
       return txt;},
   };}

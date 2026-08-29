@@ -28,12 +28,13 @@ Mockups aprovados continuam em `mockups/v2/` (CommonJS; `node mockups/v2/src/bui
 ## Layout
 
 ```
-shared/src/    constants.js (ÚNICA fonte de tunables) · skins.js (75 skins) · achievements.js · rng.js · camera.js · util.js · zone.js (a zona do Battle Royale) · bot.js (cérebro dos bots, usado pelo servidor e pelo LocalServer)
+shared/src/    constants.js (ÚNICA fonte de tunables) · skins.js (94 skins) · achievements.js · levels.js (XP/nível/K-D) · countries.js · eggs.js (nick → skin) · rng.js · camera.js · util.js · zone.js · bot.js
                physics/ (body, spatial-hash, integrate, collide, rules, world, predict) · protocol/ (constants, quant, writer, reader, codec, dto)
 server/src/    index.js (composition root + startServer) · loop.js (scheduler 60 Hz) · metrics.js
+               llm/ollama.js · rooms/botChat.js · rooms/botPersonas.js (histórias, server-only) · rooms/feed.js (marcos do kill feed)
                sim/ (Sim, hooks) · rooms/ (codes, Room, RoomManager, Party) · net/ (Session, wsServer, snapshot) · http/ (api, peers)
                config.js · log.js · db/ (pool, migrate, migrations/) · auth/ (tokens, password, nick, ratelimit) · repos/ · api/ (router + rotas) · persist/ (session, rewards, queue, hooks)
-client/src/    main.jsx · app/ (App, theme bridge) · ui/ (telas React: mesmo DOM dos mockups + Round.jsx do fim do mundo, Modes/Party/Chat) · api/client.js · state/ (store) · hooks/
+client/src/    main.jsx · app/ (App, theme bridge) · ui/ (telas React + Round.jsx, Modes/Party/Chat/KillFeed/AvatarPicker, icons.js) · util/image.js · api/client.js · state/ (store) · hooks/
                audio/ (index.js motor: 4 barramentos, prioridade de vozes, loops · kit.js receitas · mic.js push-to-talk · audition.js a mesa de som do ?sfx)
                theme/ (index.js + dawn|sunset|dusk: tokens/hud/screens.css gerados por port.js, index.js com textures/effects/hud) · styles/base.css
                game/ (index.js createGame · net/ · state/ · renderer/ · input/ · hud/ · bench.js)
@@ -171,6 +172,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   a vaga é sempre do humano (quem chega derruba um preenchimento). Nenhum snapshot nessa fase — sem peça não há o
   que enquadrar —, então o estado do lobby vai em JSON e em MILISSEGUNDOS. `Room.roundStart`, que nascia 0 e nunca
   era escrito, é o gancho: escrevê-lo na largada ajusta relógio, contagem e céu sozinho.
+  **Todo preenchimento usa apelido de gente** (`realNicks`, os dois modos): os 60 nomes temáticos de
+  `BOT_NAMES` denunciavam o bot pelo NOME antes de qualquer movimento denunciar. `anonBots` é coisa separada
+  e continua só no BR — no Livre o ◆ do placar segue aparecendo.
   **O preenchimento não se identifica** (`anonBots`): nome de jogador (`BOT_NICKS`/`botNick`) e o flag `PLAYER_FLAG.BOT`
   NÃO vai no fio — como o `◆` do placar e a cor do radar saem dele, os dois param de distinguir sem uma linha de
   cliente. O servidor continua sabendo (kills × botKills, economia, conquistas); quem não sabe é a tela.
@@ -247,6 +251,27 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   **Nada disso pode esperar**: `botChatTick` roda dentro do `step()` e o Scheduler percorre TODAS as salas do processo no mesmo laço de
   60 Hz — a geração é disparada e esquecida, quem publica é o callback, e ele revalida tudo (sala viva, fase, bot vivo) e descarta o
   que passou de `STALE_MS`. O orçamento é gasto ANTES do disparo, senão dois gatilhos no mesmo tick viram coro.
+  **Coro, corrente e fila** (`BOT_LLM.CORO_*`/`CADEIA_*`, `Room.falaFila`): uma pergunta jogada para a sala
+  ("e aí galera?") acorda de 1 a 3 bots com atrasos ESCALONADOS (0,3–3 s) — três respostas no mesmo tick é
+  coro de robô; chegando em tempos diferentes parece gente digitando. O agendamento é por `atTick` e drenado
+  dentro do `step()`: nada de `setTimeout`, que não é determinístico, não é testável com o rng da sala e não
+  revalida nada. ⚠️ A invariante "a fala é do INSTANTE" continua literal — `sim.botTalk` segue esvaziado todo
+  tick e **nenhum kind de EVENTO entra na fila**; ela só transporta os conversacionais, onde 0,5–3 s não é
+  atraso. `CORO_WAIT_MS` (espera proposital) e `STALE_MS` (latência da geração) são relógios DIFERENTES e
+  somá-los seria confundir uma feature com uma falha. Bot responde a bot com **corrente curta**: a reentrada
+  fica em `publica()` dentro de `_falar` (e não no `_pushChat`, que é o difusor comum), continua só quando a
+  linha GERADA cita alguém pelo nome — e a frase do repertório nunca cita, então a corrente morre sozinha ali.
+  Termina por cinco razões independentes: profundidade limitada, exigência de citação, `CADEIA_P`, o conjunto
+  `cadeia` (que proíbe repetir slot) e os orçamentos por bot.
+  **A LLM sabe o que o bot está VIVENDO**: `estadoLinha` lê `gp.brain` (mode/target/press/zu — que o `_think`
+  já preenchia e ninguém lia, custo zero) e `agressorLinha` lê `gp.mem`, um anel de 6 carimbado em
+  `Sim._consume` nos eventos que já traziam `bySlot`. Quando o agressor É de quem ele foge, as duas viram UMA
+  oração ("you are running away from Evandro and he keeps shooting you") — é dela que sai o "me deixa em paz,
+  evandro!", e duas frases dizendo quase o mesmo gastam token e diluem a mais forte do prompt. Cada bot tem
+  uma HISTÓRIA (`rooms/botPersonas.js`, **server-only**: `shared/bot.js` vai para o bundle do `?local=1`).
+  ⚠️ O palavreado é limitado na PENEIRA (`OFENSA` em `botChat.js`), não só no SYSTEM: medindo na bancada
+  (`scripts/llm-bench.mjs`), o modelo obedecia na maioria das vezes e escapava numa a cada dez — e "na maioria
+  das vezes" não serve para o que aparece na tela de uma sala de 50.
   Responder a quem CHAMA tem orçamento próprio, bem mais folgado (ser chamado pelo nome e ficar mudo é o que não passa por gente), e a
   menção é aproximada (`citou`: raiz do nick, sufixo de diminutivo, apelido cortado, 1–2 letras de erro). O pecado grave é o FALSO
   positivo — responder a quem não chamou É poluir o chat —, então há lista de palavras comuns e uma VARREDURA em
@@ -254,6 +279,56 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   nomeado no prompt: dizer "responda no idioma da mensagem" acertava quase sempre, e "quase" devolvia português para quem escreveu em
   espanhol. Carregar o modelo custa ~27 s e responder ~0,5 s — daí `keep_alive`, `warmup()` no boot e o disjuntor REAQUECER enquanto
   está aberto.
+- **Kill feed estilo CS** (`FEED` em constants, `server/src/rooms/feed.js`, `client/src/ui/KillFeed.jsx`): "quem matou
+  quem" no topo-DIREITO, com o placar e a massa logo abaixo; radar e chat na ESQUERDA. Vai em **JSON de
+  controle** (`{t:"feed",v:[…]}`) difundido à sala INTEIRA, sem AOI — o EVENT binário tem 13 bytes fixos com o
+  `extra` já ocupado pelo score, marco de rodada não tem x/y, e difundir `EVENT.DEATH` faria o cliente
+  instanciar efeito e SOM de mortes do outro lado do mapa. Só SLOTS viajam (o nome sai de `view.playerOf`), o
+  que faz o feed herdar o `anonBots` do BR de graça.
+  ⚠️ **Arma nenhuma mata sozinha**: `w.killPiece` só é chamado em 3 lugares de `rules.js` — `zone` (:68),
+  `eaten` (:129) e `blackhole` (:445, dormente). Míssil, estrela, asteroide e supernova param no piso
+  `MIN_PIECE_R` e apenas AMOLECEM. Por isso `how` (com o quê) e o matador são campos separados, e existe a
+  ASSISTÊNCIA: a linha honesta é "⭐ amoleceu · Fulano devorou". Quem sabe disso é `Sim._lastHit`, um carimbo
+  escrito dentro do `switch` que o `_consume` já percorre (uma escrita em Map, sem laço novo), lido em
+  `_died` com TTL de `FEED.HIT_TTL_TICKS`. Para isso a física teve que passar a dizer a ARMA: `weapon` no
+  BOOM/SHIELD_*, `q.hits=WEAPON.CLUSTER` no `clusterSplit` (o filho do cacho tem `hue` de míssil simples DE
+  PROPÓSITO, senão se abriria de novo) e o evento `NOVA_HIT`, que não existia — sem ele a arma mais cara do
+  jogo era a única sem crédito no feed.
+- **Progressão** (`shared/src/levels.js`, migrações 0004–0006): XP por partida (`matchXp`, função pura no
+  molde de `achievements.js`) e nível DERIVADO do XP (`levelFromXp`) — nunca guardado, senão vira uma segunda
+  verdade que envelhece na primeira mudança de curva. Curva `85·(L−1)^2.12`: nível 2 na primeira vida, 10 em
+  ~9 h, 30 em ~109 h, 50 em ~330 h. `xp`/`deaths` vivem em `user_stats` (e não em `users`, que é lido com
+  `SELECT *` em todo join de WS); o nível chega ao jogo por um `u8 level` no PLAYERS (**PROTOCOL_VERSION 11**)
+  e acende o badge no placar, no chat e no feed de uma vez. K/D **não** é coluna: é expressão
+  `kills/GREATEST(deaths,1)` com piso de qualificação (`KD_MIN_KILLS`/`KD_MIN_GAMES`) — materializar um
+  derivado é criar um número que mente. Ranking global e por PAÍS (`users.country`); ⚠️ o país entra na CHAVE
+  do cache de 10 s de `api/ranking.js`, senão a primeira resposta regional é servida ao mundo inteiro.
+  `POST /api/auth/google` existe, é testada e devolve **503 sem `GOOGLE_CLIENT_ID`** — e `/api/config` só
+  expõe o clientId quando ele existe, então sem credencial o botão nem aparece.
+- **Placar da SALA** (`Room.roster`): a rodada do Livre caiu para **30 min** (`ROUND.TICKS` 108000, `DAYS` 2 —
+  o dia do espaço continua com 15 min; ⚠️ quem manda em produção é o env `ROUND_TICKS`, e `roundInfo()` passou
+  a mandar `days` porque cliente novo com env velho desenhava o céu na metade da velocidade). No fim vêm
+  QUATRO destaques (campeão · mais partículas · mais abates · maior K/D, este com piso de
+  `ROUND.AWARD_MIN_KILLS`). O roster existe porque `Sim.endRound` itera `sim.players`, onde só está quem
+  ficou: `Room.leave` remove do mundo, e no Livre **morrer e renascer é `leave` + `join` num slot NOVO**.
+  Chave estável: `u<userId>` → `r<resumeToken>` → `n<nick>` → `b<slot>`; **nunca `sessionId`**, que é por VIDA
+  e agruparia errado justamente no respawn. `_rosterFold` é idempotente por vida (`gp.rosterFolded`) e ACUMULA.
+- **Skins novas** (75–93): 8 lendárias com `levelReq` (10–50) que são EMBLEMAS, não texturas de planeta — é o
+  que as faz legíveis a 24 px; a skin **Retrato** (83), que põe a FOTO do jogador dentro do disco; e 10
+  caricaturas de easter egg (84–93, `rarity:"secret"`, escondidas da loja e recusadas pela compra), escolhidas
+  pelo NICK em `shared/src/eggs.js` — casamento EXATO da raiz (`baseNick`), porque prefixo fazia "modinha"
+  virar Modi. O egg é decidido em `persist/hooks.js` e `wsServer.unsaved`, vale só para AQUELA vida e **nunca**
+  escreve em `users.equipped_skin_id`; `prefs.eggs:false` desliga. ⚠️ `seedSkins` tem uma faca: um pod com o
+  `shared/skins.js` ANTIGO faz `UPDATE skins SET active=false` nas skins novas — os 3 shards têm que estar na
+  MESMA imagem antes de qualquer skin nova ficar comprável.
+- **A foto do jogador**: recortada em círculo e reduzida no CLIENTE (`util/image.js`, ≤256 px, escada de
+  qualidade WebP até caber em `AVATAR.MAX_BYTES`), validada no servidor pelo CABEÇALHO
+  (`api/imagemeta.js` lê PNG/VP8/VP8L/VP8X à mão — nenhuma biblioteca nova) e guardada em `bytea` numa tabela
+  SEPARADA de `users`. Sobe em corpo CRU numa rota com teto próprio (`raw:{max}` no router): base64 dentro de
+  JSON estouraria o `BODY_MAX`, e subir o teto global enfraqueceria todas as rotas por causa de uma. O que
+  fecha o buraco do arquivo disfarçado não é o validador: é a RESPOSTA (`Content-Type` do sniff + `nosniff` +
+  CSP `default-src 'none'`). No render, a versão da foto entra na CHAVE da textura — assim não há invalidação
+  nenhuma: enquanto o bitmap não chega desenha-se a silhueta, e quando chega a chave muda e o cache assa a nova.
 - **Som** (`client/src/audio/`, `docs/design/som.md`): sintetizado no WebAudio — osciladores e ruído filtrado, nenhum arquivo.
   O `kind` do efeito visual é a chave do som, então evento novo com efeito já sai com áudio; volume por distância da câmera,
   estéreo pela posição e intervalo mínimo por tipo. Três princípios: **ataque+corpo+cauda** por receita, a **altura codifica o
@@ -303,7 +378,11 @@ do zero, use só com o banco vazio). Secret `planet-db` criado via `./scripts/db
 
 ## Arestas conhecidas
 
-- Sem "esqueci a senha" (reset via SQL). Sem merge de contas ao logar num navegador que tinha guest.
+- Sem "esqueci a senha" (reset via SQL). O merge de contas passou a existir SÓ no caminho do Google (um guest
+  com Bearer é promovido em vez de virar conta nova); nos outros continua sem.
+- ⚠️ **`npm run dev` na raiz lê o `.env` da raiz, que aponta para PRODUÇÃO** — e com `MIGRATE_ON_START=1` isso
+  APLICA migrações lá. Para trabalhar no banco de dev, passe `DATABASE_URL` explicitamente em TODO comando
+  (é a mesma armadilha do `npm test`, que já apagou o banco uma vez).
 - Mockups são a fonte visual; mudança de tema visual = editar `mockups/v2/src/theme.toon-<id>.js` e rodar `client/src/theme/port.js`.
   `client/src/styles/base.css` e os `screens.css`/`hud.css` dos temas são GERADOS por esse script — o que nasceu depois dos mockups
   (transição de cor do HUD na troca de tema, pódio do BIG CRUNCH e a loja nova) mora em `client/src/styles/ui.css`, escrito à mão e fora do port.js.
