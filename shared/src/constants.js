@@ -321,7 +321,7 @@ export const BOT_NICKS=[
   "pixel","glitch","turbo9","noob","pro","gamer","player","sniper","tank","rush","clutch","combo","hyper","mega",
   "rage","spawn","respawn","lagado","ping","fps","headshot","camper","tryhard","carry","smurf","boost","nerf","buff",
   "meta","kernel","patch","beta","hotfix","zerado","speedrun","noscope","tilt","spam","kite","poke","gank","farm",
-  "jungle","supp","void","null","byte","hex","root","sudo","ctrl","esc","alt","cache","proxy","bug","combo9",
+  "jungle","supp","void","byte","hex","root","sudo","ctrl","esc","alt","cache","proxy","bug","combo9","nulo",
   "pastel","coxinha","brigadeiro","acai","tapioca","farofa","feijao","churrasco","pipoca","sorvete","goiaba","jabuti",
   "treta","zoeira","migue","perrengue","rolezinho","fominha","cascudo","sertao","zen","neo","max","ace","vex","jinx"];
 /**
@@ -352,10 +352,12 @@ export const BOT_CHAT={
   zona:["o gas","corre","to fora","vem pro meio","ta fechando","fui pego","sai dai","cuidado com o gas"],
   poucos:["quantos faltam","ta apertado","chegando la","aguenta","top 5","calma ai","gg","boa sorte ai"],
   equipe:["vem","to fraco","cuidado","atras de voce","me segue","toma massa","juntos","corre","espera","to indo"]};
-export const BOT_TALK={ROOM_CD_TICKS:420,BOT_CD_TICKS:2400,MAX_PER_MATCH:3,P:{start:.35,kill:.22,morte:.3,zona:.18,poucos:.3,equipe:.28},TYPO_P:.12,QUEUE_MAX:12};
+export const BOT_TALK={ROOM_CD_TICKS:420,BOT_CD_TICKS:2400,MAX_PER_MATCH:3,NO_REPEAT:6,TRIES:4,P:{start:.35,kill:.22,morte:.3,zona:.18,poucos:.3,equipe:.28},TYPO_P:.12,QUEUE_MAX:12};
 // ROOM_CD_TICKS: 7 s entre duas falas QUAISQUER da sala — sem isso um abate múltiplo vira coro. BOT_CD_TICKS:
 // 40 s por bot. MAX_PER_MATCH: ninguém fala mais que 3 vezes na partida inteira. TYPO_P: de vez em quando
-// escapa uma letra dobrada ou trocada, que é como gente digita com pressa.
+// escapa uma letra dobrada ou trocada, que é como gente digita com pressa. NO_REPEAT: quantas frases
+// recentes a sala lembra para não repetir — ouvir "boa ai" três vezes na mesma partida denuncia mais
+// que o silêncio (aconteceu na primeira partida de produção).
 /** Erra a digitação de um jeito plausível (letra dobrada ou trocada com a vizinha). @param {{next:()=>number,int:(a:number,b:number)=>number}} rng */
 export function botTypo(rng,txt){
   if(txt.length<3)return txt;

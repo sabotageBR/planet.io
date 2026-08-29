@@ -329,6 +329,16 @@ test('fala dos bots: sai pelo caminho do chat e o orçamento segura o coro',asyn
   room.sim._talk(bot.slot,'kill');room.botChatTick();
   await sleep(120);
   assert.equal(c.all('chat').length,n,'passou do teto de falas da partida');
+  // frase repetida denuncia MAIS que o silêncio: numa partida de produção saiu "boa ai" três vezes
+  const antes=c.all('chat').length;
+  for(let i=0;i<40;i++){
+    room.botTalkAt=-1e9;bot.talked=0;bot.talkedAt=-1e9;
+    room.sim.botTalk.length=0;room.sim._talk(bot.slot,'morte');room.botChatTick();}
+  await sleep(200);
+  const ditas=c.all('chat').slice(antes).map(m=>m.text);
+  for(let i=1;i<ditas.length;i++){
+    const janela=ditas.slice(Math.max(0,i-BOT_TALK.NO_REPEAT),i);
+    assert.ok(!janela.includes(ditas[i]),`"${ditas[i]}" repetida dentro de ${BOT_TALK.NO_REPEAT} falas`);}
   c.close();
 });
 test('chat: no Livre a sala inteira ouve; em equipe só o companheiro',async()=>{

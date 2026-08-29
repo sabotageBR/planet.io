@@ -40,7 +40,7 @@ export class Room{
     // cedo por engano, não vira almoço antes de a partida existir
     this.sim.world.peace=this.phase==='lobby';
     /** @type {Map<string,number>} código de party → equipe (para os amigos caírem juntos) */this.parties=new Map();
-    this.roundStart=0;this.over=false;this.endedAt=0;this.endReason='time';this.champion=null;this.voiceAt=0;this.voiceN=0;this.botTalkAt=-1e9;
+    this.roundStart=0;this.over=false;this.endedAt=0;this.endReason='time';this.champion=null;this.voiceAt=0;this.voiceN=0;this.botTalkAt=-1e9;/** @type {string[]} */this.ditas=[];
     this.writer=createWriter(WRITER_SIZE);this.snapshotter=createSnapshotter(this);this._botName=this.rng.int(0,BOT_NAMES.length-1);this.onRewards=onRewards;
     this.sim.on('death',info=>{const s=this.sessions.get(info.slot);if(!s)return;
       s.sendJson({t:'dead',by:info.by,byHole:info.byHole,byZone:info.byZone,score:info.score,maxMass:info.maxMass,kills:info.kills,durationS:info.durationS,placement:info.placement,players:info.players});
@@ -307,7 +307,9 @@ export class Room{
     if(!this.rng.chance(BOT_TALK.P[g.kind]||.15))return;
     const equipe=this.mode.chat==='team'&&gp.team>=0;
     const pool=BOT_CHAT[equipe&&this.rng.chance(.5)?'equipe':g.kind]||BOT_CHAT.kill;
-    let txt=pool[this.rng.int(0,pool.length-1)];
+    let txt='';
+    for(let i=0;i<BOT_TALK.TRIES;i++){txt=pool[this.rng.int(0,pool.length-1)];if(!this.ditas.includes(txt))break;}
+    this.ditas.push(txt);if(this.ditas.length>BOT_TALK.NO_REPEAT)this.ditas.shift();
     if(this.rng.chance(BOT_TALK.TYPO_P))txt=botTypo(this.rng,txt);
     gp.talked=(gp.talked|0)+1;gp.talkedAt=tick;this.botTalkAt=tick;
     this._pushChat(gp,txt);}

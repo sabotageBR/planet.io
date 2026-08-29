@@ -6,7 +6,7 @@ import {createWorld,stepOwnPieces} from "../src/physics/index.js";
 import {sameTeam,zoneBurn,outOfZone,zoneMass,applyFire,ammoOf,ownedMask} from "../src/physics/rules.js";
 import {createZone,stepZone,zoneAt,zoneR} from "../src/zone.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,ZONE,PLAYER,DT,EJECT,MISSILE,WEAPON,WEAPONS,FOOD_TYPE,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood} from "../src/constants.js";
+import {WORLD,ZONE,PLAYER,DT,EJECT,MISSILE,WEAPON,WEAPONS,FOOD_TYPE,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood,BOT_NICKS} from "../src/constants.js";
 import {KIND} from "../src/protocol/constants.js";
 
 const empty=(seed=1,o={})=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false,...o});
@@ -35,6 +35,16 @@ test("botNick: apelidos de gente, sem repetir, e cabendo no limite de nick",()=>
   const u2=new Set(["lucas"]),n2=[];const r2=createRng(3);
   for(let i=0;i<60;i++)n2.push(botNick(r2,u2));
   assert.ok(!n2.some(n=>n.toLowerCase()==="lucas"),"não repete o nick de quem já está na sala");});
+test("BOT_NICKS: lista grande, sem repetidos e sem apelido que se confunde com valor vazio",()=>{
+  assert.ok(BOT_NICKS.length>=250,`só ${BOT_NICKS.length} bases: com poucas, o jogador vê a MESMA escalação de nomes toda partida`);
+  assert.equal(new Set(BOT_NICKS.map(n=>n.toLowerCase())).size,BOT_NICKS.length,"base repetida na lista");
+  // "null" chegou a entrar na lista como apelido de gamer e apareceu no placar e no chat de produção como
+  // se fosse um erro do jogo. Nome que se confunde com valor vazio nunca vale a piada.
+  const proibidos=new Set(["null","undefined","nan","true","false","none","nil","(null)",""]);
+  for(const n of BOT_NICKS){
+    assert.ok(!proibidos.has(n.toLowerCase()),`${n} se confunde com valor vazio no placar, no chat e no log`);
+    assert.ok(n.trim()===n&&n.length>=2&&n.length<=14,`base fora do formato: "${n}"`);}
+});
 test("modeCap: a capacidade fecha no tamanho de equipe (equipe incompleta não entra em campo)",()=>{
   assert.equal(modeCap(MODE.BR,1),50);assert.equal(modeCap(MODE.BR,2),50);
   assert.equal(modeCap(MODE.BR,3),48);assert.equal(modeCap(MODE.BR,4),48);
