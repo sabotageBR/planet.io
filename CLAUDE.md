@@ -136,6 +136,18 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   O morto **troca de câmera** pelas setas ‹ › da tela de morte ou do teclado: o cliente manda `{t:"spectate",dir:±1}`
   (anda na lista de vivos por massa, a mesma do placar) ou `{slot}` para pular direto. Quem valida é o servidor —
   alvo morto cai na escolha automática, e jogador vivo não vira espectador.
+  **O morto continua na sala, com HUD próprio** (`#hud.spec`, escrito por `Hud.jsx`): ficar mudo depois de morrer
+  nunca foi regra, era `className={screen==="game"?"":"hidden"}` levando o `#hud` INTEIRO — e o `<Chat>` mora lá
+  dentro. Hoje `dead` e `round` são um TERCEIRO estado: some tudo o que é de quem joga (arma, powerups,
+  cooldowns, toque, placar, feed) e ficam as duas coisas de quem assiste — o chat (que ali **não desbota**: o
+  `CHAT.FADE_MS` existe para não virar parede em cima do jogo, e atrás da tela de morte não há jogo) e o mapa.
+  **Mapa grande** = o RADAR ampliado (`Minimap.setBig`), não a câmera afastada: o radar já desenha o mapa
+  inteiro porque os inimigos vêm do PLACAR (todos os vivos, 2 Hz) e não da AOI, enquanto afastar a câmera só
+  mostraria vazio — a AOI tem teto (`VIEW_MIN/VIEW_MAX` em `net/Session.js`). No tamanho grande cabe o NOME de
+  cada planeta, e **clicar num deles é o mesmo `{t:"spectate",slot}`** das setas. Só com o jogador morto: mapa
+  completo em partida seria vantagem tática. O céu continua virando com o relógio da rodada por trás de tudo
+  isso — `roundTick` chama `setRoundHour`/`prewarmNextSky` ANTES da guarda `if(!renderer||dead)`, e o
+  `GameHost` não desconecta em `dead`/`round`.
 - **Fio binário** (`docs/spec/protocol.md`): snapshots a 20 Hz com AOI por sessão (create/update/remove por id), `self`, PLAYERS,
   LEADERBOARD, EVENT, PONG; INPUT de 10 bytes a ≤30 Hz com `seq`/`ackSeq`. JSON só para controle (join/resume/room/error/dead/spectate/rewards).
   Cliente: interpolação a −100 ms para os outros, predição + reconciliação para si (`visualOffset` decai; snap > 120 px) com a
@@ -209,7 +221,16 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   **Vitória tem fogos**: quem vence vê a salva sair do próprio planeta (`fireworkPrims` em theme/util.js —
   física compartilhada, paleta por tema; traço em vez de ponto, arrasto, gravidade, cor em 3 tempos, cintilação).
 - **Chat e voz** (`CHAT`/`VOICE` em constants): chat de sala ou de equipe (o escopo é do servidor), painel na
-  faixa esquerda do HUD. Voz é push-to-talk no **Ctrl**, clipes curtos em **µ-law 8 kHz** — não Opus, porque o
+  faixa esquerda do HUD. **Quem morreu continua falando** — texto e voz —, e o escopo é UMA função
+  (`Room._escopoFala`), porque três caminhos precisam da mesma resposta: a linha, o ícone do 🎤 e o clipe.
+  Vivo, a regra do modo. Morto: no **Livre** ele fala com a sala inteira (marcado ☠), porque morrer ali dura
+  segundos e os preenchimentos renascem no mesmo tick — isolá-lo seria mandá-lo escrever para uma sala vazia;
+  no **Battle Royale** vale a regra do Counter-Strike (morto → mortos), e ele pode PEDIR `scope:"team"` para
+  alcançar o esquadrão inteiro, vivos incluídos: a informação de quem morreu é da equipe dele. O pedido fica na
+  SESSÃO (`session.chatScope`) porque a voz não tem onde carregá-lo. ⚠️ A linha de escopo `dead` **não entra no
+  prompt da LLM** (`_ctxFala` filtra): quem responde é sempre um bot VIVO, e ele devolveria para a sala inteira
+  uma resposta a algo que nenhum vivo leu. ⚠️ E a fala de um morto sai da **câmera** dele (`_origemFala`), não de
+  `_centro`: sem peça no mundo aquilo devolveria a origem do mapa e a voz não alcançaria ninguém. Voz é push-to-talk no **Ctrl**, clipes curtos em **µ-law 8 kHz** — não Opus, porque o
   Safari não decodifica o webm que o Chrome grava e metade da sala ficaria muda. O servidor é relay puro (não
   decodifica, não guarda) e o áudio toca num 4º barramento, fora do teto de vozes. ⚠️ o `maxPayload` do WS
   acompanha `VOICE.MAX_BYTES`: com 4 KB o `ws` derrubava o frame e a conexão junto.

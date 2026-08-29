@@ -19,7 +19,9 @@ export function createMinimap({hud,theme,getScene,onPick}){
   function bigD(){const w=hud?hud.clientWidth:innerWidth,h=hud?hud.clientHeight:innerHeight;
     return Math.max(180,Math.min(Math.min(w,h)*.8,720));}
   function layout(){const R0=th.hud.radar,m=bodyMode();mode=m;D=big?bigD():(R0.size[m]||R0.size.desktop);dpr=Math.min(2,devicePixelRatio||1);
-    const pad=R0.shadow?Math.max(R0.shadow.dx,R0.shadow.dy)+2:2,lab=R0.label&&(!R0.label.desktopOnly||m==="desktop")?16:0,w=D+pad+2,h=D+pad+lab+2;
+    // no tamanho grande o rótulo "RADAR" sai: ele é assinatura de um mostrador de canto, e no mapa aberto
+    // cairia fora do canvas (o `dy` do tema conta com um diâmetro de 150 px, não de 700)
+    const pad=R0.shadow?Math.max(R0.shadow.dx,R0.shadow.dy)+2:2,lab=!big&&R0.label&&(!R0.label.desktopOnly||m==="desktop")?16:0,w=D+pad+2,h=D+pad+lab+2;
     cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);cv.style.width=w+"px";cv.style.height=h+"px";
     if(big){   // centralizado no #hud, que em `rail` já é a área da câmera: o mapa não nasce atrás da gaveta
       cv.style.left="50%";cv.style.top="50%";cv.style.right="auto";cv.style.bottom="auto";
@@ -70,7 +72,7 @@ export function createMinimap({hud,theme,getScene,onPick}){
     const md=R0.meDot;c.fillStyle=md.fill;c.strokeStyle=md.stroke;c.lineWidth=md.width;
     for(const p of S.mine){c.beginPath();c.arc(mx+p.x*sc,my+p.y*sc,Math.max(md.r[m]||3,p.r*sc),0,6.283);c.fill();c.stroke();}
     c.restore();
-    if(R0.label&&(!R0.label.desktopOnly||m==="desktop")){c.font=R0.label.font;c.fillStyle=R0.label.color;c.textAlign="center";c.textBaseline="middle";c.fillText(R0.label.text,cx,cy+R+R0.label.dy+14);}}
+    if(!big&&R0.label&&(!R0.label.desktopOnly||m==="desktop")){c.font=R0.label.font;c.fillStyle=R0.label.color;c.textAlign="center";c.textBaseline="middle";c.fillText(R0.label.text,cx,cy+R+R0.label.dy+14);}}
   /** Clique no mapa grande → o jogador mais próximo do ponto (o mesmo blip que se vê), em coordenadas de mundo. */
   function pick(e){
     if(!big||!mapa||!onPick)return;

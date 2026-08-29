@@ -197,8 +197,10 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 /* o seletor de destino do morto (arquibancada ↔ esquadrão) é o mesmo chip que já dizia "equipe" */
 #chat .chat-scope.pick{pointer-events:auto;border:0;cursor:pointer;background:var(--line,#0006);color:var(--bg,#fff)}
 #chat .chat-scope.pick.team{background:var(--ok,#3ddc5f);color:var(--line,#141026)}
-#chat .chat-line.dead{opacity:.78}
-#chat .chat-line.dead b{color:var(--line,#8886)}
+/* a linha de quem morreu recua um passo, mas o NOME continua legível: `--line` é a cor da borda (quase preta
+   no dusk) e sumia dentro do próprio balão — quem fala da arquibancada não pode virar um borrão */
+#chat .chat-line.dead{opacity:.82}
+#chat .chat-line.dead b{color:var(--muted,#b59fd0)}
 
 /* o mapa grande fica por baixo do chat (z-index 5 do #radar contra 6 do #chat): conversar é o que continua
    acontecendo, o mapa é consulta */

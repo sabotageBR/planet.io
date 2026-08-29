@@ -15,7 +15,11 @@ JSON:
 - `{"t":"join","token":"pt_…","room":"1ABC"|null,"view":{"w":1280,"h":720},"fallbackNick":"Evandro","mode":0|1,"teamSize":1..4,"party":"0ABC"|null}`
   - `mode`: `MODE.FREE` (0, padrão) ou `MODE.BR` (1). Id desconhecido cai no Livre — cliente antigo nunca muda de jogo.
   - `party`: código do lobby de equipe; todos os membros caem na MESMA sala e na MESMA equipe (`Room._teamFor`).
-- `{"t":"chat","text":"…"}` — o ESCOPO é do servidor (sala no Livre e no Battle Royale solo; equipe em equipe).
+- `{"t":"chat","text":"…","scope":"all"|"team"}` — o ESCOPO é do servidor (sala no Livre e no Battle Royale
+  solo; equipe em equipe). `scope` é só o PEDIDO de quem já MORREU no Battle Royale, onde o padrão é a
+  arquibancada (`"all"` → só os outros mortos) e `"team"` abre para o esquadrão inteiro, vivos incluídos.
+  De quem está vivo, e no Livre, o campo é ignorado. O pedido fica guardado na sessão e vale também para a
+  voz — o clipe é binário e o `{"t":"talk"}` só leva um bit, então não há onde repeti-lo.
 - `{"t":"feed","v":[…],"at":ms}` — o KILL FEED, difundido à SALA INTEIRA sem AOI: um abate do outro lado do mapa é exatamente o que ele existe para contar. Só SLOTS viajam (o cliente resolve o nome por `view.playerOf`), o que faz o feed herdar o `anonBots` do Battle Royale de graça. Linhas: `{k:"kill",a:matador,b:vítima,how,by:assistência|null,byHow}` · `{k:"hazard",a:null,b:vítima,how}` · `{k:"sys",how:"start|lead|crunch|zone|few|streak",a,n}`. ⚠️ `how` e `a` são campos separados porque **arma nenhuma mata sozinha**: `w.killPiece` só é chamado com `eaten`, `zone` e `blackhole` — míssil, estrela e asteroide param no piso `MIN_PIECE_R` e apenas AMOLECEM. A linha honesta é "⭐ amoleceu · Fulano devorou".
 - `{"t":"avatars","list":[{slot,userId,v}]}` — quem na sala tem foto (a skin "Retrato"). JSON e não fio, pelo mesmo motivo do `talk`: é estado raro, e versionar o binário por causa dele sairia caro para todo mundo. O cliente busca `GET /api/avatar/:userId?v=<hash>` (imutável: foto nova = URL nova).
 - `{"t":"talk","on":true|false}` — o push-to-talk ABRIU ou FECHOU. Chega no instante do Ctrl, muito antes do clipe (que só sai quando a tecla é solta): é o que faz o ícone de alto-falante em cima do planeta acompanhar quem está falando de verdade, em vez de acender junto com o áudio. O servidor valida (vivo, `VOICE.TALK_CD_MS` entre avisos), acende `PLAYER_FLAG.TALK` no PLAYERS e repassa `{"t":"talk","slot","on"}` para **os mesmos ouvintes do clipe** (equipe, ou os `VOICE.LISTENERS` mais próximos dentro de `VOICE.DIST`) — quem não ouviria o áudio não vê o ícone. Vai em JSON porque são dois bits de estado: o fio binário não precisa de versão nova. O `on` tem teto de `VOICE.MAX_MS` no servidor, então um `off` perdido apaga sozinho.
@@ -38,7 +42,9 @@ JSON:
   - `team`: minha equipe (−1 = sem equipe). Quem é aliado de quem sai daqui e do `team` de cada linha do PLAYERS.
 - `{"t":"lobby","code":"1ABC","mode":1,"teamSize":1,"filled":37,"cap":50,"humans":2,"startsInMs":0,"waitMs":11500}` (2 Hz) — a sala ENCHENDO. Vai em **milissegundos**, não em ticks: no lobby não há snapshot nenhum, então o relógio de tick do cliente nunca sincronizaria e uma contagem em ticks ficaria parada. `startsInMs > 0` = a contagem regressiva já começou; `waitMs` é o que resta da janela de espera.
 - `{"t":"phase","phase":"live","round":{…},"players":12,"cap":50,"teamSize":2,"mode":1}` — a LARGADA: a sala completou, sorteou as equipes, fez todo mundo nascer num anel e armou a zona.
-- `{"t":"chat","slot":3,"name":"Evandro","team":2|null,"text":"…","at":1699999999}` — já filtrado pelo escopo do modo.
+- `{"t":"chat","slot":3,"name":"Evandro","team":2|null,"text":"…","at":1699999999,"scope":"room"|"team"|"dead","dead":1?}`
+  — já filtrado pelo escopo (`Room._escopoFala`). `dead` só aparece quando quem escreveu já morreu, e é o que
+  põe o ☠ na linha; `scope:"dead"` é a arquibancada do Battle Royale.
 - `{"t":"talk","slot":3,"on":true}` — resposta do `talk` acima: quem está com o microfone aberto agora.
   - `round`: tick de início e duração da rodada (1 h). O cliente deriva daí o **relógio do espaço** (a rodada = `ROUND.DAYS` dias, começando em `dayStart` → um dia a cada 15 min, 12 trocas de céu) e a contagem para o fim do mundo — nada mais vai no fio.
 - `{"t":"roundEnd","code":"1ABC","reason":"time"|"lastAlive","mode":0,"teamSize":1,"champion":{…},"champTeam":null,"board":[{"slot","name","mass","score","kills","isBot","registered","skinId","team","placement"}],"nextInMs":15000,"tick":216000}` — o BIG CRUNCH: campeão = maior planeta vivo (1ª linha do placar); a sala é aposentada e o cliente entra numa nova depois de `nextInMs`.
