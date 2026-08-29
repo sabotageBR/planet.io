@@ -52,11 +52,11 @@ export const textures={
     default:return`${id}:${kind}`;}},
 
   // planeta: chapado + crescente de tinta + brilho elíptico + emoji fantasma + contorno (creme se for eu, com fio de tinta por fora)
-  planet(c,size,{skin:sk,isMe=false}){const R=size/2,K=PK(sk),r=R/K,col=sk.color,lw=Math.max(2.5,r*.1);c.lineJoin="round";c.lineCap="round";
+  planet(c,size,{skin:sk,isMe=false,avatarBmp=null}){const R=size/2,K=PK(sk),r=R/K,col=sk.color,lw=Math.max(2.5,r*.1);c.lineJoin="round";c.lineCap="round";
     const band=(a0,a1)=>{c.beginPath();c.ellipse(0,0,r*1.85,r*.56,0,a0,a1,false);c.ellipse(0,0,r*1.3,r*.39,0,a1,a0,true);c.closePath();c.fill();c.stroke();};
     if(sk.ring){c.fillStyle=sh(col,.3);c.strokeStyle=INK;c.lineWidth=lw*.7;band(Math.PI,Math.PI*2);}
     c.fillStyle=col;c.beginPath();c.arc(0,0,r,0,6.283);c.fill();
-    c.save();c.beginPath();c.arc(0,0,r,0,6.283);c.clip();const pat=paintPattern(c,r,sk,{ink:INK,light:CREAM,avatar:p.avatarBmp||null});
+    c.save();c.beginPath();c.arc(0,0,r,0,6.283);c.clip();const pat=paintPattern(c,r,sk,{ink:INK,light:CREAM,avatar:avatarBmp});
     c.fillStyle="rgba(20,16,38,.3)";c.beginPath();c.arc(r*.38,r*.4,r*1.05,0,6.283);c.fill();
     c.fillStyle="rgba(255,255,255,.38)";c.beginPath();c.ellipse(-r*.36,-r*.38,r*.34,r*.2,-.75,0,6.283);c.fill();
     c.fillStyle="rgba(255,255,255,.25)";c.beginPath();c.arc(-r*.08,-r*.58,r*.08,0,6.283);c.fill();

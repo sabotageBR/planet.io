@@ -503,11 +503,21 @@ test('fala gerada: o bot responde a quem o CHAMA, e o orçamento segura o resto'
     // Só as gerações de RESPOSTA: com `rng.chance` forçado a true, os gatilhos espontâneos (kill, líder,
     // caçado…) também passam pela mesma LLM falsa, e contá-los aqui mediria outra coisa.
     const chamados=()=>pedidos.filter(p=>p.kind==='mention'||p.kind==='coro'||p.kind==='cadeia');
-    assert.equal(chamados().length,1,'um bot citado, uma resposta');
-    assert.equal(chamados()[0].nome,bot.name);
-    assert.equal(chamados()[0].quem,eu,'o prompt sabe COM QUEM está falando');
-    assert.ok(chamados()[0].historico.some(l=>l.text.includes('vem ca')),'e leva a conversa junto — o servidor não guardava uma linha antes disto');
-    assert.ok(chamados()[0].historia&&chamados()[0].historia.quem,'e sabe QUEM ele é: a persona vai no prompt');
+    // Quantos respondem NÃO é fixo: `citou` é aproximado de propósito (raiz, sufixo, erro de digitação), e
+    // numa sala de 24 apelidos de gente uma palavra da frase às vezes casa com um segundo nick. O que o
+    // código garante — e o que este teste cobra — é que só responde quem foi CITADO, e no máximo
+    // CORO_MAX_CITADOS deles.
+    const {BOT_LLM}=await import('@planet/shared/constants.js');
+    const vivos=[...room.sim.players.values()].filter(g=>g.isBot);
+    const citados=vivos.filter(g=>citou(`${bot.name} vem ca seu covarde`,g.name)).map(g=>g.name);
+    assert.ok(citados.includes(bot.name),'o bot chamado pelo nome tem que estar entre os citados');
+    assert.ok(chamados().length>=1&&chamados().length<=BOT_LLM.CORO_MAX_CITADOS,
+      `${chamados().length} respostas para ${citados.length} citado(s)`);
+    for(const c of chamados())assert.ok(citados.includes(c.nome),`${c.nome} respondeu sem ter sido citado`);
+    const meu=chamados().find(c=>c.nome===bot.name)||chamados()[0];
+    assert.equal(meu.quem,eu,'o prompt sabe COM QUEM está falando');
+    assert.ok(meu.historico.some(l=>l.text.includes('vem ca')),'e leva a conversa junto — o servidor não guardava uma linha antes disto');
+    assert.ok(meu.historia&&meu.historia.quem,'e sabe QUEM ele é: a persona vai no prompt');
     // orçamento da sala: chamar de novo no mesmo instante não vira coro
     n=c.json.length;
     c.send({t:'chat',text:`${bot.name} responde de novo`});

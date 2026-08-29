@@ -526,5 +526,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         if(m>=EJECT.MIN_R*EJECT.MIN_R){audio.play("eject",{mine:true,pitch:pitchOf(m)*(1+.55*Math.min(1,ejN/EJECT.RAMP_N))});
           if(ejN<EJECT.RAMP_N)ejN++;}}}
     if(statsOv){if(now-bytesT>1000){bytesRate=conn?(conn.bytesIn-bytesLast)*1000/(now-bytesT):0;bytesLast=conn?conn.bytesIn:0;bytesT=now;}statsOv.update(now,statsText());}}
-  if(import.meta.env&&import.meta.env.DEV&&typeof window!=="undefined")window.__planet=game.debug;   // só em dev: inspecionar hudStore/estado pelo console
+  // Em dev sempre; em produção só com `?stats`. Sem isto, um bug que só aparece na BUILD (ordem de módulos,
+  // minificação) vira caça às cegas: o console não mostra estado nenhum e não há como perguntar ao motor.
+  if(typeof window!=="undefined"&&((import.meta.env&&import.meta.env.DEV)||isStats()))window.__planet=game.debug;
   return game;}
