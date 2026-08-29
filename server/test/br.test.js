@@ -10,8 +10,8 @@ const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.env'),'utf8').split('\n')){const m=/^\s*([A-Z_]+)=(.*)$/.exec(l);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim();}}catch{}}
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';process.env.SHARDS='1';process.env.PEERS='';
 const {startServer}=await import('../src/index.js');
-const {decodeMessage,encodeInput,encodeVoiceUp,MSG,PLAYER_FLAG,SELF_FLAG,NO_TEAM,PROTOCOL_VERSION}=await import('@planet/shared/protocol/index.js');
-const {MODE,BR,ZONE,VOICE,CHAT,WEAPON,BOT_NAMES,BOT_CHAT,BOT_TALK,modeCap}=await import('@planet/shared/constants.js');
+const {decodeMessage,encodeInput,encodeVoiceUp,MSG,KIND,PLAYER_FLAG,SELF_FLAG,NO_TEAM,PROTOCOL_VERSION}=await import('@planet/shared/protocol/index.js');
+const {MODE,BR,ZONE,VOICE,CHAT,WEAPON,NET,BOT_NAMES,BOT_CHAT,BOT_TALK,modeCap}=await import('@planet/shared/constants.js');
 const LOG=process.env.LOG_LEVEL;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let srv,base,wsUrl,token='pt_sem_banco';
@@ -300,6 +300,23 @@ test('espectador: quem está VIVO não troca de câmera (tem as próprias peças
 });
 
 // ── 5. chat ──────────────────────────────────────────────────────────────────
+test('AOI: a comida tem TETO por contagem, não só por área (é ela que enche o frame)',async()=>{
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Gordo',mode:MODE.BR,teamSize:1,room:newRoom()});
+  const room=roomOf(r.code);room.lobbyUntil=room.sim.tick+60;room.lobbyStart=room.sim.tick;
+  await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'largada');
+  // planeta grande = câmera afastada = a AOI da comida abre até o teto de ÁREA. Sem o teto de CONTAGEM
+  // cabiam ~500 grãos numa tela só, e a comida é 90% das entidades que o cliente desenha.
+  const w=room.sim.world,ps=w.players.get(r.slot);
+  const pc=ps.pieces.find(p=>!p.dead);assert.ok(pc,'tenho corpo depois da largada');
+  pc.r=900;pc.mass=900*900;
+  await sleep(1200);
+  const s=[...room.sessions.values()].find(x=>x.slot===r.slot);
+  let comida=0;for(const v of s.known.values())if((v&7)===KIND.FOOD)comida++;
+  assert.ok(comida>0,'com a câmera afastada tem que chegar comida');
+  assert.ok(comida<=NET.AOI_FOOD_MAX,`${comida} grãos numa sessão só (teto ${NET.AOI_FOOD_MAX})`);
+  c.close();
+});
 test('fala dos bots: sai pelo caminho do chat e o orçamento segura o coro',async()=>{
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Ouve',mode:MODE.BR,teamSize:1,room:newRoom()});

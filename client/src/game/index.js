@@ -21,7 +21,7 @@ import {createAudio} from "../audio/index.js";
 import {api} from "../api/client.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,MISSILE,PLAYER,STAR,MODE,aimScore,unpackDir} from "@planet/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,MISSILE,PLAYER,STAR,MODE,NET,aimScore,unpackDir} from "@planet/shared";
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
@@ -73,6 +73,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
 
   // ── estado de rede/simulação ──
   const buffer=createSnapshotBuffer();
+  const alvo={x:0,y:0};let inputTimer=0;   // alvo reusado; inputTimer: o envio de input não depende do rAF (ver enviarInput)
   let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,slowSince=0,econAt=0,statsOv=null;
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
   // ── modo, equipe, zona, chat e voz ──
@@ -128,7 +129,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   let destroyed=false;   // StrictMode destrói a 1ª instância com o init do Pixi ainda pendente: não pode sobrar um canvas zumbi
   createRenderer({container,theme:curTheme,prefs:{fx:!curPrefs.reduceMotion}}).then(r=>{if(destroyed){r.destroy();return;}renderer=r;ready=true;
     pointer=createPointer(r.canvas,{onButton:button});applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();warmSkins();
-    if(!raf)raf=requestAnimationFrame(frame);}).catch(e=>{console.error("[game] renderer",e&&e.stack||e);container.innerHTML=`<div style="padding:20px;color:#fff">Não foi possível iniciar o renderizador (WebGL indisponível): ${e.message}</div>`;});
+    if(!raf)raf=requestAnimationFrame(frame);
+    if(!inputTimer)inputTimer=setInterval(()=>enviarInput(performance.now()),Math.max(8,Math.round(1000/NET.INPUT_HZ)));}).catch(e=>{console.error("[game] renderer",e&&e.stack||e);container.innerHTML=`<div style="padding:20px;color:#fff">Não foi possível iniciar o renderizador (WebGL indisponível): ${e.message}</div>`;});
   const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(()=>game.resize()):null;if(ro)ro.observe(container);
   const onVis=()=>{visible=document.visibilityState!=="hidden";lastT=performance.now();if(visible){frames=0;fpsT=lastT;}};document.addEventListener("visibilitychange",onVis);
 
@@ -265,7 +267,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};applyQuality();audio.setPrefs(curPrefs);minimap.show(joined&&curPrefs.showMinimap!==false);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
     resize(){if(!renderer)return;renderer.resize();if(conn&&conn.isOpen&&joined){const v=viewSize();if(v.w!==game._vw||v.h!==game._vh){game._vw=v.w;game._vh=v.h;conn.sendJson({t:"view",w:v.w,h:v.h});}}},
-    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__planet;cancelAnimationFrame(raf);raf=0;game.leave(true);audio.suspend();removeEventListener("pointerdown",wakeAudio);removeEventListener("keydown",wakeAudio);keyboard.destroy();touch.destroy();actions.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
+    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__planet;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;game.leave(true);audio.suspend();removeEventListener("pointerdown",wakeAudio);removeEventListener("keydown",wakeAudio);keyboard.destroy();touch.destroy();actions.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("planet:theme",onThemeEvent);if(themeGuard)removeEventListener("planet:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,
@@ -430,15 +432,28 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   let bytesRate=0,bytesLast=0,bytesT=0,themeAt=0,own0=[];
 
   // ── laço ──
+  /**
+   * Alvo do ponteiro → InputSender. **NÃO pode depender do render**: saindo de dentro do frame, uma travada
+   * de render deixa o servidor sem alvo novo, ele segue movendo a peça na direção velha e o snapshot seguinte
+   * corrige tudo de uma vez — é exatamente o "volta atrás"/atraso de mouse que aparece quando o fps cai (e o
+   * Battle Royale é onde ele cai, porque a AOI enche). Por isso roda também num timer a NET.INPUT_HZ.
+   */
+  function enviarInput(now){
+    if(!ready||!joined||!conn||dead)return;
+    let w=null;
+    if(pointer&&pointer.state.active)w=cam.toWorld(pointer.state.sx,pointer.state.sy);
+    else if(own0.length){let x=0,y=0;for(const p of own0){x+=p.rx;y+=p.ry;}w=alvo;w.x=x/own0.length;w.y=y/own0.length;}   // sem ponteiro ainda: fica parado
+    if(w){input.setTarget(w.x,w.y);predictor.setTarget(w.x,w.y);}   // o alvo é marcado mesmo com o socket caído (a predição local continua)
+    if(conn.isOpen)input.update(now);}
   function frame(now){raf=requestAnimationFrame(frame);if(!ready)return;
-    const dt=Math.min(.1,Math.max(0,(now-lastT)/1000));lastT=now;const t0=performance.now();
+    // o teto do passo tem que bater com o do acumulador do Predictor (.25): com .1 aqui, uma travada de
+    // 300 ms fazia o servidor andar 300 ms e a predição só 100 — a peça ficava para trás e o snapshot
+    // seguinte passava dos NET.SNAP_DIST e dava o solavanco. O Predictor já limita a 15 sub-passos.
+    const dt=Math.min(.25,Math.max(0,(now-lastT)/1000));lastT=now;const t0=performance.now();
     frames++;if(now-fpsT>1000){fps=Math.round(frames*1000/(now-fpsT));frames=0;fpsT=now;}
     if(forced&&document.documentElement.dataset.theme!==forced&&now-themeAt>500){themeAt=now;applyTheme(forced);}
     if(renderer.R.theme!==curTheme)renderer.setTheme(curTheme);
-    if(joined&&conn){if(!dead){let w=null;if(pointer&&pointer.state.active)w=cam.toWorld(pointer.state.sx,pointer.state.sy);
-        else if(own0.length){w={x:0,y:0};for(const p of own0){w.x+=p.rx/own0.length;w.y+=p.ry/own0.length;}}   // sem ponteiro ainda: fica parado
-        if(w){input.setTarget(w.x,w.y);predictor.setTarget(w.x,w.y);}}
-      if(conn.isOpen&&!dead)input.update(now);}
+    enviarInput(now);
     predictor.update(dt);interp.update(now);view.build();roundTick(now);
     const own=[];predictor.forEach(pc=>own.push(pc));own0=own;cam.W=renderer.W;cam.H=renderer.H;
     let camPieces=own;   // morto: a câmera acompanha quem o servidor mandou assistir (mesmo slot que a AOI segue), senão congela

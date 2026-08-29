@@ -27,7 +27,7 @@ export function createSnapshotter(room){
   const crPool=[],upPool=[],rmPool=[],creates=[],updates=[],removes=[];
   const self={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0,owned:1};
   const snap={tick:0,ackSeq:0,creates,updates,removes,self};
-  let passes=0;
+  let passes=0;/** @type {any[]} */const longe=[];   // reusado: o anel de fora, candidato ao teto de comida
   const track=(arr,kind,t)=>{for(let i=0;i<arr.length;i++){const b=arr[i];if(b.dead)continue;
     const x=qPos(b.x,W),y=qPos(b.y,H),r=qR(b.r),vx=qV(b.vx),vy=qV(b.vy),flags=b.flags&WFLAGS,ex=hasExtra(kind),phase=ex?b.type:0,infl=ex?Math.round(extraOf(b,kind)):0;
     let p=prev.get(b.id);if(!p){prev.set(b.id,{x,y,r,vx,vy,flags,phase,infl,seen:t});continue;}
@@ -61,13 +61,25 @@ export function createSnapshotter(room){
    * retângulo externo. Quem saiu da AOI continua sendo removido pela varredura de carimbo do `known`, que
    * não depende deste laço.
    */
-  function visitFood(w,rin,rout,known,tag,slot,sim){
+  function visitFood(w,rin,rout,known,tag,slot,sim,cx,cy){
     const food=w.food,fg=w.foodGrid;if(!food.length)return;
     if(fq.length<food.length)fq=new Int32Array(food.length*2);
     const n=fg.queryRect(rout.x0,rout.y0,rout.x1,rout.y1,fq);
+    // TETO POR CONTAGEM (NET.AOI_FOOD_MAX), não só por área: quem já é conhecido é sempre mantido (sumir um
+    // grão da tela é pior que ele nunca ter aparecido) e o corte cai no ANEL DE FORA. Por isso duas passadas:
+    // a 1ª cria o que está a menos de metade do raio da AOI, a 2ª preenche o resto até o teto — senão a
+    // varredura da grade, que vem em ordem de célula, poderia gastar o teto no que está longe e deixar um
+    // buraco de comida em volta do jogador.
+    const perto=Math.min(rout.x1-rout.x0,rout.y1-rout.y0)*.25,p2=perto*perto;
+    let usados=0;longe.length=0;
     for(let i=0;i<n;i++){const b=food[fq[i]];if(!b||b.dead)continue;
-      if(known.has(b.id)){if(!rectHas(rout,b.x,b.y,b.r))continue;known.set(b.id,KIND.FOOD|tag);const m=masks.get(b.id);if(m)pushUpdate(b,KIND.FOOD,m,slot);}
-      else if(rectHas(rin,b.x,b.y,b.r)){known.set(b.id,KIND.FOOD|tag);pushCreate(b,KIND.FOOD,slot,sim);}}}
+      if(known.has(b.id)){if(!rectHas(rout,b.x,b.y,b.r))continue;known.set(b.id,KIND.FOOD|tag);usados++;const m=masks.get(b.id);if(m)pushUpdate(b,KIND.FOOD,m,slot);}
+      else if(rectHas(rin,b.x,b.y,b.r)){const dx=b.x-cx,dy=b.y-cy;
+        if(dx*dx+dy*dy<=p2){known.set(b.id,KIND.FOOD|tag);usados++;pushCreate(b,KIND.FOOD,slot,sim);}
+        else longe.push(b);}}
+    for(let i=0;i<longe.length&&usados<NET.AOI_FOOD_MAX;i++){const b=longe[i];
+      known.set(b.id,KIND.FOOD|tag);usados++;pushCreate(b,KIND.FOOD,slot,sim);}
+    longe.length=0;}
   /** Monta e envia o snapshot de uma sessão (nada acontece se o socket está fechado ou atolado). */
   function send(s){
     const ws=s.ws;if(!ws||ws.readyState!==1)return false;
@@ -88,7 +100,7 @@ export function createSnapshotter(room){
     const fs=aoiScaleFood(s.scale,s.view.w,s.view.h);
     const fin=fs===s.scale?rin:viewRect(s.cx,s.cy,fs,s.view.w,s.view.h,NET.AOI_PAD),
           fout=fs===s.scale?rout:viewRect(s.cx,s.cy,fs,s.view.w,s.view.h,NET.AOI_PAD_OUT);
-    visit(w.pieces,KIND.PIECE);visitFood(w,fin,fout,known,tag,slot,sim);visit(w.ejected,KIND.EJECT);visit(w.asteroids,KIND.ASTEROID);visit(w.holes,KIND.BLACKHOLE);visit(w.stars,KIND.STAR);visit(w.missiles,KIND.MISSILE);
+    visit(w.pieces,KIND.PIECE);visitFood(w,fin,fout,known,tag,slot,sim,s.cx,s.cy);visit(w.ejected,KIND.EJECT);visit(w.asteroids,KIND.ASTEROID);visit(w.holes,KIND.BLACKHOLE);visit(w.stars,KIND.STAR);visit(w.missiles,KIND.MISSILE);
     const gone=sim.gone,byId=w.entityById;
     for(const [id,v] of known){if((v>>>3)===stamp)continue;known.delete(id);
       const g=gone.get(id);pushRemove(id,g!==undefined?g:byId.has(id)?REMOVE.LEFT_AOI:DEFAULT_REASON[v&7]);}

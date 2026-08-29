@@ -381,8 +381,14 @@ export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.15
 // TAU_POS/TAU_ZOOM são a suavização do MESMO cliente, convertidas de "por frame" para tempo: lá é
 // `viewX=(viewX+x)/2` (50% por frame → τ=dt/ln2=24 ms) e `scale=(9·scale+s)/10` (10% → τ=158 ms).
 // A posição é quase instantânea de propósito: a câmera fica colada no planeta e só o zoom respira.
-export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:150,EXTRAP_MAX_MS:100,SNAP_DIST:120,AOI_PAD:.3,AOI_PAD_OUT:.45,
+export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:150,EXTRAP_MAX_MS:100,SNAP_DIST:120,AOI_PAD:.3,AOI_PAD_OUT:.45,AOI_FOOD_MAX:300,
   RATE_INPUTS:40,RATE_BURST:60,RATE_JSON:5,HEARTBEAT_MS:5000,DEAD_MS:15000,RESUME_MS:10000};
+// AOI_FOOD_MAX: TETO de grãos que uma sessão conhece ao mesmo tempo. `aoiScaleFood` já limita a ÁREA, mas
+// área não é contagem: com a câmera afastada de um planeta grande cabiam ~500 grãos na tela de uma vez, e a
+// comida é 90 % das entidades. Medido numa sala de Battle Royale: pico de 510 entidades, 443 delas comida,
+// contra 128–185 estáveis no Livre — é o que fazia o frame estourar e, por tabela, atrasar o input e sacudir
+// a predição. O teto corta o ANEL DE FORA (o mais longe do jogador, onde o grão tem 1–2 px na tela): o que
+// está perto entra sempre, e quem já é conhecido nunca some por causa do teto (sumir seria pior que faltar).
 export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40};
 // chat de sala (Livre e Battle Royale solo) ou de equipe (Battle Royale em equipe), pelo `chat` do MODE.
 // Sem histórico no servidor: quem entra não recebe o que já passou. RATE_MS/BURST ficam POR CIMA do balde
