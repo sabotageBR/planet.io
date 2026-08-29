@@ -357,8 +357,23 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `kills/GREATEST(deaths,1)` com piso de qualificação (`KD_MIN_KILLS`/`KD_MIN_GAMES`) — materializar um
   derivado é criar um número que mente. Ranking global e por PAÍS (`users.country`); ⚠️ o país entra na CHAVE
   do cache de 10 s de `api/ranking.js`, senão a primeira resposta regional é servida ao mundo inteiro.
-  `POST /api/auth/google` existe, é testada e devolve **503 sem `GOOGLE_CLIENT_ID`** — e `/api/config` só
-  expõe o clientId quando ele existe, então sem credencial o botão nem aparece.
+- **Entrar com Google** (`auth/google.js` · `api/auth.js` · `client/src/api/google.js` + `ui/GoogleButton.jsx`):
+  **LIGADO** — o clientId está no ConfigMap `warspace-config` e no `.env`. É o fluxo do Google Identity
+  Services: o cliente manda o `id_token` e o servidor o VALIDA contra o `tokeninfo` (`aud`/`iss`/`exp`/
+  `email_verified`). **Não há troca de *code*, então o `client_secret` não existe deste lado** e não entra
+  em Secret nenhum — o client_id é público por definição, vai no HTML. `googleClientId` vazio em
+  `/api/config` continua sendo o ÚNICO interruptor: sem ele a rota é 503, o botão não renderiza e o SDK do
+  Google **nem é baixado** (a carga é sob demanda, em `api/google.js` — script de terceiro em toda carga da
+  página, para um botão que a maioria não usa, é custo de graça). Quatro caminhos, nesta ordem: identidade
+  `(provider,subject)` conhecida · **e-mail verificado que já é de uma conta → a identidade vai para AQUELA
+  conta** · Bearer de guest → promove o guest · senão conta nova. Os dois do meio existem porque a rota,
+  ligada, tinha dois becos: o `INSERT` esbarrava em `users_email_uq` e virava **500**, e `normalizeNick`
+  RECUSA acima de 16 caracteres em vez de cortar, então um nome como "Alexandre Fernandes Silva" derrubava
+  a entrada inteira com 400 — agora o nome do Google é cortado e ganha sufixo se colidir, e só um `nick`
+  explícito no corpo continua estrito. ⚠️ Casar por e-mail CONFIA no e-mail de `users`, e o que entra por
+  `/api/auth/claim` **nunca foi verificado por nós**: o conserto de raiz é verificar o e-mail no claim.
+  ⚠️ `server/test/game.test.js` lê o `.env` da raiz e trava `/api/config` com `deepEqual`, então ele fixa
+  `GOOGLE_CLIENT_ID=''` no topo — sem isso o `.env` preenchido quebra o teste pelo AMBIENTE.
 - **Placar da SALA** (`Room.roster`): a rodada do Livre caiu para **30 min** (`ROUND.TICKS` 108000, `DAYS` 2 —
   o dia do espaço continua com 15 min; ⚠️ quem manda em produção é o env `ROUND_TICKS`, e `roundInfo()` passou
   a mandar `days` porque cliente novo com env velho desenhava o céu na metade da velocidade). No fim vêm
@@ -432,17 +447,35 @@ do zero, use só com o banco vazio). Secret `warspace-db` criado via `./scripts/
 
 ## Arestas conhecidas
 
-- ⚠️ **O certificado Let's Encrypt não sai sozinho neste cluster.** O cert-manager faz um *self-check*
-  do desafio HTTP-01 ANTES de chamar a ACME, e de dentro do cluster o IP público
-  (`177.190.160.19:80`) dá `connection timed out` — o roteador não faz hairpin NAT. O desafio fica
-  `pending` para sempre mesmo respondendo **200 de fora**. Não é do warspace: há 11 desafios presos
-  assim desde 2026-07-30 (`j4call`, `itm`) e um desde 2024. A correção é split-horizon no CoreDNS —
-  um bloco `hosts` mapeando o domínio para `10.110.179.230` (ClusterIP do `ingress-nginx-controller`),
-  **antes do `forward`**, senão o forward atende primeiro. Sem isso o jogo funciona em HTTPS com o
-  certificado autoassinado do nginx, e o navegador avisa.
+- ✅ **O certificado Let's Encrypt saiu — e o conserto foi split-horizon no CoreDNS** (2026-08-29).
+  O cert-manager faz um *self-check* do desafio HTTP-01 ANTES de chamar a ACME, e de dentro do cluster
+  o IP público (`177.190.160.19:80`) dá `connection timed out` — o roteador não faz hairpin NAT. O desafio
+  ficava `pending` para sempre mesmo respondendo **200 de fora**. Não era do warspace: havia 11 desafios
+  presos assim desde 2026-07-30 (`j4call`, `itm`) e um desde 2024.
+  O que foi feito, no ConfigMap `kube-system/coredns` (é a ÚNICA coisa do projeto fora do namespace
+  `warspace`, por isso vai com backup):
 
-- Sem "esqueci a senha" (reset via SQL). O merge de contas passou a existir SÓ no caminho do Google (um guest
-  com Bearer é promovido em vez de virar conta nova); nos outros continua sem.
+  ```
+      hosts {
+         10.110.179.230 warspace.io www.warspace.io
+         fallthrough
+      }
+  ```
+
+  `10.110.179.230` é o ClusterIP do `ingress-nginx-controller`. O `fallthrough` é o que mantém todo o resto
+  intacto — sem ele o bloco vira um buraco negro de DNS para o cluster inteiro. No CoreDNS **v1.8.0** daqui,
+  o `plugin.cfg` já ordena `hosts` antes de `kubernetes` e de `forward`, então a posição no Corefile não
+  decide nada: quem decide é o plugin existir. Aplicar com `kubectl patch --type merge` só em
+  `data.Corefile` (o objeto é do `kubeadm`; um `apply --force` tomaria a posse do campo), depois
+  `rollout restart deploy/coredns`. Os DOIS certificados (apex e www) fecharam em menos de um minuto.
+  **Acesso ao nó:** `ssh naldo@192.168.12.50` (senha; não há chave publicada e não há `sshpass` na máquina
+  de dev), `kubectl` em `/usr/bin/kubectl` e kubeconfig root-only em `/etc/kubernetes/admin.conf` — ou seja,
+  tudo é `sudo kubectl --kubeconfig /etc/kubernetes/admin.conf …`. Senha nenhuma mora neste repositório.
+  ⚠️ O mesmo bloco resolveria os outros domínios presos do cluster; aqui entraram só os dois do warspace.
+
+- Sem "esqueci a senha" (reset via SQL). O merge de contas existe SÓ no caminho do Google, por duas portas: um
+  guest com Bearer é promovido em vez de virar conta nova, e um e-mail verificado que já pertence a alguém leva
+  a identidade para aquela conta. Nos outros caminhos continua sem.
 - ⚠️ **`npm run dev` na raiz lê o `.env` da raiz, que aponta para PRODUÇÃO** — e com `MIGRATE_ON_START=1` isso
   APLICA migrações lá. Para trabalhar no banco de dev, passe `DATABASE_URL` explicitamente em TODO comando
   (é a mesma armadilha do `npm test`, que já apagou o banco uma vez).

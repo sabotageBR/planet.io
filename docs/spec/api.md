@@ -9,6 +9,7 @@ Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`.
 | POST | `/api/auth/claim` 🔒 | `{password,email?}` | `{user}` · 400 `already_registered` · 409 `nick_reserved` |
 | POST | `/api/auth/login` | `{login,password}` | `{token,user}` · 401 `invalid_credentials` · 429 |
 | POST | `/api/auth/logout` 🔒 | — | 204 |
+| POST | `/api/auth/google` (🔒 opcional) | `{idToken, nick?}` | `{token,user}` · 401 `invalid_credentials` · 409 `email_taken`/`nick_reserved` · 503 `google_disabled` |
 | GET | `/api/me` 🔒 | — | `{user:{id,nick,kind,coins,equippedSkin,createdAt}, skins:[ids], prefs, stats, achievements:[keys]}` |
 | PATCH | `/api/me` 🔒 | `{nick}` | `{user}` · 409 `nick_reserved {suggestion}` |
 | PATCH | `/api/me/prefs` 🔒 | `{…}` (whitelist: quality, showNames, showMass, showGrid, showMinimap, showFps, sound, music, ambience, volume, chat, voice, voiceVolume, joystick, holdEject, rightSplit, theme('auto'|'dawn'|'sunset'|'dusk'), reduceMotion, bigText, colorblind, lbSize) | `{prefs}` |
@@ -17,7 +18,7 @@ Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`.
 | POST | `/api/skins/:id/buy` 🔒 | — | `{coins, owned}` · 402 `insufficient_coins` · 409 `already_owned` · 403 `not_purchasable` |
 | POST | `/api/skins/:id/equip` 🔒 | — | `{equippedSkin}` · 403 `not_owned` |
 | GET | `/api/ranking?period=all\|week\|day&by=score\|mass\|kills\|total&limit=50` (🔒 opcional) | — | `{period,by,rows:[{rank,userId,nick,registered,value}], me:{rank,value}\|null}` |
-| GET | `/api/config` | — | `{shards, shard, roomMax, protocol}` |
+| GET | `/api/config` | — | `{shards, shard, roomMax, protocol, googleClientId}` |
 | GET | `/api/rooms?mode=` · `/api/auto?mode=&teamSize=` | — | `{rooms:[{code,shard,mode,teamSize,phase,open,players,max,bots,round}]}` · a sala |
 | POST | `/api/party` 🔒 | `{mode,teamSize,nick,skinId}` | `{party,you:{key,leader}}` · 401 sem token · 409 `bad_team_size` |
 | GET | `/api/party/:code` | — | `{party,you}` · 404 `not_found` · 503 `peer_unreachable` (o shard dono não respondeu) |
@@ -28,6 +29,16 @@ Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`.
 
 Regras de nick: 2–16 chars, NFKC, espaços colapsados; registrado único case-insensitive; guest não pode usar nick de
 registrado (checado em guest/PATCH/join) — sugestão `Nick_NNNN`; guest sem nick → `Viajante-NNNN`.
+**Login com Google** (`/api/auth/google`): o cliente manda o `id_token` do Google Identity Services e o
+servidor o valida contra o `tokeninfo` (`aud` = o nosso clientId, `iss`, `exp`, `email_verified`). Não há
+troca de *code*, então o `client_secret` não existe deste lado. `googleClientId` vazio em `/api/config` é o
+interruptor: a rota devolve 503 e o cliente nem baixa o SDK. Quatro caminhos, nesta ordem: (1) identidade
+`(provider,subject)` conhecida → entra; (2) o e-mail verificado já é de uma conta → a identidade é ligada
+ÀQUELA conta (senão o INSERT bateria em `users_email_uq` e a rota devolvia 500); (3) veio `Bearer` de um
+**guest** → aquele guest é promovido, preservando moedas, skins e histórico; (4) senão, conta nova com o
+mesmo bônus de boas-vindas. O nick vindo do Google é CORTADO para caber em 16 e ganha sufixo se colidir —
+entrar com Google não falha por causa do nome; um `nick` explícito no corpo continua estrito.
+
 Rate limit em memória por pod: guest 5/h/IP · login 10/15min/IP e 5 falhas/15min/nick · claim/PATCH 10/min/token · demais 60/min/IP.
 Economia (servidor): `coins = ⌊score/300⌋ + 2·kills + 1·botKills + (duração ≥ 300 s ? 25 : 0)`, cap 500/partida; +100 por conquista nova.
 No **Battle Royale** soma o bônus de COLOCAÇÃO (`PLACE_COINS`: 250 no 1º, 120 até o 3º, 60 até o 10º, 20 na metade de cima):

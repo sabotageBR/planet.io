@@ -781,5 +781,9 @@ body[data-pointer="coarse"] #s-entry .entry-wrap.entry-v2 .guest-note .btn-link{
    conta" para outra linha justamente onde o espaço é menor (celular deitado tem 375 px de altura). */
 .guest-note .gsi-wrap.gsi-icon{min-height:0}
 .guest-note .gsi-wrap.gsi-icon > div{transform:scale(.82);transform-origin:center}
+/* No DEDO o alvo tem que ter 44 px, e o ícone do Google sai com 40 FIXOS — `size:"large"` já é o maior
+   que ele oferece. Como o widget é dele, o que dá para fazer é ESCALAR: o `getBoundingClientRect` (que é
+   o que o responsive-check mede, e o que o navegador usa para acertar o toque) enxerga o transform, então
+   40 × 1.15 = 46 px de alvo real. Aumentar só o wrapper não resolvia: quem é tocado é o botão de dentro. */
 body[data-pointer="coarse"] .guest-note .gsi-wrap.gsi-icon{min-height:46px}
-body[data-pointer="coarse"] .guest-note .gsi-wrap.gsi-icon > div{transform:none}
+body[data-pointer="coarse"] .guest-note .gsi-wrap.gsi-icon > div{transform:scale(1.15)}
