@@ -20,10 +20,10 @@ Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`.
 | GET | `/api/config` | — | `{shards, shard, roomMax, protocol}` |
 | GET | `/api/rooms?mode=` · `/api/auto?mode=&teamSize=` | — | `{rooms:[{code,shard,mode,teamSize,phase,open,players,max,bots,round}]}` · a sala |
 | POST | `/api/party` 🔒 | `{mode,teamSize,nick,skinId}` | `{party,you:{key,leader}}` · 401 sem token · 409 `bad_team_size` |
-| GET | `/api/party/:code` | — | `{party,you}` · 404 `not_found` |
-| POST | `/api/party/:code/join` 🔒 | `{nick,skinId}` | `{party,you}` · 409 `full`/`started` · 404 |
-| POST | `/api/party/:code/leave` 🔒 | — | `{ok,dissolved?}` (o líder saindo dissolve o lobby) |
-| POST | `/api/party/:code/start` 🔒 | `{room}` | `{party}` · 403 `not_leader` |
+| GET | `/api/party/:code` | — | `{party,you}` · 404 `not_found` · 503 `peer_unreachable` (o shard dono não respondeu) |
+| POST | `/api/party/:code/join` 🔒 | `{nick,skinId}` | `{party,you}` · 409 `full`/`started` · 404 · 503 |
+| POST | `/api/party/:code/leave` 🔒 | — | `{ok,dissolved?}` (o líder saindo dissolve o lobby) · 503 |
+| POST | `/api/party/:code/start` 🔒 | `{room}` | `{party}` · 403 `not_leader` · 503 |
 | GET | `/healthz` | — | `{ok, shard, rooms, players, tick:{p50,p99,max,overruns}, loopLagMs:{p50,p99}, net:{outKBps,inMsgps,rateLimitHits}, db:'ok'\|'down', queue, protocol}` |
 
 Regras de nick: 2–16 chars, NFKC, espaços colapsados; registrado único case-insensitive; guest não pode usar nick de
@@ -39,8 +39,11 @@ Battle Royale (só com `players ≥ 10`, para vencer numa sala de 3 não valer o
 **Lobby de equipe** (`/api/party*`): mora no servidor de JOGO, não na API de persistência — é estado de sala
 (memória do shard, TTL de 20 min), funciona **sem banco** e vale para convidado. A pessoa é identificada pelo
 hash do mesmo token `pt_…` (nunca pelo IP: dois jogadores atrás do mesmo NAT virariam a mesma pessoa). O código
-reusa `rooms/codes.js`, cujo 1º char é o shard — assim o link do convite leva o amigo ao MESMO pod, e por
-consequência à mesma sala.
+reusa `rooms/codes.js`, cujo 1º char é o shard, então o CÓDIGO diz quem é o dono do lobby. Como o Ingress
+balanceia `/api` entre os pods, quem recebe a chamada e não é o dono **encaminha** para os irmãos em
+`/internal/party/*` (rota não publicada, que nunca reencaminha) repassando o `Authorization`, e devolve a
+resposta do dono. Irmão fora do ar vira `503 peer_unreachable` — **nunca 404**, que é o que faz o cliente
+desfazer a equipe. Sem isso 2 em cada 3 chamadas caíam no pod errado e a tela de equipe se fechava sozinha.
 
 Sem banco (`DATABASE_URL` ausente ou Secret `warspace-db` faltando): as rotas de conta respondem `503 {error:"unreachable"}` e o
 cliente usa um perfil local (`localStorage`), mas continua entrando nas salas reais (`api.server` = `/api/config` ok; `api.online` = contas ok).

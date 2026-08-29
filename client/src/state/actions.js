@@ -1,6 +1,6 @@
 // ── AÇÕES DO SHELL ────────────────────────────────────────────────────────────
 // Tudo que muda o estado passa por aqui (telas, sessão, prefs, loja, conta, partida).
-import { api, isUnreachable } from "../api/client.js";
+import { api, isUnreachable, isGone } from "../api/client.js";
 import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS } from "./app.js";
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { LABELS } from "../ui/labels.js";
@@ -29,6 +29,7 @@ export function escape() {
   if (s.overlays.account) { closeAccount(); return true; }
   const a = document.activeElement;
   if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) { a.blur(); return true; }
+  if (s.screen === "party") { leaveParty(); return true; }   // sair sem avisar deixa o lobby órfão até o TTL, com os amigos olhando uma equipe que não existe
   if (s.screen !== "game" && s.screen !== "dead" && s.screen !== "entry") { go("entry"); return true; }
   return false;
 }
@@ -247,24 +248,39 @@ export async function joinParty(code) {
     app.update({ party: r.party, partyMe: r.you || null, partyError: null, gameMode: 1, teamSize: r.party.teamSize, screen: "party" }); return r.party; }
   catch (e) { toast(e.message, 2800); return null; }
 }
-/** Recarrega o lobby (a tela faz polling a 1 Hz — é um lobby, não precisa de WebSocket). */
+/**
+ * Recarrega o lobby (a tela faz polling a 1 Hz — é um lobby, não precisa de WebSocket).
+ * SÓ um 404 desfaz a equipe: é a resposta do shard DONO dizendo que o lobby acabou (líder saiu, TTL
+ * venceu, o pod voltou vazio). Qualquer outra falha — rede, 5xx, o 503 de um shard irmão mudo — é
+ * passageira, e tratá-la como fim era o que fechava a tela de equipe sozinha, em um segundo.
+ * `atualizando` porque o `useInterval` dispara a cada 1 s sem esperar a chamada anterior: com o salto
+ * entre shards as respostas podem chegar fora de ordem, e um 200 velho reviveria a equipe já desfeita.
+ */
+let atualizando = false;
 export async function refreshParty() {
-  const p = app.get().party; if (!p) return;
-  try { const r = await api.partyGet(p.code); app.update({ party: r.party, partyMe: r.you || app.get().partyMe });
+  const p = app.get().party; if (!p || atualizando) return;
+  atualizando = true;
+  try { const r = await api.partyGet(p.code); app.update({ party: r.party, partyMe: r.you || app.get().partyMe, partyError: null });
     // o líder já começou: quem estava esperando entra na MESMA sala
     if (r.party.started && r.party.room && app.get().screen === "party") play({ room: r.party.room, mode: 1, teamSize: r.party.teamSize, party: r.party.code }); }
-  catch { app.update({ party: null, partyError: "gone" }); toast(LABELS.partyGone || "A equipe se desfez.", 2500); go("modes"); }
+  catch (e) {
+    if (!isGone(e)) { app.update({ partyError: "stale" }); return; }
+    app.update({ party: null, partyMe: null, partyError: "gone" }); toast(LABELS.partyGone, 2500); go("modes"); }
+  finally { atualizando = false; }
 }
 export async function leaveParty() {
   const p = app.get().party; if (!p) { go("modes"); return; }
   try { await api.partyLeave(p.code); } catch { /* já expirou */ }
-  app.update({ party: null, partyMe: null }); go("modes");
+  app.update({ party: null, partyMe: null, partyError: null }); go("modes");
 }
 /** O líder começa: escolhe a sala e avisa o lobby, para os companheiros caírem no mesmo código. */
 export async function startParty() {
   const p = app.get().party; if (!p) return;
   let code = null;
-  try { const a = await api.auto({ mode: 1, teamSize: p.teamSize }); if (a && a.code) code = a.code; } catch { /* cai no auto do play */ }
+  try { const a = await api.auto({ mode: 1, teamSize: p.teamSize }); if (a && a.code) code = a.code; } catch { /* toast abaixo */ }
+  // sem sala não se começa: o servidor gravaria `room:null` e os companheiros ficariam presos para sempre
+  // esperando o `started && room` do polling — o líder entraria na partida sozinho e ninguém saberia.
+  if (!code) { toast(LABELS.partyNoRoom, 2500); return; }
   try { await api.partyStart(p.code, code); } catch (e) { toast(e.message, 2500); return; }
   play({ room: code, mode: 1, teamSize: p.teamSize, party: p.code });
 }

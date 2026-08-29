@@ -19,9 +19,10 @@ export default function Party({ on }) {
 function Body() {
   const LB = useLabels();
   const party = useStore(app, s => s.party), me = useStore(app, s => s.partyMe);
+  const stale = useStore(app, s => s.partyError === "stale");   // o poll falhou, mas a equipe continua: a tela FICA, dizendo o que houve
   const [copied, setCopied] = useState(false);
   useInterval(refreshParty, 1000, true);
-  if (!party) return <><ScreenHeader title={LB.partyTitle} /><div className="hint">{LB.waitingFriends}</div></>;
+  if (!party) return <><ScreenHeader title={LB.partyTitle} onBack={leaveParty} /><div className="hint">{LB.waitingFriends}</div></>;
   const link = `${location.origin}/?party=${party.code}`;
   const lider = !!(me && me.leader);   // só o líder começa a partida (o servidor também recusa, com 403)
   const vagas = Math.max(0, party.teamSize - party.members.length);
@@ -30,7 +31,7 @@ function Body() {
     setCopied(true); toast(LB.linkCopied); setTimeout(() => setCopied(false), 1600);
   };
   return <>
-    <ScreenHeader title={LB.partyTitle} />
+    <ScreenHeader title={LB.partyTitle} onBack={leaveParty} />
     <div className="card party-card">
       <div className="party-code"><span>{LB.partyCode}</span><b>{party.code}</b>
         <button className="btn-mini" onClick={copiar}>{copied ? LB.linkCopied : LB.copyLink}</button></div>
@@ -43,7 +44,7 @@ function Body() {
           <span className="slot-dot">🤖</span><b>{LB.botAlly}</b>
         </div>)}
       </div>
-      <div className="hint">{LB.partyHint}</div>
+      <div className="hint">{stale ? LB.partyStale : LB.partyHint}</div>
       <div className="party-actions">
         {lider ? <button className="btn-primary" onClick={startParty}>{LB.startMatch}</button>
                : <span className="hint waiting">{LB.waitingFriends}</span>}

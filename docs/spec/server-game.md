@@ -19,8 +19,8 @@ rooms/RoomManager.js  findOrCreateRoom({mode,teamSize}) (mais cheia que ainda AC
 net/Session.js  ws + slot + seq/ack + known:Set<id> + AOI rect + token bucket + view{w,h} + resumeToken + lastSeen
 net/wsServer.js upgrade em /ws/<shard> (o nginx já roteia), dispatch join/resume/view/ping (JSON) e INPUT (binário), heartbeat, rate limit, close codes
 net/snapshot.js por sessão: AOI (shared/camera.viewRect + NET.AOI_PAD/AOI_PAD_OUT com histerese), CREATE/UPDATE-se-mudou/REMOVE, self block; usa encodeSnapshot do shared/protocol
-http/api.js     /healthz, /internal/rooms, /api/config, /api/rooms, /api/auto (+ estáticos só com STATIC_DIR) e monta createApi() da persistência para /api/auth|me|skins|ranking
-http/peers.js   fetch dos irmãos (PEERS ou PEER_HOST) com timeout 1200 ms
+http/api.js     /healthz, /internal/rooms|party, /api/config, /api/rooms, /api/auto, /api/party* (encaminhado ao shard DONO do código) (+ estáticos só com STATIC_DIR) e monta createApi() da persistência para /api/auth|me|skins|ranking
+http/peers.js   fetchPeerRooms (lista de salas) e askPeers (o lobby de equipe do irmão), PEERS ou PEER_HOST, timeout 1200 ms
 ```
 
 ## Join

@@ -12,10 +12,11 @@ export function Nav({ cur }) {
   return <nav className="nav">{NAV.map(([s, l]) =>
     <button key={s} className={"nav-btn" + (s === cur ? " on" : "")} data-go={s} data-nav={s} onClick={() => go(s)}><i className="nav-ico"></i><span>{l}</span></button>)}</nav>;
 }
-export function ScreenHeader({ title }) {
+/** `onBack`: a tela de equipe precisa AVISAR o servidor antes de sair (senão o lobby fica órfão). */
+export function ScreenHeader({ title, onBack = null }) {
   const LB = useLabels(); const user = useStore(app, s => s.session.user);
   return <header className="sh">
-    <button className="btn-mini back" data-go="entry" onClick={() => go("entry")}>{LB.back}</button>
+    <button className="btn-mini back" data-go="entry" onClick={onBack || (() => go("entry"))}>{LB.back}</button>
     <h1 className="stitle">{title}</h1>
     <span className="coinbar sh-coins">{LB.coinIcon} <b className="v-coins">{fmt(user ? user.coins : 0)}</b></span>
   </header>;

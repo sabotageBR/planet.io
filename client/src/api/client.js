@@ -12,6 +12,9 @@ export class ApiError extends Error {
 }
 export class NetworkError extends Error {}
 export const isUnreachable = e => e instanceof NetworkError || (e instanceof ApiError && (e.code === "unreachable" || e.status === 502 || e.status === 503 || e.status === 504));
+// O recurso ACABOU de verdade? Só um 404 diz isso. Rede caída, 5xx e o 503 de um shard irmão mudo são
+// passageiros — tratá-los como fim é o que desfazia a equipe do jogador a cada piscada (ver refreshParty).
+export const isGone = e => e instanceof ApiError && e.status === 404;
 
 const ls = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* privado */ } } };
 // planet.io → warspace.io: as chaves mudaram de nome. Sem esta passagem, todo jogador com sessão aberta

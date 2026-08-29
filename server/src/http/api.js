@@ -1,4 +1,4 @@
-// ── HTTP: /healthz, /internal/rooms, /api/config|rooms|auto → API da persistência → estáticos (dev) → 404 ──
+// ── HTTP: /healthz, /internal/rooms|party, /api/config|rooms|auto|party → API da persistência → estáticos (dev) → 404 ──
 // @ts-check
 import {readFile,stat} from 'node:fs/promises';
 import path from 'node:path';
@@ -6,7 +6,8 @@ import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
 import {sendJson,readJson,bearer,clientIp} from '../api/router.js';
 import {hashToken} from '../auth/tokens.js';
 import {createPartyManager} from '../rooms/Party.js';
-import {fetchPeerRooms} from './peers.js';
+import {shardOf} from '../rooms/codes.js';
+import {fetchPeerRooms,askPeers} from './peers.js';
 const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript','.mjs':'application/javascript','.css':'text/css','.ico':'image/x-icon','.png':'image/png','.jpg':'image/jpeg',
   '.svg':'image/svg+xml','.json':'application/json','.webp':'image/webp','.woff2':'font/woff2','.woff':'font/woff','.map':'application/json','.txt':'text/plain','.webmanifest':'application/manifest+json'};
 const byPlayers=(a,b)=>b.players-a.players;
@@ -60,17 +61,29 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
       if(p==='/api/party'&&req.method==='POST'){const b=await readJson(req),key=keyOf(req);
         if(!key)return sendJson(res,401,{error:'unauthorized',message:'entre como convidado antes de criar uma equipe'});
         return partyOut(res,party.create({key,nick:nickOf(b),skinId:b.skinId|0,registered:!!bearer(req),mode:b.mode|0,teamSize:b.teamSize|0}),key);}
-      const mp=/^\/api\/party\/([0-9A-Za-z]{4})(?:\/(join|leave|start))?$/.exec(p);
-      if(mp){const code=mp[1].toUpperCase(),act=mp[2];
-        if(!act&&req.method==='GET'){const g=party.get(code);
+      // `/internal/party/*` é ESTA MESMA rota, pela via entre pods (como /internal/rooms; o Ingress não a
+      // publica). Ela NUNCA reencaminha (`int`) — é isso que impede três shards se repassando em círculo.
+      const mp=/^\/(api|internal)\/party\/([0-9A-Za-z]{4})(?:\/(join|leave|start))?$/.exec(p);
+      if(mp){const int=mp[1]==='internal',code=mp[2].toUpperCase(),act=mp[3];
+        if(act?req.method!=='POST':req.method!=='GET')return sendJson(res,405,{error:'method_not_allowed',message:'método não permitido'});
+        const b=act?await readJson(req):null,key=keyOf(req);   // corpo e identidade ANTES do desvio: 401 não gera tráfego interno
+        if(act&&!key)return sendJson(res,401,{error:'unauthorized',message:'entre como convidado antes de usar uma equipe'});
+        // O lobby vive na MEMÓRIA do shard que gerou o código (1º char), e o Ingress balanceia /api entre os
+        // 3 pods: sem este desvio, 2 em cada 3 chamadas caíam no pod errado, voltavam 404, e a tela de equipe
+        // se fechava sozinha em 1 s. Repassa-se o `Authorization`, nunca a `key` pronta: `hashToken` é sha256
+        // sem segredo, então o irmão chega na MESMA chave — e a porta interna não vira passe de impersonação.
+        const dono=shardOf(code);
+        if(!int&&dono!==config.shard&&dono<config.shards&&config.peers.length){
+          const r=await askPeers(config.peers,{path:`/internal/party/${code}${act?'/'+act:''}`,method:req.method,body:b,auth:req.headers.authorization||null,log});
+          // irmão mudo ≠ equipe desfeita: 503, NUNCA 404 — só o 404 faz o cliente desfazer a equipe
+          if(!r)return sendJson(res,503,{error:'peer_unreachable',message:'o shard da equipe não respondeu'});
+          return sendJson(res,r.status,r.body);}
+        if(!act){const g=party.get(code);
           if(!g)return sendJson(res,404,{error:'not_found',message:'lobby não encontrado ou expirado'});
-          return partyOut(res,{party:party.view(g)},keyOf(req));}
-        if(act&&req.method==='POST'){const b=await readJson(req),key=keyOf(req);
-          if(!key)return sendJson(res,401,{error:'unauthorized',message:'entre como convidado antes de usar uma equipe'});
-          if(act==='join')return partyOut(res,party.join(code,{key,nick:nickOf(b),skinId:b.skinId|0,registered:!!bearer(req)}),key);
-          if(act==='leave')return partyOut(res,party.leave(code,key),key);
-          return partyOut(res,party.start(code,key,b.room||null),key);}
-        return sendJson(res,405,{error:'method_not_allowed',message:'método não permitido'});}
+          return partyOut(res,{party:party.view(g)},key);}
+        if(act==='join')return partyOut(res,party.join(code,{key,nick:nickOf(b),skinId:b.skinId|0,registered:!!bearer(req)}),key);
+        if(act==='leave')return partyOut(res,party.leave(code,key),key);
+        return partyOut(res,party.start(code,key,b.room||null),key);}
       if(!persistApi&&/^\/api\/(auth|me|skins|ranking)(\/|\?|$)/.test(req.url||"")){   // sem banco: o cliente cai em modo offline
         res.writeHead(503,{"content-type":"application/json","cache-control":"no-store"});res.end(JSON.stringify({error:"unreachable",message:"servidor sem banco de dados"}));return;}
       if(persistApi&&await persistApi(req,res))return;

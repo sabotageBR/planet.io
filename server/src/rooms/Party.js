@@ -1,7 +1,8 @@
 // ── PARTY: lobby de equipe por CÓDIGO (o convite que vai por link) ────────────
 // Em memória no shard, com TTL — nada no banco. O código reusa `codes.js`, cujo 1º char é o shard em base36,
-// então quem cola o link do amigo cai no MESMO shard e, por consequência, na mesma sala: sem isso o convite
-// levaria a pessoa a outro pod e ela nunca encontraria o grupo.
+// então o código DIZ quem é o dono do lobby. Quem recebe a chamada e não é o dono encaminha para o irmão
+// (`http/api.js` → `/internal/party`): o Ingress balanceia `/api` entre os 3 pods, e sem esse desvio 2 em
+// cada 3 chamadas caíam num pod que não conhece o código.
 // Fluxo: create → (amigos) join → start; o `join` do WS lê `msg.party` e a Room põe todos na mesma equipe
 // (Room._teamFor). Vaga que sobrar na equipe é preenchida por BOT aliado no começo da partida (autopreencher).
 // Convidado (guest) participa: quem identifica é o token, não a conta.
@@ -30,8 +31,10 @@ export function createPartyManager({config,log}){
     parties.set(code,p);log.info(`party criado: ${code} (${m.key}/${ts})`);
     return{party:view(p)};}
 
+  // ⚠️ Este guarda é o que torna o encaminhamento SEGURO até para mutação: perguntar a todos os irmãos
+  // não aplica nada duas vezes, porque só o dono do código passa daqui.
   function get(code){const c=normalizeCode(code);if(!c)return null;
-    if(shardOf(c)!==config.shard)return null;   // código de outro shard: quem responde é o irmão (o cliente troca de host pelo 1º char)
+    if(shardOf(c)!==config.shard)return null;   // código de outro shard: quem responde é o irmão (`http/api.js` encaminha)
     const p=parties.get(c);return p?touch(p):null;}
 
   function join(code,{key,nick,skinId=0,registered=false}){

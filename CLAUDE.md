@@ -211,6 +211,15 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   numa sala nova depois de 15 s (`ui/Round.jsx` mostra o pódio dos 3 primeiros + o resto do placar).
 - **Salas por shard** como na v1: código `1ABC` → shard 1 (1º char base36); o Ingress roteia `/ws/<shard>` para `warspace-server-<shard>`;
   `/api/*` balanceado (qualquer shard responde, tudo stateless no Postgres). `findOrCreateRoom` enche a sala mais cheia com vaga.
+  ⚠️ **Uma coisa NÃO é stateless: o lobby de equipe** (`rooms/Party.js`), que vive na memória do pod que gerou o código —
+  e essa premissa escrita aqui é o que quebrou o modo em equipe em produção por meses: com `/api` balanceado, 2 em cada 3
+  chamadas caíam num pod que não conhece o código, voltavam 404, e o cliente fechava a tela de equipe em 1 s. O código diz
+  quem é o dono (1º char), então quem recebe e não é o dono ENCAMINHA para os irmãos (`http/api.js` → `/internal/party/*`,
+  via `askPeers`), repassando o `Authorization` — `hashToken` é sha256 sem segredo, então o irmão chega na MESMA `key`.
+  A rota interna **nunca reencaminha** (é o que impede laço entre shards) e irmão mudo é **503, nunca 404**: só o 404 faz
+  o cliente desfazer a equipe. Perguntar a todos é seguro até para mutação porque o guarda de `Party.get` recusa quem não
+  é dono antes de tocar em nada. Quem prova é `server/test/party-shards.test.js`, que sobe DOIS shards no mesmo processo —
+  os testes de party de `br.test.js` fixam `SHARDS=1` e por isso nunca viram o bug.
 - **Identidade**: token opaco `pt_…` (sha256 no banco), guest por padrão (`POST /api/auth/guest`), reivindicar com senha (scrypt nativo)
   trava o nick; `join {token}` — nick/skin nunca vêm do cliente. Banco fora → modo sem persistência (`unsaved`), o tick nunca espera o banco
   (fila com retry, circuit-breaker). Moedas/conquistas só no servidor (`persist/rewards.js`).

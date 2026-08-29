@@ -12,6 +12,7 @@ export const LABELS = {
   copyLink: "📋 Copiar convite", linkCopied: "Convite copiado!", fillBots: "Preencher com bots", botAlly: "bot aliado", leaveParty: "Sair da equipe",
   partyHint: "Mande o convite para os amigos. Quem faltar vira bot aliado quando a partida começar.",
   partyLeader: "líder", waitingFriends: "esperando os amigos…", startMatch: "🚀 JOGAR",
+  partyGone: "A equipe se desfez.", partyStale: "reconectando à equipe…", partyNoRoom: "Nenhuma sala disponível agora — tente de novo.",
   brLobbyTitle: "BATTLE ROYALE", brWaiting: "procurando jogadores…", brStarting: "a partida começa em",
   brHint: "O último planeta de pé leva tudo. A zona fecha, e não há como renascer.",
   aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ NO GÁS", zoneShrinking: "O GÁS ESTÁ AVANÇANDO",
