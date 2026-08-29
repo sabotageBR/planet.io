@@ -13,7 +13,7 @@ const CY="#00e5ff",MG="#ff2fb9";
 const CK=1.95,FK=2.4,VK=1.45,EK=1.9;      // quanto cada sprite cobre além do raio
 let stars=[];
 
-const LB={title:"⚡ PLANET.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
+const LB={title:"WARSPACE.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   coinIcon:"🪙",coinWord:"créditos",nameLabel:"IDENTIFICAÇÃO DO PLANETA",swap:"TROCAR",
   play:"▶ INICIAR",shop:"◈ LOJA DE SKINS",shopShort:"◈ LOJA",shopTitle:"LOJA DE SKINS",
   shopNote:"12 skins de amostra — as 50 do jogo entram quando o modelo for aprovado.",

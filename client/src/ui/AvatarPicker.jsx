@@ -3,7 +3,7 @@
 // KB — o servidor confere o cabeçalho e guarda os bytes no Postgres, que é o único armazenamento durável
 // do cluster.
 import React, { useRef, useState } from "react";
-import { AVATAR } from "@planet/shared";
+import { AVATAR } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { useLabels } from "../hooks/useTheme.js";

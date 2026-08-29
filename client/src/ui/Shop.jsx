@@ -1,7 +1,7 @@
 // LOJA: busca, ordenação, filtro de raridade/"só as minhas", grade de cartões e painel de detalhe
 // (comprar/equipar só pelo botão do painel — clicar no cartão apenas seleciona, para ninguém gastar moeda sem querer).
 import React, { useEffect, useMemo, useState } from "react";
-import { SKINS, skinById, RARITY_LABELS, RARITY_ORDER, RARITY_COLORS } from "@planet/shared";
+import { SKINS, skinById, RARITY_LABELS, RARITY_ORDER, RARITY_COLORS } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { buySkin, equipSkin, loadSkins, toast } from "../state/actions.js";

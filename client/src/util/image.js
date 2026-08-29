@@ -3,7 +3,7 @@
 // confere o cabeçalho (server/src/api/imagemeta.js) —, então quem tem que entregar a imagem no tamanho e
 // no peso certos é esta função.
 // @ts-check
-import { AVATAR } from "@planet/shared";
+import { AVATAR } from "@warspace/shared";
 
 /**
  * Reduz para um QUADRADO de `size` px recortando o centro (cover), e comprime até caber em MAX_BYTES.

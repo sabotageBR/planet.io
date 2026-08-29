@@ -159,7 +159,7 @@ function bakePlate(G){const W=G.W,DH=G.DH,m=G.m,cv=document.createElement("canva
   if(G.lamps){const lp=G.lamps;["VELOC.","ÍMÃ","ESCUDO"].forEach((l,i)=>{socket(c,lp.x+i*lp.dx,lp.y,lp.r);eng(c,l,lp.x+i*lp.dx,lp.y+lp.r+(m?12:15),m?7:8);});}
   // placa do fabricante + grelha decorativa
   if(G.name){const n=G.name,x0=n.x-n.w,y0=m?18:24,h=m?48:62;c.strokeStyle=METAL;c.lineWidth=1.5;c.strokeRect(x0,y0,n.w,h);c.strokeStyle="rgba(255,255,255,.7)";c.strokeRect(x0+1.5,y0+1.5,n.w-3,h-3);
-    eng(c,"PLANET.IO",n.x-12,y0+(m?20:26),m?13:16,"right","italic ");eng(c,"CABINE Mk.II · SÉRIE 2026",n.x-12,y0+(m?36:44),m?7:8,"right");
+    eng(c,"WARSPACE.IO",n.x-12,y0+(m?20:26),m?13:16,"right","italic ");eng(c,"CABINE Mk.II · SÉRIE 2026",n.x-12,y0+(m?36:44),m?7:8,"right");
     if(!m)eng(c,"PILOTO AUTOMÁTICO DESLIGADO",n.x-12,y0+56,7,"right");}
   if(G.grille&&G.grille[1]-G.grille[0]>120){const[x0,x1]=G.grille;for(let i=0;i<5;i++){const y=30+i*12;c.fillStyle="rgba(11,42,49,.16)";c.fillRect(x0+14,y,x1-x0-28,1.5);c.fillStyle="rgba(255,255,255,.6)";c.fillRect(x0+14,y+1.5,x1-x0-28,1);}}
   return cv;}
@@ -174,7 +174,7 @@ tokens:{bg:"#061a1f",surface:"#f1e9d8",text:"#0b2a31",muted:"#8fa9ad",accent:"#f
 layout:{hud:"dashboard",nav:"book"},
 hudInset:mode=>mode==="desktop"?112:84,
 rarityColor:{free:"#8fa9ad",common:"#52a8c4",rare:"#2f7fd6",epic:"#a24bd6",legendary:"#e0a020",earned:"#2fb894",secret:"#ff5e3a"},
-labels:{title:"PLANET.IO",tagline:"CADERNO DE BORDO · CONQUISTE A GALÁXIA",play:"🚀 DECOLAR",playAuto:"🚀 Decolar (auto)",
+labels:{title:"WARSPACE.IO",tagline:"CADERNO DE BORDO · CONQUISTE A GALÁXIA",play:"🚀 DECOLAR",playAuto:"🚀 Decolar (auto)",
   lobbyTitle:"Salas",rankTitle:"Ranking",profileTitle:"Diário de bordo",shopTitle:"Catálogo de skins",prefsTitle:"Preferências",accountTitle:"Ficha do piloto",
   dead:"MISSÃO ENCERRADA",deadIcon:"🛰️",deadSub:"— relatório de voo —",respawn:"⟳ NOVA MISSÃO",reconnTitle:"SINAL PERDIDO"},
 

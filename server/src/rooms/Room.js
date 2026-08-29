@@ -8,13 +8,13 @@
 // cada encode devolve uma vista reutilizada; se um socket ficou com bytes pendentes trocamos de
 // writer (o antigo fica com o socket até drenar) em vez de copiar a cada envio.
 // @ts-check
-import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,BOT_CHAT,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,VOICE,FEED} from '@planet/shared/constants.js';
-import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent,encodeZone,encodeVoice} from '@planet/shared/protocol/index.js';
-import {rectHas} from '@planet/shared/camera.js';
-import {createRng} from '@planet/shared/rng.js';
-import {kdOf} from '@planet/shared/levels.js';
-import {createZone,stepZone,zoneAt} from '@planet/shared/zone.js';
-import {EVENT} from '@planet/shared/protocol/constants.js';
+import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,BOT_CHAT,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,VOICE,FEED} from '@warspace/shared/constants.js';
+import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent,encodeZone,encodeVoice} from '@warspace/shared/protocol/index.js';
+import {rectHas} from '@warspace/shared/camera.js';
+import {createRng} from '@warspace/shared/rng.js';
+import {kdOf} from '@warspace/shared/levels.js';
+import {createZone,stepZone,zoneAt} from '@warspace/shared/zone.js';
+import {EVENT} from '@warspace/shared/protocol/constants.js';
 import {Sim} from '../sim/Sim.js';
 import {createSnapshotter} from '../net/snapshot.js';
 import {createFeed,drenaFeed} from './feed.js';

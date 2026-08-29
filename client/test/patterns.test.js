@@ -5,8 +5,8 @@
 // sem canvas, sem navegador e em milissegundos.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SKINS } from "@planet/shared/skins.js";
-import { EGG_SKIN_IDS } from "@planet/shared/eggs.js";
+import { SKINS } from "@warspace/shared/skins.js";
+import { EGG_SKIN_IDS } from "@warspace/shared/eggs.js";
 import { paintPattern } from "../src/theme/patterns.js";
 
 /** Contexto 2D de mentira: aceita tudo, conta o que foi pedido e nunca lança. */

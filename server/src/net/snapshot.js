@@ -6,10 +6,10 @@
 // Estrela entra na AOI pelo halo (r·STAR.HALO) e manda fase/halo em UPD.EXTRA (incha antes da supernova; o ímã a arrasta).
 // Objetos de saída são de pools reutilizados.
 // @ts-check
-import {NET,BLACKHOLE,STAR} from '@planet/shared/constants.js';
-import {KIND,UPD,REMOVE,PIECE_FLAG,FOOD_FLAG,SELF_FLAG} from '@planet/shared/protocol/constants.js';
-import {encodeSnapshot,qPos,qR,qV} from '@planet/shared/protocol/index.js';
-import {focusOf,zoomFor,viewRect,rectHas,aoiScaleFood} from '@planet/shared/camera.js';
+import {NET,BLACKHOLE,STAR} from '@warspace/shared/constants.js';
+import {KIND,UPD,REMOVE,PIECE_FLAG,FOOD_FLAG,SELF_FLAG} from '@warspace/shared/protocol/constants.js';
+import {encodeSnapshot,qPos,qR,qV} from '@warspace/shared/protocol/index.js';
+import {focusOf,zoomFor,viewRect,rectHas,aoiScaleFood} from '@warspace/shared/camera.js';
 let fq=new Int32Array(4096);   // buffer da consulta de comida por retângulo (cresce com o mundo)
 const MAX_BUFFERED=256*1024,SWEEP_EVERY=60,WFLAGS=PIECE_FLAG.SHIELD|PIECE_FLAG.LAUNCH|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK,NO_SLOT=0xffff;
 const DEFAULT_REASON=[0,REMOVE.EATEN,REMOVE.EATEN,REMOVE.EXPIRED,REMOVE.DESPAWN,REMOVE.DESPAWN,REMOVE.EXPIRED,REMOVE.DESPAWN]; // por KIND

@@ -15,7 +15,7 @@ const BREAK_AFTER=3,BREAK_MS=15000;
 export function createDb(config,log){
   if(!config.databaseUrl)log.warn('DATABASE_URL vazio: toda consulta vai falhar (modo sem persistência)');
   const pool=new pg.Pool({connectionString:config.databaseUrl||'postgres://invalid',max:config.dbPoolMax,connectionTimeoutMillis:3000,idleTimeoutMillis:30000,
-    statement_timeout:5000,application_name:`planet-shard-${config.shard}`});
+    statement_timeout:5000,application_name:`warspace-shard-${config.shard}`});
   pool.on('connect',c=>{c.query(`SET timezone='${(config.tz||'America/Sao_Paulo').replace(/'/g,'')}'`).catch(e=>log.warn('SET timezone falhou:',e.message));});
   pool.on('error',e=>log.warn('pool: conexão ociosa caiu:',e.message));
   let fails=0,downUntil=0,lastError=null;

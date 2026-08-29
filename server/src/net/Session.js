@@ -3,8 +3,8 @@
 // `resume` válido religa outro ws na mesma Session (known zera → recria tudo).
 // @ts-check
 import {randomBytes} from 'node:crypto';
-import {NET,WORLD} from '@planet/shared/constants.js';
-import {ERROR_CODE} from '@planet/shared/protocol/constants.js';
+import {NET,WORLD} from '@warspace/shared/constants.js';
+import {ERROR_CODE} from '@warspace/shared/protocol/constants.js';
 import {NO_REWARDS} from '../sim/hooks.js';
 const VIOLATIONS=3,VIOLATION_WINDOW_MS=10000,VIEW_MIN=240,VIEW_MAX=8192;
 /** Token bucket: `rate` fichas/s até `burst`. */

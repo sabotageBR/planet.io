@@ -1,0 +1,33 @@
+{
+  "name": "warspace.io",
+  "short_name": "warspace",
+  "description": "Conquiste a galáxia: cresça, divida, ejete e devore.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#1b2450",
+  "theme_color": "#1b2450",
+  "lang": "pt-BR",
+  "categories": [
+    "games"
+  ],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

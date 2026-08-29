@@ -12,7 +12,7 @@ import http from 'node:http';
 import {readFileSync,readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {SKINS} from '@planet/shared/skins.js';
+import {SKINS} from '@warspace/shared/skins.js';
 import crypto from 'node:crypto';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.env'),'utf8').split('\n')){const m=/^\s*([A-Z_]+)=(.*)$/.exec(l);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim();}}catch{}}
@@ -37,7 +37,7 @@ const {MatchSession}=await import('../src/persist/session.js');
 const {createQueue}=await import('../src/persist/queue.js');
 const {hashPassword,verifyPassword}=await import('../src/auth/password.js');
 const {normalizeNick,suggestNick}=await import('../src/auth/nick.js');
-const {SCORE_COINS}=await import('@planet/shared/constants.js');
+const {SCORE_COINS}=await import('@warspace/shared/constants.js');
 const log=createLogger({level:process.env.LOG_LEVEL});
 let db,persist,api,server,base;
 const call=async(method,p,{body,token,ip='10.0.0.1'}={})=>{
@@ -220,8 +220,8 @@ test('banco fora: onPlayerJoin volta unsaved em < 3,5 s; healthFields db:down; A
 
 // ── PROGRESSÃO, PAÍS, GATE DE NÍVEL, AVATAR E EASTER EGG ─────────────────────
 test('XP e mortes entram na mesma transação da partida, e o nível é derivado',async()=>{
-  const {matchXp}=await import('@planet/shared/levels.js');
-  const {levelFromXp}=await import('@planet/shared/levels.js');
+  const {matchXp}=await import('@warspace/shared/levels.js');
+  const {levelFromXp}=await import('@warspace/shared/levels.js');
   const t=await novoGuest('Progresso');
   const m={sessionId:randomUUID(),userId:t.userId,startedAt:Date.now()-60000,durationS:600,score:25000,maxMass:9000,
     kills:5,botKills:6,splits:3,ejects:4,food:900,bestStreak:3,top1Ticks:10800,quadrants:2,cause:'eaten',
@@ -246,7 +246,7 @@ test('XP e mortes entram na mesma transação da partida, e o nível é derivado
 test('a política de morte do código e a do SQL das views são a MESMA lista',async()=>{
   // O SQL duplica a lista por necessidade; este teste é o antídoto: uma causa nova sem classificação
   // passaria despercebida e sumiria do K/D de todo mundo.
-  const {DEATH_CAUSES}=await import('@planet/shared/levels.js');
+  const {DEATH_CAUSES}=await import('@warspace/shared/levels.js');
   for(const v of ['v_ranking_day','v_ranking_week']){
     const def=(await db.query(`SELECT pg_get_viewdef($1::regclass) AS d`,[v])).rows[0].d;
     for(const c of DEATH_CAUSES)assert.ok(def.includes(`'${c}'`),`${v} não conhece a causa ${c}`);}
@@ -277,14 +277,14 @@ test('ranking: o país entra na CHAVE do cache (senão o Brasil vê o ranking do
 });
 
 test('skin lendária: o nível é gate de verdade, e ele destrava com XP',async()=>{
-  const {SKINS}=await import('@planet/shared/skins.js');
+  const {SKINS}=await import('@warspace/shared/skins.js');
   const alvo=SKINS.find(s=>s.levelReq>0&&s.price>0);
   const t=await novoGuest('SemNivel');
   await db.query(`UPDATE users SET coins=$2 WHERE id=$1`,[t.userId,alvo.price+1000]);
   const nao=await req('POST',`/api/skins/${alvo.id}/buy`,{},t.token);
   assert.equal(nao.status,403);assert.equal(nao.body.error,'level_required');
   assert.equal(nao.body.levelReq,alvo.levelReq);
-  const {xpForLevel}=await import('@planet/shared/levels.js');
+  const {xpForLevel}=await import('@warspace/shared/levels.js');
   await db.query(`INSERT INTO user_stats(user_id,xp) VALUES($1,$2) ON CONFLICT (user_id) DO UPDATE SET xp=$2`,[t.userId,xpForLevel(alvo.levelReq)]);
   const sim=await req('POST',`/api/skins/${alvo.id}/buy`,{},t.token);
   assert.equal(sim.status,200,JSON.stringify(sim.body));
@@ -296,7 +296,7 @@ test('skin lendária: o nível é gate de verdade, e ele destrava com XP',async(
 });
 
 test('easter egg: o nick escolhe a skin da VIDA, sem tocar na skin equipada',async()=>{
-  const {eggSkinFor}=await import('@planet/shared/eggs.js');
+  const {eggSkinFor}=await import('@warspace/shared/eggs.js');
   const t=await novoGuest('Bruxo');
   const r=await persist.hooks.onPlayerJoin({token:t.token,fallbackNick:'Bruxo'});
   assert.equal(r.skinId,eggSkinFor('Bruxo'),'entrou como Bruxo e não veio a caricatura');
@@ -311,7 +311,7 @@ test('easter egg: o nick escolhe a skin da VIDA, sem tocar na skin equipada',asy
 });
 
 test('avatar: valida pelo CONTEÚDO, guarda, serve com ETag e 304',async()=>{
-  const {AVATAR}=await import('@planet/shared/constants.js');
+  const {AVATAR}=await import('@warspace/shared/constants.js');
   const t=await novoGuest('Retratado');
   const png=(w,h)=>{const b=Buffer.alloc(2048);b.write('\x89PNG\r\n\x1a\n','latin1');b.writeUInt32BE(13,8);b.write('IHDR',12,'latin1');
     b.writeUInt32BE(w,16);b.writeUInt32BE(h,20);b[24]=8;b[25]=6;return b;};

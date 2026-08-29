@@ -13,7 +13,7 @@ state/Interpolator.js   outros: tRender = est − 100 ms (adaptativo ≤ 150), l
 state/Predictor.js      próprias peças: stepOwnPieces a 60 Hz + replay dos inputs após o snapshot; visualOffset exp(−dt/0.1); snap > 120 px
 state/WorldView.js      players (PLAYERS), placar (LEADERBOARD), self, listas por tipo prontas p/ render
 renderer/               Renderer (Pixi Application), Camera, TextureCache (tema → canvas → Texture, LRU 48 MB), layers/*
-input/                  Pointer (mouse+toque no canvas), Keyboard (Space/W/F), Touch (planet:action do HUD), actions
+input/                  Pointer (mouse+toque no canvas), Keyboard (Space/W/F), Touch (warspace:action do HUD), actions
 hud/Minimap.js          #radar (canvas 2D no #hud) conforme theme.hud.radar
 bench.js                overlay ?bench / ?stats
 ```

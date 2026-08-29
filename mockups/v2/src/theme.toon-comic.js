@@ -94,7 +94,7 @@ tokens:{bg:"#f6e7c8",surface:"#fff8e6",text:"#111111",muted:"#6b6257",accent:"#e
   shadow:"6px 6px 0 #111111"},
 layout:{hud:"panels",nav:"sheet"},
 rarityColor:{free:"#8a8177",common:"#2b6fe8",rare:"#e83f9a",epic:"#7a2fd6",legendary:"#b8730a",earned:"#178a3f",secret:"#e85a1a"},
-labels:{title:"PLANET.IO",tagline:"Conquiste a galáxia. Divida, ejete e devore!",play:"🚀 JOGAR!",playAuto:"🚀 JOGAR (AUTO)",lbTitle:"PÓDIO",
+labels:{title:"WARSPACE.IO",tagline:"Conquiste a galáxia. Divida, ejete e devore!",play:"🚀 JOGAR!",playAuto:"🚀 JOGAR (AUTO)",lbTitle:"PÓDIO",
   dead:"KABOOM!",deadIcon:"💥",deadSub:"CONTINUA NA PRÓXIMA EDIÇÃO…",respawn:"🔄 DE NOVO!",reconnTitle:"SINAL FRACO!",reconnSub:"Procurando o satélite… tentativa {n}/5",
   back:"◄",create:"➕ Criar sala",top5:"TOP 5 HOJE"},
 

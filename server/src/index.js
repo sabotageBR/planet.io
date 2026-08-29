@@ -4,7 +4,7 @@
 // @ts-check
 import http from 'node:http';
 import {pathToFileURL} from 'node:url';
-import {PROTOCOL_VERSION} from '@planet/shared/protocol/constants.js';
+import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
 import {config as baseConfig} from './config.js';
 import {createLogger} from './log.js';
 import {createDb} from './db/pool.js';
@@ -56,7 +56,7 @@ export async function startServer(overrides={}){
   const ws=game?createWsServer({server,config:cfg,rooms,hooks,log,metrics}):null;
   await new Promise((res,rej)=>{server.once('error',rej);server.listen(cfg.port,()=>{server.off('error',rej);res(undefined);});});
   const addr=server.address(),port=typeof addr==='object'&&addr?addr.port:cfg.port;
-  log.info(`planet.io v2 | shard ${cfg.shard}/${cfg.shards} | porta ${port} | role ${cfg.role} | db ${db?(db.health.down?'down':'ok'):'nenhum'}`+
+  log.info(`warspace.io v2 | shard ${cfg.shard}/${cfg.shards} | porta ${port} | role ${cfg.role} | db ${db?(db.health.down?'down':'ok'):'nenhum'}`+
     (cfg.staticDir?` | estáticos ${cfg.staticDir}`:'')+(cfg.peers.length?` | peers ${cfg.peers.join(', ')}`:''));
   // ── encerramento: para de aceitar, fecha ws, onMatchEnd('shutdown') via persistência, fecha pool ──
   let closing=null;

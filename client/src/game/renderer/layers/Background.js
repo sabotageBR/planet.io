@@ -5,7 +5,7 @@
 // TROCA DE TEMA: o céu velho fica num sprite por cima (`prev`) e some em ROUND.FADE_MS enquanto o novo aparece —
 // o fade é SÓ do fundo. HUD, telas e o jogo (o container `world`, irmão deste) não piscam.
 import {Container,Sprite,ParticleContainer,Particle,Texture,CanvasSource} from "pixi.js";
-import {WORLD,ROUND,rectHas} from "@planet/shared";
+import {WORLD,ROUND,rectHas} from "@warspace/shared";
 
 /** Receita do atlas do parallax (quadradinho + 2 estrelas grandes) — compartilhada com o pré-aquecimento. */
 const starItems=TX=>[{key:"sq",size:4,draw:c=>{c.fillStyle="#fff";c.fillRect(-2,-2,4,4);}},

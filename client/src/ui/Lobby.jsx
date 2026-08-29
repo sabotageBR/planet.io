@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { skinById } from "@planet/shared";
+import { skinById } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { play, loadRooms, loadTop5, toast } from "../state/actions.js";

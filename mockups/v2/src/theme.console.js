@@ -108,7 +108,7 @@ tokens:{bg:"#0a0f14",surface:"#0e151c",text:"#d8e0e8",muted:"#5a6b78",accent:"#f
   line:"#1f2a33",radius:"0px",radiusLg:"0px",space:"10px",fontUi:"'Courier New',Consolas,'Liberation Mono',monospace",fontMono:"'Courier New',Consolas,'Liberation Mono',monospace",shadow:"none"},
 layout:{hud:"rails",nav:"terminal"},
 rarityColor:{free:"#5a6b78",common:"#d8e0e8",rare:"#35ff8a",epic:"#ffb000",legendary:"#ff3b3b",earned:"#7cc7ff",secret:"#c66bff"},
-labels:{title:"PLANET.IO",tagline:"CONSOLE DE COMANDO · CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
+labels:{title:"WARSPACE.IO",tagline:"CONSOLE DE COMANDO · CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   play:"JOGAR",playAuto:"JOGAR (AUTO)",swap:"TROCAR",enter:"ENTRAR",create:"CRIAR SALA",exit:"SAIR",back:"◄ VOLTAR",
   guestNote:"modo convidado",claim:"REIVINDICAR CONTA",lbTitle:"PLACAR",top5:"TOP 5 HOJE",activeRooms:"SALAS ATIVAS",
   hint:"MOUSE mira · [ESPAÇO] dividir · [W] ejetar · [F]/[CLIQUE] míssil · [BTN DIR] dividir",

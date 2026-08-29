@@ -29,7 +29,7 @@ tokens:{bg:"#0e0e11",surface:"transparent",text:"#f2f2f2",muted:"#8a8a93",accent
   shadow:"none"},
 layout:{hud:"text",nav:"list"},
 rarityColor:{free:"#8a8a93",common:"#c8c8d0",rare:"#7fb4ff",epic:"#c48cff",legendary:"#d6ff3c",earned:"#5ee6a0",secret:"#ff5470"},
-labels:{title:"PLANET.IO",play:"JOGAR",playAuto:"JOGAR (AUTO)",respawn:"RENASCER",deadIcon:"",coinIcon:"¤",back:"← Início",botTag:"bot",regTag:"✓",tagline:"CONQUISTE A GALÁXIA — DIVIDA, EJETE, DEVORE"},
+labels:{title:"WARSPACE.IO",play:"JOGAR",playAuto:"JOGAR (AUTO)",respawn:"RENASCER",deadIcon:"",coinIcon:"¤",back:"← Início",botTag:"bot",regTag:"✓",tagline:"CONQUISTE A GALÁXIA — DIVIDA, EJETE, DEVORE"},
 
 init(g){const rand=u.mulberry(5);ST=Array.from({length:70},()=>({x:rand()*T,y:rand()*T}));},
 

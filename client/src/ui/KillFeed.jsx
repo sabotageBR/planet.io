@@ -10,7 +10,7 @@
 // As linhas somem pela IDADE (FEED.TTL_MS), com o mesmo relógio de 1 Hz que o Chat usa — sem ele a última
 // linha ficaria eterna até chegar outra.
 import React, { useEffect, useState } from "react";
-import { FEED } from "@planet/shared";
+import { FEED } from "@warspace/shared";
 import { useLabels } from "../hooks/useTheme.js";
 import { HOW_ICON, SYS_ICON } from "./icons.js";
 import { Nick } from "./bits.jsx";

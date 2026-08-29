@@ -5,7 +5,7 @@ import { app } from "../state/app.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { Nav, ScreenHeader, Screen } from "./bits.jsx";
 import { fmt, ord } from "./format.js";
-import { flagOf, countryName, kdOf } from "@planet/shared";
+import { flagOf, countryName, kdOf } from "@warspace/shared";
 
 const PERIODS = ["all", "week", "day"], METRICS = ["xp", "score", "mass", "kills", "food", "kd"];
 export default function Rank({ on }) {

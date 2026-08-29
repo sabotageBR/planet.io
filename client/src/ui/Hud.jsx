@@ -1,7 +1,7 @@
 // HUD sobre o canvas: chips (sala, relógio do espaço + contagem do fim do mundo, ping/fps), placar,
 // massa/pontos, munição, powerups, cooldowns, botões touch.
 // Lê o hudStore do jogo (throttle 20 Hz) e a sessão (moedas/nick/prefs). Os botões touch emitem
-// CustomEvent `planet:action` {action, phase} que borbulha até #hud (o motor escuta ali).
+// CustomEvent `warspace:action` {action, phase} que borbulha até #hud (o motor escuta ali).
 import React, { useMemo, useSyncExternalStore } from "react";
 import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
@@ -14,7 +14,7 @@ import KillFeed from "./KillFeed.jsx";
 import { Nick } from "./bits.jsx";
 import { WEAPON_ICON } from "./icons.js";
 import BrLobby from "./BrLobby.jsx";
-import { MODE, weaponOf } from "@planet/shared";
+import { MODE, weaponOf } from "@warspace/shared";
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, clock: null,
   mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, talk: null, chat: [], feed: [], lobby: null };
@@ -30,7 +30,7 @@ function TalkRing({ k }) {
 }
 const EMPTY_STORE = { get: () => EMPTY, subscribe: () => () => {} };
 const PW_ICON = { magnet: "🧲", shield: "🛡️" };
-const emit = (el, action, phase) => el.dispatchEvent(new CustomEvent("planet:action", { bubbles: true, detail: { action, phase } }));
+const emit = (el, action, phase) => el.dispatchEvent(new CustomEvent("warspace:action", { bubbles: true, detail: { action, phase } }));
 function press(action) {
   return {
     onPointerDown: e => { e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ok */ } emit(e.currentTarget, action, "down"); },

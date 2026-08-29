@@ -11,8 +11,8 @@
 // zerá-lo: o `pushHud` do jogo (8 Hz) relia o objeto velho 125 ms depois e a barra de progresso voltava
 // CONGELADA na tela, para não sair mais. Estado derivado não tem como ficar preso.
 // @ts-check
-import {VOICE} from "@planet/shared";
-import {encodeVoiceUp,createWriter} from "@planet/shared/protocol/index.js";
+import {VOICE} from "@warspace/shared";
+import {encodeVoiceUp,createWriter} from "@warspace/shared/protocol/index.js";
 
 const AVISO_MS=1600;   // quanto tempo o motivo da recusa (cooldown, permissão negada) fica na tela
 

@@ -6,9 +6,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {citou,baseNick,sanitiza,normalizar,montaPrompt,detectaIdioma,createBotChat,aberta,estadoLinha,agressorLinha} from '../src/rooms/botChat.js';
 import {PERSONAS,pickPersona} from '../src/rooms/botPersonas.js';
-import {createRng} from '@planet/shared/rng.js';
-import {botNick,BOT_LLM,CHAT} from '@planet/shared/constants.js';
-import * as CONST from '@planet/shared/constants.js';
+import {createRng} from '@warspace/shared/rng.js';
+import {botNick,BOT_LLM,CHAT} from '@warspace/shared/constants.js';
+import * as CONST from '@warspace/shared/constants.js';
 
 test('menção: a raiz do apelido sobrevive aos cinco formatos de botNick', () => {
   assert.equal(baseNick('Trovao'),'trovao');

@@ -4,7 +4,7 @@ import { api, isUnreachable } from "../api/client.js";
 import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS } from "./app.js";
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { LABELS } from "../ui/labels.js";
-import { skinById } from "@planet/shared";
+import { skinById } from "@warspace/shared";
 import { clockRef, gameRef } from "./game.js";
 
 const Q = new URLSearchParams(location.search);

@@ -10,8 +10,8 @@ const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.env'),'utf8').split('\n')){const m=/^\s*([A-Z_]+)=(.*)$/.exec(l);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim();}}catch{}}
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';process.env.SHARDS='1';process.env.PEERS='';
 const {startServer}=await import('../src/index.js');
-const {decodeMessage,encodeInput,encodeVoiceUp,MSG,KIND,PLAYER_FLAG,SELF_FLAG,NO_TEAM,PROTOCOL_VERSION}=await import('@planet/shared/protocol/index.js');
-const {MODE,BR,ZONE,VOICE,CHAT,WEAPON,NET,BOT_NAMES,BOT_CHAT,BOT_TALK,modeCap}=await import('@planet/shared/constants.js');
+const {decodeMessage,encodeInput,encodeVoiceUp,MSG,KIND,PLAYER_FLAG,SELF_FLAG,NO_TEAM,PROTOCOL_VERSION}=await import('@warspace/shared/protocol/index.js');
+const {MODE,BR,ZONE,VOICE,CHAT,WEAPON,NET,BOT_NAMES,BOT_CHAT,BOT_TALK,modeCap}=await import('@warspace/shared/constants.js');
 const LOG=process.env.LOG_LEVEL;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let srv,base,wsUrl,token='pt_sem_banco';
@@ -430,7 +430,7 @@ test('voz: o clipe chega intacto ao companheiro e o servidor não guarda nada',a
   await b.join({nick:'V2',mode:MODE.BR,teamSize:2,room:ra.code,party:code});
   await c.join({nick:'V3',mode:MODE.BR,teamSize:2,room:ra.code});
   const data=new Uint8Array(Array.from({length:1600},(_,i)=>(i*31)&255));
-  a.ws.send(encodeVoiceUp((await import('@planet/shared/protocol/index.js')).createWriter(4096),{codec:0,durMs:900,data}));
+  a.ws.send(encodeVoiceUp((await import('@warspace/shared/protocol/index.js')).createWriter(4096),{codec:0,durMs:900,data}));
   const v=await b.until(()=>b.voices[0],4000,'voz');
   assert.equal(v.slot,ra.slot);assert.equal(v.durMs,900);assert.deepEqual([...v.data],[...data],'os bytes atravessam sem o servidor tocar neles');
   await sleep(250);
@@ -440,7 +440,7 @@ test('voz: o clipe chega intacto ao companheiro e o servidor não guarda nada',a
   a.close();b.close();c.close();
 });
 test('voz: tamanho, duração e intervalo são recusados sem derrubar a conexão',async()=>{
-  const {createWriter}=await import('@planet/shared/protocol/index.js');
+  const {createWriter}=await import('@warspace/shared/protocol/index.js');
   const a=new C(wsUrl),b=new C(wsUrl);await a.open();await b.open();
   const ra=await a.join({nick:'Voz',room:newRoom()});await b.join({nick:'Orelha',room:ra.code});
   const room=roomOf(ra.code),sess=[...room.sessions.values()].find(s=>s.slot===ra.slot);
@@ -507,7 +507,7 @@ test('fala gerada: o bot responde a quem o CHAMA, e o orçamento segura o resto'
     // numa sala de 24 apelidos de gente uma palavra da frase às vezes casa com um segundo nick. O que o
     // código garante — e o que este teste cobra — é que só responde quem foi CITADO, e no máximo
     // CORO_MAX_CITADOS deles.
-    const {BOT_LLM}=await import('@planet/shared/constants.js');
+    const {BOT_LLM}=await import('@warspace/shared/constants.js');
     const vivos=[...room.sim.players.values()].filter(g=>g.isBot);
     const citados=vivos.filter(g=>citou(`${bot.name} vem ca seu covarde`,g.name)).map(g=>g.name);
     assert.ok(citados.includes(bot.name),'o bot chamado pelo nome tem que estar entre os citados');
@@ -551,7 +551,7 @@ test('corrente bot↔bot TERMINA, mesmo com uma LLM que sempre cita outro bot',a
   // nome, que é a única condição que faz a corrente continuar. Se a terminação depender de sorte, este
   // teste a expõe; se depender das guardas (profundidade, `cadeia`, orçamento por bot), ele passa sempre.
   const {citou}=await import('../src/rooms/botChat.js');
-  const {BOT_LLM}=await import('@planet/shared/constants.js');
+  const {BOT_LLM}=await import('@warspace/shared/constants.js');
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Humano',room:newRoom()});
   const room=roomOf(r.code);
@@ -582,7 +582,7 @@ test('corrente bot↔bot TERMINA, mesmo com uma LLM que sempre cita outro bot',a
 
 test('pergunta aberta vira coro escalonado; frase solta, não',async()=>{
   const {citou}=await import('../src/rooms/botChat.js');
-  const {BOT_LLM}=await import('@planet/shared/constants.js');
+  const {BOT_LLM}=await import('@warspace/shared/constants.js');
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Humano',room:newRoom()});
   const room=roomOf(r.code);
@@ -610,7 +610,7 @@ test('ninguém fica mudo: chamado pelo nome com a LLM fora, sai o repertório',a
   // Era o buraco: o fallback da menção devolvia null, então bot chamado pelo nome com o disjuntor aberto
   // simplesmente não respondia — que é o que mais denuncia um preenchimento.
   const {citou}=await import('../src/rooms/botChat.js');
-  const {BOT_CHAT,BOT_TALK}=await import('@planet/shared/constants.js');
+  const {BOT_CHAT,BOT_TALK}=await import('@warspace/shared/constants.js');
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Humano',room:newRoom()});
   const room=roomOf(r.code);

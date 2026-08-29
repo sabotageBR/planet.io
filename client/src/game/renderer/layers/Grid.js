@@ -1,6 +1,6 @@
 // ── GRADE (TilingSprite de um tile assado do tema) + BORDA do mundo (Graphics, tracejada) ──
 import {Container,TilingSprite,Graphics,Texture} from "pixi.js";
-import {WORLD} from "@planet/shared";
+import {WORLD} from "@warspace/shared";
 import {colorOf,dashPolyline} from "../../util.js";
 
 export function createGrid(R){

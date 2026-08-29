@@ -6,7 +6,7 @@
 import {createHash} from 'node:crypto';
 import {err,RAW} from './router.js';
 import {LIMITS} from '../auth/ratelimit.js';
-import {AVATAR} from '@planet/shared/constants.js';
+import {AVATAR} from '@warspace/shared/constants.js';
 import {probeImage} from './imagemeta.js';
 
 export function mountAvatar(router,{db,users,avatars,requireUser,config,log}){

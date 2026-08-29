@@ -88,7 +88,7 @@ tokens:{bg:"#3b1f6b",surface:"#4a2a7a",text:"#fff1d6",muted:"#c9a6d8",accent:"#f
   shadow:"6px 6px 0 #241238"},
 layout:{hud:"bubbles",nav:"drawer"},
 rarityColor:{free:"#c9a6d8",common:"#2ec4b6",rare:"#7fb3ff",epic:"#e0417f",legendary:"#ffb547",earned:"#7ee08a",secret:"#ff5e6c"},
-labels:{title:"🪐 PLANET.IO",tagline:"Conquiste a galáxia antes do sol se pôr!",play:"🚀 JOGAR",playAuto:"🚀 JOGAR (AUTO)",lbTitle:"PÓDIO",
+labels:{title:"WARSPACE.IO",tagline:"Conquiste a galáxia antes do sol se pôr!",play:"🚀 JOGAR",playAuto:"🚀 JOGAR (AUTO)",lbTitle:"PÓDIO",
   dead:"KABOOM!",deadSub:"— você virou poeira no fim da tarde —",respawn:"🔄 DE NOVO!",reconnTitle:"SINAL FRACO!",reconnSub:"Procurando o satélite… tentativa {n}/5",
   back:"◄",create:"➕ Criar sala",top5:"TOP 5 HOJE"},
 

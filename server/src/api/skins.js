@@ -1,9 +1,9 @@
 // ── /api/skins, /api/skins/:id/buy, /api/skins/:id/equip ───────────────────────
 // @ts-check
 import {err} from './router.js';
-import {SKINS} from '@planet/shared/skins.js';
+import {SKINS} from '@warspace/shared/skins.js';
 import {InsufficientCoins} from '../repos/ledger.js';
-import {levelFromXp} from '@planet/shared/levels.js';
+import {levelFromXp} from '@warspace/shared/levels.js';
 const CATALOG=SKINS.map(s=>({id:s.id,name:s.name,emoji:s.emoji,rarity:s.rarity,price:s.price,color:s.color,ring:s.ring,glow:s.glow,desc:s.desc,...(s.levelReq?{levelReq:s.levelReq}:{}),...(s.unlockKey?{unlockKey:s.unlockKey}:{})}));
 export function mountSkins(router,{db,users,skins,ledger,matches,requireUser,optionalUser,log}){
   // GET /api/skins (🔒 opcional)

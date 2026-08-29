@@ -7,10 +7,10 @@
 import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,encodePong,decodeInput,
   MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,NO_TEAM,
   WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,botNick,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,
-  focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir,FEED} from "@planet/shared";
-import {createWorld,applySplit,incomingMissile,firstLive} from "@planet/shared/physics/index.js";
-import {ammoOf,ownedMask} from "@planet/shared/physics/rules.js";
-import {BotBrain} from "@planet/shared/bot.js";
+  focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir,FEED} from "@warspace/shared";
+import {createWorld,applySplit,incomingMissile,firstLive} from "@warspace/shared/physics/index.js";
+import {ammoOf,ownedMask} from "@warspace/shared/physics/rules.js";
+import {BotBrain} from "@warspace/shared/bot.js";
 const ARMA=["missile","burst","cluster","nova"];   // WEAPON.* → a chave do kill feed (a mesma tabela do Sim)
 
 const seqNewer=(a,b)=>b<0||(((a-b)&0xFFFF)>0&&((a-b)&0xFFFF)<0x8000);

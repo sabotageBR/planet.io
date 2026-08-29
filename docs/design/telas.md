@@ -1,4 +1,4 @@
-# Inventário de telas do planet.io v2
+# Inventário de telas do warspace.io v2
 
 Independe do modelo visual escolhido. Todo modelo em `mockups/v2/` implementa exatamente estas
 telas/estados sobre o mesmo DOM (gerado por `mockups/v2/src/engine2.js`) e os mesmos dados falsos

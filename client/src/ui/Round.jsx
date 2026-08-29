@@ -1,6 +1,6 @@
 // BIG CRUNCH: pódio dos 3 primeiros, placar do resto e contagem para a próxima sala (entra sozinho ao zerar).
 import React, { useEffect, useRef, useState } from "react";
-import { skinById } from "@planet/shared";
+import { skinById } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { play, leaveGame } from "../state/actions.js";

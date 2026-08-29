@@ -24,7 +24,7 @@ for(const [id,name] of MODELS){
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>planet.io — modelo: ${name}</title>
+<title>warspace.io — modelo: ${name}</title>
 <style>
 ${base}</style>
 <style id="theme-css"></style>
@@ -56,7 +56,7 @@ fs.writeFileSync(path.join(OUT,"index.html"),`<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>planet.io — 6 modelos visuais</title>
+<title>warspace.io — 6 modelos visuais</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0b0e14;color:#e6edf6;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:44px 24px 60px}
@@ -80,7 +80,7 @@ footer{margin-top:34px;color:#4d5b70;font-size:12.5px;line-height:1.8}
 </style>
 </head>
 <body><div class="wrap">
-<h1>planet.io — 6 modelos visuais</h1>
+<h1>warspace.io — 6 modelos visuais</h1>
 <p class="sub">Cada modelo é uma demo jogável em tela cheia, com a mesma simulação (células, comida, vírus, massa ejetada, mísseis e bots) e arte totalmente diferente — mundo, HUD, menu, loja e tela de morte.</p>
 <p class="keys">Dentro da demo: <b>mouse</b> mover · <b>ESPAÇO</b> dividir · <b>W</b> ejetar · <b>clique</b> míssil/ejetar · <b>botão direito</b> dividir · <b>M</b> menu · <b>L</b> loja · <b>K</b> tela de morte · <b>1–7</b> trocar de modelo · <b>ESC</b> voltar aqui</p>
 <div class="grid">${cards}

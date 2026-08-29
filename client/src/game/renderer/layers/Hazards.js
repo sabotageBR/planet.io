@@ -7,7 +7,7 @@
 // Estrela: sprite jovem/velha (fase OLD = inchando para a supernova) pulsando + coroa tracejada no halo
 // (+ ring2 opcional na borda quente); k = influenceR/(r·STAR.HALO) dá a rampa de nascimento (escala e alpha).
 import {Container,Sprite,Graphics} from "pixi.js";
-import {BLACKHOLE,STAR,STAR_PHASE,rectHas} from "@planet/shared";
+import {BLACKHOLE,STAR,STAR_PHASE,rectHas} from "@warspace/shared";
 import {colorOf,seedAngle} from "../../util.js";
 
 export const BH_TEX=512;

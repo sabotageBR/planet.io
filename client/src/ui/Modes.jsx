@@ -4,7 +4,7 @@
 // porque aí o jogador precisa de um código para mandar aos amigos antes de qualquer sala existir.
 // Offline (`api.server === false`) o Battle Royale fica desabilitado: o `?local=1` só sabe rodar o Livre.
 import React, { useState } from "react";
-import { MODE, BR } from "@planet/shared";
+import { MODE, BR } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { api } from "../api/client.js";

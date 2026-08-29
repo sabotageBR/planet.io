@@ -16,4 +16,4 @@ export async function verifyPassword(pw,stored){
 }
 export const validPassword=pw=>typeof pw==='string'&&pw.length>=PASSWORD_MIN&&pw.length<=PASSWORD_MAX;
 // hash fixo para igualar o tempo do login quando o usuário não existe
-let dummy=null;export const dummyHash=async()=>dummy||(dummy=await hashPassword('planet-io-dummy'));
+let dummy=null;export const dummyHash=async()=>dummy||(dummy=await hashPassword('warspace-io-dummy'));

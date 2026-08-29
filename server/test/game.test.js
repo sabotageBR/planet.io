@@ -12,10 +12,10 @@ const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.env'),'utf8').split('\n')){const m=/^\s*([A-Z_]+)=(.*)$/.exec(l);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim();}}catch{}}
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';process.env.SHARDS='1';process.env.PEERS='';
 const {startServer}=await import('../src/index.js');
-const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG,PROTOCOL_VERSION}=await import('@planet/shared/protocol/index.js');
-const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE,WORLD}=await import('@planet/shared/constants.js');
-const {rectHas,viewRect}=await import('@planet/shared/camera.js');
-const {setR}=await import('@planet/shared/physics/body.js');
+const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG,PROTOCOL_VERSION}=await import('@warspace/shared/protocol/index.js');
+const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE,WORLD}=await import('@warspace/shared/constants.js');
+const {rectHas,viewRect}=await import('@warspace/shared/camera.js');
+const {setR}=await import('@warspace/shared/physics/body.js');
 const {newCode,shardOf,isValidCode,normalizeCode}=await import('../src/rooms/codes.js');
 const {Bucket}=await import('../src/net/Session.js');
 const LOG=process.env.LOG_LEVEL;

@@ -11,8 +11,8 @@ import {createRanking} from '../repos/ranking.js';
 import {MatchSession} from './session.js';
 import {createQueue} from './queue.js';
 import {matchCoins,achievementCoins,newAchievements,skinsForAchievements,achievementTitle,matchXp,matchDeaths} from './rewards.js';
-import {levelFromXp,levelProgress} from '@planet/shared/levels.js';
-import {eggSkinFor} from '@planet/shared/eggs.js';
+import {levelFromXp,levelProgress} from '@warspace/shared/levels.js';
+import {eggSkinFor} from '@warspace/shared/eggs.js';
 const JOIN_TIMEOUT_MS=3000,DRAIN_MS=10000,CLEAN_LOCK=727002,HOUR=3600e3,DAY=24*HOUR;
 // Sem banco não há skin equipada nem nível — mas o EASTER EGG continua valendo: ele depende só do nick,
 // e é justamente no modo sem persistência (e no ?local=1) que ele é mais visível.

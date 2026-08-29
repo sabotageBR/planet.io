@@ -6,16 +6,16 @@
 // Pontuação: o World já aplica EAT.SCORE_PLAYER·r / SCORE_FOOD·r / SCORE_EJECT·r em ps.score; aqui só
 // espelhamos (uma fonte só, sem contar duas vezes).
 // @ts-check
-import {createWorld} from '@planet/shared/physics/world.js';
-import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT,BOT_TALK,BOT_LLM,FEED,MISSILE,MODE,modeOf,WEAPON,WEAPONS} from '@planet/shared/constants.js';
-import {EVENT,REMOVE,PLAYER_FLAG,SELF_FLAG,POWER_BIT,INPUT_FLAG,NO_TEAM} from '@planet/shared/protocol/constants.js';
-import {createRng} from '@planet/shared/rng.js';
-import {kdOf} from '@planet/shared/levels.js';
-import {packDir} from '@planet/shared/util.js';
+import {createWorld} from '@warspace/shared/physics/world.js';
+import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT,BOT_TALK,BOT_LLM,FEED,MISSILE,MODE,modeOf,WEAPON,WEAPONS} from '@warspace/shared/constants.js';
+import {EVENT,REMOVE,PLAYER_FLAG,SELF_FLAG,POWER_BIT,INPUT_FLAG,NO_TEAM} from '@warspace/shared/protocol/constants.js';
+import {createRng} from '@warspace/shared/rng.js';
+import {kdOf} from '@warspace/shared/levels.js';
+import {packDir} from '@warspace/shared/util.js';
 import {NOOP_HOOKS} from './hooks.js';
-import {BotBrain} from '@planet/shared/bot.js';
-import {incomingMissile,ammoOf,ownedMask} from '@planet/shared/physics/rules.js';
-import {firstLive} from '@planet/shared/physics/body.js';
+import {BotBrain} from '@warspace/shared/bot.js';
+import {incomingMissile,ammoOf,ownedMask} from '@warspace/shared/physics/rules.js';
+import {firstLive} from '@warspace/shared/physics/body.js';
 
 export const NO_SLOT=0xffff;
 const LB_MAX=10,EVENTS_MAX=256;

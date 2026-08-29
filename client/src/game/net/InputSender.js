@@ -5,7 +5,7 @@
 // EJECT_HOLD vai em todo input enquanto a tecla/botão está segurado. Guarda histórico
 // {seq,tick,tx,ty,flags} para o Predictor reaplicar após o snapshot. Nada é enviado antes do 1º setTarget
 // (senão o keepalive mandaria tx=ty=0 e o servidor puxaria a peça para o canto até o mouse mexer).
-import {INPUT_FLAG,NET,encodeInput} from "@planet/shared";
+import {INPUT_FLAG,NET,encodeInput} from "@warspace/shared";
 
 const SEND_MS=1000/NET.INPUT_HZ,KEEP_MS=1000/NET.KEEPALIVE_HZ,HIST=256;
 export const seqGE=(a,b)=>((a-b)&0xFFFF)<0x8000;   // a ≥ b com wrap u16

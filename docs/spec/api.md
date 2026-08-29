@@ -1,4 +1,4 @@
-# API HTTP planet.io v2 (`/api/*`, qualquer shard responde)
+# API HTTP warspace.io v2 (`/api/*`, qualquer shard responde)
 
 JSON; erros `{error:'code', message:'pt-BR'}`; `Cache-Control: no-store`; body ≤ 16 KB; `Authorization: Bearer pt_…` onde marcado 🔒.
 Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`. Sem JWT, sem SESSION_SECRET.
@@ -42,5 +42,5 @@ hash do mesmo token `pt_…` (nunca pelo IP: dois jogadores atrás do mesmo NAT 
 reusa `rooms/codes.js`, cujo 1º char é o shard — assim o link do convite leva o amigo ao MESMO pod, e por
 consequência à mesma sala.
 
-Sem banco (`DATABASE_URL` ausente ou Secret `planet-db` faltando): as rotas de conta respondem `503 {error:"unreachable"}` e o
+Sem banco (`DATABASE_URL` ausente ou Secret `warspace-db` faltando): as rotas de conta respondem `503 {error:"unreachable"}` e o
 cliente usa um perfil local (`localStorage`), mas continua entrando nas salas reais (`api.server` = `/api/config` ok; `api.online` = contas ok).

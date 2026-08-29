@@ -3,7 +3,7 @@ import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { claim, login, closeAccount , setCountry } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
-import { COUNTRIES, POPULAR, flagOf, countryName } from "@planet/shared";
+import { COUNTRIES, POPULAR, flagOf, countryName } from "@warspace/shared";
 import { Field, Select } from "./bits.jsx";
 
 const PAISES = [...POPULAR, ...COUNTRIES.map(([c]) => c).filter(c => !POPULAR.includes(c))];

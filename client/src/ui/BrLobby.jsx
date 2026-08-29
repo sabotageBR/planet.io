@@ -6,7 +6,7 @@
 // Os participantes aparecem um a um, na ordem em que chegam — é o preenchimento gradual do servidor que dá
 // o ritmo, e este componente só desenha o que recebe.
 import React from "react";
-import { skinById } from "@planet/shared";
+import { skinById } from "@warspace/shared";
 import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
 

@@ -1,14 +1,14 @@
-# Configuração não-secreta dos shards. O Secret planet-db (DATABASE_URL) é criado por scripts/db-secret.sh.
+# Configuração não-secreta dos shards. O Secret warspace-db (DATABASE_URL) é criado por scripts/db-secret.sh.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: planet-config
-  namespace: planet
-  labels: {app: planet-server}
+  name: warspace-config
+  namespace: warspace
+  labels: {app: warspace-server}
 data:
   SHARDS: "3"
-  PEER_HOST: "planet-server.planet.svc.cluster.local"
-  PEER_NAME: "planet-server"
+  PEER_HOST: "warspace-server.warspace.svc.cluster.local"
+  PEER_NAME: "warspace-server"
   ROOM_MAX: "30"
   ROOM_BOTS: "15"
   ROUND_TICKS: "108000"   # rodada de 30 min a 60 Hz = 2 dias do relógio do espaço (fim do mundo + sala nova)

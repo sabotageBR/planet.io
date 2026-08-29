@@ -1,4 +1,4 @@
-# planet.io
+# warspace.io
 
 Agar.io espacial multiplayer: planetas com inércia, quique, asteroides e buracos negros. Servidor autoritativo em Node 22
 (WebSocket binário, física compartilhada), cliente Vite + React + PixiJS com três temas que trocam pelo horário

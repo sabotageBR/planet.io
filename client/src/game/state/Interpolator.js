@@ -7,7 +7,7 @@
 // continuando comível no mundo. Entidades órfãs de verdade somem pelo RESYNC do servidor. Removidas pelo servidor,
 // quando tRender alcança o tick da remoção: EATEN/SUCKED/POPPED/MERGED → somem NO MESMO FRAME e
 // chamam onVanish(e) (efeito local); LEFT_AOI → imediato; EXPIRED/DESPAWN → fade curto (0,2 s).
-import {KIND,NET,TICK_HZ,REMOVE} from "@planet/shared";
+import {KIND,NET,TICK_HZ,REMOVE} from "@warspace/shared";
 
 const T=TICK_HZ/1000,BASE=NET.INTERP_DELAY_MS*T,MAXD=NET.INTERP_MAX_MS*T,EXTRAP=NET.EXTRAP_MAX_MS*T,STALE=60,FADE_REMOVED=12,FADE_STALE=30,DELAY_SLEW=.05,STILL_V2=64;   // |v| ≤ 8 px/s = parado
 const MOVING=new Set([KIND.PIECE,KIND.EJECT,KIND.MISSILE]);

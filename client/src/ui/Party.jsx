@@ -4,7 +4,7 @@
 // (mesmo padrão do Round.jsx, que já entra numa sala nova quando o contador zera).
 // As vagas que sobrarem viram BOT ALIADO no começo da partida — é o "autopreencher".
 import React, { useState } from "react";
-import { skinById } from "@planet/shared";
+import { skinById } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { refreshParty, leaveParty, startParty, toast } from "../state/actions.js";

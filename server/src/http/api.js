@@ -2,7 +2,7 @@
 // @ts-check
 import {readFile,stat} from 'node:fs/promises';
 import path from 'node:path';
-import {PROTOCOL_VERSION} from '@planet/shared/protocol/constants.js';
+import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
 import {sendJson,readJson,bearer,clientIp} from '../api/router.js';
 import {hashToken} from '../auth/tokens.js';
 import {createPartyManager} from '../rooms/Party.js';

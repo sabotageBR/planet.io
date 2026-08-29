@@ -2,7 +2,7 @@
 // ⚠️ Este é o ÚNICO lugar do servidor que interpola SQL. `PERIODS` e `BY` são whitelists literais e têm
 // que continuar sendo: nada vindo de `ctx.query` pode chegar à string, nunca.
 // @ts-check
-import {KD_MIN_KILLS,KD_MIN_GAMES} from '@planet/shared/levels.js';
+import {KD_MIN_KILLS,KD_MIN_GAMES} from '@warspace/shared/levels.js';
 
 export const PERIODS={all:'user_stats',week:'v_ranking_week',day:'v_ranking_day'};
 /**

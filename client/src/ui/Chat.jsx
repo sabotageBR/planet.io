@@ -4,7 +4,7 @@
 // As linhas somem sozinhas depois de CHAT.FADE_MS: o chat não pode virar uma parede permanente em cima do jogo.
 // O escopo (sala ou equipe) é decidido no SERVIDOR pelo modo; aqui só se mostra qual é.
 import React, { useEffect, useRef, useState } from "react";
-import { CHAT, MODE } from "@planet/shared";
+import { CHAT, MODE } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";

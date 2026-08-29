@@ -2,7 +2,7 @@
 // Ver docs/design/theme-time.md. Três temas (dawn/sunset/dusk) trocados pela hora
 // local do jogador quando a preferência é "auto". A troca só seta
 // html[data-theme="<id>"] (o CSS de cada tema já vem escopado por esse atributo —
-// client/src/theme/all.css) e emite `planet:theme` na window para o Pixi invalidar o
+// client/src/theme/all.css) e emite `warspace:theme` na window para o Pixi invalidar o
 // cache de texturas.
 //   import {applyTheme,startThemeClock,currentTheme} from "./theme/index.js";
 //   import "./theme/all.css";
@@ -27,9 +27,9 @@ export function resolveThemeId(pref="auto",when=new Date()){
 
 let current=null;
 // aplica o tema no <html> (data-theme); as variáveis CSS vêm de tokens.css, nada é setado em style.
-// Emite window 'planet:theme' {detail:{id,theme,prev}} só quando o tema muda de fato.
+// Emite window 'warspace:theme' {detail:{id,theme,prev}} só quando o tema muda de fato.
 // `fade`: a troca é imediata; quem faz o fade é SÓ o céu, dentro do Pixi (renderer/layers/Background.js), que ao
-// receber o `planet:theme` guarda o céu velho num sprite por cima e o dissolve em ROUND.FADE_MS. Nada de overlay
+// receber o `warspace:theme` guarda o céu velho num sprite por cima e o dissolve em ROUND.FADE_MS. Nada de overlay
 // cobrindo a tela: HUD, telas e o jogo continuam visíveis durante a virada.
 export function applyTheme(id,{fade=false}={}){   // `fade` continua na assinatura (os chamadores pedem a troca suave), mas quem faz o fade é o céu
   return swapTheme(THEMES[id]||THEMES[DEFAULT_THEME]);}
@@ -38,7 +38,7 @@ function swapTheme(th){
   const same=prev&&prev.id===th.id&&(!root||root.dataset.theme===th.id);
   current=th;
   if(root)root.dataset.theme=th.id;
-  if(!same&&typeof window!=="undefined")window.dispatchEvent(new CustomEvent("planet:theme",{detail:{id:th.id,theme:th,prev:prev?prev.id:null}}));
+  if(!same&&typeof window!=="undefined")window.dispatchEvent(new CustomEvent("warspace:theme",{detail:{id:th.id,theme:th,prev:prev?prev.id:null}}));
   return th;}
 
 export function currentTheme(){return current||THEMES[resolveThemeId("auto")];}

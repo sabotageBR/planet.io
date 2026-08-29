@@ -8,7 +8,7 @@
 // O halo respira devagar (GLOW_PULSE) e some no modo econômico e com "menos movimento": é enfeite, e enfeite
 // é a primeira coisa que sai quando o frame aperta.
 import {ParticleContainer,Particle} from "pixi.js";
-import {FOOD_TYPE,FOOD,rectHas} from "@planet/shared";
+import {FOOD_TYPE,FOOD,rectHas} from "@warspace/shared";
 import {seedAngle,seedUnit} from "../../util.js";
 
 const SIZE=64,GLOW_K=1.9,GLOW_PULSE={amp:.12,speed:.0022};   // GLOW_K: o halo é bem maior que o corpo — é o vazamento que dá o brilho

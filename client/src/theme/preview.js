@@ -9,11 +9,13 @@
 import "./all.css";
 import {THEMES,applyTheme} from "./index.js";
 import {tier,drawPrims,mulberry} from "./util.js";
+import {logoArt} from "../ui/logoArt.js";       // a MESMA arte da marca que a tela usa
+import {navIconSvg} from "../ui/navIconArt.js"; // e os MESMOS ícones dos seis botões
 
 const Q=new URLSearchParams(location.search);
 const themeId=THEMES[Q.get("theme")]?Q.get("theme"):"dawn",screen=Q.get("screen")||"entry",mode=Q.get("mode")||"desktop";
 const TH=applyTheme(themeId);
-document.title=`planet.io — ${TH.name} · ${screen} · ${mode}`;
+document.title=`warspace.io — ${TH.name} · ${screen} · ${mode}`;
 
 // ── dados falsos do mockup ────────────────────────────────────────────────────
 let D=null;
@@ -26,9 +28,9 @@ const fmtDate=ms=>{const d=new Date(ms);return d.toLocaleDateString("pt-BR",{day
 
 // rótulos padrão do engine2 + overrides do tema
 const LABELS={
-  title:"🪐 PLANET.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
+  title:"WARSPACE.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   coinIcon:"🪙",coinWord:"moedas",nameLabel:"Nome do seu planeta",swap:"Trocar",
-  play:"🚀 JOGAR",playAuto:"🚀 Jogar (auto)",rooms:"Salas",ranking:"Ranking",profile:"Perfil",shop:"Loja",prefs:"Opções",home:"Início",
+  modesShort:"Modos",play:"JOGAR",playAuto:"🚀 Jogar (auto)",rooms:"Salas",ranking:"Ranking",profile:"Perfil",shop:"Loja",prefs:"Opções",home:"Início",
   guestNote:"Jogando como convidado",claim:"Reivindicar conta",login:"Entrar",logout:"Sair",guest:"convidado",registered:"conta protegida",
   hint:"mouse = mover · ESPAÇO = dividir · W = ejetar · F/clique = míssil · botão direito = dividir",
   back:"◄ Voltar",equipped:"EQUIPADA",equip:"Equipar",buy:"Comprar",locked:"Bloqueada",secret:"???",
@@ -55,6 +57,8 @@ const SKINS=D.SKINS,RARITY=D.RARITY,RC=TH.rarityColor||D.RARITY_COLOR,ME=D.ME,my
 
 // ── modo: no app real a viewport é o aparelho; aqui emulamos o tamanho do mockup para comparar com os shots ──
 document.body.dataset.mode=mode;
+// a casca é escrita pelo App.jsx, que a prévia não roda: sem ela a tela inicial fica sem o grid de duas colunas
+document.body.dataset.shell=Q.get("shell")||"center";
 const app=document.getElementById("app");
 if(mode==="portrait"||mode==="landscape"){const [w,h]=mode==="portrait"?[390,844]:[844,390];
   Object.assign(app.style,{inset:"auto",left:"50%",top:"50%",width:w+"px",height:h+"px",transform:"translate(-50%,-50%)"});
@@ -96,28 +100,34 @@ app.innerHTML=`
     </div>
   </div>
 
-  <div class="screen" id="s-entry"><div class="wrap entry-wrap">
-    <div class="brand-block"><div class="brand">${LB.title}</div><div class="tagline">${LB.tagline}</div></div>
+  <div class="screen" id="s-entry"><div class="wrap entry-wrap entry-v2">
+    <div class="brand-block">
+      <div class="logo" role="img" aria-label="${LB.title}">
+        <svg class="logo-mark" viewBox="0 0 64 64" aria-hidden="true">${logoArt()}</svg>
+        <span class="logo-word" aria-hidden="true">WARSPACE<i>.IO</i></span>
+      </div>
+      <div class="tagline">${LB.tagline}</div>
+    </div>
     <div class="card entry-main">
       <div class="coinbar">${LB.coinIcon} <b class="v-coins"></b> <span>${LB.coinWord}</span></div>
-      ${field("nameIn",LB.nameLabel,"text",'maxlength="16" autocomplete="off"')}
-      <div class="skinrow"><canvas class="skinprev" width="112" height="112"></canvas>
-        <div class="skinmeta"><b id="m-skin"></b><i id="m-rar"></i></div>
-        <button class="btn-mini" data-go="shop">${LB.swap}</button></div>
+      <div class="entry-id">
+        <button class="id-skin" data-go="shop"><canvas class="skinprev" width="112" height="112"></canvas><span class="id-swap">${LB.swap}</span></button>
+        <div class="id-fields">
+          ${field("nameIn",LB.nameLabel,"text",'maxlength="16" autocomplete="off"')}
+          <div class="skinmeta"><b id="m-skin"></b><i id="m-rar"></i></div>
+        </div>
+      </div>
       <button class="btn-primary" data-go="game">${LB.play}</button>
       <div class="entry-links">
-        <button class="btn-secondary" data-go="lobby">${LB.rooms}</button>
-        <button class="btn-secondary" data-go="rank">${LB.ranking}</button>
-        <button class="btn-secondary" data-go="profile">${LB.profile}</button>
-        <button class="btn-secondary" data-go="shop">${LB.shop}</button>
-        <button class="btn-secondary" data-go="prefs">${LB.prefs}</button>
+        ${["modes","lobby","rank","profile","shop","prefs"].map((k,i)=>
+          `<button class="btn-secondary" data-go="${k}">${navIconSvg(k)}<span>${[LB.modesShort,LB.rooms,LB.ranking,LB.profile,LB.shop,LB.prefs][i]}</span></button>`).join("")}
       </div>
       <div class="guest-note"><span class="gn-txt">${LB.guestNote}</span><button class="btn-link" data-go="account">${LB.claim}</button></div>
       <div class="hint">${LB.hint}</div>
     </div>
     <aside class="card entry-side">
-      <div class="ph">${LB.top5}</div><div class="mini-rank" id="entry-top5"></div>
-      <div class="ph">${LB.activeRooms}</div><div class="mini-rooms" id="entry-rooms"></div>
+      <div class="side-block"><div class="ph">${LB.top5}</div><div class="mini-rank" id="entry-top5"></div></div>
+      <div class="side-block"><div class="ph">${LB.activeRooms}</div><div class="mini-rooms" id="entry-rooms"></div></div>
     </aside>
   </div></div>
 

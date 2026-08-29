@@ -3,7 +3,7 @@
 import {readdir,readFile} from 'node:fs/promises';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import path from 'node:path';
-import {SKINS} from '@planet/shared/skins.js';
+import {SKINS} from '@warspace/shared/skins.js';
 const LOCK_ID=727001;
 const DIR=path.join(path.dirname(fileURLToPath(import.meta.url)),'migrations');
 /** lista {version,name,file} ordenada pelo prefixo numérico */

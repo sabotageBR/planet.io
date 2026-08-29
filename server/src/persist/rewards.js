@@ -1,9 +1,9 @@
 // ── Recompensas (puro): moedas da partida, conquistas novas, skins desbloqueadas ──
 // @ts-check
-import {SCORE_COINS,PLACE_COINS,MODE} from '@planet/shared/constants.js';
-import {unlockedAchievements,ACHIEVEMENT_BY_KEY} from '@planet/shared/achievements.js';
-import {SKINS} from '@planet/shared/skins.js';
-import {matchXp,isDeath} from '@planet/shared/levels.js';
+import {SCORE_COINS,PLACE_COINS,MODE} from '@warspace/shared/constants.js';
+import {unlockedAchievements,ACHIEVEMENT_BY_KEY} from '@warspace/shared/achievements.js';
+import {SKINS} from '@warspace/shared/skins.js';
+import {matchXp,isDeath} from '@warspace/shared/levels.js';
 export const ACHIEVEMENT_COINS=100;
 // XP e MORTE reexportados daqui para que `finishMatch` tenha uma porta só de "o que esta partida rendeu".
 // A fórmula e a política moram em shared/src/levels.js — o SQL das views repete a lista de causas, e um

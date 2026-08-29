@@ -6,7 +6,7 @@
 // (Room._teamFor). Vaga que sobrar na equipe é preenchida por BOT aliado no começo da partida (autopreencher).
 // Convidado (guest) participa: quem identifica é o token, não a conta.
 // @ts-check
-import {MODE,MODES,modeOf,BR} from '@planet/shared/constants.js';
+import {MODE,MODES,modeOf,BR} from '@warspace/shared/constants.js';
 import {newCode,normalizeCode,shardOf} from './codes.js';
 const TTL_MS=20*60*1000,SWEEP_MS=30000;
 

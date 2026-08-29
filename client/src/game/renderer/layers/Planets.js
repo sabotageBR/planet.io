@@ -7,7 +7,7 @@
 //    pop(id,delay): "gulp" de quem acabou de engolir alguém — o corpo incha e achata por POP_MS (a absorção do EAT).
 import {Container,Sprite,Graphics,BitmapText,BitmapFont,Cache,MeshPlane} from "pixi.js";
 import {ensureAvatar,avatarBitmap,avatarKey} from "../../../theme/avatars.js";
-import {PIECE_FLAG,mergeTicks,rectHas} from "@planet/shared";
+import {PIECE_FLAG,mergeTicks,rectHas} from "@warspace/shared";
 import {colorOf,dashPolyline,seedUnit} from "../../util.js";
 import {paintTalk} from "../../../theme/util.js";
 

@@ -102,7 +102,7 @@ tokens:{bg:"#04060d",surface:"rgba(6,12,28,.62)",text:"#e6f4ff",muted:"#5d6c8c",
   shadow:"0 8px 30px rgba(0,0,0,.4),0 0 24px rgba(79,227,255,.08)"},
 layout:{hud:"corners",nav:"hub"},
 rarityColor:{free:"#8c9ab5",common:"#4fe3ff",rare:"#5b9dff",epic:"#ff4fd8",legendary:"#ffd166",earned:"#39ff88",secret:"#ff5f8f"},
-labels:{title:"🪐 PLANET.IO"},
+labels:{title:"WARSPACE.IO"},
 
 init(g){const rand=u.mulberry(41);
   L=[.18,.42,.8].map((f,li)=>({f,stars:Array.from({length:li===2?45:90},()=>({x:rand()*T,y:rand()*T,r:li===2?1.6+rand()*1.6:.6+rand()*1.1,a:+((li===2?.55:.22)+rand()*.35).toFixed(2)}))}));

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<title>planet.io v2 — modelo: Cabine</title>
+<title>warspace.io v2 — modelo: Cabine</title>
 <style>
 /* ── BASE v2 ── só estrutura/layout. Toda a aparência (cores, fontes, bordas,
    sombras, posições finais do HUD) vem do CSS do tema, que pode sobrescrever
@@ -55,7 +55,15 @@ body[data-frame="0"] #app{border-radius:0!important;box-shadow:none!important}
 .cd .cd-fill{position:absolute;left:0;bottom:0;height:100%;width:calc(var(--p)*100%);z-index:-1}
 .cd span,.cd em{position:relative;font-style:normal;line-height:1.1}
 #touch{display:none;bottom:24px;right:16px;gap:12px;align-items:flex-end}
-body[data-mode="portrait"] #touch,body[data-mode="landscape"] #touch{display:flex}
+/* o dedo é que decide se há botão de toque, não o tamanho da tela: um tablet grande é operado com a mão e
+   uma janela de desktop estreita, não. (Os temas fazem #touch{display:flex} sem condição e vencem esta
+   regra por ordem de cascata — por isso o display fica com o seletor de ponteiro, que é mais específico.) */
+body[data-pointer="coarse"] #touch{display:flex}
+body[data-pointer="fine"] #touch{display:none}
+/* FILEIRA QUE VIRA TECLADO: com 5 botões (a troca de arma entrou depois) a fileira única ocupava a largura
+   toda do celular e passava POR CIMA do bloco de massa, no canto oposto. Quebrando em duas colunas o canto
+   inferior esquerdo fica livre — e o polegar alcança melhor um bloco 2×N do que uma fileira comprida. */
+body[data-mode="portrait"] #touch{flex-wrap:wrap;justify-content:flex-end;max-width:calc(2 * var(--tbtn,66px) + 8px)}
 .tbtn{width:64px;height:64px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;touch-action:none;user-select:none;-webkit-user-select:none}
 .tbtn span{font-size:10px;letter-spacing:1px}
 .tbtn b{font-size:12px}
@@ -461,7 +469,7 @@ const U={rnd,pick,clamp,lerp,dist,rr,mulberry,sprite,tier,WW,WH,mergeTime,spikes
 
 // ── rótulos padrão (tema sobrescreve só o que quiser) ─────────────────────────
 const LABELS={
-  title:"🪐 PLANET.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
+  title:"WARSPACE.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   coinIcon:"🪙",coinWord:"moedas",nameLabel:"Nome do seu planeta",swap:"Trocar",
   play:"🚀 JOGAR",playAuto:"🚀 Jogar (auto)",rooms:"Salas",ranking:"Ranking",profile:"Perfil",shop:"Loja",prefs:"Opções",home:"Início",
   guestNote:"Jogando como convidado",claim:"Reivindicar conta",login:"Entrar",logout:"Sair",guest:"convidado",registered:"conta protegida",
@@ -1410,7 +1418,7 @@ function bakePlate(G){const W=G.W,DH=G.DH,m=G.m,cv=document.createElement("canva
   if(G.lamps){const lp=G.lamps;["VELOC.","ÍMÃ","ESCUDO"].forEach((l,i)=>{socket(c,lp.x+i*lp.dx,lp.y,lp.r);eng(c,l,lp.x+i*lp.dx,lp.y+lp.r+(m?12:15),m?7:8);});}
   // placa do fabricante + grelha decorativa
   if(G.name){const n=G.name,x0=n.x-n.w,y0=m?18:24,h=m?48:62;c.strokeStyle=METAL;c.lineWidth=1.5;c.strokeRect(x0,y0,n.w,h);c.strokeStyle="rgba(255,255,255,.7)";c.strokeRect(x0+1.5,y0+1.5,n.w-3,h-3);
-    eng(c,"PLANET.IO",n.x-12,y0+(m?20:26),m?13:16,"right","italic ");eng(c,"CABINE Mk.II · SÉRIE 2026",n.x-12,y0+(m?36:44),m?7:8,"right");
+    eng(c,"WARSPACE.IO",n.x-12,y0+(m?20:26),m?13:16,"right","italic ");eng(c,"CABINE Mk.II · SÉRIE 2026",n.x-12,y0+(m?36:44),m?7:8,"right");
     if(!m)eng(c,"PILOTO AUTOMÁTICO DESLIGADO",n.x-12,y0+56,7,"right");}
   if(G.grille&&G.grille[1]-G.grille[0]>120){const[x0,x1]=G.grille;for(let i=0;i<5;i++){const y=30+i*12;c.fillStyle="rgba(11,42,49,.16)";c.fillRect(x0+14,y,x1-x0-28,1.5);c.fillStyle="rgba(255,255,255,.6)";c.fillRect(x0+14,y+1.5,x1-x0-28,1);}}
   return cv;}
@@ -1425,7 +1433,7 @@ tokens:{bg:"#061a1f",surface:"#f1e9d8",text:"#0b2a31",muted:"#8fa9ad",accent:"#f
 layout:{hud:"dashboard",nav:"book"},
 hudInset:mode=>mode==="desktop"?112:84,
 rarityColor:{free:"#8fa9ad",common:"#52a8c4",rare:"#2f7fd6",epic:"#a24bd6",legendary:"#e0a020",earned:"#2fb894",secret:"#ff5e3a"},
-labels:{title:"PLANET.IO",tagline:"CADERNO DE BORDO · CONQUISTE A GALÁXIA",play:"🚀 DECOLAR",playAuto:"🚀 Decolar (auto)",
+labels:{title:"WARSPACE.IO",tagline:"CADERNO DE BORDO · CONQUISTE A GALÁXIA",play:"🚀 DECOLAR",playAuto:"🚀 Decolar (auto)",
   lobbyTitle:"Salas",rankTitle:"Ranking",profileTitle:"Diário de bordo",shopTitle:"Catálogo de skins",prefsTitle:"Preferências",accountTitle:"Ficha do piloto",
   dead:"MISSÃO ENCERRADA",deadIcon:"🛰️",deadSub:"— relatório de voo —",respawn:"⟳ NOVA MISSÃO",reconnTitle:"SINAL PERDIDO"},
 

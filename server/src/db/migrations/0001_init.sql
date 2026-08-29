@@ -1,4 +1,4 @@
--- ── 0001: schema inicial do planet.io v2 (PG >= 11) ──────────────────────────
+-- ── 0001: schema inicial do warspace.io v2 (PG >= 11) ──────────────────────────
 CREATE TABLE IF NOT EXISTS schema_migrations(
   version    int PRIMARY KEY,
   name       text NOT NULL,

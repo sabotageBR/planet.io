@@ -6,7 +6,7 @@
 // (comida/pellet comido) num pool próprio (≤ SPARK_MAX) desenhado num único Graphics — não disputa os 32.
 // ambient(kind,f): efeito contínuo pedido por frame (ímã) → theme.effects.ambient(kind,t,f), um Graphics só.
 import {Container,Graphics,Text} from "pixi.js";
-import {rectHas} from "@planet/shared";
+import {rectHas} from "@warspace/shared";
 import {colorOf} from "../../util.js";
 
 const MAX=32,TTL={bounce:14,pop:22,boom:24,eat:16,suck:20,exit:20,split:16,merge:18,chip:12,shoot:16,rock:10,death:28,vanish:18,shieldBreak:22,shieldHit:14,shieldUp:24,clash:22,deflect:16,

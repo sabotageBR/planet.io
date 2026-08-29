@@ -12,7 +12,7 @@
 // `uvs` virou dinâmico porque a frame agora muda ao reaproveitar um slot (cada dono tem a sua cor) — são 4
 // floats a mais no upload que já acontece, contra o buffer inteiro que ele evita.
 import {ParticleContainer,Particle} from "pixi.js";
-import {SKINS,rectHas,FRAG_KIND} from "@planet/shared";
+import {SKINS,rectHas,FRAG_KIND} from "@warspace/shared";
 import {seedUnit} from "../../util.js";
 
 const SIZE=40,GLOW_K=2.0,GLOW_PULSE={amp:.14,speed:.0026};   // o halo do fragmento é ainda maior que o da comida: pedaço de planeta no chão tem que CHAMAR

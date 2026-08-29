@@ -3,7 +3,7 @@
 // (backoff 0.5→1→2→4→4 s, 5 tentativas) → closed. `error` JSON do servidor é fatal (o servidor
 // fecha com 4400+ em seguida). PROTOCOL_VERSION diferente no `room` → onState VERSION + reload em 1 s.
 // Ping de aplicação a 1 Hz ({t:"ping",c}) → PONG binário → RTT (EMA) e relógio de ticks do servidor.
-import {PROTOCOL_VERSION,MSG,decodeMessage,TICK_HZ} from "@planet/shared";
+import {PROTOCOL_VERSION,MSG,decodeMessage,TICK_HZ} from "@warspace/shared";
 
 const BACKOFF=[500,1000,2000,4000,4000],MAX_ATTEMPTS=5;
 export function createConnection({makeSocket,onJson,onBinary,onState,onOpenSend}){

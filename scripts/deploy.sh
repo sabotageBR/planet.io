@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Aplica os manifestos no cluster (namespace planet).
-# uso:  ./scripts/deploy.sh                 # sem ingress (usa o NodePort 30800)
-#       PLANET_HOST=planet.seudominio.com ./scripts/deploy.sh   # com ingress + TLS
+# Aplica os manifestos no cluster (namespace warspace).
+# uso:  ./scripts/deploy.sh                 # com ingress + TLS em warspace.io
+#       NO_INGRESS=1 ./scripts/deploy.sh    # sem ingress (só o NodePort 30800)
+#       WARSPACE_HOST=outro.dominio ./scripts/deploy.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO="${DOCKER_REPO:-evandromoura/planet-io}"
+REPO="${DOCKER_REPO:-evandromoura/warspace-io}"
 TAG="${TAG:-$(cat .last-tag 2>/dev/null || git rev-parse --short HEAD)}"
-HOST="${PLANET_HOST:-}"
+# O Ingress é a porta de entrada do jogo, não um extra: por padrão ele VAI junto. NO_INGRESS=1 pula,
+# para testar só pelo NodePort enquanto o DNS não aponta para o cluster.
+if [ -n "${NO_INGRESS:-}" ]; then HOST=""; else HOST="${WARSPACE_HOST:-warspace.io}"; fi
 KUBECONFIG_FILE="${KUBECONFIG:-$HOME/.config/OpenLens/kubeconfigs/68c0dd84-fd6a-43f2-bc30-26daccdf7ef4}"
 DOCKER="${DOCKER_CMD:-docker}"   # ex.: DOCKER_CMD="sudo -n docker" se o socket exigir root
 
@@ -22,9 +25,9 @@ for f in k8s/*.yaml; do
       -e "s|__HOST__|${HOST}|g" "$f" > "$OUT/$base"
 done
 
-# o Secret planet-db (DATABASE_URL) não fica no repo: precisa existir antes do deploy
-if ! KUBECONFIG="$KUBECONFIG_FILE" python3 scripts/k8s_apply.py --exists Secret planet-db; then
-  echo "!! Secret planet-db não existe: o jogo sobe SEM persistência (scores/ranking não gravam). Crie com: ./scripts/db-secret.sh"; fi
+# o Secret warspace-db (DATABASE_URL) não fica no repo: precisa existir antes do deploy
+if ! KUBECONFIG="$KUBECONFIG_FILE" python3 scripts/k8s_apply.py --exists Secret warspace-db; then
+  echo "!! Secret warspace-db não existe: o jogo sobe SEM persistência (scores/ranking não gravam). Crie com: ./scripts/db-secret.sh"; fi
 
 echo "==> aplicando (tag ${TAG}${HOST:+, host ${HOST}})"
 if command -v kubectl >/dev/null 2>&1; then

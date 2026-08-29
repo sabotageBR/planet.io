@@ -39,7 +39,7 @@ for(const id of ORDER.concat(VARIANTS.filter(v=>!ORDER.includes(v)))){
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<title>planet.io v2 — modelo: ${m.name}</title>
+<title>warspace.io v2 — modelo: ${m.name}</title>
 <style>
 ${base}</style>
 <style id="theme-css"></style>
@@ -88,7 +88,7 @@ fs.writeFileSync(path.join(OUT,"index.html"),`<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>planet.io v2 — ${models.length} modelos de layout</title>
+<title>warspace.io v2 — ${models.length} modelos de layout</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0b0e14;color:#e6edf6;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:44px 24px 60px}
@@ -124,7 +124,7 @@ footer a{color:#7fa4ff}
 </style>
 </head>
 <body><div class="wrap">
-<h1>planet.io v2 — ${models.length} modelos de layout</h1>
+<h1>warspace.io v2 — ${models.length} modelos de layout</h1>
 <p class="sub">Cada modelo é uma demo jogável (mesma simulação, mesmos dados falsos) com <b>todas as 11 telas do jogo novo</b>: entrada, conta, salas, ranking, perfil, loja, preferências, jogo (desktop, retrato e paisagem), morte e reconexão. A física nova já aparece: inércia, quique entre planetas, asteroides e buracos negros.</p>
 <p class="keys"><b>Na demo:</b> <b>E</b> entrada · <b>C</b> conta · <b>S</b> salas · <b>R</b> ranking · <b>P</b> perfil · <b>L</b> loja · <b>O</b> opções · <b>J</b> jogo · <b>K</b> morte · <b>X</b> reconectando · <b>T</b> desktop/retrato/paisagem · <b>1–6</b> ou <b>[ ]</b> trocar de modelo · <b>H</b> esconde a barra · <b>ESC</b> volta aqui<br>
 <b>No jogo:</b> mouse mira · <b>ESPAÇO</b>/botão direito divide · <b>W</b> ejeta · <b>F</b>/clique míssil · no celular: arrastar mira + botões</p>

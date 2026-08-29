@@ -1,6 +1,6 @@
 // ── REPO matches / user_stats ──────────────────────────────────────────────────
 // @ts-check
-import {levelFromXp,levelProgress,kdOf} from '@planet/shared/levels.js';
+import {levelFromXp,levelProgress,kdOf} from '@warspace/shared/levels.js';
 const STATS_ZERO={games:0,kills:0,botKills:0,splits:0,ejects:0,foodEaten:0,totalScore:0,bestScore:0,bestMass:0,playTimeS:0,bestStreak:0,lastMatchAt:null,
   deaths:0,kd:0,xp:0,level:1,levelInto:0,levelNeed:1,levelPct:0};
 export const statsToPublic=s=>{

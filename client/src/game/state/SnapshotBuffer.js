@@ -5,7 +5,7 @@
 // Relógio: cada snapshot mede off = tick − now·60/1000; o ALVO é a mediana das últimas OFF_N medições
 // (imune a um pacote atrasado) e o offset usado no render DESLIZA até o alvo a ≤ SLEW tick por frame
 // (slew(), chamado pelo Interpolator) — sem degraus a cada pacote; salto > SNAP ticks (resume) → snap.
-import {KIND,UPD,TICK_HZ} from "@planet/shared";
+import {KIND,UPD,TICK_HZ} from "@warspace/shared";
 
 const MAX_SAMPLES=10,OFF_N=8,SLEW=.02,SNAP=3;
 export function createSnapshotBuffer(){

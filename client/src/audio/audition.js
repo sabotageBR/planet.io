@@ -53,7 +53,7 @@ export function mountAudition(){
   const st=document.createElement("style");st.textContent=CSS;el.appendChild(st);
   const h=(tag,txt,cls)=>{const n=document.createElement(tag);if(txt!=null)n.textContent=txt;if(cls)n.className=cls;return n;};
 
-  el.appendChild(h("h1","Mesa de som — planet.io"));
+  el.appendChild(h("h1","Mesa de som — warspace.io"));
   el.appendChild(h("p","Cada botão toca uma receita de ./kit.js. `pitch` é o eixo que carrega o pacote: tudo que é MEU "
     +"soa mais grave quanto maior eu estou (no jogo ele sai de 1,0 no recém-nascido a ~0,48 no gigante). "
     +"A escada faz a sequência de grãos subir de nota e resetar na pausa — clique em `food` várias vezes seguidas.","sub"));

@@ -13,7 +13,7 @@ function q(hex,a){ // clareia/escurece em degraus (paleta limitada)
   return`rgb(${f(r)},${f(g)},${f(b)})`;}
 let stars=[],dith=null;
 
-const LB={title:"PLANET.IO",tagline:"CONQUISTE A GALAXIA - DIVIDA E DEVORE",
+const LB={title:"WARSPACE.IO",tagline:"CONQUISTE A GALAXIA - DIVIDA E DEVORE",
   coinIcon:"$",coinWord:"MOEDAS",nameLabel:"NOME DO PLANETA",swap:"TROCAR",
   play:"► JOGAR",shop:"★ LOJA",shopShort:"★ LOJA",shopTitle:"LOJA DE SKINS",
   shopNote:"12 SKINS DE AMOSTRA - AS 50 DO JOGO ENTRAM SE O MODELO FOR APROVADO",

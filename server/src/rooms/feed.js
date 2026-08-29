@@ -6,7 +6,7 @@
 // BIG CRUNCH chegando, a zona virou. Essas competem com o jogo pela atenção e, sem orçamento, dois
 // gigantes empatados enchem a tela a 2 Hz.
 // @ts-check
-import {FEED} from '@planet/shared/constants.js';
+import {FEED} from '@warspace/shared/constants.js';
 
 /**
  * Estado dos marcos de uma sala. `leadStep`/`crunchStep` são funções de estado puro: recebem o que a

@@ -6,7 +6,7 @@
 // Nada disso aparecia no console do servidor nem quebrava o socket: chat e som continuavam funcionando.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SKINS } from "@planet/shared/skins.js";
+import { SKINS } from "@warspace/shared/skins.js";
 
 /** Contexto 2D de mentira: aceita tudo, nunca lança, e registra o que foi chamado. */
 function ctxFalso() {

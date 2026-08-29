@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<title>planet.io v2 — modelo: Nebulosa</title>
+<title>warspace.io v2 — modelo: Nebulosa</title>
 <style>
 /* ── BASE v2 ── só estrutura/layout. Toda a aparência (cores, fontes, bordas,
    sombras, posições finais do HUD) vem do CSS do tema, que pode sobrescrever
@@ -55,7 +55,15 @@ body[data-frame="0"] #app{border-radius:0!important;box-shadow:none!important}
 .cd .cd-fill{position:absolute;left:0;bottom:0;height:100%;width:calc(var(--p)*100%);z-index:-1}
 .cd span,.cd em{position:relative;font-style:normal;line-height:1.1}
 #touch{display:none;bottom:24px;right:16px;gap:12px;align-items:flex-end}
-body[data-mode="portrait"] #touch,body[data-mode="landscape"] #touch{display:flex}
+/* o dedo é que decide se há botão de toque, não o tamanho da tela: um tablet grande é operado com a mão e
+   uma janela de desktop estreita, não. (Os temas fazem #touch{display:flex} sem condição e vencem esta
+   regra por ordem de cascata — por isso o display fica com o seletor de ponteiro, que é mais específico.) */
+body[data-pointer="coarse"] #touch{display:flex}
+body[data-pointer="fine"] #touch{display:none}
+/* FILEIRA QUE VIRA TECLADO: com 5 botões (a troca de arma entrou depois) a fileira única ocupava a largura
+   toda do celular e passava POR CIMA do bloco de massa, no canto oposto. Quebrando em duas colunas o canto
+   inferior esquerdo fica livre — e o polegar alcança melhor um bloco 2×N do que uma fileira comprida. */
+body[data-mode="portrait"] #touch{flex-wrap:wrap;justify-content:flex-end;max-width:calc(2 * var(--tbtn,66px) + 8px)}
 .tbtn{width:64px;height:64px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;touch-action:none;user-select:none;-webkit-user-select:none}
 .tbtn span{font-size:10px;letter-spacing:1px}
 .tbtn b{font-size:12px}
@@ -461,7 +469,7 @@ const U={rnd,pick,clamp,lerp,dist,rr,mulberry,sprite,tier,WW,WH,mergeTime,spikes
 
 // ── rótulos padrão (tema sobrescreve só o que quiser) ─────────────────────────
 const LABELS={
-  title:"🪐 PLANET.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
+  title:"WARSPACE.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   coinIcon:"🪙",coinWord:"moedas",nameLabel:"Nome do seu planeta",swap:"Trocar",
   play:"🚀 JOGAR",playAuto:"🚀 Jogar (auto)",rooms:"Salas",ranking:"Ranking",profile:"Perfil",shop:"Loja",prefs:"Opções",home:"Início",
   guestNote:"Jogando como convidado",claim:"Reivindicar conta",login:"Entrar",logout:"Sair",guest:"convidado",registered:"conta protegida",
@@ -1353,7 +1361,7 @@ tokens:{bg:"#04060d",surface:"rgba(6,12,28,.62)",text:"#e6f4ff",muted:"#5d6c8c",
   shadow:"0 8px 30px rgba(0,0,0,.4),0 0 24px rgba(79,227,255,.08)"},
 layout:{hud:"corners",nav:"hub"},
 rarityColor:{free:"#8c9ab5",common:"#4fe3ff",rare:"#5b9dff",epic:"#ff4fd8",legendary:"#ffd166",earned:"#39ff88",secret:"#ff5f8f"},
-labels:{title:"🪐 PLANET.IO"},
+labels:{title:"WARSPACE.IO"},
 
 init(g){const rand=u.mulberry(41);
   L=[.18,.42,.8].map((f,li)=>({f,stars:Array.from({length:li===2?45:90},()=>({x:rand()*T,y:rand()*T,r:li===2?1.6+rand()*1.6:.6+rand()*1.1,a:+((li===2?.55:.22)+rand()*.35).toFixed(2)}))}));

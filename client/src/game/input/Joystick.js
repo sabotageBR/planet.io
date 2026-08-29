@@ -10,7 +10,7 @@
 // A saída é a mesma de sempre: um ponto de MUNDO para `input.setTarget`. A distância é o que controla a
 // velocidade (o motor anda `vmax·min(d,RAMP)/RAMP`), então empurrar o analógico até a metade anda na metade
 // da velocidade — analógico de verdade, não liga/desliga.
-import {SPEED} from "@planet/shared";
+import {SPEED} from "@warspace/shared";
 
 const RAIO=52,MORTO=.14;   // raio da base em px de tela; abaixo de MORTO o toque é considerado parado
 

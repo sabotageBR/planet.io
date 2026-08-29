@@ -1,25 +1,83 @@
+# ── PORTA DE ENTRADA de warspace.io ───────────────────────────────────────────
+# O jogo inteiro sai por um host só, porque o cliente monta o WebSocket como
+# `wss://${location.host}/ws/${shard}` (client/src/game/index.js) e chama /api/* na
+# própria origem — outro host significaria CORS e certificado a mais, sem ganho.
+#
+# TRÊS DECISÕES QUE FAZEM ISSO FUNCIONAR NO CLUSTER QUE TEMOS (ingress-nginx v0.47, k8s 1.21):
+#
+# 1. Um path LITERAL por shard, sem regex. `use-regex` no v0.47 muda o casamento de TODOS os
+#    paths do Ingress e é fonte de surpresa; com SHARDS=3 os três caminhos são fixos e o nginx
+#    ordena locations por comprimento, então /ws/0 ganha de / sozinho. Escalar shards = mais um
+#    Service em 10-server.yaml, mais um path aqui e SHARDS no ConfigMap (o mesmo trio de sempre).
+# 2. Só /api e /ws/* chegam ao servidor. /healthz e /internal/rooms moram na MESMA porta 3000, e
+#    /internal/rooms é a via entre shards — publicá-la entregaria a lista de salas de todo mundo.
+#    O que não casa com esses paths cai em / e é servido pelo nginx do cliente (estáticos + SPA).
+# 3. `kubernetes.io/ingress.class` como ANNOTATION: `ingressClassName` só virou o caminho padrão
+#    depois do 1.22, e no v0.47 o controller ignora um Ingress sem a annotation.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: planet
-  namespace: planet
+  name: warspace
+  namespace: warspace
+  labels: {app: warspace}
   annotations:
+    kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # WebSocket é conexão longa: sem isso o nginx corta em 60s
+    # WebSocket é conexão longa: sem isto o nginx corta a partida em 60 s
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # POST /api/me/avatar sobe a imagem em corpo CRU; o default de 1 MB do controller a cortaria
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
 spec:
   tls:
     - hosts: [__HOST__]
-      secretName: tls-planet-ingress
+      secretName: tls-warspace-ingress
   rules:
     - host: __HOST__
       http:
         paths:
+          # ── WebSocket: um pod por shard (Service dedicado, seletor por pod-name) ──
+          - path: /ws/0
+            pathType: Prefix
+            backend: {service: {name: warspace-server-0, port: {number: 3000}}}
+          - path: /ws/1
+            pathType: Prefix
+            backend: {service: {name: warspace-server-1, port: {number: 3000}}}
+          - path: /ws/2
+            pathType: Prefix
+            backend: {service: {name: warspace-server-2, port: {number: 3000}}}
+          # ── API: balanceada entre os 3 shards (tudo stateless no Postgres) ──
+          - path: /api
+            pathType: Prefix
+            backend: {service: {name: warspace-server-api, port: {number: 3000}}}
+          # ── o jogo em si: estáticos + SPA fallback ──
           - path: /
             pathType: Prefix
-            backend:
-              service:
-                name: planet-client
-                port: {number: 80}
+            backend: {service: {name: warspace-client, port: {number: 80}}}
+---
+# www → apex, um 301 e nada de backend. Só sobe se o DNS de www.<host> existir; se não existir,
+# o cert-manager fica tentando emitir ESTE certificado e o Ingress de cima segue intacto — mas se
+# você não usa www, apague este documento inteiro em vez de deixá-lo tentando para sempre.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: warspace-www
+  namespace: warspace
+  labels: {app: warspace}
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/permanent-redirect: https://__HOST__$request_uri
+spec:
+  tls:
+    - hosts: [www.__HOST__]
+      secretName: tls-warspace-www
+  rules:
+    - host: www.__HOST__
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: warspace-client, port: {number: 80}}}

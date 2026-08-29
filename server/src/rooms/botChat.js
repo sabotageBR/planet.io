@@ -8,14 +8,14 @@
 // português para quem escreve em português e em inglês para quem escreve em inglês — sem nenhum detector
 // de idioma do nosso lado. Foi verificado com pt/en/es antes de escrever isto.
 // @ts-check
-import {BOT_LLM,CHAT} from '@planet/shared/constants.js';
-import {normalizar,baseNick} from '@planet/shared/util.js';
+import {BOT_LLM,CHAT} from '@warspace/shared/constants.js';
+import {normalizar,baseNick} from '@warspace/shared/util.js';
 
 // ── nomes ────────────────────────────────────────────────────────────────────
 // `normalizar` e `baseNick` mudaram para shared/src/util.js quando os easter eggs (shared/src/eggs.js)
 // passaram a precisar da MESMA raiz — shared não pode importar de server. Reexportados aqui para que
 // `citou()` e os testes continuem lendo do mesmo lugar de sempre.
-export {normalizar,baseNick} from '@planet/shared/util.js';
+export {normalizar,baseNick} from '@warspace/shared/util.js';
 /** Levenshtein sem alocar matriz. Só é usado em palavras curtas de chat. */
 function dist(a,b){
   const n=a.length,m=b.length;if(!n)return m;if(!m)return n;

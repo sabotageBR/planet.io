@@ -1,7 +1,7 @@
 // ── MatchSession: uma vida (join → morte/saída), vive fora do objeto do mundo ──
 // @ts-check
 import {randomUUID} from 'node:crypto';
-import {SAMPLE_EVERY} from '@planet/shared/constants.js';
+import {SAMPLE_EVERY} from '@warspace/shared/constants.js';
 export class MatchSession{
   /** @param {{userId:number|null,nick:string,kind:string,skinId?:number,roomCode?:string|null,shard?:number}} o */
   constructor(o){

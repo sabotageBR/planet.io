@@ -25,7 +25,7 @@ export const tokens={bg:"#1b2450",surface:"#232f63",text:"#fff5c2",muted:"#8fa0d
   line:"#141026",radius:"14px",radiusLg:"20px",space:"14px",fontUi:FONT,fontMono:"'Courier New',monospace",shadow:"6px 6px 0 #141026"};
 export const layout={hud:"bubbles",nav:"drawer"};
 export const rarityColor={free:"#9aa3c0",common:"#3fc4ff",rare:"#3d7bff",epic:"#c56bff",legendary:"#ffc22e",earned:"#3ddc5f",secret:"#ff6b4a"};
-export const labels={title:"🪐 PLANET.IO",tagline:"Conquiste a galáxia antes do dia clarear!",play:"🚀 JOGAR",playAuto:"🚀 JOGAR (AUTO)",lbTitle:"PÓDIO",
+export const labels={title:"WARSPACE.IO",tagline:"Conquiste a galáxia antes do dia clarear!",play:"JOGAR",playAuto:"🚀 JOGAR (AUTO)",lbTitle:"PÓDIO",
   dead:"KABOOM!",deadSub:"— você virou poeira de manhã cedo —",respawn:"🔄 DE NOVO!",reconnTitle:"SINAL FRACO!",reconnSub:"Procurando o satélite… tentativa {n}/5",
   back:"◄",create:"➕ Criar sala",top5:"TOP 5 HOJE"};
 

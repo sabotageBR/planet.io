@@ -1,13 +1,13 @@
-# Headless: dá DNS estável por pod (planet-server-0.planet-server.planet.svc...)
+# Headless: dá DNS estável por pod (warspace-server-0.warspace-server.warspace.svc...)
 apiVersion: v1
 kind: Service
 metadata:
-  name: planet-server
-  namespace: planet
-  labels: {app: planet-server}
+  name: warspace-server
+  namespace: warspace
+  labels: {app: warspace-server}
 spec:
   clusterIP: None
-  selector: {app: planet-server}
+  selector: {app: warspace-server}
   ports:
     - name: http
       port: 3000
@@ -17,11 +17,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: planet-server-api
-  namespace: planet
-  labels: {app: planet-server}
+  name: warspace-server-api
+  namespace: warspace
+  labels: {app: warspace-server}
 spec:
-  selector: {app: planet-server}
+  selector: {app: warspace-server}
   ports:
     - name: http
       port: 3000
@@ -30,54 +30,54 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: planet-server-0
-  namespace: planet
-  labels: {app: planet-server, shard: "0"}
+  name: warspace-server-0
+  namespace: warspace
+  labels: {app: warspace-server, shard: "0"}
 spec:
   selector:
-    app: planet-server
-    statefulset.kubernetes.io/pod-name: planet-server-0
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-0
   ports: [{name: http, port: 3000, targetPort: 3000}]
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: planet-server-1
-  namespace: planet
-  labels: {app: planet-server, shard: "1"}
+  name: warspace-server-1
+  namespace: warspace
+  labels: {app: warspace-server, shard: "1"}
 spec:
   selector:
-    app: planet-server
-    statefulset.kubernetes.io/pod-name: planet-server-1
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-1
   ports: [{name: http, port: 3000, targetPort: 3000}]
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: planet-server-2
-  namespace: planet
-  labels: {app: planet-server, shard: "2"}
+  name: warspace-server-2
+  namespace: warspace
+  labels: {app: warspace-server, shard: "2"}
 spec:
   selector:
-    app: planet-server
-    statefulset.kubernetes.io/pod-name: planet-server-2
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-2
   ports: [{name: http, port: 3000, targetPort: 3000}]
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: planet-server
-  namespace: planet
-  labels: {app: planet-server}
+  name: warspace-server
+  namespace: warspace
+  labels: {app: warspace-server}
 spec:
-  serviceName: planet-server
+  serviceName: warspace-server
   replicas: 3
   podManagementPolicy: Parallel
   selector:
-    matchLabels: {app: planet-server}
+    matchLabels: {app: warspace-server}
   template:
     metadata:
-      labels: {app: planet-server}
+      labels: {app: warspace-server}
     spec:
       terminationGracePeriodSeconds: 20
       containers:
@@ -91,8 +91,8 @@ spec:
               valueFrom:
                 fieldRef: {fieldPath: metadata.name}
           envFrom:
-            - configMapRef: {name: planet-config}
-            - secretRef: {name: planet-db, optional: true}   # sem o Secret o servidor sobe em modo sem persistência
+            - configMapRef: {name: warspace-config}
+            - secretRef: {name: warspace-db, optional: true}   # sem o Secret o servidor sobe em modo sem persistência
           readinessProbe:
             httpGet: {path: /healthz, port: 3000}
             initialDelaySeconds: 3

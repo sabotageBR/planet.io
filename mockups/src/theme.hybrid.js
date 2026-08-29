@@ -13,7 +13,7 @@ function rgba(hex,a){const n=parseInt(hex.slice(1),16);return`rgba(${n>>16},${n>
 const CY="#4fe3ff",MG="#ff4fd8",T=760,FK=2.1;
 let L=[],NEB=[],bg=null,bgW=0,bgH=0;
 
-const LB={title:"🪐 PLANET.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
+const LB={title:"WARSPACE.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   coinIcon:"🪙",coinWord:"moedas",nameLabel:"Nome do seu planeta",swap:"Trocar",
   play:"🚀 JOGAR",shop:"◈ LOJA DE SKINS",shopShort:"◈ Loja",shopTitle:"LOJA DE SKINS",
   shopNote:"12 skins de amostra — as 50 do jogo entram quando o modelo for aprovado.",

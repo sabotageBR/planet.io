@@ -2,7 +2,7 @@
 // @ts-check
 import {err} from './router.js';
 import {PERIODS,BY} from '../repos/ranking.js';
-import {isCountry} from '@planet/shared/countries.js';
+import {isCountry} from '@warspace/shared/countries.js';
 const CACHE_MS=10e3;
 export function mountRanking(router,{ranking,optionalUser}){
   const cache=new Map();

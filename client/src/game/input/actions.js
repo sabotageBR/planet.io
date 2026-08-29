@@ -6,7 +6,7 @@
 // (onAim(true)) e o disparo, ao SOLTAR, vai com INPUT_FLAG.AIM (o míssil persegue a bolinha mais próxima
 // do ponteiro). Clique rápido (soltar antes de AIM_MS) continua teleguiado/interceptador e
 // nunca desenha reta. Sem munição, o botão de tiro ejeta massa como antes (no `down`).
-import {INPUT_FLAG} from "@planet/shared";
+import {INPUT_FLAG} from "@warspace/shared";
 
 const AIM_MS=160;
 /** prefs(): {holdEject,rightSplit}; ammo(): mísseis atuais; canAct(): vivo e conectado; onAim(on): liga/desliga a reta; onCancel(): o tiro foi cancelado */

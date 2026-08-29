@@ -3,7 +3,7 @@
 // intervalo com setImmediate; recupera até MAX_STEPS passos de atraso; além disso conta overrun e
 // descarta o atraso (a simulação não tenta "voltar no tempo").
 // @ts-check
-import {TICK_HZ} from '@planet/shared/constants.js';
+import {TICK_HZ} from '@warspace/shared/constants.js';
 const MAX_STEPS=5;
 export class Scheduler{
   /** @param {{hz?:number,metrics?:any,log?:any}} [o] */

@@ -14,8 +14,8 @@
 // as peças próprias) — era o "travamento" de segurar o W. A FASE vem do `self.ejectCd`, que já vinha no fio: o
 // servidor grava ejectCdUntil = tick + COOLDOWN a CADA cusparada, então dá para saber quando foi a última e,
 // com HOLD_TICKS, quando será a próxima. Reancorado a cada snapshot, não acumula erro.
-import {KIND,PIECE_FLAG,SELF_FLAG,INPUT_FLAG,NET,DT,TICK_HZ,BLACKHOLE,EJECT} from "@planet/shared";
-import {createBody,stepOwnPieces} from "@planet/shared/physics/index.js";
+import {KIND,PIECE_FLAG,SELF_FLAG,INPUT_FLAG,NET,DT,TICK_HZ,BLACKHOLE,EJECT} from "@warspace/shared";
+import {createBody,stepOwnPieces} from "@warspace/shared/physics/index.js";
 
 const TAU=.1,HIDE_TICKS=30;
 export function createPredictor({buffer,input}){

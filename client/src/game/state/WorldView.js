@@ -1,7 +1,7 @@
 // ── VISÃO DO MUNDO: players (PLAYERS), placar (LEADERBOARD), self e listas prontas p/ render ──
 // build(now) junta o Interpolator (outros) e o Predictor (próprias peças) em arrays reutilizados
 // por tipo; cada item tem {id,kind,rx,ry,rr,alpha,flags,owner,…} — a mesma forma para os dois.
-import {KIND,PLAYER_FLAG,NO_TEAM,VOICE,skinById,SKINS} from "@planet/shared";
+import {KIND,PLAYER_FLAG,NO_TEAM,VOICE,skinById,SKINS} from "@warspace/shared";
 
 export function createWorldView({buffer,predictor}){
   const players=new Map();

@@ -4,7 +4,7 @@
 main.jsx            monta <App/> em #app; em dev instala window.__errors (+ html[data-errors])
 app/App.jsx         ordem de DOM: #game · #hud · 8 telas · 2 overlays · #toast
 app/theme.js        PONTE do tema (única linha a trocar) → hoje app/themeShim.js (TODO: ../theme/index.js + all.css)
-api/client.js       api.* (bearer em localStorage.planet_token) + modo offline (localStorage.planet_local_profile)
+api/client.js       api.* (bearer em localStorage.warspace_token) + modo offline (localStorage.warspace_local_profile)
 state/store.js      createStore / useStore (useSyncExternalStore) / throttleStore
 state/app.js        estado do shell + PREF_DEFAULTS (whitelist da API)
 state/actions.js    boot, go, play/leaveGame, onDead/onRewards/onConnection, prefs, loja, conta, loaders
@@ -56,7 +56,7 @@ rooms, roomsAt, top5, config
 `createGame({container:#game, hud:#hud, prefs, theme, onDead, onRewards, onConnection})` →
 `{join({token,fallbackNick,room}), leave(), setPrefs(p), setTheme(t), resize(), destroy(), hudStore}`.
 `hudStore.get()` = `{mass,score,rank,coins|null,ammo,powerups:{speed,magnet,shield} (s),splitCd,ejectCd (0..1 restante, 0 = pronto),lb:[{slot,name,mass,isBot,registered,me,rank}],room,ping,fps,dead}`.
-O HUD lê via `throttleStore` (20 Hz). Botões touch emitem `CustomEvent('planet:action',{detail:{action:'split'|'eject'|'fire',phase:'down'|'up'}})` que borbulha até `#hud`.
+O HUD lê via `throttleStore` (20 Hz). Botões touch emitem `CustomEvent('warspace:action',{detail:{action:'split'|'eject'|'fire',phase:'down'|'up'}})` que borbulha até `#hud`.
 `onConnection({state:'connecting'|'connected'|'reconnecting'|'closed'|'error', room?, attempt?, code?, message?})` controla `#s-reconn` e a volta ao lobby.
 
 ## Dev

@@ -7,7 +7,7 @@
 // servidor também congela no ponto da morte (server/src/net/snapshot.js), então passear faria a cena esvaziar nas
 // bordas, e parada ela mostra exatamente o que o servidor está mandando da sala. Fora da sala (lobby) a câmera
 // passeia devagar, que é o fundo vivo do menu.
-import {focusOf,zoomFor,viewRect,WORLD,CAM,clamp} from "@planet/shared";
+import {focusOf,zoomFor,viewRect,WORLD,CAM,clamp} from "@warspace/shared";
 
 export function createCamera(){
   let first=true,drift=0;

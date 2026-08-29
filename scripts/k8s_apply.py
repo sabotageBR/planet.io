@@ -5,7 +5,7 @@ uso:  python3 scripts/k8s_apply.py k8s/.rendered/*.yaml
       python3 scripts/k8s_apply.py --dry-run k8s/*.yaml        # valida no servidor sem gravar
       python3 scripts/k8s_apply.py --status            # espera os pods ficarem prontos
       python3 scripts/k8s_apply.py --get pods          # lista os pods do namespace
-      python3 scripts/k8s_apply.py --exists Secret planet-db   # exit 0 se existe, 1 se não
+      python3 scripts/k8s_apply.py --exists Secret warspace-db   # exit 0 se existe, 1 se não
 
 Lê o kubeconfig de $KUBECONFIG (ou o caminho padrão do OpenLens). Os certificados são
 escritos num diretório temporário com permissão 0600 e apagados no fim.
@@ -16,8 +16,8 @@ import yaml
 KUBECONFIG = os.environ.get(
     "KUBECONFIG",
     os.path.expanduser("~/.config/OpenLens/kubeconfigs/68c0dd84-fd6a-43f2-bc30-26daccdf7ef4"))
-NS = os.environ.get("PLANET_NS", "planet")
-FIELD_MANAGER = "planet-deploy"
+NS = os.environ.get("WARSPACE_NS", "warspace")
+FIELD_MANAGER = "warspace-deploy"
 
 # kind -> (grupo/versão, plural, tem namespace?)
 RESOURCES = {
@@ -40,7 +40,7 @@ class Cluster:
         cluster = next(c["cluster"] for c in cfg["clusters"] if c["name"] == ctx["cluster"])
         user = next(u["user"] for u in cfg["users"] if u["name"] == ctx["user"])
         self.server = cluster["server"].rstrip("/")
-        self.dir = tempfile.mkdtemp(prefix="planet-kube-")
+        self.dir = tempfile.mkdtemp(prefix="warspace-kube-")
         os.chmod(self.dir, 0o700)
         self.ca = self._write("ca.crt", cluster["certificate-authority-data"])
         crt = self._write("client.crt", user["client-certificate-data"])
@@ -101,7 +101,7 @@ def apply(cl, doc, dry_run=False):
 
 def status(cl):
     """Espera o StatefulSet e o Deployment ficarem prontos."""
-    alvos = [("StatefulSet", "planet-server"), ("Deployment", "planet-client")]
+    alvos = [("StatefulSet", "warspace-server"), ("Deployment", "warspace-client")]
     prazo = time.time() + 240
     while time.time() < prazo:
         pronto = True

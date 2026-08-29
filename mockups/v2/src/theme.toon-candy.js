@@ -84,7 +84,7 @@ tokens:{bg:"#dfe6ff",surface:"#ffffff",text:"#2b1b3d",muted:"#8a7fa8",accent:"#f
   shadow:"6px 6px 0 #2b1b3d"},
 layout:{hud:"bubbles",nav:"sheet"},
 rarityColor:{free:"#8a7fa8",common:"#2f9fe0",rare:"#5b6cff",epic:"#9b5cff",legendary:"#e0a800",earned:"#1fa37c",secret:"#ff5470"},
-labels:{title:"🪐 PLANET.IO",tagline:"Conquiste a galáxia. Divida, ejete e devore!",play:"🚀 JOGAR",playAuto:"🚀 JOGAR (AUTO)",lbTitle:"PÓDIO",
+labels:{title:"WARSPACE.IO",tagline:"Conquiste a galáxia. Divida, ejete e devore!",play:"🚀 JOGAR",playAuto:"🚀 JOGAR (AUTO)",lbTitle:"PÓDIO",
   dead:"KABOOM!",deadSub:"— você virou açúcar cósmico —",respawn:"🔄 DE NOVO!",reconnTitle:"SINAL FRACO!",reconnSub:"Procurando o satélite… tentativa {n}/5",
   back:"◄",create:"➕ Criar sala",top5:"TOP 5 HOJE"},
 

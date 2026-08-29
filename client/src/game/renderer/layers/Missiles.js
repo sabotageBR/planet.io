@@ -1,6 +1,6 @@
 // ── MÍSSEIS: sprite girado pela velocidade + rastro de pontos (theme.effects.missileTrail) ──
 import {Container,Sprite,Graphics} from "pixi.js";
-import {rectHas} from "@planet/shared";
+import {rectHas} from "@warspace/shared";
 import {colorOf} from "../../util.js";
 
 const TRAIL_MAX=14;

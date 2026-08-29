@@ -6,7 +6,7 @@
 import {createOllama} from '../server/src/llm/ollama.js';
 import {montaPrompt,sanitiza,aberta} from '../server/src/rooms/botChat.js';
 import {PERSONAS} from '../server/src/rooms/botPersonas.js';
-import {BOT_LLM} from '@planet/shared/constants.js';
+import {BOT_LLM} from '@warspace/shared/constants.js';
 
 const url=process.env.OLLAMA_URL||'http://192.168.8.251:11434';
 const model=process.env.OLLAMA_MODEL||'qwen3.6:35b-a3b';

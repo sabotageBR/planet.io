@@ -9,7 +9,7 @@ function sh(hex,a){let n=parseInt(hex.slice(1),16),r=n>>16,g=n>>8&255,b=n&255;
 const BG="#0a0f1e",GRID="rgba(255,255,255,.045)",BORDER="rgba(90,140,255,.5)";
 let stars=[];
 
-const LB={title:"🪐 PLANET.IO",tagline:"Conquiste a galáxia. Divida, ejete e devore.",
+const LB={title:"WARSPACE.IO",tagline:"Conquiste a galáxia. Divida, ejete e devore.",
   coinIcon:"🪙",coinWord:"moedas",nameLabel:"Nome do seu planeta:",swap:"Trocar",
   play:"🚀 JOGAR",shop:"🛍️ LOJA DE SKINS",shopShort:"🛍️ Loja",shopTitle:"LOJA DE SKINS",
   shopNote:"12 skins de amostra — as 50 do jogo entram quando o modelo for aprovado.",

@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 
 // Em dev o backend (server/) roda em :3001; /api e /ws são proxiados.
 // Sem servidor, o proxy responde 503 {error:"unreachable"} e o cliente entra em modo offline (api.online=false).
-const API = process.env.PLANET_API || "http://localhost:3001";
+const API = process.env.WARSPACE_API || "http://localhost:3001";
 const WS = API.replace(/^http/, "ws");
 
 function unreachable(proxy) {
@@ -17,7 +17,7 @@ function unreachable(proxy) {
 export default defineConfig({
   plugins: [react()],
   resolve: { dedupe: ["react", "react-dom"] },
-  optimizeDeps: { exclude: ["@planet/shared"] },
+  optimizeDeps: { exclude: ["@warspace/shared"] },
   server: {
     port: 5173,
     proxy: {

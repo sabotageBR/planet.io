@@ -94,7 +94,7 @@ tokens:{bg:"#0d0b1f",surface:"#1c1440",text:"#f4f0ff",muted:"#8f86c9",accent:"#f
   shadow:"6px 6px 0 #0a0818"},
 layout:{hud:"strip",nav:"sheet"},
 rarityColor:{free:"#8f86c9",common:"#2ee6ff",rare:"#8b5cff",epic:"#ff3fa4",legendary:"#ffb830",earned:"#b6ff3c",secret:"#ff4d6d"},
-labels:{title:"🪐 PLANET.IO",tagline:"Noite de fliperama na galáxia. Divida, ejete e devore!",play:"🚀 JOGAR",playAuto:"🚀 JOGAR (AUTO)",lbTitle:"PÓDIO",
+labels:{title:"WARSPACE.IO",tagline:"Noite de fliperama na galáxia. Divida, ejete e devore!",play:"🚀 JOGAR",playAuto:"🚀 JOGAR (AUTO)",lbTitle:"PÓDIO",
   dead:"KABOOM!",deadSub:"— você virou poeira neon —",respawn:"🔄 DE NOVO!",reconnTitle:"SINAL FRACO!",reconnSub:"Procurando o satélite… tentativa {n}/5",
   back:"◄",create:"➕ Criar sala",top5:"TOP 5 HOJE"},
 

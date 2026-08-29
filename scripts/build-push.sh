@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Builda e publica as imagens do planet.io no Docker Hub.
+# Builda e publica as imagens do warspace.io no Docker Hub.
 # uso: docker login && ./scripts/build-push.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO="${DOCKER_REPO:-evandromoura/planet-io}"
+REPO="${DOCKER_REPO:-evandromoura/warspace-io}"
 TAG="${TAG:-$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M)}"
 DOCKER="${DOCKER_CMD:-docker}"   # ex.: DOCKER_CMD="sudo -n docker"
 

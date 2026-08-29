@@ -11,7 +11,7 @@
 //     segundos que o chat de uma partida não tem.
 // E um disjuntor: com o Ollama fora, 50 bots tentando falar pagariam o timeout inteiro a cada gatilho.
 // @ts-check
-import {BOT_LLM} from '@planet/shared/constants.js';
+import {BOT_LLM} from '@warspace/shared/constants.js';
 
 /**
  * @param {{url:string,model:string,timeoutMs?:number,maxInflight?:number,metrics?:any,log?:any}} o

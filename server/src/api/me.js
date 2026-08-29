@@ -5,7 +5,7 @@ import {LIMITS} from '../auth/ratelimit.js';
 import {normalizeNick,suggestNick,isReservedByOther} from '../auth/nick.js';
 import {toPublic} from '../repos/users.js';
 import {statsToPublic} from '../repos/matches.js';
-import {isCountry} from '@planet/shared/countries.js';
+import {isCountry} from '@warspace/shared/countries.js';
 const THEMES=['auto','dawn','sunset','dusk'],QUALITIES=['auto','low','medium','high'];
 const bool=v=>typeof v==='boolean'?v:undefined;
 /** whitelist de prefs: chave → validador (undefined = rejeita) */

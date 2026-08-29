@@ -1,6 +1,6 @@
 // ── CÓDIGOS DE SALA: 1º caractere = shard (base36) + 3 de CODE_CHARS (sem 0/O/1/I) ──
 // @ts-check
-import {ROOM} from '@planet/shared/constants.js';
+import {ROOM} from '@warspace/shared/constants.js';
 export const CODE_CHARS='23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const CODE_RE=new RegExp(`^[0-9A-Z]{${ROOM.CODE_LEN}}$`);
 export const shardChar=shard=>(shard|0).toString(36).toUpperCase();

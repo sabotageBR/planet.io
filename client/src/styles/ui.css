@@ -65,7 +65,7 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 .wrap.modes-wrap{display:grid;grid-template-rows:auto 1fr;gap:10px;padding:14px}
 .modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;align-content:start}
 .mode-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;padding:16px;
-  border-radius:var(--radiusLg,20px);border:3px solid var(--line,#0006);background:var(--surface,#2226);color:inherit;
+  border-radius:var(--radius-lg,20px);border:3px solid var(--line,#0006);background:var(--surface,#2226);color:inherit;
   box-shadow:var(--shadow,4px 4px 0 #141026);transition:transform .12s ease}
 .mode-card:hover:not(:disabled):not(.off){transform:translate(-2px,-2px)}
 .mode-card:disabled,.mode-card.off{opacity:.45;filter:grayscale(.6)}
@@ -86,7 +86,7 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 .party-card{display:flex;flex-direction:column;gap:12px;max-width:520px;margin:0 auto;width:100%}
 .party-code{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .party-code span{opacity:.7;font-size:.85em;letter-spacing:.1em}
-.party-code b{font-size:2em;letter-spacing:.28em;font-family:var(--fontMono,monospace);color:var(--accent,#ffc22e)}
+.party-code b{font-size:2em;letter-spacing:.28em;font-family:var(--font-mono,monospace);color:var(--accent,#ffc22e)}
 .party-slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
 .party-slot{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 6px;border-radius:var(--radius,10px);
   border:2px solid var(--line,#0006);background:var(--bg,#1114)}
@@ -241,7 +241,7 @@ body[data-mode="portrait"] .modes{grid-template-columns:1fr}
 #br-lobby{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
   background:color-mix(in srgb,var(--bg,#141026) 72%,transparent);pointer-events:auto}
 .brl-card{display:flex;flex-direction:column;align-items:center;gap:8px;width:min(560px,92vw);padding:22px 20px;
-  border-radius:var(--radiusLg,20px);border:3px solid var(--line,#0006);background:var(--surface,#2226);
+  border-radius:var(--radius-lg,20px);border:3px solid var(--line,#0006);background:var(--surface,#2226);
   box-shadow:var(--shadow,6px 6px 0 #141026);text-align:center}
 .brl-title{font-size:1.5em;font-weight:bold;letter-spacing:.16em;color:var(--accent,#ffc22e)}
 .brl-count{display:flex;align-items:baseline;gap:2px;font-variant-numeric:tabular-nums}
@@ -533,3 +533,191 @@ body[data-mode="portrait"] #rk-table .c-food,body[data-mode="portrait"] #rk-tabl
 .pf-level .lv-country .field{flex:0 1 260px}
 .field select{padding:8px 10px;border-radius:var(--radius,10px);border:2px solid var(--line,#0006);
   background:var(--bg,#111c);color:inherit;font:inherit;width:100%}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   TELA INICIAL v2
+   ──────────────────────────────────────────────────────────────────────────────
+   Por que aqui e não nos temas: `client/src/theme/<id>/screens.css` é GERADO por
+   `node client/src/theme/port.js` e sobrescrito sem aviso; `ui.css` é escrito à mão e o port
+   nunca o toca. Os temas prefixam tudo com `:where(html[data-theme=…])`, que tem especificidade
+   ZERO por desenho — mas o seletor deles é `#s-entry .entry-wrap` (1,1,0), e `ui.css` é importado
+   ANTES dos temas em theme/all.css, então empate não basta: daí o `.entry-v2` extra, que leva
+   estes seletores a (1,2,0) e ganha sem um `!important` na tela inteira.
+   As regras do RAIL (body[data-shell="rail"] … , mais acima) são (1,3,1) e continuam mandando —
+   é o que mantém a gaveta funcionando sem duplicar nada aqui.
+   Cor nenhuma é fixa: tudo sai dos tokens, então a tela segue trocando com o relógio.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* A fonte da MARCA. Auto-hospedada em client/public/fonts (o k8s serve o cliente inteiro; depender de
+   CDN seria uma dependência externa no caminho crítico do primeiro paint). `swap` para o texto aparecer
+   já na fonte de sistema e trocar quando a webfont chegar.
+   ⚠️ Só a DISPLAY é webfont. `--font-ui` continua sendo stack de sistema porque é ela que alimenta o
+   `BitmapFont.install` do Pixi (renderer/layers/Planets.js): fonte que ainda não carregou faria o nome
+   dos planetas ser assado errado no atlas, e o atlas não é refeito depois. */
+@font-face{font-family:"Archivo Black";font-style:normal;font-weight:400;font-display:swap;
+  src:url(/fonts/archivo-black-latin.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Archivo Black";font-style:normal;font-weight:400;font-display:swap;
+  src:url(/fonts/archivo-black-latin-ext.woff2) format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+:root{--font-display:"Archivo Black",var(--font-ui,system-ui),sans-serif}
+
+/* ── A MARCA ── */
+.logo{display:flex;align-items:center;gap:.34em;line-height:1;font-size:clamp(30px,5.2vw,52px)}
+.logo .logo-mark{width:1.3em;height:1.3em;flex:none}
+.logo-word{font-family:var(--font-display);font-size:1em;letter-spacing:-.02em;color:var(--text,#fff5c2);
+  text-shadow:.06em .06em 0 var(--line,#141026);white-space:nowrap}
+.logo-word i{font-style:normal;color:var(--accent,#ffc22e)}
+
+/* ── O CONTÊINER ── */
+#s-entry .entry-wrap.entry-v2{gap:clamp(12px,2.4vh,26px)}
+/* os temas dão order:1..6 aos filhos de .entry-main para reordenar o DOM antigo; com o DOM novo
+   isso embaralha a coluna — a ordem correta agora é a do próprio documento */
+#s-entry .entry-wrap.entry-v2 .entry-main>*{order:0}
+
+/* CENTER = primeira carga: duas colunas, marca atravessando as duas.
+   (1,3,1) — a mesma força da regra de rail logo acima, e por isso ela não é afetada.) */
+body[data-shell="center"] #s-entry .entry-wrap.entry-v2{
+  display:grid;grid-template-columns:minmax(0,minmax(340px,460px)) minmax(0,300px);
+  grid-template-areas:"brand brand" "main side";
+  align-content:safe center;justify-content:center;
+  gap:clamp(12px,2.6vh,26px) 26px;width:min(880px,100%);margin:0 auto;
+  padding:clamp(14px,3vh,34px) 20px calc(clamp(14px,3vh,34px) + env(safe-area-inset-bottom,0px))}
+body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .brand-block{grid-area:brand}
+body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-main{grid-area:main}
+body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-side{grid-area:side}
+
+#s-entry .entry-wrap.entry-v2 .brand-block{
+  display:flex;flex-direction:column;align-items:center;gap:10px;padding-top:0;text-align:center}
+#s-entry .entry-wrap.entry-v2 .tagline{
+  font-size:clamp(10px,1.5vw,12.5px);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text,#fff5c2);background:var(--line,#141026);border:2px solid var(--accent2,#ff6b4a);
+  padding:5px 14px;border-radius:999px;max-width:100%;transform:none}
+
+/* ── O CARTÃO CENTRAL ── */
+#s-entry .entry-wrap.entry-v2 .entry-main{
+  position:relative;display:flex;flex-direction:column;align-items:stretch;gap:14px;width:100%;max-width:none;
+  background:var(--surface,#232f63);border:4px solid var(--line,#141026);border-radius:var(--radius-lg,20px);
+  box-shadow:0 10px 0 var(--line,#141026),0 18px 34px rgba(0,0,0,.32);
+  padding:18px}
+#s-entry .entry-wrap.entry-v2 .entry-main .coinbar{
+  position:static;align-self:flex-end;font-size:13px;color:var(--text,#fff5c2);
+  background:var(--bg,#1b2450);border:2px solid var(--line,#141026);border-radius:999px;padding:3px 12px}
+#s-entry .entry-wrap.entry-v2 .entry-main .coinbar b{color:var(--accent,#ffc22e)}
+
+/* identidade: com quem eu entro — skin e nick lado a lado, uma decisão só */
+.entry-id{display:flex;align-items:center;gap:14px;width:100%}
+.entry-id .id-skin{position:relative;flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:6px;border-radius:var(--radius,14px);border:3px solid var(--line,#141026);background:var(--bg,#1b2450);
+  transition:transform .08s ease,box-shadow .08s ease}
+.entry-id .id-skin canvas{width:60px;height:60px;display:block}
+.entry-id .id-skin .id-swap{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted,#8fa0d8)}
+.entry-id .id-skin:hover{transform:translateY(-2px);box-shadow:0 4px 0 var(--line,#141026)}
+.entry-id .id-skin:hover .id-swap{color:var(--accent,#ffc22e)}
+.entry-id .id-fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+/* os temas alcançam QUALQUER `.field` dentro de `.entry-main` (`:where(…) .entry-main .field`, 0-3-0)
+   e lá mandam `order:2` + `text-align:center`, feitos para o DOM antigo. Dentro do bloco de identidade
+   isso jogava o campo para depois do nome da skin e centralizava o nick; daí a especificidade extra. */
+#s-entry .entry-wrap.entry-v2 .entry-id .field{order:0;align-items:stretch}
+#s-entry .entry-wrap.entry-v2 .entry-id .field label{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted,#8fa0d8)}
+#s-entry .entry-wrap.entry-v2 .entry-id .field input{width:100%;max-width:none;text-align:left;border-radius:var(--radius,12px)}
+#s-entry .entry-wrap.entry-v2 .entry-id .skinmeta{order:1}
+.entry-id .skinmeta{flex-direction:row;align-items:baseline;gap:7px;min-width:0}
+.entry-id .skinmeta b{font-size:13px;color:var(--text,#fff5c2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.entry-id .skinmeta i{font-style:normal;font-size:10px;letter-spacing:.07em;text-transform:uppercase;flex:none}
+
+/* o CTA: um alvo só, sem rotação — a inclinação dos temas fazia o botão principal parecer torto, não divertido */
+#s-entry .entry-wrap.entry-v2 .entry-main .btn-primary{
+  width:100%;font-family:var(--font-display);font-size:clamp(20px,3.4vw,26px);letter-spacing:.02em;
+  padding:15px 18px;border-radius:var(--radius-lg,18px);border:4px solid var(--line,#141026);
+  background:var(--accent,#ffc22e);color:var(--line,#141026);
+  box-shadow:0 6px 0 var(--line,#141026);transform:none;transition:transform .07s ease,box-shadow .07s ease}
+#s-entry .entry-wrap.entry-v2 .entry-main .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 0 var(--line,#141026)}
+#s-entry .entry-wrap.entry-v2 .entry-main .btn-primary:active{transform:translateY(4px);box-shadow:0 2px 0 var(--line,#141026)}
+
+/* ── NAVEGAÇÃO: seis alvos iguais, em grade. Antes era uma coluna flutuante de emojis colada na borda direita. ── */
+/* `auto-fit` + piso de 62 px responde à largura do CONTÊINER, e é isso que o caso exige: na gaveta
+   (min(400px,52vw) no celular deitado) seis colunas fixas davam 37 px de alvo — abaixo dos 44 que
+   `scripts/responsive-check.mjs` cobra. Um @media não resolveria: lá a viewport tem 667 px de largura;
+   quem está estreito é a gaveta dentro dela. Aqui a fileira quebra sozinha e o alvo nunca encolhe. */
+#s-entry .entry-wrap.entry-v2 .entry-links{
+  position:static;transform:none;right:auto;top:auto;width:100%;
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(62px,1fr));gap:8px}
+#s-entry .entry-wrap.entry-v2 .entry-links .btn-secondary{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:auto;
+  min-height:60px;padding:8px 3px;border-radius:var(--radius,14px);
+  border:3px solid var(--line,#141026);background:var(--bg,#1b2450);color:var(--muted,#8fa0d8);
+  font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;text-shadow:none;box-shadow:none;
+  transition:transform .08s ease,color .08s ease,border-color .08s ease}
+/* o emoji vinha de `content:` no CSS de cada tema; agora quem desenha é o <svg> dentro do botão */
+#s-entry .entry-wrap.entry-v2 .entry-links .btn-secondary::before{content:none;display:none}
+#s-entry .entry-wrap.entry-v2 .entry-links .nav-svg{width:23px;height:23px;flex:none}
+#s-entry .entry-wrap.entry-v2 .entry-links .btn-secondary span{
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#s-entry .entry-wrap.entry-v2 .entry-links .btn-secondary:hover{
+  transform:translateY(-2px);color:var(--accent,#ffc22e);border-color:var(--accent,#ffc22e);background:var(--bg,#1b2450)}
+#s-entry .entry-wrap.entry-v2 .entry-links .btn-secondary:active{transform:translateY(0)}
+
+/* ── RODAPÉ DO CARTÃO ── */
+#s-entry .entry-wrap.entry-v2 .guest-note{
+  font-size:11.5px;color:var(--muted,#8fa0d8);text-shadow:none;justify-content:center}
+#s-entry .entry-wrap.entry-v2 .guest-note[data-kind="registered"] .gn-txt{color:var(--ok,#3ddc5f)}
+#s-entry .entry-wrap.entry-v2 .guest-note .btn-link{color:var(--accent,#ffc22e);text-decoration:underline;text-underline-offset:3px}
+#s-entry .entry-wrap.entry-v2 .entry-main .hint{
+  font-size:10.5px;line-height:1.5;text-align:center;color:var(--muted,#8fa0d8);text-shadow:none;
+  border-top:2px solid rgba(255,255,255,.08);padding-top:10px;margin-top:-2px}
+
+/* ── A COLUNA LATERAL, que os três temas escondiam ── */
+#s-entry .entry-wrap.entry-v2 .entry-side{
+  display:flex;flex-direction:column;gap:14px;width:100%;max-width:none;align-self:start;
+  background:var(--surface,#232f63);border:4px solid var(--line,#141026);border-radius:var(--radius-lg,20px);
+  box-shadow:0 10px 0 var(--line,#141026),0 18px 34px rgba(0,0,0,.32);padding:16px}
+.entry-side .side-block{display:flex;flex-direction:column;gap:6px}
+#s-entry .entry-wrap.entry-v2 .entry-side .ph{
+  font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent,#ffc22e);
+  border-bottom:2px solid rgba(255,255,255,.1);padding-bottom:5px;margin-bottom:2px}
+#s-entry .entry-wrap.entry-v2 .entry-side .mr-row{
+  display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 6px;border-radius:8px}
+#s-entry .entry-wrap.entry-v2 .entry-side .mini-rooms .mr-row{cursor:pointer;transition:background .08s ease}
+#s-entry .entry-wrap.entry-v2 .entry-side .mini-rooms .mr-row:hover{background:rgba(255,255,255,.07)}
+#s-entry .entry-wrap.entry-v2 .entry-side .mr-pos{color:var(--accent,#ffc22e);min-width:1.4em}
+#s-entry .entry-wrap.entry-v2 .entry-side .mr-nick{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#s-entry .entry-wrap.entry-v2 .entry-side .mr-val{font-variant-numeric:tabular-nums;color:var(--text,#fff5c2)}
+#s-entry .entry-wrap.entry-v2 .entry-side .code{color:var(--accent2,#ff6b4a);font-family:var(--font-mono,monospace)}
+#s-entry .entry-wrap.entry-v2 .entry-side .mini-rooms .mr-row span{font-size:11px}
+
+/* ── FOCO POR TECLADO ── a tela inteira era navegável e completamente invisível para quem usa Tab ── */
+#s-entry .entry-wrap.entry-v2 :is(button,input,[role="button"]):focus-visible{
+  outline:3px solid var(--accent,#ffc22e);outline-offset:3px;border-radius:var(--radius,12px)}
+
+/* ── ENTRADA ESCALONADA ── desligada por preferência do sistema e pela pref "menos movimento" do jogo ── */
+@keyframes ws-entry-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+#s-entry.on .entry-v2>*{animation:ws-entry-rise .38s cubic-bezier(.22,.9,.3,1) both}
+#s-entry.on .entry-v2>.entry-main{animation-delay:.07s}
+#s-entry.on .entry-v2>.entry-side{animation-delay:.13s}
+@media (prefers-reduced-motion:reduce){#s-entry.on .entry-v2>*{animation:none}}
+body[data-reduce="1"] #s-entry.on .entry-v2>*{animation:none}
+
+/* ── GAVETA (rail) e TELAS ESTREITAS ──
+   Na gaveta a largura é 480 px e a lateral não cabe; no dedo, idem. O que sobra tem que continuar
+   sendo a decisão inteira: marca, identidade, JOGAR e os seis atalhos. */
+body[data-shell="rail"] #s-entry .entry-wrap.entry-v2 .entry-side,
+body[data-mode="portrait"] #s-entry .entry-wrap.entry-v2 .entry-side,
+body[data-mode="landscape"] #s-entry .entry-wrap.entry-v2 .entry-side{display:none}
+body[data-shell="rail"] #s-entry .entry-wrap.entry-v2 .logo{font-size:clamp(24px,5vw,34px)}
+body[data-shell="rail"] #s-entry .entry-wrap.entry-v2 .entry-main{box-shadow:none;border-width:3px}
+body[data-mode="landscape"] #s-entry .entry-wrap.entry-v2 .entry-main .hint{display:none}
+body[data-mode="landscape"] #s-entry .entry-wrap.entry-v2 .logo{font-size:26px}
+/* uma coluna quando a de duas não cabe: 880 é a largura do grid + o respiro das laterais */
+@media (max-width:900px){
+  body[data-shell="center"] #s-entry .entry-wrap.entry-v2{
+    grid-template-columns:minmax(0,460px);grid-template-areas:"brand" "main" "side";width:min(460px,100%)}
+  body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-side{display:none}
+}
+/* no dedo o alvo mínimo é 44 px (scripts/responsive-check.mjs falha abaixo disso) */
+body[data-pointer="coarse"] #s-entry .entry-wrap.entry-v2 .entry-links .btn-secondary{min-height:64px}
+body[data-pointer="coarse"] .entry-id .id-skin{min-width:64px}
+/* "Reivindicar conta" é texto inline e media 43,x de altura no celular deitado — passava raspando por
+   baixo da régua. 46 dá folga para o arredondamento sem afastar o link do texto ao lado. */
+body[data-pointer="coarse"] #s-entry .entry-wrap.entry-v2 .guest-note .btn-link{
+  display:inline-flex;align-items:center;min-height:46px;padding:0 6px}

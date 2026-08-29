@@ -1,5 +1,5 @@
 // ── MOCKUP ENGINE ─────────────────────────────────────────────────────────────
-// Mini-simulação local que replica as entidades do planet.io real (células com
+// Mini-simulação local que replica as entidades do warspace.io real (células com
 // peças, comida tipada, vírus, massa ejetada, mísseis, bots wander/hunt/flee).
 // Cada tema só implementa desenho + CSS; a simulação é sempre esta.
 (function(){

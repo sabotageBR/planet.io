@@ -1,10 +1,11 @@
 // ── CLIENTE HTTP (/api/*) ─────────────────────────────────────────────────────
-// Bearer token em localStorage.planet_token. Sem servidor (fetch falha ou o proxy do Vite
+// Bearer token em localStorage.warspace_token. Sem servidor (fetch falha ou o proxy do Vite
 // devolve 503 {error:"unreachable"}) o cliente cai em MODO OFFLINE: perfil de convidado local
-// em localStorage.planet_local_profile, e as chamadas que mudam estado operam nele.
-import { SKINS, skinById, isPurchasable } from "@planet/shared";
+// em localStorage.warspace_local_profile, e as chamadas que mudam estado operam nele.
+import { SKINS, skinById, isPurchasable } from "@warspace/shared";
 
-const TOKEN_KEY = "planet_token", LOCAL_KEY = "planet_local_profile";
+const TOKEN_KEY = "warspace_token", LOCAL_KEY = "warspace_local_profile";
+const KEYS_V1 = { warspace_token: "planet_token", warspace_local_profile: "planet_local_profile" };
 
 export class ApiError extends Error {
   constructor(status, code, message, data) { super(message || code); this.status = status; this.code = code; this.data = data || {}; this.suggestion = this.data.suggestion; }
@@ -13,6 +14,10 @@ export class NetworkError extends Error {}
 export const isUnreachable = e => e instanceof NetworkError || (e instanceof ApiError && (e.code === "unreachable" || e.status === 502 || e.status === 503 || e.status === 504));
 
 const ls = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* privado */ } } };
+// planet.io → warspace.io: as chaves mudaram de nome. Sem esta passagem, todo jogador com sessão aberta
+// seria deslogado e perderia o perfil offline no dia do rename — o token vive só aqui, não há como recuperá-lo.
+// Roda uma vez por carga, antes de qualquer leitura: se a chave nova ainda não existe e a velha existe, muda de nome.
+(() => { for (const [novo, velho] of Object.entries(KEYS_V1)) { const v = ls.get(velho); if (v != null && ls.get(novo) == null) ls.set(novo, v); if (v != null) ls.set(velho, null); } })();
 export const getToken = () => ls.get(TOKEN_KEY);
 const setToken = t => ls.set(TOKEN_KEY, t);
 

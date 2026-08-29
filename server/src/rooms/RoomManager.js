@@ -5,7 +5,7 @@
 // remove após ROOM.REMOVE_AFTER_MS; ao voltar a ser usada, religa e completa os bots.
 // @ts-check
 import {randomInt} from 'node:crypto';
-import {ROOM,ROUND,MODE,modeOf} from '@planet/shared/constants.js';
+import {ROOM,ROUND,MODE,modeOf} from '@warspace/shared/constants.js';
 import {Room} from './Room.js';
 import {newCode,normalizeCode,shardOf} from './codes.js';
 import {fetchPeerRooms} from '../http/peers.js';

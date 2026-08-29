@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { skinById, ACHIEVEMENTS, ACHIEVEMENT_GOALS, COUNTRIES, POPULAR, flagOf, countryName } from "@planet/shared";
+import { skinById, ACHIEVEMENTS, ACHIEVEMENT_GOALS, COUNTRIES, POPULAR, flagOf, countryName } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { openAccount, loadHistory, logout, setCountry } from "../state/actions.js";

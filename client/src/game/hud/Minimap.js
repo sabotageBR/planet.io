@@ -4,7 +4,7 @@
 // Posicionado por estilo inline conforme radar.position/size do modo atual (não há CSS de #radar) — por
 // isso MOVER o radar é editar `hud.radar.position.corner` nos três theme/<id>/index.js (que NÃO são
 // gerados pelo port.js), e não escrever CSS: estilo inline vence qualquer folha.
-import {WORLD} from "@planet/shared";
+import {WORLD} from "@warspace/shared";
 import {bodyMode} from "../util.js";
 
 export function createMinimap({hud,theme,getScene}){

@@ -7,10 +7,10 @@
 // @ts-check
 import {randomUUID} from 'node:crypto';
 import {WebSocketServer} from 'ws';
-import {NET,WORLD,MODE,modeOf,VOICE} from '@planet/shared/constants.js';
-import {eggSkinFor} from '@planet/shared/eggs.js';
-import {PROTOCOL_VERSION,MSG,VOICE_UP_HEADER_BYTES} from '@planet/shared/protocol/constants.js';
-import {decodeInput,decodeVoiceUp,encodePong,createWriter} from '@planet/shared/protocol/index.js';
+import {NET,WORLD,MODE,modeOf,VOICE} from '@warspace/shared/constants.js';
+import {eggSkinFor} from '@warspace/shared/eggs.js';
+import {PROTOCOL_VERSION,MSG,VOICE_UP_HEADER_BYTES} from '@warspace/shared/protocol/constants.js';
+import {decodeInput,decodeVoiceUp,encodePong,createWriter} from '@warspace/shared/protocol/index.js';
 import {Session} from './Session.js';
 import {clientIp} from '../api/router.js';
 // MAX_PAYLOAD tem que caber o maior clipe de voz (VOICE.MAX_BYTES + cabeçalho): com os 4 KB de antes o `ws`
