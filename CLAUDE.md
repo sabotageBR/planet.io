@@ -404,6 +404,15 @@ do zero, use só com o banco vazio). Secret `warspace-db` criado via `./scripts/
 
 ## Arestas conhecidas
 
+- ⚠️ **O certificado Let's Encrypt não sai sozinho neste cluster.** O cert-manager faz um *self-check*
+  do desafio HTTP-01 ANTES de chamar a ACME, e de dentro do cluster o IP público
+  (`177.190.160.19:80`) dá `connection timed out` — o roteador não faz hairpin NAT. O desafio fica
+  `pending` para sempre mesmo respondendo **200 de fora**. Não é do warspace: há 11 desafios presos
+  assim desde 2026-07-30 (`j4call`, `itm`) e um desde 2024. A correção é split-horizon no CoreDNS —
+  um bloco `hosts` mapeando o domínio para `10.110.179.230` (ClusterIP do `ingress-nginx-controller`),
+  **antes do `forward`**, senão o forward atende primeiro. Sem isso o jogo funciona em HTTPS com o
+  certificado autoassinado do nginx, e o navegador avisa.
+
 - Sem "esqueci a senha" (reset via SQL). O merge de contas passou a existir SÓ no caminho do Google (um guest
   com Bearer é promovido em vez de virar conta nova); nos outros continua sem.
 - ⚠️ **`npm run dev` na raiz lê o `.env` da raiz, que aponta para PRODUÇÃO** — e com `MIGRATE_ON_START=1` isso
