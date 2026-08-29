@@ -56,6 +56,62 @@ Duas armadilhas que a lista de nomes evita: a lista temática do modo Livre (`BO
 placar, por repetição e por estilo. E nomes limpos demais também denunciam: gente de verdade usa número,
 underline e caixa maluca, então `botNick` mistura cinco formatos.
 
+## Os outros 49 também precisam JOGAR como gente
+
+Esconder o flag `BOT` resolve o placar. O que denuncia depois é o comportamento, e eram quatro coisas:
+
+**1. A mão era perfeita.** O movimento é `pos += û(ponteiro)·vmax`, sem inércia — apontar exato no alvo,
+todo tick, dá perseguição geometricamente perfeita e inversão de 180° num quadro só. Medindo o giro do
+ponteiro do cérebro antigo: **p95 = 3,08 rad/tick** (176°). Agora existe uma camada de mão entre a decisão e
+o input — tempo de reação, velocidade angular limitada, tremor, e "flick" para mirar (mirar CUSTA movimento,
+porque o `AIM` escolhe pelo cursor) — e o p95 caiu para **0,29 rad/tick**. Também aprendeu a **parar**:
+apontar para dentro de `SPEED.RAMP` freia a peça, e o cérebro velho nunca fazia isso.
+
+**2. Perseguir nunca alcança.** `vmax = K/r^0,449` e comer exige `EAT.RATIO`: **quem eu posso comer é sempre
+mais rápido que eu**. O modo `hunt` antigo era correr atrás de quem nunca ia pegar. Os fechadores reais são o
+salto (780 px), o míssil, o empurrão da Nova e **encurralar**. Então `hunt` agora mede o **arco de fuga** da
+presa (`_openness`: das 8 direções em volta dela, quantas não dão em parede, gás ou estrela) e aproxima pelo
+lado que **fecha** esse arco, empurrando a presa contra o que a prende. Em equipe a pinça sai de graça: se o
+companheiro já está de um lado, este bot toma o outro — geometria pura, sem estado compartilhado.
+
+**3. A zona era lida tarde demais.** O antigo só reagia **depois de já estar queimando**. Mas `w.zone` traz
+`x1,y1,r1,t1` — o círculo de destino e o tick da chegada. `_zonePlan` compara o tempo de viagem
+(`dist/vmaxFor(r)`) com o que resta e devolve uma **urgência**; acima da margem da perícia, ir para o seguro
+domina qualquer outra intenção. Medido numa sala de 40: o tempo de peça dentro do gás caiu de **2,76 % para
+0,17 %**. Parte dos bots joga o **anel de dentro da borda** em vez do miolo, que é o que gente faz em BR.
+
+**4. Todo mundo era igualmente competente.** `BOT.SKILLS` dá quatro níveis com peso — ~18 % ruins, 46 %
+medianos, 28 % bons, 8 % feras — e o nível mexe em reação, velocidade da mão, tremor, antecipação, margem da
+zona, taxa de erro e uso do cinto. Ortogonal a `BOT.PERSONAS`, que continua dando o estilo: 12 assinaturas.
+**Nenhum bot é ótimo** — nem o "fera" tem `mistake` zero. Uma sala de 50 jogando todos no mesmo nível, com a
+mesma pontaria e reagindo na mesma hora, denuncia mais que qualquer outra coisa.
+
+A decisão deixou de ser cascata fixa e virou **utilidade com compromisso**: cada intenção é pontuada na mesma
+escala, a atual ganha um bônus (`BOT.STICK`) e cada uma declara um mínimo de ticks (`BOT.COMMIT`). Sem isso o
+bot decide caçar, desiste, decide de novo — o vaivém é a assinatura de script.
+
+O orçamento de CPU não mudou de ordem: tudo que varre lista foi para o `_think` (amortizado), e o perigo
+colado — que era varrido TODO tick para CADA bot — passou a ser relido a cada `BOT.HAZ_TTL`. Uma sala de 50
+bots custa ~0,16 ms/tick de cérebro, dentro dos 16,7 ms do tick.
+
+Quem valida é `shared/test/bot.test.js`: uma **arena headless** roda a partida inteira (World + `zone.js` +
+`BotBrain`, o mesmo caminho do servidor) e mede o que denunciaria um script — a sala tem que se resolver na
+porrada e não no gás, o salto tem que converter em abate, o ponteiro não pode girar 180° num quadro, o bot
+ruim tem que tomar mais gás que o bom, e a mesma semente tem que dar a mesma partida.
+
+## Eles falam, pouco
+
+Uma sala de 50 pessoas calada a partida inteira é tão estranha quanto um bot correndo em linha reta — e fala
+demais, repetida ou fora de hora denuncia **muito** mais que qualquer movimento. Por isso o padrão é o
+silêncio e tudo é orçamento (`BOT_TALK`): cooldown de sala, cooldown por bot, teto de 3 falas por partida e
+probabilidade por gatilho. Nada inventa assunto: cada linha vem de algo que **acabou** de acontecer — abate,
+morte, virada da zona, largada, poucos vivos —, e a fila é do INSTANTE (guardar gatilho vira comentário
+atrasado, que é pior que silêncio). Às vezes escapa uma letra dobrada (`botTypo`), como gente com pressa.
+
+Quem fala é a **sala**, não o cérebro: `Sim` só enfileira o gatilho (`sim.botTalk`) e `Room.botChatTick`
+decide. Tinha que ser assim — falar é evento de sala, o `LocalServer` do `?local=1` não tem chat, e a linha
+sai pelo mesmo `_pushChat` do humano, então respeita o escopo do modo (equipe fala com a equipe).
+
 ## Aliado é regra de FÍSICA
 
 `rules.sameTeam(w,a,b)` é a única fonte da resposta, consultada nos seis pontos de decisão: `piecePair`,

@@ -19,9 +19,13 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
   let nextSlot=0,timer=0,acc=0,last=0,playersDirty=true,running=false,over=false;   // over: a rodada acabou (mundo explodido)
   const reasonMap=new Map();
   // ── bots ── (mesmo cérebro do servidor: shared/src/bot.js)
+  // ⚠️ tem que aceitar TODAS as flags que o cérebro emite, senão o bot offline joga diferente do bot do
+  // servidor em silêncio — EJECT_HOLD (cusparada segurada) e SWAP (cinto de armas) faltavam aqui.
   function botInput(slot,{tx,ty,flags}){w.setTarget(slot,tx,ty);
     if(flags&INPUT_FLAG.SPLIT)w.requestSplit(slot);
     if(flags&INPUT_FLAG.EJECT)w.requestEject(slot);
+    w.setEjectHold(slot,(flags&INPUT_FLAG.EJECT_HOLD)!==0);
+    if(flags&INPUT_FLAG.SWAP)w.requestSwap(slot);
     if(flags&INPUT_FLAG.FIRE)w.requestFire(slot,(flags&INPUT_FLAG.AIM)!==0);}
   function addBot(x=NaN,y=NaN){const slot=nextSlot++;const r=rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]);w.addPlayer(slot,{x,y,r,isBot:true,missiles:rng.chance(.3)?1:0});
     meta.set(slot,{slot,name:BOT_NAMES[slot%BOT_NAMES.length]+(slot>=BOT_NAMES.length?"-"+slot:""),skinId:rng.int(0,34),isBot:true,registered:false});

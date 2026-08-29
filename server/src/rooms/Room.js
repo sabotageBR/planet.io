@@ -8,7 +8,7 @@
 // cada encode devolve uma vista reutilizada; se um socket ficou com bytes pendentes trocamos de
 // writer (o antigo fica com o socket até drenar) em vez de copiar a cada envio.
 // @ts-check
-import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT_NAMES,botNick,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,VOICE} from '@planet/shared/constants.js';
+import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,BOT_CHAT,BOT_TALK,botTypo,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,VOICE} from '@planet/shared/constants.js';
 import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent,encodeZone,encodeVoice} from '@planet/shared/protocol/index.js';
 import {rectHas} from '@planet/shared/camera.js';
 import {createRng} from '@planet/shared/rng.js';
@@ -40,7 +40,7 @@ export class Room{
     // cedo por engano, não vira almoço antes de a partida existir
     this.sim.world.peace=this.phase==='lobby';
     /** @type {Map<string,number>} código de party → equipe (para os amigos caírem juntos) */this.parties=new Map();
-    this.roundStart=0;this.over=false;this.endedAt=0;this.endReason='time';this.champion=null;this.voiceAt=0;this.voiceN=0;
+    this.roundStart=0;this.over=false;this.endedAt=0;this.endReason='time';this.champion=null;this.voiceAt=0;this.voiceN=0;this.botTalkAt=-1e9;
     this.writer=createWriter(WRITER_SIZE);this.snapshotter=createSnapshotter(this);this._botName=this.rng.int(0,BOT_NAMES.length-1);this.onRewards=onRewards;
     this.sim.on('death',info=>{const s=this.sessions.get(info.slot);if(!s)return;
       s.sendJson({t:'dead',by:info.by,byHole:info.byHole,byZone:info.byZone,score:info.score,maxMass:info.maxMass,kills:info.kills,durationS:info.durationS,placement:info.placement,players:info.players});
@@ -181,6 +181,7 @@ export class Room{
     // 3. a partida começa: relógio, zona e fim da paz
     this.roundStart=w.tick;this.zone=createZone(w.tick);w.setZone(this.zone);w.peace=false;this.phase='live';this.startsAt=0;
     sim.playersDirty=true;
+    for(let i=0;i<3;i++)this._talkAlgum('start');   // largada: alguém diz alguma coisa, como em qualquer sala
     this.broadcastPhase();this.broadcastZone();
     this.log.info(`sala ${this.code}: largada — ${sim.humanCount()} humano(s), ${sim.botCount()} preenchimento(s), equipes de ${this.teamSize}`);}
   _teamSizeAll(t){let n=0;for(const gp of this.sim.players.values())if(gp.team===t)n++;return n;}
@@ -255,7 +256,13 @@ export class Room{
     if(!ev)return;
     this.broadcastZone();
     if(ev==='shrink'){const c=zoneAt(this.zone,this.sim.tick);
-      this.sim.wireEvents.push({kind:EVENT.ZONE_SHRINK,x:c.x,y:c.y,r:this.zone.r1,slotA:0xffff,slotB:0xffff,extra:(this.zone.t1-this.zone.t0)>>>0});}}
+      this.sim.wireEvents.push({kind:EVENT.ZONE_SHRINK,x:c.x,y:c.y,r:this.zone.r1,slotA:0xffff,slotB:0xffff,extra:(this.zone.t1-this.zone.t0)>>>0});
+      // a virada da zona é o gatilho natural de comentário (e, no fim, de "quantos faltam")
+      this._talkAlgum(this.sim.aliveCount()<=BOT.GAS.LATE_ALIVE?'poucos':'zona');}}
+  /** Enfileira um gatilho de fala num preenchimento vivo qualquer (o orçamento decide se sai algo). */
+  _talkAlgum(kind){const vivos=[];
+    for(const gp of this.sim.players.values())if(gp.isBot&&!gp.dead)vivos.push(gp.slot);
+    if(vivos.length)this.sim._talk(vivos[this.rng.int(0,vivos.length-1)],kind);}
   // ── chat ──
   /**
    * Uma linha de chat. O escopo vem do MODE (`room` no Livre e no Battle Royale solo, `team` em equipe) — em
@@ -271,12 +278,39 @@ export class Room{
     session.chatAt=session.chatAt.filter(t=>now-t<CHAT.RATE_MS*CHAT.BURST);
     if(session.chatAt.length>=CHAT.BURST)return false;   // rate limit PRÓPRIO, além do balde de JSON: aquele protege o servidor, este protege a tela dos outros
     session.chatAt.push(now);
-    const out={t:'chat',slot:session.slot,name:gp.name,team:gp.team<0?null:gp.team,text:msg,at:now};
+    this._pushChat(gp,msg);
+    return true;}
+  /** Difusão de uma linha já validada, no escopo do modo. Caminho comum do humano e do preenchimento. */
+  _pushChat(gp,msg){
+    const out={t:'chat',slot:gp.slot,name:gp.name,team:gp.team<0?null:gp.team,text:msg,at:Date.now()};
     const escopo=this.mode.chat==='team'&&gp.team>=0?'team':'room';
     for(const s of this.sessions.values()){if(!s.ws)continue;
       if(escopo==='team'){const o=this.sim.players.get(s.slot);if(!o||o.team!==gp.team)continue;}
-      s.sendJson(out);}
-    return true;}
+      s.sendJson(out);}}
+  /**
+   * Fala dos preenchimentos. Uma sala de 50 pessoas que atravessa a partida inteira em silêncio é tão
+   * estranha quanto um bot correndo em linha reta — mas fala demais, repetida ou fora de hora denuncia MUITO
+   * mais que qualquer movimento. Por isso o padrão é o silêncio e tudo é orçamento: cooldown da sala,
+   * cooldown por bot, teto por partida e probabilidade por gatilho. Nada aqui inventa assunto: cada linha
+   * vem de um evento que acabou de acontecer (`sim.botTalk`).
+   * Não fala quem não tem plateia (sala sem humano) nem antes da largada.
+   */
+  botChatTick(){
+    const sim=this.sim,fila=sim.botTalk;
+    if(!fila.length)return;
+    const tick=sim.tick;
+    if(this.phase!=='live'||!this.sessions.size){fila.length=0;return;}
+    if(tick-this.botTalkAt<BOT_TALK.ROOM_CD_TICKS){fila.length=0;return;}   // a fila é do INSTANTE: guardar gera coro atrasado
+    const g=fila[this.rng.int(0,fila.length-1)];fila.length=0;
+    const gp=sim.players.get(g.slot);if(!gp||!gp.isBot)return;
+    if(gp.talked>=BOT_TALK.MAX_PER_MATCH||tick-(gp.talkedAt||-1e9)<BOT_TALK.BOT_CD_TICKS)return;
+    if(!this.rng.chance(BOT_TALK.P[g.kind]||.15))return;
+    const equipe=this.mode.chat==='team'&&gp.team>=0;
+    const pool=BOT_CHAT[equipe&&this.rng.chance(.5)?'equipe':g.kind]||BOT_CHAT.kill;
+    let txt=pool[this.rng.int(0,pool.length-1)];
+    if(this.rng.chance(BOT_TALK.TYPO_P))txt=botTypo(this.rng,txt);
+    gp.talked=(gp.talked|0)+1;gp.talkedAt=tick;this.botTalkAt=tick;
+    this._pushChat(gp,txt);}
   // ── voz ──
   /**
    * Relay de um clipe de áudio. O servidor NÃO decodifica e NÃO guarda nada: valida tamanho/duração/cooldown
@@ -357,6 +391,7 @@ export class Room{
     if(this.mode.zone&&this.zone)this.tickZone();
     if(sim.tick-this.roundStart>=this.roundTicks){this.endRound('time');return;}
     sim.step();
+    if(sim.botTalk.length)this.botChatTick();
     // Último vivo: fotografa quem sobrou ANTES de fechar, senão o placar de vivos já está vazio.
     if(this.mode.lastAlive&&sim.aliveTeams()<=1){
       const lb=sim.leaderboard();

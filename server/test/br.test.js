@@ -11,7 +11,7 @@ if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.e
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';process.env.SHARDS='1';process.env.PEERS='';
 const {startServer}=await import('../src/index.js');
 const {decodeMessage,encodeInput,encodeVoiceUp,MSG,PLAYER_FLAG,SELF_FLAG,NO_TEAM,PROTOCOL_VERSION}=await import('@planet/shared/protocol/index.js');
-const {MODE,BR,ZONE,VOICE,CHAT,WEAPON,BOT_NAMES,modeCap}=await import('@planet/shared/constants.js');
+const {MODE,BR,ZONE,VOICE,CHAT,WEAPON,BOT_NAMES,BOT_CHAT,BOT_TALK,modeCap}=await import('@planet/shared/constants.js');
 const LOG=process.env.LOG_LEVEL;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let srv,base,wsUrl,token='pt_sem_banco';
@@ -300,6 +300,37 @@ test('espectador: quem está VIVO não troca de câmera (tem as próprias peças
 });
 
 // ── 5. chat ──────────────────────────────────────────────────────────────────
+test('fala dos bots: sai pelo caminho do chat e o orçamento segura o coro',async()=>{
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Ouve',mode:MODE.BR,teamSize:1,room:newRoom()});
+  const sala=roomOf(r.code);sala.lobbyUntil=sala.sim.tick+60;sala.lobbyStart=sala.sim.tick;   // encurta a janela, como os testes de largada
+  await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'largada');
+  const room=sala,bot=[...room.sim.players.values()].find(g=>g.isBot);
+  assert.ok(bot,'a sala tem preenchimento');
+  const frases=new Set(Object.values(BOT_CHAT).flat());
+  // a fala é sorteada: insisto até sair uma, zerando só o cooldown DA SALA a cada tentativa
+  let saiu=null;
+  for(let i=0;i<200&&!saiu;i++){
+    room.botTalkAt=-1e9;bot.talked=0;bot.talkedAt=-1e9;
+    room.sim.botTalk.length=0;room.sim._talk(bot.slot,'kill');
+    room.botChatTick();
+    saiu=await c.until(()=>c.all('chat').find(m=>m.slot===bot.slot),40,'fala').catch(()=>null);}
+  assert.ok(saiu,'nenhum preenchimento falou em 200 gatilhos');
+  assert.ok(frases.has(saiu.text)||saiu.text.length<=16,'a fala vem do repertório (ou é ela com erro de digitação)');
+  assert.equal(saiu.name,bot.name,'a fala usa o nome de jogador do preenchimento, não "bot"');
+  // orçamento: gatilho novo no mesmo instante não vira segunda linha
+  const n=c.all('chat').length;
+  room.sim._talk(bot.slot,'kill');room.botChatTick();
+  await sleep(120);
+  assert.equal(c.all('chat').length,n,'duas falas na mesma janela: a sala viraria coro');
+  assert.equal(room.sim.botTalk.length,0,'a fila é do INSTANTE — guardar gatilho gera comentário atrasado');
+  // teto por partida
+  bot.talked=BOT_TALK.MAX_PER_MATCH;room.botTalkAt=-1e9;
+  room.sim._talk(bot.slot,'kill');room.botChatTick();
+  await sleep(120);
+  assert.equal(c.all('chat').length,n,'passou do teto de falas da partida');
+  c.close();
+});
 test('chat: no Livre a sala inteira ouve; em equipe só o companheiro',async()=>{
   const a=new C(wsUrl),b=new C(wsUrl);await a.open();await b.open();
   const ra=await a.join({nick:'Ana',room:newRoom()});const rb=await b.join({nick:'Beto',room:ra.code});

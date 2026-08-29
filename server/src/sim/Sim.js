@@ -7,7 +7,7 @@
 // espelhamos (uma fonte só, sem contar duas vezes).
 // @ts-check
 import {createWorld} from '@planet/shared/physics/world.js';
-import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT,MISSILE,MODE,modeOf} from '@planet/shared/constants.js';
+import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT,BOT_TALK,MISSILE,MODE,modeOf} from '@planet/shared/constants.js';
 import {EVENT,REMOVE,PLAYER_FLAG,SELF_FLAG,POWER_BIT,INPUT_FLAG,NO_TEAM} from '@planet/shared/protocol/constants.js';
 import {createRng} from '@planet/shared/rng.js';
 import {packDir} from '@planet/shared/util.js';
@@ -53,6 +53,7 @@ export class Sim{
     /** @type {Map<number,GamePlayer>} */this.players=new Map();
     /** @type {{kind:number,x:number,y:number,r:number,slotA:number,slotB:number,extra:number}[]} */this.wireEvents=[];
     /** @type {Map<number,number>} id → REMOVE.* desde o último snapshot */this.gone=new Map();
+    /** @type {{slot:number,kind:string}[]} fila de gatilhos de fala dos preenchimentos (a sala drena) */this.botTalk=[];
     this.playersDirty=true;
     this._listeners=new Map();this._lb=[];this._lbTick=-1;this._hit=new Map();this._statTick=new Map();this._deaths=[];this._elim=0;}
   get tick(){return this.world.tick;}
@@ -104,6 +105,12 @@ export class Sim{
     this._consume();
     for(const gp of this.players.values()){const ps=w.players.get(gp.slot);if(!ps)continue;gp.score=ps.score;if(ps.alive){const m=w.massOf(gp.slot);if(m>gp.maxMass)gp.maxMass=m;}}
     if(w.tick%SAMPLE_EVERY===0)this._sample();}
+  /**
+   * Gatilho de fala de um preenchimento. É só uma FILA: quem decide se sai alguma coisa (e o orçamento) é a
+   * sala, porque falar é evento de sala e não de física — o cérebro compartilhado nem enxerga chat.
+   */
+  _talk(slot,kind){const gp=this.players.get(slot);if(!gp||!gp.isBot)return;
+    if(this.botTalk.length<BOT_TALK.QUEUE_MAX)this.botTalk.push({slot,kind});}
   _ev(kind,x,y,r,slotA,slotB,extra){const out=this.wireEvents;if(out.length>=EVENTS_MAX)return;out.push({kind,x,y,r,slotA,slotB,extra:extra>>>0});}
   _stat(slot,key,tick){const gp=this.players.get(slot);if(!gp||gp.isBot||!gp.sessionId)return;const k=slot*4+(key==='split'?0:key==='eject'?1:2);
     if(this._statTick.get(k)===tick)return;this._statTick.set(k,tick);this.hooks.onStat({sessionId:gp.sessionId,key});}
@@ -111,7 +118,7 @@ export class Sim{
     const w=this.world,ev=w.events,hooks=this.hooks,tick=w.tick,gone=this.gone,hit=this._hit,deaths=this._deaths;deaths.length=0;
     for(let i=0;i<ev.length;i++){const e=ev[i];switch(e.type){
       case 'EAT':{gone.set(e.pieceId,REMOVE.EATEN);hit.set(e.victimSlot,e);this._ev(EVENT.EAT,e.x,e.y,e.r,e.killerSlot,e.victimSlot,e.pieceId);
-        if(e.lastPiece){const k=this.players.get(e.killerSlot),v=this.players.get(e.victimSlot);if(k&&v){if(v.isBot)k.botKills++;else k.kills++;k.streak++;
+        if(e.lastPiece){const k=this.players.get(e.killerSlot),v=this.players.get(e.victimSlot);if(k&&v){if(v.isBot)k.botKills++;else k.kills++;k.streak++;this._talk(e.killerSlot,'kill');
           if(!k.isBot&&k.sessionId)hooks.onKill({sessionId:k.sessionId,killerSessionId:k.sessionId,victimSessionId:v.sessionId,victimIsBot:v.isBot,weapon:'eat',tick});}}
         break;}
       case 'FOOD_EATEN':{gone.set(e.foodId,REMOVE.EATEN);const gp=this.players.get(e.slot);if(gp&&!gp.isBot&&gp.sessionId)hooks.onStat({sessionId:gp.sessionId,key:'food'});break;}
@@ -147,7 +154,7 @@ export class Sim{
     const gp=this.players.get(e.slot);if(!gp||gp.dead)return;const w=this.world,h=this._hit.get(e.slot),by=e.bySlot>=0?this.players.get(e.bySlot):null;
     const ps=w.players.get(e.slot);if(ps)gp.score=ps.score;
     this._ev(EVENT.DEATH,h?h.x:0,h?h.y:0,h?h.r:0,e.slot,by?by.slot:NO_SLOT,gp.score);
-    gp.streak=0;this.playersDirty=true;
+    gp.streak=0;this.playersDirty=true;this._talk(e.slot,e.cause==='zone'?'zona':'morte');
     // Sem respawn (Battle Royale): o bot morre de vez, como todo mundo. É a ÚNICA linha que ressuscitava alguém.
     if(gp.isBot&&this.mode.respawnBots){w.respawnPlayer(e.slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),score:Math.floor(gp.score*BOT.RESPAWN_SCORE)});gp.score=Math.floor(gp.score*BOT.RESPAWN_SCORE);if(gp.brain)gp.brain.reset();return;}
     gp.dead=true;gp.deathTick=w.tick;gp.placement=0;this._elim++;

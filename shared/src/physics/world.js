@@ -112,7 +112,10 @@ export class World{
   spawnFood({x=NaN,y=NaN,spread=0}={}){const rng=this.rng,roll=rng.next();let type,r;
     if(roll<FOOD.AMMO_P){type=FOOD_TYPE.AMMO;r=FOOD.SPECIAL_R;}
     else if(this.weapons&&roll<FOOD.AMMO_P+BR.WEAPON_P){type=rollWeapon(rng);r=FOOD.SPECIAL_R;}
-    else if(roll<FOOD.AMMO_P+FOOD.POWER_P){type=POWER_TYPES[rng.int(0,POWER_TYPES.length-1)];r=FOOD.SPECIAL_R;}
+    // as faixas são CUMULATIVAS: com armas ligadas o ramo acima consome até AMMO_P+WEAPON_P (.105) e o teste
+    // do powerup era `roll<AMMO_P+POWER_P` (.100) — inalcançável. Ímã e escudo simplesmente NÃO NASCIAM no
+    // Battle Royale, que é justo o modo onde eles importam. No Livre (weapons=false) a conta é a de sempre.
+    else if(roll<FOOD.AMMO_P+(this.weapons?BR.WEAPON_P:0)+FOOD.POWER_P){type=POWER_TYPES[rng.int(0,POWER_TYPES.length-1)];r=FOOD.SPECIAL_R;}
     else{type=rng.int(FOOD_TYPE.DUST,FOOD_TYPE.ROCK);r=rng.range(FOOD.R_MIN,FOOD.R_MAX);}
     const posta=!Number.isNaN(x);
     if(posta){const an=rng.angle(),d=spread>0?Math.sqrt(rng.next())*spread:0;   // √ para o cacho ficar uniforme no disco, não amontoado no centro

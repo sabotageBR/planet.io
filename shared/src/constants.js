@@ -252,31 +252,78 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:160,MAGNET_RANGE:5.5,MAGNET_PULL:17
 // ímã e escudo valem POR PEÇA: só a parte que pegou o powerup se beneficia; ao fundir, os poderes das duas se juntam (escudo soma até o teto, ímã soma o tempo restante)
 export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1.3,HUNT_DIST:900,FOOD_DIST:520,MAX_PIECES:8,SPLIT_P:.06,FIRE_P:.014,
   HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:420,SPLIT_REACH:780,AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
-  PERSONAS:[{id:"cacador",hunt:1.15,flee:.85,food:.7,fire:1.4},{id:"fazendeiro",hunt:.8,flee:1.25,food:1.45,fire:.7},{id:"oportunista",hunt:1,flee:1,food:1,fire:1}]};
-// bot: PERSONAS dá sabor sem lógica nova — hunt/flee mexem nas razões de raio, food no alcance da coleta, fire na frequência do míssil.
-// SPLIT_REACH: quanto o arremesso do split cobre de fato (ver SPEED.LAUNCH_*) — o bot só divide se o alvo estiver dentro disso.
-// DIRS: candidatos de direção avaliados na fuga (o melhor foge do caçador SEM entrar em estrela/buraco/parede).
-// AST_FEAR: asteroide vira perigo quando o bot é grande o bastante para estourá-lo (o pop parte o planeta em vários).
-// STAR_FEAR: o medo de estrela usava o HOLE_AVOID do buraco, e r·HALO·1,3 dava só ~132 px — perto demais, já que
-// pieceStar machuca em r_peça+r_estrela. Com 12 estrelas no mapa e a queimadura de STAR.BURN, os bots raspariam
-// em estrela o tempo todo. Agora a estrela tem o multiplicador dela.
-// SPAWN_GRACE_TICKS: bot não escolhe como presa um humano que acabou de nascer (5 s) — com 24 bots espertos, cair no mapa
-// e ser comido antes de encostar no primeiro grão não é dificuldade, é falta de chance.
+  STICK:1.28,HAZ_TTL:6,DANG_N:6,FIRE_CD:[50,130],FEED_CD:40,
+  COMMIT:{hunt:90,flee:45,food:60,zone:0,hold:150,intercept:30,wander:40},
+  HAND:{DIST:620,JITTER_STEP:.05,JITTER_MAX:.28,FLICK:[8,15],STOP_R:26,LEAD_MAX:1.15,IDLE_TURN:.06},
+  HUNT:{ARC_DIRS:8,ARC_STEP:560,OPEN:.62,FLANK:.7,SPLIT_MARGIN:1.08,THIRD_R:900,TEAM_SIDE:.85,DODGE:1.05},
+  GAS:{RING:.7,EDGE:.86,LOOT_R:.5,LOOT_MIN_R:120,LOOT_TICKS:150,LATE_ALIVE:8,LATE_PULL:1.5},
+  PERSONAS:[{id:"cacador",hunt:1.15,flee:.85,food:.7,fire:1.4,edge:.5},{id:"fazendeiro",hunt:.8,flee:1.25,food:1.45,fire:.7,edge:.15},{id:"oportunista",hunt:1,flee:1,food:1,fire:1,edge:.32}],
+  SKILLS:[{id:"ruim",   w:18,react:20,turn:.11,jitter:1.7,lead:.15,zoneMargin:.85,mistake:.22,split:.45,weapon:.30,flee:.80},
+          {id:"medio",  w:46,react:13,turn:.20,jitter:1.0,lead:.55,zoneMargin:.65,mistake:.10,split:.75,weapon:.65,flee:1.00},
+          {id:"bom",    w:28,react: 9,turn:.28,jitter:.55,lead:.80,zoneMargin:.52,mistake:.04,split:.92,weapon:.90,flee:1.15},
+          {id:"fera",   w: 8,react: 6,turn:.36,jitter:.30,lead:.95,zoneMargin:.45,mistake:.015,split:1,  weapon:1,  flee:1.30}]};
+// bot: PERSONAS dá o ESTILO (o que ele quer fazer), SKILLS dá a MÃO (quão bem ele faz). São ortogonais — 3 × 4 = 12
+// assinaturas —, e é a SKILLS que faz uma sala de 50 parecer gente: 50 adversários igualmente competentes,
+// reagindo na mesma hora e com a mesma pontaria, é o maior denunciador de bot que existe. `w` é o peso do
+// sorteio: ~18 % ruins, 46 % medianos, 28 % bons, 8 % feras. NENHUM é ótimo — nem o "fera" tem mistake 0.
+// react: ticks até uma decisão nova chegar na mão. turn: rad/tick que o ponteiro gira (a 0,11 uma inversão de
+// 180° leva meio segundo; sem isso o bot troca de direção no mesmo quadro, coisa que mão humana não faz).
+// jitter: multiplicador do tremor do ponteiro. lead: quanto ele acerta a ANTECIPAÇÃO do alvo (mirar onde a
+// presa VAI estar, não onde está). zoneMargin: fração do orçamento de tempo em que ele decide correr para o
+// círculo — 0,45 sai cedo, 0,85 sai em cima da hora e às vezes não chega. mistake: chance de escolher a 2ª
+// melhor opção em vez da melhor. split/weapon: quanto usa o salto e o cinto de armas. flee: sensibilidade a perigo.
+// STICK: bônus da opção ATUAL na comparação — é o que impede o vaivém (escolher caçar, desistir, caçar de novo)
+// que denuncia script. COMMIT: ticks mínimos de cada intenção; só zona em urgência e perigo colado furam.
+// HAZ_TTL: o perigo mais próximo é calculado no _think e revalidado por 6 ticks — _nearestHazard varria estrelas
+// e asteroides TODO tick para CADA bot (~56×49 iterações), e era o maior custo fixo do cérebro.
+// HAND.DIST: o ponteiro é um PONTO, mas acima de SPEED.RAMP (32 px) a distância não muda nada — 620 px é só um
+// braço confortável. STOP_R: apontar para DENTRO desse raio FREIA a peça (é como o bot "para", coisa que o
+// cérebro velho nunca fazia). FLICK: mirar custa movimento (o AIM escolhe pelo cursor), então atirar em algo
+// fora da direção de marcha é um puxão curto do ponteiro e a volta — igualzinho ao humano.
+// HUNT.OPEN: fração do arco de fuga livre acima da qual a presa está em campo aberto e a caça não vale a pena.
+// FLANK: quanto o bot desvia da linha reta para FECHAR o lado aberto (encurralar) em vez de correr atrás.
+// SPLIT_MARGIN: folga sobre o predicado REAL de comer depois do salto (r/√2 ≥ 1,15·rb ⇒ rb ≤ r/1,626).
+// HUNT.DODGE: quanto o leque de fuga gira (rad) quando o caçador já está no alcance do salto — correr reto
+// para longe é correr para o ponto onde o arremesso CAI.
+// GAS: RING/EDGE são frações do raio da zona (miolo alvo e anel de borda); LOOT_* é a incursão no gás atrás do
+// espólio que a zona arranca; LATE_* aperta o jogo quando sobram poucos.
 // ── NOMES ────────────────────────────────────────────────────────────────────
 // BOT_NAMES é a lista TEMÁTICA do modo Livre, onde o bot é assumido (o HUD marca "◆" ao lado).
-export const BOT_NAMES=["Nebulox","Vortexia","Cosmara","Drakonis","Stellara","Graviton","Quasara","Pulsaris","Meteora","Darkion","Nexaris","Solaron","Astrophex","Hydraxis","Volcanix","Luminos","Aetheron","Aurorax","Voidrix","Pyronis"];
+export const BOT_NAMES=["Nebulox","Vortexia","Cosmara","Drakonis","Stellara","Graviton","Quasara","Pulsaris","Meteora","Darkion",
+  "Nexaris","Solaron","Astrophex","Hydraxis","Volcanix","Luminos","Aetheron","Aurorax","Voidrix","Pyronis",
+  "Zephyrion","Orbitron","Cryonix","Magnetar","Helioxis","Terravox","Ionara","Perseida","Andromex","Cassiona",
+  "Lyrandis","Vegara","Altairix","Rigelon","Betelgar","Procyon","Sirionis","Deneban","Mirzam","Alnitak",
+  "Titania","Callistro","Ganymed","Europax","Iapetus","Umbriel","Oberonix","Tritonis","Charonis","Phobetor",
+  "Deimara","Ceresix","Palladion","Vestara","Junonix","Erisara","Sednara","Makemax","Haumeia","Quaoron"];
 // BOT_NICKS é a lista do Battle Royale, onde o preenchimento NÃO se identifica: são apelidos no estilo do
 // que um jogador de verdade escolhe (pt-BR, com e sem número), e não nomes de nave espacial. Com 20 nomes
 // temáticos numa sala de 50 a farsa cairia na primeira olhada no placar — repetidos, todos do mesmo tema.
-// São 96 aqui, mais o sufixo numérico de `botNick`, o que dá folga de sobra para 50 sem repetir.
+// São 295 aqui, mais os cinco formatos de `botNick`. Com 50 por sala isso é folga de sobra dentro de UMA
+// partida, mas o número grande é para as partidas SEGUIDAS: com 96 bases o jogador via a mesma escalação
+// de nomes toda vez, que denuncia tanto quanto repetir dentro da sala.
 export const BOT_NICKS=[
   "Lucas","Pedro","Gabi","Rafa","Bia","Thiago","Mari","Caio","Duda","Vitor","Lele","Bruno","Nanda","Igor","Manu","Leo",
   "Ju","Felipe","Carol","Diego","Alice","Murilo","Sofia","Enzo","Lara","Davi","Isa","Otavio","Nina","Arthur","Cleo","Tom",
-  "Zeca","Kiko","Nando","Dedé","Binho","Teteu","Gugu","Lipe","Mila","Rick","Cacau","Juca","Bel","Nego","Tuca","Vivi",
+  "Zeca","Kiko","Nando","Dede","Binho","Teteu","Gugu","Lipe","Mila","Rick","Cacau","Juca","Bel","Nego","Tuca","Vivi",
+  "Matheus","Gustavo","Larissa","Rodrigo","Camila","Fernando","Bruna","Ricardo","Paula","Andre","Jessica","Marcelo",
+  "Renata","Vinicius","Amanda","Eduardo","Priscila","Guilherme","Tati","Rafael","Aline","Henrique","Debora","Fabio",
+  "Natalia","Marcos","Luana","Alan","Simone","Wesley","Karol","Everton","Elis","Joao","Yasmin","Samuel","Livia",
+  "Danilo","Nicole","Breno","Helena","Kaua","Antonia","Miguel","Valentina","Heitor","Cecilia","Bernardo","Maite",
+  "Anthony","Agatha","Ryan","Rebeca","Erick","Milena","Kevin","Sabrina","Wallace","Taina","Jonas","Elaine",
+  "Bibi","Fefe","Gigi","Lulu","Nene","Pipo","Tuti","Dudu","Fifi","Kaka","Mimi","Tico","Bento","Chico","Betinho",
+  "Juninho","Neto","Sandro","Serginho","Toninho","Careca","Magrao","Loirinho","Moreno","Baiano","Mineiro","Gaucho",
+  "Carioca","Paulista","Xandao","Nandinho","Rafinha","Duda2","Lelezinho","Biel","Yuri","Kelvin","Jean","Ronaldo",
   "ninja","dragao","lobo","tigre","corvo","raposa","panda","coruja","alpha","turbo","sombra","trovao","gelo","fenix",
   "kraken","vespa","cobra","falcao","urso","onca","piloto","capitao","mestre","doutor","chefe","rei","lorde","barao",
+  "jacare","piranha","arara","tucano","jaguar","suricato","javali","morcego","escorpiao","aranha","formiga","abelha",
+  "besouro","polvo","tubarao","enguia","baleia","golfinho","pinguim","foca","lontra","texugo","hiena","chacal",
+  "leopardo","puma","gaviao","aguia","condor","albatroz","garca","pelicano","marreco","capivara","quati","tamandua",
   "pixel","glitch","turbo9","noob","pro","gamer","player","sniper","tank","rush","clutch","combo","hyper","mega",
-  "zen","neo","max","ace","vex","jinx"];
+  "rage","spawn","respawn","lagado","ping","fps","headshot","camper","tryhard","carry","smurf","boost","nerf","buff",
+  "meta","kernel","patch","beta","hotfix","zerado","speedrun","noscope","tilt","spam","kite","poke","gank","farm",
+  "jungle","supp","void","null","byte","hex","root","sudo","ctrl","esc","alt","cache","proxy","bug","combo9",
+  "pastel","coxinha","brigadeiro","acai","tapioca","farofa","feijao","churrasco","pipoca","sorvete","goiaba","jabuti",
+  "treta","zoeira","migue","perrengue","rolezinho","fominha","cascudo","sertao","zen","neo","max","ace","vex","jinx"];
 /**
  * Apelido de preenchimento, determinístico pelo rng da sala. Mistura três formatos porque uma lista só de
  * nomes limpos também denuncia: gente de verdade usa número, underline e caixa maluca.
@@ -292,6 +339,28 @@ export function botNick(rng,usados){
       :"xX"+base+"Xx";
     if(!usados.has(n.toLowerCase())){usados.add(n.toLowerCase());return n.slice(0,16);}}
   return("j"+rng.int(1000,999999)).slice(0,16);}
+// ── FALA DOS BOTS ────────────────────────────────────────────────────────────
+// Uma sala de 50 pessoas que atravessa a partida inteira em silêncio é tão estranha quanto um bot correndo
+// em linha reta. As falas são CURTAS, minúsculas e presas a um gatilho do jogo — nada de papo solto, que é
+// o jeito mais fácil de denunciar. Quem fala é a SALA (server/src/rooms/Room.js), não o cérebro: falar é
+// evento de sala, e o LocalServer do `?local=1` não tem chat. O padrão é o silêncio: o orçamento em
+// BOT_TALK deixa passar pouca coisa.
+export const BOT_CHAT={
+  start:["bora","boa sorte","alguem ai","vamo","glhf","to dentro","partiu","primeira vez aqui","oi","salve"],
+  kill:["boa","peguei","kkkk","foi","ez","acertei","sai fora","proximo","huum","valeu"],
+  morte:["ah nao","kkkk","fui","boa ai","tava perdido","errei feio","de novo nao","travou","eita","foi mal"],
+  zona:["o gas","corre","to fora","vem pro meio","ta fechando","fui pego","sai dai","cuidado com o gas"],
+  poucos:["quantos faltam","ta apertado","chegando la","aguenta","top 5","calma ai","gg","boa sorte ai"],
+  equipe:["vem","to fraco","cuidado","atras de voce","me segue","toma massa","juntos","corre","espera","to indo"]};
+export const BOT_TALK={ROOM_CD_TICKS:420,BOT_CD_TICKS:2400,MAX_PER_MATCH:3,P:{start:.35,kill:.22,morte:.3,zona:.18,poucos:.3,equipe:.28},TYPO_P:.12,QUEUE_MAX:12};
+// ROOM_CD_TICKS: 7 s entre duas falas QUAISQUER da sala — sem isso um abate múltiplo vira coro. BOT_CD_TICKS:
+// 40 s por bot. MAX_PER_MATCH: ninguém fala mais que 3 vezes na partida inteira. TYPO_P: de vez em quando
+// escapa uma letra dobrada ou trocada, que é como gente digita com pressa.
+/** Erra a digitação de um jeito plausível (letra dobrada ou trocada com a vizinha). @param {{next:()=>number,int:(a:number,b:number)=>number}} rng */
+export function botTypo(rng,txt){
+  if(txt.length<3)return txt;
+  const i=rng.int(0,txt.length-2);
+  return rng.next()<.5?txt.slice(0,i)+txt[i]+txt.slice(i):txt.slice(0,i)+txt[i+1]+txt[i]+txt.slice(i+2);}
 export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,AOI_FOOD_VIEW:.55};
 // zoom EXATO do cliente do agar.io:  S = Σ raio de TODAS as peças próprias;
 //   escala = min(BASE/S, 1)^EXP × max(altura/REF_H, largura/REF_W)
