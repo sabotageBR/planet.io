@@ -62,6 +62,8 @@ const rollWeapon=rng=>{let v=rng.next()*WEAPON_TOTAL;for(const x of WEAPON_DROPS
 /** (x,y) está a ≥ min de todos os corpos vivos de arr? (arr null = sim) @param {Body[]|null} arr */
 function farFrom(arr,min,x,y){if(!arr)return true;const m2=min*min;
   for(let i=0;i<arr.length;i++){const b=arr[i];if(!b||b.dead)continue;const dx=b.x-x,dy=b.y-y;if(dx*dx+dy*dy<m2)return false;}return true;}
+/** (x,y) está dentro do círculo da zona? O mesmo critério de `outOfZone`, que é o que o jogador lê na tela. */
+const inZone=(x,y,zc)=>{const dx=x-zc.x,dy=y-zc.y;return dx*dx+dy*dy<=zc.r*zc.r;};
 
 export class World{
   /** @param {number} seed @param {number} w @param {number} h @param {{food:number,asteroids:boolean,holes:number,stars:number}} o */
@@ -76,7 +78,7 @@ export class World{
     // Zona do modo Battle Royale (null = sem zona, que é o modo Livre inteiro). `peace` é o aquecimento:
     // enquanto true TODO MUNDO é aliado, então a espera não precisa de regra própria — reusa sameTeam.
     /** @type {{x0:number,y0:number,r0:number,x1:number,y1:number,r1:number,t0:number,t1:number}|null} */this.zone=null;
-    this.peace=false;this._zc={x:0,y:0,r:0};
+    this.peace=false;this._zc={x:0,y:0,r:0};this._foodScan=0;
     this.decay=o.decay!==false;this.weapons=!!o.weapons;this.foodCount=o.food;this.holeCount=o.holes;this.starCount=o.stars;this.astBase=o.asteroids?ASTEROID.BELTS*ASTEROID.PER_BELT+ASTEROID.WANDERERS:0;this.astCap=this.astBase+ASTEROID.MAX_EXTRA;
     this.grid=createGrid(w,h,GRID_CELL);this.foodGrid=createGrid(w,h,GRID_CELL);this.foodDirty=true;
     /** @type {Body[]} */this.dyn=[];this._pairs=new Int32Array(4096*3);/** @type {number[]} */this._q=[];this._spot={x:0,y:0};
@@ -120,9 +122,22 @@ export class World{
     const posta=!Number.isNaN(x);
     if(posta){const an=rng.angle(),d=spread>0?Math.sqrt(rng.next())*spread:0;   // √ para o cacho ficar uniforme no disco, não amontoado no centro
       x=clamp(x+Math.cos(an)*d,FOOD.MARGIN,this.w-FOOD.MARGIN);y=clamp(y+Math.sin(an)*d,FOOD.MARGIN,this.h-FOOD.MARGIN);}
-    else{x=rng.range(FOOD.MARGIN,this.w-FOOD.MARGIN);y=rng.range(FOOD.MARGIN,this.h-FOOD.MARGIN);
-      if(rng.chance(FOOD.NEAR_HAZARD_P)){const spot=this._hazardSpot();
-        if(spot){x=spot.x;y=spot.y;if(type<=FOOD_TYPE.ROCK){type=rng.chance(.5)?FOOD_TYPE.COMET:FOOD_TYPE.ROCK;r=rng.range((FOOD.R_MIN+FOOD.R_MAX)/2,FOOD.R_MAX);}}}}
+    else{const zc=this.zoneNow();let anel=false;
+      // Com zona ligada o sorteio é DENTRO do círculo (√ do disco = uniforme): repor no mapa inteiro
+      // entregaria o grão ao gás, e é por isso que o círculo final virava um deserto. Sem zona (modo Livre)
+      // é o mapa de sempre. O ponto ainda tem que passar em DUAS provas — longe de estrela e dentro do
+      // círculo —, então isto é um sorteio com tentativas, no molde do `_farSpot`.
+      for(let t=0;t<SPAWN_TRIES;t++){
+        const spot=(!zc||t===0)&&rng.chance(FOOD.NEAR_HAZARD_P)?this._hazardSpot():null;
+        anel=!!spot;
+        if(spot){x=spot.x;y=spot.y;}
+        else if(zc){const an=rng.angle(),d=Math.sqrt(rng.next())*zc.r;
+          x=clamp(zc.x+Math.cos(an)*d,FOOD.MARGIN,this.w-FOOD.MARGIN);y=clamp(zc.y+Math.sin(an)*d,FOOD.MARGIN,this.h-FOOD.MARGIN);}
+        else{x=rng.range(FOOD.MARGIN,this.w-FOOD.MARGIN);y=rng.range(FOOD.MARGIN,this.h-FOOD.MARGIN);}
+        if(this._clearOfStars(x,y)&&(!zc||inZone(x,y,zc)))break;}
+      // o prêmio do anel de perigo só vale se o ponto DELE foi o aceito: sorteado o tipo antes da prova, um
+      // anel recusado deixava um cometa graúdo caído em lugar nenhum
+      if(anel&&type<=FOOD_TYPE.ROCK){type=rng.chance(.5)?FOOD_TYPE.COMET:FOOD_TYPE.ROCK;r=rng.range((FOOD.R_MIN+FOOD.R_MAX)/2,FOOD.R_MAX);}}
     const f=createBody(KIND.FOOD,this.newId(),x,y,r);
     f.type=type;f.hue=rng.int(0,FOOD.HUES-1);f.seed=rng.next();this.food.push(f);this.foodDirty=true;return this._register(f);}
   _hspot={x:0,y:0};/** @type {Body[]} */_haz=[];
@@ -133,6 +148,29 @@ export class World{
     if(!list.length)return null;
     const h=list[rng.int(0,list.length-1)],an=rng.angle(),d=rng.range(FOOD.NEAR_HAZARD_R[0],FOOD.NEAR_HAZARD_R[1]),m=FOOD.MARGIN,s=this._hspot;
     s.x=clamp(h.x+Math.cos(an)*d,m,this.w-m);s.y=clamp(h.y+Math.sin(an)*d,m,this.h-m);return s;}
+  /** (x,y) tem a folga FOOD.STAR_CLEAR até a BORDA de toda estrela viva? Grão dentro do disco é isca, não comida. */
+  _clearOfStars(x,y){const st=this.stars;
+    for(let i=0;i<st.length;i++){const b=st[i];if(b.dead)continue;const dx=b.x-x,dy=b.y-y,m=b.r+FOOD.STAR_CLEAR;   // b.r acompanha o inchaço do fim da vida
+      if(dx*dx+dy*dy<m*m)return false;}
+    return true;}
+  /**
+   * Quanta comida o mundo mantém AGORA. Sem zona é FOOD.COUNT, como sempre foi. Com zona o estoque é do
+   * CÍRCULO, não do mapa: `área/ZONE.FOOD_AREA`, com piso FOOD_MIN e teto FOOD.COUNT. Como o alvo cai mais
+   * devagar que a área, cada fechamento deixa o chão MAIS denso — é o tapete de que o pequeno vive no fim.
+   */
+  foodTarget(){const zc=this.zoneNow();if(!zc)return this.foodCount;
+    const n=Math.round(Math.PI*zc.r*zc.r/ZONE.FOOD_AREA);
+    return n>this.foodCount?this.foodCount:n<ZONE.FOOD_MIN?ZONE.FOOD_MIN:n;}
+  /**
+   * O gás come a comida também: por tick confere ZONE.FOOD_SCAN grãos (cursor rolante, varredura completa a
+   * cada ~26 ticks) e mata os que ficaram fora do círculo. Sem isso a população ficava PRESA no gás — onde
+   * ninguém vai buscá-la — e o laço de reposição, que só enche até o alvo, parava de repor DENTRO.
+   */
+  _cullFoodOutOfZone(zc){const food=this.food,n=food.length;if(!n)return;
+    let i=this._foodScan|0;if(i>=n)i=0;
+    const fim=Math.min(n,i+ZONE.FOOD_SCAN);
+    for(;i<fim;i++){const f=food[i];if(!f.dead&&!inZone(f.x,f.y,zc)){f.dead=true;this.foodDirty=true;}}
+    this._foodScan=i>=n?0:i;}
   /**
    * Asteroide: `beltIx ≥ 0` orbita o cinturão (ângulo `ang` ou aleatório, raio com jitter); `-1` é errante
    * (posição dada ou longe dos jogadores, velocidade WANDER_SPEED em direção aleatória). r 0 = sorteia.
@@ -168,7 +206,17 @@ export class World{
     const st=createBody(KIND.STAR,this.newId(),clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);st.seed=rng.next();st.vx=vx;st.vy=vy;
     if(active){st.type=STAR_PHASE.ACTIVE;st.k=1;st.life=life||this.tick+rng.int(STAR.LIFE_TICKS[0],STAR.LIFE_TICKS[1]);}
     else{st.type=STAR_PHASE.GROW;st.k=0;st.life=this.tick+STAR.GROW_TICKS;}
-    this.stars.push(st);return this._register(st);}
+    this.stars.push(st);this._varreComida(st);return this._register(st);}
+  /**
+   * A estrela nova varre a comida que estava no lugar dela. O `_clearOfStars` do spawn só resolve UMA das
+   * direções: no nascimento do mundo a comida vem ANTES das estrelas (e no meio da partida a estrela
+   * respawna onde quiser), então sem isto o grão acaba embaixo do disco do mesmo jeito — que é a isca que
+   * não pode existir. O que morre aqui volta pelo laço de reposição, em lugar limpo.
+   * @param {Body} st
+   */
+  _varreComida(st){const food=this.food,m=st.r+FOOD.STAR_CLEAR,m2=m*m;
+    for(let i=0;i<food.length;i++){const f=food[i];if(f.dead)continue;
+      const dx=f.x-st.x,dy=f.y-st.y;if(dx*dx+dy*dy<m2){f.dead=true;this.foodDirty=true;}}}
   /** Agenda o nascimento de uma estrela nova daqui a `delay` ticks (depois de uma supernova). */
   queueStar(delay){this.starQueue.push({at:this.tick+delay});}
   /** (x,y) está a ≥ BELT_SAFE do ANEL de todo cinturão? (o teste é sobre o anel, não sobre o centro). */
@@ -345,7 +393,17 @@ export class World{
     // ── 10. compactação ordenada ──
     this._compact();
     // ── 11. spawns ──
-    while(food.length<this.foodCount)this.spawnFood();
+    // a comida segue a ZONA: o que ficou no gás morre e o estoque é o do CÍRCULO (ver ZONE.FOOD_* e
+    // foodTarget). A poda vem ANTES do enche: os grãos mortos deste tick já contam como vaga.
+    // E com zona a reposição tem RENDA, não torneira: o círculo repõe a própria população a cada
+    // ZONE.FOOD_FILL_S segundos. Repor na hora é inofensivo no mapa inteiro (ninguém cobre 92 M px²) e é
+    // fonte infinita num círculo de 480 px, onde o líder cobre quase tudo e reengole cada grão no tick
+    // seguinte. Sem zona (modo Livre) segue instantâneo, como sempre foi.
+    if(zc)this._cullFoodOutOfZone(zc);
+    const alvo=this.foodTarget();
+    let vivos=0;for(let i=0;i<food.length;i++)if(!food[i].dead)vivos++;
+    let cota=zc?Math.ceil(alvo*DT/ZONE.FOOD_FILL_S)||1:Infinity;
+    for(;vivos<alvo&&cota>0;vivos++,cota--)this.spawnFood();
     const aq=this.astQueue;if(aq.length){let k=0;for(let i=0;i<aq.length;i++){const e=aq[i];if(e.at<=tick){const a=this.spawnAsteroid(e.belt);ev.push({type:"ASTEROID_RESPAWN",asteroidId:a.id,x:a.x,y:a.y,r:a.r});}else aq[k++]=e;}aq.length=k;}
     while(holes.length<this.holeCount){const h=this.spawnHole();ev.push({type:"HOLE_RESPAWN",holeId:h.id,x:h.x,y:h.y});}
     const sq=this.starQueue;if(sq.length){let k=0;for(let i=0;i<sq.length;i++){const e=sq[i];if(e.at<=tick){const st=this.spawnStar();ev.push({type:"STAR_RESPAWN",starId:st.id,x:st.x,y:st.y,r:st.r});}else sq[k++]=e;}sq.length=k;}

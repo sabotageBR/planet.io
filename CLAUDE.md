@@ -58,7 +58,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (`EAT.EJECT_GAIN` = 1) e a massa é medida DEPOIS do piso `MIN_PIECE_R` (senão a peça no mínimo criava massa do nada);
   acima de `FRAG.RICH_MASS` o fragmento dura o dobro, o ímã o arrasta devagar e asteroide não o engole; o tier vai no `hue` do
   EJECT (`FRAG_KIND`, o cliente desenha o de supernova brilhando). Comer jogador também conserva (`EAT.GAIN` = 1, o `√(s1²+s2²)` do agar: a vítima entra inteira). Fonte/sumidouro de propósito:
-  a comida reposta sem parar e o berçário da supernova;
+  a comida reposta sem parar, o berçário da supernova e (só no BR) a comida que fica no gás e morre;
   asteroides (cinturões + errantes: pop/chip/alimentar/atirar;
   a rocha SEMPRE explode ao encostar (nunca fica batendo de novo) e com escudo o preço é a VELOCIDADE da batida (`ASTEROID.SHIELD_VN` = [220,520,900] → 1, 2 ou 3 níveis; no topo a rocha
   leva o escudo inteiro E estoura o planeta, e abaixo do 1º limiar nem sente) — enquanto o escudo aguenta não há lasca
@@ -163,7 +163,23 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   não consegue emular). O analógico virtual é `game/input/Joystick.js`, ligado por `prefs.joystick`, e só vale no dedo.
 - **Modos de jogo** (`MODE`/`MODES` em constants, `docs/design/modos.md`): **Livre** é o jogo de sempre e não mudou.
   **Battle Royale** é sala de 50, **sem respawn**, com **zona que encolhe** (`shared/src/zone.js`; fora dela a peça
-  queima `ZONE.BURN`/s e MORRE no piso — a única coisa que mata sozinha) e vitória do último vivo. A massa queimada
+  queima `zoneBurnRate(r)` da massa/s e MORRE no piso — a única coisa que mata sozinha) e vitória do último vivo.
+  O gás ENDURECE conforme o círculo fecha: de `ZONE.BURN` (.10/s, raio da etapa 0) a `ZONE.BURN·BURN_K` (.22/s, no
+  menor círculo), interpolado pelo RAIO ATUAL — que os dois lados já têm, então a rampa não custou byte de
+  protocolo; do tamanho inicial ao piso são 12,6 s no começo e 5,7 s no fim (eram 21 s fixos, e aí atravessar o gás
+  em diagonal era atalho). **A COMIDA SEGUE A ZONA**: `spawnFood` sorteia dentro do círculo, o alvo de população é
+  `foodTarget() = clamp(π·r²/ZONE.FOOD_AREA, FOOD_MIN, FOOD.COUNT)`, o que fica no gás MORRE
+  (`_cullFoodOutOfZone`, `ZONE.FOOD_SCAN` grãos por tick) e a reposição tem RENDA (`ZONE.FOOD_FILL_S`: a
+  população inteira a cada 2 s), não torneira — repor na hora é inofensivo em 92 M px² e é FONTE INFINITA num
+  círculo de 480 px, onde o líder cobre quase tudo e reengole cada grão no tick seguinte: medido com 49 bots, o
+  consumo ia de ~200 para 7 579 grãos/s nos últimos 30 s e o líder saía de 355 mil para 1,02 MILHÃO em 15 s — o
+  tapete engordava o gigante. Com a renda o pequeno não perde nada (ele só alcança ~43 grãos/s) e em 60 s no
+  círculo apertado ele faz 32–53× enquanto o gigante faz 0,97–2,8×. Enquanto o círculo é grande o teto manda e nada muda; do
+  meio para o fim a densidade sobe 15× (49 px entre grãos) e é daí que sai a VIRADA do pequeno — o grão dá massa
+  ABSOLUTA, então vale 2 % para quem tem 900 de massa e 0,01 % para quem tem 200 000, que ainda perde `PLAYER.DECAY`
+  por segundo. Sem isso o círculo final era um deserto de 20 grãos e a última fase premiava tamanho acumulado, não
+  jogada. A comida também nunca nasce EM CIMA de estrela (`FOOD.STAR_CLEAR` da borda, e a estrela nova varre o que
+  estava ali): grão debaixo do disco é isca, cobra `STAR.BURN` e não dá escolha. A massa queimada
   não evapora: é ARRANCADA em pelotas de verdade a cada `ZONE.SHED_TICKS`, jogadas para FORA (longe do centro da
   zona), então dá para ver quem está no gás se desfazendo e buscar o espólio custa entrar mais fundo. Quem morre
   lá larga tudo sem dono. A conta de massa segue contínua (é a que `predict.js` espelha); `Body.shed` é a massa
@@ -183,7 +199,10 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   cliente. O servidor continua sabendo (kills × botKills, economia, conquistas); quem não sabe é a tela.
   **Aliado é regra de FÍSICA** (`rules.sameTeam`, nos 6 pontos de
   decisão), não do bot; compartilhar partículas já funcionava de graça (o cooldown do ejetado é só do DONO).
-  **Armas** (`WEAPONS`): míssil + Rajada/Cacho/Nova, em cima de mecânica existente (a Nova é o laço da supernova).
+  **Armas** (`WEAPONS`): míssil + Rajada/Cacho, em cima de mecânica existente. A **Nova saiu** (`weight 0`, como o
+  míssil, que já cai como munição): onda de 900 px centrada em MIM, sem mira e sem contra-jogo, resolvia sozinha a
+  briga de fim de partida — justo onde o círculo apertado devia decidir no encontro. O código fica dormente e
+  testado, como o `BLACKHOLE.COUNT`, e volta trocando o número.
   O jogador CARREGA VÁRIAS: `ps.ammo[arma]` é a munição de cada uma, `ps.weapon` a que está na mão, e a troca é
   `INPUT_FLAG.SWAP` (tecla Q / chip do HUD / botão de toque) — coube num bit que já sobrava, o INPUT segue com
   10 bytes. O míssil nunca sai do cinto, nem zerado. `acceptsJoin()` é a porta única de entrada da sala.
@@ -328,7 +347,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `_died` com TTL de `FEED.HIT_TTL_TICKS`. Para isso a física teve que passar a dizer a ARMA: `weapon` no
   BOOM/SHIELD_*, `q.hits=WEAPON.CLUSTER` no `clusterSplit` (o filho do cacho tem `hue` de míssil simples DE
   PROPÓSITO, senão se abriria de novo) e o evento `NOVA_HIT`, que não existia — sem ele a arma mais cara do
-  jogo era a única sem crédito no feed.
+  jogo era a única sem crédito no feed (a Nova saiu do sorteio depois; o crédito continua lá, dormente com ela).
 - **Progressão** (`shared/src/levels.js`, migrações 0004–0006): XP por partida (`matchXp`, função pura no
   molde de `achievements.js`) e nível DERIVADO do XP (`levelFromXp`) — nunca guardado, senão vira uma segunda
   verdade que envelhece na primeira mudança de curva. Curva `85·(L−1)^2.12`: nível 2 na primeira vida, 10 em

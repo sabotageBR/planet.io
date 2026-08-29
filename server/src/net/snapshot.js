@@ -28,6 +28,7 @@ export function createSnapshotter(room){
   const self={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0,owned:1};
   const snap={tick:0,ackSeq:0,creates,updates,removes,self};
   let passes=0;/** @type {any[]} */const longe=[];   // reusado: o anel de fora, candidato ao teto de comida
+  /** @type {any[]} */const novos=[];   // reusado: o disco de perto, criado antes do anel (ver visitFood)
   const track=(arr,kind,t)=>{for(let i=0;i<arr.length;i++){const b=arr[i];if(b.dead)continue;
     const x=qPos(b.x,W),y=qPos(b.y,H),r=qR(b.r),vx=qV(b.vx),vy=qV(b.vy),flags=b.flags&WFLAGS,ex=hasExtra(kind),phase=ex?b.type:0,infl=ex?Math.round(extraOf(b,kind)):0;
     let p=prev.get(b.id);if(!p){prev.set(b.id,{x,y,r,vx,vy,flags,phase,infl,seen:t});continue;}
@@ -72,16 +73,20 @@ export function createSnapshotter(room){
     // varredura da grade, que vem em ordem de célula, poderia gastar o teto no que está longe e deixar um
     // buraco de comida em volta do jogador.
     const perto=Math.min(rout.x1-rout.x0,rout.y1-rout.y0)*.25,p2=perto*perto;
-    let usados=0;longe.length=0;
+    let usados=0;longe.length=0;novos.length=0;
+    // 1ª passada: SÓ os já conhecidos. Eles nunca somem, então o que eles ocupam do teto tem que ser
+    // contado ANTES de qualquer criação — misturar as duas coisas numa passada só deixava o teto mole
+    // pela ORDEM da grade: bastava um grão novo ser criado antes de os conhecidos serem visitados para a
+    // sessão terminar com 301 de 300. O que a criação recebe é o que SOBRA.
     for(let i=0;i<n;i++){const b=food[fq[i]];if(!b||b.dead)continue;
       if(known.has(b.id)){if(!rectHas(rout,b.x,b.y,b.r))continue;known.set(b.id,KIND.FOOD|tag);usados++;const m=masks.get(b.id);if(m)pushUpdate(b,KIND.FOOD,m,slot);}
       else if(rectHas(rin,b.x,b.y,b.r)){const dx=b.x-cx,dy=b.y-cy;
-        // o disco "perto" tem PRIORIDADE no teto, mas não passa por cima dele: antes ele criava sem
-        // conferir e o teto ficava mole (dava para ver 301 grãos com o limite em 300)
-        if(dx*dx+dy*dy<=p2){if(usados<NET.AOI_FOOD_MAX){known.set(b.id,KIND.FOOD|tag);usados++;pushCreate(b,KIND.FOOD,slot,sim);}}
-        else longe.push(b);}}
+        if(dx*dx+dy*dy<=p2)novos.push(b);else longe.push(b);}}   // o disco "perto" tem PRIORIDADE, mas não passa por cima do teto
+    for(let i=0;i<novos.length&&usados<NET.AOI_FOOD_MAX;i++){const b=novos[i];
+      known.set(b.id,KIND.FOOD|tag);usados++;pushCreate(b,KIND.FOOD,slot,sim);}
     for(let i=0;i<longe.length&&usados<NET.AOI_FOOD_MAX;i++){const b=longe[i];
       known.set(b.id,KIND.FOOD|tag);usados++;pushCreate(b,KIND.FOOD,slot,sim);}
+    novos.length=0;
     longe.length=0;}
   /** Monta e envia o snapshot de uma sessão (nada acontece se o socket está fechado ou atolado). */
   function send(s){

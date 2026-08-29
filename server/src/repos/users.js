@@ -6,6 +6,9 @@ export function createUsers(db){
   const byId=(id,c=db)=>c.query(`SELECT * FROM users WHERE id=$1`,[id]).then(r=>r.rows[0]||null);
   /** login = nick ou email de usuário registrado (case-insensitive) */
   const byLogin=login=>db.query(`SELECT * FROM users WHERE kind='registered' AND (lower(nick)=lower($1) OR lower(email)=lower($1)) LIMIT 1`,[login]).then(r=>r.rows[0]||null);
+  /** e-mail exato (case-insensitive). Existe só para o login com Google: é o que deixa a rota casar a
+   *  identidade com uma conta que JÁ tem esse e-mail em vez de esbarrar no UNIQUE `users_email_uq`. */
+  const byEmail=email=>db.query(`SELECT * FROM users WHERE lower(email)=lower($1) LIMIT 1`,[email]).then(r=>r.rows[0]||null);
   /** cria guest (dentro de transação): users + user_skins(0) — moedas de boas-vindas ficam com o ledger */
   const insertGuest=(c,nick)=>c.query(`INSERT INTO users(kind,nick) VALUES('guest',$1) RETURNING *`,[nick]).then(r=>r.rows[0]);
   const setNick=(id,nick,c=db)=>c.query(`UPDATE users SET nick=$2 WHERE id=$1 RETURNING *`,[id,nick]).then(r=>r.rows[0]||null);
@@ -21,5 +24,5 @@ export function createUsers(db){
   /** guests órfãos: sem token válido e sem atividade há 30 dias (cascata apaga matches/ledger) */
   const purgeOrphanGuests=(c=db)=>c.query(`DELETE FROM users u WHERE u.kind='guest' AND u.last_seen_at<now()-interval '30 days'
     AND NOT EXISTS(SELECT 1 FROM auth_tokens t WHERE t.user_id=u.id AND t.revoked_at IS NULL AND t.expires_at>now())`).then(r=>r.rowCount);
-  return{byId,byLogin,insertGuest,setNick,claim,mergePrefs,setEquipped,setCountry,setAvatarHash,touchSeen,purgeOrphanGuests};
+  return{byId,byLogin,byEmail,insertGuest,setNick,claim,mergePrefs,setEquipped,setCountry,setAvatarHash,touchSeen,purgeOrphanGuests};
 }

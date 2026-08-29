@@ -11,6 +11,10 @@ import WebSocket from 'ws';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.env'),'utf8').split('\n')){const m=/^\s*([A-Z_]+)=(.*)$/.exec(l);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim();}}catch{}}
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';process.env.SHARDS='1';process.env.PEERS='';
+// ⚠️ o `.env` da raiz é lido logo acima, e assim que ele ganhou um GOOGLE_CLIENT_ID de verdade o
+// `deepEqual` de /api/config lá embaixo passou a quebrar por causa do AMBIENTE. Fixar aqui faz o
+// teste afirmar o estado DESLIGADO de propósito — que é o contrato que ele quer travar.
+process.env.GOOGLE_CLIENT_ID='';
 const {startServer}=await import('../src/index.js');
 const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG,PROTOCOL_VERSION}=await import('@warspace/shared/protocol/index.js');
 const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE,WORLD}=await import('@warspace/shared/constants.js');

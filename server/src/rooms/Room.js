@@ -163,10 +163,16 @@ export class Room{
     if(session.avatar&&session.userId)this._setAvatar(slot,session.userId,session.avatar);
     if(lobby)this.broadcastLobby();
     return slot;}
-  /** Sai de vez: onMatchEnd(cause) se ainda vivo, remove do mundo. */
+  /**
+   * Sai de vez: onMatchEnd(cause) se ainda vivo, remove do mundo.
+   * ⚠️ No LOBBY não há partida para encerrar — o jogador está na sala, não no mapa, e o `gp` existe e não
+   * está morto, então a conta caía aqui do mesmo jeito: cancelar a entrada gravava uma partida de score 0
+   * com a duração da sala de espera, e cinco desistências viravam cinco jogos no histórico de quem nunca
+   * jogou. Isto vale para toda saída na fase de espera, inclusive a expiração por `housekeeping`.
+   */
   leave(session,cause='left'){
     const slot=session.slot;if(this.sessions.get(slot)!==session)return;const gp=this.sim.players.get(slot);
-    if(gp&&!gp.dead&&gp.sessionId){const hooks=this.sim.hooks;
+    if(gp&&!gp.dead&&gp.sessionId&&this.phase!=='lobby'){const hooks=this.sim.hooks;
       Promise.resolve().then(()=>hooks.onMatchEnd({sessionId:gp.sessionId,cause,killedBySessionId:null,score:gp.score,maxMass:Math.round(gp.maxMass),durationMs:Math.round((this.sim.tick-gp.joinedTick)*1000/TICK_HZ)}))
         .catch(e=>this.log.warn(`onMatchEnd('${cause}') falhou:`,e&&e.message));}
     if(gp){this._rosterFold(gp);this._rosterLeft(gp);}   // ⚠️ antes do remove: depois dele o GamePlayer não existe mais
@@ -343,11 +349,26 @@ export class Room{
     if(vivos.length)this.sim._talk(vivos[this.rng.int(0,vivos.length-1)],kind);}
   // ── chat ──
   /**
-   * Uma linha de chat. O escopo vem do MODE (`room` no Livre e no Battle Royale solo, `team` em equipe) — em
-   * equipe o chat é a ferramenta tática e virar megafone de 50 pessoas o mataria. Morto lê, não escreve.
+   * Para onde vai a fala de `gp` — a MESMA resposta serve ao texto, ao ícone do 🎤 e ao clipe de voz, e é por
+   * isso que virou função em vez da expressão solta que vivia dentro do `_pushChat`.
+   * Vivo: a regra do modo (`room` no Livre e no BR solo, `team` em equipe — lá o chat é ferramenta tática e
+   * virar megafone de 50 pessoas o mataria). Morto:
+   *   Livre → `room`. Morrer ali dura segundos (o botão RENASCER está na tela) e os preenchimentos renascem no
+   *           MESMO tick: isolar o morto seria mandá-lo escrever para uma sala vazia.
+   *   BR    → `dead` (a arquibancada, a regra do Counter-Strike), porque lá a morte é definitiva. O morto pode
+   *           pedir `team` e falar com o esquadrão INTEIRO, vivos incluídos: a informação de quem morreu é da
+   *           equipe dele, e é a única exceção deliberada à regra.
+   */
+  _escopoFala(gp,pedido){
+    if(!gp.dead)return this.mode.chat==='team'&&gp.team>=0?'team':'room';
+    if(!this.mode.lastAlive)return 'room';
+    if(pedido==='team'&&gp.team>=0)return 'team';
+    return 'dead';}
+  /**
+   * Uma linha de chat, no escopo que `_escopoFala` decidir.
    * Devolve false quando a mensagem foi engolida (vazia, longa demais ou fora do intervalo).
    */
-  chat(session,text){
+  chat(session,text,scope){
     const gp=this.sim.players.get(session.slot);if(!gp)return false;
     const msg=String(text||'').normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,CHAT.MAX_CHARS);
     if(!msg)return false;
@@ -356,20 +377,34 @@ export class Room{
     session.chatAt=session.chatAt.filter(t=>now-t<CHAT.RATE_MS*CHAT.BURST);
     if(session.chatAt.length>=CHAT.BURST)return false;   // rate limit PRÓPRIO, além do balde de JSON: aquele protege o servidor, este protege a tela dos outros
     session.chatAt.push(now);
-    this._pushChat(gp,msg);
-    this._botResponde(gp,msg);
+    // o pedido fica na SESSÃO porque a voz não tem onde carregá-lo: o clipe é binário e o `{t:"talk"}` só
+    // leva um bit. Assim o Ctrl sai para os mesmos ouvintes da última linha escrita.
+    if(scope==='team'||scope==='all')session.chatScope=scope;
+    const escopo=this._escopoFala(gp,session.chatScope);
+    this._pushChat(gp,msg,escopo);
+    // escopo `dead` não fala com bot: o respondedor é sempre um bot VIVO (ver `_botResponde`), e ele
+    // devolveria, na frente da sala inteira, uma resposta a uma linha que nenhum vivo leu.
+    if(escopo!=='dead')this._botResponde(gp,msg);
     return true;}
-  /** Difusão de uma linha já validada, no escopo do modo. Caminho comum do humano e do preenchimento. */
-  _pushChat(gp,msg){
-    const out={t:'chat',slot:gp.slot,name:gp.name,team:gp.team<0?null:gp.team,text:msg,at:Date.now()};
-    // Até aqui o servidor era só um repetidor e não guardava uma linha. Sem histórico não há conversa para
-    // ler — e sem conversa a fala gerada não passa de outro repertório fixo, só que mais caro.
-    this.chatLog.push({name:gp.name,text:msg,team:gp.team,bot:!!gp.isBot});
-    if(this.chatLog.length>CHAT.KEEP)this.chatLog.shift();
-    const escopo=this.mode.chat==='team'&&gp.team>=0?'team':'room';
+  /** Sessões que recebem uma fala no escopo dado. Uma lista só, usada pelo texto e pela voz. */
+  _destinos(gp,escopo){
+    const out=[];
     for(const s of this.sessions.values()){if(!s.ws)continue;
       if(escopo==='team'){const o=this.sim.players.get(s.slot);if(!o||o.team!==gp.team)continue;}
-      s.sendJson(out);}}
+      else if(escopo==='dead'){const o=this.sim.players.get(s.slot);if(!o||!o.dead)continue;}
+      out.push(s);}
+    return out;}
+  /** Difusão de uma linha já validada. Caminho comum do humano e do preenchimento. */
+  _pushChat(gp,msg,escopo){
+    if(!escopo)escopo=this._escopoFala(gp,null);
+    const out={t:'chat',slot:gp.slot,name:gp.name,team:gp.team<0?null:gp.team,text:msg,at:Date.now(),scope:escopo};
+    if(gp.dead)out.dead=1;
+    // Até aqui o servidor era só um repetidor e não guardava uma linha. Sem histórico não há conversa para
+    // ler — e sem conversa a fala gerada não passa de outro repertório fixo, só que mais caro.
+    // O `scope` vai junto: a linha da arquibancada não pode entrar no prompt de um bot vivo (ver `_botResponde`).
+    this.chatLog.push({name:gp.name,text:msg,team:gp.team,bot:!!gp.isBot,scope:escopo});
+    if(this.chatLog.length>CHAT.KEEP)this.chatLog.shift();
+    for(const s of this._destinos(gp,escopo))s.sendJson(out);}
   /**
    * Fala dos preenchimentos. Uma sala de 50 pessoas que atravessa a partida inteira em silêncio é tão
    * estranha quanto um bot correndo em linha reta — mas fala demais, repetida ou fora de hora denuncia MUITO
@@ -457,8 +492,9 @@ export class Room{
   /** O que a LLM precisa saber: quem ele É, o que está vivendo, quem o está atacando e o que o chat disse. */
   _ctxFala(gp,g){
     const sim=this.sim,equipe=this.mode.chat==='team'&&gp.team>=0;
-    // em equipe o chat é fechado: o bot não pode reagir ao que foi dito em outra equipe (nem soube dele)
-    const hist=this.chatLog.filter(l=>!equipe||l.team===gp.team).slice(-BOT_LLM.HIST);
+    // em equipe o chat é fechado: o bot não pode reagir ao que foi dito em outra equipe (nem soube dele).
+    // `dead` cai pelo mesmo motivo: o bot que responde está VIVO e nunca leu a arquibancada.
+    const hist=this.chatLog.filter(l=>l.scope!=='dead'&&(!equipe||l.team===gp.team)).slice(-BOT_LLM.HIST);
     const rows=sim.leaderboard(),rank=rows.findIndex(r=>r.slot===gp.slot)+1;
     return{nome:gp.name,
       persona:gp.brain?gp.brain.p.id:null,pericia:gp.brain?gp.brain.s.id:null,
@@ -599,18 +635,33 @@ export class Room{
     if(ps)for(const pc of ps.pieces){if(pc.dead)continue;x+=pc.x;y+=pc.y;n++;}
     return n?{x:x/n,y:y/n}:{x:0,y:0};}
   /**
-   * Quem ouve `gp`: em equipe, a equipe inteira; senão os VOICE.LISTENERS mais próximos dentro de
-   * VOICE.DIST. O ícone de "falando" usa a MESMA lista do clipe — quem não ouviria o áudio não vê o ícone.
+   * De ONDE sai a fala. Um morto não tem peça, e `_centro` devolveria a origem do mundo — a voz dele nasceria
+   * no canto do mapa e não alcançaria ninguém, nem para o estéreo do ouvinte. Para ele a origem é a CÂMERA
+   * (`session.cx/cy`, escrita pelo snapshotter): no Livre é onde ele morreu, no Battle Royale é quem ele
+   * assiste. É o que faz "ouço os mortos que estão vendo a mesma briga que eu" ser verdade.
    */
-  _ouvintes(gp,x,y){
-    const equipe=this.mode.chat==='team'&&gp.team>=0;
+  _origemFala(session,gp){
+    if(gp.dead)return{x:session.cx||0,y:session.cy||0};
+    return this._centro(gp.slot);}
+  /**
+   * Quem ouve `gp`, no MESMO escopo do texto dele (`_escopoFala`): em equipe, a equipe inteira; morto no BR,
+   * a arquibancada; senão a sala. Dentro do escopo, `room` e `dead` ainda cortam por distância e pelo teto
+   * VOICE.LISTENERS — um clipe tem até VOICE.MAX_BYTES e difundir para os 49 mortos de um BR seriam ~2 MB
+   * por fala. Para um morto a distância sai da câmera dele, que segue quem ele assiste: na prática ele ouve
+   * os mortos que estão vendo a mesma briga.
+   * O ícone de "falando" usa a MESMA lista do clipe — quem não ouviria o áudio não vê o ícone.
+   */
+  _ouvintes(gp,x,y,escopo){
+    if(!escopo)escopo=this._escopoFala(gp,null);
+    const perto=escopo!=='team';
     /** @type {{s:any,d:number}[]} */const alvos=[];
     for(const s of this.sessions.values()){
       if(!s.ws||s.slot===gp.slot)continue;
       const o=this.sim.players.get(s.slot);if(!o)continue;
-      if(equipe){if(o.team===gp.team)alvos.push({s,d:0});continue;}
+      if(escopo==='team'){if(o.team===gp.team)alvos.push({s,d:0});continue;}
+      if(escopo==='dead'&&!o.dead)continue;
       const d=Math.hypot((s.cx||0)-x,(s.cy||0)-y);if(d<=VOICE.DIST)alvos.push({s,d});}
-    if(!equipe&&alvos.length>VOICE.LISTENERS){alvos.sort((a,b)=>a.d-b.d);alvos.length=VOICE.LISTENERS;}
+    if(perto&&alvos.length>VOICE.LISTENERS){alvos.sort((a,b)=>a.d-b.d);alvos.length=VOICE.LISTENERS;}
     return alvos;}
   /**
    * O microfone de alguém ABRIU ou FECHOU. Chega no instante do Ctrl, muito antes do clipe (que só é
@@ -619,7 +670,7 @@ export class Room{
    * Vai em JSON de controle: o fio binário não precisa de versão nova para dois bits de estado.
    */
   talkState(session,on){
-    const gp=this.sim.players.get(session.slot);if(!gp||gp.dead)return false;
+    const gp=this.sim.players.get(session.slot);if(!gp)return false;
     const agora=Date.now();
     if(on){
       if(agora-(session.talkAt||0)<VOICE.TALK_CD_MS)return false;   // anti-flood de quem martela o Ctrl
@@ -629,11 +680,11 @@ export class Room{
       if(!gp.talkUntil)return false;
       gp.talkUntil=0;}
     this.sim.playersDirty=true;   // o placar acende/apaga o 🎤 pela flag TALK — nos DOIS sentidos
-    const c=this._centro(gp.slot),out={t:'talk',slot:gp.slot,on:!!on};
-    for(const a of this._ouvintes(gp,c.x,c.y))a.s.sendJson(out);
+    const c=this._origemFala(session,gp),out={t:'talk',slot:gp.slot,on:!!on};
+    for(const a of this._ouvintes(gp,c.x,c.y,this._escopoFala(gp,session.chatScope)))a.s.sendJson(out);
     return true;}
   voice(session,{codec=0,durMs=0,data}){
-    const gp=this.sim.players.get(session.slot);if(!gp||gp.dead||!data)return false;
+    const gp=this.sim.players.get(session.slot);if(!gp||!data)return false;
     if(data.length>VOICE.MAX_BYTES||durMs<VOICE.MIN_MS||durMs>VOICE.MAX_MS)return false;
     const now=Date.now();
     if(now-(session.voiceAt||0)<VOICE.CD_MS)return false;
@@ -641,9 +692,9 @@ export class Room{
     if(this.voiceN>=VOICE.ROOM_CPS)return false;                     // teto da SALA: 50 pessoas falando ao mesmo tempo é ruído, não conversa
     session.voiceAt=now;this.voiceN++;
     if(!session.talkAt){gp.talkUntil=this.sim.tick+Math.ceil(durMs*TICK_HZ/1000);this.sim.playersDirty=true;}   // cliente que não avisa o Ctrl: o ícone sai pelo tempo do clipe
-    const {x,y}=this._centro(session.slot);
+    const {x,y}=this._origemFala(session,gp);
     const view=encodeVoice(this.writer,{slot:session.slot,codec,durMs,x,y,data});
-    let busy=false;for(const a of this._ouvintes(gp,x,y))if(!a.s.send(view))busy=true;
+    let busy=false;for(const a of this._ouvintes(gp,x,y,this._escopoFala(gp,session.chatScope)))if(!a.s.send(view))busy=true;
     if(busy)this.rotateWriter();
     return true;}
   // ── envio ──
@@ -797,14 +848,15 @@ export class Room{
       this.endRound('lastAlive');return;}
     this._flush(sim);}
   /**
-   * Apaga o "está falando" de quem estourou o prazo. A flag TALK é calculada ao vivo em `playersInfo`, mas o
+   * Apaga o "está falando" de quem estourou o prazo (morto incluído: ele fala, então a varredura não pode mais
+   * apagar o 🎤 dele meio segundo depois de acender). A flag TALK é calculada ao vivo em `playersInfo`, mas o
    * PLAYERS só é DIFUNDIDO quando algo marca `playersDirty` — sem esta varredura o 🎤 acendia e ficava lá
    * até o próximo evento de sala (alguém entrar, morrer, trocar de equipe), que pode não vir nunca.
    * A 2 Hz, sobre ≤ 50 jogadores: mais barato que qualquer contabilidade incremental.
    */
   _expiraFala(sim,t){
     for(const gp of sim.players.values())
-      if(gp.talkUntil&&(t>=gp.talkUntil||gp.dead)){gp.talkUntil=0;sim.playersDirty=true;}}
+      if(gp.talkUntil&&t>=gp.talkUntil){gp.talkUntil=0;sim.playersDirty=true;}}
   /**
    * Estado de espírito dos preenchimentos, na MESMA passada de 2 Hz que já apaga o 🎤 — zero laço novo.
    * Dois gatilhos que não existem como evento de física: estar sendo caçado agora, e ter assumido a ponta.

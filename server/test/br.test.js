@@ -89,6 +89,20 @@ test('Battle Royale: entra num LOBBY — ninguém no mapa, relógio da rodada pa
   assert.equal(lb.startsInMs,0,'ainda enchendo: a contagem não começou');
   c.close();
 });
+test('Battle Royale: cancelar a entrada no lobby libera a vaga NA HORA',async()=>{
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Desiste',mode:MODE.BR,teamSize:1,room:newRoom()});
+  const room=roomOf(r.code);
+  await c.until(()=>c.of('lobby'),4000,'lobby');
+  assert.equal(room.sim.humanCount(),1,'o humano está na sala');
+  c.send({t:'quit'});
+  // sem o `quit` o socket fechado cairia em `detach` e a sessão ficaria em graça por NET.RESUME_MS (10 s)
+  // segurando a vaga — e a largada poria um fantasma parado no mapa. Aqui a saída é imediata.
+  await c.until(()=>room.sim.humanCount()===0?true:null,2000,'a vaga volta na hora');
+  assert.equal(room.sessions.has(r.slot),false,'a sessão sai da sala junto');
+  assert.ok(NET.RESUME_MS>=2000,'e isto só tem graça porque a graça de reconexão é bem maior que a espera acima');
+  c.close();
+});
 test('Battle Royale: a sala enche AOS POUCOS durante a janela, não de uma vez',async()=>{
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Enche',mode:MODE.BR,teamSize:1,room:newRoom()});
@@ -406,6 +420,85 @@ test('chat: no Livre a sala inteira ouve; em equipe só o companheiro',async()=>
   await sleep(300);
   assert.equal(c3.of('chat'),null,'o adversário NÃO lê o plano da equipe');
   c1.close();c2.close();c3.close();
+});
+test('chat do MORTO: no Livre a sala inteira ouve; no Battle Royale só a arquibancada',async()=>{
+  // Morrer nunca calou ninguém no servidor — o que calava era o CSS do cliente, que escondia o HUD inteiro.
+  // Agora a regra existe de verdade e é POR MODO: no Livre morrer dura segundos (o botão RENASCER está na
+  // tela) e isolar o morto seria mandá-lo escrever para uma sala vazia; no BR a morte é definitiva e vale a
+  // regra do Counter-Strike.
+  const a=new C(wsUrl),b=new C(wsUrl);await a.open();await b.open();
+  const ra=await a.join({nick:'Fantasma',room:newRoom()});await b.join({nick:'Vivo',room:ra.code});
+  roomOf(ra.code).sim.kill(ra.slot,{cause:'eaten'});
+  await a.until(()=>a.of('dead'),4000,'morte');
+  a.send({t:'chat',text:'morri mas continuo aqui'});
+  const m=await b.until(()=>b.of('chat'),4000,'chat do morto no Livre');
+  assert.equal(m.text,'morri mas continuo aqui','no Livre quem está VIVO lê o morto');
+  assert.equal(m.dead,1,'a linha vem marcada como de um morto');
+  assert.equal(m.scope,'room');
+  a.close();b.close();
+
+  // Battle Royale solo: o morto fala para os mortos, e só.
+  const c1=new C(wsUrl),c2=new C(wsUrl);await c1.open();await c2.open();
+  const r1=await c1.join({nick:'BR1',mode:MODE.BR,teamSize:1,room:newRoom()});
+  await c2.join({nick:'BR2',mode:MODE.BR,teamSize:1,room:r1.code});
+  const sala=roomOf(r1.code);sala.lobbyUntil=sala.sim.tick+60;sala.lobbyStart=sala.sim.tick;
+  await c1.until(()=>c1.all('phase').find(x=>x.phase==='live'),8000,'largada');
+  sala.sim.kill(r1.slot,{cause:'eaten'});
+  await c1.until(()=>c1.of('dead'),4000,'morte no BR');
+  const n2=c2.json.length;
+  c1.send({t:'chat',text:'boa sorte aí'});
+  await sleep(400);
+  assert.equal(c2.of('chat',n2),null,'quem está VIVO não lê a arquibancada');
+  // e quando o outro também morre, os dois se falam
+  sala.sim.kill(c2.slot,{cause:'eaten'});
+  await c2.until(()=>c2.of('dead'),4000,'2ª morte');
+  const n3=c2.json.length;
+  c1.send({t:'chat',text:'e aí, morreu também?'});
+  const m2=await c2.until(()=>c2.of('chat',n3),4000,'chat entre mortos');
+  assert.equal(m2.text,'e aí, morreu também?');assert.equal(m2.scope,'dead');
+  c1.close();c2.close();
+});
+test('chat do MORTO: em equipe ele pode pedir o esquadrão, e a arquibancada não chega à LLM',async()=>{
+  const p=await post('/api/party',{mode:MODE.BR,teamSize:2,nick:'M1'});
+  const code=p.body.party.code;await post(`/api/party/${code}/join`,{nick:'M2'},{tok:'pt_m2'});
+  const a=new C(wsUrl),b=new C(wsUrl);await a.open();await b.open();
+  const ra=await a.join({nick:'M1',mode:MODE.BR,teamSize:2,party:code,room:newRoom()});
+  await b.join({nick:'M2',mode:MODE.BR,teamSize:2,room:ra.code,party:code});
+  const sala=roomOf(ra.code);sala.lobbyUntil=sala.sim.tick+60;sala.lobbyStart=sala.sim.tick;
+  await a.until(()=>a.all('phase').find(x=>x.phase==='live'),8000,'largada');
+  sala.sim.kill(ra.slot,{cause:'eaten'});
+  await a.until(()=>a.of('dead'),4000,'morte');
+  // o padrão é a arquibancada: o companheiro VIVO não recebe
+  const n1=b.json.length;
+  a.send({t:'chat',text:'to na torcida'});
+  await sleep(400);
+  assert.equal(b.of('chat',n1),null,'sem pedir nada, o morto fala com os mortos');
+  // pedindo `team`, o esquadrão INTEIRO ouve — a informação de quem morreu é da equipe dele
+  a.send({t:'chat',text:'cuidado, tem um gigante no norte',scope:'team'});
+  const m=await b.until(()=>b.of('chat',n1),4000,'chat para o esquadrão');
+  assert.equal(m.text,'cuidado, tem um gigante no norte');assert.equal(m.scope,'team');assert.equal(m.dead,1);
+  // a linha da ARQUIBANCADA não pode entrar no prompt de um bot: ele está vivo e nunca a leu
+  const bot=[...sala.sim.players.values()].find(g=>g.isBot&&!g.dead);
+  const hist=sala._ctxFala(bot,{kind:'abate'}).historico;
+  assert.ok(!hist.some(l=>l.text==='to na torcida'),'a fala da arquibancada fica fora do histórico da LLM');
+  a.close();b.close();
+});
+test('voz do MORTO: o Ctrl volta a funcionar, no mesmo escopo do texto',async()=>{
+  const c1=new C(wsUrl),c2=new C(wsUrl);await c1.open();await c2.open();
+  const r1=await c1.join({nick:'VozM1',mode:MODE.BR,teamSize:1,room:newRoom()});
+  await c2.join({nick:'VozM2',mode:MODE.BR,teamSize:1,room:r1.code});
+  const sala=roomOf(r1.code);sala.lobbyUntil=sala.sim.tick+60;sala.lobbyStart=sala.sim.tick;
+  await c1.until(()=>c1.all('phase').find(x=>x.phase==='live'),8000,'largada');
+  sala.sim.kill(r1.slot,{cause:'eaten'});sala.sim.kill(c2.slot,{cause:'eaten'});
+  await c1.until(()=>c1.of('dead'),4000,'morte');await c2.until(()=>c2.of('dead'),4000,'morte 2');
+  const sess=[...sala.sessions.values()].find(s=>s.slot===r1.slot);
+  assert.equal(sala.talkState(sess,true),true,'o servidor não recusa mais o push-to-talk de um morto');
+  const data=new Uint8Array(Array.from({length:800},(_,i)=>(i*17)&255));
+  const {createWriter}=await import('@warspace/shared/protocol/index.js');
+  c1.ws.send(encodeVoiceUp(createWriter(4096),{codec:0,durMs:600,data}));
+  const v=await c2.until(()=>c2.voices[0],4000,'voz do morto');
+  assert.equal(v.slot,r1.slot);assert.deepEqual([...v.data],[...data]);
+  c1.close();c2.close();
 });
 test('chat: vazio/só espaço é engolido, comprido é cortado e a enxurrada é barrada',async()=>{
   const a=new C(wsUrl),b=new C(wsUrl);await a.open();await b.open();

@@ -8,7 +8,7 @@
 //    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire (tiro mirado trava no alvo do cone) ──
 // Todas recebem o mundo `w` (ids, rng, eventos, jogadores); toda aleatoriedade passa por w.rng.
 // @ts-check
-import {DT,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,aimScore,POWERUP,STAR,ZONE,WEAPON,WEAPONS,weaponOf,weaponOfFood} from "../constants.js";
+import {DT,WORLD,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,aimScore,POWERUP,STAR,ZONE,WEAPON,WEAPONS,weaponOf,weaponOfFood} from "../constants.js";
 import {KIND,BH_PHASE,FOOD_FLAG,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {clamp} from "../util.js";
 import {setR,setMass,addMass,addBoost,boostLeft,capBoost,velX,velY,liveCount,firstLive} from "./body.js";
@@ -44,7 +44,7 @@ export function sameTeam(w,a,b){
   return !!(pa&&pb&&pa.team>=0&&pa.team===pb.team);}
 
 /**
- * Fora da zona a peça QUEIMA ZONE.BURN da massa por segundo e, ao chegar no piso MIN_PIECE_R, MORRE — sem
+ * Fora da zona a peça QUEIMA `zoneBurnRate(r)` da massa por segundo e, ao chegar no piso MIN_PIECE_R, MORRE — sem
  * piso, ao contrário da queimadura de estrela. É o único jeito de a partida acabar sozinha, e é de propósito
  * que a conta usa o CENTRO da peça: "meu ponto está dentro do círculo?" é o que o jogador lê na tela.
  * O evento é estrangulado a 1×/s por peça (o `(tick+id)%30` espalha as emissões entre as peças, em vez de
@@ -53,11 +53,20 @@ export function sameTeam(w,a,b){
  * @param {World} w @param {Body} pc @param {{x:number,y:number,r:number}} zc
  */
 export const outOfZone=(pc,zc)=>{const dx=pc.x-zc.x,dy=pc.y-zc.y;return dx*dx+dy*dy>zc.r*zc.r;};
+/**
+ * Fração da massa por segundo que o gás cobra AGORA. Não é constante: vai de ZONE.BURN (no raio da etapa 0)
+ * a ZONE.BURN·BURN_K (no menor círculo), interpolada pelo RAIO ATUAL. O raio é o que servidor e cliente já
+ * têm em mãos — a etapa não vai pelo fio —, então os dois chegam ao mesmo número sem protocolo novo.
+ */
+export function zoneBurnRate(r){
+  const r0=ZONE.R[0]*WORLD.w,rn=ZONE.R[ZONE.R.length-1]*WORLD.w,span=r0-rn;
+  let k=span>0?(r0-r)/span:0;k=k<0?0:k>1?1:k;
+  return ZONE.BURN*(1+(ZONE.BURN_K-1)*k);}
 /** Massa depois de um tick fora: a MESMA conta no servidor e na predição do cliente (a paridade é testada). */
-export const zoneMass=(m,dt)=>m*(1-ZONE.BURN*dt);
+export const zoneMass=(m,dt,r=ZONE.R[0]*WORLD.w)=>m*(1-zoneBurnRate(r)*dt);
 export function zoneBurn(w,pc,zc,dt){
   if(!outOfZone(pc,zc))return false;
-  const m0=pc.mass,m=zoneMass(m0,dt),floor=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;
+  const m0=pc.mass,m=zoneMass(m0,dt,zc.r),floor=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;
   // "para fora": a direção do centro da zona para a peça. É por onde as pelotas saem, e é o que faz
   // recuperá-las custar entrar mais fundo no gás em vez de ser lucro de graça na beirada.
   const dx=pc.x-zc.x,dy=pc.y-zc.y,d=Math.sqrt(dx*dx+dy*dy)||1,ux=dx/d,uy=dy/d;

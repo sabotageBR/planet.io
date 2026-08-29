@@ -86,8 +86,13 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         case 'resume':resume(msg);break;
         case 'view':s.setView(msg.w,msg.h);break;
         case 'ping':s.sendCopy(encodePong(pongWriter,{clientTime:Number(msg.c)>>>0,serverTick:s.room?s.room.sim.tick:0}));break;
-        case 'chat':if(s.room&&s.slot>=0)s.room.chat(s,msg.text);break;
+        case 'chat':if(s.room&&s.slot>=0)s.room.chat(s,msg.text,msg.scope);break;   // `scope` só é lido de quem já morreu (ver Room._escopoFala)
         case 'talk':if(s.room&&s.slot>=0)s.room.talkState(s,!!msg.on);break;   // push-to-talk abriu/fechou (o clipe vem depois, em binário)
+        // SAIR de propósito ≠ cair a conexão. O `close` do socket cai em `Room.detach`, que segura a sessão
+        // por NET.RESUME_MS (10 s) esperando um `resume` — certíssimo para quem perdeu a rede, e errado para
+        // quem apertou "cancelar": no lobby do battle royale o slot continuava ocupado, contava como humano
+        // na largada e o jogador era posto no mapa parado. Quem avisa que está indo embora vai embora agora.
+        case 'quit':if(s.room&&s.slot>=0)s.room.leave(s,'left');break;
         // trocar de câmera só faz sentido para quem já morreu: quem está vivo tem as próprias peças
         case 'spectate':{if(!s.room||s.slot<0)break;const gp=s.room.sim.players.get(s.slot);
           if(gp&&gp.dead)s.room.spectatePick(s,{slot:msg.slot|0||-1,dir:msg.dir|0});break;}}}

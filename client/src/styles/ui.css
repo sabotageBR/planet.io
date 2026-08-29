@@ -179,6 +179,31 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 #chat.open{max-height:34vh}
 #chat.open .chat-lines{opacity:1}
 
+/* ── HUD DO ESPECTADOR (#hud.spec): quem MORREU continua na sala ────────────────────────────────
+   Ficar mudo depois de morrer nunca foi regra — era esta linha: o `#hud` inteiro levava `.hidden` fora da
+   tela `game`, e o chat mora dentro dele. (O servidor sempre aceitou a fala de um morto, e ele já RECEBIA
+   as linhas dos outros; só não tinha onde ler nem onde escrever.) Agora `dead` e `round` viram um terceiro
+   estado: sai tudo o que é de quem está jogando — arma, powerups, cooldowns, botões de toque, placar, feed —
+   e ficam as duas coisas de quem assiste: o chat e o mapa (`#radar`, que no modo grande é o mapa). */
+#hud.spec > *:not(#hud-left):not(#radar):not(#talk):not(#touch){display:none}
+#hud.spec #hud-status{display:none}                  /* arma e powerups não existem para quem morreu */
+/* O morto FALA (a voz foi liberada junto com o texto), então o anel do push-to-talk fica — e no dedo, onde
+   não há Ctrl, o único botão de toque que sobrevive é o do microfone. Dividir e atirar, esses sim, acabaram. */
+#hud.spec #touch > *:not(#t-talk){display:none}
+#hud.spec #chat{top:12px;max-height:46vh}            /* sem o radar em cima, o chat sobe e cresce */
+#hud.spec #chat .chat-lines{opacity:1}               /* e NÃO desbota: atrás da tela de morte não há jogo a proteger */
+#hud.spec #chat .chat-open{opacity:.75}
+
+/* o seletor de destino do morto (arquibancada ↔ esquadrão) é o mesmo chip que já dizia "equipe" */
+#chat .chat-scope.pick{pointer-events:auto;border:0;cursor:pointer;background:var(--line,#0006);color:var(--bg,#fff)}
+#chat .chat-scope.pick.team{background:var(--ok,#3ddc5f);color:var(--line,#141026)}
+#chat .chat-line.dead{opacity:.78}
+#chat .chat-line.dead b{color:var(--line,#8886)}
+
+/* o mapa grande fica por baixo do chat (z-index 5 do #radar contra 6 do #chat): conversar é o que continua
+   acontecendo, o mapa é consulta */
+#hud.spec.map #chat{max-height:30vh}
+
 /* ── VOZ: o anel com o tempo que sobra do clipe, ao lado dos botões de ação ── */
 #talk{position:absolute;right:12px;bottom:140px;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:6;pointer-events:none}
 #talk span{font-size:.66em;letter-spacing:.12em;color:var(--danger,#ff3d5a);font-weight:bold}
@@ -186,6 +211,15 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 .talk-ring .tr-arc{fill:none;stroke:var(--danger,#ff3d5a);stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset .1s linear}
 .talk-ring .tr-arc.low{stroke:var(--accent,#ffc22e)}
 #t-talk.on{background:var(--danger,#ff3d5a)}
+
+/* No DEDO o cartão da morte é folha de rodapé (os três temas) e o chat vive na única faixa livre, a de
+   cima — por isso aqui ele volta a ancorar no topo, e a folha cede altura. Ela já rola (`overflow:auto`),
+   então encolher não esconde nada: o botão RENASCER continua alcançável. Com o mapa aberto não cabem os
+   dois na mesma faixa, e quem sai é o chat — o mapa foi pedido explicitamente, e fecha num toque. */
+body[data-pointer="coarse"] #hud.spec #hud-left{top:8px;bottom:auto;justify-content:flex-start}
+body[data-mode="portrait"] #hud.spec #chat,body[data-mode="landscape"] #hud.spec #chat{top:8px;bottom:auto;max-height:30vh;width:min(260px,54vw)}
+body[data-mode="portrait"] #hud.spec.map #chat,body[data-mode="landscape"] #hud.spec.map #chat{display:none}
+body[data-mode="portrait"] #s-dead .dead-card,body[data-mode="landscape"] #s-dead .dead-card{max-height:min(64%,64dvh)}
 
 /* mobile: o chat vira uma faixa curta no alto e o painel de modo encolhe */
 /* o chat empilha ACIMA do bloco de arma/powerups: em 96px ele cobria o #hud-status nos três celulares
@@ -263,6 +297,15 @@ body[data-mode="portrait"] .modes{grid-template-columns:1fr}
 .brl-chip canvas{width:26px;height:26px}
 @keyframes brlin{from{opacity:0;transform:translateY(6px) scale(.9)}to{opacity:1;transform:none}}
 .brl-hint{opacity:.55;font-size:.8em;line-height:1.3;max-width:40ch}
+/* desistir da fila. Discreto de propósito — a tela é para ESPERAR, e um botão CHEIO aqui competiria com o
+   contador —, mas presente: era o único jeito de sair, porque a regra do `:has()` logo abaixo apaga o botão
+   Sair do HUD durante o lobby. Por isso ele NÃO usa `btn-secondary`: nos temas essa classe é um botão
+   preenchido, e a saída virava a ação mais chamativa da tela de espera. O alvo de 44 px no dedo vem da
+   regra genérica de `button` na seção de TOQUE. */
+.brl-cancel{margin-top:4px;padding:7px 18px;border-radius:99px;border:2px solid var(--line,#0006);
+  background:transparent;color:inherit;opacity:.55;font-family:inherit;font-size:.82em;font-weight:bold;
+  letter-spacing:.04em;cursor:pointer;transition:opacity .15s ease,border-color .15s ease,color .15s ease}
+.brl-cancel:hover,.brl-cancel:focus-visible{opacity:1;border-color:var(--danger,#ff3d5a);color:var(--danger,#ff3d5a)}
 body[data-mode="portrait"] .brl-roster{max-height:22vh}
 body[data-mode="portrait"] .brl-count b{font-size:2.2em}
 
@@ -721,3 +764,22 @@ body[data-pointer="coarse"] .entry-id .id-skin{min-width:64px}
    baixo da régua. 46 dá folga para o arredondamento sem afastar o link do texto ao lado. */
 body[data-pointer="coarse"] #s-entry .entry-wrap.entry-v2 .guest-note .btn-link{
   display:inline-flex;align-items:center;min-height:46px;padding:0 6px}
+
+/* ── ENTRAR COM GOOGLE ──────────────────────────────────────────────────────────────────────────
+   O widget é desenhado pelo próprio Google dentro de um <div> que ele controla: dá para escolher
+   tipo, tamanho e tema, não o CSS de dentro. Então tudo aqui é sobre o ESPAÇO em volta dele.
+   Mora em ui.css (à mão) porque nasceu depois dos mockups — os screens.css dos temas são gerados
+   pelo port.js e seriam sobrescritos na próxima geração. */
+.gsi-block{display:flex;flex-direction:column;align-items:center;gap:10px;margin:2px 0 12px}
+.gsi-wrap{display:flex;justify-content:center;min-height:44px;align-items:center}
+/* iframe/div do Google: o `color-scheme` do host às vezes lhe dá fundo branco no tema escuro */
+.gsi-wrap > div{color-scheme:light}
+/* "ou" com um filete de cada lado — separa o Google das abas sem virar mais um título */
+.or-sep{display:flex;align-items:center;gap:8px;width:100%;color:var(--muted,#8fa0d8);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.or-sep::before,.or-sep::after{content:"";flex:1;height:2px;background:var(--line,#0d1330);opacity:.55}
+/* Na faixa da entrada é a variante de ÍCONE: o botão largo do Google empurraria o "Reivindicar
+   conta" para outra linha justamente onde o espaço é menor (celular deitado tem 375 px de altura). */
+.guest-note .gsi-wrap.gsi-icon{min-height:0}
+.guest-note .gsi-wrap.gsi-icon > div{transform:scale(.82);transform-origin:center}
+body[data-pointer="coarse"] .guest-note .gsi-wrap.gsi-icon{min-height:46px}
+body[data-pointer="coarse"] .guest-note .gsi-wrap.gsi-icon > div{transform:none}

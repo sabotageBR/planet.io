@@ -339,3 +339,72 @@ test('google: a rota existe e responde 503 enquanto não há credencial',async()
   const r=await req('POST','/api/auth/google',{idToken:'x'});
   assert.equal(r.status,503);assert.equal(r.body.error,'google_disabled');
 });
+
+// ── LOGIN COM GOOGLE, com a rota LIGADA ───────────────────────────────────────
+// A `api` de cima roda com GOOGLE_CLIENT_ID vazio de propósito (é o estado "desenhado e desligado").
+// Estes testes sobem uma SEGUNDA api com a credencial preenchida e um `google` FALSO: validar de
+// verdade é uma ida à rede do Google, e teste que depende de rede de terceiro não é teste.
+let gserver=null,gbase='',gip=100;
+/** o que o "Google" devolve para o próximo idToken; `idToken:'ok'` passa, qualquer outro é recusado */
+let googleId=null;
+const googleFake={enabled:true,clientId:'test.apps.googleusercontent.com',
+  async verify(t){if(String(t)!=='ok')throw new Error('aud não é deste app');return googleId;}};
+const subirGoogle=async()=>{
+  if(gserver)return;
+  const gapi=createApi({db,log,config:{...config,googleClientId:googleFake.clientId},persist,google:googleFake});
+  gserver=http.createServer(async(rq,rs)=>{if(await gapi(rq,rs))return;rs.writeHead(404);rs.end();});
+  await new Promise(r=>gserver.listen(0,'127.0.0.1',r));gbase=`http://127.0.0.1:${gserver.address().port}`;};
+/** POST /api/auth/google — um IP por chamada, que o limite da rota é o do login (10/15min/IP) */
+const greq=async(body,token)=>{
+  const r=await fetch(gbase+'/api/auth/google',{method:'POST',
+    headers:{'content-type':'application/json','x-forwarded-for':`10.9.0.${gip++}`,...(token?{authorization:`Bearer ${token}`}:{})},
+    body:JSON.stringify(body)});
+  const text=await r.text();return{status:r.status,body:text?JSON.parse(text):null};};
+after(()=>{if(gserver)gserver.close();});
+
+const G={};
+test('google: nome longo do Google não barra a entrada (nick é cortado, não recusado)',async()=>{
+  await subirGoogle();
+  // 25 caracteres: `normalizeNick` RECUSA acima de 16 em vez de cortar, então isto era 400 invalid_nick
+  googleId={subject:'sub-longo',email:'alexandre@exemplo.com',name:'Alexandre Fernandes Silva'};
+  const r=await greq({idToken:'ok'});
+  assert.equal(r.status,200,JSON.stringify(r.body));
+  assert.equal(r.body.user.kind,'registered');
+  assert.ok(Array.from(r.body.user.nick).length<=16,`nick longo demais: ${r.body.user.nick}`);
+  assert.ok(r.body.user.nick.startsWith('Alexandre'),r.body.user.nick);
+  assert.equal(r.body.user.coins,config.signupCoins,'mesmo bônus de boas-vindas do guest');
+  G.tok=r.body.token;G.uid=r.body.user.id;
+});
+test('google: o mesmo `sub` volta para a MESMA conta, sem criar outra',async()=>{
+  googleId={subject:'sub-longo',email:'alexandre@exemplo.com',name:'Alexandre Fernandes Silva'};
+  const r=await greq({idToken:'ok'});
+  assert.equal(r.status,200);assert.equal(r.body.user.id,G.uid);
+  assert.notEqual(r.body.token,G.tok,'sessão nova, token novo');
+  const {rows}=await db.query(`SELECT count(*)::int AS n FROM users WHERE email='alexandre@exemplo.com'`);
+  assert.equal(rows[0].n,1,'não pode ter nascido uma segunda conta');
+});
+test('google: convidado com Bearer é PROMOVIDO — mesmo id, moedas e skins preservadas',async()=>{
+  const g=await novoGuest('ConvidadoG');
+  googleId={subject:'sub-guest',email:'convidado@exemplo.com',name:'Convidado G'};
+  const r=await greq({idToken:'ok'},g.token);
+  assert.equal(r.status,200,JSON.stringify(r.body));
+  assert.equal(r.body.user.id,g.userId,'a conta é a MESMA: é isso que salva moedas e skins do convidado');
+  assert.equal(r.body.user.kind,'registered');
+  assert.equal(r.body.user.coins,config.signupCoins);
+});
+test('google: e-mail que já é de uma conta com senha VINCULA, em vez de estourar users_email_uq',async()=>{
+  const g=await novoGuest('DonoDoEmail');
+  const c=await req('POST','/api/auth/claim',{password:'segredo123',email:'dono@exemplo.com'},g.token);
+  assert.equal(c.status,200,JSON.stringify(c.body));
+  googleId={subject:'sub-dono',email:'dono@exemplo.com',name:'Dono'};
+  const r=await greq({idToken:'ok'});
+  assert.equal(r.status,200,'isto era 500: o INSERT batia no índice único do e-mail');
+  assert.equal(r.body.user.id,g.userId,'entra na conta que já era dona do e-mail');
+  const {rows}=await db.query(`SELECT user_id FROM user_identities WHERE provider='google' AND subject='sub-dono'`);
+  assert.equal(Number(rows[0].user_id),g.userId,'a identidade ficou ligada ÀQUELA conta');
+});
+test('google: id_token que não valida vira 401, nunca 500',async()=>{
+  googleId={subject:'sub-outro',email:'outro@exemplo.com',name:'Outro'};
+  const r=await greq({idToken:'emitido-para-outro-app'});
+  assert.equal(r.status,401);assert.equal(r.body.error,'invalid_credentials');
+});

@@ -42,7 +42,7 @@ import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./ben
 import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
-  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[]});
+  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:false});
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
   sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
 const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SPLIT]:"split",[EVENT.BH_SUCK]:"suck",[EVENT.CHIP]:"chip",[EVENT.BOUNCE]:"bounce",[EVENT.BOOM]:"boom",[EVENT.EXIT]:"exit",[EVENT.SHOOT]:"shoot",
@@ -81,6 +81,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const alvo={x:0,y:0};let inputTimer=0,joy=null;
   // o analógico só vale onde o ponteiro é o DEDO: no mouse o próprio ponteiro já é o controle
   const aplicaJoystick=()=>{if(joy)joy.setEnabled(curPrefs.joystick!==false&&typeof matchMedia!=="undefined"&&matchMedia("(pointer: coarse)").matches);};   // alvo reusado; inputTimer: o envio de input não depende do rAF (ver enviarInput)
+  let mapOn=false;   // mapa grande aberto (só faz sentido morto: com o jogador vivo seria vantagem tática)
   let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,slowSince=0,econAt=0,statsOv=null;
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
   // ── modo, equipe, zona, chat e voz ──
@@ -113,7 +114,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       else ejHold=false;}
     // PUSH-TO-TALK: segurar grava, soltar manda. Não passa pelo `actions` porque não é ação de jogo —
     // não vira flag de INPUT nem é predita; é uma mensagem própria (MSG.VOICE_UP).
-    if(a==="talk"){if(ph==="down"){if(joined&&!dead&&curPrefs.voice!==false)mic.start();}else mic.stop();return;}
+    if(a==="talk"){if(ph==="down"){if(joined&&curPrefs.voice!==false)mic.start();}else mic.stop();return;}   // morto também fala: o escopo é do servidor (Room._escopoFala)
     if(a==="specPrev"||a==="specNext"){if(ph==="down")game.spectate({dir:a==="specNext"?1:-1});return;}
     if(a==="swap"&&ph==="down")audio.play("weapon",{mine:true});
     actions.act(a,ph);};
@@ -129,11 +130,17 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // conhece quem está na janela da sessão, e o radar tem que mostrar o mapa inteiro.
     const me=view.mySlot,enemies=[];
     for(const r of view.lbRows()){if(r.slot===me)continue;const pl=view.playerOf(r.slot);
-      enemies.push({x:r.x,y:r.y,mass:r.mass,isBot:pl?pl.isBot:false,ally:pl?pl.ally:false});}
+      enemies.push({slot:r.slot,name:pl?pl.name:"",x:r.x,y:r.y,mass:r.mass,isBot:pl?pl.isBot:false,ally:pl?pl.ally:false});}
     const mine=[];for(const p of view.pieces)if(p.isMe)mine.push({x:p.rx,y:p.ry,r:p.rr});
     const ms=[];for(const m of view.missiles)ms.push({x:m.rx,y:m.ry,mira:m.target===me});   // o teleguiado que vem em mim pisca no radar
     return{enemies,mine,missiles:ms,asteroids:view.asteroids.map(a=>({x:a.rx,y:a.ry})),holes:view.holes.map(h=>({x:h.rx,y:h.ry,ri:h.influenceR})),
-      stars:view.stars.map(st=>({x:st.rx,y:st.ry,r:st.rr})),cam};}});
+      stars:view.stars.map(st=>({x:st.rx,y:st.ry,r:st.rr})),cam};},
+    onPick:slot=>{game.spectate({slot});}});   // clicar num planeta do mapa grande = assistir a ele
+  /**
+   * Quem manda no radar: vivo, a preferência do jogador; MORTO, o mapa grande — na tela de morte o radar
+   * pequeno não tem para onde apontar (não há peça própria), e é o mapa aberto que ocupa o lugar dele.
+   */
+  function aplicaRadar(){minimap.show(!!joined&&(dead?mapOn:curPrefs.showMinimap!==false));}
   minimap.show(false);
   if(isStats())statsOv=createOverlay(hud);
 
@@ -192,9 +199,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(venci)celebrate();                                   // ganhei: o planeta comemora
       if(!venci||m.reason!=="lastAlive")endOfWorld();          // o mundo só explode quando acabou o TEMPO (ou quando não fui eu)
       pushHud(performance.now());if(onRoundEnd)onRoundEnd({...m,mySlot:view.mySlot});}
-    else if(m.t==="dead"){dead=true;input.setHold(false);mic.cancel();pushHud(performance.now());
+    else if(m.t==="dead"){dead=true;input.setHold(false);mic.cancel();aplicaRadar();pushHud(performance.now());
       if(onDead)onDead({by:m.by,byHole:!!m.byHole,byZone:!!m.byZone,score:m.score,maxMass:m.maxMass,kills:m.kills,durationS:m.durationS,placement:m.placement||0,players:m.players||0});}
-    else if(m.t==="spectate"){specSlot=m.slot>=0?m.slot:-1;spec={slot:specSlot,name:m.name||null,vivos:m.vivos|0};pushHud(performance.now());}   // morto: de quem é a cena que continua rodando atrás da tela de KABOOM
+    else if(m.t==="spectate"){specSlot=m.slot>=0?m.slot:-1;spec={slot:specSlot,name:m.name||null,vivos:m.vivos|0};if(mapOn)minimap.setBig(true,specSlot);pushHud(performance.now());}   // morto: de quem é a cena que continua rodando atrás da tela de KABOOM
     else if(m.t==="rewards"){if(onRewards)onRewards(m);}}
   function onBinary(m){const now=performance.now();
     switch(m.type){
@@ -220,7 +227,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         break;}}}
   // ── chat ──
   function pushChat(m){
-    chatLog.push({slot:m.slot,name:m.name,team:m.team==null?null:m.team,text:m.text,at:m.at||Date.now(),mine:m.slot===view.mySlot});
+    chatLog.push({slot:m.slot,name:m.name,team:m.team==null?null:m.team,text:m.text,at:m.at||Date.now(),mine:m.slot===view.mySlot,dead:!!m.dead,scope:m.scope||null});
     if(chatLog.length>40)chatLog.shift();
     hudStore.update(h=>({...h,chat:chatLog.slice()}));
     if(m.slot!==view.mySlot)audio.play("chatIn",{mine:true,bus:"ui"});}
@@ -272,22 +279,31 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(onConnection)onConnection(ev);}
   function connectWith(makeSocket){conn=createConnection({makeSocket,onJson,onBinary,onState,onOpenSend});conn.open();}
   const game={hudStore,
-    /** Manda uma linha de chat (a tela React chama isto). O escopo — sala ou equipe — é do servidor. */
-    sendChat(text){const t=String(text||"").trim();if(!t||!conn||!joined)return false;conn.sendJson({t:"chat",text:t.slice(0,240)});return true;},
+    /**
+     * Manda uma linha de chat (a tela React chama isto). Quem decide o escopo continua sendo o SERVIDOR;
+     * `scope` é só o PEDIDO de quem já morreu no Battle Royale ("all" = arquibancada, "team" = esquadrão).
+     */
+    sendChat(text,scope){const t=String(text||"").trim();if(!t||!conn||!joined)return false;conn.sendJson({t:"chat",text:t.slice(0,240),scope:scope||undefined});return true;},
     /** Push-to-talk pelo botão de toque (o espelho do Ctrl para o mobile). */
-    talk(on){if(!joined||dead)return;if(on)mic.start();else mic.stop();},
+    talk(on){if(!joined)return;if(on)mic.start();else mic.stop();},
     /**
      * Morto: troca de quem é a câmera. `dir` ±1 anda na lista de vivos por massa (a mesma do placar) e
      * `slot` pula direto para alguém. Quem decide é o SERVIDOR — a AOI da sessão segue o mesmo alvo, senão
      * a câmera olharia para um pedaço de espaço que o servidor não está mandando.
      */
     spectate({slot=-1,dir=0}={}){if(!conn||!joined||!dead)return;conn.sendJson({t:"spectate",slot,dir});},
+    /**
+     * Mapa grande: o radar ampliado, com nome em cada planeta e clique para trocar de câmera. Só com o
+     * jogador MORTO — ver o mapa inteiro jogando seria vantagem tática, e não é o que se pediu.
+     */
+    showMap(on){const v=!!on&&joined&&dead;if(v===mapOn)return;mapOn=v;minimap.setBig(mapOn,specSlot);aplicaRadar();pushHud(performance.now());},
+    toggleMap(){game.showMap(!mapOn);},
     join({token,fallbackNick,room,local:useLocal,skinId,mode,teamSize:ts,party}={}){
       game.leave(true);joined=true;dead=false;specSlot=-1;selfTick=0;
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null};
-      buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();hudStore.set({...initialHud(),room:room||null});minimap.show(curPrefs.showMinimap!==false);
+      buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();hudStore.set({...initialHud(),room:room||null});mapOn=false;minimap.setBig(false,-1);aplicaRadar();
       if(pointer&&renderer)pointer.center(renderer.W,renderer.H);
       const isLocal=useLocal||qflag("local")||isBench()||api.server===false;
       if(isLocal){const rs=+(Q.get("round")||0);   // ?round=<segundos> encurta a rodada local (dev)
@@ -296,10 +312,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       const go=shard=>{if(!joined)return;connectWith(()=>new WebSocket(`${proto}://${location.host}/ws/${shard}`));};
       if(room)go(shardOf(room));
       else fetch("/api/config",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(c=>go(c&&c.shard!=null?c.shard:0)).catch(()=>go(0));},
-    leave(silent){if(conn){const c=conn;conn=null;c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
+    // sair é DELIBERADO: avisa o servidor antes de fechar. Sem o `quit`, o `close` do socket é
+    // indistinguível de uma queda de rede — a sessão fica em graça por NET.RESUME_MS segurando o slot, e
+    // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa
+    // por aqui (ela é do Connection, e volta pelo `resume`), então nada disso atrapalha quem só caiu.
+    leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
+      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();mapOn=false;minimap.setBig(false,-1);minimap.show(false);
       if(was&&!silent)hudStore.set({...initialHud()});},
-    setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);minimap.show(joined&&curPrefs.showMinimap!==false);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
+    setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
     resize(){if(!renderer)return;renderer.resize();if(conn&&conn.isOpen&&joined){const v=viewSize();if(v.w!==game._vw||v.h!==game._vh){game._vw=v.w;game._vh=v.h;conn.sendJson({t:"view",w:v.w,h:v.h});}}},
     destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();game.leave(true);audio.suspend();removeEventListener("pointerdown",wakeAudio);removeEventListener("keydown",wakeAudio);keyboard.destroy();touch.destroy();actions.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
@@ -459,7 +479,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const cd=(v,max)=>s?Math.min(1,Math.max(0,(v-el)/max)):0,sec=v=>s?Math.max(0,(v-el)/TICK_HZ):0;
     hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
       powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
-      lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,clock:roundClock,
+      lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,map:mapOn,clock:roundClock,
       mode:modeId,teamSize,team:myTeam,phase,cap:roomCap,
       lobby:lobby?{...lobby,
         // o servidor manda a 2 Hz; aqui o número desce liso, descontando o tempo desde que a mensagem chegou

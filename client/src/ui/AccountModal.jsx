@@ -5,6 +5,7 @@ import { claim, login, closeAccount , setCountry } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { COUNTRIES, POPULAR, flagOf, countryName } from "@warspace/shared";
 import { Field, Select } from "./bits.jsx";
+import GoogleButton from "./GoogleButton.jsx";
 
 const PAISES = [...POPULAR, ...COUNTRIES.map(([c]) => c).filter(c => !POPULAR.includes(c))];
 /** Sugestão pelo idioma do navegador ("pt-BR" → "BR"). Só PREENCHE o campo; quem salva é o usuário. */
@@ -33,6 +34,8 @@ function Body() {
   const error = err ? <p className="form-error" role="alert">{err.msg}{err.suggestion ? <> <button type="button" className="btn-link" onClick={() => { setC(x => ({ ...x, nick: err.suggestion })); setErr(null); }}>{LB.useSuggestion}: {err.suggestion}</button></> : null}</p> : null;
   return <div className="card modal account" role="dialog" aria-modal="true">
     <div className="modal-title">{LB.accountTitle}</div>
+    {/* Acima das abas de propósito: entrar com Google resolve as duas (reivindicar e entrar). */}
+    <div className="gsi-block"><GoogleButton /><div className="or-sep"><span>{LB.orSep}</span></div></div>
     <div className="tabs"><button data-tab="claim" className={tab === "claim" ? "on" : ""} onClick={() => { setTab("claim"); setErr(null); }}>{LB.claimTab}</button><button data-tab="login" className={tab === "login" ? "on" : ""} onClick={() => { setTab("login"); setErr(null); }}>{LB.loginTab}</button></div>
     <form className={"tab tab-claim" + (tab === "claim" ? " on" : "")} onSubmit={e => { e.preventDefault(); doClaim(); }}>
       <p className="hint">{LB.claimNote}</p>

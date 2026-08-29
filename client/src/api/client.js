@@ -98,6 +98,13 @@ export const api = {
     if (!api.online) throw NO_SERVER();
     const r = await request("POST", "/api/auth/login", { login, password }, { auth: false }); setToken(r.token); return r;
   },
+  /** POST /api/auth/google {idToken}. Manda o Bearer atual DE PROPÓSITO: é o que promove o convidado
+   *  em vez de abrir uma segunda conta, preservando moedas, skins e histórico de quem já jogou. */
+  async google(idToken, nick) {
+    if (!api.online) throw NO_SERVER();
+    const body = { idToken }; if (nick) body.nick = nick;
+    const r = await request("POST", "/api/auth/google", body); setToken(r.token); return r;
+  },
   async logout() {
     if (api.online) { try { await request("POST", "/api/auth/logout"); } catch { /* token já inválido */ } }
     setToken(null);

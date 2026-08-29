@@ -94,7 +94,8 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   Antes ela rachava em `SPLIT_N` estrelas menores e a rocha em `SMASH_N` cacos — um motor de população: a sala de 5
   estrelas chegava a 16 sozinha, e com jogadores atirando (cada 3 acertos triplicando) o mapa lotava e o cliente caía
   para 6 fps. O berçário da supernova também **realoca** comida em vez de somar: para cada pelota do cacho some uma
-  de longe, senão a população subia para sempre (o laço de reposição só enche até `FOOD.COUNT`, nunca corta).
+  de longe, senão a população subia para sempre (o laço de reposição só ENCHE até o alvo, nunca corta — quem corta é
+  a poda do gás, e só no Battle Royale; ver "A comida segue a zona").
 - **Ímã com teto de tamanho** (`POWERUP.MAGNET_MAX_R`): acima desse raio a peça não pega nem usa o ímã. O alcance é
   `r·MAGNET_RANGE`, então num planetão passava de 1500 px e sugava a tela inteira.
 - **Asteroide × escudo — o preço é a VELOCIDADE da batida** (`shieldTierFor`, `ASTEROID.SHIELD_VN = [220,520,900]`):
@@ -137,7 +138,8 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   estrelas do mapa. Pela mesma razão a estrela agora **nasce a ≥ ASTEROID.BELT_SAFE do anel de qualquer cinturão** — dentro de um,
   o cinturão viraria um moedor e a população nunca pararia de repor.
 - **Comida no buraco**: a que cai no núcleo é engolida e a reposição normal a devolve em outro canto do mapa, então
-  FOOD.COUNT nunca cai. A supernova deixa NOVA_FOOD comidas permanentes onde a estrela estava: a estrela morta vira berçário.
+  a população nunca cai (no modo Livre o alvo é `FOOD.COUNT`; com zona, `World.foodTarget()`). A supernova deixa
+  NOVA_FOOD comidas permanentes onde a estrela estava: a estrela morta vira berçário.
 - **Fragmentos e conservação de massa** (FRAG.*, `fragR`/`fragLife`): tudo que é arrancado de um planeta vira massa ejetada com
   **valor variável** — só o ejetado pode ter `mass ≠ r²` (`World.addEjected`), e o raio é `fragR(mass)`, então **o tamanho na tela
   é o valor**. Conservam exatamente: split, merge, pop de asteroide, estilhaço de estrela, a lasca (CHIP), o dano de míssil
@@ -149,7 +151,8 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   (a rocha comer um pedaço de planeta seria o maior sumidouro do jogo). O fio manda o tier no `hue` do EJECT (FRAG_KIND).
   Comer jogador conserva massa também (EAT.GAIN = 1, a regra do agar.io `size = √(s1²+s2²)`): a vítima entra INTEIRA.
   Continuam sendo fonte/sumidouro **de propósito**: a comida que o mundo repõe sem parar, o
-  berçário da supernova e o fragmento que a própria estrela queima (`ejectStar`).
+  berçário da supernova, o fragmento que a própria estrela queima (`ejectStar`) e — só no Battle Royale — a comida
+  que fica no gás e morre (ver abaixo).
 - **Buracos negros** (BLACKHOLE.*) — **DESLIGADOS por enquanto** (`BLACKHOLE.COUNT = 0`): a mecânica não ficou boa e o perigo
   que ela fazia foi para as estrelas (`STAR.COUNT` = 12). O código continua inteiro e volta trocando esse número; todos os
   consumidores são laços sobre `w.holes`, que viram no-op com a lista vazia. Ficam dormentes `EVENT.BH_SUCK`, `REMOVE.SUCKED`
@@ -193,8 +196,11 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
 - **Powerups**: ímã (temporário, POWERUP.TICKS) e escudo (níveis) são **por peça**; **fusão** (FOOD_TYPE.MERGE, o índice que era do
   powerup de velocidade) zera o `mergeAt` de TODAS as peças do dono — quem foi picado por estrela ou asteroide se junta na hora.
   A velocidade máxima vem só do raio (`vmaxFor`); não há powerup de velocidade.
-- **Comida**: FOOD.COUNT no mundo todo, reposta na hora. FOOD.NEAR_HAZARD_P dela nasce num anel (NEAR_HAZARD_R) em volta de uma
+- **Comida**: `World.foodTarget()` no mundo todo, reposta na hora — `FOOD.COUNT` sem zona (o modo Livre inteiro) e o
+  estoque do CÍRCULO com ela. FOOD.NEAR_HAZARD_P dela nasce num anel (NEAR_HAZARD_R) em volta de uma
   estrela ou buraco negro e nunca como poeira — é sempre cometa/rocha graúda ou powerup: chegar perto do perigo compensa.
+  Mas nunca **em cima** da estrela: todo ponto sorteado guarda `st.r + FOOD.STAR_CLEAR` da borda dela (e a estrela que
+  nasce varre a comida que estava ali, `World._varreComida`) — grão debaixo do disco é isca, não recompensa.
 - **Ímã** (só a peça que o pegou atrai): comida a d < r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s e é marcada MOVED (UPDATE X_Y
   no snapshot) — cometa e estrela (comida pesada) a MAGNET_HEAVY disso; ejetados de terceiros (ou próprios após cdUntil) ganham
   MAGNET_EJECT_A px/s²; **asteroides** ganham MAGNET_AST px/s² escalados por min(1,R_MIN/r) (rocha pequena vem voando, rocha grande
@@ -213,7 +219,33 @@ no Battle Royale não volta para a mesma sala.
 
 `sameTeam` (rules.js) é a única fonte de "somos aliados", usada em seis pontos; `w.peace` liga isso para todo
 mundo durante o aquecimento. A zona vive em `World.zone` + `rules.zoneBurn` (e na predição do cliente, com a
-mesma conta — a paridade é testada).
+mesma conta — a paridade é testada). A taxa não é constante: `rules.zoneBurnRate(r)` vai de `ZONE.BURN` a
+`ZONE.BURN·BURN_K` conforme o círculo fecha, interpolada pelo RAIO ATUAL — que os dois lados já têm em mãos, então
+o endurecimento do gás não custou um byte de protocolo.
+
+### A comida segue a zona
+
+Com zona ligada o mundo estoca o **círculo**, não o mapa:
+
+- **onde nasce**: `spawnFood` sorteia DENTRO do círculo. Repor no mapa inteiro entregava o grão ao gás, e era isso
+  que fazia o círculo final virar deserto — no menor raio cabiam 20 grãos dos 2 500.
+- **quanto**: `foodTarget() = clamp(π·r²/ZONE.FOOD_AREA, ZONE.FOOD_MIN, FOOD.COUNT)`. Enquanto o círculo é grande o
+  TETO manda e o começo da partida é idêntico ao de hoje; depois o alvo cai mais devagar que a área, então a
+  DENSIDADE sobe a cada fechamento (de 36 864 px² por grão para 2 400 nas etapas 4-5, ~49 px entre grãos).
+- **o gás come a comida também**: `_cullFoodOutOfZone` confere `ZONE.FOOD_SCAN` grãos por tick (varredura completa
+  a cada ~26 ticks) e mata os que ficaram fora. Sem essa poda a população ficava presa lá fora e o laço de
+  reposição parava de repor DENTRO — o oposto do que se quer.
+- **a reposição tem RENDA, não torneira**: no máximo `alvo/ZONE.FOOD_FILL_S` grãos por segundo. Repor na hora é
+  inofensivo num mapa de 92 M px² — ninguém cobre o tabuleiro — e é uma **fonte infinita** num círculo de 480 px,
+  onde o líder cobre quase tudo e reengole cada grão no tick seguinte. Medido numa partida de 49 bots: o consumo
+  da sala fica em 60–270 grãos/s a partida inteira e explodia para **7 579/s** nos últimos 30 s, com o líder indo
+  de 355 mil a **1,02 milhão** de massa em 15 s. Com a renda, o mesmo trecho fica em 169/s e o líder termina em
+  327 mil. O modo Livre não tem zona e continua repondo na hora.
+
+O porquê disso tudo é uma coisa só: **o grão dá massa ABSOLUTA** (`EAT.FOOD_GAIN`). Um tapete no círculo apertado
+vale ~2 % de massa por grão para quem tem 900 e 0,01 % para quem tem 200 000 — que ainda perde `PLAYER.DECAY` por
+segundo. Quem chega pequeno no fim varre e cresce; quem chega gigante apenas empata. Sem isso a última fase premiava
+tamanho acumulado, e a partida acabava sem jogada nenhuma.
 
 ## Rodada (fim do mundo)
 Cada sala vive `config.roundTicks` (env `ROUND_TICKS`, padrão ROUND.TICKS = 1 h). O bloco `round` do JSON `room`

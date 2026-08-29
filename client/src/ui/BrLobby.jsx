@@ -8,6 +8,7 @@
 import React from "react";
 import { skinById } from "@warspace/shared";
 import { useLabels } from "../hooks/useTheme.js";
+import { leaveGame } from "../state/actions.js";
 import SkinPreview from "./SkinPreview.jsx";
 
 const MOSTRA = 24;   // teto de chips desenhados: 50 SkinPreview por frame é canvas demais para uma tela de espera
@@ -39,6 +40,9 @@ export default function BrLobby({ lobby }) {
         {restam > 0 ? <div className="brl-chip more">+{restam}</div> : null}
       </div>
       <div className="brl-hint">{LB.brHint}</div>
+      {/* a única porta de saída da espera: enquanto o lobby está na tela, o CSS apaga o resto do HUD
+          (inclusive o botão Sair), e o Esc não vale porque para o shell isto ainda é a tela `game` */}
+      <button className="brl-cancel" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.brCancel}</button>
     </div>
   </div>;
 }

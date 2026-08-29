@@ -109,6 +109,15 @@ function mostrarTela(s) {
       champion: { slot: 1, name: "Vortexia", mass: 12400, isBot: true },
       board: [{ slot: 1, name: "Vortexia", mass: 12400, isBot: true, skinId: 30 }, { slot: 3, name: "Você", mass: 8200, skinId: 18 }, { slot: 5, name: "Drakonis", mass: 3100, isBot: true, skinId: 34 },
         { slot: 7, name: "Cosmara", mass: 2400, isBot: true, skinId: 13 }, { slot: 9, name: "Stellara", mass: 1800, isBot: true, skinId: 26 }, { slot: 11, name: "Graviton", mass: 900, isBot: true, skinId: 20 }] }, rewards: null, rewardsPending: true, screen: "round" });
+    // A sonda de responsividade mede o HUD DE ESPECTADOR que agora existe atrás destas telas (chat + o
+    // bloco de "assistindo"). Sem semear o hudStore o painel tem altura zero, o `vis()` o descarta, e as
+    // ~400 combinações passariam sem ver a única coisa nova na tela.
+    const g = gameRef.get().game;
+    if (g && g.hudStore) { const t = Date.now();
+      g.hudStore.update(h => ({ ...h, dead: true, map: false, room: "1ABC", spec: { slot: 1, name: "Nebulox", vivos: 12 },
+        chat: [{ slot: 2, name: "Stellara", text: "quem pegou o buraco negro?", at: t, mine: false },
+          { slot: 3, name: "xXcapitaoXx", text: "fui eu, desculpa aí", at: t, mine: false, dead: true },
+          { slot: -1, name: null, text: "🎤 Meteora", at: t, mine: false }] })); }
     setTimeout(() => onRewards({ saved: true, coinsEarned: 54, coins: (app.get().session.user || {}).coins + 54 || 54, achievements: [], skinsUnlocked: [], rank: { day: 35 } }), 1200);
   }
   else go(s);
@@ -153,6 +162,12 @@ export async function claim({ nick, password, email }) {
 }
 export async function login({ login: l, password }) {
   await api.login({ login: l, password });
+  applySession(await api.bootstrap());
+  closeAccount(); toast(LABELS.loggedIn); loadTop5();
+}
+/** Entrar com Google. `credential` é o id_token que o GSI devolve; o desfecho é o mesmo do `login`. */
+export async function loginGoogle(credential) {
+  await api.google(credential);
   applySession(await api.bootstrap());
   closeAccount(); toast(LABELS.loggedIn); loadTop5();
 }

@@ -77,8 +77,8 @@ companheiro já está de um lado, este bot toma o outro — geometria pura, sem 
 **3. A zona era lida tarde demais.** O antigo só reagia **depois de já estar queimando**. Mas `w.zone` traz
 `x1,y1,r1,t1` — o círculo de destino e o tick da chegada. `_zonePlan` compara o tempo de viagem
 (`dist/vmaxFor(r)`) com o que resta e devolve uma **urgência**; acima da margem da perícia, ir para o seguro
-domina qualquer outra intenção. Medido numa sala de 40: o tempo de peça dentro do gás caiu de **2,76 % para
-0,17 %**. Parte dos bots joga o **anel de dentro da borda** em vez do miolo, que é o que gente faz em BR.
+domina qualquer outra intenção. Medido numa sala de 40 (com o gás brando de então, `ZONE.BURN` .06 e sem rampa):
+o tempo de peça dentro do gás caiu de **2,76 % para 0,17 %**. Parte dos bots joga o **anel de dentro da borda** em vez do miolo, que é o que gente faz em BR.
 
 **4. Todo mundo era igualmente competente.** `BOT.SKILLS` dá quatro níveis com peso — ~18 % ruins, 46 %
 medianos, 28 % bons, 8 % feras — e o nível mexe em reação, velocidade da mão, tremor, antecipação, margem da
@@ -133,9 +133,16 @@ um dia alguém nascer cedo por engano, não vira almoço antes de a partida exis
 no total. Determinística (o rng da sala, só na virada de fase) e testada: o círculo novo **sempre cabe dentro do
 velho** — uma zona que pulasse para trás mataria quem já estava dentro.
 
-Fora dela a peça queima `ZONE.BURN` da massa por segundo e, no piso `MIN_PIECE_R`, **morre** (`cause:'zone'`). É a
-única coisa do jogo que mata sozinha, e é o que fecha a partida. A conta usa o CENTRO da peça: "meu ponto está
+Fora dela a peça queima `zoneBurnRate(r)` da massa por segundo e, no piso `MIN_PIECE_R`, **morre** (`cause:'zone'`).
+É a única coisa do jogo que mata sozinha, e é o que fecha a partida. A conta usa o CENTRO da peça: "meu ponto está
 dentro do círculo?" é o que o jogador lê na tela.
+
+**O gás ENDURECE conforme o círculo fecha**: a taxa vai de `ZONE.BURN` (.10/s, no raio da etapa 0) a
+`ZONE.BURN·ZONE.BURN_K` (.22/s, no menor círculo), interpolada pelo RAIO ATUAL. Do tamanho inicial até o piso são
+12,6 s no começo da partida e 5,7 s no fim. Com a taxa branda de antes (21 s em qualquer etapa) atravessar o gás em
+diagonal era atalho e ficar fora no fim era uma jogada de tempo; agora é a morte. A rampa sai do RAIO, e não da
+etapa, porque o raio é o que o cliente já tem em mãos — a etapa teria que ir pelo fio para um número que os dois
+lados sabem derivar.
 
 **A massa queimada não evapora: ela é ARRANCADA em pelotas.** A cada `ZONE.SHED_TICKS` (2,5×/s) o que foi
 queimado sai como um fragmento de verdade, jogado para **fora** — na direção que se afasta do centro da zona.
@@ -150,7 +157,62 @@ peça, ainda não virou pelota — e é contá-la que prova que nada se perde pe
 
 A queimadura roda na física compartilhada e **também na predição** (`stepOwnPieces` recebe o círculo): ela muda o
 RAIO, e sem prever, a correção do servidor chegaria 20×/s numa peça que está encolhendo — ela pulsaria de tamanho
-justo na borda, que é onde o jogador mais olha.
+justo na borda, que é onde o jogador mais olha. O raio do círculo entra na conta dos dois lados (é o que carrega a
+rampa), e a paridade continua testada em 1e-9.
+
+## A comida segue a zona
+
+O círculo fechava e o mapa virava deserto: a reposição sorteava no mapa INTEIRO, então o grão comido dentro do
+círculo renascia lá fora, no gás, onde ninguém vai buscá-lo. Com 2 500 grãos em 92,16 M px², o menor círculo
+(r = 144 px) comportava **20 grãos**. A última fase não tinha do que crescer, e por isso premiava só quem já era
+grande: a partida acabava por tamanho acumulado, sem jogada.
+
+Agora o mundo estoca o **círculo**, não o mapa:
+
+| | regra |
+|---|---|
+| onde nasce | `spawnFood` sorteia DENTRO do círculo (√ do disco = uniforme) |
+| quanto | `foodTarget() = clamp(π·r²/ZONE.FOOD_AREA, ZONE.FOOD_MIN, FOOD.COUNT)` |
+| o que sobra no gás | morre: `_cullFoodOutOfZone` varre `ZONE.FOOD_SCAN` grãos por tick |
+| a que ritmo repõe | a população inteira a cada `ZONE.FOOD_FILL_S` (2 s) — renda, não torneira |
+
+Enquanto o círculo é grande o TETO manda, então **o começo da partida é idêntico ao de hoje**. Depois o alvo cai
+mais devagar que a área, e a densidade sobe a cada fechamento: de 36 864 px² por grão (192 px entre grãos) para
+2 400 (49 px) nas etapas 4-5. A população TOTAL cai junto (2 500 → 302), o que alivia a rede em vez de pesar.
+
+O porquê é uma coisa só: **o grão dá massa ABSOLUTA**. Um tapete no círculo apertado vale ~2 % por grão para quem
+tem 900 de massa e 0,01 % para quem tem 200 000 — que ainda perde `PLAYER.DECAY` por segundo. Quem chega pequeno no
+fim varre e cresce de verdade; quem chega gigante apenas empata com o próprio decaimento. É essa assimetria que
+devolve virada à última fase.
+
+A poda não é enfeite: sem ela a população ficava presa fora do círculo e o laço de reposição — que só ENCHE até o
+alvo, nunca corta — parava de repor DENTRO, que é o oposto do que se quer. E ver o grão sumindo no gás é o mesmo
+aviso que as pelotas arrancadas de quem está lá.
+
+**A renda também não é enfeite, e essa é a parte contraintuitiva.** A reposição sempre foi INSTANTÂNEA, o que não
+tem consequência nenhuma num mapa de 92 M px² — ninguém cobre o tabuleiro. Num círculo de 480 px o líder cobre
+quase tudo, e aí cada grão que ele come renasce debaixo dele no mesmo tick: o tapete vira uma fonte infinita para
+justamente quem não precisa dela. Medido numa partida inteira de 49 bots, com o tapete e sem a renda:
+
+| | consumo da sala | massa do líder |
+|---|---|---|
+| partida toda | 60–270 grãos/s | cresce normal |
+| últimos 30 s, sem renda | **7 579 grãos/s** | 355 mil → **1,02 milhão** em 15 s |
+| últimos 30 s, com renda | 169 grãos/s | termina em 327 mil |
+
+E o pequeno não perde nada com o teto, porque ele nunca esteve perto dele: varrendo o círculo da etapa 5 ele
+alcança ~43 grãos/s. Medido na bancada, 60 s dentro do círculo apertado:
+
+| | etapa 4 (r 1 152) | etapa 5 (r 480) |
+|---|---|---|
+| pequeno (massa 900) | **32×** | **53×** |
+| gigante (massa 90 000) | 0,97× (perde para o decaimento) | 2,8× |
+
+**Nunca em cima da estrela** (`FOOD.STAR_CLEAR`): todo ponto sorteado guarda 200 px da BORDA da estrela — que
+acompanha o inchaço —, e a estrela que nasce varre a comida que estava no lugar dela (`World._varreComida`), porque
+no começo do mundo a comida vem antes das estrelas. Grão debaixo do disco não é risco × recompensa: é isca, cobra
+`STAR.BURN` (30 % da massa) e não dá escolha. A folga cabe debaixo de `NEAR_HAZARD_R[0]` (46+200 < 260), então o
+anel de risco × recompensa continua inteiro.
 
 ## Armas
 
@@ -165,13 +227,20 @@ na mão. Coube num BIT do INPUT que já sobrava, então ele continua com 10 byte
 | 0 | Míssil | comum | o de sempre (homing, dano, estilhaço) | — |
 | 1 | Rajada | comum | 6 projéteis retos, arranham e empurram | `addMissile` × n |
 | 2 | Cacho | raro | vira 4 homing perto do alvo | `homeMissile` |
-| 3 | Nova | épico | onda que empurra e estilhaça o miolo, sem me atingir | o laço da `supernova` |
+| 3 | ~~Nova~~ | — | **fora do sorteio** (`weight 0`), código dormente | o laço da `supernova` |
 
 (A **Mina gravitacional** existiu por uma rodada e saiu a pedido: reacendia o buraco negro, que já tinha sido
 desligado por não ficar bom. O código do BLACKHOLE continua dormente onde estava.)
 
+(A **Nova** saiu pelo mesmo caminho, e por um motivo de desenho: uma onda de 900 px centrada em MIM, que empurra
+todo mundo e estilhaça no miolo sem me atingir, não MIRA e não tem contra-jogo — não dá para desviar do que sai de
+dentro do outro —, e resolvia sozinha a briga de fim de partida, justo onde o círculo apertado devia obrigar ao
+encontro. `weight 0` a tira do sorteio sem apagar nada: ela continua implementada e testada, e volta trocando o
+número. O míssil também tem peso 0, por outro motivo — ele cai como `FOOD_TYPE.AMMO`.)
+
 Cada uma custou ~10 linhas porque nenhuma inventou sistema novo. As comidas entram em `FOOD_TYPE` **8..10**
-(no fim: três testes de faixa dependem da ordem do enum) e a raridade é a tabela de peso `WEAPON_DROPS` em `world.js`.
+(no fim: três testes de faixa dependem da ordem do enum) e a raridade é a tabela de peso `WEAPON_DROPS` em
+`world.js` — que filtra por `weight > 0`, e é assim que míssil e Nova ficam de fora do sorteio.
 
 ## Chat
 

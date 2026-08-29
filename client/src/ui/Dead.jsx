@@ -16,15 +16,21 @@ export default function Dead({ on }) {
   // de quem é a cena que continua rodando atrás da tela: o servidor escolhe, mas o morto pode trocar
   const game = useStore(gameRef, s => s.game);
   const store = useMemo(() => (game && game.hudStore ? throttleStore(game.hudStore, 200) : EMPTY_SPEC), [game]);
-  const spec = (useSyncExternalStore(store.subscribe, store.get, store.get) || {}).spec;
+  const h = useSyncExternalStore(store.subscribe, store.get, store.get) || {};
+  const spec = h.spec, mapa = !!h.map;
   const trocar = dir => { if (game && game.spectate) game.spectate({ dir }); };
+  const verMapa = () => { if (game && game.toggleMap) game.toggleMap(); };
   useEffect(() => {   // as setas do teclado também trocam (o motor ignora tudo com foco num campo de texto)
     if (!on || !game || !game.spectate) return;
     const kd = e => { const a = document.activeElement; if (a && /INPUT|TEXTAREA/.test(a.tagName)) return;
       if (e.key === "ArrowLeft") { e.preventDefault(); trocar(-1); }
-      else if (e.key === "ArrowRight") { e.preventDefault(); trocar(1); } };
+      else if (e.key === "ArrowRight") { e.preventDefault(); trocar(1); }
+      else if (e.key === "m" || e.key === "M") { e.preventDefault(); verMapa(); }
+      // Esc fecha o mapa em vez de sair da tela: aqui ele é o "voltar" mais próximo
+      else if (e.key === "Escape" && game.showMap) { e.preventDefault(); game.showMap(false); } };
     addEventListener("keydown", kd); return () => removeEventListener("keydown", kd);
   }, [on, game]);
+  useEffect(() => { if (!on && game && game.showMap) game.showMap(false); }, [on, game]);   // saiu da tela, fecha o mapa
   useEffect(() => { if (on) sfx("deadScreen"); }, [on]);   // a tela de KABOOM tem som próprio (o `death` é o do mundo, lá atrás)
   return <div className={"screen" + (on ? " on" : "")} id="s-dead">{on && m ? <div className="card dead-card">
     <div className="dead-icon">{LB.deadIcon}</div>
@@ -47,6 +53,9 @@ export default function Dead({ on }) {
       <div className="spec-who"><i>{LB.watching}</i><b>{spec.name || "—"}</b></div>
       <button className="spec-arrow" onClick={() => trocar(1)} aria-label={LB.specNext}>›</button>
     </div> : null}
+    {/* o mapa é o radar ampliado: mostra TODOS os vivos (vêm do placar, não da AOI) e clicar num deles
+        troca a câmera — o mesmo `spectate` das setas, escolhido no lugar em vez de um a um */}
+    <button className={"btn-secondary dead-map" + (mapa ? " on" : "")} onClick={verMapa}>{mapa ? LB.mapClose : LB.mapOpen}</button>
     <div className="dead-actions"><button className="btn-primary" data-go="play" onClick={() => play({ room: m.room })}>{LB.respawn}</button><button className="btn-secondary" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.toLobby}</button></div>
   </div> : null}</div>;
 }

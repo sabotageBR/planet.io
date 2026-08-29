@@ -43,15 +43,41 @@ export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
 // inteira (ZONE) fecha em 21 300 ticks ≈ 5 min 55 s.
 export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
   HOLD_TICKS:[3600,2700,2100,1500,900,600],SHRINK_TICKS:[2400,2100,1800,1500,1200,900],
-  DRIFT:.45,BURN:.06,WARN_TICKS:180,MIN_R:60,SHED_TICKS:24,SHED_SPEED:260,SHED_SPREAD:.85,SHED_MIN:1,SHED_N_DEATH:7};
+  DRIFT:.45,BURN:.10,BURN_K:2.2,WARN_TICKS:180,MIN_R:60,SHED_TICKS:24,SHED_SPEED:260,SHED_SPREAD:.85,SHED_MIN:1,SHED_N_DEATH:7,
+  FOOD_AREA:2400,FOOD_MIN:60,FOOD_SCAN:96,FOOD_FILL_S:2};
 // zona = círculo. R é o RAIO como fração de WORLD.w: começa em .62 (5 952 px — cobre o mapa, cujo
 // centro→canto é 6 788) e fecha em .015 (144 px). Cada etapa i: HOLD_TICKS[i] parada em R[i], depois
 // SHRINK_TICKS[i] interpolando até R[i+1]. DRIFT limita o deslocamento do centro a essa fração de
 // (r−r_novo), então o círculo NOVO sempre cabe dentro do velho — ninguém é pego por uma zona que pulou
-// para trás. BURN é a fração da massa por segundo fora dela: .06/s é 30× o PLAYER.DECAY, e leva uma peça
-// de START_R (massa 900) ao piso MIN_PIECE_R (256) em ~21 s — tempo de correr, não de acampar. Ao contrário
+// para trás. BURN é a fração da massa por segundo fora dela: .10/s é 50× o PLAYER.DECAY, e leva uma peça
+// de START_R (massa 900) ao piso MIN_PIECE_R (256) em ~12 s — tempo de correr, não de acampar. Ao contrário
 // da queimadura de estrela, esta NÃO tem piso: no piso a peça morre (é o que fecha a partida).
+// BURN_K: o gás ENDURECE conforme o círculo fecha — a taxa vai de BURN (no raio da etapa 0) a BURN·BURN_K
+// (no menor círculo), interpolada pelo RAIO ATUAL (ver zoneBurnRate em physics/rules.js). O raio é o que os
+// dois lados já têm em mãos, então servidor e predição do cliente chegam ao mesmo número sem mandar a etapa
+// pelo fio. No fim são .22/s: 5,7 s do START_R até o piso. Ficar no gás no fim da partida não é mais uma
+// jogada de tempo, é a morte — e é o que impede o gigante de atravessar o gás em diagonal para cortar caminho.
 // WARN_TICKS: aviso antes de cada fechamento começar.
+// FOOD_*: A COMIDA SEGUE A ZONA. Sem isso a reposição caía uniformemente no mapa INTEIRO e o círculo final
+// virava um deserto — no menor raio cabiam 20 grãos dos 2 500 —, então a última fase premiava só quem já
+// era grande: ninguém pequeno tinha do que crescer, e a partida acabava por tamanho acumulado, não por
+// jogada. Agora o mundo estoca o CÍRCULO: o alvo de população é `área/FOOD_AREA` (um grão a cada 2 400 px²,
+// ~um a cada 49 px de distância média), com piso FOOD_MIN e teto FOOD.COUNT — enquanto o círculo é grande o
+// teto manda e o mapa fica EXATAMENTE como é hoje. Como o alvo cai mais devagar que a área, a
+// DENSIDADE sobe a cada fechamento — no fim é um tapete, e é dele que sai a virada: o grão dá massa
+// ABSOLUTA (EAT.FOOD_GAIN), então vale ~2% para quem tem 900 de massa e 0,01% para quem tem 200 000, que
+// ainda por cima perde PLAYER.DECAY por segundo. Quem varre o tapete cresce; quem já é gigante só empata.
+// FOOD_SCAN é a varredura: por tick, esse tanto de grãos é conferido contra o círculo e o que ficou no gás
+// MORRE (o gás come a comida também). Sem essa poda a população ficaria presa lá fora e o laço de reposição
+// — que só ENCHE até o alvo, nunca corta — pararia de repor DENTRO, que é o oposto do que se quer aqui.
+// FOOD_FILL_S: o círculo tem uma RENDA de comida (a população inteira a cada 2 s), não uma torneira. Sem
+// esse teto a reposição é INSTANTÂNEA — o que é inofensivo num mapa de 92 M px², onde ninguém cobre o
+// tabuleiro, e é uma fonte infinita num círculo de 480 px, onde o líder cobre quase tudo: cada grão que ele
+// come renasce debaixo dele no mesmo tick. Medido numa partida inteira de 49 bots: o consumo da sala fica em
+// 60–270 grãos/s a partida toda e EXPLODE para 7 579/s nos últimos 30 s, com o líder saindo de 355 mil para
+// 1,02 MILHÃO de massa em 15 s. Ou seja, o tapete que era para dar chance ao pequeno estava engordando o
+// gigante 10× mais rápido. Com a renda o teto é do CÍRCULO e todo mundo divide o mesmo fluxo — e como o
+// pequeno só alcança ~43 grãos/s de qualquer jeito, quem o teto limita é justamente quem cobre o círculo.
 // SHED_*: a massa queimada NÃO evapora — ela é ARRANCADA em pelotas, a cada SHED_TICKS (2,5×/s), jogadas
 // para FORA (para longe do centro da zona) a SHED_SPEED. Ver quem está no gás perdendo pedaços é o aviso
 // mais claro que existe, e a massa continua no mundo: quem tiver coragem de entrar atrás dela, leva. Ir
@@ -148,7 +174,7 @@ export const BOUNCE={E:.55,E_SHIELD:.9,POS_CORR:.3,FX_MIN_VN:96,PUSH_S:.3,DIST_M
 // quique: a correção posicional é a de sempre, mas o empurrão vira BOOST de `vn·PUSH_S` px (teto DIST_MAX).
 // Curto de propósito: a trombada do asteroide tem que dar o solavanco e devolver a velocidade padrão na hora.
 export const WALL={E:.4,E_AST:.9,E_EJECT:.5};
-export const FOOD={COUNT:2500,R_MIN:6,R_MAX:15,SPECIAL_R:13,AMMO_P:.055,POWER_P:.045,HUES:12,MARGIN:40,NEAR_HAZARD_P:.22,NEAR_HAZARD_R:[260,620],
+export const FOOD={COUNT:2500,R_MIN:6,R_MAX:15,SPECIAL_R:13,AMMO_P:.055,POWER_P:.045,HUES:12,MARGIN:40,NEAR_HAZARD_P:.22,NEAR_HAZARD_R:[260,620],STAR_CLEAR:200,
   TYPES:["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield","w_burst","w_cluster","w_nova"]};   // índice = FOOD_TYPE
 export const FOOD_TYPE={DUST:0,COMET:1,STAR:2,ROCK:3,AMMO:4,MERGE:5,MAGNET:6,SHIELD:7,W_BURST:8,W_CLUSTER:9,W_NOVA:10};   // 5 era o powerup de velocidade (removido); hoje é o de FUSÃO
 // As armas entram no FIM (8..11) porque o enum é DENSO e três testes de faixa dependem da ordem:
@@ -156,6 +182,12 @@ export const FOOD_TYPE={DUST:0,COMET:1,STAR:2,ROCK:3,AMMO:4,MERGE:5,MAGNET:6,SHI
 // atlas do cliente). Índice novo no meio quebraria os três de uma vez, em silêncio.
 // risco × recompensa: NEAR_HAZARD_P da comida nasce num anel NEAR_HAZARD_R em volta de uma estrela ou buraco negro, e sempre
 // como coisa boa (cometa/rocha ou powerup) — chegar perto do perigo tem que valer a pena
+// STAR_CLEAR: e NUNCA em cima da estrela. É um ANEL, não um alvo: o grão que nasce dentro do disco (r 46, que
+// incha até 80 no fim da vida, com halo 2,2×) é uma isca que cobra STAR.BURN (30% da massa) para ser pega —
+// perigo sem escolha não é risco × recompensa, é armadilha. A folga é medida da BORDA da estrela (r + CLEAR),
+// então ela acompanha o inchaço, e vale para TODO ponto sorteado — mapa, anel de perigo e círculo da zona.
+// 200 px é escolhido para caber DEBAIXO de NEAR_HAZARD_R[0] (46+200 = 246 < 260): o anel de risco × recompensa
+// continua inteiro, e ainda assim o grão fica bem fora do halo (2,2·46 = 101, 2,2·80 = 177 na estrela inchada).
 // POP_DIST vale como MIRA: a rocha só entra (e estoura) se a trajetória dela passar a menos de r·POP_DIST do centro
 // do planeta; de raspão ela ricocheteia com E (bola de sinuca), em vez de atravessar como acontecia antes.
 /** Quantos níveis de escudo uma batida de rocha custa, pela velocidade de aproximação (0 = nem sente). */
@@ -232,8 +264,14 @@ export const WEAPONS=[
   {id:0,key:"missile",label:"Míssil",  rarity:"comum",  weight:0, food:FOOD_TYPE.AMMO,     ammo:MISSILE.MAX_AMMO,cd:0,  shatter:true},
   {id:1,key:"burst",  label:"Rajada",  rarity:"comum",  weight:44,food:FOOD_TYPE.W_BURST,  ammo:4,cd:20, shatter:false,shrink:.975,n:6,spread:.17,speed:1180,life:96},
   {id:2,key:"cluster",label:"Cacho",   rarity:"raro",   weight:30,food:FOOD_TYPE.W_CLUSTER,ammo:2,cd:60, shatter:true,n:4,splitD:560,spread:.55},
-  {id:3,key:"nova",   label:"Nova",    rarity:"épico",  weight:14,food:FOOD_TYPE.W_NOVA,   ammo:1,cd:150,blast:900,push:520,core:.34},
+  {id:3,key:"nova",   label:"Nova",    rarity:"épico",  weight:0, food:FOOD_TYPE.W_NOVA,   ammo:1,cd:150,blast:900,push:520,core:.34},
 ];
+// ⚠️ A NOVA ESTÁ FORA DO SORTEIO (weight 0, como o míssil): ela não cai mais no Battle Royale, que é o único
+// modo com armas — ou seja, está fora do jogo. Uma onda de 900 px de raio centrada em MIM, que empurra todo
+// mundo e estilhaça no miolo sem me atingir, não é uma arma de battle royale: ela não MIRA, não tem contra-
+// jogo (não dá para desviar do que sai de dentro do outro) e resolvia sozinha a briga de fim de partida, que
+// é justamente onde o círculo apertado devia decidir no encontro. O código fica inteiro e dormente — o mesmo
+// tratamento do FOOD_TYPE.MERGE e do BLACKHOLE.COUNT — e volta ao jogo trocando este número.
 // O jogador CARREGA VÁRIAS e troca com uma tecla (INPUT_FLAG.SWAP): `ps.ammo[arma]` guarda a munição de cada
 // uma e `ps.weapon` diz qual está na mão. O míssil é a arma base e nunca sai do cinto; as outras entram ao
 // pegar a comida correspondente (que já equipa a nova, senão o jogador pega e não vê nada acontecer). O míssil (weight 0) fica fora do sorteio de arma —

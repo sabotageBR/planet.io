@@ -23,3 +23,8 @@ data:
   OLLAMA_MODEL: "qwen3.6:35b-a3b"
   OLLAMA_MAX_INFLIGHT: "4"   # gerações simultâneas por PROCESSO; ⚠️ inútil acima do OLLAMA_NUM_PARALLEL da máquina do Ollama
   BOT_CHAT_LLM: "1"
+  # Login com Google. O client_id é PÚBLICO por definição (vai no HTML da página), então é ConfigMap
+  # e não Secret. O `client_secret` do console não entra em lugar nenhum: o fluxo é o do Google
+  # Identity Services, em que o servidor só VALIDA o id_token — não há troca de code por token.
+  # Vazio = /api/auth/google devolve 503 e o botão nem aparece na tela.
+  GOOGLE_CLIENT_ID: "50404130816-m19kptkspjtnrql7h9orov9l2kpb913d.apps.googleusercontent.com"

@@ -3,10 +3,10 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {createWorld,stepOwnPieces} from "../src/physics/index.js";
-import {sameTeam,zoneBurn,outOfZone,zoneMass,applyFire,ammoOf,ownedMask} from "../src/physics/rules.js";
+import {sameTeam,zoneBurn,outOfZone,zoneMass,zoneBurnRate,applyFire,ammoOf,ownedMask} from "../src/physics/rules.js";
 import {createZone,stepZone,zoneAt,zoneR} from "../src/zone.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,ZONE,PLAYER,DT,EJECT,MISSILE,WEAPON,WEAPONS,FOOD_TYPE,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood,BOT_NICKS} from "../src/constants.js";
+import {WORLD,ZONE,PLAYER,DT,EJECT,MISSILE,WEAPON,WEAPONS,FOOD,FOOD_TYPE,STAR,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood,BOT_NICKS} from "../src/constants.js";
 import {KIND} from "../src/protocol/constants.js";
 
 const empty=(seed=1,o={})=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false,...o});
@@ -75,16 +75,23 @@ test("zona: determinística — mesma seed, mesma sequência de círculos",()=>{
   const roda=()=>{const rng=createRng(2024),z=createZone(0),out=[];
     for(let t=0;t<22000;t++){if(stepZone(z,t,rng)){const c=zoneAt(z,t);out.push([t,c.x,c.y,c.r]);}}return JSON.stringify(out);};
   assert.equal(roda(),roda());});
-test("zona: fora dela a peça queima e MORRE no piso (~21 s a partir de START_R)",()=>{
-  const w=empty(3);w.addPlayer(0,{x:1000,y:1000});
-  w.setZone({x0:8000,y0:8000,r0:500,x1:8000,y1:8000,r1:500,t0:0,t1:Infinity});
+// o gás ENDURECE conforme o círculo fecha: quem mede o tempo de sobrevida tem que dizer EM QUE RAIO,
+// senão o número não quer dizer nada. Aqui rodam os dois extremos da rampa na mesma peça.
+const morreEmS=(seed,raio)=>{const w=empty(seed);w.addPlayer(0,{x:1000,y:1000});
+  w.setZone({x0:8000,y0:8000,r0:raio,x1:8000,y1:8000,r1:raio,t0:0,t1:Infinity});
   const pc=w.piecesOf(0)[0];assert.ok(outOfZone(pc,w.zoneNow()),"a peça está fora");
   let t=0;const ps=w.players.get(0);
-  while(ps.alive&&t<60*60){w.setTarget(0,pc.x,pc.y);w.step();t++;}
+  while(ps.alive&&t<120*60){w.setTarget(0,pc.x,pc.y);w.step();t++;}
   assert.equal(ps.alive,false,"a zona mata sozinha — é o que fecha a partida");
-  const s=t/60;assert.ok(s>15&&s<30,`morreu em ${s.toFixed(1)} s (esperado ~21 s: tempo de correr, não de acampar)`);
   const dead=w.events.find(e=>e.type==="PLAYER_DEAD");
-  assert.ok(dead&&dead.cause==="zone","a morte tem que sair com cause 'zone'");});
+  assert.ok(dead&&dead.cause==="zone","a morte tem que sair com cause 'zone'");
+  return t/60;};
+test("zona: fora dela a peça queima e MORRE no piso — e o gás ENDURECE quando o círculo fecha",()=>{
+  const apertado=morreEmS(3,500);                       // fim de partida: taxa saturada em BURN·BURN_K
+  const aberto=morreEmS(3,ZONE.R[0]*WORLD.w);           // começo: taxa base
+  assert.ok(apertado>4&&apertado<9,`no círculo apertado morreu em ${apertado.toFixed(1)} s (esperado ~6 s: ficar no gás no fim é a morte, não uma jogada de tempo)`);
+  assert.ok(aberto>9&&aberto<18,`no círculo da etapa 0 morreu em ${aberto.toFixed(1)} s (esperado ~13 s: tempo de correr, não de acampar)`);
+  assert.ok(aberto>apertado*1.7,`a rampa tem que ser sentida: ${aberto.toFixed(1)} s no começo contra ${apertado.toFixed(1)} s no fim`);});
 test("zona: DENTRO dela ninguém queima, e a queimadura não mexe em quem está no piso",()=>{
   const w=empty(4);w.addPlayer(0,{x:4800,y:4800});
   w.setZone({x0:4800,y0:4800,r0:2000,x1:4800,y1:2000,r1:2000,t0:0,t1:600});
@@ -143,7 +150,74 @@ test("zoneMass/outOfZone: o critério é o CENTRO da peça dentro do círculo",(
   const zc={x:0,y:0,r:100};
   assert.equal(outOfZone({x:99,y:0},zc),false);assert.equal(outOfZone({x:101,y:0},zc),true);
   assert.equal(outOfZone({x:0,y:0},zc),false);
-  assert.ok(zoneMass(1000,DT)<1000&&zoneMass(1000,DT)>=999,"um tick queima pouco (0,1%); o que mata é a insistência");});
+  assert.ok(zoneMass(1000,DT)<1000&&zoneMass(1000,DT)>=998,"um tick queima pouco (0,17%); o que mata é a insistência");});
+test("zoneBurnRate: a taxa do gás sobe conforme o círculo fecha, entre BURN e BURN·BURN_K",()=>{
+  const r0=ZONE.R[0]*WORLD.w,rn=ZONE.R[ZONE.R.length-1]*WORLD.w;
+  assert.ok(Math.abs(zoneBurnRate(r0)-ZONE.BURN)<1e-12,"no raio da etapa 0 é a taxa base");
+  assert.ok(Math.abs(zoneBurnRate(rn)-ZONE.BURN*ZONE.BURN_K)<1e-12,"no menor círculo é a taxa cheia");
+  assert.equal(zoneBurnRate(r0*2),ZONE.BURN,"acima do raio inicial não desce abaixo da base");
+  assert.equal(zoneBurnRate(0),ZONE.BURN*ZONE.BURN_K,"abaixo do menor círculo não passa do teto");
+  let ant=0;for(let r=rn;r<=r0;r+=(r0-rn)/20){const v=zoneBurnRate(r);if(ant)assert.ok(v<=ant,"monotônica: círculo maior nunca queima mais");ant=v;}
+  // é o RAIO que carrega a rampa, e não a etapa, porque o raio é o que o cliente já tem em mãos:
+  // mandar a etapa pelo fio seria protocolo novo para um número que dá para derivar dos dois lados
+  assert.ok(zoneMass(1000,DT,rn)<zoneMass(1000,DT,r0),"a mesma massa derrete mais rápido no círculo apertado");});
+
+// ── 2b. a comida segue a zona ───────────────────────────────────────────────
+// É o que dá VIRADA a quem chega pequeno no fim: o grão vale massa ABSOLUTA, então um tapete no
+// círculo apertado engorda quem tem 900 de massa e mal cobre o decaimento de quem tem 200 000.
+const dist=(a,b)=>Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2);
+test("comida: com a zona ligada o mundo estoca o CÍRCULO, não o mapa",()=>{
+  const w=createWorld({seed:31,asteroids:false,holes:0,stars:0});
+  assert.equal(w.food.length,FOOD.COUNT,"sem zona é o mapa inteiro, como sempre foi");
+  assert.equal(w.foodTarget(),FOOD.COUNT,"e o alvo é o de sempre — o modo Livre não muda nada");
+  const zc={x:4800,y:4800,r:1200};
+  w.setZone({x0:zc.x,y0:zc.y,r0:zc.r,x1:zc.x,y1:zc.y,r1:zc.r,t0:0,t1:Infinity});
+  for(let i=0;i<900;i++)w.step();
+  const vivos=w.food.filter(f=>!f.dead);
+  const fora=vivos.filter(f=>dist(f,zc)>zc.r);
+  assert.equal(fora.length,0,`o gás come a comida também: nenhum grão vivo lá fora (achei ${fora.length})`);
+  assert.equal(vivos.length,w.foodTarget(),`a população converge para o alvo do círculo (${vivos.length} de ${w.foodTarget()})`);});
+test("comida: quanto menor o círculo, MAIS densa ela fica — é daí que sai a virada do pequeno",()=>{
+  const w=createWorld({seed:32,asteroids:false,holes:0,stars:0});
+  const densidade=r=>{w.setZone({x0:4800,y0:4800,r0:r,x1:4800,y1:4800,r1:r,t0:0,t1:Infinity});
+    return Math.PI*r*r/w.foodTarget();};   // px² por grão: MENOR = mais denso
+  const mapa=WORLD.w*WORLD.h/FOOD.COUNT;
+  const g=densidade(ZONE.R[2]*WORLD.w),m=densidade(ZONE.R[4]*WORLD.w),p=densidade(ZONE.R[6]*WORLD.w);
+  assert.ok(g<mapa,`etapa 2 já é mais densa que o mapa de hoje (${g|0} contra ${mapa|0} px² por grão)`);
+  assert.ok(m<g&&p<m,`a densidade tem que subir a cada fechamento (${g|0} → ${m|0} → ${p|0} px² por grão)`);
+  assert.ok(w.foodTarget()>=ZONE.FOOD_MIN,"e o piso garante que o círculo final nunca fica vazio");
+  w.setZone({x0:4800,y0:4800,r0:WORLD.w,x1:4800,y1:4800,r1:WORLD.w,t0:0,t1:Infinity});
+  assert.equal(w.foodTarget(),FOOD.COUNT,"com o círculo cobrindo o mapa o teto manda: nada muda no começo da partida");});
+test("comida: o círculo tem RENDA, não torneira — repor na hora era fonte infinita para quem cobre o círculo",()=>{
+  const w=createWorld({seed:34,asteroids:false,holes:0,stars:0});
+  const r=ZONE.R[5]*WORLD.w;
+  w.setZone({x0:4800,y0:4800,r0:r,x1:4800,y1:4800,r1:r,t0:0,t1:Infinity});
+  for(let i=0;i<1200;i++)w.step();
+  const alvo=w.foodTarget(),vivos=()=>w.food.filter(f=>!f.dead).length;
+  assert.equal(vivos(),alvo,"partiu do círculo cheio");
+  for(const f of w.food)f.dead=true;w.foodDirty=true;   // um gigante que cobre o círculo varreu tudo neste tick
+  w.step();
+  const cota=Math.ceil(alvo*DT/ZONE.FOOD_FILL_S)||1;
+  assert.ok(vivos()<=cota,`num tick só o círculo repõe a cota (${vivos()} de ${alvo}, cota ${cota})`);
+  assert.ok(vivos()>0,"mas repõe: renda não é seca");
+  for(let i=0;i<ZONE.FOOD_FILL_S*60+30;i++)w.step();
+  assert.equal(vivos(),alvo,`em ~${ZONE.FOOD_FILL_S}s o círculo volta ao cheio`);
+  // medido numa partida de 49 bots: sem esta cota o consumo da sala ia de ~200 grãos/s a 7 579/s nos
+  // últimos 30 s, e o líder saía de 355 mil para 1,02 milhão de massa em 15 s — o tapete engordava o
+  // gigante, não o pequeno. O modo Livre não tem zona e continua repondo na hora.
+  const livre=createWorld({seed:34,food:50,asteroids:false,holes:0,stars:0});
+  for(const f of livre.food)f.dead=true;livre.foodDirty=true;livre.step();
+  assert.equal(livre.food.filter(f=>!f.dead).length,50,"sem zona a reposição é instantânea, como sempre foi");});
+test("comida: nunca nasce em cima de estrela — grão dentro do disco é isca, não comida",()=>{
+  const w=createWorld({seed:33,asteroids:false,holes:0,stars:STAR.COUNT});
+  w.setZone({x0:4800,y0:4800,r0:2400,x1:4800,y1:4800,r1:2400,t0:0,t1:Infinity});
+  for(let i=0;i<900;i++)w.step();
+  let pior=Infinity,n=0;
+  for(const f of w.food){if(f.dead)continue;n++;
+    for(const st of w.stars){if(st.dead)continue;const d=dist(f,st)-st.r;if(d<pior)pior=d;}}
+  assert.ok(n>100,`o mundo tem que ter comida para o teste valer (${n})`);
+  assert.ok(pior>=FOOD.STAR_CLEAR-1,`grão a ${pior.toFixed(0)} px da borda da estrela (mínimo ${FOOD.STAR_CLEAR})`);
+  assert.ok(FOOD.STAR_CLEAR+STAR.R<FOOD.NEAR_HAZARD_R[0],"a folga cabe debaixo do anel de perigo: risco × recompensa continua inteiro");});
 
 // ── 3. equipes ──────────────────────────────────────────────────────────────
 test("sameTeam: sem equipe ninguém é aliado; no aquecimento todo mundo é",()=>{
@@ -286,7 +360,11 @@ test("armas só caem no Battle Royale (o mundo Livre nunca sorteia uma)",()=>{
   const sv=createWorld({seed:16,asteroids:false,holes:0,stars:0,weapons:true});
   assert.ok(sv.food.some(f=>f.type>=FOOD_TYPE.W_BURST),"Battle Royale larga arma");
   const tipos=new Set(sv.food.filter(f=>f.type>=FOOD_TYPE.W_BURST).map(f=>f.type));
-  assert.ok(tipos.size>=3,`a raridade tem que espalhar os tipos (saíram ${tipos.size})`);
+  // a NOVA saiu do sorteio (weight 0, como o míssil): sobram Rajada e Cacho. O código dela continua
+  // vivo e testado logo acima — o que acabou é a chance de ela CAIR.
+  assert.equal(tipos.size,2,`a raridade tem que espalhar os tipos que existem (saíram ${tipos.size})`);
+  assert.equal(tipos.has(FOOD_TYPE.W_NOVA),false,"a Nova não cai mais no Battle Royale");
+  assert.equal(WEAPONS[WEAPON.NOVA].weight,0,"e é o peso 0 que a tira do sorteio, sem apagar a arma");
   const n=sv.food.filter(f=>f.type>=FOOD_TYPE.W_BURST).length;
   assert.ok(n>10&&n<300,`população de armas fora da faixa: ${n} de ${sv.food.length}`);});
 test("a carência de tiro do nascimento continua valendo para TODAS as armas",()=>{

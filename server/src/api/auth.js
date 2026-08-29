@@ -2,7 +2,7 @@
 // @ts-check
 import {err} from './router.js';
 import {LIMITS} from '../auth/ratelimit.js';
-import {normalizeNick,randomGuestNick,suggestNick,isReservedByOther} from '../auth/nick.js';
+import {normalizeNick,randomGuestNick,suggestNick,isReservedByOther,NICK_MAX} from '../auth/nick.js';
 import {hashPassword,verifyPassword,validPassword,dummyHash,PASSWORD_MIN} from '../auth/password.js';
 import {toPublic} from '../repos/users.js';
 const EMAIL_RE=/^[^\s@]{1,64}@[^\s@]{1,255}$/;
@@ -54,42 +54,75 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
   // POST /api/auth/logout 🔒 → 204
   router.add('POST',/^\/api\/auth\/logout$/,async ctx=>{await requireUser(ctx);await tokens.revoke(ctx.token);return[204];});
   /**
+   * Nick vindo do GOOGLE não pode BARRAR a entrada. `normalizeNick` RECUSA acima de 16 caracteres em
+   * vez de cortar, então "Alexandre Fernandes Silva" derrubava o login inteiro com `400 invalid_nick`
+   * — e o `randomGuestNick()` que estava ali de fallback nunca era alcançado. Aqui o nome é saneado,
+   * e se ainda colidir com um registrado cai na sugestão: entrar com Google não falha por causa do nome.
+   * Um `nick` explícito no corpo continua ESTRITO (409 com `suggestion`), porque aí é escolha da pessoa.
+   */
+  const nickDoGoogle=async(bruto,userId)=>{
+    const cru=String(bruto||'').normalize('NFKC').replace(/\s+/g,' ').trim();
+    let nick=normalizeNick(cru)||normalizeNick(Array.from(cru).slice(0,NICK_MAX).join(''))||randomGuestNick();
+    for(let i=0;i<3&&await isReservedByOther(db,nick,userId);i++)nick=suggestNick(nick);
+    return await isReservedByOther(db,nick,userId)?randomGuestNick():nick;};
+  /**
    * POST /api/auth/google {idToken, nick?} → {token,user}
    * INERTE sem GOOGLE_CLIENT_ID: devolve 503, e como `/api/config` não expõe o clientId, o botão nem
-   * aparece na tela. Três caminhos, nesta ordem:
-   *   1. identidade conhecida → emite token e pronto;
-   *   2. identidade nova E veio Bearer de um GUEST → promove aquele guest (é a fusão de contas que a lista
-   *      de arestas do CLAUDE.md diz não existir; este é o lugar natural dela, e evita que quem já jogou
-   *      como convidado perca moedas e skins ao entrar com Google pela primeira vez);
-   *   3. identidade nova e sem token → conta nova, com o mesmo bônus de boas-vindas do guest.
+   * aparece na tela. Quatro caminhos, nesta ordem:
+   *   1. identidade conhecida (`provider,subject`) → emite token e pronto;
+   *   2. o e-mail VERIFICADO do Google já é de uma conta → vincula a identidade ÀQUELA conta. Sem isto
+   *      o `INSERT` abaixo esbarrava no índice único `users_email_uq` e a rota devolvia 500 para quem
+   *      só queria entrar. ⚠️ isto CONFIA no e-mail de `users`, e o e-mail que entra por
+   *      `POST /api/auth/claim` nunca foi verificado por nós — o conserto de raiz é verificar o e-mail
+   *      no claim; enquanto não houver, quem reivindicar uma conta com o e-mail alheio recebe o dono
+   *      dele de presente quando essa pessoa entrar pelo Google;
+   *   3. identidade nova E veio Bearer de um GUEST → promove aquele guest (é a fusão de contas que a
+   *      lista de arestas do CLAUDE.md diz não existir; este é o lugar natural dela, e evita que quem
+   *      já jogou como convidado perca moedas e skins ao entrar com Google pela primeira vez);
+   *   4. identidade nova e sem token → conta nova, com o mesmo bônus de boas-vindas do guest.
    * A conta só-Google não tem senha: é por isso que a migração 0006 troca o CHECK de `users`.
    */
   router.add('POST',/^\/api\/auth\/google$/,async ctx=>{
     if(!google||!google.enabled)throw err(503,'google_disabled','login com Google não está configurado neste servidor');
     let id;try{id=await google.verify(ctx.body.idToken);}
     catch(e){log.warn(`google: ${e&&e.message}`);throw err(401,'invalid_credentials','não deu para validar sua conta Google');}
+    const entra=async(u,via)=>{const token=await tokens.issue(u.id,'session',ctx.userAgent);users.touchSeen(u.id).catch(()=>{});
+      log.info(`google: #${u.id} ${u.nick} (${via})`);return{token,user:toPublic(u)};};
+    // 1. identidade conhecida
     const existente=await identities.find('google',id.subject);
     if(existente){
       const u=await users.byId(existente.user_id);
       if(!u)throw err(401,'invalid_credentials','conta não encontrada');
-      const token=await tokens.issue(u.id,'session',ctx.userAgent);
-      await identities.touch('google',id.subject);users.touchSeen(u.id).catch(()=>{});
-      return{token,user:toPublic(u)};}
+      await identities.touch('google',id.subject);
+      return entra(u,'identidade conhecida');}
+    // 2. o e-mail já é de alguém → a identidade vai para AQUELA conta (ver a ressalva do comentário)
+    const dono=id.email?await users.byEmail(id.email):null;
+    if(dono){
+      await identities.link(db,{userId:dono.id,provider:'google',subject:id.subject,email:id.email});
+      return entra(dono,'vinculado pelo e-mail');}
+    // 3/4. promove o convidado, ou cria conta nova
     const atual=ctx.token?await optionalUser(ctx):null;
-    const out=await db.tx(async c=>{
-      let u;
-      if(atual&&atual.kind==='guest'){
-        const nick=await nickOf(ctx.body.nick||atual.nick,atual.id);
-        u=(await c.query(`UPDATE users SET kind='registered',email=COALESCE($2,email),nick=$3 WHERE id=$1 RETURNING *`,
-          [atual.id,id.email,nick])).rows[0];}
-      else{
-        const nick=await nickOf(ctx.body.nick||id.name||randomGuestNick(),null);
-        u=(await c.query(`INSERT INTO users(kind,nick,email) VALUES('registered',$1,$2) RETURNING *`,[nick,id.email])).rows[0];
-        await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
-        if(config.signupCoins>0){const {coins}=await ledger.apply(c,{userId:u.id,delta:config.signupCoins,reason:'signup'});u.coins=coins;}}
-      await identities.link(c,{userId:u.id,provider:'google',subject:id.subject,email:id.email});
-      const token=await tokens.issue(u.id,'session',ctx.userAgent,c);
-      return{token,user:toPublic(u)};});
+    const pedido=ctx.body.nick!=null&&ctx.body.nick!==''?String(ctx.body.nick):null;
+    let out;
+    try{
+      out=await db.tx(async c=>{
+        let u;
+        if(atual&&atual.kind==='guest'){
+          const nick=pedido?await nickOf(pedido,atual.id):await nickDoGoogle(atual.nick,atual.id);
+          u=(await c.query(`UPDATE users SET kind='registered',email=COALESCE($2,email),nick=$3 WHERE id=$1 RETURNING *`,
+            [atual.id,id.email,nick])).rows[0];}
+        else{
+          const nick=pedido?await nickOf(pedido,null):await nickDoGoogle(id.name,null);
+          u=(await c.query(`INSERT INTO users(kind,nick,email) VALUES('registered',$1,$2) RETURNING *`,[nick,id.email])).rows[0];
+          await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
+          if(config.signupCoins>0){const {coins}=await ledger.apply(c,{userId:u.id,delta:config.signupCoins,reason:'signup'});u.coins=coins;}}
+        await identities.link(c,{userId:u.id,provider:'google',subject:id.subject,email:id.email});
+        const token=await tokens.issue(u.id,'session',ctx.userAgent,c);
+        return{token,user:toPublic(u)};});
+    }catch(e){
+      // corrida: outra requisição gravou este mesmo e-mail entre o `byEmail` de cima e o INSERT daqui
+      if(e.code==='23505'&&/email/.test(e.constraint||''))throw err(409,'email_taken','esse e-mail já está em uso');
+      throw e;}
     log.info(`google: #${out.user.id} ${out.user.nick} (${atual&&atual.kind==='guest'?'guest promovido':'conta nova'})`);
     return out;
   },{rate:{scope:'ip',lim:LIMITS.loginIp}});

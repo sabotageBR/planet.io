@@ -9,6 +9,7 @@ import { skinById, RARITY_LABELS, RARITY_COLORS } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { go, play, openAccount, setNick, loadRooms, loadTop5 } from "../state/actions.js";
+import GoogleButton from "./GoogleButton.jsx";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { useInterval } from "../hooks/useInterval.js";
 import { Field, MiniRank, Screen } from "./bits.jsx";
@@ -55,6 +56,7 @@ function Body() {
       <div className="guest-note" data-kind={guest ? "guest" : "registered"}>
         <span className="gn-txt">{guest ? LB.guestNote : LB.registered}{session.online === false ? ` · ${session.server === false ? LB.offlineNote : LB.noDbNote}` : ""}</span>
         {guest ? <button className="btn-link" data-go="account" onClick={openAccount}>{LB.claim}</button> : null}
+        {guest ? <GoogleButton type="icon" /> : null}
       </div>
       <div className="hint">{LB.hint}</div>
     </div>

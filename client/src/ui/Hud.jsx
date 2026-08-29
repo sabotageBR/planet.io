@@ -16,7 +16,7 @@ import { WEAPON_ICON } from "./icons.js";
 import BrLobby from "./BrLobby.jsx";
 import { MODE, weaponOf } from "@warspace/shared";
 
-const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, clock: null,
+const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: false, clock: null,
   mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, talk: null, chat: [], feed: [], lobby: null };
 const TALK_MSG = { cd: "micCooldown", denied: "micDenied", unsupported: "micUnsupported", audio: "micFail", fail: "micFail" };   // motivo → chave da label
 /** Anel do push-to-talk: o arco encolhe com o tempo que sobra do clipe. */
@@ -66,7 +66,11 @@ export default function Hud() {
   // cinto: as armas com munição (bit 0 = míssil, sempre presente). Com mais de uma, o chip vira botão de troca.
   const cinto = WEAPON_ICON.map((_, i) => i).filter(i => ((h.owned | 1) >> i) & 1);
   const podeTrocar = cinto.length > 1;
-  return <div id="hud" className={screen === "game" ? "" : "hidden"}>
+  // Três estados, não dois. `spec` é o HUD de quem MORREU (e do pódio do fim de rodada): some tudo menos o
+  // chat e o mapa — quem morreu continua na sala, lê, escreve e fala. Antes o `hidden` levava o #hud inteiro,
+  // e era essa única linha que deixava o morto mudo (o servidor sempre aceitou a fala dele).
+  const espectando = screen === "dead" || screen === "round";
+  return <div id="hud" className={screen === "game" ? "" : espectando ? "spec" + (h.map ? " map" : "") : "hidden"}>
     <div id="hud-top">
       <span className="chip" id="h-room"><i>{LB.room}</i> <b id="v-room">{h.room || room || "—"}</b></span>
       {h.clock ? <span className="chip" id="h-clock"><i>🕒</i> <b>{String(h.clock.h).padStart(2, "0")}:{String(h.clock.m).padStart(2, "0")}</b> <i>⏳</i> <b>{Math.floor(h.clock.leftS / 60)}:{String(Math.floor(h.clock.leftS % 60)).padStart(2, "0")}</b></span> : null}
@@ -96,7 +100,7 @@ export default function Hud() {
         onde o tema o coloca). No DEDO ele vira uma pilha flex — porque #hud-status CRESCE com os powerups
         ativos, e qualquer `bottom` fixo para o chat voltava a colidir assim que um ímã entrava. */}
     <div id="hud-left">
-    <Chat h={h} />
+    <Chat h={h} persist={espectando} />
     <div id="hud-status">
       <button className={"chip belt" + (armed ? "" : " empty") + (podeTrocar ? " swap" : "")} id="hud-ammo"
         title={podeTrocar ? `${LB.swapWeapon} (${LB.keySwap})` : undefined} {...press("swap")}>
