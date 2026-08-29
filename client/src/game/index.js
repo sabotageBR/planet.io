@@ -33,6 +33,7 @@ import {createWorldView} from "./state/WorldView.js";
 import {createRenderer} from "./renderer/Renderer.js";
 import {createCamera} from "./renderer/Camera.js";
 import {createPointer} from "./input/Pointer.js";
+import {createJoystick} from "./input/Joystick.js";
 import {createKeyboard} from "./input/Keyboard.js";
 import {createTouchButtons} from "./input/Touch.js";
 import {createActions} from "./input/actions.js";
@@ -49,6 +50,7 @@ const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SP
   [EVENT.STAR_BURST]:"starBurst",[EVENT.SUPERNOVA]:"supernova",[EVENT.STAR_HIT]:"starHit",[EVENT.STAR_SPLIT]:"starSplit",[EVENT.SMASH]:"smash",
   [EVENT.ZONE_SHRINK]:"zoneShrink",[EVENT.ZONE_BURN]:"zoneBurn"};
 const AIM_LEN=1100;   // comprimento máximo da reta de mira (px de mundo)
+const RESIZE_MS=150;   // debounce de todo caminho de resize (ver agendaResize)
 const PREWARM_S=12;   // com quantos segundos de antecedência o céu seguinte é assado (fora da virada, para ela não custar nada)
 const AIM_R2=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE;
 const MASS_STEP=1.6;   // de quanto em quanto a massa toca o carrilhão de "cresci" (marcos geométricos: sempre a mesma sensação de avanço)
@@ -58,7 +60,10 @@ const shardOf=code=>{const n=parseInt(String(code||"")[0],36);return Number.isFi
 
 export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,onRoundEnd,onConnection}){
   if(getComputedStyle(container).position==="static")container.style.position="absolute";
-  Object.assign(container.style,{inset:"0",overflow:"hidden"});
+  // Só `overflow`. O `inset:0` que ficava aqui era ESTILO INLINE: ganhava de qualquer folha, então era
+  // impossível encolher a câmera por CSS — a gaveta lateral apenas COBRIA o canvas em vez de dividir a
+  // tela com ele. O inset vem de base.css (`#game`), e ui.css o reduz pela largura da gaveta.
+  container.style.overflow="hidden";
   const hudStore=createStore(initialHud());
   let curPrefs={...PREF_DEFAULTS,...prefs},curTheme=theme||currentTheme();
   const audio=createAudio(curPrefs);let lastAmmo=0,lastMagnet=false;   // som: o que o cliente descobre sozinho (atirar/munição/ímã) sai do self
@@ -73,15 +78,20 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
 
   // ── estado de rede/simulação ──
   const buffer=createSnapshotBuffer();
-  const alvo={x:0,y:0};let inputTimer=0;   // alvo reusado; inputTimer: o envio de input não depende do rAF (ver enviarInput)
+  const alvo={x:0,y:0};let inputTimer=0,joy=null;
+  // o analógico só vale onde o ponteiro é o DEDO: no mouse o próprio ponteiro já é o controle
+  const aplicaJoystick=()=>{if(joy)joy.setEnabled(curPrefs.joystick!==false&&typeof matchMedia!=="undefined"&&matchMedia("(pointer: coarse)").matches);};   // alvo reusado; inputTimer: o envio de input não depende do rAF (ver enviarInput)
   let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,slowSince=0,econAt=0,statsOv=null;
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
   // ── modo, equipe, zona, chat e voz ──
   let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0,lobby=null,spec=null;   // `lobby` = o estado da tela de espera (JSON `lobby`, em ms)
   let zone=null,zoneShown={x:0,y:0,r:0},lastShrink=0,lastHurt=false,lobbyBeep=false;   // `zone` = o par de círculos do fio; `zoneShown` é o interpolado do frame
   /** @type {{slot:number,name:string,team:number|null,text:string,at:number}[]} */let chatLog=[];
-  const mic=createMic({audio,send:d=>conn&&conn.send(d),onState:st=>{hudStore.update(h=>({...h,talk:st}));}});
-  const talking=new Map();   // slot → performance.now() em que o clipe termina (o ícone de "falando" no planeta)
+  const mic=createMic({audio,send:d=>conn&&conn.send(d),onState:st=>{hudStore.update(h=>({...h,talk:st}));},
+    // O ícone de "falando" tem que acender no INSTANTE do Ctrl, não quando o áudio chega (o clipe só sai ao
+    // soltar a tecla). Vai como JSON de controle: o servidor repassa para os mesmos ouvintes do clipe.
+    onTalk:on=>{if(conn&&conn.isOpen&&joined)conn.sendJson({t:"talk",on:!!on});
+      if(view.mySlot>=0)view.setTalking(view.mySlot,on);}});
   const input=createInputSender({send:d=>conn&&conn.send(d),getTick:()=>predictor.localTick,getRtt:()=>conn?conn.rttAvg:0});
   const predictor=createPredictor({buffer,input});
   const interp=createInterpolator(buffer,{isOwn:e=>predictor.isOwn(e),onVanish});
@@ -128,10 +138,16 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── renderer (assíncrono: Pixi init) ──
   let destroyed=false;   // StrictMode destrói a 1ª instância com o init do Pixi ainda pendente: não pode sobrar um canvas zumbi
   createRenderer({container,theme:curTheme,prefs:{fx:!curPrefs.reduceMotion}}).then(r=>{if(destroyed){r.destroy();return;}renderer=r;ready=true;
-    pointer=createPointer(r.canvas,{onButton:button});applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();warmSkins();
+    pointer=createPointer(r.canvas,{onButton:button});joy=createJoystick(r.canvas,hud);aplicaJoystick();applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();warmSkins();
     if(!raf)raf=requestAnimationFrame(frame);
     if(!inputTimer)inputTimer=setInterval(()=>enviarInput(performance.now()),Math.max(8,Math.round(1000/NET.INPUT_HZ)));}).catch(e=>{console.error("[game] renderer",e&&e.stack||e);container.innerHTML=`<div style="padding:20px;color:#fff">Não foi possível iniciar o renderizador (WebGL indisponível): ${e.message}</div>`;});
-  const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(()=>game.resize()):null;if(ro)ro.observe(container);
+  // DEBOUNCE obrigatório: o observer dispara a cada frame enquanto a borda da janela é arrastada, e
+  // `game.resize()` reenvia `{t:"view"}` ao servidor. Sem isso eram ~60 JSON/s contra um balde de 5/s
+  // (NET.RATE_JSON) e a 3ª rejeição em 10 s ENCERRAVA a conexão com RATE — arrastar a janela derrubava o
+  // jogador no meio da partida. O canvas em si pode esperar 150 ms; girar o celular continua instantâneo
+  // aos olhos porque o layout do CSS não depende deste caminho.
+  let roT=0;const agendaResize=()=>{clearTimeout(roT);roT=setTimeout(()=>game.resize(),RESIZE_MS);};
+  const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(agendaResize):null;if(ro)ro.observe(container);
   const onVis=()=>{visible=document.visibilityState!=="hidden";lastT=performance.now();if(visible){frames=0;fpsT=lastT;}};document.addEventListener("visibilitychange",onVis);
 
   // ── sumiço de entidades (Interpolator, no tempo de render): planeta comido explode, comida/pellet faísca ──
@@ -156,7 +172,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       round=m.round||null;roundOver=false;lastCount=-1;warmedSky=null;lastAmmo=0;lastMagnet=false;
       modeId=m.mode|0;teamSize=m.teamSize||1;myTeam=m.team==null?-1:m.team;roomCap=m.cap||0;
       phase=(m.round&&m.round.phase)||"live";startsAt=(m.round&&m.round.startsAt)||0;
-      view.setMyTeam(myTeam);chatLog=[];talking.clear();lobby=null;spec=null;
+      view.setMyTeam(myTeam);chatLog=[];lobby=null;spec=null;
       audio.resume();audio.play("join",{mine:true});}
     else if(m.t==="lobby"){   // a sala enchendo: contagem em MS, porque no lobby não há snapshot para sincronizar o tick
       lobby={filled:m.filled,cap:m.cap,humans:m.humans,startsInMs:m.startsInMs,waitMs:m.waitMs,at:performance.now()};
@@ -166,6 +182,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       pushHud(performance.now());   // na hora: o HUD roda a 8 Hz e a tela do lobby ficaria até 125 ms por cima da partida já em curso
       if(phase==="live"){audio.play("matchStart",{mine:true});chatSys("A partida começou!");}}
     else if(m.t==="chat"){pushChat(m);}
+    else if(m.t==="talk"){view.setTalking(m.slot,!!m.on);}   // push-to-talk de outro: acende/apaga o ícone no planeta dele
     else if(m.t==="roundEnd"){roundOver=true;input.setHold(false);
       const venci=m.champion&&m.champion.slot===view.mySlot;
       if(venci)celebrate();                                   // ganhei: o planeta comemora
@@ -213,7 +230,6 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   function onVoice(m){
     const eu=modeId!==MODE.FREE&&myTeam>=0&&teamMate(m.slot);
     audio.playVoice(m.data,m.codec,{x:m.x,y:m.y,cam,mine:eu});
-    talking.set(m.slot,performance.now()+m.durMs);
     const pl=view.players.get(m.slot);
     if(pl)chatSys(`🎤 ${pl.name}`);}
   const teamMate=slot=>{const a=view.players.get(slot);return !!(a&&myTeam>=0&&a.team===myTeam);};
@@ -262,12 +278,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(room)go(shardOf(room));
       else fetch("/api/config",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(c=>go(c&&c.shard!=null?c.shard:0)).catch(()=>go(0));},
     leave(silent){if(conn){const c=conn;conn=null;c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];talking.clear();phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
+      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();minimap.show(false);
       if(was&&!silent)hudStore.set({...initialHud()});},
-    setPrefs(p){curPrefs={...curPrefs,...(p||{})};applyQuality();audio.setPrefs(curPrefs);minimap.show(joined&&curPrefs.showMinimap!==false);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
+    setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);minimap.show(joined&&curPrefs.showMinimap!==false);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
     resize(){if(!renderer)return;renderer.resize();if(conn&&conn.isOpen&&joined){const v=viewSize();if(v.w!==game._vw||v.h!==game._vh){game._vw=v.w;game._vh=v.h;conn.sendJson({t:"view",w:v.w,h:v.h});}}},
-    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__planet;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;game.leave(true);audio.suspend();removeEventListener("pointerdown",wakeAudio);removeEventListener("keydown",wakeAudio);keyboard.destroy();touch.destroy();actions.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
+    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__planet;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();game.leave(true);audio.suspend();removeEventListener("pointerdown",wakeAudio);removeEventListener("keydown",wakeAudio);keyboard.destroy();touch.destroy();actions.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("planet:theme",onThemeEvent);if(themeGuard)removeEventListener("planet:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,
@@ -279,8 +295,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // O custo de frame é dominado pelas camadas que cobrem a tela toda (grade e fundo) — por isso cada nível
   // corta resolução E camadas: 1 desliga grade, parallax e trilhas (res .8); 2 ainda tira props (res .6).
   const ECON_RES=[0,.8,.6];
+  // `auto` no DEDO começa em 1, não em 0: sem isto todo celular renderizava a res=min(2,DPR)=2 por pelo menos
+  // 1 s (o tempo de o econCheck reagir) — a pior tela justamente na entrada. O econCheck sobe sozinho para 0
+  // depois de 2 s acima de 55 fps, então quem tem aparelho bom não perde nitidez, só demora 2 s a ganhá-la.
+  const noDedo=()=>typeof matchMedia!=="undefined"&&matchMedia("(pointer: coarse)").matches;
   function applyQuality(){if(!renderer)return;const q=curPrefs.quality||"auto";
-    if(q==="low")setEcon(2);else if(q==="high")setEcon(0);else if(!econLevel)setEcon(0);}
+    if(q==="low")setEcon(2);else if(q==="high")setEcon(0);else if(!econLevel)setEcon(noDedo()?1:0);}
   function setEcon(lv){econLevel=lv;econ=lv>0;if(!renderer)return;renderer.setEcon(lv);
     renderer.setResolution(lv?ECON_RES[lv]:Math.min(2,devicePixelRatio||1));}
   // Decide pelo tempo REAL entre frames (o custo de CPU medido não enxerga o trabalho da GPU: um jogo a 20 fps
@@ -440,9 +460,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
    */
   function enviarInput(now){
     if(!ready||!joined||!conn||dead)return;
-    let w=null;
-    if(pointer&&pointer.state.active)w=cam.toWorld(pointer.state.sx,pointer.state.sy);
-    else if(own0.length){let x=0,y=0;for(const p of own0){x+=p.rx;y+=p.ry;}w=alvo;w.x=x/own0.length;w.y=y/own0.length;}   // sem ponteiro ainda: fica parado
+    let w=null,cx=0,cy=0;
+    if(own0.length){for(const p of own0){cx+=p.rx;cy+=p.ry;}cx/=own0.length;cy/=own0.length;}
+    if(joy&&joy.enabled&&joy.state.on&&own0.length){const t=joy.target(cx,cy);w=alvo;w.x=t.x;w.y=t.y;}   // analógico: direção do polegar, distância = velocidade
+    else if(joy&&joy.enabled)   { if(own0.length){w=alvo;w.x=cx;w.y=cy;} }                                // analógico solto = parado (é o ponto do analógico)
+    else if(pointer&&pointer.state.active)w=cam.toWorld(pointer.state.sx,pointer.state.sy);
+    else if(own0.length){w=alvo;w.x=cx;w.y=cy;}   // sem ponteiro ainda: fica parado
     if(w){input.setTarget(w.x,w.y);predictor.setTarget(w.x,w.y);}   // o alvo é marcado mesmo com o socket caído (a predição local continua)
     if(conn.isOpen)input.update(now);}
   function frame(now){raf=requestAnimationFrame(frame);if(!ready)return;
@@ -460,6 +483,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(!own.length&&specSlot>=0){const sp=view.pieces.filter(p=>p.owner===specSlot);if(sp.length)camPieces=sp;}
     cam.update(camPieces,dt,joined);   // na sala sem peças (morto/BIG CRUNCH) a câmera congela: é o que o AOI do servidor continua mandando
     aim=null;   // reta de mira: da 1ª peça própria (a que dispara no servidor) até o ponteiro, com o anel no alvo travado
+    if(joy&&joy.enabled&&joy.state.aim&&pointer){pointer.state.sx=joy.state.aimX;pointer.state.sy=joy.state.aimY;pointer.state.active=true;}   // metade direita mira sem virar o planeta
     if(aiming&&joined&&!dead&&own.length&&pointer&&pointer.state.active){const src=own[0],p=cam.toWorld(pointer.state.sx,pointer.state.sy);
       const dx=p.x-src.rx,dy=p.y-src.ry,l=Math.hypot(dx,dy)||1,len=Math.min(AIM_LEN,Math.max(src.rr*2.5,l));
       aim={x0:src.rx+dx/l*src.rr,y0:src.ry+dy/l*src.rr,x1:src.rx+dx/l*len,y1:src.ry+dy/l*len,lock:lockOn(src,p.x,p.y)};}
@@ -468,7 +492,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const t1=performance.now();
     const zc=zoneNow(interp.renderTick);
     const zoneDraw=zc?{x:zc.x,y:zc.y,r:zc.r,tx:zone.x1,ty:zone.y1,tr:zone.r1}:null;
-    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,zone:zoneDraw,talking,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
+    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,zone:zoneDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
       showNames:curPrefs.showNames!==false,showTrails:!curPrefs.reduceMotion&&!econ});
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU
     if(joined){minimap.update(now,zoneDraw);if(now-lastHud>=125){lastHud=now;pushHud(now);}

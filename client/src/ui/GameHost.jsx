@@ -18,9 +18,12 @@ export default function GameHost() {
     const game = createGame({ container: ref.current, hud: document.getElementById("hud"), prefs: app.get().session.prefs, theme: currentTheme(), onDead, onRewards, onRoundEnd, onConnection });
     setGame(game);
     if (import.meta.env.DEV) window.__game = game;
-    const onResize = () => game.resize();
+    // debounce pelo mesmo motivo do ResizeObserver em game/index.js: `resize` reenvia `{t:"view"}` e
+    // arrastar a borda da janela estourava o balde de JSON do servidor, derrubando a conexão com RATE
+    let t = 0;
+    const onResize = () => { clearTimeout(t); t = setTimeout(() => game.resize(), 150); };
     addEventListener("resize", onResize); addEventListener("orientationchange", onResize);
-    return () => { removeEventListener("resize", onResize); removeEventListener("orientationchange", onResize); if (getGame() === game) setGame(null); game.destroy(); };
+    return () => { clearTimeout(t); removeEventListener("resize", onResize); removeEventListener("orientationchange", onResize); if (getGame() === game) setGame(null); game.destroy(); };
   }, []);
 
   useEffect(() => {

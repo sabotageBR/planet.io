@@ -16,6 +16,7 @@ JSON:
   - `mode`: `MODE.FREE` (0, padrão) ou `MODE.BR` (1). Id desconhecido cai no Livre — cliente antigo nunca muda de jogo.
   - `party`: código do lobby de equipe; todos os membros caem na MESMA sala e na MESMA equipe (`Room._teamFor`).
 - `{"t":"chat","text":"…"}` — o ESCOPO é do servidor (sala no Livre e no Battle Royale solo; equipe em equipe).
+- `{"t":"talk","on":true|false}` — o push-to-talk ABRIU ou FECHOU. Chega no instante do Ctrl, muito antes do clipe (que só sai quando a tecla é solta): é o que faz o ícone de alto-falante em cima do planeta acompanhar quem está falando de verdade, em vez de acender junto com o áudio. O servidor valida (vivo, `VOICE.TALK_CD_MS` entre avisos), acende `PLAYER_FLAG.TALK` no PLAYERS e repassa `{"t":"talk","slot","on"}` para **os mesmos ouvintes do clipe** (equipe, ou os `VOICE.LISTENERS` mais próximos dentro de `VOICE.DIST`) — quem não ouviria o áudio não vê o ícone. Vai em JSON porque são dois bits de estado: o fio binário não precisa de versão nova. O `on` tem teto de `VOICE.MAX_MS` no servidor, então um `off` perdido apaga sozinho.
 - `{"t":"spectate","dir":1|-1}` ou `{"t":"spectate","slot":7}` — só de quem já morreu: troca a câmera. `dir` anda na lista de VIVOS por massa (a mesma do placar); alvo morto/inexistente cai na escolha automática do servidor, em vez de deixar a câmera num fantasma.
 - `{"t":"resume","sessionId":"uuid","resumeToken":"hex","view":{"w","h"}}`
 - `{"t":"view","w":…,"h":…}` (resize)
@@ -36,6 +37,7 @@ JSON:
 - `{"t":"lobby","code":"1ABC","mode":1,"teamSize":1,"filled":37,"cap":50,"humans":2,"startsInMs":0,"waitMs":11500}` (2 Hz) — a sala ENCHENDO. Vai em **milissegundos**, não em ticks: no lobby não há snapshot nenhum, então o relógio de tick do cliente nunca sincronizaria e uma contagem em ticks ficaria parada. `startsInMs > 0` = a contagem regressiva já começou; `waitMs` é o que resta da janela de espera.
 - `{"t":"phase","phase":"live","round":{…},"players":12,"cap":50,"teamSize":2,"mode":1}` — a LARGADA: a sala completou, sorteou as equipes, fez todo mundo nascer num anel e armou a zona.
 - `{"t":"chat","slot":3,"name":"Evandro","team":2|null,"text":"…","at":1699999999}` — já filtrado pelo escopo do modo.
+- `{"t":"talk","slot":3,"on":true}` — resposta do `talk` acima: quem está com o microfone aberto agora.
   - `round`: tick de início e duração da rodada (1 h). O cliente deriva daí o **relógio do espaço** (a rodada = `ROUND.DAYS` dias, começando em `dayStart` → um dia a cada 15 min, 12 trocas de céu) e a contagem para o fim do mundo — nada mais vai no fio.
 - `{"t":"roundEnd","code":"1ABC","reason":"time"|"lastAlive","mode":0,"teamSize":1,"champion":{…},"champTeam":null,"board":[{"slot","name","mass","score","kills","isBot","registered","skinId","team","placement"}],"nextInMs":15000,"tick":216000}` — o BIG CRUNCH: campeão = maior planeta vivo (1ª linha do placar); a sala é aposentada e o cliente entra numa nova depois de `nextInMs`.
 - `{"t":"error","code":"VERSION"|"FULL"|"AUTH"|"NICK_RESERVED"|"RATE"|"ROOM","message":"pt-BR","suggestion":"Nick_4821"?}` → o servidor fecha o socket (código 4400+).

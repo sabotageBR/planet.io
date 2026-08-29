@@ -10,12 +10,12 @@ import {Room} from './Room.js';
 import {newCode,normalizeCode,shardOf} from './codes.js';
 import {fetchPeerRooms} from '../http/peers.js';
 /** @param {{config:any,hooks:any,log:any,metrics:any,scheduler:any}} o */
-export function createRoomManager({config,hooks,log,metrics,scheduler}){
+export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=null}){
   /** @type {Map<string,Room>} */const rooms=new Map();
   const onRewards=(sessionId,rewards)=>{const s=findSession(sessionId);if(s)s.deliverRewards(rewards);};
   function start(room){if(room.running)return;room.start();scheduler.add(room);}
   function stop(room){room.stop();scheduler.remove(room);}
-  function create(code,{mode=MODE.FREE,teamSize=1}={}){const room=new Room({code,shard:config.shard,seed:randomInt(1,0x7fffffff),hooks,log,metrics,config,onRewards,mode,teamSize});
+  function create(code,{mode=MODE.FREE,teamSize=1}={}){const room=new Room({code,shard:config.shard,seed:randomInt(1,0x7fffffff),hooks,log,metrics,config,onRewards,mode,teamSize,botChat});
     rooms.set(code,room);start(room);
     log.info(`sala criada: ${code} ${modeOf(mode).key}${teamSize>1?`/${teamSize}`:''} (${rooms.size} sala(s))`);return room;}
   /**

@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"npm -w server run dev\" \"npm -w client run dev\"",
     "build": "npm -w client run build",
-    "test": "node --test \"shared/test/*.test.js\" && node --test --test-concurrency=1 \"server/test/*.test.js\"",
+    "test": "node --test \"shared/test/*.test.js\" && node --test \"client/test/*.test.js\" && node --test --test-concurrency=1 \"server/test/*.test.js\"",
     "start": "node --env-file-if-exists=.env server/src/index.js",
     "migrate": "node --env-file=.env server/src/db/migrate.js"
   },

@@ -17,6 +17,7 @@ export const LABELS = {
   aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ NO GÁS", zoneShrinking: "O GÁS ESTÁ AVANÇANDO",
   chatTitle: "CHAT", chatHint: "Enter para falar", chatTeam: "equipe", chatPlaceholder: "Mensagem…",
   talkHint: "Ctrl = falar", talkOn: "GRAVANDO", micDenied: "O navegador negou o microfone.", micUnsupported: "Este navegador não grava áudio.",
+  micCooldown: "Espere um instante para falar de novo.", micFail: "Não deu para abrir o microfone.",
   weapons: { missile: "Míssil", burst: "Rajada", cluster: "Cacho", nova: "Nova" },
   swapWeapon: "trocar arma", keySwap: "Q",
   deadByZone: "O GÁS TE ALCANÇOU", champTeam: "EQUIPE CAMPEÃ", lastAliveTitle: "ÚLTIMO PLANETA DE PÉ",

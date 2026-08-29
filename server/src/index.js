@@ -16,6 +16,8 @@ import {createMetrics} from './metrics.js';
 import {Scheduler} from './loop.js';
 import {createRoomManager} from './rooms/RoomManager.js';
 import {createWsServer} from './net/wsServer.js';
+import {createOllama} from './llm/ollama.js';
+import {createBotChat} from './rooms/botChat.js';
 import {createHttpHandler} from './http/api.js';
 /** @param {Partial<typeof baseConfig>} [overrides] */
 export async function startServer(overrides={}){
@@ -29,10 +31,20 @@ export async function startServer(overrides={}){
     persist=createPersistence({db,log,config:cfg});hooks=persist.hooks;
     if(cfg.role!=='game')persistApi=createApi({db,log,config:cfg,persist});
   }else log.warn('DATABASE_URL vazio: jogo sem persistência (rewards saved:false)');
-  // ── salas + laço ──
+  // ── fala dos bots pela LLM (opcional) ──
+  // O aquecimento NÃO é esperado: carregar o modelo leva ~27 s e o servidor não pode ficar de portas
+  // fechadas por causa disso. Até ele terminar, as salas usam o repertório fixo — que é o mesmo caminho
+  // de quando o Ollama não existe, então não há um segundo comportamento para manter.
   const game=cfg.role!=='api';
+  let botChat=null;
+  if(game&&cfg.botChatLlm&&cfg.ollamaUrl){
+    const llm=createOllama({url:cfg.ollamaUrl,model:cfg.ollamaModel,timeoutMs:cfg.ollamaTimeoutMs,log});
+    botChat=createBotChat({llm,log});
+    llm.warmup().catch(()=>{});}
+  else if(game&&cfg.ollamaUrl)log.info('BOT_CHAT_LLM desligado: a fala dos bots usa o repertório fixo');
+  // ── salas + laço ──
   const scheduler=game?new Scheduler({metrics,log}):null;
-  const rooms=game?createRoomManager({config:cfg,hooks,log,metrics,scheduler}):null;
+  const rooms=game?createRoomManager({config:cfg,hooks,log,metrics,scheduler,botChat}):null;
   const health=()=>({ok:true,shard:cfg.shard,role:cfg.role,rooms:rooms?rooms.rooms.size:0,players:rooms?rooms.playerCount():0,...metrics.snapshot(),
     ...(db?healthFields({db,persist}):{db:'none',queue:0}),protocol:PROTOCOL_VERSION});
   // ── http + ws ──

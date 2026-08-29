@@ -67,7 +67,8 @@ export function createSnapshotter(room){
     const n=fg.queryRect(rout.x0,rout.y0,rout.x1,rout.y1,fq);
     // TETO POR CONTAGEM (NET.AOI_FOOD_MAX), não só por área: quem já é conhecido é sempre mantido (sumir um
     // grão da tela é pior que ele nunca ter aparecido) e o corte cai no ANEL DE FORA. Por isso duas passadas:
-    // a 1ª cria o que está a menos de metade do raio da AOI, a 2ª preenche o resto até o teto — senão a
+    // a 1ª cria o que está a menos de metade do raio da AOI, a 2ª preenche o resto — as duas respeitam o
+    // teto, e a ordem é que dá a prioridade ao que está perto. Senão a
     // varredura da grade, que vem em ordem de célula, poderia gastar o teto no que está longe e deixar um
     // buraco de comida em volta do jogador.
     const perto=Math.min(rout.x1-rout.x0,rout.y1-rout.y0)*.25,p2=perto*perto;
@@ -75,7 +76,9 @@ export function createSnapshotter(room){
     for(let i=0;i<n;i++){const b=food[fq[i]];if(!b||b.dead)continue;
       if(known.has(b.id)){if(!rectHas(rout,b.x,b.y,b.r))continue;known.set(b.id,KIND.FOOD|tag);usados++;const m=masks.get(b.id);if(m)pushUpdate(b,KIND.FOOD,m,slot);}
       else if(rectHas(rin,b.x,b.y,b.r)){const dx=b.x-cx,dy=b.y-cy;
-        if(dx*dx+dy*dy<=p2){known.set(b.id,KIND.FOOD|tag);usados++;pushCreate(b,KIND.FOOD,slot,sim);}
+        // o disco "perto" tem PRIORIDADE no teto, mas não passa por cima dele: antes ele criava sem
+        // conferir e o teto ficava mole (dava para ver 301 grãos com o limite em 300)
+        if(dx*dx+dy*dy<=p2){if(usados<NET.AOI_FOOD_MAX){known.set(b.id,KIND.FOOD|tag);usados++;pushCreate(b,KIND.FOOD,slot,sim);}}
         else longe.push(b);}}
     for(let i=0;i<longe.length&&usados<NET.AOI_FOOD_MAX;i++){const b=longe[i];
       known.set(b.id,KIND.FOOD|tag);usados++;pushCreate(b,KIND.FOOD,slot,sim);}

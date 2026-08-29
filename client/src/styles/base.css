@@ -3,7 +3,10 @@
    que pode sobrescrever qualquer regra daqui. Variáveis --bg, --accent… vêm de
    client/src/theme/<id>/tokens.css. Portado de mockups/v2/src/base.css sem o
    #devbar e sem a moldura de "aparelho": aqui a viewport É o aparelho — o app
-   seta body[data-mode="portrait"|"landscape"] a partir de innerWidth/innerHeight.
+   seta body[data-mode] (desktop|tablet|landscape|portrait) e body[data-pointer]
+   (coarse|fine) a partir do viewport e de (pointer:coarse). O canvas#game do
+   mockup vira as duas linhas de #game do app na própria geração (o canvas do app
+   mora dentro de um <div id='game'>).
    Regenerar: node client/src/theme/port.js (também reescreve este arquivo). ── */
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden}
@@ -45,7 +48,15 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .cd .cd-fill{position:absolute;left:0;bottom:0;height:100%;width:calc(var(--p)*100%);z-index:-1}
 .cd span,.cd em{position:relative;font-style:normal;line-height:1.1}
 #touch{display:none;bottom:24px;right:16px;gap:12px;align-items:flex-end}
-body[data-mode="portrait"] #touch,body[data-mode="landscape"] #touch{display:flex}
+/* o dedo é que decide se há botão de toque, não o tamanho da tela: um tablet grande é operado com a mão e
+   uma janela de desktop estreita, não. (Os temas fazem #touch{display:flex} sem condição e vencem esta
+   regra por ordem de cascata — por isso o display fica com o seletor de ponteiro, que é mais específico.) */
+body[data-pointer="coarse"] #touch{display:flex}
+body[data-pointer="fine"] #touch{display:none}
+/* FILEIRA QUE VIRA TECLADO: com 5 botões (a troca de arma entrou depois) a fileira única ocupava a largura
+   toda do celular e passava POR CIMA do bloco de massa, no canto oposto. Quebrando em duas colunas o canto
+   inferior esquerdo fica livre — e o polegar alcança melhor um bloco 2×N do que uma fileira comprida. */
+body[data-mode="portrait"] #touch{flex-wrap:wrap;justify-content:flex-end;max-width:calc(2 * var(--tbtn,66px) + 8px)}
 .tbtn{width:64px;height:64px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;touch-action:none;user-select:none;-webkit-user-select:none}
 .tbtn span{font-size:10px;letter-spacing:1px}
 .tbtn b{font-size:12px}

@@ -245,3 +245,32 @@ de deixar a câmera olhando para um fantasma. Jogador vivo não vira espectador 
   (duplica o `_consume` e o `self`), e a tela de modos desabilita Battle Royale com `api.server === false`.
 - Filtro de palavrão, denúncia e moderação de servidor.
 - Lista de amigos persistida (hoje o convite é o código do lobby, que basta e funciona para convidado).
+
+## Fala dos bots pela LLM (Ollama)
+
+O repertório fixo (`BOT_CHAT`) continua sendo o CHÃO: é o que sai sem `OLLAMA_URL`, com o serviço fora do ar
+ou quando a resposta demora demais. O que a LLM acrescenta é o que uma lista não tem — reagir ao que foi
+DITO, responder a quem chama pelo nome e falar no idioma da conversa.
+
+- **Onde**: `server/src/llm/ollama.js` (cliente HTTP, sem dependência nova) e `server/src/rooms/botChat.js`
+  (prompt, limpeza, detecção de menção). Ligados por `OLLAMA_URL` / `OLLAMA_MODEL` / `BOT_CHAT_LLM`.
+- **Nunca bloqueia o tick**: `botChatTick` roda dentro do `step()` da sala e o Scheduler percorre todas as
+  salas do processo no mesmo laço de 60 Hz. A geração é disparada e esquecida; quem publica é o callback,
+  que revalida tudo (sala viva, fase, bot vivo, socket aberto) e DESCARTA o que passou de `BOT_LLM.STALE_MS`.
+- **Dois orçamentos**. Espontâneo (comentar um evento): o de sempre, apertado — falar demais denuncia um bot
+  mais que qualquer movimento. Menção (alguém te chamou): bem mais folgado, porque ser chamado pelo nome e
+  ficar mudo é justamente o que não passa por gente. Sem citação nenhuma, só quem falou por último tem
+  direito a uma réplica, e raramente (`REPLY_P`).
+- **Menção aproximada** (`citou`): ninguém digita o apelido inteiro e certo no meio de uma partida. A
+  comparação é por PALAVRA, sobre a raiz do nick (`botNick` monta `base`, `base42`, `base_137`, `BASE`,
+  `xXbaseXx`), aceitando sufixo de diminutivo, apelido cortado e 1–2 letras de diferença. O pecado grave é o
+  FALSO positivo — responder a quem não chamou é exatamente poluir o chat —, então há uma lista de palavras
+  comuns e uma varredura em `server/test/botchat.test.js` que mede a taxa contra os nomes e as frases reais
+  do jogo.
+- **Idioma**: o system prompt é em inglês (a instrução é seguida com muito mais fidelidade assim) e a
+  mensagem dirigida ao bot vai REPETIDA no fim do prompt, sozinha, com a ordem de idioma colada nela.
+  Enterrada no histórico ela perdia: numa sala falando português, um "hey X, you are trash" voltava em
+  português.
+- **Modelo residente**: carregar custa ~27 s, responder custa ~0,5 s. Daí `keep_alive`, o `warmup()` no boot
+  e o disjuntor REAQUECER enquanto está aberto — o motivo mais comum de estourar o prazo não é o serviço
+  estar fora, é o modelo ter saído da memória.

@@ -106,6 +106,25 @@ export function paintGlow(c,size,color,{core=.26,k=.40}={}){
   gr.addColorStop(.78,`rgba(${r},${g},${b},${k*.02})`);
   gr.addColorStop(1,`rgba(${r},${g},${b},0)`);
   c.fillStyle=gr;c.beginPath();c.arc(0,0,R,0,6.283);c.fill();}
+/**
+ * Alto-falante de "está falando" (push-to-talk), assado uma vez por tema e desenhado em cima do planeta.
+ * Não dá para usar 🎤: a fonte bitmap dos nomes tem charset fixo (Planets.js) e o emoji não está nele —
+ * e um `Text` por peça seria um draw call solto. Aqui é um sprite de atlas como qualquer outro.
+ * O ctx chega transladado ao centro, como em todo painter do cache.
+ */
+export function paintTalk(c,size,{fill="#fff",stroke="#000"}={}){
+  const u=size/2/1.15;                       // 1.15 = folga para o contorno não encostar na borda do canvas
+  c.lineWidth=u*.17;c.strokeStyle=stroke;c.fillStyle=fill;c.lineJoin="round";c.lineCap="round";
+  // corpo do alto-falante: caixinha + cone, num traço só
+  c.beginPath();
+  c.moveTo(-u*.62,-u*.24);c.lineTo(-u*.30,-u*.24);c.lineTo(-u*.02,-u*.62);
+  c.lineTo(-u*.02,u*.62);c.lineTo(-u*.30,u*.24);c.lineTo(-u*.62,u*.24);
+  c.closePath();c.stroke();c.fill();
+  // duas ondas saindo dele (a de fora mais fina: dá a leitura de "som" mesmo com 14 px na tela)
+  c.beginPath();c.arc(u*.06,0,u*.34,-1.0,1.0);c.stroke();
+  c.lineWidth=u*.13;
+  c.beginPath();c.arc(u*.06,0,u*.62,-.95,.95);c.stroke();}
+
 // A queda é RÁPIDA de propósito. Com um halo largo e opaco (a primeira tentativa: k .85 e meia-queda em .62)
 // o aditivo satura para branco e a tela vira névoa leitosa — some o contraste que faz enxergar a comida. Aqui
 // o brilho é uma auréola justa em volta do disco: dá o "neon" dos .io modernos e a bolinha continua nítida.

@@ -16,6 +16,7 @@ import { MODE, weaponOf } from "@planet/shared";
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, clock: null,
   mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, talk: null, chat: [], lobby: null };
 const WEAPON_ICON = ["🚀", "✳️", "💥", "🌟"];   // mesma ordem de WEAPONS (o id indexa direto)
+const TALK_MSG = { cd: "micCooldown", denied: "micDenied", unsupported: "micUnsupported", audio: "micFail", fail: "micFail" };   // motivo → chave da label
 /** Anel do push-to-talk: o arco encolhe com o tempo que sobra do clipe. */
 function TalkRing({ k }) {
   const R = 22, C = 2 * Math.PI * R, resta = Math.max(0, 1 - k);
@@ -56,6 +57,9 @@ export default function Hud() {
   const br = h.mode === MODE.BR, noLobby = !!h.lobby;
   const arma = weaponOf(h.weapon || 0), armaIco = WEAPON_ICON[h.weapon | 0] || WEAPON_ICON[0];
   const falando = h.talk && h.talk.on;
+  // Por que o Ctrl "não fez nada": cooldown, permissão negada, navegador sem captura. O mic guardava esse
+  // motivo desde sempre e NINGUÉM o lia — segurar a tecla nos 3 s seguintes a uma fala parecia bug.
+  const talkAviso = h.talk && !h.talk.on ? h.talk.hint : null;
   // cinto: as armas com munição (bit 0 = míssil, sempre presente). Com mais de uma, o chip vira botão de troca.
   const cinto = WEAPON_ICON.map((_, i) => i).filter(i => ((h.owned | 1) >> i) & 1);
   const podeTrocar = cinto.length > 1;
@@ -72,13 +76,11 @@ export default function Hud() {
         <span className="lb-name">{r.talking ? <i className="talk-dot">🎤</i> : null}{r.name}{r.isBot ? <> <i className="bot">{LB.botTag}</i></> : null}{r.registered ? <> <i className="reg">{LB.regTag}</i></> : null}</span>
         <b className="lb-val">{fmt(r.mass)}</b></div>)}
     </div></div>
-    <div className="panel" id="hud-score">
-      <div className="score-big"><span id="v-mass">{fmt(h.mass)}</span></div>
-      <div className="score-sub">{LB.massLabel}</div>
-      <div className="score-row"><span className="k">{LB.scoreLabel}</span> <b id="v-score">{fmt(h.score)}</b></div>
-      <div className="score-row"><span className="k">{LB.youLabel}</span> <b id="v-name">{user.nick || ""}</b></div>
-      <div className="score-row"><span className="k">{LB.coinIcon}</span> <b id="v-coins">{fmt(coins)}</b></div>
-    </div>
+    {/* Coluna esquerda: no DESKTOP este div é `display:contents` e some da conta (cada bloco fica exatamente
+        onde o tema o coloca). No DEDO ele vira uma pilha flex — porque #hud-status CRESCE com os powerups
+        ativos, e qualquer `bottom` fixo para o chat voltava a colidir assim que um ímã entrava. */}
+    <div id="hud-left">
+    <Chat h={h} />
     <div id="hud-status">
       <button className={"chip belt" + (armed ? "" : " empty") + (podeTrocar ? " swap" : "")} id="hud-ammo"
         title={podeTrocar ? `${LB.swapWeapon} (${LB.keySwap})` : undefined} {...press("swap")}>
@@ -89,13 +91,21 @@ export default function Hud() {
         ? <span key={k} className={"pw pw-shield lv-" + v} style={LV && LV[v - 1] ? { background: LV[v - 1].color } : undefined}><i>{PW_ICON.shield}</i>{LB.powerups.shield} <b>{LB.shieldLevel} {v} {"★".repeat(v)}</b></span>
         : <span key={k} className={"pw pw-" + k}><i>{PW_ICON[k] || "✦"}</i>{LB.powerups[k] || k} <b>{Math.ceil(v)}s</b></span>)}</div>
     </div>
+    <div className="panel" id="hud-score">
+      <div className="score-big"><span id="v-mass">{fmt(h.mass)}</span></div>
+      <div className="score-sub">{LB.massLabel}</div>
+      <div className="score-row"><span className="k">{LB.scoreLabel}</span> <b id="v-score">{fmt(h.score)}</b></div>
+      <div className="score-row"><span className="k">{LB.youLabel}</span> <b id="v-name">{user.nick || ""}</b></div>
+      <div className="score-row"><span className="k">{LB.coinIcon}</span> <b id="v-coins">{fmt(coins)}</b></div>
+    </div>
+    </div>
     {br && !noLobby ? <div id="hud-mode" className={h.zoneHurt ? "hurt" : ""}>
       <span className="chip alive"><i>💀</i> <b>{h.alive || 0}</b> <span>{LB.aliveLeft}</span></span>
       {h.zoneHurt ? <span className="chip zone-out">{LB.zoneOut}</span> : null}
     </div> : null}
     <BrLobby lobby={h.lobby} />
-    {falando ? <div id="talk"><TalkRing k={h.talk.k} /><span>{LB.talkOn}</span></div> : null}
-    <Chat h={h} />
+    {falando ? <div id="talk"><TalkRing k={h.talk.k} /><span>{LB.talkOn}</span></div>
+      : talkAviso ? <div id="talk" className="hint"><span>{LB[TALK_MSG[talkAviso]] || LB.talkHint}</span></div> : null}
     <div id="hud-cd">
       <div className={"cd" + (splitReady ? " ready" : "")} id="cd-split" style={{ "--p": (1 - (h.splitCd || 0)).toFixed(2) }}><i className="cd-fill"></i><span>{LB.split}</span><em>{LB.keySplit}</em></div>
       <div className={"cd" + (ejectReady ? " ready" : "")} id="cd-eject" style={{ "--p": (1 - (h.ejectCd || 0)).toFixed(2) }}><i className="cd-fill"></i><span>{LB.eject}</span><em>{LB.keyEject}</em></div>
@@ -104,7 +114,7 @@ export default function Hud() {
       <button className={"tbtn" + (splitReady ? "" : " cd")} id="t-split" {...press("split")}><span>{LB.split}</span></button>
       <button className={"tbtn" + (ejectReady ? "" : " cd")} id="t-eject" {...press("eject")}><span>{LB.eject}</span></button>
       <button className={"tbtn" + (armed ? "" : " empty") + (fireCd ? " cd" : "")} id="t-fire" {...press("fire")}><span>{LB.fire}</span><b id="t-ammo">{ammo}</b>{fireCd ? <em className="fire-cd">{fireCd}</em> : null}</button>
-      <button className={"tbtn talk" + (falando ? " on" : "")} id="t-talk" {...press("talk")}><span>🎤</span></button>
+      <button className={"tbtn talk" + (falando ? " on" : "") + (talkAviso === "cd" ? " cd" : "")} id="t-talk" {...press("talk")}><span>🎤</span></button>
       {podeTrocar ? <button className="tbtn swap" id="t-swap" {...press("swap")}><span>{armaIco}</span><em>⇄</em></button> : null}
     </div>
   </div>;

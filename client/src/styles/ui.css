@@ -144,7 +144,9 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 #t-talk.on{background:var(--danger,#ff3d5a)}
 
 /* mobile: o chat vira uma faixa curta no alto e o painel de modo encolhe */
-body[data-mode="portrait"] #chat,body[data-mode="landscape"] #chat{left:8px;top:auto;bottom:96px;width:min(220px,44vw);max-height:20vh}
+/* o chat empilha ACIMA do bloco de arma/powerups: em 96px ele cobria o #hud-status nos três celulares
+   testados (96×52 px de sobreposição). 150px passa da altura do status e ainda deixa o placar livre. */
+body[data-mode="portrait"] #chat,body[data-mode="landscape"] #chat{left:8px;top:auto;bottom:150px;width:min(220px,44vw);max-height:18vh}
 body[data-mode="portrait"] #hud-mode{bottom:118px}
 body[data-mode="portrait"] #talk,body[data-mode="landscape"] #talk{bottom:190px}
 body[data-mode="portrait"] .modes{grid-template-columns:1fr}
@@ -207,3 +209,192 @@ body[data-mode="portrait"] .brl-count b{font-size:2.2em}
 #hud-ammo .belt-ico{opacity:.4;font-size:.85em;line-height:1}
 #hud-ammo .belt-ico.on{opacity:1;transform:scale(1.15)}
 #touch .tbtn.swap em{position:absolute;right:6px;bottom:4px;font-style:normal;font-size:.7em;opacity:.7}
+
+/* ── FIM DE RODADA (#s-round) ───────────────────────────────────────────────────────────────────
+   Esta tela nasceu depois dos mockups e NUNCA teve uma regra de CSS: herdava `.screen{overflow:hidden}` do
+   tema e um `.dead-card` sem max-height. Pódio + título + estatísticas + a tabela do resto do placar (até 47
+   linhas) + dois botões num bloco cortado na altura da tela e SEM rolagem — os botões "Entrar agora" e
+   "Lobby" ficavam inalcançáveis em qualquer celular. Aqui a TELA rola, então o fim sempre chega ao fim.
+   (O tema mira `#s-dead .dead-card`, nunca `#s-round`, então não há disputa de cascata.) */
+#s-round.on{display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:16px;-webkit-overflow-scrolling:touch}
+#s-round .dead-card{width:min(560px,100%);height:auto;max-height:none;overflow:visible;margin:auto}
+#s-round .rank-table,#s-round table{max-height:none}
+#s-round .dead-actions{position:sticky;bottom:0;padding-top:8px}   /* os botões acompanham a rolagem: são a saída da tela */
+
+/* ── #hud: contexto de posicionamento, ÁREA SEGURA e cliques que atravessam ─────────────────────
+   Não existia NENHUMA regra para #hud: era um div de altura zero e os filhos absolutos ancoravam no #app
+   por acidente. Dando a ele `inset:0` + padding, o padding vira o contêiner dos filhos absolutos — então
+   `top:12px` passa a significar "12 px depois do notch" em TODOS os blocos de uma vez. O index.html declara
+   viewport-fit=cover desde sempre e não havia um único env(safe-area-inset-*) no projeto: em iPhone com
+   ilha o HUD ficava por baixo dela, e o rodapé por baixo da barra de home.
+   pointer-events:none porque os painéis (placar, massa, arma) engoliam o ponteiro: passar o mouse por cima
+   de um deles CONGELAVA o alvo do jogador, já que o Pointer só escuta no canvas. Só o que é controle volta
+   a receber clique. */
+#hud{position:absolute;inset:0;pointer-events:none;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+#hud button,#hud input,#hud select,#hud a,#hud #touch,#hud #chat,#hud #br-lobby,#hud [role="button"]{pointer-events:auto}
+
+/* COLUNA ESQUERDA DO HUD (chat · arma/powerups · massa). No desktop o wrapper não existe para o layout
+   (`display:contents`), então cada bloco continua exatamente onde o tema o põe. No dedo ele vira uma PILHA:
+   é a única forma de o chat nunca cobrir o bloco de arma, que muda de altura conforme os powerups ativos —
+   com offset fixo a colisão voltava sozinha assim que um ímã entrava. */
+#hud-left{display:contents}
+/* `display:contents` some com a CAIXA, mas o seletor `#hud>*` de base.css deixa de casar com os netos —
+   sem esta linha os três blocos viram estáticos e desabam no canto superior esquerdo. */
+#hud>#hud-left>*{position:absolute;z-index:5}
+body[data-pointer="coarse"] #hud-left{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;
+  gap:8px;left:12px;right:auto;top:auto;bottom:12px;max-width:min(62vw,280px);pointer-events:none}
+body[data-pointer="coarse"] #hud>#hud-left>*{position:static;left:auto;right:auto;top:auto;bottom:auto;transform:none;pointer-events:auto}
+
+/* ── TOQUE: só vale onde o ponteiro é o DEDO (body[data-pointer="coarse"]) ──────────────────────
+   Os mínimos usam min-width/min-height de propósito: este arquivo é importado ANTES dos temas em
+   all.css, então uma regra de `width` perderia a cascata para eles — `min-*` prende o valor final
+   sem precisar de !important nem de brigar por especificidade.
+   44 px é o mínimo de alvo tátil; hoje há controles de 18 px (.chat-open), 34 (.spec-arrow) e 38
+   (.btn-mini.back) que no dedo simplesmente não são acertáveis. */
+body[data-pointer="coarse"] button,
+body[data-pointer="coarse"] .btn-mini,
+body[data-pointer="coarse"] .chip-btn,
+body[data-pointer="coarse"] .nav-btn,
+body[data-pointer="coarse"] .seg button,
+body[data-pointer="coarse"] input,
+body[data-pointer="coarse"] select,
+body[data-pointer="coarse"] .tab{min-height:44px}
+body[data-pointer="coarse"] .btn-mini.back,
+body[data-pointer="coarse"] .dead-spec .spec-arrow,
+body[data-pointer="coarse"] #chat .chat-open{min-width:44px;min-height:44px}
+/* o toggle é um trilho, não um botão: o alvo cresce por padding, senão vira uma barra gorda */
+body[data-pointer="coarse"] .pref-row{min-height:44px}
+/* alvo tátil tem DUAS dimensões: no iPad o campo do código de equipe (maxLength 4) fica com 27 px de LARGURA
+   e passava batido por só ter altura. A segunda regra existe porque `.mode-card .code-row input` (linha 81)
+   fixa `min-width:0` com especificidade maior — sem casar essa especificidade, a primeira regra é ignorada
+   justamente no campo que motivou tudo isto. 88 px é o que cabe os 4 caracteres com o letter-spacing. */
+body[data-pointer="coarse"] input{min-width:44px}
+body[data-pointer="coarse"] .mode-card .code-row input{min-width:88px}
+/* long-press no dedo: sem isto o iOS abre o callout de seleção em cima dos chips do HUD, e o Android
+   pinta o retângulo cinza de tap. O canvas já se protege (touch-action:none em base.css), o HUD não. */
+body[data-pointer="coarse"]{-webkit-tap-highlight-color:transparent}
+body[data-pointer="coarse"] #hud,
+body[data-pointer="coarse"] #hud *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+body[data-pointer="coarse"] #hud button{touch-action:manipulation}
+/* o gesto de puxar-para-atualizar do navegador não pode disparar durante a partida */
+html,body{overscroll-behavior:none}
+
+/* ── ANALÓGICO VIRTUAL (#joy) ───────────────────────────────────────────────────────────────────
+   A base nasce onde o polegar encosta (por isso left/top vêm do JS) e o miolo segue o dedo até o raio.
+   Fica DENTRO do #hud para herdar a área segura e o pointer-events:none — quem escuta o toque é o canvas,
+   em fase de captura, então este desenho é só desenho. */
+#joy{position:absolute;width:112px;height:112px;margin:-56px 0 0 -56px;border-radius:50%;z-index:4;
+  border:3px solid var(--line,#0006);background:color-mix(in srgb,var(--surface,#fff) 26%,transparent);
+  pointer-events:none;opacity:.55;transition:opacity .12s}
+#joy>i{position:absolute;left:50%;top:50%;width:52px;height:52px;border-radius:50%;
+  border:3px solid var(--line,#0006);background:var(--accent,#ffc22e);opacity:.85}
+body[data-reduce="1"] #joy>i{transition:none}
+
+/* ── VOZ: por que o Ctrl não fez nada (cooldown, permissão negada, navegador sem captura) ──
+   O mic guardava esse motivo desde sempre e ninguém o lia: segurar a tecla nos 3 s seguintes a uma fala
+   simplesmente não acontecia nada, e parecia bug. Sai no mesmo canto do anel, em tom de aviso. */
+#talk.hint{max-width:min(56vw,340px)}
+#talk.hint span{color:var(--muted,#9aa3c0);letter-spacing:.02em;font-weight:normal;font-size:.72em;
+  text-align:right;line-height:1.25;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+#t-talk.cd{opacity:.45}
+
+/* ══ CASCA DA TELA: menu centralizado na 1ª carga · gaveta à direita depois de jogar ═════════════
+   body[data-shell] vem do App.jsx ("center" enquanto a aba não jogou nenhuma partida, "rail" depois).
+
+   O ponto da gaveta é a CÂMERA CONTINUAR VISÍVEL ao lado do menu, não atrás dele: `--rail-w` encolhe o
+   #game pela largura exata do painel. Isso só funciona porque o `inset:0` INLINE que o game/index.js
+   escrevia no container foi removido — estilo inline ganha de qualquer folha, e era ele que prendia o
+   canvas na viewport inteira.
+   Encolher o #game basta: o Pixi é criado com `resizeTo:container`, o ResizeObserver do jogo redispara
+   `resize()` (com debounce) e daí saem sozinhos o zoom da câmera, a AOI e o `{t:"view"}` do servidor.
+
+   Fora do rail `--rail-w` é 0px, então tudo aqui é inerte — inclusive durante a partida, onde a tela
+   é do jogo e de mais ninguém. */
+body{--drawer-w:min(480px,100%);--rail-w:0px}
+/* celular EM PÉ nunca vira gaveta: lá o certo é a folha subindo do rodapé, que é o que os temas já fazem */
+body[data-shell="rail"]:not([data-screen="game"]):not([data-mode="portrait"]){
+  --drawer-w:min(480px,46vw);   /* a câmera fica sempre com MAIS da metade: o jogo é o assunto, o menu é o aparte */
+  --rail-w:var(--drawer-w)}
+body[data-shell="rail"][data-mode="landscape"]:not([data-screen="game"]){--drawer-w:min(400px,52vw)}
+
+#game{left:0;top:0;bottom:0;right:var(--rail-w,0px)}
+/* o #hud é o ancoradouro dos blocos (todos absolutos): sem encolher junto, HUD e radar continuariam
+   ancorados na viewport inteira, atrás da gaveta. O resto do #hud está na regra dele, mais acima. */
+#hud{right:var(--rail-w,0px)}
+
+/* ── a gaveta: todas as telas, os três temas ── */
+body[data-shell="rail"]:not([data-mode="portrait"]) .screen .wrap,
+body[data-shell="rail"]:not([data-mode="portrait"]) #s-dead .dead-card,
+body[data-shell="rail"]:not([data-mode="portrait"]) #s-round .dead-card,
+body[data-shell="rail"]:not([data-mode="portrait"]) #s-entry .entry-wrap{
+  position:absolute;left:auto;right:0;top:0;bottom:0;transform:none;
+  width:var(--drawer-w);height:100%;max-height:none;overflow:auto;overscroll-behavior:contain;
+  border-radius:24px 0 0 24px;border:5px solid var(--line,#0006);border-right:0;
+  background:var(--surface,#1a2350);box-shadow:-10px 0 40px rgba(0,0,0,.45);
+  display:flex;flex-direction:column;gap:12px;align-items:stretch;
+  /* `safe center` centraliza SEM cortar por cima quando o conteúdo é mais alto que a gaveta —
+     com `center` puro o topo sai da área rolável e vira inalcançável */
+  justify-content:safe center;
+  padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px)) 22px}
+/* sem véu por cima do mundo: o ponto da gaveta é ver a sala continuando ao lado */
+body[data-shell="rail"]:not([data-mode="portrait"]) .screen{background:transparent}
+
+/* o entry na gaveta: o que era arte de tela cheia (título com 8vh de respiro, botões redondos colados na
+   borda direita, coluna lateral de ranking) empilha numa coluna só e passa a rolar */
+body[data-shell="rail"]:not([data-mode="portrait"]) .brand-block{padding-top:0;flex:0 0 auto}
+body[data-shell="rail"]:not([data-mode="portrait"]) .entry-links{
+  position:static;transform:none;right:auto;top:auto;order:0;width:100%;
+  flex-direction:row;flex-wrap:wrap;justify-content:center;gap:10px}
+body[data-shell="rail"]:not([data-mode="portrait"]) .entry-main,
+body[data-shell="rail"]:not([data-mode="portrait"]) .entry-side{width:100%;max-width:none;flex:0 0 auto}
+
+/* ── tela inicial CENTRALIZADA (1ª carga) ──
+   Os temas deixam o entry em `justify-content:flex-start` + `8vh` de topo e `overflow:hidden`: não é
+   centralizado, e em tela baixa o botão JOGAR fica abaixo do corte, sem rolagem que o alcance. */
+body[data-shell="center"] #s-entry .entry-wrap{
+  /* `top:0;bottom:0` é o que faz o centro existir: os temas deixam `bottom:auto`, então a caixa tinha a
+     altura do CONTEÚDO e centralizar dentro dela não movia nada — a tela abria com tudo colado no topo e
+     metade do céu vazia embaixo. */
+  top:0;bottom:0;height:100%;max-height:none;
+  justify-content:safe center;   /* flex-column (temas) */
+  align-content:safe center;     /* grid de coluna única (base.css) */
+  overflow:auto;overscroll-behavior:contain;
+  padding:16px 0 calc(16px + env(safe-area-inset-bottom,0px))}
+body[data-shell="center"] .brand-block{padding-top:0}
+/* e em tela baixa o que não cabe tem que ROLAR: com `overflow:hidden` o botão JOGAR some sem volta */
+body[data-mode="portrait"] #s-entry .entry-wrap,
+body[data-mode="landscape"] #s-entry .entry-wrap{overflow:auto;overscroll-behavior:contain}
+
+/* ── FIM DE RODADA: o card não tinha UMA linha de CSS em lugar nenhum ──
+   Todo tema posiciona `#s-dead .dead-card`, e nenhum posiciona `#s-round` — o pódio do BIG CRUNCH caía em
+   fluxo estático no canto superior esquerdo e o placar e os botões ficavam cortados por um `.screen` com
+   `overflow:hidden` que não rola. Aqui ele ganha o mesmo tratamento da tela de morte. */
+body:not([data-shell="rail"]) #s-round .dead-card,
+body[data-mode="portrait"] #s-round .dead-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(440px,92vw);max-height:min(88%,88dvh);overflow:auto;overscroll-behavior:contain;
+  padding:20px 20px calc(22px + env(safe-area-inset-bottom,0px))}
+
+/* ── MODAIS SEMPRE NO MEIO ──
+   O "às vezes aparece certinho, às vezes bem embaixo" é o RELÓGIO: o tema é escolhido pela hora
+   (dawn 05–16, sunset 16–20, dusk 20–05) e só o dusk transforma todo modal em folha colada no rodapé.
+   O mesmo modal mudava de lugar conforme a hora do dia. Fora do celular em pé, agora é centro nos três. */
+body:not([data-mode="portrait"]) .card.modal{position:absolute;left:50%;right:auto;top:50%;bottom:auto;
+  transform:translate(-50%,-50%);height:auto;max-height:min(88%,88dvh);overflow:auto;
+  border-radius:var(--radius,16px)}
+/* o balão de reconexão vinha em top:45% de propósito nos três temas, e com a cauda pendurada embaixo
+   lia como deslocado para cima. Centro é centro. */
+body:not([data-mode="portrait"]) .card.modal.reconn{top:50%}
+
+/* ── TABLET: o modo é novo (useViewportMode) e não tinha NENHUMA regra — herda o desktop ── */
+body[data-mode="tablet"] .modes{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+
+/* ── ÁREA SEGURA DAS FOLHAS: o #hud já respeita o recorte, as TELAS não. No celular em pé elas são folhas
+   presas em bottom:0 e ficavam por baixo do indicador de home. ── */
+body[data-mode="portrait"] .screen .wrap,
+body[data-mode="portrait"] .card.modal,
+body[data-mode="portrait"] #s-dead .dead-card,
+body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}
+/* `100%` em html/body é o `vh` de sempre: no Safari móvel ele conta a barra que está recolhida, e a folha
+   escorrega para fora da tela conforme a barra aparece. `dvh` é a altura que existe AGORA. */
+@supports (height:100dvh){html,body{height:100dvh}}

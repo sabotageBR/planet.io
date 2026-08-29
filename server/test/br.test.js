@@ -258,6 +258,34 @@ test('sem respawn: bot morto no Battle Royale fica morto (no Livre ele volta)',a
   c.close();
 });
 
+test('câmera do morto: no Livre ela PARA onde ele morreu; no Battle Royale segue o espectador',async()=>{
+  // Livre não tem placar de sobreviventes nem fim de partida para acompanhar: passear atrás da tela de
+  // morte desorienta, e a sala continua rodando à esquerda da gaveta do menu. Battle Royale é o oposto —
+  // quem morreu quer ver quem o matou e como a partida termina.
+  const livre=new C(wsUrl);await livre.open();
+  const rl=await livre.join({nick:'MorreLivre',room:newRoom()});
+  const salaL=roomOf(rl.code);
+  salaL.sim.kill(rl.slot,{cause:'eaten'});
+  const spL=await livre.until(()=>livre.of('spectate'),4000,'spectate do Livre');
+  assert.equal(spL.slot,-1,'no Livre o servidor NÃO escolhe alvo: a AOI congela na última posição');
+  const sessL=[...salaL.sessions.values()].find(s=>s.slot===rl.slot);
+  assert.equal(sessL.specSlot,-1);
+  // e as setas continuam funcionando para quem QUISER seguir alguém
+  livre.send({t:'spectate',dir:1});
+  const sp2=await livre.until(()=>livre.all('spectate').find(x=>x.slot>=0),4000,'troca manual no Livre');
+  assert.ok(sp2.slot>=0,'a seta ‹ › ainda leva a um jogador vivo');
+  livre.close();
+
+  const br=new C(wsUrl);await br.open();
+  const rb=await br.join({nick:'MorreBR',mode:MODE.BR,teamSize:1,room:newRoom()});
+  const salaB=roomOf(rb.code);salaB.lobbyUntil=salaB.sim.tick+60;salaB.lobbyStart=salaB.sim.tick;
+  await br.until(()=>br.all('phase').find(p=>p.phase==='live'),8000,'largada');
+  salaB.sim.kill(rb.slot,{cause:'eaten'});
+  const spB=await br.until(()=>br.of('spectate'),4000,'spectate do BR');
+  assert.ok(spB.slot>=0,'no Battle Royale o espectador continua escolhendo alguém sozinho');
+  br.close();
+});
+
 test('espectador: o morto troca de câmera, e alvo inválido cai na escolha automática',async()=>{
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Morto',mode:MODE.BR,teamSize:1,room:newRoom()});
@@ -320,42 +348,38 @@ test('AOI: a comida tem TETO por contagem, não só por área (é ela que enche 
 test('fala dos bots: sai pelo caminho do chat e o orçamento segura o coro',async()=>{
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Ouve',mode:MODE.BR,teamSize:1,room:newRoom()});
-  const sala=roomOf(r.code);sala.lobbyUntil=sala.sim.tick+60;sala.lobbyStart=sala.sim.tick;   // encurta a janela, como os testes de largada
+  const room=roomOf(r.code);room.lobbyUntil=room.sim.tick+60;room.lobbyStart=room.sim.tick;
   await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'largada');
-  const room=sala,bot=[...room.sim.players.values()].find(g=>g.isBot);
+  const bot=[...room.sim.players.values()].find(g=>g.isBot);
   assert.ok(bot,'a sala tem preenchimento');
   const frases=new Set(Object.values(BOT_CHAT).flat());
-  // a fala é sorteada: insisto até sair uma, zerando só o cooldown DA SALA a cada tentativa
-  let saiu=null;
-  for(let i=0;i<200&&!saiu;i++){
-    room.botTalkAt=-1e9;bot.talked=0;bot.talkedAt=-1e9;
-    room.sim.botTalk.length=0;room.sim._talk(bot.slot,'kill');
-    room.botChatTick();
-    saiu=await c.until(()=>c.all('chat').find(m=>m.slot===bot.slot),40,'fala').catch(()=>null);}
-  assert.ok(saiu,'nenhum preenchimento falou em 200 gatilhos');
-  assert.ok(frases.has(saiu.text)||saiu.text.length<=16,'a fala vem do repertório (ou é ela com erro de digitação)');
-  assert.equal(saiu.name,bot.name,'a fala usa o nome de jogador do preenchimento, não "bot"');
-  // orçamento: gatilho novo no mesmo instante não vira segunda linha
-  const n=c.all('chat').length;
-  room.sim._talk(bot.slot,'kill');room.botChatTick();
-  await sleep(120);
-  assert.equal(c.all('chat').length,n,'duas falas na mesma janela: a sala viraria coro');
-  assert.equal(room.sim.botTalk.length,0,'a fila é do INSTANTE — guardar gatilho gera comentário atrasado');
-  // teto por partida
-  bot.talked=BOT_TALK.MAX_PER_MATCH;room.botTalkAt=-1e9;
-  room.sim._talk(bot.slot,'kill');room.botChatTick();
-  await sleep(120);
-  assert.equal(c.all('chat').length,n,'passou do teto de falas da partida');
-  // frase repetida denuncia MAIS que o silêncio: numa partida de produção saiu "boa ai" três vezes
-  const antes=c.all('chat').length;
-  for(let i=0;i<40;i++){
-    room.botTalkAt=-1e9;bot.talked=0;bot.talkedAt=-1e9;
-    room.sim.botTalk.length=0;room.sim._talk(bot.slot,'morte');room.botChatTick();}
-  await sleep(200);
-  const ditas=c.all('chat').slice(antes).map(m=>m.text);
-  for(let i=1;i<ditas.length;i++){
-    const janela=ditas.slice(Math.max(0,i-BOT_TALK.NO_REPEAT),i);
-    assert.ok(!janela.includes(ditas[i]),`"${ditas[i]}" repetida dentro de ${BOT_TALK.NO_REPEAT} falas`);}
+  // O ORÇAMENTO é conferido no SERVIDOR, que é determinístico: contar mensagem chegando pelo socket faz o
+  // teste depender de quando o WS entrega, e foi assim que ele ficou intermitente.
+  const gatilho=()=>{room.sim.botTalk.length=0;room.sim._talk(bot.slot,'kill');room.botChatTick();};
+  // 1) cooldown DA SALA: `room.ditas` cresce exatamente uma vez por fala emitida, então ele é o contador
+  room.botTalkAt=-1e9;bot.talked=0;bot.talkedAt=-1e9;room.ditas.length=0;
+  for(let i=0;i<40;i++)gatilho();
+  assert.ok(room.ditas.length<=1,`${room.ditas.length} falas na mesma janela — a sala viraria coro`);
+  assert.equal(room.sim.botTalk.length,0,'a fila é do INSTANTE: guardar gatilho gera comentário atrasado');
+  // 2) teto por partida
+  room.ditas.length=0;bot.talked=BOT_TALK.MAX_PER_MATCH;room.botTalkAt=-1e9;
+  gatilho();
+  assert.equal(room.ditas.length,0,'passou do teto de falas da partida');
+  // 3) sem repetir dentro da janela de memória da sala (duas falas seguidas nunca podem ser iguais)
+  room.ditas.length=0;const ditas=[];
+  for(let i=0;i<40;i++){room.botTalkAt=-1e9;bot.talked=0;bot.talkedAt=-1e9;gatilho();
+    const u=room.ditas[room.ditas.length-1];
+    if(u!==undefined&&u!==ditas[ditas.length-1])ditas.push(u);}
+  assert.ok(ditas.length>=4,`só ${ditas.length} falas em 40 gatilhos — o sorteio não está saindo`);
+  for(let i=1;i<ditas.length;i++)
+    assert.ok(!ditas.slice(Math.max(0,i-BOT_TALK.NO_REPEAT),i).includes(ditas[i]),`"${ditas[i]}" repetida dentro de ${BOT_TALK.NO_REPEAT} falas`);
+  for(const t of ditas)assert.ok(frases.has(t)||t.length<=16,`fala fora do repertório: "${t}"`);
+  // 4) e, ponta a ponta, a linha CHEGA no cliente com o nome de jogador do preenchimento
+  const n0=c.all('chat').length;
+  room.botTalkAt=-1e9;bot.talked=0;bot.talkedAt=-1e9;
+  for(let i=0;i<40&&c.all('chat').length===n0;i++){room.botTalkAt=-1e9;bot.talked=0;gatilho();await sleep(20);}
+  const m=await c.until(()=>c.all('chat').find(x=>x.slot===bot.slot),6000,'fala no cliente');
+  assert.equal(m.name,bot.name,'a fala usa o nome de jogador do preenchimento, não "bot"');
   c.close();
 });
 test('chat: no Livre a sala inteira ouve; em equipe só o companheiro',async()=>{
@@ -432,6 +456,67 @@ test('voz: tamanho, duração e intervalo são recusados sem derrubar a conexão
   manda(1000,800);await sleep(200);assert.equal(b.voices.length,1,'o segundo, dentro do cooldown, não');
   assert.equal(a.ws.readyState,1,'e nada disso derruba a conexão');
   a.close();b.close();
+});
+test('voz: o aviso de push-to-talk acende e apaga no INSTANTE, e vai só para quem ouviria o clipe',async()=>{
+  const a=new C(wsUrl),b=new C(wsUrl),c=new C(wsUrl);await a.open();await b.open();await c.open();
+  const ra=await a.join({nick:'Fala',room:newRoom()});
+  await b.join({nick:'Perto',room:ra.code});await c.join({nick:'Longe',room:ra.code});
+  const room=roomOf(ra.code);
+  const sA=[...room.sessions.values()].find(s=>s.slot===ra.slot);
+  // no Livre quem ouve é quem está PERTO: 'Perto' cola a câmera na de quem fala, 'Longe' fica fora do alcance
+  const w=room.sim.world;for(const ps of w.players.values())if(!ps.isBot)for(const pc of ps.pieces){pc.x=4800;pc.y=4800;}
+  for(const s of room.sessions.values())s.cx=s.cy=(s.slot===c.slot?4800+VOICE.DIST*3:4800);
+  const n=b.json.length;
+  a.send({t:'talk',on:true});
+  const on=await b.until(()=>b.of('talk',n),3000,'aviso de microfone aberto');
+  assert.equal(on.slot,ra.slot);assert.equal(on.on,true,'o ícone acende sem esperar o áudio (o clipe só sai ao soltar o Ctrl)');
+  await b.until(()=>b.players.find(x=>x.slot===ra.slot&&(x.flags&PLAYER_FLAG.TALK)),3000,'flag TALK no placar');
+  await sleep(200);
+  assert.ok(!c.json.some(m=>m.t==='talk'),'quem não ouviria o clipe também não vê o ícone');
+  const n2=b.json.length;
+  sA.talkAt=0;                                    // o TALK_CD_MS é anti-flood, não faz parte do que se testa aqui
+  a.send({t:'talk',on:false});
+  const off=await b.until(()=>b.of('talk',n2),3000,'aviso de microfone fechado');
+  assert.equal(off.on,false,'soltar o Ctrl apaga o ícone');
+  const apagou=await b.until(()=>b.players.find(x=>x.slot===ra.slot&&!(x.flags&PLAYER_FLAG.TALK))?b.players:null,4000,'flag TALK apagada');
+  assert.ok(apagou,'a flag TALK não pode ficar PRESA: sem a varredura de expiração ela acendia e nunca mais saía');
+  a.close();b.close();c.close();
+});
+test('fala gerada: o bot responde a quem o CHAMA, e o orçamento segura o resto',async()=>{
+  const {citou}=await import('../src/rooms/botChat.js');
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Humano',room:newRoom()});
+  const room=roomOf(r.code);
+  const bot=[...room.sim.players.values()].find(g=>g.isBot);
+  assert.ok(bot,'a sala do Livre já nasce com preenchimentos');
+  const eu=room.sim.players.get(r.slot).name;   // o nick é do TOKEN, não do que o cliente pediu
+  // LLM de mentira: o que se testa aqui é o CAMINHO (quem responde, quando e quantas vezes), não o modelo
+  const pedidos=[];
+  room.botChat={ativo:()=>true,citou,gerar:async ctx=>{pedidos.push(ctx);return`eu ouvi, ${ctx.quem}`;}};
+  const chance=room.rng.chance.bind(room.rng);room.rng.chance=()=>true;   // MENTION_P é 0,92: o teste não pode depender do sorteio
+  try{
+    let n=c.json.length;
+    c.send({t:'chat',text:`${bot.name} vem ca seu covarde`});
+    const resp=await c.until(()=>c.json.slice(n).find(m=>m.t==='chat'&&m.slot===bot.slot),5000,'resposta do bot citado');
+    assert.equal(resp.name,bot.name,'quem responde é o bot chamado, com o nome de jogador dele');
+    assert.equal(resp.text,`eu ouvi, ${eu}`);
+    assert.equal(pedidos.length,1);
+    assert.equal(pedidos[0].nome,bot.name);
+    assert.equal(pedidos[0].quem,eu,'o prompt sabe COM QUEM está falando');
+    assert.ok(pedidos[0].historico.some(l=>l.text.includes('vem ca')),'e leva a conversa junto — o servidor não guardava uma linha antes disto');
+    // orçamento da sala: chamar de novo no mesmo instante não vira coro
+    n=c.json.length;
+    c.send({t:'chat',text:`${bot.name} responde de novo`});
+    await sleep(400);
+    assert.equal(c.json.slice(n).filter(m=>m.t==='chat'&&m.slot===bot.slot).length,0,'duas respostas na mesma janela: o chat vira dois bots conversando sozinhos');
+    // e sem citação nenhuma ninguém se dá por chamado
+    room.mencaoAt=-1e9;room.ultimoBot=null;
+    n=c.json.length;const antes=pedidos.length;
+    c.send({t:'chat',text:'boa sorte pra todo mundo ai'});
+    await sleep(400);
+    assert.equal(pedidos.length,antes,'mensagem que não cita ninguém não acorda bot nenhum');
+  }finally{room.rng.chance=chance;room.botChat=null;}
+  c.close();
 });
 
 // ── 7. /api/auto e /api/rooms por modo ───────────────────────────────────────

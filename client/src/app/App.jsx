@@ -26,8 +26,13 @@ export default function App() {
   useViewportMode();
   const hoverRef = React.useRef(null);
   const screen = useStore(app, s => s.screen), overlays = useStore(app, s => s.overlays), online = useStore(app, s => s.session.online);
+  const played = useStore(app, s => s.played);
   useEffect(() => { if (!booted) { booted = true; boot(); } }, []);
   useEffect(() => { document.body.dataset.screen = screen; }, [screen]);
+  // "center" = primeira carga do navegador: o menu fica centralizado, com o céu inteiro atrás.
+  // "rail"   = já jogou (morreu ou o mundo acabou): o menu vira gaveta à direita e a CÂMERA ENCOLHE
+  //            para a esquerda, em vez de ficar escondida atrás dela. Quem faz a conta é ui.css.
+  useEffect(() => { document.body.dataset.shell = played ? "rail" : "center"; }, [played]);
   useEffect(() => { document.body.dataset.online = online == null ? "" : online ? "1" : "0"; }, [online]);
   useEffect(() => {
     const onKey = e => { if (e.code === "Escape" && escape()) e.preventDefault(); };

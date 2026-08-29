@@ -64,13 +64,19 @@ export async function boot() {
 }
 /** ?screen=<id> (entry|account|lobby|rank|profile|shop|prefs|game|dead|round|reconn) — atalho de desenvolvimento. */
 function devQuery() {
-  const s = Q.get("screen"); if (!s) return;
+  const s = Q.get("screen"); if (s) mostrarTela(s);
+  // A matriz de responsividade (scripts/responsive-check.mjs) precisa passar por `dead` e `round`, que não
+  // têm botão de navegação nenhum — e recarregar a página com ?screen= a cada uma das ~400 combinações
+  // levaria minutos. Em DEV, o mesmo atalho fica pendurado no window.
+  if (import.meta.env.DEV) window.__tela = mostrarTela;
+}
+function mostrarTela(s) {
   if (s === "account") { go("entry"); openAccount(); }
   else if (s === "game") play({});
   else if (s === "reconn") { play({}); setTimeout(() => setReconn(true, 2), 400); }
   else if (s === "dead" || s === "round") {
     if (!import.meta.env.DEV) return;
-    app.update({ room: "1ABC", lastMatch: { by: "Nebulox", byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, room: "1ABC", at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
+    app.update({ room: "1ABC", played: true, lastMatch: { by: "Nebulox", byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, room: "1ABC", at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
     if (s === "round") app.update({ room: "1ABC", roundResult: { code: "1ABC", mySlot: 3, at: Date.now(), nextInMs: 15000,
       champion: { slot: 1, name: "Vortexia", mass: 12400, isBot: true },
       board: [{ slot: 1, name: "Vortexia", mass: 12400, isBot: true, skinId: 30 }, { slot: 3, name: "Você", mass: 8200, skinId: 18 }, { slot: 5, name: "Drakonis", mass: 3100, isBot: true, skinId: 34 },
@@ -184,7 +190,7 @@ export async function play({ room, mode, teamSize, party } = {}) {
   const pt = party !== undefined ? party : (st.party ? st.party.code : null);
   let code = room ? String(room).toUpperCase() : null;
   if (!code) { try { const a = await api.auto({ mode: md, teamSize: ts }); if (a && a.code) code = a.code; } catch (e) { if (!isUnreachable(e)) toast(e.message, 2500); } }
-  app.update(s => ({ ...s, screen: "game", rewards: null, rewardsPending: false, overlays: { account: false, reconn: false }, conn: "connecting",
+  app.update(s => ({ ...s, screen: "game", played: true, rewards: null, rewardsPending: false, overlays: { account: false, reconn: false }, conn: "connecting",
     gameMode: md, teamSize: ts,
     pendingJoin: { room: code, mode: md, teamSize: ts, party: pt, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
 }

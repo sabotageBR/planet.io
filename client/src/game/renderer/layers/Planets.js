@@ -8,6 +8,7 @@
 import {Container,Sprite,Graphics,BitmapText,BitmapFont,Cache,MeshPlane} from "pixi.js";
 import {PIECE_FLAG,mergeTicks,rectHas} from "@planet/shared";
 import {colorOf,dashPolyline,seedUnit} from "../../util.js";
+import {paintTalk} from "../../../theme/util.js";
 
 const FS=48,CHARS=[[" ","~"],["¡","ÿ"],["Ā","ž"],"✓◆✦•–—…"],TRAIL_MAX=12,TRAIL_MIN_V=72,POP_MS=280,POP_AMP=.22;
 // ── BLOB (borda de gelatina, estilo agar.io) ──
@@ -18,9 +19,14 @@ const FS=48,CHARS=[[" ","~"],["¡","ÿ"],["Ā","ž"],"✓◆✦•–—…"],TR
 // Cada malha é um draw call próprio (o sprite entrava num batch), então só as maiores da tela viram blob:
 // WOB_MAX por frame, acima de WOB_MIN_PX na tela, e nada disso no modo econômico ou com "menos movimento".
 const WOB_N=9,WOB_MIN_PX=15,WOB_MAX=16,WOB_AMP=.018,WOB_LOBES=[3,5],WOB_SPD=[1.7,2.6],SQUASH_K=.06,SQUASH_V=360;
+// ── "ESTÁ FALANDO" (push-to-talk) ──
+// Sprite de tamanho CONSTANTE EM TELA (dividido por cam.scale, como a seta de ameaça em layers/Threat.js):
+// é um aviso de interface, não um objeto do mundo — encolher com o zoom o tornaria invisível justo no
+// planetão. Só na MAIOR peça do dono: com 16 pedaços, 16 ícones viram confete.
+const TALK_TEX=96,TALK_PX=26,TALK_GAP=.34;
 export function createPlanets(R){
   const root=new Container();root.sortableChildren=true;const trails=new Graphics();
-  const views=new Map(),trailMap=new Map(),seg=[],counts=new Map(),pops=new Map();let frame=0,fontName="",lastTrailTick=-1;
+  const views=new Map(),trailMap=new Map(),seg=[],counts=new Map(),maior=new Map(),pops=new Map();let frame=0,fontName="",lastTrailTick=-1;
   function setTheme(){const th=R.theme,L=th.hud.labels;fontName=`pn-${th.id}`;
     const sw=L.strokeWidth(FS);
     // fonte fica instalada por tema (nome inclui o id): desinstalar quebra BitmapTexts de outra instância (StrictMode)
@@ -33,7 +39,12 @@ export function createPlanets(R){
   function mkView(id){const c=new Container(),body=new Sprite();body.anchor.set(.5);const gfx=new Graphics();
     const name=new BitmapText({text:"",style:{fontFamily:fontName,fontSize:FS}});name.anchor.set(.5);
     c.addChild(body,gfx,name);root.addChild(c);
-    return{c,body,gfx,name,mesh:null,phase:seedUnit(id)*6.2832,lastName:null,f:0};}
+    return{c,body,gfx,name,talk:null,mesh:null,phase:seedUnit(id)*6.2832,lastName:null,f:0};}
+  /** Ícone de voz desta peça (criado só quando ela fala pela primeira vez). */
+  function talkOf(v,tex){let t=v.talk;
+    if(!t){t=new Sprite();t.anchor.set(.5);v.talk=t;v.c.addChild(t);}
+    if(t.texture!==tex)t.texture=tex;
+    return t;}
   /** Malha do blob desta peça (criada na primeira vez que ela fica grande o bastante). */
   function meshOf(v,tex){let m=v.mesh;
     if(!m){m=new MeshPlane({texture:tex,verticesX:WOB_N,verticesY:WOB_N});v.mesh=m;v.c.addChildAt(m,0);}
@@ -65,7 +76,9 @@ export function createPlanets(R){
     render(f){frame++;const th=R.theme,TX=th.textures,L=th.hud.labels,cell=th.hud.cell,view=f.view,rect=f.rect,rt=f.rt,t=f.t;
       const showNames=f.showNames,PK=TX.scale.planet;
       const cam=f.cam,wob=f.wobble!==false&&!R.econ;let blobs=0;
-      counts.clear();for(const e of view.pieces)counts.set(e.owner,(counts.get(e.owner)||0)+1);
+      counts.clear();maior.clear();
+      // view.pieces vem ordenado por raio CRESCENTE, então o último gravado por dono é a maior peça dele
+      for(const e of view.pieces){counts.set(e.owner,(counts.get(e.owner)||0)+1);maior.set(e.owner,e.id);}
       const trailTick=Math.floor(rt/2),trailStep=trailTick!==lastTrailTick;lastTrailTick=trailTick;
       let idx=0;
       for(const e of view.pieces){const isMe=!!e.isMe,pl=view.playerOf(e.owner),skin=pl?pl.skin:null;if(!skin)continue;
@@ -84,6 +97,12 @@ export function createPlanets(R){
         const lab=e.rr>L.minR&&showNames;v.name.visible=lab;
         if(lab){const fs=L.size(e.rr);const nm=pl.name+(pl.registered?" ✓":"");if(v.lastName!==nm){v.lastName=nm;v.name.text=nm;}
           v.name.scale.set(fs/FS);v.name.y=L.nameY(fs);}
+        // ícone de "está falando" (push-to-talk), acima do planeta
+        if(view.talkingNow(pl)&&maior.get(e.owner)===e.id){
+          const tex=R.cache.get(`talk|${th.id}`,TALK_TEX,(c,s2)=>paintTalk(c,s2,{fill:L.nameColor,stroke:L.stroke}));
+          const tk=talkOf(v,tex),px=TALK_PX/cam.scale;
+          tk.visible=true;tk.width=tk.height=px;tk.y=-(e.rr+px*(.5+TALK_GAP));}
+        else if(v.talk)v.talk.visible=false;
         // arco de merge + anéis de powerup
         const g=v.gfx;g.clear();let drew=false;const n=counts.get(e.owner)||1;
         if(n>1&&!(e.flags&PIECE_FLAG.MERGING)){const t0=e.firstTick!=null?e.firstTick:e.createdTick,prog=t0!=null?Math.min(1,Math.max(0,(rt-t0)/mergeTicks(e.rr))):1;
@@ -107,7 +126,7 @@ export function createPlanets(R){
         else{trails.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)trails.lineTo(pts[i].x,pts[i].y);}
         trails.stroke({width:w,color:col.c,alpha:col.a,cap:"round",join:"round"});}},
     count(){return views.size;},
-    destroy(){root.destroy({children:true});trails.destroy();views.clear();trailMap.clear();pops.clear();},
+    destroy(){root.destroy({children:true});trails.destroy();views.clear();trailMap.clear();maior.clear();pops.clear();},
   };}
 function dashArc(g,r,a0,dash){const on=dash[0],off=dash[1],circ=6.2832*r;let a=0;
   while(a<circ){const s=a0+a/r,e=a0+Math.min(circ,a+on)/r;g.moveTo(Math.cos(s)*r,Math.sin(s)*r);g.arc(0,0,r,s,e);a+=on+off;}}

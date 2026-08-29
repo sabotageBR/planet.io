@@ -352,12 +352,34 @@ export const BOT_CHAT={
   zona:["o gas","corre","to fora","vem pro meio","ta fechando","fui pego","sai dai","cuidado com o gas"],
   poucos:["quantos faltam","ta apertado","chegando la","aguenta","top 5","calma ai","gg","boa sorte ai"],
   equipe:["vem","to fraco","cuidado","atras de voce","me segue","toma massa","juntos","corre","espera","to indo"]};
-export const BOT_TALK={ROOM_CD_TICKS:420,BOT_CD_TICKS:2400,MAX_PER_MATCH:3,NO_REPEAT:6,TRIES:4,P:{start:.35,kill:.22,morte:.3,zona:.18,poucos:.3,equipe:.28},TYPO_P:.12,QUEUE_MAX:12};
+export const BOT_TALK={ROOM_CD_TICKS:420,BOT_CD_TICKS:2400,MAX_PER_MATCH:3,NO_REPEAT:6,P:{start:.35,kill:.22,morte:.3,zona:.18,poucos:.3,equipe:.28},TYPO_P:.12,QUEUE_MAX:12};
+// ── FALA GERADA (Ollama) ─────────────────────────────────────────────────────
+// O repertório acima continua sendo o CHÃO: é o que sai sem LLM configurada, com ela fora do ar ou quando a
+// resposta demora. O que a LLM acrescenta é o que uma lista fixa não tem — reagir ao que foi DITO, responder
+// a quem chama pelo nome (mesmo escrito errado) e falar no idioma da conversa.
+// Os orçamentos são DOIS. O espontâneo (comentar um evento) é o de sempre e continua apertado: falar demais
+// denuncia um bot muito mais que qualquer movimento. O de MENÇÃO é bem mais folgado — ser chamado pelo nome e
+// ficar mudo é justamente o que não passa por gente —, mas ainda tem cooldown por bot e teto por partida.
+export const BOT_LLM={
+  TIMEOUT_MS:2500,      // o que não chegou aqui não chega a tempo de ser resposta
+  STALE_MS:4000,        // e o que chega depois disto é comentário atrasado: vai fora (a fala é do INSTANTE)
+  MAX_INFLIGHT:2,       // gerações ao mesmo tempo por PROCESSO (todas as salas do shard somam aqui)
+  HIST:8,               // linhas de chat que entram no prompt
+  MAX_WORDS:14,MAX_CHARS:90,   // teto do que sai: acima disso vira parágrafo, e ninguém digita parágrafo em partida
+  TEMP:1.05,NUM_PREDICT:48,
+  MENTION_ROOM_CD_TICKS:150,   // 2,5 s: responder a quem chama é esperado, então a sala segura bem menos
+  MENTION_BOT_CD_TICKS:600,    // 10 s por bot
+  MENTION_P:.92,               // citado pelo nome, quase sempre responde
+  REPLY_P:.16,                 // sem citação, só quem falou por último tem direito de réplica — e raramente
+  MAX_MENTION_PER_MATCH:6,
+  KEEP_ALIVE:'30m',            // carregar o modelo custa ~27 s; descarregá-lo entre partidas seria fatal
+  FAILS_OPEN:4,BREAKER_MS:30000};   // N falhas seguidas → desiste por um tempo, em vez de pagar o timeout a cada gatilho
 // ROOM_CD_TICKS: 7 s entre duas falas QUAISQUER da sala — sem isso um abate múltiplo vira coro. BOT_CD_TICKS:
 // 40 s por bot. MAX_PER_MATCH: ninguém fala mais que 3 vezes na partida inteira. TYPO_P: de vez em quando
 // escapa uma letra dobrada ou trocada, que é como gente digita com pressa. NO_REPEAT: quantas frases
 // recentes a sala lembra para não repetir — ouvir "boa ai" três vezes na mesma partida denuncia mais
-// que o silêncio (aconteceu na primeira partida de produção).
+// que o silêncio (aconteceu na primeira partida de produção). O sorteio EXCLUI as recentes em vez de
+// tentar de novo: com tentativas, quatro sorteios seguidos podiam cair todos na mesma frase.
 /** Erra a digitação de um jeito plausível (letra dobrada ou trocada com a vizinha). @param {{next:()=>number,int:(a:number,b:number)=>number}} rng */
 export function botTypo(rng,txt){
   if(txt.length<3)return txt;
@@ -395,7 +417,10 @@ export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40};
 // de JSON que a sessão já tem (NET.RATE_JSON), porque aquele existe para proteger o servidor e este para
 // não deixar um jogador encher a tela dos outros. FADE_MS: a linha some sozinha — o painel não pode virar
 // uma parede permanente em cima do jogo.
-export const VOICE={MAX_MS:5000,MIN_MS:300,CD_MS:3000,RATE_HZ:8000,MAX_BYTES:44000,ROOM_CPS:4,LISTENERS:8,DIST:3200,PAN:1600};
+export const VOICE={MAX_MS:5000,MIN_MS:300,CD_MS:3000,TALK_CD_MS:250,RATE_HZ:8000,MAX_BYTES:44000,ROOM_CPS:4,LISTENERS:8,DIST:3200,PAN:1600};
+// TALK_CD_MS: intervalo mínimo entre dois avisos de "abri o microfone" (JSON `talk`, o que acende o ícone em
+// cima do planeta no INSTANTE do Ctrl). Não é o cooldown da FALA (CD_MS): é só o anti-flood de quem martela a
+// tecla — cada aviso vira um PLAYERS difundido para a sala inteira.
 // áudio curto de push-to-talk (Ctrl): o servidor é RELAY PURO — valida tamanho/duração/cooldown e reenvia
 // os bytes, sem decodificar e sem gravar nada. Equipe ouve sempre; no Livre ouvem os LISTENERS mais
 // próximos dentro de DIST, com volume e estéreo pela distância (o mesmo cálculo dos efeitos).

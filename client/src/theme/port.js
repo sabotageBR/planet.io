@@ -103,12 +103,20 @@ function portBase(){const src=read("base.css").split("\n"),out=[];let skip=null;
     if(skip==="devbar")continue;
     out.push(l);}
   let txt=out.join("\n").replace(/\n+$/,"")+"\n";
+  // No mockup o canvas É a raiz (`canvas#game`); no app ele vive DENTRO de um <div id="game">, que é quem
+  // recebe o inset e é observado pelo ResizeObserver. Isto era uma pegadinha documentada — "depois de rodar
+  // o port.js, conserte as duas linhas do #game à mão" —, e uma reescrita aqui elimina o passo manual.
+  txt=txt.replace(/^canvas#game\{[^}]*\}$/m,
+    "#game{position:absolute;inset:0;overflow:hidden;cursor:crosshair}\n#game canvas{display:block;width:100%;height:100%;touch-action:none}");
   txt=txt.replace(/^\/\* ── BASE v2 ──[\s\S]*?\*\//,`/* ── BASE v2 ── só estrutura/layout. Toda a aparência (cores, fontes, bordas,
    sombras, posições finais do HUD) vem do CSS do tema (client/src/theme/<id>/),
    que pode sobrescrever qualquer regra daqui. Variáveis --bg, --accent… vêm de
    client/src/theme/<id>/tokens.css. Portado de mockups/v2/src/base.css sem o
    #devbar e sem a moldura de "aparelho": aqui a viewport É o aparelho — o app
-   seta body[data-mode="portrait"|"landscape"] a partir de innerWidth/innerHeight.
+   seta body[data-mode] (desktop|tablet|landscape|portrait) e body[data-pointer]
+   (coarse|fine) a partir do viewport e de (pointer:coarse). O canvas#game do
+   mockup vira as duas linhas de #game do app na própria geração (o canvas do app
+   mora dentro de um <div id='game'>).
    Regenerar: node client/src/theme/port.js (também reescreve este arquivo). ── */`);
   const dst=path.join(HERE,"..","styles","base.css");fs.mkdirSync(path.dirname(dst),{recursive:true});fs.writeFileSync(dst,txt);
   console.log("ok  client/src/styles/base.css  "+out.length+" linhas");}

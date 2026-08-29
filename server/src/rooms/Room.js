@@ -8,7 +8,7 @@
 // cada encode devolve uma vista reutilizada; se um socket ficou com bytes pendentes trocamos de
 // writer (o antigo fica com o socket até drenar) em vez de copiar a cada envio.
 // @ts-check
-import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,BOT_CHAT,BOT_TALK,botTypo,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,VOICE} from '@planet/shared/constants.js';
+import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,BOT_CHAT,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,VOICE} from '@planet/shared/constants.js';
 import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent,encodeZone,encodeVoice} from '@planet/shared/protocol/index.js';
 import {rectHas} from '@planet/shared/camera.js';
 import {createRng} from '@planet/shared/rng.js';
@@ -19,7 +19,7 @@ import {createSnapshotter} from '../net/snapshot.js';
 const WRITER_SIZE=32768,BOT_SKINS=35;   // bots usam skins 0..34 (compráveis; nada de "earned"/secretas)
 export class Room{
   /** @param {{code:string,shard:number,seed:number,hooks:any,log:any,metrics:any,config:{roomMax:number,roomBots:number},onRewards?:Function}} o */
-  constructor({code,shard,seed,hooks,log,metrics,config,onRewards=null,mode=MODE.FREE,teamSize=1}){
+  constructor({code,shard,seed,hooks,log,metrics,config,onRewards=null,mode=MODE.FREE,teamSize=1,botChat=null}){
     this.code=code;this.shard=shard;this.seed=seed;this.rng=createRng(seed);this.log=log;this.metrics=metrics;
     this.mode=modeOf(mode);this.modeId=this.mode.id;
     this.teamSize=this.mode.teamSizes.includes(teamSize)?teamSize:this.mode.teamSizes[0];
@@ -41,10 +41,18 @@ export class Room{
     this.sim.world.peace=this.phase==='lobby';
     /** @type {Map<string,number>} código de party → equipe (para os amigos caírem juntos) */this.parties=new Map();
     this.roundStart=0;this.over=false;this.endedAt=0;this.endReason='time';this.champion=null;this.voiceAt=0;this.voiceN=0;this.botTalkAt=-1e9;/** @type {string[]} */this.ditas=[];
+    // fala gerada (Ollama): opcional em tudo — sem ela a sala volta ao repertório fixo de BOT_CHAT
+    this.botChat=botChat;this.mencaoAt=-1e9;this.ultimoBot=null;
+    /** @type {{name:string,text:string,team:number,bot:boolean}[]} últimas CHAT.KEEP linhas: é o que a LLM lê como conversa */
+    this.chatLog=[];
     this.writer=createWriter(WRITER_SIZE);this.snapshotter=createSnapshotter(this);this._botName=this.rng.int(0,BOT_NAMES.length-1);this.onRewards=onRewards;
     this.sim.on('death',info=>{const s=this.sessions.get(info.slot);if(!s)return;
       s.sendJson({t:'dead',by:info.by,byHole:info.byHole,byZone:info.byZone,score:info.score,maxMass:info.maxMass,kills:info.kills,durationS:info.durationS,placement:info.placement,players:info.players});
-      this.spectateTargetFor(s,info.bySlot);});   // a tela de morte mostra a sala continuando: assiste quem matou (ou o líder)
+      // Livre: a câmera fica PARADA onde o jogador morreu (`slot:-1` → a AOI congela na última posição) —
+      // ali a partida não tem fim nem placar para acompanhar, e sair passeando atrás da tela de morte
+      // desorienta. Battle Royale mantém o espectador: assiste quem te matou, ou o companheiro vivo.
+      // Nos dois casos as setas ‹ › (spectatePick) continuam funcionando para quem quiser seguir alguém.
+      this.spectateTargetFor(s,this.mode.lastAlive?info.bySlot:-2);});
     this.sim.on('rewards',({slot,sessionId,rewards})=>{const s=this.sessions.get(slot);
       if(s&&s.sessionId===sessionId)s.deliverRewards(rewards);else if(this.onRewards)this.onRewards(sessionId,rewards);});}
   // ── ciclo de vida ──
@@ -117,6 +125,11 @@ export class Room{
     const sim=this.sim,w=sim.world;
     const alive=sl=>{const ps=w.players.get(sl);return !!(ps&&ps.alive&&ps.pieces.some(p=>!p.dead));};
     let slot=prefer>=0&&alive(prefer)?prefer:-1;
+    // prefer === -2: "não escolha ninguém" (câmera parada onde estava). Diferente de -1, que quer dizer
+    // "não tenho preferência" e cai na busca automática logo abaixo.
+    if(prefer===-2){session.specSlot=-1;
+      session.sendJson({t:'spectate',slot:-1,name:null,vivos:sim.aliveCount()});   // sempre: é o que diz ao cliente que a câmera parou (e alimenta as setas da tela de morte)
+      return -1;}
     if(slot<0&&this.teamCount>0){const mim=sim.players.get(session.slot);   // em equipe, morrer é virar câmera do companheiro (não de quem me comeu)
       if(mim&&mim.team>=0)for(const gp of sim.players.values())if(gp.team===mim.team&&gp.slot!==session.slot&&alive(gp.slot)){slot=gp.slot;break;}}
     if(slot<0){const lb=sim.top(1);if(lb.length&&alive(lb[0].slot))slot=lb[0].slot;}
@@ -279,10 +292,15 @@ export class Room{
     if(session.chatAt.length>=CHAT.BURST)return false;   // rate limit PRÓPRIO, além do balde de JSON: aquele protege o servidor, este protege a tela dos outros
     session.chatAt.push(now);
     this._pushChat(gp,msg);
+    this._botResponde(gp,msg);
     return true;}
   /** Difusão de uma linha já validada, no escopo do modo. Caminho comum do humano e do preenchimento. */
   _pushChat(gp,msg){
     const out={t:'chat',slot:gp.slot,name:gp.name,team:gp.team<0?null:gp.team,text:msg,at:Date.now()};
+    // Até aqui o servidor era só um repetidor e não guardava uma linha. Sem histórico não há conversa para
+    // ler — e sem conversa a fala gerada não passa de outro repertório fixo, só que mais caro.
+    this.chatLog.push({name:gp.name,text:msg,team:gp.team,bot:!!gp.isBot});
+    if(this.chatLog.length>CHAT.KEEP)this.chatLog.shift();
     const escopo=this.mode.chat==='team'&&gp.team>=0?'team':'room';
     for(const s of this.sessions.values()){if(!s.ws)continue;
       if(escopo==='team'){const o=this.sim.players.get(s.slot);if(!o||o.team!==gp.team)continue;}
@@ -305,14 +323,80 @@ export class Room{
     const gp=sim.players.get(g.slot);if(!gp||!gp.isBot)return;
     if(gp.talked>=BOT_TALK.MAX_PER_MATCH||tick-(gp.talkedAt||-1e9)<BOT_TALK.BOT_CD_TICKS)return;
     if(!this.rng.chance(BOT_TALK.P[g.kind]||.15))return;
-    const equipe=this.mode.chat==='team'&&gp.team>=0;
-    const pool=BOT_CHAT[equipe&&this.rng.chance(.5)?'equipe':g.kind]||BOT_CHAT.kill;
-    let txt='';
-    for(let i=0;i<BOT_TALK.TRIES;i++){txt=pool[this.rng.int(0,pool.length-1)];if(!this.ditas.includes(txt))break;}
-    this.ditas.push(txt);if(this.ditas.length>BOT_TALK.NO_REPEAT)this.ditas.shift();
-    if(this.rng.chance(BOT_TALK.TYPO_P))txt=botTypo(this.rng,txt);
+    // O orçamento é gasto AQUI, antes de qualquer coisa assíncrona: se a reserva esperasse a resposta da
+    // LLM, dois gatilhos no mesmo tick passariam os dois pela porta e sairia o coro que tudo isto evita.
     gp.talked=(gp.talked|0)+1;gp.talkedAt=tick;this.botTalkAt=tick;
-    this._pushChat(gp,txt);}
+    this._falar(gp,g,()=>this._fraseFixa(gp,g.kind));}
+  /** Uma frase do repertório: o CHÃO da fala (sem LLM, com ela fora, ou quando a resposta não presta). */
+  _fraseFixa(gp,kind){
+    const equipe=this.mode.chat==='team'&&gp.team>=0;
+    const pool=BOT_CHAT[equipe&&this.rng.chance(.5)?'equipe':kind]||BOT_CHAT.kill;
+    // Sorteia entre as frases que a sala NÃO disse há pouco. Era por tentativas (sorteia, se repetiu tenta de
+    // novo) e escapava: quatro sorteios podiam cair todos no que acabou de sair. Filtrar antes é exato.
+    const livres=pool.filter(f=>!this.ditas.includes(f)),lista=livres.length?livres:pool;
+    const txt=lista[this.rng.int(0,lista.length-1)];
+    return this.rng.chance(BOT_TALK.TYPO_P)?botTypo(this.rng,txt):txt;}
+  /**
+   * Publica uma fala do bot `gp`, gerada pela LLM quando dá, e pelo repertório quando não dá.
+   * NADA aqui pode ser esperado: `botChatTick` roda dentro do `step()` da sala, e o Scheduler percorre
+   * TODAS as salas do processo no mesmo laço de 60 Hz — um `await` no caminho travaria o servidor inteiro.
+   * Por isso a geração é disparada e esquecida, e quem publica é o callback. Entre o pedido e a resposta a
+   * partida andou: a sala pode ter acabado, o bot pode ter morrido, o socket pode ter caído. Tudo é
+   * revalidado, e uma resposta que demorou demais é DESCARTADA — comentário atrasado é pior que silêncio.
+   */
+  _falar(gp,g,fallback){
+    const publica=txt=>{if(!txt)return;
+      this.ditas.push(txt);if(this.ditas.length>BOT_TALK.NO_REPEAT)this.ditas.shift();
+      this.ultimoBot=gp;this._pushChat(gp,txt);};
+    if(!this.botChat||!this.botChat.ativo()){publica(fallback());return;}
+    const nasceu=Date.now(),slot=gp.slot;
+    this.botChat.gerar(this._ctxFala(gp,g)).then(txt=>{
+      if(this.over||this.phase!=='live'||!this.sessions.size)return;
+      if(this.sim.players.get(slot)!==gp||gp.dead)return;
+      if(Date.now()-nasceu>BOT_LLM.STALE_MS)return;
+      publica(txt||fallback());
+    }).catch(e=>{if(this.log)this.log.debug(`fala do bot falhou: ${e&&e.message}`);});}
+  /** O que a LLM precisa saber para escrever uma linha: quem é o bot, o que aconteceu e o que o chat disse. */
+  _ctxFala(gp,g){
+    const sim=this.sim,equipe=this.mode.chat==='team'&&gp.team>=0;
+    // em equipe o chat é fechado: o bot não pode reagir ao que foi dito em outra equipe (nem soube dele)
+    const hist=this.chatLog.filter(l=>!equipe||l.team===gp.team).slice(-BOT_LLM.HIST);
+    return{nome:gp.name,
+      persona:gp.brain?gp.brain.p.id:null,pericia:gp.brain?gp.brain.s.id:null,
+      massa:Math.round(sim.world.massOf(gp.slot)||0),vivos:sim.aliveCount(),
+      modo:this.mode.lastAlive?'battle royale, last one standing':'free-for-all',
+      equipe,kind:g.kind,quem:g.quem||null,texto:g.texto||null,historico:hist};}
+  /**
+   * Alguém escreveu no chat. Um bot responde quando é CHAMADO — e ninguém digita o apelido inteiro e certo
+   * no meio de uma partida, então a comparação é por raiz, sufixo e distância (`botChat.citou`). Sem
+   * citação nenhuma, só quem acabou de falar tem direito a uma réplica, e raramente: o padrão continua
+   * sendo o silêncio, senão o chat vira dois bots conversando sozinhos por cima do jogo.
+   * Sem LLM não há resposta: o repertório fixo não sabe responder a nada, e responder fora de contexto é
+   * pior do que não responder.
+   */
+  _botResponde(autor,texto){
+    const bc=this.botChat;if(!bc||!bc.ativo()||this.phase!=='live'||this.over)return;
+    const sim=this.sim,tick=sim.tick;
+    if(tick-this.mencaoAt<BOT_LLM.MENTION_ROOM_CD_TICKS)return;
+    const equipe=this.mode.chat==='team'&&autor.team>=0;
+    const cands=[];
+    for(const gp of sim.players.values()){
+      if(!gp.isBot||gp.dead||gp.slot===autor.slot)continue;
+      if(equipe&&gp.team!==autor.team)continue;                                   // não ouviu, não responde
+      if(tick-(gp.mencaoAt||-1e9)<BOT_LLM.MENTION_BOT_CD_TICKS)continue;
+      if((gp.mencoes|0)>=BOT_LLM.MAX_MENTION_PER_MATCH)continue;
+      cands.push(gp);}
+    if(!cands.length)return;
+    const citados=cands.filter(gp=>bc.citou(texto,gp.name));
+    let alvo=null,kind='mention';
+    if(citados.length){
+      if(!this.rng.chance(BOT_LLM.MENTION_P))return;
+      alvo=citados[this.rng.int(0,citados.length-1)];}
+    else if(this.ultimoBot&&cands.includes(this.ultimoBot)&&this.rng.chance(BOT_LLM.REPLY_P)){
+      alvo=this.ultimoBot;kind='reply';}
+    if(!alvo)return;
+    alvo.mencaoAt=tick;alvo.mencoes=(alvo.mencoes|0)+1;this.mencaoAt=tick;
+    this._falar(alvo,{kind,quem:autor.name,texto},()=>null);}
   // ── voz ──
   /**
    * Relay de um clipe de áudio. O servidor NÃO decodifica e NÃO guarda nada: valida tamanho/duração/cooldown
@@ -320,6 +404,44 @@ export class Room{
    * mais próximos dentro de VOICE.DIST, e o cliente faz volume/estéreo pela distância com o mesmo cálculo
    * dos efeitos. Devolve false quando o clipe foi recusado.
    */
+  /** Centro (média das peças vivas) de um jogador: de onde o áudio "sai" e por onde a distância é medida. */
+  _centro(slot){const ps=this.sim.world.players.get(slot);let x=0,y=0,n=0;
+    if(ps)for(const pc of ps.pieces){if(pc.dead)continue;x+=pc.x;y+=pc.y;n++;}
+    return n?{x:x/n,y:y/n}:{x:0,y:0};}
+  /**
+   * Quem ouve `gp`: em equipe, a equipe inteira; senão os VOICE.LISTENERS mais próximos dentro de
+   * VOICE.DIST. O ícone de "falando" usa a MESMA lista do clipe — quem não ouviria o áudio não vê o ícone.
+   */
+  _ouvintes(gp,x,y){
+    const equipe=this.mode.chat==='team'&&gp.team>=0;
+    /** @type {{s:any,d:number}[]} */const alvos=[];
+    for(const s of this.sessions.values()){
+      if(!s.ws||s.slot===gp.slot)continue;
+      const o=this.sim.players.get(s.slot);if(!o)continue;
+      if(equipe){if(o.team===gp.team)alvos.push({s,d:0});continue;}
+      const d=Math.hypot((s.cx||0)-x,(s.cy||0)-y);if(d<=VOICE.DIST)alvos.push({s,d});}
+    if(!equipe&&alvos.length>VOICE.LISTENERS){alvos.sort((a,b)=>a.d-b.d);alvos.length=VOICE.LISTENERS;}
+    return alvos;}
+  /**
+   * O microfone de alguém ABRIU ou FECHOU. Chega no instante do Ctrl, muito antes do clipe (que só é
+   * enviado quando a tecla é solta) — é o que faz o ícone em cima do planeta acompanhar quem está falando
+   * de verdade, em vez de acender depois, junto com o áudio.
+   * Vai em JSON de controle: o fio binário não precisa de versão nova para dois bits de estado.
+   */
+  talkState(session,on){
+    const gp=this.sim.players.get(session.slot);if(!gp||gp.dead)return false;
+    const agora=Date.now();
+    if(on){
+      if(agora-(session.talkAt||0)<VOICE.TALK_CD_MS)return false;   // anti-flood de quem martela o Ctrl
+      session.talkAt=agora;
+      gp.talkUntil=this.sim.tick+Math.ceil(VOICE.MAX_MS*TICK_HZ/1000);}   // teto: se o `off` se perder, apaga sozinho
+    else{
+      if(!gp.talkUntil)return false;
+      gp.talkUntil=0;}
+    this.sim.playersDirty=true;   // o placar acende/apaga o 🎤 pela flag TALK — nos DOIS sentidos
+    const c=this._centro(gp.slot),out={t:'talk',slot:gp.slot,on:!!on};
+    for(const a of this._ouvintes(gp,c.x,c.y))a.s.sendJson(out);
+    return true;}
   voice(session,{codec=0,durMs=0,data}){
     const gp=this.sim.players.get(session.slot);if(!gp||gp.dead||!data)return false;
     if(data.length>VOICE.MAX_BYTES||durMs<VOICE.MIN_MS||durMs>VOICE.MAX_MS)return false;
@@ -328,20 +450,10 @@ export class Room{
     if(now-this.voiceAt>=1000){this.voiceAt=now;this.voiceN=0;}
     if(this.voiceN>=VOICE.ROOM_CPS)return false;                     // teto da SALA: 50 pessoas falando ao mesmo tempo é ruído, não conversa
     session.voiceAt=now;this.voiceN++;
-    gp.talkUntil=this.sim.tick+Math.ceil(durMs*TICK_HZ/1000);this.sim.playersDirty=true;   // acende o ícone de "falando" no PLAYERS
-    const w=this.sim.world,ps=w.players.get(session.slot);
-    let x=0,y=0,nn=0;if(ps)for(const pc of ps.pieces){if(pc.dead)continue;x+=pc.x;y+=pc.y;nn++;}
-    if(nn){x/=nn;y/=nn;}
+    if(!session.talkAt){gp.talkUntil=this.sim.tick+Math.ceil(durMs*TICK_HZ/1000);this.sim.playersDirty=true;}   // cliente que não avisa o Ctrl: o ícone sai pelo tempo do clipe
+    const {x,y}=this._centro(session.slot);
     const view=encodeVoice(this.writer,{slot:session.slot,codec,durMs,x,y,data});
-    const equipe=this.mode.chat==='team'&&gp.team>=0;
-    /** @type {{s:any,d:number}[]} */const alvos=[];
-    for(const s of this.sessions.values()){
-      if(!s.ws||s.slot===session.slot)continue;
-      const o=this.sim.players.get(s.slot);if(!o)continue;
-      if(equipe){if(o.team===gp.team)alvos.push({s,d:0});continue;}
-      const d=Math.hypot((s.cx||0)-x,(s.cy||0)-y);if(d<=VOICE.DIST)alvos.push({s,d});}
-    if(!equipe&&alvos.length>VOICE.LISTENERS){alvos.sort((a,b)=>a.d-b.d);alvos.length=VOICE.LISTENERS;}
-    let busy=false;for(const a of alvos)if(!a.s.send(view))busy=true;
+    let busy=false;for(const a of this._ouvintes(gp,x,y))if(!a.s.send(view))busy=true;
     if(busy)this.rotateWriter();
     return true;}
   // ── envio ──
@@ -400,9 +512,19 @@ export class Room{
       if(lb.length){const gp=sim.players.get(lb[0].slot);if(gp)this.champion={slot:gp.slot,team:gp.team};}
       this.endRound('lastAlive');return;}
     this._flush(sim);}
+  /**
+   * Apaga o "está falando" de quem estourou o prazo. A flag TALK é calculada ao vivo em `playersInfo`, mas o
+   * PLAYERS só é DIFUNDIDO quando algo marca `playersDirty` — sem esta varredura o 🎤 acendia e ficava lá
+   * até o próximo evento de sala (alguém entrar, morrer, trocar de equipe), que pode não vir nunca.
+   * A 2 Hz, sobre ≤ 50 jogadores: mais barato que qualquer contabilidade incremental.
+   */
+  _expiraFala(sim,t){
+    for(const gp of sim.players.values())
+      if(gp.talkUntil&&(t>=gp.talkUntil||gp.dead)){gp.talkUntil=0;sim.playersDirty=true;}}
   /** Envio por tick: PLAYERS se mudou, snapshots a 20 Hz, eventos por AOI e o placar a 2 Hz. */
   _flush(sim){
     const t=sim.tick;
+    if(t%LEADERBOARD_EVERY===0)this._expiraFala(sim,t);
     if(sim.playersDirty){sim.playersDirty=false;this.broadcastPlayers();}
     if(t%SNAPSHOT_EVERY===0){this.snapshotter.beginTick();for(const s of this.sessions.values())this.snapshotter.send(s);this.flushEvents();sim.gone.clear();}
     else if(sim.wireEvents.length>=200)this.flushEvents();

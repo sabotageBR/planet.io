@@ -1,21 +1,74 @@
+// ── MODO DE VIEWPORT: forma do aparelho + capacidade de entrada ───────────────
+// São DUAS informações independentes, e misturá-las era a raiz da bagunça de responsividade:
+//   body[data-mode]    = FORMA   desktop | tablet | landscape | portrait   (trocas grossas de layout, tamanho do radar)
+//   body[data-pointer] = ENTRADA coarse | fine                             (botões de toque, joystick, alvo de 44 px)
+// Medida fina (largura exata, quantas colunas cabem) é decisão do CSS, não daqui: assim o PRIMEIRO PAINT já
+// sai certo — o HTML nasce com data-mode="desktop" e, antes desta correção, qualquer celular pintava a tela
+// de desktop até o React montar.
+// `tablet` existe porque tela grande COM toque caía em `desktop`: um iPad deitado (1180×820, 1366×1024) não
+// passa em `h<=500` nem em `coarse && w<=1100`, e recebia a gaveta lateral, as tabelas de 6 colunas e os
+// alvos de 18 px do desktop — sendo operado com o dedo.
+// HISTERESE: os limiares têm folga (BAND) e a decisão leva em conta o modo ANTERIOR. Sem isso, arrastar a
+// borda da janela por cima de 820 px repintava o layout inteiro a cada pixel.
 import { useEffect } from "react";
 import { app } from "../state/app.js";
 
-const FORCED = new URLSearchParams(location.search).get("mode");
-/** desktop | portrait | landscape a partir do viewport (ou ?mode=… forçado). */
-export function computeMode() {
-  if (FORCED === "portrait" || FORCED === "landscape" || FORCED === "desktop") return FORCED;
-  const w = innerWidth, h = innerHeight, coarse = matchMedia("(pointer: coarse)").matches;
-  if (h > w && (w <= 820 || coarse)) return "portrait";
-  if (w > h && (h <= 500 || (coarse && w <= 1100))) return "landscape";
-  return "desktop";
+export const MODES = ["desktop", "tablet", "landscape", "portrait"];
+const PHONE_W = 700;      // largura acima da qual um retrato deixa de ser "celular em pé" (o celular mais
+                          // largo do mercado tem ~430 css px; um iPad mini em pé tem 744, e antes o limiar
+                          // de 820 dava a ELE o layout de telefone)
+const SHORT_H = 500;      // altura abaixo da qual uma tela deitada é celular deitado
+const TABLET_W = 1500;    // acima disso, tela com toque já é do tamanho de um desktop
+const BAND = 40;          // folga da histerese: o limiar de subida e o de descida não são o mesmo número
+
+/** Limiar com folga: para SAIR de `dentro` é preciso passar de `lim+BAND`; para entrar, basta `lim`. */
+const cruza = (v, lim, dentro) => (dentro ? v <= lim + BAND : v <= lim);
+
+/**
+ * Decisão pura — sem globais, para poder ser testada. `antes` é o modo atual (histerese).
+ * @param {number} w @param {number} h @param {boolean} coarse @param {string} [antes]
+ * @returns {"desktop"|"tablet"|"landscape"|"portrait"}
+ */
+export function modeFor(w, h, coarse, antes) {
+  if (h > w) {   // ── em pé ──
+    if (!coarse) return cruza(w, PHONE_W, antes === "portrait") ? "portrait" : "desktop";
+    return cruza(w, PHONE_W, antes === "portrait") ? "portrait" : "tablet";
+  }
+  // ── deitado ──
+  if (cruza(h, SHORT_H, antes === "landscape")) return "landscape";
+  if (!coarse) return "desktop";
+  return cruza(w, TABLET_W, antes === "tablet") ? "tablet" : "desktop";
 }
-/** Mantém app.mode e body[data-mode] em dia no resize/orientação. */
+/** `coarse` = o ponteiro PRIMÁRIO é grosso (dedo). É o que decide affordance de toque, não o tamanho. */
+export const pointerFor = coarse => (coarse ? "coarse" : "fine");
+
+const forced = () => {
+  const m = new URLSearchParams(location.search).get("mode");   // relido a cada chamada: antes era lido uma vez, no load do módulo
+  return MODES.includes(m) ? m : null;
+};
+/** Modo atual a partir do viewport (ou `?mode=…` forçado). */
+export function computeMode(antes) {
+  return forced() || modeFor(innerWidth, innerHeight, matchMedia("(pointer: coarse)").matches, antes);
+}
+export const computePointer = () => pointerFor(matchMedia("(pointer: coarse)").matches);
+
+/**
+ * Mantém body[data-mode] e body[data-pointer] em dia. O resize é DEBOUNCED: além de evitar trabalho à toa,
+ * é o mesmo evento que dispara o reenvio de `view` ao servidor — e sem debounce arrastar a borda da janela
+ * estourava o balde de 5 JSON/s e derrubava a conexão com RATE.
+ */
 export function useViewportMode() {
   useEffect(() => {
-    const apply = () => { const m = computeMode(); document.body.dataset.mode = m; if (app.get().mode !== m) app.update({ mode: m }); };
+    let t = 0;
+    const apply = () => {
+      const m = computeMode(document.body.dataset.mode), p = computePointer();
+      if (document.body.dataset.mode !== m) document.body.dataset.mode = m;
+      if (document.body.dataset.pointer !== p) document.body.dataset.pointer = p;
+      if (app.get().mode !== m) app.update({ mode: m });
+    };
+    const agenda = () => { clearTimeout(t); t = setTimeout(apply, 150); };
     apply();
-    addEventListener("resize", apply); addEventListener("orientationchange", apply);
-    return () => { removeEventListener("resize", apply); removeEventListener("orientationchange", apply); };
+    addEventListener("resize", agenda); addEventListener("orientationchange", agenda);
+    return () => { clearTimeout(t); removeEventListener("resize", agenda); removeEventListener("orientationchange", agenda); };
   }, []);
 }

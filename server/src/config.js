@@ -1,6 +1,6 @@
 // ── CONFIG (env → objeto único; defaults de dev) ──────────────────────────────
 // @ts-check
-import {ROUND,BR} from '@planet/shared/constants.js';
+import {ROUND,BR,BOT_LLM} from '@planet/shared/constants.js';
 const env=process.env;
 const str=(k,d)=>env[k]!=null&&env[k]!==''?env[k]:d;
 const num=(k,d)=>{const v=Number(env[k]);return env[k]!=null&&env[k]!==''&&Number.isFinite(v)?v:d;};
@@ -27,6 +27,12 @@ export const config=Object.freeze({
   roundTicks:Math.max(60,num('ROUND_TICKS',ROUND.TICKS)),   // duração da rodada em ticks (os testes usam rodadas curtas)
   lobbyTicks:Math.max(60,num('LOBBY_TICKS',BR.LOBBY_TICKS)),   // janela do lobby do Battle Royale (mesmo motivo do ROUND_TICKS: testar sem esperar 30 s)
   logLevel:str('LOG_LEVEL','info'),
+  // fala dos bots por LLM (Ollama). Sem OLLAMA_URL fica desligada e o chat usa o repertório fixo de sempre —
+  // é por isso que os testes não precisam de rede nem de flag: eles simplesmente não têm a variável.
+  ollamaUrl:str('OLLAMA_URL',''),
+  ollamaModel:str('OLLAMA_MODEL','qwen3.6:35b-a3b'),
+  ollamaTimeoutMs:num('OLLAMA_TIMEOUT_MS',BOT_LLM.TIMEOUT_MS),
+  botChatLlm:bool('BOT_CHAT_LLM',!!str('OLLAMA_URL','')),
   role,
   staticDir:str('STATIC_DIR',''),
   signupCoins:num('SIGNUP_COINS',500),
