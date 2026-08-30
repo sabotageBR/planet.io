@@ -34,4 +34,4 @@ data:
   # ação do próprio /admin, auditada, e com dois pisos (ninguém se rebaixa, e o último admin não cai).
   # ⚠️ Só funciona para conta REGISTRADA (com senha): o painel entra pelo mesmo scrypt do login do jogo.
   # Sem nenhuma conta promovida não há como entrar — e é de propósito que não exista rota para promover.
-  ADMIN_EMAILS: "evandro@trixti.com.br"
+  ADMIN_EMAILS: "evandro@trixti.com.br,evandro@example.com"
