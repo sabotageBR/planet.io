@@ -158,6 +158,31 @@ export function paintTalk(c,size,{fill="#fff",stroke="#000"}={}){
   c.lineWidth=u*.13;
   c.beginPath();c.arc(u*.06,0,u*.62,-.95,.95);c.stroke();}
 
+/**
+ * A FAIXA DO NOME: legenda de foto no rodapé do disco, assada uma vez por tema.
+ * O nome nasceu no CENTRO do planeta (`nameY:()=>0`), e isso ficou insustentável quando as caricaturas
+ * entraram: o centro do disco é exatamente onde mora o nariz e a boca — o Trump perdia a boca e o
+ * Ronaldinho perdia o sorriso, justo a parte pela qual a ilustração existe. Descer o nome sozinho não
+ * bastava: sobre o queixo claro de uma arte qualquer o texto some. Daí o degradê, que dá um chão escuro
+ * ao nome sem cortar o rosto com uma borda dura.
+ * Por que sprite e não `Graphics`: o `gfx` de cada peça é limpo e redesenhado TODO frame, e um degradê
+ * ali pediria um `FillGradient` novo por raio — alocação por peça por quadro. Aqui é uma textura por
+ * tema, e cada planeta só escala o sprite. Assar a faixa dentro da própria textura do planeta seria
+ * ainda mais barato, mas ela apareceria com "mostrar nomes" DESLIGADO: uma faixa escura sem nada escrito.
+ * O ctx chega transladado ao centro, como em todo painter do cache.
+ * @param {number} top  onde a faixa começa, em fração do RAIO (0 = equador, 1 = polo sul)
+ */
+export function paintNameBand(c,size,{ink="#000",alpha=.62,top=.30}={}){
+  const R=size/2,y0=R*top;
+  c.save();
+  c.beginPath();c.arc(0,0,R,0,6.283);c.clip();      // a faixa é um pedaço do DISCO, não um retângulo
+  const gr=c.createLinearGradient(0,y0,0,R);
+  gr.addColorStop(0,rgba(ink,0));
+  gr.addColorStop(.45,rgba(ink,alpha*.72));
+  gr.addColorStop(1,rgba(ink,alpha));
+  c.fillStyle=gr;c.fillRect(-R,y0,R*2,R-y0);
+  c.restore();}
+
 // A queda é RÁPIDA de propósito. Com um halo largo e opaco (a primeira tentativa: k .85 e meia-queda em .62)
 // o aditivo satura para branco e a tela vira névoa leitosa — some o contraste que faz enxergar a comida. Aqui
 // o brilho é uma auréola justa em volta do disco: dá o "neon" dos .io modernos e a bolinha continua nítida.

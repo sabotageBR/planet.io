@@ -317,7 +317,9 @@ function drawWorld(c,cam){const hw=W/(2*cam.scale),hh=H/(2*cam.scale),wd=TH.worl
   wd.border.forEach(b=>{c.strokeStyle=b.color;c.lineWidth=b.width;c.setLineDash(b.dash||[]);c.strokeRect(0,0,WW,WH);c.setLineDash([]);});}
 function drawLabels(c,x,y,r,name,mass){const L=TH.hud.labels;if(r<=L.minR)return;const fs=L.size(r);c.save();c.translate(x,y);
   const out=(txt,dy,size,fill)=>{c.font=`bold ${size}px ${L.font}`;c.textAlign="center";c.textBaseline="middle";c.lineJoin="round";c.strokeStyle=L.stroke;c.lineWidth=L.strokeWidth(size);c.strokeText(txt,0,dy);c.fillStyle=fill;c.fillText(txt,0,dy);};
-  out(name,L.nameY(fs),fs,L.nameColor);out(fmt(mass),L.massY(fs),fs*L.massK,L.massColor);c.restore();}
+  // ⚠️ `nameY` passou a receber o RAIO junto com o corpo da fonte (a legenda vive no rodapé do disco, e
+  // rodapé é uma fração de r, não de fs). Chamar com um argumento só devolve NaN e o nome some da prévia.
+  out(name,L.nameY(fs,r),fs,L.nameColor);out(fmt(mass),L.massY(fs),fs*L.massK,L.massColor);c.restore();}
 function drawPlanet(c,p){const sk=p.skin,d=p.r*SC.planet(sk);
   if(p.trail){const tr=TH.hud.trail;c.strokeStyle=tr.color(sk,p.isMe);c.lineWidth=tr.width(p.r);c.lineCap="round";c.lineJoin="round";c.setLineDash(tr.dash(p.r));
     c.beginPath();p.trail.forEach((q,i)=>i?c.lineTo(q.x,q.y):c.moveTo(q.x,q.y));c.lineTo(p.x,p.y);c.stroke();c.setLineDash([]);}

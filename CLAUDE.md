@@ -359,6 +359,58 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   tela) e o modal descia junto com a rolagem da grade. ⚠️ `position:fixed` NÃO resolve: um `transform` no
   ancestral também captura elementos fixos. Montado na raiz, o ancestral vira `#app{position:fixed;inset:0}` e
   o CSS que já existe centra sozinho — é o mesmo caminho de `AccountModal` e `ReconnOverlay`.
+- **O NOME É LEGENDA, NÃO TATUAGEM** (`labels.nameY` nos três `theme/*/index.js`, `layers/Planets.js`,
+  `theme/util.js:paintNameBand`): ele nascia no CENTRO exato do disco (`nameY:()=>0`) — que é onde mora o
+  nariz e a boca. Com as 35 caricaturas isso virou insustentável: o Trump perdia a boca e o Ronaldinho
+  perdia o sorriso, justo a parte pela qual a ilustração existe. Agora é legenda de foto no rodapé
+  (`nameY:(fs,r)=>r*.62`), sobre uma FAIXA em degradê recortada no círculo. A faixa é **sprite de textura
+  assada por tema**, gêmeo do ícone de fala: o `gfx` de cada peça é limpo todo frame e um degradê ali
+  pediria um `FillGradient` novo por raio; assar dentro da textura do PLANETA seria mais barato ainda, mas
+  ela apareceria com "mostrar nomes" desligado — uma faixa escura sem nada escrito. Três números que a
+  mudança obrigou: **`nameFill`** é campo PRÓPRIO (miolo translúcido, a arte aparecendo por dentro da
+  letra) porque `nameColor` também pinta o ícone de push-to-talk e mexer num só desbotaria os dois —
+  `"rgba(255,255,255,0)"` vaza a letra de vez; **`strokeWidth` caiu de `s*.2` para `s*.11`**, porque aquele
+  contorno de 20 % existia para o texto sobre a arte NUA e, a 11 px de tela, fechava os buracos das letras
+  e virava mancha — quem separa agora é a faixa; e **`NAME_MIN_PX`** (10), o primeiro piso em pixels de
+  TELA (o único que havia era `minR:13`, de raio de MUNDO, então com a câmera afastada o nome saía com 4–6
+  px). O texto também passou a CABER (`nameFitK`): `size` dava 0,34·r e um nick de 10 letras pedia ~1,87·r.
+  ⚠️ O fator é FROUXO (.92) por medição: com .74, um nick de 13 letras num planeta de r=54 era espremido a
+  9 px e SUMIA — trocava um defeito por outro. ⚠️ A largura é medida uma vez por nome **com a escala
+  forçada a 1**: medir sem zerar lê a largura já escalada do frame anterior e o texto encolhe a cada quadro
+  até desaparecer, em silêncio. ⚠️ Trocar o estilo da fonte exige trocar o NOME do atlas (`pn3-<tema>`),
+  que é a chave do cache. ⚠️ E `nameY` recebe o RAIO agora: `theme/preview.js` chama a mesma função e com
+  um argumento só devolveria `NaN`.
+- **A COLUNA DIREITA: ordem fixa e neon roxo** (`Hud.jsx`, `ui.css`). Duas coisas separadas, uma captura:
+  (a) **o kill feed era o PRIMEIRO da pilha** e ele nasce e morre (`KillFeed.jsx` devolve `null` sem linha
+  viva), então a cada abate o cartão de massa e o placar desciam e voltavam. Agora a ordem é massa → top 10
+  → feed, e o feed recebe só a SOBRA (`flex:0 1 auto` com `min-height:0`, sem o qual um filho flex nunca
+  encolhe abaixo do próprio conteúdo). Nada acima dele se mexe, por construção.
+  (b) **o marrom nunca foi uma cor escolhida**: era `color-mix(--accent 52%, transparent)` — dourado
+  TRANSLÚCIDO — composto sobre o céu escuro do alto da tela; a cor do painel dependia do que passasse
+  atrás e virava outra às 16h e às 20h. A superfície agora é própria e FIXA nos três horários, na
+  linguagem neon que o projeto já tinha escrita e nunca portou (`mockups/v2/src/theme.toon-neon.js`:
+  #0d0b1f, #1c1440, aro #8b5cff, dado #2ee6ff). Três papéis: ROXO é superfície, DOURADO é mérito (pódio e
+  badge de nível — que o chat e o feed também usam, então retintá-lo só aqui criaria duas cores para o
+  mesmo selo) e CIANO é número. Sem `backdrop-filter`: o HUD é DOM sobre um canvas a 60 fps e um blur de
+  fundo obriga a reler o backdrop a cada quadro.
+  ⚠️ Três armadilhas que custaram uma passada cada: `border` TEM que vir com estilo (o tema faz `border:0`
+  em `#hud-lb`, e por isso o `border-width:2px` que morava no `ui.css` era inerte — o placar nunca teve
+  borda); a COR do texto ainda desce do tema (`color:var(--line)`, quase preto, em `#hud-score`,
+  `.lb-pos` e `.lb-row.mine`), e sobre o escuro novo isso é texto invisível; e **a largura da coluna é a do
+  FEED, não a dos painéis** — `#hud-right` é `overflow:hidden`, então filho mais largo que ela tem o começo
+  DECEPADO, e como a coluna é alinhada à direita o que se perde é o nome de quem matou. Alargar só o
+  `#kill-feed` não resolve nada.
+- **O feed dura 22 s e morre em DEGRADÊ** (`FEED.TTL_MS`, `#kill-feed .kf-row:nth-child` em `ui.css`): a
+  linha sumia inteira em 9 s e quem estava olhando o jogo perdia o abate. Agora a mais nova fica opaca e as
+  de baixo desbotam conforme as novas as empurram, até o corte em `FEED.ROWS`. ⚠️ As quatro regras de
+  `nth-child(n+k)` têm a MESMA especificidade e valem para "desta linha em diante": quem manda é a ORDEM,
+  e reordená-las inverte o degradê. ⚠️ O feed também deixou de obedecer à largura dos painéis para caber
+  dois nicks (12ch cada) — e isso só funciona com `min-width:0` descendo até o `.nk`, porque item de flex
+  nasce com `min-width:auto` e não encolhe abaixo do conteúdo. ⚠️ No RETRATO nada disso vale: 375 px não
+  têm largura para o feed largo (a matriz mediu 42 px em cima do chat) nem altura para 4 linhas (elas
+  batiam nos botões de toque, porque `overflow:hidden` esconde o excesso mas NÃO encolhe a caixa do filho,
+  que é o que colide).
+
 - **Placar do HUD: UMA TABELA, não dez pílulas** (`#hud-right`, regras em `client/src/styles/ui.css`): era uma
   pilha de balõezinhos independentes, cada linha com fundo, borda, sombra dura, rabinho de quadrinho e
   LARGURA PRÓPRIA (`min-width:172px`, 204 na 1ª). Dez larguras diferentes empilhadas à direita davam uma
@@ -492,7 +544,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   espanhol. Carregar o modelo custa ~27 s e responder ~0,5 s — daí `keep_alive`, `warmup()` no boot e o disjuntor REAQUECER enquanto
   está aberto.
 - **Kill feed estilo CS** (`FEED` em constants, `server/src/rooms/feed.js`, `client/src/ui/KillFeed.jsx`): "quem matou
-  quem" no topo-DIREITO, com o placar e a massa logo abaixo; radar e chat na ESQUERDA. Vai em **JSON de
+  quem" no FIM da coluna direita, abaixo da massa e do placar (ver "A COLUNA DIREITA"); radar e chat na ESQUERDA. Vai em **JSON de
   controle** (`{t:"feed",v:[…]}`) difundido à sala INTEIRA, sem AOI — o EVENT binário tem 13 bytes fixos com o
   `extra` já ocupado pelo score, marco de rodada não tem x/y, e difundir `EVENT.DEATH` faria o cliente
   instanciar efeito e SOM de mortes do outro lado do mapa. Só SLOTS viajam (o nome sai de `view.playerOf`), o

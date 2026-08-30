@@ -265,7 +265,17 @@ export const hud={
     meDot:{fill:CREAM,stroke:INK,width:1.5,r:{desktop:4,tablet:4,portrait:3,landscape:3}},
     label:{text:"RADAR",font:"bold 9px "+FONT,color:GOLD,desktopOnly:true,dy:-10}},
   trail:{style:"dashed",color:(skin,isMe)=>rgba(PEACH,isMe?.7:.42),width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},
-  labels:{font:FONT,nameColor:"#fff",massColor:PEACH,stroke:INK,minR:13,size:r=>Math.max(12,r*.34),massK:.68,nameY:()=>0,massY:fs=>fs*.8,strokeWidth:s=>Math.max(2,s*.2)},
+  // O nome é uma LEGENDA no rodapé do disco, não uma tatuagem no meio dele: `nameY` devolvia 0 nos três
+  // temas e o texto caía em cima do nariz da caricatura. `nameFill` é separado de `nameColor` DE PROPÓSITO —
+  // o fill entra no BitmapFont (miolo translúcido, a arte aparecendo por dentro da letra) e o `nameColor`
+  // continua pintando o ícone de push-to-talk, que não pode desbotar junto. Contorno OPACO: é ele que dá a
+  // forma quando a letra fica pequena. Para vazar a letra de vez, é `nameFill:"rgba(255,255,255,0)"`.
+  labels:{font:FONT,nameColor:"#fff",nameFill:"rgba(255,255,255,.68)",massColor:PEACH,stroke:INK,minR:13,
+    size:r=>Math.max(11,r*.26),massK:.68,nameY:(fs,r)=>r*.62,nameFitK:.92,bandAlpha:.72,bandTop:.38,
+    // ⚠️ O contorno era 20% do corpo da fonte (`s*.2`), e ele existia porque o nome ficava sobre a arte
+    // NUA, em cima de qualquer cor. Com a faixa dando o chão, esse peso vira defeito: a 11 px na tela o
+    // traço de 2,2 px fecha os buracos das letras e o nome vira mancha. Quem separa agora é a faixa.
+    massY:fs=>fs*.8,strokeWidth:s=>Math.max(1.5,s*.11)},
   cell:{merge:{color:GOLD,width:r=>Math.max(3,r*.08),radiusK:1.18},
     powerups:{colors:{magnet:MAG,shield:TEAL},width:r=>Math.min(14,Math.max(3,r*.08)),dash:r=>[Math.min(48,r*.4),Math.min(36,r*.3)],
       ringR:(r,i)=>r+6+i*10,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},

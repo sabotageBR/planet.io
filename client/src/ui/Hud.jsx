@@ -97,11 +97,10 @@ export default function Hud() {
         aria-pressed={!!prefs.muted} onClick={() => toggleMute()}>{prefs.muted ? "🔇" : "🔊"}</button>
       <button className="btn-mini" id="h-exit" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.exit}</button>
     </div>
-    {/* Coluna DIREITA (kill feed · meu placar · top 10), no arranjo do Counter-Strike. É uma caixa flex de
+    {/* Coluna DIREITA (meu placar · top 10 · kill feed), no arranjo do Counter-Strike. É uma caixa flex de
         verdade — e não `display:contents` como a coluna esquerda —, porque aqui os três blocos empilham
         SEMPRE, em qualquer modo, e uma caixa real resolve isso sem depender do que cada tema escreveu. */}
     <div id="hud-right">
-    <KillFeed h={h} />
     <div className="panel" id="hud-score">
       <div className="score-big"><span id="v-mass">{fmt(h.mass)}</span></div>
       <div className="score-sub">{LB.massLabel}</div>
@@ -115,6 +114,10 @@ export default function Hud() {
         <span className="lb-name">{r.talking ? <i className="talk-dot">🎤</i> : null}{r.level > 0 ? <i className="lvl">{r.level}</i> : null}{r.name}{r.isBot ? <> <i className="bot">{LB.botTag}</i></> : null}{r.registered ? <> <i className="reg">{LB.regTag}</i></> : null}</span>
         <b className="lb-val">{fmt(r.mass)}</b></div>)}
     </div></div>
+    {/* O feed é o ÚLTIMO da coluna, e isso é estrutural: ele nasce e morre (KillFeed devolve null sem linha
+        viva), e enquanto era o primeiro cada abate empurrava o cartão de massa e o placar para baixo e os
+        trazia de volta. No fim da pilha ele ocupa a sobra e nada acima dele se mexe. */}
+    <KillFeed h={h} />
     </div>
     {/* Coluna esquerda: no DESKTOP este div é `display:contents` e some da conta (cada bloco fica exatamente
         onde o tema o coloca). No DEDO ele vira uma pilha flex — porque #hud-status CRESCE com os powerups

@@ -166,11 +166,47 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
    `:where(...)` (soma zero), `ui.css` vem ANTES deles em theme/all.css, e no empate quem vem depois vence.
    ⚠️ E NÃO editar o hud.css dos temas: aquele arquivo é gerado, a próxima passada do port.js apagaria a mão.
    (E cuidado ao citar caminhos aqui dentro: um "asterisco barra" fecha o comentário e engole a regra seguinte.) */
-#hud #hud-right{gap:6px;width:min(238px,22vw);max-width:none}
-#hud #hud-right .panel,#hud #hud-right #kill-feed{width:100%;max-width:100%}
-#hud #hud-lb{min-width:0;padding:5px 7px 6px;border-width:2px;box-shadow:none;
-  background:color-mix(in srgb,var(--surface) 46%,transparent)}
-#hud #hud-lb .ph{font-size:10px;letter-spacing:.12em;opacity:.7;margin:0 0 4px 2px}
+/* ⚠️ A LARGURA DA COLUNA É A DO FEED, não a dos painéis. `#hud-right` é `overflow:hidden` (é o que corta o
+   excesso vertical do feed), então qualquer filho mais largo que ela tem o começo DECEPADO — e como a
+   coluna é alinhada à direita, o que se perde é o lado esquerdo, ou seja, o nome de quem matou. Alargar só
+   o `#kill-feed` não resolve nada por isso. Quem cresce é a coluna; o cartão de massa e o placar mantêm a
+   largura antiga por conta própria e continuam encostados à direita. */
+#hud #hud-right{gap:6px;width:min(330px,30vw);max-width:none}
+#hud #hud-right>.panel{width:min(238px,22vw)}
+#hud #hud-right .panel{max-width:100%}
+/* O feed ocupa a coluna INTEIRA (que agora é a larga): com 238 px os dois nicks viravam "xXM…" e "Lari…" e
+   o feed deixava de responder à única pergunta que ele existe para responder — quem matou quem. */
+#hud #hud-right #kill-feed{width:100%;max-width:100%}
+
+/* ── A ORDEM DA COLUNA: massa · top 10 · feed ────────────────────────────────
+   O kill feed era o PRIMEIRO da pilha, e ele nasce e morre (KillFeed.jsx devolve `null` quando não há
+   linha viva). Resultado: a cada abate o cartão de massa e o placar desciam, e ao expirar subiam de volta
+   — dois painéis que o jogador consulta o tempo todo balançando ao sabor das mortes alheias. Agora o feed
+   é o último e recebe só a SOBRA: `flex:0 1 auto` com `min-height:0` deixa ele encolher (sem o `min-height`
+   um filho flex nunca encolhe abaixo do próprio conteúdo), e os dois de cima são `0 0 auto`, imóveis. */
+#hud #hud-score,#hud #hud-lb{flex:0 0 auto}
+#hud #kill-feed{flex:0 1 auto;min-height:0;overflow:hidden}
+
+/* ── A COLUNA É NEON, E DE PROPÓSITO NÃO OBEDECE AO RELÓGIO ──────────────────
+   O marrom nunca foi uma cor escolhida: era `color-mix(--accent 52%, transparent)` — dourado TRANSLÚCIDO —
+   composto sobre o céu escuro do alto da tela. A cor do painel dependia do que estivesse passando atrás
+   dele, e virava outra às 16h e às 20h junto com o tema. Aqui a superfície passa a ser PRÓPRIA e fixa nos
+   três horários, na linguagem neon que o projeto já tinha escrita e nunca portou
+   (`mockups/v2/src/theme.toon-neon.js`: fundo #0d0b1f, superfície #1c1440, aro #8b5cff, dado #2ee6ff).
+   Três papéis e nenhuma cor decorativa: ROXO é superfície, DOURADO é mérito (pódio e badge de nível — que
+   o chat e o feed também usam, então retintá-lo só aqui criaria duas cores para o mesmo selo) e CIANO é
+   número. ⚠️ Nada de `backdrop-filter`: o HUD é DOM sobre um canvas a 60 fps e um blur de fundo obriga a
+   reler o backdrop a cada quadro. O translúcido sai do degradê em duas paradas, que custa zero. */
+#hud #hud-right{--nx:#8b5cff;--nx-hi:#c9a4ff;--nx-data:#2ee6ff;--nx-ink:#efe9ff}
+#hud #hud-score,#hud #hud-lb,#hud #kill-feed .kf-row{
+  background:linear-gradient(180deg,rgba(28,20,64,.60),rgba(13,11,31,.76));
+  /* ⚠️ `border` TEM que vir com estilo: o tema faz `border:0` em #hud-lb, e por isso o `border-width:2px`
+     que morava aqui era inerte — o placar nunca teve borda nenhuma. */
+  border:1px solid color-mix(in srgb,var(--nx) 58%,transparent);
+  box-shadow:inset 0 0 0 1px rgba(139,92,255,.14),0 0 14px rgba(139,92,255,.28);
+  color:var(--nx-ink)}
+#hud #hud-lb{min-width:0;padding:5px 7px 6px}
+#hud #hud-lb .ph{font-size:10px;letter-spacing:.12em;opacity:.8;margin:0 0 4px 2px;color:var(--nx-hi)}
 #hud #hud-right #lb-rows{display:flex;flex-direction:column;align-items:stretch;gap:0;padding-left:0}
 /* a linha vira UMA GRADE: é o `1fr` do meio que faz os três números da direita caírem na mesma coluna,
    por mais curto ou comprido que seja o nick ao lado */
@@ -179,35 +215,60 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
   border:0;border-radius:6px;box-shadow:none;background:transparent}
 #hud #hud-right .lb-row::after{content:none}          /* o rabinho de balão não faz sentido sem o balão */
 #hud #hud-right .lb-row:nth-child(1),#hud #hud-right .lb-row:nth-child(2){min-width:0;font-size:12.5px}
-#hud #hud-right .lb-row.mine{background:color-mix(in srgb,var(--accent) 42%,transparent)}
+#hud #hud-right .lb-row.mine{background:color-mix(in srgb,var(--nx) 38%,transparent);color:#fff}
 /* a própria linha ANEXADA (fora do top N) vem depois de um filete: sem ele o placar mente, colando o 15º
    logo abaixo do 8º como se fossem vizinhos */
-#hud #hud-right .lb-row.sep{margin-top:5px;padding-top:5px;border-top:1px solid color-mix(in srgb,var(--text) 24%,transparent)}
+#hud #hud-right .lb-row.sep{margin-top:5px;padding-top:5px;border-top:1px solid color-mix(in srgb,var(--nx) 46%,transparent)}
+/* ⚠️ A cor do texto ainda desce do tema: `.lb-pos`, `.lb-row.mine` e `#hud-score` herdam `color:var(--line)`
+   (quase preto), que existia para o fundo dourado. Sobre a superfície escura nova isso é texto invisível —
+   os três precisam de cor própria, e é por isso que cada um deles aparece aqui. */
 #hud #hud-right .lb-pos{width:18px;min-width:18px;height:18px;line-height:18px;padding:0;font-size:10.5px;
-  border:0;border-radius:5px;text-align:center;background:color-mix(in srgb,var(--text) 14%,transparent)}
-#hud #hud-right .lb-row.top .lb-pos{background:color-mix(in srgb,var(--accent) 62%,transparent);color:var(--bg)}
+  border:0;border-radius:5px;text-align:center;color:var(--nx-hi);
+  background:color-mix(in srgb,var(--nx) 30%,transparent)}
+#hud #hud-right .lb-row.top .lb-pos{background:color-mix(in srgb,var(--accent) 74%,transparent);color:#150c2e}
 #hud #hud-right .lb-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#hud #hud-right .lb-val{font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-#hud #hud-score{min-width:0;padding:6px 11px;border-width:3px;box-shadow:none;
-  background:color-mix(in srgb,var(--accent) 52%,transparent)}
-#hud #hud-score .score-big{font-size:24px;font-variant-numeric:tabular-nums}
-#hud #hud-score .score-sub{margin-bottom:2px}
+#hud #hud-right .lb-val{font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:var(--nx-data)}
+#hud #hud-score{min-width:0;padding:6px 11px}
+/* a massa é o número mais consultado do jogo: ganha o ciano e o único brilho de verdade da coluna.
+   (O tema dava a ela um `text-shadow` BRANCO, que servia ao fundo dourado e some no escuro.) */
+#hud #hud-score .score-big{font-size:24px;font-variant-numeric:tabular-nums;color:var(--nx-data);
+  text-shadow:0 0 12px rgba(46,230,255,.55)}
+#hud #hud-score .score-sub{margin-bottom:2px;color:var(--nx-hi);opacity:.85}
+#hud #hud-score .score-row .k{color:var(--nx-hi);opacity:.7}
 /* ⚠️ Sem superfície própria por linha, o texto do placar fica direto sobre o JOGO — e ao meio-dia, no céu
    claro do tema `dawn`, some. A sombra é o que devolve a leitura sem trazer a parede opaca de volta. */
 #hud #hud-right .lb-row,#hud #hud-score{text-shadow:0 1px 2px rgba(0,0,0,.55)}
+/* a MINHA linha do feed continua dourada: é a exceção que faz o canto valer o olhar de relance, e ouro
+   sobre roxo é o contraste mais forte que a paleta tem */
+#hud #kill-feed .kf-row.mine{border-color:var(--accent,#ffc22e);
+  background:linear-gradient(180deg,rgba(60,40,20,.62),rgba(28,18,10,.78));
+  box-shadow:inset 0 0 0 1px rgba(255,194,46,.18),0 0 14px rgba(255,194,46,.26)}
 /* No dedo o painel tem que ceder mais: a tela é menor e ele disputa espaço com o radar e os botões. */
+/* ⚠️ No RETRATO o feed largo não cabe: 375 px de tela, o chat ocupa a esquerda e a matriz mediu 42 px de
+   sobreposição. Aqui a coluna volta à largura de antes e os nicks voltam a ser cortados — no celular o que
+   se ganha lendo o nome inteiro é menor do que o que se perde tampando o chat. */
 body[data-mode="portrait"] #hud #hud-right{width:min(46vw,178px)}
 body[data-mode="portrait"] #hud #hud-right .lb-row{font-size:11px;padding:2px 2px;gap:5px}
-body[data-mode="landscape"] #hud #hud-right{width:min(34vw,206px)}
+body[data-mode="landscape"] #hud #hud-right{width:min(44vw,266px)}
+body[data-mode="landscape"] #hud #hud-right>.panel{width:min(34vw,206px)}
 
 /* ── KILL FEED ── */
 #kill-feed{display:flex;flex-direction:column;align-items:flex-end;gap:4px;max-width:min(340px,32vw);pointer-events:none}
 #kill-feed .kf-row{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:var(--radius,10px);
   border:1px solid var(--line,#0004);background:color-mix(in srgb,var(--surface,#2226) 78%,transparent);
   font-size:.84em;line-height:1.25;white-space:nowrap;max-width:100%;animation:kfin .18s ease}
-#kill-feed .kf-who{display:inline-flex;align-items:center;gap:4px;max-width:9ch;overflow:hidden;text-overflow:ellipsis}   /* 9ch, não 11: o verbo entrou na linha e o `nowrap` cortaria a vítima */
-#kill-feed .kf-verb{opacity:.62;font-size:.92em}
-#kill-feed .kf-who .nk{overflow:hidden;text-overflow:ellipsis}
+/* ⚠️ `min-width:0` não é enfeite: item de flex nasce com `min-width:auto` e NÃO encolhe abaixo do próprio
+   conteúdo. Sem ele, uma linha com dois nicks longos e assistência (dois ícones + o "+") fica mais larga
+   que o feed, e como a coluna é alinhada à DIREITA o excesso sai pela esquerda e o `overflow:hidden` de
+   #hud-right decepa o começo da frase — some justo o nome de quem matou. Com min-width:0 quem cede é o
+   nick, que já tem reticências. O verbo e os ícones não encolhem: são eles que dão a direção da frase. */
+#kill-feed .kf-row{overflow:hidden}
+#kill-feed .kf-who{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:12ch;overflow:hidden;text-overflow:ellipsis}   /* 12ch: só cabe porque o feed deixou de obedecer à largura da coluna (ver #hud-right #kill-feed) */
+#kill-feed .kf-verb{opacity:.62;font-size:.92em;flex:none}
+#kill-feed .kf-how,#kill-feed .kf-row>i,#kill-feed .kf-row .lvl{flex:none}
+/* o `min-width:0` tem que descer até AQUI: `.nk` é item de flex dentro do `.kf-who` (que já é inline-flex),
+   e enquanto ele não puder encolher a linha inteira continua larga demais e o começo dela é decepado */
+#kill-feed .kf-who .nk{min-width:0;overflow:hidden;text-overflow:ellipsis}
 #kill-feed .kf-who.dim{opacity:.6}
 #kill-feed .kf-how{display:inline-flex;align-items:center;gap:2px}
 #kill-feed .kf-ico{font-style:normal}
@@ -217,7 +278,19 @@ body[data-mode="landscape"] #hud #hud-right{width:min(34vw,206px)}
 /* CS: a linha em que EU apareço vem destacada — é o que faz o feed valer a atenção num canto da tela */
 #kill-feed .kf-row.mine{border-color:var(--accent,#ffc22e);background:color-mix(in srgb,var(--accent,#ffc22e) 22%,var(--surface,#2226))}
 #kill-feed .kf-row.mine .kf-who.me .nk{color:var(--accent,#ffc22e);font-weight:bold}
-#kill-feed .kf-row:nth-child(n+7){display:none}
+/* ── O FEED MORRE EM DEGRADÊ, NÃO DE UMA VEZ ─────────────────────────────────
+   Ver quem matou quem é metade da graça de um kill feed, e a linha durava 9 s e sumia inteira num piscar.
+   Agora dura 22 s (FEED.TTL_MS) e a lista DESBOTA de cima para baixo conforme as novas empurram as velhas:
+   a mais recente opaca, a mais antiga quase apagada, e só então o corte. Só coube porque o feed desceu
+   para o fim da coluna, onde ele ocupa a sobra em vez de empurrar o placar.
+   ⚠️ As quatro regras têm a MESMA especificidade e valem para "esta linha em diante" (`n+k`) — quem manda é
+   a ORDEM: a última que casa vence. Reordenar aqui inverte o degradê. ⚠️ E o número do corte tem que
+   concordar com FEED.ROWS em shared/src/constants.js. */
+#kill-feed .kf-row{transition:opacity .25s ease}
+#kill-feed .kf-row:nth-child(n+4){opacity:.78}
+#kill-feed .kf-row:nth-child(n+6){opacity:.55}
+#kill-feed .kf-row:nth-child(n+8){opacity:.32}
+#kill-feed .kf-row:nth-child(n+9){display:none}
 @keyframes kfin{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
 
 /* ── BADGE DE NÍVEL (placar, feed e chat usam a MESMA marcação: <Nick> de bits.jsx) ── */
@@ -348,7 +421,7 @@ body[data-mode="portrait"] #hud #chat,body[data-mode="landscape"] #hud #chat{lef
 /* landscape: altura é o recurso escasso — o feed encolhe, a coluna sobe e para acima dos botões de toque */
 /* Celular DEITADO é o caso mais apertado do jogo: 375 px de altura para topo, feed, massa, placar e ainda
    os botões de toque. Aqui a coluna mostra o essencial — duas linhas de feed e três do placar. */
-body[data-mode="landscape"] #hud-right{top:52px;right:8px;gap:4px;max-width:min(42vw,260px)}
+body[data-mode="landscape"] #hud-right{top:52px;right:8px;gap:4px;max-width:min(46vw,280px)}
 body[data-mode="landscape"] #kill-feed .kf-row:nth-child(n+3){display:none}
 body[data-mode="landscape"] #hud #hud-right .lb-row:nth-child(n+4):not(.mine){display:none}
 body[data-mode="landscape"] #hud #hud-right .score-row{display:none}
@@ -372,7 +445,9 @@ body[data-mode="portrait"] #hud #hud-top .chip{padding:3px 8px;font-size:11px}
 body[data-mode="portrait"] #hud #h-mute{width:30px;height:30px;min-width:30px;font-size:13px}
 body[data-mode="portrait"] #hud-right{top:150px;right:8px;gap:6px;max-width:min(56vw,240px)}
 body[data-mode="portrait"] #kill-feed{max-width:100%}
-body[data-mode="portrait"] #kill-feed .kf-row:nth-child(n+3){display:none}
+/* ⚠️ E menos linhas: `overflow:hidden` na coluna esconde o excesso mas NÃO encolhe a caixa do filho, que é
+   o que colide com os botões de toque (e o que a matriz mede). Quem tem que encolher é a LISTA. */
+body[data-mode="portrait"] #kill-feed .kf-row:nth-child(n+4){display:none}
 /* Espectador em tela estreita: o chat sobe para o topo-esquerdo e o feed fica no topo-direito — os dois
    inteiros não cabem lado a lado em 375 px. O feed cede, porque o chat é onde o morto AGE. */
 body[data-mode="portrait"] #hud.spec #hud-right,
@@ -507,6 +582,13 @@ body[data-mode="portrait"] .brl-count b{font-size:2.2em}
 body[data-pointer="coarse"] #hud-left{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;
   gap:8px;left:12px;right:auto;top:auto;bottom:12px;max-width:min(62vw,280px);pointer-events:none}
 body[data-pointer="coarse"] #hud>#hud-left>*{position:static;left:auto;right:auto;top:auto;bottom:auto;transform:none;pointer-events:auto}
+
+/* A lista de salas da tela inicial (`.mr-row` com `role="button"`, Entry.jsx) é CLICÁVEL e tinha 22 px de
+   altura — metade do alvo mínimo no dedo. O defeito é antigo; só apareceu quando a matriz passou a rodar
+   contra um servidor com salas de verdade (sem salas o que renderiza é `.mr-row.dim`, que não é botão).
+   O predicado é o próprio `[role="button"]`, e não o contêiner: o TOP 5 ao lado usa a MESMA classe sem o
+   role (bits.jsx), não é clicável, e crescer 5×22 px nele seria inchar a tela por nada. */
+body[data-pointer="coarse"] .mr-row[role="button"]{min-height:44px;align-items:center}
 
 /* ── TOQUE: só vale onde o ponteiro é o DEDO (body[data-pointer="coarse"]) ──────────────────────
    Os mínimos usam min-width/min-height de propósito: este arquivo é importado ANTES dos temas em
@@ -680,6 +762,10 @@ body{--nav-h:74px}
   background:color-mix(in srgb,var(--surface,#1a2350) 92%,transparent)}
 /* na GAVETA a barra é da gaveta, não da janela: o jogo continua vivo à esquerda e não pode ser tampado */
 body[data-shell="rail"]:not([data-mode="portrait"]) #app>nav.nav{left:auto;width:var(--drawer-w);border-left:5px solid var(--line,#0006)}
+/* ⚠️ Sete botões numa gaveta de 347 px (iPhone SE deitado: `--drawer-w:min(400px,52vw)`) davam 42-43 px de
+   alvo — a matriz mede isso e reprova abaixo de 44. Não dá para estreitar a gaveta nem tirar um botão, então
+   quem cede é o espaço ENTRE eles: 5 px de folga lateral e 2 px de vão devolvem 46 px por botão. */
+body[data-pointer="coarse"][data-shell="rail"][data-mode="landscape"] #app>nav.nav{padding-left:5px;padding-right:5px;gap:2px}
 /* e a caixa das telas para de encostar nela */
 body:not([data-shell="rail"]):not([data-mode="portrait"]) .screen .wrap{
   max-height:calc(100% - var(--screen-top) - var(--nav-h) - 12px)}

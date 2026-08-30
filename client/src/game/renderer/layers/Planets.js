@@ -10,7 +10,7 @@ import {ensureAvatar,avatarBitmap,avatarKey} from "../../../theme/avatars.js";
 import {ensureFace,faceBitmap,faceKey} from "../../../theme/faces.js";
 import {PIECE_FLAG,mergeTicks,rectHas} from "@warspace/shared";
 import {colorOf,dashPolyline,seedUnit} from "../../util.js";
-import {paintTalk} from "../../../theme/util.js";
+import {paintTalk,paintNameBand} from "../../../theme/util.js";
 
 const FS=48,CHARS=[[" ","~"],["¡","ÿ"],["Ā","ž"],"✓◆✦•–—…"],TRAIL_MAX=12,TRAIL_MIN_V=72,POP_MS=280,POP_AMP=.22;
 // ── BLOB (borda de gelatina, estilo agar.io) ──
@@ -26,27 +26,51 @@ const WOB_N=9,WOB_MIN_PX=15,WOB_MAX=16,WOB_AMP=.018,WOB_LOBES=[3,5],WOB_SPD=[1.7
 // é um aviso de interface, não um objeto do mundo — encolher com o zoom o tornaria invisível justo no
 // planetão. Só na MAIOR peça do dono: com 16 pedaços, 16 ícones viram confete.
 const TALK_TEX=96,TALK_PX=26,TALK_GAP=.34;
+// ── O NOME: legenda no rodapé, não tatuagem no meio ──
+// Ele nascia no CENTRO do disco (`nameY:()=>0`), que é onde mora o nariz e a boca — com as caricaturas
+// isso virou insustentável. Três coisas o seguram no lugar novo:
+//  · BAND_TEX: a faixa escura assada por tema (theme/util.js:paintNameBand), um sprite por peça abaixo do texto;
+//  · NAME_MIN_PX: piso em PIXELS DE TELA. O único piso era de raio de MUNDO (labels.minR=13) e, com a câmera
+//    afastada, o nome saía com 4-6 px — sujeira ilegível em cima da arte, e pior ainda com 16 lascas na tela;
+//  · nameFitK: o texto passa a CABER no disco. `size` dava 0,34·r, e um nick de 10 letras já pedia ~1,87·r —
+//    por isso o nome encostava nas duas bordas. ⚠️ O fator é FROUXO (.92, quase o diâmetro inteiro) por um
+//    motivo medido: com .74 um nick de 13 letras num planeta de r=54 era espremido a 9 px de tela e sumia —
+//    trocava um defeito por outro. Aperta só quem realmente transborda, e nick curto nunca encolhe.
+const BAND_TEX=128,NAME_MIN_PX=10;
 export function createPlanets(R){
   const root=new Container();root.sortableChildren=true;const trails=new Graphics();
   const views=new Map(),trailMap=new Map(),seg=[],counts=new Map(),maior=new Map(),pops=new Map();let frame=0,fontName="",lastTrailTick=-1;
-  function setTheme(){const th=R.theme,L=th.hud.labels;fontName=`pn-${th.id}`;
+  function setTheme(){const th=R.theme,L=th.hud.labels;fontName=`pn3-${th.id}`;
     const sw=L.strokeWidth(FS);
     // fonte fica instalada por tema (nome inclui o id): desinstalar quebra BitmapTexts de outra instância (StrictMode)
     // skipKerning é OBRIGATÓRIO aqui: o kerning do Pixi é O(n²) sobre o charset (≈324 glifos → ~210 mil measureText,
     // num tick só) — era ele que congelava a tela na primeira vez que cada tema aparecia. O nome é curto e
     // centralizado, então o espaçamento sem kerning não muda nada na prática.
     if(!Cache.has(fontName+"-bitmap"))
-      BitmapFont.install({name:fontName,skipKerning:true,style:{fontFamily:L.font,fontSize:FS,fontWeight:"bold",fill:L.nameColor,stroke:{color:L.stroke,width:sw,join:"round"}},chars:CHARS,resolution:1,padding:Math.ceil(sw)+2});
+      // O FILL é translúcido (labels.nameFill) e o CONTORNO é opaco: a forma da letra continua nítida e a
+      // arte da caricatura aparece por dentro dela. Vem de um campo PRÓPRIO, e não de `nameColor`, porque
+      // `nameColor` também pinta o ícone de push-to-talk logo abaixo — mexer num só desbotaria os dois.
+      // ⚠️ O atlas é cacheado pelo NOME (`pn3-`): mudar o estilo sem mudar o nome reaproveita o antigo.
+      BitmapFont.install({name:fontName,skipKerning:true,style:{fontFamily:L.font,fontSize:FS,fontWeight:"bold",fill:L.nameFill||L.nameColor,stroke:{color:L.stroke,width:sw,join:"round"}},chars:CHARS,resolution:1,padding:Math.ceil(sw)+2});
     for(const v of views.values())v.name.style.fontFamily=fontName;}
   function mkView(id){const c=new Container(),body=new Sprite();body.anchor.set(.5);const gfx=new Graphics();
     const name=new BitmapText({text:"",style:{fontFamily:fontName,fontSize:FS}});name.anchor.set(.5);
     c.addChild(body,gfx,name);root.addChild(c);
-    return{c,body,gfx,name,talk:null,mesh:null,phase:seedUnit(id)*6.2832,lastName:null,f:0};}
+    return{c,body,gfx,name,talk:null,band:null,mesh:null,phase:seedUnit(id)*6.2832,lastName:null,nameW:0,f:0};}
   /** Ícone de voz desta peça (criado só quando ela fala pela primeira vez). */
   function talkOf(v,tex){let t=v.talk;
     if(!t){t=new Sprite();t.anchor.set(.5);v.talk=t;v.c.addChild(t);}
     if(t.texture!==tex)t.texture=tex;
     return t;}
+  /**
+   * Faixa do nome desta peça (criada na 1ª vez que ela mostra o nome).
+   * ⚠️ Entra ABAIXO do texto: `addChildAt` no índice do próprio nome, senão a faixa cobriria a legenda que
+   * ela existe para dar chão. A ordem final por peça é [malha] corpo · gfx · faixa · nome.
+   */
+  function bandOf(v,tex){let b=v.band;
+    if(!b){b=new Sprite();b.anchor.set(.5);v.band=b;v.c.addChildAt(b,v.c.getChildIndex(v.name));}
+    if(b.texture!==tex)b.texture=tex;
+    return b;}
   /** Malha do blob desta peça (criada na primeira vez que ela fica grande o bastante). */
   function meshOf(v,tex){let m=v.mesh;
     if(!m){m=new MeshPlane({texture:tex,verticesX:WOB_N,verticesY:WOB_N});v.mesh=m;v.c.addChildAt(m,0);}
@@ -104,9 +128,17 @@ export function createPlanets(R){
           const m=meshOf(v,tex);m.visible=true;v.body.visible=false;deform(m,v,e,d,t,sx,sy);}
         else{if(v.mesh)v.mesh.visible=false;v.body.visible=true;v.body.texture=tex;v.body.width=d*2*sx;v.body.height=d*2*sy;}
         // rótulos
-        const lab=e.rr>L.minR&&showNames;v.name.visible=lab;
-        if(lab){const fs=L.size(e.rr);const nm=pl.name;if(v.lastName!==nm){v.lastName=nm;v.name.text=nm;}
-          v.name.scale.set(fs/FS);v.name.y=L.nameY(fs);}
+        const fs=L.size(e.rr);
+        const lab=e.rr>L.minR&&showNames&&fs*cam.scale>=NAME_MIN_PX;v.name.visible=lab;
+        if(lab){const nm=pl.name;
+          // A largura é medida UMA vez por nome, com a escala forçada a 1. ⚠️ Medir sem zerar a escala lê a
+          // largura já escalada do frame anterior, e aí o texto encolhe a cada quadro até sumir — em silêncio.
+          if(v.lastName!==nm){v.lastName=nm;v.name.scale.set(1);v.name.text=nm;v.nameW=v.name.width;}
+          const fit=v.nameW>0?(e.rr*2*(L.nameFitK||.74))/v.nameW:1;
+          v.name.scale.set(Math.min(fs/FS,fit));v.name.y=L.nameY(fs,e.rr);
+          const bt=R.cache.get(`band|${th.id}`,BAND_TEX,(c,s2)=>paintNameBand(c,s2,{ink:L.stroke,alpha:L.bandAlpha,top:L.bandTop}));
+          const bd=bandOf(v,bt);bd.visible=true;bd.width=bd.height=e.rr*2;}
+        else if(v.band)v.band.visible=false;
         // ícone de "está falando" (push-to-talk), acima do planeta
         if(view.talkingNow(pl)&&maior.get(e.owner)===e.id){
           const tex=R.cache.get(`talk|${th.id}`,TALK_TEX,(c,s2)=>paintTalk(c,s2,{fill:L.nameColor,stroke:L.stroke}));

@@ -587,9 +587,14 @@ export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40};
 // sozinhos: todos param no piso MIN_PIECE_R. Eles AMOLECEM, e quem finaliza é sempre uma boca (ou o gás).
 // Por isso `how` (com o quê) e `a` (quem colheu) são campos separados, e existe `by` (a assistência): a
 // linha honesta é "⭐ amoleceu · Fulano devorou", não "morreu na estrela".
-export const FEED={KEEP:12,ROWS:6,TTL_MS:9000,HIT_TTL_TICKS:300,QUEUE_MAX:32,MAX_PER_FLUSH:4,
+export const FEED={KEEP:16,ROWS:8,TTL_MS:22000,HIT_TTL_TICKS:300,QUEUE_MAX:32,MAX_PER_FLUSH:4,
   LEAD_HOLD_TICKS:180,LEAD_MARGIN:.05,LEAD_CD_TICKS:1200,CRUNCH_AT_S:[600,300,60],STREAK_AT:[3,5,10]};
-// KEEP/ROWS/TTL_MS: buffer do cliente, linhas na tela e quanto tempo cada uma dura.
+// KEEP/ROWS/TTL_MS: buffer do cliente, linhas na tela e quanto tempo cada uma dura. TTL era 9 s, e a linha
+// sumia inteira e de uma vez — quem estava olhando o jogo perdia o abate. Hoje dura 22 s e a lista morre em
+// DEGRADÊ (client/src/styles/ui.css, `#kill-feed .kf-row:nth-child`): a mais nova em cima, opaca, e as de
+// baixo desbotando conforme as novas as empurram. Só cabe porque o feed desceu para o FIM da coluna direita,
+// onde ele ocupa a sobra e não empurra mais o cartão de massa nem o placar. ⚠️ ROWS e o `nth-child` que
+// esconde o excesso têm que concordar: são o mesmo número escrito em dois lugares.
 // HIT_TTL_TICKS (5 s): o carimbo de "quem me amoleceu" vale por esse tempo; depois disso o abate é só "eat".
 // QUEUE_MAX/MAX_PER_FLUSH: uma supernova ou o fecho final do gás mata muita gente no MESMO tick — o feed
 // manda no máximo 4 por lote e descarta as mais velhas, senão a tela vira parede.
