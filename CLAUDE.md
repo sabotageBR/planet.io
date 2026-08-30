@@ -120,7 +120,8 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   nada ao servidor, então cancelar é local). **Alerta de míssil vindo em mim**: `self.threat`/`threatDir` (protocolo 8) — tem que vir
   do servidor porque o míssil nasce muito além da AOI —, com seta na borda da tela (`layers/Threat.js`), blip no radar e bipe que acelera; míssil×míssil varrido = CLASH;
   míssil desvia asteroide = DEFLECT); ímã (com teto de tamanho `POWERUP.MAGNET_MAX_R`: o alcance é r·MAGNET_RANGE e num planetão sugava a tela inteira) suga comida e ejetados
-  (comida movida recebe UPDATE; cometa/estrela mais devagar; **asteroides também**, escalados por R_MIN/r; a estrela-perigo se arrasta até você); escudo por níveis 1–3 (não expira,
+  (comida movida recebe UPDATE; cometa/estrela mais devagar; **asteroides também**, escalados por R_MIN/r; a estrela-perigo se arrasta até você); escudo por níveis 1–3 (o texto que sobe ao pegar diz **"ESCUDO 1/2/3"**, não "NÍVEL": com o nível do JOGADOR
+  existindo e tendo badge próprio, "NÍVEL 2!" lia como se ele tivesse subido de nível; não expira,
   evolui sem ser atingido, míssil/tiro/batida forte de asteroide tiram um nível, dividir derruba inteiro; contra quem pode engolir só
   segura a 1ª batida — ela derruba o escudo inteiro e quica, depois o maior come); fusão por par (atração só perto, sem puxão ao centróide).
   Regras novas = `rules.js` + `predict.js` (peças próprias) + tradução de eventos em `Sim._consume` E `LocalServer.step`.
@@ -292,14 +293,33 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (fila com retry, circuit-breaker). Moedas/conquistas só no servidor (`persist/rewards.js`).
 - **Casca da tela** (`body[data-shell]`, escrito por `App.jsx`; regras em `client/src/styles/ui.css`): na PRIMEIRA carga do navegador
   o menu é `center` — centralizado de verdade e com rolagem (os temas o deixavam preso em `flex-start` + `8vh` com `overflow:hidden`,
-  então em tela baixa o botão JOGAR ficava fora do alcance). Depois da primeira partida (`app.played`) vira `rail`: gaveta à direita e
-  **a câmera encolhe para a esquerda** em vez de ficar escondida atrás dela. Quem faz isso é `--rail-w` no `#game` e no `#hud` — e só
+  então em tela baixa o botão JOGAR ficava fora do alcance). Com uma partida VIVA atrás vira `rail`: gaveta à direita e
+  **a câmera encolhe para a esquerda** em vez de ficar escondida atrás dela. Quem decide é `played && conn` fora de
+  `idle`/`closed`, não `played` sozinho: ele só era escrito como `true` e nunca voltava, então sair da partida deixava a
+  gaveta à direita com o canvas VAZIO à esquerda — uma gaveta que não é aparte de nada. `leaveGame` zera a conexão e o
+  menu volta ao centro sozinho; morrer e o fim de rodada mantêm `connected` e seguem na gaveta, que é onde o espectador
+  tem o que ver ao lado. Quem faz isso é `--rail-w` no `#game` e no `#hud` — e só
   funcionou porque o `inset:0` INLINE que `game/index.js` escrevia no container saiu: estilo inline ganha de qualquer folha. Encolher o
   `#game` basta, porque o Pixi é criado com `resizeTo:container` e o `ResizeObserver` já refaz câmera, zoom, AOI e o `{t:"view"}`.
   Celular em pé nunca vira gaveta (lá o certo é a folha de rodapé, que é o que os temas fazem). **Modais são centralizados nos três
   temas** fora do celular em pé: o "às vezes no meio, às vezes embaixo" era o RELÓGIO — só o `dusk` (20h–05h) os transformava em folha,
   e o mesmo modal mudava de lugar conforme a hora. `#s-round` (o pódio do BIG CRUNCH) **não tinha uma linha de CSS em arquivo nenhum** e
-  caía cortado no canto; agora herda o tratamento de `#s-dead`. `scripts/responsive-check.mjs` cobre `dead`, `round` e `entry@rail`.
+  caía cortado no canto; agora herda o tratamento de `#s-dead`.
+  **TODA TELA NO MESMO LUGAR**: o mesmo bug dos modais, uma camada acima. A POSIÇÃO de cada tela vinha do tema, e o tema
+  vem do relógio — `dawn`/`sunset` colam `.screen .wrap` como gaveta à direita (`screens.css:49`), `dusk` cola a MESMA
+  regra como folha no rodapé. Na mesma sessão, "Modos" abria encostado no topo e cortado embaixo, "Salas" boiava no
+  rodapé, e só a tela inicial (a única com regra própria em `ui.css`) ficava centrada: três ancoragens para painéis
+  irmãos, trocando sozinhas às 16h e às 20h. Agora todas são a MESMA caixa — `--screen-top`, `width:min(520px,100%)`,
+  altura pelo conteúdo, rolagem por dentro, alinhadas de cima para baixo. O que continua do tema é a SUPERFÍCIE; o que
+  se unifica é a ancoragem e a moldura (que na gaveta/folha era de três lados e agora fecha, porque a caixa não encosta
+  em borda nenhuma). `#s-dead`/`#s-round` entram por NOME: não têm `.wrap`, montam o `.screen` à mão.
+  A **tela inicial** virou coluna única na mesma caixa (`"brand" "main" "side"`): era um grid de duas colunas, e por
+  isso o cartão principal abria fora do eixo em que todas as outras telas abrem — comparar as duas lado a lado era o que
+  denunciava. O TOP 5 desceu para baixo do cartão, e por isso deixou de sumir no celular deitado: ali ele agora cabe.
+  Nessa tela quem rola é o `.screen`, não o `.wrap` — sem moldura não há caixa por dentro da qual rolar, e uma barra de
+  rolagem interna comeria 15 px justo da medida que tem que bater com a das outras telas.
+  `scripts/responsive-check.mjs` cobre `dead`, `round`, `entry@rail` e `shop@rail` (a gaveta com o conteúdo mais largo
+  do jogo — 432 combinações).
 - **Placar e massa do HUD** (`#hud-right`, regras em `client/src/styles/ui.css`): estreitos, juntos e
   TRANSLÚCIDOS (`color-mix`, o mesmo recurso que o kill feed e o chat já usavam). O bloco nascia opaco e
   largo — `min-width:172px` por linha (204 na 1ª), `gap:9px` entre elas e NENHUM `max-width` no desktop —,
@@ -352,6 +372,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 - **Câmera de quem morreu**: no Battle Royale segue o espectador de sempre (quem te matou, ou o companheiro vivo). No **Livre ela fica
   PARADA onde o jogador morreu** (`spectateTargetFor(s,-2)`): ali não há placar nem fim de partida para acompanhar, e passear atrás da
   tela de morte desorienta. As setas ‹ › continuam funcionando nos dois modos.
+- **Salvar preferências VOLTA para quem abriu** (`app.prevScreen`, escrito por `go()`): Opções é alcançável da entrada e
+  da `<Nav>`, então cravar "volta para a entrada" erraria metade das vezes. Só volta no SUCESSO do `PATCH` — sair da tela
+  com erro esconderia o erro e o jogador não teria como tentar de novo.
 - **Temas por horário** (`docs/design/theme-time.md`): `dawn` 05–16h, `sunset` 16–20h, `dusk` 20–05h; pref `theme: auto|dawn|sunset|dusk`.
   `html[data-theme]` troca o CSS; o Pixi rebaka texturas via `theme.textures.*`. Nenhuma cor fora de `client/src/theme/`.
 - **Bots** (`shared/src/bot.js`, `ROOM.BOTS`): um cérebro só para o servidor e o LocalServer — produz `{tx,ty,flags}` como um humano e
@@ -427,6 +450,33 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   BOOM/SHIELD_*, `q.hits=WEAPON.CLUSTER` no `clusterSplit` (o filho do cacho tem `hue` de míssil simples DE
   PROPÓSITO, senão se abriria de novo) e o evento `NOVA_HIT`, que não existia — sem ele a arma mais cara do
   jogo era a única sem crédito no feed (a Nova saiu do sorteio depois; o crédito continua lá, dormente com ela).
+- **Conquistas em FAMÍLIAS de 4 níveis** (`shared/src/achievements.js`, migração 0007): eram 19 medalhas soltas de meta
+  única — quem cumpria "Sobreviva 5 minutos" no primeiro dia nunca mais tinha o que perseguir ali, e dois pares
+  (`survive5`/`survive10`, `mass5000`/`mass10000`) já eram níveis da mesma coisa com nomes diferentes: a estrutura
+  existia, sem se assumir. Agora são 13 famílias × até 4 tiers (Bronze·Prata·Ouro·Diamante, 100/250/600/1500 moedas),
+  chave `familia.tier` (`survive.b` … `survive.d`). `ACHIEVEMENTS` continua sendo uma lista PLANA — a UI, o servidor e a
+  loja iteram sobre ela e não sabem que é gerada —, e `unlockedAchievements` virou um laço sobre `FAMILIES × TIERS`: a
+  cascata de `if`s escritos à mão era o lugar exato onde uma conquista nova era esquecida. `per:"match"` lê o resumo da
+  partida (recordes de uma vida), `per:"stats"` lê o acumulado. **A migração 0007 esvazia `user_achievements`** (decisão
+  de projeto: recomeçar do zero) — as moedas já pagas ficam, porque vivem no `coin_ledger`, e as skins já concedidas
+  ficam, porque vivem em `user_skins`; o que volta ao zero é só o carimbo. ⚠️ As 12 skins `earned` apontam para as
+  chaves NOVAS (`unlockKey`), e três contadores nasceram em `user_stats` (`br_wins`, `br_top10`, `br_team_wins`), com
+  backfill a partir de `matches`. O piso `players>=10` do Battle Royale está em TRÊS lugares que precisam concordar sem
+  se chamarem (`achievements.js`, `brCounters` em `repos/matches.js` e o backfill da migração): vencer com 3 na sala não
+  é vencer com 50. `explore` é família de tier ÚNICO — 4 quadrantes é o mapa inteiro, não escala, e forçar quatro níveis
+  seria inventar meta que ninguém persegue. No Perfil cada família é UMA linha com os quatro selos: o conquistado aceso
+  na cor do metal, o próximo com a barra e o número, os demais apagados. ⚠️ `newAchievements` lê `stats` dos DOIS jeitos
+  (`brWins ?? br_wins`): a linha crua do `upsertStats` vem em snake_case do Postgres e o `statsToPublic` devolve
+  camelCase — ler só um faz a família inteira contar ZERO em silêncio.
+- **O cartão de fim de partida** (`client/src/ui/LevelUp.jsx`, `app.levelUp`): subir de nível e destravar conquista são
+  as duas coisas que o jogador não vai ver de novo, e as duas passavam batidas. O nível saía num `toast` de 3,2 s — a
+  mesma fila de UM item que "Preferências salvas" usa, então qualquer outra mensagem o derrubava — e a conquista não
+  saía em lugar NENHUM: nem em `Dead.jsx`, nem no pódio; só aparecia no Perfil, se o jogador fosse lá procurar.
+  `r.xp.gained` chegava do servidor e era jogado fora. Agora as duas viram um cartão só, com o nível grande, o XP e as
+  medalhas da partida. ⚠️ **Não existe level-up em tempo real**: o XP é creditado no fim da partida, dentro da transação
+  de `finishMatch` (`persist/hooks.js`), então o cartão aparece quando o `{t:"rewards"}` chega — que é o instante em que
+  o nível de fato subiu. Sons próprios (`levelUp`, `achievement`), e o `achievement` é irmão menor de propósito: uma
+  partida pode render quatro medalhas, e quatro fanfarras seguidas viram barulho.
 - **Progressão** (`shared/src/levels.js`, migrações 0004–0006): XP por partida (`matchXp`, função pura no
   molde de `achievements.js`) e nível DERIVADO do XP (`levelFromXp`) — nunca guardado, senão vira uma segunda
   verdade que envelhece na primeira mudança de curva. Curva `85·(L−1)^2.12`: nível 2 na primeira vida, 10 em
@@ -461,6 +511,17 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ficou: `Room.leave` remove do mundo, e no Livre **morrer e renascer é `leave` + `join` num slot NOVO**.
   Chave estável: `u<userId>` → `r<resumeToken>` → `n<nick>` → `b<slot>`; **nunca `sessionId`**, que é por VIDA
   e agruparia errado justamente no respawn. `_rosterFold` é idempotente por vida (`gp.rosterFolded`) e ACUMULA.
+- **Loja: a confirmação onde o clique aconteceu** (`ui/Shop.jsx`): clicar num cartão abre um MODAL com a skin grande, o
+  preço e as duas saídas. O painel de detalhe ficava embaixo da grade, fora da vista de quem tinha acabado de clicar:
+  selecionar e confirmar aconteciam a uma tela de distância um do outro, e ninguém descobria que ainda faltava
+  confirmar. A trava original continua — clicar num cartão nunca gasta moeda, só abre a pergunta. "Adquiridas" saiu da
+  barra de ferramentas e virou um chip do filtro, ao lado de "Todas": como toggle solto ele competia por espaço com a
+  busca e o seletor de ordem, e era o primeiro a ser cortado quando o painel encolhia. ⚠️ Os TRÊS temas fixam
+  `.shop-grid{grid-template-columns:repeat(3,1fr)}`, anulando o `auto-fill` de `base.css` — três colunas fixas respondem
+  à largura da TELA, não à do painel, e na gaveta de 480 px os cartões transbordavam com barra de rolagem horizontal;
+  `ui.css` devolve o `auto-fill` com especificidade maior. A skin **Retrato** ganhou selo próprio na grade (ela é a
+  única que pede algo além da compra — a foto), o `AvatarPicker` mudou para DENTRO do modal e também para o Perfil, junto
+  do nick e do país: trocar a foto não deveria exigir reencontrar uma skin numa grade de 94.
 - **Skins novas** (75–93): 8 lendárias com `levelReq` (10–50) que são EMBLEMAS, não texturas de planeta — é o
   que as faz legíveis a 24 px; a skin **Retrato** (83), que põe a FOTO do jogador dentro do disco; e 10
   caricaturas de easter egg (84–93, `rarity:"secret"`, escondidas da loja e recusadas pela compra), escolhidas
@@ -484,7 +545,27 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   Três barramentos (sfx/amb/ui), **prioridade de vozes** (no teto, o som novo ROUBA a de menor prioridade — antes o alerta e a
   própria morte sumiam justo quando a tela enchia) e **contínuos** (`startLoop/setLoop/stopLoop`): alerta de míssil que acelera,
   ímã, carga da mira e a ambiência de 3 camadas (pad afinado pela minha massa, tensão perto de estrela, pulso do fim da rodada).
-  Som de tela por delegação num listener só em `App.jsx`. Opções → Som: efeitos, música (o pad), **ambiência** (nova) e volume.
+  Som de tela por delegação num listener só em `App.jsx`. Opções → Som: efeitos, música, **ambiência** e volume.
+  **A TRILHA** (`buildMusica` em `audio/index.js`, 5º barramento `music`): peça ORIGINAL na linguagem do minimalismo
+  sinfônico — órgão de tubos, ostinato de colcheias que não para, harmonia modal que gira em vez de resolver (i–VI–III–VII
+  em lá eólio) e forma por ACUMULAÇÃO. Três seções escolhidas por um número só, `intensity`: menu (drone + coral, sem
+  pulso), partida (entra o ostinato) e clímax (órgão cheio, sub, métrica acelerando 52→84 BPM). A intensidade sai do que
+  o jogo JÁ manda para a ambiência (`game/index.js`, 5 Hz): o MAIOR entre massa, perigo e relógio da rodada — a trilha
+  acompanha o que está mais quente, não a média, que deixaria o clímax morno para sempre. ⚠️ Três coisas que o motor não
+  tinha: (a) um **relógio musical** — só havia `setTargetAtTime` e `start(t0)` absolutos —, daí o agendador look-ahead
+  (`setInterval` de 40 ms agendando 180 ms à frente contra `ctx.currentTime`); (b) um **barramento próprio**: a trilha ia
+  pelo `amb`, então dividia interruptor com a ambiência e o `duck()` do alerta de míssil abaixava os efeitos e deixava a
+  música por cima, o contrário do que se quer; (c) o `build()` terminava no bloco da ambiência **sem `if`** — era o
+  `else` implícito, e `startLoop("music")` teria criado uma SEGUNDA ambiência inteira, sem erro. As notas chamam `tubo()`
+  direto e não `play()`: passar pelo teto de 24 vozes faria a trilha ser roubada no meio de um compasso. `stopLoop` chama
+  `L.stop()` (o `setInterval` sobreviveria a toda troca de sala) e `resume()` ressuscita `music` como já ressuscitava
+  `ambience`. `musicVolume` é pref nova (cliente + whitelist do servidor), no molde de `voice`/`voiceVolume`. Na mesa
+  `?sfx` a trilha tem painel próprio com o eixo de intensidade e as três seções isoladas — contínuo não entra sozinho na
+  lista, que é fixa. ⚠️ No menu o ostinato nem é AGENDADO: com o ganho em zero as notas continuavam a ser criadas, oito
+  osciladores mudos por compasso, para sempre, na tela onde o jogo está parado.
+  ⚠️ **A voz nunca tocou**: `playVoice()` usava `VOICE_HZ` e `VOICE_DUCK`, e nenhuma das duas existia — nem declarada,
+  nem importada. Toda chamada lançava `ReferenceError` em silêncio. Hoje saem de `VOICE.RATE_HZ` e de uma constante ao
+  lado de `DUCK`.
   **`?sfx` abre a mesa de som**: toda receita com botão, os contínuos com controle de intensidade — é por onde o pacote é aprovado de ouvido.
 - **Skins (75)**: `shared/src/skins.js` guarda `pattern`/`accent` e `client/src/theme/patterns.js` desenha a textura procedural
   dentro do disco (listras, crateras, continentes, lava, gelo, galáxia, xadrez, escamas, olho…) — nada de imagem, tudo assado uma vez
