@@ -30,7 +30,8 @@ export const LABELS = {
   coinIcon: "🪙", coinWord: "moedas", nameLabel: "Nome do seu planeta", swap: "Trocar",
   play: "JOGAR", playAuto: "🚀 Jogar (auto)", rooms: "Salas", ranking: "Ranking", profile: "Perfil", shop: "Loja", prefs: "Opções", home: "Início",
   guestNote: "Jogando como convidado", claim: "Reivindicar conta", login: "Entrar", logout: "Sair", guest: "convidado", registered: "conta protegida",
-  hint: "mouse = mover · ESPAÇO = dividir · W = ejetar · F/clique = míssil (segure para mirar, ESPAÇO cancela) · botão direito = dividir",
+  // {s}/{e}: as teclas de dividir e ejetar são configuráveis (prefs keySplit/keyEject), então a dica é um MOLDE.
+  hint: "mouse = mover · {s} = dividir · {e} = ejetar · F/clique = míssil (segure para mirar, {s} cancela) · botão direito = dividir",
   back: "◄ Voltar", equipped: "EQUIPADA", equip: "Equipar", buy: "Comprar", locked: "Bloqueada", secret: "???",
   lbTitle: "PLACAR", massLabel: "MASSA", scoreLabel: "pontos", youLabel: "planeta", killsWord: "abates", botTag: "◆", regTag: "✓",
   dead: "ABSORVIDO", deadIcon: "💥", deadSub: "— a galáxia continua sem você —", eatenBy: "DEVORADO POR", suckedBy: "SUGADO POR",
@@ -39,11 +40,16 @@ export const LABELS = {
   killFeed: {
     eat: "devorou", missile: "míssil", burst: "rajada", cluster: "cacho", nova: "nova",
     star: "estrela", asteroid: "asteroide", zone: "gás", hole: "buraco negro", supernova: "supernova",
-    assist: "amoleceu", world: "o espaço",
+    assist: "amoleceu", world: "o espaço", killed: "matou",   // o verbo: sem ele a linha é "Fulano 🍴 Beltrano" e o leitor tem que adivinhar a direção
     // prefixo `sys_` porque `zone` é as DUAS coisas: o perigo que matou alguém e o marco "o gás virou"
     sys_start: "A partida começou", sys_lead: "{n} assumiu a liderança", sys_crunch: "BIG CRUNCH em {n}",
     sys_zone: "O gás está avançando", sys_few: "Restam {n}", sys_streak: "{n} abates seguidos",
   },
+  // Texto desenhado DENTRO do mundo (renderer/layers/Fx.js → theme/*/index.js). Fica aqui, e não nos três
+  // temas, porque a mesma string repetida em três arquivos diverge na primeira correção.
+  // "Nebulosa planetária" é o nome certo do que sobra de uma estrela que morre SEM supernova de verdade —
+  // e é exatamente o caso do atropelamento, o único que não larga prêmio (STAR.RAM_REWARD).
+  fx: { supernova: "SUPERNOVA!", nebula: "NEBULOSA PLANETÁRIA!" },
   respawn: "⟳ RENASCER", toLobby: "Lobby", timeWord: "tempo", rankWord: "ranking diário", coinsEarned: "moedas ganhas",
   lobbyTitle: "SALAS", roomCode: "CÓDIGO", enter: "Entrar", create: "Criar sala", autoNote: "Entra na sala mais cheia com vaga", shard: "shard", botsWord: "bots",
   rankTitle: "RANKING", scopeGlobal: "Global", scopeCountry: "Meu país", noCountry: "escolha seu país no perfil",
@@ -69,7 +75,7 @@ export const LABELS = {
   reconnTitle: "CONEXÃO PERDIDA", reconnSub: "Reconectando… tentativa {n}/5",
   split: "DIVIDIR", eject: "EJETAR", fire: "MÍSSIL", exit: "Sair", keySplit: "ESPAÇO", keyEject: "W", keyFire: "F",
   ammo: "mísseis",
-  fireCd: "carregando", powerups: { magnet: "Ímã", shield: "Escudo", merge: "Fusão" }, shieldLevel: "Nv",
+  fireCd: "carregando", powerups: { magnet: "Ímã", shield: "Escudo", merge: "Fusão", autodef: "Auto-defesa", zoom: "Visão", feast: "Banquete" }, shieldLevel: "Nv",
   room: "SALA", ping: "ms", fps: "fps", top5: "TOP 5 HOJE", activeRooms: "SALAS ATIVAS",
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— o universo desabou num ponto; a próxima galáxia já está nascendo —",
   champion: "CAMPEÃO DA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar agora", playersWord: "no placar", posWord: "#",
@@ -83,7 +89,7 @@ export const LABELS = {
   passShort: "Senha com pelo menos 6 caracteres", passMismatch: "As senhas não conferem", nickShort: "Nick com 2 a 16 caracteres",
   connLost: "Conexão perdida", roomFull: "Sala cheia", kicked: "Desconectado do servidor",
 };
-const GROUPS = ["periods", "metrics", "stats", "powerups", "causes", "sortBy", "killFeed", "awards"];
+const GROUPS = ["periods", "metrics", "stats", "powerups", "causes", "sortBy", "killFeed", "awards", "fx"];
 export function mergeLabels(over) {
   if (!over) return LABELS;
   const out = { ...LABELS, ...over };

@@ -1,6 +1,7 @@
 // ── Enums do fio (ver docs/spec/protocol.md) ──────────────────────────────────
 // @ts-check
-export const PROTOCOL_VERSION=11;   // 11: NÍVEL do jogador — PLAYERS ganhou `level` (u8), o badge ao lado do nick no placar, no chat e no kill feed
+export const PROTOCOL_VERSION=12;   // 12: POWERUPS DE JOGADOR — o `self` ganhou autoDefT/zoomT/feastT (3×u16) e o POWER_BIT ganhou autodef/zoom/feast
+// 11: NÍVEL do jogador — PLAYERS ganhou `level` (u8), o badge ao lado do nick no placar, no chat e no kill feed
 // 10: cinto de armas — INPUT ganhou SWAP e o `self` ganhou `owned` (bitmask do que dá para chavear)
 // 9: MODOS DE JOGO — PLAYERS leva `team`, `self` leva `weapon`/`alive`, MISSILE leva `weapon`, e entram ZONE/VOICE/VOICE_UP
 // 8: `self` leva threat/threatDir (míssil teleguiado vindo em mim) · 7: fireCd (carência de tiro do spawn) · 6: LEADERBOARD leva x,y de TODOS os vivos
@@ -19,7 +20,10 @@ export const NO_TEAM=255;   // linha do PLAYERS: sem equipe (modo Livre e Battle
 export const SELF_FLAG={DEAD:1,RESYNC:2,LOBBY:4,ZONE_HURT:8};
 // RESYNC: a sessão esqueceu o que o cliente conhece (socket congestionado) — o cliente descarta tudo e recria com este snapshot
 // LOBBY: a partida ainda não começou (o jogador está na sala, não no mapa); ZONE_HURT: estou FORA da zona, queimando
-export const POWER_BIT={magnet:1,shield:2};
+export const POWER_BIT={magnet:1,shield:2,autodef:4,zoom:8,feast:16};   // ímã/escudo são por PEÇA (o resumo aqui é o melhor entre elas); os três novos são por JOGADOR
+// O HUD é genérico: qualquer chave de `self.powerups` com valor > 0 vira um chip. O bit diz "está ligado"
+// e o u16 correspondente diz quanto falta — o bit sozinho não bastaria para desenhar a contagem, e o u16
+// sozinho não distinguiria "acabou agora" de "nunca teve".
 export const UPD={X_Y:1,R:2,V:4,FLAGS:8,EXTRA:16};
 export const REMOVE={LEFT_AOI:0,EATEN:1,MERGED:2,POPPED:3,EXPIRED:4,SUCKED:5,DESPAWN:6};
 export const EVENT={EAT:0,POP:1,MERGE:2,SPLIT:3,BH_SUCK:4,DEATH:5,CHIP:6,BOUNCE:7,BOOM:8,EXIT:9,SHOOT:10,SHIELD_BREAK:11,CLASH:12,DEFLECT:13,SHIELD_HIT:14,SHIELD_UP:15,
@@ -33,7 +37,11 @@ export const STAR_PHASE={GROW:0,ACTIVE:1,OLD:2};   // OLD = inchando para a supe
 export const ERROR_CODE={VERSION:4400,FULL:4402,AUTH:4401,NICK_RESERVED:4409,RATE:4429,ROOM:4404,MODE:4405};
 // ── Tamanhos fixos do fio (codec.js) ─────────────────────────────────────────
 export const NAME_MAX_BYTES=32; // nome no PLAYERS: utf-8 truncado em fronteira de code point
-export const INPUT_BYTES=10,SNAPSHOT_HEADER_BYTES=13,SELF_BYTES=25,ZONE_BYTES=21,VOICE_HEADER_BYTES=12,VOICE_UP_HEADER_BYTES=6;
-// SELF_BYTES: 18 + u16 fireCd (protocolo 7) + 2×u8 threat/threatDir (8) + 2×u8 weapon/alive (9) + u8 owned (10).
+export const INPUT_BYTES=10,SNAPSHOT_HEADER_BYTES=13,SELF_BYTES=31,ZONE_BYTES=21,VOICE_HEADER_BYTES=12,VOICE_UP_HEADER_BYTES=6;
+// SELF_BYTES: 18 + u16 fireCd (protocolo 7) + 2×u8 threat/threatDir (8) + 2×u8 weapon/alive (9) + u8 owned (10)
+//             + 3×u16 autoDefT/zoomT/feastT (12).
+// Os campos novos entram no FIM do bloco, e isso não é arrumação: assim o `readSelf` antigo lê os 25
+// primeiros bytes certos e ignora o resto, então o fio continua legível por um cliente velho. Quem recusa
+// a conexão é só a checagem de PROTOCOL_VERSION no join — o formato em si não quebra.
 // O INPUT continua com 10 bytes: a troca de arma coube num BIT que já sobrava no `u8 flags` (ainda restam
 // 64 e 128), e o push-to-talk tem mensagem própria.

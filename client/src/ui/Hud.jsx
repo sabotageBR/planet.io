@@ -14,9 +14,10 @@ import KillFeed from "./KillFeed.jsx";
 import { Nick } from "./bits.jsx";
 import { WEAPON_ICON } from "./icons.js";
 import BrLobby from "./BrLobby.jsx";
-import { MODE, weaponOf } from "@warspace/shared";
+import { MODE, weaponOf, KEY_LABEL } from "@warspace/shared";
+import { keysOf } from "../game/input/Keyboard.js";   // a legenda tem que dizer a tecla que está DE FATO ligada (inclusive a do desempate de colisão)
 
-const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: false, clock: null,
+const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0, autodef: 0, zoom: 0, feast: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: false, clock: null,
   mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, talk: null, chat: [], feed: [], lobby: null };
 const TALK_MSG = { cd: "micCooldown", denied: "micDenied", unsupported: "micUnsupported", audio: "micFail", fail: "micFail" };   // motivo → chave da label
 /** Anel do push-to-talk: o arco encolhe com o tempo que sobra do clipe. */
@@ -29,7 +30,7 @@ function TalkRing({ k }) {
   </svg>;
 }
 const EMPTY_STORE = { get: () => EMPTY, subscribe: () => () => {} };
-const PW_ICON = { magnet: "🧲", shield: "🛡️" };
+const PW_ICON = { magnet: "🧲", shield: "🛡️", autodef: "🛰️", zoom: "🔭", feast: "🍀" };
 const emit = (el, action, phase) => el.dispatchEvent(new CustomEvent("warspace:action", { bubbles: true, detail: { action, phase } }));
 function press(action) {
   return {
@@ -57,6 +58,8 @@ export default function Hud() {
   // fica EM CIMA do ícone da arma e o botão apaga como se não houvesse munição (o clique vira ejeção)
   const ammo = h.ammo || 0, fireCd = Math.ceil(h.fireCd || 0), armed = ammo > 0 && !fireCd, pw = Object.entries(h.powerups || {}).filter(([, v]) => v > 0);
   const splitReady = !(h.splitCd > 0), ejectReady = !(h.ejectCd > 0);
+  // Teclas configuráveis: `#hud-cd` desenha a legenda, e uma legenda que mente é pior que nenhuma.
+  const teclas = keysOf(prefs), kSplit = KEY_LABEL[teclas.split] || LB.keySplit, kEject = KEY_LABEL[teclas.eject] || LB.keyEject;
   const br = h.mode === MODE.BR, noLobby = !!h.lobby;
   const arma = weaponOf(h.weapon || 0), armaIco = WEAPON_ICON[h.weapon | 0] || WEAPON_ICON[0];
   const falando = h.talk && h.talk.on;
@@ -120,8 +123,8 @@ export default function Hud() {
     {falando ? <div id="talk"><TalkRing k={h.talk.k} /><span>{LB.talkOn}</span></div>
       : talkAviso ? <div id="talk" className="hint"><span>{LB[TALK_MSG[talkAviso]] || LB.talkHint}</span></div> : null}
     <div id="hud-cd">
-      <div className={"cd" + (splitReady ? " ready" : "")} id="cd-split" style={{ "--p": (1 - (h.splitCd || 0)).toFixed(2) }}><i className="cd-fill"></i><span>{LB.split}</span><em>{LB.keySplit}</em></div>
-      <div className={"cd" + (ejectReady ? " ready" : "")} id="cd-eject" style={{ "--p": (1 - (h.ejectCd || 0)).toFixed(2) }}><i className="cd-fill"></i><span>{LB.eject}</span><em>{LB.keyEject}</em></div>
+      <div className={"cd" + (splitReady ? " ready" : "")} id="cd-split" style={{ "--p": (1 - (h.splitCd || 0)).toFixed(2) }}><i className="cd-fill"></i><span>{LB.split}</span><em>{kSplit}</em></div>
+      <div className={"cd" + (ejectReady ? " ready" : "")} id="cd-eject" style={{ "--p": (1 - (h.ejectCd || 0)).toFixed(2) }}><i className="cd-fill"></i><span>{LB.eject}</span><em>{kEject}</em></div>
     </div>
     <div id="touch">
       <button className={"tbtn" + (splitReady ? "" : " cd")} id="t-split" {...press("split")}><span>{LB.split}</span></button>

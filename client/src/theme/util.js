@@ -131,13 +131,20 @@ export function paintTalk(c,size,{fill="#fff",stroke="#000"}={}){
 
 
 // tipos de comida: o mockup usa strings; shared/src/constants.js FOOD_TYPE usa índices. Aceita os dois.
+// ⚠️ SEGUNDA fonte de verdade, espelhando FOOD.TYPES de shared/constants.js — tipo novo que entre só lá cai
+// no fallback "dust" e é desenhado como poeira, sem erro nenhum na tela nem no console.
 const FOOD_NAMES=["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield",
-  "w_burst","w_cluster","w_nova"];   // 8..10 = as armas do Battle Royale (índice = FOOD_TYPE)
+  "w_burst","w_cluster","w_nova",   // 8..10 = as armas do Battle Royale (índice = FOOD_TYPE)
+  "powerup_autodef","powerup_ammo_plus","powerup_zoom","powerup_feast"];   // 11..14 = os powerups de jogador
 export const foodType=t=>typeof t==="number"?(FOOD_NAMES[t]||"dust"):(t||"dust");
 export const FOOD_ICON={missile_ammo:"🚀",powerup_merge:"⚛️",powerup_magnet:"🧲",powerup_shield:"🛡️",
-  w_burst:"✳️",w_cluster:"💥",w_nova:"🌟"};
+  w_burst:"✳️",w_cluster:"💥",w_nova:"🌟",
+  powerup_autodef:"🛰️",powerup_ammo_plus:"🎯",powerup_zoom:"🔭",powerup_feast:"🍀"};
 export const FOOD_FIXED={powerup_merge:"#5cf08a",powerup_magnet:"#ff66ff",powerup_shield:"#44aaff",missile_ammo:"#ff6600",
-  w_burst:"#ffd24a",w_cluster:"#ff5c8a",w_nova:"#66f0ff"};   // cores dos especiais (engine2 mkFood); a raridade sobe na escala quente→fria
+  w_burst:"#ffd24a",w_cluster:"#ff5c8a",w_nova:"#66f0ff",
+  // os dois RAROS ficam com as cores mais frias/saturadas da escala: a raridade tem que dar para ler a 12 px,
+  // antes de qualquer ícone ser legível
+  powerup_autodef:"#7fd8ff",powerup_zoom:"#b48cff",powerup_ammo_plus:"#ff8a3d",powerup_feast:"#4dffc3"};   // cores dos especiais (engine2 mkFood); a raridade sobe na escala quente→fria
 
 // desenha as primitivas de effects.fx() num contexto 2D (referência; o Pixi faz o equivalente)
 export function drawPrims(c,prims){

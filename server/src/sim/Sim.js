@@ -193,7 +193,12 @@ export class Sim{
       case 'STAR_HIT':this._ev(EVENT.STAR_HIT,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,NO_SLOT,packDir(e.nx,e.ny,e.hits));break;
       case 'STAR_SPLIT':this._ev(EVENT.STAR_SPLIT,e.x,e.y,e.r,NO_SLOT,NO_SLOT,e.starId);break;
       case 'SMASH':gone.set(e.asteroidId,REMOVE.POPPED);this._ev(EVENT.SMASH,e.x,e.y,e.r,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,0));break;
-      case 'SUPERNOVA':this._ev(EVENT.SUPERNOVA,e.x,e.y,e.r,NO_SLOT,NO_SLOT,e.starId);break;
+      // `slotA` estava LIVRE (NO_SLOT) neste evento, e é por ele que viaja quem TROMBOU na estrela — a
+      // explosão sem prêmio (STAR.RAM_REWARD) se chama NEBULOSA PLANETÁRIA na tela, e sem o slot o
+      // cliente não distinguiria os dois casos. Custo: zero byte e zero versão de protocolo. De brinde,
+      // `mine` (game/index.js) passa a valer para quem trombou: a explosão sai sem o atraso de
+      // interpolação e com o som na própria altura, que é o certo — ele está dentro dela.
+      case 'SUPERNOVA':this._ev(EVENT.SUPERNOVA,e.x,e.y,e.r,e.rammed&&e.bySlot>=0?e.bySlot:NO_SLOT,NO_SLOT,e.starId);break;
       case 'ZONE_BURN':{if(e.died)gone.set(e.pieceId,REMOVE.EXPIRED);this._mark(e.slot,-1,'zone');
         this._ev(EVENT.ZONE_BURN,e.x,e.y,e.r,e.slot,NO_SLOT,Math.round(e.lost));break;}
       case 'NOVA_HIT':this._mark(e.slot,e.bySlot,'nova');this._memo(e.slot,'tiro',e.bySlot);break;
@@ -294,14 +299,19 @@ export class Sim{
    * client-side o aviso chegaria com menos de 2 s de sobra.
    */
   self(slot,out){const w=this.world,ps=w.players.get(slot),gp=this.players.get(slot),t=w.tick;
-    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.fireCd=out.rank=out.mass=out.threat=out.threatDir=out.weapon=out.alive=0;out.owned=1;return out;}
+    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.fireCd=out.rank=out.mass=out.threat=out.threatDir=out.weapon=out.alive=0;out.owned=1;out.autoDefT=out.zoomT=out.feastT=0;return out;}   // o `out` é um POOL reusado (net/snapshot.js): campo esquecido aqui carrega o valor do jogador anterior
     let mt=0,sh=0;const arr=ps.pieces;
     for(let i=0;i<arr.length;i++){const pc=arr[i];if(pc.dead)continue;const m=pc.magnetUntil-t;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}
     const sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t,fc=ps.fireCdUntil-t;
     out.flags=(gp.dead?SELF_FLAG.DEAD:0)|(w.peace?SELF_FLAG.LOBBY:0);out.weapon=ps.weapon|0;out.alive=this.aliveCount();out.owned=ownedMask(ps);
     const zc=w.zoneNow();if(zc&&!gp.dead){const me0=firstLive(ps.pieces);
       if(me0){const dx=me0.x-zc.x,dy=me0.y-zc.y;if(dx*dx+dy*dy>zc.r*zc.r)out.flags|=SELF_FLAG.ZONE_HURT;}}
-    out.missiles=ammoOf(ps);out.powerBits=(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0);
+    // Os três novos são por JOGADOR (câmera, cinto e economia não são de meia bolinha), então saem direto do
+    // PlayerState em vez do laço das peças acima.
+    const ad=ps.autoDefUntil-t,zo=ps.zoomUntil-t,fe=ps.feastUntil-t;
+    out.missiles=ammoOf(ps);out.powerBits=(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0)
+      |(ad>0?POWER_BIT.autodef:0)|(zo>0?POWER_BIT.zoom:0)|(fe>0?POWER_BIT.feast:0);
+    out.autoDefT=ad>0?ad:0;out.zoomT=zo>0?zo:0;out.feastT=fe>0?fe:0;
     out.magnetT=mt>0?mt:0;out.shieldLv=sh;out.score=ps.score;out.splitCd=sc>0?sc:0;out.ejectCd=ec>0?ec:0;out.fireCd=fc>0?fc:0;
     out.rank=gp.dead?0:this.rankOf(slot);out.mass=gp.dead?0:Math.round(w.massOf(slot));
     out.threat=out.threatDir=0;const me=gp.dead?null:firstLive(ps.pieces);

@@ -17,11 +17,12 @@
 // Dev: ?local=1 (servidor na página) · ?bench (pior caso + overlay) · ?stats (overlay) · ?lag=80 · ?theme=dawn|sunset|dusk · ?round=<s>
 import {createStore} from "../state/store.js";
 import {applyTheme,currentTheme,THEMES,resolveThemeId} from "../theme/index.js";
+import {mergeLabels} from "../ui/labels.js";   // o texto desenhado DENTRO do mundo (fx) também é texto de UI
 import {createAudio} from "../audio/index.js";
 import {api} from "../api/client.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,aimScore,unpackDir} from "@warspace/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,aimScore,unpackDir} from "@warspace/shared";
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
@@ -41,10 +42,12 @@ import {createMinimap} from "./hud/Minimap.js";
 import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./bench.js";
 import {Q,qflag,bodyMode} from "./util.js";
 
-const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
+const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0,autodef:0,zoom:0,feast:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
   mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:false});
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
+  keySplit:"Space",keyEject:"KeyW",
   sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
+const SEM_SLOT=0xffff;   // `NO_SLOT` do fio: slot ausente num EVENT (o servidor o escreve em Sim.js)
 const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SPLIT]:"split",[EVENT.BH_SUCK]:"suck",[EVENT.CHIP]:"chip",[EVENT.BOUNCE]:"bounce",[EVENT.BOOM]:"boom",[EVENT.EXIT]:"exit",[EVENT.SHOOT]:"shoot",
   [EVENT.DEATH]:"death",[EVENT.SHIELD_BREAK]:"shieldBreak",[EVENT.SHIELD_HIT]:"shieldHit",[EVENT.SHIELD_UP]:"shieldUp",[EVENT.CLASH]:"clash",[EVENT.DEFLECT]:"deflect",
   [EVENT.STAR_BURST]:"starBurst",[EVENT.SUPERNOVA]:"supernova",[EVENT.STAR_HIT]:"starHit",[EVENT.STAR_SPLIT]:"starSplit",[EVENT.SMASH]:"smash",
@@ -122,7 +125,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const button=(btn,ph,type)=>{
     if(btn===0&&ph==="down"&&canAct()&&!(view.self&&!view.self.fireCd&&view.self.missiles>0))somEject();
     actions.button(btn,ph,type);};
-  const keyboard=createKeyboard({onAction:act,enabled:()=>joined});
+  const keyboard=createKeyboard({onAction:act,enabled:()=>joined,prefs:curPrefs});
   const touch=createTouchButtons(hud,{onAction:act});
   let pointer=null;
   const minimap=createMinimap({hud,theme:()=>curTheme,getScene:()=>{if(!joined)return null;
@@ -214,6 +217,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         if(DIR_EVENTS.has(m.kind)){const d=unpackDir(m.extra);f.nx=d.nx;f.ny=d.ny;f.power=Math.min(1,d.vn/480);
           if(m.kind===EVENT.SHIELD_HIT)f.level=d.vn;else if(m.kind===EVENT.STAR_HIT)f.n=d.vn;}
         else if(m.kind===EVENT.SHIELD_UP)f.level=m.extra;
+        // A MESMA estrela morre com dois nomes. Quando quem a matou foi uma TROMBADA de planeta, ela não
+        // larga prêmio (STAR.RAM_REWARD) e não é supernova de verdade: é uma nebulosa planetária — e o
+        // servidor diz isso mandando o slot de quem trombou no `slotA`, que neste evento estava livre.
+        else if(m.kind===EVENT.SUPERNOVA){const L=mergeLabels(currentTheme()&&currentTheme().labels).fx||{};
+          f.text=m.slotA!==SEM_SLOT?(L.nebula||"NEBULOSA PLANETÁRIA!"):(L.supernova||"SUPERNOVA!");}
         const mine=m.slotA===view.mySlot||m.slotB===view.mySlot;   // o que envolve a própria peça (já à frente) não espera
         const delay=mine?0:interp.delayMs;
         if(m.kind===EVENT.EAT){const eater=nearestPieceOf(m.slotA,m.x,m.y);   // absorção: a vítima é sugada para quem comeu, que dá um "gulp" e cresce
@@ -241,9 +249,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   function pushFeed(m){
     const quem=sl=>{if(sl==null||sl<0)return null;const p=view.playerOf(sl);
       return{slot:sl,name:p?p.name:"?",bot:p?p.isBot:false,ally:p?p.ally:false,level:p?p.level|0:0,me:sl===view.mySlot};};
+    // ⚠️ O carimbo é o relógio DAQUI, não o `m.at` do servidor. O `at` só serve para uma coisa — a
+    // expiração por idade em KillFeed.jsx, que compara com o `Date.now()` do NAVEGADOR —, então
+    // misturar os dois relógios nunca fez sentido: com o pod atrasado mais que FEED.TTL_MS toda
+    // linha nascia vencida e o feed sumia inteiro, sem erro, sem log e sem sintoma nenhum.
+    const at=Date.now();
     for(const it of (m.v||[])){
       const a=quem(it.a),b=quem(it.b),as=quem(it.by);
-      feedLog.push({id:feedSeq++,at:m.at||Date.now(),k:it.k,how:it.how,byHow:it.byHow||null,n:it.n|0,a,b,assist:as,
+      feedLog.push({id:feedSeq++,at,k:it.k,how:it.how,byHow:it.byHow||null,n:it.n|0,a,b,assist:as,
         mine:!!((a&&a.me)||(b&&b.me)||(as&&as.me))});}
     if(feedLog.length>FEED.KEEP)feedLog.splice(0,feedLog.length-FEED.KEEP);
     hudStore.update(h=>({...h,feed:feedLog.slice()}));}   // no EVENTO, não no relógio de 8 Hz: abate é do instante
@@ -319,7 +332,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
       const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();mapOn=false;minimap.setBig(false,-1);minimap.show(false);
       if(was&&!silent)hudStore.set({...initialHud()});},
-    setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
+    setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
     resize(){if(!renderer)return;renderer.resize();if(conn&&conn.isOpen&&joined){const v=viewSize();if(v.w!==game._vw||v.h!==game._vh){game._vw=v.w;game._vh=v.h;conn.sendJson({t:"view",w:v.w,h:v.h});}}},
     destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();game.leave(true);audio.suspend();removeEventListener("pointerdown",wakeAudio);removeEventListener("keydown",wakeAudio);keyboard.destroy();touch.destroy();actions.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
@@ -444,8 +457,13 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     lastDead=dead;lastAmmo=sf.missiles;lastMagnet=mag;lastFireCd=sf.fireCd;lastMass=sf.mass;
     ameaca(sf);
     if(now-ambT>AMB_MS){ambT=now;
-      audio.setLoop("ambience",{mass:massK(sf.mass),danger:dead?0:perigo(),
-        urgency:roundClock&&roundClock.leftS<60?1-roundClock.leftS/60:0});}}   // mesma lista do aimTarget do servidor
+      const perigoK=dead?0:perigo(),urgencia=roundClock&&roundClock.leftS<60?1-roundClock.leftS/60:0;
+      audio.setLoop("ambience",{mass:massK(sf.mass),danger:perigoK,urgency:urgencia});
+      // A TRILHA lê o MESMO estado, num número só. Massa = o quanto eu virei assunto na sala; perigo e
+      // urgência = o quanto a sala virou assunto para mim. O maior dos três manda, porque a trilha
+      // acompanha o que está mais quente, não a média (uma média deixaria o clímax morno para sempre).
+      // Morto, ela cai para a seção de menu: quem assiste não está no clímax de ninguém.
+      audio.setLoop("music",{intensity:dead?.08:Math.max(massK(sf.mass)*.75,perigoK,urgencia)});}}
   /** Fim do mundo: BIG CRUNCH — tudo colapsa para o centro da tela (o pódio vem pela tela React). */
   function endOfWorld(){if(!renderer)return;renderer.fx.add("bigCrunch",{x:cam.x,y:cam.y,r:cam.W/cam.scale*.6});audio.play("bigCrunch",{mine:true});}
   /**
@@ -478,7 +496,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   function pushHud(now){const s=view.self,tk=buffer.tickAt(now),el=Math.max(0,tk-selfTick);
     const cd=(v,max)=>s?Math.min(1,Math.max(0,(v-el)/max)):0,sec=v=>s?Math.max(0,(v-el)/TICK_HZ):0;
     hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
-      powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
+      powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:sec(s?s.autoDefT:0),zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,map:mapOn,clock:roundClock,
       mode:modeId,teamSize,team:myTeam,phase,cap:roomCap,
       lobby:lobby?{...lobby,
@@ -523,7 +541,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const own=[];predictor.forEach(pc=>own.push(pc));own0=own;cam.W=renderer.W;cam.H=renderer.H;
     let camPieces=own;   // morto: a câmera acompanha quem o servidor mandou assistir (mesmo slot que a AOI segue), senão congela
     if(!own.length&&specSlot>=0){const sp=view.pieces.filter(p=>p.owner===specSlot);if(sp.length)camPieces=sp;}
-    cam.update(camPieces,dt,joined);   // na sala sem peças (morto/BIG CRUNCH) a câmera congela: é o que o AOI do servidor continua mandando
+    // O powerup de ZOOM afasta a câmera — e o servidor amplia a AOI pelo mesmo fator (net/snapshot.js),
+    // então o que aparece a mais é mundo de verdade, não borda vazia.
+    cam.update(camPieces,dt,joined,view.self&&view.self.zoomT>0?POWERUP.ZOOM_K:1);   // na sala sem peças (morto/BIG CRUNCH) a câmera congela: é o que o AOI do servidor continua mandando
     aim=null;   // reta de mira: da 1ª peça própria (a que dispara no servidor) até o ponteiro, com o anel no alvo travado
     if(joy&&joy.enabled&&joy.state.aim&&pointer){pointer.state.sx=joy.state.aimX;pointer.state.sy=joy.state.aimY;pointer.state.active=true;}   // metade direita mira sem virar o planeta
     if(aiming&&joined&&!dead&&own.length&&pointer&&pointer.state.active){const src=own[0],p=cam.toWorld(pointer.state.sx,pointer.state.sy);

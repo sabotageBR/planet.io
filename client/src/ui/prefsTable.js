@@ -1,11 +1,17 @@
 // ── TABELA DE PREFERÊNCIAS ────────────────────────────────────────────────────
 // Mesmos grupos de mockups/v2/src/data.js, mas só com as chaves da whitelist de PATCH /api/me/prefs
 // (sens/trails/fx/parallax ficaram de fora). `v` = padrão (também em state/app.js PREF_DEFAULTS).
+import { ACTION_KEYS, KEY_LABEL } from "@warspace/shared";
+// As opções de tecla saem da lista COMPARTILHADA: a mesma que o Keyboard.js casa e que o servidor
+// valida. Montada aqui, uma tecla nova aparece nos três lugares de uma vez.
+const KEY_OPTS = ACTION_KEYS.map(k => [k, KEY_LABEL[k] || k]);
 export const PREFS = [
   { id: "controls", title: "Controles", items: [
     { key: "joystick", label: "Joystick virtual (celular)", type: "toggle" },
     { key: "rightSplit", label: "Botão direito divide", type: "toggle" },
-    { key: "holdEject", label: "Segurar W ejeta contínuo", type: "toggle" } ] },
+    { key: "holdEject", label: "Segurar a tecla ejeta contínuo", type: "toggle" },
+    { key: "keySplit", label: "Tecla de dividir", type: "select", opts: KEY_OPTS },
+    { key: "keyEject", label: "Tecla de ejetar", type: "select", opts: KEY_OPTS } ] },
   { id: "graphics", title: "Gráficos", items: [
     { key: "theme", label: "Tema", type: "select", opts: [["auto", "Automático (hora local)"], ["dawn", "Amanhecer"], ["sunset", "Crepúsculo"], ["dusk", "Anoitecer"]] },
     { key: "quality", label: "Qualidade", type: "select", opts: [["auto", "Automática"], ["low", "Baixa"], ["high", "Alta"]] },

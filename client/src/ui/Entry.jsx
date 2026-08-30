@@ -5,7 +5,8 @@
 // e `ui.css` é escrito à mão, nunca sobrescrito por `node client/src/theme/port.js`.
 // As cores continuam vindo dos tokens do tema, então a tela segue mudando com o relógio.
 import React, { useEffect, useState } from "react";
-import { skinById, RARITY_LABELS, RARITY_COLORS } from "@warspace/shared";
+import { skinById, RARITY_LABELS, RARITY_COLORS, KEY_LABEL } from "@warspace/shared";
+import { keysOf } from "../game/input/Keyboard.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { go, play, openAccount, setNick, loadRooms, loadTop5 } from "../state/actions.js";
@@ -30,6 +31,10 @@ function Body() {
   useInterval(() => { loadRooms(); loadTop5(); }, 5000, true);
   const commit = async () => { if (nick.trim() !== (user.nick || "")) { const r = await setNick(nick); if (!r.ok) setNickLocal(user.nick || ""); } };
   const links = [["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
+  // A dica é a primeira coisa que alguém lê: com as teclas configuráveis, cravar "ESPAÇO/W" nela seria
+  // mentir para exatamente quem foi lá trocar.
+  const tk = keysOf(session.prefs);
+  const dica = LB.hint.replaceAll("{s}", KEY_LABEL[tk.split] || tk.split).replaceAll("{e}", KEY_LABEL[tk.eject] || tk.eject);
   return <>
     <div className="brand-block">
       <Logo title={LB.title} />
@@ -58,7 +63,7 @@ function Body() {
         {guest ? <button className="btn-link" data-go="account" onClick={openAccount}>{LB.claim}</button> : null}
         {guest ? <GoogleButton type="icon" /> : null}
       </div>
-      <div className="hint">{LB.hint}</div>
+      <div className="hint">{dica}</div>
     </div>
     {/* Esta coluna existia, era consultada a cada 5 s e os TRÊS temas a escondiam com display:none.
         Ou some o pedido de rede, ou ela aparece — e o que ela mostra (quem está ganhando, onde tem

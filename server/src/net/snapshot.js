@@ -6,7 +6,8 @@
 // Estrela entra na AOI pelo halo (r·STAR.HALO) e manda fase/halo em UPD.EXTRA (incha antes da supernova; o ímã a arrasta).
 // Objetos de saída são de pools reutilizados.
 // @ts-check
-import {NET,BLACKHOLE,STAR} from '@warspace/shared/constants.js';
+import {NET,BLACKHOLE,STAR,POWERUP} from '@warspace/shared/constants.js';
+const ZOOM_GRACE_TICKS=15;   // ~250 ms de AOI larga a mais na expiração do powerup: o cliente conta o tempo a 60 Hz e o snapshot chega a 20 Hz, e a área enviada nunca pode ser MENOR que a vista
 import {KIND,UPD,REMOVE,PIECE_FLAG,FOOD_FLAG,SELF_FLAG} from '@warspace/shared/protocol/constants.js';
 import {encodeSnapshot,qPos,qR,qV} from '@warspace/shared/protocol/index.js';
 import {focusOf,zoomFor,viewRect,rectHas,aoiScaleFood} from '@warspace/shared/camera.js';
@@ -25,7 +26,7 @@ export function createSnapshotter(room){
   /** @type {Map<number,{x:number,y:number,r:number,vx:number,vy:number,flags:number,phase:number,infl:number,seen:number}>} */const prev=new Map();
   /** @type {Map<number,number>} */const masks=new Map();
   const crPool=[],upPool=[],rmPool=[],creates=[],updates=[],removes=[];
-  const self={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0,owned:1};
+  const self={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0,owned:1,autoDefT:0,zoomT:0,feastT:0};
   const snap={tick:0,ackSeq:0,creates,updates,removes,self};
   let passes=0;/** @type {any[]} */const longe=[];   // reusado: o anel de fora, candidato ao teto de comida
   /** @type {any[]} */const novos=[];   // reusado: o disco de perto, criado antes do anel (ver visitFood)
@@ -94,7 +95,16 @@ export function createSnapshotter(room){
     if(ws.bufferedAmount>MAX_BUFFERED){s.known.clear();s.rect=null;s.resync=true;return false;}   // cliente lento: pula este e esquece o known; o próximo snapshot vai com RESYNC (senão o que já foi enviado vira entidade fantasma eterna no cliente)
     const sim=room.sim,w=sim.world,slot=s.slot,ps=w.players.get(slot),gp=sim.players.get(slot);
     const pcs=ps?ps.pieces:null;
-    if(pcs&&pcs.length){const f=focusOf(pcs);s.cx=f.cx;s.cy=f.cy;s.scale=zoomFor(f.sumR,s.view.w,s.view.h);}
+    // POWERUP DE ZOOM: a AOI usa o MESMO `zoomFor` da câmera do cliente, então ela tem que afastar junto —
+    // do contrário o jogador enxerga mais mundo e recebe uma borda vazia. E ela desliga DEPOIS: o cliente
+    // decrementa o `zoomT` localmente a 60 Hz enquanto o snapshot chega a 20 Hz, então sem a graça haveria
+    // uns 50 ms de câmera mais larga que a área enviada. A AOI pode sobrar; faltar, nunca.
+    let zk=1;
+    if(pcs&&pcs.length){zk=w.tick<ps.zoomUntil+ZOOM_GRACE_TICKS?POWERUP.ZOOM_K:1;
+      const f=focusOf(pcs);s.cx=f.cx;s.cy=f.cy;s.scale=zoomFor(f.sumR,s.view.w,s.view.h,zk);}
+    // ⚠️ Espectador fica em 1, e é o único valor possível: quem morreu lê o PRÓPRIO `self` (sem powerup) e
+    // move a câmera pelas peças do assistido com mult 1. Herdar aqui o `zoomUntil` da vida anterior do morto
+    // — ou o do assistido — faria servidor e cliente enquadrarem coisas diferentes.
     else if(s.specSlot>=0){const sp=w.players.get(s.specSlot),spp=sp&&sp.alive?sp.pieces.filter(p=>!p.dead):null;   // morto: a AOI acompanha quem ele está assistindo (o cliente move a câmera pelo mesmo slot)
       if(spp&&spp.length){const f=focusOf(spp);s.cx=f.cx;s.cy=f.cy;s.scale=zoomFor(f.sumR,s.view.w,s.view.h);}
       else room.spectateTargetFor(s);}   // o alvo morreu: escolhe outro (e avisa o cliente)
@@ -105,7 +115,7 @@ export function createSnapshotter(room){
       else if(rectHas(rin,b.x,b.y,rad)){known.set(b.id,kind|tag);pushCreate(b,kind,slot,sim);}}};
     // a comida tem retângulo PRÓPRIO, com escala mínima: a câmera pode afastar à vontade, mas não se manda o
     // mapa inteiro de comida para um cliente só (ver aoiScaleFood). O resto vem pela visão de verdade.
-    const fs=aoiScaleFood(s.scale,s.view.w,s.view.h);
+    const fs=aoiScaleFood(s.scale,s.view.w,s.view.h,zk);   // o piso da comida é PRÓPRIO: sem o mesmo fator, o anel de fora do zoom fica sem um grão sequer
     const fin=fs===s.scale?rin:viewRect(s.cx,s.cy,fs,s.view.w,s.view.h,NET.AOI_PAD),
           fout=fs===s.scale?rout:viewRect(s.cx,s.cy,fs,s.view.w,s.view.h,NET.AOI_PAD_OUT);
     visit(w.pieces,KIND.PIECE);visitFood(w,fin,fout,known,tag,slot,sim,s.cx,s.cy);visit(w.ejected,KIND.EJECT);visit(w.asteroids,KIND.ASTEROID);visit(w.holes,KIND.BLACKHOLE);visit(w.stars,KIND.STAR);visit(w.missiles,KIND.MISSILE);

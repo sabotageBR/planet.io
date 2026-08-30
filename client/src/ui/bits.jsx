@@ -5,12 +5,19 @@ import { app } from "../state/app.js";
 import { go } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
+import NavIcon from "./NavIcons.jsx";
 
+// ⚠️ O `<i className="nav-ico">` era VAZIO: o desenho vinha de `content:` emoji no CSS de cada tema, e
+// os três só definiam SEIS chaves — faltando justo `modes`, que nasceu depois dos mockups. Resultado: um
+// círculo colorido vazio em Opções, Loja, Ranking, Perfil e Salas. A tela inicial já tinha sido
+// consertada (Entry.jsx usa <NavIcon>), mas esta barra ficou para trás, e duas fontes de ícone divergem
+// na primeira adição. Agora o `<i>` só carrega o círculo do tema e o desenho é o MESMO SVG da entrada
+// (traço em `currentColor`, então se re-tinge com o relógio); o emoji é suprimido em styles/ui.css.
 export function Nav({ cur }) {
   const LB = useLabels();
   const NAV = [["entry", LB.home], ["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
   return <nav className="nav">{NAV.map(([s, l]) =>
-    <button key={s} className={"nav-btn" + (s === cur ? " on" : "")} data-go={s} data-nav={s} onClick={() => go(s)}><i className="nav-ico"></i><span>{l}</span></button>)}</nav>;
+    <button key={s} className={"nav-btn" + (s === cur ? " on" : "")} data-go={s} data-nav={s} onClick={() => go(s)}><i className="nav-ico"><NavIcon k={s} /></i><span>{l}</span></button>)}</nav>;
 }
 /** `onBack`: a tela de equipe precisa AVISAR o servidor antes de sair (senão o lobby fica órfão). */
 export function ScreenHeader({ title, onBack = null }) {

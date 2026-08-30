@@ -601,11 +601,19 @@ test('fala gerada: o bot responde a quem o CHAMA, e o orçamento segura o resto'
     assert.equal(meu.quem,eu,'o prompt sabe COM QUEM está falando');
     assert.ok(meu.historico.some(l=>l.text.includes('vem ca')),'e leva a conversa junto — o servidor não guardava uma linha antes disto');
     assert.ok(meu.historia&&meu.historia.quem,'e sabe QUEM ele é: a persona vai no prompt');
-    // orçamento da sala: chamar de novo no mesmo instante não vira coro
-    n=c.json.length;
+    // orçamento da sala: chamar de novo no mesmo instante não vira coro.
+    // ⚠️ Conta as gerações de RESPOSTA **deste bot**, não o que chega pelo socket. Duas armadilhas, e o
+    // teste precisa escapar das duas: (1) com `rng.chance` forçado a true — logo acima — os gatilhos
+    // ESPONTÂNEOS (abate, caçado, tiro, escudo…) também passam, e uma linha solta do mesmo bot nesta janela
+    // de 400 ms reprovava sem que o orçamento de menção tivesse falhado em nada; (2) o CORO da menção
+    // anterior chega ESCALONADO (BOT_LLM.CORO_D_MS vai a ~3 s), então contar `chamados()` inteiro pegaria a
+    // resposta de OUTRO bot que ainda estava a caminho. Filtrar pelo nome resolve as duas de uma vez, e é
+    // exatamente o que a mensagem da asserção afirma: o MESMO bot não responde duas vezes seguidas.
+    const doBot=()=>chamados().filter(x=>x.nome===bot.name).length;
+    const antesCoro=doBot();
     c.send({t:'chat',text:`${bot.name} responde de novo`});
     await sleep(400);
-    assert.equal(c.json.slice(n).filter(m=>m.t==='chat'&&m.slot===bot.slot).length,0,'duas respostas na mesma janela: o chat vira dois bots conversando sozinhos');
+    assert.equal(doBot(),antesCoro,'duas respostas na mesma janela: o chat vira dois bots conversando sozinhos');
     // e sem citação nenhuma ninguém se dá por chamado
     room.mencaoAt=-1e9;room.ultimoBot=null;room.falaFila.length=0;
     n=c.json.length;const antes=chamados().length;

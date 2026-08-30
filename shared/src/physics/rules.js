@@ -8,7 +8,7 @@
 //    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire (tiro mirado trava no alvo do cone) ──
 // Todas recebem o mundo `w` (ids, rng, eventos, jogadores); toda aleatoriedade passa por w.rng.
 // @ts-check
-import {DT,WORLD,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,aimScore,POWERUP,STAR,ZONE,WEAPON,WEAPONS,weaponOf,weaponOfFood} from "../constants.js";
+import {DT,WORLD,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,isWeaponFood,ASTEROID,BLACKHOLE,MISSILE,aimScore,POWERUP,STAR,ZONE,WEAPON,WEAPONS,weaponOf,weaponOfFood} from "../constants.js";
 import {KIND,BH_PHASE,FOOD_FLAG,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {clamp} from "../util.js";
 import {setR,setMass,addMass,addBoost,boostLeft,capBoost,velX,velY,liveCount,firstLive} from "./body.js";
@@ -154,9 +154,23 @@ export function eatFood(w,ps,pc,f){
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"magnet"});}
   else if(t===FOOD_TYPE.MERGE){const arr=ps.pieces;for(let i=0;i<arr.length;i++){const q=arr[i];if(!q.dead)q.mergeAt=tick;}   // vale para TODAS as peças: o poder é justamente juntar quem foi picado
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"merge"});}
-  else if(t>=FOOD_TYPE.W_BURST){const wi=weaponOfFood(t);   // entra no cinto E já vem na mão (pegar e não ver nada acontecer é pior que não pegar)
+  // ── os quatro de JOGADOR (ver POWERUP em constants.js) ──
+  // ⚠️ ANTES do ramo de arma, de propósito: `isWeaponFood` já protege a faixa, mas a ordem também importa
+  // para quem ler o código depois — powerup é powerup, arma é arma, e o `else if` encadeado é a única
+  // documentação executável dessa separação.
+  else if(t===FOOD_TYPE.AUTODEF){ps.autoDefUntil=(ps.autoDefUntil>tick?ps.autoDefUntil:tick)+POWERUP.AUTODEF_TICKS;   // acumula se já ativo, como o ímã
+    w.events.push({type:"POWERUP",slot:ps.slot,kind:"autodef"});}
+  else if(t===FOOD_TYPE.AMMO_PLUS){addAmmo(ps,1);   // RARO: um míssil AGORA, furando o teto da arma (o teto é uma comparação, e este é o único lugar que passa por cima dela)
+    w.events.push({type:"AMMO",slot:ps.slot});w.events.push({type:"POWERUP",slot:ps.slot,kind:"ammoPlus"});}
+  else if(t===FOOD_TYPE.ZOOM){ps.zoomUntil=(ps.zoomUntil>tick?ps.zoomUntil:tick)+POWERUP.ZOOM_TICKS;
+    w.events.push({type:"POWERUP",slot:ps.slot,kind:"zoom"});}
+  else if(t===FOOD_TYPE.FEAST){ps.feastUntil=(ps.feastUntil>tick?ps.feastUntil:tick)+POWERUP.FEAST_TICKS;
+    w.events.push({type:"POWERUP",slot:ps.slot,kind:"feast"});}
+  else if(isWeaponFood(t)){const wi=weaponOfFood(t);   // entra no cinto E já vem na mão (pegar e não ver nada acontecer é pior que não pegar)
     if(wi>0){ps.ammo[wi]=WEAPONS[wi].ammo;ps.weapon=wi;w.events.push({type:"POWERUP",slot:ps.slot,kind:"weapon",weapon:wi});}}
-  else{addMass(pc,f.mass*EAT.FOOD_GAIN);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD);}
+  // FEAST dobra só a COMIDA. Encostar em pieceEject (EAT.EJECT_GAIN=1) quebraria a conservação de massa,
+  // que é estrutural aqui: o que sai de um planeta tem que voltar exatamente igual, ou cuspir vira lucro.
+  else{const k=ps.feastUntil>tick?POWERUP.FEAST_K:1;addMass(pc,f.mass*EAT.FOOD_GAIN*k);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD*k);}
   w.events.push({type:"FOOD_EATEN",slot:ps.slot,foodId:f.id,foodType:t,x:f.x,y:f.y});}
 
 // ── ejetados ──
@@ -279,7 +293,7 @@ export function pieceStar(w,pc,st){
   if(w.peace)return;   // aquecimento: a estrela empurra, mas não queima nem explode — a partida ainda não começou
   if(tick>=pc.chipUntil&&pc.r>=STAR.SHATTER_MIN_R){pc.chipUntil=tick+STAR.SHATTER_CD_TICKS;
     starShatter(w,w.players.get(pc.owner),pc,st,ux,uy);}   // o escudo NÃO salva da estrela: ele só defende de míssil e asteroide
-  supernova(w,st,true);}   // encostou nela: a estrela explode e morre (a sala repõe uma) — sem prêmio para quem trombou
+  supernova(w,st,true,pc.owner);}   // encostou nela: a estrela explode e morre (a sala repõe uma) — sem prêmio para quem trombou
 /**
  * Estilhaça a peça em n+1 pedaços (limitado por MAX_PIECES e por MIN_PIECE_R): o pai encolhe para r/√(n+1)
  * — massa conservada, como no pop do asteroide — e os filhos saem em leque em volta de (ux,uy) a `dist` px,
@@ -364,9 +378,12 @@ function hitStar(w,st,x,y,nx,ny,bySlot){
  * `rammed` = foi um PLANETA que trombou nela: com STAR.RAM_REWARD desligado, essa supernova não larga nem os
  * fragmentos nem o berçário — senão quem paga a queimadura colhe o prêmio no mesmo lugar e atropelar volta a
  * compensar. O empurrão, o AST_KICK e o estilhaço do miolo continuam: aquilo é perigo, não prêmio.
- * @param {World} w @param {Body} st @param {boolean} [rammed]
+ * `bySlot` = quem trombou; ele viaja no evento porque a explosão sem prêmio também tem NOME diferente na
+ * tela ("nebulosa planetária", que é o que uma estrela que morre sem supernova de verdade vira), e o
+ * cliente não teria como distinguir os dois casos olhando só a onda.
+ * @param {World} w @param {Body} st @param {boolean} [rammed] @param {number} [bySlot]
  */
-export function supernova(w,st,rammed=false){
+export function supernova(w,st,rammed=false,bySlot=-1){
   const rng=w.rng,blast=st.r*STAR.NOVA_R,b2=blast*blast,N=STAR.NOVA_PARTICLES;
   const pm=EJECT_MASS*STAR.NOVA_PART_MASS,pr=fragR(pm),premio=!rammed||STAR.RAM_REWARD;
   if(premio)for(let i=0;i<N;i++){const an=i/N*6.2832+rng.range(-.12,.12),sp=rng.range(STAR.NOVA_SPEED[0],STAR.NOVA_SPEED[1]),cx=Math.cos(an),cy=Math.sin(an);
@@ -389,7 +406,7 @@ export function supernova(w,st,rammed=false){
     for(let k=0;k<8;k++){const f=pool[rng.int(0,pool.length-1)];if(!f||f.dead)continue;
       const fx=f.x-st.x,fy=f.y-st.y;if(fx*fx+fy*fy<longe2)continue;f.dead=true;w.foodDirty=true;break;}
     w.spawnFood({x:st.x,y:st.y,spread:blast*STAR.NOVA_FOOD_R});}
-  w.events.push({type:"SUPERNOVA",starId:st.id,x:st.x,y:st.y,r:blast});
+  w.events.push({type:"SUPERNOVA",starId:st.id,x:st.x,y:st.y,r:blast,rammed,bySlot});
   st.dead=true;w.queueStar(STAR.RESPAWN_TICKS);}
 
 // ── buracos negros ──
@@ -702,19 +719,61 @@ export function swapWeapon(w,ps){
   return false;}
 export function applyFire(w,ps){
   if(ammoOf(ps)<=0||w.tick<ps.fireCdUntil)return false;const src=firstLive(ps.pieces);if(!src)return false;
-  const wp=weaponOf(ps.weapon);addAmmo(ps,-1);
+  const wp=weaponOf(ps.weapon);
+  // ── O tiro DEFENSIVO não cobra o escudo ──
+  // O custo era cobrado aqui em cima, antes do `switch`, ou seja antes de o jogo saber que tipo de tiro
+  // ia sair — e a decisão "isto é um interceptador" só nasce lá embaixo, em fireHoming. Resultado:
+  // exatamente na situação em que o tiro existe para me salvar, ele derrubava a outra coisa que me
+  // salvaria, e quem estava sob mira pagava duas vezes pelo mesmo míssil.
+  // ⚠️ O predicado tem que ser EXATAMENTE o que faz o tiro virar interceptador, senão vira brecha: com o
+  // `livres` de fora, um entrante JÁ COBERTO manteria o desconto e o tiro sairia no ATACANTE (ramo 2 de
+  // fireHoming, ou seja ofensivo) de graça — bastava um míssil qualquer por perto para nunca mais pagar.
+  // Por isso: sem mira (o tiro mirado escolhe pelo cursor e pode ser ofensivo), arma teleguiada, e um
+  // entrante AINDA SEM interceptador meu. Calculado UMA vez e passado adiante — `incomingMissile` com
+  // `livres` é O(M²) por causa do `coberto`, e recalcular seria pagar duas vezes E deixar os dois
+  // divergirem no dia em que alguém mexer num só.
+  const homing=ps.weapon===WEAPON.MISSILE||ps.weapon===WEAPON.CLUSTER;
+  const im=!ps.fireAim&&homing?incomingMissile(w,ps.slot,src.x,src.y,MISSILE.INTERCEPT_DIST,true):null;
+  addAmmo(ps,-1);
   if(wp.cd)ps.fireCdUntil=w.tick+wp.cd;   // a cadência da arma reusa o MESMO campo da carência de nascimento (e o mesmo `fireCd` do HUD)
-  if(src.shieldLv>0)hitShield(w,src);     // um nível por PUXÃO de gatilho, não por projétil
+  if(src.shieldLv>0&&!im)hitShield(w,src);     // um nível por PUXÃO de gatilho, não por projétil — e nenhum quando o gatilho é defesa
   switch(ps.weapon){
     case WEAPON.BURST:return fireBurst(w,ps,src,wp);
     case WEAPON.NOVA:return fireNova(w,ps,src,wp);
-    default:return fireHoming(w,ps,src);}}
+    default:return fireHoming(w,ps,src,im);}}
+/**
+ * POWERUP DE AUTO-DEFESA: com um teleguiado entrante ainda descoberto, puxa o gatilho por você.
+ *
+ * Não é um sistema de tiro novo — é o MESMO `applyFire`, e é isso que o torna barato e correto: cadência
+ * da arma, munição, carência de nascimento, escolha de alvo, evento e crédito no feed já são o que são.
+ * Gasta munição de propósito (é o tiro do jogador, adiantado; um tiro extra de graça seria outra arma) e
+ * respeita `ps.autoFireAt`, uma cadência PRÓPRIA, porque o míssil tem `cd` 0 em WEAPONS — sem ela o cinto
+ * se esvaziaria em três ticks.
+ *
+ * ⚠️ A ordem das guardas é a economia da função. `incomingMissile` com `livres` é O(M²) por causa do
+ * `coberto`, e varrer isso para 50 jogadores a 60 Hz seria o maior custo fixo do tick por causa de um
+ * powerup que quase ninguém tem em mãos. Então: o gate do powerup vem antes de tudo o que é caro, e a
+ * varredura ainda é escalonada por slot (AUTODEF_SCAN_TICKS), no molde de outros trabalhos periódicos do
+ * mundo. 100 ms de latência não se percebe num míssil que voa a 720 px/s.
+ * @param {World} w @param {PlayerState} ps @returns {boolean} atirou
+ */
+export function autoDefend(w,ps){
+  const tick=w.tick;
+  if(ps.autoDefUntil<=tick||!w.missiles.length)return false;
+  if(tick<ps.autoFireAt||tick<ps.fireCdUntil||ammoOf(ps)<=0)return false;
+  if(ps.weapon!==WEAPON.MISSILE)return false;   // só a arma base intercepta bem: o Cacho abriria 4 filhos em cima de UM entrante, gastando a munição mais cara do jogo numa defesa
+  if((tick+ps.slot)%POWERUP.AUTODEF_SCAN_TICKS)return false;
+  const src=firstLive(ps.pieces);if(!src)return false;
+  if(!incomingMissile(w,ps.slot,src.x,src.y,MISSILE.INTERCEPT_DIST,true))return false;
+  ps.fireAim=false;   // sem mira: é o applyFire que escolhe a interceptação (e o `fireAim` do tick ainda pode estar ligado)
+  if(!applyFire(w,ps))return false;
+  ps.autoFireAt=tick+POWERUP.AUTODEF_CD_TICKS;return true;}
 /** Míssil e Cacho: o teleguiado de sempre. O `hue` do corpo carrega a arma (é livre no míssil) e vai no fio. */
-function fireHoming(w,ps,src){
+function fireHoming(w,ps,src,im=undefined){
   if(ps.fireAim){dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const ax=DIR[0],ay=DIR[1];aimTarget(w,ps.slot,src,ps.tx,ps.ty,AIM);
     const m=w.addMissile(src.x,src.y,ax*MISSILE.SPEED,ay*MISSILE.SPEED,ps.slot,AIM[0]);m.type=AIM[1];m.hue=ps.weapon;
     w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:AIM[1]?-1:AIM[0],targetMissile:AIM[1]?AIM[0]:-1,aimed:true,weapon:ps.weapon});return true;}
-  const im=incomingMissile(w,ps.slot,src.x,src.y,MISSILE.INTERCEPT_DIST,true);
+  if(im===undefined)im=incomingMissile(w,ps.slot,src.x,src.y,MISSILE.INTERCEPT_DIST,true);   // só quando alguém chama fora do applyFire
   let ux,uy,best=-1,kind=0,foe=-1;
   if(im){dirTo(src.x,src.y,im.x,im.y,DIR);ux=DIR[0];uy=DIR[1];best=im.id;kind=1;foe=im.owner;}
   else{

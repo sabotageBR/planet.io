@@ -95,13 +95,21 @@ test("mão: o ponteiro nunca gira 180° num quadro", ()=>{
   assert.ok(a.uso.parado/a.uso.inputs>.002,"o bot nunca freia — humano para o tempo todo");
 });
 
+// ⚠️ TRÊS partidas, não uma. "Bot ruim toma mais gás que o bom" é uma propriedade ESTATÍSTICA, e uma
+// semente só é uma amostra: medido sobre 24 sementes, ela vale em ~17 delas (71 %) — ou seja, o teste com
+// `seed:11` passava por sorte e virava vermelho a cada mudança que mexesse no mundo (a composição da comida,
+// por exemplo), sem nada estar quebrado. Somando três partidas a diferença fica clara e estável: verificado
+// em sete janelas de três sementes consecutivas, o agregado vale em TODAS — antes e depois desta mudança.
+// O custo é ~3 arenas em vez de 1, e é o preço de o vermelho significar alguma coisa.
 test("zona: quem tem mão melhor toma menos gás", ()=>{
-  const a=arena({seed:11});
-  let fora=0,total=0;for(const [k,v] of a.vivo){total+=v;fora+=a.gas.get(k)|0;}
+  const rodadas=[arena({seed:11}),arena({seed:12}),arena({seed:13})];
+  let fora=0,total=0;for(const a of rodadas)for(const [k,v] of a.vivo){total+=v;fora+=a.gas.get(k)|0;}
   assert.ok(fora/total<.05,`${(100*fora/total).toFixed(1)}% do tempo no gás — os bots não estão lendo a zona`);
-  const taxa=id=>(a.gas.get(id)|0)/Math.max(1,a.vivo.get(id)|0);
-  if((a.vivo.get("ruim")|0)>3000&&(a.vivo.get("bom")|0)>3000)
-    assert.ok(taxa("ruim")>=taxa("bom"),"o bot ruim tem que tomar MAIS gás que o bom — é o que dá variedade à sala");
+  const soma=(m,id)=>rodadas.reduce((s,a)=>s+(a[m].get(id)|0),0);
+  const taxa=id=>soma("gas",id)/Math.max(1,soma("vivo",id));
+  if(soma("vivo","ruim")>3000&&soma("vivo","bom")>3000)
+    assert.ok(taxa("ruim")>=taxa("bom"),
+      `o bot ruim tem que tomar MAIS gás que o bom — é o que dá variedade à sala (ruim ${taxa("ruim").toFixed(5)} vs bom ${taxa("bom").toFixed(5)})`);
 });
 
 test("perícia: a sala tem gente de todos os níveis", ()=>{

@@ -36,6 +36,9 @@ export default function KillFeed({ h }) {
           <span className="kf-how" title={(l.assist ? `${F[l.byHow] || l.byHow} ${F.assist} · ` : "") + (F[l.how] || l.how)}>
             {l.assist ? <><i className="kf-ico assist">{HOW_ICON[l.byHow] || "•"}</i><span className="kf-plus">+</span></> : null}
             <i className="kf-ico">{HOW_ICON[l.how] || "•"}</i></span>
+          {/* O verbo depois do ícone: o ícone qualifica ("com o quê") e o verbo dá a DIREÇÃO, que só o
+              ícone não dava — "Fulano 🍴 Beltrano" obriga o leitor a adivinhar quem comeu quem. */}
+          <span className="kf-verb">{F.killed || "matou"}</span>
           {l.b ? <Nick p={l.b} /> : null}</div>)}
   </div>;
 }

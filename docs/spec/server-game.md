@@ -193,7 +193,14 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   **não trava o crescimento**: `autoSplit` reparte a peça em ⌊mass/MAX_R²⌋ filhos em leque. Só com as 16 peças ocupadas é que o raio
   é cortado — é o único ponto do jogo em que massa de jogador se perde. Antes o teto era 290 (massa 84 100) e `addMass` descartava
   o ganho em silêncio: o jogador simplesmente parava de comer por volta dos 80 mil.
-- **Powerups**: ímã (temporário, POWERUP.TICKS) e escudo (níveis) são **por peça**; **fusão** (FOOD_TYPE.MERGE, o índice que era do
+- **Powerups de JOGADOR** (FOOD_TYPE 11..14, `POWERUP.DROP` decide a raridade dentro de `FOOD.POWER_P`): **auto-defesa**
+  (com um teleguiado entrante ainda descoberto, `rules.autoDefend` puxa o gatilho por você — é o MESMO `applyFire`, gasta
+  munição e tem cadência própria, `AUTODEF_CD_TICKS`, porque o míssil tem `cd` 0), **+1 munição** (RARO: um míssil agora,
+  furando o teto da arma — o único lugar do jogo que passa por cima dele), **zoom** (afasta a câmera em `ZOOM_K`; ⚠️ o
+  MESMO fator vai para a AOI do snapshot, senão a borda vem vazia) e **banquete** (RARO: a comida vale `FEAST_K`; só a
+  comida — encostar no ganho de fragmento quebraria a conservação de massa). Os quatro vivem em `PlayerState`, ao lado de
+  `fireCdUntil`, e são zerados no nascimento pelo mesmo caminho.
+- **Powerups de PEÇA**: ímã (temporário, POWERUP.TICKS) e escudo (níveis) são **por peça**; **fusão** (FOOD_TYPE.MERGE, o índice que era do
   powerup de velocidade) zera o `mergeAt` de TODAS as peças do dono — quem foi picado por estrela ou asteroide se junta na hora.
   A velocidade máxima vem só do raio (`vmaxFor`); não há powerup de velocidade.
 - **Comida**: `World.foodTarget()` no mundo todo, reposta na hora — `FOOD.COUNT` sem zona (o modo Livre inteiro) e o

@@ -9,10 +9,16 @@ export const NAV_SCREENS = ["entry", "lobby", "rank", "profile", "shop", "prefs"
 /** Whitelist de PATCH /api/me/prefs (docs/spec/api.md) com os padrões do cliente. */
 export const PREF_DEFAULTS = Object.freeze({
   quality: "auto", showNames: true, showGrid: true, showMinimap: true, showFps: true,
-  sound: true, music: false, ambience: true, volume: 70, musicVolume: 60, joystick: false,  // só tem efeito onde o ponteiro é grosso (no mouse é ignorado). Continua DESLIGADO por
-                  // padrão: o Chrome headless deste ambiente não entrega pointer events na página do
-                  // jogo, então o analógico não pôde ser testado aqui — ligar por padrão seria mudar o
-                  // controle de todo mundo no celular sem uma única passada de verificação. holdEject: true, rightSplit: true,
+  sound: true, music: false, ambience: true, volume: 70, musicVolume: 60,
+  // ⚠️ `holdEject` e `rightSplit` já existiram aqui — DENTRO de um comentário `//`, engolidos pela
+  // explicação do joystick. Como PREF_KEYS = Object.keys(PREF_DEFAULTS), as chaves simplesmente não
+  // existiam: `normalizePrefs` descartava o que o servidor devolvia e `setPref` recusava a escrita,
+  // então os dois toggles da aba Controles eram botões mortos (o servidor sempre os aceitou).
+  // joystick LIGADO por padrão: `game/index.js` só o arma com `(pointer: coarse)`, então no mouse
+  // continua letra morta — e no dedo o analógico é o controle certo, que ninguém descobria sozinho.
+  joystick: true, holdEject: true, rightSplit: true,
+  // Teclas de dividir/ejetar: `KeyboardEvent.code`, montadas no MAP por instância (input/Keyboard.js).
+  keySplit: "Space", keyEject: "KeyW",
   theme: "auto", reduceMotion: false, bigText: false, colorblind: "off", lbSize: 10,
   chat: true, voice: true, voiceVolume: 85,   // chat e voz: desligáveis, como todo o resto do som
 });

@@ -214,6 +214,26 @@ no começo do mundo a comida vem antes das estrelas. Grão debaixo do disco não
 `STAR.BURN` (30 % da massa) e não dá escolha. A folga cabe debaixo de `NEAR_HAZARD_R[0]` (46+200 < 260), então o
 anel de risco × recompensa continua inteiro.
 
+## A estrela também segue a zona
+
+Ela nascia sorteada no mapa INTEIRO (`World._farSpot` amostra `rng.range` de borda a borda), então no círculo
+fechado não havia nenhuma: o perigo que faz o jogador desviar — e a arma de quem sabe empurrar uma — saía da
+partida justo quando ela fica interessante. Um predicado "está dentro do círculo?" não resolveria: com o círculo
+em 480 px de um mapa de 9600, um ponto uniforme cai dentro em **0,8 %** das vezes, e depois de 40 tentativas o
+`_farSpot` devolvia a última — ou seja, a estrela nasceria no gás na maioria das vezes, calada.
+
+| | |
+|---|---|
+| onde nasce | dentro do círculo, em polar (`d = √u·r`, uniforme no disco) — o mesmo caminho da comida |
+| folga da borda | `ZONE.STAR_PAD` (360 px): colada no gás ela vira corredor sem saída, e o halo ficaria por cima do veneno |
+| separação | `min(STAR.MIN_SEP, r·ZONE.STAR_SEP_K)` — 1400 px de folga não cabem num círculo de 1400 |
+| quando desiste | círculo menor que `ZONE.STAR_MIN_R` (1200 px), ou nenhum ponto limpo: **adia** `ZONE.STAR_RETRY_TICKS` em vez de largar a estrela em cima de alguém |
+| a que ficou no gás | morre em silêncio (`_cullStarsOutOfZone`) e volta para a fila — sem isso a população cairia para sempre |
+
+**Por que o piso é generoso.** Cada estrela esteriliza um disco de `r + FOOD.STAR_CLEAR` onde comida não nasce e
+a existente é varrida: 246 px (280 na inchada). Num círculo de 480 px isso é **26 % da área** — justamente o
+tapete de comida que é a virada do jogador pequeno no fim. Em 1200 px o mesmo disco é 4 %, que é ruído.
+
 ## Armas
 
 O jogador **carrega várias** e troca com uma tecla (`Q`, o botão de toque, ou clicando no chip da arma):

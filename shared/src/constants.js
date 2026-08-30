@@ -44,7 +44,8 @@ export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
 export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
   HOLD_TICKS:[3600,2700,2100,1500,900,600],SHRINK_TICKS:[2400,2100,1800,1500,1200,900],
   DRIFT:.45,BURN:.10,BURN_K:2.2,WARN_TICKS:180,MIN_R:60,SHED_TICKS:24,SHED_SPEED:260,SHED_SPREAD:.85,SHED_MIN:1,SHED_N_DEATH:7,
-  FOOD_AREA:2400,FOOD_MIN:60,FOOD_SCAN:96,FOOD_FILL_S:2};
+  FOOD_AREA:2400,FOOD_MIN:60,FOOD_SCAN:96,FOOD_FILL_S:2,
+  STAR_PAD:360,STAR_MIN_R:1200,STAR_SEP_K:.5,STAR_RETRY_TICKS:300,STAR_SCAN:2};
 // zona = círculo. R é o RAIO como fração de WORLD.w: começa em .62 (5 952 px — cobre o mapa, cujo
 // centro→canto é 6 788) e fecha em .015 (144 px). Cada etapa i: HOLD_TICKS[i] parada em R[i], depois
 // SHRINK_TICKS[i] interpolando até R[i+1]. DRIFT limita o deslocamento do centro a essa fração de
@@ -84,6 +85,17 @@ export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
 // buscar custa entrar MAIS FUNDO no gás — a direção para fora é o que faz o preço ser real.
 // A cadência (e o piso SHED_MIN, uma pelota inteira) existem por causa do teto EJECT.MAX: soltar a cada
 // tick, com meia sala no gás no fim da partida, estouraria a população e despejaria os fragmentos dos outros.
+// STAR_*: A ESTRELA TAMBÉM SEGUE A ZONA. Ela nascia sorteada no mapa inteiro, então no círculo fechado não
+// havia nenhuma — o perigo que faz o jogador desviar (e a arma de quem sabe empurrar uma) simplesmente saía
+// da partida na hora em que ela fica interessante. STAR_PAD é a folga da borda do círculo: uma estrela
+// colada no gás é um corredor sem saída, e o halo dela (r·HALO, até 176 px na fase OLD) ficaria por cima do
+// veneno. STAR_SEP_K afrouxa o STAR.MIN_SEP (1400 px) proporcionalmente ao raio ATUAL — 1400 de separação
+// dentro de um círculo de 1400 é geometricamente impossível, e insistir só levaria ao ponto de fallback.
+// STAR_MIN_R é o PISO em que se desiste, e ele é generoso de propósito: cada estrela esteriliza um disco de
+// r+FOOD.STAR_CLEAR (246 px, 280 na inchada) onde comida não nasce e a existente é varrida, o que num
+// círculo de 480 px é 26% da área — justo o tapete de comida que é a virada do jogador pequeno no fim.
+// Em 1200 px o mesmo disco é 4%, que é ruído. STAR_RETRY_TICKS: a fila espera isso e tenta de novo, em vez
+// de perder a estrela para sempre. STAR_SCAN: estrelas conferidas por tick contra o círculo (a lista tem 12).
 // Peça pequena queima devagar e solta raro; planetão solta o tempo todo — que é exatamente a leitura certa.
 export const MODES=[
   {id:0,key:"free",label:"Livre",max:ROOM.MAX,bots:ROOM.BOTS,roundTicks:ROUND.TICKS,
@@ -174,12 +186,22 @@ export const BOUNCE={E:.55,E_SHIELD:.9,POS_CORR:.3,FX_MIN_VN:96,PUSH_S:.3,DIST_M
 // quique: a correção posicional é a de sempre, mas o empurrão vira BOOST de `vn·PUSH_S` px (teto DIST_MAX).
 // Curto de propósito: a trombada do asteroide tem que dar o solavanco e devolver a velocidade padrão na hora.
 export const WALL={E:.4,E_AST:.9,E_EJECT:.5};
-export const FOOD={COUNT:2500,R_MIN:6,R_MAX:15,SPECIAL_R:13,AMMO_P:.055,POWER_P:.045,HUES:12,MARGIN:40,NEAR_HAZARD_P:.22,NEAR_HAZARD_R:[260,620],STAR_CLEAR:200,
-  TYPES:["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield","w_burst","w_cluster","w_nova"]};   // índice = FOOD_TYPE
-export const FOOD_TYPE={DUST:0,COMET:1,STAR:2,ROCK:3,AMMO:4,MERGE:5,MAGNET:6,SHIELD:7,W_BURST:8,W_CLUSTER:9,W_NOVA:10};   // 5 era o powerup de velocidade (removido); hoje é o de FUSÃO
-// As armas entram no FIM (8..11) porque o enum é DENSO e três testes de faixa dependem da ordem:
+export const FOOD={COUNT:2500,R_MIN:6,R_MAX:15,SPECIAL_R:13,AMMO_P:.055,POWER_P:.07,HUES:12,MARGIN:40,NEAR_HAZARD_P:.22,NEAR_HAZARD_R:[260,620],STAR_CLEAR:200,
+  TYPES:["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield","w_burst","w_cluster","w_nova",
+    "powerup_autodef","powerup_ammo_plus","powerup_zoom","powerup_feast"]};   // índice = FOOD_TYPE
+export const FOOD_TYPE={DUST:0,COMET:1,STAR:2,ROCK:3,AMMO:4,MERGE:5,MAGNET:6,SHIELD:7,W_BURST:8,W_CLUSTER:9,W_NOVA:10,
+  AUTODEF:11,AMMO_PLUS:12,ZOOM:13,FEAST:14};   // 5 era o powerup de velocidade (removido); hoje é o de FUSÃO
+// As armas entram no MEIO (8..10) porque o enum é DENSO e três testes de faixa dependem da ordem:
 // `type<=ROCK` ("é comida base, posso reescrever", world.js) e `type>=AMMO` ("é especial", world.js e o
 // atlas do cliente). Índice novo no meio quebraria os três de uma vez, em silêncio.
+// ⚠️ Os powerups 11..14 entraram DEPOIS das armas e por isso `type>=W_BURST` deixou de significar "é arma":
+// era a quarta faixa implícita, usada em rules.eatFood, em bot.foodValue e em dois testes de modes.test.js,
+// e sem `isWeaponFood` os quatro cairiam no ramo de arma — `weaponOfFood` devolveria −1, a comida sumiria
+// e o powerup viraria um no-op SILENCIOSO. Faixa implícita que ganha nome deixa de ser armadilha.
+export const isWeaponFood=t=>t>=FOOD_TYPE.W_BURST&&t<=FOOD_TYPE.W_NOVA;
+// POWER_P subiu de .045 para .07 porque a banda dos powerups passou de 2 para 6 tipos: mantida em .045, o
+// ímã e o escudo — que são os que o jogo ENSINA — cairiam de 2,25 % para menos de 1 % cada. A banda continua
+// pequena perto da comida base (~87 %), e é dentro dela que POWERUP.DROP decide a raridade de cada um.
 // risco × recompensa: NEAR_HAZARD_P da comida nasce num anel NEAR_HAZARD_R em volta de uma estrela ou buraco negro, e sempre
 // como coisa boa (cometa/rocha ou powerup) — chegar perto do perigo tem que valer a pena
 // STAR_CLEAR: e NUNCA em cima da estrela. É um ANEL, não um alvo: o grão que nasce dentro do disco (r 46, que
@@ -292,7 +314,33 @@ export const weaponOfFood=t=>{for(let i=1;i<WEAPONS.length;i++)if(WEAPONS[i].foo
 /** Peso do alvo do tiro mirado: distância do PONTEIRO à BORDA da bolinha (bola grande é mais fácil de agarrar). */
 export const aimScore=(dx,dy,r)=>Math.sqrt(dx*dx+dy*dy)-r;
 export const POWERUP={TICKS:420,MAGNET_MAX_R:160,MAGNET_RANGE:5.5,MAGNET_PULL:170,MAGNET_NEAR:2.2,MAGNET_EJECT_A:900,MAGNET_AST:420,MAGNET_HEAVY:.45,MAGNET_STAR:.12,
-  SHIELD_MAX_LEVEL:3,SHIELD_EVOLVE_TICKS:900};
+  SHIELD_MAX_LEVEL:3,SHIELD_EVOLVE_TICKS:900,
+  AUTODEF_TICKS:900,AUTODEF_CD_TICKS:90,AUTODEF_SCAN_TICKS:6,
+  ZOOM_TICKS:900,ZOOM_K:1.5,
+  FEAST_TICKS:600,FEAST_K:2,
+  DROP:[[FOOD_TYPE.MAGNET,27],[FOOD_TYPE.SHIELD,27],[FOOD_TYPE.AUTODEF,16],[FOOD_TYPE.ZOOM,16],[FOOD_TYPE.AMMO_PLUS,7],[FOOD_TYPE.FEAST,7]]};
+// ── OS QUATRO POWERUPS DE JOGADOR (11..14) ───────────────────────────────────
+// Ímã e escudo são POR PEÇA porque são efeitos de corpo: quem pegou é quem sente. Estes quatro são por
+// JOGADOR, e não por teimosia — câmera, cinto e economia não têm como ser de meia bolinha. Ficam em
+// `PlayerState` ao lado de `fireCdUntil`, zerados no nascimento pelo mesmo caminho, e o `PIECE_FLAG`
+// (que só tinha UM bit livre) fica intacto.
+//   AUTODEF   com um teleguiado entrante ainda descoberto, PUXA O GATILHO por você — literalmente o mesmo
+//             `applyFire`, então cadência, munição, alvo e crédito saem da mecânica que já existe. Gasta
+//             munição (é o tiro do jogador, adiantado, não um tiro extra) e tem cadência PRÓPRIA:
+//             o míssil tem `cd` 0 em WEAPONS, então sem AUTODEF_CD_TICKS ele esvaziaria o cinto num tick.
+//             AUTODEF_SCAN_TICKS escalona a varredura por slot: `incomingMissile` com `livres` é O(M²), e
+//             50 jogadores × 60 Hz seria o maior custo fixo do tick por causa de um powerup que quase
+//             ninguém tem no momento. 6 ticks = 100 ms de latência, que ninguém percebe num míssil a 720 px/s.
+//   AMMO_PLUS RARO. Um míssil AGORA, furando o teto da arma. Não guarda estado nenhum: o teto de `eatFood`
+//             é uma comparação, e passar por cima dela uma vez é a feature inteira.
+//   ZOOM      AFASTA a câmera em ZOOM_K. ⚠️ Não é efeito de cliente: `zoomFor` alimenta TAMBÉM a AOI do
+//             snapshot (server/src/net/snapshot.js), e afastar só de um lado desenharia uma borda vazia.
+//   FEAST     RARO. A comida vale FEAST_K. Só a COMIDA (EAT.FOOD_GAIN): encostar no ganho de fragmento
+//             quebraria a conservação de massa, que é estrutural aqui — o que sai de um planeta tem que
+//             voltar exatamente igual.
+// DROP é o peso DENTRO de FOOD.POWER_P (não soma probabilidade nova ao mapa, reparte a que já existe): os
+// dois primeiros continuam sendo a maioria porque são os que o jogador aprende primeiro, e os dois raros
+// somam 14 % da banda — ~0,5 % de toda a comida, que é o que faz alguém comemorar ao ver um.
 // ímã: comida a d<r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s; ejetados ganham MAGNET_EJECT_A px/s² (drag 3.7/s → ~240 px/s)
 // MAGNET_MAX_R: acima desse raio a peça NÃO pega nem usa o ímã. O alcance é r·MAGNET_RANGE, então num planetão
 // ele passava de 1500 px e sugava a tela inteira — o powerup deixava de ser uma ajuda e virava um aspirador.
@@ -562,3 +610,15 @@ export const PLACE_COINS=(placement,players)=>{
   if(placement<=3)return 120;
   if(placement<=10)return 60;
   return placement<=Math.ceil(players/2)?20:0;};
+
+// ── TECLAS CONFIGURÁVEIS (dividir / ejetar) ──────────────────────────────────
+// `KeyboardEvent.code`, não `key`: o code é a POSIÇÃO física da tecla, então o mesmo padrão funciona
+// em teclado ABNT, QWERTY e AZERTY sem uma linha de exceção. A lista mora aqui porque TRÊS lados
+// precisam da mesma verdade e uma cópia divergiria na primeira adição: a tabela da tela de opções
+// (client/src/ui/prefsTable.js), o MAP do teclado (client/src/game/input/Keyboard.js) e a whitelist
+// do PATCH /api/me/prefs (server/src/api/me.js) — fora dela o servidor descarta em SILÊNCIO.
+// KeyF (atirar), KeyQ (trocar de arma), Control (falar) e as setas (trocar de câmera) ficam de fora
+// de propósito: são fixas, e deixá-las escolhíveis criaria colisão sem ganho nenhum.
+export const ACTION_KEYS=["Space","KeyW","KeyE","KeyD","KeyC","KeyZ","ShiftLeft"];
+/** Nome da tecla na tela (é o que o HUD desenha em `#hud-cd`, então tem que caber em duas ou três letras). */
+export const KEY_LABEL={Space:"ESPAÇO",KeyW:"W",KeyE:"E",KeyD:"D",KeyC:"C",KeyZ:"Z",ShiftLeft:"SHIFT"};

@@ -154,12 +154,41 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 #hud #hud-right .lb-row::after{left:auto;right:-9px;transform:rotate(225deg)}
 #hud #hud-right .lb-row,#hud #hud-right .panel{max-width:100%}
 
+/* ── PLACAR E MASSA: mais estreitos, mais juntos e TRANSLÚCIDOS ───────────────
+   O bloco nasceu opaco e largo: `min-width:172px` por linha (204 na 1ª, 188 na 2ª), `gap:9px` entre elas,
+   `gap:8px` entre os blocos e nenhum `max-width` no desktop — o painel comia a lateral direita da tela em
+   monitor grande e no celular. Aqui ele encolhe e deixa o jogo aparecer por baixo.
+   ⚠️ Tudo mira `#hud #x` (2,0,0) pelo motivo do bloco lá em cima: os temas são gerados por port.js com
+   `:where(...)` (soma zero), `ui.css` vem ANTES deles em theme/all.css, e no empate quem vem depois vence.
+   ⚠️ E NÃO editar theme/*/hud.css: aquele arquivo é gerado, a próxima passada do port.js apagaria a mão. */
+#hud #hud-right{gap:5px;max-width:min(250px,21vw)}
+#hud #hud-right #lb-rows{gap:3px;padding-left:0}
+#hud #hud-right .lb-row{min-width:0;max-width:100%;padding:2px 9px 2px 4px;gap:6px;font-size:12px;
+  border-width:2px;box-shadow:none;background:color-mix(in srgb,var(--surface) 52%,transparent)}
+/* o rabinho do balão usa `background:inherit`, então a transparência acompanha de graça */
+#hud #hud-right .lb-row:nth-child(1),#hud #hud-right .lb-row:nth-child(2){min-width:0;font-size:12.5px}
+#hud #hud-right .lb-row.mine{background:color-mix(in srgb,var(--accent) 55%,transparent)}
+#hud #hud-right .lb-pos{width:20px;min-width:20px;height:20px;font-size:11px;border-width:2px}
+#hud #hud-score{min-width:0;padding:6px 11px;border-width:3px;box-shadow:none;
+  background:color-mix(in srgb,var(--accent) 52%,transparent)}
+#hud #hud-score .score-big{font-size:24px}
+#hud #hud-score .score-sub{margin-bottom:2px}
+/* ⚠️ Com fundo translúcido o texto perde o contraste que o preenchimento sólido dava — e ao meio-dia, no
+   céu claro do tema `dawn`, o número da massa fica ilegível. A sombra é o que devolve a leitura sem
+   trazer a parede opaca de volta. */
+#hud #hud-right .lb-row,#hud #hud-score{text-shadow:0 1px 2px rgba(0,0,0,.5)}
+/* No dedo o painel tem que ceder mais: a tela é menor e ele disputa espaço com o radar e os botões. */
+body[data-mode="portrait"] #hud #hud-right{max-width:min(46vw,180px)}
+body[data-mode="portrait"] #hud #hud-right .lb-row{font-size:11px;padding:2px 7px 2px 3px;gap:5px}
+body[data-mode="landscape"] #hud #hud-right{max-width:min(34vw,210px)}
+
 /* ── KILL FEED ── */
 #kill-feed{display:flex;flex-direction:column;align-items:flex-end;gap:4px;max-width:min(340px,32vw);pointer-events:none}
 #kill-feed .kf-row{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:var(--radius,10px);
   border:1px solid var(--line,#0004);background:color-mix(in srgb,var(--surface,#2226) 78%,transparent);
   font-size:.84em;line-height:1.25;white-space:nowrap;max-width:100%;animation:kfin .18s ease}
-#kill-feed .kf-who{display:inline-flex;align-items:center;gap:4px;max-width:11ch;overflow:hidden;text-overflow:ellipsis}
+#kill-feed .kf-who{display:inline-flex;align-items:center;gap:4px;max-width:9ch;overflow:hidden;text-overflow:ellipsis}   /* 9ch, não 11: o verbo entrou na linha e o `nowrap` cortaria a vítima */
+#kill-feed .kf-verb{opacity:.62;font-size:.92em}
 #kill-feed .kf-who .nk{overflow:hidden;text-overflow:ellipsis}
 #kill-feed .kf-who.dim{opacity:.6}
 #kill-feed .kf-how{display:inline-flex;align-items:center;gap:2px}
@@ -852,6 +881,20 @@ body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-side{grid-area:si
 #s-entry .entry-wrap.entry-v2 .entry-side .mr-val{font-variant-numeric:tabular-nums;color:var(--text,#fff5c2)}
 #s-entry .entry-wrap.entry-v2 .entry-side .code{color:var(--accent2,#ff6b4a);font-family:var(--font-mono,monospace)}
 #s-entry .entry-wrap.entry-v2 .entry-side .mini-rooms .mr-row span{font-size:11px}
+
+/* ── BARRA DE NAVEGAÇÃO: ícone SVG no lugar do emoji ──────────────────────────
+   Os três temas desenham o ícone com `content:` emoji por chave
+   (`.nav-btn[data-nav="lobby"] .nav-ico::before{content:"🛰️"}`), e nunca definiram `modes` — o botão
+   caía num círculo vazio em Opções, Loja, Ranking, Perfil e Salas. Agora `bits.jsx` põe dentro do
+   `<i>` o MESMO SVG da tela inicial, e aqui o emoji sai de cena.
+   ⚠️ Especificidade: a regra do tema é `:where(html[data-theme=…]) .nav-btn[data-nav=…] .nav-ico::before`
+   — o `:where` soma zero, então ela vale (0,3,0). `ui.css` é importado ANTES dos temas, logo empatar
+   PERDE. O `body` na frente leva estas para (0,3,1) / (0,4,1) e elas ganham sem um `!important`. */
+body .nav .nav-btn[data-nav] .nav-ico::before{content:none}
+body .nav .nav-ico{overflow:hidden}
+body .nav .nav-ico .nav-svg{width:22px;height:22px;flex:none}
+/* No dedo o círculo do tema encolhe (34 px em `landscape`); o desenho acompanha, senão vaza pela borda. */
+body[data-mode="landscape"] .nav .nav-ico .nav-svg{width:19px;height:19px}
 
 /* ── FOCO POR TECLADO ── a tela inteira era navegável e completamente invisível para quem usa Tab ── */
 #s-entry .entry-wrap.entry-v2 :is(button,input,[role="button"]):focus-visible{

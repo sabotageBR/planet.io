@@ -65,8 +65,10 @@ if(mode==="portrait"||mode==="landscape"){const [w,h]=mode==="portrait"?[390,844
   document.body.style.background="#111";}
 
 // ── DOM (cópia do template de engine2.js) ─────────────────────────────────────
-const NAV=[["entry",LB.home],["lobby",LB.rooms],["rank",LB.ranking],["profile",LB.profile],["shop",LB.shop],["prefs",LB.prefs]];
-const nav=cur=>`<nav class="nav">${NAV.map(([s,l])=>`<button class="nav-btn ${s===cur?"on":""}" data-go="${s}" data-nav="${s}"><i class="nav-ico"></i><span>${l}</span></button>`).join("")}</nav>`;
+// Mesma lista e mesmo markup de ui/bits.jsx — inclusive o `modes`, que faltava aqui, e o SVG dentro do
+// `<i>`: a prévia existe para conferir o tema, e conferir um DOM que o app não usa não confere nada.
+const NAV=[["entry",LB.home],["modes",LB.modesShort],["lobby",LB.rooms],["rank",LB.ranking],["profile",LB.profile],["shop",LB.shop],["prefs",LB.prefs]];
+const nav=cur=>`<nav class="nav">${NAV.map(([s,l])=>`<button class="nav-btn ${s===cur?"on":""}" data-go="${s}" data-nav="${s}"><i class="nav-ico">${navIconSvg(s)}</i><span>${l}</span></button>`).join("")}</nav>`;
 const header=(title)=>`<header class="sh"><button class="btn-mini back" data-go="entry">${LB.back}</button><h1 class="stitle">${title}</h1><span class="coinbar sh-coins">${LB.coinIcon} <b class="v-coins"></b></span></header>`;
 const field=(id,label,type,extra)=>`<div class="field"><label for="${id}">${label}</label><input id="${id}" type="${type||"text"}" ${extra||""}></div>`;
 app.innerHTML=`

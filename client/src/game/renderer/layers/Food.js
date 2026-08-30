@@ -13,7 +13,8 @@ import {seedAngle,seedUnit} from "../../util.js";
 
 const SIZE=64,GLOW_K=1.9,GLOW_PULSE={amp:.12,speed:.0022};   // GLOW_K: o halo é bem maior que o corpo — é o vazamento que dá o brilho
 /** Receita do atlas de comida de um tema (também usada no pré-aquecimento do próximo céu). */
-const SPECIALS=[FOOD_TYPE.AMMO,FOOD_TYPE.MERGE,FOOD_TYPE.MAGNET,FOOD_TYPE.SHIELD,FOOD_TYPE.W_BURST,FOOD_TYPE.W_CLUSTER,FOOD_TYPE.W_NOVA];
+const SPECIALS=[FOOD_TYPE.AMMO,FOOD_TYPE.MERGE,FOOD_TYPE.MAGNET,FOOD_TYPE.SHIELD,FOOD_TYPE.W_BURST,FOOD_TYPE.W_CLUSTER,FOOD_TYPE.W_NOVA,
+  FOOD_TYPE.AUTODEF,FOOD_TYPE.AMMO_PLUS,FOOD_TYPE.ZOOM,FOOD_TYPE.FEAST];   // faltar aqui não dá erro: a bolinha cai no quadro "0:0" do atlas e é desenhada como POEIRA
 export function foodAtlas(th){const TX=th.textures,items=[];
   for(let t=FOOD_TYPE.DUST;t<=FOOD_TYPE.ROCK;t++)for(let h=0;h<FOOD.HUES;h++){items.push({key:t+":"+h,size:SIZE,draw:(c,s)=>TX.food(c,s,{type:t,hue:h})});
     items.push({key:"g"+t+":"+h,size:SIZE,draw:(c,s)=>TX.glow(c,s,{color:th.foodColor({type:t,hue:h})})});}

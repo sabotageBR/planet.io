@@ -21,7 +21,7 @@
 //      de viagem com o que resta e sair na hora certa, em vez de reagir depois de já estar queimando.
 // PERSONAS dá o estilo, SKILLS dá a mão (reação, pontaria, antecipação, margem da zona, taxa de erro).
 // @ts-check
-import {BOT,BLACKHOLE,STAR,ASTEROID,MISSILE,FOOD_TYPE,ZONE,WEAPON,WEAPONS,weaponOf,EAT,SPLIT,TICK_HZ} from "./constants.js";
+import {BOT,BLACKHOLE,STAR,ASTEROID,MISSILE,FOOD_TYPE,isWeaponFood,ZONE,WEAPON,WEAPONS,weaponOf,EAT,SPLIT,TICK_HZ} from "./constants.js";
 import {INPUT_FLAG} from "./protocol/constants.js";
 import {clamp} from "./util.js";
 import {createRng} from "./rng.js";
@@ -56,10 +56,17 @@ function foodValue(f,ps){
     case FOOD_TYPE.AMMO:return ammoOf(ps)<weaponOf(ps.weapon).ammo?36:4;
     case FOOD_TYPE.SHIELD:return 40;
     case FOOD_TYPE.MAGNET:return 26;
+    // Os powerups de jogador. Sem estes `case` eles cairiam no `f.r` do default e o bot passaria por cima de
+    // um raro como se fosse poeira — a sala inteira ignorando o que o humano corre para pegar denuncia mais
+    // que qualquer movimento. AMMO_PLUS vale como munição, mas sempre (ele fura o teto).
+    case FOOD_TYPE.AUTODEF:return 34;
+    case FOOD_TYPE.ZOOM:return 20;
+    case FOOD_TYPE.AMMO_PLUS:return 44;
+    case FOOD_TYPE.FEAST:return 48;
     default:
       // arma no chão vale pela raridade (a épica vale um desvio; a comum, quase nada se já tenho munição dela):
       // o peso do sorteio é o inverso da raridade, então 700/weight ordena Nova > Cacho > Rajada.
-      if(f.type>=FOOD_TYPE.W_BURST){const wp=WEAPONS.find(x=>x.food===f.type);
+      if(isWeaponFood(f.type)){const wp=WEAPONS.find(x=>x.food===f.type);
         return wp?(wp.id<ps.ammo.length&&ps.ammo[wp.id]>0?12:700/wp.weight):f.r;}
       return f.r;}}
 /** Diferença angular normalizada em (-π,π]. */
@@ -130,7 +137,10 @@ export class BotBrain{
     else if(m==="intercept"){const mi=w.entityById.get(this.target);
       if(!mi||mi.dead){this._wander(c);gx=this.wx;gy=this.wy;}
       else{if(tick>=this.safeAt){this._safeDir(c,mi.x,mi.y);this.safeAt=tick+3;}gx=this.fx;gy=this.fy;
-        if(armed&&!shield&&tick>=this.fireAt){flags|=INPUT_FLAG.FIRE;this.fireAt=tick+30;}}}   // sem AIM: o applyFire escolhe a interceptação
+        // sem AIM: o applyFire escolhe a interceptação. O `!shield` que havia aqui era consequência do
+        // tiro custar um nível de escudo — o bot blindado preferia levar o míssil a gastar a blindagem.
+        // Agora o tiro DEFENSIVO não cobra nada (rules.applyFire), então recusar era só morrer de graça.
+        if(armed&&tick>=this.fireAt){flags|=INPUT_FLAG.FIRE;this.fireAt=tick+30;}}}
     else if(m==="food"){const f=w.entityById.get(this.target);
       if(f&&!f.dead){gx=f.x;gy=f.y;}else{this._wander(c);gx=this.wx;gy=this.wy;}}
     else if(m==="zone"){gx=this.zx;gy=this.zy;}

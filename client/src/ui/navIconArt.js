@@ -9,6 +9,10 @@
 // duplica o DOM das telas para o `theme-preview.html`, também precisa deles — e o preview não passa
 // pelo transform de JSX.
 const D = {
+  // início: a casa de sempre — na barra `Nav` das telas internas o primeiro item é `entry`, que a lista
+  // da tela inicial não tem (lá o botão de voltar é outro). Sem esta chave o SVG some justo do item
+  // mais usado da barra.
+  entry: `<path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19Z"/><path d="M9.5 20.5v-6h5v6"/>`,
   // escolha de modo: quatro opções sobre a mesa
   modes: `<rect x="3.5" y="3.5" width="7.5" height="7.5" rx="2"/><rect x="13" y="3.5" width="7.5" height="7.5" rx="2"/>
 <rect x="3.5" y="13" width="7.5" height="7.5" rx="2"/><rect x="13" y="13" width="7.5" height="7.5" rx="2"/>`,

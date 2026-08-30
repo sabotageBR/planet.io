@@ -92,7 +92,25 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   imunidade do dono soma `r/vmax(r)`, senão o planetão alcançava a própria cusparada e reengolia tudo;
   powerups = ímã e escudo **por peça** — quem pegou é a única parte que ganha (Body.magnetUntil/shieldLv),
   peça nova nasce limpa e a fusão fica com o melhor dos dois — mais o de **fusão** (`FOOD_TYPE.MERGE`, o índice 5 que era do de velocidade),
-  que zera o `mergeAt` de todas as peças do dono; mísseis (**carência de `MISSILE.SPAWN_CD_TICKS` = 10 s a cada nascimento antes do 1º tiro** — senão o recém-nascido
+  que zera o `mergeAt` de todas as peças do dono; e mais QUATRO **por jogador** (`FOOD_TYPE` 11–14, em `PlayerState`
+  ao lado de `fireCdUntil`, zerados no nascimento pelo mesmo caminho): **auto-defesa** (`rules.autoDefend`, chamado na
+  fase 1 do `step` como `else` do tiro manual — com um teleguiado entrante ainda descoberto, puxa o gatilho por você
+  chamando o MESMO `applyFire`, então cadência, munição, alvo e crédito saem de graça; gasta munição e tem cadência
+  PRÓPRIA porque o míssil tem `cd` 0, e a varredura é escalonada por slot — `incomingMissile` com `livres` é O(M²) e
+  50 jogadores × 60 Hz seria o maior custo fixo do tick), **+1 munição** (raro: fura o teto da arma, o único lugar que
+  passa por cima dele, e não guarda estado nenhum), **zoom** (afasta a câmera em `POWERUP.ZOOM_K`; ⚠️ `zoomFor`
+  alimenta TAMBÉM a AOI do snapshot — e `aoiScaleFood` tem piso PRÓPRIO, então os dois recebem o fator, senão o anel de
+  fora vem sem um grão) e **banquete** (raro: comida vale `FEAST_K`; só a COMIDA — encostar no ganho de fragmento
+  quebraria a conservação de massa). Serem por JOGADOR não é preguiça: câmera, cinto e economia não são de meia
+  bolinha, e o `PIECE_FLAG` só tinha um bit livre. ⚠️ `type>=W_BURST` DEIXOU de significar "é arma" (os quatro entraram
+  DEPOIS das armas no enum denso): quem responde isso agora é `isWeaponFood()`, e sem ele os powerups cairiam no ramo
+  de arma e sumiriam sem efeito nenhum — em silêncio, que é o pior jeito de quebrar; mísseis (**o tiro DEFENSIVO não cobra escudo**: `applyFire` cobrava um nível ANTES do `switch` que decide o tipo de
+  tiro, e a decisão "isto é um interceptador" só nasce depois, em `fireHoming` — ou seja, exatamente quando o tiro
+  existia para salvar alguém, ele derrubava a outra coisa que o salvaria. Hoje o entrante é calculado UMA vez em
+  `applyFire` e passado adiante, e o predicado tem que ser o MESMO de `fireHoming` (`livres`, sem mira, arma
+  teleguiada): sem o `livres`, um entrante já coberto manteria o desconto e o tiro sairia no ATACANTE — ofensivo — de
+  graça. O bot também parou de recusar a interceptação com escudo na mão (era consequência do custo, não uma escolha);
+  **carência de `MISSILE.SPAWN_CD_TICKS` = 10 s a cada nascimento antes do 1º tiro** — senão o recém-nascido
   sai do spawn metralhando, sem nada a perder; vai no `self` como `fireCd` e o HUD desenha a contagem regressiva em cima
   do ícone da arma; homing no jogador, interceptação de míssil inimigo ou **tiro mirado** quando o
   jogador segura o botão — trava na **bolinha mais próxima do PONTEIRO** (`aimScore` = distância do cursor à borda dela, dentro de
@@ -190,7 +208,16 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   meio para o fim a densidade sobe 15× (49 px entre grãos) e é daí que sai a VIRADA do pequeno — o grão dá massa
   ABSOLUTA, então vale 2 % para quem tem 900 de massa e 0,01 % para quem tem 200 000, que ainda perde `PLAYER.DECAY`
   por segundo. Sem isso o círculo final era um deserto de 20 grãos e a última fase premiava tamanho acumulado, não
-  jogada. A comida também nunca nasce EM CIMA de estrela (`FOOD.STAR_CLEAR` da borda, e a estrela nova varre o que
+  jogada. **A ESTRELA TAMBÉM SEGUE A ZONA** (`ZONE.STAR_*`): ela nascia sorteada no mapa inteiro, então o
+  círculo fechado não tinha nenhuma e o perigo saía da partida justo quando ela fica interessante. Um
+  predicado "está dentro do círculo?" não resolveria — com o círculo em 480 px de 9600, o ponto uniforme
+  acerta 0,8 % das vezes e o `_farSpot` DEVOLVE a última tentativa —, então quem mudou foi a AMOSTRAGEM:
+  polar dentro do disco (`d=√u·r`), o mesmo caminho que a comida já usava. `MIN_SEP` afrouxa junto com o
+  raio (1400 px de folga não cabem num círculo de 1400) e, abaixo de `ZONE.STAR_MIN_R`, o respawn **ADIA**
+  em vez de insistir: cada estrela esteriliza um disco de `r+FOOD.STAR_CLEAR` (246 px), que num círculo de
+  480 é 26 % da área — justo o tapete que é a virada do pequeno. A que fica no gás some em silêncio e volta
+  para a fila.
+  A comida também nunca nasce EM CIMA de estrela (`FOOD.STAR_CLEAR` da borda, e a estrela nova varre o que
   estava ali): grão debaixo do disco é isca, cobra `STAR.BURN` e não dá escolha. A massa queimada
   não evapora: é ARRANCADA em pelotas de verdade a cada `ZONE.SHED_TICKS`, jogadas para FORA (longe do centro da
   zona), então dá para ver quem está no gás se desfazendo e buscar o espólio custa entrar mais fundo. Quem morre
@@ -273,6 +300,14 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   temas** fora do celular em pé: o "às vezes no meio, às vezes embaixo" era o RELÓGIO — só o `dusk` (20h–05h) os transformava em folha,
   e o mesmo modal mudava de lugar conforme a hora. `#s-round` (o pódio do BIG CRUNCH) **não tinha uma linha de CSS em arquivo nenhum** e
   caía cortado no canto; agora herda o tratamento de `#s-dead`. `scripts/responsive-check.mjs` cobre `dead`, `round` e `entry@rail`.
+- **Placar e massa do HUD** (`#hud-right`, regras em `client/src/styles/ui.css`): estreitos, juntos e
+  TRANSLÚCIDOS (`color-mix`, o mesmo recurso que o kill feed e o chat já usavam). O bloco nascia opaco e
+  largo — `min-width:172px` por linha (204 na 1ª), `gap:9px` entre elas e NENHUM `max-width` no desktop —,
+  então comia a lateral direita em monitor grande e no celular. ⚠️ Mexer só em `ui.css` e com `#hud #x`
+  (2,0,0): `theme/*/hud.css` é GERADO pelo `port.js` e a próxima passada apagaria a mão, e empatar em
+  (1,0,0) com o tema PERDE (ui.css é importado antes). ⚠️ Fundo translúcido come o contraste no céu claro
+  do `dawn`, então as linhas e o número da massa ganharam `text-shadow` — sem ele o placar fica ilegível ao
+  meio-dia.
 - **A MARCA** (`client/src/ui/logoArt.js` + `Logo.jsx`, `scripts/brand-assets.mjs`): warspace.io. O título era texto
   com emoji (`🪐 PLANET.IO`) girado e com sombra dura; agora é SVG inline pintado por TOKEN, então a marca se re-tinge
   com o relógio junto com o resto da tela — coisa que emoji nunca fez. A arte mora num `.js` puro porque TRÊS lugares
@@ -296,6 +331,24 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   fonte que ainda não carregou faria o nome dos planetas ser assado errado num atlas que não é refeito depois.
   Os seis botões usam `repeat(auto-fit,minmax(62px,1fr))`, que responde ao CONTÊINER: na gaveta do celular deitado
   seis colunas fixas davam alvo de 37 px, e um `@media` não veria isso — a viewport ali tem 667 px de largura.
+- **Preferências e controles** (`client/src/state/app.js` → `ui/prefsTable.js` → whitelist em
+  `server/src/api/me.js`; chave nova precisa dos TRÊS, fora da whitelist o servidor descarta em silêncio):
+  ⚠️ `holdEject` e `rightSplit` passaram um tempo **dentro de um comentário `//`** no `PREF_DEFAULTS` — como
+  `PREF_KEYS = Object.keys(...)`, as chaves não existiam, `normalizePrefs` descartava o que o servidor
+  devolvia e `setPref` recusava a escrita: os dois toggles da aba Controles eram botões mortos. O
+  **joystick virtual agora nasce LIGADO** (o `game/index.js` só o arma com `(pointer: coarse)`, então no
+  mouse continua letra morta) e as teclas de **dividir e ejetar são configuráveis** (`keySplit`/`keyEject`,
+  `KeyboardEvent.code` da lista compartilhada `ACTION_KEYS` — o `code` é a POSIÇÃO física, então vale em
+  ABNT, QWERTY e AZERTY). O `MAP` do `input/Keyboard.js` deixou de ser constante de módulo e é montado por
+  instância, com desempate quando as duas caem na mesma tecla. ⚠️ As legendas que o HUD desenha em
+  `#hud-cd` e a dica da tela inicial saem de `keysOf(prefs)`: legenda que mente é pior que legenda nenhuma.
+- **Ícone da barra de navegação** (`ui/bits.jsx` + `navIconArt.js`): existiam DOIS sistemas de ícone e só um
+  tinha sido consertado. A tela inicial usa `<NavIcon>` (SVG em `currentColor`); a barra `Nav` das telas
+  internas usava um `<i class="nav-ico">` VAZIO, com o desenho vindo de `content:` emoji no CSS de cada
+  tema — e os três definiam só seis chaves, faltando justo `modes`, que nasceu depois dos mockups. Daí o
+  círculo colorido vazio em Opções, Loja, Ranking, Perfil e Salas. Hoje o `<i>` só carrega o círculo do tema
+  e o desenho é o mesmo SVG da entrada; o emoji é suprimido em `ui.css` com especificidade acima de (0,3,0),
+  que é o que a regra do tema vale.
 - **Câmera de quem morreu**: no Battle Royale segue o espectador de sempre (quem te matou, ou o companheiro vivo). No **Livre ela fica
   PARADA onde o jogador morreu** (`spectateTargetFor(s,-2)`): ali não há placar nem fim de partida para acompanhar, e passear atrás da
   tela de morte desorienta. As setas ‹ › continuam funcionando nos dois modos.
@@ -363,7 +416,12 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **Arma nenhuma mata sozinha**: `w.killPiece` só é chamado em 3 lugares de `rules.js` — `zone` (:68),
   `eaten` (:129) e `blackhole` (:445, dormente). Míssil, estrela, asteroide e supernova param no piso
   `MIN_PIECE_R` e apenas AMOLECEM. Por isso `how` (com o quê) e o matador são campos separados, e existe a
-  ASSISTÊNCIA: a linha honesta é "⭐ amoleceu · Fulano devorou". Quem sabe disso é `Sim._lastHit`, um carimbo
+  ASSISTÊNCIA: a linha honesta é "⭐ amoleceu · Fulano devorou" — e a linha leva o VERBO ("Fulano 🍴 matou
+  Beltrano"), porque só o ícone entre dois nomes obriga o leitor a adivinhar a direção.
+  ⚠️ **O `at` da linha é carimbado na CHEGADA, com o relógio do navegador.** Ele vinha do `Date.now()` do
+  SERVIDOR e era comparado com o `Date.now()` do cliente em `KillFeed.jsx`: com o relógio do pod atrasado
+  mais que `FEED.TTL_MS` (9 s), toda linha nascia vencida e o feed sumia INTEIRO — sem erro, sem log e sem
+  sintoma. O `at` só serve para a expiração por idade, então misturar dois relógios nunca fez sentido. Quem sabe disso é `Sim._lastHit`, um carimbo
   escrito dentro do `switch` que o `_consume` já percorre (uma escrita em Map, sem laço novo), lido em
   `_died` com TTL de `FEED.HIT_TTL_TICKS`. Para isso a física teve que passar a dizer a ARMA: `weapon` no
   BOOM/SHIELD_*, `q.hits=WEAPON.CLUSTER` no `clusterSplit` (o filho do cacho tem `hue` de míssil simples DE

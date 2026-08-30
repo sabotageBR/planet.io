@@ -221,7 +221,11 @@ export const effects={
         for(let i=0;i<3;i++){const kk=Math.max(0,k-i*.12);P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.15+kk*1.05),color:i?CORAL:CREAM,alpha:a*(1-i*.25),width:Math.max(3,f.r*.03*(1-kk))});}
         P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:16,inner:.45,phase:-k*.5,fill:GOLD,stroke:INK,width:Math.max(2,s*.02),alpha:al});
         P.push({type:"burst",x:f.x,y:f.y,n:14,r0:f.r*(.2+k*.9),r1:f.r*(.35+k*1.15),color:CREAM,alpha:a,width:Math.max(2,f.r*.02)});
-        P.push({type:"text",x:f.x,y:f.y,text:"SUPERNOVA!",size:Math.max(14,f.r*.14),fill:CREAM,stroke:INK,font:FONT,alpha:al});break;}
+        // O texto vem do `f` (ui/labels.js, via game/index.js): a mesma estrela morre com dois NOMES —
+        // supernova, ou "nebulosa planetária" quando quem a matou foi uma trombada de planeta. O corpo
+        // da fonte cai com o comprimento, senão o nome longo sai mais largo que a própria onda.
+        {const txt=f.text||"SUPERNOVA!";
+        P.push({type:"text",x:f.x,y:f.y,text:txt,size:Math.max(11,f.r*1.4/Math.max(10,txt.length)),fill:CREAM,stroke:INK,font:FONT,alpha:al});}break;}
       case "countdown":{const s=f.r*(1.6-k*.5),al=Math.min(1,a*2);   // contagem do fim do mundo (segundos finais)
         P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.7+k*1.1),color:CORAL,alpha:a*.7,width:Math.max(4,f.r*.05)});
         P.push({type:"text",x:f.x,y:f.y,text:String(f.n||0),size:s,fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}

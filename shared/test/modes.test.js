@@ -6,7 +6,7 @@ import {createWorld,stepOwnPieces} from "../src/physics/index.js";
 import {sameTeam,zoneBurn,outOfZone,zoneMass,zoneBurnRate,applyFire,ammoOf,ownedMask} from "../src/physics/rules.js";
 import {createZone,stepZone,zoneAt,zoneR} from "../src/zone.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,ZONE,PLAYER,DT,EJECT,MISSILE,WEAPON,WEAPONS,FOOD,FOOD_TYPE,STAR,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood,BOT_NICKS} from "../src/constants.js";
+import {WORLD,ZONE,PLAYER,DT,EJECT,MISSILE,WEAPON,WEAPONS,FOOD,FOOD_TYPE,isWeaponFood,POWERUP,STAR,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood,BOT_NICKS} from "../src/constants.js";
 import {KIND} from "../src/protocol/constants.js";
 
 const empty=(seed=1,o={})=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false,...o});
@@ -356,16 +356,16 @@ test("NOVA: empurra e estilhaça inimigo perto, e não encosta em mim nem no ali
   assert.ok(w.events.some(e=>e.type==="SUPERNOVA"),"reusa a onda que o cliente já sabe desenhar");});
 test("armas só caem no Battle Royale (o mundo Livre nunca sorteia uma)",()=>{
   const livre=createWorld({seed:16,asteroids:false,holes:0,stars:0});
-  assert.equal(livre.food.some(f=>f.type>=FOOD_TYPE.W_BURST),false,"modo Livre: nenhuma arma no chão");
+  assert.equal(livre.food.some(f=>isWeaponFood(f.type)),false,"modo Livre: nenhuma arma no chão");   // `>=W_BURST` deixou de servir: os powerups de jogador (11..14) entraram DEPOIS das armas e caem nos dois modos
   const sv=createWorld({seed:16,asteroids:false,holes:0,stars:0,weapons:true});
-  assert.ok(sv.food.some(f=>f.type>=FOOD_TYPE.W_BURST),"Battle Royale larga arma");
-  const tipos=new Set(sv.food.filter(f=>f.type>=FOOD_TYPE.W_BURST).map(f=>f.type));
+  assert.ok(sv.food.some(f=>isWeaponFood(f.type)),"Battle Royale larga arma");
+  const tipos=new Set(sv.food.filter(f=>isWeaponFood(f.type)).map(f=>f.type));
   // a NOVA saiu do sorteio (weight 0, como o míssil): sobram Rajada e Cacho. O código dela continua
   // vivo e testado logo acima — o que acabou é a chance de ela CAIR.
   assert.equal(tipos.size,2,`a raridade tem que espalhar os tipos que existem (saíram ${tipos.size})`);
   assert.equal(tipos.has(FOOD_TYPE.W_NOVA),false,"a Nova não cai mais no Battle Royale");
   assert.equal(WEAPONS[WEAPON.NOVA].weight,0,"e é o peso 0 que a tira do sorteio, sem apagar a arma");
-  const n=sv.food.filter(f=>f.type>=FOOD_TYPE.W_BURST).length;
+  const n=sv.food.filter(f=>isWeaponFood(f.type)).length;
   assert.ok(n>10&&n<300,`população de armas fora da faixa: ${n} de ${sv.food.length}`);});
 test("a carência de tiro do nascimento continua valendo para TODAS as armas",()=>{
   const w=empty(17);w.addPlayer(0,{x:4000,y:4000,r:100});
@@ -374,3 +374,69 @@ test("a carência de tiro do nascimento continua valendo para TODAS as armas",()
     ps.weapon=id;ps.ammo[id]=2;ps.fireCdUntil=w.tick+MISSILE.SPAWN_CD_TICKS;
     assert.equal(applyFire(w,ps),false,`${WEAPONS[id].key} atirou dentro da carência`);
     assert.equal(ammoOf(ps),2,"e nem gastou munição");}});
+
+// ── ESTRELAS SEGUEM A ZONA ───────────────────────────────────────────────────
+// Elas nasciam sorteadas no mapa INTEIRO, então no círculo fechado não havia nenhuma: o perigo que faz o
+// jogador desviar saía da partida justo quando ela fica interessante.
+test("estrela: com zona ligada ela nasce DENTRO do círculo",()=>{
+  const w=createWorld({seed:71,food:0,asteroids:false,holes:0,stars:0,weapons:true});
+  const cx=4800,cy=4800,r=3200;
+  w.setZone({x0:cx,y0:cy,r0:r,x1:cx,y1:cy,r1:r,t0:0,t1:Infinity});
+  // Recusar é um resultado legítimo — o círculo tem área finita e STAR.MIN_SEP não é de graça. O que NÃO
+  // pode acontecer é nascer fora: era o ponto de fallback do `_farSpot` largando a estrela no gás.
+  let dentro=0;
+  for(let i=0;i<12;i++){const st=w.spawnStar(true);if(!st)continue;
+    const d=Math.hypot(st.x-cx,st.y-cy);
+    assert.ok(d<=r-ZONE.STAR_PAD+1,`estrela ${i} a ${d.toFixed(0)} px do centro (círculo ${r}, folga ${ZONE.STAR_PAD})`);
+    dentro++;}
+  assert.ok(dentro>=5,`só ${dentro} estrelas nasceram num círculo de ${r} px — o sorteio não está achando lugar`);
+  // sem zona nada muda: o sorteio é o do mapa inteiro, e é isso que mantém o modo Livre idêntico
+  const livre=createWorld({seed:71,food:0,asteroids:false,holes:0,stars:0});
+  const st=livre.spawnStar(true);
+  assert.ok(st,"sem zona a estrela sempre nasce (o fallback do mapa inteiro sempre serviu)");});
+
+test("estrela: o círculo pequeno não ganha estrela nova — e o gás leva a que ficou para trás",()=>{
+  const w=createWorld({seed:72,food:0,asteroids:false,holes:0,stars:0,weapons:true});
+  const cx=4800,cy=4800,peq=ZONE.STAR_MIN_R-100;
+  w.setZone({x0:cx,y0:cy,r0:peq,x1:cx,y1:cy,r1:peq,t0:0,t1:Infinity});
+  // a estrela esteriliza r+FOOD.STAR_CLEAR de comida em volta; num círculo apertado isso é um quarto do
+  // tapete, que é justamente a virada do jogador pequeno. Por isso o respawn ADIA em vez de insistir.
+  w.queueStar(1);
+  const antes=w.stars.length;
+  for(let t=0;t<ZONE.STAR_RETRY_TICKS-2;t++)w.step();
+  assert.equal(w.stars.length,antes,"círculo menor que STAR_MIN_R não recebe estrela");
+  assert.equal(w.starQueue.length,1,"e o pedido continua na fila — não se perde a estrela para sempre");
+  // agora o círculo abre: a mesma fila entrega
+  w.setZone({x0:cx,y0:cy,r0:3000,x1:cx,y1:cy,r1:3000,t0:0,t1:Infinity});
+  let nasceu=false;
+  for(let t=0;t<ZONE.STAR_RETRY_TICKS+60&&!nasceu;t++){w.step();nasceu=w.stars.length>antes;}
+  assert.ok(nasceu,"com espaço, a fila volta a entregar");
+
+  // a que o círculo deixou para trás some e VOLTA para a fila (senão a população cairia para sempre)
+  const w2=createWorld({seed:73,food:0,asteroids:false,holes:0,stars:0,weapons:true});
+  w2.setZone({x0:cx,y0:cy,r0:4000,x1:cx,y1:cy,r1:4000,t0:0,t1:Infinity});
+  const fora=w2.spawnStar(true,{x:cx+3600,y:cy});
+  assert.ok(fora&&!fora.dead);
+  w2.setZone({x0:cx,y0:cy,r0:900,x1:cx,y1:cy,r1:900,t0:0,t1:Infinity});   // o círculo fechou por cima dela
+  const naFila=w2.starQueue.length;
+  for(let t=0;t<w2.stars.length*3+8&&!fora.dead;t++)w2.step();
+  assert.ok(fora.dead,"a estrela que ficou no gás some");
+  assert.ok(w2.starQueue.length>naFila,"e entra na fila de volta");
+  assert.equal(w2.events.some(e=>e.type==="SUPERNOVA"),false,"sumiço silencioso: explodir no gás premiaria ninguém e assustaria o outro lado do mapa");});
+
+// ── SORTEIO PONDERADO DOS POWERUPS ───────────────────────────────────────────
+test("powerup: a tabela de pesos manda, e os dois raros são mesmo raros",()=>{
+  const w=createWorld({seed:74,asteroids:false,holes:0,stars:0});
+  const conta=new Map();
+  for(const f of w.food)if(f.type>=FOOD_TYPE.AMMO&&!isWeaponFood(f.type)&&f.type!==FOOD_TYPE.AMMO)
+    conta.set(f.type,(conta.get(f.type)|0)+1);
+  const total=[...conta.values()].reduce((a,b)=>a+b,0);
+  assert.ok(total>40,`só ${total} powerups em ${w.food.length} comidas — a banda POWER_P sumiu`);
+  for(const [t] of POWERUP.DROP)assert.ok((conta.get(t)|0)>0,`o tipo ${t} nunca saiu no sorteio`);
+  const comuns=(conta.get(FOOD_TYPE.MAGNET)|0)+(conta.get(FOOD_TYPE.SHIELD)|0);
+  const raros=(conta.get(FOOD_TYPE.AMMO_PLUS)|0)+(conta.get(FOOD_TYPE.FEAST)|0);
+  assert.ok(comuns>raros*2,`ímã+escudo (${comuns}) têm que ser bem mais comuns que os raros (${raros})`);
+  // e o sorteio gasta UM draw só: dois deslocariam o stream do mulberry32 e mudariam todo o resto do mundo
+  const a=createWorld({seed:75,asteroids:false,holes:0,stars:0});
+  const b=createWorld({seed:75,asteroids:false,holes:0,stars:0});
+  assert.deepEqual(a.food.map(f=>f.type),b.food.map(f=>f.type),"o mundo continua determinístico pela semente");});

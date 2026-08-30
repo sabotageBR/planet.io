@@ -6,12 +6,13 @@
 // com último estado quantizado (UPDATE só se mudou). ?lag=<ms> simula latência nos dois sentidos.
 import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,encodePong,decodeInput,
   MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,NO_TEAM,
-  WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,botNick,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,
+  WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,botNick,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,POWERUP,
   focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir,FEED} from "@warspace/shared";
 import {createWorld,applySplit,incomingMissile,firstLive} from "@warspace/shared/physics/index.js";
 import {ammoOf,ownedMask} from "@warspace/shared/physics/rules.js";
 import {BotBrain} from "@warspace/shared/bot.js";
 const ARMA=["missile","burst","cluster","nova"];   // WEAPON.* → a chave do kill feed (a mesma tabela do Sim)
+const ZOOM_GRACE_TICKS=15;   // idem server/src/net/snapshot.js: a AOI larga sobrevive um pouco à expiração do powerup (ela pode sobrar, nunca faltar)
 
 const seqNewer=(a,b)=>b<0||(((a-b)&0xFFFF)>0&&((a-b)&0xFFFF)<0x8000);
 export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=FOOD.COUNT,code="0LOC",roundTicks=ROUND.TICKS}={}){
@@ -122,7 +123,8 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
         case "STAR_SPLIT":e={kind:EVENT.STAR_SPLIT,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:ev.starId};break;
         case "SMASH":reasonMap.set(ev.asteroidId,REMOVE.POPPED);e={kind:EVENT.SMASH,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:packDir(ev.nx,ev.ny,0)};break;
         case "NOVA_HIT":mark(ev.slot,ev.bySlot,"nova");break;
-        case "SUPERNOVA":e={kind:EVENT.SUPERNOVA,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:ev.starId};break;
+        // `slotA` leva quem TROMBOU (o mesmo que Sim.js faz): é o que distingue supernova de nebulosa planetária na tela
+        case "SUPERNOVA":e={kind:EVENT.SUPERNOVA,x:ev.x,y:ev.y,r:ev.r,slotA:ev.rammed&&ev.bySlot>=0?ev.bySlot:65535,slotB:65535,extra:ev.starId};break;
         case "PLAYER_DEAD":{const m=meta.get(ev.slot);
           {const lh=lastHit.get(ev.slot),fresco=lh&&(tick-lh.tick)<=FEED.HIT_TTL_TICKS;
             let how=ev.cause==="zone"?"zone":ev.cause==="blackhole"?"hole":"eat",assist=-1,byHow=null;
@@ -169,12 +171,14 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
   const cr=[],up=[],rm=[];
   function snapshot(s){const ps=w.players.get(s.slot),tick=w.tick,view=s.view;let cx,cy,scale;
     const alive=ps&&ps.alive?ps.pieces.filter(p=>!p.dead):[];
-    if(alive.length){const f=focusOf(alive);cx=f.cx;cy=f.cy;scale=zoomFor(f.sumR,view.w,view.h);s.cx=cx;s.cy=cy;s.scale=scale;s.maxMass=Math.max(s.maxMass,w.massOf(s.slot));}
+    let zk=1;   // powerup de ZOOM: a AOI afasta junto com a câmera (o mesmo que server/src/net/snapshot.js faz), senão a borda vem vazia
+    if(alive.length){zk=tick<ps.zoomUntil+ZOOM_GRACE_TICKS?POWERUP.ZOOM_K:1;
+      const f=focusOf(alive);cx=f.cx;cy=f.cy;scale=zoomFor(f.sumR,view.w,view.h,zk);s.cx=cx;s.cy=cy;s.scale=scale;s.maxMass=Math.max(s.maxMass,w.massOf(s.slot));}
     else{const sp=s.specSlot>=0?w.players.get(s.specSlot):null,spp=sp&&sp.alive?sp.pieces.filter(p=>!p.dead):null;
       if(spp&&spp.length){const f=focusOf(spp);cx=f.cx;cy=f.cy;scale=zoomFor(f.sumR,view.w,view.h);s.cx=cx;s.cy=cy;s.scale=scale;}   // assistindo alguém: a AOI vai junto
       else{if(s.dead)spectate(s,-1);cx=s.cx==null?w.w/2:s.cx;cy=s.cy==null?w.h/2:s.cy;scale=s.scale||.42;}}
     const rect=viewRect(cx,cy,scale,view.w,view.h,NET.AOI_PAD),out=viewRect(cx,cy,scale,view.w,view.h,NET.AOI_PAD_OUT);s.aoi=out;
-    const fs=aoiScaleFood(scale,view.w,view.h);   // comida tem retângulo próprio (idem servidor)
+    const fs=aoiScaleFood(scale,view.w,view.h,zk);   // comida tem retângulo próprio, e piso próprio (idem servidor)
     const frect=fs===scale?rect:viewRect(cx,cy,fs,view.w,view.h,NET.AOI_PAD),fout=fs===scale?out:viewRect(cx,cy,fs,view.w,view.h,NET.AOI_PAD_OUT);
     cr.length=up.length=rm.length=0;const known=s.known;let seenN=0;const stamp=tick;
     const visit=(b,rad,ri=rect,ro=out)=>{if(b.dead)return;let k=known.get(b.id);
@@ -186,8 +190,11 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     for(const b of w.stars)visit(b,b.r*STAR.HALO);for(const b of w.missiles)visit(b,b.r);
     for(const [id,k] of known)if(k.seen!==stamp){const body=w.entityById.get(id);rm.push({id,reason:body&&!body.dead?REMOVE.LEFT_AOI:(reasonMap.has(id)?reasonMap.get(id):REMOVE.DESPAWN)});known.delete(id);}
     let mt=0,sh=0;if(ps)for(const pc of ps.pieces){if(pc.dead)continue;const m=pc.magnetUntil-tick;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}   // powerups por peça: o HUD leva o melhor
-    const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ammoOf(ps),powerBits:(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0),
-      magnetT:mt,shieldLv:sh,score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),fireCd:Math.max(0,ps.fireCdUntil-tick),
+    const ad=ps?Math.max(0,ps.autoDefUntil-tick):0,zo=ps?Math.max(0,ps.zoomUntil-tick):0,fe=ps?Math.max(0,ps.feastUntil-tick):0;   // e os três de JOGADOR, direto do PlayerState
+    const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ammoOf(ps),
+      powerBits:(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0)|(ad>0?POWER_BIT.autodef:0)|(zo>0?POWER_BIT.zoom:0)|(fe>0?POWER_BIT.feast:0),
+      magnetT:mt,shieldLv:sh,autoDefT:ad,zoomT:zo,feastT:fe,
+      score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),fireCd:Math.max(0,ps.fireCdUntil-tick),
       rank:rankOf(s.slot),mass:Math.round(w.massOf(s.slot)),weapon:ps.weapon|0,alive:aliveCount(),owned:ownedMask(ps),...ameaca(ps)}:undefined;
     sendBin(s.sock,encodeSnapshot(writer,{tick,ackSeq:s.ackSeq,creates:cr,updates:up,removes:rm,self}));}
   /** Alerta de míssil teleguiado — o mesmo cálculo do `self` do servidor (Sim.self). */

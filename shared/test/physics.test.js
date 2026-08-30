@@ -9,7 +9,7 @@ import {createWorld,createGrid,createBody,setR,addBoost,boostLeft,velX,velY,tryM
 import {zoomFor,focusOf,aoiScaleFood} from "../src/camera.js";
 import {vmaxFor} from "../src/physics/integrate.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,ejectR,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT} from "../src/constants.js";
+import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,ejectR,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,isWeaponFood,EAT,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT} from "../src/constants.js";
 import {KIND,PIECE_FLAG,FOOD_FLAG,STAR_PHASE,INPUT_FLAG,FRAG_KIND} from "../src/protocol/constants.js";
 import {BotBrain} from "../src/bot.js";
 
@@ -214,6 +214,40 @@ test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nív
   w4.requestFire(0);w4.step();assert.equal(q.shieldLv,0,"2º tiro: zera");assert.ok(w4.events.some(e=>e.type==="SHIELD_BREAK"&&e.bySlot===-1));
   q.shieldLv=3;q.shieldEvolveAt=1e9;w4.requestSplit(0);w4.step();assert.equal(q.shieldLv,0,"dividir derruba o escudo da peça inteiro");
   assert.equal(w4.piecesOf(0).length,2);assert.equal(w4.piecesOf(0)[1].shieldLv,0,"a filha nasce sem powerup");
+  // ── TIRO DEFENSIVO: sob mira, o gatilho NÃO cobra escudo ──
+  // O custo era cobrado antes de o jogo saber que tiro ia sair, então quem estava sob mira pagava duas
+  // vezes pelo mesmo míssil: perdia o escudo justo para poder se defender dele.
+  // (mundos separados: o 1º tiro de um lado transforma o tiro do outro em interceptação, e aí a montagem
+  //  do caso deixaria de ser a que se quer medir)
+  const w6=empty(34),d0=w6.addPlayer(0,{x:1000,y:1000,r:40,missiles:3});
+  w6.addPlayer(1,{x:1900,y:1000,r:40,missiles:0});
+  w6.setTarget(0,1000,1000);w6.setTarget(1,1900,1000);arma(w6);
+  d0.shieldLv=3;d0.shieldEvolveAt=1e9;
+  w6.requestFire(0);w6.step();
+  assert.equal(d0.shieldLv,2,"sem ninguém mirando em mim, atirar continua custando um nível");
+  const w6b=empty(36),b0=w6b.addPlayer(0,{x:1000,y:1000,r:40,missiles:3});
+  w6b.addPlayer(1,{x:1900,y:1000,r:40,missiles:2});   // 900 px: dentro de INTERCEPT_DIST
+  w6b.setTarget(0,1000,1000);w6b.setTarget(1,1900,1000);arma(w6b);
+  b0.shieldLv=3;b0.shieldEvolveAt=1e9;
+  w6b.requestFire(1);w6b.step();const entrante=w6b.missiles.find(m=>m.owner===1);
+  assert.ok(entrante&&entrante.targetId===0,"o inimigo mira em mim");
+  w6b.requestFire(0);w6b.step();
+  assert.equal(b0.shieldLv,3,"sob mira: o interceptador NÃO cobra escudo");
+  const inter=w6b.missiles.find(m=>m.owner===0&&m.type===1);
+  assert.ok(inter&&inter.targetId===entrante.id,"e o tiro saiu mesmo, como interceptação");
+  // ⚠️ o entrante agora está COBERTO: o próximo tiro vai no atacante (ofensivo) e volta a cobrar — sem
+  // isto, bastaria um míssil qualquer por perto para atirar de graça pelo resto da partida
+  w6b.requestFire(0);w6b.step();
+  assert.equal(b0.shieldLv,2,"entrante já coberto: o tiro é ofensivo e cobra");
+  // tiro MIRADO escolhe o alvo pelo cursor (pode ser ofensivo), então cobra mesmo sob mira
+  const w7=empty(35),e0=w7.addPlayer(0,{x:1000,y:1000,r:40,missiles:2});
+  w7.addPlayer(1,{x:1900,y:1000,r:40,missiles:1});
+  w7.setTarget(0,1000,1000);w7.setTarget(1,1900,1000);arma(w7);
+  e0.shieldLv=2;e0.shieldEvolveAt=1e9;
+  w7.requestFire(1);w7.step();assert.ok(w7.missiles.some(m=>m.owner===1&&m.targetId===0));
+  w7.requestFire(0,true);w7.step();
+  assert.equal(e0.shieldLv,1,"tiro mirado cobra escudo mesmo sob mira");
+
   // o escudo NÃO protege de ser comido: ele defende de míssil e de asteroide, e nada mais
   const w5=empty(33),big=w5.addPlayer(0,{x:1000,y:1000,r:60}),small=w5.addPlayer(1,{x:1085,y:1000,r:30});
   small.shieldLv=POWERUP.SHIELD_MAX_LEVEL;small.shieldEvolveAt=1e9;w5.setTarget(1,1085,1000);
@@ -923,3 +957,82 @@ test("incomingMissile: pega só o teleguiado inimigo que está MIRANDO em mim e 
   assert.equal(incomingMissile(w,0,3000,3000,900),null,"e só dentro do alcance pedido");
   vindo.dead=true;
   assert.equal(incomingMissile(w,0,3000,3000,MISSILE.ALERT_DIST),null,"morreu, acabou o alerta");});
+
+// ── OS QUATRO POWERUPS DE JOGADOR (FOOD_TYPE 11..14) ─────────────────────────
+test("powerups de jogador: auto-defesa, +1 munição, zoom e comida em dobro",()=>{
+  // helper: põe uma comida do tipo pedido em cima da peça e roda um passo
+  const pega=(w,pc,type)=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;f.r=FOOD.SPECIAL_R;w.foodDirty=true;w.step();};
+
+  // 1) AMMO_PLUS FURA o teto da arma — é a feature inteira, e é o que o separa da munição comum
+  const w1=empty(60),p1=w1.addPlayer(0,{x:1000,y:1000,r:40,missiles:MISSILE.MAX_AMMO}),ps1=w1.players.get(0);
+  w1.setTarget(0,1000,1000);
+  pega(w1,p1,FOOD_TYPE.AMMO);
+  assert.equal(ps1.ammo[0],MISSILE.MAX_AMMO,"munição comum respeita o teto");
+  pega(w1,p1,FOOD_TYPE.AMMO_PLUS);
+  assert.equal(ps1.ammo[0],MISSILE.MAX_AMMO+1,"o raro passa por cima do teto");
+
+  // 2) FEAST dobra a COMIDA — e só ela: fragmento continua devolvendo o que saiu (conservação de massa)
+  const w2=empty(61),p2=w2.addPlayer(0,{x:1000,y:1000,r:40}),ps2=w2.players.get(0);
+  w2.setTarget(0,1000,1000);
+  const grao=()=>{const f=w2.spawnFood();f.type=FOOD_TYPE.DUST;f.r=10;f.mass=100;f.x=p2.x;f.y=p2.y;w2.foodDirty=true;
+    const antes=p2.mass;w2.step();return p2.mass-antes;};
+  const normal=grao();
+  pega(w2,p2,FOOD_TYPE.FEAST);
+  assert.ok(ps2.feastUntil>w2.tick,"o powerup ficou ativo");
+  const dobro=grao();
+  assert.ok(Math.abs(dobro-normal*POWERUP.FEAST_K)<1e-6,`comida em dobro: ${dobro} ≠ ${normal}×${POWERUP.FEAST_K}`);
+
+  // 3) ZOOM: é o `zoomFor` que muda, e ele alimenta TAMBÉM a AOI do servidor — por isso o teste é sobre a
+  //    função, não sobre a câmera do cliente. Escala menor = mais mundo na tela.
+  const z1=zoomFor(300,1920,1080),z2=zoomFor(300,1920,1080,POWERUP.ZOOM_K);
+  assert.ok(Math.abs(z2-z1/POWERUP.ZOOM_K)<1e-9,"o powerup divide a escala");
+  assert.ok(zoomFor(1e9,1920,1080,POWERUP.ZOOM_K)>=Math.max(1920/WORLD.w,1080/WORLD.h),"e nunca fura o piso de mostrar o mundo inteiro");
+  // o piso da comida tem que acompanhar, senão o anel de fora do zoom vem sem um grão sequer
+  assert.ok(aoiScaleFood(.05,1920,1080,POWERUP.ZOOM_K)<aoiScaleFood(.05,1920,1080),"o piso da AOI de comida também afasta");
+
+  // 4) AUTO-DEFESA: com um teleguiado vindo em cima, o gatilho é puxado sozinho — gastando munição
+  const w4=empty(62),d0=w4.addPlayer(0,{x:1000,y:1000,r:40,missiles:2}),ps4=w4.players.get(0);
+  w4.addPlayer(1,{x:1900,y:1000,r:40,missiles:1});
+  w4.setTarget(0,1000,1000);w4.setTarget(1,1900,1000);arma(w4);
+  pega(w4,d0,FOOD_TYPE.AUTODEF);
+  assert.ok(ps4.autoDefUntil>w4.tick,"powerup ativo");
+  const antesAmmo=ps4.ammo[0];
+  for(let t=0;t<30;t++)w4.step();
+  assert.equal(ps4.ammo[0],antesAmmo,"sem entrante, ninguém atira sozinho");
+  w4.requestFire(1);w4.step();
+  assert.ok(w4.missiles.some(m=>m.owner===1&&m.targetId===0),"o inimigo mirou em mim");
+  let meu=null;for(let t=0;t<POWERUP.AUTODEF_SCAN_TICKS*3&&!meu;t++){w4.step();meu=w4.missiles.find(m=>m.owner===0)||null;}
+  assert.ok(meu,"a auto-defesa puxou o gatilho");
+  assert.equal(meu.type,1,"e o tiro saiu como INTERCEPTAÇÃO");
+  assert.equal(ps4.ammo[0],antesAmmo-1,"gastou munição do cinto (é o tiro do jogador, adiantado)");
+  assert.equal(d0.shieldLv,0);
+
+  // 5) sem o powerup, nada disso acontece
+  const w5=empty(63),e0=w5.addPlayer(0,{x:1000,y:1000,r:40,missiles:2}),ps5=w5.players.get(0);
+  w5.addPlayer(1,{x:1900,y:1000,r:40,missiles:1});
+  w5.setTarget(0,1000,1000);w5.setTarget(1,1900,1000);arma(w5);
+  w5.requestFire(1);w5.step();
+  for(let t=0;t<60;t++)w5.step();
+  assert.equal(ps5.ammo[0],2,"sem auto-defesa o jogador não atira sozinho");
+
+  // 6) o powerup morre com o jogador: renascer não pode devolver o que era da vida anterior
+  const w6=empty(64),f0=w6.addPlayer(0,{x:1000,y:1000,r:40}),ps6=w6.players.get(0);
+  w6.setTarget(0,1000,1000);
+  pega(w6,f0,FOOD_TYPE.ZOOM);pega(w6,f0,FOOD_TYPE.FEAST);
+  assert.ok(ps6.zoomUntil>w6.tick&&ps6.feastUntil>w6.tick);
+  w6.respawnPlayer(0,{r:PLAYER.START_R});
+  assert.equal(ps6.zoomUntil,0,"vida nova, zoom zerado");
+  assert.equal(ps6.feastUntil,0,"vida nova, banquete zerado");
+  assert.equal(ps6.autoDefUntil,0,"vida nova, auto-defesa zerada");});
+
+// ── FAIXAS DO ENUM DE COMIDA ─────────────────────────────────────────────────
+// Três testes de faixa dependem da ORDEM do FOOD_TYPE, e um deles (`é arma`) deixou de poder ser um `>=`
+// quando os powerups de jogador entraram depois das armas. Aqui é onde isso fica travado.
+test("comida: as faixas do enum continuam valendo (base, especial, arma)",()=>{
+  for(let t=FOOD_TYPE.DUST;t<=FOOD_TYPE.ROCK;t++)assert.ok(!isWeaponFood(t),`${t} é comida base, não arma`);
+  for(const t of [FOOD_TYPE.W_BURST,FOOD_TYPE.W_CLUSTER,FOOD_TYPE.W_NOVA])assert.ok(isWeaponFood(t),`${t} é arma`);
+  for(const t of [FOOD_TYPE.AUTODEF,FOOD_TYPE.AMMO_PLUS,FOOD_TYPE.ZOOM,FOOD_TYPE.FEAST]){
+    assert.ok(!isWeaponFood(t),`${t} é powerup, NÃO arma — com um \`>=W_BURST\` ele viraria um no-op silencioso`);
+    assert.ok(t>=FOOD_TYPE.AMMO,`${t} tem que continuar do lado "especial" da faixa (o atlas do cliente usa isso)`);
+    assert.ok(t>FOOD_TYPE.ROCK,`${t} não pode ser reescrito como comida base`);}
+  assert.equal(FOOD.TYPES.length,Object.keys(FOOD_TYPE).length,"FOOD.TYPES e FOOD_TYPE têm que andar juntos");});

@@ -31,6 +31,10 @@ import * as R from "./rules.js";
  * @property {number} splitCdUntil
  * @property {number} ejectCdUntil
  * @property {number} fireCdUntil   carência de tiro do nascimento (MISSILE.SPAWN_CD_TICKS)
+ * @property {number} autoDefUntil  powerup de AUTO-DEFESA ativo até este tick (puxa o gatilho por você)
+ * @property {number} autoFireAt    próximo tiro automático permitido (o míssil tem `cd` 0: sem isto, 60/s)
+ * @property {number} zoomUntil     powerup de ZOOM (câmera afastada) — vale também para a AOI do snapshot
+ * @property {number} feastUntil    powerup de comida em dobro (POWERUP.FEAST_K)
  * @property {boolean} ejectHold
  * @property {number} ejectHoldAt   próximo eject automático do hold
  * @property {number} ejectRamp     cusparadas seguidas (0..EJECT.RAMP_N): a força/alcance da pelota sobe com ela
@@ -47,7 +51,13 @@ const K=KIND,PP=K.PIECE<<3|K.PIECE,PE=K.PIECE<<3|K.EJECT,PA=K.PIECE<<3|K.ASTEROI
   AM=K.ASTEROID<<3|K.MISSILE,MM=K.MISSILE<<3|K.MISSILE,MH=K.MISSILE<<3|K.BLACKHOLE,ES=K.EJECT<<3|K.STAR,MS=K.MISSILE<<3|K.STAR,AS=K.ASTEROID<<3|K.STAR;
 // constantes locais de spawn (margens do mockup; não existem em constants.js)
 const PLAYER_MARGIN=300,PLAYER_SAFE=1500,AST_MARGIN=200,BELT_MARGIN=ASTEROID.BELT_RADIUS[1]+200,BELT_RAD_JITTER=40,SPAWN_TRIES=40,STAR_MARGIN=400;
-const POWER_TYPES=[FOOD_TYPE.MAGNET,FOOD_TYPE.SHIELD];   // sorteados com peso igual dentro de FOOD.POWER_P
+// Powerups: tabela CUMULATIVA de pesos dentro de FOOD.POWER_P (POWERUP.DROP), exatamente como a das armas.
+// Eram dois tipos com peso igual; hoje são seis, e dois deles são RAROS — peso igual faria "raro" ser só
+// uma palavra no comentário. ⚠️ Um sorteio ponderado tem que gastar UM `rng.next()`, como o rollWeapon:
+// consumir dois deslocaria o stream do mulberry32 e mudaria todo mundo que nasce depois, em silêncio (o
+// teste de determinismo compara código novo com código novo e não pegaria).
+const POWER_TOTAL=POWERUP.DROP.reduce((a,x)=>a+x[1],0);
+const rollPower=rng=>{let v=rng.next()*POWER_TOTAL;for(const x of POWERUP.DROP){v-=x[1];if(v<=0)return x[0];}return POWERUP.DROP[0][0];};
 // Armas (só no Battle Royale, `o.weapons`): tabela CUMULATIVA de pesos — é onde mora a raridade. O míssil
 // tem peso 0 e fica de fora: ele já cai como FOOD_TYPE.AMMO, a munição básica que existe nos dois modos.
 const WEAPON_DROPS=WEAPONS.filter(x=>x.weight>0),WEAPON_TOTAL=WEAPON_DROPS.reduce((a,x)=>a+x.weight,0);
@@ -81,7 +91,7 @@ export class World{
     this.peace=false;this._zc={x:0,y:0,r:0};this._foodScan=0;
     this.decay=o.decay!==false;this.weapons=!!o.weapons;this.foodCount=o.food;this.holeCount=o.holes;this.starCount=o.stars;this.astBase=o.asteroids?ASTEROID.BELTS*ASTEROID.PER_BELT+ASTEROID.WANDERERS:0;this.astCap=this.astBase+ASTEROID.MAX_EXTRA;
     this.grid=createGrid(w,h,GRID_CELL);this.foodGrid=createGrid(w,h,GRID_CELL);this.foodDirty=true;
-    /** @type {Body[]} */this.dyn=[];this._pairs=new Int32Array(4096*3);/** @type {number[]} */this._q=[];this._spot={x:0,y:0};
+    /** @type {Body[]} */this.dyn=[];this._pairs=new Int32Array(4096*3);/** @type {number[]} */this._q=[];this._spot={x:0,y:0,ok:false};this._starScan=0;
     for(let i=0;i<o.food;i++)this.spawnFood();
     if(o.asteroids){const rng=this.rng;
       for(let b=0;b<ASTEROID.BELTS;b++){const rad=rng.range(ASTEROID.BELT_RADIUS[0],ASTEROID.BELT_RADIUS[1]),sp=rng.range(ASTEROID.BELT_SPEED[0],ASTEROID.BELT_SPEED[1]);
@@ -117,7 +127,7 @@ export class World{
     // as faixas são CUMULATIVAS: com armas ligadas o ramo acima consome até AMMO_P+WEAPON_P (.105) e o teste
     // do powerup era `roll<AMMO_P+POWER_P` (.100) — inalcançável. Ímã e escudo simplesmente NÃO NASCIAM no
     // Battle Royale, que é justo o modo onde eles importam. No Livre (weapons=false) a conta é a de sempre.
-    else if(roll<FOOD.AMMO_P+(this.weapons?BR.WEAPON_P:0)+FOOD.POWER_P){type=POWER_TYPES[rng.int(0,POWER_TYPES.length-1)];r=FOOD.SPECIAL_R;}
+    else if(roll<FOOD.AMMO_P+(this.weapons?BR.WEAPON_P:0)+FOOD.POWER_P){type=rollPower(rng);r=FOOD.SPECIAL_R;}
     else{type=rng.int(FOOD_TYPE.DUST,FOOD_TYPE.ROCK);r=rng.range(FOOD.R_MIN,FOOD.R_MAX);}
     const posta=!Number.isNaN(x);
     if(posta){const an=rng.angle(),d=spread>0?Math.sqrt(rng.next())*spread:0;   // √ para o cacho ficar uniforme no disco, não amontoado no centro
@@ -166,6 +176,21 @@ export class World{
    * cada ~26 ticks) e mata os que ficaram fora do círculo. Sem isso a população ficava PRESA no gás — onde
    * ninguém vai buscá-la — e o laço de reposição, que só enche até o alvo, parava de repor DENTRO.
    */
+  /**
+   * A estrela que o círculo deixou para trás some e volta para a FILA (sem ela a população cairia para
+   * sempre, e o Battle Royale terminaria sem nenhum perigo no mapa). São 12 no total, então a varredura é
+   * um cursor rolante de ZONE.STAR_SCAN por tick, no molde do `_cullFoodOutOfZone` — não porque custe,
+   * mas porque somem uma de cada vez em vez de todas no mesmo quadro.
+   * A folga é a MESMA do spawn (STAR_PAD): sem ela a estrela nasceria e morreria alternadamente na borda.
+   * @param {{x:number,y:number,r:number}} zc
+   */
+  _cullStarsOutOfZone(zc){const stars=this.stars,n=stars.length;if(!n)return;
+    let i=this._starScan|0;if(i>=n)i=0;
+    const fim=Math.min(n,i+ZONE.STAR_SCAN),lim=Math.max(0,zc.r-ZONE.STAR_PAD),l2=lim*lim;
+    for(;i<fim;i++){const st=stars[i];if(st.dead)continue;
+      const dx=st.x-zc.x,dy=st.y-zc.y;if(dx*dx+dy*dy<=l2)continue;
+      st.dead=true;this.queueStar(ZONE.STAR_RETRY_TICKS);}
+    this._starScan=i>=n?0:i;}
   _cullFoodOutOfZone(zc){const food=this.food,n=food.length;if(!n)return;
     let i=this._foodScan|0;if(i>=n)i=0;
     const fim=Math.min(n,i+ZONE.FOOD_SCAN);
@@ -202,7 +227,17 @@ export class World{
    * nunca para de repor. `active` pula a fase GROW (início do mundo e filhas de um racha, que vêm com `{x,y,r,vx,vy,life}`).
    */
   spawnStar(active=false,{x=NaN,y=NaN,r=STAR.R,vx=0,vy=0,life=0}={}){const rng=this.rng;
-    if(Number.isNaN(x)){const s=this._farSpot(STAR_MARGIN,this.stars,STAR.MIN_SEP,this.holes,BLACKHOLE.MIN_SEP,this.pieces,STAR.SAFE_SPAWN,this._notInBelt);x=s.x;y=s.y;}
+    if(Number.isNaN(x)){
+      // Com zona (Battle Royale), a estrela nasce DENTRO do círculo — e a separação mínima afrouxa junto,
+      // porque 1400 px de folga não cabem num círculo de 1400. Sem zona nada muda: mesmo sorteio de sempre.
+      const zc=this.zoneNow();
+      const sep=zc?Math.min(STAR.MIN_SEP,zc.r*ZONE.STAR_SEP_K):STAR.MIN_SEP;
+      const s=this._farSpot(STAR_MARGIN,this.stars,sep,this.holes,BLACKHOLE.MIN_SEP,this.pieces,STAR.SAFE_SPAWN,this._notInBelt,zc,ZONE.STAR_PAD);
+      // Sem zona `_farSpot` nunca "falha" de um jeito que importe (o fallback é um ponto qualquer do mapa e
+      // isso sempre foi aceitável). COM zona ele pode não achar nada limpo dentro do círculo, e aí largar a
+      // estrela no ponto de fallback é largá-la no gás ou em cima de alguém: melhor não nascer agora.
+      if(zc&&!s.ok)return null;
+      x=s.x;y=s.y;}
     const st=createBody(KIND.STAR,this.newId(),clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);st.seed=rng.next();st.vx=vx;st.vy=vy;
     if(active){st.type=STAR_PHASE.ACTIVE;st.k=1;st.life=life||this.tick+rng.int(STAR.LIFE_TICKS[0],STAR.LIFE_TICKS[1]);}
     else{st.type=STAR_PHASE.GROW;st.k=0;st.life=this.tick+STAR.GROW_TICKS;}
@@ -222,10 +257,26 @@ export class World{
   /** (x,y) está a ≥ BELT_SAFE do ANEL de todo cinturão? (o teste é sobre o anel, não sobre o centro). */
   _notInBelt=(x,y)=>{const m=ASTEROID.BELT_SAFE,bs=this.belts;
     for(let i=0;i<bs.length;i++){const b=bs[i],dx=x-b.cx,dy=y-b.cy,d=Math.sqrt(dx*dx+dy*dy);if(Math.abs(d-b.rad)<m)return false;}return true;};
-  /** Ponto aleatório com margem a ≥ minX de cada lista (até 3; null ignora) e passando por `pred`. 40 tentativas; devolve a última se falhar. */
-  _farSpot(margin,arrA,minA,arrB=null,minB=0,arrC=null,minC=0,pred=null){const rng=this.rng,s=this._spot;
-    for(let t=0;t<SPAWN_TRIES;t++){const x=rng.range(margin,this.w-margin),y=rng.range(margin,this.h-margin);
-      s.x=x;s.y=y;if(farFrom(arrA,minA,x,y)&&farFrom(arrB,minB,x,y)&&farFrom(arrC,minC,x,y)&&(!pred||pred(x,y)))break;}
+  /**
+   * Ponto aleatório com margem a ≥ minX de cada lista (até 3; null ignora) e passando por `pred`.
+   * 40 tentativas; devolve a última se falhar, mas agora DIZ que falhou em `s.ok` — quem chama é que sabe
+   * se um ponto qualquer serve (asteroide errante) ou se é melhor tentar de novo depois (estrela).
+   * `zc` (círculo da zona) muda a AMOSTRAGEM, não o filtro: com o círculo em 480 px de um mapa de 9600, um
+   * ponto uniforme cai dentro em 0,8 % das vezes, então rejeitar não funciona — em 40 tentativas a estrela
+   * nasceria no gás na maioria das vezes, calada. Sortear em polar dentro do disco (`d=√u·r`, uniforme) é
+   * o mesmo caminho que `spawnFood` já usa desde que a comida passou a seguir a zona.
+   */
+  _farSpot(margin,arrA,minA,arrB=null,minB=0,arrC=null,minC=0,pred=null,zc=null,pad=0){const rng=this.rng,s=this._spot;
+    const raio=zc?Math.max(0,zc.r-pad):0;
+    s.ok=false;
+    for(let t=0;t<SPAWN_TRIES;t++){
+      let x,y;
+      if(zc){const an=rng.angle(),d=Math.sqrt(rng.next())*raio;
+        x=clamp(zc.x+Math.cos(an)*d,margin,this.w-margin);y=clamp(zc.y+Math.sin(an)*d,margin,this.h-margin);}
+      else{x=rng.range(margin,this.w-margin);y=rng.range(margin,this.h-margin);}
+      s.x=x;s.y=y;
+      if(farFrom(arrA,minA,x,y)&&farFrom(arrB,minB,x,y)&&farFrom(arrC,minC,x,y)&&(!pred||pred(x,y))
+        &&(!zc||inZone(x,y,zc))){s.ok=true;break;}}   // o clamp da margem pode ter jogado o ponto para fora do círculo
     return s;}
   /** Marca a peça morta; se era a última viva do dono, o jogador morre (PLAYER_DEAD). Retorna true se foi a última. */
   killPiece(pc,cause,bySlot){if(pc.dead)return false;pc.dead=true;const ps=this.players.get(pc.owner);
@@ -236,7 +287,7 @@ export class World{
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true}={}){
     let ps=this.players.get(slot);
-    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,
+    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,autoDefUntil:0,autoFireAt:0,zoomUntil:0,feastUntil:0,
       ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.ammo=newAmmo(missiles);ps.team=team;ps.weapon=weapon;}
     // `spawn:false` = entrou na SALA mas ainda não no MAPA. É o lobby do battle royale: o jogador existe
@@ -249,6 +300,7 @@ export class World{
     // cair colado numa delas custaria 30% da massa antes de encostar no primeiro grão.
     if(Number.isNaN(x)){const s=this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE);x=s.x;y=s.y;}
     ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.ejectRamp=0;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
+    ps.autoDefUntil=0;ps.autoFireAt=0;ps.zoomUntil=0;ps.feastUntil=0;   // vida nova, powerups zerados — mesmo caminho do fireCdUntil, e é ele que cobre addPlayer, respawnPlayer e a largada do BR de uma vez
     const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;return pc;}
   _dropPieces(ps){for(let i=0;i<ps.pieces.length;i++){const pc=ps.pieces[i];pc.dead=true;this.entityById.delete(pc.id);}
     ps.pieces.length=0;const arr=this.pieces;let k=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)arr[k++]=arr[i];arr.length=k;}
@@ -296,7 +348,8 @@ export class World{
           ps.ejectCdUntil=tick+EJECT.COOLDOWN_TICKS;
           if(R.applyEject(this,ps)&&ps.ejectRamp<EJECT.RAMP_N)ps.ejectRamp++;}
         if(ps.swapReq)R.swapWeapon(this,ps);   // trocar antes de atirar: no mesmo tick, o tiro sai com a arma nova
-        if(ps.fireReq)R.applyFire(this,ps);}
+        if(ps.fireReq)R.applyFire(this,ps);
+        else R.autoDefend(this,ps);}   // powerup de auto-defesa: puxa o gatilho por você — `else` porque o tiro manual tem prioridade e ninguém atira duas vezes no mesmo tick
       ps.splitReq=ps.ejectReq=ps.fireReq=ps.swapReq=false;ps.fireAim=false;}
     // ── 2. integração ──
     const zc=this.zoneNow();
@@ -406,7 +459,20 @@ export class World{
     for(;vivos<alvo&&cota>0;vivos++,cota--)this.spawnFood();
     const aq=this.astQueue;if(aq.length){let k=0;for(let i=0;i<aq.length;i++){const e=aq[i];if(e.at<=tick){const a=this.spawnAsteroid(e.belt);ev.push({type:"ASTEROID_RESPAWN",asteroidId:a.id,x:a.x,y:a.y,r:a.r});}else aq[k++]=e;}aq.length=k;}
     while(holes.length<this.holeCount){const h=this.spawnHole();ev.push({type:"HOLE_RESPAWN",holeId:h.id,x:h.x,y:h.y});}
-    const sq=this.starQueue;if(sq.length){let k=0;for(let i=0;i<sq.length;i++){const e=sq[i];if(e.at<=tick){const st=this.spawnStar();ev.push({type:"STAR_RESPAWN",starId:st.id,x:st.x,y:st.y,r:st.r});}else sq[k++]=e;}sq.length=k;}
+    const sq=this.starQueue;if(sq.length){let k=0;for(let i=0;i<sq.length;i++){const e=sq[i];
+      if(e.at>tick){sq[k++]=e;continue;}
+      // ADIAR, não desistir: com o círculo apertado a estrela esteriliza um quarto do tapete de comida (ver
+      // ZONE.STAR_MIN_R) e vira moedor num espaço em que já não há para onde correr. A entrada volta para a
+      // fila, então se a partida durar num círculo grande a população se recompõe sozinha.
+      if(zc&&zc.r<ZONE.STAR_MIN_R){e.at=tick+ZONE.STAR_RETRY_TICKS;sq[k++]=e;continue;}
+      const st=this.spawnStar();
+      if(!st){e.at=tick+ZONE.STAR_RETRY_TICKS;sq[k++]=e;continue;}   // círculo sem lugar limpo agora: tenta de novo
+      ev.push({type:"STAR_RESPAWN",starId:st.id,x:st.x,y:st.y,r:st.r});}
+      sq.length=k;}
+    // A estrela que o círculo deixou para trás some (e volta para a fila, senão a população cai para sempre).
+    // Sem SUPERNOVA: sumiço silencioso, que o REMOVE do snapshot já conta ao cliente — explodir no gás daria
+    // prêmio a ninguém e um susto em quem está do outro lado do mapa.
+    if(zc)this._cullStarsOutOfZone(zc);
     this.tick=tick+1;}
   _compact(){const byId=this.entityById;let foodGone=false;
     const cp=arr=>{let k=0;for(let i=0;i<arr.length;i++){const b=arr[i];if(b.dead)byId.delete(b.id);else arr[k++]=b;}const gone=k!==arr.length;arr.length=k;return gone;};
