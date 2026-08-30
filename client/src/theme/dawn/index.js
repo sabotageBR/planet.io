@@ -225,7 +225,7 @@ export const effects={
         P.push({type:"star",x:hx,y:hy,r:f.r*.45*(1+k),n:6,inner:.5,phase:k,fill:"#fff",stroke:INK,width:2,alpha:a});break;}
       case "shieldUp":{const col=(SHIELD_LV[(f.level||1)-1]||SHIELD_LV[0]).color;
         P.push({type:"ring",x:f.x,y:f.y,r:f.r+6+k*f.r*1.4,color:col,alpha:a,width:4});
-        P.push({type:"text",x:f.x,y:f.y-f.r*(1.2+k*.8),text:"NÍVEL "+(f.level||1)+"!",size:Math.max(10,f.r*.5),fill:col,stroke:INK,font:FONT,alpha:a});break;}
+        P.push({type:"text",x:f.x,y:f.y-f.r*(1.2+k*.8),text:"ESCUDO "+(f.level||1),size:Math.max(10,f.r*.5),fill:col,stroke:INK,font:FONT,alpha:a});break;}
       case "clash":{const s=f.r*(2+k*3),al=Math.min(1,a*1.4);   // míssil × míssil
         P.push({type:"star",x:f.x,y:f.y,r:s,n:9,inner:.5,phase:k*.7,fill:ORA,stroke:INK,width:Math.max(2,s*.06),alpha:al});
         P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:9,inner:.5,phase:-k*.7,fill:"#fff",alpha:al});

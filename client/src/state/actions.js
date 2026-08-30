@@ -18,7 +18,8 @@ export function toast(msg, ms = 1800) {
 }
 export function go(screen) {
   if (!SCREENS.includes(screen)) return;
-  app.update(s => ({ ...s, screen, overlays: { account: false, reconn: s.overlays.reconn && screen === "game" } }));
+  app.update(s => ({ ...s, prevScreen: s.screen === screen ? s.prevScreen : s.screen, screen,
+    overlays: { account: false, reconn: s.overlays.reconn && screen === "game" } }));
 }
 export const openAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: true } }));
 export const closeAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: false } }));
@@ -104,7 +105,7 @@ function mostrarTela(s) {
   else if (s === "reconn") { play({}); setTimeout(() => setReconn(true, 2), 400); }
   else if (s === "dead" || s === "round") {
     if (!import.meta.env.DEV) return;
-    app.update({ room: "1ABC", played: true, lastMatch: { by: "Nebulox", byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, room: "1ABC", at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
+    app.update({ room: "1ABC", played: true, conn: "connected", lastMatch: { by: "Nebulox", byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, room: "1ABC", at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
     if (s === "round") app.update({ room: "1ABC", roundResult: { code: "1ABC", mySlot: 3, at: Date.now(), nextInMs: 15000,
       champion: { slot: 1, name: "Vortexia", mass: 12400, isBot: true },
       board: [{ slot: 1, name: "Vortexia", mass: 12400, isBot: true, skinId: 30 }, { slot: 3, name: "Você", mass: 8200, skinId: 18 }, { slot: 5, name: "Drakonis", mass: 3100, isBot: true, skinId: 34 },
@@ -201,8 +202,14 @@ export async function flushPrefs() {
 }
 export async function savePrefs() {
   const p = app.get().session.prefs; PREF_KEYS.forEach(k => { prefsDirty[k] = p[k]; });
-  if (await flushPrefs()) toast(LABELS.saved);
+  // salvou = acabou: volta para quem abriu as Opções. Só no SUCESSO — se o PATCH falhou, sair da tela
+  // esconderia o erro e o jogador não teria como tentar de novo.
+  if (!await flushPrefs()) return;
+  toast(LABELS.saved);
+  const s = app.get(), volta = s.prevScreen && s.prevScreen !== "prefs" ? s.prevScreen : "entry";
+  go(volta);
 }
+export const closeLevelUp = () => app.update({ levelUp: null });
 export function resetPrefs() {
   app.update(s => ({ ...s, session: { ...s.session, prefs: { ...PREF_DEFAULTS } } }));
   applyPrefsSideEffects(PREF_DEFAULTS); PREF_KEYS.forEach(k => { prefsDirty[k] = PREF_DEFAULTS[k]; }); schedule();
@@ -302,7 +309,7 @@ export async function startParty() {
 export function leaveGame(screen = "lobby") {
   app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
-let rewardsT = null;
+let rewardsT = null, levelUpN = 0;
 /** Callback do jogo: fim da rodada — {code, champion, board, nextInMs, tick}. Mostra o placar da sala. */
 export function onRoundEnd(r) {
   clearTimeout(rewardsT);
@@ -334,8 +341,18 @@ export function onRewards(r) {
     }
     return { ...s, session: sess, rewards: r || null, rewardsPending: false };
   });
-  // Subir de nível é a única coisa desta tela que o jogador não vai ver de novo: merece um aviso próprio.
-  if (r && r.xp && r.xp.leveledUp) toast(`${LABELS.levelUp} ${LABELS.levelWord} ${r.xp.level}`, 3200);
+  // Subir de nível e destravar conquista são as duas coisas que o jogador não vai ver de novo — e as
+  // duas passavam batidas: o nível saía num toast de 3,2 s dividindo a fila com todo o resto, e a
+  // conquista não saía em lugar NENHUM (nem na tela de morte, nem no pódio; só aparecia no Perfil, se
+  // ele fosse lá procurar). `r.xp.gained` chegava e era jogado fora. Agora as duas viram um cartão só.
+  if (r) {
+    const novas = (r.achievements || []).map(a => (a && a.key) || a).filter(Boolean);
+    const subiu = !!(r.xp && r.xp.leveledUp);
+    if (subiu || novas.length) app.update({ levelUp: { subiu,
+      level: r.xp ? r.xp.level : 0, gained: r.xp ? r.xp.gained : 0,
+      into: r.xp ? r.xp.into : 0, need: r.xp ? r.xp.need : 1, pct: r.xp ? r.xp.pct : 0,
+      achievements: novas, n: ++levelUpN } });
+  }
   if (api.online === false && app.get().lastMatch) {
     const m = app.get().lastMatch, u = app.get().session.user;
     const p = api.localMatchEnd({ endedAt: new Date(m.at).toISOString(), score: m.score, maxMass: m.maxMass, kills: m.kills, durationS: m.durationS, cause: m.byHole ? "blackhole" : "eaten", by: m.by, coinsEarned: r ? r.coinsEarned : 0, roomCode: m.room }, r ? { ...r, coins: u ? u.coins : 0 } : null);

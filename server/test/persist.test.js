@@ -152,7 +152,7 @@ test('hooks: join → kill/stat/sample → matchEnd salva match, moedas, conquis
   const r1=await h.onMatchEnd({sessionId:j1.sessionId,cause:'eaten',killedBySessionId:j2.sessionId,score:9000,maxMass:7000,durationMs:320000});
   const base=SCORE_COINS(9000,1,1,320);assert.equal(base,30+2+1+25);
   assert.equal(r1.saved,true);assert.equal(r1.coinsEarned,base+300);
-  assert.deepEqual(r1.achievements.map(a=>a.key).sort(),['explore4','mass5000','survive5']);assert.deepEqual([...r1.skinsUnlocked].sort(),[35,37,43]);
+  assert.deepEqual(r1.achievements.map(a=>a.key).sort(),['explore.b','mass.b','survive.b']);assert.deepEqual([...r1.skinsUnlocked].sort(),[35,37,43]);
   assert.equal(r1.rank.day,1);
   assert.equal(await h.onMatchEnd({sessionId:j1.sessionId,cause:'left'}),null,'sessão já encerrada → null');
   const m=(await db.query('SELECT * FROM matches WHERE user_id=$1',[S.u1])).rows[0];
@@ -161,7 +161,7 @@ test('hooks: join → kill/stat/sample → matchEnd salva match, moedas, conquis
   const st=(await db.query('SELECT * FROM user_stats WHERE user_id=$1',[S.u1])).rows[0];assert.equal(st.games,1);assert.equal(st.best_score,9000);assert.equal(st.play_time_s,320);
   const u=(await db.query('SELECT coins FROM users WHERE id=$1',[S.u1])).rows[0];assert.equal(u.coins,config.signupCoins-200+base+300);
   for(const id of [S.u1,S.u2]){const s=(await db.query('SELECT coalesce(sum(delta),0)::int AS s FROM coin_ledger WHERE user_id=$1',[id])).rows[0].s;const c=(await db.query('SELECT coins FROM users WHERE id=$1',[id])).rows[0].coins;assert.equal(c,s,`coins = Σ ledger (user ${id})`);}
-  const owned=(await call('GET','/api/me',{token:S.t3})).body;assert.deepEqual(owned.skins,[0,1,35,37,43]);assert.deepEqual(owned.achievements.sort(),['explore4','mass5000','survive5']);assert.equal(owned.stats.kills,1);
+  const owned=(await call('GET','/api/me',{token:S.t3})).body;assert.deepEqual(owned.skins,[0,1,35,37,43]);assert.deepEqual(owned.achievements.sort(),['explore.b','mass.b','survive.b']);assert.equal(owned.stats.kills,1);
   // histórico + ranking
   const hist=(await call('GET','/api/me/history',{token:S.t2})).body.matches;assert.equal(hist.length,1);assert.equal(hist[0].by,'Evandro Moura');assert.equal(hist[0].cause,'eaten');
   let rk=(await call('GET','/api/ranking?period=day&by=score&limit=10',{token:S.t3})).body;assert.equal(rk.rows[0].userId,S.u1);assert.equal(rk.rows[0].value,9000);assert.equal(rk.rows[0].registered,true);assert.deepEqual(rk.me,{rank:1,value:9000});

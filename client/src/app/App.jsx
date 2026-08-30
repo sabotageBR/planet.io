@@ -19,6 +19,7 @@ import Round from "../ui/Round.jsx";
 import AccountModal from "../ui/AccountModal.jsx";
 import ReconnOverlay from "../ui/ReconnOverlay.jsx";
 import Toast from "../ui/Toast.jsx";
+import LevelUp from "../ui/LevelUp.jsx";
 import { sfx } from "../audio/index.js";
 
 let booted = false; // StrictMode monta o efeito duas vezes em dev
@@ -26,13 +27,18 @@ export default function App() {
   useViewportMode();
   const hoverRef = React.useRef(null);
   const screen = useStore(app, s => s.screen), overlays = useStore(app, s => s.overlays), online = useStore(app, s => s.session.online);
-  const played = useStore(app, s => s.played);
+  const played = useStore(app, s => s.played), conn = useStore(app, s => s.conn);
   useEffect(() => { if (!booted) { booted = true; boot(); } }, []);
   useEffect(() => { document.body.dataset.screen = screen; }, [screen]);
-  // "center" = primeira carga do navegador: o menu fica centralizado, com o céu inteiro atrás.
-  // "rail"   = já jogou (morreu ou o mundo acabou): o menu vira gaveta à direita e a CÂMERA ENCOLHE
-  //            para a esquerda, em vez de ficar escondida atrás dela. Quem faz a conta é ui.css.
-  useEffect(() => { document.body.dataset.shell = played ? "rail" : "center"; }, [played]);
+  // "center" = o menu fica centralizado, com o céu inteiro atrás.
+  // "rail"   = o menu vira gaveta à direita e a CÂMERA ENCOLHE para a esquerda, em vez de ficar
+  //            escondida atrás dela. Quem faz a conta é ui.css.
+  // O que decide é haver uma CENA VIVA atrás do menu, não "já jogou alguma vez": `played` só era
+  // escrito como `true` e nunca voltava, então sair da partida deixava a gaveta à direita com o
+  // canvas VAZIO à esquerda — uma gaveta que não é aparte de nada. `leaveGame` zera a conexão,
+  // e é ela que responde a pergunta certa.
+  const rail = played && conn !== "idle" && conn !== "closed";
+  useEffect(() => { document.body.dataset.shell = rail ? "rail" : "center"; }, [rail]);
   useEffect(() => { document.body.dataset.online = online == null ? "" : online ? "1" : "0"; }, [online]);
   useEffect(() => {
     const onKey = e => { if (e.code === "Escape" && escape()) e.preventDefault(); };
@@ -64,5 +70,6 @@ export default function App() {
     <AccountModal on={overlays.account} />
     <ReconnOverlay on={overlays.reconn} />
     <Toast />
+    <LevelUp />
   </>;
 }

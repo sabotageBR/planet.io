@@ -102,6 +102,32 @@ export function mountAudition(){
     l.appendChild(i);l.appendChild(o);el.appendChild(l);};
   ambSlider("meu tamanho","mass");ambSlider("perigo (estrela)","danger");ambSlider("fim da rodada","urgency");
 
+  // ── A TRILHA ──
+  // Ela NÃO aparece sozinha aqui: os contínuos são uma lista fixa, e a trilha tem um eixo próprio
+  // (intensidade) mais três seções. É por este painel que o pacote é aprovado de ouvido, antes de entrar
+  // no jogo, onde a intensidade vem misturada de massa+perigo+relógio e não dá para isolar.
+  el.appendChild(h("h2","Trilha (peça original · órgão, ostinato e acumulação)"));
+  const M={intensity:0,section:null};
+  let musLigada=false;
+  const mlinha=h("div",null,"loop");mlinha.appendChild(h("span","trilha — 0 = menu · 0.4 = partida · 0.9 = clímax","nome"));
+  const mb=h("button","tocar");
+  const mi=document.createElement("input");mi.type="range";mi.min=0;mi.max=1;mi.step=.01;mi.value=0;mi.style.width="230px";
+  const mo=document.createElement("output");mo.textContent="0.00";
+  mi.oninput=()=>{mo.textContent=(+mi.value).toFixed(2);M.intensity=+mi.value;if(musLigada)a.setLoop("music",M);};
+  mb.onclick=()=>{musLigada=!musLigada;mb.textContent=musLigada?"parar":"tocar";mb.classList.toggle("on",musLigada);
+    // `setPrefs` é quem liga a trilha no jogo; aqui ela é chamada direto para o painel não depender da pref
+    if(musLigada){a.setPrefs({sound:true,volume:70,music:true,ambience:true,musicVolume:80});a.startLoop("music",M);}
+    else a.stopLoop("music");};
+  mlinha.appendChild(mb);mlinha.appendChild(mi);mlinha.appendChild(mo);el.appendChild(mlinha);
+  // seção forçada: para ouvir cada uma isolada sem ter que acertar o número da intensidade
+  const secs=h("div",null,"row");
+  for(const [ix,nome] of [[null,"auto"],[0,"menu"],[1,"partida"],[2,"clímax"]]){
+    const b=h("button",nome);
+    b.onclick=()=>{M.section=ix;if(musLigada)a.setLoop("music",M);
+      for(const o2 of secs.children)o2.classList.toggle("on",o2===b);};
+    secs.appendChild(b);}
+  el.appendChild(secs);
+
   // ── o catálogo ──
   const listados=new Set();
   for(const [titulo,nomes] of GRUPOS){

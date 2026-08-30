@@ -27,6 +27,12 @@ body[data-mode="portrait"] .podium .step canvas{width:52px;height:52px}
 body[data-mode="portrait"] .podium .step.p1 canvas{width:68px;height:68px}
 
 /* ── loja: busca/ordem, cartões e painel de detalhe ── */
+/* Os TRÊS temas fixam `.shop-grid{grid-template-columns:repeat(3,1fr)}` (dawn:179, dusk:172, sunset:177),
+   anulando o `auto-fill` de base.css. Três colunas fixas respondem à largura da TELA, não à do painel:
+   na gaveta de 480 px os cartões transbordavam e a loja ganhava uma barra de rolagem horizontal.
+   `auto-fill` responde ao CONTÊINER — a mesma razão pela qual os seis atalhos da entrada o usam. */
+body #s-shop .shop-grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;
+  max-height:none;overflow:visible}
 .shop-tools{grid-area:auto;display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:2px 0 6px}
 .shop-tools input[type="search"]{flex:1 1 120px;min-width:96px;padding:7px 10px;border-radius:var(--radius,10px);
   border:2px solid var(--line,#0006);background:var(--surface,#2226);color:inherit}
@@ -37,6 +43,25 @@ body[data-mode="portrait"] .podium .step.p1 canvas{width:68px;height:68px}
 .shop-prog i{display:block;height:100%;background:var(--accent,#ffc22e)}
 .skin-card.sel{outline:3px solid var(--accent,#ffc22e);outline-offset:2px}
 .skin-card .rar-dot{position:absolute;top:6px;left:6px;width:9px;height:9px;border-radius:99px;background:var(--rc,#888);border:2px solid var(--line,#0006)}
+/* ── MODAL DA SKIN: a confirmação onde o clique aconteceu ──
+   O `.shop-detail` continua estilizado abaixo porque o modal reusa a mesma anatomia (prévia + info +
+   ação); o que mudou é o CONTÊINER, que agora é o `.card.modal` centralizado por ui.css. */
+.skin-modal{width:min(380px,100%);align-items:center;text-align:center;gap:14px;padding:20px}
+.skin-modal canvas{width:112px;height:112px}
+.skin-modal .sm-info{display:flex;flex-direction:column;gap:3px;align-items:center;width:100%}
+.skin-modal .sm-info b{font-size:1.25em}
+.skin-modal .sm-info i{font-style:normal;font-size:.9em;letter-spacing:.06em;text-transform:uppercase;color:var(--rc,#888)}
+.skin-modal .sm-info span{opacity:.75;font-size:.9em}
+/* a pergunta é o ponto do modal: sem ela isto seria o painel de antes, só que no meio da tela */
+.skin-modal .sm-ask{font-style:normal;margin-top:6px;font-weight:bold;color:var(--text,#fff5c2)}
+.skin-modal .sm-actions{display:flex;gap:10px;width:100%;margin-top:2px}
+.skin-modal .sm-actions button{flex:1 1 0;min-height:44px;padding:10px 14px;border-radius:var(--radius,12px)}
+.skin-modal .sm-actions .act[disabled]{opacity:.6}
+.skin-modal .avatar-picker{border-top:2px solid var(--line,#0006);padding-top:12px;text-align:left}
+/* o selo de "sua foto" na grade: a Retrato pede um passo a mais e a grade não dizia isso em lugar nenhum */
+.skin-card .badge.av{background:var(--accent2,#ff6b4a);color:var(--line,#141026);
+  top:auto;bottom:6px;right:6px;left:auto;font-size:8.5px;letter-spacing:.04em}
+
 .shop-detail{display:flex;gap:12px;align-items:center;margin-top:8px}
 .shop-detail canvas{width:84px;height:84px;flex:0 0 auto}
 .shop-detail .info{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -461,9 +486,10 @@ body[data-shell="rail"]:not([data-mode="portrait"]) #s-entry .entry-wrap{
   border-radius:24px 0 0 24px;border:5px solid var(--line,#0006);border-right:0;
   background:var(--surface,#1a2350);box-shadow:-10px 0 40px rgba(0,0,0,.45);
   display:flex;flex-direction:column;gap:12px;align-items:stretch;
-  /* `safe center` centraliza SEM cortar por cima quando o conteúdo é mais alto que a gaveta —
-     com `center` puro o topo sai da área rolável e vira inalcançável */
-  justify-content:safe center;
+  /* de cima para baixo. Centrar deixava o painel curto (Salas com uma sala só) boiando no meio de
+     uma gaveta de tela inteira, com vazio igual em cima e embaixo, enquanto o painel alto (Loja)
+     encostava nas duas bordas: dois painéis irmãos, duas ancoragens diferentes. */
+  justify-content:flex-start;
   padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px)) 22px}
 /* sem véu por cima do mundo: o ponto da gaveta é ver a sala continuando ao lado */
 body[data-shell="rail"]:not([data-mode="portrait"]) .screen{background:transparent}
@@ -477,31 +503,58 @@ body[data-shell="rail"]:not([data-mode="portrait"]) .entry-links{
 body[data-shell="rail"]:not([data-mode="portrait"]) .entry-main,
 body[data-shell="rail"]:not([data-mode="portrait"]) .entry-side{width:100%;max-width:none;flex:0 0 auto}
 
-/* ── tela inicial CENTRALIZADA (1ª carga) ──
-   Os temas deixam o entry em `justify-content:flex-start` + `8vh` de topo e `overflow:hidden`: não é
-   centralizado, e em tela baixa o botão JOGAR fica abaixo do corte, sem rolagem que o alcance. */
+/* ── tela inicial: a MESMA coluna das outras telas ──
+   Os temas deixam o entry em `justify-content:flex-start` + `8vh` de topo e `overflow:hidden`: em tela
+   baixa o botão JOGAR ficava abaixo do corte, sem rolagem que o alcançasse. E antes daqui ela era a
+   única tela CENTRADA, enquanto as irmãs eram gaveta ou folha — a assimetria que se conserta acima.
+   Aqui ela vira a mesma caixa: mesmo topo, mesma largura, de cima para baixo. Sem moldura, porque ela
+   não é um painel: a marca é o cabeçalho dela (o papel que o `.sh` faz nas outras) e quem tem superfície
+   são os dois cartões de dentro. */
 body[data-shell="center"] #s-entry .entry-wrap{
-  /* `top:0;bottom:0` é o que faz o centro existir: os temas deixam `bottom:auto`, então a caixa tinha a
-     altura do CONTEÚDO e centralizar dentro dela não movia nada — a tela abria com tudo colado no topo e
-     metade do céu vazia embaixo. */
-  top:0;bottom:0;height:100%;max-height:none;
-  justify-content:safe center;   /* flex-column (temas) */
-  align-content:safe center;     /* grid de coluna única (base.css) */
-  overflow:auto;overscroll-behavior:contain;
-  padding:16px 0 calc(16px + env(safe-area-inset-bottom,0px))}
+  top:var(--screen-top);bottom:auto;height:auto;max-height:none;
+  /* aqui quem rola é a TELA, não o painel: sem moldura não há caixa por dentro da qual rolar, e uma barra
+     de rolagem interna comeria 15 px da largura do cartão — que é justamente a medida que tem que bater
+     com a das outras telas. Os temas põem `overflow:hidden` no `.screen`; aqui ele volta a rolar. */
+  overflow:visible;padding:0 0 calc(16px + env(safe-area-inset-bottom,0px))}
+body[data-shell="center"] #s-entry.screen{overflow:auto;overscroll-behavior:contain;
+  padding-bottom:calc(var(--screen-top) + env(safe-area-inset-bottom,0px))}
 body[data-shell="center"] .brand-block{padding-top:0}
 /* e em tela baixa o que não cabe tem que ROLAR: com `overflow:hidden` o botão JOGAR some sem volta */
 body[data-mode="portrait"] #s-entry .entry-wrap,
 body[data-mode="landscape"] #s-entry .entry-wrap{overflow:auto;overscroll-behavior:contain}
 
-/* ── FIM DE RODADA: o card não tinha UMA linha de CSS em lugar nenhum ──
-   Todo tema posiciona `#s-dead .dead-card`, e nenhum posiciona `#s-round` — o pódio do BIG CRUNCH caía em
-   fluxo estático no canto superior esquerdo e o placar e os botões ficavam cortados por um `.screen` com
-   `overflow:hidden` que não rola. Aqui ele ganha o mesmo tratamento da tela de morte. */
-body:not([data-shell="rail"]) #s-round .dead-card,
-body[data-mode="portrait"] #s-round .dead-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:min(440px,92vw);max-height:min(88%,88dvh);overflow:auto;overscroll-behavior:contain;
-  padding:20px 20px calc(22px + env(safe-area-inset-bottom,0px))}
+/* ── TODA TELA NO MESMO LUGAR ────────────────────────────────────────────────────────────────────
+   Mesmo problema dos modais, uma camada acima: a POSIÇÃO de cada tela vinha do tema, e o tema vem do
+   RELÓGIO. `dawn` e `sunset` colam `.screen .wrap` como gaveta à direita (screens.css:49); `dusk` a cola
+   como folha no rodapé (mesma linha, valores opostos). Então, na mesma sessão, "Modos" abria encostado no
+   topo e cortado embaixo, "Salas" boiava no rodapé, e a tela inicial — a única com regra própria aqui —
+   ficava centrada: três ancoragens para painéis irmãos, trocando sozinhas às 16h e às 20h.
+
+   Aqui todas viram a MESMA caixa: mesmo topo, mesma largura, altura pelo conteúdo, rolagem por dentro
+   quando não cabe. O que continua do tema é a SUPERFÍCIE (cor, sombra) — o que se unifica é a ancoragem
+   e a moldura, que na gaveta/folha era de três lados só e agora fecha, porque a caixa não encosta em
+   borda nenhuma. `#s-dead`/`#s-round` entram por nome porque não têm `.wrap`: montam o `.screen` à mão.
+   Especificidade (0,3,1)/(1,3,1): `ui.css` é importado ANTES dos temas, então empate perderia. */
+body:not([data-shell="rail"]):not([data-mode="portrait"]) .screen .wrap,
+body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-dead .dead-card,
+body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-round .dead-card{
+  position:absolute;left:50%;right:auto;top:var(--screen-top);bottom:auto;transform:translateX(-50%);
+  width:min(520px,100%);height:auto;max-height:calc(100% - var(--screen-top) * 2);
+  display:flex;flex-direction:column;align-items:stretch;gap:12px;justify-content:flex-start;
+  overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+  border:5px solid var(--line,#0006);border-radius:var(--radius-lg,20px);
+  box-shadow:0 14px 40px rgba(0,0,0,.42);
+  padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px))}
+body{--screen-top:clamp(12px,4vh,44px)}
+/* a "alça" de folha: o dusk desenha uma pílula no topo de toda tela, modal e card de morte
+   (screens.css:52/90/203) — o puxador de quem arrasta uma folha para cima. Fora do celular em pé não há
+   folha nenhuma para arrastar, e a pílula vira um traço solto no topo do painel. */
+body:not([data-mode="portrait"]) .screen .wrap::before,
+body:not([data-mode="portrait"]) .modal::before,
+body:not([data-mode="portrait"]) #s-dead .dead-card::before{content:none;display:none}
+/* filho nenhum estica: a coluna é de cima para baixo, e um `flex:1` faria o último bloco (a grade da
+   loja, a tabela do ranking) engolir todo o vazio e desalinhar o fim de uma tela para a outra */
+body:not([data-shell="rail"]):not([data-mode="portrait"]) .screen .wrap>*{flex:0 0 auto}
 
 /* ── MODAIS SEMPRE NO MEIO ──
    O "às vezes aparece certinho, às vezes bem embaixo" é o RELÓGIO: o tema é escolhido pela hora
@@ -568,6 +621,74 @@ body[data-mode="portrait"] #rk-table .c-food,body[data-mode="portrait"] #rk-tabl
 .skin-card.lowlevel{opacity:.72}
 .skin-card.lowlevel em{color:var(--danger,#ff3d5a)}
 
+/* ── CARTÃO DE FIM DE PARTIDA (subiu de nível · destravou conquista) ─────────────────────────────
+   Entra por cima de tudo, inclusive da tela de morte, e sai sozinho. z-index acima do `.overlay` (20)
+   porque ele é a notícia, não uma tela: se o jogador abrir a conta no mesmo instante, a notícia ganha. */
+.lvup-wrap{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
+  padding:20px;pointer-events:auto;background:rgba(0,0,0,.34);animation:lvup-fade .18s ease}
+@keyframes lvup-fade{from{opacity:0}to{opacity:1}}
+.lvup{width:min(400px,100%);display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center;
+  padding:22px 20px;border:5px solid var(--accent,#ffc22e);border-radius:var(--radius-lg,20px);
+  background:var(--surface,#232f63);box-shadow:0 16px 46px rgba(0,0,0,.55);
+  animation:lvup-pop .28s cubic-bezier(.2,1.5,.4,1)}
+@keyframes lvup-pop{from{transform:scale(.82) translateY(14px);opacity:0}to{transform:none;opacity:1}}
+/* o número do nível é o assunto: grande, redondo, com o anel da cor de destaque */
+.lvup-badge{width:78px;height:78px;display:flex;align-items:center;justify-content:center;border-radius:50%;
+  background:var(--accent,#ffc22e);color:var(--line,#141026);border:5px solid var(--line,#141026);
+  box-shadow:0 0 0 5px var(--accent,#ffc22e),0 8px 0 var(--line,#141026)}
+.lvup-badge b{font-family:var(--font-display,inherit);font-size:34px;line-height:1}
+.lvup-title{font-family:var(--font-display,inherit);font-size:23px;letter-spacing:.04em;color:var(--accent,#ffc22e)}
+.lvup-title.sm{font-size:15px;letter-spacing:.09em;text-transform:uppercase;margin-bottom:2px}
+.lvup-sub{font-size:13px;color:var(--text,#fff5c2)}
+.lvup .lv-bar{width:100%;height:7px;border-radius:99px;background:var(--line,#0006);overflow:hidden}
+.lvup .lv-bar>i{display:block;height:100%;width:calc(var(--p,0) * 100%);background:var(--accent,#ffc22e);border-radius:99px}
+.lvup-next{font-size:10px;letter-spacing:.05em;color:var(--muted,#8fa0d8)}
+/* as conquistas entram na MESMA notícia: uma partida que rende nível costuma render medalha junto, e
+   dois avisos brigando pela mesma fila era como uma das duas sumia */
+.lvup-achs{display:flex;flex-direction:column;gap:6px;width:100%;margin-top:4px}
+.lvup-ach{display:flex;align-items:center;gap:9px;text-align:left;padding:8px 10px;border-radius:var(--radius,12px);
+  border:2px solid var(--tc,var(--line,#0006));background:var(--bg,#1b2450)}
+.lvup-ach .ach-ico{font-size:19px;flex:none;line-height:1}
+.lvup-ach>div{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+.lvup-ach b{font-size:12.5px;color:var(--text,#fff5c2)}
+.lvup-ach i{font-style:normal;font-size:10px;color:var(--muted,#8fa0d8);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lvup-ach em{font-style:normal;flex:none;font-size:11.5px;font-weight:bold;color:var(--accent,#ffc22e)}
+.lvup-ach .lvup-metal{flex:none;font-size:15px;line-height:1}
+body[data-mode="portrait"] .lvup{width:100%}
+body[data-mode="portrait"] .lvup-badge{width:62px;height:62px}
+body[data-mode="portrait"] .lvup-badge b{font-size:27px}
+
+/* ── CONQUISTAS EM FAMÍLIAS ──────────────────────────────────────────────────────────────────────
+   Uma linha por objetivo, com os quatro metais à direita. A `.ach-grid` dos temas continua lá para as
+   secretas; o que é novo é a linha de família, que precisa dizer três coisas ao mesmo tempo: onde estou,
+   qual é o próximo degrau e quantos ainda faltam. */
+.ach-fams{display:flex;flex-direction:column;gap:8px}
+.ach-fam{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:var(--radius,12px);
+  border:2px solid var(--line,#0006);background:var(--bg,#1b2450)}
+.ach-fam.full{border-color:var(--accent,#ffc22e)}
+.ach-fam .ach-ico{font-size:21px;flex:none;line-height:1}
+.ach-fam .ach-body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ach-fam .ach-body b{font-size:13px;color:var(--text,#fff5c2)}
+.ach-fam .ach-body i{font-style:normal;font-size:10.5px;color:var(--muted,#8fa0d8);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ach-fam .ach-bar{display:block;height:4px;border-radius:99px;background:var(--line,#0006);overflow:hidden;margin-top:3px}
+.ach-fam .ach-bar>i{display:block;height:100%;width:calc(var(--p,0) * 100%);background:var(--accent,#ffc22e);border-radius:99px}
+.ach-fam .ach-num{font-size:9.5px;letter-spacing:.04em;color:var(--muted,#8fa0d8)}
+/* os quatro metais: conquistado = o emoji do metal na cor dele; o PRÓXIMO ganha o anel, que é a única
+   coisa que diz "é este que você está perseguindo"; os outros são pontos apagados */
+.ach-fam .ach-tiers{display:flex;gap:4px;flex:none}
+.ach-fam .ach-tier{width:26px;height:26px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;border:2px solid var(--line,#0006);background:var(--surface,#2226);font-size:13px;line-height:1}
+.ach-fam .ach-tier.on{border-color:var(--tc,#ffc22e);box-shadow:0 0 0 2px color-mix(in srgb,var(--tc,#ffc22e) 30%,transparent)}
+.ach-fam .ach-tier.next{border-color:var(--accent,#ffc22e);border-style:dashed}
+.ach-fam .ach-tier .tier-dot{width:7px;height:7px;border-radius:50%;background:var(--muted,#8fa0d8);opacity:.4}
+/* as quatro secretas cabem numa fileira de ícones: sem meta e sem nome, um cartão inteiro para cada
+   uma era quatro vezes a mesma caixa dizendo "???" */
+.ach-secrets{display:flex;gap:6px;margin-top:2px}
+.ach-secrets .ach{width:34px;height:34px;display:flex;align-items:center;justify-content:center;padding:0;
+  border-radius:50%;border:2px dashed var(--line,#0006);background:var(--bg,#1b2450);opacity:.5}
+.ach-secrets .ach.done{opacity:1;border-style:solid;border-color:var(--accent,#ffc22e)}
+
 /* ── NÍVEL E PAÍS, no perfil ── */
 .pf-level{display:flex;flex-direction:column;gap:8px;width:100%}
 .pf-level .lv-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
@@ -620,14 +741,15 @@ body[data-mode="portrait"] #rk-table .c-food,body[data-mode="portrait"] #rk-tabl
    isso embaralha a coluna — a ordem correta agora é a do próprio documento */
 #s-entry .entry-wrap.entry-v2 .entry-main>*{order:0}
 
-/* CENTER = primeira carga: duas colunas, marca atravessando as duas.
+/* CENTER = coluna ÚNICA, com a mesma largura das outras telas: marca, cartão e o TOP 5 ABAIXO dele.
+   Eram duas colunas ("main side"), e por isso o cartão principal ficava deslocado para a esquerda —
+   nenhuma outra tela abre fora do eixo, e comparar as duas lado a lado era o que denunciava.
    (1,3,1) — a mesma força da regra de rail logo acima, e por isso ela não é afetada.) */
 body[data-shell="center"] #s-entry .entry-wrap.entry-v2{
-  display:grid;grid-template-columns:minmax(0,minmax(340px,460px)) minmax(0,300px);
-  grid-template-areas:"brand brand" "main side";
-  align-content:safe center;justify-content:center;
-  gap:clamp(12px,2.6vh,26px) 26px;width:min(880px,100%);margin:0 auto;
-  padding:clamp(14px,3vh,34px) 20px calc(clamp(14px,3vh,34px) + env(safe-area-inset-bottom,0px))}
+  display:grid;grid-template-columns:minmax(0,1fr);
+  grid-template-areas:"brand" "main" "side";
+  align-content:start;justify-content:stretch;
+  gap:clamp(12px,2.4vh,22px);width:min(520px,100%);margin:0 auto;padding:0}
 body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .brand-block{grid-area:brand}
 body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-main{grid-area:main}
 body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-side{grid-area:side}
@@ -746,19 +868,16 @@ body[data-reduce="1"] #s-entry.on .entry-v2>*{animation:none}
 /* ── GAVETA (rail) e TELAS ESTREITAS ──
    Na gaveta a largura é 480 px e a lateral não cabe; no dedo, idem. O que sobra tem que continuar
    sendo a decisão inteira: marca, identidade, JOGAR e os seis atalhos. */
+/* landscape saiu da lista: com a coluna única o TOP 5 vem ABAIXO do cartão e a tela rola, então ele
+   cabe onde antes não havia coluna para ele. Some só onde a altura é o recurso escasso. */
 body[data-shell="rail"] #s-entry .entry-wrap.entry-v2 .entry-side,
-body[data-mode="portrait"] #s-entry .entry-wrap.entry-v2 .entry-side,
-body[data-mode="landscape"] #s-entry .entry-wrap.entry-v2 .entry-side{display:none}
+body[data-mode="portrait"] #s-entry .entry-wrap.entry-v2 .entry-side{display:none}
 body[data-shell="rail"] #s-entry .entry-wrap.entry-v2 .logo{font-size:clamp(24px,5vw,34px)}
 body[data-shell="rail"] #s-entry .entry-wrap.entry-v2 .entry-main{box-shadow:none;border-width:3px}
 body[data-mode="landscape"] #s-entry .entry-wrap.entry-v2 .entry-main .hint{display:none}
 body[data-mode="landscape"] #s-entry .entry-wrap.entry-v2 .logo{font-size:26px}
-/* uma coluna quando a de duas não cabe: 880 é a largura do grid + o respiro das laterais */
-@media (max-width:900px){
-  body[data-shell="center"] #s-entry .entry-wrap.entry-v2{
-    grid-template-columns:minmax(0,460px);grid-template-areas:"brand" "main" "side";width:min(460px,100%)}
-  body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-side{display:none}
-}
+/* o @media de 900px que quebrava o grid de duas colunas saiu junto com ele: a coluna já é única em
+   qualquer largura, e a regra que escondia o TOP 5 aqui apagaria justamente o que agora deve aparecer. */
 /* no dedo o alvo mínimo é 44 px (scripts/responsive-check.mjs falha abaixo disso) */
 body[data-pointer="coarse"] #s-entry .entry-wrap.entry-v2 .entry-links .btn-secondary{min-height:64px}
 body[data-pointer="coarse"] .entry-id .id-skin{min-width:64px}

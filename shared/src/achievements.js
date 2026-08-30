@@ -1,45 +1,106 @@
-// ── CONQUISTAS (checadas no servidor no fim da partida; skins "earned" usam a mesma key) ──
+// ── CONQUISTAS EM FAMÍLIAS DE 4 NÍVEIS ────────────────────────────────────────────────────────────
 // @ts-check
+// Antes eram 19 medalhas soltas de meta única: quem cumpria "Sobreviva 5 minutos" no primeiro dia
+// nunca mais tinha o que perseguir ali, e dois pares (survive5/survive10, mass5000/mass10000) já eram
+// níveis da mesma coisa com nomes diferentes — a estrutura existia, sem se assumir.
+//
+// Agora cada objetivo é uma FAMÍLIA com quatro metas crescentes (Bronze · Prata · Ouro · Diamante).
+// A lista plana `ACHIEVEMENTS` continua sendo a interface: o servidor, o Perfil e a loja iteram sobre
+// ela e não sabem que ela é gerada. Chave = `familia.tier` (survive.b … survive.d).
+//
+// ⚠️ As chaves antigas NÃO foram migradas (decisão de projeto: recomeçar do zero). A migração 0007
+// esvazia `user_achievements`; moedas já creditadas ficam, porque vivem no `coin_ledger`, e skins já
+// concedidas ficam, porque vivem em `user_skins`.
+
+/** Os quatro metais. `coins` é a recompensa do tier — subir de nível vale progressivamente mais. */
+export const TIERS=[
+  {id:"b",name:"Bronze",  roman:"I",  icon:"🥉",color:"#c87f3a",coins:100},
+  {id:"s",name:"Prata",   roman:"II", icon:"🥈",color:"#b9c4d4",coins:250},
+  {id:"g",name:"Ouro",    roman:"III",icon:"🥇",color:"#ffc22e",coins:600},
+  {id:"d",name:"Diamante",roman:"IV", icon:"💎",color:"#6ee7f0",coins:1500},
+];
+export const TIER_BY_ID=new Map(TIERS.map(t=>[t.id,t]));
+
+/**
+ * `per` diz de ONDE sai o número comparado com a meta:
+ *   "match" = da PARTIDA que acabou (recordes de uma vida: sobreviver, massa, sequência)
+ *   "stats" = do acumulado do jogador em `user_stats` (contadores que só crescem)
+ * `fmt` só existe para a descrição ficar em unidade humana (segundos → minutos).
+ * @type {Array<{id:string,title:string,icon:string,metric:string,per:string,goals:number[],desc:(n:number)=>string,single?:boolean}>}
+ */
+export const FAMILIES=[
+  {id:"survive",title:"Sobrevivente",icon:"🛡️",metric:"durationS", per:"match",goals:[300,600,1200,1800],desc:n=>`Sobreviva ${n/60} minutos numa vida`},
+  {id:"mass",   title:"Massivo",     icon:"⚖️",metric:"maxMass",   per:"match",goals:[5e3,25e3,1e5,5e5],  desc:n=>`Alcance massa ${n.toLocaleString("pt-BR")}`},
+  {id:"streak", title:"Imparável",   icon:"🌪️",metric:"bestStreak",per:"match",goals:[5,10,20,35],        desc:n=>`${n} abates sem morrer`},
+  {id:"top1",   title:"Campeão",     icon:"🏆",metric:"top1Ticks", per:"match",goals:[10800,36000,90000,216000],desc:n=>`Fique em 1º por ${Math.round(n/3600)} minutos`},
+  {id:"eat",    title:"Devorador",   icon:"👅",metric:"kills",     per:"stats",goals:[50,250,1000,5000],   desc:n=>`Coma ${n.toLocaleString("pt-BR")} planetas`},
+  {id:"hunt",   title:"Caçador",     icon:"🎯",metric:"botKills",  per:"stats",goals:[10,100,500,2000],    desc:n=>`Coma ${n.toLocaleString("pt-BR")} adversários`},
+  {id:"split",  title:"Divisor",     icon:"✂️",metric:"splits",    per:"stats",goals:[100,1000,5000,20000],desc:n=>`Divida ${n.toLocaleString("pt-BR")} vezes`},
+  {id:"eject",  title:"Ejector",     icon:"💨",metric:"ejects",    per:"stats",goals:[200,2000,10000,50000],desc:n=>`Ejete massa ${n.toLocaleString("pt-BR")} vezes`},
+  {id:"games",  title:"Veterano",    icon:"🎖️",metric:"games",     per:"stats",goals:[10,50,250,1000],     desc:n=>`Jogue ${n.toLocaleString("pt-BR")} partidas`},
+  {id:"brwin",  title:"Último de Pé",icon:"👑",metric:"brWins",    per:"stats",goals:[1,5,25,100],         desc:n=>n===1?"Vença uma partida de Battle Royale":`Vença ${n} partidas de Battle Royale`},
+  {id:"brtop",  title:"Finalista",   icon:"🎗️",metric:"brTop10",   per:"stats",goals:[1,10,50,200],        desc:n=>n===1?"Termine no top 10 do Battle Royale":`Termine ${n} vezes no top 10 do Battle Royale`},
+  {id:"brteam", title:"Esquadrão",   icon:"🛰️",metric:"brTeamWins",per:"stats",goals:[1,5,25,100],         desc:n=>n===1?"Vença o Battle Royale em equipe":`Vença ${n} vezes o Battle Royale em equipe`},
+  // Visitar os 4 quadrantes não escala: 4 é o mapa inteiro. Fica de tier único — a estrutura aceita
+  // famílias de um nível só, e forçar quatro aqui seria inventar meta ("visite 4 quadrantes 10 vezes")
+  // que ninguém persegue de propósito.
+  {id:"explore",title:"Explorador",  icon:"🗺️",metric:"quadrants", per:"match",goals:[4],single:true,      desc:()=>"Visite os 4 quadrantes numa vida"},
+];
+export const FAMILY_BY_ID=new Map(FAMILIES.map(f=>[f.id,f]));
+
+const achKey=(fam,i)=>`${fam.id}.${TIERS[i].id}`;
+/** A lista plana que todo o resto do jogo consome. Gerada, nunca escrita à mão. */
 export const ACHIEVEMENTS=[
-  {key:"survive5",title:"Sobrevivente",desc:"Sobreviva 5 minutos numa vida",coins:100,icon:"🛡️"},
-  {key:"mass5000",title:"Massivo",desc:"Alcance massa 5.000",coins:100,icon:"⚖️"},
-  {key:"streak5",title:"Imparável",desc:"5 abates sem morrer",coins:100,icon:"🌪️"},
-  {key:"top1_3min",title:"Campeão",desc:"Fique em 1º por 3 minutos",coins:100,icon:"🏆"},
-  {key:"explore4",title:"Explorador",desc:"Visite os 4 quadrantes numa vida",coins:100,icon:"🗺️"},
-  {key:"eat50",title:"Devorador",desc:"Coma 50 planetas (total)",coins:100,icon:"👅"},
-  {key:"eatbots10",title:"Caçador",desc:"Coma 10 bots (total)",coins:100,icon:"🎯"},
-  {key:"split100",title:"Divisor",desc:"Divida 100 vezes (total)",coins:100,icon:"✂️"},
-  {key:"eject200",title:"Ejector",desc:"Ejete massa 200 vezes (total)",coins:100,icon:"💨"},
-  {key:"games10",title:"Veterano",desc:"Jogue 10 partidas",coins:100,icon:"🎖️"},
-  {key:"survive10",title:"Sentinela",desc:"Sobreviva 10 minutos numa vida",coins:200,icon:"⚔️"},
-  {key:"mass10000",title:"Colosso",desc:"Alcance massa 10.000",coins:200,icon:"🗿"},
-  {key:"br_win",title:"Último de Pé",desc:"Vença uma partida de Battle Royale",coins:300,icon:"👑"},
-  {key:"br_top10",title:"Finalista",desc:"Termine no top 10 do Battle Royale",coins:150,icon:"🎗️"},
-  {key:"br_team_win",title:"Esquadrão",desc:"Vença o Battle Royale em equipe",coins:300,icon:"🛰️"},
+  ...FAMILIES.flatMap(f=>f.goals.map((g,i)=>({
+    key:achKey(f,i),family:f.id,tier:TIERS[i].id,tierIx:i,
+    // família de tier único não recebe numeral: "Explorador I" sem um II é ruído
+    title:f.single?f.title:`${f.title} ${TIERS[i].roman}`,
+    desc:f.desc(g),coins:TIERS[i].coins,icon:f.icon,goal:g,metric:f.metric,per:f.per,
+  }))),
+  // As quatro secretas continuam sem regra de destrave (nunca tiveram) — são o gancho para os eggs.
   {key:"secret1",title:"???",desc:"Segredo oculto",coins:250,icon:"❓",secret:true},
   {key:"secret2",title:"???",desc:"Segredo oculto",coins:250,icon:"❓",secret:true},
   {key:"secret3",title:"???",desc:"Segredo oculto",coins:250,icon:"❓",secret:true},
   {key:"secret4",title:"???",desc:"Segredo oculto",coins:250,icon:"❓",secret:true},
 ];
 export const ACHIEVEMENT_BY_KEY=new Map(ACHIEVEMENTS.map(a=>[a.key,a]));
-/** Progresso exibível (numerador, denominador) a partir de user_stats + partida atual. */
-export const ACHIEVEMENT_GOALS={eat50:["kills",50],eatbots10:["botKills",10],split100:["splits",100],eject200:["ejects",200],games10:["games",10]};
+
 /**
- * Regras avaliadas no fim da partida. `m` = resumo da partida, `s` = user_stats já atualizado.
- * @param {{durationS:number,maxMass:number,bestStreak:number,top1Ticks:number,quadrants:number,mode?:number,placement?:number,players?:number,teamSize?:number}} m
- * @param {{kills:number,botKills:number,splits:number,ejects:number,games:number}} s
+ * Onde o PROGRESSO de cada métrica é lido em `user_stats`. Nem toda métrica tem par: sobreviver, ficar
+ * em 1º e explorar são feitos de UMA VIDA, e o acumulado não guarda o recorde de nenhum dos três — mostrar
+ * o total de horas jogadas contra uma meta de "5 minutos numa vida" seria uma barra que mente. Essas
+ * ficam sem barra, como as 14 sem barra de antes.
  */
-export function unlockedAchievements(m,s){const out=[];
-  if(m.durationS>=300)out.push("survive5");if(m.durationS>=600)out.push("survive10");
-  if(m.maxMass>=5000)out.push("mass5000");if(m.maxMass>=10000)out.push("mass10000");
-  if(m.bestStreak>=5)out.push("streak5");
-  if(m.top1Ticks>=3*60*60)out.push("top1_3min");
-  if(m.quadrants>=4)out.push("explore4");
-  if(s.kills>=50)out.push("eat50");if(s.botKills>=10)out.push("eatbots10");
-  if(s.splits>=100)out.push("split100");if(s.ejects>=200)out.push("eject200");if(s.games>=10)out.push("games10");
-  // Battle Royale (mode 1): o que conta lá é ONDE se parou, não a massa. `players` guarda contra a partida
-  // pequena — vencer com 3 na sala não é o mesmo que vencer com 50, e sem esse piso a conquista sairia de graça.
-  if(m.mode===1&&m.placement>0&&m.players>=10){
-    if(m.placement===1){out.push("br_win");if(m.teamSize>1)out.push("br_team_win");}
-    if(m.placement<=10)out.push("br_top10");}
-  return out;}
+export const STAT_OF={maxMass:"bestMass",bestStreak:"bestStreak",kills:"kills",botKills:"botKills",
+  splits:"splits",ejects:"ejects",games:"games",brWins:"brWins",brTop10:"brTop10",brTeamWins:"brTeamWins"};
+
+/** Progresso exibível (numerador, denominador) a partir de user_stats. */
+export const ACHIEVEMENT_GOALS=Object.fromEntries(
+  ACHIEVEMENTS.filter(a=>!a.secret&&STAT_OF[a.metric]).map(a=>[a.key,[STAT_OF[a.metric],a.goal]]));
+
+/**
+ * Regras avaliadas no fim da partida. `m` = resumo da partida, `s` = user_stats JÁ atualizado.
+ * Um laço só sobre as famílias: a lista de `if`s escritos à mão era o lugar exato onde uma conquista
+ * nova era esquecida.
+ * ⚠️ O piso do Battle Royale (`players>=10`) continua: vencer com 3 na sala não é vencer com 50, e sem
+ * ele a família inteira sairia de graça numa sala vazia. Ele mora aqui e não em `brWins` porque quem
+ * conta `brWins` (o servidor, ao fechar a partida) aplica o MESMO piso — ver repos/matches.js.
+ * @param {Record<string,number>} m
+ * @param {Record<string,number>} s
+ * @returns {string[]}
+ */
+export function unlockedAchievements(m,s){
+  const out=[];
+  for(const f of FAMILIES){
+    const v=f.per==="match"?Number(m&&m[f.metric])||0:Number(s&&s[f.metric])||0;
+    for(let i=0;i<f.goals.length;i++)if(v>=f.goals[i])out.push(`${f.id}.${TIERS[i].id}`);
+  }
+  return out;
+}
+
+/** Quantos tiers de uma família o jogador já tem (0..4) — a UI do Perfil desenha os selos com isto. */
+export const tierCount=(famId,owned)=>{
+  const f=FAMILY_BY_ID.get(famId);if(!f)return 0;
+  let n=0;for(let i=0;i<f.goals.length;i++)if(owned.includes(`${famId}.${TIERS[i].id}`))n++;
+  return n;
+};

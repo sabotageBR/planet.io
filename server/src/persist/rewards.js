@@ -20,12 +20,17 @@ export const matchCoins=m=>SCORE_COINS(m.score,m.kills,m.botKills,m.durationS)+(
 export const achievementCoins=key=>{const a=ACHIEVEMENT_BY_KEY.get(key);return a&&a.coins?a.coins:ACHIEVEMENT_COINS;};
 /**
  * conquistas novas dado o resumo da partida, user_stats já atualizado e as já possuídas
- * @param {{durationS:number,maxMass:number,bestStreak:number,top1Ticks:number,quadrants:number}} m
- * @param {{kills:number,bot_kills?:number,botKills?:number,splits:number,ejects:number,games:number}} stats
+ * ⚠️ `stats` chega dos DOIS jeitos: a linha crua do `upsertStats` vem em snake_case do Postgres, e o
+ * `statsToPublic` devolve camelCase. Ler só um dos dois faz a família inteira contar ZERO em silêncio —
+ * daí o `??` em cada campo em vez de confiar na origem.
+ * @param {Record<string,number>} m resumo da partida
+ * @param {Record<string,number>} stats user_stats já atualizado
  * @param {Iterable<string>} owned
  */
 export function newAchievements(m,stats,owned){
-  const have=new Set(owned);const s={kills:stats.kills,botKills:stats.botKills??stats.bot_kills??0,splits:stats.splits,ejects:stats.ejects,games:stats.games};
+  const have=new Set(owned),g=(a,b)=>Number(stats[a]??stats[b]??0);
+  const s={kills:g('kills'),botKills:g('botKills','bot_kills'),splits:g('splits'),ejects:g('ejects'),games:g('games'),
+    brWins:g('brWins','br_wins'),brTop10:g('brTop10','br_top10'),brTeamWins:g('brTeamWins','br_team_wins')};
   return unlockedAchievements(m,s).filter(k=>!have.has(k));
 }
 /** skins "earned" cujas unlockKey estão nas chaves */

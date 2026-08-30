@@ -13,6 +13,7 @@ export const PREFS = [
   { id: "sound", title: "Som", items: [
     { key: "sound", label: "Efeitos sonoros", type: "toggle" },
     { key: "music", label: "Música", type: "toggle" },
+    { key: "musicVolume", label: "Volume da música", type: "range", min: 0, max: 100 },
     { key: "ambience", label: "Ambiência", type: "toggle" },
     { key: "volume", label: "Volume", type: "range", min: 0, max: 100 },
     { key: "voice", label: "Voz dos jogadores (Ctrl para falar)", type: "toggle" },

@@ -123,6 +123,19 @@ export const KIT={
               {t:"tom",type:"sine",f0:1320,dur:.12,gain:.055,at:.05}],
   deadScreen:[{t:"ruido",f0:900,f1:150,dur:.9,gain:.16,q:.5},                               // a tela de KABOOM (o `death` é o do mundo)
               {t:"tom",type:"sine",f0:220,f1:44,dur:1,gain:.2}],
+  // Subir de nível: fanfarra curta em arpejo maior (dó–mi–sol–dó), com brilho por cima. É o som mais
+  // "recompensa" do pacote de propósito — ele toca poucas vezes na vida de um jogador.
+  levelUp:   [{t:"tom",type:"triangle",f0:523,dur:.16,gain:.15},
+              {t:"tom",type:"triangle",f0:659,dur:.16,gain:.15,at:.09},
+              {t:"tom",type:"triangle",f0:784,dur:.18,gain:.16,at:.18},
+              {t:"tom",type:"triangle",f0:1047,dur:.5,gain:.18,at:.28},
+              {t:"tom",type:"sine",f0:1568,f1:2093,dur:.55,gain:.06,at:.28},        // brilho por cima
+              {t:"ruido",f0:5200,f1:2600,dur:.5,gain:.05,q:1.2,at:.28}],            // cauda de faísca
+  // Conquista: irmã menor do levelUp — duas notas e um tinido. Uma partida pode render quatro medalhas,
+  // e quatro fanfarras seguidas viram barulho.
+  achievement:[{t:"tom",type:"square",f0:784,dur:.09,gain:.1},
+              {t:"tom",type:"square",f0:1175,dur:.26,gain:.11,at:.07},
+              {t:"ruido",f0:6200,f1:3400,dur:.3,gain:.04,q:1.4,at:.07}],
   podium:    [{t:"tom",type:"triangle",f0:523,dur:.22,gain:.15},                             // pódio do BIG CRUNCH: 3 notas subindo
               {t:"tom",type:"triangle",f0:659,dur:.22,gain:.15,at:.2},
               {t:"tom",type:"triangle",f0:784,dur:.5,gain:.17,at:.4},
@@ -156,7 +169,7 @@ export const KIT={
 
 /** Intervalo mínimo por tipo (ms): o que acontece muito não pode empilhar e virar metralhadora. */
 export const GAP={food:45,chip:70,bounce:60,starHit:80,shieldHit:70,deflect:70,ammo:120,countdown:200,smash:150,
-  eject:55,lock:70,hurt:180,uiHover:60,uiClick:40,toast:200,zoneBurn:400,chatIn:120,weapon:150,fireUp:90,fireBoom:90};
+  eject:55,lock:70,hurt:180,uiHover:60,uiClick:40,toast:200,levelUp:800,achievement:220,zoneBurn:400,chatIn:120,weapon:150,fireUp:90,fireBoom:90};
 
 /**
  * Prioridade por som (padrão 1). No teto de vozes o som novo ROUBA a voz de menor prioridade em vez de ser
@@ -165,7 +178,7 @@ export const GAP={food:45,chip:70,bounce:60,starHit:80,shieldHit:70,deflect:70,a
  */
 export const PRIO={uiHover:0,food:0,bounce:0,chip:0,starHit:0,chatIn:0,zoneBurn:1,fireUp:2,fireBoom:4,
   death:5,deadScreen:5,hurt:4,boom:4,supernova:4,bigCrunch:5,podium:4,starBurst:3,shieldBreak:3,countdown:3,ready:2,lock:2,cancel:2,error:2,
-  zoneShrink:4,matchStart:5,weapon:3,micOn:2,micOff:2};   // o fechamento da zona é aviso de morte: não pode ser roubado pela poeira
+  zoneShrink:4,matchStart:5,weapon:3,micOn:2,micOff:2,levelUp:5,achievement:4};   // o fechamento da zona é aviso de morte: não pode ser roubado pela poeira
 
 /** Escala pentatônica maior: a sequência de grãos sobe por ela e reseta na pausa (a recompensa de comer em fila). */
 export const ESCADA=[1,1.125,1.25,1.5,1.6875,2,2.25,2.5];

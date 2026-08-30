@@ -15,6 +15,7 @@ export const PREFS={
   chat:bool,voice:bool,   // chat e voz são desligáveis como todo o resto do som
   eggs:bool,              // easter egg por nick (quem se chama Bruxo e comprou uma lendária pode desligar)
   volume:v=>typeof v==='number'&&v>=0&&v<=100?Math.round(v):undefined,
+  musicVolume:v=>typeof v==='number'&&v>=0&&v<=100?Math.round(v):undefined,   // volume da trilha, separado do dos efeitos
   voiceVolume:v=>typeof v==='number'&&v>=0&&v<=100?Math.round(v):undefined,   // 0..100, a mesma unidade do cliente (state/app.js e audio/index.js dividem por 100); com o antigo 0..1 o slider era descartado em silêncio e nunca persistia
   theme:v=>THEMES.includes(v)?v:undefined,
   colorblind:v=>typeof v==='boolean'?v:typeof v==='string'&&/^[a-z]{1,16}$/.test(v)?v:undefined,

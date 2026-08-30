@@ -11,11 +11,16 @@
 // @ts-check
 import {KIT,GAP,PRIO,ESCADA,ESCADA_RESET_MS} from "./kit.js";
 import {muDecodeTo} from "./mic.js";
+import {VOICE} from "@warspace/shared";
 
 const VOICES=24;            // vozes simultâneas (acima disso o som novo ROUBA a de menor prioridade)
 const FAR=2600;             // distância (px de mundo) em que o som já não se ouve
 const PAN=1400;             // meia-largura do estéreo: além disso o som vem 100% de um lado
 const DUCK=.55;             // quanto o alerta abaixa os efeitos: um míssil na cabeça tem que furar a poeira
+// ⚠️ as duas eram USADAS em playVoice() e não existiam em lugar nenhum — nem aqui, nem no import.
+// Toda chamada lançava ReferenceError, então NENHUM clipe de voz tocou desde que a voz existe.
+const VOICE_HZ=VOICE.RATE_HZ;   // 8 kHz, o mesmo do µ-law que o mic.js grava
+const VOICE_DUCK=.45;           // a voz abaixa os efeitos mais que o alerta: é ela que precisa ser entendida
 
 /** @type {ReturnType<createAudio>|null} */let atual=null;
 
@@ -24,6 +29,7 @@ export function createAudio(prefs={}){
   let ctx=null,master=null,limiter=null,buses=null;
   let on=prefs.sound!==false,vol=(prefs.volume==null?70:prefs.volume)/100;
   let music=!!prefs.music,ambOn=prefs.ambience!==false,voiceOn=prefs.voice!==false,voiceVol=(prefs.voiceVolume==null?85:prefs.voiceVolume)/100;
+  let musicVol=(prefs.musicVolume==null?60:prefs.musicVolume)/100;
   let falando=0;   // quantos clipes de voz estão tocando (o duck só volta quando o último acaba)
   const ultimo=new Map();
   /** @type {{prio:number,src:any,g:any,out:any,morta:boolean}[]} */const vivas=[];
@@ -39,8 +45,12 @@ export function createAudio(prefs={}){
     master=ctx.createGain();master.gain.value=vol;
     master.connect(limiter);limiter.connect(ctx.destination);
     const mk=v=>{const g=ctx.createGain();g.gain.value=v;g.connect(master);return g;};
-    buses={sfx:mk(1),amb:mk(1),ui:mk(1),voice:mk(1)};
+    // 5º barramento: a MÚSICA. Ela ia pelo `amb` junto com a ambiência, e por isso (a) o interruptor de
+    // ambiência e o de música compartilhavam cadeia e (b) o `duck()` do alerta de míssil abaixava os
+    // efeitos e deixava a trilha por cima — justo o contrário do que se quer quando há um míssil vindo.
+    buses={sfx:mk(1),amb:mk(1),ui:mk(1),voice:mk(1),music:mk(musicVol)};
     startLoop("ambience");
+    if(music)startLoop("music");
     return ctx;}
   const noiseBuf=()=>{const n=Math.floor(ctx.sampleRate*1.6),b=ctx.createBuffer(1,n,ctx.sampleRate),d=b.getChannelData(0);
     let v=0;for(let i=0;i<n;i++){v=(v+(Math.random()*2-1)*.35)*.92;d[i]=v;}   // ruído meio "rosa": menos áspero que o branco puro
@@ -117,6 +127,11 @@ export function createAudio(prefs={}){
       return{out,nodes:[a.o,b.o],set(o){const k=o.k==null?0:o.k;
         alvo(a.o.frequency,170+300*k,.06);alvo(b.o.frequency,171.4+302*k,.06);
         alvo(f.frequency,420+1900*k,.06);alvo(out.gain,.18+.35*k,.06);}};}
+    if(name==="music")return buildMusica(out);
+    // ⚠️ Este bloco era o `else` IMPLÍCITO de build(): qualquer nome que não caísse nos `if` acima virava
+    // a ambiência, sem erro. `startLoop("qualquer coisa")` criava uma SEGUNDA ambiência inteira tocando
+    // por cima da primeira. Agora ele tem nome.
+    if(name!=="ambience")return null;
     // ambiência: três camadas que reagem ao estado da partida
     const pad=ctx.createGain();pad.gain.value=0;pad.connect(out);
     const dan=ctx.createGain();dan.gain.value=0;dan.connect(out);
@@ -145,19 +160,135 @@ export function createAudio(prefs={}){
         const u=Math.min(1,Math.max(0,o.urgency==null?0:o.urgency));
         alvo(rl.frequency,.7+2.6*u,.4);alvo(rnd.gain,ambOn?u*.07:0,.4);}};}
 
+  // ══ A TRILHA ═════════════════════════════════════════════════════════════════════════════════════
+  // Peça ORIGINAL na linguagem do minimalismo sinfônico (o registro que Glass, Richter e Zimmer
+  // compartilham): órgão de tubos, um ostinato de colcheias que nunca para, harmonia MODAL que gira em
+  // vez de resolver, e forma por ACUMULAÇÃO — as camadas entram uma a uma e a peça cresce sem mudar de
+  // assunto. Nada aqui é transcrição: o que se copia é a linguagem, não a melodia de ninguém.
+  //
+  // Três seções, escolhidas pelo estado do jogo:
+  //   menu    → só o drone e o coral, sem pulso. É a tela parada.
+  //   partida → entra o ostinato e a peça começa a andar.
+  //   climax  → órgão cheio, sub, e o ostinato acelera. O fim da rodada e o círculo apertado.
+  //
+  // Lá (A) menor eólio: a tríade i–VI–III–VII, quatro compassos que voltam ao começo. A "cor Zimmer" é
+  // o VI maior depois do i menor — o acorde que soa grande sem soar alegre.
+  const MUS={
+    RAIZ:55,                                  // Lá1: a fundamental do drone (o órgão de 16 pés)
+    // graus da escala eólia em semitons, a partir da tônica
+    ACORDES:[[0,3,7,12],[8,12,15,20],[3,7,10,15],[10,14,17,22]],   // i · VI · III · VII
+    OSTINATO:[0,7,12,15,12,7,12,19],          // as oito colcheias que giram: a peça inteira anda em cima disto
+    BPM:[52,66,84],                           // menu · partida · clímax — a métrica acelera com a tensão
+    COMP_MS:0,                                // preenchido no build (ms por compasso)
+    LOOK_MS:180,                              // quanto o agendador olha à frente
+    TICK_MS:40,
+  };
+  const semi=n=>Math.pow(2,n/12);
+
+  /** Um "tubo" de órgão: onda + filtro suave + envelope longo. É a voz de toda a trilha. */
+  function tubo(dest,tipo,freq,t0,dur,gain,atk){
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.type=tipo;o.frequency.setValueAtTime(hz(freq),t0);
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(gain,t0+atk);
+    g.gain.setTargetAtTime(0,t0+dur*.55,dur*.28);          // cauda longa: órgão não corta, decai na sala
+    o.connect(g);g.connect(dest);
+    o.start(t0);o.stop(t0+dur+.6);
+    return o;
+  }
+
+  /**
+   * A trilha. Um agendador look-ahead (o padrão do WebAudio: um timer impreciso que agenda notas em
+   * tempo PRECISO de `ctx.currentTime`, sempre um pouco à frente) — o motor não tinha relógio musical
+   * nenhum, só `setTargetAtTime` e `start(t0)` absolutos.
+   * ⚠️ As notas chamam `tubo()` direto, e não `play()`: passar pelo teto de 24 vozes faria a trilha
+   * competir com os efeitos e ser roubada no meio de um compasso.
+   */
+  function buildMusica(out){
+    out.gain.value=1;out.disconnect();out.connect(buses.music);   // trilha tem barramento próprio
+    // três destinos com filtro próprio, para cada camada ter timbre e não só volume
+    const gDrone=ctx.createGain(),gCoral=ctx.createGain(),gOst=ctx.createGain(),gSub=ctx.createGain();
+    const fCoral=ctx.createBiquadFilter();fCoral.type="lowpass";fCoral.frequency.value=1200;fCoral.Q.value=.7;
+    const fOst=ctx.createBiquadFilter();fOst.type="bandpass";fOst.frequency.value=900;fOst.Q.value=.9;
+    gDrone.gain.value=0;gCoral.gain.value=0;gOst.gain.value=0;gSub.gain.value=0;
+    gDrone.connect(out);gCoral.connect(fCoral);fCoral.connect(out);gOst.connect(fOst);fOst.connect(out);gSub.connect(out);
+    // o drone é contínuo: dois osciladores levemente desafinados (o batimento é o que dá "sala")
+    const d1=ctx.createOscillator(),d2=ctx.createOscillator(),dg=ctx.createGain();
+    d1.type="sine";d2.type="sine";d1.frequency.value=MUS.RAIZ;d2.frequency.value=MUS.RAIZ*1.004;
+    dg.gain.value=.5;d1.connect(dg);d2.connect(dg);dg.connect(gDrone);d1.start();d2.start();
+    const s1=ctx.createOscillator();s1.type="sine";s1.frequency.value=MUS.RAIZ/2;s1.connect(gSub);s1.start();
+
+    let secao=0,inten=0,timer=null,prox=0,compasso=0;
+    const bpm=()=>MUS.BPM[secao],semicolcheia=()=>60/bpm()/2;   // colcheia = meia batida
+
+    /** Agenda tudo o que cabe na janela de look-ahead. Roda a cada TICK_MS. */
+    function agenda(){
+      const agora=ctx.currentTime,ate=agora+MUS.LOOK_MS/1000;
+      if(prox<agora)prox=agora+.05;                            // voltou do segundo plano: reancora
+      const col=semicolcheia();
+      while(prox<ate){
+        const passo=compasso%8, acorde=MUS.ACORDES[(compasso>>3)%4];
+        // ── coral: o acorde inteiro, uma vez por compasso, com ataque lento (é o "órgão")
+        if(passo===0){
+          const dur=col*8;
+          for(let i=0;i<acorde.length;i++)
+            tubo(gCoral,"triangle",MUS.RAIZ*2*semi(acorde[i]),prox,dur,.13/(1+i*.35),dur*.22);
+          // 5ª grave dobrando a fundamental: o que faz soar GRANDE sem soar mais alto
+          tubo(gSub,"sine",MUS.RAIZ*semi(acorde[0]),prox,dur,.16,dur*.3);
+        }
+        // ── ostinato: uma colcheia por passo. É o motor da peça — e no menu ele não existe, então não
+        // se agenda: com o ganho em zero as notas continuavam sendo criadas, oito osciladores mudos por
+        // compasso, para sempre, na tela onde o jogo está parado.
+        if(secao>0){const n=MUS.OSTINATO[passo]+acorde[0];
+          tubo(gOst,"square",MUS.RAIZ*4*semi(n),prox,col*.92,.05,.012);}
+        prox+=col;compasso++;
+      }
+    }
+    function liga(){if(!timer)timer=setInterval(agenda,MUS.TICK_MS);}
+    function desliga(){if(timer){clearInterval(timer);timer=null;}}
+
+    return{out,nodes:[d1,d2,s1],
+      /**
+       * `intensity` 0..1 é o único controle: ele escolhe a seção e acende as camadas. Vem do mesmo
+       * lugar que já alimenta a ambiência (massa, perigo, relógio da rodada) — a trilha não precisa
+       * saber o que está acontecendo, só o quanto está acontecendo.
+       */
+      set(o){
+        if(o.intensity!=null)inten=Math.min(1,Math.max(0,o.intensity));
+        if(o.section!=null)secao=Math.min(2,Math.max(0,o.section|0));
+        else secao=inten<.12?0:inten<.62?1:2;
+        const k=inten;
+        alvo(gDrone.gain,.20+.10*k,1.2);                       // sempre presente: é o chão da peça
+        alvo(gCoral.gain,k<.05?.10:.16+.34*k,1.2);             // o acorde entra cedo e engrossa
+        alvo(gOst.gain,secao===0?0:Math.min(1,(k-.12)/.5)*.85,.9);   // o pulso só existe fora do menu
+        alvo(gSub.gain,k<.6?0:(k-.6)/.4*.5,1.4);               // o sub é do clímax
+        alvo(fCoral.frequency,900+2600*k,1.0);                 // abre o brilho junto com a intensidade
+        // ⚠️ o agendador roda SEMPRE que a trilha existe, inclusive no menu: é ele que toca o coral, e
+        // desligá-lo lá deixava a seção "menu" com o drone sozinho — um zumbido de 55 Hz, não uma peça.
+        // O que muda no menu é o ostinato ficar mudo (acima), não o relógio parar.
+        liga();
+      },
+      stop(){desliga();}};
+  }
+
   function startLoop(name,o=null){
     const c=ensure();if(!c||!on)return;
     let L=loops.get(name);
-    if(!L){L=build(name);loops.set(name,L);}
+    if(!L){L=build(name);if(!L)return;loops.set(name,L);}
     L.set(o||{});
     if(name==="alert")duck(true);}
   function setLoop(name,o){const L=loops.get(name);if(L)L.set(o);}
   function stopLoop(name){const L=loops.get(name);if(!L)return;loops.delete(name);
     try{alvo(L.out.gain,0,.05);}catch{}
+    // ⚠️ a trilha tem um `setInterval` de agendamento; sem `L.stop()` ele continuaria vivo depois do
+    // `stopLoops()` de toda troca de sala, agendando notas em nós já desconectados até a página fechar.
+    try{if(L.stop)L.stop();}catch{}
     setTimeout(()=>{try{for(const n of L.nodes)n.stop();L.out.disconnect();}catch{}},260);
     if(name==="alert")duck(false);}
   /** O alerta abaixa os efeitos: sem isso ele se perde no meio da poeira e do tiroteio. */
-  function duck(no){if(buses)alvo(buses.sfx.gain,no?DUCK:1,.12);}
+  function duck(no){if(!buses)return;alvo(buses.sfx.gain,no?DUCK:1,.12);
+    // a trilha desce MAIS que os efeitos: o alerta tem que furar a música, não competir com ela
+    alvo(buses.music.gain,(no?DUCK*.6:1)*musicVol,.12);}
   function stopLoops(){for(const n of[...loops.keys()])stopLoop(n);}
 
   const audio={
@@ -168,14 +299,23 @@ export function createAudio(prefs={}){
      * `play()` saía calado. Chamar em contexto já rodando é no-op.
      */
     resume(){const c=ensure();if(!c)return;try{c.resume();}catch{/* alguns navegadores rejeitam fora de gesto */}
-      if(on&&!loops.has("ambience"))startLoop("ambience");},   // o stop() da troca de sala a derruba; aqui ela volta
+      // o stop() da troca de sala derruba os contínuos; aqui eles voltam. A trilha precisa da MESMA
+      // cortesia que a ambiência — sem esta linha ela sumia na primeira troca de sala e não voltava mais.
+      if(on&&!loops.has("ambience"))startLoop("ambience");
+      if(on&&music&&!loops.has("music"))startLoop("music");},
     /** Liga/desliga, volume, música e ambiência vêm das preferências (Opções → Som). */
     setPrefs(p){if(!p)return;
       on=p.sound!==false;vol=(p.volume==null?70:p.volume)/100;
       if(master)master.gain.value=vol;
       music=!!p.music;ambOn=p.ambience!==false;voiceOn=p.voice!==false;voiceVol=(p.voiceVolume==null?85:p.voiceVolume)/100;
-      if(buses)buses.voice.gain.value=voiceVol;
-      if(!on)stopLoops();else if(ctx){startLoop("ambience");setLoop("ambience",{});}},
+      musicVol=(p.musicVolume==null?60:p.musicVolume)/100;
+      if(buses){buses.voice.gain.value=voiceVol;buses.music.gain.value=musicVol;}
+      if(!on){stopLoops();return;}
+      if(!ctx)return;
+      startLoop("ambience");setLoop("ambience",{});
+      // desligar a música é PARAR a trilha, não zerar o ganho: um agendador rodando em silêncio é
+      // trabalho por frame que ninguém ouve.
+      if(music){startLoop("music");setLoop("music",{});}else stopLoop("music");},
     /**
      * Toca um efeito. `x,y` (mundo) + `cam` posicionam; `mine` toca em volume cheio (é comigo).
      * `r` sobe um pouco o volume de eventos grandes (explosão de um planetão soa maior).

@@ -23,7 +23,10 @@ const APARELHOS=[   // nome, largura, altura, dedo?, modo (o mesmo que modeFor d
 // `dead` e `round` são as telas do PÓS-JOGO (menu na gaveta, câmera à esquerda) e ficavam de fora — logo
 // as duas que mais precisam: o card do fim de rodada não tinha CSS nenhum e caía cortado no canto.
 // `entry@rail` é a MESMA tela inicial no estado "já joguei nesta aba", que é quando ela vira gaveta.
-const TELAS=["entry","entry@rail","modes","lobby","rank","profile","shop","prefs","game","dead","round"];
+// `shop@rail` é a gaveta com o conteúdo MAIS largo do jogo: os três temas fixavam a grade de skins em 3
+// colunas, que respondem à largura da TELA e não à do painel — em 480 px os cartões transbordavam e a loja
+// ganhava barra de rolagem horizontal. Nenhuma combinação de `shop` no centro pegava isso.
+const TELAS=["entry","entry@rail","modes","lobby","rank","profile","shop","shop@rail","prefs","game","dead","round"];
 const TEMAS=(process.env.RESP_TEMAS||"dawn,sunset,dusk").split(",");   // o dusk é o mais fraco: tem menos regras de mobile que os outros dois
 
 const ch=spawn(CHROME,["--headless=new",`--remote-debugging-port=${PORT}`,"--no-sandbox","--disable-dev-shm-usage",
@@ -117,11 +120,11 @@ for(const [nome,w,h,toque,modo] of APARELHOS){
           await ev(`window.__hudDemo&&window.__hudDemo()`);
           await new Promise(r=>setTimeout(r,300));}
     else if(t==="dead"||t==="round"){await ev(IR(t));await new Promise(r=>setTimeout(r,420));}
-    else if(t==="entry@rail"){await ev(IR("entry"));await new Promise(r=>setTimeout(r,220));
+    else if(t.endsWith("@rail")){await ev(IR(t.slice(0,-5)));await new Promise(r=>setTimeout(r,220));
           await ev(`document.body.dataset.shell="rail"`);await new Promise(r=>setTimeout(r,320));}
     else {await ev(IR(t));await new Promise(r=>setTimeout(r,320));}
     // o React só reescreve data-shell quando `played` muda, então a matriz o fixa como fixa data-mode
-    if(t!=="entry@rail"&&t!=="dead"&&t!=="round")await ev(`document.body.dataset.shell="center"`);
+    if(!t.endsWith("@rail")&&t!=="dead"&&t!=="round")await ev(`document.body.dataset.shell="center"`);
     // REAFIRMA modo e ponteiro logo antes de medir. `useViewportMode` roda com 150 ms de debounce depois de
     // cada resize/navegação e reescreve os dois — e como o CDP não emula `pointer:coarse` de verdade, ele
     // reescrevia "fine" e as regras de toque saíam do ar bem na hora em que a sonda ia cobrar os 44 px.

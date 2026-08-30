@@ -9,7 +9,7 @@ export const NAV_SCREENS = ["entry", "lobby", "rank", "profile", "shop", "prefs"
 /** Whitelist de PATCH /api/me/prefs (docs/spec/api.md) com os padrões do cliente. */
 export const PREF_DEFAULTS = Object.freeze({
   quality: "auto", showNames: true, showGrid: true, showMinimap: true, showFps: true,
-  sound: true, music: false, ambience: true, volume: 70, joystick: false,  // só tem efeito onde o ponteiro é grosso (no mouse é ignorado). Continua DESLIGADO por
+  sound: true, music: false, ambience: true, volume: 70, musicVolume: 60, joystick: false,  // só tem efeito onde o ponteiro é grosso (no mouse é ignorado). Continua DESLIGADO por
                   // padrão: o Chrome headless deste ambiente não entrega pointer events na página do
                   // jogo, então o analógico não pôde ser testado aqui — ligar por padrão seria mudar o
                   // controle de todo mundo no celular sem uma única passada de verificação. holdEject: true, rightSplit: true,
@@ -39,6 +39,8 @@ export const initialState = {
   booted: false, bootError: null,
   session: { user: null, skins: [0], prefs: { ...PREF_DEFAULTS }, stats: EMPTY_STATS, achievements: [], online: null, server: null, dayRank: null },
   screen: "entry",
+  prevScreen: "entry",   // de onde se chegou à tela atual: Opções é alcançável da entrada E da <Nav>,
+                         // então "salvar e voltar" tem que voltar para quem abriu, não para um lugar fixo
   played: false,         // já entrou em alguma partida NESTA carga da página? decide o body[data-shell]:
                          // menu centralizado enquanto não jogou, gaveta à direita (com a câmera à esquerda) depois
   overlays: { account: false, reconn: false },
@@ -52,6 +54,9 @@ export const initialState = {
   partyError: null,
   conn: "idle",          // idle|connecting|connected|reconnecting|closed
   toast: null,           // {msg, n}
+  levelUp: null,         // {subiu, level, gained, into, need, pct, achievements:[key], n} — o cartão de
+                         // fim de partida: subiu de nível e/ou destravou conquista. `n` força o remonte
+                         // quando duas partidas seguidas rendem o mesmo conteúdo.
   mode: "desktop",       // desktop|portrait|landscape (body[data-mode])
   lastMatch: null,       // {by, byHole, score, maxMass, kills, durationS, room, at}
   roundResult: null,     // {code, champion, board:[{slot,name,mass,score,kills,isBot,registered}], nextInMs, at} — fim do mundo
