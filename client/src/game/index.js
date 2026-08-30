@@ -23,7 +23,7 @@ import {createAudio} from "../audio/index.js";
 import {api} from "../api/client.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,aimScore,unpackDir} from "@warspace/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,ZOOM,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
@@ -37,6 +37,7 @@ import {createCamera} from "./renderer/Camera.js";
 import {createPointer} from "./input/Pointer.js";
 import {createJoystick} from "./input/Joystick.js";
 import {createKeyboard} from "./input/Keyboard.js";
+import {createWheel} from "./input/Wheel.js";
 import {createTouchButtons} from "./input/Touch.js";
 import {createActions} from "./input/actions.js";
 import {createMinimap} from "./hud/Minimap.js";
@@ -44,7 +45,7 @@ import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./ben
 import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0,autodef:0,zoom:0,feast:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
-  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:"",notice:null});
+  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:"",notice:null,zoom:null});
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
   keySplit:"Space",keyEject:"KeyW",
   sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
@@ -107,7 +108,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const interp=createInterpolator(buffer,{isOwn:e=>predictor.isOwn(e),onVanish});
   const view=createWorldView({buffer,predictor});
   const cam=createCamera(),fstats=createFrameStats();
-  const canAct=()=>joined&&!dead&&!roundOver&&conn&&conn.isOpen;
+  let pausado=false;   // menu do Esc aberto: o motor larga o CONTROLE (a partida continua no servidor — ver ui/Pause.jsx)
+  const canAct=()=>joined&&!dead&&!roundOver&&!pausado&&conn&&conn.isOpen;
   let aiming=false,aim=null;const pendingEat=new Map();   // id da peça comida → id de quem comeu (destino da sucção no frame do sumiço)
   let travado=-1,travadoAte=0;   // o alvo do último tiro mirado e até quando o anel continua na tela (MISSILE.AIM_HOLD_TICKS)
   const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self&&!view.self.fireCd?view.self.missiles:0),canAct,
@@ -124,13 +126,33 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // não vira flag de INPUT nem é predita; é uma mensagem própria (MSG.VOICE_UP).
     if(a==="talk"){if(ph==="down"){if(joined&&curPrefs.voice!==false)mic.start();}else mic.stop();return;}   // morto também fala: o escopo é do servidor (Room._escopoFala)
     if(a==="specPrev"||a==="specNext"){if(ph==="down")game.spectate({dir:a==="specNext"?1:-1});return;}
+    if(a==="zoomReset"){if(ph==="down")zoomReset();return;}
     if(a==="swap"&&ph==="down")audio.play("weapon",{mine:true});
     actions.act(a,ph);};
   /** Botão do ponteiro: sem munição (ou na carência) o esquerdo cospe em vez de atirar — e isso também soa. */
   const button=(btn,ph,type)=>{
+    // O BOTÃO DO MEIO desfaz o que a roda fez. Ele já era interceptado (Pointer.js dá preventDefault nele
+    // para não abrir o scroll do meio) e não fazia nada: "o botão da roda desfaz a roda" é a associação mais
+    // direta que existe, e não disputa com o esquerdo, que é o tiro com carga de mira.
+    if(btn===1&&ph==="down"){zoomReset();return;}
     if(btn===0&&ph==="down"&&canAct()&&!(view.self&&!view.self.fireCd&&view.self.missiles>0))somEject();
     actions.button(btn,ph,type);};
-  const keyboard=createKeyboard({onAction:act,enabled:()=>joined,prefs:curPrefs});
+  /**
+   * Um entalhe de roda. ⚠️ O DETENT: um passo que CRUZARIA o zoom automático para exatamente nele. É a única
+   * coisa que torna "voltar ao automático" descobrível sem ninguém explicar, e custa uma linha. Efeito
+   * colateral bom: para quem tem o tamanho inicial (faixa ±10 %, passo de 12 %) o controle vira literalmente
+   * três posições — perto, automático, longe.
+   */
+  function zoomStep(n){if(!canAct()||!own0.length)return;
+    const alvo=zoomF*Math.pow(ZOOM.STEP,n);
+    zoomF=(zoomF-1)*(alvo-1)<0?1:alvo;   // cruzou o 1: para nele
+    zoomAplica();}
+  /** Prende o fator à faixa da massa ATUAL e avisa a rede/HUD se algo mudou. */
+  function zoomAplica(){const f=clampZoom(zoomF,focusOf(own0.map(p=>({x:p.rx,y:p.ry,r:p.rr}))).sumR);
+    if(f===zoomF)return f;zoomF=f;return f;}
+  function zoomReset(){if(zoomF===1)return;zoomF=1;zoomAt=performance.now();agendaView();}
+  const wheel=createWheel({onStep:n=>{zoomStep(n);zoomAt=performance.now();agendaView();},enabled:()=>joined&&!dead&&!isBench(),prefs:curPrefs});
+  const keyboard=createKeyboard({onAction:act,enabled:()=>joined&&!pausado,prefs:curPrefs});
   const touch=createTouchButtons(hud,{onAction:act});
   let pointer=null;
   const minimap=createMinimap({hud,theme:()=>curTheme,getScene:()=>{if(!joined)return null;
@@ -184,7 +206,23 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     warmFaces([...skins,me].filter(Boolean).map(sk=>sk.id));
     renderer.warmHazards();renderer.warmPlanets(skins,me);}
   // ── rede ──
-  function viewSize(){return{w:Math.round(renderer?renderer.W:container.clientWidth||innerWidth),h:Math.round(renderer?renderer.H:container.clientHeight||innerHeight)};}
+  function viewSize(){return{w:Math.round(renderer?renderer.W:container.clientWidth||innerWidth),h:Math.round(renderer?renderer.H:container.clientHeight||innerHeight),z:Math.round(zoomF*100)/100};}
+  // UM SÓ EMISSOR de `{t:"view"}` — resize e roda passam por aqui. ⚠️ Os dois disputam o MESMO balde de
+  // NET.RATE_JSON (5/s) e 3 rejeições em 10 s ENCERRAM a conexão: foi exatamente assim que arrastar a janela
+  // derrubava o jogador antes do debounce. Cada um com o seu orçamento estouraria o balde na soma.
+  // Throttle com borda de ATAQUE e de saída: a primeira mudança sai na hora (a AOI tem que abrir antes de a
+  // câmera chegar lá) e o resto é coalescido. `sujo` só é limpo quando um envio de fato aconteceu — senão uma
+  // mensagem perdida com o socket fechado deixaria a borda vazia até o jogador mexer de novo.
+  let viewT=0,viewAt=0,viewSujo=false;
+  function enviaView(){viewT=0;
+    if(!conn||!conn.isOpen||!joined)return;
+    const v=viewSize();
+    if(v.w===game._vw&&v.h===game._vh&&v.z===game._vz){viewSujo=false;return;}
+    game._vw=v.w;game._vh=v.h;game._vz=v.z;viewAt=performance.now();viewSujo=false;
+    conn.sendJson({t:"view",w:v.w,h:v.h,z:v.z});}
+  function agendaView(){viewSujo=true;const espera=ZOOM.VIEW_MS-(performance.now()-viewAt);
+    if(espera<=0)return enviaView();
+    if(!viewT)viewT=setTimeout(()=>{if(viewSujo)enviaView();else viewT=0;},espera);}
   function onOpenSend(c){if(c.session){buffer.clear();predictor.reset();c.sendJson({t:"resume",sessionId:c.session.sessionId,resumeToken:c.session.resumeToken,view:viewSize()});input.resend();}
     else c.sendJson({t:"join",token:joinOpts.token||null,room:joinOpts.room||null,view:viewSize(),fallbackNick:joinOpts.fallbackNick||"Viajante",skinId:joinOpts.skinId|0,
       mode:joinOpts.mode|0,teamSize:joinOpts.teamSize|0,party:joinOpts.party||null});}
@@ -321,6 +359,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
      * a câmera olharia para um pedaço de espaço que o servidor não está mandando.
      */
     spectate({slot=-1,dir=0}={}){if(!conn||!joined||!dead)return;conn.sendJson({t:"spectate",slot,dir});},
+    zoomReset(){zoomReset();},   // o chip do HUD (e a tecla 0, e o botão do meio) devolvem a câmera ao automático
+    /** Menu do Esc: larga o controle sem sair da sala. Solta o que estiver segurado, senão o W fica preso. */
+    setPaused(on){const v=!!on;if(v===pausado)return;pausado=v;
+      if(v){ejHold=false;input.setHold(false);actions.reset();if(pointer)pointer.state.down=false;audio.stopLoop("aimCharge");}},
     /**
      * Mapa grande: o radar ampliado, com nome em cada planeta e clique para trocar de câmera. Só com o
      * jogador MORTO — ver o mapa inteiro jogando seria vantagem tática, e não é o que se pediu.
@@ -334,7 +376,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null};
-      buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();hudStore.set({...initialHud(),room:room||null});mapOn="";minimap.setView("",-1);aplicaRadar();
+      buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();zoomF=1;hudStore.set({...initialHud(),room:room||null});mapOn="";minimap.setView("",-1);aplicaRadar();
       if(pointer&&renderer)pointer.center(renderer.W,renderer.H);
       const isLocal=useLocal||qflag("local")||isBench()||api.server===false;
       if(isLocal){const rs=+(Q.get("round")||0);   // ?round=<segundos> encurta a rodada local (dev)
@@ -348,12 +390,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa
     // por aqui (ela é do Connection, e volta pelo `resume`), então nada disso atrapalha quem só caiu.
     leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();mapOn="";minimap.setView("",-1);minimap.show(false);
+      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;mapOn="";minimap.setView("",-1);minimap.show(false);
       if(was&&!silent)hudStore.set({...initialHud()});},
-    setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
+    setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
-    resize(){if(!renderer)return;renderer.resize();if(conn&&conn.isOpen&&joined){const v=viewSize();if(v.w!==game._vw||v.h!==game._vh){game._vw=v.w;game._vh=v.h;conn.sendJson({t:"view",w:v.w,h:v.h});}}},
-    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();game.leave(true);audio.suspend();removeEventListener("pointerdown",wakeAudio);removeEventListener("keydown",wakeAudio);keyboard.destroy();touch.destroy();actions.destroy();if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
+    resize(){if(!renderer)return;renderer.resize();agendaView();},
+    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();game.leave(true);audio.suspend();removeEventListener("pointerdown",wakeAudio);removeEventListener("keydown",wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();actions.destroy();clearTimeout(viewT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("warspace:theme",onThemeEvent);if(themeGuard)removeEventListener("warspace:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,
@@ -516,6 +558,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
       powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:s?s.autoDefN|0:0,zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,map:mapOn,clock:roundClock,
+      // ZOOM MANUAL: só existe no HUD quando o jogador saiu do automático — widget permanente para
+      // funcionalidade ocasional é ruído. `pct` é o que ele PERCEBE (quanto de mundo a mais/a menos), não o
+      // fator; `fresh` diz se o gesto foi agora, para o chip aparecer opaco e depois esmaecer.
+      zoom:zoomF===1?null:{pct:Math.round((zoomF-1)*100),fresh:now-zoomAt<1500},
       mode:modeId,teamSize,team:myTeam,phase,cap:roomCap,
       lobby:lobby?{...lobby,
         // o servidor manda a 2 Hz; aqui o número desce liso, descontando o tempo desde que a mensagem chegou
@@ -528,6 +574,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
     return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · estrelas ${c.stars} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}
   let bytesRate=0,bytesLast=0,bytesT=0,themeAt=0,own0=[];
+  // ZOOM MANUAL (a roda). O fator é guardado CRU e reclampado todo frame pela faixa da massa do momento
+  // (`clampZoom`): assim a faixa anda junto com o jogador e leva o fator com ela — quem estacionou no máximo
+  // afastado continua no máximo enquanto cresce (a visão abre sozinha, sem degrau), e quem foi comido até o
+  // tamanho inicial volta ao automático sem ter de desfazer oito entalhes fantasmas. Estado de VISTA por
+  // partida: mora aqui, não na store, e `leave()`/`join()` o zeram junto do `cam.reset()`.
+  let zoomF=1,zoomAt=0;
 
   // ── laço ──
   /**
@@ -546,7 +598,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // vezes para fora do enquadramento. Parar de mandar input NÃO resolveria: sem alvo novo o servidor
     // continua movendo a peça na direção velha, para sempre. O que para é mandar o alvo em cima de onde ela
     // já está — no modelo do agar a velocidade é `min(d,RAMP)/RAMP`, então distância zero é peça imóvel.
-    if(roundOver){
+    // ⚠️ A PAUSA usa o MESMO caminho, e pelo mesmo motivo. Um overlay não impede o planeta de andar: o
+    // ponteiro é lido na JANELA (input/Pointer.js), então o alvo continuaria seguindo o mouse por cima do
+    // modal — o jogador abriria o menu para mexer no volume e voltaria tendo atravessado meio mapa.
+    if(roundOver||pausado){
       if(own0.length){w=alvo;w.x=cx;w.y=cy;input.setTarget(cx,cy);predictor.setTarget(cx,cy);}
       if(conn.isOpen)input.update(now);
       return;}
@@ -576,7 +631,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // `leave()`, o resultado era o menu com um pedaço de arena atrás — a borda tracejada do mundo cortando
     // a tela na diagonal, planeta nenhum, mapa nenhum. Parada, o que fica atrás do menu é o CÉU, que é o
     // fundo que a tela inicial sempre teve.
-    cam.update(camPieces,dt,joined||!conn,view.self&&view.self.zoomT>0?POWERUP.ZOOM_K:1);   // na sala sem peças (morto/BIG CRUNCH) a câmera congela: é o que o AOI do servidor continua mandando
+    // O fator da roda é reclampado TODO FRAME pela faixa da massa do momento (ver `zoomF`): a faixa fecha
+    // sozinha quando o jogador encolhe, e o servidor faz a mesma conta com o ΣR dele — é isso que faz os
+    // dois enquadrarem a mesma coisa sem um byte novo de protocolo.
+    let zf=1;
+    if(own.length){const antes=zoomF;zf=zoomAplica();if(zf!==antes)agendaView();}
+    cam.update(camPieces,dt,joined||!conn,view.self&&view.self.zoomT>0?POWERUP.ZOOM_K:1,zf);   // na sala sem peças (morto/BIG CRUNCH) a câmera congela: é o que o AOI do servidor continua mandando
     aim=null;   // reta de mira: da 1ª peça própria (a que dispara no servidor) até o ponteiro, com o anel no alvo travado
     if(joy&&joy.enabled&&joy.state.aim&&pointer){pointer.state.sx=joy.state.aimX;pointer.state.sy=joy.state.aimY;pointer.state.active=true;}   // metade direita mira sem virar o planeta
     if(aiming&&joined&&!dead&&own.length&&pointer&&pointer.state.active){const src=own[0],p=cam.toWorld(pointer.state.sx,pointer.state.sy);

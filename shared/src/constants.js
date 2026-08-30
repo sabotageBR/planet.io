@@ -677,6 +677,39 @@ export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.15
 // TAU_POS/TAU_ZOOM são a suavização do MESMO cliente, convertidas de "por frame" para tempo: lá é
 // `viewX=(viewX+x)/2` (50% por frame → τ=dt/ln2=24 ms) e `scale=(9·scale+s)/10` (10% → τ=158 ms).
 // A posição é quase instantânea de propósito: a câmera fica colada no planeta e só o zoom respira.
+export const ZOOM={MIN:.10,K:.40,STEP:1.12,WHEEL_PX:100,PINCH_PX:25,ACC_MS:200,MAX_STEPS:3,
+  VIEW_MS:350,GRACE_TICKS:30,ABS_MIN:.25,ABS_MAX:4};
+// ZOOM MANUAL PELA RODA: uma FAIXA em torno do zoom automático, com a largura crescendo com a MASSA
+// (`zoomSpan` em camera.js). O `zoomFor` continua mandando — a roda só multiplica o resultado dele —, e a
+// faixa fecha sozinha quando o jogador encolhe.
+// POR QUE A LARGURA É DA MASSA: enxergar mais mundo é VANTAGEM, e dá-la de graça a quem é pequeno inverte o
+// único preço que crescer cobra aqui (o planetão é lento, mas vê longe). Atrelada ao ΣR, a roda é só a
+// escolha de QUANTO usar do que ele já conquistou.
+//   MIN  faixa de quem acabou de nascer (±10 %). Zero seria um controle que não responde, e o jogador
+//        conclui que está quebrado.
+//   K    o quanto a massa abre a faixa. ⚠️ `1 + MIN + K = 1,5 = POWERUP.ZOOM_K`, e isso NÃO é coincidência:
+//        o teto do afastamento manual é exatamente o afastamento para o qual a AOI já foi dimensionada e
+//        medida em produção (área 2,25×). Não é um orçamento de rede novo — é um que já passou. Subir K é
+//        subir o pico de entidades de TODA sala: comida tem teto por área E por contagem (NET.AOI_FOOD_MAX),
+//        mas peça, asteroide, estrela e míssil vêm pela visão inteira.
+//   STEP passo por entalhe da roda (12 %): ~6 entalhes atravessam a faixa do planetão, que é o que uma mão
+//        dá num gesto só. O recém-nascido tem 1,7 — na prática três posições: perto, automático, longe.
+//   WHEEL_PX  quanto de `deltaY` normalizado vale UM passo (um entalhe do Chrome ≈ 100). PINCH_PX é o mesmo
+//        para a pinça de trackpad (que chega como wheel+ctrlKey e espera ser mais fina). Sem esse acúmulo um
+//        deslize de dois dedos — dezenas de eventos de 1–4 px — varreria a faixa inteira num quadro.
+//   ACC_MS  o acumulador esquece depois disso parado, senão meia rolagem de um minuto atrás soma com a de agora.
+//   MAX_STEPS  teto por EVENTO: um `deltaMode:2` (página) não pode varrer a faixa de uma vez.
+//   VIEW_MS  throttle do `{t:"view"}`. ⚠️ Resize e zoom disputam o MESMO balde de NET.RATE_JSON (5/s), e 3
+//        rejeições em 10 s ENCERRAM a conexão — foi assim que arrastar a janela derrubava o jogador antes do
+//        debounce. Com 350 ms o pico é 2,9/s; com o ping de 1/s sobra folga e ainda há o burst de 10.
+//   GRACE_TICKS  meio segundo em que a AOI do servidor NÃO encolhe depois de o jogador aproximar. A câmera do
+//        cliente é suavizada por CAM.TAU_ZOOM (3τ ≈ 470 ms) e a AOI é instantânea: sem a marca d'água, voltar
+//        ao automático abriria uma borda vazia a cada entalhe. É o ZOOM_GRACE_TICKS do powerup, pelo mesmo
+//        motivo — a AOI pode SOBRAR; faltar, nunca.
+//   ABS_MIN/ABS_MAX  sanidade do que vem do fio, aplicada na Session (que não conhece a massa). O clamp que
+//        VALE é o do snapshot, pelo ΣR real: sem ele um cliente adulterado pediria o mapa inteiro.
+// ⚠️ NÃO entra em tunables.js: chave de escopo `both` responde 501, e é exatamente o caso — o cliente tem a
+// própria cópia do bundle, então mudar isto só no servidor faria a câmera e a AOI divergirem em silêncio.
 export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:150,EXTRAP_MAX_MS:100,SNAP_DIST:120,AOI_PAD:.3,AOI_PAD_OUT:.45,AOI_FOOD_MAX:300,
   RATE_INPUTS:40,RATE_BURST:60,RATE_JSON:5,HEARTBEAT_MS:5000,DEAD_MS:15000,RESUME_MS:10000};
 // AOI_FOOD_MAX: TETO de grãos que uma sessão conhece ao mesmo tempo. `aoiScaleFood` já limita a ÁREA, mas

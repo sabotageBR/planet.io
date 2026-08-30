@@ -17,6 +17,7 @@ import Prefs from "../ui/Prefs.jsx";
 import Dead from "../ui/Dead.jsx";
 import Round from "../ui/Round.jsx";
 import AccountModal from "../ui/AccountModal.jsx";
+import Pause from "../ui/Pause.jsx";
 import ReconnOverlay from "../ui/ReconnOverlay.jsx";
 import Toast from "../ui/Toast.jsx";
 import LevelUp from "../ui/LevelUp.jsx";
@@ -80,6 +81,7 @@ export default function App() {
         barra do painel, não da janela. No desktop ela fica no rodapé do cartão central; no celular em pé a
         caixa É a folha de rodapé, então a barra continua colada embaixo, que é o certo nos dois casos. */}
     <AccountModal on={overlays.account} />
+    <Pause on={overlays.pause} />
     <ReconnOverlay on={overlays.reconn} />
     <Toast />
     <LevelUp />

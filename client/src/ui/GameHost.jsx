@@ -12,6 +12,7 @@ import { useTheme } from "../hooks/useTheme.js";
 export default function GameHost() {
   const ref = useRef(null), joined = useRef(false);
   const screen = useStore(app, s => s.screen), pending = useStore(app, s => s.pendingJoin), prefs = useStore(app, s => s.session.prefs);
+  const pause = useStore(app, s => s.overlays.pause);
   const theme = useTheme();
 
   useEffect(() => {
@@ -34,6 +35,9 @@ export default function GameHost() {
 
   useEffect(() => { const game = getGame(); if (game && joined.current && screen !== "game" && screen !== "dead" && screen !== "round") { joined.current = false; game.leave(); } }, [screen]);
   useEffect(() => { const game = getGame(); if (game) game.setPrefs(prefs); }, [prefs]);
+  // Com o menu de pausa aberto o motor larga o CONTROLE (o alvo passa a ser o próprio centróide e as ações
+  // são recusadas). A partida continua rodando no servidor — ver o cabeçalho de ui/Pause.jsx.
+  useEffect(() => { const game = getGame(); if (game) game.setPaused(pause); }, [pause]);
   useEffect(() => { const game = getGame(); if (game) game.setTheme(theme); }, [theme]);
 
   return <div id="game" ref={ref} />;

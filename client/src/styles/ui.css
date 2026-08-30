@@ -807,6 +807,35 @@ body{--screen-top:clamp(12px,4vh,44px)}
 #hud #h-mute.on{background:color-mix(in srgb,var(--danger,#ff3d5a) 62%,transparent)}
 body[data-pointer="coarse"] #hud #h-mute{width:44px;height:44px;min-width:44px;font-size:18px}
 
+/* ZOOM MANUAL: o chip só existe FORA do automático (o Hud devolve null), e clicar nele volta. Ele ESMAECE
+   depois do gesto em vez de sumir — sumir esconderia um estado que muda o que o jogador vê, e ficar opaco
+   seria um widget permanente para uma funcionalidade ocasional. A especificidade é (2,0,0) para ganhar do
+   `:where` dos temas, e a cor do texto é declarada aqui porque `--line` (quase preto) desce do tema. */
+#hud #h-zoom{padding:0 9px;height:34px;display:grid;place-items:center;font-size:12px;font-variant-numeric:tabular-nums;
+  cursor:pointer;pointer-events:auto;color:var(--accent2,#2ee6ff);opacity:.5;transition:opacity .25s}
+#hud #h-zoom.fresh,#hud #h-zoom:hover,#hud #h-zoom:focus-visible{opacity:1}
+body[data-pointer="coarse"] #hud #h-zoom{height:44px;font-size:13px}
+body[data-mode="portrait"] #hud #hud-top #h-zoom{height:30px;padding:0 6px;font-size:11px}
+
+/* ── MENU DE PAUSA (Esc) ────────────────────────────────────────────────────────────────────
+   O modal em si já é posicionado por `.card.modal` na seção "MODAIS SEMPRE NO MEIO" (mais acima) e o véu
+   por `.overlay` em base.css — aqui só o miolo. As linhas de preferência são as MESMAS de Opções
+   (ui/Prefs.jsx › PrefRow), então `.pref-row` já vem estilizado pelos temas; o que falta é a caixa que as
+   contém, que ali é `.card.pg` e aqui não existe.
+   ⚠️ `max-height` + rolagem por dentro: no celular deitado a janela tem ~390 px de altura e oito linhas de
+   pref não cabem — sem isso o botão "Voltar ao jogo" fica fora do alcance, que é exatamente o que a matriz
+   de `scripts/responsive-check.mjs` reprova. */
+#s-pause .card.modal.pause{width:min(420px,100%);gap:10px}
+#s-pause .pause-prefs{display:grid;gap:2px;overflow:auto;max-height:min(52vh,420px);
+  padding:2px 0;border-top:1px solid var(--stroke,rgba(255,255,255,.14));border-bottom:1px solid var(--stroke,rgba(255,255,255,.14))}
+#s-pause .pause-actions{display:flex;gap:8px}
+#s-pause .pause-actions button{flex:1}
+/* o botão que abre o menu: mesmo alvo do chip de mudo, e no dedo os 44 px que a matriz cobra */
+#hud #h-menu{padding:0;width:34px;height:34px;min-width:34px;display:grid;place-items:center;
+  font-size:16px;line-height:1;cursor:pointer;pointer-events:auto}
+body[data-pointer="coarse"] #hud #h-menu{width:44px;height:44px;min-width:44px;font-size:18px}
+body[data-mode="portrait"] #hud #hud-top #h-menu{width:30px;height:30px;min-width:30px;font-size:14px}
+
 body{--nav-h:74px}
 body[data-mode="portrait"]{--nav-h:66px}
 body[data-mode="landscape"]{--nav-h:64px}

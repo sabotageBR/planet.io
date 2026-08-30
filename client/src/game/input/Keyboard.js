@@ -7,7 +7,10 @@
 // no `setKeys` — o motor já repassa as prefs em tempo real (game/index.js), então trocar a tecla na
 // tela de opções vale na partida em curso, sem recarregar.
 import {ACTION_KEYS} from "@warspace/shared";
-const FIXAS={KeyF:"fire",KeyQ:"swap",ControlLeft:"talk",ControlRight:"talk",ArrowLeft:"specPrev",ArrowRight:"specNext"};   // as setas só fazem algo com o jogador morto (trocar de câmera)
+const FIXAS={KeyF:"fire",KeyQ:"swap",ControlLeft:"talk",ControlRight:"talk",ArrowLeft:"specPrev",ArrowRight:"specNext",
+  Digit0:"zoomReset"};   // as setas só fazem algo com o jogador morto (trocar de câmera); o 0 devolve o zoom ao automático, no idioma do Ctrl+0 do navegador
+// ⚠️ `Digit0` pode ser FIXA porque não está em ACTION_KEYS (shared/constants.js) — a lista que `keySplit` e
+// `keyEject` podem escolher —, então não há colisão possível com uma tecla configurável.
 const PADRAO={split:"Space",eject:"KeyW"};
 /**
  * Monta a tabela `code → ação`. Duas guardas: code fora da lista compartilhada cai no padrão (perfil

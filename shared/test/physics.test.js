@@ -6,10 +6,10 @@ import {fileURLToPath} from "node:url";
 import {dirname,join} from "node:path";
 import {performance} from "node:perf_hooks";
 import {createWorld,createGrid,createBody,setR,addBoost,boostLeft,velX,velY,tryMergeOwn,applyEject,stepOwnPieces,incomingMissile} from "../src/physics/index.js";
-import {zoomFor,focusOf,aoiScaleFood} from "../src/camera.js";
+import {zoomFor,focusOf,aoiScaleFood,zoomSpan,clampZoom} from "../src/camera.js";
 import {vmaxFor} from "../src/physics/integrate.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,ejectR,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,isWeaponFood,EAT,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT} from "../src/constants.js";
+import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,ejectR,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,isWeaponFood,EAT,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT,ZOOM} from "../src/constants.js";
 import {KIND,PIECE_FLAG,FOOD_FLAG,STAR_PHASE,INPUT_FLAG,FRAG_KIND} from "../src/protocol/constants.js";
 import {BotBrain} from "../src/bot.js";
 import {starShatter,STUCK_STAR,STUCK_ASTEROID} from "../src/physics/rules.js";
@@ -829,6 +829,46 @@ test("câmera: zoom = min(64/ΣR,1)^0.4 × resolução — soma dos raios, potê
   assert.ok(aoiScaleFood(zf,W,H)>zf,"no zoom afastado a AOI da comida é MAIS fechada que a câmera");
   assert.ok(W/aoiScaleFood(zf,W,H)<=WORLD.w*CAM.AOI_FOOD_VIEW+1e-6,`a janela da comida para em ${Math.round(CAM.AOI_FOOD_VIEW*100)}% do mundo`);
   const perto=zoomFor(300,W,H);assert.equal(aoiScaleFood(perto,W,H),perto,"e no zoom normal a comida usa a visão de verdade");});
+
+// 38b. zoom MANUAL pela roda: uma faixa em torno do automático, com a largura vindo da MASSA
+test("zoom manual: a faixa cresce com a massa, é log-simétrica, engole lixo e nunca fura o piso do mundo",()=>{
+  const W=1920,H=1080,ESCADA=[PLAYER.START_R,64,128,300,600,1000,3578,16000,1e6];
+  // 1) a faixa é função da massa: o recém-nascido quase não mexe, o planetão mexe muito
+  assert.ok(Math.abs(zoomSpan(PLAYER.START_R)-(1+ZOOM.MIN))<1e-9,"abaixo de CAM.BASE a faixa é a mínima (±10%)");
+  assert.ok(Math.abs(zoomSpan(CAM.BASE)-(1+ZOOM.MIN))<1e-9,"e continua a mínima até ΣR = CAM.BASE, como o próprio zoomFor");
+  for(let i=1;i<ESCADA.length;i++)assert.ok(zoomSpan(ESCADA[i])>=zoomSpan(ESCADA[i-1]),`a faixa não pode encolher quando a massa cresce (ΣR=${ESCADA[i]})`);
+  assert.ok(zoomSpan(1e12)<=1+ZOOM.MIN+ZOOM.K+1e-9,"e tem teto");
+  // ⚠️ o teto É o POWERUP.ZOOM_K, e isso é o orçamento de AOI: o afastamento máximo da roda é o mesmo
+  // afastamento para o qual a área enviada já foi dimensionada e medida. Mexer em ZOOM.K sem saber disso
+  // sobe o pico de entidades de toda sala — peça, asteroide, estrela e míssil vêm pela visão INTEIRA.
+  assert.ok(Math.abs((1+ZOOM.MIN+ZOOM.K)-POWERUP.ZOOM_K)<1e-9,"o teto da faixa é POWERUP.ZOOM_K — o único afastamento já dimensionado");
+  // 2) log-simétrica: o que se pode afastar, pode-se aproximar
+  for(const r of ESCADA)assert.ok(Math.abs(zoomSpan(r)*(1/zoomSpan(r))-1)<1e-12,"in = 1/out");
+  // 3) ANTI-CHEAT: lixo vira 1. Um NaN escapando daqui viraria um viewRect de NaN — uma AOI que não contém nada.
+  for(const lixo of [NaN,0,-1,-Infinity,Infinity,"abc",undefined,null,{},[]])
+    assert.equal(clampZoom(lixo,300),1,`clampZoom(${String(lixo)}) tem que virar 1`);
+  assert.equal(clampZoom(99,PLAYER.START_R),zoomSpan(PLAYER.START_R),"pedir 99 dá exatamente o batente da faixa, nem um pixel a mais");
+  for(const r of ESCADA)for(const f of [.01,.5,1,2,99])
+    assert.equal(clampZoom(clampZoom(f,r),r),clampZoom(f,r),"idempotente: é o que autoriza clampar duas vezes (Session e snapshot)");
+  // 4) o piso do mundo é intransponível, com qualquer fator
+  for(const r of ESCADA)for(const f of [.1,.5,1,2,10]){const z=zoomFor(r,W,H,1,f);
+    assert.ok(W/z<=WORLD.w+1e-6&&H/z<=WORLD.h+1e-6,`a janela para no mundo inteiro (ΣR=${r}, manual=${f})`);}
+  // 5) ⚠️ APROXIMAR FUNCIONA MESMO NO PISO. É o teste da ordem: o fator da roda vem DEPOIS do piso, e o do
+  //    powerup ANTES. Trocar a ordem mata a funcionalidade em silêncio justo para o planetão, que é quem
+  //    passa o tempo todo encostado no piso — ele giraria a roda e não aconteceria nada.
+  const gigante=16000;
+  assert.ok(Math.abs(zoomFor(gigante,W,H)-Math.max(W/WORLD.w,H/WORLD.h))<1e-12,"o gigante já está no piso");
+  assert.ok(zoomFor(gigante,W,H,1,1/zoomSpan(gigante))>zoomFor(gigante,W,H),"e ainda assim consegue APROXIMAR");
+  assert.equal(zoomFor(gigante,W,H,1,zoomSpan(gigante)),zoomFor(gigante,W,H),"afastar, no piso, não faz nada — já se vê o mundo inteiro");
+  // 6) compatível: com manual=1 (e sem o argumento) tudo é bit a bit o que era antes
+  for(const r of ESCADA)for(const m of [1,POWERUP.ZOOM_K])
+    assert.equal(zoomFor(r,W,H,m),zoomFor(r,W,H,m,1),"o 5º argumento é aditivo");
+  // 7) longe do piso os dois fatores multiplicam — o powerup dormente continua compondo
+  const g=zoomSpan(300);
+  assert.ok(Math.abs(zoomFor(300,W,H,POWERUP.ZOOM_K,g)-zoomFor(300,W,H)/(POWERUP.ZOOM_K*g))<1e-9,"powerup × roda");
+  // 8) a AOI da comida acompanha o afastamento — e NÃO encolhe quando o jogador aproxima
+  assert.ok(aoiScaleFood(.05,W,H,1,g)<aoiScaleFood(.05,W,H),"afastou: o piso da comida desce junto, senão o anel de fora vem sem um grão");
+  assert.equal(aoiScaleFood(.05,W,H,1,1/g),aoiScaleFood(.05,W,H),"aproximou: a AOI NÃO encolhe (a AOI pode sobrar; faltar, nunca)");});
 
 // 39. velocidade padrão: sem inércia, sem embalo de graça
 test("velocidade: é SEMPRE a padrão do tamanho — vira na hora, não acelera, não acumula embalo de ninguém",()=>{

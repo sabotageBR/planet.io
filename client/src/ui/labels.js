@@ -55,6 +55,8 @@ export const LABELS = {
   rankTitle: "RANKING", scopeGlobal: "Global", scopeCountry: "Meu país", noCountry: "escolha seu país no perfil",
   rankGuest: "o ranking é só de contas — registre a sua e todo o seu histórico entra",
   muteHint: "Mudo (M)",
+  zoomHint: "Zoom manual — 0 ou o botão do meio volta ao automático",
+  pauseTitle: "PAUSA", pauseHint: "Menu (Esc)", resume: "Voltar ao jogo", exitMatch: "Sair da partida",
   countryLabel: "País", countryHint: "Escolha seu país para entrar no ranking regional.",
   levelWord: "nível", xpWord: "XP", levelUp: "SUBIU DE NÍVEL!", levelReq: "Nível {n}",
   lowlevelToast: "essa skin pede nível {n} — você tem {v}",

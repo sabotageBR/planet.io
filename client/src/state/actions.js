@@ -19,17 +19,27 @@ export function toast(msg, ms = 1800) {
 export function go(screen) {
   if (!SCREENS.includes(screen)) return;
   app.update(s => ({ ...s, prevScreen: s.screen === screen ? s.prevScreen : s.screen, screen,
-    overlays: { account: false, reconn: s.overlays.reconn && screen === "game" } }));
+    overlays: { account: false, pause: false, reconn: s.overlays.reconn && screen === "game" } }));
 }
 export const openAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: true } }));
+export const setPause = on => app.update(s => ({ ...s, overlays: { ...s.overlays, pause: !!on } }));
+export const togglePause = () => { const s = app.get(); if (s.screen !== "game" && !s.overlays.pause) return; setPause(!s.overlays.pause); };
 export const closeAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: false } }));
 export const setReconn = (on, attempt) => app.update(s => ({ ...s, overlays: { ...s.overlays, reconn: !!on }, reconnAttempt: on ? (attempt || s.reconnAttempt || 1) : 0 }));
-/** Esc: fecha modal → tira foco do input → volta à entrada (fora do jogo). */
+/**
+ * Esc: fecha modal → tira foco do input → abre/fecha a PAUSA (no jogo) → volta à entrada (fora dele).
+ * ⚠️ A cadeia é resolvida AQUI, num lugar só. Há outros listeners de Escape na árvore (Chat, Shop, Dead) e
+ * todos são `keydown` na janela, em bolha — ou seja, vale a ordem de REGISTRO, não a de aninhamento. O do
+ * Chat é neto e registra ANTES deste, então com o campo aberto o Esc fecha o chat primeiro, que é o certo:
+ * quem está digitando quer sair do campo, não abrir um menu.
+ */
 export function escape() {
   const s = app.get();
   if (s.overlays.account) { closeAccount(); return true; }
   const a = document.activeElement;
   if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) { a.blur(); return true; }
+  if (s.overlays.pause) { setPause(false); return true; }
+  if (s.screen === "game") { setPause(true); return true; }
   if (s.screen === "party") { leaveParty(); return true; }   // sair sem avisar deixa o lobby órfão até o TTL, com os amigos olhando uma equipe que não existe
   if (s.screen !== "game" && s.screen !== "dead" && s.screen !== "entry") { go("entry"); return true; }
   return false;
@@ -262,7 +272,7 @@ export async function play({ room, mode, teamSize, party } = {}) {
   const pt = party !== undefined ? party : (st.party ? st.party.code : null);
   let code = room ? String(room).toUpperCase() : null;
   if (!code) { try { const a = await api.auto({ mode: md, teamSize: ts }); if (a && a.code) code = a.code; } catch (e) { if (!isUnreachable(e)) toast(e.message, 2500); } }
-  app.update(s => ({ ...s, screen: "game", played: true, rewards: null, rewardsPending: false, overlays: { account: false, reconn: false }, conn: "connecting",
+  app.update(s => ({ ...s, screen: "game", played: true, rewards: null, rewardsPending: false, overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
     gameMode: md, teamSize: ts,
     pendingJoin: { room: code, mode: md, teamSize: ts, party: pt, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
 }
@@ -319,7 +329,7 @@ export async function startParty() {
   play({ room: code, mode: 1, teamSize: p.teamSize, party: p.code });
 }
 export function leaveGame(screen = "lobby") {
-  app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
+  app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
 let rewardsT = null, levelUpN = 0;
 /** Callback do jogo: fim da rodada — {code, champion, board, nextInMs, tick}. Mostra o placar da sala. */

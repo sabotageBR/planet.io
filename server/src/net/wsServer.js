@@ -44,7 +44,7 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
       if(msg.protocol!=null&&msg.protocol!==PROTOCOL_VERSION)return s.error('VERSION',`protocolo ${msg.protocol} incompatível (servidor ${PROTOCOL_VERSION}); recarregue a página`);
       s.joining=true;
       try{
-        if(msg.view)s.setView(msg.view.w,msg.view.h);
+        if(msg.view)s.setView(msg.view.w,msg.view.h,msg.view.z);
         const fallbackNick=cleanNick(msg.fallbackNick);let res;
         try{res=await withTimeout(hooks.onPlayerJoin({token:msg.token,fallbackNick,remoteAddr:s.remoteAddr,userAgent:s.userAgent,roomCode:msg.room||null}),JOIN_TIMEOUT_MS);}
         catch(e){log.warn(`join sem persistência (${s.remoteAddr}): ${e&&e.message}`);res=unsaved(fallbackNick);}
@@ -84,7 +84,7 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
       const old=rooms.findSession(msg.sessionId);
       if(!old||!old.room||old.resumeToken!==msg.resumeToken||(!old.ws&&Date.now()-old.disconnectedAt>NET.RESUME_MS))return s.error('ROOM','sessão expirada; entre de novo');
       const prev=old.ws;live.delete(s);if(s.room)s.room.leave(s,'left');s=old;live.add(old);
-      old.room.resume(old,ws);if(msg.view)old.setView(msg.view.w,msg.view.h);
+      old.room.resume(old,ws);if(msg.view)old.setView(msg.view.w,msg.view.h,msg.view.z);
       if(prev&&prev!==ws){try{prev.terminate();}catch{}}                 // outra aba roubou a sessão
       old.sendJson(roomMsg(old.room));old.room.sendPlayers(old);const dead=old.room.deadMsg(old.slot);if(dead)old.sendJson(dead);
       log.info(`${old.name} retomou a sessão na sala ${old.room.code} (slot ${old.slot})`);}
@@ -94,7 +94,7 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
       switch(msg.t){
         case 'join':join(msg);break;
         case 'resume':resume(msg);break;
-        case 'view':s.setView(msg.w,msg.h);break;
+        case 'view':s.setView(msg.w,msg.h,msg.z);break;   // `z` é o zoom manual da roda: clampado pela MASSA no snapshot, nunca aqui
         case 'ping':s.sendCopy(encodePong(pongWriter,{clientTime:Number(msg.c)>>>0,serverTick:s.room?s.room.sim.tick:0}));break;
         case 'chat':if(s.room&&s.slot>=0)s.room.chat(s,msg.text,msg.scope);break;   // `scope` só é lido de quem já morreu (ver Room._escopoFala)
         case 'talk':if(s.room&&s.slot>=0)s.room.talkState(s,!!msg.on);break;   // push-to-talk abriu/fechou (o clipe vem depois, em binário)

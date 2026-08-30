@@ -6,7 +6,7 @@ import React, { useMemo, useSyncExternalStore } from "react";
 import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
-import { leaveGame, toggleMute } from "../state/actions.js";
+import { leaveGame, toggleMute, setPause } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
 import Chat from "./Chat.jsx";
@@ -96,7 +96,17 @@ export default function Hud() {
           calar o jogo AGORA e não vai abrir Opções → Som para procurar quatro interruptores diferentes. */}
       <button className={"chip mute" + (prefs.muted ? " on" : "")} id="h-mute" title={LB.muteHint}
         aria-pressed={!!prefs.muted} onClick={() => toggleMute()}>{prefs.muted ? "🔇" : "🔊"}</button>
-      <button className="btn-mini" id="h-exit" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.exit}</button>
+      {/* ZOOM MANUAL: só aparece FORA do automático, e clicar volta. Sem ele o jogador não teria como saber
+          que o enquadramento que está vendo é escolha dele — e nem como desfazer, se esqueceu do 0. */}
+      {h.zoom ? <button className={"chip zoom" + (h.zoom.fresh ? " fresh" : "")} id="h-zoom" title={LB.zoomHint}
+        onClick={() => game && game.zoomReset()}>🔍 {h.zoom.pct > 0 ? "+" : ""}{h.zoom.pct}%</button> : null}
+      {/* No DEDO não há Esc — e mesmo no mouse ninguém adivinha uma tecla. O botão que antes saía da partida
+          direto agora abre o MENU, onde sair é uma das opções (e é a que precisa de um segundo clique: sair
+          sem querer no meio de uma partida é irreversível). Para quem morreu ele volta a ser só "Sair":
+          ali não há partida para pausar nem comando para largar. */}
+      {espectando
+        ? <button className="btn-mini" id="h-exit" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.exit}</button>
+        : <button className="btn-mini" id="h-menu" title={LB.pauseHint} onClick={() => setPause(true)}>☰</button>}
     </div>
     {/* Coluna DIREITA (meu placar · top 10 · kill feed), no arranjo do Counter-Strike. É uma caixa flex de
         verdade — e não `display:contents` como a coluna esquerda —, porque aqui os três blocos empilham

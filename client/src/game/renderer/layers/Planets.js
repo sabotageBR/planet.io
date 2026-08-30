@@ -131,8 +131,17 @@ export function createPlanets(R){
           const m=meshOf(v,tex);m.visible=true;v.body.visible=false;deform(m,v,e,d,t,sx,sy);}
         else{if(v.mesh)v.mesh.visible=false;v.body.visible=true;v.body.texture=tex;v.body.width=d*2*sx;v.body.height=d*2*sy;}
         // rótulos
+        // ⚠️ NA CARICATURA O NOME NÃO SAI. O rótulo mora no CENTRO do disco (`labels.nameY:()=>0` nos três
+        // temas), que nas 35 skins de easter egg é exatamente onde ficam o nariz e a boca: o Trump perdia a
+        // boca e o Ronaldinho o sorriso, justo a parte pela qual a ilustração existe. A caricatura JÁ diz
+        // quem é o jogador, e quem ela não identifica continua tendo o nome no placar, no chat, no kill feed
+        // e no mapa grande da tela de morte — o planeta nunca fica anônimo, só o rosto fica limpo.
+        // O predicado é `skin.face` (o mesmo campo que escolhe a textura, acima), e NÃO `rarity==="secret"`:
+        // as skins 45–48 também são secretas e são `pattern:"plain"` — pela raridade, quatro skins sem rosto
+        // nenhum perderiam o nome de graça. Nem é `pl.avatar`: a skin Retrato é a foto do PRÓPRIO jogador e
+        // fica com o nome, por decisão.
         const fs=L.size(e.rr);
-        const lab=e.rr>L.minR&&showNames&&fs*cam.scale>=NAME_MIN_PX;v.name.visible=lab;
+        const lab=e.rr>L.minR&&showNames&&fs*cam.scale>=NAME_MIN_PX&&!skin.face;v.name.visible=lab;
         if(lab){const nm=pl.name;
           // A largura é medida UMA vez por nome, com a escala forçada a 1. ⚠️ Medir sem zerar a escala lê a
           // largura já escalada do frame anterior, e aí o texto encolhe a cada quadro até sumir — em silêncio.

@@ -13,6 +13,7 @@ const bool=v=>typeof v==='boolean'?v:undefined;
 export const PREFS={
   quality:v=>QUALITIES.includes(v)?v:undefined,
   showNames:bool,showMass:bool,showGrid:bool,showMinimap:bool,showFps:bool,sound:bool,music:bool,ambience:bool,joystick:bool,holdEject:bool,rightSplit:bool,reduceMotion:bool,bigText:bool,
+  wheelZoom:bool,        // a roda do mouse dá zoom dentro da faixa que a massa permite
   chat:bool,voice:bool,   // chat e voz são desligáveis como todo o resto do som
   muted:bool,             // o mudo geral (tecla M): cala tudo sem apagar as escolhas acima
   eggs:bool,              // easter egg por nick (quem se chama Bruxo e comprou uma lendária pode desligar)

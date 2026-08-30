@@ -3,7 +3,7 @@
 // `resume` válido religa outro ws na mesma Session (known zera → recria tudo).
 // @ts-check
 import {randomBytes} from 'node:crypto';
-import {NET,WORLD} from '@warspace/shared/constants.js';
+import {NET,WORLD,ZOOM} from '@warspace/shared/constants.js';
 import {ERROR_CODE} from '@warspace/shared/protocol/constants.js';
 import {NO_REWARDS} from '../sim/hooks.js';
 const VIOLATIONS=3,VIOLATION_WINDOW_MS=10000,VIEW_MIN=240,VIEW_MAX=8192;
@@ -20,11 +20,18 @@ export class Session{
     this.slot=-1;this.room=null;this.sessionId=null;this.userId=null;this.name='';this.unsaved=true;
     this.resumeToken=randomBytes(16).toString('hex');
     /** @type {Map<number,number>} id → kind | (carimbo da passada << 3) */this.known=new Map();this.stamp=0;this.resync=false;
-    this.view={w:1280,h:720};this.cx=WORLD.w/2;this.cy=WORLD.h/2;this.scale=1;this.rect=null;this.specSlot=-1;   // morto: slot que ele está assistindo (a AOI segue esse jogador)
+    this.view={w:1280,h:720,zoom:1};this.zoomHold=1;this.zoomHoldAt=0;   // marca d'água do zoom manual na AOI (ver net/snapshot.js)this.cx=WORLD.w/2;this.cy=WORLD.h/2;this.scale=1;this.rect=null;this.specSlot=-1;   // morto: slot que ele está assistindo (a AOI segue esse jogador)
     this.inputs=new Bucket(NET.RATE_INPUTS,NET.RATE_BURST);this.json=new Bucket(NET.RATE_JSON,NET.RATE_JSON*2);
     /** @type {number[]} */this.violations=[];this.lastPong=Date.now();this.disconnectedAt=0;this.pendingRewards=null;this.joining=false;this.kicked=false;this.connectedAt=Date.now();}
   get connected(){return !!this.ws&&this.ws.readyState===1;}
-  setView(w,h){w=Number(w),h=Number(h);if(Number.isFinite(w))this.view.w=w<VIEW_MIN?VIEW_MIN:w>VIEW_MAX?VIEW_MAX:w;if(Number.isFinite(h))this.view.h=h<VIEW_MIN?VIEW_MIN:h>VIEW_MAX?VIEW_MAX:h;}
+  /**
+   * Tamanho da tela e o ZOOM MANUAL pedido pelo jogador (a roda). O `z` aqui leva só o saneamento
+   * ABSOLUTO: a Session não conhece a massa, e a massa muda a cada tick. Quem clampa de VERDADE é o
+   * snapshot, com o ΣR autoritativo (`clampZoom` em shared/camera.js) — sem ele, um cliente adulterado
+   * pediria o mapa inteiro. Valor ausente não zera nada: cliente velho simplesmente fica em 1 para sempre.
+   */
+  setView(w,h,z){w=Number(w),h=Number(h);if(Number.isFinite(w))this.view.w=w<VIEW_MIN?VIEW_MIN:w>VIEW_MAX?VIEW_MAX:w;if(Number.isFinite(h))this.view.h=h<VIEW_MIN?VIEW_MIN:h>VIEW_MAX?VIEW_MAX:h;
+    if(z!==undefined){const n=Number(z);this.view.zoom=Number.isFinite(n)&&n>0?(n<ZOOM.ABS_MIN?ZOOM.ABS_MIN:n>ZOOM.ABS_MAX?ZOOM.ABS_MAX:n):1;}}
   /** Envia a vista binária sem copiar. Devolve false se o socket ficou com bytes pendentes (o chamador troca de writer). */
   send(view){const ws=this.ws;if(!ws||ws.readyState!==1)return true;
     ws.send(Buffer.from(view.buffer,view.byteOffset,view.byteLength));this.metrics.bytesOut(view.byteLength);return ws.bufferedAmount===0;}

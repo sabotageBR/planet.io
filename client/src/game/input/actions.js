@@ -23,6 +23,12 @@ export function createActions({input,prefs,ammo,canAct,onAim=null,onCancel=null}
         if(ammo()>0){held=true;timer=setTimeout(()=>{timer=0;setAim(true);},AIM_MS);}else input.press(INPUT_FLAG.EJECT);}
       else if(held){const aimed=armed;disarm();input.press(aimed?INPUT_FLAG.FIRE|INPUT_FLAG.AIM:INPUT_FLAG.FIRE);}}};
   return{act,
+    /**
+     * Larga TUDO o que estava segurado. Quem chama é o menu de pausa: `canAct()` já passa a recusar as ações
+     * novas, mas o botão de tiro que ficou apertado só receberia o `up` depois — e com o modal na frente esse
+     * `up` pode nunca vir, deixando a mira armada e o W preso enquanto o jogador mexe no volume.
+     */
+    reset(){disarm();input.setHold(false);},
     /** botão do ponteiro: 0 = míssil (segurar mira) / ejetar, 2 = dividir (prefs.rightSplit) */
     button(btn,phase,type){if(type==="touch")return;if(btn===0)act("fire",phase);else if(btn===2&&prefs().rightSplit!==false)act("split",phase);},
     destroy(){disarm();}};}

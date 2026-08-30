@@ -10,6 +10,7 @@ export const PREFS = [
     { key: "joystick", label: "Joystick virtual (celular)", type: "toggle" },
     { key: "rightSplit", label: "Botão direito divide", type: "toggle" },
     { key: "holdEject", label: "Segurar a tecla ejeta contínuo", type: "toggle" },
+    { key: "wheelZoom", label: "Roda do mouse dá zoom (0 volta ao normal)", type: "toggle" },
     { key: "keySplit", label: "Tecla de dividir", type: "select", opts: KEY_OPTS },
     { key: "keyEject", label: "Tecla de ejetar", type: "select", opts: KEY_OPTS } ] },
   { id: "graphics", title: "Gráficos", items: [

@@ -22,6 +22,9 @@ export const PREF_DEFAULTS = Object.freeze({
   // joystick LIGADO por padrão: `game/index.js` só o arma com `(pointer: coarse)`, então no mouse
   // continua letra morta — e no dedo o analógico é o controle certo, que ninguém descobria sozinho.
   joystick: true, holdEject: true, rightSplit: true,
+  // A RODA dá zoom dentro da faixa que a massa permite. Desligável porque em trackpad de laptop a rolagem
+  // de dois dedos é fácil de disparar sem querer — o mesmo tipo de escape hatch que `rightSplit`.
+  wheelZoom: true,
   // Teclas de dividir/ejetar: `KeyboardEvent.code`, montadas no MAP por instância (input/Keyboard.js).
   keySplit: "Space", keyEject: "KeyW",
   theme: "auto", reduceMotion: false, bigText: false, colorblind: "off", lbSize: 10,
@@ -54,7 +57,11 @@ export const initialState = {
                          // então "salvar e voltar" tem que voltar para quem abriu, não para um lugar fixo
   played: false,         // já entrou em alguma partida NESTA carga da página? decide o body[data-shell]:
                          // menu centralizado enquanto não jogou, gaveta à direita (com a câmera à esquerda) depois
-  overlays: { account: false, reconn: false },
+  // ⚠️ `pause` é o menu do ESC, e ele é OVERLAY e não tela: navegar para `prefs` durante a partida faz o
+  // GameHost chamar `game.leave()` (a conexão cai) e o Hud esconder o #hud inteiro. Três lugares escrevem
+  // este objeto — aqui, o `go()` e o `play()` —, e os dois últimos o zeram: um overlay novo que não entre
+  // na conta deles some sozinho na primeira navegação.
+  overlays: { account: false, reconn: false, pause: false },
   reconnAttempt: 0,
   room: null,            // código da sala atual (do evento `room` do jogo)
   pendingJoin: null,     // {room, mode, teamSize, party, n} — GameHost faz o join quando muda

@@ -14,12 +14,14 @@ export function createCamera(){
   const cam={x:WORLD.w/2,y:WORLD.h/2,scale:.5,tx:WORLD.w/2,ty:WORLD.h/2,tscale:.5,W:1,H:1,
     /**
      * pieces: peças próprias (rx,ry,rr); vazio → congela (hold) ou passeia (lobby).
-     * `mult`: powerup de ZOOM (POWERUP.ZOOM_K). ⚠️ O MESMO fator vai para a AOI do snapshot no servidor —
-     * afastar só aqui daria mais tela do que o servidor está mandando, e a borda viria vazia.
-     * Só o ramo das peças o usa: no lobby o zoom é fixo, e para quem morreu o `self` não traz powerup.
+     * `mult`: powerup de ZOOM (POWERUP.ZOOM_K). `manual`: a RODA do jogador, já clampada pela massa
+     * (`clampZoom`). ⚠️ Os DOIS vão para a AOI do snapshot no servidor — afastar só aqui daria mais tela do
+     * que o servidor está mandando, e a borda viria vazia.
+     * Só o ramo das peças os usa: no lobby o zoom é fixo, e para quem morreu o `self` não traz powerup nem
+     * faixa (a faixa é função do ΣR PRÓPRIO, e o morto não tem peça).
      */
-    update(pieces,dt,hold=false,mult=1){
-      if(pieces.length){const f=focusOf(pieces.map(p=>({x:p.rx,y:p.ry,r:p.rr})));cam.tx=f.cx;cam.ty=f.cy;cam.tscale=zoomFor(f.sumR,cam.W,cam.H,mult);}
+    update(pieces,dt,hold=false,mult=1,manual=1){
+      if(pieces.length){const f=focusOf(pieces.map(p=>({x:p.rx,y:p.ry,r:p.rr})));cam.tx=f.cx;cam.ty=f.cy;cam.tscale=zoomFor(f.sumR,cam.W,cam.H,mult,manual);}
       else if(!hold){drift+=dt*.1;cam.tx=clamp(cam.tx+Math.cos(drift)*40*dt,400,WORLD.w-400);cam.ty=clamp(cam.ty+Math.sin(drift)*40*dt,400,WORLD.h-400);cam.tscale=zoomFor(CAM.BASE*6,cam.W,cam.H);}   // lobby: um zoom de "planeta médio", coerente com a fórmula
       if(first){cam.x=cam.tx;cam.y=cam.ty;cam.scale=cam.tscale;first=false;return;}
       const kp=1-Math.exp(-dt/CAM.TAU_POS),ks=1-Math.exp(-dt/CAM.TAU_ZOOM);

@@ -7,7 +7,7 @@
 import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,encodePong,decodeInput,
   MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,NO_TEAM,
   WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,botNick,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,POWERUP,
-  focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir,FEED} from "@warspace/shared";
+  focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,clampZoom,ZOOM,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir,FEED} from "@warspace/shared";
 import {createWorld,applySplit,incomingMissile,firstLive} from "@warspace/shared/physics/index.js";
 import {ammoOf,ownedMask} from "@warspace/shared/physics/rules.js";
 import {BotBrain} from "@warspace/shared/bot.js";
@@ -52,14 +52,14 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     if(typeof d==="string"){let m=null;try{m=JSON.parse(d);}catch{return;}
       if(m.t==="join"||m.t==="resume"){let sess=s;
         if(!sess&&m.t==="resume")for(const o of sessions)if("local-"+o.slot===m.sessionId){sess=o;sess.sock=sock;break;}   // religa a sessão caída
-        if(!sess){sess={sock,slot:-1,known:new Map(),lastSeq:-1,ackSeq:0,view:{w:1280,h:720},dead:false,specSlot:-1,kills:0,maxMass:0,startTick:w.tick,name:"",skinId:0};sessions.add(sess);}
-        if(m.view)sess.view=m.view;if(m.t==="join"){sess.name=(m.fallbackNick||"Viajante").slice(0,16);sess.skinId=m.skinId|0;}
+        if(!sess){sess={sock,slot:-1,known:new Map(),lastSeq:-1,ackSeq:0,view:{w:1280,h:720,zoom:1},zoomHold:1,zoomHoldAt:0,dead:false,specSlot:-1,kills:0,maxMass:0,startTick:w.tick,name:"",skinId:0};sessions.add(sess);}
+        if(m.view)sess.view={w:m.view.w,h:m.view.h,zoom:+m.view.z>0?+m.view.z:1};if(m.t==="join"){sess.name=(m.fallbackNick||"Viajante").slice(0,16);sess.skinId=m.skinId|0;}
         if(sess.slot<0){sess.slot=nextSlot++;spawn(sess);}else if(m.t==="join"&&sess.dead){spawn(sess);}
         sendJson(sock,{t:"room",code,shard:0,slot:sess.slot,sessionId:"local-"+sess.slot,resumeToken:"local",protocol:PROTOCOL_VERSION,tick:w.tick,world:{w:w.w,h:w.h},
           round:{start:0,ticks:roundTicks,dayStart:ROUND.DAY_START_H,breakMs:ROUND.BREAK_MS}});
         sess.known.clear();sendBin(sock,encodePlayers(writer,playerList()));return;}
       if(!s)return;
-      if(m.t==="view"){s.view={w:m.w,h:m.h};}
+      if(m.t==="view"){s.view={w:m.w,h:m.h,zoom:+m.z>0?+m.z:1};}   // o `z` é o zoom manual: clampado pela MASSA abaixo, igual ao servidor
       else if(m.t==="ping"){sendBin(sock,encodePong(writer,{clientTime:m.c>>>0,serverTick:w.tick}));}
       return;}
     if(!s||s.slot<0)return;let inp=null;try{inp=decodeInput(d);}catch{return;}
@@ -175,14 +175,17 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
   const cr=[],up=[],rm=[];
   function snapshot(s){const ps=w.players.get(s.slot),tick=w.tick,view=s.view;let cx,cy,scale;
     const alive=ps&&ps.alive?ps.pieces.filter(p=>!p.dead):[];
-    let zk=1;   // powerup de ZOOM: a AOI afasta junto com a câmera (o mesmo que server/src/net/snapshot.js faz), senão a borda vem vazia
+    let zk=1,zu=1;   // powerup de ZOOM e a RODA: a AOI afasta junto com a câmera (o mesmo que server/src/net/snapshot.js faz), senão a borda vem vazia
     if(alive.length){zk=tick<ps.zoomUntil+ZOOM_GRACE_TICKS?POWERUP.ZOOM_K:1;
-      const f=focusOf(alive);cx=f.cx;cy=f.cy;scale=zoomFor(f.sumR,view.w,view.h,zk);s.cx=cx;s.cy=cy;s.scale=scale;s.maxMass=Math.max(s.maxMass,w.massOf(s.slot));}
+      const f=focusOf(alive);const zf=clampZoom(s.view.zoom,f.sumR),zg=zf>1?zf:1;   // clamp pela massa + o max(1,·): aproximar não encolhe a AOI
+      if(zg>=s.zoomHold||tick>=s.zoomHoldAt+ZOOM.GRACE_TICKS){s.zoomHold=zg;s.zoomHoldAt=tick;}
+      zu=s.zoomHold;
+      cx=f.cx;cy=f.cy;scale=zoomFor(f.sumR,view.w,view.h,zk,zu);s.cx=cx;s.cy=cy;s.scale=scale;s.maxMass=Math.max(s.maxMass,w.massOf(s.slot));}
     else{const sp=s.specSlot>=0?w.players.get(s.specSlot):null,spp=sp&&sp.alive?sp.pieces.filter(p=>!p.dead):null;
       if(spp&&spp.length){const f=focusOf(spp);cx=f.cx;cy=f.cy;scale=zoomFor(f.sumR,view.w,view.h);s.cx=cx;s.cy=cy;s.scale=scale;}   // assistindo alguém: a AOI vai junto
       else{if(s.dead)spectate(s,-1);cx=s.cx==null?w.w/2:s.cx;cy=s.cy==null?w.h/2:s.cy;scale=s.scale||.42;}}
     const rect=viewRect(cx,cy,scale,view.w,view.h,NET.AOI_PAD),out=viewRect(cx,cy,scale,view.w,view.h,NET.AOI_PAD_OUT);s.aoi=out;
-    const fs=aoiScaleFood(scale,view.w,view.h,zk);   // comida tem retângulo próprio, e piso próprio (idem servidor)
+    const fs=aoiScaleFood(scale,view.w,view.h,zk,zu);   // comida tem retângulo próprio, e piso próprio (idem servidor)
     const frect=fs===scale?rect:viewRect(cx,cy,fs,view.w,view.h,NET.AOI_PAD),fout=fs===scale?out:viewRect(cx,cy,fs,view.w,view.h,NET.AOI_PAD_OUT);
     cr.length=up.length=rm.length=0;const known=s.known;let seenN=0;const stamp=tick;
     const visit=(b,rad,ri=rect,ro=out)=>{if(b.dead)return;let k=known.get(b.id);
