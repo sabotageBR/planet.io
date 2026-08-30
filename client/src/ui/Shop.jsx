@@ -4,13 +4,14 @@
 // faltava confirmar. O modal põe as duas coisas no mesmo lugar — e mantém a trava original: clicar num
 // cartão nunca gasta moeda, só abre a pergunta.
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { SKINS, skinById, RARITY_LABELS, RARITY_ORDER, RARITY_COLORS } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { buySkin, equipSkin, loadSkins, toast } from "../state/actions.js";
 import { sfx } from "../audio/index.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
-import { Nav, ScreenHeader, Screen } from "./bits.jsx";
+import { ScreenHeader, Screen } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
 import AvatarPicker from "./AvatarPicker.jsx";
 import { fmt } from "./format.js";
@@ -47,7 +48,7 @@ function Body() {
   const rotulo = (s, st) => st === "eq" ? "" : st === "owned" ? LB.equip : st === "secret" ? "???" : st === "locked" ? s.desc
     : st === "lowlevel" ? `🔒 ${LB.levelReq.replace("{n}", s.levelReq)}` : `${LB.coinIcon} ${fmt(s.price)}`;
   return <>
-    <Nav cur="shop" /><ScreenHeader title={LB.shopTitle} />
+    <ScreenHeader title={LB.shopTitle} />
     <div className="card shop-eq"><SkinPreview skin={eq} r={40} />
       <div className="skinmeta"><b id="s-skin">{eq.name}</b><i id="s-rar" style={{ color: RC[eq.rarity] }}>{RARITY_LABELS[eq.rarity]}</i><span className="hint" id="s-count">{ownedVis}/{TOTAL_VIS} {LB.unlocked}</span></div>
       <span className="badge">{LB.equipped}</span></div>
@@ -102,7 +103,13 @@ function SkinModal({ id, stateOf, onClose }) {
   const actLabel = st === "eq" ? LB.equipped : st === "owned" ? LB.equip : st === "secret" ? "???" : st === "locked" ? LB.locked
     : st === "lowlevel" ? `🔒 ${LB.levelReq.replace("{n}", cur.levelReq)}` : `${LB.coinIcon} ${fmt(cur.price)}`;
   const pergunta = st === "owned" ? LB.skinConfirmEquip : st === "buyable" ? LB.skinConfirmBuy : "";
-  return <div className="overlay on" id="s-skinmodal" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+  // ⚠️ PORTAL, e não é preciosismo: o `.overlay` é `position:absolute` e o bloco contentor dele seria o
+  // `.wrap` da loja, que é absoluto, ROLA e ainda tem `transform:translateX(-50%)`. Daí os dois defeitos:
+  // o `top:50%` do modal centrava no meio da CAIXA (não da tela) e o modal descia junto com a rolagem da
+  // grade. `position:fixed` não resolveria — um `transform` no ancestral também captura elementos fixos.
+  // Montado na raiz, o ancestral posicionado passa a ser `#app{position:fixed;inset:0}` e o CSS que já
+  // existe (base.css `.overlay` + ui.css `.card.modal`) centra sozinho, como já faz no AccountModal.
+  return createPortal(<div className="overlay on" id="s-skinmodal" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
     <div className="card modal skin-modal" style={{ "--rc": RC[cur.rarity] }} role="dialog" aria-modal="true" aria-label={cur.name}>
       <SkinPreview skin={cur} r={48} className="" secret={st === "secret"} />
       <div className="sm-info"><b>{st === "secret" ? LB.secret : cur.name}</b>
@@ -116,5 +123,5 @@ function SkinModal({ id, stateOf, onClose }) {
         <button className="btn-primary act" disabled={st === "eq"} onClick={act}>{actLabel}</button>
       </div>
     </div>
-  </div>;
+  </div>, document.getElementById("app"));
 }

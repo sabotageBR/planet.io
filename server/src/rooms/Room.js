@@ -13,7 +13,7 @@ import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent,encodeZone,enco
 import {rectHas} from '@warspace/shared/camera.js';
 import {createRng} from '@warspace/shared/rng.js';
 import {kdOf} from '@warspace/shared/levels.js';
-import {createZone,stepZone,zoneAt} from '@warspace/shared/zone.js';
+import {createZone,stepZone,zoneAt,zoneNextIn} from '@warspace/shared/zone.js';
 import {EVENT} from '@warspace/shared/protocol/constants.js';
 import {Sim} from '../sim/Sim.js';
 import {createSnapshotter} from '../net/snapshot.js';
@@ -53,6 +53,14 @@ export class Room{
     this.chatLog=[];
     /** Marcos do kill feed (troca de líder, BIG CRUNCH): o orçamento das linhas de SISTEMA. */
     this.feed=createFeed();
+    /**
+     * As últimas mortes, já em texto. O kill feed é a única coisa que a sala INTEIRA vê ao mesmo tempo, e
+     * era justamente o que a fala dos bots não sabia: eles comentavam o que acontecia com ELES e ficavam
+     * mudos sobre o que todo mundo tinha acabado de assistir. O anel é escrito no difusor, onde os slots
+     * viram nome sem custo nenhum, e lido só quando há prompt para montar.
+     * @type {string[]}
+     */
+    this.feedLog=[];
     /**
      * FILA DE FALA AGENDADA. Só transporta kinds CONVERSACIONAIS (`mention`, `coro`, `cadeia`) — os
      * gatilhos de EVENTO continuam sendo do instante (`sim.botTalk` é esvaziado todo tick, como sempre).
@@ -261,6 +269,7 @@ export class Room{
         gp.score=0;gp.maxMass=0;gp.joinedTick=w.tick;});}
     // 3. a partida começa: relógio, zona e fim da paz
     this.roundStart=w.tick;this.zone=createZone(w.tick);w.setZone(this.zone);w.peace=false;this.phase='live';this.startsAt=0;
+    this.feedLog.length=0;   // a fofoca é da RODADA: a sala é reaproveitada, e morte da partida passada não é assunto
     sim.playersDirty=true;
     for(let i=0;i<3;i++)this._talkAlgum('start');   // largada: alguém diz alguma coisa, como em qualquer sala
     this._pushFeed({k:'sys',a:-1,b:-1,how:'start',by:null});
@@ -496,10 +505,23 @@ export class Room{
     // `dead` cai pelo mesmo motivo: o bot que responde está VIVO e nunca leu a arquibancada.
     const hist=this.chatLog.filter(l=>l.scope!=='dead'&&(!equipe||l.team===gp.team)).slice(-BOT_LLM.HIST);
     const rows=sim.leaderboard(),rank=rows.findIndex(r=>r.slot===gp.slot)+1;
+    // ── O QUE ELE VÊ DA PARTIDA ──
+    // Tudo aqui já existia e era jogado fora: `modo` era montado e NUNCA lido pelo prompt, o placar só
+    // virava um ordinal ("mid-table"), a zona só virava um booleano, e o kill feed não chegava. O bot
+    // falava como quem está numa sala vazia. Nada disto custa consulta nova: `leaderboard()` é cacheado
+    // por tick, `zoneNextIn` é aritmética sobre a zona que a sala já tem, e o feed vem do anel do difusor.
+    const lider=rows.length?rows[0]:null,minha=rows.find(r=>r.slot===gp.slot);
+    // ⚠️ `zoneNextIn` devolve TICKS, e `Infinity` quando a zona já terminou de fechar.
+    const zt=this.zone?zoneNextIn(this.zone,sim.tick):Infinity;
     return{nome:gp.name,
       persona:gp.brain?gp.brain.p.id:null,pericia:gp.brain?gp.brain.s.id:null,
       historia:gp.persona||null,
       rank:rank||0,vivos:sim.aliveCount(),
+      // "metade do tamanho do líder" é uma frase que o modelo sabe usar; "massa 4820" não é.
+      fracLider:lider&&minha&&lider.mass>0?minha.mass/lider.mass:0,
+      lider:lider&&lider.slot!==gp.slot?this._nomeDe(lider.slot):null,
+      zonaS:Number.isFinite(zt)&&zt>0?Math.round(zt/TICK_HZ):0,
+      feed:this.feedLog.slice(-BOT_LLM.FEED_HIST),
       estado:this._estado(gp),agressor:this._agressor(gp),
       modo:this.mode.lastAlive?'battle royale, last one standing':'free-for-all',
       equipe,kind:g.kind,quem:g.quem||null,texto:g.texto||null,historico:hist};}
@@ -712,8 +734,13 @@ export class Room{
    */
   broadcastFeed(){
     const v=drenaFeed(this.sim.feed);if(!v)return;
+    for(const it of v){const a=this._nomeDe(it.a),b=this._nomeDe(it.b);
+      if(it.k!=='sys'&&b)this.feedLog.push(a?`${a} killed ${b}`:`${b} died`);}
+    if(this.feedLog.length>BOT_LLM.FEED_KEEP)this.feedLog.splice(0,this.feedLog.length-BOT_LLM.FEED_KEEP);
     const msg={t:'feed',v,at:Date.now()};
     for(const s of this.sessions.values())if(s.ws)s.sendJson(msg);}
+  /** Nome de um slot, ou null. Usado pelo `feedLog` — o resto do fio só carrega slots. */
+  _nomeDe(slot){if(slot==null||slot<0)return null;const gp=this.sim.players.get(slot);return gp?gp.name:null;}
   /** Enfileira uma linha de SISTEMA (largada, liderança, BIG CRUNCH, zona). */
   _pushFeed(o){if(o)this.sim._feed(o);}
   /**

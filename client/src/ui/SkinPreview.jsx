@@ -2,6 +2,7 @@
 // em client/src/theme/<id>/index.js, igual ao paintSkin do mockup), senão um planeta simples desenhado aqui.
 import React, { useEffect, useRef } from "react";
 import { useTheme } from "../hooks/useTheme.js";
+import { onFaceReady } from "../theme/faces.js";
 
 const INK = "#141026";
 function shade(hex, a) { const n = parseInt(hex.slice(1), 16), r = n >> 16, g = n >> 8 & 255, b = n & 255;
@@ -36,5 +37,11 @@ export function paintSkin(cv, sk, r, theme, secret = false) {
 export default function SkinPreview({ skin, r = 40, size = 112, className = "skinprev", secret = false }) {
   const ref = useRef(null); const theme = useTheme();
   useEffect(() => { if (ref.current && skin) paintSkin(ref.current, skin, r, theme, secret); }, [skin, r, size, theme, secret]);
+  // A caricatura é uma IMAGEM que chega depois. Este canvas é pintado uma vez, então sem o aviso a skin
+  // ficaria no disco liso até o React repintar por acaso — e na grade da loja isso é para sempre.
+  useEffect(() => {
+    if (!skin || !skin.face) return;
+    return onFaceReady(f => { if (f === skin.face && ref.current) paintSkin(ref.current, skin, r, theme, secret); });
+  }, [skin, r, theme, secret]);
   return <canvas ref={ref} className={className} width={size} height={size} />;
 }

@@ -17,6 +17,7 @@
 // Dev: ?local=1 (servidor na página) · ?bench (pior caso + overlay) · ?stats (overlay) · ?lag=80 · ?theme=dawn|sunset|dusk · ?round=<s>
 import {createStore} from "../state/store.js";
 import {applyTheme,currentTheme,THEMES,resolveThemeId} from "../theme/index.js";
+import {warmFaces} from "../theme/faces.js";
 import {mergeLabels} from "../ui/labels.js";   // o texto desenhado DENTRO do mundo (fx) também é texto de UI
 import {createAudio} from "../audio/index.js";
 import {api} from "../api/client.js";
@@ -173,6 +174,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── texturas: aquece as skins da sala (tiers 128/256) e a própria (128/256/512, variante isMe) ──
   function warmSkins(){if(!renderer||!joined)return;const skins=[];let me=null;
     for(const pl of view.players.values()){if(!pl.skin)continue;if(pl.slot===view.mySlot)me=pl.skin;else if(!skins.includes(pl.skin))skins.push(pl.skin);}
+    // as caricaturas de easter egg são ARQUIVO, então precisam de rede: descobrir isso no meio da partida
+    // faz o planeta do adversário piscar de disco liso para cara. Aqui elas chegam com o PLAYERS.
+    warmFaces([...skins,me].filter(Boolean).map(sk=>sk.id));
     renderer.warmHazards();renderer.warmPlanets(skins,me);}
   // ── rede ──
   function viewSize(){return{w:Math.round(renderer?renderer.W:container.clientWidth||innerWidth),h:Math.round(renderer?renderer.H:container.clientHeight||innerHeight)};}
@@ -496,7 +500,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   function pushHud(now){const s=view.self,tk=buffer.tickAt(now),el=Math.max(0,tk-selfTick);
     const cd=(v,max)=>s?Math.min(1,Math.max(0,(v-el)/max)):0,sec=v=>s?Math.max(0,(v-el)/TICK_HZ):0;
     hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
-      powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:sec(s?s.autoDefT:0),zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
+      powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:s?s.autoDefN|0:0,zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,map:mapOn,clock:roundClock,
       mode:modeId,teamSize,team:myTeam,phase,cap:roomCap,
       lobby:lobby?{...lobby,
@@ -522,6 +526,16 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(!ready||!joined||!conn||dead)return;
     let w=null,cx=0,cy=0;
     if(own0.length){for(const p of own0){cx+=p.rx;cy+=p.ry;}cx/=own0.length;cy/=own0.length;}
+    // ── FIM DE RODADA: O PLANETA PARA ──
+    // A partida acabou, o pódio está na tela e o campeão está sendo homenageado — mas o ponteiro continuava
+    // sendo enviado, então o planeta seguia atrás do mouse e saía de baixo da própria salva de fogos, às
+    // vezes para fora do enquadramento. Parar de mandar input NÃO resolveria: sem alvo novo o servidor
+    // continua movendo a peça na direção velha, para sempre. O que para é mandar o alvo em cima de onde ela
+    // já está — no modelo do agar a velocidade é `min(d,RAMP)/RAMP`, então distância zero é peça imóvel.
+    if(roundOver){
+      if(own0.length){w=alvo;w.x=cx;w.y=cy;input.setTarget(cx,cy);predictor.setTarget(cx,cy);}
+      if(conn.isOpen)input.update(now);
+      return;}
     if(joy&&joy.enabled&&joy.state.on&&own0.length){const t=joy.target(cx,cy);w=alvo;w.x=t.x;w.y=t.y;}   // analógico: direção do polegar, distância = velocidade
     else if(joy&&joy.enabled)   { if(own0.length){w=alvo;w.x=cx;w.y=cy;} }                                // analógico solto = parado (é o ponto do analógico)
     else if(pointer&&pointer.state.active)w=cam.toWorld(pointer.state.sx,pointer.state.sy);

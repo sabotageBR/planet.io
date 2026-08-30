@@ -150,7 +150,7 @@ export function eatFood(w,ps,pc,f){
   if(t===FOOD_TYPE.AMMO){const cap=weaponOf(ps.weapon).ammo;if(ammoOf(ps)<cap)addAmmo(ps,1);w.events.push({type:"AMMO",slot:ps.slot});}   // munição é da arma EQUIPADA (no míssil o teto é o MAX_AMMO de sempre)
   else if(t===FOOD_TYPE.SHIELD){if(pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL)pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
-  else if(t===FOOD_TYPE.MAGNET){if(pc.r<=POWERUP.MAGNET_MAX_R)pc.magnetUntil=(pc.magnetUntil>tick?pc.magnetUntil:tick)+POWERUP.TICKS;   // planeta grande não pega ímã: o alcance é r·MAGNET_RANGE e sugaria a tela inteira
+  else if(t===FOOD_TYPE.MAGNET){if(pc.r<=POWERUP.MAGNET_MAX_R)pc.magnetUntil=(pc.magnetUntil>tick?pc.magnetUntil:tick)+POWERUP.TICKS;   // só o planetão de verdade fica de fora; quem contém o alcance é MAGNET_RANGE_MAX
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"magnet"});}
   else if(t===FOOD_TYPE.MERGE){const arr=ps.pieces;for(let i=0;i<arr.length;i++){const q=arr[i];if(!q.dead)q.mergeAt=tick;}   // vale para TODAS as peças: o poder é justamente juntar quem foi picado
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"merge"});}
@@ -158,7 +158,7 @@ export function eatFood(w,ps,pc,f){
   // ⚠️ ANTES do ramo de arma, de propósito: `isWeaponFood` já protege a faixa, mas a ordem também importa
   // para quem ler o código depois — powerup é powerup, arma é arma, e o `else if` encadeado é a única
   // documentação executável dessa separação.
-  else if(t===FOOD_TYPE.AUTODEF){ps.autoDefUntil=(ps.autoDefUntil>tick?ps.autoDefUntil:tick)+POWERUP.AUTODEF_TICKS;   // acumula se já ativo, como o ímã
+  else if(t===FOOD_TYPE.AUTODEF){ps.autoDefN=1;   // CARGA, não tempo — e nunca acumula: ou você tem o escudo automático, ou não tem
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"autodef"});}
   else if(t===FOOD_TYPE.AMMO_PLUS){addAmmo(ps,1);   // RARO: um míssil AGORA, furando o teto da arma (o teto é uma comparação, e este é o único lugar que passa por cima dela)
     w.events.push({type:"AMMO",slot:ps.slot});w.events.push({type:"POWERUP",slot:ps.slot,kind:"ammoPlus"});}
@@ -759,7 +759,7 @@ export function applyFire(w,ps){
  */
 export function autoDefend(w,ps){
   const tick=w.tick;
-  if(ps.autoDefUntil<=tick||!w.missiles.length)return false;
+  if(ps.autoDefN<=0||!w.missiles.length)return false;
   if(tick<ps.autoFireAt||tick<ps.fireCdUntil||ammoOf(ps)<=0)return false;
   if(ps.weapon!==WEAPON.MISSILE)return false;   // só a arma base intercepta bem: o Cacho abriria 4 filhos em cima de UM entrante, gastando a munição mais cara do jogo numa defesa
   if((tick+ps.slot)%POWERUP.AUTODEF_SCAN_TICKS)return false;
@@ -767,7 +767,7 @@ export function autoDefend(w,ps){
   if(!incomingMissile(w,ps.slot,src.x,src.y,MISSILE.INTERCEPT_DIST,true))return false;
   ps.fireAim=false;   // sem mira: é o applyFire que escolhe a interceptação (e o `fireAim` do tick ainda pode estar ligado)
   if(!applyFire(w,ps))return false;
-  ps.autoFireAt=tick+POWERUP.AUTODEF_CD_TICKS;return true;}
+  ps.autoFireAt=tick+POWERUP.AUTODEF_CD_TICKS;ps.autoDefN--;return true;}   // usou, perdeu: a carga só é gasta quando o tiro SAIU
 /** Míssil e Cacho: o teleguiado de sempre. O `hue` do corpo carrega a arma (é livre no míssil) e vai no fio. */
 function fireHoming(w,ps,src,im=undefined){
   if(ps.fireAim){dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const ax=DIR[0],ay=DIR[1];aimTarget(w,ps.slot,src,ps.tx,ps.ty,AIM);

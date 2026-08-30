@@ -26,7 +26,7 @@ export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,F
 export const MODE={FREE:0,BR:1};
 export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
   LOBBY_TICKS:1800,COUNTDOWN_TICKS:300,FILL_EXP:1.7,ARRIVE_JITTER:.55,
-  SPAWN_RING:.44,START_AMMO:1,ROUND_TICKS:27000,WEAPON_P:.05,JOIN_GRACE_TICKS:120};
+  SPAWN_RING:.44,START_AMMO:1,ROUND_TICKS:36000,WEAPON_P:.05,JOIN_GRACE_TICKS:120};
 // PLAYERS é o total (humanos + bots): a sala livre já roda 30 humanos + 15 bots = 45, então 50 é o MESMO
 // regime de tick, não um salto de escala. Capacidade efetiva = PLAYERS − PLAYERS%teamSize (50/50/48/48):
 // equipe incompleta contra equipes cheias não é dificuldade, é sorteio.
@@ -39,12 +39,14 @@ export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
 // saírem em intervalos exatos. Quando lota (ou a janela fecha), COUNTDOWN_TICKS (5 s) de contagem e larga.
 // Vaga é sempre do humano: quem entra num lobby cheio DERRUBA um preenchimento (ver Room.join) — sem isso,
 // dois amigos procurando com 10 s de diferença cairiam em salas separadas.
-// ROUND_TICKS (7,5 min) é só a rede de segurança: a partida acaba por último-vivo bem antes, e a zona
-// inteira (ZONE) fecha em 21 300 ticks ≈ 5 min 55 s.
+// ROUND_TICKS (10 min) é só a rede de segurança: a partida acaba por último-vivo bem antes, e a zona
+// inteira (ZONE) fecha em 30 000 ticks ≈ 8 min 20 s. ⚠️ Os dois andam JUNTOS: alongar a zona sem alongar
+// isto aqui faz a partida terminar por tempo antes de o círculo fechar, que é o único jeito de o Battle
+// Royale acabar sem ter decidido nada. Em produção quem manda é o env ROUND_TICKS (k8s/05-config).
 export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
-  HOLD_TICKS:[3600,2700,2100,1500,900,600],SHRINK_TICKS:[2400,2100,1800,1500,1200,900],
+  HOLD_TICKS:[6000,4500,3300,1800,900,600],SHRINK_TICKS:[3600,3000,2400,1800,1200,900],
   DRIFT:.45,BURN:.10,BURN_K:2.2,WARN_TICKS:180,MIN_R:60,SHED_TICKS:24,SHED_SPEED:260,SHED_SPREAD:.85,SHED_MIN:1,SHED_N_DEATH:7,
-  FOOD_AREA:2400,FOOD_MIN:60,FOOD_SCAN:96,FOOD_FILL_S:2,
+  FOOD_AREA:2400,FOOD_MIN:28,FOOD_SCAN:96,FOOD_FILL_S:3,
   STAR_PAD:360,STAR_MIN_R:1200,STAR_SEP_K:.5,STAR_RETRY_TICKS:300,STAR_SCAN:2};
 // zona = círculo. R é o RAIO como fração de WORLD.w: começa em .62 (5 952 px — cobre o mapa, cujo
 // centro→canto é 6 788) e fecha em .015 (144 px). Cada etapa i: HOLD_TICKS[i] parada em R[i], depois
@@ -313,12 +315,21 @@ export const weaponOf=id=>WEAPONS[id]||WEAPONS[WEAPON.MISSILE];
 export const weaponOfFood=t=>{for(let i=1;i<WEAPONS.length;i++)if(WEAPONS[i].food===t)return i;return -1;};
 /** Peso do alvo do tiro mirado: distância do PONTEIRO à BORDA da bolinha (bola grande é mais fácil de agarrar). */
 export const aimScore=(dx,dy,r)=>Math.sqrt(dx*dx+dy*dy)-r;
-export const POWERUP={TICKS:420,MAGNET_MAX_R:160,MAGNET_RANGE:5.5,MAGNET_PULL:170,MAGNET_NEAR:2.2,MAGNET_EJECT_A:900,MAGNET_AST:420,MAGNET_HEAVY:.45,MAGNET_STAR:.12,
+export const POWERUP={TICKS:420,MAGNET_MAX_R:420,MAGNET_RANGE:5.5,MAGNET_RANGE_MAX:900,MAGNET_PULL:170,MAGNET_NEAR:2.2,MAGNET_EJECT_A:900,MAGNET_AST:420,MAGNET_HEAVY:.45,MAGNET_STAR:.12,
   SHIELD_MAX_LEVEL:3,SHIELD_EVOLVE_TICKS:900,
-  AUTODEF_TICKS:900,AUTODEF_CD_TICKS:90,AUTODEF_SCAN_TICKS:6,
+  AUTODEF_CD_TICKS:90,AUTODEF_SCAN_TICKS:6,
   ZOOM_TICKS:900,ZOOM_K:1.5,
   FEAST_TICKS:600,FEAST_K:2,
-  DROP:[[FOOD_TYPE.MAGNET,27],[FOOD_TYPE.SHIELD,27],[FOOD_TYPE.AUTODEF,16],[FOOD_TYPE.ZOOM,16],[FOOD_TYPE.AMMO_PLUS,7],[FOOD_TYPE.FEAST,7]]};
+  DROP:[[FOOD_TYPE.MAGNET,32],[FOOD_TYPE.SHIELD,32],[FOOD_TYPE.AUTODEF,22],[FOOD_TYPE.AMMO_PLUS,7],[FOOD_TYPE.FEAST,7]]};
+// ⚠️ O ZOOM SAIU DO SORTEIO — não do código. Afastar a câmera é a única coisa que um powerup fazia com o
+// que o jogador VÊ, e isso não é vantagem: é mudar o jogo embaixo dele no meio de uma briga, sem aviso e
+// sem pedido. O código continua inteiro (`FOOD_TYPE.ZOOM`, o ramo de `eatFood`, `zoomFor`, o `zoomT` do
+// `self` e o fator na AOI do snapshot), dormente do mesmo jeito que `BLACKHOLE.COUNT=0` e a Nova de peso
+// zero — volta acrescentando a linha aqui, e nada mais.
+// A AUTO-DEFESA deixou de ser TEMPO e virou CARGA (ver `autoDefN` em physics/world.js): 15 segundos de
+// escudo automático era um relógio invisível que o jogador não tinha como planejar — ou ele descobria que
+// tinha acabado no instante em que o míssil chegou, ou nem percebia que existiu. Uma carga é a mesma coisa
+// dita de um jeito que se pode guardar: o ícone fica lá, eterno, até o dia em que salva a sua vida.
 // ── OS QUATRO POWERUPS DE JOGADOR (11..14) ───────────────────────────────────
 // Ímã e escudo são POR PEÇA porque são efeitos de corpo: quem pegou é quem sente. Estes quatro são por
 // JOGADOR, e não por teimosia — câmera, cinto e economia não têm como ser de meia bolinha. Ficam em
@@ -342,8 +353,12 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:160,MAGNET_RANGE:5.5,MAGNET_PULL:17
 // dois primeiros continuam sendo a maioria porque são os que o jogador aprende primeiro, e os dois raros
 // somam 14 % da banda — ~0,5 % de toda a comida, que é o que faz alguém comemorar ao ver um.
 // ímã: comida a d<r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s; ejetados ganham MAGNET_EJECT_A px/s² (drag 3.7/s → ~240 px/s)
-// MAGNET_MAX_R: acima desse raio a peça NÃO pega nem usa o ímã. O alcance é r·MAGNET_RANGE, então num planetão
-// ele passava de 1500 px e sugava a tela inteira — o powerup deixava de ser uma ajuda e virava um aspirador.
+// MAGNET_MAX_R: acima desse raio a peça NÃO pega nem usa o ímã — e o teto subiu de 160 para 420 px, porque
+// 160 era um raio que qualquer partida decente passa em poucos minutos: o ímã virava item morto justamente
+// para quem estava jogando bem. O que segurava o teto lá embaixo era o ALCANCE, que é r·MAGNET_RANGE e num
+// planetão passava de 1500 px, sugando a tela inteira. Agora quem limita o alcance é ele mesmo
+// (MAGNET_RANGE_MAX, 900 px absolutos), então o teto de tamanho não precisa mais fazer esse trabalho.
+// Em r=160 o alcance dá 880 px, abaixo do teto: para quem já pegava ímã, nada muda.
 // cometa/estrela (comida pesada) andam a MAGNET_HEAVY disso; a estrela do mundo se arrasta a MAGNET_STAR (é um perigo enorme vindo até você)
 // asteroides ganham MAGNET_AST px/s² escalados por R_MIN/r (rocha pequena vem voando, rocha grande se arrasta): o ímã
 // puxa a recompensa E o perigo — ligar o ímã perto de um cinturão é escolha, não acidente
@@ -478,8 +493,9 @@ export const BOT_LLM={
   STALE_MS:4000,        // e o que chega depois disto é comentário atrasado: vai fora (a fala é do INSTANTE)
   MAX_INFLIGHT:4,       // gerações ao mesmo tempo por PROCESSO (todas as salas do shard somam aqui); env OLLAMA_MAX_INFLIGHT
   MAX_INFLIGHT_ROOM:2,  // ...e por SALA: sem este, uma sala movimentada come o orçamento inteiro do shard
-  HIST:6,               // linhas de chat que entram no prompt (era 8: as 2 linhas que sobraram pagam o estado e a persona)
-  HIST_DIRIGIDA:4,      // quando falaram COM o bot, a linha dirigida vale mais que o backlog
+  HIST:8,               // linhas de chat que entram no prompt
+  HIST_DIRIGIDA:6,      // quando falaram COM o bot, a linha dirigida vale mais que o backlog — mas 4 linhas
+                        // deixavam o bot responder no vácuo, sem saber do que a sala estava falando
   MAX_WORDS:14,MAX_CHARS:90,   // teto do que sai: acima disso vira parágrafo, e ninguém digita parágrafo em partida
   TEMP:1.05,NUM_PREDICT:48,
   MENTION_ROOM_CD_TICKS:150,   // 2,5 s: responder a quem chama é esperado, então a sala segura bem menos
@@ -492,8 +508,11 @@ export const BOT_LLM={
   // chegando em tempos diferentes parece gente digitando. Provocação dirigida a um bot continua sendo dele.
   CORO_N_W:[.35,.40,.25],      // pesos de 1, 2 ou 3 respostas numa pergunta aberta
   CORO_MAX_CITADOS:2,          // citados pelo nome: no máximo dois respondem
-  CORO_D0_MS:[300,900],        // atraso da PRIMEIRA resposta (menção dirigida cai sempre nesta faixa)
-  CORO_D_MS:[700,1500],        // acréscimo de cada resposta seguinte
+  // ⚠️ Este é o único atraso PROPOSITAL do caminho; o resto (TIMEOUT_MS) é latência da geração. Chamar
+  // alguém pelo nome e esperar mais de um segundo pela primeira letra não parece gente digitando — parece
+  // fila. Abaixo de ~150 ms também não: aí é rápido DEMAIS para quem teria que ler e escrever.
+  CORO_D0_MS:[150,500],        // atraso da PRIMEIRA resposta (menção dirigida cai sempre nesta faixa)
+  CORO_D_MS:[500,1100],        // acréscimo de cada resposta seguinte
   CORO_WAIT_MS:3500,           // item que envelheceu NA FILA é descartado antes de gastar geração
   CORO_POP_MAX:2,              // itens despachados por tick (o step() é de 60 Hz e é de TODAS as salas)
   FILA_MAX:6,                  // fila de fala agendada por sala; cheia, o NOVO é descartado
@@ -506,7 +525,9 @@ export const BOT_LLM={
   MEM_N:6,                     // anel por bot; a leitura ignora o que passou do TTL, então não há varredura
   MEM_TTL_TICKS:900,           // 15 s: mais que isso e "o Evandro atirou em mim" já não é sobre agora
   MEM_QUENTE_TICKS:300,        // 5 s: dentro disto a fala é "acabou de atirar", não "vive atirando"
-  PROMPT_MAX_CHARS:1100,       // teto do `user` no pior caso — prompt gordo é prompt lento (ver TIMEOUT_MS)
+  FEED_KEEP:12,                // mortes recentes guardadas na sala (o kill feed em texto, para o prompt)
+  FEED_HIST:3,                 // e quantas delas entram: o bot comenta o que a sala ACABOU de ver, não a partida inteira
+  PROMPT_MAX_CHARS:1500,       // teto do `user` no pior caso — prompt gordo é prompt lento (ver TIMEOUT_MS)
   // 1100 não é chute: é o pior caso MEDIDO (1026 chars ≈ 260 tokens) com a persona mais longa, o histórico
   // cheio de linhas no tamanho máximo e a mensagem dirigida inteira, mais uma folga. Existe para que
   // acrescentar contexto ao prompt tenha que passar por um teste, em vez de engordar em silêncio.
@@ -598,18 +619,27 @@ export const VOICE={MAX_MS:5000,MIN_MS:300,CD_MS:3000,TALK_CD_MS:250,RATE_HZ:800
 // Safari, e o Safari NÃO decodifica webm — um clipe de Chrome sairia mudo lá. µ-law monta o AudioBuffer na
 // mão e toca em qualquer navegador. O byte `codec` do fio já está reservado para trocar por Opus depois.
 // MIN_MS mata o toque acidental no Ctrl; CD_MS e ROOM_CPS (clipes por segundo na sala) seguram o abuso.
-export const SCORE_COINS=(score,kills,botKills,durationS)=>Math.min(500,Math.floor(score/300)+2*kills+botKills+(durationS>=300?25:0));
+// ── MOEDAS DA PARTIDA ────────────────────────────────────────────────────────
+// Medido em produção com uma conta de 17 partidas: 692 moedas por partida contra um teto de 750. Ou seja,
+// o teto não era teto — era SALÁRIO: todo mundo o batia sempre, e a diferença entre jogar bem e jogar mal
+// desaparecia. Com `score/300` isso é aritmética: uma partida decente passa de 150 mil pontos, o que já
+// dá 500 sozinho, e os abates viravam enfeite. A esse ritmo o catálogo inteiro (307 mil) saía em 445
+// partidas, e uma lendária de 30 mil custava 43 — não é preço de item raro, é o de uma tarde.
+// O divisor sobe para 1200, o teto cai para 200 e o abate deixa de valer dobrado. A conta passa a ser
+// ~180/partida, e aí o teto volta a ser o que devia: o lugar aonde só a partida excepcional chega.
+export const SCORE_COINS=(score,kills,botKills,durationS)=>Math.min(200,Math.floor(score/1200)+kills+botKills+(durationS>=300?15:0));
 /**
  * Bônus de colocação do Battle Royale: lá o placar não é a massa, é ONDE você parou. Sem isto, morrer em 2º
  * de 50 pagaria igual a morrer em 49º — e a corrida pelo topo, que é o modo inteiro, não valeria nada.
- * Vitória dobra o teto normal de moedas; do 10º para baixo a curva some depressa.
+ * Vitória vale pouco mais da metade de um teto de partida; do 10º para baixo a curva some depressa.
+ * ⚠️ Estes números andam JUNTO com SCORE_COINS: se o Livre aperta e o BR não, o BR vira a fonte fácil.
  */
 export const PLACE_COINS=(placement,players)=>{
   if(!placement||!players||placement<1)return 0;
-  if(placement===1)return 250;
-  if(placement<=3)return 120;
-  if(placement<=10)return 60;
-  return placement<=Math.ceil(players/2)?20:0;};
+  if(placement===1)return 120;
+  if(placement<=3)return 60;
+  if(placement<=10)return 30;
+  return placement<=Math.ceil(players/2)?10:0;};
 
 // ── TECLAS CONFIGURÁVEIS (dividir / ejetar) ──────────────────────────────────
 // `KeyboardEvent.code`, não `key`: o code é a POSIÇÃO física da tecla, então o mesmo padrão funciona

@@ -38,6 +38,7 @@ const {createQueue}=await import('../src/persist/queue.js');
 const {hashPassword,verifyPassword}=await import('../src/auth/password.js');
 const {normalizeNick,suggestNick}=await import('../src/auth/nick.js');
 const {SCORE_COINS}=await import('@warspace/shared/constants.js');
+const {TIERS}=await import('@warspace/shared/achievements.js');
 const log=createLogger({level:process.env.LOG_LEVEL});
 let db,persist,api,server,base;
 const call=async(method,p,{body,token,ip='10.0.0.1'}={})=>{
@@ -63,6 +64,10 @@ const randomUUID=()=>crypto.randomUUID();
 /** Cria um convidado e devolve {token,userId}. */
 const novoGuest=async nick=>{const r=await call('POST','/api/auth/guest',{body:{nick}});
   assert.equal(r.status,201,JSON.stringify(r.body));return{token:r.body.token,userId:r.body.user.id};};
+/** Conta de verdade (guest promovido). O RANKING só lista `kind='registered'` — ver repos/ranking.js. */
+const novaConta=async(nick,email)=>{const g=await novoGuest(nick);
+  const r=await call('POST','/api/auth/claim',{token:g.token,body:{password:'segredo123',email}});
+  assert.equal(r.status,200,JSON.stringify(r.body));return g;};
 const req=(method,p,body,token)=>call(method,p,{body:body===null?undefined:body,token});
 
 
@@ -150,16 +155,19 @@ test('hooks: join → kill/stat/sample → matchEnd salva match, moedas, conquis
   const r2=await h.onMatchEnd({sessionId:j2.sessionId,cause:'eaten',killedBySessionId:j1.sessionId,score:150,maxMass:900,durationMs:20000});
   assert.equal(r2.saved,true);assert.equal(r2.coinsEarned,0);assert.deepEqual(r2.achievements,[]);
   const r1=await h.onMatchEnd({sessionId:j1.sessionId,cause:'eaten',killedBySessionId:j2.sessionId,score:9000,maxMass:7000,durationMs:320000});
-  const base=SCORE_COINS(9000,1,1,320);assert.equal(base,30+2+1+25);
-  assert.equal(r1.saved,true);assert.equal(r1.coinsEarned,base+300);
+  // ⚠️ Os números vêm da fórmula, não copiados: SCORE_COINS foi apertada (divisor 1200, teto 200, abate
+  // simples) porque a conta antiga pagava 692 de um teto de 750 — o teto era salário, não teto.
+  const base=SCORE_COINS(9000,1,1,320);assert.equal(base,Math.floor(9000/1200)+1+1+15);
+  const bronze=TIERS[0].coins*3;   // três conquistas de bronze nesta partida
+  assert.equal(r1.saved,true);assert.equal(r1.coinsEarned,base+bronze);
   assert.deepEqual(r1.achievements.map(a=>a.key).sort(),['explore.b','mass.b','survive.b']);assert.deepEqual([...r1.skinsUnlocked].sort(),[35,37,43]);
   assert.equal(r1.rank.day,1);
   assert.equal(await h.onMatchEnd({sessionId:j1.sessionId,cause:'left'}),null,'sessão já encerrada → null');
   const m=(await db.query('SELECT * FROM matches WHERE user_id=$1',[S.u1])).rows[0];
   assert.equal(m.kills,1);assert.equal(m.bot_kills,1);assert.equal(m.splits,3);assert.equal(m.ejects,1);assert.equal(m.food_eaten,1);assert.equal(m.best_streak,2);assert.equal(m.top1_ticks,120);
-  assert.equal(m.max_mass,7000);assert.equal(m.duration_s,320);assert.equal(m.cause,'eaten');assert.equal(m.room_code,'0ABC');assert.equal(m.coins_earned,base+300);assert.equal(m.skin_id,1);assert.equal(Number(m.killed_by_user_id),S.u2);
+  assert.equal(m.max_mass,7000);assert.equal(m.duration_s,320);assert.equal(m.cause,'eaten');assert.equal(m.room_code,'0ABC');assert.equal(m.coins_earned,base+bronze);assert.equal(m.skin_id,1);assert.equal(Number(m.killed_by_user_id),S.u2);
   const st=(await db.query('SELECT * FROM user_stats WHERE user_id=$1',[S.u1])).rows[0];assert.equal(st.games,1);assert.equal(st.best_score,9000);assert.equal(st.play_time_s,320);
-  const u=(await db.query('SELECT coins FROM users WHERE id=$1',[S.u1])).rows[0];assert.equal(u.coins,config.signupCoins-200+base+300);
+  const u=(await db.query('SELECT coins FROM users WHERE id=$1',[S.u1])).rows[0];assert.equal(u.coins,config.signupCoins-200+base+bronze);
   for(const id of [S.u1,S.u2]){const s=(await db.query('SELECT coalesce(sum(delta),0)::int AS s FROM coin_ledger WHERE user_id=$1',[id])).rows[0].s;const c=(await db.query('SELECT coins FROM users WHERE id=$1',[id])).rows[0].coins;assert.equal(c,s,`coins = Σ ledger (user ${id})`);}
   const owned=(await call('GET','/api/me',{token:S.t3})).body;assert.deepEqual(owned.skins,[0,1,35,37,43]);assert.deepEqual(owned.achievements.sort(),['explore.b','mass.b','survive.b']);assert.equal(owned.stats.kills,1);
   // histórico + ranking
@@ -171,9 +179,10 @@ test('finishMatch idempotente por session_id',async()=>{
   const s=new MatchSession({userId:S.u1,nick:'Evandro Moura',kind:'registered',skinId:1});s.kill({victimIsBot:false});
   const m=s.end({cause:'left',score:600,durationMs:10000});
   const before=(await db.query('SELECT coins FROM users WHERE id=$1',[S.u1])).rows[0].coins;
-  const a=await persist.finishMatch(m);assert.equal(a.saved,true);assert.equal(a.coinsEarned,4);
-  const b=await persist.finishMatch(m);assert.equal(b.duplicate,true);assert.equal(b.coinsEarned,4);
-  assert.equal((await db.query('SELECT coins FROM users WHERE id=$1',[S.u1])).rows[0].coins,before+4);
+  const esperado=SCORE_COINS(600,1,0,10);
+  const a=await persist.finishMatch(m);assert.equal(a.saved,true);assert.equal(a.coinsEarned,esperado);
+  const b=await persist.finishMatch(m);assert.equal(b.duplicate,true);assert.equal(b.coinsEarned,esperado);
+  assert.equal((await db.query('SELECT coins FROM users WHERE id=$1',[S.u1])).rows[0].coins,before+esperado,'a segunda chamada não paga de novo');
   assert.equal((await db.query('SELECT count(*)::int AS n FROM matches WHERE session_id=$1',[m.sessionId])).rows[0].n,1);
 });
 test('session: onStat eat/eatBot só contam sem onKill (sem duplicar)',()=>{
@@ -265,7 +274,7 @@ test('país: PATCH aceita, valida e limpa; o ranking regional filtra',async()=>{
 
 test('ranking: o país entra na CHAVE do cache (senão o Brasil vê o ranking do mundo)',async()=>{
   // Foi a regressão mais provável de toda esta frente: o cache é de 10 s e a chave não tinha o país.
-  const t=await novoGuest('Cacheado');
+  const t=await novaConta('Cacheado','cacheado@exemplo.com');   // guest não entra mais no ranking
   await req('PATCH','/api/me',{country:'PT'},t.token);
   await persist.finishMatch({sessionId:randomUUID(),userId:t.userId,startedAt:Date.now()-1000,durationS:10,score:999999,
     maxMass:1,kills:0,botKills:0,splits:0,ejects:0,food:0,bestStreak:0,top1Ticks:0,quadrants:0,cause:'left',mode:0,teamSize:1,skinId:0});
@@ -274,6 +283,28 @@ test('ranking: o país entra na CHAVE do cache (senão o Brasil vê o ranking do
   assert.ok(global.length>=pt.length);
   assert.ok(pt.every(r=>r.country==='PT'),'o recorte de país devolveu gente de fora');
   assert.ok(pt.some(r=>r.userId===t.userId));
+});
+
+test('ranking: convidado NÃO aparece — e entra inteiro no dia em que registrar',async()=>{
+  // O ranking sempre somou por `user_id`, então trocar de nick nunca fez ninguém perder posição. O que
+  // faltava era o contrário: o convidado escolhe um nick novo a cada entrada e pode ter quantos quiser,
+  // e um pódio construído sobre isso não diz de QUEM é a marca. O filtro é de EXIBIÇÃO — a coleta
+  // continua igual, e é por isso que o histórico dele aparece inteiro assim que a conta existe.
+  const g=await novoGuest('Passageiro');
+  const partida=uid=>persist.finishMatch({sessionId:randomUUID(),userId:uid,startedAt:Date.now()-1000,durationS:10,
+    score:888888,maxMass:1,kills:0,botKills:0,splits:0,ejects:0,food:0,bestStreak:0,top1Ticks:0,quadrants:0,
+    cause:'left',mode:0,teamSize:1,skinId:0});
+  await partida(g.userId);
+  let rk=(await req('GET','/api/ranking?by=score&limit=47')).body;
+  assert.ok(!rk.rows.some(r=>r.userId===g.userId),'convidado não pode aparecer no ranking');
+  assert.equal((await req('GET','/api/ranking?by=score&limit=47',null,g.token)).body.me,null,'nem com posição própria');
+  assert.equal((await call('POST','/api/auth/claim',{token:g.token,body:{password:'segredo123',email:'passageiro@exemplo.com'}})).status,200);
+  // ⚠️ `limit` diferente de propósito: ele entra na CHAVE do cache de 10 s do /api/ranking, e sem isso a
+  // consulta de depois do registro devolveria a resposta de antes dele — o teste passaria pelo motivo errado.
+  rk=(await req('GET','/api/ranking?by=score&limit=48',null,g.token)).body;
+  const linha=rk.rows.find(r=>r.userId===g.userId);
+  assert.ok(linha,'depois de registrar, entra');
+  assert.equal(linha.value,888888,'e com a pontuação que já tinha — nada do que ele jogou se perdeu');
 });
 
 test('skin lendária: o nível é gate de verdade, e ele destrava com XP',async()=>{

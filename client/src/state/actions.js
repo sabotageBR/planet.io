@@ -96,7 +96,9 @@ function hudDemo() {
     { id: 6, at: agora, k: "kill", how: "cluster", a: quem(6), b: quem(7), assist: null, mine: false },
   ];
   g.hudStore.update(h => ({ ...h, mass: 183273, score: 139933, rank: 1, coins: 2087, ammo: 3, weapon: 0, owned: 3,
-    powerups: { magnet: 12, shield: 3 }, lb, feed, room: "253A", ping: 49, fps: 60,
+    // os três FORMATOS de powerup, que é o que a matriz precisa medir: tempo (anel + segundos), nível
+    // (o escudo) e CARGA (a auto-defesa, que não tem relógio nenhum e fica até ser usada)
+    powerups: { magnet: 12, shield: 3, feast: 2, autodef: 1 }, lb, feed, room: "253A", ping: 49, fps: 60,
     clock: { h: 16, m: 16, leftS: 2276 }, alive: 24 }));
 }
 function mostrarTela(s) {
@@ -194,6 +196,16 @@ export function setPref(key, val) {
   app.update(s => ({ ...s, session: { ...s.session, prefs: { ...s.session.prefs, [key]: val } } }));
   applyPrefsSideEffects(app.get().session.prefs);
   prefsDirty[key] = val; schedule();
+}
+/**
+ * MUDO, o interruptor de urgência. Passa pelo `setPref` como qualquer outra preferência — então persiste,
+ * respeita a whitelist do servidor e reaproveita o `applyPrefsSideEffects`, que é quem avisa o motor de
+ * áudio. Devolve o estado novo para quem quiser avisar o jogador.
+ */
+export function toggleMute() {
+  const m = !app.get().session.prefs.muted;
+  setPref("muted", m);
+  return m;
 }
 export async function flushPrefs() {
   clearTimeout(prefsT); const d = prefsDirty; prefsDirty = {};

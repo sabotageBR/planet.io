@@ -10,6 +10,11 @@ export const NAV_SCREENS = ["entry", "lobby", "rank", "profile", "shop", "prefs"
 export const PREF_DEFAULTS = Object.freeze({
   quality: "auto", showNames: true, showGrid: true, showMinimap: true, showFps: true,
   sound: true, music: false, ambience: true, volume: 70, musicVolume: 60,
+  // MUDO é o interruptor geral, e existe separado dos outros porque é de outra natureza: `sound`/`music`/
+  // `ambience` são gosto (o jogador escolhe uma vez e esquece), e `muted` é urgência — alguém entrou na
+  // sala, o telefone tocou, o chefe passou. Por isso ele tem tecla, botão no HUD e cala TUDO de uma vez,
+  // inclusive a voz dos outros jogadores, sem apagar nenhuma das outras escolhas.
+  muted: false,
   // ⚠️ `holdEject` e `rightSplit` já existiram aqui — DENTRO de um comentário `//`, engolidos pela
   // explicação do joystick. Como PREF_KEYS = Object.keys(PREF_DEFAULTS), as chaves simplesmente não
   // existiam: `normalizePrefs` descartava o que o servidor devolvia e `setPref` recusava a escrita,

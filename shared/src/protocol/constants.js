@@ -1,6 +1,7 @@
 // ── Enums do fio (ver docs/spec/protocol.md) ──────────────────────────────────
 // @ts-check
-export const PROTOCOL_VERSION=12;   // 12: POWERUPS DE JOGADOR — o `self` ganhou autoDefT/zoomT/feastT (3×u16) e o POWER_BIT ganhou autodef/zoom/feast
+export const PROTOCOL_VERSION=13;   // 13: a AUTO-DEFESA virou CARGA — o mesmo u16 do `self` deixou de ser tempo (autoDefT) e passou a contar usos (autoDefN)
+// 12: POWERUPS DE JOGADOR — o `self` ganhou autoDefT/zoomT/feastT (3×u16) e o POWER_BIT ganhou autodef/zoom/feast
 // 11: NÍVEL do jogador — PLAYERS ganhou `level` (u8), o badge ao lado do nick no placar, no chat e no kill feed
 // 10: cinto de armas — INPUT ganhou SWAP e o `self` ganhou `owned` (bitmask do que dá para chavear)
 // 9: MODOS DE JOGO — PLAYERS leva `team`, `self` leva `weapon`/`alive`, MISSILE leva `weapon`, e entram ZONE/VOICE/VOICE_UP
@@ -39,7 +40,8 @@ export const ERROR_CODE={VERSION:4400,FULL:4402,AUTH:4401,NICK_RESERVED:4409,RAT
 export const NAME_MAX_BYTES=32; // nome no PLAYERS: utf-8 truncado em fronteira de code point
 export const INPUT_BYTES=10,SNAPSHOT_HEADER_BYTES=13,SELF_BYTES=31,ZONE_BYTES=21,VOICE_HEADER_BYTES=12,VOICE_UP_HEADER_BYTES=6;
 // SELF_BYTES: 18 + u16 fireCd (protocolo 7) + 2×u8 threat/threatDir (8) + 2×u8 weapon/alive (9) + u8 owned (10)
-//             + 3×u16 autoDefT/zoomT/feastT (12).
+//             + 3×u16 autoDefN/zoomT/feastT (12). ⚠️ O 1º é CARGA, os outros dois são TICKS: o tamanho não
+//             mudou entre a v12 e a v13, só o significado — e é por isso que a versão subiu mesmo assim.
 // Os campos novos entram no FIM do bloco, e isso não é arrumação: assim o `readSelf` antigo lê os 25
 // primeiros bytes certos e ignora o resto, então o fio continua legível por um cliente velho. Quem recusa
 // a conexão é só a checagem de PROTOCOL_VERSION no join — o formato em si não quebra.

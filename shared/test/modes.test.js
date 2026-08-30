@@ -52,9 +52,10 @@ test("modeCap: a capacidade fecha no tamanho de equipe (equipe incompleta não e
   assert.equal(modeCap(MODE.BR,0),modeOf(MODE.BR).max,"teamSize 0 não divide por zero");});
 
 // ── 2. zona ─────────────────────────────────────────────────────────────────
-test("zona: a máquina fecha em 21 300 ticks e o círculo novo SEMPRE cabe dentro do anterior",()=>{
+test("zona: a máquina fecha em 30 000 ticks e o círculo novo SEMPRE cabe dentro do anterior",()=>{
   const total=ZONE.HOLD_TICKS.reduce((a,b)=>a+b,0)+ZONE.SHRINK_TICKS.reduce((a,b)=>a+b,0);
-  assert.equal(total,21300);
+  assert.equal(total,30000,"8 min 20 s: o fechamento inteiro");
+  assert.ok(total<BR.ROUND_TICKS,"a zona tem que fechar ANTES do teto da partida, senão o BR acaba sem decidir nada");
   assert.equal(ZONE.R.length,ZONE.STAGES+1,"um raio por etapa mais o final");
   for(let i=1;i<ZONE.R.length;i++)assert.ok(ZONE.R[i]<ZONE.R[i-1],`R[${i}] menor que o anterior`);
   for(const seed of [1,7,42,999,123456]){
@@ -73,7 +74,7 @@ test("zona: a máquina fecha em 21 300 ticks e o círculo novo SEMPRE cabe dentr
     assert.ok(fim.y>=fim.r-1e-6&&fim.y<=WORLD.h-fim.r+1e-6);}});
 test("zona: determinística — mesma seed, mesma sequência de círculos",()=>{
   const roda=()=>{const rng=createRng(2024),z=createZone(0),out=[];
-    for(let t=0;t<22000;t++){if(stepZone(z,t,rng)){const c=zoneAt(z,t);out.push([t,c.x,c.y,c.r]);}}return JSON.stringify(out);};
+    for(let t=0;t<31000;t++){if(stepZone(z,t,rng)){const c=zoneAt(z,t);out.push([t,c.x,c.y,c.r]);}}return JSON.stringify(out);};
   assert.equal(roda(),roda());});
 // o gás ENDURECE conforme o círculo fecha: quem mede o tempo de sobrevida tem que dizer EM QUE RAIO,
 // senão o número não quer dizer nada. Aqui rodam os dois extremos da rampa na mesma peça.

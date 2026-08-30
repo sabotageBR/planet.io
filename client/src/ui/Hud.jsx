@@ -6,7 +6,7 @@ import React, { useMemo, useSyncExternalStore } from "react";
 import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
-import { leaveGame } from "../state/actions.js";
+import { leaveGame, toggleMute } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
 import Chat from "./Chat.jsx";
@@ -14,23 +14,33 @@ import KillFeed from "./KillFeed.jsx";
 import { Nick } from "./bits.jsx";
 import { WEAPON_ICON } from "./icons.js";
 import BrLobby from "./BrLobby.jsx";
-import { MODE, weaponOf, KEY_LABEL } from "@warspace/shared";
+import { MODE, weaponOf, KEY_LABEL, POWERUP, TICK_HZ } from "@warspace/shared";
 import { keysOf } from "../game/input/Keyboard.js";   // a legenda tem que dizer a tecla que está DE FATO ligada (inclusive a do desempate de colisão)
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0, autodef: 0, zoom: 0, feast: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: false, clock: null,
   mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, talk: null, chat: [], feed: [], lobby: null };
 const TALK_MSG = { cd: "micCooldown", denied: "micDenied", unsupported: "micUnsupported", audio: "micFail", fail: "micFail" };   // motivo → chave da label
-/** Anel do push-to-talk: o arco encolhe com o tempo que sobra do clipe. */
-function TalkRing({ k }) {
-  const R = 22, C = 2 * Math.PI * R, resta = Math.max(0, 1 - k);
-  return <svg className="talk-ring" viewBox="0 0 56 56" width="56" height="56" aria-hidden="true">
+/**
+ * Anel de tempo: o arco encolhe com o que resta. Serve ao push-to-talk e aos powerups temporizados — é o
+ * mesmo desenho e o mesmo significado ("isto acaba"), e duas implementações disso divergiriam na primeira
+ * correção. `resta` vai de 1 a 0; `low` é o aviso de que está no fim.
+ */
+function Ring({ resta, cls = "talk-ring", low = .25 }) {
+  const R = 22, C = 2 * Math.PI * R, v = Math.max(0, Math.min(1, resta));
+  return <svg className={cls} viewBox="0 0 56 56" width="56" height="56" aria-hidden="true">
     <circle cx="28" cy="28" r={R} className="tr-bg" />
-    <circle cx="28" cy="28" r={R} className={"tr-arc" + (resta < .25 ? " low" : "")}
-      strokeDasharray={C} strokeDashoffset={C * (1 - resta)} transform="rotate(-90 28 28)" />
+    <circle cx="28" cy="28" r={R} className={"tr-arc" + (v < low ? " low" : "")}
+      strokeDasharray={C} strokeDashoffset={C * (1 - v)} transform="rotate(-90 28 28)" />
   </svg>;
 }
 const EMPTY_STORE = { get: () => EMPTY, subscribe: () => () => {} };
 const PW_ICON = { magnet: "🧲", shield: "🛡️", autodef: "🛰️", zoom: "🔭", feast: "🍀" };
+// Quanto dura cada um, em segundos — o `self` manda só o que RESTA, e sem o total não há fração para o
+// anel desenhar. Ímã e banquete ainda acumulam ao pegar outro, então a fração é limitada a 1 em `Ring`.
+const PW_FULL = { magnet: POWERUP.TICKS / TICK_HZ, zoom: POWERUP.ZOOM_TICKS / TICK_HZ, feast: POWERUP.FEAST_TICKS / TICK_HZ };
+// Três formas, um desenho: TEMPO (anel que esvazia + segundos), CARGA (badge com o número, eterno até
+// usar) e NÍVEL (o escudo, que não expira e evolui). A auto-defesa é a carga: ela não tem relógio nenhum.
+const PW_KIND = { magnet: "time", zoom: "time", feast: "time", autodef: "carga", shield: "nivel" };
 const emit = (el, action, phase) => el.dispatchEvent(new CustomEvent("warspace:action", { bubbles: true, detail: { action, phase } }));
 function press(action) {
   return {
@@ -50,7 +60,10 @@ export default function Hud() {
   const h = useSyncExternalStore(store.subscribe, store.get, store.get) || EMPTY;
   const user = session.user || {}, prefs = session.prefs;
   const lbSize = +prefs.lbSize || 8, rows = h.lb || [];
-  let shown = rows.slice(0, lbSize); const meRow = rows.find(r => r.me); if (meRow && !shown.includes(meRow)) shown = [...shown, meRow];
+  // A própria linha entra SEMPRE. Quando ela não está no top N, vem anexada no fim e precisa de um filete
+  // acima: sem ele o placar mente, mostrando "11º" logo abaixo do 8º como se fossem vizinhos.
+  let shown = rows.slice(0, lbSize); const meRow = rows.find(r => r.me); let sep = false;
+  if (meRow && !shown.includes(meRow)) { shown = [...shown, meRow]; sep = true; }
   const lbMax = rows.reduce((m, r) => Math.max(m, r.mass || 0), 1);
   const coins = h.coins != null ? h.coins : user.coins || 0;
   const nivel = (session.stats && session.stats.level) | 0;
@@ -78,6 +91,10 @@ export default function Hud() {
       <span className="chip" id="h-room"><i>{LB.room}</i> <b id="v-room">{h.room || room || "—"}</b></span>
       {h.clock ? <span className="chip" id="h-clock"><i>🕒</i> <b>{String(h.clock.h).padStart(2, "0")}:{String(h.clock.m).padStart(2, "0")}</b> <i>⏳</i> <b>{Math.floor(h.clock.leftS / 60)}:{String(Math.floor(h.clock.leftS % 60)).padStart(2, "0")}</b></span> : null}
       <span className="chip" id="h-net" style={prefs.showFps ? undefined : { display: "none" }}><b id="v-ping">{h.ping || 0}</b><i>{LB.ping}</i> <b id="v-fps">{h.fps || 0}</b><i>{LB.fps}</i></span>
+      {/* MUDO à mão. A tecla M resolve para quem já sabe que ela existe; este botão é para quem precisa
+          calar o jogo AGORA e não vai abrir Opções → Som para procurar quatro interruptores diferentes. */}
+      <button className={"chip mute" + (prefs.muted ? " on" : "")} id="h-mute" title={LB.muteHint}
+        aria-pressed={!!prefs.muted} onClick={() => toggleMute()}>{prefs.muted ? "🔇" : "🔊"}</button>
       <button className="btn-mini" id="h-exit" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.exit}</button>
     </div>
     {/* Coluna DIREITA (kill feed · meu placar · top 10), no arranjo do Counter-Strike. É uma caixa flex de
@@ -93,7 +110,7 @@ export default function Hud() {
       <div className="score-row"><span className="k">{LB.coinIcon}</span> <b id="v-coins">{fmt(coins)}</b></div>
     </div>
     <div className="panel" id="hud-lb"><div className="ph">{LB.lbTitle}</div><div id="lb-rows">
-      {shown.map(r => <div key={r.slot != null ? r.slot : r.name} className={"lb-row" + (r.me ? " mine" : "") + (r.ally ? " ally" : "") + (r.rank <= 3 ? " top" : "")} style={{ "--p": ((r.mass || 0) / lbMax).toFixed(3) }}>
+      {shown.map((r, i) => <div key={r.slot != null ? r.slot : r.name} className={"lb-row" + (r.me ? " mine" : "") + (r.ally ? " ally" : "") + (r.rank <= 3 ? " top" : "") + (sep && i === shown.length - 1 ? " sep" : "")} style={{ "--p": ((r.mass || 0) / lbMax).toFixed(3) }}>
         <span className="lb-pos">{r.rank}</span>
         <span className="lb-name">{r.talking ? <i className="talk-dot">🎤</i> : null}{r.level > 0 ? <i className="lvl">{r.level}</i> : null}{r.name}{r.isBot ? <> <i className="bot">{LB.botTag}</i></> : null}{r.registered ? <> <i className="reg">{LB.regTag}</i></> : null}</span>
         <b className="lb-val">{fmt(r.mass)}</b></div>)}
@@ -110,9 +127,18 @@ export default function Hud() {
         <i>{armaIco}</i> {fireCd ? <b className="fire-cd">{fireCd}s</b> : <b id="v-ammo">{ammo}</b>} <span>{fireCd ? LB.fireCd : (LB.weapons[arma.key] || LB.ammo)}</span>
         {podeTrocar ? <em className="belt-alt">{cinto.map(w => <span key={w} className={"belt-ico" + (w === (h.weapon | 0) ? " on" : "")}>{WEAPON_ICON[w]}</span>)}</em> : null}
       </button>
-      <div id="hud-pw">{pw.map(([k, v]) => k === "shield"
-        ? <span key={k} className={"pw pw-shield lv-" + v} style={LV && LV[v - 1] ? { background: LV[v - 1].color } : undefined}><i>{PW_ICON.shield}</i>{LB.powerups.shield} <b>{LB.shieldLevel} {v} {"★".repeat(v)}</b></span>
-        : <span key={k} className={"pw pw-" + k}><i>{PW_ICON[k] || "✦"}</i>{LB.powerups[k] || k} <b>{Math.ceil(v)}s</b></span>)}</div>
+      {/* ÍCONE COM O NÚMERO EM CIMA, não chip com rótulo escrito: em partida ninguém lê "Auto-defesa 12s" —
+          o que se lê é a figura e um número. O anel dá o tempo sem ocupar linha, e o badge dá a carga. */}
+      <div id="hud-pw">{pw.map(([k, v]) => {
+        const kind = PW_KIND[k] || "time", full = PW_FULL[k] || 0;
+        const num = kind === "nivel" ? v : kind === "carga" ? v : Math.ceil(v);
+        return <span key={k} className={"pw pw-" + k + (kind === "nivel" ? " lv-" + v : "") + (kind === "time" && v <= 3 ? " low" : "")}
+          title={(LB.powerups[k] || k) + (kind === "nivel" ? ` ${LB.shieldLevel} ${v}` : kind === "carga" ? ` ×${v}` : ` ${num}s`)}
+          style={kind === "nivel" && LV && LV[v - 1] ? { "--pwc": LV[v - 1].color } : undefined}>
+          {kind === "time" && full ? <Ring resta={v / full} cls="pw-ring" low={3 / full} /> : null}
+          <i className="pw-ico">{PW_ICON[k] || "✦"}</i>
+          <b className="pw-n">{num}{kind === "carga" ? "×" : kind === "time" ? "s" : ""}</b>
+        </span>; })}</div>
     </div>
     </div>
     {br && !noLobby ? <div id="hud-mode" className={h.zoneHurt ? "hurt" : ""}>
@@ -120,7 +146,7 @@ export default function Hud() {
       {h.zoneHurt ? <span className="chip zone-out">{LB.zoneOut}</span> : null}
     </div> : null}
     <BrLobby lobby={h.lobby} />
-    {falando ? <div id="talk"><TalkRing k={h.talk.k} /><span>{LB.talkOn}</span></div>
+    {falando ? <div id="talk"><Ring resta={1 - h.talk.k} /><span>{LB.talkOn}</span></div>
       : talkAviso ? <div id="talk" className="hint"><span>{LB[TALK_MSG[talkAviso]] || LB.talkHint}</span></div> : null}
     <div id="hud-cd">
       <div className={"cd" + (splitReady ? " ready" : "")} id="cd-split" style={{ "--p": (1 - (h.splitCd || 0)).toFixed(2) }}><i className="cd-fill"></i><span>{LB.split}</span><em>{kSplit}</em></div>

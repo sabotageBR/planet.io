@@ -56,11 +56,17 @@ export function createFeed(){
  * gente no MESMO tick, e despejar tudo transformaria o canto da tela numa parede. Os ABATES têm
  * preferência sobre as linhas de sistema, e o que sobra do teto é descartado — as mais VELHAS primeiro,
  * porque uma linha de 3 s atrás já perdeu o assunto.
+ *
+ * ⚠️ A cópia da primeira linha é o feed INTEIRO. `out=fila` é um APELIDO do mesmo array, e o
+ * `fila.length=0` do fim esvaziava o próprio retorno: 1 a 4 linhas — o caso de QUASE todo abate — saíam
+ * como `null`, e `Room.broadcastFeed` desistia. Só passava o lote de 5+, que é supernova e fecho do gás.
+ * O ramo do teto escapava por acidente (o `.slice()` dele já era cópia), e o servidor falso do `?local=1`
+ * nunca teve o defeito — por isso o feed funcionava offline e sumia em produção, sem erro nem log.
  * @param {{k:string}[]} fila esvaziada pela chamada
  */
 export function drenaFeed(fila){
   if(!fila.length)return null;
-  let out=fila;
+  let out=fila.slice();   // CÓPIA, sempre: `fila.length=0` lá embaixo esvaziaria o próprio retorno
   if(fila.length>FEED.MAX_PER_FLUSH){
     const abates=fila.filter(x=>x.k!=='sys'),sys=fila.filter(x=>x.k==='sys');
     out=abates.slice(-FEED.MAX_PER_FLUSH);

@@ -17,6 +17,7 @@ export const PREFS = [
     { key: "quality", label: "Qualidade", type: "select", opts: [["auto", "Automática"], ["low", "Baixa"], ["high", "Alta"]] },
     { key: "showGrid", label: "Grade do mapa", type: "toggle" } ] },
   { id: "sound", title: "Som", items: [
+    { key: "muted", label: "Mudo (tecla M)", type: "toggle" },
     { key: "sound", label: "Efeitos sonoros", type: "toggle" },
     { key: "music", label: "Música", type: "toggle" },
     { key: "musicVolume", label: "Volume da música", type: "range", min: 0, max: 100 },

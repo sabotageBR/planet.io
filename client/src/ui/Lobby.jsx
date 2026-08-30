@@ -5,7 +5,7 @@ import { app } from "../state/app.js";
 import { play, loadRooms, loadTop5, toast } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { useInterval } from "../hooks/useInterval.js";
-import { Nav, ScreenHeader, MiniRank, Screen } from "./bits.jsx";
+import { ScreenHeader, MiniRank, Screen } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -26,7 +26,7 @@ function Body() {
     play({ room: c });
   };
   return <>
-    <Nav cur="lobby" /><ScreenHeader title={LB.lobbyTitle} />
+    <ScreenHeader title={LB.lobbyTitle} />
     <div className="card lobby-hero">
       <div className="me-chip"><SkinPreview skin={sk} r={20} size={56} className="skinprev-sm" /><div><b className="v-nick">{user.nick}</b><i className="v-kind" data-kind={guest ? "guest" : "registered"}>{guest ? LB.guest : LB.registered}</i></div></div>
       <button className="btn-primary" data-go="play" onClick={() => play({})}>{LB.playAuto}</button><span className="hint">{LB.autoNote}</span>

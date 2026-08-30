@@ -4,7 +4,7 @@ import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { openAccount, logout, setCountry } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
-import { Nav, ScreenHeader, Screen, Select } from "./bits.jsx";
+import { ScreenHeader, Screen, Select } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
 import AvatarPicker from "./AvatarPicker.jsx";
 import { fmt, fmtTime } from "./format.js";
@@ -23,7 +23,7 @@ function Body() {
   const temRetrato = session.skins.includes(83);
   const listaPaises = [...POPULAR, ...COUNTRIES.map(([c]) => c).filter(c => !POPULAR.includes(c))];
   return <>
-    <Nav cur="profile" /><ScreenHeader title={LB.profileTitle} />
+    <ScreenHeader title={LB.profileTitle} />
     <div className="card profile-head">
       <SkinPreview skin={sk} r={40} />
       <div className="pf-meta"><b className="v-nick pf-nick">{user.nick}</b><i className="v-kind pf-kind" data-kind={guest ? "guest" : "registered"}>{guest ? LB.guest : LB.registered}</i><span className="coinbar">{LB.coinIcon} <b className="v-coins">{fmt(user.coins)}</b></span></div>

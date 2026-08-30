@@ -7,6 +7,7 @@
 // pêssego. Contrato: ver ../dawn/index.js.
 import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow,fireworkPrims} from "../util.js";
 import {paintPattern,paintHole,paintNova} from "../patterns.js";
+import {ensureFace,faceBitmap} from "../faces.js";
 
 const INK="#241238",CREAM="#fff1d6",GOLD="#ffb547",CORAL="#ff5e6c",TEAL="#2ec4b6",PEACH="#ffcf9a",MAG="#e0417f",SIL="#2a1550";
 const NAVY="#141a4a",VIO="#3b2a6e",EMB1="#7a2f63",EMB2="#c8542f";
@@ -33,7 +34,7 @@ export const textures={
     // A versão do AVATAR entra na chave: sem ela, dois jogadores com fotos diferentes e a mesma skin
     // colidiriam na mesma textura — e é ela também que faz a foto aparecer sozinha quando o bitmap chega,
     // porque a chave muda e o cache assa a nova (não existe invalidação no TextureCache).
-    case "planet":return`${id}:p${p.skin.id}${p.isMe?"m":""}${p.avatar?"@"+p.avatar:""}:${size}`;
+    case "planet":return`${id}:p${p.skin.id}${p.isMe?"m":""}${p.avatar?"@"+p.avatar:""}${p.face||""}:${size}`;
     case "food":return`${id}:f${foodType(p.type)}${foodColor(p)}`;
     case "ejected":return`${id}:e${p.glow?"nova":p.color}`;
     case "glow":return`${id}:g${p.color}${p.k||""}`;
@@ -45,11 +46,11 @@ export const textures={
     default:return`${id}:${kind}`;}},
 
   // planeta: chapado + crescente roxo (lado da noite) + fio quente do lado do horizonte + brilho + emoji fantasma + contorno
-  planet(c,size,{skin:sk,isMe=false,avatarBmp=null}){const R=size/2,K=PK(sk),r=R/K,col=sk.color,lw=Math.max(2.5,r*.1);c.lineJoin="round";c.lineCap="round";
+  planet(c,size,{skin:sk,isMe=false,avatarBmp=null,faceBmp=null}){const R=size/2,K=PK(sk),r=R/K,col=sk.color,lw=Math.max(2.5,r*.1);c.lineJoin="round";c.lineCap="round";
     const band=(a0,a1)=>{c.beginPath();c.ellipse(0,0,r*1.85,r*.56,0,a0,a1,false);c.ellipse(0,0,r*1.3,r*.39,0,a1,a0,true);c.closePath();c.fill();c.stroke();};
     if(sk.ring){c.fillStyle=sh(col,.3);c.strokeStyle=INK;c.lineWidth=lw*.7;band(Math.PI,Math.PI*2);}
     c.fillStyle=col;c.beginPath();c.arc(0,0,r,0,6.283);c.fill();
-    c.save();c.beginPath();c.arc(0,0,r,0,6.283);c.clip();const pat=paintPattern(c,r,sk,{ink:INK,light:CREAM,avatar:avatarBmp});
+    c.save();c.beginPath();c.arc(0,0,r,0,6.283);c.clip();const pat=paintPattern(c,r,sk,{ink:INK,light:CREAM,avatar:avatarBmp,face:faceBmp});
     c.fillStyle="rgba(59,31,107,.45)";c.beginPath();c.arc(r*.42,r*.44,r*1.05,0,6.283);c.fill();
     c.strokeStyle="rgba(255,207,154,.8)";c.lineWidth=r*.16;c.beginPath();c.arc(0,0,r*.9,-2.95,-.95);c.stroke();
     c.fillStyle="rgba(255,241,214,.42)";c.beginPath();c.ellipse(-r*.36,-r*.38,r*.34,r*.2,-.75,0,6.283);c.fill();
@@ -109,7 +110,12 @@ export const textures={
     c.beginPath();c.moveTo(r*1.6,0);c.quadraticCurveTo(r*.6,-r*.95,-r*.9,-r*.7);c.lineTo(-r*1.3,-r*1.1);c.lineTo(-r*1.3,r*1.1);c.lineTo(-r*.9,r*.7);c.quadraticCurveTo(r*.6,r*.95,r*1.6,0);c.closePath();c.fill();c.stroke();
     c.fillStyle=CREAM;c.beginPath();c.arc(r*.25,0,r*.36,0,6.283);c.fill();c.stroke();},
 
-  paintSkin(c,sk,r){const rr2=sk.ring?r*.68:r,d=rr2*PK(sk),size=tier(rr2),k=d*2/size;c.save();c.translate(0,2);c.scale(k,k);textures.planet(c,size,{skin:sk,isMe:false});c.restore();},
+  paintSkin(c,sk,r){const rr2=sk.ring?r*.68:r,d=rr2*PK(sk),size=tier(rr2),k=d*2/size;c.save();c.translate(0,2);c.scale(k,k);
+    // a caricatura na PRÉVIA (loja, perfil, entrada): `ensureFace` é disparar e esquecer, e o `SkinPreview`
+    // repinta quando o tema muda — mas na primeira vez o bitmap ainda não chegou, então quem garante o
+    // repinte é o `faceReady` de theme/faces.js, que avisa a UI quando a arte fica pronta.
+    if(sk&&sk.face)ensureFace(sk);
+    textures.planet(c,size,{skin:sk,isMe:false,faceBmp:sk&&sk.face?faceBitmap(sk):null});c.restore();},
 
   // fundo: marinho → violeta, brasa magenta → laranja queimado só nos ~18% de baixo (sem sol); estrelas no alto (60%) com fade
   // (sem as calotas de montes no horizonte: viravam calombos escuros na tela)

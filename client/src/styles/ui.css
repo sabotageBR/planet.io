@@ -154,33 +154,51 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 #hud #hud-right .lb-row::after{left:auto;right:-9px;transform:rotate(225deg)}
 #hud #hud-right .lb-row,#hud #hud-right .panel{max-width:100%}
 
-/* ── PLACAR E MASSA: mais estreitos, mais juntos e TRANSLÚCIDOS ───────────────
-   O bloco nasceu opaco e largo: `min-width:172px` por linha (204 na 1ª, 188 na 2ª), `gap:9px` entre elas,
-   `gap:8px` entre os blocos e nenhum `max-width` no desktop — o painel comia a lateral direita da tela em
-   monitor grande e no celular. Aqui ele encolhe e deixa o jogo aparecer por baixo.
+/* ── PLACAR: UMA TABELA, NÃO DEZ PÍLULAS ─────────────────────────────────────
+   O placar era uma pilha de balõezinhos independentes: cada linha com fundo, borda de 2 px, sombra dura,
+   rabinho de quadrinho e LARGURA PRÓPRIA (`min-width:172px`, 204 na 1ª). Dez larguras diferentes empilhadas
+   à direita davam uma borda serrilhada, os números da massa não se alinhavam entre si — que é a única coisa
+   que um placar existe para deixar comparar — e o conjunto comia a lateral da tela em monitor grande.
+   Aqui vira o que é: uma tabela. Um cartão translúcido só, três colunas alinhadas (posição · nome · massa),
+   largura fixa, nome cortado com reticências. As linhas perdem superfície própria e ficam legíveis pelo
+   contraste do texto, que é o que sobra quando o fundo é o jogo.
    ⚠️ Tudo mira `#hud #x` (2,0,0) pelo motivo do bloco lá em cima: os temas são gerados por port.js com
    `:where(...)` (soma zero), `ui.css` vem ANTES deles em theme/all.css, e no empate quem vem depois vence.
-   ⚠️ E NÃO editar theme/*/hud.css: aquele arquivo é gerado, a próxima passada do port.js apagaria a mão. */
-#hud #hud-right{gap:5px;max-width:min(250px,21vw)}
-#hud #hud-right #lb-rows{gap:3px;padding-left:0}
-#hud #hud-right .lb-row{min-width:0;max-width:100%;padding:2px 9px 2px 4px;gap:6px;font-size:12px;
-  border-width:2px;box-shadow:none;background:color-mix(in srgb,var(--surface) 52%,transparent)}
-/* o rabinho do balão usa `background:inherit`, então a transparência acompanha de graça */
+   ⚠️ E NÃO editar o hud.css dos temas: aquele arquivo é gerado, a próxima passada do port.js apagaria a mão.
+   (E cuidado ao citar caminhos aqui dentro: um "asterisco barra" fecha o comentário e engole a regra seguinte.) */
+#hud #hud-right{gap:6px;width:min(238px,22vw);max-width:none}
+#hud #hud-right .panel,#hud #hud-right #kill-feed{width:100%;max-width:100%}
+#hud #hud-lb{min-width:0;padding:5px 7px 6px;border-width:2px;box-shadow:none;
+  background:color-mix(in srgb,var(--surface) 46%,transparent)}
+#hud #hud-lb .ph{font-size:10px;letter-spacing:.12em;opacity:.7;margin:0 0 4px 2px}
+#hud #hud-right #lb-rows{display:flex;flex-direction:column;align-items:stretch;gap:0;padding-left:0}
+/* a linha vira UMA GRADE: é o `1fr` do meio que faz os três números da direita caírem na mesma coluna,
+   por mais curto ou comprido que seja o nick ao lado */
+#hud #hud-right .lb-row{display:grid;grid-template-columns:18px 1fr auto;align-items:center;
+  min-width:0;max-width:100%;padding:2px 3px;gap:7px;font-size:12.5px;
+  border:0;border-radius:6px;box-shadow:none;background:transparent}
+#hud #hud-right .lb-row::after{content:none}          /* o rabinho de balão não faz sentido sem o balão */
 #hud #hud-right .lb-row:nth-child(1),#hud #hud-right .lb-row:nth-child(2){min-width:0;font-size:12.5px}
-#hud #hud-right .lb-row.mine{background:color-mix(in srgb,var(--accent) 55%,transparent)}
-#hud #hud-right .lb-pos{width:20px;min-width:20px;height:20px;font-size:11px;border-width:2px}
+#hud #hud-right .lb-row.mine{background:color-mix(in srgb,var(--accent) 42%,transparent)}
+/* a própria linha ANEXADA (fora do top N) vem depois de um filete: sem ele o placar mente, colando o 15º
+   logo abaixo do 8º como se fossem vizinhos */
+#hud #hud-right .lb-row.sep{margin-top:5px;padding-top:5px;border-top:1px solid color-mix(in srgb,var(--text) 24%,transparent)}
+#hud #hud-right .lb-pos{width:18px;min-width:18px;height:18px;line-height:18px;padding:0;font-size:10.5px;
+  border:0;border-radius:5px;text-align:center;background:color-mix(in srgb,var(--text) 14%,transparent)}
+#hud #hud-right .lb-row.top .lb-pos{background:color-mix(in srgb,var(--accent) 62%,transparent);color:var(--bg)}
+#hud #hud-right .lb-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#hud #hud-right .lb-val{font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 #hud #hud-score{min-width:0;padding:6px 11px;border-width:3px;box-shadow:none;
   background:color-mix(in srgb,var(--accent) 52%,transparent)}
-#hud #hud-score .score-big{font-size:24px}
+#hud #hud-score .score-big{font-size:24px;font-variant-numeric:tabular-nums}
 #hud #hud-score .score-sub{margin-bottom:2px}
-/* ⚠️ Com fundo translúcido o texto perde o contraste que o preenchimento sólido dava — e ao meio-dia, no
-   céu claro do tema `dawn`, o número da massa fica ilegível. A sombra é o que devolve a leitura sem
-   trazer a parede opaca de volta. */
-#hud #hud-right .lb-row,#hud #hud-score{text-shadow:0 1px 2px rgba(0,0,0,.5)}
+/* ⚠️ Sem superfície própria por linha, o texto do placar fica direto sobre o JOGO — e ao meio-dia, no céu
+   claro do tema `dawn`, some. A sombra é o que devolve a leitura sem trazer a parede opaca de volta. */
+#hud #hud-right .lb-row,#hud #hud-score{text-shadow:0 1px 2px rgba(0,0,0,.55)}
 /* No dedo o painel tem que ceder mais: a tela é menor e ele disputa espaço com o radar e os botões. */
-body[data-mode="portrait"] #hud #hud-right{max-width:min(46vw,180px)}
-body[data-mode="portrait"] #hud #hud-right .lb-row{font-size:11px;padding:2px 7px 2px 3px;gap:5px}
-body[data-mode="landscape"] #hud #hud-right{max-width:min(34vw,210px)}
+body[data-mode="portrait"] #hud #hud-right{width:min(46vw,178px)}
+body[data-mode="portrait"] #hud #hud-right .lb-row{font-size:11px;padding:2px 2px;gap:5px}
+body[data-mode="landscape"] #hud #hud-right{width:min(34vw,206px)}
 
 /* ── KILL FEED ── */
 #kill-feed{display:flex;flex-direction:column;align-items:flex-end;gap:4px;max-width:min(340px,32vw);pointer-events:none}
@@ -237,9 +255,13 @@ body[data-mode="landscape"] #hud #hud-right{max-width:min(34vw,210px)}
    Ficar mudo depois de morrer nunca foi regra — era esta linha: o `#hud` inteiro levava `.hidden` fora da
    tela `game`, e o chat mora dentro dele. (O servidor sempre aceitou a fala de um morto, e ele já RECEBIA
    as linhas dos outros; só não tinha onde ler nem onde escrever.) Agora `dead` e `round` viram um terceiro
-   estado: sai tudo o que é de quem está jogando — arma, powerups, cooldowns, botões de toque, placar, feed —
-   e ficam as duas coisas de quem assiste: o chat e o mapa (`#radar`, que no modo grande é o mapa). */
-#hud.spec > *:not(#hud-left):not(#radar):not(#talk):not(#touch){display:none}
+   estado: sai tudo o que é de quem está jogando — arma, powerups, cooldowns, botões de toque, placar —
+   e fica o que é de quem assiste: o chat, o mapa (`#radar`, que no modo grande é o mapa) e o KILL FEED.
+   O feed estava na lista dos que saem, e era a informação mais óbvia de quem acabou de morrer: quem o
+   matou, e o que a briga que ele está assistindo está rendendo. Por isso o `#hud-right` sobrevive e quem
+   some são os dois blocos de dentro dele que só interessam a quem joga. */
+#hud.spec > *:not(#hud-left):not(#hud-right):not(#radar):not(#talk):not(#touch){display:none}
+#hud.spec #hud-right > *:not(#kill-feed){display:none}   /* a massa e o placar são de quem está vivo */
 #hud.spec #hud-status{display:none}                  /* arma e powerups não existem para quem morreu */
 /* O morto FALA (a voz foi liberada junto com o texto), então o anel do push-to-talk fica — e no dedo, onde
    não há Ctrl, o único botão de toque que sobrevive é o do microfone. Dividir e atirar, esses sim, acabaram. */
@@ -266,6 +288,48 @@ body[data-mode="landscape"] #hud #hud-right{max-width:min(34vw,210px)}
 .talk-ring .tr-bg{fill:color-mix(in srgb,var(--bg,#111) 70%,transparent);stroke:var(--line,#0006);stroke-width:3}
 .talk-ring .tr-arc{fill:none;stroke:var(--danger,#ff3d5a);stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset .1s linear}
 .talk-ring .tr-arc.low{stroke:var(--accent,#ffc22e)}
+
+/* ── POWERUPS: ÍCONE COM O NÚMERO, NÃO CHIP COM RÓTULO ───────────────────────
+   Eram pílulas com o nome escrito por extenso — "🧲 Ímã 6s" —, e ninguém lê palavra em partida: some no
+   ruído do rodapé e cresce de largura conforme a lista aumenta, empurrando o chat. Aqui cada powerup é um
+   quadrado do tamanho de um alvo de toque, com o número em cima do ícone.
+   Três formas, uma gramática: TEMPO tem anel que esvazia (`.pw-ring`), CARGA tem o número e nenhum anel —
+   ela não expira, fica lá até o dia em que salva a sua vida —, e o ESCUDO mostra o nível.
+   ⚠️ `#hud .pw` (2,0,0): os temas definem `.pw` (0,1,0) e vêm depois; sem o `#hud` na frente, some.
+   ⚠️ Os temas só pintam `.pw-magnet`, `.pw-shield` e um `.pw-speed` de um powerup que não existe mais —
+   `.pw-autodef` e `.pw-feast` nunca tiveram cor nenhuma e caíam no cinza genérico. Aqui ganham a delas. */
+#hud #hud-pw{display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end}
+/* ⚠️ CIRCULAR, e o fundo NEUTRO. Na primeira versão o quadrado tinha o fundo na cor do powerup e o anel
+   na MESMA cor: o anel existia, girava certo e era invisível — cor sobre a própria cor não mostra
+   progresso nenhum. O fundo agora é a superfície do tema e a cor identifica o powerup no anel e no ícone,
+   que é onde ela trabalha. E o disco casa com o anel: um arco de tempo em volta de um quadrado sobra nos
+   cantos e some no meio dos lados. */
+#hud .pw{position:relative;display:grid;place-items:center;width:44px;height:44px;padding:0;
+  border-radius:50%;border:2px solid var(--line,#0006);box-shadow:none;font-size:0;
+  background:color-mix(in srgb,var(--surface,#1a2350) 82%,transparent)}
+#hud .pw .pw-ring{position:absolute;inset:-3px;width:calc(100% + 6px);height:calc(100% + 6px);pointer-events:none}
+#hud .pw .pw-ring .tr-bg{fill:none;stroke:color-mix(in srgb,var(--text,#fff) 16%,transparent);stroke-width:4}
+#hud .pw .pw-ring .tr-arc{stroke:var(--pwc,var(--accent,#ffc22e));stroke-width:5}
+#hud .pw .pw-ring .tr-arc.low{stroke:var(--danger,#ff3d5a)}
+/* sem anel (carga e nível) a cor tem que aparecer em algum lugar: vira o aro do disco */
+#hud .pw-autodef,#hud .pw-shield{border-color:var(--pwc,var(--accent,#ffc22e))}
+#hud .pw .pw-ico{font-size:21px;line-height:1;font-style:normal;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))}
+/* o número fica EM CIMA, meio para fora: dentro do quadrado ele disputaria o pouco espaço com o ícone */
+#hud .pw .pw-n{position:absolute;top:-7px;right:-5px;min-width:19px;height:19px;padding:0 4px;
+  display:grid;place-items:center;border-radius:10px;border:2px solid var(--line,#0006);
+  background:var(--bg,#141026);color:var(--text,#fff);
+  font-size:11px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums}
+#hud .pw.low .pw-n{background:var(--danger,#ff3d5a);color:#fff;animation:pwlow .7s ease-in-out infinite}
+@keyframes pwlow{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+/* a cor de cada um: é ela que faz reconhecer o powerup sem ler nada */
+#hud .pw-magnet{--pwc:var(--danger,#ff3d5a)}
+#hud .pw-autodef{--pwc:var(--ok,#3ddc5f)}
+#hud .pw-feast{--pwc:var(--accent2,#7fa8ff)}
+#hud .pw-zoom{--pwc:var(--accent,#ffc22e)}
+/* o escudo já vem com a cor do NÍVEL por style inline (theme.hud.cell.powerups.shieldLevels) */
+#hud .pw-shield .pw-n{background:var(--pwc,var(--accent,#ffc22e));color:var(--bg,#141026)}
+body[data-mode="portrait"] #hud .pw{width:38px;height:38px}
+body[data-mode="portrait"] #hud .pw .pw-ico{font-size:18px}
 #t-talk.on{background:var(--danger,#ff3d5a)}
 
 /* No DEDO o cartão da morte é folha de rodapé (os três temas) e o chat vive na única faixa livre, a de
@@ -296,9 +360,25 @@ body[data-mode="landscape"] #hud #hud-right .ph{display:none}
    Precisa de (2,0,0) para vencer o tema — ver a nota de especificidade lá em cima. */
 body[data-mode="portrait"] #hud #hud-top{left:50%;right:auto;top:8px;transform:translateX(-50%);
   flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 16px)}
-body[data-mode="portrait"] #hud-right{top:112px;right:8px;gap:6px;max-width:min(56vw,240px)}
+/* ⚠️ A faixa do topo tem que caber em UMA linha. Ela é `flex-wrap`, então cada chip novo é um candidato a
+   empurrá-la para a segunda linha — e aí ela desce por cima do kill feed, que começa num `top` fixo. Foi
+   exatamente o que o botão de mudo fez em 375 px: 50 px de sobreposição, medidos pela matriz.
+   Duas defesas, porque uma só é fina demais: os chips encolhem (o rótulo "SALA" some, o CÓDIGO fica — é
+   com ele que se convida alguém, e some junto seria tirar a função do celular para ganhar 40 px), e a
+   coluna direita desce o suficiente para caber uma segunda linha se um dia ela voltar a existir. */
+body[data-mode="portrait"] #hud #hud-top #h-room i{display:none}
+body[data-mode="portrait"] #hud #hud-top{gap:4px}
+body[data-mode="portrait"] #hud #hud-top .chip{padding:3px 8px;font-size:11px}
+body[data-mode="portrait"] #hud #h-mute{width:30px;height:30px;min-width:30px;font-size:13px}
+body[data-mode="portrait"] #hud-right{top:150px;right:8px;gap:6px;max-width:min(56vw,240px)}
 body[data-mode="portrait"] #kill-feed{max-width:100%}
 body[data-mode="portrait"] #kill-feed .kf-row:nth-child(n+3){display:none}
+/* Espectador em tela estreita: o chat sobe para o topo-esquerdo e o feed fica no topo-direito — os dois
+   inteiros não cabem lado a lado em 375 px. O feed cede, porque o chat é onde o morto AGE. */
+body[data-mode="portrait"] #hud.spec #hud-right,
+body[data-mode="landscape"] #hud.spec #hud-right{top:8px;width:min(38vw,150px);max-width:min(38vw,150px)}
+body[data-mode="portrait"] #hud.spec #kill-feed .kf-row:nth-child(n+3),
+body[data-mode="landscape"] #hud.spec #kill-feed .kf-row:nth-child(n+3){display:none}
 body[data-mode="portrait"] #hud #hud-right .score-row{display:none}   /* fica só o número grande */
 
 /* Dedo: a coluna direita NÃO pode descer até os botões de toque, que moram no canto inferior direito
@@ -575,6 +655,44 @@ body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-round .dead-card{
   box-shadow:0 14px 40px rgba(0,0,0,.42);
   padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px))}
 body{--screen-top:clamp(12px,4vh,44px)}
+/* ── A BARRA DE NAVEGAÇÃO, UMA SÓ E SEMPRE NO MESMO LUGAR ────────────────────
+   Ela saiu de dentro da caixa das telas (ver App.jsx) e virou uma barra do APLICATIVO. O que ela era
+   antes: um filho da coluna com `order:99;position:sticky;bottom:0` (screens.css:32 dos temas) — ou seja,
+   colada no fundo do SCROLLPORT da caixa, cuja altura vem do conteúdo. Tela curta, barra no meio da
+   janela; tela longa, barra quase no rodapé. E as margens negativas (`-16px`/`-22px`) a faziam sangrar
+   para fora do padding, o que dava a ela a largura "grande" de uma tela e a "pequena" de outra.
+   Aqui ela é sempre a mesma: presa no rodapé, largura da janela, altura fixa em --nav-h. A caixa das
+   telas desconta essa altura do teto, então nunca passa por baixo dela.
+   ⚠️ Especificidade: os temas escrevem `.nav` sob `:where(...)`, que soma ZERO — mas ui.css é importado
+   ANTES deles, e no empate quem vem depois vence. `#app>nav.nav` vale (1,1,1) e ganha com folga. */
+/* o mudo do topo: um chip que é BOTÃO, então tem alvo de toque de verdade e um estado ligado visível */
+#hud #h-mute{padding:0;width:34px;height:34px;min-width:34px;display:grid;place-items:center;
+  font-size:15px;line-height:1;cursor:pointer;pointer-events:auto}
+#hud #h-mute.on{background:color-mix(in srgb,var(--danger,#ff3d5a) 62%,transparent)}
+body[data-pointer="coarse"] #hud #h-mute{width:44px;height:44px;min-width:44px;font-size:18px}
+
+body{--nav-h:74px}
+#app>nav.nav{position:absolute;left:0;right:0;bottom:0;top:auto;z-index:12;
+  margin:0;height:auto;min-height:var(--nav-h);
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));
+  display:flex;align-items:center;justify-content:center;gap:4px;
+  border-top:3px solid var(--line,#0006);
+  background:color-mix(in srgb,var(--surface,#1a2350) 92%,transparent)}
+/* na GAVETA a barra é da gaveta, não da janela: o jogo continua vivo à esquerda e não pode ser tampado */
+body[data-shell="rail"]:not([data-mode="portrait"]) #app>nav.nav{left:auto;width:var(--drawer-w);border-left:5px solid var(--line,#0006)}
+/* e a caixa das telas para de encostar nela */
+body:not([data-shell="rail"]):not([data-mode="portrait"]) .screen .wrap{
+  max-height:calc(100% - var(--screen-top) - var(--nav-h) - 12px)}
+body[data-shell="rail"]:not([data-mode="portrait"]) .screen .wrap{
+  bottom:var(--nav-h);height:auto;border-bottom-left-radius:0}
+body[data-mode="portrait"] .screen .wrap{max-height:calc(86% - var(--nav-h))}
+/* ⚠️ A variável tem que ser redefinida no BODY, não na barra: quem lê `--nav-h` para descontar do teto é
+   a caixa da tela, que não é descendente da barra e nunca veria o valor local dela. */
+body[data-mode="portrait"]{--nav-h:66px}
+body[data-mode="landscape"]{--nav-h:58px}
+body[data-mode="landscape"] #app>nav.nav{padding-top:4px}
+/* a tela inicial não tem barra (a navegação dela são os seis botões do cartão), então recupera o espaço */
+body[data-screen="entry"] #s-entry.screen{padding-bottom:calc(var(--screen-top) + env(safe-area-inset-bottom,0px))}
 /* a "alça" de folha: o dusk desenha uma pílula no topo de toda tela, modal e card de morte
    (screens.css:52/90/203) — o puxador de quem arrasta uma folha para cima. Fora do celular em pé não há
    folha nenhuma para arrastar, e a pílula vira um traço solto no topo do painel. */

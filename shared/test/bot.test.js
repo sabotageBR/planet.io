@@ -10,7 +10,7 @@ import {BotBrain} from "../src/bot.js";
 import {createRng} from "../src/rng.js";
 import {createZone,stepZone} from "../src/zone.js";
 import {INPUT_FLAG} from "../src/protocol/constants.js";
-import {BOT,BR,PLAYER,FOOD,STAR,SPEED,TICK_HZ} from "../src/constants.js";
+import {BOT,BR,PLAYER,FOOD,STAR,SPEED,TICK_HZ,ZONE} from "../src/constants.js";
 
 const TURN_MAX=BOT.SKILLS.reduce((a,s)=>Math.max(a,s.turn),0);
 const JIT=BOT.HAND.JITTER_STEP*BOT.SKILLS.reduce((a,s)=>Math.max(a,s.jitter),0);
@@ -101,15 +101,23 @@ test("mão: o ponteiro nunca gira 180° num quadro", ()=>{
 // por exemplo), sem nada estar quebrado. Somando três partidas a diferença fica clara e estável: verificado
 // em sete janelas de três sementes consecutivas, o agregado vale em TODAS — antes e depois desta mudança.
 // O custo é ~3 arenas em vez de 1, e é o preço de o vermelho significar alguma coisa.
-test("zona: quem tem mão melhor toma menos gás", ()=>{
-  const rodadas=[arena({seed:11}),arena({seed:12}),arena({seed:13})];
+// ⚠️ ESTE roda mais tempo que os outros, e tem que rodar. A zona só COMEÇA a fechar no tick 6000 e a
+// primeira etapa só termina em 9600 (ZONE.HOLD_TICKS/SHRINK_TICKS), então nos 7200 ticks padrão da arena
+// o círculo ainda cobre o mapa inteiro e ninguém encosta no gás: não há o que medir.
+test("zona: os bots leem o círculo e não morrem no gás", ()=>{
+  const T=ZONE.HOLD_TICKS[0]+ZONE.SHRINK_TICKS[0]+ZONE.HOLD_TICKS[1]+ZONE.SHRINK_TICKS[1];
+  const rodadas=[arena({seed:11,ticks:T}),arena({seed:12,ticks:T}),arena({seed:13,ticks:T})];
   let fora=0,total=0;for(const a of rodadas)for(const [k,v] of a.vivo){total+=v;fora+=a.gas.get(k)|0;}
   assert.ok(fora/total<.05,`${(100*fora/total).toFixed(1)}% do tempo no gás — os bots não estão lendo a zona`);
-  const soma=(m,id)=>rodadas.reduce((s,a)=>s+(a[m].get(id)|0),0);
-  const taxa=id=>soma("gas",id)/Math.max(1,soma("vivo",id));
-  if(soma("vivo","ruim")>3000&&soma("vivo","bom")>3000)
-    assert.ok(taxa("ruim")>=taxa("bom"),
-      `o bot ruim tem que tomar MAIS gás que o bom — é o que dá variedade à sala (ruim ${taxa("ruim").toFixed(5)} vs bom ${taxa("bom").toFixed(5)})`);
+  // ── o que ESTAVA aqui e saiu ──
+  // Havia uma segunda asserção: "o bot ruim tem que tomar MAIS gás que o bom". Ela passava, mas não era
+  // verdade — passava porque três sementes sobre uma amostra minúscula de gás dão o sinal que quiserem.
+  // Medido com OITO sementes e a zona rodada até o terceiro círculo, a taxa de tempo no gás por perícia é
+  //     ruim .00509 · medio .01000 · bom .00953 · fera .00590
+  // ou seja, nem monotônica: quem toma mais gás é o MEIO da tabela. E faz sentido — tempo no gás não mede
+  // a mão, mede o quanto o bot se afasta do centro para caçar, e é o mediano que se arrisca sem saber
+  // recuar. O ruim fica perto e passivo; a fera vai longe e volta na hora. Um teste que afirma o contrário
+  // do que o sistema faz é pior que teste nenhum: ele trava a implementação no acaso de uma semente.
 });
 
 test("perícia: a sala tem gente de todos os níveis", ()=>{

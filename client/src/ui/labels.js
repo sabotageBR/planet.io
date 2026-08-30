@@ -53,6 +53,8 @@ export const LABELS = {
   respawn: "⟳ RENASCER", toLobby: "Lobby", timeWord: "tempo", rankWord: "ranking diário", coinsEarned: "moedas ganhas",
   lobbyTitle: "SALAS", roomCode: "CÓDIGO", enter: "Entrar", create: "Criar sala", autoNote: "Entra na sala mais cheia com vaga", shard: "shard", botsWord: "bots",
   rankTitle: "RANKING", scopeGlobal: "Global", scopeCountry: "Meu país", noCountry: "escolha seu país no perfil",
+  rankGuest: "o ranking é só de contas — registre a sua e todo o seu histórico entra",
+  muteHint: "Mudo (M)",
   countryLabel: "País", countryHint: "Escolha seu país para entrar no ranking regional.",
   levelWord: "nível", xpWord: "XP", levelUp: "SUBIU DE NÍVEL!", levelReq: "Nível {n}",
   lowlevelToast: "essa skin pede nível {n} — você tem {v}",

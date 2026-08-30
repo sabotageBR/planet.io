@@ -28,7 +28,7 @@ import {createReader} from "./reader.js";
 const W=WORLD.w,H=WORLD.h;
 const u8c=v=>v>0?(v>255?255:Math.round(v)):0,u16c=v=>v>0?(v>65535?65535:Math.round(v)):0,u32c=v=>v>0?(v>4294967295?4294967295:Math.round(v)):0;
 /** @type {never[]} */const EMPTY=[];
-/** @type {SelfState} */const SELF0={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0,owned:1,autoDefT:0,zoomT:0,feastT:0};
+/** @type {SelfState} */const SELF0={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0,owned:1,autoDefN:0,zoomT:0,feastT:0};
 /** @param {Reader} rd @param {number} type */
 const expect=(rd,type)=>{const t=rd.u8();if(t!==type)throw new Error(`tipo de mensagem 0x${t.toString(16)} ≠ 0x${type.toString(16)}`);};
 
@@ -83,9 +83,9 @@ function readUpdate(rd){const id=rd.u32(),mask=rd.u8();/** @type {EntityUpdate} 
 function writeSelf(w,s){w.u8(s.flags|0).u8(u8c(s.missiles)).u8(s.powerBits|0).u16(u16c(s.magnetT)).u8(u8c(s.shieldLv))
   .u32(u32c(s.score)).u8(qTicks8(s.splitCd)).u8(qTicks8(s.ejectCd)).u16(u16c(s.fireCd)).u16(u16c(s.rank)).u32(u32c(s.mass))
   .u8(u8c(s.threat)).u8((s.threatDir|0)&255).u8(s.weapon|0).u8(u8c(s.alive)).u8(s.owned|0)
-  .u16(u16c(s.autoDefT)).u16(u16c(s.zoomT)).u16(u16c(s.feastT));}   // campos novos SEMPRE no fim: é o que mantém o bloco legível por um leitor de versão anterior
+  .u16(u16c(s.autoDefN)).u16(u16c(s.zoomT)).u16(u16c(s.feastT));}   // campos novos SEMPRE no fim: é o que mantém o bloco legível por um leitor de versão anterior
 /** @param {Reader} rd @returns {SelfState} */
-function readSelf(rd){return{flags:rd.u8(),missiles:rd.u8(),powerBits:rd.u8(),magnetT:rd.u16(),shieldLv:rd.u8(),score:rd.u32(),splitCd:rd.u8(),ejectCd:rd.u8(),fireCd:rd.u16(),rank:rd.u16(),mass:rd.u32(),threat:rd.u8(),threatDir:rd.u8(),weapon:rd.u8(),alive:rd.u8(),owned:rd.u8(),autoDefT:rd.u16(),zoomT:rd.u16(),feastT:rd.u16()};}
+function readSelf(rd){return{flags:rd.u8(),missiles:rd.u8(),powerBits:rd.u8(),magnetT:rd.u16(),shieldLv:rd.u8(),score:rd.u32(),splitCd:rd.u8(),ejectCd:rd.u8(),fireCd:rd.u16(),rank:rd.u16(),mass:rd.u32(),threat:rd.u8(),threatDir:rd.u8(),weapon:rd.u8(),alive:rd.u8(),owned:rd.u8(),autoDefN:rd.u16(),zoomT:rd.u16(),feastT:rd.u16()};}
 /** @param {Writer} w @param {Partial<Snapshot>&{tick:number,ackSeq:number}} s @returns {Uint8Array} */
 export function encodeSnapshot(w,s){
   const cr=s.creates||EMPTY,up=s.updates||EMPTY,rm=s.removes||EMPTY;

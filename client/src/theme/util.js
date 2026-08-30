@@ -53,8 +53,8 @@ export const tier=r=>r<=44?128:r<=120?256:512;
 export function fireworkPrims(k,f,pal){
   const P=[],RISE=.28,n=f.n||40,rnd=mulberry((f.seed|0)+1);
   // sorteio determinístico por faísca (mesma semente ⇒ mesmo desenho todo frame)
-  const A=[],V=[],T=[];
-  for(let i=0;i<n;i++){A.push(rnd()*6.2832);V.push(.55+rnd()*.45);T.push(rnd());}
+  const A=[],V=[],T=[],C=[];
+  for(let i=0;i<n;i++){A.push(rnd()*6.2832);V.push(.55+rnd()*.45);T.push(rnd());C.push(rnd());}
   const apice={x:f.x+f.dx*f.h,y:f.y-f.h};
   if(k<RISE){                                        // ── subida ──
     const u=k/RISE,e=1-(1-u)*(1-u);                  // desacelera até parar no ápice
@@ -63,18 +63,29 @@ export function fireworkPrims(k,f,pal){
     for(let i=0;i<4;i++){const b=Math.max(0,e-i*.045),bx=f.x+(apice.x-f.x)*b,by=f.y+(apice.y-f.y)*b;
       P.push({type:"line",x1:bx,y1:by,x2:bx+(x-bx)*.6,y2:by+(y-by)*.6,color:i?pal.trail:pal.hot,
         alpha:(1-i*.24)*(.35+.65*u),width:Math.max(1.5,passo*(1-i*.2)*.5)});}
-    P.push({type:"ring",x,y,r:passo*(.9+u*.5),color:pal.hot,alpha:.9,width:Math.max(1.5,passo*.35)});
+    // faiscagem do motor, em vez do anel: o rastro cospe brasa para trás enquanto sobe
+    for(let i=0;i<3;i++){const q=(rnd()-.5)*passo*2.4,b=Math.max(0,e-.03-i*.03);
+      const bx=f.x+(apice.x-f.x)*b,by=f.y+(apice.y-f.y)*b;
+      P.push({type:"line",x1:bx+q,y1:by,x2:bx+q*1.6,y2:by+passo*(.8+i*.5),color:pal.ember,
+        alpha:.5*(1-i*.3)*u,width:Math.max(1,passo*.22)});}
     return P;}
   // ── estouro ──
   const u=(k-RISE)/(1-RISE),LAM=1.5,G=f.willow?.95:.55;
   const dist=uu=>(1-Math.exp(-LAM*uu))/LAM;          // arrasto: o raio satura
   // R0/LAM ≈ .55·h de raio final: a bola tem que abrir MAIS LARGA que meia subida, senão parece faísca de vela
   const R0=f.h*(f.willow?1.25:1.05),du=.085;
-  const flash=u<.10?1-u/.10:0;
-  if(flash>0){                                        // clarão do estouro
-    P.push({type:"star",x:apice.x,y:apice.y,r:R0*.10*(1+u*4),n:14,inner:.22,phase:u,fill:pal.hot,alpha:flash*.85});
-    P.push({type:"ring",x:apice.x,y:apice.y,r:R0*(.06+u*3.2),color:pal.body,alpha:flash*.5,width:Math.max(1.5,R0*.02)});}
   const fade=u<.78?1:1-(u-.78)/.22;                   // as faíscas apagam no fim
+  // ── O CLARÃO ──
+  // Era uma ESTRELA branca de 14 pontas mais um ANEL que crescia até 3·R0 — e o anel é o "círculo branco":
+  // um aro perfeito, de espessura constante, expandindo por cima do estouro. Nada em fogo de artifício tem
+  // essa forma; ela é a assinatura de onda de choque de desenho animado, e chamava mais atenção que as
+  // faíscas. O que um clarão de verdade faz é ofuscar por dois quadros e sumir — e é isso: um miolo denso e
+  // uma coroa curta de raios, os dois presos ao centro, sem nada se expandindo em anel.
+  const flash=u<.12?(1-u/.12)**1.6:0;
+  if(flash>0){
+    P.push({type:"burst",x:apice.x,y:apice.y,r0:R0*.04,r1:R0*(.12+u*1.9),n:12,phase:f.seed*.7,
+      color:pal.hot,alpha:flash*.5,width:Math.max(1,R0*.02)});
+    P.push({type:"star",x:apice.x,y:apice.y,r:R0*(.11+u*.7),n:6,inner:.3,phase:u*.6,fill:pal.hot,alpha:flash*.9});}
   for(let i=0;i<n;i++){
     const a=A[i],v=V[i]*R0,ca=Math.cos(a),sa=Math.sin(a);
     const dd=du*(1-u*.6);                             // o rastro encurta enquanto a faísca perde velocidade
@@ -85,7 +96,29 @@ export function fireworkPrims(k,f,pal){
     const cor=u<.18?pal.hot:u<.62?pal.body:pal.ember;
     const cint=T[i]>.55?(.55+.45*Math.sin(u*46+i*2.1)):1;
     P.push({type:"line",x1:x0,y1:y0,x2:x1,y2:y1,color:cor,
-      alpha:Math.max(0,fade*cint*(1-u*.35)),width:Math.max(1,R0*.014*(1-u*.45))});}
+      alpha:Math.max(0,fade*cint*(1-u*.35)),width:Math.max(1,R0*.014*(1-u*.45))});
+    // ── A SEGUNDA FLORADA ──
+    // Uma esfera só de faíscas iguais lê como bola de pontos. Um terço delas ESTOURA DE NOVO no meio do
+    // voo, em duas fagulhas curtas que abrem em V — é o "pistil" das peças de verdade, e é ele que dá
+    // profundidade: o olho passa a ver duas camadas a distâncias diferentes, não uma casca só.
+    if(C[i]>.66&&u>.34){
+      const w2=(u-.34)/.66,sp=R0*.16*w2,br=(cor===pal.hot?pal.body:pal.ember);
+      for(const lado of [-1,1]){
+        const an=a+lado*.42;
+        P.push({type:"line",x1:x1,y1:y1,x2:x1+Math.cos(an)*sp,y2:y1+Math.sin(an)*sp+g1*.12,
+          color:br,alpha:Math.max(0,fade*(1-w2*.7)*.72),width:Math.max(.8,R0*.009)});}}}
+  // ── A CHUVA ──
+  // O fim era um apagão: todas as faíscas sumiam juntas em `fade`, e a salva terminava seca. Aqui a última
+  // parte vira brasa que CAI e se apaga uma a uma — é a metade da beleza de uma peça grande, e custa uma
+  // dúzia de traços curtos que só existem depois de 55% da animação.
+  if(u>.55){
+    const w=(u-.55)/.45;
+    for(let i=0;i<n;i+=3){
+      const a=A[i],v=V[i]*R0*.72;
+      const d1=dist(u)*v,x1=apice.x+Math.cos(a)*d1;
+      const y1=apice.y+Math.sin(a)*d1+G*R0*u*u+R0*.55*w*w;
+      P.push({type:"line",x1:x1,y1:y1-R0*.05*(1-w),x2:x1,y2:y1,color:pal.ember,
+        alpha:Math.max(0,(1-w)*.6*(T[i]>.5?.4+.6*Math.sin(u*33+i):1)),width:Math.max(.8,R0*.011)});}}
   return P;}
 
 /**

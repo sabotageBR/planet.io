@@ -190,10 +190,10 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     for(const b of w.stars)visit(b,b.r*STAR.HALO);for(const b of w.missiles)visit(b,b.r);
     for(const [id,k] of known)if(k.seen!==stamp){const body=w.entityById.get(id);rm.push({id,reason:body&&!body.dead?REMOVE.LEFT_AOI:(reasonMap.has(id)?reasonMap.get(id):REMOVE.DESPAWN)});known.delete(id);}
     let mt=0,sh=0;if(ps)for(const pc of ps.pieces){if(pc.dead)continue;const m=pc.magnetUntil-tick;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}   // powerups por peça: o HUD leva o melhor
-    const ad=ps?Math.max(0,ps.autoDefUntil-tick):0,zo=ps?Math.max(0,ps.zoomUntil-tick):0,fe=ps?Math.max(0,ps.feastUntil-tick):0;   // e os três de JOGADOR, direto do PlayerState
+    const ad=ps?(ps.autoDefN|0):0,zo=ps?Math.max(0,ps.zoomUntil-tick):0,fe=ps?Math.max(0,ps.feastUntil-tick):0;   // e os três de JOGADOR, direto do PlayerState
     const self=ps?{flags:ps.alive?0:SELF_FLAG.DEAD,missiles:ammoOf(ps),
       powerBits:(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0)|(ad>0?POWER_BIT.autodef:0)|(zo>0?POWER_BIT.zoom:0)|(fe>0?POWER_BIT.feast:0),
-      magnetT:mt,shieldLv:sh,autoDefT:ad,zoomT:zo,feastT:fe,
+      magnetT:mt,shieldLv:sh,autoDefN:ad,zoomT:zo,feastT:fe,
       score:ps.score,splitCd:Math.max(0,ps.splitCdUntil-tick),ejectCd:Math.max(0,ps.ejectCdUntil-tick),fireCd:Math.max(0,ps.fireCdUntil-tick),
       rank:rankOf(s.slot),mass:Math.round(w.massOf(s.slot)),weapon:ps.weapon|0,alive:aliveCount(),owned:ownedMask(ps),...ameaca(ps)}:undefined;
     sendBin(s.sock,encodeSnapshot(writer,{tick,ackSeq:s.ackSeq,creates:cr,updates:up,removes:rm,self}));}

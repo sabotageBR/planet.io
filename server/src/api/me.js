@@ -14,6 +14,7 @@ export const PREFS={
   quality:v=>QUALITIES.includes(v)?v:undefined,
   showNames:bool,showMass:bool,showGrid:bool,showMinimap:bool,showFps:bool,sound:bool,music:bool,ambience:bool,joystick:bool,holdEject:bool,rightSplit:bool,reduceMotion:bool,bigText:bool,
   chat:bool,voice:bool,   // chat e voz são desligáveis como todo o resto do som
+  muted:bool,             // o mudo geral (tecla M): cala tudo sem apagar as escolhas acima
   eggs:bool,              // easter egg por nick (quem se chama Bruxo e comprou uma lendária pode desligar)
   volume:v=>typeof v==='number'&&v>=0&&v<=100?Math.round(v):undefined,
   musicVolume:v=>typeof v==='number'&&v>=0&&v<=100?Math.round(v):undefined,   // volume da trilha, separado do dos efeitos

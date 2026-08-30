@@ -28,6 +28,11 @@ export function createAudio(prefs={}){
   if(atual){atual.setPrefs(prefs);return atual;}
   let ctx=null,master=null,limiter=null,buses=null;
   let on=prefs.sound!==false,vol=(prefs.volume==null?70:prefs.volume)/100;
+  // MUDO: um multiplicador do master, e não um `on=false`. Zerar o `sound` apagaria a ESCOLHA do jogador
+  // (voltar do mudo teria que adivinhar o que estava ligado antes) e não calaria a voz, que tem barramento
+  // próprio. Aqui o master vai a zero e leva tudo junto — efeitos, ambiência, trilha, telas e voz.
+  let muted=!!prefs.muted;
+  const masterVol=()=>muted?0:vol;
   let music=!!prefs.music,ambOn=prefs.ambience!==false,voiceOn=prefs.voice!==false,voiceVol=(prefs.voiceVolume==null?85:prefs.voiceVolume)/100;
   let musicVol=(prefs.musicVolume==null?60:prefs.musicVolume)/100;
   let falando=0;   // quantos clipes de voz estão tocando (o duck só volta quando o último acaba)
@@ -42,7 +47,7 @@ export function createAudio(prefs={}){
     const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;
     ctx=new AC();
     limiter=ctx.createDynamicsCompressor();limiter.threshold.value=-10;limiter.knee.value=12;limiter.ratio.value=8;
-    master=ctx.createGain();master.gain.value=vol;
+    master=ctx.createGain();master.gain.value=masterVol();
     master.connect(limiter);limiter.connect(ctx.destination);
     const mk=v=>{const g=ctx.createGain();g.gain.value=v;g.connect(master);return g;};
     // 5º barramento: a MÚSICA. Ela ia pelo `amb` junto com a ambiência, e por isso (a) o interruptor de
@@ -305,8 +310,8 @@ export function createAudio(prefs={}){
       if(on&&music&&!loops.has("music"))startLoop("music");},
     /** Liga/desliga, volume, música e ambiência vêm das preferências (Opções → Som). */
     setPrefs(p){if(!p)return;
-      on=p.sound!==false;vol=(p.volume==null?70:p.volume)/100;
-      if(master)master.gain.value=vol;
+      on=p.sound!==false;vol=(p.volume==null?70:p.volume)/100;muted=!!p.muted;
+      if(master)master.gain.value=masterVol();
       music=!!p.music;ambOn=p.ambience!==false;voiceOn=p.voice!==false;voiceVol=(p.voiceVolume==null?85:p.voiceVolume)/100;
       musicVol=(p.musicVolume==null?60:p.musicVolume)/100;
       if(buses){buses.voice.gain.value=voiceVol;buses.music.gain.value=musicVol;}

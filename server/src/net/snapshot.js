@@ -26,7 +26,7 @@ export function createSnapshotter(room){
   /** @type {Map<number,{x:number,y:number,r:number,vx:number,vy:number,flags:number,phase:number,infl:number,seen:number}>} */const prev=new Map();
   /** @type {Map<number,number>} */const masks=new Map();
   const crPool=[],upPool=[],rmPool=[],creates=[],updates=[],removes=[];
-  const self={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0,owned:1,autoDefT:0,zoomT:0,feastT:0};
+  const self={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0,owned:1,autoDefN:0,zoomT:0,feastT:0};
   const snap={tick:0,ackSeq:0,creates,updates,removes,self};
   let passes=0;/** @type {any[]} */const longe=[];   // reusado: o anel de fora, candidato ao teto de comida
   /** @type {any[]} */const novos=[];   // reusado: o disco de perto, criado antes do anel (ver visitFood)

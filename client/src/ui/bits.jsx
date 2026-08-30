@@ -51,7 +51,7 @@ export function MiniRank({ id, rows, n = 5 }) {
   const LB = useLabels();
   return <div className="mini-rank" id={id}>{(rows || []).slice(0, n).map(r =>
     <div className="mr-row" key={r.userId || r.rank}><span className="mr-pos">{r.rank}</span>
-      <span className="mr-nick">{r.nick}{r.registered ? <> <i className="reg">{LB.regTag}</i></> : null}</span><b className="mr-val">{fmt(r.value)}</b></div>)}
+      <span className="mr-nick">{r.nick}</span><b className="mr-val">{fmt(r.value)}</b></div>)}
     {!rows || !rows.length ? <div className="mr-row dim"><span className="mr-nick">{LB.noRank}</span></div> : null}</div>;
 }
 export function Screen({ id, on, className, children }) {

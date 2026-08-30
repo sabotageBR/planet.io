@@ -21,6 +21,16 @@ export const BY={
 };
 const val =(by,a)=>BY[by].col?`${a}.${BY[by].col}`:BY[by].expr(a);
 const gate=(by,a)=>BY[by].gate?BY[by].gate(a):`${val(by,a)}>0`;
+// ── QUEM ENTRA NO RANKING ────────────────────────────────────────────────────
+// Só CONTA, nunca convidado. O ranking sempre somou por `user_id` — trocar de nick nunca fez ninguém
+// perder posição —, mas o convidado é uma identidade descartável: ele escolhe o nick a cada entrada, pode
+// ter quantos quiser e some quando a aba fecha. Um pódio construído sobre isso não diz de QUEM é a marca.
+// `kind='registered'` é a linha certa (e não `email IS NOT NULL`) porque é ela que trava o nick no banco
+// — `users_nick_registered_uq` —, e nick travado é exatamente a propriedade que faltava; um claim só com
+// senha, sem e-mail, também trava, e não há por que puni-lo.
+// ⚠️ Convidado NÃO perde nada: `user_stats` continua acumulando por `user_id`, e no dia em que ele
+// registrar a conta aparece com o histórico inteiro. É filtro de exibição, não de coleta.
+const CONTA=a=>`${a}.kind='registered'`;
 
 export function createRanking(db){
   /**
@@ -39,7 +49,7 @@ export function createRanking(db){
               COALESCE(${st}.food_eaten,0) AS food_eaten,COALESCE(${st}.games,0) AS games,
               ${val(by,'s')} AS value
          FROM ${src} s JOIN users u ON u.id=s.user_id ${join}
-        WHERE ${gate(by,'s')} AND ($2::char(2) IS NULL OR u.country=$2)
+        WHERE ${gate(by,'s')} AND ${CONTA('u')} AND ($2::char(2) IS NULL OR u.country=$2)
         ORDER BY ${val(by,'s')} DESC,s.user_id ASC LIMIT $1`,[limit,country||null]);
     return r.rows.map((x,i)=>linha(x,i+1));
   }
@@ -49,9 +59,10 @@ export function createRanking(db){
     const r=await db.query(
       `SELECT ${val(by,'s')} AS value,
               (SELECT count(*) FROM ${src} o JOIN users uo ON uo.id=o.user_id
-                WHERE ${val(by,'o')}>${val(by,'s')} AND ${gate(by,'o')}
+                WHERE ${val(by,'o')}>${val(by,'s')} AND ${gate(by,'o')} AND ${CONTA('uo')}
                   AND ($2::char(2) IS NULL OR uo.country=$2))::int+1 AS rank
-         FROM ${src} s WHERE s.user_id=$1 AND ${gate(by,'s')}`,[userId,country||null]);
+         FROM ${src} s JOIN users u ON u.id=s.user_id
+        WHERE s.user_id=$1 AND ${gate(by,'s')} AND ${CONTA('u')}`,[userId,country||null]);
     return r.rows[0]?{rank:r.rows[0].rank,value:Number(r.rows[0].value)}:null;
   }
   return{top,rankOf};

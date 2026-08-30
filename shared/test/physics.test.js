@@ -847,14 +847,23 @@ test("ímã: acima de POWERUP.MAGNET_MAX_R a peça não pega nem usa o ímã",()
   const grande=pega(POWERUP.MAGNET_MAX_R+40);
   assert.ok(!grande.ativo,"acima do teto a peça come o powerup mas NÃO ganha o ímã");
   assert.ok(!grande.flag,"e o HUD não mostra ímã ligado");
-  // quem já tinha o ímã e cresceu além do teto para de sugar (o alcance é r·MAGNET_RANGE: sugaria a tela toda)
+  // quem já tinha o ímã e cresceu além do teto para de sugar
   const w=empty(299),pc=w.addPlayer(0,{x:3000,y:3000,r:POWERUP.MAGNET_MAX_R-20});w.setTarget(0,3000,3000);
   pc.magnetUntil=w.tick+POWERUP.TICKS;
-  const longe=w.spawnFood({x:3000+pc.r*3,y:3000});longe.type=FOOD_TYPE.DUST;w.foodDirty=true;
+  // dentro do alcance EFETIVO, que tem teto absoluto (MAGNET_RANGE_MAX) além do r·MAGNET_RANGE
+  const alcance=Math.min(pc.r*POWERUP.MAGNET_RANGE,POWERUP.MAGNET_RANGE_MAX);
+  const longe=w.spawnFood({x:3000+alcance*.8,y:3000});longe.type=FOOD_TYPE.DUST;w.foodDirty=true;
   const x0=longe.x;w.step();assert.ok(longe.x<x0,"no tamanho certo, o ímã puxa a comida");
   setR(pc,POWERUP.MAGNET_MAX_R+60);const x1=longe.x;
   for(let t=0;t<10;t++)w.step();
-  assert.ok(Math.abs(longe.x-x1)<1e-9,"depois de crescer além do teto, para de puxar");});
+  assert.ok(Math.abs(longe.x-x1)<1e-9,"depois de crescer além do teto, para de puxar");
+  // e o ALCANCE tem teto ABSOLUTO: é ele, e não mais o teto de tamanho, que impede o aspirador de tela
+  const w2=empty(298),p2=w2.addPlayer(0,{x:3000,y:3000,r:POWERUP.MAGNET_MAX_R-20});w2.setTarget(0,3000,3000);
+  p2.magnetUntil=w2.tick+POWERUP.TICKS;
+  assert.ok(p2.r*POWERUP.MAGNET_RANGE>POWERUP.MAGNET_RANGE_MAX,"neste raio o r·RANGE já passaria do teto");
+  const fora=w2.spawnFood({x:3000+POWERUP.MAGNET_RANGE_MAX+80,y:3000});fora.type=FOOD_TYPE.DUST;w2.foodDirty=true;
+  const xf=fora.x;for(let t=0;t<10;t++)w2.step();
+  assert.ok(Math.abs(fora.x-xf)<1e-9,"comida além de MAGNET_RANGE_MAX não é puxada, por maior que seja o planeta");});
 
 // 41. decaimento: o gigante murcha se parar de comer; o pequeno não sente
 test("decaimento: massa ×(1−PLAYER.DECAY) por segundo, com piso em START_R — é o que tira a imortalidade do gigante",()=>{
@@ -995,7 +1004,7 @@ test("powerups de jogador: auto-defesa, +1 munição, zoom e comida em dobro",()
   w4.addPlayer(1,{x:1900,y:1000,r:40,missiles:1});
   w4.setTarget(0,1000,1000);w4.setTarget(1,1900,1000);arma(w4);
   pega(w4,d0,FOOD_TYPE.AUTODEF);
-  assert.ok(ps4.autoDefUntil>w4.tick,"powerup ativo");
+  assert.equal(ps4.autoDefN,1,"powerup na mão: UMA carga");
   const antesAmmo=ps4.ammo[0];
   for(let t=0;t<30;t++)w4.step();
   assert.equal(ps4.ammo[0],antesAmmo,"sem entrante, ninguém atira sozinho");
@@ -1005,7 +1014,11 @@ test("powerups de jogador: auto-defesa, +1 munição, zoom e comida em dobro",()
   assert.ok(meu,"a auto-defesa puxou o gatilho");
   assert.equal(meu.type,1,"e o tiro saiu como INTERCEPTAÇÃO");
   assert.equal(ps4.ammo[0],antesAmmo-1,"gastou munição do cinto (é o tiro do jogador, adiantado)");
+  assert.equal(ps4.autoDefN,0,"usou, perdeu: a carga é gasta no tiro que saiu");
   assert.equal(d0.shieldLv,0);
+  // e pegar de novo não empilha: ou se tem o escudo automático, ou não se tem
+  pega(w4,d0,FOOD_TYPE.AUTODEF);pega(w4,d0,FOOD_TYPE.AUTODEF);
+  assert.equal(ps4.autoDefN,1,"a carga não acumula");
 
   // 5) sem o powerup, nada disso acontece
   const w5=empty(63),e0=w5.addPlayer(0,{x:1000,y:1000,r:40,missiles:2}),ps5=w5.players.get(0);
@@ -1023,7 +1036,7 @@ test("powerups de jogador: auto-defesa, +1 munição, zoom e comida em dobro",()
   w6.respawnPlayer(0,{r:PLAYER.START_R});
   assert.equal(ps6.zoomUntil,0,"vida nova, zoom zerado");
   assert.equal(ps6.feastUntil,0,"vida nova, banquete zerado");
-  assert.equal(ps6.autoDefUntil,0,"vida nova, auto-defesa zerada");});
+  assert.equal(ps6.autoDefN,0,"vida nova, auto-defesa zerada");});
 
 // ── FAIXAS DO ENUM DE COMIDA ─────────────────────────────────────────────────
 // Três testes de faixa dependem da ORDEM do FOOD_TYPE, e um deles (`é arma`) deixou de poder ser um `>=`

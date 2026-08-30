@@ -308,10 +308,10 @@ export class Sim{
       if(me0){const dx=me0.x-zc.x,dy=me0.y-zc.y;if(dx*dx+dy*dy>zc.r*zc.r)out.flags|=SELF_FLAG.ZONE_HURT;}}
     // Os três novos são por JOGADOR (câmera, cinto e economia não são de meia bolinha), então saem direto do
     // PlayerState em vez do laço das peças acima.
-    const ad=ps.autoDefUntil-t,zo=ps.zoomUntil-t,fe=ps.feastUntil-t;
+    const ad=ps.autoDefN|0,zo=ps.zoomUntil-t,fe=ps.feastUntil-t;   // a auto-defesa é CARGA (não vira conta de tempo)
     out.missiles=ammoOf(ps);out.powerBits=(mt>0?POWER_BIT.magnet:0)|(sh>0?POWER_BIT.shield:0)
       |(ad>0?POWER_BIT.autodef:0)|(zo>0?POWER_BIT.zoom:0)|(fe>0?POWER_BIT.feast:0);
-    out.autoDefT=ad>0?ad:0;out.zoomT=zo>0?zo:0;out.feastT=fe>0?fe:0;
+    out.autoDefN=ad>0?ad:0;out.zoomT=zo>0?zo:0;out.feastT=fe>0?fe:0;
     out.magnetT=mt>0?mt:0;out.shieldLv=sh;out.score=ps.score;out.splitCd=sc>0?sc:0;out.ejectCd=ec>0?ec:0;out.fireCd=fc>0?fc:0;
     out.rank=gp.dead?0:this.rankOf(slot);out.mass=gp.dead?0:Math.round(w.massOf(slot));
     out.threat=out.threatDir=0;const me=gp.dead?null:firstLive(ps.pieces);

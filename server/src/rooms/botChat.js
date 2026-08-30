@@ -152,7 +152,7 @@ const SYSTEM=[
   'LANGUAGE RULE, follow it strictly: when a message is addressed to you, reply in THAT message\'s language,',
   'even if the rest of the chat is in another one. Otherwise use the language of the recent chat.',
   'With no chat at all, use Brazilian Portuguese.',
-  'If someone is talking to you, answer them directly, and use their name if they used yours.',
+  'If someone is talking to you, answer them directly, and use their name if they used yours. Otherwise, react to what the chat is ACTUALLY talking about right now, or to what just happened in the match — never to a topic nobody raised.',
   'React to what is happening to you in the match: if someone is chasing or shooting you, say it TO THEM, by name.',
   'Stay in character. You are typing, not narrating.',
   'Never explain yourself, never use quotes, never use emoji, never mention being an AI, never write more than one line.',
@@ -199,6 +199,28 @@ export function rankLinha(rank,vivos){
   if(rank<=5)return 'near the top';
   if(rank<=Math.ceil(vivos/2))return 'mid-table';
   return 'small and losing';}
+/**
+ * A PARTIDA em volta dele: quantos restam, o quanto ele é menor que o líder, e quanto falta para o gás
+ * fechar. Nada disto entrava no prompt, e a falta aparecia na fala: o bot comentava a própria vida numa
+ * sala que, para ele, não tinha mais ninguém nem relógio. Tudo em palavras, nunca em número cru — "metade
+ * do tamanho do líder" o modelo sabe usar; "massa 4820" ele repete como papagaio ou ignora.
+ * @param {{vivos?:number,fracLider?:number,lider?:string|null,zonaS?:number,modo?:string}} c
+ */
+export function partidaLinha(c){
+  const P=[];
+  if(c.modo&&c.vivos>1)P.push(`${c.vivos} players left in this ${c.modo}`);
+  if(c.lider&&c.fracLider>0){
+    const f=c.fracLider;
+    P.push(f<.1?`${c.lider} is a monster, you are a crumb next to him`
+      :f<.35?`${c.lider} is way bigger than you`
+      :f<.7?`${c.lider} is ahead of you but not by much`
+      :`you are almost as big as ${c.lider}`);}
+  if(c.zonaS>0&&c.zonaS<45)P.push(`the gas closes in ${c.zonaS} seconds`);
+  return P.join('; ');}
+/** As últimas mortes da sala, em uma linha. É a fofoca: o que todo mundo acabou de ver acontecer. */
+export function feedLinha(feed){
+  const v=(feed||[]).filter(Boolean);
+  return v.length?v.slice(-3).join(', '):'';}
 /** O evento que acabou de acontecer com ESTE bot, em uma linha que o modelo entende. */
 function evento(c){
   switch(c.kind){
@@ -260,7 +282,13 @@ export function montaPrompt(c){
     ?`[${c.quem||'someone'} says to YOU: "${c.texto}"]\n${ordem}\n`
     :(lang?`${ordem}\n`:'');
   const sys=h?`${SYSTEM} You sometimes end your line with "${h.bordao}", but rarely.`:SYSTEM;
-  const user=`${cab}\n`+(agora?`[right now: ${agora}]\n`:'')
+  // ORDEM: quem ele é → a PARTIDA em volta → o que está vivendo → o que a sala viu → o gatilho → a
+  // conversa → a linha dirigida. O que está mais perto do fim pesa mais, e por isso a partida vem cedo
+  // (é pano de fundo) e a linha dirigida fica por último (é o que ele tem que responder).
+  const part=partidaLinha(c),ff=feedLinha(c.feed);
+  const user=`${cab}\n`+(part?`[the match: ${part}]\n`:'')
+    +(agora?`[right now: ${agora}]\n`:'')
+    +(ff?`[the room just saw: ${ff}]\n`:'')
     +`[what just happened: ${evento(c)}]\n`
     +(hist?`[recent chat]\n${hist}\n`:'[the chat is empty]\n')
     +alvo+'Your line:';

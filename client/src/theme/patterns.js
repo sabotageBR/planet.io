@@ -54,7 +54,7 @@ function cracks(c,r,color,width,n,seed,glow){const g=mulberry(seed*57+5);c.lineC
  * quem chama usa isso para decidir se ainda põe o emoji fantasma.
  * @param {CanvasRenderingContext2D} c @param {number} r
  */
-export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2",avatar=null}={}){
+export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2",avatar=null,face:faceBmp=null}={}){
   const p=sk&&sk.pattern,col=sk.color,acc=sk.accent||sh(col,.35),seed=(sk.id|0)+1;
   if(!p||p==="plain")return false;
   c.save();c.lineJoin="round";
@@ -163,7 +163,7 @@ export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2",avatar=null}=
           spikes(c,r*(.04+g()*.05),4,.3,g()*TAU);c.fill();c.restore();}}
       break;}
     // ── EASTER EGG: a caricatura escolhida pelo NICK (shared/src/eggs.js) ──────
-    case "face":face(c,r,sk,{ink,light});break;
+    case "face":face(c,r,sk,faceBmp,{ink});break;
     // ── A FOTO DO JOGADOR (skin "Retrato") ────────────────────────────────────
     // `paintPattern` é SÍNCRONO (roda dentro de cache.get/warm), então a imagem tem que chegar já
     // decodificada em `P.avatar`. Enquanto não chega, desenha a silhueta e devolve `true` — devolver
@@ -180,77 +180,22 @@ export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2",avatar=null}=
 
 
 // ── CARICATURAS DOS EASTER EGGS ──────────────────────────────────────────────
-// Arte ORIGINAL, desenhada em canvas com as mesmas primitivas do resto do arquivo — nada de foto de
-// terceiros. Cada uma é reconhecida por UM traço, não por semelhança: o topete e a gravata, o sorrisão e a
-// faixa verde-e-amarela, a barba e a estrela, a juba e as costeletas, a bandeira dividida.
-// Acrescentar um nome é uma linha em shared/src/eggs.js + uma entrada em CARAS.
-//   pele · cabelo (null = careca) · corte: "topete"|"repartido"|"liso"|"juba"|"touca"|"nenhum"
-//   barba: null|"cheia"|"curta"|"costeleta" · marca: o identificador final
-const CARAS={
-  84:{pele:"#e8a05a",cabelo:"#f2d16b",corte:"topete",marca:"gravata",acc:"#c62828"},                 // Trump
-  85:{pele:"#7a4a2a",cabelo:"#1a1008",corte:"juba",marca:"faixaBR",sorriso:true,acc:"#2ecc71"},      // Bruxo
-  86:{pele:"#d9b48a",cabelo:null,corte:"nenhum",barba:"cheia",barbaCor:"#dcdcdc",marca:"estrela",acc:"#e03b3b"},   // Lula
-  87:{pele:"#d9b48a",cabelo:"#2b2b2b",corte:"liso",marca:"faixaBR",acc:"#1f8a4c"},                   // Bolsonaro
-  88:{pele:"#e2cdbd",cabelo:null,corte:"nenhum",marca:"terno",acc:"#b03030"},                        // Putin
-  89:{pele:"#dcb894",cabelo:"#3a2a1a",corte:"juba",barba:"costeleta",marca:"faixaAR",acc:"#6fc3e8"}, // Milei
-  90:{pele:"#e3c3a6",cabelo:"#2a2018",corte:"repartido",marca:"tricolorFR",acc:"#2b4bd0"},           // Macron
-  91:{pele:"#e6c9a3",cabelo:"#141414",corte:"liso",marca:"estrelaCN",acc:"#d81f26"},                 // Xi
-  92:{pele:"#c08a5a",cabelo:"#f2f2f2",corte:"touca",barba:"cheia",barbaCor:"#f4f4f4",marca:"tricolorIN",acc:"#ff9933"},  // Modi
-  93:{pele:"#d8b394",cabelo:"#3a2c1e",corte:"liso",barba:"curta",barbaCor:"#4a3828",marca:"bandeiraUA",acc:"#ffd700"},   // Zelensky
-};
-function face(c,r,sk,{ink,light}){
-  const f=CARAS[sk.id]||{pele:sk.color,cabelo:"#333",corte:"liso",marca:null,acc:sk.accent||"#fff"};
-  const acc=f.acc||sk.accent||"#fff";
-  // fundo/marca de país primeiro: em vários casos é ELA que identifica antes do rosto
-  if(f.marca==="bandeiraUA"){c.fillStyle="#0057b7";c.fillRect(-r,-r,r*2,r);c.fillStyle="#ffd700";c.fillRect(-r,0,r*2,r);}
-  else if(f.marca==="estrelaCN"){c.fillStyle="#d81f26";c.fillRect(-r,-r,r*2,r*.62);
-    c.fillStyle="#ffde00";c.save();c.translate(-r*.55,-r*.66);spikes(c,r*.18,5,.42,-Math.PI/2);c.fill();c.restore();}
-  else if(f.marca==="tricolorFR"){const w=r*2/3;["#2b4bd0","#f2f2f2","#c62828"].forEach((k,i)=>{c.fillStyle=k;c.fillRect(-r+i*w,r*.5,w,r*.5);});}
-  else if(f.marca==="tricolorIN"){["#ff9933","#f5f5f5","#138808"].forEach((k,i)=>{c.fillStyle=k;c.fillRect(-r,r*.34+i*r*.22,r*2,r*.22);});
-    c.strokeStyle="#0a3d91";c.lineWidth=Math.max(1,r*.03);c.beginPath();c.arc(0,r*.67,r*.1,0,TAU);c.stroke();}
-  else if(f.marca==="faixaAR"){["#74acdf","#f5f5f5","#74acdf"].forEach((k,i)=>{c.fillStyle=k;c.fillRect(-r,r*.42+i*r*.2,r*2,r*.2);});}
-  else if(f.marca==="faixaBR"){c.fillStyle="#009c3b";c.fillRect(-r,r*.5,r*2,r*.24);c.fillStyle="#ffdf00";c.fillRect(-r,r*.74,r*2,r*.24);}
-  // rosto
-  c.fillStyle=f.pele;c.beginPath();c.ellipse(0,-r*.05,r*.62,r*.7,0,0,TAU);c.fill();
-  // cabelo
-  if(f.corte==="topete"){c.fillStyle=f.cabelo;
-    c.beginPath();c.ellipse(0,-r*.55,r*.66,r*.3,0,Math.PI,TAU);c.fill();
-    c.beginPath();c.moveTo(-r*.6,-r*.55);c.quadraticCurveTo(-r*.2,-r*1.05,r*.62,-r*.6);c.quadraticCurveTo(r*.2,-r*.55,-r*.6,-r*.48);c.fill();}
-  else if(f.corte==="repartido"){c.fillStyle=f.cabelo;
-    c.beginPath();c.ellipse(0,-r*.5,r*.64,r*.34,0,Math.PI,TAU);c.fill();
-    c.strokeStyle=rgba(light,.5);c.lineWidth=Math.max(1,r*.03);c.beginPath();c.moveTo(-r*.16,-r*.8);c.lineTo(-r*.24,-r*.5);c.stroke();}
-  else if(f.corte==="liso"){c.fillStyle=f.cabelo;c.beginPath();c.ellipse(0,-r*.48,r*.64,r*.32,0,Math.PI,TAU);c.fill();}
-  else if(f.corte==="juba"){c.fillStyle=f.cabelo;blobs(c,r,f.cabelo,5,sk.id+3,.4);
-    c.beginPath();c.ellipse(0,-r*.42,r*.72,r*.42,0,Math.PI,TAU);c.fill();
-    c.beginPath();c.ellipse(-r*.62,-r*.1,r*.2,r*.36,0,0,TAU);c.fill();
-    c.beginPath();c.ellipse(r*.62,-r*.1,r*.2,r*.36,0,0,TAU);c.fill();}
-  else if(f.corte==="touca"){c.fillStyle="#f2f2f2";c.beginPath();c.ellipse(0,-r*.52,r*.5,r*.26,0,Math.PI,TAU);c.fill();}
-  // barba
-  if(f.barba==="cheia"||f.barba==="curta"){c.fillStyle=f.barbaCor||"#666";
-    c.beginPath();c.ellipse(0,r*.16,r*.56,f.barba==="cheia"?r*.5:r*.36,0,0,Math.PI);c.fill();}
-  if(f.barba==="costeleta"){c.fillStyle=f.cabelo;
-    c.beginPath();c.moveTo(-r*.6,-r*.2);c.lineTo(-r*.4,-r*.2);c.lineTo(-r*.5,r*.28);c.closePath();c.fill();
-    c.beginPath();c.moveTo(r*.6,-r*.2);c.lineTo(r*.4,-r*.2);c.lineTo(r*.5,r*.28);c.closePath();c.fill();}
-  // olhos e sobrancelhas
-  c.fillStyle=light;c.beginPath();c.ellipse(-r*.22,-r*.14,r*.13,r*.1,0,0,TAU);c.fill();
-  c.beginPath();c.ellipse(r*.22,-r*.14,r*.13,r*.1,0,0,TAU);c.fill();
-  c.fillStyle=ink;arc(c,-r*.2,-r*.13,r*.055);arc(c,r*.24,-r*.13,r*.055);
-  c.fillStyle=ink;c.save();c.translate(-r*.22,-r*.32);c.rotate(-.12);c.fillRect(-r*.16,-r*.04,r*.32,r*.07);c.restore();
-  c.save();c.translate(r*.22,-r*.32);c.rotate(.12);c.fillRect(-r*.16,-r*.04,r*.32,r*.07);c.restore();
-  // boca
-  if(f.sorriso){c.fillStyle=light;c.beginPath();c.ellipse(0,r*.16,r*.3,r*.18,0,0,Math.PI);c.fill();
-    c.strokeStyle=ink;c.lineWidth=Math.max(1.5,r*.035);c.stroke();
-    c.beginPath();c.moveTo(-r*.1,r*.16);c.lineTo(-r*.1,r*.3);c.moveTo(r*.1,r*.16);c.lineTo(r*.1,r*.29);c.stroke();}
-  else if(!f.barba){c.strokeStyle=ink;c.lineWidth=Math.max(1.5,r*.04);c.lineCap="round";
-    c.beginPath();c.moveTo(-r*.16,r*.2);c.lineTo(r*.16,r*.2);c.stroke();}
-  // marca final por cima
-  if(f.marca==="gravata"){c.fillStyle=acc;c.beginPath();
-    c.moveTo(0,r*.5);c.lineTo(r*.11,r*.64);c.lineTo(0,r*1);c.lineTo(-r*.11,r*.64);c.closePath();c.fill();
-    c.strokeStyle=ink;c.lineWidth=Math.max(1,r*.03);c.stroke();}
-  else if(f.marca==="terno"){c.fillStyle=ink;c.beginPath();c.moveTo(-r*.7,r*1);c.lineTo(0,r*.44);c.lineTo(r*.7,r*1);c.closePath();c.fill();
-    c.fillStyle=acc;c.beginPath();c.moveTo(0,r*.5);c.lineTo(r*.09,r*.62);c.lineTo(0,r*.96);c.lineTo(-r*.09,r*.62);c.closePath();c.fill();}
-  else if(f.marca==="estrela"){c.fillStyle=acc;c.save();c.translate(-r*.55,r*.6);spikes(c,r*.24,5,.42,-Math.PI/2);c.fill();c.restore();}
-}
+// Aqui houve um desenho procedural (um rosto genérico montado com elipses, recolorido por personagem) e
+// ele saiu inteiro. O motivo é simples de medir: dez caricaturas feitas de elipses saem parecidas entre si
+// e nenhuma parece com quem devia — o que identifica uma pessoa é justamente o que uma elipse não tem.
+// Hoje a arte é ILUSTRAÇÃO (client/public/faces/*.webp, 256², ~15 KB), carregada por `theme/faces.js`.
+//
+// ⚠️ `paintPattern` é SÍNCRONO — roda dentro de `cache.get`/`warm` do TextureCache —, então o bitmap tem
+// que chegar já decodificado em `P.face`. Enquanto não chega, isto desenha o disco liso da cor da skin e
+// devolve `true`: devolver `false` cairia no emoji fantasma, que seria uma bandeira no lugar de um rosto.
+// Quando o bitmap fica pronto a CHAVE da textura muda (faces.js:faceKey) e o planeta é reassado sozinho.
+function face(c,r,sk,face,{ink}){
+  if(face){c.drawImage(face,-r,-r,r*2,r*2);
+    // o fio de tinta por dentro da borda cola a ilustração no corpo do planeta; sem ele o recorte do
+    // círculo fica com a beirada crua do JPEG contra o contorno da skin
+    c.strokeStyle=rgba(ink,.55);c.lineWidth=Math.max(1.5,r*.045);c.beginPath();c.arc(0,0,r*.98,0,TAU);c.stroke();return;}
+  c.fillStyle=sk.color;arc(c,0,0,r);
+  c.fillStyle=rgba(ink,.12);c.beginPath();c.ellipse(0,r*.2,r*.55,r*.4,0,Math.PI,TAU);c.fill();}
 
 /**
  * Buraco negro (Gargantua/M87): sombra preta GRANDE, disco de acreção quase de perfil com a face de TRÁS lenteada

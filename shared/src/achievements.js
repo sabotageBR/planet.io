@@ -14,10 +14,13 @@
 
 /** Os quatro metais. `coins` é a recompensa do tier — subir de nível vale progressivamente mais. */
 export const TIERS=[
-  {id:"b",name:"Bronze",  roman:"I",  icon:"🥉",color:"#c87f3a",coins:100},
-  {id:"s",name:"Prata",   roman:"II", icon:"🥈",color:"#b9c4d4",coins:250},
-  {id:"g",name:"Ouro",    roman:"III",icon:"🥇",color:"#ffc22e",coins:600},
-  {id:"d",name:"Diamante",roman:"IV", icon:"💎",color:"#6ee7f0",coins:1500},
+  // ⚠️ Pela METADE do que era (100/250/600/1500). Uma medalha paga UMA vez na vida, mas as 53 juntas
+  // somavam 30 500 moedas — mais que o dobro do que uma conta de 17 partidas tinha inteira, e uma única
+  // partida podia render 2 600 só de medalha. Conquista é marco; renda é a partida.
+  {id:"b",name:"Bronze",  roman:"I",  icon:"🥉",color:"#c87f3a",coins:50},
+  {id:"s",name:"Prata",   roman:"II", icon:"🥈",color:"#b9c4d4",coins:125},
+  {id:"g",name:"Ouro",    roman:"III",icon:"🥇",color:"#ffc22e",coins:300},
+  {id:"d",name:"Diamante",roman:"IV", icon:"💎",color:"#6ee7f0",coins:750},
 ];
 export const TIER_BY_ID=new Map(TIERS.map(t=>[t.id,t]));
 

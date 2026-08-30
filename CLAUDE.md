@@ -100,8 +100,19 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   50 jogadores × 60 Hz seria o maior custo fixo do tick), **+1 munição** (raro: fura o teto da arma, o único lugar que
   passa por cima dele, e não guarda estado nenhum), **zoom** (afasta a câmera em `POWERUP.ZOOM_K`; ⚠️ `zoomFor`
   alimenta TAMBÉM a AOI do snapshot — e `aoiScaleFood` tem piso PRÓPRIO, então os dois recebem o fator, senão o anel de
-  fora vem sem um grão) e **banquete** (raro: comida vale `FEAST_K`; só a COMIDA — encostar no ganho de fragmento
-  quebraria a conservação de massa). Serem por JOGADOR não é preguiça: câmera, cinto e economia não são de meia
+  fora vem sem um grão — **mas ele SAIU do sorteio**: afastar a câmera era a única coisa que um powerup fazia com o
+  que o jogador VÊ, e isso não é vantagem, é mudar o jogo embaixo dele no meio de uma briga. O código fica
+  dormente como `BLACKHOLE.COUNT=0` e a Nova, e volta acrescentando a linha em `POWERUP.DROP`) e **banquete**
+  (raro: comida vale `FEAST_K`; só a COMIDA — encostar no ganho de fragmento quebraria a conservação de massa).
+  ⚠️ **A auto-defesa é CARGA, não tempo** (`PlayerState.autoDefN`, 0 ou 1; era `autoDefUntil` em ticks): 15 s de
+  escudo automático é um relógio invisível que não dá para planejar — ou o jogador descobre que acabou no
+  instante em que o míssil chega, ou nem percebe que existiu. A carga fica lá, eterna, até o dia em que salva a
+  vida dele; usou, perdeu, e **não acumula**. Foi o que levou o **PROTOCOL_VERSION a 13**: o `self` continua com
+  o mesmo u16, mas ele deixou de significar tempo. ⚠️ O **ímã** subiu de `MAGNET_MAX_R` 160 → 420 px, porque 160
+  é um raio que qualquer partida decente passa em minutos: o powerup virava item morto justamente para quem
+  jogava bem. O que segurava o teto lá embaixo era o ALCANCE (r·MAGNET_RANGE passava de 1500 px num planetão);
+  agora quem o limita é `MAGNET_RANGE_MAX` (900 px absolutos), e em r=160 o alcance dá 880 — para quem já pegava
+  ímã, nada muda. Serem por JOGADOR não é preguiça: câmera, cinto e economia não são de meia
   bolinha, e o `PIECE_FLAG` só tinha um bit livre. ⚠️ `type>=W_BURST` DEIXOU de significar "é arma" (os quatro entraram
   DEPOIS das armas no enum denso): quem responde isso agora é `isWeaponFood()`, e sem ele os powerups cairiam no ramo
   de arma e sumiriam sem efeito nenhum — em silêncio, que é o pior jeito de quebrar; mísseis (**o tiro DEFENSIVO não cobra escudo**: `applyFire` cobrava um nível ANTES do `switch` que decide o tipo de
@@ -209,7 +220,18 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   meio para o fim a densidade sobe 15× (49 px entre grãos) e é daí que sai a VIRADA do pequeno — o grão dá massa
   ABSOLUTA, então vale 2 % para quem tem 900 de massa e 0,01 % para quem tem 200 000, que ainda perde `PLAYER.DECAY`
   por segundo. Sem isso o círculo final era um deserto de 20 grãos e a última fase premiava tamanho acumulado, não
-  jogada. **A ESTRELA TAMBÉM SEGUE A ZONA** (`ZONE.STAR_*`): ela nascia sorteada no mapa inteiro, então o
+  jogada.
+  ⚠️ **A zona fecha em 30 000 ticks (8 min 20 s), não em 21 300**: as três primeiras etapas ganharam quase
+  todo o tempo extra e as duas últimas não mudaram — o começo deixou de ser corrido e o fim continua tenso.
+  `BR.ROUND_TICKS` subiu junto (27 000 → 36 000), e os dois andam SEMPRE juntos: alongar a zona sem alongar o
+  teto faz a partida acabar por tempo antes de o círculo fechar, que é o único jeito de o Battle Royale
+  terminar sem ter decidido nada. Em produção quem manda é o env `ROUND_TICKS` (`k8s/05-config`). O piso de
+  comida do círculo final caiu (`FOOD_MIN` 60 → 28): 60 grãos num círculo de 144 px é 2,2× a densidade do
+  resto do fim, e era um colchão. E a renda de reposição afrouxou (`FOOD_FILL_S` 2 → 3) — é ela que engorda
+  o gigante no aperto, e o pequeno nunca alcançou esse fluxo mesmo. ⚠️ `shared/test/bot.test.js` teve que
+  rodar MAIS tempo por causa disso: nos 7200 ticks padrão da arena o círculo ainda cobre o mapa e ninguém
+  encosta no gás.
+  **A ESTRELA TAMBÉM SEGUE A ZONA** (`ZONE.STAR_*`): ela nascia sorteada no mapa inteiro, então o
   círculo fechado não tinha nenhuma e o perigo saía da partida justo quando ela fica interessante. Um
   predicado "está dentro do círculo?" não resolveria — com o círculo em 480 px de 9600, o ponto uniforme
   acerta 0,8 % das vezes e o `_farSpot` DEVOLVE a última tentativa —, então quem mudou foi a AMOSTRAGEM:
@@ -320,14 +342,44 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   rolagem interna comeria 15 px justo da medida que tem que bater com a das outras telas.
   `scripts/responsive-check.mjs` cobre `dead`, `round`, `entry@rail` e `shop@rail` (a gaveta com o conteúdo mais largo
   do jogo — 432 combinações).
-- **Placar e massa do HUD** (`#hud-right`, regras em `client/src/styles/ui.css`): estreitos, juntos e
-  TRANSLÚCIDOS (`color-mix`, o mesmo recurso que o kill feed e o chat já usavam). O bloco nascia opaco e
-  largo — `min-width:172px` por linha (204 na 1ª), `gap:9px` entre elas e NENHUM `max-width` no desktop —,
-  então comia a lateral direita em monitor grande e no celular. ⚠️ Mexer só em `ui.css` e com `#hud #x`
-  (2,0,0): `theme/*/hud.css` é GERADO pelo `port.js` e a próxima passada apagaria a mão, e empatar em
-  (1,0,0) com o tema PERDE (ui.css é importado antes). ⚠️ Fundo translúcido come o contraste no céu claro
-  do `dawn`, então as linhas e o número da massa ganharam `text-shadow` — sem ele o placar fica ilegível ao
-  meio-dia.
+- **A BARRA DE NAVEGAÇÃO É UMA SÓ, e mora em `App.jsx`**: antes cada tela renderizava a sua DENTRO da caixa, e
+  o resultado dependia da altura do conteúdo. Os temas a colam com `order:99;position:sticky;bottom:0`
+  (`screens.css:32`), ou seja, no fundo do SCROLLPORT da caixa: em "Salas" (conteúdo curto) ela grudava no
+  fundo de um retângulo baixo, no meio da tela; em "Perfil" (caixa no teto, rolando) ia parar quase no rodapé
+  da janela. E as margens negativas (`-16px`/`-22px`) a faziam sangrar para fora do padding, o que dava a ela
+  a largura "grande" de uma tela e a "pequena" de outra. Pior: **"Modos" e "Equipe" não a renderizavam** — a
+  barra simplesmente SUMIA, e isso nunca foi CSS, era `Modes.jsx` sem `<Nav>`. Fora da caixa ela é sempre a
+  mesma: `#app>nav.nav` (1,1,1, que ganha do `:where` dos temas) presa no rodapé, altura em `--nav-h`, e a
+  caixa das telas desconta essa altura do teto. Na gaveta ela vira a barra DA gaveta (`width:var(--drawer-w)`),
+  senão taparia o jogo que continua vivo à esquerda. A tela inicial fica de fora de propósito: lá a navegação
+  são os seis botões do próprio cartão.
+- **O modal da loja precisa de PORTAL** (`Shop.jsx` → `createPortal(…, #app)`, o primeiro do projeto): o
+  `.overlay` é `position:absolute` e o bloco contentor dele era o `.wrap` da loja — que é absoluto, ROLA e
+  ainda tem `transform:translateX(-50%)`. Daí os dois sintomas: o `top:50%` centrava no meio da CAIXA (não da
+  tela) e o modal descia junto com a rolagem da grade. ⚠️ `position:fixed` NÃO resolve: um `transform` no
+  ancestral também captura elementos fixos. Montado na raiz, o ancestral vira `#app{position:fixed;inset:0}` e
+  o CSS que já existe centra sozinho — é o mesmo caminho de `AccountModal` e `ReconnOverlay`.
+- **Placar do HUD: UMA TABELA, não dez pílulas** (`#hud-right`, regras em `client/src/styles/ui.css`): era uma
+  pilha de balõezinhos independentes, cada linha com fundo, borda, sombra dura, rabinho de quadrinho e
+  LARGURA PRÓPRIA (`min-width:172px`, 204 na 1ª). Dez larguras diferentes empilhadas à direita davam uma
+  borda serrilhada e — o que importa — os números da massa não se alinhavam entre si, que é a única coisa
+  que um placar existe para deixar comparar. Hoje é uma grade de três colunas (`18px 1fr auto`) num cartão
+  translúcido só, largura fixa, nome com reticências, e a linha PRÓPRIA separada por um filete quando vem
+  de fora do top N (sem ele o placar mente, colando o 15º logo abaixo do 8º). ⚠️ Mexer só em `ui.css` e com
+  `#hud #x` (2,0,0): o `hud.css` dos temas é GERADO pelo `port.js` e a próxima passada apagaria a mão, e
+  empatar em (1,0,0) com o tema PERDE (ui.css é importado antes). ⚠️ Sem superfície por linha o texto fica
+  direto sobre o jogo, então `text-shadow` — sem ele o placar some no céu claro do `dawn` ao meio-dia.
+  ⚠️ **Um comentário CSS não pode conter um fecha-comentário.** Havia `theme/*/hud.css` escrito dentro de um
+  `/* … */`: o `*/` do caminho FECHA o comentário ali, e a primeira regra depois dele é engolida em
+  silêncio. Foi assim que `body{--nav-h:74px}` deixou de existir e todo `calc()` que dependia da variável
+  virou `max-height:none`. Cite caminhos com `<id>`, nunca com asterisco-barra.
+- **Powerups: ÍCONE COM O NÚMERO, não chip com rótulo** (`#hud-pw`, `Hud.jsx`): eram pílulas com o nome por
+  extenso ("🧲 Ímã 6s"), e em partida ninguém lê palavra — some no ruído e a lista cresce de largura
+  empurrando o chat. Hoje cada um é um DISCO de 44 px com o número num badge por cima. Três formas, uma
+  gramática: TEMPO tem anel que esvazia (o `Ring` que o push-to-talk já usava, agora genérico), CARGA tem só
+  o número (a auto-defesa não tem relógio), e o ESCUDO mostra o nível. ⚠️ O disco é redondo e o fundo é
+  NEUTRO: na primeira versão o quadrado tinha o fundo na cor do powerup e o anel na MESMA cor — o anel
+  existia, girava certo e era invisível. A cor identifica no anel e no aro, nunca no fundo atrás dele.
 - **A MARCA** (`client/src/ui/logoArt.js` + `Logo.jsx`, `scripts/brand-assets.mjs`): warspace.io. O título era texto
   com emoji (`🪐 PLANET.IO`) girado e com sombra dura; agora é SVG inline pintado por TOKEN, então a marca se re-tinge
   com o relógio junto com o resto da tela — coisa que emoji nunca fez. A arte mora num `.js` puro porque TRÊS lugares
@@ -423,6 +475,15 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ O palavreado é limitado na PENEIRA (`OFENSA` em `botChat.js`), não só no SYSTEM: medindo na bancada
   (`scripts/llm-bench.mjs`), o modelo obedecia na maioria das vezes e escapava numa a cada dez — e "na maioria
   das vezes" não serve para o que aparece na tela de uma sala de 50.
+  ⚠️ **O bot agora sabe onde está.** O prompt levava a vida dele e ignorava a sala: `c.modo` era montado em
+  `_ctxFala` e NUNCA lido, o placar virava só um ordinal ("mid-table"), a zona virava um booleano e o kill
+  feed não chegava — ele comentava a própria vida numa sala que, para ele, não tinha mais ninguém nem
+  relógio. Entraram `partidaLinha` (quantos restam, o quanto ele é menor que o líder, quantos segundos para o
+  gás fechar) e `feedLinha` (as últimas mortes, em texto). Nada disso custa consulta nova: `leaderboard()` é
+  cacheado por tick, `zoneNextIn` é aritmética, e o feed vem de um anel escrito no difusor, onde os slots
+  viram nome de graça. O atraso proposital da resposta caiu (`CORO_D0_MS` [300,900] → [150,500]): esperar
+  mais de um segundo pela primeira letra não parece gente digitando, parece fila — e abaixo de ~150 ms
+  também não, aí é rápido demais para quem teria que ler e escrever.
   Responder a quem CHAMA tem orçamento próprio, bem mais folgado (ser chamado pelo nome e ficar mudo é o que não passa por gente), e a
   menção é aproximada (`citou`: raiz do nick, sufixo de diminutivo, apelido cortado, 1–2 letras de erro). O pecado grave é o FALSO
   positivo — responder a quem não chamou É poluir o chat —, então há lista de palavras comuns e uma VARREDURA em
@@ -441,6 +502,13 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `MIN_PIECE_R` e apenas AMOLECEM. Por isso `how` (com o quê) e o matador são campos separados, e existe a
   ASSISTÊNCIA: a linha honesta é "⭐ amoleceu · Fulano devorou" — e a linha leva o VERBO ("Fulano 🍴 matou
   Beltrano"), porque só o ícone entre dois nomes obriga o leitor a adivinhar a direção.
+  ⚠️ **`drenaFeed` devolvia `null` no caso NORMAL.** `let out=fila` é apelido do mesmo array, e o
+  `fila.length=0` do fim esvaziava o próprio retorno: 1 a 4 linhas — o que acontece em quase todo abate —
+  saíam como `null` e `Room.broadcastFeed` desistia. Só passava o lote de 5+ (supernova, fecho do gás), e
+  o ramo do teto escapava por acidente porque o `.slice()` dele já era cópia. O `?local=1` copiava e não
+  tinha o defeito: por isso o feed funcionava offline e sumia em produção, sem erro e sem log. Hoje é
+  `fila.slice()` e há `server/test/feed.test.js` cobrindo 1..N. **Quem morreu continua vendo o feed**
+  (`ui.css`, `#hud.spec`): é a informação mais óbvia de quem acabou de morrer.
   ⚠️ **O `at` da linha é carimbado na CHEGADA, com o relógio do navegador.** Ele vinha do `Date.now()` do
   SERVIDOR e era comparado com o `Date.now()` do cliente em `KillFeed.jsx`: com o relógio do pod atrasado
   mais que `FEED.TTL_MS` (9 s), toda linha nascia vencida e o feed sumia INTEIRO — sem erro, sem log e sem
@@ -477,6 +545,42 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   de `finishMatch` (`persist/hooks.js`), então o cartão aparece quando o `{t:"rewards"}` chega — que é o instante em que
   o nível de fato subiu. Sons próprios (`levelUp`, `achievement`), e o `achievement` é irmão menor de propósito: uma
   partida pode render quatro medalhas, e quatro fanfarras seguidas viram barulho.
+- **Economia: o teto era SALÁRIO** (`SCORE_COINS`/`PLACE_COINS` em constants, `TIERS` em achievements):
+  medido em produção numa conta de 17 partidas, 692 moedas por partida contra um teto de 750 — todo mundo
+  batia o teto sempre, e a diferença entre jogar bem e jogar mal desaparecia. Com `score/300` isso é
+  aritmética: uma partida decente passa de 150 mil pontos, o que já dá 500 sozinho, e os abates viravam
+  enfeite. O divisor foi para 1200, o teto para 200 e o abate deixou de valer dobrado; a colocação do BR
+  acompanhou (250→120 no 1º), senão o BR viraria a fonte fácil que o Livre deixou de ser. As conquistas
+  caíram pela metade (50/125/300/750): elas pagam uma vez na vida, mas as 53 juntas somavam 30 500 moedas.
+  Hoje a curva discrimina — 17 numa partida fraca, ~97 numa média, 200 só na excepcional. ⚠️ Os testes de
+  `persist.test.js` derivam os valores da FÓRMULA, nunca de constantes copiadas.
+- **O ranking é só de CONTA** (`repos/ranking.js`, `CONTA()`): ele sempre somou por `user_id`, então trocar
+  de nick nunca fez ninguém perder posição — o que faltava era o contrário. O convidado escolhe um nick novo
+  a cada entrada e pode ter quantos quiser; um pódio construído sobre isso não diz de QUEM é a marca. O
+  filtro é `kind='registered'` e não `email IS NOT NULL`, porque é ele que trava o nick no banco
+  (`users_nick_registered_uq`) — um claim só com senha também trava, e não há por que puni-lo. ⚠️ É filtro de
+  EXIBIÇÃO: `user_stats` continua somando por `user_id`, e o histórico inteiro aparece no dia em que a conta
+  existir. A tela diz isso ao convidado (`LB.rankGuest`), senão "sem posição" parece defeito.
+- **MUDO** (`prefs.muted`, tecla **M**, chip `#h-mute` no HUD): interruptor de urgência, separado de
+  `sound`/`music`/`ambience`, que são gosto. Zera o MASTER — leva junto a voz dos outros, que tem barramento
+  próprio — sem apagar nenhuma das outras escolhas. ⚠️ A tecla ignora `<input>`: o chat é um campo dentro do
+  HUD e escrever "amanha" mutaria o jogo no meio da palavra.
+- **A borda do mundo é desenhada em PIXELS DE TELA** (`renderer/layers/Grid.js`): ela vive em coordenadas de
+  MUNDO dentro do container que leva `world.scale.set(cam.scale)` todo frame, e a câmera NUNCA para (a
+  suavização de `Camera.js` persegue o alvo sem chegar nele). Uma linha de 6 px de mundo com um planeta
+  grande vira ~1,8 px, e o tracejado de 40/26 px vira 12/8 px — tudo reamostrado num subpixel diferente a
+  cada quadro. Isso é a cintilação. Dividindo largura e traço pelo zoom (com `REF=.5`, que é o zoom em que
+  os números do tema foram escolhidos), a borda tem a mesma medida em tela em qualquer afastamento. O
+  redesenho é por PATAMAR (`REBAKE_K`, 4 %), não por frame: `dashPolyline` percorre o perímetro inteiro.
+- **Fogos sem o círculo branco** (`theme/util.js:fireworkPrims`): o clarão era uma estrela branca MAIS um
+  anel que crescia até 3·R0 — um aro perfeito, de espessura constante, expandindo por cima do estouro. Nada
+  em fogo de artifício tem essa forma: ela é onda de choque de desenho animado, e chamava mais atenção que as
+  faíscas. Hoje o clarão é miolo denso + coroa curta de raios, os dois presos ao centro. Ganhou também a
+  **segunda florada** (um terço das faíscas estoura de novo no meio do voo, em V — é o "pistil" das peças de
+  verdade, e é o que dá duas camadas de profundidade) e a **chuva** final, que antes era um apagão seco.
+  ⚠️ E o planeta do campeão PARA no fim da rodada (`enviarInput` com `roundOver`): parar de mandar input não
+  resolveria — sem alvo novo o servidor segue movendo a peça na direção velha para sempre —, o que para é
+  mandar o alvo em cima de onde ela já está.
 - **Progressão** (`shared/src/levels.js`, migrações 0004–0006): XP por partida (`matchXp`, função pura no
   molde de `achievements.js`) e nível DERIVADO do XP (`levelFromXp`) — nunca guardado, senão vira uma segunda
   verdade que envelhece na primeira mudança de curva. Curva `85·(L−1)^2.12`: nível 2 na primeira vida, 10 em
@@ -522,14 +626,27 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `ui.css` devolve o `auto-fill` com especificidade maior. A skin **Retrato** ganhou selo próprio na grade (ela é a
   única que pede algo além da compra — a foto), o `AvatarPicker` mudou para DENTRO do modal e também para o Perfil, junto
   do nick e do país: trocar a foto não deveria exigir reencontrar uma skin numa grade de 94.
-- **Skins novas** (75–93): 8 lendárias com `levelReq` (10–50) que são EMBLEMAS, não texturas de planeta — é o
-  que as faz legíveis a 24 px; a skin **Retrato** (83), que põe a FOTO do jogador dentro do disco; e 10
-  caricaturas de easter egg (84–93, `rarity:"secret"`, escondidas da loja e recusadas pela compra), escolhidas
-  pelo NICK em `shared/src/eggs.js` — casamento EXATO da raiz (`baseNick`), porque prefixo fazia "modinha"
-  virar Modi. O egg é decidido em `persist/hooks.js` e `wsServer.unsaved`, vale só para AQUELA vida e **nunca**
-  escreve em `users.equipped_skin_id`; `prefs.eggs:false` desliga. ⚠️ `seedSkins` tem uma faca: um pod com o
-  `shared/skins.js` ANTIGO faz `UPDATE skins SET active=false` nas skins novas — os 3 shards têm que estar na
-  MESMA imagem antes de qualquer skin nova ficar comprável.
+- **Skins novas** (75–118): 8 lendárias com `levelReq` (10–50) que são EMBLEMAS, não texturas de planeta — é o
+  que as faz legíveis a 24 px; a skin **Retrato** (83), que põe a FOTO do jogador dentro do disco; e **35
+  caricaturas de easter egg** (84–118, `rarity:"secret"`, escondidas da loja e recusadas pela compra),
+  escolhidas pelo NICK em `shared/src/eggs.js` — casamento EXATO da raiz (`baseNick`), porque prefixo fazia
+  "modinha" virar Modi. O egg é decidido em `persist/hooks.js` e `wsServer.unsaved`, vale só para AQUELA vida
+  e **nunca** escreve em `users.equipped_skin_id`; `prefs.eggs:false` desliga. ⚠️ `seedSkins` tem uma faca: um
+  pod com o `shared/skins.js` ANTIGO faz `UPDATE skins SET active=false` nas skins novas — os 3 shards têm que
+  estar na MESMA imagem antes de qualquer skin nova ficar comprável.
+- **As caricaturas são ILUSTRAÇÃO, não canvas** (`client/public/faces/*.webp`, 256², ~15 KB cada;
+  `client/src/theme/faces.js`): houve aqui um rosto procedural montado com elipses e recolorido por
+  personagem, e ele saiu inteiro. O motivo é medível: dez caricaturas feitas de elipses saem parecidas entre
+  si e nenhuma parece com quem devia — o que identifica uma pessoa é justamente o que uma elipse não tem.
+  O carregador é gêmeo de `theme/avatars.js` e pelo mesmo motivo: `paintPattern` é SÍNCRONO (roda dentro de
+  `cache.get`/`warm`), então o bitmap tem que chegar decodificado em `P.face`. Enquanto não chega, desenha o
+  disco liso da cor da skin — nunca `false`, que cairia no emoji fantasma e poria uma bandeira no lugar de um
+  rosto. A CHAVE da textura carrega "a arte já chegou?" (`faceKey`), e é ela que faz o planeta se reassar
+  sozinho quando o bitmap fica pronto: o TextureCache não tem `drop(key)`. ⚠️ A **prévia** da loja é um canvas
+  pintado UMA vez, então precisa de aviso próprio (`onFaceReady`), senão a grade fica no disco liso para
+  sempre. ⚠️ Raiz de egg com menos de 4 letras ou com dígito no fim NUNCA casa (`baseNick` corta o dígito,
+  `MIN_ROOT`=4): `cr7`, `r9`, `mj23` e `ney` foram removidos por isso — raiz que não casa é promessa que o
+  jogo não cumpre. Quem prova é a varredura de `shared/test/eggs.test.js`.
 - **A foto do jogador**: recortada em círculo e reduzida no CLIENTE (`util/image.js`, ≤256 px, escada de
   qualidade WebP até caber em `AVATAR.MAX_BYTES`), validada no servidor pelo CABEÇALHO
   (`api/imagemeta.js` lê PNG/VP8/VP8L/VP8X à mão — nenhuma biblioteca nova) e guardada em `bytea` numa tabela

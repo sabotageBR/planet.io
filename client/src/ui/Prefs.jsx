@@ -3,7 +3,7 @@ import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { setPref, savePrefs, resetPrefs } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
-import { Nav, ScreenHeader, Screen } from "./bits.jsx";
+import { ScreenHeader, Screen } from "./bits.jsx";
 import { PREFS } from "./prefsTable.js";
 
 export default function Prefs({ on }) {
@@ -13,7 +13,7 @@ function Body() {
   const LB = useLabels(); const prefs = useStore(app, s => s.session.prefs);
   const coerce = (it, raw) => (typeof it.opts[0][0] === "number" ? +raw : raw);
   return <>
-    <Nav cur="prefs" /><ScreenHeader title={LB.prefsTitle} />
+    <ScreenHeader title={LB.prefsTitle} />
     <div className="prefs-groups" id="prefs-groups">
       {PREFS.map(gp => <section className="card pg" id={"pg-" + gp.id} key={gp.id}><h2>{gp.title}</h2>
         {gp.items.map(it => { const v = prefs[it.key];

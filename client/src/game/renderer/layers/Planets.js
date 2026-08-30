@@ -7,6 +7,7 @@
 //    pop(id,delay): "gulp" de quem acabou de engolir alguém — o corpo incha e achata por POP_MS (a absorção do EAT).
 import {Container,Sprite,Graphics,BitmapText,BitmapFont,Cache,MeshPlane} from "pixi.js";
 import {ensureAvatar,avatarBitmap,avatarKey} from "../../../theme/avatars.js";
+import {ensureFace,faceBitmap,faceKey} from "../../../theme/faces.js";
 import {PIECE_FLAG,mergeTicks,rectHas} from "@warspace/shared";
 import {colorOf,dashPolyline,seedUnit} from "../../util.js";
 import {paintTalk} from "../../../theme/util.js";
@@ -92,8 +93,11 @@ export function createPlanets(R){
         // planeta é assado com a silhueta e, quando chega, a chave muda e a textura nova sai sozinha.
         const av=pl&&pl.avatar?pl.avatar:null;if(av)ensureAvatar(av);
         const avV=av?avatarKey(av):null,avBmp=av?avatarBitmap(av):null;
-        const size=TX.tier(e.rr),tex=R.cache.get(TX.key("planet",{skin,isMe,avatar:avBmp?avV:null},size),size,
-          (c,s)=>TX.planet(c,s,{skin,isMe,avatarBmp:avBmp}));
+        // a caricatura do easter egg: mesmo caminho da foto, só que a arte é estática e vem do /faces
+        if(skin.face)ensureFace(skin);
+        const fcBmp=skin.face?faceBitmap(skin):null;
+        const size=TX.tier(e.rr),tex=R.cache.get(TX.key("planet",{skin,isMe,avatar:avBmp?avV:null,face:faceKey(skin)},size),size,
+          (c,s)=>TX.planet(c,s,{skin,isMe,avatarBmp:avBmp,faceBmp:fcBmp}));
         const d=e.rr*PK(skin);let sx=1,sy=1;const pat=pops.get(e.id);   // gulp da absorção: incha e achata de leve
         if(pat!=null){const age=t-pat;if(age>POP_MS)pops.delete(e.id);else if(age>=0){const u=Math.sin(age/POP_MS*Math.PI);sx=1+POP_AMP*u;sy=1-POP_AMP*.35*u;}}
         if(wob&&blobs<WOB_MAX&&e.rr*cam.scale>=WOB_MIN_PX){blobs++;   // as maiores da tela viram gelatina (view.pieces vem ordenado por raio)
@@ -101,7 +105,7 @@ export function createPlanets(R){
         else{if(v.mesh)v.mesh.visible=false;v.body.visible=true;v.body.texture=tex;v.body.width=d*2*sx;v.body.height=d*2*sy;}
         // rótulos
         const lab=e.rr>L.minR&&showNames;v.name.visible=lab;
-        if(lab){const fs=L.size(e.rr);const nm=pl.name+(pl.registered?" ✓":"");if(v.lastName!==nm){v.lastName=nm;v.name.text=nm;}
+        if(lab){const fs=L.size(e.rr);const nm=pl.name;if(v.lastName!==nm){v.lastName=nm;v.name.text=nm;}
           v.name.scale.set(fs/FS);v.name.y=L.nameY(fs);}
         // ícone de "está falando" (push-to-talk), acima do planeta
         if(view.talkingNow(pl)&&maior.get(e.owner)===e.id){
