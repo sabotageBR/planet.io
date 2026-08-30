@@ -43,16 +43,30 @@ export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
 // inteira (ZONE) fecha em 30 000 ticks ≈ 8 min 20 s. ⚠️ Os dois andam JUNTOS: alongar a zona sem alongar
 // isto aqui faz a partida terminar por tempo antes de o círculo fechar, que é o único jeito de o Battle
 // Royale acabar sem ter decidido nada. Em produção quem manda é o env ROUND_TICKS (k8s/05-config).
-export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
+export const ZONE={STAGES:6,R:[.62,.45,.32,.225,.16,.113,.08],
   HOLD_TICKS:[6000,4500,3300,1800,900,600],SHRINK_TICKS:[3600,3000,2400,1800,1200,900],
-  DRIFT:.45,BURN:.10,BURN_K:2.2,WARN_TICKS:180,MIN_R:60,SHED_TICKS:24,SHED_SPEED:260,SHED_SPREAD:.85,SHED_MIN:1,SHED_N_DEATH:7,
-  FOOD_AREA:2400,FOOD_MIN:28,FOOD_SCAN:96,FOOD_FILL_S:3,
+  DRIFT:.45,BURN:.10,BURN_K:2.2,EXPOSE_MIN:.02,WARN_TICKS:180,MIN_R:60,SHED_TICKS:24,SHED_DIST:180,SHED_SPREAD:.85,SHED_MIN:1,SHED_N_DEATH:7,
+  FOOD_AREA:2400,FOOD_MIN:1200,FOOD_SCAN:96,FOOD_FILL_S:3,
   STAR_PAD:360,STAR_MIN_R:1200,STAR_SEP_K:.5,STAR_RETRY_TICKS:300,STAR_SCAN:2};
 // zona = círculo. R é o RAIO como fração de WORLD.w: começa em .62 (5 952 px — cobre o mapa, cujo
-// centro→canto é 6 788) e fecha em .015 (144 px). Cada etapa i: HOLD_TICKS[i] parada em R[i], depois
+// centro→canto é 6 788) e fecha em .08 (768 px). As razões entre etapas são ~√.5, ou seja **cada etapa tira
+// metade da ÁREA**: a pressão é constante do começo ao fim, e o que muda é o tamanho de quem está dentro.
+// ⚠️ O fim era .015 (144 px) e não fechava partida nenhuma. Uma peça no teto (MAX_R 1000) tem 48× a ÁREA do
+// círculo inteiro — já na etapa 5, com 480 px, ela não cabia —, e como a queimadura olhava o CENTRO da peça,
+// o gigante com o centro dentro do disco de 144 px não queimava NADA enquanto o corpo dele cobria a arena
+// toda: fisicamente invencível no exato momento em que o círculo devia decidir a partida.
+// 768 px é ~1 arremesso de split (SPLIT.DIST 780) de raio: cabe a briga, não cabe o planeta.
+// E o teto de massa do fim virou GEOMÉTRICO, de graça: para todo mundo caber é preciso Σr² ≤ R², ou seja
+// 590 mil de massa para a SALA INTEIRA no último círculo. O gás cobra a diferença de quem não cabe.
+// EXPOSE_MIN: menos de 2% do disco fora não conta. É BANDA MORTA, não folga — sem ela, encostar a borda na
+// linha já acenderia o aviso vermelho e começaria a arrancar pelotas, e a peça piscaria entre "no gás" e
+// "na zona" a 60 Hz enquanto corre colada nela.
+// Cada etapa i: HOLD_TICKS[i] parada em R[i], depois
 // SHRINK_TICKS[i] interpolando até R[i+1]. DRIFT limita o deslocamento do centro a essa fração de
 // (r−r_novo), então o círculo NOVO sempre cabe dentro do velho — ninguém é pego por uma zona que pulou
-// para trás. BURN é a fração da massa por segundo fora dela: .10/s é 50× o PLAYER.DECAY, e leva uma peça
+// para trás. BURN é a fração da massa por segundo × ÁREA EXPOSTA (ver zoneExposure em physics/rules.js): a
+// pergunta deixou de ser "meu centro está fora?" e passou a ser "que fatia do meu disco está no gás?".
+// .10/s é 50× o PLAYER.DECAY, e leva uma peça
 // de START_R (massa 900) ao piso MIN_PIECE_R (256) em ~12 s — tempo de correr, não de acampar. Ao contrário
 // da queimadura de estrela, esta NÃO tem piso: no piso a peça morre (é o que fecha a partida).
 // BURN_K: o gás ENDURECE conforme o círculo fecha — a taxa vai de BURN (no raio da etapa 0) a BURN·BURN_K
@@ -82,7 +96,7 @@ export const ZONE={STAGES:6,R:[.62,.45,.32,.21,.12,.05,.015],
 // gigante 10× mais rápido. Com a renda o teto é do CÍRCULO e todo mundo divide o mesmo fluxo — e como o
 // pequeno só alcança ~43 grãos/s de qualquer jeito, quem o teto limita é justamente quem cobre o círculo.
 // SHED_*: a massa queimada NÃO evapora — ela é ARRANCADA em pelotas, a cada SHED_TICKS (2,5×/s), jogadas
-// para FORA (para longe do centro da zona) a SHED_SPEED. Ver quem está no gás perdendo pedaços é o aviso
+// para FORA (para longe do centro da zona), SHED_DIST px ALÉM DA BORDA da peça. Ver quem está no gás perdendo pedaços é o aviso
 // mais claro que existe, e a massa continua no mundo: quem tiver coragem de entrar atrás dela, leva. Ir
 // buscar custa entrar MAIS FUNDO no gás — a direção para fora é o que faz o preço ser real.
 // A cadência (e o piso SHED_MIN, uma pelota inteira) existem por causa do teto EJECT.MAX: soltar a cada
@@ -118,7 +132,12 @@ export const MODES=[
 export const modeOf=id=>MODES[id]||MODES[MODE.FREE];
 /** Capacidade da sala arredondada para baixo no tamanho de equipe. */
 export const modeCap=(id,teamSize=1)=>{const m=modeOf(id),t=teamSize>0?teamSize|0:1;return m.max-m.max%t;};
-export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:1000,MAX_PIECES:16,BOT_R:[24,58],DECAY:.002};
+export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:1000,MAX_PIECES:16,BOT_R:[24,58],DECAY:.002,OVER_N:6,OVER_DIST:420};
+// OVER_N/OVER_DIST: o que fazer com a massa acima de MAX_R quando NÃO HÁ VAGA de peça para repartir. Era
+// `setR(pc,MAX_R)` e pronto — o único ponto do jogo, fora do DECAY, em que massa de JOGADOR simplesmente
+// evaporava, e em silêncio. Agora o excesso vira OVER_N fragmentos arremessados OVER_DIST px além da borda,
+// com a imunidade que escala com o raio. Conservação de massa é estrutural aqui: o que sai de um planeta
+// tem que continuar existindo em algum lugar, e quem quiser de volta paga em posição.
 // DECAY é o `playerDecayRate` do agar.io: cada peça perde essa fração da MASSA por segundo, com piso em START_R.
 // Como a taxa é relativa, ela é desprezível para quem é pequeno (1,8/s numa peça de 900, contra os 20–40/s que
 // ela ganha comendo poeira) e cara para quem é enorme (2.000/s numa de 1.000.000, meia-vida de 5,8 min). É o que
@@ -217,9 +236,17 @@ export const isWeaponFood=t=>t>=FOOD_TYPE.W_BURST&&t<=FOOD_TYPE.W_NOVA;
 /** Quantos níveis de escudo uma batida de rocha custa, pela velocidade de aproximação (0 = nem sente). */
 export const shieldTierFor=vn=>{const T=ASTEROID.SHIELD_VN;return vn>=T[2]?3:vn>=T[1]?2:vn>=T[0]?1:0;};
 export const ASTEROID={BELTS:4,PER_BELT:5,WANDERERS:18,R_MIN:30,R_MAX:62,MASS_R_MAX:80,BELT_RADIUS:[400,700],BELT_SPEED:[15,25],BELT_SPRING:.24,BELT_DAMP:.96,
-  WANDER_SPEED:[20,60],POP_RATIO:1.1,POP_DIST:.82,CHIP:.04,CHIP_CD_TICKS:30,FEED:1.6,SHOOT_AT:72,SHOOT_R:36,CHILD_R:28,CHILD_SPEED:540,
+  WANDER_SPEED:[20,60],POP_RATIO:1.1,POP_DIST:.82,CHIP:.04,CHIP_STUCK:.22,CHIP_STUCK_DIST:520,CHIP_CD_TICKS:30,FEED:1.6,SHOOT_AT:72,SHOOT_R:36,CHILD_R:28,CHILD_SPEED:540,
   E:.85,E_AST:.9,SAFE_SPAWN:500,RESPAWN_TICKS:300,MAX_EXTRA:6,SHIELD_VN:[220,520,900],
   SMASH_MIN_R:34,SMASH_R:.45,SMASH_N:[3,5],SMASH_SPEED:520,BELT_SAFE:520};
+// CHIP_STUCK/CHIP_STUCK_DIST: a rocha que ESTOURARIA a peça (r > POP_RATIO·ra, mirando o miolo) e não tem
+// vaga de peça para estourar. Isso caía na lasca comum — e a lasca comum é REEMBOLSO: 4% que voltam como
+// fragmento do PRÓPRIO dono, nascido ATRÁS dele (a mesma direção para onde o quique o empurra) e a 97 px,
+// dentro do próprio planeta, com imunidade fixa de 20 ticks. Atravessar cinturão dividido em 16 pedaços era
+// literalmente de graça, e foi exatamente isso que os jogadores acharam. Sem vaga o preço vira massa: 22%
+// arrancados e ARREMESSADOS CHIP_STUCK_DIST px para o OUTRO lado, com a imunidade que escala com o raio.
+// Nada evapora — só deixa de ser bumerangue: voltar para buscar custa tempo, posição e o risco de outro
+// chegar primeiro. Com vaga, nada muda: a rocha continua estourando a peça como sempre.
 // SHIELD_VN: a batida na rocha custa escudo PELA VELOCIDADE do impacto (velocidade de aproximação, que já soma
 // o quanto o planeta está correndo contra ela): 1 nível a partir de [0], 2 a partir de [1], 3 a partir de [2].
 // Enquanto o escudo aguenta, a rocha NÃO arranca massa e NÃO estoura o planeta — ela só empurra e ricocheteia.
@@ -248,9 +275,15 @@ export const BLACKHOLE={COUNT:0,CORE_R:38,INFLUENCE:10,G:5.5e7,A_MAX:2200,SWIRL:
 // buraco. Elas nascem em SPAGHETTI_R do raio de INFLUÊNCIA, ou seja logo FORA do alcance da sucção — dentro dele
 // o buraco as engoliria de volta em segundos e ninguém aproveitaria
 export const STAR={COUNT:12,R:46,BURN:.30,RAM_REWARD:false,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2400,4200],OLD_TICKS:480,RESPAWN_TICKS:600,HALO:2.2,
-  SHATTER_MIN_R:24,SHATTER_N:[3,6],SHATTER_DIST:342,SHATTER_CD_TICKS:45,PUSH_TOUCH_DIST:160,
+  SHATTER_MIN_R:24,SHATTER_N:[3,6],SHATTER_DIST:342,SHATTER_CD_TICKS:45,BURN_STUCK:.55,PUSH_TOUCH_DIST:160,
   NOVA_R:8,NOVA_SHATTER:.45,NOVA_PARTICLES:24,NOVA_FOOD:16,NOVA_FOOD_R:.3,NOVA_SPEED:[380,820],NOVA_PART_MASS:3,NOVA_LIFE_TICKS:900,AST_KICK:1500,PUSH_DIST:342,SAFE_SPAWN:700,MIN_SEP:1400,
   DRAG:1.4,HIT_PUSH:280,EJECT_PUSH:70,HITS_TO_SPLIT:3,HIT_CD_TICKS:30,SPLIT_N:3,SPLIT_R:.62,SPLIT_SPEED:520,SPLIT_BLAST:5,SPLIT_LIFE_TICKS:[900,1500]};
+// BURN_STUCK: com as PLAYER.MAX_PIECES ocupadas o estilhaço não acontece — e é POR ISSO que o jogador chega
+// às 16 de propósito antes de atravessar uma estrela. O preço da estrela sempre foram DUAS coisas: BURN de
+// massa E ser espalhado em 4..7 pedaços que não fundem por 30 s; em 16 peças ele só pagava a primeira, e a
+// segunda sumia em silêncio. Sem vaga a estrela cobra a conta na moeda dela: .55 ≈ 1−(1−BURN)², a MESMA
+// queimadura levada duas vezes. Continua sendo massa DESTRUÍDA (é a identidade da estrela) e continua com
+// piso em MIN_PIECE_R — ninguém morre de estrela, nem em 16 peças.
 // estrela: nasce em GROW (k rampa em GROW_TICKS), vive LIFE_TICKS em ACTIVE, incha até R·SWELL em OLD_TICKS e explode.
 // Míssil (sempre) e partícula ejetada (fora do cooldown HIT_CD_TICKS) empurram a estrela — ela anda com arrasto DRAG — e contam um hit:
 // em HITS_TO_SPLIT hits ela racha em SPLIT_N estrelas menores (r·SPLIT_R) a SPLIT_SPEED, com um sopro em r·SPLIT_BLAST (só empurrão).
@@ -269,8 +302,23 @@ export const STAR={COUNT:12,R:46,BURN:.30,RAM_REWARD:false,SWELL:1.75,ARM_K:.5,G
 // raio blast·NOVA_FOOD_R (a estrela morta vira um berçário: ponto de interesse fixo no mapa),
 // asteroides a AST_KICK e peças a PUSH; dentro de r·NOVA_R·NOVA_SHATTER
 // (o miolo) é como encostar na estrela: o escudo cai inteiro e salva, sem escudo a peça estilhaça.
-export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,R:11,SPAWN_CD_TICKS:600,HIT_SHRINK:.9,HIT_DEBRIS:5,DEBRIS_SPEED:540,SHATTER_N:[3,6],SHATTER_DIST:342,
-  INTERCEPT_DIST:1100,ALERT_DIST:2600,AST_KICK:420,AIM_PICK:700,AIM_RANGE:2200};
+export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,AMMO_OVER:1,R:11,SPAWN_CD_TICKS:600,HIT_SHRINK:.9,STUCK_SHRINK:.82,HIT_DEBRIS:5,DEBRIS_DIST:560,DEBRIS_SPREAD:.9,SHATTER_N:[3,6],SHATTER_DIST:342,
+  INTERCEPT_DIST:1100,ALERT_DIST:2600,AST_KICK:420,AIM_PICK:700,AIM_RANGE:2200,AIM_HOLD_TICKS:180};
+// DEBRIS_DIST/DEBRIS_SPREAD/STUCK_SHRINK: o impacto sem escudo era REEMBOLSO, não dano. Os HIT_DEBRIS cacos
+// nasciam no CENTRO da peça, em TODAS as direções (o spread era 2π, e spillFrag com spread>=6.28 sorteia o
+// ângulo) e a 540 px/s — como o ejetado integra com arrasto puro, o alcance é v/DRAG = 146 px, ou seja DENTRO
+// de qualquer peça com r > 146 —, e com a imunidade fixa de 20 ticks o dono engolia de volta, 0,33 s depois,
+// os 19% que o tiro tinha arrancado. O teste de conservação de massa passava; ninguém testou se o caco ESCAPA.
+// Agora a massa RESVALA: sai do lado OPOSTO ao míssil (a mesma direção do estilhaço), nasce na BORDA e viaja
+// DEBRIS_DIST px além dela, num leque de ±DEBRIS_SPREAD, com a imunidade que já escala com o tamanho
+// (ownerImmune, a mesma da cusparada: 12 s num r=1000). Nada evapora — só deixa de ser bumerangue: quem
+// quiser a massa de volta larga a posição, e quem estiver por perto leva.
+// Distância em PIXELS como todo empurrão daqui (velocidade = DIST·DRAG), e somando o próprio raio para o
+// caco limpar o planeta antes de começar a frear.
+// STUCK_SHRINK entra no lugar de HIT_SHRINK quando o alvo NÃO TEM VAGA para estilhaçar (as 16 ocupadas):
+// PARTIR o alvo é metade do dano do míssil, e quem não pode ser partido paga a outra metade em massa —
+// .82 ≈ HIT_SHRINK², o mesmo tiro cobrado duas vezes (19% → 33% da peça). Alvo pequeno demais para partir
+// (SHATTER_TOO_SMALL) NÃO paga: ali o piso MIN_PIECE_R já é o castigo.
 // SPAWN_CD_TICKS: carência de 10 s a cada nascimento antes do primeiro tiro (vale para bot também). Sem ela o
 // recém-nascido sai do spawn metralhando — não tem massa a perder e o míssil é a arma anti-gigante. É por TEMPO,
 // não por tamanho: quem quiser atirar pequeno pode, só precisa sobreviver os 10 s primeiro. Vai no `self` do
@@ -279,6 +327,12 @@ export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,R:11,SPAWN_CD
 // O aviso NÃO pode ser só do cliente: a AOI de um jogador pequeno tem meia-largura ~1250 px e o míssil nasce a
 // até AIM_RANGE (ou a qualquer distância, sem mira), então ele apareceria na tela com menos de 2 s de sobra.
 // Por isso a ameaça é medida no servidor e vai no `self` (threat/threatDir).
+// AIM_HOLD_TICKS: a TRAVA SOBREVIVE 3 s ao soltar o botão. Mirar custa movimento (o alvo é escolhido pelo
+// cursor), então acertar a mira e ter que refazê-la inteira para mandar o segundo míssil no MESMO planeta
+// era pagar duas vezes pelo mesmo trabalho — e o jogo tem munição para isso. Enquanto a trava vive, um tiro
+// comum sai no alvo travado, desde que ele continue vivo e dentro de AIM_RANGE. O alvo NÃO viaja no fio
+// (o INPUT são 10 bytes fixos e o servidor refaz `aimTarget` no tick do tiro), então a trava mora no
+// PlayerState e o cliente redesenha o anel pela mesma conta — os dois chegam ao mesmo alvo sozinhos.
 // tiro mirado (segurar o botão): trava na bolinha mais próxima do PONTEIRO (aimScore), entre as que estão a até
 // AIM_RANGE px de quem atira e a menos de AIM_PICK px do cursor; sem nada perto do cursor o míssil sai reto.
 // Era um CONE de ±0,45 rad escolhendo o mais próximo da PEÇA: o ângulo só abria o portão e mexer o mouse dentro
@@ -315,9 +369,9 @@ export const weaponOf=id=>WEAPONS[id]||WEAPONS[WEAPON.MISSILE];
 export const weaponOfFood=t=>{for(let i=1;i<WEAPONS.length;i++)if(WEAPONS[i].food===t)return i;return -1;};
 /** Peso do alvo do tiro mirado: distância do PONTEIRO à BORDA da bolinha (bola grande é mais fácil de agarrar). */
 export const aimScore=(dx,dy,r)=>Math.sqrt(dx*dx+dy*dy)-r;
-export const POWERUP={TICKS:420,MAGNET_MAX_R:420,MAGNET_RANGE:5.5,MAGNET_RANGE_MAX:900,MAGNET_PULL:170,MAGNET_NEAR:2.2,MAGNET_EJECT_A:900,MAGNET_AST:420,MAGNET_HEAVY:.45,MAGNET_STAR:.12,
+export const POWERUP={TICKS:420,MAGNET_MAX_R:316.2278,MAGNET_RANGE:5.5,MAGNET_RANGE_MAX:900,MAGNET_PULL:170,MAGNET_NEAR:2.2,MAGNET_EJECT_A:900,MAGNET_AST:420,MAGNET_HEAVY:.45,MAGNET_STAR:.12,
   SHIELD_MAX_LEVEL:3,SHIELD_EVOLVE_TICKS:900,
-  AUTODEF_CD_TICKS:90,AUTODEF_SCAN_TICKS:6,
+  AUTODEF_CD_TICKS:90,AUTODEF_SCAN_TICKS:6,AUTODEF_MAX:3,
   ZOOM_TICKS:900,ZOOM_K:1.5,
   FEAST_TICKS:600,FEAST_K:2,
   DROP:[[FOOD_TYPE.MAGNET,32],[FOOD_TYPE.SHIELD,32],[FOOD_TYPE.AUTODEF,22],[FOOD_TYPE.AMMO_PLUS,7],[FOOD_TYPE.FEAST,7]]};
@@ -330,6 +384,10 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:420,MAGNET_RANGE:5.5,MAGNET_RANGE_M
 // escudo automático era um relógio invisível que o jogador não tinha como planejar — ou ele descobria que
 // tinha acabado no instante em que o míssil chegou, ou nem percebia que existiu. Uma carga é a mesma coisa
 // dita de um jeito que se pode guardar: o ícone fica lá, eterno, até o dia em que salva a sua vida.
+// AUTODEF_MAX: e agora ela ACUMULA até 3. Travar em 1 fazia o segundo powerup pego não valer nada — o
+// jogador via o grão, ia buscar, encostava e o número continuava "1×". Powerup que não muda nada ao ser
+// pego é pior que powerup que não existe. O `self` já é u16, então o teto poderia ser qualquer um; 3 é o
+// mesmo do escudo, e três interceptações guardadas já é uma partida inteira coberta.
 // ── OS QUATRO POWERUPS DE JOGADOR (11..14) ───────────────────────────────────
 // Ímã e escudo são POR PEÇA porque são efeitos de corpo: quem pegou é quem sente. Estes quatro são por
 // JOGADOR, e não por teimosia — câmera, cinto e economia não têm como ser de meia bolinha. Ficam em
@@ -342,8 +400,11 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:420,MAGNET_RANGE:5.5,MAGNET_RANGE_M
 //             AUTODEF_SCAN_TICKS escalona a varredura por slot: `incomingMissile` com `livres` é O(M²), e
 //             50 jogadores × 60 Hz seria o maior custo fixo do tick por causa de um powerup que quase
 //             ninguém tem no momento. 6 ticks = 100 ms de latência, que ninguém percebe num míssil a 720 px/s.
-//   AMMO_PLUS RARO. Um míssil AGORA, furando o teto da arma. Não guarda estado nenhum: o teto de `eatFood`
-//             é uma comparação, e passar por cima dela uma vez é a feature inteira.
+//   AMMO_PLUS RARO. EMPRESTA uma bala ACIMA do teto da arma — e só uma (MISSILE.AMMO_OVER). ⚠️ Era
+//             `addAmmo(ps,1)` cru: o único lugar que passa por cima do teto passava por cima dele SEMPRE, e
+//             a munição subia sem fim (9 mísseis com MAX_AMMO 3, visto em produção). Ninguém pediu isso; é
+//             o teto que não existia. Gastou a bala emprestada, o teto normal volta a valer e é preciso
+//             achar outro powerup para ter a quarta de novo — que é a feature inteira.
 //   ZOOM      AFASTA a câmera em ZOOM_K. ⚠️ Não é efeito de cliente: `zoomFor` alimenta TAMBÉM a AOI do
 //             snapshot (server/src/net/snapshot.js), e afastar só de um lado desenharia uma borda vazia.
 //   FEAST     RARO. A comida vale FEAST_K. Só a COMIDA (EAT.FOOD_GAIN): encostar no ganho de fragmento
@@ -353,12 +414,15 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:420,MAGNET_RANGE:5.5,MAGNET_RANGE_M
 // dois primeiros continuam sendo a maioria porque são os que o jogador aprende primeiro, e os dois raros
 // somam 14 % da banda — ~0,5 % de toda a comida, que é o que faz alguém comemorar ao ver um.
 // ímã: comida a d<r·MAGNET_RANGE anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/alcance)) px/s; ejetados ganham MAGNET_EJECT_A px/s² (drag 3.7/s → ~240 px/s)
-// MAGNET_MAX_R: acima desse raio a peça NÃO pega nem usa o ímã — e o teto subiu de 160 para 420 px, porque
-// 160 era um raio que qualquer partida decente passa em poucos minutos: o ímã virava item morto justamente
-// para quem estava jogando bem. O que segurava o teto lá embaixo era o ALCANCE, que é r·MAGNET_RANGE e num
-// planetão passava de 1500 px, sugando a tela inteira. Agora quem limita o alcance é ele mesmo
-// (MAGNET_RANGE_MAX, 900 px absolutos), então o teto de tamanho não precisa mais fazer esse trabalho.
-// Em r=160 o alcance dá 880 px, abaixo do teto: para quem já pegava ímã, nada muda.
+// MAGNET_MAX_R: acima desse raio a peça NÃO pega nem usa o ímã. O número é dito em RAIO porque é o que a
+// física tem em mãos, mas ele foi ESCOLHIDO em massa: 316 = √100000, ou seja **o ímã vale até 100 mil de
+// massa**, que é o número que o jogador lê no HUD. Passou disso, o grão de ímã vira comida comum (ver
+// eatFood: ele não pode sumir sem dar nada, que era o que acontecia).
+// Histórico: o teto já foi 160 (raio que qualquer partida decente passa em minutos — o ímã virava item morto
+// para quem jogava bem) e depois 420. O que NUNCA foi trabalho deste número é conter o ALCANCE: quem faz
+// isso é MAGNET_RANGE_MAX (900 px absolutos), e em r=316 o alcance calculado já dá 1738 → saturado em 900.
+// Ou seja: mexer aqui muda só QUEM pode usar, nunca o quanto o ímã puxa. É a primeira chave parametrizável
+// pelo painel /admin (ver shared/src/tunables.js), e é por isso que ela tinha de ser inofensiva a tudo o mais.
 // cometa/estrela (comida pesada) andam a MAGNET_HEAVY disso; a estrela do mundo se arrasta a MAGNET_STAR (é um perigo enorme vindo até você)
 // asteroides ganham MAGNET_AST px/s² escalados por R_MIN/r (rocha pequena vem voando, rocha grande se arrasta): o ímã
 // puxa a recompensa E o perigo — ligar o ímã perto de um cinturão é escolha, não acidente
@@ -437,20 +501,57 @@ export const BOT_NICKS=[
   "meta","kernel","patch","beta","hotfix","zerado","speedrun","noscope","tilt","spam","kite","poke","gank","farm",
   "jungle","supp","void","byte","hex","root","sudo","ctrl","esc","alt","cache","proxy","bug","combo9","nulo",
   "pastel","coxinha","brigadeiro","acai","tapioca","farofa","feijao","churrasco","pipoca","sorvete","goiaba","jabuti",
-  "treta","zoeira","migue","perrengue","rolezinho","fominha","cascudo","sertao","zen","neo","max","ace","vex","jinx"];
+  "treta","zoeira","migue","perrengue","rolezinho","fominha","cascudo","sertao","zen","neo","max","ace","vex","jinx",
+  // Nomes americanos: a sala é internacional (o chat detecta idioma e os bots respondem em inglês), e uma
+  // escalação 100% pt-BR entregava que a lista era escrita por uma pessoa só. Entram no mesmo sorteio.
+  "Mike","Jake","Tyler","Logan","Mason","Chase","Blake","Travis","Cody","Hunter","Wyatt","Trevor","Marcus","Xavier",
+  "Preston","Garrett","Jared","Derek","Shane","Dustin","Chad","Brad","Colton","Bryce","Trent","Seth","Drew","Reed",
+  "Ashley","Megan","Kaitlyn","Madison","Savannah","Brittany","Haley","Kelsey","Chelsea","Courtney","Paige","Sierra",
+  "Devin","Grant","Cole","Nate","Zack","Brody","Dalton","Landon","Ethan","Mason2","Riley","Quinn","Casey","Jonah",   // ⚠️ "Jordan" saiu: casa com um easter egg de caricatura (shared/src/eggs.js), e um preenchimento com a cara de uma celebridade é o oposto de passar por gente
+  "slyfox","bigmike","dukey","tank3","noodle","waffle","biscuit","pickle","nacho","donut","mustang","ranger",
+  "buckeye","yankee","texan","cowboy","maverick","hoosier","rocket","skyler","blaze","dozer","ripper","gunner"];
+// ── NACIONALIDADE DO PREENCHIMENTO ───────────────────────────────────────────
+// O humano já tem país (`users.country`, que vira bandeira no ranking e no perfil); o bot não tinha nenhum,
+// e uma sala de 50 com UMA bandeira acesa no meio de 49 vazias aponta exatamente quem é gente.
+// A distribuição é ponderada e a maioria é BR porque a base é brasileira — mas o sorteio é COERENTE com o
+// NOME: um "Savannah" com bandeira do Brasil é mais estranho que bandeira nenhuma, então `botCountry`
+// recebe o nick e leva os nomes americanos para US/CA (ver US_ROOTS). Determinístico pelo rng da sala.
+const BOT_COUNTRIES=[["BR",46],["US",14],["PT",6],["AR",6],["MX",5],["ES",4],["CO",4],["CL",3],["GB",3],
+  ["FR",2],["IT",2],["DE",2],["CA",2],["JP",1]];
+const BOT_COUNTRY_TOTAL=BOT_COUNTRIES.reduce((t,x)=>t+x[1],0);
+const US_ROOTS=new Set(["mike","jake","tyler","logan","mason","chase","blake","travis","cody","hunter","wyatt",
+  "trevor","marcus","xavier","preston","garrett","jared","derek","shane","dustin","chad","brad","colton","bryce",
+  "trent","seth","drew","reed","ashley","megan","kaitlyn","madison","savannah","brittany","haley","kelsey",
+  "chelsea","courtney","paige","sierra","devin","grant","cole","nate","zack","brody","dalton","landon","ethan",
+  "riley","quinn","casey","jordan","slyfox","bigmike","dukey","tank","noodle","waffle","biscuit","pickle","nacho",
+  "donut","mustang","ranger","buckeye","yankee","texan","cowboy","maverick","hoosier","rocket","skyler","blaze",
+  "dozer","ripper","gunner"]);
 /**
- * Apelido de preenchimento, determinístico pelo rng da sala. Mistura três formatos porque uma lista só de
+ * País de um preenchimento, sorteado pelo rng da sala e coerente com o nome.
+ * @param {{next:()=>number,int:(a:number,b:number)=>number}} rng @param {string} nick
+ */
+export function botCountry(rng,nick){
+  const raiz=String(nick||"").toLowerCase().replace(/[_\d]+$/,"");
+  if(US_ROOTS.has(raiz))return rng.next()<.82?"US":"CA";
+  let r=rng.next()*BOT_COUNTRY_TOTAL;
+  for(const [c,p] of BOT_COUNTRIES){r-=p;if(r<=0)return c;}
+  return "BR";}
+/**
+ * Apelido de preenchimento, determinístico pelo rng da sala. Mistura quatro formatos porque uma lista só de
  * nomes limpos também denuncia: gente de verdade usa número, underline e caixa maluca.
  * `usados` evita repetir (inclusive contra os nicks dos humanos que já estão na sala).
+ * ⚠️ O quinto formato era `xX<nome>Xx` (10% dos nicks) e SAIU: ele é a assinatura de um gerador, não de uma
+ * pessoa — três "xXalgumaXx" no mesmo placar entregam a farsa antes de qualquer movimento denunciar. Os 10%
+ * foram redistribuídos entre os que sobraram. `baseNick` (shared/src/util.js) continua desfazendo o padrão,
+ * porque HUMANOS ainda escolhem nicks assim e o `citou()` do chat precisa reconhecê-los.
  */
 export function botNick(rng,usados){
   for(let t=0;t<40;t++){
     const base=BOT_NICKS[rng.int(0,BOT_NICKS.length-1)],r=rng.next();
-    const n=r<.34?base
-      :r<.62?base+rng.int(2,99)
-      :r<.78?base+"_"+rng.int(10,999)
-      :r<.9?base.toUpperCase()
-      :"xX"+base+"Xx";
+    const n=r<.38?base
+      :r<.70?base+rng.int(2,99)
+      :r<.88?base+"_"+rng.int(10,999)
+      :base.toUpperCase();
     if(!usados.has(n.toLowerCase())){usados.add(n.toLowerCase());return n.slice(0,16);}}
   return("j"+rng.int(1000,999999)).slice(0,16);}
 // ── FALA DOS BOTS ────────────────────────────────────────────────────────────
@@ -514,6 +615,17 @@ export const BOT_LLM={
   CORO_D0_MS:[150,500],        // atraso da PRIMEIRA resposta (menção dirigida cai sempre nesta faixa)
   CORO_D_MS:[500,1100],        // acréscimo de cada resposta seguinte
   CORO_WAIT_MS:3500,           // item que envelheceu NA FILA é descartado antes de gastar geração
+  // ── DIGITAR leva tempo, e é aí que mora o "não parece um bot" ──
+  // O atraso acima é o de PENSAR (ver o que foi dito e começar a responder), e ele é curto de propósito.
+  // O que faltava era o outro: a resposta aparecia INTEIRA no instante em que o modelo terminava, então uma
+  // frase de 45 letras chegava tão rápido quanto um "kkkk" — e isso nenhuma pessoa faz. Agora a publicação
+  // espera `len/CPS` (com piso e teto), como se o bot estivesse escrevendo.
+  // ⚠️ Este relógio é DEPOIS da geração, e por isso NÃO pode entrar no CORO_WAIT_MS (que mede a idade do
+  // item NA FILA, antes de gerar): somá-los faria toda menção virar `stale` e o bot ficaria MUDO, que é o
+  // oposto do pedido. São dois relógios diferentes — um é espera proposital, o outro é falha de latência.
+  DIGITA_CPS:14,               // caracteres por segundo de quem "está digitando"
+  DIGITA_MIN_MS:450,           // um "kkkk" também não sai instantâneo
+  DIGITA_MAX_MS:3400,          // e ninguém espera mais que isso por uma linha de chat de partida
   CORO_POP_MAX:2,              // itens despachados por tick (o step() é de 60 Hz e é de TODAS as salas)
   FILA_MAX:6,                  // fila de fala agendada por sala; cheia, o NOVO é descartado
   // ── CORRENTE: bot respondendo a bot ──
@@ -574,6 +686,13 @@ export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:
 // a predição. O teto corta o ANEL DE FORA (o mais longe do jogador, onde o grão tem 1–2 px na tela): o que
 // está perto entra sempre, e quem já é conhecido nunca some por causa do teto (sumir seria pior que faltar).
 export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40};
+// ── AVISO GLOBAL (painel /admin) ────────────────────────────────────────────
+// Uma faixa no HUD e uma linha de sistema no chat. JSON de controle, como `avatars` e `talk`, então o
+// PROTOCOL_VERSION não muda. ⚠️ Ele NÃO passa por `Room._pushChat`, de propósito: `_pushChat` exige um
+// GamePlayer (slot, nome, equipe) e alimenta o `chatLog`, que é o prompt da LLM dos bots — um aviso de
+// manutenção ali faria os preenchimentos começarem a comentar a manutenção. Engraçado uma vez, ruim sempre.
+// MAX_CHARS é maior que o do chat porque quem escreve é um administrador, não um jogador em partida.
+export const NOTICE={MAX_CHARS:200,TTL_MS:12000,LEVELS:['info','warn']};
 
 // ── KILL FEED (estilo Counter-Strike) ────────────────────────────────────────
 // "Quem matou quem" no canto superior direito. Vai em JSON de controle (`{t:"feed",v:[...]}`), NÃO no fio

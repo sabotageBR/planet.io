@@ -227,6 +227,14 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
   background:color-mix(in srgb,var(--nx) 30%,transparent)}
 #hud #hud-right .lb-row.top .lb-pos{background:color-mix(in srgb,var(--accent) 74%,transparent);color:#150c2e}
 #hud #hud-right .lb-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* a bandeira é do TAMANHO do texto e não some no `text-overflow`: ela vem antes do nick, que é quem corta */
+#hud .lb-name .flag,#hud .kf-who .flag,#chat .flag{font-style:normal;margin-right:3px;font-size:.95em;flex:none}
+/* o NICK da partida, quando difere do nome da conta: fica ao lado, menor e apagado — informação de apoio */
+#rk-table .c-alias{font-style:normal;opacity:.55;font-size:.82em;margin-left:6px}
+/* a faixa "Você" com a posição de verdade e sem ela: o ordinal é grande, a frase não */
+#rk-me .rk-none{font-weight:700;font-size:14px;white-space:nowrap}
+#rk-me.guest{gap:10px;flex-wrap:wrap;justify-content:center}
+#rk-me .hint{font-size:11.5px;opacity:.8;flex:1 1 100%;text-align:center}
 #hud #hud-right .lb-val{font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:var(--nx-data)}
 #hud #hud-score{min-width:0;padding:6px 11px}
 /* a massa é o número mais consultado do jogo: ganha o ciano e o único brilho de verdade da coluna.
@@ -354,6 +362,32 @@ body[data-mode="landscape"] #hud #hud-right>.panel{width:min(34vw,206px)}
 /* o mapa grande fica por baixo do chat (z-index 5 do #radar contra 6 do #chat): conversar é o que continua
    acontecendo, o mapa é consulta */
 #hud.spec.map #chat{max-height:30vh}
+/* os dois botões de vista, lado a lado: MAPA (radar ampliado) e TEMPO REAL (a sala) */
+/* ── A FAIXA DO AVISO GLOBAL ──
+   No TOPO e no meio, acima de tudo: é o único elemento do HUD que interrompe de propósito. Não recebe
+   ponteiro — ela avisa, não pede clique — e some sozinha pelo TTL que veio do servidor. */
+#hud #notice{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 62px);transform:translateX(-50%);
+  z-index:14;display:flex;align-items:center;gap:8px;max-width:min(620px,86vw);
+  padding:10px 16px;border-radius:999px;border:3px solid var(--line,#0006);
+  background:color-mix(in srgb,var(--surface,#1a2350) 94%,transparent);box-shadow:0 8px 26px rgba(0,0,0,.45);
+  font-size:14px;font-weight:700;color:var(--text,#fff);pointer-events:none;
+  animation:noticeIn .22s ease-out}
+#hud #notice.warn{border-color:var(--danger,#ff3d5a);background:color-mix(in srgb,var(--danger,#ff3d5a) 26%,var(--surface,#1a2350))}
+#hud #notice i{font-style:normal;font-size:17px;flex:none}
+#hud #notice span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes noticeIn{from{opacity:0;transform:translateX(-50%) translateY(-8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+body[data-mode="portrait"] #hud #notice{font-size:12.5px;padding:8px 12px;max-width:92vw}
+/* ── LEGENDA DOS POWERUPS (tela de Modos) ── o único lugar do jogo onde há tempo de LER o que cada um faz */
+#s-modes .pw-legenda ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+#s-modes .pw-legenda li{display:grid;grid-template-columns:34px 1fr;gap:4px 10px;align-items:center}
+#s-modes .pw-legenda .pw-l{grid-row:span 2;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  font-style:normal;font-size:17px;border:2px solid var(--line,#0006);
+  background:color-mix(in srgb,var(--surface,#1a2350) 80%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--pwc,#888) 45%,transparent) inset}
+#s-modes .pw-legenda b{font-size:13px;align-self:end}
+#s-modes .pw-legenda span{font-size:11.5px;color:var(--muted,#9aa3c0);align-self:start;line-height:1.3}
+#s-modes .pw-legenda>.hint{display:block;margin-top:10px;font-size:11px}
+#s-dead .dead-views{display:flex;gap:8px;align-items:stretch}
+#s-dead .dead-views>button{flex:1 1 0;min-width:0;white-space:nowrap;padding-left:8px;padding-right:8px}
 
 /* ── VOZ: o anel com o tempo que sobra do clipe, ao lado dos botões de ação ── */
 #talk{position:absolute;right:12px;bottom:140px;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:6;pointer-events:none}
@@ -387,6 +421,24 @@ body[data-mode="landscape"] #hud #hud-right>.panel{width:min(34vw,206px)}
 /* sem anel (carga e nível) a cor tem que aparecer em algum lugar: vira o aro do disco */
 #hud .pw-autodef,#hud .pw-shield{border-color:var(--pwc,var(--accent,#ffc22e))}
 #hud .pw .pw-ico{font-size:21px;line-height:1;font-style:normal;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))}
+/* ── O BALÃO DO POWERUP ──
+   `pointer-events:auto` no disco. Isto NÃO era possível antes: o `pointermove` do jogo era lido no CANVAS,
+   e qualquer elemento do HUD que recebesse o ponteiro congelava o alvo do jogador enquanto o mouse
+   estivesse em cima dele. Agora o move é lido na JANELA (game/input/Pointer.js), então o HUD pode ter
+   hover sem custar o controle. No dedo não há hover: tocar no disco acende a classe `.tip` por 2,2 s. */
+#hud #hud-pw .pw{pointer-events:auto;cursor:help}
+#hud .pw .pw-tip{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%) translateY(4px);
+  display:flex;flex-direction:column;gap:3px;width:max-content;max-width:min(260px,60vw);
+  padding:8px 10px;border-radius:var(--radius,10px);border:2px solid var(--line,#0006);
+  background:color-mix(in srgb,var(--surface,#1a2350) 96%,transparent);box-shadow:0 8px 22px rgba(0,0,0,.45);
+  font-size:11.5px;font-style:normal;line-height:1.35;text-align:left;color:var(--text,#fff);
+  opacity:0;visibility:hidden;transition:opacity .12s,transform .12s;z-index:9}
+#hud .pw .pw-tip b{font-size:12.5px;color:var(--accent,#ffc22e)}
+#hud .pw .pw-tip span{color:var(--muted,#9aa3c0)}
+#hud .pw:hover .pw-tip,#hud .pw:focus-visible .pw-tip,#hud .pw.tip .pw-tip{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+/* o balão sai pela esquerda quando o disco está encostado na borda da tela (é onde a coluna vive) */
+#hud #hud-pw .pw:first-child .pw-tip{left:0;transform:translateX(0) translateY(4px)}
+#hud #hud-pw .pw:first-child:hover .pw-tip,#hud #hud-pw .pw:first-child:focus-visible .pw-tip,#hud #hud-pw .pw:first-child.tip .pw-tip{transform:translateX(0) translateY(0)}
 /* o número fica EM CIMA, meio para fora: dentro do quadrado ele disputaria o pouco espaço com o ícone */
 #hud .pw .pw-n{position:absolute;top:-7px;right:-5px;min-width:19px;height:19px;padding:0 4px;
   display:grid;place-items:center;border-radius:10px;border:2px solid var(--line,#0006);
@@ -737,16 +789,18 @@ body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-round .dead-card{
   box-shadow:0 14px 40px rgba(0,0,0,.42);
   padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px))}
 body{--screen-top:clamp(12px,4vh,44px)}
-/* ── A BARRA DE NAVEGAÇÃO, UMA SÓ E SEMPRE NO MESMO LUGAR ────────────────────
-   Ela saiu de dentro da caixa das telas (ver App.jsx) e virou uma barra do APLICATIVO. O que ela era
-   antes: um filho da coluna com `order:99;position:sticky;bottom:0` (screens.css:32 dos temas) — ou seja,
-   colada no fundo do SCROLLPORT da caixa, cuja altura vem do conteúdo. Tela curta, barra no meio da
-   janela; tela longa, barra quase no rodapé. E as margens negativas (`-16px`/`-22px`) a faziam sangrar
-   para fora do padding, o que dava a ela a largura "grande" de uma tela e a "pequena" de outra.
-   Aqui ela é sempre a mesma: presa no rodapé, largura da janela, altura fixa em --nav-h. A caixa das
-   telas desconta essa altura do teto, então nunca passa por baixo dela.
-   ⚠️ Especificidade: os temas escrevem `.nav` sob `:where(...)`, que soma ZERO — mas ui.css é importado
-   ANTES deles, e no empate quem vem depois vence. `#app>nav.nav` vale (1,1,1) e ganha com folga. */
+/* ── A BARRA DE NAVEGAÇÃO: DENTRO DA CAIXA, e sempre no mesmo pixel ──────────
+   Ela é um filho do `.wrap` (ver `Screen` em ui/bits.jsx) com `order:99;position:sticky;bottom:0`, que é o
+   que os TRÊS temas sempre desenharam (screens.css:32, mais as variantes de retrato e paisagem). Aqui só
+   fica o que os temas não sabem.
+   ⚠️ Ela já esteve presa no rodapé da JANELA, e o motivo era real: colada no fundo do scrollport de uma
+   caixa cuja altura vinha do CONTEÚDO, ela parava no meio da tela em "Salas" (curta) e quase no rodapé em
+   "Perfil" (longa). Mas o conserto disso não era tirá-la da caixa — era dar à CAIXA uma altura
+   determinada, que é o que o bloco abaixo faz: `top` e `bottom` fixos, e a rolagem indo para um BLOCO
+   ELÁSTICO por dentro. Com a caixa idêntica em todas as telas, a barra fica no mesmo pixel em todas elas.
+   E, de quebra, isso desfaz o estrago colateral da saída: `.lobby-hero`, `.prefs-foot` e `.rank-me` são
+   `sticky;bottom:74px` nos temas — 74 px é a ALTURA DA BARRA —, e sem ela por baixo os três pairavam
+   opacos sobre o conteúdo, cortando a lista de salas, os grupos de preferências e as linhas do ranking. */
 /* o mudo do topo: um chip que é BOTÃO, então tem alvo de toque de verdade e um estado ligado visível */
 #hud #h-mute{padding:0;width:34px;height:34px;min-width:34px;display:grid;place-items:center;
   font-size:15px;line-height:1;cursor:pointer;pointer-events:auto}
@@ -754,30 +808,40 @@ body{--screen-top:clamp(12px,4vh,44px)}
 body[data-pointer="coarse"] #hud #h-mute{width:44px;height:44px;min-width:44px;font-size:18px}
 
 body{--nav-h:74px}
-#app>nav.nav{position:absolute;left:0;right:0;bottom:0;top:auto;z-index:12;
-  margin:0;height:auto;min-height:var(--nav-h);
-  padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));
-  display:flex;align-items:center;justify-content:center;gap:4px;
-  border-top:3px solid var(--line,#0006);
-  background:color-mix(in srgb,var(--surface,#1a2350) 92%,transparent)}
-/* na GAVETA a barra é da gaveta, não da janela: o jogo continua vivo à esquerda e não pode ser tampado */
-body[data-shell="rail"]:not([data-mode="portrait"]) #app>nav.nav{left:auto;width:var(--drawer-w);border-left:5px solid var(--line,#0006)}
+body[data-mode="portrait"]{--nav-h:66px}
+body[data-mode="landscape"]{--nav-h:64px}
+/* A barra sangra para fora do padding do `.wrap` (é isso que a faz encostar nas duas bordas do cartão, como
+   nos mockups) e o cantinho de baixo dela acompanha o raio da caixa. `#app .wrap>nav.nav` vale (1,1,1) e
+   ganha do `:where(...)` dos temas — que soma zero e, por vir depois, venceria um empate. */
+/* ⚠️ Quem tem a barra NÃO tem padding embaixo: `position:sticky;bottom:0` gruda no fim da ÁREA DE
+   CONTEÚDO, e com 18 px de padding sobrando ela parava 18 px acima do fundo do cartão — deixando uma
+   listra do conteúdo rolando POR BAIXO dela. Margem negativa não move um sticky. Tirando o padding, o
+   scrollport vai até a borda, a barra encosta, e os `bottom:74px` dos temas (que são a ALTURA dela)
+   passam a valer exatos. O respiro do rodapé passa a ser o padding da própria barra. */
+body:not([data-mode="portrait"]) .screen .wrap:has(>nav.nav){padding-bottom:0}
+#app .wrap>nav.nav{flex:0 0 auto;align-self:stretch;z-index:3;
+  margin:auto -18px 0;
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));min-height:var(--nav-h);
+  border-radius:0 0 calc(var(--radius-lg,20px) - 5px) calc(var(--radius-lg,20px) - 5px);
+  display:flex;align-items:center;justify-content:space-around;gap:4px;flex-wrap:nowrap}
 /* ⚠️ Sete botões numa gaveta de 347 px (iPhone SE deitado: `--drawer-w:min(400px,52vw)`) davam 42-43 px de
    alvo — a matriz mede isso e reprova abaixo de 44. Não dá para estreitar a gaveta nem tirar um botão, então
    quem cede é o espaço ENTRE eles: 5 px de folga lateral e 2 px de vão devolvem 46 px por botão. */
-body[data-pointer="coarse"][data-shell="rail"][data-mode="landscape"] #app>nav.nav{padding-left:5px;padding-right:5px;gap:2px}
-/* e a caixa das telas para de encostar nela */
+body[data-pointer="coarse"][data-mode="landscape"] #app .wrap>nav.nav{padding-left:5px;padding-right:5px;gap:2px}
+/* ── A CAIXA TEM ALTURA DETERMINADA ──
+   `top` E `bottom` fixos, em vez de `height:auto` + `max-height`. Parece detalhe e é a peça central: com a
+   altura vindo do CONTEÚDO, "Salas" (curta) e "Perfil" (longa) tinham caixas de tamanhos diferentes, e tudo
+   o que os temas colam no rodapé com `margin-top:auto` + `position:sticky` — a barra de navegação, o cartão
+   de entrar em sala, o rodapé de Preferências, a faixa "Você 1º" do Ranking — pousava num lugar diferente
+   em cada tela. Com a caixa idêntica em todas, esses quatro voltam a se comportar: o conteúdo rola por
+   dentro e eles ficam presos no fundo do cartão, que é onde os mockups os desenharam.
+   ⚠️ `min-height` junto: numa janela muito baixa a caixa não pode virar uma fresta com uma barra dentro. */
 body:not([data-shell="rail"]):not([data-mode="portrait"]) .screen .wrap{
-  max-height:calc(100% - var(--screen-top) - var(--nav-h) - 12px)}
-body[data-shell="rail"]:not([data-mode="portrait"]) .screen .wrap{
-  bottom:var(--nav-h);height:auto;border-bottom-left-radius:0}
-body[data-mode="portrait"] .screen .wrap{max-height:calc(86% - var(--nav-h))}
-/* ⚠️ A variável tem que ser redefinida no BODY, não na barra: quem lê `--nav-h` para descontar do teto é
-   a caixa da tela, que não é descendente da barra e nunca veria o valor local dela. */
-body[data-mode="portrait"]{--nav-h:66px}
-body[data-mode="landscape"]{--nav-h:58px}
-body[data-mode="landscape"] #app>nav.nav{padding-top:4px}
-/* a tela inicial não tem barra (a navegação dela são os seis botões do cartão), então recupera o espaço */
+  bottom:var(--screen-top);height:auto;max-height:none;min-height:min(420px,100%)}
+body[data-mode="portrait"] .screen .wrap{max-height:86%}
+/* A tela inicial não tem barra (a navegação dela são os seis botões do cartão) e é a única cuja caixa
+   continua com a ALTURA DO CONTEÚDO: ela não precisa de um rodapé fixo, e esticá-la deixaria um vazio
+   enorme embaixo do cartão. A regra de `#s-entry` mais acima vale por especificidade (tem id). */
 body[data-screen="entry"] #s-entry.screen{padding-bottom:calc(var(--screen-top) + env(safe-area-inset-bottom,0px))}
 /* a "alça" de folha: o dusk desenha uma pílula no topo de toda tela, modal e card de morte
    (screens.css:52/90/203) — o puxador de quem arrasta uma folha para cima. Fora do celular em pé não há
@@ -785,9 +849,15 @@ body[data-screen="entry"] #s-entry.screen{padding-bottom:calc(var(--screen-top) 
 body:not([data-mode="portrait"]) .screen .wrap::before,
 body:not([data-mode="portrait"]) .modal::before,
 body:not([data-mode="portrait"]) #s-dead .dead-card::before{content:none;display:none}
-/* filho nenhum estica: a coluna é de cima para baixo, e um `flex:1` faria o último bloco (a grade da
-   loja, a tabela do ranking) engolir todo o vazio e desalinhar o fim de uma tela para a outra */
+/* a "alça" da GAVETA: `dawn` e `sunset` desenham uma pílula vertical em `right:calc(min(480px,100%) − 19px)`
+   (screens.css:53) — o puxador da gaveta lateral. Ela só faz sentido quando existe gaveta; fora do rail é
+   uma barrinha preta parada no meio da tela, sem nada a puxar, e aparece em TODAS as telas do menu. */
+body:not([data-shell="rail"]) .screen::after{content:none;display:none}
+/* Filho nenhum estica: a coluna é de cima para baixo. Quem ocupa a sobra é o `margin-top:auto` dos blocos
+   que os temas colam no rodapé (`.lobby-hero`, `.prefs-foot`, `.rank-me`, `.nav`) — e é isso que os leva ao
+   fundo do cartão quando a tela é curta, em vez de deixá-los pairando logo abaixo do conteúdo. */
 body:not([data-shell="rail"]):not([data-mode="portrait"]) .screen .wrap>*{flex:0 0 auto}
+body:not([data-mode="portrait"]) .screen .wrap>nav.nav{flex:0 0 auto}
 
 /* ── MODAIS SEMPRE NO MEIO ──
    O "às vezes aparece certinho, às vezes bem embaixo" é o RELÓGIO: o tema é escolhido pela hora

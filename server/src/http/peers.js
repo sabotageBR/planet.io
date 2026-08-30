@@ -1,5 +1,8 @@
 // ── PEERS: fala com os shards irmãos (PEERS ou PEER_HOST) com timeout de 1200 ms ──────────────
-// Duas perguntas: a lista de salas (/internal/rooms) e o lobby de equipe (/internal/party).
+// Três coisas: a lista de salas (/internal/rooms), o lobby de equipe (/internal/party) e o painel de
+// administração (/internal/admin/*). E DOIS padrões, que não podem ser confundidos:
+//   askPeers  — "quem é o DONO disto?" (devolve UMA resposta, descartando os 404)
+//   tellPeers — "façam TODOS isto" (devolve o que cada um respondeu, inclusive as falhas)
 // @ts-check
 const TIMEOUT_MS=1200;
 /** @param {string[]} peers host:porta @returns {Promise<Array<{code:string,shard:number,players:number,max:number,bots:number}>>} */
@@ -28,4 +31,25 @@ export async function askPeers(peers,{path,method='GET',body=null,auth=null,time
     catch(e){if(log)log.debug(`peer ${p} indisponível: ${e&&e.message}`);return null;}}));
   const vivos=rs.filter(Boolean);if(!vivos.length)return null;
   return vivos.find(r=>r.status!==404)||vivos[0];   // o dono é o único que não responde 404
+}
+
+/**
+ * Manda a MESMA coisa a TODOS os irmãos e devolve o que CADA UM respondeu — sem escolher vencedor.
+ *
+ * ⚠️ É a diferença para `askPeers`, e ela não é de estilo: `askPeers` existe para ACHAR O DONO de um
+ * recurso (o lobby de equipe) e por isso descarta os 404 e devolve UMA resposta. Um broadcast global feito
+ * com ele entregaria a mensagem a um shard e a rota diria "ok" — o bug mais silencioso que este servidor
+ * poderia ter. Aqui não há dono: todos aplicam, e quem falhou aparece no resultado para a resposta HTTP
+ * poder dizer ao administrador que o shard 2 não recebeu.
+ *
+ * Nunca lança: um irmão fora do ar vira `{peer,error}`, não uma exceção no meio de uma rota.
+ * @param {string[]} peers host:porta
+ * @returns {Promise<Array<{peer:string,status:number,body:any}|{peer:string,error:string}>>}
+ */
+export async function tellPeers(peers,{path,method='POST',body=null,auth=null,timeoutMs=TIMEOUT_MS,log=null}={}){
+  const headers={accept:'application/json'};if(auth)headers.authorization=auth;if(body!=null)headers['content-type']='application/json';
+  return Promise.all(peers.map(async p=>{
+    try{const r=await fetch(`http://${p}${path}`,{method,headers,body:body==null?undefined:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
+      return{peer:p,status:r.status,body:await r.json().catch(()=>null)};}
+    catch(e){if(log)log.debug(`peer ${p} indisponível: ${e&&e.message}`);return{peer:p,error:String(e&&e.message||e)};}}));
 }

@@ -8,6 +8,7 @@ import {hashToken} from '../auth/tokens.js';
 import {createPartyManager} from '../rooms/Party.js';
 import {shardOf} from '../rooms/codes.js';
 import {fetchPeerRooms,askPeers} from './peers.js';
+import {createAdminHttp} from './admin.js';
 const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript','.mjs':'application/javascript','.css':'text/css','.ico':'image/x-icon','.png':'image/png','.jpg':'image/jpeg',
   '.svg':'image/svg+xml','.json':'application/json','.webp':'image/webp','.woff2':'font/woff2','.woff':'font/woff','.map':'application/json','.txt':'text/plain','.webmanifest':'application/manifest+json'};
 const byPlayers=(a,b)=>b.players-a.players;
@@ -16,6 +17,8 @@ const byPlayers=(a,b)=>b.players-a.players;
  * @returns {(req:any,res:any)=>Promise<void>}
  */
 export function createHttpHandler({config,rooms,persistApi,health,log,parties=null}){
+  // O painel /admin é o único consumidor de `/internal/admin/*`, que NÃO é publicado no Ingress.
+  const adminHttp=createAdminHttp({rooms,config,log,persistApi});
   const staticDir=config.staticDir?path.resolve(config.staticDir):null;
   // O lobby de equipe mora AQUI, junto de /api/rooms|auto, e não na API de persistência: ele é estado de sala
   // (memória do shard, com TTL), tem que funcionar sem banco e vale para convidado. Quem identifica a pessoa é
@@ -84,6 +87,9 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
         if(act==='join')return partyOut(res,party.join(code,{key,nick:nickOf(b),skinId:b.skinId|0,registered:!!bearer(req)}),key);
         if(act==='leave')return partyOut(res,party.leave(code,key),key);
         return partyOut(res,party.start(code,key,b.room||null),key);}
+      // ⚠️ ANTES do `persistApi`: `/api/admin/rooms|broadcast` mexem em memória de SALA, que só existe aqui.
+      // O router de persistência tem as outras rotas de /api/admin (contas, parâmetros, auditoria).
+      if(await adminHttp(req,res,p,sendJson,readJson))return;
       if(!persistApi&&/^\/api\/(auth|me|skins|ranking)(\/|\?|$)/.test(req.url||"")){   // sem banco: o cliente cai em modo offline
         res.writeHead(503,{"content-type":"application/json","cache-control":"no-store"});res.end(JSON.stringify({error:"unreachable",message:"servidor sem banco de dados"}));return;}
       if(persistApi&&await persistApi(req,res))return;

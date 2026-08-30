@@ -28,3 +28,10 @@ data:
   # Identity Services, em que o servidor só VALIDA o id_token — não há troca de code por token.
   # Vazio = /api/auth/google devolve 503 e o botão nem aparece na tela.
   GOOGLE_CLIENT_ID: "50404130816-m19kptkspjtnrql7h9orov9l2kpb913d.apps.googleusercontent.com"
+  # ── PAINEL /admin ──
+  # As contas destes e-mails viram administradoras no boot. SÓ PROMOVE, nunca rebaixa: rebaixar por
+  # ConfigMap significaria que apagar uma vírgula aqui tranca todo mundo para fora do painel — rebaixar é
+  # ação do próprio /admin, auditada, e com dois pisos (ninguém se rebaixa, e o último admin não cai).
+  # ⚠️ Só funciona para conta REGISTRADA (com senha): o painel entra pelo mesmo scrypt do login do jogo.
+  # Sem nenhuma conta promovida não há como entrar — e é de propósito que não exista rota para promover.
+  ADMIN_EMAILS: "evandro@trixti.com.br"

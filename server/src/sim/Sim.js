@@ -14,7 +14,7 @@ import {kdOf} from '@warspace/shared/levels.js';
 import {packDir} from '@warspace/shared/util.js';
 import {NOOP_HOOKS} from './hooks.js';
 import {BotBrain} from '@warspace/shared/bot.js';
-import {incomingMissile,ammoOf,ownedMask} from '@warspace/shared/physics/rules.js';
+import {incomingMissile,ammoOf,ownedMask,outOfZone} from '@warspace/shared/physics/rules.js';
 import {firstLive} from '@warspace/shared/physics/body.js';
 
 export const NO_SLOT=0xffff;
@@ -190,6 +190,10 @@ export class Sim{
       case 'CLASH':this._ev(EVENT.CLASH,e.x,e.y,e.r,e.slotA,e.slotB,0);break;
       case 'DEFLECT':this._ev(EVENT.DEFLECT,e.x,e.y,e.r,e.bySlot<0?NO_SLOT:e.bySlot,NO_SLOT,packDir(e.nx,e.ny,0));break;
       case 'STAR_BURST':this._mark(e.slot,-1,'star');this._ev(EVENT.STAR_BURST,e.x,e.y,e.r,e.slot,NO_SLOT,e.starId);break;
+      // STUCK: o preço que não coube em peças e virou massa. `slotB` carrega a CAUSA (0 estrela, 1 míssil,
+      // 2 asteroide) — o campo estava livre neste evento e é o que faz o cliente escolher ícone e som sem
+      // um byte novo. O `_mark` não é repetido: quem cobrou já marcou o golpe (STAR_BURST, BOOM, CHIP).
+      case 'STUCK':this._ev(EVENT.STUCK,e.x,e.y,e.r,e.slot,e.cause|0,Math.round(e.lost||0));break;
       case 'STAR_HIT':this._ev(EVENT.STAR_HIT,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,NO_SLOT,packDir(e.nx,e.ny,e.hits));break;
       case 'STAR_SPLIT':this._ev(EVENT.STAR_SPLIT,e.x,e.y,e.r,NO_SLOT,NO_SLOT,e.starId);break;
       case 'SMASH':gone.set(e.asteroidId,REMOVE.POPPED);this._ev(EVENT.SMASH,e.x,e.y,e.r,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,0));break;
@@ -299,13 +303,16 @@ export class Sim{
    * client-side o aviso chegaria com menos de 2 s de sobra.
    */
   self(slot,out){const w=this.world,ps=w.players.get(slot),gp=this.players.get(slot),t=w.tick;
-    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.fireCd=out.rank=out.mass=out.threat=out.threatDir=out.weapon=out.alive=0;out.owned=1;out.autoDefT=out.zoomT=out.feastT=0;return out;}   // o `out` é um POOL reusado (net/snapshot.js): campo esquecido aqui carrega o valor do jogador anterior
+    if(!ps||!gp){out.flags=SELF_FLAG.DEAD;out.missiles=out.powerBits=out.magnetT=out.shieldLv=out.score=out.splitCd=out.ejectCd=out.fireCd=out.rank=out.mass=out.threat=out.threatDir=out.weapon=out.alive=0;out.owned=1;out.autoDefN=out.zoomT=out.feastT=0;return out;}   // o `out` é um POOL reusado (net/snapshot.js): campo esquecido aqui carrega o valor do jogador anterior
     let mt=0,sh=0;const arr=ps.pieces;
     for(let i=0;i<arr.length;i++){const pc=arr[i];if(pc.dead)continue;const m=pc.magnetUntil-t;if(m>mt)mt=m;if(pc.shieldLv>sh)sh=pc.shieldLv;}
     const sc=ps.splitCdUntil-t,ec=ps.ejectCdUntil-t,fc=ps.fireCdUntil-t;
     out.flags=(gp.dead?SELF_FLAG.DEAD:0)|(w.peace?SELF_FLAG.LOBBY:0);out.weapon=ps.weapon|0;out.alive=this.aliveCount();out.owned=ownedMask(ps);
-    const zc=w.zoneNow();if(zc&&!gp.dead){const me0=firstLive(ps.pieces);
-      if(me0){const dx=me0.x-zc.x,dy=me0.y-zc.y;if(dx*dx+dy*dy>zc.r*zc.r)out.flags|=SELF_FLAG.ZONE_HURT;}}
+    // ⚠️ TODAS as peças, não só a primeira: quem tem uma dentro do círculo e quinze no gás estava perdendo
+    // massa sem nenhum aviso na tela. E o critério é `outOfZone` (alguma parte no gás), o mesmo que a
+    // queimadura usa como porta de entrada — o HUD não pode dizer "seguro" enquanto a borda queima.
+    const zc=w.zoneNow();
+    if(zc&&!gp.dead)for(const pc of ps.pieces){if(pc.dead)continue;if(outOfZone(pc,zc)){out.flags|=SELF_FLAG.ZONE_HURT;break;}}
     // Os três novos são por JOGADOR (câmera, cinto e economia não são de meia bolinha), então saem direto do
     // PlayerState em vez do laço das peças acima.
     const ad=ps.autoDefN|0,zo=ps.zoomUntil-t,fe=ps.feastUntil-t;   // a auto-defesa é CARGA (não vira conta de tempo)

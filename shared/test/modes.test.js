@@ -3,7 +3,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {createWorld,stepOwnPieces} from "../src/physics/index.js";
-import {sameTeam,zoneBurn,outOfZone,zoneMass,zoneBurnRate,applyFire,ammoOf,ownedMask} from "../src/physics/rules.js";
+import {sameTeam,zoneBurn,outOfZone,zoneExposure,zoneMass,zoneBurnRate,applyFire,ammoOf,ownedMask} from "../src/physics/rules.js";
 import {createZone,stepZone,zoneAt,zoneR} from "../src/zone.js";
 import {createRng} from "../src/rng.js";
 import {WORLD,ZONE,PLAYER,DT,EJECT,MISSILE,WEAPON,WEAPONS,FOOD,FOOD_TYPE,isWeaponFood,POWERUP,STAR,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood,BOT_NICKS} from "../src/constants.js";
@@ -108,7 +108,45 @@ test("zona: a predição do cliente usa a MESMA conta do servidor (paridade 1e-9
   for(let i=0;i<120;i++){w.setTarget(0,1000,1000);w.step();
     stepOwnPieces(espelho,st,w.tick-1,DT,w.w,w.h,null,null,w.zoneNow());}
   assert.ok(Math.abs(espelho[0].mass-pc.mass)<1e-9,`massa divergiu: ${espelho[0].mass} vs ${pc.mass}`);
-  assert.ok(Math.abs(espelho[0].r-pc.r)<1e-9,"o RAIO é o que aparece na tela: divergir aqui faz a peça pulsar na borda");});
+  assert.ok(Math.abs(espelho[0].r-pc.r)<1e-9,"o RAIO é o que aparece na tela: divergir aqui faz a peça pulsar na borda");
+  // ⚠️ E ENCAVALADA na linha, que é o caso em que a conta da lente entra. O teste acima só cobria a peça
+  // inteiramente fora, onde a exposição é 1 e qualquer implementação acerta.
+  const w2=createWorld({seed:6,food:0,asteroids:false,holes:0,stars:0});
+  w2.addPlayer(0,{x:5000,y:5000,r:200});
+  w2.setZone({x0:5150,y0:5000,r0:300,x1:5150,y1:5000,r1:300,t0:0,t1:Infinity});
+  const q=w2.piecesOf(0)[0],esp2=[{...q}],st2={tx:5000,ty:5000};
+  assert.ok(zoneExposure(q,w2.zoneNow())>.02&&zoneExposure(q,w2.zoneNow())<.98,"a peça está mesmo em cima da linha");
+  for(let i=0;i<120;i++){w2.setTarget(0,5000,5000);w2.step();
+    stepOwnPieces(esp2,st2,w2.tick-1,DT,w2.w,w2.h,null,null,w2.zoneNow());}
+  assert.ok(Math.abs(esp2[0].mass-q.mass)<1e-9,`encavalada, massa divergiu: ${esp2[0].mass} vs ${q.mass}`);
+  assert.ok(q.mass<esp2[0].mass+1e-9&&q.r<200,"e queimou de verdade, só que menos que se estivesse toda fora");});
+
+// ── A FINAL DO BATTLE ROYALE ────────────────────────────────────────────────
+// O teste-manchete da mudança: com o critério do CENTRO, o gigante ficava com o corpo cobrindo o círculo
+// inteiro e não queimava nada. Medindo a FATIA, ele derrete até caber — e quem já cabe não sente nada.
+test("zona: o gigante que não CABE derrete até caber; quem cabe não sente nada",()=>{
+  const R=ZONE.R[ZONE.STAGES]*WORLD.w;
+  const roda=r=>{const w=empty(41);w.addPlayer(0,{x:5000,y:5000,r});
+    w.setZone({x0:5000,y0:5000,r0:R,x1:5000,y1:5000,r1:R,t0:0,t1:Infinity});
+    const pc=w.piecesOf(0)[0],m0=pc.mass;
+    for(let i=0;i<60*60;i++){w.setTarget(0,5000,5000);w.step();if(!w.players.get(0).alive)break;}
+    return{pc,m0,vivo:w.players.get(0).alive};};
+  const gigante=roda(PLAYER.MAX_R);
+  assert.ok(gigante.vivo,"ele não MORRE parado no meio do círculo — ele encolhe");
+  // para exatamente na banda morta: 1 − R²/r² = EXPOSE_MIN ⇒ r = R/√(1−EXPOSE_MIN)
+  const parada=R/Math.sqrt(1-ZONE.EXPOSE_MIN);
+  assert.ok(Math.abs(gigante.pc.r-parada)<R*.02,`para quando cabe (r=${gigante.pc.r.toFixed(0)}, esperado ~${parada.toFixed(0)}, R=${R.toFixed(0)})`);
+  assert.ok(gigante.pc.r>R*.5,"sem passar do ponto: exposição zero, queimadura zero");
+  // ⚠️ e não pode chegar a um EQUILÍBRIO reengolindo o que o gás arranca: a pelota tem que limpar o planeta
+  assert.ok(gigante.m0-gigante.pc.mass>gigante.m0*.3,"o gás cobrou de verdade do gigante");
+  const pequeno=roda(200);
+  assert.equal(pequeno.pc.mass,pequeno.m0,"quem cabe no círculo não perde um grama");});
+test("zona: o círculo final é um teto de MASSA da sala (Σr² ≤ R²)",()=>{
+  const R=ZONE.R[ZONE.STAGES]*WORLD.w;
+  assert.ok(R>PLAYER.START_R*8,`o círculo final tem que caber uma briga (R=${R.toFixed(0)} px)`);
+  assert.ok(R<PLAYER.MAX_R,"e NÃO pode caber um planeta no teto — senão o gigante volta a ser invencível");
+  for(let i=1;i<ZONE.R.length;i++){const k=(ZONE.R[i]/ZONE.R[i-1])**2;
+    assert.ok(Math.abs(k-.5)<.06,`etapa ${i}: cada fechamento tira ~metade da ÁREA (deu ${(k*100).toFixed(0)}%)`);}});
 test("zona: o gás ARRANCA pelotas da peça, para FORA, e a transferência é exata",()=>{
   const w=empty(31);w.addPlayer(0,{x:1000,y:1000,r:150});
   w.setZone({x0:8000,y0:8000,r0:500,x1:8000,y1:8000,r1:500,t0:0,t1:Infinity});
@@ -147,11 +185,30 @@ test("zona: a cadência de desprendimento respeita o teto de população dos eje
     pico=Math.max(pico,w.ejected.filter(e=>!e.dead).length);}
   assert.ok(pico<=EJECT.MAX,`a população de ejetados não pode estourar o teto (pico ${pico} de ${EJECT.MAX})`);
   assert.ok(pico>20,`mas tem que soltar de verdade (pico ${pico})`);});
-test("zoneMass/outOfZone: o critério é o CENTRO da peça dentro do círculo",()=>{
+// ⚠️ O critério deixou de ser o CENTRO e passou a ser a FATIA do disco que está no gás. Com o centro, o
+// gigante da final ficava com o corpo cobrindo o círculo inteiro e não queimava um grama — invencível
+// justamente no momento em que o círculo devia decidir a partida.
+test("zoneExposure: a queimadura mede a FATIA do disco que está no gás, não o centro",()=>{
   const zc={x:0,y:0,r:100};
-  assert.equal(outOfZone({x:99,y:0},zc),false);assert.equal(outOfZone({x:101,y:0},zc),true);
-  assert.equal(outOfZone({x:0,y:0},zc),false);
-  assert.ok(zoneMass(1000,DT)<1000&&zoneMass(1000,DT)>=998,"um tick queima pouco (0,17%); o que mata é a insistência");});
+  assert.equal(zoneExposure({x:0,y:0,r:10},zc),0,"cabe inteira: não queima");
+  assert.equal(zoneExposure({x:80,y:0,r:10},zc),0,"encostando por dentro: ainda cabe");
+  assert.equal(zoneExposure({x:300,y:0,r:10},zc),1,"inteira fora: queima cheio");
+  assert.equal(zoneExposure({x:110,y:0,r:10},zc),1,"tangente por fora já é 1");
+  const meio=zoneExposure({x:100,y:0,r:10},zc);
+  assert.ok(Math.abs(meio-.5)<.06,`metade fora ≈ metade da queimadura (deu ${meio.toFixed(3)})`);
+  // o caso que motivou tudo: o CÍRCULO dentro da peça (gigante no fim do Battle Royale)
+  const gigante=zoneExposure({x:0,y:0,r:1000},zc);
+  assert.ok(Math.abs(gigante-(1-100*100/(1000*1000)))<1e-9,"o círculo dentro da peça expõe 1 − R²/r²");
+  assert.ok(gigante>.98,"ou seja: o gigante que não cabe queima quase tudo, em vez de nada");
+  // monotônica em d, que é o que impede a peça de piscar entre queimar e não queimar
+  let ant=-1;for(let d=0;d<=220;d+=5){const e=zoneExposure({x:d,y:0,r:30},zc);
+    assert.ok(e>=ant-1e-12,`monotônica em d (d=${d})`);ant=e;}
+  // `outOfZone` virou o teste BARATO: "alguma parte minha está no gás?" — é o aviso do HUD, não a conta
+  assert.equal(outOfZone({x:0,y:0,r:10},zc),false);
+  assert.equal(outOfZone({x:95,y:0,r:10},zc),true,"a BORDA no gás já acende o aviso");
+  assert.ok(zoneMass(1000,DT)<1000&&zoneMass(1000,DT)>=998,"um tick queima pouco (0,17%); o que mata é a insistência");
+  assert.equal(zoneMass(1000,DT,undefined,0),1000,"exposição zero, queimadura zero");
+  assert.ok(zoneMass(1000,DT,undefined,.5)>zoneMass(1000,DT,undefined,1),"meia exposição, meia queimadura");});
 test("zoneBurnRate: a taxa do gás sobe conforme o círculo fecha, entre BURN e BURN·BURN_K",()=>{
   const r0=ZONE.R[0]*WORLD.w,rn=ZONE.R[ZONE.R.length-1]*WORLD.w;
   assert.ok(Math.abs(zoneBurnRate(r0)-ZONE.BURN)<1e-12,"no raio da etapa 0 é a taxa base");

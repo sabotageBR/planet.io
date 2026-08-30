@@ -12,6 +12,7 @@ import {createRng} from "../src/rng.js";
 import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,ejectR,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,isWeaponFood,EAT,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT} from "../src/constants.js";
 import {KIND,PIECE_FLAG,FOOD_FLAG,STAR_PHASE,INPUT_FLAG,FRAG_KIND} from "../src/protocol/constants.js";
 import {BotBrain} from "../src/bot.js";
+import {starShatter,STUCK_STAR,STUCK_ASTEROID} from "../src/physics/rules.js";
 
 const SRC=join(dirname(fileURLToPath(import.meta.url)),"..","src");
 const empty=(seed=1)=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false});   // laboratório: sem decaimento, que mexeria em toda asserção de massa exata (há teste próprio para ele)
@@ -539,12 +540,19 @@ test("comer: a massa da vítima entra inteira; passar de MAX_R vira auto-split, 
   const pcs=w2.piecesOf(0);assert.ok(pcs.length>1,`repartiu (${pcs.length} peças)`);
   assert.ok(pcs.every(x=>x.r<=PLAYER.MAX_R),"toda peça abaixo do teto");
   assert.ok(Math.abs(pcs.reduce((t,x)=>t+x.mass,0)-M)<1e-6,"sem perder massa");
-  // com as MAX_PIECES ocupadas não há para onde repartir: aí sim o raio é cortado
+  // Com as MAX_PIECES ocupadas não há para onde repartir: o raio é cortado, mas o excesso é CUSPIDO.
+  // ⚠️ Este era o único ponto do jogo, fora do DECAY, em que massa de jogador evaporava — em silêncio.
   const w3=empty(90),q=w3.addPlayer(0,{x:5000,y:5000,r:200});w3.setTarget(0,5000,5000);q.mergeAt=1e9;
   for(let i=1;i<PLAYER.MAX_PIECES;i++){const x=w3.newPiece(0,600+(i%4)*700,600+((i/4)|0)*700,40);x.mergeAt=1e9;}
   assert.equal(w3.piecesOf(0).length,PLAYER.MAX_PIECES,"sem vaga de peça");
-  setR(q,PLAYER.MAX_R*1.5);w3.step();
-  assert.ok(Math.abs(q.r-PLAYER.MAX_R)<1e-6,`sem vaga, o raio é cortado em MAX_R (ficou ${q.r.toFixed(1)})`);});
+  setR(q,PLAYER.MAX_R*1.5);const M3=w3.piecesOf(0).reduce((t,x)=>t+x.mass,0);
+  const ej0=w3.ejected.reduce((t,e)=>t+e.mass,0);
+  w3.step();
+  assert.ok(Math.abs(q.r-PLAYER.MAX_R)<1e-6,`sem vaga, o raio é cortado em MAX_R (ficou ${q.r.toFixed(1)})`);
+  const M3b=w3.piecesOf(0).reduce((t,x)=>t+x.mass,0),ej1=w3.ejected.reduce((t,e)=>t+e.mass,0);
+  const perdido=M3-M3b-(ej1-ej0);
+  assert.ok(Math.abs(perdido)<M3*.004,`o excesso vira fragmento, não evapora (sumiram ${perdido.toFixed(1)} de ${M3.toFixed(0)})`);
+  assert.ok(ej1>ej0,"e os fragmentos existem de verdade");});
 
 // 23. buraco negro: puxa de longe, espirala e cospe com impulso
 test("buraco negro: puxa desde a borda da influência, espirala e esmaga no núcleo",()=>{
@@ -768,7 +776,16 @@ test("massa: lasca de asteroide e dano de míssil não evaporam massa (e no piso
   const d=w3.ejected.filter(e=>!e.dead&&e.owner===0);assert.equal(d.length,MISSILE.HIT_DEBRIS,"HIT_DEBRIS cacos");
   const minhas=w3.piecesOf(big.owner).filter(p=>!p.dead).reduce((t,p)=>t+p.mass,0);   // o tiro ESTILHAÇA: a massa fica repartida entre as peças
   assert.ok(Math.abs(minhas+d.reduce((s,e)=>s+e.mass,0)-mb)<1e-6,"míssil conserva");
-  assert.ok(d.every(e=>e.type===FRAG_KIND.RICH),"caco de planetão é gordo");});
+  assert.ok(d.every(e=>e.type===FRAG_KIND.RICH),"caco de planetão é gordo");
+  // ⚠️ E o caco tem que ESCAPAR. O teste acima já existia e passava; o que faltava era este: os cacos
+  // nasciam no CENTRO da peça, em todas as direções e com 146 px de alcance — ou seja DENTRO de qualquer
+  // planeta com r>146 —, e com 20 ticks de imunidade o dono reengolia tudo 0,33 s depois. A conservação
+  // estava certa e o DANO era zero: o míssil emprestava massa em vez de arrancar.
+  const dist=d.map(e=>Math.hypot(e.x-big.x,e.y-big.y));
+  assert.ok(Math.min(...dist)>=big.r,`o caco nasce FORA da peça (mais perto: ${Math.min(...dist).toFixed(0)} px de r=${big.r.toFixed(0)})`);
+  const mis=w3.missiles[0]||boom,lado=d.every(e=>((e.x-big.x)*(big.x-boom.x)+(e.y-big.y)*(big.y-boom.y))>0);
+  assert.ok(lado,"e todos saem do lado OPOSTO ao míssil, não de volta para quem atirou");
+  assert.ok(d.every(e=>e.cdUntil>w3.tick+EJECT.OWNER_IMMUNE_TICKS),"com imunidade que escala com o raio, não os 20 ticks fixos");});
 
 // ── 35. fragmento de supernova: vale mais e vem marcado para brilhar ──
 test("supernova: os fragmentos valem NOVA_PART_MASS pelotas e vêm marcados FRAG_KIND.NOVA",()=>{
@@ -840,13 +857,14 @@ test("velocidade: é SEMPRE a padrão do tamanho — vira na hora, não acelera,
 // 40. o ímã tem teto de tamanho: planetão não vira aspirador de tela
 test("ímã: acima de POWERUP.MAGNET_MAX_R a peça não pega nem usa o ímã",()=>{
   const pega=r=>{const w=empty(300+r),pc=w.addPlayer(0,{x:3000,y:3000,r});w.setTarget(0,3000,3000);
-    const f=w.spawnFood();f.type=FOOD_TYPE.MAGNET;f.x=3000;f.y=3000;w.foodDirty=true;w.step();w.step();   // 2 passos: o flag é escrito na integração do tick seguinte ao que comeu
-    return{ativo:pc.magnetUntil>w.tick,flag:!!(pc.flags&PIECE_FLAG.MAGNET)};};
+    const f=w.spawnFood();f.type=FOOD_TYPE.MAGNET;f.x=3000;f.y=3000;w.foodDirty=true;const m0=pc.mass;w.step();w.step();   // 2 passos: o flag é escrito na integração do tick seguinte ao que comeu
+    return{ativo:pc.magnetUntil>w.tick,flag:!!(pc.flags&PIECE_FLAG.MAGNET),ganhou:pc.mass-m0};};
   const pequeno=pega(POWERUP.MAGNET_MAX_R-40);
   assert.ok(pequeno.ativo&&pequeno.flag,"abaixo do teto o ímã liga normalmente");
   const grande=pega(POWERUP.MAGNET_MAX_R+40);
   assert.ok(!grande.ativo,"acima do teto a peça come o powerup mas NÃO ganha o ímã");
   assert.ok(!grande.flag,"e o HUD não mostra ímã ligado");
+  assert.ok(grande.ganhou>0,"mas o grão vira COMIDA: sumir sem dar nada é o pior jeito de um powerup falhar");
   // quem já tinha o ímã e cresceu além do teto para de sugar
   const w=empty(299),pc=w.addPlayer(0,{x:3000,y:3000,r:POWERUP.MAGNET_MAX_R-20});w.setTarget(0,3000,3000);
   pc.magnetUntil=w.tick+POWERUP.TICKS;
@@ -1016,9 +1034,10 @@ test("powerups de jogador: auto-defesa, +1 munição, zoom e comida em dobro",()
   assert.equal(ps4.ammo[0],antesAmmo-1,"gastou munição do cinto (é o tiro do jogador, adiantado)");
   assert.equal(ps4.autoDefN,0,"usou, perdeu: a carga é gasta no tiro que saiu");
   assert.equal(d0.shieldLv,0);
-  // e pegar de novo não empilha: ou se tem o escudo automático, ou não se tem
-  pega(w4,d0,FOOD_TYPE.AUTODEF);pega(w4,d0,FOOD_TYPE.AUTODEF);
-  assert.equal(ps4.autoDefN,1,"a carga não acumula");
+  // pegar de novo ACUMULA, até AUTODEF_MAX: travar em 1 fazia o segundo grão não valer nada — o jogador ia
+  // buscar, encostava e o número continuava "1x", que é um powerup que não faz nada ao ser pego.
+  for(let i=0;i<POWERUP.AUTODEF_MAX+2;i++)pega(w4,d0,FOOD_TYPE.AUTODEF);
+  assert.equal(ps4.autoDefN,POWERUP.AUTODEF_MAX,"a carga acumula, e para no teto");
 
   // 5) sem o powerup, nada disso acontece
   const w5=empty(63),e0=w5.addPlayer(0,{x:1000,y:1000,r:40,missiles:2}),ps5=w5.players.get(0);
@@ -1049,3 +1068,67 @@ test("comida: as faixas do enum continuam valendo (base, especial, arma)",()=>{
     assert.ok(t>=FOOD_TYPE.AMMO,`${t} tem que continuar do lado "especial" da faixa (o atlas do cliente usa isso)`);
     assert.ok(t>FOOD_TYPE.ROCK,`${t} não pode ser reescrito como comida base`);}
   assert.equal(FOOD.TYPES.length,Object.keys(FOOD_TYPE).length,"FOOD.TYPES e FOOD_TYPE têm que andar juntos");});
+
+// ── O PREÇO QUE NÃO CABE EM PEÇAS ────────────────────────────────────────────
+// Os jogadores descobriram que, dividido nas 16 peças, dá para atravessar estrela e cinturão quase de
+// graça: o estilhaço não acontece por falta de vaga, e isso falhava em SILÊNCIO (`shatterPiece` devolvia
+// um `false` que ninguém lia). Pior no asteroide, onde a lasca comum é reembolso: 4% que voltam como
+// fragmento do próprio dono, nascido ATRÁS dele — o lado para onde o quique já o empurra — a 97 px.
+// Agora o preço vira massa, cada perigo na moeda dele, e sempre com evento na tela.
+const enche=(w,slot,x,y,n=PLAYER.MAX_PIECES)=>{for(let i=1;i<n;i++){const q=w.newPiece(slot,x+400+(i%4)*260,y+400+((i/4)|0)*260,PLAYER.MIN_PIECE_R+2);q.mergeAt=1e9;}};
+/** Junta os eventos de N passos: `w.events` é esvaziado a cada `step`. */
+const roda=(w,n,filtro=()=>true)=>{const out=[];for(let t=0;t<n;t++){w.step();for(const e of w.events)if(filtro(e))out.push(e);}return out;};
+
+test("estrela com as 16 peças ocupadas: queima BURN_STUCK em vez de BURN, e avisa (STUCK)",()=>{
+  // Direto na regra, e não por uma colisão de verdade: o contato com a estrela dispara a supernova, que
+  // estilhaça TODAS as peças no miolo no mesmo tick — o cenário "com vaga" enche sozinho e os dois casos
+  // ficariam indistinguíveis. O que está sob teste aqui é a decisão, não o caminho até ela.
+  const monta=lotado=>{const w=empty(701),pc=w.addPlayer(0,{x:4000,y:4000,r:120});w.setTarget(0,4000,4000);pc.mergeAt=1e9;
+    if(lotado)enche(w,0,4000,4000);
+    const st=w.spawnStar(true,{x:4200,y:4000});st.k=1;const ps=w.players.get(0),m0=pc.mass;
+    starShatter(w,ps,pc,st,1,0);
+    // a queimadura vem do EVENTO: `pc.mass` depois disso já passou pelo estilhaço, que reparte o que sobrou
+    const burst=w.events.find(e=>e.type==="STAR_BURST");
+    return{m0,queimado:burst?burst.burn:0,stuck:w.events.find(e=>e.type==="STUCK")||null,
+      pecas:w.piecesOf(0).filter(p=>!p.dead).length};};
+  const livre=monta(false),cheio=monta(true);
+  assert.ok(livre.pecas>1,"com vaga a estrela ESTILHAÇA");
+  assert.equal(cheio.pecas,PLAYER.MAX_PIECES,"sem vaga não há como estilhaçar");
+  assert.ok(Math.abs(livre.queimado-livre.m0*STAR.BURN)<1e-6,"com vaga, a queimadura é a de sempre");
+  assert.ok(Math.abs(cheio.queimado-cheio.m0*STAR.BURN_STUCK)<1e-6,
+    `sem vaga ela cobra a outra metade em massa: ${cheio.queimado.toFixed(0)} contra ${livre.queimado.toFixed(0)}`);
+  assert.ok(cheio.stuck&&cheio.stuck.cause===STUCK_STAR,"com aviso na tela — o silêncio era o bug");
+  assert.ok(!livre.stuck,"e sem aviso quando o preço foi pago em pedaços, como sempre");});
+
+test("asteroide com as 16 peças ocupadas: atravessar CUSTA, e a massa não volta de graça",()=>{
+  const monta=lotado=>{
+    const w=empty(702),pc=w.addPlayer(0,{x:4000,y:4000,r:150});w.setTarget(0,4000,4000);pc.mergeAt=1e9;
+    if(lotado)enche(w,0,4000,4000);
+    const a=w.spawnAsteroid(-1,4000+320,4000,ASTEROID.R_MIN);a.vx=-1200;a.vy=0;
+    const m0=pc.mass,ev=roda(w,40,e=>e.type==="STUCK"||e.type==="POP"||e.type==="CHIP");
+    return{perdeu:m0-pc.mass,m0,cacos:w.ejected.filter(e=>!e.dead&&e.owner===0),
+      stuck:ev.find(e=>e.type==="STUCK")||null,pecas:w.piecesOf(0).filter(p=>!p.dead).length,pc};};
+  const livre=monta(false),cheio=monta(true);
+  assert.ok(livre.pecas>1,"com vaga a rocha ESTOURA a peça");
+  assert.equal(cheio.pecas,PLAYER.MAX_PIECES,"sem vaga não há como estourar");
+  assert.ok(cheio.perdeu>cheio.m0*ASTEROID.CHIP*1.5,
+    `e passar por cima deixou de custar a lasca de 4%: perdeu ${(cheio.perdeu/cheio.m0*100).toFixed(0)}%`);
+  assert.ok(cheio.stuck&&cheio.stuck.cause===STUCK_ASTEROID,"com aviso na tela");
+  assert.ok(cheio.cacos.length>0,"a massa vira fragmento (nada evapora)");
+  const perto=cheio.cacos.map(e=>Math.hypot(e.x-cheio.pc.x,e.y-cheio.pc.y));
+  assert.ok(Math.min(...perto)>=cheio.pc.r*.9,`e nasce fora da peça, não dentro dela (${Math.min(...perto).toFixed(0)} px de r=${cheio.pc.r.toFixed(0)})`);
+  assert.ok(cheio.cacos.every(e=>e.cdUntil>EJECT.OWNER_IMMUNE_TICKS),"com imunidade do dono, e ela escala com o raio");});
+
+test("+1 munição: EMPRESTA uma bala acima do teto, e só uma",()=>{
+  const w=empty(703),pc=w.addPlayer(0,{x:3000,y:3000,r:40,missiles:0});w.setTarget(0,3000,3000);
+  const ps=w.players.get(0);
+  const pega=type=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;f.r=FOOD.SPECIAL_R;w.foodDirty=true;w.step();};
+  for(let i=0;i<MISSILE.MAX_AMMO+3;i++)pega(FOOD_TYPE.AMMO);
+  assert.equal(ps.ammo[0],MISSILE.MAX_AMMO,"a munição comum para no teto da arma");
+  for(let i=0;i<6;i++)pega(FOOD_TYPE.AMMO_PLUS);
+  assert.equal(ps.ammo[0],MISSILE.MAX_AMMO+MISSILE.AMMO_OVER,
+    "o powerup empresta UMA bala acima do teto — nunca as 9 que apareceram em produção");
+  arma(w);w.requestFire(0);w.step();
+  assert.equal(ps.ammo[0],MISSILE.MAX_AMMO,"gastou o empréstimo: o teto normal volta a valer");
+  pega(FOOD_TYPE.AMMO);
+  assert.equal(ps.ammo[0],MISSILE.MAX_AMMO,"e munição comum não recupera a quarta bala");});

@@ -62,7 +62,8 @@ export async function createRenderer({container,theme,prefs}){
     /** Buraco negro: uma textura 512 por tema, mas é o desenho mais caro do jogo — sem aquecer, ela é assada
      *  sincronamente no primeiro frame em que um buraco entra na tela, e isso é um engasgo visível. */
     warmHazards(th=R.theme){const TX=th.textures;R.cache.warm(TX.key("blackHole",{},BH_TEX),BH_TEX,(c,s)=>TX.blackHole(c,s,{}));},
-    /** f: {view,cam,now,dt,t,rt,rect,aim,threat,parallax,showGrid,showNames,showTrails} */
+    /** f: {view,cam,now,dt,t,rt,rect,aim,threat,parallax,showGrid,showNames,showTrails,idle} */
+    /** `idle`: canvas vivo, sem partida (o menu está na frente) — some a moldura da arena, fica o céu. */
     render(f){R.cache.tick();const cam=f.cam;world.position.set(R.W/2-cam.x*cam.scale,R.H/2-cam.y*cam.scale);world.scale.set(cam.scale);
       for(const l of layers)l.render(f);app.render();},
     counts(){const h=hazards.counts();return{planets:planets.count(),food:food.count(),ejected:ejected.count(),asteroids:h.asteroids,holes:h.holes,stars:h.stars,missiles:missiles.count(),fx:fx.count(),textures:R.cache.size,texMB:(R.cache.bytes/1048576).toFixed(1)};},

@@ -52,7 +52,7 @@ export function createPersistence({db,log,config}){
     const s=new MatchSession({userId:Number(u.id),nick:u.nick,kind:u.kind,skinId:egg!=null?egg:u.equipped_skin_id,roomCode,shard:config.shard});
     sessions.set(s.sessionId,s);
     return{ok:true,userId:s.userId,nick:s.nick,registered:s.registered,skinId:s.skinId,
-      level:levelFromXp(Number(u.xp||0)),avatar:u.avatar_hash||null,prefs,sessionId:s.sessionId,unsaved:false};
+      level:levelFromXp(Number(u.xp||0)),avatar:u.avatar_hash||null,country:u.country||null,prefs,sessionId:s.sessionId,unsaved:false};
   }
   /** sessão "sem banco" para quem entrou em modo unsaved e quer mesmo assim um sessionId/rewards {saved:false} */
   function openUnsavedSession({nick,roomCode=null}={}){const s=new MatchSession({userId:null,nick:nick||'Viajante',kind:'guest',roomCode,shard:config.shard});sessions.set(s.sessionId,s);return s.sessionId;}

@@ -9,10 +9,13 @@
 #    paths do Ingress e é fonte de surpresa; com SHARDS=3 os três caminhos são fixos e o nginx
 #    ordena locations por comprimento, então /ws/0 ganha de / sozinho. Escalar shards = mais um
 #    Service em 10-server.yaml, mais um path aqui e SHARDS no ConfigMap (o mesmo trio de sempre).
-# 2. Só /api e /ws/* chegam ao servidor. /healthz, /internal/rooms e /internal/party moram na MESMA
-#    porta 3000, e /internal/* é a via entre shards — publicá-la entregaria a lista de salas de todo
-#    mundo e, pior, abriria a porta que MUTA o lobby de equipe com o Bearer repassado entre pods.
-#    O que não casa com esses paths cai em / e é servido pelo nginx do cliente (estáticos + SPA).
+# 2. Só /api e /ws/* chegam ao servidor. /healthz e /internal/{rooms,party,admin} moram na MESMA porta
+#    3000, e /internal/* é a via entre shards — publicá-la entregaria a lista de salas de todo mundo e,
+#    pior, abriria as portas que MUTAM estado com o Bearer repassado entre pods: o lobby de equipe, o
+#    KICK de jogador e o AVISO GLOBAL do painel. (O destino revalida o Bearer de qualquer forma, mas isso
+#    é defesa em profundidade, não licença para publicar.)
+#    O que não casa com esses paths cai em / e é servido pelo nginx do cliente (estáticos + SPA) — o que
+#    inclui /admin: o painel é uma rota da MESMA SPA, então ele não precisa de path nenhum aqui.
 # 3. `kubernetes.io/ingress.class` como ANNOTATION: `ingressClassName` só virou o caminho padrão
 #    depois do 1.22, e no v0.47 o controller ignora um Ingress sem a annotation.
 apiVersion: networking.k8s.io/v1

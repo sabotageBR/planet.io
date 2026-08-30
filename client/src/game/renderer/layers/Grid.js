@@ -42,5 +42,8 @@ export function createGrid(R){
     bakeBorder(bakedScale||.5);}
   // a grade cobre a tela inteira (é a camada mais cara em máquina fraca): sai no modo econômico
   return{root,setTheme,render(f){R.cache.keepAlive(gridKey);ts.visible=f.showGrid&&!R.econ;
+    // `idle` = o canvas está vivo mas não há partida (o menu está na frente). A grade e a BORDA são a
+    // moldura da arena; sem arena, a borda vira um traço amarelo tracejado cortando o fundo do menu.
+    border.visible=!f.idle;
     const s=f.cam.scale;if(!(Math.abs(s-bakedScale)<=bakedScale*REBAKE_K))bakeBorder(s);},
     destroy(){root.destroy({children:true});}};}

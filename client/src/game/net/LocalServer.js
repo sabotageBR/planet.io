@@ -119,6 +119,10 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
         case "CLASH":e={kind:EVENT.CLASH,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slotA,slotB:ev.slotB,extra:0};break;
         case "DEFLECT":e={kind:EVENT.DEFLECT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.bySlot<0?65535:ev.bySlot,slotB:65535,extra:packDir(ev.nx,ev.ny,0)};break;
         case "STAR_BURST":mark(ev.slot,-1,"star");e={kind:EVENT.STAR_BURST,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:65535,extra:ev.starId};break;
+        // ⚠️ Estrela e asteroide existem no offline, então este `case` não é opcional: sem ele o `?local=1`
+        // cobraria o preço (a massa some) e não desenharia nada, que é justamente o defeito que o STUCK veio
+        // consertar — e divergiria do servidor em silêncio, como o cabeçalho deste arquivo avisa.
+        case "STUCK":e={kind:EVENT.STUCK,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.cause|0,extra:Math.round(ev.lost||0)};break;
         case "STAR_HIT":e={kind:EVENT.STAR_HIT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot<0?65535:ev.slot,slotB:65535,extra:packDir(ev.nx,ev.ny,ev.hits)};break;
         case "STAR_SPLIT":e={kind:EVENT.STAR_SPLIT,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:ev.starId};break;
         case "SMASH":reasonMap.set(ev.asteroidId,REMOVE.POPPED);e={kind:EVENT.SMASH,x:ev.x,y:ev.y,r:ev.r,slotA:65535,slotB:65535,extra:packDir(ev.nx,ev.ny,0)};break;

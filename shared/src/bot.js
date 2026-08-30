@@ -356,7 +356,10 @@ export class BotBrain{
     const prazo=Math.max(1,(fechando?z.t1:z.t1+(ZONE.SHRINK_TICKS[z.stage|0]||ZONE.SHRINK_TICKS[0]))-tick);
     let k=this.edge?BOT.GAS.EDGE:BOT.GAS.RING;
     if(this.alive&&this.alive<=BOT.GAS.LATE_ALIVE)k/=BOT.GAS.LATE_PULL;   // fim de partida: mais perto do miolo
-    const alvo=cr*k,dx=c.x-cx,dy=c.y-cy,d=Math.hypot(dx,dy);
+    // ⚠️ desconta o PRÓPRIO raio: a queimadura mede a fatia do disco que está no gás, não o centro. Sem
+    // isso o bot mira o centro dele em EDGE·R e passa a partida inteira com a borda queimando — e num
+    // planetão grande a "margem" some por completo.
+    const alvo=Math.max(0,cr*k-c.big),dx=c.x-cx,dy=c.y-cy,d=Math.hypot(dx,dy);
     if(d>alvo&&d>1){const q=alvo/d;this.zx=cx+dx*q;this.zy=cy+dy*q;}else{this.zx=c.x;this.zy=c.y;}
     const falta=Math.max(0,d-alvo),viagem=falta/Math.max(1,vmaxFor(c.big))*TICK_HZ;
     return viagem/prazo;}

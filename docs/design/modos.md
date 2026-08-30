@@ -8,7 +8,7 @@
 | entrada | direto, sala em andamento | **LOBBY** que enche à vista, depois contagem e largada |
 | respawn | sim (humano e bot) | não — quem morre assiste |
 | fim | 1 h (BIG CRUNCH) | última equipe (ou último jogador) de pé |
-| zona | não | sim, fecha em ~6 min |
+| zona | não | sim, fecha em ~9 min, e cobra pela ÁREA EXPOSTA |
 | armas | só o míssil | míssil + 4 armas com raridade |
 | equipe | não | solo ou 2/3/4, sem fogo amigo |
 | chat | sala | equipe (solo: sala) |
@@ -129,13 +129,32 @@ um dia alguém nascer cedo por engano, não vira almoço antes de a partida exis
 
 ## A zona
 
-`shared/src/zone.js`: círculo que fecha em `ZONE.STAGES` etapas (parada → fechamento), **21 300 ticks ≈ 5 min 55 s**
+`shared/src/zone.js`: círculo que fecha em `ZONE.STAGES` etapas (parada → fechamento), **32 000 ticks ≈ 8 min 53 s**
 no total. Determinística (o rng da sala, só na virada de fase) e testada: o círculo novo **sempre cabe dentro do
 velho** — uma zona que pulasse para trás mataria quem já estava dentro.
 
-Fora dela a peça queima `zoneBurnRate(r)` da massa por segundo e, no piso `MIN_PIECE_R`, **morre** (`cause:'zone'`).
-É a única coisa do jogo que mata sozinha, e é o que fecha a partida. A conta usa o CENTRO da peça: "meu ponto está
-dentro do círculo?" é o que o jogador lê na tela.
+Fora dela a peça queima `zoneBurnRate(r)·exposição` da massa por segundo e, no piso `MIN_PIECE_R`, **morre**
+(`cause:'zone'`). É a única coisa do jogo que mata sozinha, e é o que fecha a partida.
+
+**A conta mede a FATIA DO DISCO que está no gás** (`zoneExposure`), não o centro. Com o critério do centro — e com
+o raio final que a zona tinha (144 px) contra um teto de peça de 1000 — o gigante ficava com o corpo cobrindo a
+arena inteira **sem queimar um grama**: fisicamente invencível no exato momento em que o círculo devia decidir a
+partida. Medindo a exposição ele **derrete até caber**, e quem já cabe não sente nada. `outOfZone` virou o teste
+barato ("alguma parte minha está no gás?"), que é o que acende o aviso do HUD.
+
+A conta é fechada (a área da lente entre dois círculos) e tem três atalhos antes de qualquer `acos`: cabe inteira ·
+está inteira fora · o CÍRCULO está dentro da peça (`1 − R²/r²`, o caso do gigante). Só quem está EM CIMA da linha
+paga a conta cheia — ~50 µs no pior caso absoluto de 800 peças, contra 1,5 ms de orçamento por passo. É função pura
+de `(dx,dy,r,R)`, então `predict.js` chega ao mesmo número **sem protocolo novo**. `ZONE.EXPOSE_MIN` (2 %) é banda
+morta, não folga: sem ela a peça piscaria entre "no gás" e "na zona" a 60 Hz enquanto corre colada na linha.
+
+**A cauda de `ZONE.R` mudou junto** (final `.015` → `.08`, ou seja 144 → **768 px**), e não é ajuste: sem isso a
+cura mata o paciente. O teto geométrico de 144 px seria 20 736 de massa para a SALA INTEIRA — todo mundo derretido
+ao tamanho de nascença, e a final vira cara ou coroa. 768 px é ≈ um arremesso de split (`SPLIT.DIST` 780) de raio:
+cabe a briga, não cabe o planeta. E as razões entre etapas passaram a ser ~√.5, então **cada fechamento tira metade
+da ÁREA** e a pressão é constante do começo ao fim. O teto de massa do fim sai de graça da geometria: para todos
+caberem é preciso `Σr² ≤ R²`, ou seja **590 mil de massa para a sala toda** no último círculo — o gás cobra a
+diferença de quem não cabe.
 
 **O gás ENDURECE conforme o círculo fecha**: a taxa vai de `ZONE.BURN` (.10/s, no raio da etapa 0) a
 `ZONE.BURN·ZONE.BURN_K` (.22/s, no menor círculo), interpolada pelo RAIO ATUAL. Do tamanho inicial até o piso são

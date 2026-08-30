@@ -31,7 +31,14 @@ class C{
     await new Promise(r=>{this.waiters.push(r);setTimeout(r,25);});}}
   of(t,from=0){for(let i=from;i<this.json.length;i++)if(this.json[i].t===t)return this.json[i];return null;}
   all(t){return this.json.filter(j=>j.t===t);}
-  async join(o){const n=this.json.length;this.send({t:'join',token,fallbackNick:o.nick||'Teste',view:{w:1280,h:720},...o});
+  async join(o){const n=this.json.length;
+    // ⚠️ UM TOKEN POR CLIENTE. O nick é único POR SALA agora, e o nick de uma conta é o da CONTA — dois
+    // clientes com o mesmo token são a mesma pessoa e o servidor recusa o segundo (que é o certo: impede
+    // o mesmo jogador ter dois planetas na sala). Sem banco, `novoToken` devolve o de sempre e quem
+    // diferencia é o `fallbackNick`, que os testes já passam distinto.
+    if(!this.token)this.token=await novoToken();
+    const n2=this.json.length;void n2;
+    this.send({t:'join',token:this.token,fallbackNick:o.nick||'Teste',view:{w:1280,h:720},...o});
     const r=await this.until(()=>this.of('room',n)||this.of('error',n),8000,'room');
     if(r.t==='error')throw new Error(`join: ${r.code} ${r.message}`);this.slot=r.slot;this.room=r;return r;}
   last(){return this.snaps[this.snaps.length-1];}
@@ -52,6 +59,14 @@ before(async()=>{
 });
 after(async()=>{await srv.close();});
 const roomOf=code=>srv.rooms.rooms.get(code);
+// Um convidado NOVO por cliente de teste. O IP varia porque o limitador de `/api/auth/guest` é 5/h/IP.
+let nIp=0;
+async function novoToken(){
+  if(token==='pt_sem_banco')return token;   // servidor sem banco: todo mundo entra pelo fallbackNick
+  try{const ip=`10.5.${(nIp>>8)&255}.${(nIp++)&255}`;
+    const r=await fetch(base+'/api/auth/guest',{method:'POST',headers:{'content-type':'application/json','x-forwarded-for':ip},body:'{}'});
+    if(r.status===201)return (await r.json()).token;}catch{}
+  return token;}
 // Cada teste na SUA sala: findOrCreateRoom agrupa por projeto, e a sessão em graça do teste anterior
 // (NET.RESUME_MS) ainda conta como humano — sem isto um teste enxerga o jogador do outro.
 let nRoom=0;const CH='23456789ABCDEFGHJKLMNPQRSTUVWXYZ';

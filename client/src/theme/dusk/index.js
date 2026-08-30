@@ -140,7 +140,7 @@ export const world={grid:{step:150,color:"rgba(255,207,154,.08)",width:2},border
   ejectAnim:{novaPulse:{amp:.18,speed:.006},richPulse:{amp:.07,speed:.0025}}};
 
 // escudo por nível (1 → 2 → 3): cor, largura, pulso e nº de anéis — usados pelos anéis (Planets.js), pelo HUD e pelos efeitos
-const SHIELD_LV=[{color:TEAL,widthK:1,pulse:.012,alpha:[.6,1],rings:1},{color:MAG,widthK:1.25,pulse:.02,alpha:[.7,1],rings:1},{color:GOLD,widthK:1.5,pulse:.03,alpha:[.85,1],rings:2}],ROCK_DUST="#b8a898";
+const SHIELD_LV=[{color:TEAL,widthK:1,pulse:.008,alpha:[.72,.95]},{color:MAG,widthK:1.3,pulse:.012,alpha:[.8,1]},{color:GOLD,widthK:1.7,pulse:.018,alpha:[.88,1]}],ROCK_DUST="#b8a898";
 // paletas dos fogos da vitória: a FÍSICA é compartilhada (fireworkPrims em theme/util.js), aqui só a cor.
 // Cinco cargas diferentes para a salva não sair monocromática — é o que separa "fogos" de "um efeito repetido".
 const FOGOS=[{hot:"#fffdf0",body:GOLD,ember:EMB2,trail:"#ffe2b0"},{hot:"#fffdf0",body:MAG,ember:EMB1,trail:"#ffc2de"},{hot:"#fffdf0",body:TEAL,ember:"#12786f",trail:"#bdf4ee"},{hot:"#fffdf0",body:CORAL,ember:"#a3243a",trail:"#ffc9cf"},{hot:"#fffdf0",body:"#8ab4ff",ember:"#31509c",trail:"#d6e4ff"}];
@@ -225,6 +225,13 @@ export const effects={
         P.push({type:"star",x:f.x,y:f.y,r:s,n:11,inner:.45,phase:k*.9,fill:GOLD,stroke:INK,width:Math.max(2,s*.06),alpha:al});
         P.push({type:"burst",x:f.x,y:f.y,n:9,r0:f.r*(.8+k*2),r1:f.r*(1.4+k*3),color:CORAL,alpha:a,width:Math.max(2,f.r*.12)});
         P.push({type:"text",x:f.x,y:f.y-f.r*(1.2+k),text:"CRASH!",size:Math.max(11,f.r*.6),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
+      // "não coube": o preço que ia ser cobrado PARTINDO a peça virou massa arrancada, porque as 16 já
+      // estavam ocupadas. O desenho é o oposto do split — em vez de pedaços saindo inteiros, um anel
+      // RACHADO (arcos com falha) e faíscas indo embora para um lado só.
+      case "stuck":{const s=f.r*(1.05+k*.5),al=Math.min(1,a*1.3);
+        for(let i=0;i<5;i++){const a0=i*1.256+k*.6;P.push({type:"arc",x:f.x,y:f.y,r:s,a0,a1:a0+.72,color:GOLD,alpha:al,width:Math.max(2.5,f.r*.07)});}
+        P.push({type:"burst",x:f.x,y:f.y,n:8,r0:f.r*(.9+k*1.6),r1:f.r*(1.3+k*2.6),color:CORAL,alpha:a,width:Math.max(2,f.r*.09)});
+        P.push({type:"text",x:f.x,y:f.y-f.r*(1.25+k),text:"ARRANCOU!",size:Math.max(10,f.r*.5),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
       case "supernova":{const s=f.r*(.25+k*.85),al=Math.min(1,a*1.6);   // onda de choque: anéis crescendo + clarão + texto
         for(let i=0;i<3;i++){const kk=Math.max(0,k-i*.12);P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.15+kk*1.05),color:i?CORAL:CREAM,alpha:a*(1-i*.25),width:Math.max(3,f.r*.03*(1-kk))});}
         P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:16,inner:.45,phase:-k*.5,fill:GOLD,stroke:INK,width:Math.max(2,s*.02),alpha:al});
@@ -267,23 +274,32 @@ export const hud={
     meDot:{fill:CREAM,stroke:INK,width:1.5,r:{desktop:4,tablet:4,portrait:3,landscape:3}},
     label:{text:"RADAR",font:"bold 9px "+FONT,color:GOLD,desktopOnly:true,dy:-10}},
   trail:{style:"dashed",color:(skin,isMe)=>rgba(PEACH,isMe?.7:.42),width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},
-  // O nome é uma LEGENDA no rodapé do disco, não uma tatuagem no meio dele: `nameY` devolvia 0 nos três
-  // temas e o texto caía em cima do nariz da caricatura. `nameFill` é separado de `nameColor` DE PROPÓSITO —
+  // O nome fica no CENTRO do disco (`nameY:()=>0`). Ele já esteve no rodapé, com uma tarja escura por trás
+  // (`bandAlpha`), para não cair em cima do nariz das caricaturas — e ficou pior: um planeta com o nome
+  // pendurado embaixo lê como legenda de foto, não como planeta chamado assim. O que resolve o rosto não é
+  // mudar o nome de lugar, é a LETRA: `nameFill` translúcido com contorno opaco deixa a arte aparecer por
+  // dentro dela. Por isso a tarja saiu (bandAlpha 0) e as duas outras correções ficaram — `NAME_MIN_PX`,
+  // que some com o nome de 4 px quando a câmera afasta, e `nameFitK`, que faz o nick CABER no disco.
+  // `nameFill` é separado de `nameColor` DE PROPÓSITO —
   // o fill entra no BitmapFont (miolo translúcido, a arte aparecendo por dentro da letra) e o `nameColor`
   // continua pintando o ícone de push-to-talk, que não pode desbotar junto. Contorno OPACO: é ele que dá a
   // forma quando a letra fica pequena. Para vazar a letra de vez, é `nameFill:"rgba(255,255,255,0)"`.
   labels:{font:FONT,nameColor:"#fff",nameFill:"rgba(255,255,255,.68)",massColor:PEACH,stroke:INK,minR:13,
-    size:r=>Math.max(11,r*.26),massK:.68,nameY:(fs,r)=>r*.62,nameFitK:.92,bandAlpha:.72,bandTop:.38,
+    size:r=>Math.max(11,r*.26),massK:.68,nameY:()=>0,nameFitK:.92,bandAlpha:0,bandTop:.38,
     // ⚠️ O contorno era 20% do corpo da fonte (`s*.2`), e ele existia porque o nome ficava sobre a arte
     // NUA, em cima de qualquer cor. Com a faixa dando o chão, esse peso vira defeito: a 11 px na tela o
     // traço de 2,2 px fecha os buracos das letras e o nome vira mancha. Quem separa agora é a faixa.
     massY:fs=>fs*.8,strokeWidth:s=>Math.max(1.5,s*.11)},
   cell:{merge:{color:GOLD,width:r=>Math.max(3,r*.08),radiusK:1.18},
-    powerups:{colors:{magnet:MAG,shield:TEAL},width:r=>Math.min(14,Math.max(3,r*.08)),dash:r=>[Math.min(48,r*.4),Math.min(36,r*.3)],
-      ringR:(r,i)=>r+6+i*10,alpha:[.6,1],pulse:.012,spin:.001,shieldLevels:SHIELD_LV}},
-    // o anel é OFFSET ABSOLUTO da borda (r+6px), não múltiplo do raio: com `radiusK:1.3` ele ficava 176 px
-    // fora de um planeta de r=587 e com 47 px de traço — parecia outro planeta em volta. Traço e tracejado
-    // também ganharam teto para o anel não virar um aro grosso no planetão.
+    powerups:{colors:{magnet:MAG,shield:TEAL},width:r=>Math.min(6,Math.max(1.8,r*.035)),
+      ringR:(r,i)=>r+3+i*7,alpha:[.62,.92],pulse:.01,shieldLevels:SHIELD_LV}},
+    // ⚠️ BORDA NEON, não anel: o desenho é uma circunferência contínua colada na peça (r+3), com um traço
+    // largo e translúcido por fora e um fio saturado por dentro (ver layers/Planets.js). Era um arco
+    // TRACEJADO girando, e no nível 3 um SEGUNDO anel atrás dele — dois círculos rodando em cima da arte da
+    // skin. `spin`, `dash` e `rings` saíram junto: uma borda que gira não é discreta, e o que tem que
+    // identificar o nível é a COR, que já está aqui em SHIELD_LV.
+    // O offset é ABSOLUTO (r+3px), nunca múltiplo do raio: com `radiusK:1.3` o aro ficava 176 px fora de um
+    // planeta de r=587 e parecia outro corpo em órbita. A espessura tem teto pelo mesmo motivo.
   skinPreview:{ringK:.68,dy:2},
 };
 

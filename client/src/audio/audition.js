@@ -12,7 +12,7 @@ const GRUPOS=[
   ["Mover-se",       ["split","eject","bounce"]],
   ["Coletar",        ["ammo","powerup","shieldUp","weapon"]],
   ["Arma",           ["fire","lock","cancel","ready","shoot","deflect","clash"]],
-  ["Apanhar",        ["boom","pop","chip","hurt","shieldHit","shieldBreak"]],
+  ["Apanhar",        ["boom","pop","chip","stuck","hurt","shieldHit","shieldBreak"]],
   ["Estrelas",       ["starBurst","starHit","starSplit","smash","supernova"]],
   ["Buraco negro",   ["suck","exit"]],
   ["Vida e rodada",  ["death","respawn","countdown","bigCrunch","join","matchStart"]],

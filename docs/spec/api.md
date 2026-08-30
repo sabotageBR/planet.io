@@ -17,7 +17,7 @@ Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`.
 | GET | `/api/skins` (🔒 opcional) | — | `{skins:[catálogo], owned:[ids], equipped}` |
 | POST | `/api/skins/:id/buy` 🔒 | — | `{coins, owned}` · 402 `insufficient_coins` · 409 `already_owned` · 403 `not_purchasable` |
 | POST | `/api/skins/:id/equip` 🔒 | — | `{equippedSkin}` · 403 `not_owned` |
-| GET | `/api/ranking?period=all\|week\|day&by=score\|mass\|kills\|total&limit=50` (🔒 opcional) | — | `{period,by,rows:[{rank,userId,nick,registered,value}], me:{rank,value}\|null}` |
+| GET | `/api/ranking?period=all\|week\|day&by=score\|mass\|kills\|total\|food\|xp\|kd&limit=50&country=BR` (🔒 opcional) | — | `{period,by,rows:[{rank,userId,nick,name,registered,country,level,xp,kills,deaths,foodEaten,value}], me:{rank,value}\|null}` — `name` é o nome da CONTA (o do Google); o cliente ordena sempre por `xp` |
 | GET | `/api/config` | — | `{shards, shard, roomMax, protocol, googleClientId}` |
 | GET | `/api/rooms?mode=` · `/api/auto?mode=&teamSize=` | — | `{rooms:[{code,shard,mode,teamSize,phase,open,players,max,bots,round}]}` · a sala |
 | POST | `/api/party` 🔒 | `{mode,teamSize,nick,skinId}` | `{party,you:{key,leader}}` · 401 sem token · 409 `bad_team_size` |
@@ -25,6 +25,7 @@ Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`.
 | POST | `/api/party/:code/join` 🔒 | `{nick,skinId}` | `{party,you}` · 409 `full`/`started` · 404 · 503 |
 | POST | `/api/party/:code/leave` 🔒 | — | `{ok,dissolved?}` (o líder saindo dissolve o lobby) · 503 |
 | POST | `/api/party/:code/start` 🔒 | `{room}` | `{party}` · 403 `not_leader` · 503 |
+| **PAINEL** | **`/api/admin/*`** — ver `docs/spec/admin.md` | | |
 | GET | `/healthz` | — | `{ok, shard, rooms, players, tick:{p50,p99,max,overruns}, loopLagMs:{p50,p99}, net:{outKBps,inMsgps,rateLimitHits}, db:'ok'\|'down', queue, protocol}` |
 
 Regras de nick: 2–16 chars, NFKC, espaços colapsados; registrado único case-insensitive; guest não pode usar nick de

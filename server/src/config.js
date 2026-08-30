@@ -34,7 +34,10 @@ export const config=Object.freeze({
   ollamaTimeoutMs:num('OLLAMA_TIMEOUT_MS',BOT_LLM.TIMEOUT_MS),
   ollamaMaxInflight:Math.max(1,num('OLLAMA_MAX_INFLIGHT',BOT_LLM.MAX_INFLIGHT)),
   googleClientId:str('GOOGLE_CLIENT_ID',''),   // vazio = /api/auth/google devolve 503 e o botão não aparece
-  adminToken:str('ADMIN_TOKEN',''),   // moderação de avatar (DELETE /api/avatar/:id); vazio = rota desligada
+  adminToken:str('ADMIN_TOKEN',''),
+  // Contas promovidas a administrador no boot. SÓ PROMOVE, nunca rebaixa: rebaixar por ConfigMap
+  // significa que apagar uma vírgula tranca todo mundo para fora do painel. Rebaixar é ação do /admin.
+  adminEmails:list('ADMIN_EMAILS'),   // moderação de avatar (DELETE /api/avatar/:id); vazio = rota desligada
   botChatLlm:bool('BOT_CHAT_LLM',!!str('OLLAMA_URL','')),
   role,
   staticDir:str('STATIC_DIR',''),

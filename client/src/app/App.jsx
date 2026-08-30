@@ -20,11 +20,8 @@ import AccountModal from "../ui/AccountModal.jsx";
 import ReconnOverlay from "../ui/ReconnOverlay.jsx";
 import Toast from "../ui/Toast.jsx";
 import LevelUp from "../ui/LevelUp.jsx";
-import { Nav } from "../ui/bits.jsx";
 import { sfx } from "../audio/index.js";
 
-// As telas de MENU, as que ganham a barra. `party` entra marcando "modes", que é de onde se chega nela.
-const NAV_TELAS = new Set(["modes", "party", "lobby", "rank", "profile", "shop", "prefs"]);
 let booted = false; // StrictMode monta o efeito duas vezes em dev
 export default function App() {
   useViewportMode();
@@ -79,14 +76,9 @@ export default function App() {
     <Prefs on={screen === "prefs"} />
     <Dead on={screen === "dead"} />
     <Round on={screen === "round"} />
-    {/* A BARRA DE NAVEGAÇÃO É UMA SÓ, e mora aqui. Antes cada tela renderizava a sua DENTRO da caixa, e o
-        resultado dependia da altura do conteúdo: os temas a colam com `position:sticky;bottom:0`, então em
-        "Salas" (conteúdo curto) ela grudava no fundo de um retângulo baixo, no meio da tela, e em "Perfil"
-        (conteúdo longo, caixa no teto) ia parar quase no rodapé da janela. Três telas irmãs, três lugares.
-        Pior: "Modos" e "Equipe" simplesmente não a renderizavam, e a barra SUMIA.
-        Fora da caixa ela fica sempre no mesmo lugar, do mesmo tamanho, em todas as telas. A entrada é a
-        única exceção, e de propósito: lá a navegação são os seis botões grandes do próprio cartão. */}
-    {NAV_TELAS.has(screen) ? <Nav cur={screen === "party" ? "modes" : screen} /> : null}
+    {/* A BARRA DE NAVEGAÇÃO É UMA SÓ, e mora dentro da CAIXA da tela (ver `Screen` em ui/bits.jsx): é uma
+        barra do painel, não da janela. No desktop ela fica no rodapé do cartão central; no celular em pé a
+        caixa É a folha de rodapé, então a barra continua colada embaixo, que é o certo nos dois casos. */}
     <AccountModal on={overlays.account} />
     <ReconnOverlay on={overlays.reconn} />
     <Toast />

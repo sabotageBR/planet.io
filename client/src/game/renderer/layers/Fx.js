@@ -1,4 +1,4 @@
-// ── EFEITOS: theme.effects.fx(kind,k,params) → primitivas {ring|star|text|line|burst} ──────
+// ── EFEITOS: theme.effects.fx(kind,k,params) → primitivas {ring|arc|star|text|line|burst} ──────
 // Um Graphics por efeito ativo (limpo e redesenhado por frame) + pool de Text para as primitivas
 // de texto (cache por texto/cor; escala = size/32). Máximo 32 efeitos ativos; em modo econômico
 // só metade é desenhada. add(kind,f,delayMs): a idade começa negativa — efeitos de terceiros esperam
@@ -10,7 +10,7 @@ import {rectHas} from "@warspace/shared";
 import {colorOf} from "../../util.js";
 
 const MAX=32,TTL={bounce:14,pop:22,boom:24,eat:16,suck:20,exit:20,split:16,merge:18,chip:12,shoot:16,rock:10,death:28,vanish:18,shieldBreak:22,shieldHit:14,shieldUp:24,clash:22,deflect:16,
-  starBurst:22,supernova:45,countdown:52,starHit:13,starSplit:28,smash:24,bigCrunch:70,firework:150};   // fogo: ~2,5 s do lançamento à queda das faíscas
+  starBurst:22,supernova:45,countdown:52,starHit:13,starSplit:28,smash:24,bigCrunch:70,firework:150,stuck:26};   // fogo: ~2,5 s do lançamento à queda das faíscas
 const SPARK_MAX=64,SPARK_TTL=10*16.7,TEXT_PRE=4,TS=32,pts=[];
 export function createFx(R){
   const root=new Container(),active=[],gpool=[],tpool=[],sparks=[],ambient=[],sg=new Graphics(),ag=new Graphics();root.addChild(ag,sg);let budget=1;
@@ -24,12 +24,16 @@ export function createFx(R){
         if(p.dash){const on=p.dash[0],off=p.dash[1]||on,circ=6.2832*p.r;let s=0;while(s<circ){const a0=s/p.r,a1=Math.min(circ,s+on)/p.r;g.moveTo(p.x+Math.cos(a0)*p.r,p.y+Math.sin(a0)*p.r);g.arc(p.x,p.y,p.r,a0,a1);s+=on+off;}}
         else g.circle(p.x,p.y,p.r);g.stroke({width:p.width||2,color:c.c,alpha:c.a*al,cap:"round"});break;}
       case "line":{const c=colorOf(p.color);g.moveTo(p.x1,p.y1);g.lineTo(p.x2,p.y2);g.stroke({width:p.width||2,color:c.c,alpha:c.a*al,cap:"round"});break;}
+      // arco solto (a0..a1). É o `ring` sem fechar: serve para anel RACHADO, onde a falha entre os arcos é o
+      // desenho. O `ring` com `dash` não resolve — lá as falhas são regulares e a fase não é escolhida.
+      case "arc":{const c=colorOf(p.color);g.moveTo(p.x+Math.cos(p.a0)*p.r,p.y+Math.sin(p.a0)*p.r);g.arc(p.x,p.y,p.r,p.a0,p.a1);
+        g.stroke({width:p.width||2,color:c.c,alpha:c.a*al,cap:"round"});break;}
       case "burst":{const c=colorOf(p.color);for(let k=0;k<p.n;k++){const an=k/p.n*6.2832+(p.phase||0);g.moveTo(p.x+Math.cos(an)*p.r0,p.y+Math.sin(an)*p.r0);g.lineTo(p.x+Math.cos(an)*p.r1,p.y+Math.sin(an)*p.r1);}
         g.stroke({width:p.width||2,color:c.c,alpha:c.a*al,cap:"round"});break;}}}
   return{root,
     /** Pré-cria os Text do pool (a rasterização da fonte sai do 1º "POW!" da partida). */
     setTheme(){for(let i=0;i<TEXT_PRE;i++)textNode(i).visible=false;},
-    /** kind: bounce|pop|boom|eat|suck|exit|split|merge|chip|shoot|death|vanish|shieldBreak|shieldHit|shieldUp|clash|deflect|starBurst|starHit|starSplit|smash|supernova|bigCrunch|countdown;
+    /** kind: bounce|pop|boom|eat|suck|exit|split|merge|chip|stuck|shoot|death|vanish|shieldBreak|shieldHit|shieldUp|clash|deflect|starBurst|starHit|starSplit|smash|supernova|bigCrunch|countdown;
      *  f: {x,y,r,nx?,ny?,power?,level?,color?,n?,tx?,ty?,tr?} — tx/ty/tr = destino da absorção (quem comeu) */
     add(kind,f,delayMs=0){if(!R.prefs.fx)return;if(active.length>=MAX)active.shift();active.push({kind,f,age:-(delayMs||0),ttl:(TTL[kind]||16)*16.7});},
     spark(x,y,r,color){if(!R.prefs.fx)return;if(sparks.length>=SPARK_MAX)sparks.shift();sparks.push({x,y,r,color,age:0});},

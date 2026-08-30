@@ -1,6 +1,7 @@
 // ── Enums do fio (ver docs/spec/protocol.md) ──────────────────────────────────
 // @ts-check
-export const PROTOCOL_VERSION=13;   // 13: a AUTO-DEFESA virou CARGA — o mesmo u16 do `self` deixou de ser tempo (autoDefT) e passou a contar usos (autoDefN)
+export const PROTOCOL_VERSION=14;   // 14: EVENT.STUCK — o preço que não coube em PEÇAS (as 16 ocupadas) e virou massa: estrela, míssil e asteroide agora dizem isso na tela
+// 13: a AUTO-DEFESA virou CARGA — o mesmo u16 do `self` deixou de ser tempo (autoDefT) e passou a contar usos (autoDefN)
 // 12: POWERUPS DE JOGADOR — o `self` ganhou autoDefT/zoomT/feastT (3×u16) e o POWER_BIT ganhou autodef/zoom/feast
 // 11: NÍVEL do jogador — PLAYERS ganhou `level` (u8), o badge ao lado do nick no placar, no chat e no kill feed
 // 10: cinto de armas — INPUT ganhou SWAP e o `self` ganhou `owned` (bitmask do que dá para chavear)
@@ -28,14 +29,23 @@ export const POWER_BIT={magnet:1,shield:2,autodef:4,zoom:8,feast:16};   // ímã
 export const UPD={X_Y:1,R:2,V:4,FLAGS:8,EXTRA:16};
 export const REMOVE={LEFT_AOI:0,EATEN:1,MERGED:2,POPPED:3,EXPIRED:4,SUCKED:5,DESPAWN:6};
 export const EVENT={EAT:0,POP:1,MERGE:2,SPLIT:3,BH_SUCK:4,DEATH:5,CHIP:6,BOUNCE:7,BOOM:8,EXIT:9,SHOOT:10,SHIELD_BREAK:11,CLASH:12,DEFLECT:13,SHIELD_HIT:14,SHIELD_UP:15,
-  STAR_BURST:16,SUPERNOVA:17,STAR_HIT:18,STAR_SPLIT:19,SMASH:20,ZONE_SHRINK:21,ZONE_BURN:22};
+  STAR_BURST:16,SUPERNOVA:17,STAR_HIT:18,STAR_SPLIT:19,SMASH:20,ZONE_SHRINK:21,ZONE_BURN:22,STUCK:23};
 // ZONE_SHRINK: a zona começou a fechar (r = raio de destino, extra = ticks do fechamento).
 // STAR_HIT: tiro/partícula empurrou a estrela; STAR_SPLIT: 3 hits e ela rachou em várias; SMASH: meteoro trombou na estrela (os dois se partem)
-// ZONE_BURN: uma peça está queimando fora dela (extra = massa perdida). Kinds novos entram no FIM —
+// ZONE_BURN: uma peça está queimando fora dela (extra = massa perdida).
+// STUCK: o preço que não coube em PEÇAS. Estrela, míssil e asteroide cobram parte do preço partindo o alvo;
+// com as PLAYER.MAX_PIECES ocupadas isso simplesmente não acontecia — e não acontecia EM SILÊNCIO, que é o
+// que fez os jogadores se picarem em 16 de propósito para atravessar cinturão e estrela quase de graça.
+// Agora o preço vira massa (STAR.BURN_STUCK, MISSILE.STUCK_SHRINK, ASTEROID.CHIP_STUCK) e este evento é o
+// retorno na tela: `extra` = massa perdida, e o `slotB` diz de onde veio (0 estrela, 1 míssil, 2 asteroide).
+// Kinds novos entram no FIM —
 // EXIT (9) e STAR_SPLIT (19) continuam sem emissor e NÃO são reciclados, para não versionar o fio à toa.
 export const BH_PHASE={GROW:0,ACTIVE:1,FADE:2};
 export const STAR_PHASE={GROW:0,ACTIVE:1,OLD:2};   // OLD = inchando para a supernova
-export const ERROR_CODE={VERSION:4400,FULL:4402,AUTH:4401,NICK_RESERVED:4409,RATE:4429,ROOM:4404,MODE:4405};
+export const ERROR_CODE={VERSION:4400,FULL:4402,AUTH:4401,NICK_RESERVED:4409,NICK_IN_ROOM:4410,RATE:4429,ROOM:4404,MODE:4405};
+// NICK_RESERVED: o nick é de uma conta registrada (regra GLOBAL, do banco).
+// NICK_IN_ROOM: o nick está livre no mundo, mas alguém NESTA sala já o usa. É por sala porque é um problema
+// de leitura da partida — dois planetas com o mesmo nome fazem o kill feed, o chat e o placar mentirem.
 // ── Tamanhos fixos do fio (codec.js) ─────────────────────────────────────────
 export const NAME_MAX_BYTES=32; // nome no PLAYERS: utf-8 truncado em fronteira de code point
 export const INPUT_BYTES=10,SNAPSHOT_HEADER_BYTES=13,SELF_BYTES=31,ZONE_BYTES=21,VOICE_HEADER_BYTES=12,VOICE_UP_HEADER_BYTES=6;

@@ -86,13 +86,19 @@ const OFENSA=new RegExp('\\b('+[
 ].join('|')+')\\b','i');
 /**
  * A saída de um modelo não é uma linha de chat até provar que é. Corta no primeiro `\n` (ele adora listar),
- * tira aspas e asteriscos de "narração", derruba emoji (o repertório do jogo não usa) e recusa qualquer
- * coisa que se denuncie como assistente. Devolve `null` quando não sobrou uma frase utilizável.
+ * tira o próprio nome quando ele vem como prefixo de turno, tira aspas e asteriscos de "narração", derruba
+ * emoji (o repertório do jogo não usa) e recusa qualquer coisa que se denuncie como assistente.
+ * Devolve `null` quando não sobrou uma frase utilizável.
  */
-export function sanitiza(txt){
+export function sanitiza(txt,nome=''){
   let s=String(txt||'');
   s=s.replace(/<think>[\s\S]*?<\/think>/gi,'');            // cinto de segurança para o `think:false`
   s=s.split('\n')[0];
+  // "Manu: cala a boca" → "cala a boca". O histórico vai para o prompt no formato `Nome: texto`, e o modelo
+  // às vezes devolve o próprio turno com o prefixo. Só o PRÓPRIO nome é cortado: qualquer nome serviria de
+  // padrão, mas aí "Lula: fica quieto" (um bot falando COM alguém) perderia o vocativo.
+  if(nome){const esc=String(nome).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    s=s.replace(new RegExp(`^\\s*${esc}\\s*[:>-]\\s*`,'i'),'');}
   s=s.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu,'');   // emoji
   s=s.replace(/^[\s"'“”‘’*`\-–—>]+|[\s"'“”‘’*`]+$/g,'');
   s=s.replace(/\s+/g,' ').trim();
@@ -309,7 +315,7 @@ export function createBotChat({llm,log=null,metrics=null}){
       const {system,user}=montaPrompt(ctx);
       if(metrics)metrics.llm('ask');
       const cru=await llm.chat({system,user});
-      const txt=sanitiza(cru);
+      const txt=sanitiza(cru,ctx&&ctx.nome);
       if(!txt&&cru){if(metrics)metrics.llm('veto');
         if(log)log.debug(`fala descartada: ${JSON.stringify(String(cru).slice(0,120))}`);}
       return txt;},

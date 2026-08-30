@@ -2,7 +2,7 @@
 // ⚠️ Este é o ÚNICO lugar do servidor que interpola SQL. `PERIODS` e `BY` são whitelists literais e têm
 // que continuar sendo: nada vindo de `ctx.query` pode chegar à string, nunca.
 // @ts-check
-import {KD_MIN_KILLS,KD_MIN_GAMES} from '@warspace/shared/levels.js';
+import {KD_MIN_KILLS,KD_MIN_GAMES,levelFromXp} from '@warspace/shared/levels.js';
 
 export const PERIODS={all:'user_stats',week:'v_ranking_week',day:'v_ranking_day'};
 /**
@@ -44,7 +44,7 @@ export function createRanking(db){
     const st=src==='user_stats'?'s':'st';
     const join=src==='user_stats'?'':'LEFT JOIN user_stats st ON st.user_id=s.user_id';
     const r=await db.query(
-      `SELECT s.user_id,u.nick,u.kind,u.country,u.avatar_hash,
+      `SELECT s.user_id,u.nick,u.display_name,u.kind,u.country,u.avatar_hash,
               COALESCE(${st}.xp,0) AS xp,COALESCE(${st}.kills,0) AS kills,COALESCE(${st}.deaths,0) AS deaths,
               COALESCE(${st}.food_eaten,0) AS food_eaten,COALESCE(${st}.games,0) AS games,
               ${val(by,'s')} AS value
@@ -67,7 +67,14 @@ export function createRanking(db){
   }
   return{top,rankOf};
 }
-const linha=(x,rank)=>({rank,userId:Number(x.user_id),nick:x.nick,registered:x.kind==='registered',
+// ⚠️ `level` é DERIVADO aqui e não guardado (mesma regra de shared/src/levels.js: nível é função do XP, e
+// materializá-lo cria uma segunda verdade que envelhece na primeira mudança de curva). Ele faltava, e a
+// coluna "Nível" da tela de ranking desenhava `r.level` — ou seja, saía VAZIA para todo mundo.
+// `name` é o nome da conta (o do Google, quando houver): o nick muda a cada partida, e um pódio construído
+// sobre o nick não diz de QUEM é a marca. Sem display_name, cai no nick, que é o que sempre foi.
+const linha=(x,rank)=>({rank,userId:Number(x.user_id),nick:x.nick,name:x.display_name||x.nick,
+  registered:x.kind==='registered',
   country:x.country||null,avatar:x.avatar_hash||null,
-  value:Number(x.value),xp:Number(x.xp||0),kills:x.kills|0,deaths:x.deaths|0,
+  value:Number(x.value),xp:Number(x.xp||0),level:levelFromXp(Number(x.xp||0)),
+  kills:x.kills|0,deaths:x.deaths|0,
   foodEaten:x.food_eaten|0,games:x.games|0});

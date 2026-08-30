@@ -19,7 +19,7 @@ import {vmaxFor} from "./integrate.js";
 export const LOCAL={POP_DIV:22,POP_MIN:2,POP_MAX:6,POP_DIST:780,             // pop: n=clamp(⌊r/22⌋,2,6), filhos arremessados POP_DIST px (o vírus do agar usa os mesmos 780 do split)
   CHIP_SPEED:360,CHIP_SPREAD:.6,CHIP_N:[1,2],                              // lascas: 1–2 fragmentos a 360 px/s ±.6 rad (raio/vida vêm de fragR/fragLife pela massa)
   FEED_KICK:.04,SHOOT_OFFSET:40,                                           // asteroide alimentado ganha 4% da v do pellet; filho nasce a r+40
-  EJECT_OFFSET:6,DEBRIS_SPREAD:6.2832,                                     // pellet nasce a r+6; debris de míssil sai em todas as direções
+  EJECT_OFFSET:6,                                                          // pellet nasce a r+6 (o leque do debris de míssil virou MISSILE.DEBRIS_SPREAD: é balanceamento, e balanceamento mora em constants.js)
   HOLE_MARGIN:300,HOLE_MIN_RI:10,                                          // buraco fica a ≥300 px da borda; influência <10 px = inerte
   FOOD_OVERLAP:.5,FEED_OVERLAP:.6};                                         // come comida a d<r+fr·.5; asteroide absorve pellet a d<r+er·.6
 
@@ -44,15 +44,43 @@ export function sameTeam(w,a,b){
   return !!(pa&&pb&&pa.team>=0&&pa.team===pb.team);}
 
 /**
- * Fora da zona a peça QUEIMA `zoneBurnRate(r)` da massa por segundo e, ao chegar no piso MIN_PIECE_R, MORRE — sem
- * piso, ao contrário da queimadura de estrela. É o único jeito de a partida acabar sozinha, e é de propósito
- * que a conta usa o CENTRO da peça: "meu ponto está dentro do círculo?" é o que o jogador lê na tela.
+ * Fora da zona a peça QUEIMA `zoneBurnRate(r)·exposição` da massa por segundo e, ao chegar no piso
+ * MIN_PIECE_R, MORRE — sem piso, ao contrário da queimadura de estrela. É o único jeito de a partida acabar
+ * sozinha.
+ * ⚠️ `outOfZone` NÃO é mais o critério da queimadura: ele virou o teste barato ("alguma parte minha está no
+ * gás?"), usado pelo aviso do HUD. Quem cobra é `zoneExposure`, a FATIA do disco que está fora — ver o
+ * comentário dela para o porquê.
  * O evento é estrangulado a 1×/s por peça (o `(tick+id)%30` espalha as emissões entre as peças, em vez de
  * despejar 800 eventos no mesmo tick e estourar o teto de `wireEvents`); a morte sempre emite.
  * Devolve true se a peça morreu — o laço de integração pula o resto dela.
  * @param {World} w @param {Body} pc @param {{x:number,y:number,r:number}} zc
  */
-export const outOfZone=(pc,zc)=>{const dx=pc.x-zc.x,dy=pc.y-zc.y;return dx*dx+dy*dy>zc.r*zc.r;};
+export const outOfZone=(pc,zc)=>{const dx=pc.x-zc.x,dy=pc.y-zc.y,lim=zc.r-pc.r;return lim<=0||dx*dx+dy*dy>lim*lim;};
+/**
+ * Que FATIA do disco da peça está fora do círculo (0..1). É a pergunta que a queimadura faz desde que o
+ * critério deixou de ser o centro — e ela não é firula: com o raio final da zona em 768 px e o teto de peça
+ * em 1000, o gigante com o CENTRO dentro do círculo não queimava nada enquanto o corpo dele cobria a arena
+ * inteira, ou seja, era invencível no exato momento em que o círculo devia decidir a partida. Medindo a
+ * fatia, ele derrete até CABER — e quem já cabe não sente nada. De brinde, isso vira um teto de massa da
+ * SALA que sai de graça da geometria: para todos caberem, Σr² ≤ R².
+ * Três atalhos ANTES de qualquer `acos`, e é por isso que o custo por tick não muda: cabe inteira, está
+ * inteira fora, ou o círculo é que está dentro da peça (o caso do gigante: 1 − R²/r²). Só quem está EM CIMA
+ * da linha paga a conta da lente — dois `acos` e uma raiz.
+ * Função pura de (dx,dy,r,R): servidor e predict.js chegam ao mesmo número sem protocolo novo.
+ * @param {{x:number,y:number,r:number}} pc @param {{x:number,y:number,r:number}} zc
+ */
+export function zoneExposure(pc,zc){
+  const dx=pc.x-zc.x,dy=pc.y-zc.y,d2=dx*dx+dy*dy,r=pc.r,R=zc.r;
+  if(d2<=(R-r)*(R-r)&&R>=r)return 0;                      // cabe inteira dentro do círculo
+  const sr=R+r;if(d2>=sr*sr)return 1;                     // inteira fora
+  const d=Math.sqrt(d2);
+  if(d+R<=r)return 1-(R*R)/(r*r);                         // o CÍRCULO está dentro da peça — o gigante da final
+  const a1=Math.acos(Math.min(1,Math.max(-1,(d2+r*r-R*R)/(2*d*r))));
+  const a2=Math.acos(Math.min(1,Math.max(-1,(d2+R*R-r*r)/(2*d*R))));
+  const k=(-d+r+R)*(d+r-R)*(d-r+R)*(d+r+R);
+  const lente=r*r*a1+R*R*a2-.5*Math.sqrt(k>0?k:0);        // área da interseção
+  const e=1-lente/(Math.PI*r*r);
+  return e<0?0:e>1?1:e;}
 /**
  * Fração da massa por segundo que o gás cobra AGORA. Não é constante: vai de ZONE.BURN (no raio da etapa 0)
  * a ZONE.BURN·BURN_K (no menor círculo), interpolada pelo RAIO ATUAL. O raio é o que servidor e cliente já
@@ -63,17 +91,21 @@ export function zoneBurnRate(r){
   let k=span>0?(r0-r)/span:0;k=k<0?0:k>1?1:k;
   return ZONE.BURN*(1+(ZONE.BURN_K-1)*k);}
 /** Massa depois de um tick fora: a MESMA conta no servidor e na predição do cliente (a paridade é testada). */
-export const zoneMass=(m,dt,r=ZONE.R[0]*WORLD.w)=>m*(1-zoneBurnRate(r)*dt);
+export const zoneMass=(m,dt,r=ZONE.R[0]*WORLD.w,exp=1)=>m*(1-zoneBurnRate(r)*exp*dt);
 export function zoneBurn(w,pc,zc,dt){
-  if(!outOfZone(pc,zc))return false;
-  const m0=pc.mass,m=zoneMass(m0,dt,zc.r),floor=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;
+  const exp=zoneExposure(pc,zc);if(exp<=ZONE.EXPOSE_MIN)return false;
+  const m0=pc.mass,m=zoneMass(m0,dt,zc.r,exp),floor=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;
   // "para fora": a direção do centro da zona para a peça. É por onde as pelotas saem, e é o que faz
   // recuperá-las custar entrar mais fundo no gás em vez de ser lucro de graça na beirada.
-  const dx=pc.x-zc.x,dy=pc.y-zc.y,d=Math.sqrt(dx*dx+dy*dy)||1,ux=dx/d,uy=dy/d;
+  // ⚠️ Quando a peça ENGLOBA o círculo (o gigante do fim), o centro dela fica praticamente em cima do centro
+  // da zona e essa direção some — os cacos nasciam no meio do próprio planeta e voltavam para dentro dele
+  // assim que a imunidade acabava. Sem direção, sorteia-se uma: o que importa é sair, não para que lado.
+  const dx=pc.x-zc.x,dy=pc.y-zc.y,dd=Math.sqrt(dx*dx+dy*dy);
+  let ux,uy;if(dd>pc.r*.05){ux=dx/dd;uy=dy/dd;}else{const an=w.rng.angle();ux=Math.cos(an);uy=Math.sin(an);}
   if(m<=floor){   // chegou no piso: morre e larga TUDO o que ainda tinha, ali mesmo no gás
     const resto=pc.shed+m0;pc.shed=0;
     w.events.push({type:"ZONE_BURN",slot:pc.owner,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r,lost:m0,died:true});
-    spillFrag(w,pc.x,pc.y,ux,uy,resto,ZONE.SHED_N_DEATH,ZONE.SHED_SPEED*1.6,6.2832,-1,0);
+    spillFrag(w,pc.x,pc.y,ux,uy,resto,ZONE.SHED_N_DEATH,(pc.r+ZONE.SHED_DIST)*EJECT.DRAG*1.6,6.2832,-1,0);
     w.killPiece(pc,"zone",-1);return true;}
   setMass(pc,m);
   // a massa arrancada se acumula e vira UMA pelota a cada SHED_TICKS: a conta continua contínua (é a que a
@@ -81,7 +113,10 @@ export function zoneBurn(w,pc,zc,dt){
   pc.shed+=m0-m;
   if((w.tick+pc.id)%ZONE.SHED_TICKS===0&&pc.shed>=ZONE.SHED_MIN*EJECT_MASS){
     const lost=pc.shed;pc.shed=0;
-    spillFrag(w,pc.x+ux*pc.r,pc.y+uy*pc.r,ux,uy,lost,1,ZONE.SHED_SPEED,ZONE.SHED_SPREAD,pc.owner,ownerImmune(pc.r));
+    // A pelota tem que LIMPAR o planeta: SHED_SPEED fixo rende 70 px de alcance (v/DRAG), o que num r=856 é
+    // dentro do próprio corpo — e aí o gigante reengolia o que o gás arrancava e parava de encolher, em
+    // equilíbrio, exatamente onde a zona devia estar cobrando dele. Distância em pixels, como todo empurrão.
+    spillFrag(w,pc.x+ux*pc.r,pc.y+uy*pc.r,ux,uy,lost,1,(pc.r+ZONE.SHED_DIST)*EJECT.DRAG,ZONE.SHED_SPREAD,pc.owner,ownerImmune(pc.r));
     w.events.push({type:"ZONE_BURN",slot:pc.owner,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r,lost,died:false});}
   return false;}
 
@@ -96,6 +131,14 @@ export const fragKind=m=>m>=FRAG.RICH_MASS?FRAG_KIND.RICH:FRAG_KIND.PLAIN;
  * valer mais do que o de um planetinha para quem o recolher. `lost <= 0` não solta nada (nem cria massa do nada).
  * @param {World} w
  */
+/**
+ * Quanto tempo o dono fica sem poder recolher o que saiu dele. Fixo em 20 ticks (0,33 s) o planetão
+ * alcançava a pelota e a re-engolia — medido, 63 de 86 voltavam e a massa mal caía. Agora soma o tempo que
+ * ele leva para percorrer o próprio raio (r/vmax), então o que sai custa massa de verdade em qualquer tamanho.
+ * ⚠️ Fica AQUI, e não lá embaixo junto do eject, porque quatro coisas o usam — cusparada, queimadura da
+ * zona, lasca de asteroide e caco de míssil — e duas delas são declaradas antes.
+ */
+const ownerImmune=r=>EJECT.OWNER_IMMUNE_TICKS+Math.round(r/vmaxFor(r)/DT);
 export function spillFrag(w,x,y,ux,uy,lost,n,speed,spread,owner,immune,kind=-1){
   if(lost<=0||n<1)return;const rng=w.rng,part=lost/n,fr=fragR(part),life=fragLife(part),k=kind<0?fragKind(part):kind;
   const base=Math.atan2(uy,ux);
@@ -150,17 +193,25 @@ export function eatFood(w,ps,pc,f){
   if(t===FOOD_TYPE.AMMO){const cap=weaponOf(ps.weapon).ammo;if(ammoOf(ps)<cap)addAmmo(ps,1);w.events.push({type:"AMMO",slot:ps.slot});}   // munição é da arma EQUIPADA (no míssil o teto é o MAX_AMMO de sempre)
   else if(t===FOOD_TYPE.SHIELD){if(pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL)pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
-  else if(t===FOOD_TYPE.MAGNET){if(pc.r<=POWERUP.MAGNET_MAX_R)pc.magnetUntil=(pc.magnetUntil>tick?pc.magnetUntil:tick)+POWERUP.TICKS;   // só o planetão de verdade fica de fora; quem contém o alcance é MAGNET_RANGE_MAX
-    w.events.push({type:"POWERUP",slot:ps.slot,kind:"magnet"});}
+  // Acima de MAGNET_MAX_R o ímã não vale — mas o grão não podia SUMIR sem dar nada: comida consumida,
+  // evento emitido, som tocado e efeito nenhum é o pior jeito de um powerup falhar. Grande demais, vira comida.
+  else if(t===FOOD_TYPE.MAGNET){
+    if(pc.r<=POWERUP.MAGNET_MAX_R){pc.magnetUntil=(pc.magnetUntil>tick?pc.magnetUntil:tick)+POWERUP.TICKS;
+      w.events.push({type:"POWERUP",slot:ps.slot,kind:"magnet"});}
+    else{const k=ps.feastUntil>tick?POWERUP.FEAST_K:1;addMass(pc,f.mass*EAT.FOOD_GAIN*k);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD*k);}}
   else if(t===FOOD_TYPE.MERGE){const arr=ps.pieces;for(let i=0;i<arr.length;i++){const q=arr[i];if(!q.dead)q.mergeAt=tick;}   // vale para TODAS as peças: o poder é justamente juntar quem foi picado
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"merge"});}
   // ── os quatro de JOGADOR (ver POWERUP em constants.js) ──
   // ⚠️ ANTES do ramo de arma, de propósito: `isWeaponFood` já protege a faixa, mas a ordem também importa
   // para quem ler o código depois — powerup é powerup, arma é arma, e o `else if` encadeado é a única
   // documentação executável dessa separação.
-  else if(t===FOOD_TYPE.AUTODEF){ps.autoDefN=1;   // CARGA, não tempo — e nunca acumula: ou você tem o escudo automático, ou não tem
+  else if(t===FOOD_TYPE.AUTODEF){if(ps.autoDefN<POWERUP.AUTODEF_MAX)ps.autoDefN++;   // CARGA, não tempo — e ACUMULA até AUTODEF_MAX: o ícone fica lá, eterno, até o dia em que salva sua vida
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"autodef"});}
-  else if(t===FOOD_TYPE.AMMO_PLUS){addAmmo(ps,1);   // RARO: um míssil AGORA, furando o teto da arma (o teto é uma comparação, e este é o único lugar que passa por cima dela)
+  // ⚠️ RARO: EMPRESTA uma bala ACIMA do teto da arma — e só uma. Era `addAmmo(ps,1)` cru, sem comparação
+  // nenhuma: o único lugar do jogo que passava por cima do teto passava por cima dele SEMPRE, e a munição
+  // acumulava sem fim (9 mísseis com MAX_AMMO 3). Com AMMO_OVER o empréstimo é de uma bala só: gastou,
+  // o teto normal volta a valer e é preciso achar outro powerup para ter a quarta de novo.
+  else if(t===FOOD_TYPE.AMMO_PLUS){const cap=weaponOf(ps.weapon).ammo+MISSILE.AMMO_OVER;if(ammoOf(ps)<cap)addAmmo(ps,1);
     w.events.push({type:"AMMO",slot:ps.slot});w.events.push({type:"POWERUP",slot:ps.slot,kind:"ammoPlus"});}
   else if(t===FOOD_TYPE.ZOOM){ps.zoomUntil=(ps.zoomUntil>tick?ps.zoomUntil:tick)+POWERUP.ZOOM_TICKS;
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"zoom"});}
@@ -234,13 +285,15 @@ export function pieceAsteroid(w,pc,a){
   const dd=Math.sqrt(d2)||1,nx=dx/dd,ny=dy/dd;
   const vin=(velX(pc)-velX(a))*nx+(velY(pc)-velY(a))*ny;   // >0: estão se aproximando
   const tier=shieldTierFor(vin),blindada=pc.shieldLv>0&&tier<POWERUP.SHIELD_MAX_LEVEL;
-  if(!blindada&&pc.r>a.r*ASTEROID.POP_RATIO){const lim=pc.r*ASTEROID.POP_DIST;
+  let travado=false;
+  if(!blindada&&pc.r>a.r*ASTEROID.POP_RATIO){const lim=pc.r*ASTEROID.POP_DIST,mira=impactParam(pc,a)<lim;
     if(d2<lim*lim&&popAsteroid(w,ps,pc,a)){if(pc.shieldLv>0)breakShield(w,pc,-1);return;}   // rápida demais: leva o escudo junto
-    if(liveCount(ps.pieces)<PLAYER.MAX_PIECES&&impactParam(pc,a)<lim)return;}   // vindo para o miolo: deixa entrar (vai estourar); de raspão cai no quique
+    if(mira&&liveCount(ps.pieces)<PLAYER.MAX_PIECES)return;   // vindo para o miolo E há vaga: deixa entrar (vai estourar); de raspão cai no quique
+    travado=mira;}   // mirando o miolo SEM vaga: passar por cima da rocha deixou de ser de graça (ver ASTEROID.CHIP_STUCK)
   const s=pc.r+a.r;if(d2>=s*s||d2<=0)return;
   const vn=bouncePiece(pc,a,ASTEROID.E,true,false);
   if(pc.shieldLv>0){if(tier>0)for(let i=0;i<tier&&pc.shieldLv>0;i++)hitShield(w,pc,-1,nx,ny,WEAPON_ASTEROIDE);}
-  else chipPiece(w,ps,pc,a,nx,ny);
+  else chipPiece(w,ps,pc,a,nx,ny,travado);
   if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,pc,a,vn);
   a.dead=true;w.queueAsteroid(a.type,ASTEROID.RESPAWN_TICKS);   // encostou, EXPLODIU: a rocha nunca sobra para ficar batendo de novo
   w.events.push({type:"POP",slot:ps.slot,asteroidId:a.id,x:a.x,y:a.y,r:a.r});}
@@ -259,11 +312,17 @@ export function popAsteroid(w,ps,pc,a){
  * mínimo não perde nada e também não cospe fragmento nenhum (antes ela criava 52–104 de massa do nada), e a
  * lasca de um planetão vira um pedaço gordo de verdade em vez de duas pelotinhas de tamanho fixo.
  */
-export function chipPiece(w,ps,pc,a,nx,ny){
-  const m0=pc.mass;let r=pc.r*Math.sqrt(1-ASTEROID.CHIP);if(r<PLAYER.MIN_PIECE_R)r=PLAYER.MIN_PIECE_R;setR(pc,r);
-  const lost=m0-pc.mass,rng=w.rng,n=rng.int(LOCAL.CHIP_N[0],LOCAL.CHIP_N[1]);
-  spillFrag(w,pc.x-nx*pc.r,pc.y-ny*pc.r,-nx,-ny,lost,n,LOCAL.CHIP_SPEED,LOCAL.CHIP_SPREAD,ps.slot,EJECT.OWNER_IMMUNE_TICKS);
-  w.events.push({type:"CHIP",slot:ps.slot,pieceId:pc.id,x:pc.x+nx*pc.r,y:pc.y+ny*pc.r,r:pc.r*.4,nx,ny});}
+export function chipPiece(w,ps,pc,a,nx,ny,travado=false){
+  const m0=pc.mass,k=travado?ASTEROID.CHIP_STUCK:ASTEROID.CHIP;
+  let r=pc.r*Math.sqrt(1-k);if(r<PLAYER.MIN_PIECE_R)r=PLAYER.MIN_PIECE_R;setR(pc,r);
+  const lost=m0-pc.mass,rng=w.rng,n=travado?LOCAL.CHIP_N[1]+1:rng.int(LOCAL.CHIP_N[0],LOCAL.CHIP_N[1]);
+  // Sem vaga a massa vai para o lado OPOSTO (+n, atravessando a rocha) e LONGE, com a imunidade que escala
+  // com o raio: a lasca comum sai para trás, que é justo o lado para onde o quique já empurra a peça — o
+  // dono a recolhia sem sair do lugar. Com vaga nada muda.
+  if(travado)spillFrag(w,pc.x+nx*pc.r,pc.y+ny*pc.r,nx,ny,lost,n,(pc.r+ASTEROID.CHIP_STUCK_DIST)*EJECT.DRAG,LOCAL.CHIP_SPREAD,ps.slot,ownerImmune(pc.r));
+  else spillFrag(w,pc.x-nx*pc.r,pc.y-ny*pc.r,-nx,-ny,lost,n,LOCAL.CHIP_SPEED,LOCAL.CHIP_SPREAD,ps.slot,EJECT.OWNER_IMMUNE_TICKS);
+  w.events.push({type:"CHIP",slot:ps.slot,pieceId:pc.id,x:pc.x+nx*pc.r,y:pc.y+ny*pc.r,r:pc.r*.4,nx,ny});
+  if(travado)w.events.push({type:"STUCK",slot:ps.slot,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r,lost,cause:STUCK_ASTEROID});}
 
 // ── estrelas ──
 /**
@@ -300,8 +359,24 @@ export function pieceStar(w,pc,st){
  * todos com o cooldown de fusão renovado. Usada pela estrela E pelo míssil (o tiro parte o alvo).
  * @param {World} w @param {PlayerState} ps @param {Body} pc
  */
+export const SHATTER_OK=0,SHATTER_NO_ROOM=1,SHATTER_TOO_SMALL=2;
+/** De onde veio o preço que não coube em peças (vai no `cause` do evento STUCK e vira ícone no kill feed). */
+export const STUCK_STAR=0,STUCK_MISSILE=1,STUCK_ASTEROID=2;
+/**
+ * Por que a peça NÃO pode estilhaçar agora: 0 = pode · 1 = sem vaga (as PLAYER.MAX_PIECES ocupadas) ·
+ * 2 = massa abaixo de duas peças mínimas.
+ * ⚠️ Existe porque quem chama precisa saber ANTES de cobrar o preço, e porque os dois motivos NÃO valem a
+ * mesma coisa: **sem vaga é escolha do jogador** (foi ele que se picou em 16 para atravessar o cinturão, e
+ * por isso vira PREÇO), enquanto **massa mínima é o piso do jogo** (e cobrar duas vezes de quem já está no
+ * chão não é preço, é chute). Antes os dois saíam como o MESMO `false` mudo de `shatterPiece`, e era isso
+ * que fazia atravessar estrela e asteroide com 16 pedaços custar quase nada, sem nada na tela dizendo nada.
+ * @param {PlayerState} ps @param {Body} pc
+ */
+export const shatterBlock=(ps,pc)=>PLAYER.MAX_PIECES-liveCount(ps.pieces)<1?SHATTER_NO_ROOM:
+  pc.mass<2*PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R?SHATTER_TOO_SMALL:SHATTER_OK;
 export function shatterPiece(w,ps,pc,ux,uy,nWanted,dist){
-  const tick=w.tick,rng=w.rng,room=PLAYER.MAX_PIECES-liveCount(ps.pieces);if(room<1)return false;
+  if(shatterBlock(ps,pc))return false;   // uma fonte só para as duas guardas (ver shatterBlock)
+  const tick=w.tick,rng=w.rng,room=PLAYER.MAX_PIECES-liveCount(ps.pieces);
   let n=nWanted;if(n>room)n=room;
   const maxN=Math.floor(pc.mass/(PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R))-1;if(n>maxN)n=maxN;if(n<1)return false;
   const nr=pc.r/Math.sqrt(n+1),base=Math.atan2(uy,ux);setR(pc,nr);pc.mergeAt=tick+mergeTicks(nr);
@@ -319,11 +394,16 @@ export function shatterPiece(w,ps,pc,ux,uy,nWanted,dist){
  * @param {World} w @param {Body} st
  */
 export function starShatter(w,ps,pc,st,ux,uy){
-  const m0=pc.mass,r0=pc.r,floor=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R,keep=m0*(1-STAR.BURN);
+  // Sem vaga de peça o estilhaço não acontece — e era assim que atravessar estrela em 16 pedaços saía pela
+  // metade do preço. A estrela então cobra na moeda DELA: queima BURN_STUCK em vez de BURN.
+  const travado=shatterBlock(ps,pc)===SHATTER_NO_ROOM;
+  const m0=pc.mass,r0=pc.r,floor=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;
+  const keep=m0*(1-(travado?STAR.BURN_STUCK:STAR.BURN));
   setMass(pc,keep>floor?keep:floor);const burn=m0-pc.mass;   // medido ANTES do estilhaço, que reparte o que sobrou
-  const n=w.rng.int(STAR.SHATTER_N[0],STAR.SHATTER_N[1]);
-  shatterPiece(w,ps,pc,ux,uy,n,STAR.SHATTER_DIST);
-  w.events.push({type:"STAR_BURST",slot:ps.slot,starId:st.id,x:pc.x,y:pc.y,r:r0,burn});return true;}
+  if(!travado){const n=w.rng.int(STAR.SHATTER_N[0],STAR.SHATTER_N[1]);shatterPiece(w,ps,pc,ux,uy,n,STAR.SHATTER_DIST);}
+  w.events.push({type:"STAR_BURST",slot:ps.slot,starId:st.id,x:pc.x,y:pc.y,r:r0,burn});
+  if(travado)w.events.push({type:"STUCK",slot:ps.slot,pieceId:pc.id,x:pc.x,y:pc.y,r:r0,lost:burn,cause:STUCK_STAR});
+  return true;}
 /**
  * Míssil acerta a estrela: o míssil morre, empurra a estrela (HIT_PUSH, menos quanto maior ela for) e conta um hit.
  * @param {World} w @param {Body} m @param {Body} st
@@ -521,18 +601,33 @@ function clusterSplit(w,m){
  * Impacto em peça de outro dono: com escudo, o míssil explode no escudo e tira 1 nível (SHIELD_HIT, ou SHIELD_BREAK ao
  * chegar a 0; o timer de evolução reinicia; massa intacta). Sem escudo: peça encolhe para r·HIT_SHRINK (mín. MIN_PIECE_R)
  * e solta HIT_DEBRIS fragmentos que somam EXATAMENTE a massa arrancada (BOOM) — acertar um planetão deixa uma
- * colheita gorda no chão em vez de evaporar 39% dele. O míssil morre nos dois casos. @param {World} w @param {Body} pc @param {Body} m
+ * colheita gorda no chão em vez de evaporar 39% dele. O míssil morre nos dois casos.
+ * ⚠️ Os cacos saem do lado OPOSTO ao míssil, da BORDA da peça, e longe (ver MISSILE.DEBRIS_* em constants):
+ * antes nasciam no CENTRO, em todas as direções e com 146 px de alcance — dentro do próprio planeta —, e o
+ * dono os reengolia em 0,33 s. O dano do míssil era, literalmente, um empréstimo.
+ * ⚠️ E quando o alvo NÃO TEM VAGA para ser partido (as 16 peças ocupadas), o encolhimento é STUCK_SHRINK em
+ * vez de HIT_SHRINK: partir o alvo é metade do dano desta arma, e quem não pode ser partido paga em massa.
+ * @param {World} w @param {Body} pc @param {Body} m
  */
 export function pieceMissile(w,pc,m){
-  if(sameTeam(w,m.owner,pc.owner))return;const dx=m.x-pc.x,dy=m.y-pc.y,s=pc.r+m.r;if(dx*dx+dy*dy>=s*s)return;
-  if(pc.shieldLv>0){m.dead=true;const d=Math.sqrt(dx*dx+dy*dy)||1;hitShield(w,pc,m.owner,dx/d,dy/d,armaDoMissil(m));return;}
-  const wp=weaponOf(m.hue),shrink=wp.shrink==null?MISSILE.HIT_SHRINK:wp.shrink;
+  if(sameTeam(w,m.owner,pc.owner))return;const dx=m.x-pc.x,dy=m.y-pc.y,d2=dx*dx+dy*dy,s=pc.r+m.r;if(d2>=s*s)return;
+  const d=Math.sqrt(d2)||1;
+  if(pc.shieldLv>0){m.dead=true;hitShield(w,pc,m.owner,dx/d,dy/d,armaDoMissil(m));return;}
+  const ux=-dx/d,uy=-dy/d,ps=w.players.get(pc.owner),wp=weaponOf(m.hue);   // (ux,uy) = para LONGE do míssil: a MESMA direção do estilhaço, e é para lá que a massa resvala
+  // ⚠️ O bloqueio é medido ANTES do setR: a peça encolhida poderia atravessar o limiar de massa e mudar o
+  // MOTIVO do bloqueio no meio da conta — e os dois motivos cobram coisas diferentes (ver shatterBlock).
+  const bloq=wp.shatter?shatterBlock(ps,pc):SHATTER_OK,travado=bloq===SHATTER_NO_ROOM;
+  const shrink=wp.shrink!=null?wp.shrink:(travado?MISSILE.STUCK_SHRINK:MISSILE.HIT_SHRINK);
   const m0=pc.mass;let r=pc.r*shrink;if(r<PLAYER.MIN_PIECE_R)r=PLAYER.MIN_PIECE_R;setR(pc,r);
-  spillFrag(w,pc.x,pc.y,1,0,m0-pc.mass,MISSILE.HIT_DEBRIS,MISSILE.DEBRIS_SPEED,LOCAL.DEBRIS_SPREAD,pc.owner,EJECT.OWNER_IMMUNE_TICKS);
+  spillFrag(w,pc.x+ux*pc.r,pc.y+uy*pc.r,ux,uy,m0-pc.mass,MISSILE.HIT_DEBRIS,
+    (pc.r+MISSILE.DEBRIS_DIST)*EJECT.DRAG,MISSILE.DEBRIS_SPREAD,pc.owner,ownerImmune(pc.r));
   m.dead=true;w.events.push({type:"BOOM",x:m.x,y:m.y,r:pc.r,slot:pc.owner,bySlot:m.owner,weapon:armaDoMissil(m)});
   if(!wp.shatter)return;   // a Rajada arranha e empurra; PARTIR o alvo é privilégio do míssil e do cacho
-  const d=Math.sqrt(dx*dx+dy*dy)||1,n=w.rng.int(MISSILE.SHATTER_N[0],MISSILE.SHATTER_N[1]);
-  shatterPiece(w,w.players.get(pc.owner),pc,-dx/d,-dy/d,n,MISSILE.SHATTER_DIST);}   // o tiro PARTE o alvo, não só arranca massa: é a arma anti-gigante
+  if(!bloq){const n=w.rng.int(MISSILE.SHATTER_N[0],MISSILE.SHATTER_N[1]);
+    shatterPiece(w,ps,pc,ux,uy,n,MISSILE.SHATTER_DIST);return;}   // o tiro PARTE o alvo, não só arranca massa: é a arma anti-gigante
+  // Não coube: o preço que ia ser cobrado em PEÇAS já foi cobrado em massa (STUCK_SHRINK, acima). Falta o
+  // retorno na tela — sem ele o jogador só veria a massa sumir, que é como isto falhava até hoje.
+  if(travado)w.events.push({type:"STUCK",slot:pc.owner,pieceId:pc.id,x:pc.x,y:pc.y,r:pc.r,lost:m0-pc.mass,cause:STUCK_MISSILE});}
 /**
  * Míssil × míssil (donos diferentes), teste varrido no último passo: menor distância entre os centros ao longo do
  * movimento relativo do tick (segmento p−v·DT → p) < ra+rb → ambos morrem, CLASH no ponto médio. Retorna true se chocou.
@@ -586,14 +681,20 @@ export function applySplit(w,ps){
   return did;}
 /**
  * Auto-split do agar.io: peça acima de PLAYER.MAX_R se reparte sozinha em n=⌊mass/MAX_R²⌋ filhos (em leque, cada um
- * com boost de SPLIT.DIST) em vez de parar de crescer. Só quando NÃO há vaga de peça o raio é cortado em MAX_R — é o único
- * ponto em que massa de jogador se perde. Retorna quantas peças se repartiram.
+ * com boost de SPLIT.DIST) em vez de parar de crescer. Sem vaga de peça o raio é cortado em MAX_R e o excesso
+ * é CUSPIDO em fragmentos (PLAYER.OVER_N/OVER_DIST) — antes ele evaporava, e era o único ponto do jogo fora
+ * do DECAY em que massa de jogador se perdia. Retorna quantas peças se repartiram.
  * @param {World} w @param {PlayerState} ps
  */
 export function autoSplit(w,ps){
   const arr=ps.pieces,len=arr.length,tick=w.tick,rng=w.rng,cap=PLAYER.MAX_R,cap2=cap*cap;let count=liveCount(arr),did=0;
   for(let i=0;i<len;i++){const pc=arr[i];if(pc.dead||pc.r<=cap)continue;
-    const room=PLAYER.MAX_PIECES-count;if(room<1){setR(pc,cap);continue;}
+    // Sem vaga o raio é cortado — mas o excesso CUSPIDO, não apagado. `setR(pc,cap)` sozinho era o único
+    // lugar do jogo, fora do DECAY, em que massa de jogador evaporava (e em silêncio, sem evento nenhum).
+    const room=PLAYER.MAX_PIECES-count;
+    if(room<1){const m0=pc.mass;setR(pc,cap);const an=rng.angle(),ux=Math.cos(an),uy=Math.sin(an);
+      spillFrag(w,pc.x+ux*pc.r,pc.y+uy*pc.r,ux,uy,m0-pc.mass,PLAYER.OVER_N,(pc.r+PLAYER.OVER_DIST)*EJECT.DRAG,6.2832,ps.slot,ownerImmune(pc.r));
+      continue;}
     let n=Math.floor(pc.mass/cap2);if(n>room)n=room;if(n<1)n=1;
     const nr=pc.r/Math.sqrt(n+1);setR(pc,nr);pc.mergeAt=tick+mergeTicks(nr);
     let an=rng.angle();const stepA=2*Math.PI/n;
@@ -603,12 +704,6 @@ export function autoSplit(w,ps){
       w.events.push({type:"SPLIT",slot:ps.slot,pieceId:pc.id,childId:q.id,x:pc.x,y:pc.y,r:nr});count++;an+=stepA;}
     did++;}
   return did;}
-/**
- * Quanto tempo o dono fica sem poder recolher a própria cusparada. Fixo em 20 ticks (0,33 s) o planetão
- * alcançava a pelota e a re-engolia — medido, 63 de 86 voltavam e a massa mal caía. Agora soma o tempo que
- * ele leva para percorrer o próprio raio (r/vmax), então cuspir custa massa de verdade em qualquer tamanho.
- */
-const ownerImmune=r=>EJECT.OWNER_IMMUNE_TICKS+Math.round(r/vmaxFor(r)/DT);
 /**
  * Eject: pellet r=ejectR(pc.r) — PROPORCIONAL a quem cospe — com massa r²·MASS_FACTOR, a (velocidade padrão da
  * peça) + dir·sp. Com raio fixo, um planeta de 360.000 precisava de 3.419 cusparadas para se esvaziar, e
@@ -692,6 +787,21 @@ function aimTarget(w,slot,src,tx,ty,out){
   out[0]=id;out[1]=kind;}
 const AIM=[-1,0];
 /**
+ * O alvo travado ainda vale? Vale se continua VIVO e dentro de AIM_RANGE de quem atira — as duas condições
+ * que `aimTarget` já exige de qualquer alvo. Devolve o corpo (ou o líder da vítima) ou null.
+ * @param {World} w @param {PlayerState} ps @param {Body} src
+ */
+function aimLockAlive(w,ps,src){
+  const id=ps.aimLockId;if(id<0)return null;
+  let b=null;
+  if(ps.aimLockKind===0){const o=w.players.get(id);if(!o||!o.alive||sameTeam(w,id,ps.slot))return null;b=firstLive(o.pieces);}
+  else{for(const m of w.missiles)if(m.id===id&&!m.dead){b=m;break;}
+    if(!b)for(const a of w.asteroids)if(a.id===id&&!a.dead){b=a;break;}
+    if(!b)for(const q of w.stars)if(q.id===id&&!q.dead){b=q;break;}}
+  if(!b)return null;
+  const dx=b.x-src.x,dy=b.y-src.y;
+  return dx*dx+dy*dy<MISSILE.AIM_RANGE*MISSILE.AIM_RANGE?b:null;}
+/**
  * Fire: gasta 1 míssil e **um nível** do escudo da peça que atira. Sai da primeira peça viva, e só depois da
  * carência de spawn (`ps.fireCdUntil`, MISSILE.SPAWN_CD_TICKS): recém-nascido não metralha do spawn. Com `ps.fireAim`
  * (tiro mirado, o jogador segurou o botão) o míssil **persegue a bolinha mais próxima do ponteiro** (peça, míssil,
@@ -771,9 +881,19 @@ export function autoDefend(w,ps){
 /** Míssil e Cacho: o teleguiado de sempre. O `hue` do corpo carrega a arma (é livre no míssil) e vai no fio. */
 function fireHoming(w,ps,src,im=undefined){
   if(ps.fireAim){dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const ax=DIR[0],ay=DIR[1];aimTarget(w,ps.slot,src,ps.tx,ps.ty,AIM);
+    // a trava SOBREVIVE ao soltar o botão (MISSILE.AIM_HOLD_TICKS): mirar custa movimento, e refazer a mira
+    // inteira para mandar o segundo míssil no mesmo alvo era pagar duas vezes pelo mesmo trabalho
+    if(AIM[0]>=0){ps.aimLockId=AIM[0];ps.aimLockKind=AIM[1];ps.aimLockUntil=w.tick+MISSILE.AIM_HOLD_TICKS;}
     const m=w.addMissile(src.x,src.y,ax*MISSILE.SPEED,ay*MISSILE.SPEED,ps.slot,AIM[0]);m.type=AIM[1];m.hue=ps.weapon;
     w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:AIM[1]?-1:AIM[0],targetMissile:AIM[1]?AIM[0]:-1,aimed:true,weapon:ps.weapon});return true;}
+  // Tiro comum COM a trava viva: sai no mesmo alvo, sem precisar segurar o botão de novo. Perde para a
+  // interceptação de um teleguiado entrante (`im`), que é defesa e vem antes de qualquer escolha ofensiva.
   if(im===undefined)im=incomingMissile(w,ps.slot,src.x,src.y,MISSILE.INTERCEPT_DIST,true);   // só quando alguém chama fora do applyFire
+  if(!im&&w.tick<ps.aimLockUntil){const alvo=aimLockAlive(w,ps,src);
+    if(alvo){dirTo(src.x,src.y,alvo.x,alvo.y,DIR);
+      const m=w.addMissile(src.x,src.y,DIR[0]*MISSILE.SPEED,DIR[1]*MISSILE.SPEED,ps.slot,ps.aimLockId);m.type=ps.aimLockKind;m.hue=ps.weapon;
+      w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:ps.aimLockKind?-1:ps.aimLockId,targetMissile:ps.aimLockKind?ps.aimLockId:-1,aimed:true,weapon:ps.weapon});return true;}
+    ps.aimLockUntil=0;}   // o alvo morreu ou fugiu do alcance: a trava morre com ele
   let ux,uy,best=-1,kind=0,foe=-1;
   if(im){dirTo(src.x,src.y,im.x,im.y,DIR);ux=DIR[0];uy=DIR[1];best=im.id;kind=1;foe=im.owner;}
   else{

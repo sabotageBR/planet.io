@@ -8,7 +8,7 @@
 // cada encode devolve uma vista reutilizada; se um socket ficou com bytes pendentes trocamos de
 // writer (o antigo fica com o socket até drenar) em vez de copiar a cada envio.
 // @ts-check
-import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,BOT_CHAT,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,VOICE,FEED} from '@warspace/shared/constants.js';
+import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,botCountry,BOT_CHAT,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,NOTICE,VOICE,FEED,WEAPON} from '@warspace/shared/constants.js';
 import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent,encodeZone,encodeVoice} from '@warspace/shared/protocol/index.js';
 import {rectHas} from '@warspace/shared/camera.js';
 import {createRng} from '@warspace/shared/rng.js';
@@ -41,7 +41,7 @@ export class Room{
     // lobby: ninguém está no MAPA ainda. `lobbyUntil` é a janela em que os humanos que procuram battle
     // royale caem juntos; `startsAt` só é escrito quando a contagem regressiva começa (0 = ainda enchendo).
     this.phase=this.mode.lobby?'lobby':'live';this.lobbyStart=0;this.lobbyUntil=0;this.startsAt=0;this.nextBotAt=0;this.zone=null;
-    this.usedNicks=new Set();this.lobbyAt=0;
+    this.usedNicks=new Set();this.lobbyAt=0;this.flagsDirty=false;this.digitaFila=[];
     // ninguém tem peça no lobby, mas a paz fica ligada como cinto de segurança: se um dia alguém nascer
     // cedo por engano, não vira almoço antes de a partida existir
     this.sim.world.peace=this.phase==='lobby';
@@ -122,11 +122,14 @@ export class Room{
     const gp=this.sim.addBot(this.freeSlot(),{name,skinId:this.rng.int(0,BOT_SKINS-1),team,spawn,
       level:this.mode.realNicks?this.rng.int(1,35):0});
     gp.persona=pickPersona(this.rng,this._personas);
+    gp.country=botCountry(this.rng,name);   // bandeira ao lado do nick: o humano já tinha país, e 49 vazias apontavam quem era gente
+    this.flagsDirty=true;
     return gp;}
   /** Par que faltava do topUpBots: tira bots (o Battle Royale abre vaga para humano até o último segundo). */
   trimBots(n){let k=n;
     for(const gp of [...this.sim.players.values()])
-      if(k>0&&gp.isBot){this.sim.remove(gp.slot);k--;}   // Sim.remove marca as peças com REMOVE.DESPAWN, que o snapshot já traduz
+      if(k>0&&gp.isBot){if(gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());
+        this.sim.remove(gp.slot);k--;this.flagsDirty=true;}   // Sim.remove marca as peças com REMOVE.DESPAWN, que o snapshot já traduz
     return n-k;}
   freeSlot(){let s=0;while(this.sim.players.has(s))s++;return s;}
   get humanCount(){return this.sessions.size;}
@@ -158,13 +161,22 @@ export class Room{
   /** Segundos restantes da rodada (0 se já acabou). */
   roundLeft(){const left=(this.roundStart+this.roundTicks-this.sim.tick)/TICK_HZ;return left>0?Math.round(left):0;}
   // ── sessões ──
+  /**
+   * O nick já está em uso NESTA sala? Dois planetas com o mesmo nome na mesma partida é ilegível: o kill
+   * feed, o chat e o placar passam a mentir, e quem foi morto não sabe por quem.
+   * ⚠️ `usedNicks` sempre existiu, mas era WRITE-ONLY para humanos — só o gerador de bots o lia, para não
+   * repetir. Agora ele é consultado na entrada E limpo na saída (ver `leave`): sem a limpeza a sala vira
+   * uma lista negra que só cresce, e quem sai não consegue voltar com o próprio nome.
+   */
+  nickTaken(name){const n=String(name||'').trim().toLowerCase();return !!n&&this.usedNicks.has(n);}
   /** Entra no menor slot livre. Devolve o slot. */
-  join(session,{name,registered=false,skinId=0,sessionId=null,userId=null,level=0,party=null}){
+  join(session,{name,registered=false,skinId=0,sessionId=null,userId=null,level=0,country=null,party=null}){
     const lobby=this.phase==='lobby';
     if(lobby&&this.sim.players.size>=this.max)this.trimBots(1);   // a vaga é do humano
     const slot=this.freeSlot(),team=this._teamFor(party);
     this.usedNicks.add(String(name||'').toLowerCase());           // o preenchimento não pode repetir o nick de quem está na sala
     this.sim.addHuman(slot,{name,registered,skinId,sessionId,userId,team,level,spawn:!lobby});
+    const gp=this.sim.players.get(slot);if(gp){gp.country=country||null;this.flagsDirty=true;}
     if(lobby&&!this.lobbyUntil){this.lobbyStart=this.sim.tick;this.lobbyUntil=this.sim.tick+this.lobbyTicks;}   // a janela começa no PRIMEIRO humano
     const pc=this.sim.world.piecesOf(slot)[0];if(pc){session.cx=pc.x;session.cy=pc.y;}
     session.room=this;session.slot=slot;session.known.clear();session.rect=null;session.specSlot=-1;this.sessions.set(slot,session);this.lastHumanAt=Date.now();
@@ -184,6 +196,8 @@ export class Room{
       Promise.resolve().then(()=>hooks.onMatchEnd({sessionId:gp.sessionId,cause,killedBySessionId:null,score:gp.score,maxMass:Math.round(gp.maxMass),durationMs:Math.round((this.sim.tick-gp.joinedTick)*1000/TICK_HZ)}))
         .catch(e=>this.log.warn(`onMatchEnd('${cause}') falhou:`,e&&e.message));}
     if(gp){this._rosterFold(gp);this._rosterLeft(gp);}   // ⚠️ antes do remove: depois dele o GamePlayer não existe mais
+    if(gp&&gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());   // sem isto a sala vira lista negra e quem sai não volta com o próprio nome
+    this.flagsDirty=true;
     if(this.avatars.has(slot))this._setAvatar(slot,null,null);
     this.sim.remove(slot);this.sessions.delete(slot);session.room=null;session.slot=-1;session.known.clear();session.specSlot=-1;this.lastHumanAt=Date.now();}
   /** Socket caiu: fica no mundo sem thrust (alvo = centróide) até resume ou expirar. */
@@ -265,7 +279,7 @@ export class Room{
       const gx=cx+Math.cos(an)*rad,gy=cy+Math.sin(an)*rad;
       arr.forEach((gp,j)=>{const off=j*90,a2=an+Math.PI/2;
         w.respawnPlayer(gp.slot,{x:gx+Math.cos(a2)*off,y:gy+Math.sin(a2)*off,r:PLAYER.START_R,score:0});
-        const ps=w.players.get(gp.slot);if(ps)ps.missiles=BR.START_AMMO;
+        const ps=w.players.get(gp.slot);if(ps)ps.ammo[WEAPON.MISSILE]=BR.START_AMMO;   // ⚠️ era `ps.missiles`, campo que não existe desde que a munição virou `ps.ammo[]` por arma: ninguém largava o BR com a bala inicial
         gp.score=0;gp.maxMass=0;gp.joinedTick=w.tick;});}
     // 3. a partida começa: relógio, zona e fim da paz
     this.roundStart=w.tick;this.zone=createZone(w.tick);w.setZone(this.zone);w.peace=false;this.phase='live';this.startsAt=0;
@@ -452,22 +466,41 @@ export class Room{
    * Por isso a geração é disparada e esquecida, e quem publica é o callback. Entre o pedido e a resposta a
    * partida andou: a sala pode ter acabado, o bot pode ter morrido, o socket pode ter caído. Tudo é
    * revalidado, e uma resposta que demorou demais é DESCARTADA — comentário atrasado é pior que silêncio.
+   * E a linha pronta ainda espera o tempo de DIGITAR (`_digitaTick`), que é o que separa uma resposta de
+   * gente de um `console.log` com atraso. A corrente bot↔bot nasce lá, que passou a ser o único ponto por
+   * onde toda fala de bot passa.
    */
   _falar(gp,g,fallback){
-    const publica=txt=>{if(!txt)return;
+    // O TEMPO DE DIGITAR. A linha do modelo saía inteira no instante em que ele terminava, e uma frase de 45
+    // letras chegava tão rápido quanto um "kkkk" — que é o jeito mais barato de denunciar que ali não tem
+    // gente. Agora ela espera `len/DIGITA_CPS` antes de aparecer, agendada no MESMO relógio de tick que o
+    // resto (nada de setTimeout: não é determinístico, não é testável com o rng da sala e não revalida nada).
+    // ⚠️ Este atraso é depois da geração, então fica FORA do CORO_WAIT_MS — ver o comentário em constants.
+    const digitando=txt=>{if(!txt)return;
+      // `ditas` é escrito AQUI, no instante em que a frase existe — não na publicação. É ele que impede a
+      // repetição na hora de SORTEAR a próxima, e duas falas em digitação ao mesmo tempo podem sair iguais
+      // se o registro esperar a publicação.
       this.ditas.push(txt);if(this.ditas.length>BOT_TALK.NO_REPEAT)this.ditas.shift();
-      this.ultimoBot=gp;this._pushChat(gp,txt);
-      this._encadeia(gp,txt,g);};   // ← a corrente bot↔bot nasce AQUI, o único ponto por onde toda fala de bot passa
-    if(!this.botChat||!this.botChat.ativo()){publica(fallback());return;}
+      const ms=Math.min(BOT_LLM.DIGITA_MAX_MS,Math.max(BOT_LLM.DIGITA_MIN_MS,txt.length/BOT_LLM.DIGITA_CPS*1000));
+      this.digitaFila.push({atTick:this.sim.tick+Math.round(ms/1000*TICK_HZ),slot:gp.slot,gp,txt,g});};
+    if(!this.botChat||!this.botChat.ativo()){digitando(fallback());return;}
     const nasceu=Date.now(),slot=gp.slot;
     this.gerando++;
     this.botChat.gerar(this._ctxFala(gp,g)).then(txt=>{
       if(this.over||this.phase!=='live'||!this.sessions.size)return;
       if(this.sim.players.get(slot)!==gp||gp.dead)return;
       if(Date.now()-nasceu>BOT_LLM.STALE_MS)return;
-      publica(txt||fallback());
+      digitando(txt||fallback());
     }).catch(e=>{if(this.log)this.log.debug(`fala do bot falhou: ${e&&e.message}`);})
       .finally(()=>{this.gerando--;});}
+  /** Drena o que já "acabou de digitar". Revalida tudo de novo: entre gerar e publicar a partida andou. */
+  _digitaTick(){const fila=this.digitaFila,tick=this.sim.tick;let i=0;
+    while(i<fila.length){const it=fila[i];
+      if(it.atTick>tick){i++;continue;}
+      fila.splice(i,1);
+      if(this.over||this.phase!=='live'||!this.sessions.size)continue;
+      const gp=it.gp;if(this.sim.players.get(it.slot)!==gp||gp.dead)continue;
+      this.ultimoBot=gp;this._pushChat(gp,it.txt);this._encadeia(gp,it.txt,it.g);}}
   /** O que a LLM precisa saber para escrever uma linha: quem é o bot, o que aconteceu e o que o chat disse. */
   /**
    * O que o bot está VIVENDO agora. Sai inteiro de `gp.brain`, que o `_think` já preenche a cada
@@ -748,6 +781,45 @@ export class Room{
    * nível 30, então quatro bytes por linha em TODO broadcast de PLAYERS seriam pagar por zeros em 49 dos
    * 50 jogadores. Difundido só quando o conjunto MUDA — entrar e sair de sala são eventos raros.
    */
+  /**
+   * AVISO GLOBAL do painel /admin. Uma faixa no HUD e uma linha de sistema no chat de quem está NA SALA.
+   * ⚠️ Não passa por `_pushChat`: ele exige um GamePlayer e alimenta o `chatLog`, que é o prompt da LLM —
+   * um aviso de manutenção ali faria os preenchimentos comentarem a manutenção.
+   * ⚠️ Quem está no MENU não está em sala nenhuma e não recebe. É a limitação conhecida deste desenho, e a
+   * saída (um aviso fixo em `/api/config`, que todo cliente lê no boot) fica para quando for preciso.
+   * Devolve quantas sessões receberam.
+   */
+  notice(text,{level='info',ttlMs=NOTICE.TTL_MS}={}){
+    const msg={t:'notice',text,level,at:Date.now(),ttlMs};let n=0;
+    for(const s of this.sessions.values())if(s.ws){s.sendJson(msg);n++;}
+    return n;}
+  /**
+   * O que o painel /admin mostra de uma sala. ⚠️ NUNCA junte isto ao `info()`: aquele alimenta o
+   * `/api/rooms` PÚBLICO, e a lista de jogadores (com sessionId e IP) não pode sair por lá.
+   */
+  adminInfo({players=false}={}){
+    const base={...this.info(),shard:this.shard,phase:this.phase,humans:this.humanCount,
+      bots:this.sim.botCount(),tick:this.sim.tick,over:!!this.over};
+    if(!players)return base;
+    const lista=[];
+    for(const [slot,s] of this.sessions){const gp=this.sim.players.get(slot);
+      lista.push({slot,sessionId:s.sessionId||null,userId:s.userId??null,name:s.name||'',
+        registered:!!(gp&&gp.registered),level:s.level|0,country:gp?gp.country||null:null,
+        mass:gp?Math.round(this.sim.world.massOf(slot)):0,alive:!!(gp&&!gp.dead),
+        connected:!!s.ws,ip:s.remoteAddr||null});}
+    return{...base,players:lista};}
+  /**
+   * BANDEIRAS da sala (país de cada jogador, humano e preenchimento). JSON de controle, no molde exato de
+   * `broadcastAvatars` e pelo mesmo motivo: dois bytes por linha em TODO broadcast de PLAYERS (que sai
+   * várias vezes por segundo) para um dado que muda quando alguém entra ou sai é pagar caro por nada.
+   * Difundido só quando o conjunto MUDA. Um `country` nulo simplesmente não entra na lista.
+   */
+  broadcastFlags(){
+    this.flagsDirty=false;
+    const list=[];
+    for(const gp of this.sim.players.values())if(gp.country)list.push({slot:gp.slot,c:gp.country});
+    const msg={t:'flags',list};
+    for(const s of this.sessions.values())if(s.ws)s.sendJson(msg);}
   broadcastAvatars(){
     const list=[];
     for(const [slot,a] of this.avatars)if(a&&a.userId&&a.v)list.push({slot,userId:a.userId,v:a.v});
@@ -861,6 +933,7 @@ export class Room{
     if(this.phase==='lobby'){
       sim.step();
       if(sim.playersDirty){sim.playersDirty=false;this.broadcastPlayers();}
+      if(this.flagsDirty)this.broadcastFlags();
       this.lobbyTick();
       return;}
     if(this.mode.zone&&this.zone)this.tickZone();
@@ -868,6 +941,7 @@ export class Room{
     sim.step();
     if(sim.botTalk.length)this.botChatTick();
     if(this.falaFila.length)this._filaTick();
+    if(this.digitaFila.length)this._digitaTick();   // o que já "acabou de digitar" entra no chat agora
     // Último vivo: fotografa quem sobrou ANTES de fechar, senão o placar de vivos já está vazio.
     if(this.mode.lastAlive&&sim.aliveTeams()<=1){
       const lb=sim.leaderboard();

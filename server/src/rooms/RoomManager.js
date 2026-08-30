@@ -22,10 +22,15 @@ export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=nu
    * A sala mais cheia que ainda ACEITA gente (`acceptsJoin`: sem vaga, terminada ou já em partida ficam de fora),
    * dentro do mesmo modo e tamanho de equipe — agrupa em vez de espalhar, que é o que faz a espera do
    * Battle Royale encher rápido. Nenhuma dá: cria uma.
+   * `nick` (opcional) exclui as salas onde esse nome já está em uso: nick é único POR SALA.
    */
-  function findOrCreateRoom({mode=MODE.FREE,teamSize=1}={}){
+  function findOrCreateRoom({mode=MODE.FREE,teamSize=1,nick=null}={}){
     let best=null;
     for(const r of rooms.values()){if(r.modeId!==mode||(mode!==MODE.FREE&&r.teamSize!==teamSize))continue;
+      // ⚠️ pula a sala onde o nick JÁ ESTÁ EM USO. Duas pessoas com o mesmo nome na mesma sala é o que a
+      // regra proíbe, e o JOGAR (AUTO) é justamente quem não escolheu a sala — barrá-lo aqui seria fechar a
+      // porta por uma coincidência que o próprio matchmaking pode evitar mandando-o para a sala do lado.
+      if(nick&&r.nickTaken(nick))continue;
       if(r.acceptsJoin()&&(!best||r.humanCount>best.humanCount))best=r;}
     if(best){start(best);return best;}
     let code=newCode(config.shard);while(rooms.has(code))code=newCode(config.shard);return create(code,{mode,teamSize});}

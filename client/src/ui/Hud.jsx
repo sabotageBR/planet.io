@@ -14,10 +14,11 @@ import KillFeed from "./KillFeed.jsx";
 import { Nick } from "./bits.jsx";
 import { WEAPON_ICON } from "./icons.js";
 import BrLobby from "./BrLobby.jsx";
-import { MODE, weaponOf, KEY_LABEL, POWERUP, TICK_HZ } from "@warspace/shared";
+import Notice from "./Notice.jsx";
+import { MODE, weaponOf, KEY_LABEL, POWERUP, TICK_HZ, flagOf } from "@warspace/shared";
 import { keysOf } from "../game/input/Keyboard.js";   // a legenda tem que dizer a tecla que está DE FATO ligada (inclusive a do desempate de colisão)
 
-const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0, autodef: 0, zoom: 0, feast: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: false, clock: null,
+const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0, autodef: 0, zoom: 0, feast: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: "", clock: null, notice: null,
   mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, talk: null, chat: [], feed: [], lobby: null };
 const TALK_MSG = { cd: "micCooldown", denied: "micDenied", unsupported: "micUnsupported", audio: "micFail", fail: "micFail" };   // motivo → chave da label
 /**
@@ -111,7 +112,7 @@ export default function Hud() {
     <div className="panel" id="hud-lb"><div className="ph">{LB.lbTitle}</div><div id="lb-rows">
       {shown.map((r, i) => <div key={r.slot != null ? r.slot : r.name} className={"lb-row" + (r.me ? " mine" : "") + (r.ally ? " ally" : "") + (r.rank <= 3 ? " top" : "") + (sep && i === shown.length - 1 ? " sep" : "")} style={{ "--p": ((r.mass || 0) / lbMax).toFixed(3) }}>
         <span className="lb-pos">{r.rank}</span>
-        <span className="lb-name">{r.talking ? <i className="talk-dot">🎤</i> : null}{r.level > 0 ? <i className="lvl">{r.level}</i> : null}{r.name}{r.isBot ? <> <i className="bot">{LB.botTag}</i></> : null}{r.registered ? <> <i className="reg">{LB.regTag}</i></> : null}</span>
+        <span className="lb-name">{r.talking ? <i className="talk-dot">🎤</i> : null}{r.country ? <i className="flag">{flagOf(r.country)}</i> : null}{r.level > 0 ? <i className="lvl">{r.level}</i> : null}{r.name}{r.isBot ? <> <i className="bot">{LB.botTag}</i></> : null}{r.registered ? <> <i className="reg">{LB.regTag}</i></> : null}</span>
         <b className="lb-val">{fmt(r.mass)}</b></div>)}
     </div></div>
     {/* O feed é o ÚLTIMO da coluna, e isso é estrutural: ele nasce e morre (KillFeed devolve null sem linha
@@ -132,15 +133,21 @@ export default function Hud() {
       </button>
       {/* ÍCONE COM O NÚMERO EM CIMA, não chip com rótulo escrito: em partida ninguém lê "Auto-defesa 12s" —
           o que se lê é a figura e um número. O anel dá o tempo sem ocupar linha, e o badge dá a carga. */}
+      {/* O balão explica o que o ícone não consegue dizer: "🍀" não ensina "a comida vale o dobro". Era um
+          `title=` nativo, que demora ~1 s para aparecer e some no toque — e não dava para trocar por um
+          balão de verdade enquanto o HUD não pudesse receber o ponteiro sem congelar o alvo do jogador.
+          Hoje pode: o `pointermove` do mouse é lido na JANELA (game/input/Pointer.js), não no canvas. */}
       <div id="hud-pw">{pw.map(([k, v]) => {
         const kind = PW_KIND[k] || "time", full = PW_FULL[k] || 0;
         const num = kind === "nivel" ? v : kind === "carga" ? v : Math.ceil(v);
+        const quanto = kind === "nivel" ? `${LB.shieldLevel} ${v}` : kind === "carga" ? `×${v}` : `${num}s`;
         return <span key={k} className={"pw pw-" + k + (kind === "nivel" ? " lv-" + v : "") + (kind === "time" && v <= 3 ? " low" : "")}
-          title={(LB.powerups[k] || k) + (kind === "nivel" ? ` ${LB.shieldLevel} ${v}` : kind === "carga" ? ` ×${v}` : ` ${num}s`)}
+          tabIndex={0} onPointerDown={e => { const el = e.currentTarget; el.classList.add("tip"); setTimeout(() => el.classList.remove("tip"), 2200); }}
           style={kind === "nivel" && LV && LV[v - 1] ? { "--pwc": LV[v - 1].color } : undefined}>
           {kind === "time" && full ? <Ring resta={v / full} cls="pw-ring" low={3 / full} /> : null}
           <i className="pw-ico">{PW_ICON[k] || "✦"}</i>
           <b className="pw-n">{num}{kind === "carga" ? "×" : kind === "time" ? "s" : ""}</b>
+          <em className="pw-tip"><b>{LB.powerups[k] || k} {quanto}</b>{LB.powerupHints && LB.powerupHints[k] ? <span>{LB.powerupHints[k]}</span> : null}</em>
         </span>; })}</div>
     </div>
     </div>
@@ -149,6 +156,7 @@ export default function Hud() {
       {h.zoneHurt ? <span className="chip zone-out">{LB.zoneOut}</span> : null}
     </div> : null}
     <BrLobby lobby={h.lobby} />
+    <Notice n={h.notice} />
     {falando ? <div id="talk"><Ring resta={1 - h.talk.k} /><span>{LB.talkOn}</span></div>
       : talkAviso ? <div id="talk" className="hint"><span>{LB[TALK_MSG[talkAviso]] || LB.talkHint}</span></div> : null}
     <div id="hud-cd">

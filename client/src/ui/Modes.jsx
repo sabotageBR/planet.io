@@ -12,6 +12,10 @@ import { play, setMode, createParty, joinParty } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { Screen, ScreenHeader } from "./bits.jsx";
 
+// ⚠️ Os ícones vêm daqui e do `PW_ICON` do Hud — duas listas para o mesmo desenho divergem na primeira
+// correção. A ordem é a de quem aparece mais no jogo (POWERUP.DROP), não a do enum.
+const PW_LEGENDA = [["magnet", "🧲"], ["shield", "🛡️"], ["autodef", "🛰️"], ["feast", "🍀"], ["merge", "⚛️"]];
+
 export default function Modes({ on }) {
   return <Screen id="modes" on={on} className="modes-wrap">{on ? <Body /> : null}</Screen>;
 }
@@ -55,5 +59,17 @@ function Body() {
       </div>
     </div>
     {offline ? <div className="hint">{LB.offlineNote}</div> : null}
+    {/* A LEGENDA DOS POWERUPS. Em partida ninguém lê palavra — o HUD é ícone e número, e é assim que tem
+        que ser. Mas alguém precisa dizer, UMA vez, o que "🍀" significa: quem pega um trevo pela primeira
+        vez não tinha como descobrir que a comida passou a valer o dobro. Aqui, antes de entrar, é o lugar
+        onde há tempo de ler. Sai da MESMA fonte do balão do HUD (`LB.powerups` + `LB.powerupHints`), então
+        as duas não podem divergir. */}
+    <div className="card pw-legenda">
+      <div className="ph">{LB.powerupsTitle}</div>
+      <ul>{PW_LEGENDA.map(([k, ico]) => <li key={k}>
+        <i className={"pw-l pw-" + k}>{ico}</i>
+        <b>{LB.powerups[k]}</b><span>{LB.powerupHints[k]}</span></li>)}</ul>
+      <span className="hint">{LB.powerupsNote}</span>
+    </div>
   </>;
 }

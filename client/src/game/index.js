@@ -44,7 +44,7 @@ import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./ben
 import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0,autodef:0,zoom:0,feast:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
-  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:false});
+  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:"",notice:null});
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
   keySplit:"Space",keyEject:"KeyW",
   sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
@@ -52,7 +52,7 @@ const SEM_SLOT=0xffff;   // `NO_SLOT` do fio: slot ausente num EVENT (o servidor
 const FX_OF={[EVENT.EAT]:"eat",[EVENT.POP]:"pop",[EVENT.MERGE]:"merge",[EVENT.SPLIT]:"split",[EVENT.BH_SUCK]:"suck",[EVENT.CHIP]:"chip",[EVENT.BOUNCE]:"bounce",[EVENT.BOOM]:"boom",[EVENT.EXIT]:"exit",[EVENT.SHOOT]:"shoot",
   [EVENT.DEATH]:"death",[EVENT.SHIELD_BREAK]:"shieldBreak",[EVENT.SHIELD_HIT]:"shieldHit",[EVENT.SHIELD_UP]:"shieldUp",[EVENT.CLASH]:"clash",[EVENT.DEFLECT]:"deflect",
   [EVENT.STAR_BURST]:"starBurst",[EVENT.SUPERNOVA]:"supernova",[EVENT.STAR_HIT]:"starHit",[EVENT.STAR_SPLIT]:"starSplit",[EVENT.SMASH]:"smash",
-  [EVENT.ZONE_SHRINK]:"zoneShrink",[EVENT.ZONE_BURN]:"zoneBurn"};
+  [EVENT.ZONE_SHRINK]:"zoneShrink",[EVENT.ZONE_BURN]:"zoneBurn",[EVENT.STUCK]:"stuck"};
 const AIM_LEN=1100;   // comprimento máximo da reta de mira (px de mundo)
 const RESIZE_MS=150;   // debounce de todo caminho de resize (ver agendaResize)
 const PREWARM_S=12;   // com quantos segundos de antecedência o céu seguinte é assado (fora da virada, para ela não custar nada)
@@ -85,7 +85,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const alvo={x:0,y:0};let inputTimer=0,joy=null;
   // o analógico só vale onde o ponteiro é o DEDO: no mouse o próprio ponteiro já é o controle
   const aplicaJoystick=()=>{if(joy)joy.setEnabled(curPrefs.joystick!==false&&typeof matchMedia!=="undefined"&&matchMedia("(pointer: coarse)").matches);};   // alvo reusado; inputTimer: o envio de input não depende do rAF (ver enviarInput)
-  let mapOn=false;   // mapa grande aberto (só faz sentido morto: com o jogador vivo seria vantagem tática)
+  // "" = fechado · "map" = o RADAR ampliado · "live" = a visão em TEMPO REAL da sala (o mesmo radar, ocupando
+  // o espaço todo, com o blip na cor da skin, nome e massa, e a posição INTERPOLADA entre as amostras de 2 Hz).
+  // Só faz sentido MORTO: com o jogador vivo, ver a sala inteira seria vantagem tática.
+  let mapOn="";
   let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,slowSince=0,econAt=0,statsOv=null;
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
   // ── modo, equipe, zona, chat e voz ──
@@ -106,6 +109,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const cam=createCamera(),fstats=createFrameStats();
   const canAct=()=>joined&&!dead&&!roundOver&&conn&&conn.isOpen;
   let aiming=false,aim=null;const pendingEat=new Map();   // id da peça comida → id de quem comeu (destino da sucção no frame do sumiço)
+  let travado=-1,travadoAte=0;   // o alvo do último tiro mirado e até quando o anel continua na tela (MISSILE.AIM_HOLD_TICKS)
   const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self&&!view.self.fireCd?view.self.missiles:0),canAct,
     onAim:on=>{aiming=on;if(!on){aim=null;lastLock=-1;audio.stopLoop("aimCharge");}else audio.startLoop("aimCharge",{k:0});},
     onCancel:()=>audio.play("cancel",{mine:true})});
@@ -133,8 +137,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // inimigos: vêm do PLACAR (que traz TODOS os vivos com posição, a 2 Hz), não da AOI — o snapshot só
     // conhece quem está na janela da sessão, e o radar tem que mostrar o mapa inteiro.
     const me=view.mySlot,enemies=[];
-    for(const r of view.lbRows()){if(r.slot===me)continue;const pl=view.playerOf(r.slot);
-      enemies.push({slot:r.slot,name:pl?pl.name:"",x:r.x,y:r.y,mass:r.mass,isBot:pl?pl.isBot:false,ally:pl?pl.ally:false});}
+    for(const r of view.lbRows(mapOn==="live")){if(r.slot===me)continue;const pl=view.playerOf(r.slot);
+      enemies.push({slot:r.slot,name:pl?pl.name:"",x:r.x,y:r.y,mass:r.mass,isBot:pl?pl.isBot:false,ally:pl?pl.ally:false,
+        skin:pl?pl.skin:null,country:pl?pl.country:null});}
     const mine=[];for(const p of view.pieces)if(p.isMe)mine.push({x:p.rx,y:p.ry,r:p.rr});
     const ms=[];for(const m of view.missiles)ms.push({x:m.rx,y:m.ry,mira:m.target===me});   // o teleguiado que vem em mim pisca no radar
     return{enemies,mine,missiles:ms,asteroids:view.asteroids.map(a=>({x:a.rx,y:a.ry})),holes:view.holes.map(h=>({x:h.rx,y:h.ry,ri:h.influenceR})),
@@ -144,7 +149,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
    * Quem manda no radar: vivo, a preferência do jogador; MORTO, o mapa grande — na tela de morte o radar
    * pequeno não tem para onde apontar (não há peça própria), e é o mapa aberto que ocupa o lugar dele.
    */
-  function aplicaRadar(){minimap.show(!!joined&&(dead?mapOn:curPrefs.showMinimap!==false));}
+  function aplicaRadar(){minimap.show(!!joined&&(dead?!!mapOn:curPrefs.showMinimap!==false));}
   minimap.show(false);
   if(isStats())statsOv=createOverlay(hud);
 
@@ -200,7 +205,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     else if(m.t==="chat"){pushChat(m);}
     else if(m.t==="talk"){view.setTalking(m.slot,!!m.on);}   // push-to-talk de outro: acende/apaga o ícone no planeta dele
     else if(m.t==="feed"){pushFeed(m);}
+    // AVISO GLOBAL do painel /admin: a faixa por cima do jogo E uma linha de sistema no chat. As duas de
+    // uma fonte só — quem estava olhando o chat lê ali, quem estava olhando o jogo lê na faixa, e nenhuma
+    // delas depende de o jogador ter olhado no instante certo.
+    else if(m.t==="notice"){chatSys(m.text);
+      hudStore.update(h=>({...h,notice:{text:m.text,level:m.level||"info",at:performance.now(),ttlMs:m.ttlMs|0||12000}}));
+      audio.play("toast",{mine:true});}
     else if(m.t==="avatars"){view.setAvatars(m.list);}
+    else if(m.t==="flags"){view.setFlags(m.list);}   // bandeira de cada jogador (humano e preenchimento) — ver Room.broadcastFlags
     else if(m.t==="roundEnd"){roundOver=true;input.setHold(false);
       const venci=m.champion&&m.champion.slot===view.mySlot;
       if(venci)celebrate();                                   // ganhei: o planeta comemora
@@ -208,7 +220,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       pushHud(performance.now());if(onRoundEnd)onRoundEnd({...m,mySlot:view.mySlot});}
     else if(m.t==="dead"){dead=true;input.setHold(false);mic.cancel();aplicaRadar();pushHud(performance.now());
       if(onDead)onDead({by:m.by,byHole:!!m.byHole,byZone:!!m.byZone,score:m.score,maxMass:m.maxMass,kills:m.kills,durationS:m.durationS,placement:m.placement||0,players:m.players||0});}
-    else if(m.t==="spectate"){specSlot=m.slot>=0?m.slot:-1;spec={slot:specSlot,name:m.name||null,vivos:m.vivos|0};if(mapOn)minimap.setBig(true,specSlot);pushHud(performance.now());}   // morto: de quem é a cena que continua rodando atrás da tela de KABOOM
+    else if(m.t==="spectate"){specSlot=m.slot>=0?m.slot:-1;spec={slot:specSlot,name:m.name||null,vivos:m.vivos|0};if(mapOn)minimap.setView(mapOn,specSlot);pushHud(performance.now());}   // morto: de quem é a cena que continua rodando atrás da tela de KABOOM
     else if(m.t==="rewards"){if(onRewards)onRewards(m);}}
   function onBinary(m){const now=performance.now();
     switch(m.type){
@@ -313,14 +325,16 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
      * Mapa grande: o radar ampliado, com nome em cada planeta e clique para trocar de câmera. Só com o
      * jogador MORTO — ver o mapa inteiro jogando seria vantagem tática, e não é o que se pediu.
      */
-    showMap(on){const v=!!on&&joined&&dead;if(v===mapOn)return;mapOn=v;minimap.setBig(mapOn,specSlot);aplicaRadar();pushHud(performance.now());},
-    toggleMap(){game.showMap(!mapOn);},
+    /** `modo`: "" fecha · "map" o radar ampliado · "live" a visão em tempo real. `true` = "map" (compatível). */
+    showMap(modo){const m=modo===true?"map":(modo||"");const v=joined&&dead?m:"";if(v===mapOn)return;
+      mapOn=v;minimap.setView(mapOn,specSlot);aplicaRadar();pushHud(performance.now());},
+    toggleMap(modo){const m=modo===true||modo===undefined?"map":(modo||"");game.showMap(mapOn===m?"":m);},
     join({token,fallbackNick,room,local:useLocal,skinId,mode,teamSize:ts,party}={}){
       game.leave(true);joined=true;dead=false;specSlot=-1;selfTick=0;
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null};
-      buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();hudStore.set({...initialHud(),room:room||null});mapOn=false;minimap.setBig(false,-1);aplicaRadar();
+      buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();hudStore.set({...initialHud(),room:room||null});mapOn="";minimap.setView("",-1);aplicaRadar();
       if(pointer&&renderer)pointer.center(renderer.W,renderer.H);
       const isLocal=useLocal||qflag("local")||isBench()||api.server===false;
       if(isLocal){const rs=+(Q.get("round")||0);   // ?round=<segundos> encurta a rodada local (dev)
@@ -334,7 +348,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa
     // por aqui (ela é do Connection, e volta pelo `resume`), então nada disso atrapalha quem só caiu.
     leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();mapOn=false;minimap.setBig(false,-1);minimap.show(false);
+      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();mapOn="";minimap.setView("",-1);minimap.show(false);
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -509,7 +523,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         waitMs:lobby.waitMs?Math.max(0,lobby.waitMs-(now-lobby.at)):0,
         roster:[...view.players.values()].map(p=>({slot:p.slot,name:p.name,skinId:p.skinId,me:p.slot===view.mySlot}))}:null,
       alive:s?s.alive:0,weapon:s?s.weapon|0:0,owned:s?s.owned|1:1,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
-      talk:mic.state,chat:chatLog,feed:feedLog,spec});}
+      talk:mic.state,chat:chatLog,feed:feedLog,notice:hudStore.get().notice,spec});}
   function statsText(){const c=renderer.counts(),st=predictor.stats;
     const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
     return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · estrelas ${c.stars} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}
@@ -557,18 +571,35 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(!own.length&&specSlot>=0){const sp=view.pieces.filter(p=>p.owner===specSlot);if(sp.length)camPieces=sp;}
     // O powerup de ZOOM afasta a câmera — e o servidor amplia a AOI pelo mesmo fator (net/snapshot.js),
     // então o que aparece a mais é mundo de verdade, não borda vazia.
-    cam.update(camPieces,dt,joined,view.self&&view.self.zoomT>0?POWERUP.ZOOM_K:1);   // na sala sem peças (morto/BIG CRUNCH) a câmera congela: é o que o AOI do servidor continua mandando
+    // ⚠️ `hold` é `joined||!ready`, não só `joined`: FORA de partida a câmera entrava no ramo do lobby e
+    // PASSEAVA (Camera.js:24) pelo mundo vazio. Como o canvas continua montado e renderizando depois do
+    // `leave()`, o resultado era o menu com um pedaço de arena atrás — a borda tracejada do mundo cortando
+    // a tela na diagonal, planeta nenhum, mapa nenhum. Parada, o que fica atrás do menu é o CÉU, que é o
+    // fundo que a tela inicial sempre teve.
+    cam.update(camPieces,dt,joined||!conn,view.self&&view.self.zoomT>0?POWERUP.ZOOM_K:1);   // na sala sem peças (morto/BIG CRUNCH) a câmera congela: é o que o AOI do servidor continua mandando
     aim=null;   // reta de mira: da 1ª peça própria (a que dispara no servidor) até o ponteiro, com o anel no alvo travado
     if(joy&&joy.enabled&&joy.state.aim&&pointer){pointer.state.sx=joy.state.aimX;pointer.state.sy=joy.state.aimY;pointer.state.active=true;}   // metade direita mira sem virar o planeta
     if(aiming&&joined&&!dead&&own.length&&pointer&&pointer.state.active){const src=own[0],p=cam.toWorld(pointer.state.sx,pointer.state.sy);
       const dx=p.x-src.rx,dy=p.y-src.ry,l=Math.hypot(dx,dy)||1,len=Math.min(AIM_LEN,Math.max(src.rr*2.5,l));
-      aim={x0:src.rx+dx/l*src.rr,y0:src.ry+dy/l*src.rr,x1:src.rx+dx/l*len,y1:src.ry+dy/l*len,lock:lockOn(src,p.x,p.y)};}
+      const lock=lockOn(src,p.x,p.y);
+      aim={x0:src.rx+dx/l*src.rr,y0:src.ry+dy/l*src.rr,x1:src.rx+dx/l*len,y1:src.ry+dy/l*len,lock};
+      if(lock){travado=lock.id;travadoAte=now+MISSILE.AIM_HOLD_TICKS/TICK_HZ*1000;}}
+    // O anel CONTINUA na tela por 3 s depois de soltar o botão, porque a trava continua valendo por 3 s no
+    // servidor (MISSILE.AIM_HOLD_TICKS): o próximo míssil sai nela sem mirar de novo. Sem o anel, a regra
+    // existiria e ninguém confiaria nela — mirar de novo "por garantia" custa o movimento que a mira cobra.
+    else if(travado>=0&&now<travadoAte&&joined&&!dead&&own.length){
+      const acha=arr=>arr&&arr.find(e=>e.id===travado);
+      const alvo=acha(view.pieces)||acha(view.missiles)||acha(view.asteroids)||acha(view.stars);
+      if(alvo)aim={hold:true,lock:{x:alvo.rx,y:alvo.ry,r:alvo.rr,id:alvo.id}};
+      else travadoAte=0;}
     const lk=aim&&aim.lock?aim.lock.id:-1;   // trocou de bolinha: um "tk" seco e o zumbido da carga sobe — é o que faz a mira sentir viva
     if(lk!==lastLock){if(lk>=0&&aiming)audio.play("lock",{mine:true});lastLock=lk;if(aiming)audio.setLoop("aimCharge",{k:lk>=0?1:0});}
     const t1=performance.now();
     const zc=zoneNow(interp.renderTick);
     const zoneDraw=zc?{x:zc.x,y:zc.y,r:zc.r,tx:zone.x1,ty:zone.y1,tr:zone.r1}:null;
-    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,zone:zoneDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:curPrefs.showGrid!==false,
+    // Fora de partida some a GRADE e a borda do mundo: elas são a moldura da arena, e com o menu na frente
+    // viram um traço solto no meio da tela. O céu (que é assado por resolução e não custa nada) fica.
+    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,zone:zoneDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
       showNames:curPrefs.showNames!==false,showTrails:!curPrefs.reduceMotion&&!econ});
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU
     if(joined){minimap.update(now,zoneDraw);if(now-lastHud>=125){lastHud=now;pushHud(now);}

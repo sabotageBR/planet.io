@@ -25,6 +25,14 @@ const {Bucket}=await import('../src/net/Session.js');
 const LOG=process.env.LOG_LEVEL;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let srv,base,wsUrl,token=null,unsavedMode=false;
+// Um convidado NOVO por cliente. O IP varia porque o limitador de `/api/auth/guest` é 5/h/IP.
+let nIp=0;
+async function novoToken(){
+  if(unsavedMode||!token)return token||'pt_sem_banco';   // servidor sem banco: quem diferencia é o fallbackNick
+  try{const ip=`10.9.${(nIp>>8)&255}.${(nIp++)&255}`;
+    const r=await fetch(base+'/api/auth/guest',{method:'POST',headers:{'content-type':'application/json','x-forwarded-for':ip},body:'{}'});
+    if(r.status===201)return (await r.json()).token;}catch{}
+  return token;}
 const startAt=port=>startServer({port:port??0,logLevel:LOG,migrateOnStart:false});
 
 // ── cliente de teste: decodifica tudo, mantém o mundo conhecido (creates/updates/removes) ──
@@ -43,7 +51,12 @@ class Client{
   _wake(){const w=this.waiters;this.waiters=[];for(const f of w)f();}
   async until(pred,ms=6000,label='condição'){const t0=Date.now();for(;;){const v=pred();if(v)return v;if(Date.now()-t0>ms)throw new Error(`timeout esperando ${label}`);await new Promise(r=>{this.waiters.push(r);setTimeout(r,40);});}}
   jsonOf(t,from=0){for(let i=from;i<this.json.length;i++)if(this.json[i].t===t)return this.json[i];return null;}
-  async join(nick,room=null,view={w:1920,h:1080},tok=token){const n=this.json.length;this.send({t:'join',token:tok,fallbackNick:nick,room,view});
+  // ⚠️ UM TOKEN POR CLIENTE. O nick é único POR SALA, e o nick de uma conta é o da CONTA — dois clientes
+  // com o mesmo token são a mesma pessoa e o servidor recusa o segundo (que é o certo: impede o mesmo
+  // jogador ter dois planetas na mesma sala). Quem quiser testar a MESMA pessoa passa `tok` na mão.
+  async join(nick,room=null,view={w:1920,h:1080},tok=null){const n=this.json.length;
+    if(!tok){if(!this.token)this.token=await novoToken();tok=this.token;}else this.token=tok;
+    this.send({t:'join',token:tok,fallbackNick:nick,room,view});
     const r=await this.until(()=>this.jsonOf('room',n)||this.jsonOf('error',n),6000,'room');if(r.t==='error')throw new Error(`join: ${r.code} ${r.message}`);this.slot=r.slot;this.room=r;return r;}
   mine(){return[...this.known.values()].filter(e=>e.kind===KIND.PIECE&&(e.flags&PIECE_FLAG.ME));}
   ofKind(k){let n=0;for(const e of this.known.values())if(e.kind===k)n++;return n;}

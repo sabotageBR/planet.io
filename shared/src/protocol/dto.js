@@ -61,7 +61,7 @@
  * @property {number} alive   quantos jogadores ainda estão vivos na sala (u8 saturado; o "restam N" do Battle Royale)
  * @property {number} owned   bitmask das armas com munição (bit 0 = míssil, sempre ligado): é o que o HUD
  *                            acende para dizer o que dá para chavear com a tecla de troca
- * @property {number} autoDefN cargas do powerup de AUTO-DEFESA (u16, hoje 0 ou 1) — CARGA, não tempo
+ * @property {number} autoDefN cargas do powerup de AUTO-DEFESA (u16, 0..POWERUP.AUTODEF_MAX) — CARGA, não tempo
  * @property {number} zoomT    ticks restantes do powerup de ZOOM (u16) — o cliente afasta a câmera na mesma conta da AOI
  * @property {number} feastT   ticks restantes do powerup de comida em dobro (u16)
  */

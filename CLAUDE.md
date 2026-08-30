@@ -15,6 +15,8 @@ npm test                     # node --test: shared/test (física, protocolo) + s
                              # topo do arquivo). Rode: DATABASE_URL=postgres://planet:planet@127.0.0.1:5433/planet npm test
 npm run build                # client/dist (vite build)
 ./scripts/db-secret.sh       # cria o Secret warspace-db (DATABASE_URL do .env) no cluster
+# PAINEL /admin: rota da MESMA SPA (client/src/admin/, chunk sob demanda). O 1º administrador nasce do env
+# ADMIN_EMAILS (k8s/05-config) no boot — SÓ PROMOVE — ou de um UPDATE users SET is_admin=true. docs/spec/admin.md
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest a partir da marca
 ./scripts/build-push.sh      # builda (contexto = raiz, -f server/Dockerfile / client/Dockerfile) e publica evandromoura/warspace-io-{server,client}
 ./scripts/deploy.sh          # aplica k8s/ + Ingress em warspace.io (WARSPACE_HOST=... troca o host, NO_INGRESS=1 pula)
@@ -29,18 +31,21 @@ Mockups aprovados continuam em `mockups/v2/` (CommonJS; `node mockups/v2/src/bui
 ## Layout
 
 ```
-shared/src/    constants.js (ÚNICA fonte de tunables) · skins.js (94 skins) · achievements.js · levels.js (XP/nível/K-D) · countries.js · eggs.js (nick → skin) · rng.js · camera.js · util.js · zone.js · bot.js
+shared/src/    constants.js (ÚNICA fonte de tunables) · tunables.js (a lista BRANCA do que o /admin pode mudar em runtime)
+               skins.js (94 skins) · achievements.js · levels.js (XP/nível/K-D) · countries.js · eggs.js (nick → skin) · rng.js · camera.js · util.js · zone.js · bot.js
                physics/ (body, spatial-hash, integrate, collide, rules, world, predict) · protocol/ (constants, quant, writer, reader, codec, dto)
 server/src/    index.js (composition root + startServer) · loop.js (scheduler 60 Hz) · metrics.js
                llm/ollama.js · rooms/botChat.js · rooms/botPersonas.js (histórias, server-only) · rooms/feed.js (marcos do kill feed)
                sim/ (Sim, hooks) · rooms/ (codes, Room, RoomManager, Party) · net/ (Session, wsServer, snapshot) · http/ (api, peers)
-               config.js · log.js · db/ (pool, migrate, migrations/) · auth/ (tokens, password, nick, ratelimit) · repos/ · api/ (router + rotas) · persist/ (session, rewards, queue, hooks)
-client/src/    main.jsx · app/ (App, theme bridge) · ui/ (telas React + Round.jsx, Modes/Party/Chat/KillFeed/AvatarPicker, icons.js
+               config.js · log.js · tunables.js (parâmetros do painel) · db/ (pool, migrate, migrations/) · auth/ (tokens, password, nick, ratelimit)
+               repos/ (+ settings, audit) · api/ (router + rotas, incl. admin.js) · http/admin.js (salas/kick/aviso) · persist/ (session, rewards, queue, hooks)
+client/src/    main.jsx (3 entradas: jogo · /admin · ?sfx) · app/ (App, theme bridge) · admin/ (o painel: mount/api/admin.css)
+               ui/ (telas React + Round.jsx, Modes/Party/Chat/KillFeed/Notice/AvatarPicker, icons.js
                Logo.jsx + logoArt.js = a marca · NavIcons.jsx + navIconArt.js = os ícones da entrada) · util/image.js · api/client.js · state/ (store) · hooks/
                audio/ (index.js motor: 4 barramentos, prioridade de vozes, loops · kit.js receitas · mic.js push-to-talk · audition.js a mesa de som do ?sfx)
                theme/ (index.js + dawn|sunset|dusk: tokens/hud/screens.css gerados por port.js, index.js com textures/effects/hud) · styles/base.css
                game/ (index.js createGame · net/ · state/ · renderer/ · input/ · hud/ · bench.js)
-docs/spec/     protocol.md · api.md · hooks.md · server-game.md · client-game.md      docs/design/  telas.md · theme-time.md · rodada-1.md · som.md · modos.md
+docs/spec/     protocol.md · api.md · admin.md · hooks.md · server-game.md · client-game.md      docs/design/  telas.md · theme-time.md · rodada-1.md · som.md · modos.md
 k8s/           00-namespace · 05-config (ConfigMap) · 10-server (StatefulSet 3 shards, envFrom ConfigMap+Secret) · 20-client
                30-ingress (warspace.io: /ws/0|1|2 por shard, /api no Service agregador, / no cliente; + o 301 de www) · 40-backup
 scripts/       build-push.sh · deploy.sh · db-secret.sh · k8s_apply.py (apply via API; Secret, --exists)
@@ -270,6 +275,76 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   10 bytes. O míssil nunca sai do cinto, nem zerado. `acceptsJoin()` é a porta única de entrada da sala.
   **Vitória tem fogos**: quem vence vê a salva sair do próprio planeta (`fireworkPrims` em theme/util.js —
   física compartilhada, paleta por tema; traço em vez de ponto, arrasto, gravidade, cor em 3 tempos, cintilação).
+- **O PREÇO QUE NÃO CABE EM PEÇAS** (`shatterBlock` em `rules.js`, `EVENT.STUCK`, **PROTOCOL_VERSION 14**):
+  estrela, míssil e asteroide cobram METADE do preço PARTINDO o alvo — e com as `PLAYER.MAX_PIECES`
+  ocupadas isso simplesmente não acontecia, **em silêncio** (`shatterPiece` devolvia um `false` que
+  ninguém lia). Foi o que levou os jogadores a se picarem em 16 de propósito para atravessar cinturão e
+  estrela quase de graça. Agora `shatterBlock` distingue os DOIS motivos, que não valem a mesma coisa:
+  **sem vaga** é escolha do jogador (vira PREÇO — `STAR.BURN_STUCK` .55, `MISSILE.STUCK_SHRINK` .82,
+  `ASTEROID.CHIP_STUCK` .22) e **massa mínima** é o piso do jogo (não pode virar castigo). Sempre com
+  retorno na tela: o evento `STUCK` tem efeito, som e ícone. ⚠️ Na estrela isso já era MEIO pago — ela
+  queima `BURN` mesmo com 16 peças; o exploit de verdade era o ASTEROIDE, onde a lasca comum é
+  **reembolso**: 4 % que voltam como fragmento do próprio dono, nascido ATRÁS dele (o lado para onde o
+  quique empurra) e a 97 px, dentro do próprio planeta.
+- **O DANO DE MÍSSIL ERA UM EMPRÉSTIMO** (`pieceMissile`, `MISSILE.DEBRIS_DIST/DEBRIS_SPREAD`): os
+  `HIT_DEBRIS` cacos nasciam no CENTRO da peça, em TODAS as direções (o spread era 2π) e a 540 px/s — como
+  o ejetado integra com arrasto puro, o alcance é `v/DRAG` = **146 px**, ou seja DENTRO de qualquer planeta
+  com r > 146 —, e com 20 ticks de imunidade o dono engolia de volta os 19 % que o tiro tinha arrancado.
+  O teste de conservação de massa passava; ninguém testava se o caco ESCAPA. Agora a massa RESVALA: sai do
+  lado OPOSTO ao míssil, nasce na BORDA, viaja `DEBRIS_DIST` px além dela e usa `ownerImmune(r)` (12 s num
+  r=1000). Nada evapora — só deixa de ser bumerangue. O mesmo remédio vale para a lasca sem vaga, para a
+  pelota que o gás arranca e para o excesso do `autoSplit`.
+- **`autoSplit` deixou de DESTRUIR massa** (`rules.js`): sem vaga de peça, o excesso acima de `MAX_R`
+  virava `setR(pc,cap)` e sumia — era o único ponto do jogo, fora do `PLAYER.DECAY`, em que massa de
+  jogador evaporava, e em silêncio. Hoje ele é cuspido em `PLAYER.OVER_N` fragmentos.
+- **A ZONA MEDE A FATIA DO DISCO, não o centro** (`zoneExposure` em `rules.js`; `predict.js` usa a MESMA
+  função, então o protocolo não muda). O critério era "meu centro está dentro do círculo?" — e com o raio
+  final de 144 px contra um teto de peça de 1000, o gigante ficava com o corpo cobrindo a arena inteira
+  sem queimar um grama: fisicamente invencível no exato momento em que o círculo devia decidir a partida.
+  Medindo a exposição ele **derrete até caber**, e quem já cabe não sente nada. Três atalhos antes de
+  qualquer `acos` (cabe inteira · inteira fora · o CÍRCULO dentro da peça, que é `1 − R²/r²` e é o caso do
+  gigante) mantêm o custo por tick: ~50 µs no pior caso absoluto, contra 1,5 ms de orçamento.
+  ⚠️ A cauda de `ZONE.R` mudou junto (final .015 → **.08**, 144 → 768 px) — sem isso a cura mata o
+  paciente: o teto geométrico seria 20 736 de massa para a SALA INTEIRA. 768 px é ~um arremesso de split
+  de raio: cabe a briga, não cabe o planeta. E cada etapa passou a tirar METADE da área, então a pressão é
+  constante do começo ao fim. O teto de massa do fim virou geométrico e de graça: `Σr² ≤ R²` = 590 mil
+  para a sala toda. `ZONE.FOOD_MIN` subiu junto (28 → 1200), senão o tapete de comida do círculo final —
+  que é a virada do jogador pequeno — sumia com o raio maior. E `bot.js:_zonePlan` desconta o próprio raio,
+  senão o bot passa a partida com a borda no gás.
+  ⚠️ A pelota que o gás arranca também precisou LIMPAR o planeta (`ZONE.SHED_DIST`): com velocidade fixa
+  ela rendia 70 px de alcance, o gigante a reengolia e chegava a um EQUILÍBRIO — parava de encolher
+  exatamente onde a zona devia estar cobrando dele.
+- **Nick é único POR SALA** (`Room.nickTaken`, erro `NICK_IN_ROOM`): dois planetas com o mesmo nome fazem
+  o kill feed, o chat e o placar mentirem — quem morreu não sabe por quem. `usedNicks` sempre existiu, mas
+  era WRITE-ONLY para humanos (só o gerador de bots o lia); agora é consultado na entrada e **limpo na
+  saída**, senão a sala vira uma lista negra que só cresce e quem sai não volta com o próprio nome. O
+  `JOGAR (AUTO)` pula as salas onde o nick está em uso, então a recusa quase só aparece para quem digitou
+  o código. ⚠️ Como o nick de uma conta é o da CONTA, isso também impede a mesma pessoa ter dois planetas
+  na mesma sala — e foi por isso que os testes passaram a criar um token por cliente.
+- **Todo jogador tem PAÍS, inclusive o preenchimento** (`botCountry` em constants, `Room.broadcastFlags`,
+  JSON `flags`): o humano já tinha bandeira no ranking, e uma sala de 50 com UMA bandeira acesa apontava
+  quem era gente antes de qualquer comportamento denunciar. O país do bot é sorteado pelo rng da sala e
+  **coerente com o nome** (um "Savannah" com bandeira do Brasil é mais estranho que bandeira nenhuma). Vai
+  em JSON de controle, no molde de `broadcastAvatars` e pelo mesmo motivo: 2 bytes por linha em TODO
+  broadcast de PLAYERS, para um dado que muda quando alguém entra ou sai, é caro.
+  ⚠️ O `xX…Xx` saiu de `botNick`: é a assinatura de um gerador, não de uma pessoa. `baseNick` continua
+  desfazendo o padrão porque HUMANOS ainda escolhem nicks assim.
+- **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
+  `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
+  porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade
+  não há auditoria que sirva. ⚠️ O token do painel é de outro `kind` (`admin`, 12 h): roubar a aba do jogo
+  de um administrador NÃO abre o painel. ⚠️ `server/src/api/index.js` tem um `PREFIXES` que é um gate
+  silencioso — rota `/api/admin/*` ausente dele não chega ao handler e cai em 404 sem uma linha de log.
+  ⚠️ E há DOIS padrões de fan-out que não podem ser trocados: sala **roteia pelo dono** (`askPeers`),
+  aviso e parâmetro **difundem** (`tellPeers`, que devolve o que CADA irmão respondeu, com as falhas — um
+  broadcast feito com `askPeers` entregaria a um shard e diria "ok").
+- **Parâmetros de jogo em runtime** (`shared/src/tunables.js` + `admin_settings`): lista BRANCA, nada fora
+  dela é gravável. Escrever custa ZERO no laço de 60 Hz porque `world.js` faz `const PW=POWERUP` — isso
+  aliasa o OBJETO, e os objetos de `constants.js` não são congelados. O **banco é a verdade**; o push
+  entre irmãos só pede que releiam. ⚠️ Chave `scope:'both'` responde **501**: o cliente tem a própria cópia
+  do bundle, e mudar de um lado só faria `predict.js` divergir. É por PROCESSO, não por sala.
+  O caso pedido é o **teto do ímã**, dito em MASSA (100 000 = √ → 316 px de raio), que é o número que o
+  jogador lê no HUD.
 - **Chat e voz** (`CHAT`/`VOICE` em constants): chat de sala ou de equipe (o escopo é do servidor), painel na
   faixa esquerda do HUD. **Quem morreu continua falando** — texto e voz —, e o escopo é UMA função
   (`Room._escopoFala`), porque três caminhos precisam da mesma resposta: a linha, o ícone do 🎤 e o clipe.
@@ -342,7 +417,19 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   rolagem interna comeria 15 px justo da medida que tem que bater com a das outras telas.
   `scripts/responsive-check.mjs` cobre `dead`, `round`, `entry@rail` e `shop@rail` (a gaveta com o conteúdo mais largo
   do jogo — 432 combinações).
-- **A BARRA DE NAVEGAÇÃO É UMA SÓ, e mora em `App.jsx`**: antes cada tela renderizava a sua DENTRO da caixa, e
+- **A BARRA DE NAVEGAÇÃO VOLTOU PARA DENTRO DA CAIXA** (`Screen` em `ui/bits.jsx`), que é onde os TRÊS
+  temas sempre a desenharam (`order:99;position:sticky;bottom:0`, mais as variantes de retrato e paisagem).
+  O motivo de ela ter saído era real e continua escrito abaixo — mas o conserto não era tirá-la da caixa:
+  era dar à CAIXA uma **altura determinada** (`top` E `bottom` fixos em `ui.css`, em vez de `height:auto` +
+  `max-height`). Com a caixa idêntica em todas as telas, a barra fica no mesmo pixel em todas elas.
+  E isso desfaz de uma vez o estrago colateral da saída: `.lobby-hero`, `.prefs-foot` e `.rank-me` são
+  `position:sticky;bottom:74px` nos temas — 74 px é a ALTURA DA BARRA —, e sem ela por baixo os três
+  pairavam OPACOS sobre o conteúdo: a tabela de Salas cortada ao meio, os botões de Preferências flutuando
+  no meio dos grupos e a faixa "Você 1º" cobrindo as linhas do Ranking eram **o mesmo defeito**, três vezes.
+  No celular em pé a caixa É a folha de rodapé, então a barra dentro dela continua colada embaixo — que é
+  exatamente o que o pedido "no desktop ela tem que ficar no painel central" queria dizer.
+  O texto abaixo é o histórico de por que ela chegou a sair:
+- **(histórico) A BARRA DE NAVEGAÇÃO ESTEVE em `App.jsx`**: antes cada tela renderizava a sua DENTRO da caixa, e
   o resultado dependia da altura do conteúdo. Os temas a colam com `order:99;position:sticky;bottom:0`
   (`screens.css:32`), ou seja, no fundo do SCROLLPORT da caixa: em "Salas" (conteúdo curto) ela grudava no
   fundo de um retângulo baixo, no meio da tela; em "Perfil" (caixa no teto, rolando) ia parar quase no rodapé
@@ -425,6 +512,22 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `/* … */`: o `*/` do caminho FECHA o comentário ali, e a primeira regra depois dele é engolida em
   silêncio. Foi assim que `body{--nav-h:74px}` deixou de existir e todo `calc()` que dependia da variável
   virou `max-height:none`. Cite caminhos com `<id>`, nunca com asterisco-barra.
+- **Munição, carga e ímã: os três tetos** — `AMMO_PLUS` era `addAmmo(ps,1)` cru, sem comparação nenhuma: o
+  único lugar do jogo que passa por cima do teto passava por cima dele SEMPRE, e a munição subia sem fim
+  (**9 mísseis** com `MAX_AMMO` 3, visto em produção). Hoje ele EMPRESTA uma bala (`MISSILE.AMMO_OVER`) —
+  gastou, o teto normal volta a valer. A **auto-defesa** passou a ACUMULAR até `POWERUP.AUTODEF_MAX` (3):
+  travada em 1, o segundo grão pego não fazia nada, e powerup que não muda nada ao ser pego é pior que
+  powerup nenhum. E o **teto do ímã** virou 100 mil de MASSA (`MAGNET_MAX_R` = √100000 ≈ 316 px) — dito em
+  massa porque é o número do HUD, e é a primeira chave parametrizável pelo painel. ⚠️ Pegar ímã acima do
+  teto CONSUMIA o grão e não dava nada (evento emitido, som tocado, efeito nenhum): agora vira comida.
+  ⚠️ E `Room.js` escrevia `ps.missiles=BR.START_AMMO` num campo que não existe desde que a munição virou
+  `ps.ammo[]` por arma — **ninguém largava o Battle Royale com a bala inicial**.
+- **A MIRA FICA TRAVADA 3 s depois de soltar** (`MISSILE.AIM_HOLD_TICKS`, `ps.aimLock*`): mirar CUSTA
+  movimento (o alvo é escolhido pelo cursor), então acertar a mira e ter que refazê-la inteira para mandar
+  o segundo míssil no MESMO planeta era pagar duas vezes pelo mesmo trabalho. O alvo NÃO viaja no fio (o
+  INPUT são 10 bytes fixos), então a trava mora no `PlayerState` e o cliente redesenha o anel pela mesma
+  conta — os dois chegam ao mesmo alvo sozinhos, sem protocolo novo. A interceptação de um teleguiado
+  entrante continua ganhando dela: defesa vem antes de escolha ofensiva.
 - **Powerups: ÍCONE COM O NÚMERO, não chip com rótulo** (`#hud-pw`, `Hud.jsx`): eram pílulas com o nome por
   extenso ("🧲 Ímã 6s"), e em partida ninguém lê palavra — some no ruído e a lista cresce de largura
   empurrando o chat. Hoje cada um é um DISCO de 44 px com o número num badge por cima. Três formas, uma
@@ -494,6 +597,11 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   na hora certa em vez de reagir queimando. `BOT.PERSONAS` dá o estilo e `BOT.SKILLS` dá a MÃO (4 níveis com peso: ~18 % ruins, 46 %
   medianos, 28 % bons, 8 % feras) — 50 adversários igualmente competentes é o maior denunciador de bot que existe. Graça de spawn para
   humanos. Quem valida é `shared/test/bot.test.js`: uma arena headless roda a partida inteira e mede o que denunciaria um script.
+- **Tela de morte: MAPA e TEMPO REAL** — duas vistas da mesma fonte (o placar traz TODOS os vivos com
+  posição, a 2 Hz, fora da AOI). MAPA é o radar ampliado, um instrumento para escolher quem assistir;
+  TEMPO REAL ocupa o espaço todo, o blip vira o planeta na COR DA SKIN com nome e massa, e a posição é
+  interpolada entre as amostras — sem isso cada blip anda aos saltos meia vez por segundo. A interpolação
+  mora em `WorldView.lbRows(suave)` e melhora o radar pequeno de brinde, sem um byte novo de rede.
 - **Fala dos bots** (`BOT_CHAT`/`BOT_TALK`, `Room.botChatTick`): o cérebro NÃO fala (o LocalServer não tem chat) — quem fala é a sala,
   a partir de gatilhos que o `Sim` já enxerga (`sim.botTalk`: abate, morte, virada da zona, largada; o gatilho leva `quem`, o outro
   lado do evento). Tudo é orçamento — cooldown de sala, cooldown por bot, teto por partida, probabilidade por gatilho —, o padrão é o
@@ -518,6 +626,19 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   linha GERADA cita alguém pelo nome — e a frase do repertório nunca cita, então a corrente morre sozinha ali.
   Termina por cinco razões independentes: profundidade limitada, exigência de citação, `CADEIA_P`, o conjunto
   `cadeia` (que proíbe repetir slot) e os orçamentos por bot.
+  ⚠️ **O bot LEVA TEMPO PARA DIGITAR** (`BOT_LLM.DIGITA_CPS`, `Room._digitaTick`). A linha do modelo saía
+  INTEIRA no instante em que ele terminava, então uma frase de 45 letras chegava tão rápido quanto um
+  "kkkk" — que é o jeito mais barato de denunciar que ali não tem gente. Agora ela espera `len/CPS` antes
+  de aparecer, agendada no MESMO relógio de tick do resto (nada de `setTimeout`: não é determinístico, não
+  é testável com o rng da sala e não revalida nada). Isto é DEPOIS da geração, então fica FORA do
+  `CORO_WAIT_MS` — somá-los faria toda menção virar `stale` e o bot ficar MUDO, o oposto do pedido. E
+  `ditas` é escrito no DISPARO, não na publicação: é ele que impede a repetição ao SORTEAR a próxima.
+  ⚠️ **A persona `narrador` SAIU** (`rooms/botPersonas.js`). Ela dizia literalmente `'you talk about
+  yourself in the third person, like a sports commentator'` — e era a causa dos bots escrevendo "Manu
+  ignora o lixo Lula e foca no combo58". O SYSTEM manda `'You are typing, not narrating'`, e a persona,
+  por ser específica e vir depois, ganhava: as duas se contradiziam e uma tinha que sair. Saiu a que fazia
+  o bot parecer um bot. `sanitiza` também passou a cortar o próprio nome quando vem como prefixo de turno
+  ("Manu: cala a boca" → "cala a boca"), porque o histórico vai para o prompt no formato `Nome: texto`.
   **A LLM sabe o que o bot está VIVENDO**: `estadoLinha` lê `gp.brain` (mode/target/press/zu — que o `_think`
   já preenchia e ninguém lia, custo zero) e `agressorLinha` lê `gp.mem`, um anel de 6 carimbado em
   `Sim._consume` nos eventos que já traziam `bySlot`. Quando o agressor É de quem ele foge, as duas viram UMA
@@ -606,6 +727,15 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   caíram pela metade (50/125/300/750): elas pagam uma vez na vida, mas as 53 juntas somavam 30 500 moedas.
   Hoje a curva discrimina — 17 numa partida fraca, ~97 numa média, 200 só na excepcional. ⚠️ Os testes de
   `persist.test.js` derivam os valores da FÓRMULA, nunca de constantes copiadas.
+- **O ranking mostra o NOME DA CONTA e perdeu o filtro de métrica** (`ui/Rank.jsx`, `repos/ranking.js`):
+  o segmento de seis botões (Nível/Pontos/Massa/Abates/Partículas/K/D) reordenava a MESMA tabela — que já
+  mostra os cinco números em colunas, lado a lado —, então trocar a ordenação não mostrava nada de novo:
+  mostrava a mesma coisa de outro jeito, e três fileiras de botões empilhadas comiam metade da caixa. A
+  ordenação ficou no NÍVEL, que é o número que resume uma conta. E o nome exibido passou a ser
+  `users.display_name` (o que veio do Google, guardado na migração 0008): o nick o jogador troca a cada
+  entrada, e `auth/google.js` SEMPRE extraiu esse nome — ele só era usado para derivar um nick e jogado
+  fora. ⚠️ De quebra, `repos/ranking.js` não mandava `level` e a coluna "Nível" saía VAZIA para todo mundo;
+  agora é derivada de `levelFromXp` (nível nunca é guardado — seria uma segunda verdade).
 - **O ranking é só de CONTA** (`repos/ranking.js`, `CONTA()`): ele sempre somou por `user_id`, então trocar
   de nick nunca fez ninguém perder posição — o que faltava era o contrário. O convidado escolhe um nick novo
   a cada entrada e pode ter quantos quiser; um pódio construído sobre isso não diz de QUEM é a marca. O
@@ -739,6 +869,29 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 - **Skins (75)**: `shared/src/skins.js` guarda `pattern`/`accent` e `client/src/theme/patterns.js` desenha a textura procedural
   dentro do disco (listras, crateras, continentes, lava, gelo, galáxia, xadrez, escamas, olho…) — nada de imagem, tudo assado uma vez
   por (skin, tier). O mesmo módulo desenha o buraco negro (`paintHole`) e a estrela (`paintNova`).
+- **Escudo e ímã: BORDA NEON, não anel girando** (`renderer/layers/Planets.js`): eram arcos TRACEJADOS
+  girando em volta do planeta (`dashArc` + `pw.spin`) e, no nível 3, um SEGUNDO anel atrás do primeiro —
+  dois círculos rodando em sentidos opostos em cima da arte da skin. Cada um era legível sozinho;
+  empilhados viravam ruído, e num planetão o aro passava a impressão de ser outro corpo em órbita. Hoje é
+  uma circunferência contínua colada na peça (`r+3`), com um traço largo e translúcido por fora (o vidro do
+  neon) e um fio saturado por dentro (o tubo): não gira, não pisca, só respira. Quem identifica é a COR, e
+  é ela que muda com o nível — `SHIELD_LV` nos três temas perdeu `rings`/`spin`/`dash` e ficou discreto.
+- **O nome do planeta fica no CENTRO** (`labels.nameY:()=>0` nos três temas). Ele já foi para o rodapé, com
+  uma tarja escura atrás, porque no centro caía em cima do nariz das caricaturas — e ficou pior: um planeta
+  com o nome pendurado embaixo lê como legenda de foto, não como um planeta que se chama assim. O que
+  resolve o rosto é a LETRA, não a posição: `nameFill` translúcido com contorno opaco deixa a arte aparecer
+  por dentro dela. A tarja saiu (`bandAlpha:0`); `NAME_MIN_PX` e `nameFitK` ficaram, porque são correções
+  de legibilidade independentes de onde o nome está.
+- **O ponteiro do jogo é lido na JANELA, não no canvas** (`game/input/Pointer.js`): o `#hud` é
+  `pointer-events:none`, mas todo elemento dele que precisa de clique tem `auto` — e passar o mouse sobre o
+  chat, sobre um botão ou sobre um chip do HUD fazia o canvas parar de receber `pointermove` e o alvo do
+  jogador CONGELAVA. Era isso que tornava impossível ter hover no HUD sem quebrar o controle. Na janela o
+  alvo nunca congela (as coordenadas continuam do canvas, pelo `getBoundingClientRect`), e `down`/`up`
+  continuam no canvas porque são cliques de JOGO. É o que destravou o balão de ajuda dos powerups.
+- **Sair do jogo não deixa cenário para trás** (`idle` no `render`, `hold` da câmera): o canvas continua
+  montado depois do `leave()`, e sem peças próprias a câmera entrava no ramo do lobby e PASSEAVA pelo mundo
+  vazio — a borda tracejada do mundo cortando o fundo do menu na diagonal. Parada e sem a moldura da arena
+  (grade e borda), o que fica atrás do menu é o CÉU, que é o fundo que a tela inicial sempre teve.
 - **Brilho das partículas** (estilo wormate.io): comida e fragmentos ganham um halo ADITIVO — um segundo
   `ParticleContainer` com `blendMode:"add"` por baixo do corpo, sobre o halo assado (`paintGlow` em `theme/util.js`).
   São 2 draw calls no total, não um por partícula, e nada de filtro/blur (proibidos: custam render target).

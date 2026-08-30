@@ -25,7 +25,7 @@ export const LABELS = {
   swapWeapon: "trocar arma", keySwap: "Q",
   deadByZone: "O GÁS TE ALCANÇOU", champTeam: "EQUIPE CAMPEÃ", lastAliveTitle: "ÚLTIMO PLANETA DE PÉ",
   watching: "assistindo", specPrev: "anterior", specNext: "próximo",
-  mapOpen: "🗺 MAPA", mapClose: "🗺 FECHAR MAPA",
+  mapOpen: "🗺 MAPA", mapClose: "🗺 FECHAR", liveOpen: "📡 TEMPO REAL", liveClose: "📡 FECHAR",
   title: "WARSPACE.IO", tagline: "CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   coinIcon: "🪙", coinWord: "moedas", nameLabel: "Nome do seu planeta", swap: "Trocar",
   play: "JOGAR", playAuto: "🚀 Jogar (auto)", rooms: "Salas", ranking: "Ranking", profile: "Perfil", shop: "Loja", prefs: "Opções", home: "Início",
@@ -78,6 +78,18 @@ export const LABELS = {
   split: "DIVIDIR", eject: "EJETAR", fire: "MÍSSIL", exit: "Sair", keySplit: "ESPAÇO", keyEject: "W", keyFire: "F",
   ammo: "mísseis",
   fireCd: "carregando", powerups: { magnet: "Ímã", shield: "Escudo", merge: "Fusão", autodef: "Auto-defesa", zoom: "Visão", feast: "Banquete" }, shieldLevel: "Nv",
+  // O que cada um FAZ, numa linha. O ícone sozinho não ensina: "🍀" não diz "a comida vale o dobro", e o
+  // jogador que pegava um trevo pela primeira vez não tinha como descobrir. Aparece no balão do HUD e na
+  // legenda da tela de Modos, que é por onde se passa antes de entrar.
+  powerupHints: {
+    magnet: "Puxa comida e fragmentos até você. Só vale até 100 mil de massa.",
+    shield: "Aguenta míssil e batida de rocha. Sobe de nível sozinho se você não apanhar.",
+    merge: "Junta todas as suas partes na hora.",
+    autodef: "Derruba sozinho um míssil que vier em você. Uma carga por interceptação.",
+    zoom: "Afasta a câmera e mostra mais mundo.",
+    feast: "A comida vale o dobro enquanto durar.",
+  },
+  powerupsTitle: "POWERUPS", powerupsNote: "Aparecem como bolinhas no mapa. Passe por cima para pegar.",
   room: "SALA", ping: "ms", fps: "fps", top5: "TOP 5 HOJE", activeRooms: "SALAS ATIVAS",
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— o universo desabou num ponto; a próxima galáxia já está nascendo —",
   champion: "CAMPEÃO DA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar agora", playersWord: "no placar", posWord: "#",

@@ -88,17 +88,24 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
     catch(e){log.warn(`google: ${e&&e.message}`);throw err(401,'invalid_credentials','não deu para validar sua conta Google');}
     const entra=async(u,via)=>{const token=await tokens.issue(u.id,'session',ctx.userAgent);users.touchSeen(u.id).catch(()=>{});
       log.info(`google: #${u.id} ${u.nick} (${via})`);return{token,user:toPublic(u)};};
+    // O NOME DO GOOGLE fica guardado (`users.display_name`), e não só derivado num nick. É ele que o
+    // RANKING mostra: o nick o jogador troca a cada partida, e um pódio construído sobre o nick não diz de
+    // quem é a marca. O nick continua sendo o nome DENTRO do jogo — as duas coisas são diferentes.
+    const nome=id.name?String(id.name).trim().slice(0,64):null;
+    const guardaNome=(uid,c=db)=>nome?c.query(`UPDATE users SET display_name=$2 WHERE id=$1`,[uid,nome]).catch(()=>{}):null;
     // 1. identidade conhecida
     const existente=await identities.find('google',id.subject);
     if(existente){
       const u=await users.byId(existente.user_id);
       if(!u)throw err(401,'invalid_credentials','conta não encontrada');
       await identities.touch('google',id.subject);
+      await guardaNome(u.id);u.display_name=nome||u.display_name;
       return entra(u,'identidade conhecida');}
     // 2. o e-mail já é de alguém → a identidade vai para AQUELA conta (ver a ressalva do comentário)
     const dono=id.email?await users.byEmail(id.email):null;
     if(dono){
       await identities.link(db,{userId:dono.id,provider:'google',subject:id.subject,email:id.email});
+      await guardaNome(dono.id);dono.display_name=nome||dono.display_name;
       return entra(dono,'vinculado pelo e-mail');}
     // 3/4. promove o convidado, ou cria conta nova
     const atual=ctx.token?await optionalUser(ctx):null;
@@ -109,11 +116,11 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
         let u;
         if(atual&&atual.kind==='guest'){
           const nick=pedido?await nickOf(pedido,atual.id):await nickDoGoogle(atual.nick,atual.id);
-          u=(await c.query(`UPDATE users SET kind='registered',email=COALESCE($2,email),nick=$3 WHERE id=$1 RETURNING *`,
-            [atual.id,id.email,nick])).rows[0];}
+          u=(await c.query(`UPDATE users SET kind='registered',email=COALESCE($2,email),nick=$3,display_name=COALESCE($4,display_name) WHERE id=$1 RETURNING *`,
+            [atual.id,id.email,nick,nome])).rows[0];}
         else{
           const nick=pedido?await nickOf(pedido,null):await nickDoGoogle(id.name,null);
-          u=(await c.query(`INSERT INTO users(kind,nick,email) VALUES('registered',$1,$2) RETURNING *`,[nick,id.email])).rows[0];
+          u=(await c.query(`INSERT INTO users(kind,nick,email,display_name) VALUES('registered',$1,$2,$3) RETURNING *`,[nick,id.email,nome])).rows[0];
           await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
           if(config.signupCoins>0){const {coins}=await ledger.apply(c,{userId:u.id,delta:config.signupCoins,reason:'signup'});u.coins=coins;}}
         await identities.link(c,{userId:u.id,provider:'google',subject:id.subject,email:id.email});

@@ -2,12 +2,15 @@
 // @ts-check
 import {randomBytes,createHash} from 'node:crypto';
 const DAY=86400e3;
-export const TOKEN_TTL_MS={device:365*DAY,session:30*DAY};
+// `admin` é o token do PAINEL, e o TTL curto não é a parte importante: o que importa é ele ser um KIND
+// SEPARADO. `requireAdmin` exige is_admin **e** token_kind==='admin', então roubar a aba do jogo de um
+// administrador não abre o painel — e sair do painel não desloga do jogo.
+export const TOKEN_TTL_MS={device:365*DAY,session:30*DAY,admin:12*3600e3};
 const SLIDE_AFTER_MS=3600e3;                       // renova expires_at/last_seen no máx. 1×/h por token
 export const TOKEN_RE=/^pt_[A-Za-z0-9_-]{43}$/;
 export const newToken=()=>'pt_'+randomBytes(32).toString('base64url');
 export const hashToken=t=>createHash('sha256').update(t).digest('hex');
-export const ttlSql=kind=>`now()+interval '${kind==='device'?365:30} days'`;
+export const ttlSql=kind=>kind==='admin'?`now()+interval '12 hours'`:`now()+interval '${kind==='device'?365:30} days'`;
 // `st.xp` entra por LEFT JOIN em PK: custo zero numa query que já roda em todo join de WS, e é o que faz o
 // badge de nível existir sem uma segunda ida ao banco no caminho mais quente do servidor.
 const RESOLVE_SQL=`SELECT u.*, t.id AS token_id, t.kind AS token_kind, t.last_used_at AS token_used_at,

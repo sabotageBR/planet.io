@@ -60,13 +60,23 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
           // `acceptsJoin` é a porta única: cobre cheia, terminada E partida já em andamento (Battle Royale)
           if(room&&!room.acceptsJoin()){if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});return s.error('FULL',`sala ${room.code} indisponível`);}
           if(room&&room.modeId!==mode.id){if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});return s.error('MODE',`a sala ${room.code} é de outro modo`);}}
-        if(!room)room=rooms.findOrCreateRoom(opts);
+        const nick=res.nick||fallbackNick;
+        // Sair da sala ANTES de escolher a próxima: se ele já está numa sala, o próprio nick dele está em
+        // `usedNicks` e o matchmaking descartaria a sala em que ele acabou de jogar.
         if(s.room)s.room.leave(s,'left');                            // join de novo (depois de morrer): sai da sala atual
-        s.sessionId=res.sessionId||randomUUID();s.userId=res.userId??null;s.name=res.nick||fallbackNick;s.unsaved=!!res.unsaved;
-        s.level=res.level|0;s.avatar=res.avatar||null;
-        room.join(s,{name:s.name,registered:!!res.registered,skinId:res.skinId|0,sessionId:s.sessionId,userId:s.userId,level:s.level,party});
+        if(!room)room=rooms.findOrCreateRoom({...opts,nick});
+        // ⚠️ NICK ÚNICO POR SALA. Dois planetas com o mesmo nome deixam o kill feed, o chat e o placar
+        // mentindo: quem morreu não sabe por quem. Quem escolheu a sala pelo CÓDIGO recebe a recusa e troca
+        // de nick; quem entrou pelo automático nunca chega aqui, porque `findOrCreateRoom` já pulou a sala.
+        if(room.nickTaken(nick)){
+          if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});
+          return s.error('NICK_IN_ROOM',`já há alguém chamado "${nick}" nessa sala`);}
+        s.sessionId=res.sessionId||randomUUID();s.userId=res.userId??null;s.name=nick;s.unsaved=!!res.unsaved;
+        s.level=res.level|0;s.avatar=res.avatar||null;s.country=res.country||null;
+        room.join(s,{name:s.name,registered:!!res.registered,skinId:res.skinId|0,sessionId:s.sessionId,userId:s.userId,level:s.level,country:s.country,party});
         s.sendJson(roomMsg(room));room.sendPlayers(s);
         if(room.avatars&&room.avatars.size)room.broadcastAvatars();   // quem entra precisa saber quem já tem foto
+        room.broadcastFlags();                                        // e quem já está na sala precisa ver a bandeira do novato
         log.info(`${s.name} entrou na sala ${room.code} (slot ${s.slot}, ${room.humanCount}/${room.max}${s.unsaved?', sem persistência':''})`);
       }catch(e){log.error('join:',e);s.error('ROOM','falha ao entrar na sala');}
       finally{s.joining=false;}}
