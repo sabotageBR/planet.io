@@ -25,7 +25,8 @@ import {aberta} from './botChat.js';
 const WRITER_SIZE=32768,BOT_SKINS=35;   // bots usam skins 0..34 (compráveis; nada de "earned"/secretas)
 export class Room{
   /** @param {{code:string,shard:number,seed:number,hooks:any,log:any,metrics:any,config:{roomMax:number,roomBots:number},onRewards?:Function}} o */
-  constructor({code,shard,seed,hooks,log,metrics,config,onRewards=null,mode=MODE.FREE,teamSize=1,botChat=null}){
+  constructor({code,shard,seed,hooks,log,metrics,config,onRewards=null,mode=MODE.FREE,teamSize=1,botChat=null,
+    roundTicks=null,private:priv=false,hostUserId=null,hostNick=null}){
     this.code=code;this.shard=shard;this.seed=seed;this.rng=createRng(seed);this.log=log;this.metrics=metrics;
     this.mode=modeOf(mode);this.modeId=this.mode.id;
     this.teamSize=this.mode.teamSizes.includes(teamSize)?teamSize:this.mode.teamSizes[0];
@@ -36,7 +37,25 @@ export class Room{
     // Battle Royale: quem manda é o modo, e a capacidade fecha no tamanho de equipe (modeCap).
     this.max=this.mode.lobby?modeCap(this.modeId,this.teamSize):config.roomMax;
     this.botCount=this.mode.lobby?0:config.roomBots;
-    this.roundTicks=this.mode.lobby?this.mode.roundTicks:(config.roundTicks||ROUND.TICKS);
+    // ⚠️ `roundTicks!=null`, NUNCA `roundTicks||…`: **0 é o valor de SEM FIM**, e o `||` o transformaria em
+    // silêncio na rodada do env. É a mesma armadilha do `config.roundTicks||ROUND.TICKS` que já estava aqui.
+    this.roundTicks=roundTicks!=null?roundTicks:(this.mode.lobby?this.mode.roundTicks:(config.roundTicks||ROUND.TICKS));
+    // ── SALA COM DONO ────────────────────────────────────────────────────────────────────────
+    // `private`: fora do automático e de toda listagem pública — entra-se só pelo código, que É o convite
+    // (o mesmo contrato do lobby de equipe). `hostUserId` é a identidade do dono: a CONTA, e não o hash do
+    // token como no Party, porque só conta registrada pode ser dona e porque o userId sobrevive à troca de
+    // aba, de token e a uma reconexão. `bans` vive e morre com a sala — ban de sala, sem banco e sem TTL.
+    // ⚠️ `Number(...)`: o id de `users` é BIGINT e o driver do Postgres o entrega como STRING, enquanto
+    // `session.userId` chega do hook já convertido (persist/hooks.js faz `Number(u.id)`). Sem normalizar,
+    // `'53'===53` é falso e o dono da sala simplesmente NÃO seria dono — sem erro nenhum, só um painel que
+    // nunca aparece.
+    this.private=!!priv;this.hostUserId=hostUserId==null?null:Number(hostUserId);this.hostNick=hostNick||null;this.hostLeftAt=0;
+    this.holdUntil=hostUserId?Date.now()+ROOM.HOST_HOLD_MS:0;
+    /** @type {Map<string,{userId:number|null,key:string|null,nick:string,at:number}>} */this.bans=new Map();
+    // handle OPACO do jogador para o painel do dono. Nunca o slot (recicla — é o 409 `slot_changed` que o
+    // painel do admin precisa tratar), nunca o sessionId nem o resumeToken (são as duas metades da credencial
+    // de `resume`), nunca a chave do token.
+    this._pid=0;
     this.lobbyTicks=config.lobbyTicks||BR.LOBBY_TICKS;   // env LOBBY_TICKS: testar a largada sem esperar 30 s
     // lobby: ninguém está no MAPA ainda. `lobbyUntil` é a janela em que os humanos que procuram battle
     // royale caem juntos; `startsAt` só é escrito quando a contagem regressiva começa (0 = ainda enchendo).
@@ -147,19 +166,27 @@ export class Room{
     if(this.phase==='lobby')return this.sessions.size<this.max;
     return !this.isFull()&&!this.mode.lobby;}
   info(){return{code:this.code,shard:this.shard,mode:this.modeId,teamSize:this.teamSize,phase:this.phase,open:this.acceptsJoin(),
-    players:this.sessions.size,max:this.max,bots:this.sim.botCount(),round:this.roundLeft()};}
+    players:this.sessions.size,max:this.max,bots:this.sim.botCount(),round:this.roundLeft(),
+    // ⚠️ o campo fica AQUI, mas o filtro é na LISTAGEM (RoomManager.listRooms): `adminInfo()` é construído em
+    // cima deste objeto, e o painel tem que continuar vendo a sala privada.
+    private:this.private,host:this.hostNick||null};}
   /** Bloco `round` do JSON `room`: tick de início, duração e hora do relógio do espaço no início. */
   roundInfo(){return{start:this.roundStart,ticks:this.roundTicks,dayStart:ROUND.DAY_START_H,breakMs:ROUND.BREAK_MS,
     // `days` vem do SERVIDOR de propósito. Os ticks da rodada saem do env (ROUND_TICKS) e os dias eram uma
     // constante do CLIENTE — cliente novo com env velho desenhava o relógio do espaço na metade da
     // velocidade, e nada na tela dizia por quê. Custa 1 número num JSON que já é mandado uma vez por join.
     days:ROUND.DAYS,
+    // ⚠️ O DIA em ticks, explícito. O cliente derivava a hora do espaço de `ticks/days` — e numa sala SEM FIM
+    // não há `ticks` de onde derivar, então o céu simplesmente PARARIA justo na sala que dura mais. Para
+    // rodada finita o valor é idêntico ao que ele já calculava, então nada muda nas salas de sempre.
+    dayTicks:this.roundTicks?Math.round(this.roundTicks/ROUND.DAYS):ROUND.DAY_TICKS,
     phase:this.phase,
     // TICK absoluto, não "faltam N ms": o cliente já sincroniza o relógio do servidor, e uma duração relativa
     // o obrigaria a saber há quanto tempo a mensagem chegou — que é justamente onde a contagem errava.
     startsAt:this.startsAt||0};}
-  /** Segundos restantes da rodada (0 se já acabou). */
-  roundLeft(){const left=(this.roundStart+this.roundTicks-this.sim.tick)/TICK_HZ;return left>0?Math.round(left):0;}
+  /** Segundos restantes da rodada (0 se já acabou). ⚠️ `null` = SEM FIM — e quem lê tem que distinguir de 0. */
+  roundLeft(){if(!this.roundTicks)return null;
+    const left=(this.roundStart+this.roundTicks-this.sim.tick)/TICK_HZ;return left>0?Math.round(left):0;}
   // ── sessões ──
   /**
    * O nick já está em uso NESTA sala? Dois planetas com o mesmo nome na mesma partida é ilegível: o kill
@@ -179,9 +206,10 @@ export class Room{
     const gp=this.sim.players.get(slot);if(gp){gp.country=country||null;this.flagsDirty=true;}
     if(lobby&&!this.lobbyUntil){this.lobbyStart=this.sim.tick;this.lobbyUntil=this.sim.tick+this.lobbyTicks;}   // a janela começa no PRIMEIRO humano
     const pc=this.sim.world.piecesOf(slot)[0];if(pc){session.cx=pc.x;session.cy=pc.y;}
-    session.room=this;session.slot=slot;session.known.clear();session.rect=null;session.specSlot=-1;this.sessions.set(slot,session);this.lastHumanAt=Date.now();
+    session.room=this;session.slot=slot;session.pid=++this._pid;session.known.clear();session.rect=null;session.specSlot=-1;this.sessions.set(slot,session);this.lastHumanAt=Date.now();
     if(session.avatar&&session.userId)this._setAvatar(slot,session.userId,session.avatar);
     if(lobby)this.broadcastLobby();
+    if(this.hostUserId!=null){const h=this.hostSession();if(h)this.sendHost(h);this.holdUntil=Date.now()+ROOM.HOST_HOLD_MS;}
     return slot;}
   /**
    * Sai de vez: onMatchEnd(cause) se ainda vivo, remove do mundo.
@@ -199,7 +227,8 @@ export class Room{
     if(gp&&gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());   // sem isto a sala vira lista negra e quem sai não volta com o próprio nome
     this.flagsDirty=true;
     if(this.avatars.has(slot))this._setAvatar(slot,null,null);
-    this.sim.remove(slot);this.sessions.delete(slot);session.room=null;session.slot=-1;session.known.clear();session.specSlot=-1;this.lastHumanAt=Date.now();}
+    this.sim.remove(slot);this.sessions.delete(slot);session.room=null;session.slot=-1;session.known.clear();session.specSlot=-1;this.lastHumanAt=Date.now();
+    if(this.hostUserId!=null){const h=this.hostSession();if(h)this.sendHost(h);}}
   /** Socket caiu: fica no mundo sem thrust (alvo = centróide) até resume ou expirar. */
   detach(session){if(this.sessions.get(session.slot)!==session)return;if(session.kicked)return this.leave(session,'left');session.detach();
     const w=this.sim.world,ps=w.players.get(session.slot);if(!ps||!ps.alive)return;
@@ -242,7 +271,66 @@ export class Room{
   deadMsg(slot){const gp=this.sim.players.get(slot);if(!gp||!gp.dead||!gp.deathInfo)return null;const i=gp.deathInfo;
     return{t:'dead',by:i.by,byHole:i.byHole,byZone:i.byZone,score:i.score,maxMass:i.maxMass,kills:i.kills,durationS:i.durationS,placement:i.placement,players:i.players};}
   /** Expira sessões sem socket há mais de NET.RESUME_MS (chamado a cada 1 s pelo RoomManager). */
-  housekeeping(now){for(const s of this.sessions.values())if(!s.ws&&now-s.disconnectedAt>NET.RESUME_MS){this.leave(s,'left');this.log.info(`${s.name} saiu da sala ${this.code} (sessão expirada)`);}}
+  housekeeping(now){for(const s of this.sessions.values())if(!s.ws&&now-s.disconnectedAt>NET.RESUME_MS){this.leave(s,'left');this.log.info(`${s.name} saiu da sala ${this.code} (sessão expirada)`);}
+    this._hostTick(now);}
+  // ── SALA COM DONO: quem manda, quem entra e quem sai ───────────────────────────────────────
+  /** É o dono? Compara a CONTA. ⚠️ O `!=null` não é firula: sem ele todo convidado (userId null) viraria dono. */
+  isHost(session){return this.hostUserId!=null&&!!session&&session.userId===this.hostUserId;}
+  /** A sessão do dono, se ele estiver aqui agora. */
+  hostSession(){if(this.hostUserId==null)return null;for(const s of this.sessions.values())if(s.userId===this.hostUserId)return s;return null;}
+  /**
+   * O dono pode cair e voltar — a comparação é por CONTA, não por sessão, então voltar o devolve ao trono de
+   * graça. Passada a carência, a coroa vai ao humano mais antigo presente: uma sala privada de 20 pessoas sem
+   * ninguém que possa expulsar um invasor é pior do que uma com um dono improvisado.
+   */
+  _hostTick(now){
+    if(this.hostUserId==null)return;
+    if(this.hostSession()){this.hostLeftAt=0;this.holdUntil=now+ROOM.HOST_HOLD_MS;return;}
+    if(!this.hostLeftAt){this.hostLeftAt=now;return;}
+    if(now-this.hostLeftAt<ROOM.HOST_GRACE_MS)return;
+    let novo=null;for(const s of this.sessions.values())if(s.userId!=null&&(!novo||s.connectedAt<novo.connectedAt))novo=s;
+    this.hostLeftAt=0;
+    if(!novo){this.hostUserId=null;this.hostNick=null;return;}   // ninguém a coroar: a sala volta a ser de todos
+    this.hostUserId=novo.userId;this.hostNick=novo.name||null;this.holdUntil=now+ROOM.HOST_HOLD_MS;
+    this.log.info(`sala ${this.code}: ${novo.name} virou dono (o anterior saiu)`);
+    this.sendHost(novo);}
+  /**
+   * A lista que o dono vê. ⚠️ Só HUMANOS, e isso não é economia: iterar `sessions` respeita por construção o
+   * `anonBots` do Battle Royale, onde o preenchimento não se identifica — um roster com bots entregaria ao
+   * dono exatamente a resposta que o modo existe para esconder. E expulsar bot não significa nada (`trimBots`).
+   * ⚠️ Também NÃO é `adminInfo({players:true})`: aquele leva sessionId, userId e IP. O dono é um jogador.
+   */
+  hostRoster(){const out=[];
+    for(const s of this.sessions.values()){const gp=this.sim.players.get(s.slot);
+      out.push({pid:s.pid,name:s.name,level:s.level|0,country:s.country||null,
+        alive:!!(gp&&!gp.dead),connected:s.connected,host:this.isHost(s)});}
+    return out;}
+  bansList(){return [...this.bans.values()].map(b=>({nick:b.nick,at:b.at}));}
+  /** Está banido desta sala? Casa por CONTA e, para quem não tem conta, pelo hash do token. */
+  banned({userId=null,key=null}={}){if(!this.bans.size)return false;
+    for(const b of this.bans.values()){if(userId!=null&&b.userId===userId)return true;if(key&&b.key===key)return true;}
+    return false;}
+  sessionByPid(pid){for(const s of this.sessions.values())if(s.pid===(pid|0))return s;return null;}
+  /**
+   * Expulsa (e opcionalmente bane) alguém. Mesmo caminho do painel do administrador.
+   * ⚠️ A causa é `'left'`, NUNCA `'kicked'`: `Room.leave` grava `matches.cause`, cujo CHECK (migração 0003)
+   * não conhece a palavra — a partida falharia com 23514 dentro de um catch, em silêncio.
+   * ⚠️ `Session.error` marca `kicked=true`, e é isso que faz `Room.detach` tratar a queda como saída: sem
+   * ele o expulso voltaria pelo `resume` em 10 s.
+   */
+  hostKick(pid,{ban=false}={}){
+    const alvo=this.sessionByPid(pid);if(!alvo)return null;
+    if(this.isHost(alvo))return null;   // o dono não se expulsa: entregaria a sala à transferência com um clique
+    const nome=alvo.name||'';
+    if(ban)this.bans.set(`p${pid}`,{userId:alvo.userId,key:alvo.key||null,nick:nome,at:Date.now()});
+    alvo.error('ROOM',ban?'você foi banido desta sala':'você foi removido da sala pelo dono');
+    this.leave(alvo,'left');
+    this.log.info(`sala ${this.code}: ${nome} foi ${ban?'banido':'removido'} pelo dono`);
+    const h=this.hostSession();if(h)this.sendHost(h);
+    return nome;}
+  /** O painel do dono, só para ele. JSON de controle: não custa versão de protocolo, como `talk` e `flags`. */
+  sendHost(session){if(!session||!session.connected||!this.isHost(session))return;
+    session.sendJson({t:'host',you:true,private:this.private,roster:this.hostRoster(),bans:this.bansList()});}
   // ── equipes ──
   get teamCount(){return this.teamSize>1?Math.floor(this.max/this.teamSize):0;}
   /**
@@ -937,7 +1025,10 @@ export class Room{
       this.lobbyTick();
       return;}
     if(this.mode.zone&&this.zone)this.tickZone();
-    if(sim.tick-this.roundStart>=this.roundTicks){this.endRound('time');return;}
+    // ⚠️ `this.roundTicks&&` não é redundante: com 0 (SEM FIM) a comparação `0>=0` é VERDADEIRA no primeiro
+    // tick, e a sala do dono acabaria antes de existir. O fim continua alcançável por `lastAlive` e pelo
+    // `close` do painel.
+    if(this.roundTicks&&sim.tick-this.roundStart>=this.roundTicks){this.endRound('time');return;}
     sim.step();
     if(sim.botTalk.length)this.botChatTick();
     if(this.falaFila.length)this._filaTick();
@@ -987,7 +1078,7 @@ export class Room{
       // Marcos: `leaderboard()` é cacheado por tick, então isto não custa varredura nenhuma.
       if(this.phase==='live'&&!this.over){
         this._pushFeed(this.feed.leadStep(rows,t));
-        this._pushFeed(this.feed.crunchStep(this.roundLeft()));}}
+        if(this.roundTicks)this._pushFeed(this.feed.crunchStep(this.roundLeft()));}}   // sem fim não há BIG CRUNCH para anunciar
     if(this.sim.feed.length)this.broadcastFeed();}
 
 }

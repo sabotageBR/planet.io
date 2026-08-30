@@ -5,7 +5,7 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { LABELS } from "../ui/labels.js";
 import { skinById } from "@warspace/shared";
-import { clockRef, gameRef } from "./game.js";
+import { clockRef, gameRef, getGame } from "./game.js";
 
 const Q = new URLSearchParams(location.search);
 const NICK_RE = /^.{2,16}$/;
@@ -72,6 +72,10 @@ export async function boot() {
   loadConfig(); loadTop5(); loadRooms();
   const conv = Q.get("party");
   if (conv) { history.replaceState(null, "", location.pathname); joinParty(conv); return; }   // link de convite: cai direto no lobby da equipe do amigo
+  // Convite para a SALA de alguém. ⚠️ Consulta o modo ANTES de entrar: sem isso o convidado entraria com o
+  // modo do estado dele, e o servidor recusaria com `MODE` — um link que não funciona sem dizer por quê.
+  const sala = Q.get("sala");
+  if (sala) { history.replaceState(null, "", location.pathname); entrarPorConvite(sala); return; }
   devQuery();
 }
 /** ?screen=<id> (entry|account|lobby|rank|profile|shop|prefs|game|dead|round|reconn) — atalho de desenvolvimento. */
@@ -280,6 +284,28 @@ export async function play({ room, mode, teamSize, party } = {}) {
 export function setMode(mode, teamSize = 1) { app.update({ gameMode: mode | 0, teamSize: teamSize | 0 || 1 }); }
 const meNick = () => (app.get().session.user || {}).nick || "Viajante";
 const meSkin = () => (app.get().session.user || {}).equippedSkin | 0;
+/**
+ * Abre uma sala DA PESSOA: ela escolhe o modo, a duração (0 = sem fim, só no Livre) e se é privada, e entra
+ * como dona — podendo expulsar e banir. Só conta registrada: quem tem esse poder precisa de uma identidade
+ * que dure mais que uma aba, e o servidor recusa com `need_account`.
+ */
+/** Link de convite (`?sala=ABCD`): descobre o modo da sala e entra nela. */
+export async function entrarPorConvite(code) {
+  const c = String(code || "").trim().toUpperCase();
+  if (c.length !== 4) return;
+  try { const r = await api.roomGet(c); const m = r.room.mode | 0, ts = r.room.teamSize || 1;
+    app.update({ gameMode: m, teamSize: ts });
+    play({ room: c, mode: m, teamSize: ts, party: null }); }
+  catch (e) { toast(e.message, 3000); go("lobby"); }
+}
+export async function criarSala({ mode = 0, teamSize = 1, minutes = 30, private: priv = false } = {}) {
+  try { const r = await api.roomCreate({ mode, teamSize, minutes, private: priv });
+    app.update({ gameMode: mode, teamSize });
+    play({ room: r.room.code, mode, teamSize, party: null }); return r.room; }
+  catch (e) { toast(e.message, 3000); return null; }
+}
+/** Dono da sala: expulsar (`kick`) ou banir da sala (`ban`). Quem autoriza é o servidor. */
+export const hostAct = (act, pid) => { const g = getGame(); if (g) g.hostAct(act, pid); };
 export async function createParty(teamSize) {
   try { const r = await api.partyCreate({ mode: 1, teamSize, nick: meNick(), skinId: meSkin() });
     app.update({ party: r.party, partyMe: r.you || null, partyError: null, gameMode: 1, teamSize: r.party.teamSize, screen: "party" }); return r.party; }

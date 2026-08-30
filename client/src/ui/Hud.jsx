@@ -90,7 +90,9 @@ export default function Hud() {
   return <div id="hud" className={screen === "game" ? "" : espectando ? "spec" + (h.map ? " map" : "") : "hidden"}>
     <div id="hud-top">
       <span className="chip" id="h-room"><i>{LB.room}</i> <b id="v-room">{h.room || room || "—"}</b></span>
-      {h.clock ? <span className="chip" id="h-clock"><i>🕒</i> <b>{String(h.clock.h).padStart(2, "0")}:{String(h.clock.m).padStart(2, "0")}</b> <i>⏳</i> <b>{Math.floor(h.clock.leftS / 60)}:{String(Math.floor(h.clock.leftS % 60)).padStart(2, "0")}</b></span> : null}
+      {/* `leftS == null` é a sala SEM FIM (o dono escolheu ∞): o relógio do espaço continua girando, mas não
+          há contagem regressiva — e um "0:00" ali diria que a partida acabou. */}
+      {h.clock ? <span className="chip" id="h-clock"><i>🕒</i> <b>{String(h.clock.h).padStart(2, "0")}:{String(h.clock.m).padStart(2, "0")}</b> <i>⏳</i> <b>{h.clock.leftS == null ? "∞" : `${Math.floor(h.clock.leftS / 60)}:${String(Math.floor(h.clock.leftS % 60)).padStart(2, "0")}`}</b></span> : null}
       <span className="chip" id="h-net" style={prefs.showFps ? undefined : { display: "none" }}><b id="v-ping">{h.ping || 0}</b><i>{LB.ping}</i> <b id="v-fps">{h.fps || 0}</b><i>{LB.fps}</i></span>
       {/* MUDO à mão. A tecla M resolve para quem já sabe que ela existe; este botão é para quem precisa
           calar o jogo AGORA e não vai abrir Opções → Som para procurar quatro interruptores diferentes. */}

@@ -347,6 +347,38 @@ por massa — a mesma do placar, então "próximo" na tela é "próximo" aqui �
 para alguém. Quem decide continua sendo o SERVIDOR: alvo morto ou inexistente cai na escolha automática, em vez
 de deixar a câmera olhando para um fantasma. Jogador vivo não vira espectador — ele tem as próprias peças.
 
+## Sala com dono
+
+As três escolhas da tela de modos põem o jogador numa sala que o SERVIDOR escolhe. A quarta cria a sala
+**dele**: modo, duração e privacidade, e ele entra como dono — podendo expulsar e banir.
+
+- **Só conta registrada** (`403 need_account`). O dono expulsa e bane, e quem troca de identidade a cada
+  entrada não pode ter esse poder. É também a primeira moderação por jogador que este jogo tem — o item
+  "moderação de servidor" da lista abaixo continua fora; o que entrou é moderação da PRÓPRIA sala.
+- **Duração** de `ROUND.CHOICES_MIN`, com **0 = sem fim** e só no Livre. No Battle Royale o tempo é a rede
+  de segurança da zona: `roundTicksOf` recusa qualquer valor abaixo de `ZONE_TOTAL_TICKS`, que é DERIVADO
+  das etapas da zona — mexer nelas move o piso sozinho. Uma partida de BR que acaba por tempo antes de o
+  círculo fechar é a única forma de o modo terminar sem ter decidido nada.
+- **Sem fim** significa sem BIG CRUNCH, sem pódio e sem campeão: a sala vive até esvaziar. O relógio do
+  espaço CONTINUA girando (o servidor manda `dayTicks` justamente para isso), e o que some é a contagem
+  regressiva — o HUD mostra `∞`.
+- **Privada** = fora de `/api/rooms`, de `/internal/rooms` e do automático. Entra-se pelo código, que É o
+  convite — o mesmo contrato do lobby de equipe, e sem senha. ⚠️ Sala privada morta LIBERA o código:
+  `getRoom` materializa uma sala nova, pública, para qualquer código deste shard. Não se conserta isso com
+  uma lista persistente de códigos; é o preço de a sala ser memória.
+- **O dono pode cair e voltar** (a comparação é por conta, não por sessão). Passado `ROOM.HOST_GRACE_MS` fora,
+  a coroa vai ao humano mais antigo presente — uma sala de 20 pessoas sem ninguém que possa expulsar um
+  invasor é pior que uma com dono improvisado. E o ceifador não recolhe a sala enquanto `ROOM.HOST_HOLD_MS`
+  não vencer: ela existe para esperar os amigos chegarem pelo link.
+- **Kick e ban vão por WS**, não por HTTP: o socket do dono já foi aberto em `/ws/<shardOf(code)>`, ou seja já
+  está no shard que conhece a sala. Não há o que rotear — a armadilha `askPeers`×`tellPeers` não existe deste
+  lado. Só a CONSULTA por código (`GET /api/room/:code`, o link de convite) roteia.
+- **O ban vive e morre com a sala**: casa por conta e, para quem não tem conta, pelo hash do token. Não vai ao
+  banco, pelo mesmo motivo que o lobby de equipe não vai.
+- O painel do dono mora **dentro do menu de pausa** (Esc), e o roster tem só HUMANOS: iterar `room.sessions`
+  respeita por construção o `anonBots` — um roster com bots entregaria justamente a resposta que o Battle
+  Royale existe para esconder.
+
 ## O que ficou de fora
 
 - **O `?local=1` e o modo offline continuam só Livre.** O `LocalServer` é uma segunda implementação da sala

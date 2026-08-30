@@ -3,10 +3,11 @@
 import {readFile,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
+import {modeOf,roundTicksOf} from '@warspace/shared/constants.js';
 import {sendJson,readJson,bearer,clientIp} from '../api/router.js';
-import {hashToken} from '../auth/tokens.js';
+import {sessionKey} from '../auth/tokens.js';
 import {createPartyManager} from '../rooms/Party.js';
-import {shardOf} from '../rooms/codes.js';
+import {shardOf,newCode} from '../rooms/codes.js';
 import {fetchPeerRooms,askPeers} from './peers.js';
 import {createAdminHttp} from './admin.js';
 const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript','.mjs':'application/javascript','.css':'text/css','.ico':'image/x-icon','.png':'image/png','.jpg':'image/jpeg',
@@ -24,7 +25,7 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
   // (memória do shard, com TTL), tem que funcionar sem banco e vale para convidado. Quem identifica a pessoa é
   // o hash do token — o mesmo `pt_…` do jogo —, então o guest entra numa equipe sem criar conta.
   const party=parties||createPartyManager({config,log});
-  const keyOf=req=>{const t=bearer(req);return t?hashToken(t).slice(0,24):null;};   // sem token não há identidade: dois jogadores atrás do mesmo NAT virariam a mesma pessoa
+  const keyOf=req=>sessionKey(bearer(req));   // sem token não há identidade: dois jogadores atrás do mesmo NAT virariam a mesma pessoa
   const nickOf=b=>String(b&&b.nick||'Viajante').normalize('NFKC').replace(/\s+/g,' ').trim().slice(0,16)||'Viajante';
   // `you` diz a quem perguntou se ELE é o líder e qual membro é ele: o cliente não conhece a própria chave
   // (é o hash do token, que fica só no servidor), então sem isto a tela não sabe quem pode começar a partida.
@@ -33,6 +34,13 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
     if(r&&r.party&&key)r={...r,you:{key,leader:r.party.leader===key}};
     return sendJson(res,200,r);};
   const allRooms=async()=>rooms?rooms.allRooms():(config.peers.length?fetchPeerRooms(config.peers,{log}):[]);
+  /** A CONTA por trás do Bearer, e só se for registrada. Sem banco não há conta — e aí não há dono de sala. */
+  async function contaDe(req){const t=bearer(req);
+    if(!t||!persistApi||!persistApi.repos||!persistApi.repos.tokens)return null;
+    const u=await persistApi.repos.tokens.resolve(t).catch(()=>null);
+    return u&&u.kind==='registered'?u:null;}
+  /** Código livre DESTE shard (o 1º char é o dono; ver rooms/codes.js). */
+  function novoCodigo(){let c=newCode(config.shard);while(rooms.rooms.has(c))c=newCode(config.shard);return c;}
   async function serveStatic(p,res){
     const rel=p==='/'?'index.html':decodeURIComponent(p).replace(/^\/+/,'');let file=path.resolve(staticDir,rel);
     if(file!==staticDir&&!file.startsWith(staticDir+path.sep)){res.writeHead(403);res.end('Forbidden');return;}
@@ -50,8 +58,35 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
       // vem preenchido, então sem credencial nada aparece e a rota nem é procurada.
       if(p==='/api/config')return sendJson(res,200,{shards:config.shards,shard:config.shard,roomMax:config.roomMax,
         protocol:PROTOCOL_VERSION,googleClientId:config.googleClientId||''});
-      if(p==='/api/rooms'){const all=(await allRooms()).sort(byPlayers),md=url.searchParams.get('mode');
+      if(p==='/api/rooms'&&req.method!=='POST'){const all=(await allRooms()).sort(byPlayers),md=url.searchParams.get('mode');
         return sendJson(res,200,{rooms:md==null?all:all.filter(r=>(r.mode|0)===(+md|0))});}
+      // ── SALA COM DONO ────────────────────────────────────────────────────────────────────────
+      // Criar é a ÚNICA operação de sala que não precisa de roteamento: quem recebe cria na própria memória,
+      // com um código do próprio shard, e o 1º char do código leva o cliente ao `/ws/<shard>` certo sozinho.
+      // Encaminhar isto seria sortear shard sem motivo. É o mesmo desenho do `POST /api/party`.
+      // ⚠️ Só CONTA REGISTRADA: o dono expulsa e bane, e quem troca de identidade a cada entrada não pode ter
+      // esse poder. Como isso exige resolver o token no banco, a rota depende dele — e diz isso com 503, no
+      // molde do `admin_disabled`, em vez de fingir que funcionou.
+      if(p==='/api/rooms'&&req.method==='POST'){
+        if(!rooms)return sendJson(res,503,{error:'no_game',message:'nenhum shard de jogo disponível'});
+        const dono=await contaDe(req);
+        if(!dono)return sendJson(res,403,{error:'need_account',message:'crie uma conta para abrir uma sala sua'});
+        const b=await readJson(req),mode=modeOf(b.mode|0),teamSize=mode.teamSizes.includes(b.teamSize|0)?b.teamSize|0:mode.teamSizes[0];
+        const rt=roundTicksOf(mode.id,b.minutes);
+        if(rt===null)return sendJson(res,409,{error:'bad_time',message:'duração inválida para este modo'});
+        const room=rooms.create(novoCodigo(),{mode:mode.id,teamSize,roundTicks:rt,private:!!b.private,hostUserId:dono.id,hostNick:dono.nick});
+        return sendJson(res,200,{room:room.info(),you:{host:true}});}
+      // Consultar uma sala pelo código (o link de convite precisa saber o MODO antes de entrar: sem isso o
+      // convidado entra com o modo do estado dele e toma o erro MODE). Esta ROTEIA — a sala é do shard do 1º
+      // char do código, e só ele a conhece.
+      const mr=/^\/(api|internal)\/room\/([0-9A-Za-z]{4})$/.exec(p);
+      if(mr){const int=mr[1]==='internal',code=mr[2].toUpperCase();
+        const local=rooms&&rooms.rooms.get(code);   // ⚠️ NUNCA getRoom: ele CRIA a sala e um código errado materializaria uma fantasma
+        if(local)return sendJson(res,200,{room:local.info()});
+        if(int||!config.peers.length||shardOf(code)===config.shard)return sendJson(res,404,{error:'not_found',message:'sala não encontrada'});
+        const r=await askPeers(config.peers,{path:`/internal/room/${code}`,log});
+        if(!r)return sendJson(res,503,{error:'peer_unreachable',message:'shard indisponível; tente de novo'});
+        return sendJson(res,r.status,r.body);}
       if(p==='/api/auto'){
         // ?mode= e ?teamSize=: o Battle Royale tem pool próprio por tamanho de equipe, senão o jogador cairia
         // numa sala de outro formato. O filtro é `open` (= Room.acceptsJoin), não `players<max`: no Battle Royale

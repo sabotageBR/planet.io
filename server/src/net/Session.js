@@ -17,7 +17,9 @@ export class Session{
   /** @param {{ws:any,metrics:any,log?:any,remoteAddr?:string|null,userAgent?:string|null}} o */
   constructor({ws,metrics,log=null,remoteAddr=null,userAgent=null}){
     this.ws=ws;this.metrics=metrics;this.log=log;this.remoteAddr=remoteAddr;this.userAgent=userAgent;
-    this.slot=-1;this.room=null;this.sessionId=null;this.userId=null;this.name='';this.unsaved=true;
+    this.slot=-1;this.pid=0;this.room=null;this.sessionId=null;this.userId=null;this.key=null;this.name='';this.unsaved=true;
+    // `pid`: handle OPACO por sala, para o painel do dono (ver Room.hostRoster). `key`: hash do token, o
+    // mesmo `keyOf` do lobby de equipe — é o que permite banir quem não tem conta.
     this.resumeToken=randomBytes(16).toString('hex');
     /** @type {Map<number,number>} id → kind | (carimbo da passada << 3) */this.known=new Map();this.stamp=0;this.resync=false;
     this.view={w:1280,h:720,zoom:1};this.zoomHold=1;this.zoomHoldAt=0;   // marca d'água do zoom manual na AOI (ver net/snapshot.js)this.cx=WORLD.w/2;this.cy=WORLD.h/2;this.scale=1;this.rect=null;this.specSlot=-1;   // morto: slot que ele está assistindo (a AOI segue esse jogador)

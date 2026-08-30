@@ -15,6 +15,15 @@ JSON:
 - `{"t":"join","token":"pt_…","room":"1ABC"|null,"view":{"w":1280,"h":720},"fallbackNick":"Evandro","mode":0|1,"teamSize":1..4,"party":"0ABC"|null}`
   - `mode`: `MODE.FREE` (0, padrão) ou `MODE.BR` (1). Id desconhecido cai no Livre — cliente antigo nunca muda de jogo.
   - `party`: código do lobby de equipe; todos os membros caem na MESMA sala e na MESMA equipe (`Room._teamFor`).
+- `{"t":"view","w":1280,"h":720,"z":1.24}` — tamanho da tela e o **zoom manual** (a roda). `z > 1` afasta,
+  `z < 1` aproxima; ausente = 1. O servidor o CLAMPA pela massa real (`clampZoom` de `shared/camera.js`, com
+  o ΣR das peças de verdade), então mentir não dá um pixel a mais — e nada é punido, porque um cliente
+  honesto fica fora da faixa o tempo todo (mandou o valor com o ΣR de 200 ms atrás).
+  ⚠️ Resize e roda dividem este canal **e o balde de `NET.RATE_JSON` (5/s)**, cujas 3 rejeições em 10 s
+  encerram a conexão — por isso o cliente tem um emissor único, com throttle e coalescing.
+- `{"t":"room","act":"kick"|"ban","pid":7}` — ações do **dono da sala**. Vão por WS, e não por HTTP, porque o
+  socket do dono já está no shard que conhece a sala: não há o que rotear e a identidade já foi resolvida no
+  join. `pid` é o handle OPACO da tabela do dono (nunca o slot, que recicla).
 - `{"t":"chat","text":"…","scope":"all"|"team"}` — o ESCOPO é do servidor (sala no Livre e no Battle Royale
   solo; equipe em equipe). `scope` é só o PEDIDO de quem já MORREU no Battle Royale, onde o padrão é a
   arquibancada (`"all"` → só os outros mortos) e `"team"` abre para o esquadrão inteiro, vivos incluídos.
@@ -39,9 +48,17 @@ Taxa: ≤ 30 Hz e só quando muda (>2 px ou flag); keepalive a 10 Hz.
 
 ## Servidor → cliente
 JSON:
-- `{"t":"room","code":"1ABC","shard":1,"slot":3,"sessionId":"uuid","resumeToken":"hex","protocol":9,"tick":123,"world":{"w":9600,"h":9600},"round":{"start":0,"ticks":216000,"dayStart":5,"breakMs":15000,"phase":"live"|"lobby","startsAt":<tick>},"mode":0,"teamSize":1,"cap":30,"team":-1}`
+- `{"t":"room","code":"1ABC","shard":1,"slot":3,"sessionId":"uuid","resumeToken":"hex","protocol":9,"tick":123,"world":{"w":9600,"h":9600},"round":{"start":0,"ticks":216000,"dayStart":5,"breakMs":15000,"phase":"live"|"lobby","startsAt":<tick>},"mode":0,"teamSize":1,"cap":30,"team":-1,"private":false,"host":false}`
   - `phase`/`startsAt`: no Battle Royale a sala nasce em **lobby** — o jogador está na SALA, não no MAPA (sem peça, sem snapshot). `startsAt` é o TICK da largada, e só existe depois que a contagem começa.
   - `team`: minha equipe (−1 = sem equipe). Quem é aliado de quem sai daqui e do `team` de cada linha do PLAYERS.
+  - `round.ticks`: **0 = sala SEM FIM** (o dono escolheu ∞). Não há BIG CRUNCH nem contagem regressiva — mas
+    `round.dayTicks` continua vindo, e é dele que o céu tira a hora do espaço: derivar de `ticks/days` faria
+    o relógio simplesmente PARAR justo na sala que dura mais.
+  - `host`: eu sou o dono desta sala? `private`: ela está fora da lista e do automático.
+- `{"t":"host","you":true,"private":true,"roster":[{"pid":7,"name":"Ana","level":4,"country":"BR","alive":true,"connected":true,"host":false}],"bans":[{"nick":"…","at":0}]}`
+  — o painel do dono, e **só para ele**. O roster tem apenas HUMANOS: iterar as sessões respeita por construção
+  o `anonBots` do Battle Royale (um roster com bots entregaria a resposta que o modo existe para esconder), e
+  não leva `sessionId`, `userId` nem IP — o dono é um jogador, não um administrador.
 - `{"t":"lobby","code":"1ABC","mode":1,"teamSize":1,"filled":37,"cap":50,"humans":2,"startsInMs":0,"waitMs":11500}` (2 Hz) — a sala ENCHENDO. Vai em **milissegundos**, não em ticks: no lobby não há snapshot nenhum, então o relógio de tick do cliente nunca sincronizaria e uma contagem em ticks ficaria parada. `startsInMs > 0` = a contagem regressiva já começou; `waitMs` é o que resta da janela de espera.
 - `{"t":"phase","phase":"live","round":{…},"players":12,"cap":50,"teamSize":2,"mode":1}` — a LARGADA: a sala completou, sorteou as equipes, fez todo mundo nascer num anel e armou a zona.
 - `{"t":"chat","slot":3,"name":"Evandro","team":2|null,"text":"…","at":1699999999,"scope":"room"|"team"|"dead","dead":1?}`
@@ -103,6 +120,12 @@ expandido 30% (histerese: sai a 45%). `Session.known` guarda ids conhecidos → 
 Estrela entra na AOI pelo halo (`max(r, r·HALO·k)`) e manda X_Y (o ímã a arrasta), R (incha na fase OLD) e EXTRA (fase + halo).
 Socket congestionado (> 256 KB pendentes): a sessão pula o snapshot e esquece o `known`; o snapshot seguinte vai com `self.flags RESYNC`
 para o cliente descartar tudo e recriar (sem isso o que já fora enviado nunca receberia REMOVE e viraria entidade fantasma permanente).
+
+O **zoom manual** entra na mesma conta: `zoomFor(ΣR, w, h, powerup, manual)` é a mesma função dos dois lados,
+com o fator do cliente preso à faixa que a massa permite (`zoomSpan`). Na AOI ele vale `max(1, f)` — aproximar
+nunca ENCOLHE a área enviada, porque estreitar renderia quase nada (a comida já tem piso de área e teto de
+contagem) e custaria um REMOVE+CREATE de tudo em volta a cada entalhe de roda. Há ainda uma marca d'água de
+`ZOOM.GRACE_TICKS` no sentido que encolhe: a câmera do cliente é suavizada (3τ ≈ 470 ms) e a AOI é instantânea.
 
 ## Predição / interpolação (cliente)
 Próprias peças: predição com `shared/physics` (thrust, drag, paredes, separação/merge próprios); ao receber snapshot com

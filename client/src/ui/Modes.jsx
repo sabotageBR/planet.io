@@ -4,11 +4,11 @@
 // porque aí o jogador precisa de um código para mandar aos amigos antes de qualquer sala existir.
 // Offline (`api.server === false`) o Battle Royale fica desabilitado: o `?local=1` só sabe rodar o Livre.
 import React, { useState } from "react";
-import { MODE, BR } from "@warspace/shared";
+import { MODE, BR, ROUND, roundTicksOf } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { api } from "../api/client.js";
-import { play, setMode, createParty, joinParty } from "../state/actions.js";
+import { play, setMode, createParty, joinParty, criarSala } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { Screen, ScreenHeader } from "./bits.jsx";
 
@@ -22,6 +22,7 @@ export default function Modes({ on }) {
 function Body() {
   const LB = useLabels();
   const teamSize = useStore(app, s => s.teamSize);
+  const user = useStore(app, s => s.session.user) || {};
   const [code, setCode] = useState("");
   const offline = api.server === false;
   const ts = teamSize > 1 ? teamSize : 2;
@@ -58,6 +59,7 @@ function Body() {
         </div>
       </div>
     </div>
+    <SalaPropria offline={offline} registrada={user.kind === "registered"} LB={LB} />
     {offline ? <div className="hint">{LB.offlineNote}</div> : null}
     {/* A LEGENDA DOS POWERUPS. Em partida ninguém lê palavra — o HUD é ícone e número, e é assim que tem
         que ser. Mas alguém precisa dizer, UMA vez, o que "🍀" significa: quem pega um trevo pela primeira
@@ -72,4 +74,38 @@ function Body() {
       <span className="hint">{LB.powerupsNote}</span>
     </div>
   </>;
+}
+/**
+ * ABRIR UMA SALA SUA. É o quarto cartão: as três primeiras escolhas põem o jogador numa sala que o servidor
+ * escolhe; esta cria a sala DELE, com o modo, a duração e a privacidade que ele quiser — e o deixa como dono,
+ * podendo expulsar e banir.
+ * ⚠️ Só CONTA REGISTRADA, e o motivo é dito na tela: o dono expulsa e bane, e quem troca de identidade a cada
+ * entrada não pode ter esse poder. Sem isso o botão daria 403 e o jogador não teria como saber por quê.
+ * ⚠️ "Sem fim" só existe no Livre — no Battle Royale o tempo é a rede de segurança da zona, e quem responde
+ * isso é `roundTicksOf` (shared), a MESMA função que a rota usa para validar. Duas listas divergiriam.
+ */
+function SalaPropria({ offline, registrada, LB }) {
+  const [modo, setModo] = useState(MODE.FREE);
+  const [min, setMin] = useState(30);
+  const [priv, setPriv] = useState(true);
+  const bloqueado = offline || !registrada;
+  const tempos = ROUND.CHOICES_MIN.filter(m => roundTicksOf(modo, m) !== null);
+  const minOk = tempos.includes(min) ? min : tempos[tempos.length - 1];
+  return <div className={"card mode-card own" + (bloqueado ? " off" : "")} data-mode="own">
+    <i className="mode-ico">🔑</i>
+    <b>{LB.ownRoom}</b>
+    <span>{LB.ownRoomSub}</span>
+    <div className="own-row" role="radiogroup" aria-label={LB.modesShort}>
+      {[[MODE.FREE, LB.modeFree], [MODE.BR, LB.modeSolo]].map(([id, l]) =>
+        <button key={id} className={"chip-btn" + (modo === id ? " on" : "")} disabled={bloqueado} onClick={() => setModo(id)}>{l}</button>)}
+    </div>
+    <div className="own-row" role="radiogroup" aria-label={LB.ownTime}>
+      {tempos.map(m => <button key={m} className={"chip-btn" + (minOk === m ? " on" : "")} disabled={bloqueado}
+        onClick={() => setMin(m)}>{m ? m + " min" : "∞"}</button>)}
+    </div>
+    <label className="own-priv"><span>{LB.ownPrivate}</span>
+      <button className="toggle" role="switch" aria-checked={priv} disabled={bloqueado} onClick={() => setPriv(!priv)}><i></i></button></label>
+    <button className="btn-primary" disabled={bloqueado} onClick={() => criarSala({ mode: modo, teamSize: 1, minutes: minOk, private: priv })}>{LB.ownCreate}</button>
+    {!registrada && !offline ? <span className="hint">{LB.ownNeedAccount}</span> : null}
+  </div>;
 }

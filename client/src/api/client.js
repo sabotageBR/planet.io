@@ -161,6 +161,11 @@ export const api = {
   avatarUrl(userId, v) { return `/api/avatar/${userId}${v ? `?v=${v}` : ""}`; },   // relativo: o nginx faz o proxy de /api/
   async rooms() { if (!api.online) return { rooms: [] }; return request("GET", "/api/rooms"); },
   async auto({ mode = 0, teamSize = 1 } = {}) { if (!api.online) return null; return request("GET", `/api/auto?mode=${mode | 0}&teamSize=${teamSize | 0}`); },
+  // ── sala com dono (o jogador escolhe modo, duração e privacidade, e manda o código a quem quiser) ──
+  // Criar não roteia entre shards: quem responde cria na própria memória, com um código do próprio shard, e
+  // o 1º char do código leva o WS ao pod certo sozinho. Consultar ROTEIA (só o dono do código conhece a sala).
+  async roomCreate({ mode, teamSize, minutes, private: priv }) { return request("POST", "/api/rooms", { mode, teamSize, minutes, private: !!priv }); },
+  async roomGet(code) { return request("GET", `/api/room/${encodeURIComponent(code)}`); },
   // ── lobby de equipe (código de convite) ──
   // Mora no servidor de JOGO, não na API de persistência: é estado de sala (memória do shard, com TTL) e
   // funciona para convidado — quem identifica a pessoa é o hash do mesmo token `pt_…` do jogo.

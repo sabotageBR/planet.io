@@ -10,6 +10,14 @@ const SLIDE_AFTER_MS=3600e3;                       // renova expires_at/last_see
 export const TOKEN_RE=/^pt_[A-Za-z0-9_-]{43}$/;
 export const newToken=()=>'pt_'+randomBytes(32).toString('base64url');
 export const hashToken=t=>createHash('sha256').update(t).digest('hex');
+/**
+ * Identidade de quem tem um token, SEM ir ao banco: o hash truncado. É o que permite reconhecer a mesma
+ * pessoa entre chamadas mesmo sendo convidado, e é a chave que o lobby de equipe já usa (`keyOf`).
+ * ⚠️ Não valida o formato de propósito — o modo sem banco (e os testes) usam tokens que não são `pt_…`.
+ * ⚠️ Devolve `null` sem token, e quem compara tem que tratar isso: dois `null` iguais fariam de todo mundo
+ * a mesma pessoa.
+ */
+export const sessionKey=t=>t?hashToken(t).slice(0,24):null;
 export const ttlSql=kind=>kind==='admin'?`now()+interval '12 hours'`:`now()+interval '${kind==='device'?365:30} days'`;
 // `st.xp` entra por LEFT JOIN em PK: custo zero numa query que já roda em todo join de WS, e é o que faz o
 // badge de nível existir sem uma segunda ida ao banco no caminho mais quente do servidor.

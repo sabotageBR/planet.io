@@ -19,7 +19,9 @@ Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`.
 | POST | `/api/skins/:id/equip` 🔒 | — | `{equippedSkin}` · 403 `not_owned` |
 | GET | `/api/ranking?period=all\|week\|day&by=score\|mass\|kills\|total\|food\|xp\|kd&limit=50&country=BR` (🔒 opcional) | — | `{period,by,rows:[{rank,userId,nick,name,registered,country,level,xp,kills,deaths,foodEaten,value}], me:{rank,value}\|null}` — `name` é o nome da CONTA (o do Google); o cliente ordena sempre por `xp` |
 | GET | `/api/config` | — | `{shards, shard, roomMax, protocol, googleClientId}` |
-| GET | `/api/rooms?mode=` · `/api/auto?mode=&teamSize=` | — | `{rooms:[{code,shard,mode,teamSize,phase,open,players,max,bots,round}]}` · a sala |
+| GET | `/api/rooms?mode=` · `/api/auto?mode=&teamSize=` | — | `{rooms:[{code,shard,mode,teamSize,phase,open,players,max,bots,round,private,host}]}` · a sala. `round` é `null` numa sala SEM FIM (diferente de `0`, que é "acabou"); salas **privadas não aparecem** aqui nem no automático |
+| POST | `/api/rooms` 🔒 | `{mode,teamSize,minutes,private}` | `{room,you:{host:true}}` · 403 `need_account` (convidado não pode ser dono) · 409 `bad_time` · 503 `no_game`. `minutes` vem de `ROUND.CHOICES_MIN`; **0 = sem fim, e só no Livre** (no Battle Royale o tempo é a rede de segurança da zona, e o piso é `ZONE_TOTAL_TICKS`) |
+| GET | `/api/room/:code` | — | `{room}` · 404 `not_found` · 503 `peer_unreachable`. É o link de convite: o cliente precisa do MODO antes de entrar. **Roteia pelo dono** do código (`askPeers`), como o party |
 | POST | `/api/party` 🔒 | `{mode,teamSize,nick,skinId}` | `{party,you:{key,leader}}` · 401 sem token · 409 `bad_team_size` |
 | GET | `/api/party/:code` | — | `{party,you}` · 404 `not_found` · 503 `peer_unreachable` (o shard dono não respondeu) |
 | POST | `/api/party/:code/join` 🔒 | `{nick,skinId}` | `{party,you}` · 409 `full`/`started` · 404 · 503 |

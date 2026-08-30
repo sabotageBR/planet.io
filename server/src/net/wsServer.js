@@ -13,6 +13,7 @@ import {PROTOCOL_VERSION,MSG,VOICE_UP_HEADER_BYTES} from '@warspace/shared/proto
 import {decodeInput,decodeVoiceUp,encodePong,createWriter} from '@warspace/shared/protocol/index.js';
 import {Session} from './Session.js';
 import {clientIp} from '../api/router.js';
+import {sessionKey} from '../auth/tokens.js';
 // MAX_PAYLOAD tem que caber o maior clipe de voz (VOICE.MAX_BYTES + cabeçalho): com os 4 KB de antes o `ws`
 // derrubava o frame — e a conexão junto — antes de o servidor poder recusá-lo. A folga é pequena de propósito:
 // o INPUT tem 10 bytes e o JSON de controle é minúsculo, então este teto existe só para a voz.
@@ -36,7 +37,8 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
     let s=new Session({ws,metrics,log,remoteAddr:clientIp(req),userAgent:req.headers['user-agent']||null});live.add(s);
     const roomMsg=room=>({t:'room',code:room.code,shard:room.shard,slot:s.slot,sessionId:s.sessionId,resumeToken:s.resumeToken,protocol:PROTOCOL_VERSION,
       tick:room.sim.tick,world:{w:WORLD.w,h:WORLD.h},round:room.roundInfo(),
-      mode:room.modeId,teamSize:room.teamSize,cap:room.max,team:(room.sim.players.get(s.slot)||{team:-1}).team});   // JSON: modo e equipe não custam versão de protocolo
+      mode:room.modeId,teamSize:room.teamSize,cap:room.max,team:(room.sim.players.get(s.slot)||{team:-1}).team,
+      private:!!room.private,host:room.isHost(s)});   // JSON: modo, equipe e dono da sala não custam versão de protocolo
     const rate=()=>{if(s.violation())s.error('RATE','muitas mensagens; conexão encerrada');};
     async function join(msg){
       if(s.joining)return;
@@ -64,17 +66,22 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         // Sair da sala ANTES de escolher a próxima: se ele já está numa sala, o próprio nick dele está em
         // `usedNicks` e o matchmaking descartaria a sala em que ele acabou de jogar.
         if(s.room)s.room.leave(s,'left');                            // join de novo (depois de morrer): sai da sala atual
-        if(!room)room=rooms.findOrCreateRoom({...opts,nick});
+        if(!room)room=rooms.findOrCreateRoom({...opts,nick,userId:res.userId??null,key:sessionKey(msg.token)});
         // ⚠️ NICK ÚNICO POR SALA. Dois planetas com o mesmo nome deixam o kill feed, o chat e o placar
         // mentindo: quem morreu não sabe por quem. Quem escolheu a sala pelo CÓDIGO recebe a recusa e troca
         // de nick; quem entrou pelo automático nunca chega aqui, porque `findOrCreateRoom` já pulou a sala.
         if(room.nickTaken(nick)){
           if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});
           return s.error('NICK_IN_ROOM',`já há alguém chamado "${nick}" nessa sala`);}
-        s.sessionId=res.sessionId||randomUUID();s.userId=res.userId??null;s.name=nick;s.unsaved=!!res.unsaved;
+        // BANIDO pelo dono da sala. Fica AQUI, ao lado do nick, e não em `acceptsJoin()`: aquele é chamado
+        // pelo matchmaking e refletido em `info().open`, onde ainda não há jogador nenhum para identificar.
+        if(room.banned({userId:res.userId??null,key:sessionKey(msg.token)})){
+          if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});
+          return s.error('ROOM','você foi banido dessa sala');}
+        s.sessionId=res.sessionId||randomUUID();s.userId=res.userId??null;s.key=sessionKey(msg.token);s.name=nick;s.unsaved=!!res.unsaved;
         s.level=res.level|0;s.avatar=res.avatar||null;s.country=res.country||null;
         room.join(s,{name:s.name,registered:!!res.registered,skinId:res.skinId|0,sessionId:s.sessionId,userId:s.userId,level:s.level,country:s.country,party});
-        s.sendJson(roomMsg(room));room.sendPlayers(s);
+        s.sendJson(roomMsg(room));room.sendPlayers(s);room.sendHost(s);
         if(room.avatars&&room.avatars.size)room.broadcastAvatars();   // quem entra precisa saber quem já tem foto
         room.broadcastFlags();                                        // e quem já está na sala precisa ver a bandeira do novato
         log.info(`${s.name} entrou na sala ${room.code} (slot ${s.slot}, ${room.humanCount}/${room.max}${s.unsaved?', sem persistência':''})`);
@@ -102,6 +109,15 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         // por NET.RESUME_MS (10 s) esperando um `resume` — certíssimo para quem perdeu a rede, e errado para
         // quem apertou "cancelar": no lobby do battle royale o slot continuava ocupado, contava como humano
         // na largada e o jogador era posto no mapa parado. Quem avisa que está indo embora vai embora agora.
+        // AÇÕES DO DONO DA SALA. Vão por WS, e não por HTTP, porque o dono já está DENTRO da sala: o socket
+        // dele foi aberto em `/ws/<shardOf(code)>`, ou seja já está no shard que conhece a sala. Não há o que
+        // rotear — a armadilha do `askPeers` simplesmente não existe deste lado. E a identidade já foi
+        // resolvida no join, então não há um segundo Bearer para validar.
+        case 'room':{
+          if(!s.room||s.slot<0||!s.room.isHost(s))break;
+          const r=s.room;
+          if(msg.act==='kick'||msg.act==='ban')r.hostKick(msg.pid|0,{ban:msg.act==='ban'});
+          r.sendHost(s);break;}
         case 'quit':if(s.room&&s.slot>=0)s.room.leave(s,'left');break;
         // trocar de câmera só faz sentido para quem já morreu: quem está vivo tem as próprias peças
         case 'spectate':{if(!s.room||s.slot<0)break;const gp=s.room.sim.players.get(s.slot);

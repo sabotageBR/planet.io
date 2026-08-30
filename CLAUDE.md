@@ -10,7 +10,7 @@ npm install                  # workspaces: shared, server, client
 cp .env.example .env         # DATABASE_URL etc. (Postgres de dev: sudo -n docker start planet-pg → 127.0.0.1:5433 planet/planet)
 npm run migrate              # aplica server/src/db/migrations/*.sql + seed de skins (também roda no boot com MIGRATE_ON_START=1)
 npm run dev                  # server em :3001 (node --watch) + Vite em :5173 com proxy de /api e /ws
-npm test                     # node --test: shared/test (física, protocolo) + server/test (persistência, jogo)
+npm test                     # node --test: shared/test (física, protocolo) + client/test + server/test (persistência, jogo)
                              # ⚠️ persist.test.js faz DROP SCHEMA: exige DATABASE_URL em host LOCAL (guarda no
                              # topo do arquivo). Rode: DATABASE_URL=postgres://planet:planet@127.0.0.1:5433/planet npm test
 npm run build                # client/dist (vite build)
@@ -31,7 +31,7 @@ Mockups aprovados continuam em `mockups/v2/` (CommonJS; `node mockups/v2/src/bui
 ## Layout
 
 ```
-shared/src/    constants.js (ÚNICA fonte de tunables) · tunables.js (a lista BRANCA do que o /admin pode mudar em runtime)
+shared/src/    constants.js (ÚNICA fonte de tunables; ZOOM/roundTicksOf/ZONE_TOTAL_TICKS) · tunables.js (a lista BRANCA do que o /admin pode mudar em runtime)
                skins.js (94 skins) · achievements.js · levels.js (XP/nível/K-D) · countries.js · eggs.js (nick → skin) · rng.js · camera.js · util.js · zone.js · bot.js
                physics/ (body, spatial-hash, integrate, collide, rules, world, predict) · protocol/ (constants, quant, writer, reader, codec, dto)
 server/src/    index.js (composition root + startServer) · loop.js (scheduler 60 Hz) · metrics.js
@@ -40,11 +40,11 @@ server/src/    index.js (composition root + startServer) · loop.js (scheduler 6
                config.js · log.js · tunables.js (parâmetros do painel) · db/ (pool, migrate, migrations/) · auth/ (tokens, password, nick, ratelimit)
                repos/ (+ settings, audit) · api/ (router + rotas, incl. admin.js) · http/admin.js (salas/kick/aviso) · persist/ (session, rewards, queue, hooks)
 client/src/    main.jsx (3 entradas: jogo · /admin · ?sfx) · app/ (App, theme bridge) · admin/ (o painel: mount/api/admin.css)
-               ui/ (telas React + Round.jsx, Modes/Party/Chat/KillFeed/Notice/AvatarPicker, icons.js
+               ui/ (telas React + Round.jsx, Modes/Party/Chat/KillFeed/Notice/AvatarPicker/Pause (o menu do Esc + o painel do dono), icons.js
                Logo.jsx + logoArt.js = a marca · NavIcons.jsx + navIconArt.js = os ícones da entrada) · util/image.js · api/client.js · state/ (store) · hooks/
                audio/ (index.js motor: 4 barramentos, prioridade de vozes, loops · kit.js receitas · mic.js push-to-talk · audition.js a mesa de som do ?sfx)
                theme/ (index.js + dawn|sunset|dusk: tokens/hud/screens.css gerados por port.js, index.js com textures/effects/hud) · styles/base.css
-               game/ (index.js createGame · net/ · state/ · renderer/ · input/ · hud/ · bench.js)
+               game/ (index.js createGame · net/ · state/ · renderer/ · input/ (Pointer·Keyboard·Touch·Joystick·Wheel) · hud/ · bench.js)
 docs/spec/     protocol.md · api.md · admin.md · hooks.md · server-game.md · client-game.md      docs/design/  telas.md · theme-time.md · rodada-1.md · som.md · modos.md
 k8s/           00-namespace · 05-config (ConfigMap) · 10-server (StatefulSet 3 shards, envFrom ConfigMap+Secret) · 20-client
                30-ingress (warspace.io: /ws/0|1|2 por shard, /api no Service agregador, / no cliente; + o 301 de www) · 40-backup
@@ -329,6 +329,58 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   broadcast de PLAYERS, para um dado que muda quando alguém entra ou sai, é caro.
   ⚠️ O `xX…Xx` saiu de `botNick`: é a assinatura de um gerador, não de uma pessoa. `baseNick` continua
   desfazendo o padrão porque HUMANOS ainda escolhem nicks assim.
+- **ZOOM MANUAL NA RODA** (`zoomSpan`/`clampZoom` em `shared/src/camera.js`, `ZOOM` em constants,
+  `client/src/game/input/Wheel.js`): a câmera era 100 % automática. A roda agora escolhe dentro de uma
+  FAIXA em torno do `zoomFor`, e a largura da faixa vem da MASSA — ver mais mundo é VANTAGEM, e dá-la de
+  graça ao pequeno inverteria o único preço que crescer cobra aqui (o planetão é lento, mas vê longe). O
+  novato ganha ±10 %, o gigante ~±42 %, e **o teto é `POWERUP.ZOOM_K`**: não é gosto, é o único
+  afastamento para o qual a AOI já foi dimensionada e medida — peça, asteroide, estrela e míssil vêm pela
+  visão INTEIRA. ⚠️ O fator do powerup entra ANTES do piso do mundo e o da roda DEPOIS, e trocar isso
+  mata a funcionalidade em silêncio justo para o planetão, que vive encostado no piso (ΣR ≈ 3578 em
+  1920×1080): ele giraria a roda e nada aconteceria. ⚠️ Vai no `{t:"view",w,h,z}`, que agora tem
+  **emissor único** no cliente — resize e roda dividem o balde de `NET.RATE_JSON` (5/s), cujas 3
+  rejeições em 10 s ENCERRAM a conexão. ⚠️ Quem clampa é o SERVIDOR, com o ΣR de verdade
+  (`net/snapshot.js`), e **não pune quem manda fora da faixa**: um cliente honesto fica fora dela o tempo
+  todo (mandou o `z` com o ΣR de 200 ms atrás). Na AOI o fator é `max(1,f)` — aproximar nunca encolhe a
+  área enviada —, com marca d'água de `ZOOM.GRACE_TICKS` no sentido que encolhe, porque a câmera é
+  suavizada (3τ ≈ 470 ms) e a AOI é instantânea. Volta ao automático pelo **detent** (um passo que
+  cruzaria o 1 para nele), pela tecla **0** ou pelo **botão do meio**, que já era interceptado e não fazia
+  nada. `Digit0` pode ser tecla fixa porque não está em `ACTION_KEYS`.
+- **O NOME NÃO SAI EM CIMA DA CARICATURA** (`layers/Planets.js`): o rótulo mora no CENTRO do disco
+  (`nameY:()=>0`), que nas 35 skins de easter egg é onde ficam o nariz e a boca. O predicado é
+  **`skin.face`** e não `rarity==="secret"` — as skins 45–48 também são secretas e são `pattern:"plain"`,
+  e pela raridade quatro skins sem rosto nenhum perderiam o nome de graça. A skin Retrato (a FOTO do
+  jogador) mantém o nome, por decisão.
+- **MENU DE PAUSA NO ESC** (`ui/Pause.jsx`, `overlays.pause`): é OVERLAY, não tela — navegar para `prefs`
+  durante a partida faz `GameHost.jsx` chamar `game.leave()` (a conexão CAI) e o `Hud` esconder o `#hud`
+  inteiro. As prefs saem da MESMA tabela de Opções (`PREFS` + `PrefRow`, extraído de `Prefs.jsx`), num
+  subconjunto: em partida ninguém quer trocar a tecla de dividir. ⚠️ A partida **não pausa** (é
+  multijogador e o servidor é autoritativo); o que para é o COMANDO — `canAct`, o teclado e, sobretudo,
+  o `enviarInput` mandando o alvo em cima do próprio centróide, pelo mesmo caminho do `roundOver`: sem
+  isso o planeta continuaria seguindo o mouse por cima do modal, porque o ponteiro é lido na JANELA.
+  ⚠️ A cadeia do Esc é resolvida num lugar só (`escape()` em `state/actions.js`): os outros listeners são
+  todos `keydown` na janela, em bolha, então vale a ordem de REGISTRO — o do `Chat` é neto e vem antes,
+  que é o certo (quem digita quer sair do campo, não abrir um menu).
+- **SALA COM DONO** (`docs/design/modos.md`): o jogador abre a sala DELE — modo, duração e privacidade — e
+  entra como dono, podendo expulsar e banir. ⚠️ **Só conta registrada**: quem expulsa precisa de uma
+  identidade que dure mais que uma aba. ⚠️ **`roundTicks: 0` é SEM FIM**, e a representação escolhe-se
+  sozinha porque `roundTick` no cliente já tinha o ramo `!round.ticks`. Ela exigiu QUATRO guardas, e três
+  delas são coerção silenciosa: `0>=0` acabaria a rodada no primeiro tick (`Room.js`); `null>n` é FALSO
+  para todo limiar, então UMA chamada dispararia a cascata inteira de avisos de BIG CRUNCH (`feed.js`);
+  `null<60` é VERDADEIRO, e a urgência ficaria em 1 desde o primeiro segundo, com a TRILHA presa no
+  clímax para sempre (`game/index.js`); e `roundTicks||…` comeria o 0 no construtor. ⚠️ O céu continua
+  girando: `roundInfo()` passou a mandar **`dayTicks`**, porque a hora do espaço saía de `ticks/days` e
+  sem `ticks` ela PARARIA justo na sala que dura mais. ⚠️ **Sem fim só no Livre** — no BR o tempo é a rede
+  de segurança da zona, e `roundTicksOf` recusa abaixo de `ZONE_TOTAL_TICKS`, derivado das etapas.
+  ⚠️ **Kick e ban vão por WS**: o socket do dono já está no shard que conhece a sala, então não há o que
+  rotear; só o `GET /api/room/:code` do link de convite usa `askPeers`. ⚠️ O roster do dono tem só
+  HUMANOS (iterar `sessions` respeita o `anonBots` por construção) e **não** é o `adminInfo`, que leva
+  `sessionId`, `userId` e IP — o dono é jogador, não administrador; o handle é um `pid` opaco por sala,
+  nunca o slot (recicla). ⚠️ `users.id` é BIGINT e o driver o entrega como STRING: sem `Number()` no
+  `hostUserId`, `'53'===53` é falso e o dono simplesmente não seria dono, sem erro nenhum.
+  ⚠️ O ceifador não recolhe a sala do dono enquanto `ROOM.HOST_HOLD_MS` não vencer (ela existe para
+  esperar os amigos), e o filtro de PRIVADA mora em `RoomManager.listRooms` — não em `Room.info()`, que é
+  a base do `adminInfo`.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade

@@ -3,8 +3,22 @@
 // @ts-check
 export const WORLD={w:9600,h:9600};
 export const TICK_HZ=60,DT=1/60,SNAPSHOT_EVERY=3,LEADERBOARD_EVERY=30,SAMPLE_EVERY=30;
-export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600};
-export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,FADE_MS:600,BOARD_MAX:60,AWARD_MIN_KILLS:3};
+export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600,
+  HOST_HOLD_MS:120000,HOST_GRACE_MS:30000};
+// HOST_HOLD_MS: uma sala COM DONO não é recolhida enquanto essa carência não vencer. O ceifador padrão a
+// apagaria em 35 s sem humanos — e uma sala privada existe justamente para esperar os amigos chegarem, então
+// o comportamento normal a mataria antes de o segundo jogador abrir o link. Só o REMOVE é adiado: a sala
+// continua sendo PARADA em STOP_AFTER_MS (`getRoom` a religa), o que de quebra congela o relógio da rodada
+// enquanto ninguém está lá.
+// HOST_GRACE_MS: o dono pode cair e voltar. Passado esse tempo fora, a coroa vai para o humano mais antigo
+// que estiver na sala — sem isso uma sala privada com 20 pessoas fica sem quem possa expulsar um invasor.
+export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,FADE_MS:600,BOARD_MAX:60,AWARD_MIN_KILLS:3,
+  DAY_TICKS:54000,CHOICES_MIN:[10,20,30,60,0]};
+// DAY_TICKS: o dia do relógio do espaço em ticks (15 min), que até aqui só existia dividido — `TICKS/DAYS`.
+// Ele precisou de nome próprio por causa da sala SEM FIM: lá não há `TICKS` de onde derivar, e sem um dia
+// declarado o céu simplesmente PARARIA de girar justo na sala que dura mais.
+// CHOICES_MIN: os tempos que o dono de sala pode escolher, em minutos. ⚠️ 0 é SEM FIM e só vale no Livre —
+// no Battle Royale o tempo é a rede de segurança da zona (ver roundTicksOf).
 // rodada de 30 min (108000 ticks a 60 Hz) = DAYS dias do relógio do espaço (dia de 15 min → 6 trocas de céu por sala),
 // começando às DAY_START_H; a troca de tema é coberta por um fade de FADE_MS (client/src/theme/fade.js);
 // no fim o mundo explode, define-se o campeão (maior planeta vivo) e o placar fica BREAK_MS antes da sala nova.
@@ -48,6 +62,12 @@ export const ZONE={STAGES:6,R:[.62,.45,.32,.225,.16,.113,.08],
   DRIFT:.45,BURN:.10,BURN_K:2.2,EXPOSE_MIN:.02,WARN_TICKS:180,MIN_R:60,SHED_TICKS:24,SHED_DIST:180,SHED_SPREAD:.85,SHED_MIN:1,SHED_N_DEATH:7,
   FOOD_AREA:2400,FOOD_MIN:1200,FOOD_SCAN:96,FOOD_FILL_S:3,
   STAR_PAD:360,STAR_MIN_R:1200,STAR_SEP_K:.5,STAR_RETRY_TICKS:300,STAR_SCAN:2};
+/**
+ * Quanto a zona leva para FECHAR de vez. DERIVADO das listas acima, nunca copiado: `BR.ROUND_TICKS` e a zona
+ * andam sempre juntos, e é isto que faz mexer numa etapa mover o piso de duração da partida sozinho.
+ * (Mora aqui, e não em zone.js, porque `roundTicksOf` precisa dele e constants.js é a raiz — não importa nada.)
+ */
+export const ZONE_TOTAL_TICKS=ZONE.HOLD_TICKS.reduce((a,b)=>a+b,0)+ZONE.SHRINK_TICKS.reduce((a,b)=>a+b,0);
 // zona = círculo. R é o RAIO como fração de WORLD.w: começa em .62 (5 952 px — cobre o mapa, cujo
 // centro→canto é 6 788) e fecha em .08 (768 px). As razões entre etapas são ~√.5, ou seja **cada etapa tira
 // metade da ÁREA**: a pressão é constante do começo ao fim, e o que muda é o tamanho de quem está dentro.
@@ -132,6 +152,21 @@ export const MODES=[
 export const modeOf=id=>MODES[id]||MODES[MODE.FREE];
 /** Capacidade da sala arredondada para baixo no tamanho de equipe. */
 export const modeCap=(id,teamSize=1)=>{const m=modeOf(id),t=teamSize>0?teamSize|0:1;return m.max-m.max%t;};
+/**
+ * Minutos escolhidos pelo dono da sala → ticks de rodada. UM lugar, porque a rota, a tela e os testes têm
+ * que concordar — e porque "nada de `if (modo === …)` espalhado" é regra escrita de docs/design/modos.md.
+ * Devolve `0` para SEM FIM e `null` quando a escolha não vale para o modo.
+ * ⚠️ No Battle Royale não há sem-fim e há PISO: a zona leva `zoneTotalTicks()` para fechar, e uma partida
+ * que acaba por tempo antes disso é a única forma de o modo terminar sem ter decidido nada. O piso é
+ * DERIVADO da zona (não copiado), então mexer em ZONE o move sozinho.
+ * @param {number} modeId @param {number} min minutos (0 = sem fim)
+ */
+export function roundTicksOf(modeId,min){
+  const m=Math.round(+min||0);if(m<0)return null;
+  if(!ROUND.CHOICES_MIN.includes(m))return null;
+  const t=m*60*TICK_HZ;
+  if(modeOf(modeId).lastAlive){if(!m)return null;return t<ZONE_TOTAL_TICKS?null:t;}   // BR: sem fim não, e nunca menos que a zona
+  return t;}
 export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:1000,MAX_PIECES:16,BOT_R:[24,58],DECAY:.002,OVER_N:6,OVER_DIST:420};
 // OVER_N/OVER_DIST: o que fazer com a massa acima de MAX_R quando NÃO HÁ VAGA de peça para repartir. Era
 // `setR(pc,MAX_R)` e pronto — o único ponto do jogo, fora do DECAY, em que massa de JOGADOR simplesmente

@@ -828,6 +828,23 @@ body[data-mode="portrait"] #hud #hud-top #h-zoom{height:30px;padding:0 6px;font-
 #s-pause .card.modal.pause{width:min(420px,100%);gap:10px}
 #s-pause .pause-prefs{display:grid;gap:2px;overflow:auto;max-height:min(52vh,420px);
   padding:2px 0;border-top:1px solid var(--stroke,rgba(255,255,255,.14));border-bottom:1px solid var(--stroke,rgba(255,255,255,.14))}
+/* SALA SUA: o quarto cartão da tela Modos. Os três primeiros são botões de uma escolha só; este tem
+   controles por dentro, então é um cartão de verdade e não um `button` (um botão dentro de outro botão não
+   é HTML válido, e no teclado o foco ficaria preso). `auto-fit` para os chips de tempo caberem na gaveta. */
+#s-modes .mode-card.own{display:grid;gap:8px;align-content:start;text-align:left;cursor:default}
+#s-modes .mode-card.own .own-row{display:flex;flex-wrap:wrap;gap:6px}
+#s-modes .mode-card.own .own-priv{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#s-modes .mode-card.own.off{opacity:.55}
+#s-modes .mode-card.own.off .btn-primary{cursor:not-allowed}
+
+/* o painel do DONO, dentro do mesmo menu (ver ui/Pause.jsx) */
+#s-pause .pause-host{display:grid;gap:6px}
+#s-pause .pause-host .ph{display:flex;align-items:center;gap:8px;justify-content:space-between}
+#s-pause .host-list{list-style:none;margin:0;padding:0;display:grid;gap:4px;max-height:min(28vh,200px);overflow:auto}
+#s-pause .host-list li{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+#s-pause .host-list .kf-who{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#s-pause .host-acts{display:flex;gap:6px;flex:0 0 auto}
+#s-pause .host-acts .btn-mini.danger{color:var(--danger,#ff3d5a)}
 #s-pause .pause-actions{display:flex;gap:8px}
 #s-pause .pause-actions button{flex:1}
 /* o botão que abre o menu: mesmo alvo do chip de mudo, e no dedo os 44 px que a matriz cobra */

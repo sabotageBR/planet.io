@@ -44,6 +44,11 @@ export function createFeed(){
      * @param {number} restaS segundos que faltam
      */
     crunchStep(restaS){
+      // ⚠️ `restaS==null` é SEM FIM (sala com dono e tempo infinito), e ele não pode virar 0 por coerção:
+      // `null>n` é FALSO para todo limiar, então UMA chamada dispararia a cascata inteira de avisos de fim
+      // de mundo — um por tick de placar — numa sala que nunca vai acabar. A chamada já é guardada em
+      // Room.js; esta é a rede embaixo, porque o defeito seria silencioso e absurdo na tela.
+      if(restaS==null)return null;
       if(crunchIdx>=FEED.CRUNCH_AT_S.length)return null;
       const n=FEED.CRUNCH_AT_S[crunchIdx];
       if(restaS>n)return null;

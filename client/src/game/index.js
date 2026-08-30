@@ -45,7 +45,7 @@ import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./ben
 import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0,autodef:0,zoom:0,feast:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
-  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:"",notice:null,zoom:null});
+  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:"",notice:null,zoom:null,host:null});
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
   keySplit:"Space",keyEject:"KeyW",
   sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
@@ -232,7 +232,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       modeId=m.mode|0;teamSize=m.teamSize||1;myTeam=m.team==null?-1:m.team;roomCap=m.cap||0;
       phase=(m.round&&m.round.phase)||"live";startsAt=(m.round&&m.round.startsAt)||0;
       view.setMyTeam(myTeam);chatLog=[];feedLog=[];lobby=null;spec=null;
+      souDono=!!m.host;salaPrivada=!!m.private;painel=null;
       audio.resume();audio.play("join",{mine:true});}
+    // O painel do DONO da sala (quem está aqui, quem está banido). Só o dono recebe — o servidor decide, e a
+    // lista traz `pid` opaco em vez de slot/sessionId: slot recicla e sessionId é metade da credencial de resume.
+    else if(m.t==="host"){souDono=!!m.you;salaPrivada=!!m.private;painel={roster:m.roster||[],bans:m.bans||[]};pushHud(performance.now());}
     else if(m.t==="lobby"){   // a sala enchendo: contagem em MS, porque no lobby não há snapshot para sincronizar o tick
       lobby={filled:m.filled,cap:m.cap,humans:m.humans,startsInMs:m.startsInMs,waitMs:m.waitMs,at:performance.now()};
       if(m.startsInMs&&!lobbyBeep){lobbyBeep=true;audio.play("countdown",{mine:true});}}
@@ -360,6 +364,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
      */
     spectate({slot=-1,dir=0}={}){if(!conn||!joined||!dead)return;conn.sendJson({t:"spectate",slot,dir});},
     zoomReset(){zoomReset();},   // o chip do HUD (e a tecla 0, e o botão do meio) devolvem a câmera ao automático
+    /**
+     * Dono da sala: expulsar / banir. Vai pelo WS e não por HTTP porque o socket do dono JÁ está no shard que
+     * conhece a sala (ele foi aberto em `/ws/<shardOf(code)>`) — não há nada a rotear, e a identidade dele já
+     * foi resolvida no join. Quem autoriza é o servidor: `Room.isHost`.
+     */
+    hostAct(act,pid){if(!conn||!conn.isOpen||!souDono)return;conn.sendJson({t:"room",act,pid:pid|0});},
     /** Menu do Esc: larga o controle sem sair da sala. Solta o que estiver segurado, senão o W fica preso. */
     setPaused(on){const v=!!on;if(v===pausado)return;pausado=v;
       if(v){ejHold=false;input.setHold(false);actions.reset();if(pointer)pointer.state.down=false;audio.stopLoop("aimCharge");}},
@@ -390,7 +400,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa
     // por aqui (ela é do Connection, e volta pelo `resume`), então nada disso atrapalha quem só caiu.
     leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;mapOn="";minimap.setView("",-1);minimap.show(false);
+      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -400,6 +410,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,
       hud:()=>hudStore.get(),estado:()=>({modeId,teamSize,myTeam,phase,startsAt,roomCap,lobby,zone}),
+      zoom:()=>({f:zoomF,pausado,joined,dead,pref:curPrefs.wheelZoom,span:own0.length?zoomSpan(focusOf(own0.map(p=>({x:p.rx,y:p.ry,r:p.rr}))).sumR):null,pecas:own0.length}),
       fogos:()=>celebrate()},   // aprovar a salva de olho sem ter de vencer um battle royale
   };
 
@@ -430,15 +441,19 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── rodada: relógio do espaço (um dia inteiro por rodada), contagem final e explosão do mundo ──
   // Tudo derivado do tick do servidor (buffer.tickAt) + o bloco `round` do JSON `room`: nada extra no fio.
   function roundTick(now){
-    if(!round||!round.ticks){if(roundClock){roundClock=null;setRoundHour(null);}return;}
-    const rt=Math.min(round.ticks,Math.max(0,buffer.tickAt(now)-round.start)),left=(round.ticks-rt)/TICK_HZ;
-    // `days` vem do JSON `room` do servidor: os ticks da rodada saem do env (ROUND_TICKS) e os dias eram
-    // constante do CLIENTE — cliente novo com env velho desenhava o relógio do espaço na metade da velocidade.
-    const dias=round.days||ROUND.DAYS;
-    const h=(round.dayStart+24*dias*(rt/round.ticks))%24;roundClock={h:Math.floor(h),m:Math.floor(h%1*60),leftS:Math.max(0,left)};
+    if(!round){if(roundClock){roundClock=null;setRoundHour(null);}return;}
+    // ⚠️ SALA SEM FIM (`ticks:0`, sala com dono): não há contagem regressiva, mas o CÉU CONTINUA GIRANDO.
+    // O relógio do espaço saía de `ticks/days`, e sem `ticks` ele simplesmente pararia — justo na sala que
+    // dura mais. Por isso o servidor manda `dayTicks`: para rodada finita o valor é idêntico ao que se
+    // calculava aqui (`24·days·rt/ticks ≡ 24·rt/(ticks/days)`), então nada muda nas salas de sempre.
+    const dia=round.dayTicks||(round.ticks?round.ticks/(round.days||ROUND.DAYS):0);
+    if(!dia){if(roundClock){roundClock=null;setRoundHour(null);}return;}
+    const decorrido=Math.max(0,buffer.tickAt(now)-round.start);
+    const rt=round.ticks?Math.min(round.ticks,decorrido):decorrido,left=round.ticks?(round.ticks-rt)/TICK_HZ:null;
+    const h=(round.dayStart+24*(rt/dia))%24;roundClock={h:Math.floor(h),m:Math.floor(h%1*60),leftS:left==null?null:Math.max(0,left)};
     setRoundHour(h);
     prewarmNextSky(h);
-    if(!renderer||dead)return;
+    if(!renderer||dead||left==null)return;   // sem fim: não há contagem regressiva para anunciar
     const n=Math.ceil(left);   // contagem gigante nos segundos finais (um efeito por segundo)
     if(!roundOver&&n>0&&n<=ROUND.WARN_S&&n!==lastCount){lastCount=n;
       renderer.fx.add("countdown",{x:cam.x,y:cam.y,r:cam.H/cam.scale*.16,n});audio.play("countdown",{mine:true});}}
@@ -448,9 +463,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
    * manda) e o custo é pago uma vez por virada, fora dela.
    */
   function prewarmNextSky(h){
-    if(!renderer||!round||!round.ticks)return;
+    if(!renderer||!round)return;
     if((curPrefs.theme||"auto")!=="auto")return;
-    const dh=24*(round.days||ROUND.DAYS)/(round.ticks/TICK_HZ)*PREWARM_S;   // quantas horas do relógio do espaço andam em PREWARM_S reais
+    const dia=round.dayTicks||(round.ticks?round.ticks/(round.days||ROUND.DAYS):0);if(!dia)return;
+    const dh=24/(dia/TICK_HZ)*PREWARM_S;   // quantas horas do relógio do espaço andam em PREWARM_S reais (o DIA manda, e ele existe mesmo sem fim de rodada)
     const next=resolveThemeId("auto",(h+dh)%24);
     if(next===warmedSky||!THEMES[next]||next===(curTheme&&curTheme.id))return;
     warmedSky=next;
@@ -517,7 +533,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     lastDead=dead;lastAmmo=sf.missiles;lastMagnet=mag;lastFireCd=sf.fireCd;lastMass=sf.mass;
     ameaca(sf);
     if(now-ambT>AMB_MS){ambT=now;
-      const perigoK=dead?0:perigo(),urgencia=roundClock&&roundClock.leftS<60?1-roundClock.leftS/60:0;
+      // ⚠️ `leftS!=null`: numa sala SEM FIM ele é null, e `null<60` é VERDADEIRO (null vira 0) — sem esta
+      // guarda a urgência ficaria em 1 desde o primeiro segundo, com a ambiência tensa e a TRILHA presa na
+      // seção de clímax para sempre. É o oposto exato do que "sem fim" deveria significar.
+      const leftS=roundClock?roundClock.leftS:null;
+      const perigoK=dead?0:perigo(),urgencia=leftS!=null&&leftS<60?1-leftS/60:0;
       audio.setLoop("ambience",{mass:massK(sf.mass),danger:perigoK,urgency:urgencia});
       // A TRILHA lê o MESMO estado, num número só. Massa = o quanto eu virei assunto na sala; perigo e
       // urgência = o quanto a sala virou assunto para mim. O maior dos três manda, porque a trilha
@@ -562,6 +582,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // funcionalidade ocasional é ruído. `pct` é o que ele PERCEBE (quanto de mundo a mais/a menos), não o
       // fator; `fresh` diz se o gesto foi agora, para o chip aparecer opaco e depois esmaecer.
       zoom:zoomF===1?null:{pct:Math.round((zoomF-1)*100),fresh:now-zoomAt<1500},
+      host:souDono?{private:salaPrivada,roster:painel?painel.roster:[],bans:painel?painel.bans:[]}:null,
       mode:modeId,teamSize,team:myTeam,phase,cap:roomCap,
       lobby:lobby?{...lobby,
         // o servidor manda a 2 Hz; aqui o número desce liso, descontando o tempo desde que a mensagem chegou
@@ -580,6 +601,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // tamanho inicial volta ao automático sem ter de desfazer oito entalhes fantasmas. Estado de VISTA por
   // partida: mora aqui, não na store, e `leave()`/`join()` o zeram junto do `cam.reset()`.
   let zoomF=1,zoomAt=0;
+  let souDono=false,salaPrivada=false,painel=null;   // sala com dono: o painel só existe para quem é o dono
 
   // ── laço ──
   /**
