@@ -65,6 +65,10 @@ export const initialState = {
   // este objeto — aqui, o `go()` e o `play()` —, e os dois últimos o zeram: um overlay novo que não entre
   // na conta deles some sozinho na primeira navegação.
   overlays: { account: false, reconn: false, pause: false },
+  // ⚠️ FORA de `overlays`, de propósito, e é o parágrafo acima que explica por quê: `go()` e `play()`
+  // reescrevem aquele objeto inteiro. Este aviso precisa do contrário — ele tem que GRUDAR até o
+  // servidor voltar, porque sem servidor não há o que jogar.
+  servidorFora: false,
   reconnAttempt: 0,
   room: null,            // código da sala atual (do evento `room` do jogo)
   pendingJoin: null,     // {room, mode, teamSize, party, n} — GameHost faz o join quando muda

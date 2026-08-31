@@ -9,14 +9,14 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icon-180.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <!-- a fonte da marca é auto-hospedada; o preload tira o "flash de fonte trocada" do primeiro paint -->
-  <link rel="preload" href="/fonts/archivo-black-latin.woff2" as="font" type="font/woff2" crossorigin>
   <!-- cartão de compartilhamento: sem isto, um link colado no chat vira só a URL crua -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="warspace.io">
   <meta property="og:title" content="warspace.io — conquiste a galáxia">
   <meta property="og:description" content="Cresça, divida, ejete e devore. Livre ou battle royale de 50 planetas numa zona que fecha.">
-  <meta property="og:image" content="/og.png">
+  <!-- absoluta de propósito: um crawler resolve o relativo contra a origem, mas a URL crua no chat de
+       terceiros nem sempre — e no pacote de portal esta meta nem existe (ver o plugin do vite.config) -->
+  <meta property="og:image" content="https://warspace.io/og.png">
   <meta name="twitter:card" content="summary_large_image">
   <!-- Google Analytics (gtag.js): a SPA só troca de URL em /admin, então o page_view automático é por CARGA da página -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-40CHSTVFQT"></script>

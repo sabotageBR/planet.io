@@ -21,6 +21,8 @@ import {warmFaces} from "../theme/faces.js";
 import {getLabels} from "../i18n/index.js";   // o texto desenhado DENTRO do mundo (fx) também é texto de UI
 import {createAudio} from "../audio/index.js";
 import {api} from "../api/client.js";
+import {apiUrl,wsUrl} from "../api/base.js";
+import {PORTAL} from "../portal/flags.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
 import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,ZOOM,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
@@ -388,13 +390,20 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         mode:mode|0,teamSize:ts||1,party:party||null};
       buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();zoomF=1;hudStore.set({...initialHud(),room:room||null});mapOn="";minimap.setView("",-1);aplicaRadar();
       if(pointer&&renderer)pointer.center(renderer.W,renderer.H);
-      const isLocal=useLocal||qflag("local")||isBench()||api.server===false;
+      // ⚠️ No pacote de portal, servidor fora NÃO vira partida local: o jogador entrou num .io para jogar
+      // com gente, e cair calado num single-player é a falha mais enganosa possível — parece que
+      // funcionou. Quem avisa é a tela de `servidorFora` (state/actions.js). O `?local=1` e o `?bench`
+      // continuam funcionando: o que sai é só o automático.
+      const isLocal=useLocal||qflag("local")||isBench()||(api.server===false&&!PORTAL);
       if(isLocal){const rs=+(Q.get("round")||0);   // ?round=<segundos> encurta a rodada local (dev)
         local=createLocalServer(isBench()?benchOptions():{lag:+(Q.get("lag")||0),seed:+(Q.get("seed")||7),...(rs>0?{roundTicks:Math.round(rs*TICK_HZ)}:{})});connectWith(()=>local.connect());return;}
-      const proto=location.protocol==="https:"?"wss":"ws";
-      const go=shard=>{if(!joined)return;connectWith(()=>new WebSocket(`${proto}://${location.host}/ws/${shard}`));};
+      // O host sai de `api/base.js`, não de `location.host`: no iframe de um portal o host é o PORTAL.
+      const go=shard=>{if(!joined)return;connectWith(()=>new WebSocket(wsUrl(shard)));};
       if(room)go(shardOf(room));
-      else fetch("/api/config",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(c=>go(c&&c.shard!=null?c.shard:0)).catch(()=>go(0));},
+      // ⚠️ Sem código de sala o shard vem do /api/config, e o `catch` NÃO pode mascarar: cair no 0 manda
+      // a sala inteira para o mesmo shard e, com a API fora, esconde a única pista do que aconteceu.
+      else fetch(apiUrl("/api/config"),{cache:"no-store"}).then(r=>r.ok?r.json():null).then(c=>go(c&&c.shard!=null?c.shard:0))
+        .catch(e=>{console.warn("[net] /api/config falhou, caindo no shard 0:",e&&e.message);go(0);});},
     // sair é DELIBERADO: avisa o servidor antes de fechar. Sem o `quit`, o `close` do socket é
     // indistinguível de uma queda de rede — a sessão fica em graça por NET.RESUME_MS segurando o slot, e
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa

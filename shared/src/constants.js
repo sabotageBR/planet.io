@@ -1029,3 +1029,15 @@ export const PLACE_COINS=(placement,players)=>{
 export const ACTION_KEYS=["Space","KeyW","KeyE","KeyD","KeyC","KeyZ","ShiftLeft"];
 /** Nome da tecla na tela (é o que o HUD desenha em `#hud-cd`, então tem que caber em duas ou três letras). */
 export const KEY_LABEL={Space:"ESPAÇO",KeyW:"W",KeyE:"E",KeyD:"D",KeyC:"C",KeyZ:"Z",ShiftLeft:"SHIFT"};
+
+// ── PORTAIS DE JOGO (o cliente hospedado fora daqui) ──────────────────────────
+// O mesmo cliente é publicado como .zip em GameDistribution, CrazyGames, Poki e itch.io, que o servem do
+// domínio deles num iframe. Deles vem a obrigação de anúncio (preroll antes da partida e midroll entre
+// partidas), e daqui vêm os números.
+// ⚠️ Não são `tunables`: o painel /admin muda o que roda NESTE servidor, e um zip já assado não relê nada.
+// MIN_AD_MS   intervalo mínimo entre anúncios; a própria GameDistribution sugere 2 min.
+// SDK_MS      espera pelo script do portal. Ele é a primeira coisa que um bloqueador derruba, e o jogo
+//             não pode ficar de portas fechadas por causa disso — vencido o prazo, joga sem anúncio.
+// AD_MS       teto de um anúncio. `showAd` às vezes nem rejeita quando não há preenchimento: sem este
+//             relógio o botão JOGAR ficaria pendurado para sempre, que é a pior falha possível aqui.
+export const PORTAL={MIN_AD_MS:120000,SDK_MS:6000,AD_MS:45000};

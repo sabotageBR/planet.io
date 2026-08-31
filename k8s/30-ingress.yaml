@@ -1,7 +1,10 @@
 # ── PORTA DE ENTRADA de warspace.io ───────────────────────────────────────────
-# O jogo inteiro sai por um host só, porque o cliente monta o WebSocket como
-# `wss://${location.host}/ws/${shard}` (client/src/game/index.js) e chama /api/* na
-# própria origem — outro host significaria CORS e certificado a mais, sem ganho.
+# O jogo inteiro sai por um host só: API, WS e cliente na mesma origem, um certificado só.
+# ⚠️ Isso deixou de significar "sem CORS". O cliente também é publicado como .zip em portais de jogos,
+# que o servem do domínio DELES dentro de um iframe — e aí ele fala com esta API de fora. Quem libera é
+# `ALLOWED_ORIGINS` no Node (server/src/http/cors.js), nunca uma annotation daqui: a v0.47 aceita UMA
+# origem só, valeria para o Ingress inteiro e, somada ao header do Node, daria ACAO duplicado — que o
+# navegador rejeita. O WS não precisou de nada: handshake de WebSocket não é sujeito a CORS.
 #
 # TRÊS DECISÕES QUE FAZEM ISSO FUNCIONAR NO CLUSTER QUE TEMOS (ingress-nginx v0.47, k8s 1.21):
 #

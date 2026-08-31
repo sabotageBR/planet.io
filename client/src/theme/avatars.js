@@ -8,12 +8,16 @@
 // TextureCache não tem (nem precisa de) um `drop(key)`.
 // @ts-check
 import { api } from "../api/client.js";
+import { SEM_CONTA } from "../portal/flags.js";
 
 /** @type {Map<string,ImageBitmap|null>} chave "userId:v" → bitmap pronto (ou null enquanto carrega/falhou) */
 const cache = new Map();
 const MAX = 64;   // 50 numa sala; o resto é folga para trocas durante a rodada
 
-export const avatarKey = a => (a && a.userId && a.v ? `${a.userId}:${a.v}` : null);
+// ⚠️ `SEM_CONTA` (o interruptor dos portais) devolve null para todo mundo: sem chave não há carga, e o
+// planeta cai na silhueta que já existe. É um ponto só, e ele apaga a foto de TODOS — o que é o certo:
+// a regra que pede isso é sobre dado pessoal, não sobre a MINHA foto.
+export const avatarKey = a => (!SEM_CONTA && a && a.userId && a.v ? `${a.userId}:${a.v}` : null);
 /** O bitmap, se já estiver pronto. Nunca espera — quem desenha está dentro de um frame. */
 export const avatarBitmap = a => { const k = avatarKey(a); return k ? cache.get(k) || null : null; };
 

@@ -3,6 +3,18 @@
 JSON; erros `{error:'code', message:'pt-BR'}`; `Cache-Control: no-store`; body ≤ 16 KB; `Authorization: Bearer pt_…` onde marcado 🔒.
 Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`. Sem JWT, sem SESSION_SECRET.
 
+**CORS** (`server/src/http/cors.js`, env `ALLOWED_ORIGINS`; vazia = fechado, que é o default): o cliente também roda
+hospedado por portais de jogos, no domínio deles. Superfície = `/api/*` **menos** `/api/admin/*` (o painel é sempre
+same-origin). Origem permitida (exata ou sufixo `https://*.itch.zone`) recebe o eco em `Access-Control-Allow-Origin`
++ `Vary: Origin`; origem desconhecida recebe a resposta normal **sem** o header (nunca 403 — o navegador manda
+`Origin` em todo POST same-origin). `OPTIONS` é respondido com 204 antes do roteamento, com
+`Allow-Headers: Authorization, Content-Type` e `Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`.
+`GET /api/avatar/:id` é a exceção: sai com `*` e sem `Vary`, porque é público e `immutable` por um ano.
+⚠️ **Nada disso manda `Allow-Credentials`, e o `*` do avatar só é seguro porque não existe cookie no projeto** —
+a auth é Bearer em localStorage. Antes do primeiro `Set-Cookie`, revise esse arquivo.
+O WebSocket não é sujeito a CORS e sempre atravessou origens; `WS_ORIGIN_CHECK` (`off|warn|on`) é um gate separado
+no handshake, e origem AUSENTE é sempre aceita.
+
 | método | rota | body | resposta |
 |---|---|---|---|
 | POST | `/api/auth/guest` | `{nick?}` | 201 `{token,user}` · 400 `invalid_nick` · 429 |

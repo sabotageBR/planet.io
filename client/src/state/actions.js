@@ -9,6 +9,9 @@ import { skinById } from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
+import { portal } from "../portal/index.js";
+import { PORTAL } from "../portal/flags.js";
+import { silenciaAnuncio } from "../audio/index.js";
 
 const Q = new URLSearchParams(location.search);
 const NICK_RE = /^.{2,16}$/;
@@ -29,6 +32,16 @@ export function go(screen) {
 export const openAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: true } }));
 export const setPause = on => app.update(s => ({ ...s, overlays: { ...s.overlays, pause: !!on } }));
 export const togglePause = () => { const s = app.get(); if (s.screen !== "game" && !s.overlays.pause) return; setPause(!s.overlays.pause); };
+// ── O QUE ACONTECE ENQUANTO UM ANÚNCIO DE PORTAL RODA ──
+// Cala o som (sem tocar em `prefs.muted` — ver `silenciaAnuncio` em audio/index.js) e, na volta, se o
+// jogador estiver em partida, levanta o menu de pausa: os portais exigem que o retorno caia numa tela que
+// só sai por ação dele, e o `Pause` já é exatamente isso — sai no clique do RETOMAR e larga o COMANDO sem
+// derrubar a conexão. Registrado no módulo, uma vez, e não em componente: anúncio não espera montagem.
+if (PORTAL) {
+  portal.aoPausar(() => silenciaAnuncio(true));
+  portal.aoRetomar(() => { silenciaAnuncio(false);
+    const s = app.get(); if (s.screen === "game" && !s.overlays.pause) setPause(true); });
+}
 export const closeAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: false } }));
 export const setReconn = (on, attempt) => app.update(s => ({ ...s, overlays: { ...s.overlays, reconn: !!on }, reconnAttempt: on ? (attempt || s.reconnAttempt || 1) : 0 }));
 /**
@@ -76,6 +89,9 @@ export function applyPrefsSideEffects(prefs) {
   if (!themeClock) themeClock = startThemeClock(themePref, null, { getHour: () => clockRef.get().hour });   // dentro da partida o céu segue o relógio da rodada
 }
 
+/** Botão "tentar de novo" da tela de servidor fora: refaz o boot inteiro. */
+export async function tentarDeNovo() { app.update({ servidorFora: false, booted: false }); await boot(); }
+
 export async function boot() {
   try { applySession(await api.bootstrap()); }
   // ⚠️ O idioma sobrevive ao boot que falhou. Este ramo reaplica os PADRÕES, e `lang` é a única pref que
@@ -84,7 +100,12 @@ export async function boot() {
   // gravado por cima da escolha dele — e o idioma voltava para o do navegador no F5 seguinte.
   catch (e) { app.update({ bootError: e.message || String(e) }); applyPrefsSideEffects({ ...PREF_DEFAULTS, lang: currentLangPref() }); }
   app.update({ booted: true });
-  if (api.server === false) toast(getLabels().offlineNote, 3200); else if (api.online === false) toast(getLabels().noDbNote, 3200);
+  // ⚠️ No pacote de portal, servidor fora NÃO pode virar um toast de 3 s e uma partida contra bots: ali
+  // não existe "modo local" que faça sentido (o jogador clicou num .io para jogar com gente), e o
+  // silêncio faz o jogo PARECER que funcionou. Vira uma tela que fica.
+  if (PORTAL && api.server === false) app.update({ servidorFora: true });
+  else if (api.server === false) toast(getLabels().offlineNote, 3200);
+  else if (api.online === false) toast(getLabels().noDbNote, 3200);
   loadConfig(); loadTop5(); loadRooms();
   const conv = Q.get("party");
   if (conv) { history.replaceState(null, "", location.pathname); joinParty(conv); return; }   // link de convite: cai direto no lobby da equipe do amigo
@@ -316,6 +337,16 @@ export function semNome(pedido = null) {
 /** Entra numa sala: `room` explícito, senão GET /api/auto (offline → sala local do stub). */
 export async function play({ room, mode, teamSize, party } = {}) {
   if (semNome({ room, mode, teamSize, party })) return;
+  // ── ANÚNCIO DE PORTAL ──
+  // Ponto ÚNICO, e de propósito: `play()` é a porta por onde passam Modos, Salas (auto, código e lista),
+  // o convite, a largada de equipe, o respawn da tela de morte e a entrada automática depois do BIG
+  // CRUNCH. O tipo sai de `played`, que já existe e já significa "já entrou em partida nesta carga":
+  // a primeira é preroll, as seguintes são midroll (a fachada guarda o intervalo mínimo).
+  // ⚠️ É aqui e não no instante da MORTE: atrás da tela de morte a rodada continua correndo e o jogador
+  //    está assistindo de propósito (troca de câmera, mapa, sala ao vivo) — cobrir isso com anúncio é o
+  //    que a regra dos portais proíbe. No respawn não há partida rodando, então "pausado e mudo" é
+  //    verdade por construção. E nada disso pode PENDURAR o botão: a fachada sempre resolve.
+  if (PORTAL) await portal.anuncio(app.get().played ? "midroll" : "preroll");
   const st = app.get();
   const md = mode != null ? mode | 0 : st.gameMode | 0, ts = teamSize != null ? teamSize | 0 : st.teamSize || 1;
   const pt = party !== undefined ? party : (st.party ? st.party.code : null);
@@ -326,6 +357,7 @@ export async function play({ room, mode, teamSize, party } = {}) {
     pendingPlay: null,
     pendingJoin: { room: code, mode: md, teamSize: ts, party: pt, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
   partidaIniciada({ mode: md, teamSize: ts, party: pt });
+  if (PORTAL) portal.jogoComecou();
 }
 // ── modos e lobby de equipe ────────────────────────────────────────────────
 export function setMode(mode, teamSize = 1) { app.update({ gameMode: mode | 0, teamSize: teamSize | 0 || 1 }); }
@@ -402,6 +434,7 @@ export async function startParty() {
   play({ room: code, mode: 1, teamSize: p.teamSize, party: p.code });
 }
 export function leaveGame(screen = "lobby") {
+  if (PORTAL) portal.jogoParou();
   app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
 let rewardsT = null, levelUpN = 0;
@@ -469,6 +502,9 @@ export function onConnection(ev) {
     if (s.screen === "game" && ev.code === "NICK_IN_ROOM") {
       toast(errText(ev) + (ev.suggestion ? ` · ${ev.suggestion}` : ""), 4000); leaveGame("entry"); focaNome();
     }
+    // no portal, "não deu para conectar" também é a tela que fica: o toast some e o jogador acha que
+    // clicou errado. `UNREACHABLE`/`LOST` são a queda de rede; o resto continua sendo erro de sala.
+    else if (PORTAL && (ev.code === "UNREACHABLE" || ev.code === "LOST")) { leaveGame("entry"); app.update({ servidorFora: true }); }
     else if (s.screen === "game") { toast(errText(ev), 3000); leaveGame("lobby"); }
     else if (ev.code || ev.message) toast(errText(ev), 3000);
   }

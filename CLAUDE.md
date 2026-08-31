@@ -17,7 +17,8 @@ npm run build                # client/dist (vite build)
 ./scripts/db-secret.sh       # cria o Secret warspace-db (DATABASE_URL do .env) no cluster
 # PAINEL /admin: rota da MESMA SPA (client/src/admin/, chunk sob demanda). O 1º administrador nasce do env
 # ADMIN_EMAILS (k8s/05-config) no boot — SÓ PROMOVE — ou de um UPDATE users SET is_admin=true. docs/spec/admin.md
-node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest a partir da marca
+node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
+node scripts/portal-pack.mjs gd|crazy|poki|itch|all   # o .zip do cliente para os portais (docs/spec/portais.md)
 ./scripts/build-push.sh      # builda (contexto = raiz, -f server/Dockerfile / client/Dockerfile) e publica evandromoura/warspace-io-{server,client}
 ./scripts/deploy.sh          # aplica k8s/ + Ingress em warspace.io (WARSPACE_HOST=... troca o host, NO_INGRESS=1 pula)
 ```
@@ -39,7 +40,8 @@ server/src/    index.js (composition root + startServer) · loop.js (scheduler 6
                sim/ (Sim, hooks) · rooms/ (codes, Room, RoomManager, Party) · net/ (Session, wsServer, snapshot) · http/ (api, peers)
                config.js · log.js · tunables.js (parâmetros do painel) · db/ (pool, migrate, migrations/) · auth/ (tokens, password, nick, ratelimit)
                repos/ (+ settings, audit) · api/ (router + rotas, incl. admin.js) · http/admin.js (salas/kick/aviso) · persist/ (session, rewards, queue, hooks)
-client/src/    main.jsx (3 entradas: jogo · /admin · ?sfx) · app/ (App, theme bridge) · admin/ (o painel: mount/api/admin.css)
+client/src/    api/base.js (a ÚNICA fonte de "onde mora o servidor") · portal/ (flags + fachada de anúncio + 1 adaptador por portal)
+               main.jsx (3 entradas: jogo · /admin · ?sfx) · app/ (App, theme bridge) · admin/ (o painel: mount/api/admin.css)
                i18n/ (index.js o motor · pt-BR|en|es.js os dicionários · errors.js código→texto · catalog.js skins/conquistas/países)
                assets/scene/ (a arte do cenário do menu: logo + 5 sprites + 3 fundos, WebP)
                ui/ (telas React + Round.jsx, Modes/Party/Chat/KillFeed/Notice/AvatarPicker/Pause (o menu do Esc + o painel do dono), icons.js
@@ -47,7 +49,7 @@ client/src/    main.jsx (3 entradas: jogo · /admin · ?sfx) · app/ (App, theme
                audio/ (index.js motor: 4 barramentos, prioridade de vozes, loops · kit.js receitas · mic.js push-to-talk · audition.js a mesa de som do ?sfx)
                theme/ (index.js + dawn|sunset|dusk: tokens/hud/screens.css gerados por port.js, index.js com textures/effects/hud) · styles/base.css
                game/ (index.js createGame · net/ · state/ · renderer/ · input/ (Pointer·Keyboard·Touch·Joystick·Wheel) · hud/ · bench.js)
-docs/spec/     protocol.md · api.md · admin.md · hooks.md · server-game.md · client-game.md      docs/design/  telas.md · theme-time.md · rodada-1.md · som.md · modos.md
+docs/spec/     protocol.md · api.md · admin.md · hooks.md · server-game.md · client-game.md · portais.md      docs/design/  telas.md · theme-time.md · rodada-1.md · som.md · modos.md
 k8s/           00-namespace · 05-config (ConfigMap) · 10-server (StatefulSet 3 shards, envFrom ConfigMap+Secret) · 20-client
                30-ingress (warspace.io: /ws/0|1|2 por shard, /api no Service agregador, / no cliente; + o 301 de www) · 40-backup
 scripts/       build-push.sh · deploy.sh · db-secret.sh · k8s_apply.py (apply via API; Secret, --exists)
@@ -550,6 +552,47 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   o cliente desfazer a equipe. Perguntar a todos é seguro até para mutação porque o guarda de `Party.get` recusa quem não
   é dono antes de tocar em nada. Quem prova é `server/test/party-shards.test.js`, que sobe DOIS shards no mesmo processo —
   os testes de party de `br.test.js` fixam `SHARDS=1` e por isso nunca viram o bug.
+- **O CLIENTE PODE MORAR FORA DAQUI** (`docs/spec/portais.md`, `client/src/portal/`, `server/src/http/cors.js`):
+  os portais de jogo (GameDistribution, CrazyGames, Poki, itch.io) pedem um **.zip com `index.html` na
+  raiz** e hospedam os arquivos no domínio DELES, num iframe — o servidor multiplayer continua sendo
+  warspace.io. O zip é só `client/dist`, e é isso que o `scripts/portal-pack.mjs` monta.
+  ⚠️ **O modo de falha era MENTIR DUAS VEZES**: a sonda de `/api/config` morava dentro do
+  `if (getToken())`, então quem tinha token caía em `createLocalServer()` e jogava sozinho ("Sem
+  servidor: jogando em modo local"), e quem chegava novo nem sondava — `api.server` ficava `null` e a
+  tela dizia **"Servidor sem banco"**, que é falso, o servidor inteiro estava fora. A sonda virou
+  incondicional (conserta o site também) e, no pacote de portal, servidor fora deixou de virar
+  single-player calado: vira `servidorFora` + `ui/Offline.jsx`, uma tela que FICA. ⚠️ Esse campo é de
+  TOPO e não entra em `overlays`: `go()` e `play()` reescrevem aquele objeto inteiro, e este aviso
+  precisa do contrário — grudar até o servidor voltar.
+  ⚠️ **`base:"./"` só no build de portal.** Global quebraria `/admin/<sub>`, que é URL viva no site: com
+  base relativa o script de `/admin/usuarios` resolveria para `/admin/assets/…` → painel branco. E o que
+  a base relativa NÃO conserta são as referências absolutas a `client/public/`: por isso as duas
+  `.woff2` da marca mudaram para `client/src/assets/fonts/` (de onde o bundler as hasheia) e o
+  `fetch("/faces/…")` das 35 caricaturas passou a usar `import.meta.env.BASE_URL` — que **já termina em
+  `/`**, então a interpolação vai sem barra própria.
+  ⚠️ **`client/src/api/base.js` é a única fonte de "onde mora o servidor"**, e o contrato é que **base
+  vazia = concatenação com string vazia**: o site emite `/api/me` byte a byte como antes, sem um `if` em
+  runtime. O `wsUrl` deriva o esquema da BASE e não de `location.protocol` — senão a verificação local,
+  servida em `http://127.0.0.1`, tentaria `ws://` contra um servidor `wss://` e você culparia o servidor.
+  ⚠️ **NUNCA criar `client/.env`** (sem sufixo de modo): ele valeria para o `npm run build` de dentro do
+  `client/Dockerfile` e toda chamada de produção viraria cross-origin, em silêncio.
+  ⚠️ **Anúncio (preroll + midroll) tem UM ponto de chamada: `play()`** — a porta única por onde passam
+  Modos, Salas, convite, equipe, o respawn da morte e a sala nova do BIG CRUNCH —, e o tipo sai de
+  `played`, que já existia. É no RESPAWN e nunca no instante da morte: atrás da tela de morte a rodada
+  continua correndo e o jogador está assistindo de propósito. ⚠️ `audio.suspend()` **não** cala o jogo
+  durante o anúncio (`sfx()` chama `resume()` a cada clique, e o `wakeAudio` está no `pointerdown` da
+  JANELA): quem cala é `silenciaAnuncio`, uma flag que entra no `masterVol()` **e** trava o `resume()` —
+  e nunca `prefs.muted`, que é escolha persistida do jogador. ⚠️ Nada de arquivo chamado `ads.js` (o
+  nome vai para a URL do chunk e o bloqueador o mata) nem `import(`./${id}.js`)` (vira glob no Rollup e
+  o zip da GD sai com o código da Poki dentro).
+  ⚠️ **CORS num ponto SÓ**: o topo do `handler` de `server/src/http/api.js`, com `setHeader` — que o Node
+  MESCLA em todo `writeHead` de baixo, então cobre o `sendJson`, os headers próprios do avatar, o 304
+  dele e o 503 de "sem banco". No `sendJson` não daria: ele nem recebe o `req`, e `/api/config` — a
+  primeira chamada do boot — nem passa por lá. Superfície é `/api/*` menos `/api/admin`; o avatar sai com
+  `*` (é público e `immutable`, e o eco fragmentaria o cache); e **nada disso é seguro se um dia existir
+  cookie no projeto**. Origem desconhecida recebe a resposta normal SEM o header — 403 derrubaria o jogo
+  no dia em que a própria origem saísse da lista, porque o navegador manda `Origin` em todo POST
+  same-origin.
 - **Identidade**: token opaco `pt_…` (sha256 no banco), guest por padrão (`POST /api/auth/guest`), reivindicar com senha (scrypt nativo)
   trava o nick; `join {token}` — nick/skin nunca vêm do cliente. Banco fora → modo sem persistência (`unsaved`), o tick nunca espera o banco
   (fila com retry, circuit-breaker). Moedas/conquistas só no servidor (`persist/rewards.js`).

@@ -20,6 +20,7 @@ import Round from "../ui/Round.jsx";
 import AccountModal from "../ui/AccountModal.jsx";
 import Pause from "../ui/Pause.jsx";
 import ReconnOverlay from "../ui/ReconnOverlay.jsx";
+import Offline from "../ui/Offline.jsx";
 import Toast from "../ui/Toast.jsx";
 import LevelUp from "../ui/LevelUp.jsx";
 import { sfx } from "../audio/index.js";
@@ -91,6 +92,7 @@ export default function App() {
     <AccountModal on={overlays.account} />
     <Pause on={overlays.pause} />
     <ReconnOverlay on={overlays.reconn} />
+    <Offline />
     <Toast />
     <LevelUp />
   </>;

@@ -12,6 +12,7 @@ import { useLabels } from "../hooks/useTheme.js";
 import { useInterval } from "../hooks/useInterval.js";
 import { Screen, ScreenHeader } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
+import { linkConvite } from "../util/convite.js";
 
 export default function Party({ on }) {
   return <Screen id="party" on={on} className="party-wrap">{on ? <Body /> : null}</Screen>;
@@ -23,11 +24,14 @@ function Body() {
   const [copied, setCopied] = useState(false);
   useInterval(refreshParty, 1000, true);
   if (!party) return <><ScreenHeader title={LB.partyTitle} onBack={leaveParty} /><div className="hint">{LB.waitingFriends}</div></>;
-  const link = `${location.origin}/?party=${party.code}`;
+  const link = linkConvite("party", party.code);   // no pacote de portal isto é só o CÓDIGO (ver util/convite.js)
   const lider = !!(me && me.leader);   // só o líder começa a partida (o servidor também recusa, com 403)
   const vagas = Math.max(0, party.teamSize - party.members.length);
   const copiar = async () => {
-    try { await navigator.clipboard.writeText(link); } catch { /* sem permissão: o código na tela já serve */ }
+    // ⚠️ o toast tem que dizer a VERDADE: o `writeText` rejeita em iframe sem `allow="clipboard-write"`,
+    // e o "Convite copiado!" saía do mesmo jeito — mentira na cara de quem clicou. O molde é o do
+    // Pause.jsx, que já fazia certo: falhou, mostra o que era para ter sido copiado.
+    try { await navigator.clipboard.writeText(link); } catch { toast(link, 4000); return; }
     setCopied(true); toast(LB.linkCopied); setTimeout(() => setCopied(false), 1600);
   };
   return <>

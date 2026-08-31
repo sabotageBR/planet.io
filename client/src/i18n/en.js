@@ -74,6 +74,7 @@ export default {
   orSep: "or", googleFail: "Couldn't sign in with Google",
   confirm: "Confirm", cancel: "Cancel",
   reconnTitle: "WEAK SIGNAL!", reconnSub: "Looking for the satellite… attempt {n}/5",
+  serverDownTitle: "NO CONTACT WITH BASE", serverDownSub: "We couldn't reach the warspace.io server. It's on our side, not yours.", retry: "Try again",
   split: "SPLIT", eject: "EJECT", fire: "MISSILE", exit: "Leave", keySplit: "SPACE", keyEject: "W", keyFire: "F",
   ammo: "missiles",
   fireCd: "reloading", powerups: { magnet: "Magnet", shield: "Shield", merge: "Merge", autodef: "Auto-defense", zoom: "Vision", feast: "Feast" }, shieldLevel: "Lv",

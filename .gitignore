@@ -6,3 +6,8 @@ mockups/v2/shots/test-*
 .env
 k8s/*.local.yaml
 client/dist/
+
+# pacotes para os portais de jogo (scripts/portal-pack.mjs) — artefato, nunca versionado
+# ⚠️ ANCORADO na raiz: `portal/` solto casaria QUALQUER pasta com esse nome, e a primeira vítima seria
+#    `client/src/portal/` — o código dos adaptadores sumiria do commit, em silêncio.
+/portal/

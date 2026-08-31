@@ -4,6 +4,7 @@ import { app } from "../state/app.js";
 import { loginGoogle, toast } from "../state/actions.js";
 import { iniciaGsi } from "../api/google.js";
 import { useTheme, useLabels, useLang } from "../hooks/useTheme.js";
+import { SEM_CONTA } from "../portal/flags.js";
 
 // O widget é DESENHADO pelo Google (a marca dele tem regras), então o que dá para escolher é a
 // aparência: contorno no tema claro, preenchido escuro nos outros.
@@ -20,7 +21,11 @@ const aparencia = id => (id === "dawn" ? "outline" : "filled_black");
  */
 export default function GoogleButton({ type = "standard" }) {
   const LB = useLabels(), th = useTheme();
-  const cid = useStore(app, s => (s.config || {}).googleClientId) || "";
+  // ⚠️ o hook é chamado SEMPRE (chamada condicional de hook é bug esperando acontecer); o interruptor
+  // entra depois. Com ele ligado o botão não renderiza E o SDK do Google nem é baixado, porque o efeito
+  // abaixo sai cedo em `!cid` — vale para as duas superfícies do botão, a da entrada e a do modal.
+  const cidCfg = useStore(app, s => (s.config || {}).googleClientId) || "";
+  const cid = SEM_CONTA ? "" : cidCfg;
   const online = useStore(app, s => s.session.online);
   const ref = useRef(null);
   const [falhou, setFalhou] = useState(false);

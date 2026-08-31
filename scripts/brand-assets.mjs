@@ -18,6 +18,9 @@ import { logoArt, logoSvgFile, PALETA_FIXA } from "../client/src/ui/logoArt.js";
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PUB = path.join(RAIZ, "client", "public");
+// As thumbnails dos portais NÃO vão para client/public: elas são material do catálogo deles, não do
+// jogo, e tudo que está em public/ entra em todo dist — inclusive no zip, onde só ocupariam espaço.
+const BRAND = path.join(RAIZ, "brand");
 const CHROME = process.env.CHROME_BIN || "/opt/google/chrome/chrome";
 const { ink, a1, tx } = PALETA_FIXA;
 
@@ -71,8 +74,10 @@ for (const n of [180, 192, 512]) {
 //    ⚠️ Embutida em base64 pelo mesmo motivo da fonte: `file://` dentro de um Chrome headless com
 //    --no-sandbox é frágil, e uma imagem que não carregar sai como um retângulo vazio SEM ERRO NENHUM.
 //    A tagline continua em webfont, então o `throw` da fonte fica.
-const fonte = path.join(PUB, "fonts", "archivo-black-latin.woff2");
-if (!fs.existsSync(fonte)) throw new Error(`falta a fonte da marca em ${fonte}`);
+// ⚠️ Aqui havia um `throw` se a fonte da marca não estivesse em client/public/fonts. A checagem era
+// VESTIGIAL — a receita do og.png abaixo usa `font-family:system-ui`, a webfont não entra nela — e virou
+// um estorvo no dia em que as .woff2 se mudaram para client/src/assets/fonts (de onde o bundler as
+// hasheia, que é o que faz a marca ter fonte também no pacote servido de um subcaminho por um portal).
 const marca = path.join(RAIZ, "client", "src", "assets", "scene", "logo.webp");
 if (!fs.existsSync(marca)) throw new Error(`falta a arte da marca em ${marca}`);
 const marcaB64 = fs.readFileSync(marca).toString("base64");
@@ -99,3 +104,37 @@ fs.writeFileSync(path.join(PUB, "manifest.webmanifest"), JSON.stringify({
   ],
 }, null, 2) + "\n");
 console.log("manifest.webmanifest");
+
+// ── 5. THUMBNAILS DOS PORTAIS ────────────────────────────────────────────────
+// Obrigatórias na GameDistribution (§5.1) e pedidas pelos outros nos mesmos três formatos. Saem daqui
+// e não de um editor de imagem porque a máquina já existe (`assa`) e porque thumbnail feita à mão
+// diverge da marca na primeira mudança dela.
+// ⚠️ A de 200×120 leva SÓ o wordmark. A 120 px de altura, qualquer texto abaixo de ~14 px vira borrão —
+//    é a que todo mundo erra, e é a que mais aparece (é ela que vai na grade dos publishers).
+// ⚠️ Fundo OPACO: o `assa` pede screenshot com fundo transparente, e thumbnail com alfa fica com um
+//    quadriculado ou um preto chapado dependendo de onde o portal a desenha.
+// ⚠️ O texto é em INGLÊS: o catálogo dos portais é internacional e o idioma padrão exigido por eles é o
+//    inglês. É a única superfície do projeto onde isso vale — a UI continua saindo do i18n.
+fs.mkdirSync(BRAND, { recursive: true });
+const FUNDO = "background:linear-gradient(160deg,#232f63,#1b2450 60%,#3b1f6b)";
+const THUMBS = [
+  // 1:1 — o wordmark é DEITADO (742×269) e num quadrado sobraria uma faixa vazia em cima e embaixo:
+  // aqui quem manda é o símbolo, com o nome pequeno embaixo.
+  { w: 512, h: 512, corpo: `<div class="w"><svg viewBox="0 0 64 64">${logoArt(PALETA_FIXA)}</svg><b>WARSPACE.IO</b></div>`,
+    css: `.w{width:100%;height:100%;${FUNDO};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px}
+          .w svg{width:58%;height:58%}
+          b{font-family:system-ui,sans-serif;font-size:44px;letter-spacing:.10em;color:#f0d68a}` },
+  // 4:3 — a receita do og.png reescalada: aqui o wordmark cabe inteiro e é ele que identifica o jogo
+  { w: 512, h: 384, corpo: `<div class="w"><img src="data:image/webp;base64,${marcaB64}"><span>CONQUER THE GALAXY</span></div>`,
+    css: `.w{width:100%;height:100%;${FUNDO};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:0 28px}
+          .w>img{width:88%;height:auto;filter:drop-shadow(0 6px 12px rgba(0,0,0,.45))}
+          span{font-family:system-ui,sans-serif;font-size:17px;letter-spacing:.14em;color:#8fa0d8}` },
+  // 5:3 pequena — só a marca, o maior possível
+  { w: 200, h: 120, corpo: `<div class="w"><img src="data:image/webp;base64,${marcaB64}"></div>`,
+    css: `.w{width:100%;height:100%;${FUNDO};display:flex;align-items:center;justify-content:center}
+          .w>img{width:86%;height:auto}` },
+];
+for (const t of THUMBS) {
+  const p = path.join(BRAND, `thumb-${t.w}x${t.h}.png`);
+  console.log(`thumb-${t.w}x${t.h}.png`.padEnd(19) + `${assa(t.corpo, t.css, t.w, t.h, p)} B`);
+}

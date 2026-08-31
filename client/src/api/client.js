@@ -3,6 +3,7 @@
 // devolve 503 {error:"unreachable"}) o cliente cai em MODO OFFLINE: perfil de convidado local
 // em localStorage.warspace_local_profile, e as chamadas que mudam estado operam nele.
 import { SKINS, skinById, isPurchasable } from "@warspace/shared";
+import { apiUrl } from "./base.js";
 
 const TOKEN_KEY = "warspace_token", LOCAL_KEY = "warspace_local_profile";
 const KEYS_V1 = { warspace_token: "planet_token", warspace_local_profile: "planet_local_profile" };
@@ -31,7 +32,9 @@ async function request(method, path, body, { auth = true, raw = false, contentTy
   if (body !== undefined) headers["Content-Type"] = raw ? (contentType || "application/octet-stream") : "application/json";
   const tok = getToken(); if (auth && tok) headers.Authorization = "Bearer " + tok;
   let res;
-  try { res = await fetch(path, { method, headers, body: body === undefined ? undefined : (raw ? body : JSON.stringify(body)), cache: "no-store" }); }
+  // `apiUrl` é a costura ÚNICA: os ~30 literais "/api/…" abaixo continuam literais, e no pacote de
+  // portal ganham a origem absoluta de uma vez só (client/src/api/base.js).
+  try { res = await fetch(apiUrl(path), { method, headers, body: body === undefined ? undefined : (raw ? body : JSON.stringify(body)), cache: "no-store" }); }
   catch (e) { throw new NetworkError(e.message || "rede"); }
   if (res.status === 204) return null;
   const text = await res.text(); let data = null;
@@ -74,10 +77,15 @@ export const api = {
   /** GET /api/me (401 → POST /api/auth/guest → guarda token → me). Sem servidor → perfil local. */
   async bootstrap() {
     try {
+      // ⚠️ A sonda é INCONDICIONAL. Ela morava dentro do `if (getToken())`, então quem chegava SEM token
+      // nunca a fazia: `api.server` ficava `null`, o `boot()` caía no ramo do `api.online===false` e o
+      // aviso da tela era "servidor sem banco" — mentira, o servidor inteiro estava fora. Quem já tinha
+      // token via a outra metade do defeito: caía em modo local sem que nada dissesse por quê. Custa
+      // zero: `loadConfig()` pede a MESMA rota logo depois.
+      try { await request("GET", "/api/config", undefined, { auth: false }); api.server = true; } catch { api.server = false; }
       let me = null;
       if (getToken()) {
-        try { await request("GET", "/api/config", undefined, { auth: false }); api.server = true; } catch (e) { api.server = false; }
-      try { me = await request("GET", "/api/me"); }
+        try { me = await request("GET", "/api/me"); }
         catch (e) { if (e instanceof ApiError && e.status === 401) setToken(null); else throw e; }
       }
       if (!me) { const g = await request("POST", "/api/auth/guest", {}, { auth: false }); setToken(g.token); me = await request("GET", "/api/me"); }
@@ -161,7 +169,9 @@ export const api = {
   },
   async removeAvatar() { if (!api.online) return {}; return request("DELETE", "/api/me/avatar"); },
   /** URL pública da foto de alguém. O hash entra na query: foto nova = URL nova, então o cache é eterno. */
-  avatarUrl(userId, v) { return `/api/avatar/${userId}${v ? `?v=${v}` : ""}`; },   // relativo: o nginx faz o proxy de /api/
+  // ⚠️ passa por `apiUrl`: quem consome isto é um `fetch` (theme/avatars.js), não um `<img>` — logo é
+  // sujeito a CORS, e o erro cai num `catch{}` mudo. Foto que some sem log é o pior defeito possível.
+  avatarUrl(userId, v) { return apiUrl(`/api/avatar/${userId}${v ? `?v=${v}` : ""}`); },
   async rooms() { if (!api.online) return { rooms: [] }; return request("GET", "/api/rooms"); },
   async auto({ mode = 0, teamSize = 1 } = {}) { if (!api.online) return null; return request("GET", `/api/auto?mode=${mode | 0}&teamSize=${teamSize | 0}`); },
   // ── sala com dono (o jogador escolhe modo, duração e privacidade, e manda o código a quem quiser) ──

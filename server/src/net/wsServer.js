@@ -15,6 +15,7 @@ import {Session} from './Session.js';
 import {clientIp} from '../api/router.js';
 import {sessionKey} from '../auth/tokens.js';
 import {suggestNick} from '../auth/nick.js';
+import {createOriginMatcher} from '../http/cors.js';
 // MAX_PAYLOAD tem que caber o maior clipe de voz (VOICE.MAX_BYTES + cabeçalho): com os 4 KB de antes o `ws`
 // derrubava o frame — e a conexão junto — antes de o servidor poder recusá-lo. A folga é pequena de propósito:
 // o INPUT tem 10 bytes e o JSON de controle é minúsculo, então este teto existe só para a voz.
@@ -28,11 +29,24 @@ const cleanNick=n=>{const s=String(n??'').normalize('NFKC').replace(/\s+/g,' ').
 /** @param {{server:any,config:any,rooms:any,hooks:any,log:any,metrics:any}} o */
 export function createWsServer({server,config,rooms,hooks,log,metrics}){
   const wss=new WebSocketServer({noServer:true,perMessageDeflate:false,maxPayload:MAX_PAYLOAD,clientTracking:false});
+  // O WS não é sujeito a CORS — o handshake é um upgrade HTTP e sempre atravessou origens. Isso é o que
+  // faz o cliente hospedado em portal conectar sem uma linha de servidor; é TAMBÉM o que deixa qualquer
+  // site do mundo abrir socket aqui. O predicado é o MESMO do /api (duas listas divergiriam no primeiro
+  // portal novo) e a estreia é em `warn`, porque a origem real de cada portal não é adivinhável: fecha-se
+  // depois de LER o log. ⚠️ Origem AUSENTE é sempre aceita — o `ws` só a manda quando o chamador pede,
+  // então é assim que a suíte inteira (game/br/host/roombots) continua conectando. E seja honesto sobre o
+  // que isto compra: barra o drive-by de navegador, não barra script, que simplesmente omite o header.
+  const origemOk=createOriginMatcher(config.allowedOrigins||[],log);
+  const checaOrigem=config.wsOriginCheck||'off';
   /** @type {Set<Session>} sessões com socket */const live=new Set();
   const pongWriter=createWriter(64);let shuttingDown=false;
   server.on('upgrade',(req,socket,head)=>{
     const p=new URL(req.url||'/','http://x').pathname;
     if(!WS_PATH.test(p)||shuttingDown){socket.write(`HTTP/1.1 ${shuttingDown?503:404} ${shuttingDown?'Service Unavailable':'Not Found'}\r\nConnection: close\r\n\r\n`);socket.destroy();return;}
+    const origem=req.headers.origin;
+    if(origem&&checaOrigem!=='off'&&(config.allowedOrigins||[]).length&&!origemOk(origem)){
+      if(checaOrigem==='warn')log.warn('ws: origem não listada',{origem});
+      else{socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');socket.destroy();return;}}
     wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws,req));});
   wss.on('connection',(ws,req)=>{
     let s=new Session({ws,metrics,log,remoteAddr:clientIp(req),userAgent:req.headers['user-agent']||null});live.add(s);

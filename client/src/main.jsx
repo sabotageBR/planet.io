@@ -4,6 +4,8 @@ import App from "./app/App.jsx";
 import "./app/theme.js"; // ponte do tema (tokens/CSS quando o módulo real existir)
 import { bootLang } from "./i18n/index.js";
 import { iniciaAnalytics } from "./app/analytics.js";
+import { PORTAL } from "./portal/flags.js";
+import { portal } from "./portal/index.js";
 
 // coletor de erros para os screenshots headless (--dump-dom lê window.__errors)
 if (import.meta.env.DEV) {
@@ -20,7 +22,9 @@ if (import.meta.env.DEV) {
 //   /admin → painel de administração (nenhuma linha de infraestrutura muda: o nginx do cliente já faz
 //            `try_files … /index.html`, então /admin sempre serviu esta SPA)
 //   ?sfx   → mesa de som (aprovar o pacote de áudio de ouvido, sem entrar em partida)
-if (location.pathname === "/admin" || location.pathname.startsWith("/admin/")) {
+// ⚠️ No pacote de portal o painel NÃO existe: um revisor esbarrando numa tela de login de administração
+// é péssimo, e sem o `import()` o chunk do /admin nem chega a ser emitido no zip.
+if (!PORTAL && (location.pathname === "/admin" || location.pathname.startsWith("/admin/"))) {
   import("./admin/mount.jsx").then(m => m.mountAdmin());
 } else if (new URLSearchParams(location.search).has("sfx")) {
   import("./audio/audition.js").then(m => m.mountAudition());
@@ -31,6 +35,13 @@ if (location.pathname === "/admin" || location.pathname.startsWith("/admin/")) {
   // no index.html. Nunca rejeita: falhando a carga, fica no pt-BR e a tela sobe do mesmo jeito.
   // O gtag do index.html conta a CARGA; daqui para a frente quem conta tela e partida é o analytics,
   // que só assina o store — fora do React de propósito, para não depender de montagem nem remontar.
-  iniciaAnalytics();
-  bootLang().then(() => createRoot(document.getElementById("app")).render(<React.StrictMode><App /></React.StrictMode>));
+  // ⚠️ Analytics NÃO no pacote de portal: a regra deles proíbe tracker de terceiro e cita o Google
+  // Analytics pelo nome. O script já foi tirado do HTML pelo plugin do vite.config; esta linha é a outra
+  // metade (sem ela, `envia()` seria só um no-op silencioso — mas o silêncio esconde a intenção).
+  if (!PORTAL) iniciaAnalytics();
+  bootLang().then(() => {
+    createRoot(document.getElementById("app")).render(<React.StrictMode><App /></React.StrictMode>);
+    // CrazyGames e Poki contam "o jogo carregou" para decidir a hora do anúncio; a GD não tem equivalente.
+    if (PORTAL) portal.carregou();
+  });
 }

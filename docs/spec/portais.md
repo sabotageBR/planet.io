@@ -1,0 +1,106 @@
+# Portais de jogo (o cliente hospedado fora de warspace.io)
+
+GameDistribution, CrazyGames, Poki e itch.io distribuem jogos HTML5 e pedem **um .zip com
+`index.html` na raiz**. O zip é só o **cliente**: eles hospedam os arquivos estáticos no domínio deles,
+dentro de um `<iframe>`, e o servidor multiplayer continua sendo warspace.io. É o modelo normal de um
+`.io` em portal — a CrazyGames diz na documentação que hospeda só os arquivos, a Poki aceita servidor
+externo mediante liberação de CSP, e a GameDistribution tem a exceção por escrito (§3.1 do guia deles):
+*"We do not permit external hosting of games, except for Real Multiplayer games"*.
+
+```
+node scripts/portal-pack.mjs gd|crazy|poki|itch|all   → portal/warspace-<id>.zip
+node scripts/brand-assets.mjs                         → brand/thumb-{512x512,512x384,200x120}.png
+```
+
+## As quatro coisas que mudam no pacote
+
+| | site | pacote de portal |
+|---|---|---|
+| `base` do Vite | `/` | `./` (o portal serve de `https://html5.gamedistribution.com/<id>/`) |
+| origem da API/WS | relativa (`location.host`) | absoluta, assada no bundle (`VITE_API_BASE`) |
+| sourcemap | sim | **não** (entrega protocolo e predição a quem quiser trapacear) |
+| Google Analytics | sim | **não** (regra 7 deles cita o produto pelo nome) |
+
+Tudo o mais é o mesmo código. O que decide é `client/src/portal/flags.js`, com a forma textual exata
+que o Vite substitui e o Rollup poda — é ela que faz o chunk do `/admin` nem ser emitido no zip.
+
+## O interruptor
+
+`VITE_PORTAL_STRICT=1` (o campo `strict` de cada perfil em `scripts/portal-pack.mjs`) esconde cadastro
+por Google, foto de perfil e a skin **Retrato**. Hoje está **desligado**: a decisão foi manter a conta e
+assumir o risco da regra 7 ("any collection or storing of data from a game is strictly prohibited …
+login requirements are not permitted unless permission is granted under a separate agreement").
+Reprovou? Vira `true` e o pacote seguinte já sai limpo, sem retrabalho e sem tocar no site.
+
+## Anúncios
+
+Preroll e midroll são obrigatórios na GameDistribution (§2.1), com o jogo **pausado e mudo** durante o
+anúncio e uma tela de pausa na volta que só sai por ação do jogador.
+
+- **Ponto único: `play()`** (`client/src/state/actions.js`), a porta por onde passam Modos, Salas,
+  convite, equipe, o respawn da tela de morte e a sala nova depois do BIG CRUNCH. O tipo sai de
+  `played`, que já significa "já entrou em partida nesta carga": a primeira é preroll, as seguintes são
+  midroll, com o intervalo mínimo de `PORTAL.MIN_AD_MS` guardado pela fachada.
+- **No respawn, nunca no instante da morte**: atrás da tela de morte a rodada continua correndo e o
+  jogador está assistindo de propósito (troca de câmera, mapa, sala ao vivo). No respawn não há partida
+  rodando, então "pausado e mudo" é verdade por construção, sem gambiarra.
+- **Áudio**: `silenciaAnuncio()` (`client/src/audio/index.js`). ⚠️ `suspend()` **não** resolve — `sfx()`
+  chama `resume()` a cada clique de UI, os caminhos de `play()` religam o contexto quando o veem parado,
+  e o `wakeAudio` do jogo está pendurado no `pointerdown` da JANELA: um clique em cima do anúncio traria
+  o som de volta por baixo dele. Por isso a flag entra no `masterVol()` **e** trava o `resume()`. E nada
+  disso toca em `prefs.muted`, que é escolha do jogador, é persistida e tem tecla própria.
+- **A tela da volta** é o `Pause` que já existe: sai só no clique do RETOMAR e larga o comando sem
+  derrubar a conexão.
+
+⚠️ **Nada rejeita e tudo tem relógio** (`PORTAL.SDK_MS`, `PORTAL.AD_MS`). O SDK é a primeira coisa que
+um bloqueador derruba, e `showAd` às vezes não rejeita quando não há preenchimento — uma promessa
+pendurada na frente do botão JOGAR é pior que anúncio nenhum.
+
+⚠️ **Nomes**: nada de `ads.js`/`ad.js`/`banner.js` (o nome vai para a URL do chunk e há filtro de
+bloqueador que casa isso na URL — o `import()` rejeitaria), e classes de CSS com prefixo `portal-`. Ver
+o que `ad-wrap` fez com o painel /admin.
+
+⚠️ O `import()` do adaptador é um **switch sobre literais**. Com `` import(`./${id}.js`) `` o Rollup
+vira a chamada num glob e o zip da GameDistribution sai com o código da Poki dentro.
+
+## O servidor
+
+`ALLOWED_ORIGINS` e a camada de `server/src/http/cors.js` — ver `docs/spec/api.md`. O WebSocket não
+precisou de nada (handshake não é sujeito a CORS); `WS_ORIGIN_CHECK` é um gate separado, que estreia em
+`warn`. **O servidor vai ao ar primeiro**: um zip publicado antes do CORS pega o revisor exatamente no
+estado que não conecta.
+
+## Falha honesta
+
+No site, servidor fora vira modo local com um toast. No pacote de portal isso não pode acontecer: o
+jogador clicou num `.io` para jogar com gente, e um single-player silencioso **parece que funcionou**.
+`servidorFora` (campo de topo do estado, nunca dentro de `overlays` — `go()` e `play()` reescrevem
+aquele objeto inteiro) levanta `ui/Offline.jsx`, que fica até o servidor voltar.
+
+## As regras que reprovam
+
+Do guia da GameDistribution, as que encostam no código: **§2.1** preroll+midroll obrigatórios, jogo
+pausado e mudo, tela de pausa na volta · **§3.3** iframe e fullscreen sem cortes, 800×600 como tamanho
+padrão · **§4.1** idioma padrão inglês (o `resolveLang` já cai em inglês para quem não fala pt/es) ·
+**§5.1** thumbnails 512×512, 512×384 e 200×120 · **§5.3** descrição e instruções em inglês, 200–500
+caracteres · **§6.1** nenhum link de saída, o que inclui o convite de sala (no pacote ele é só o
+CÓDIGO) · **§6.3** nenhuma referência a app store · **§7** nada de coleta de dados nem tracker de
+terceiro.
+
+Falta publicar uma **política de privacidade** (a Poki exige e o upload de foto pede uma). Ela mora no
+site e a URL vai no formulário do portal — nunca como link dentro do jogo, que é a §6.1.
+
+## Verificar antes de subir
+
+1. `node scripts/portal-pack.mjs gd` — as guardas do script abortam em Google Analytics no bundle,
+   caminho absoluto, sourcemap, origem que não foi injetada e mais de um adaptador.
+2. Servir o pacote **num subcaminho** de outra origem e jogar de verdade contra a produção:
+   `python3 -m http.server 4173 --directory portal` e abrir `http://127.0.0.1:4173/gd/dist/`.
+   ⚠️ Servir na raiz passa mesmo com a base quebrada — é o subcaminho que reproduz o portal.
+3. No DevTools: nenhum 404 de asset · o `OPTIONS` antes do `POST /api/auth/guest` · **exercitar PATCH e
+   DELETE** (trocar uma preferência, remover um avatar), que é onde um CORS só com GET/POST quebra
+   depois de ter passado no boot · WS em 101 · `faces/*.webp` vindo do pacote · e um `fetch` explícito
+   em `/api/avatar/<id>`, porque a foto falha dentro de um `catch{}` mudo.
+4. Num `<iframe>` de 800×600, não em aba de topo: aba de topo esconde storage particionado, autoplay e
+   permissões — exatamente o que quebra num portal.
+5. Por fim, o link de revisão da própria GD (`https://revision.gamedistribution.com/<id>/?correlator=…`).

@@ -12,8 +12,12 @@ import { errText } from "../i18n/errors.js";
 import { api } from "../api/client.js";
 import { prepararAvatar } from "../util/image.js";
 import { toast } from "../state/actions.js";
+import { SEM_CONTA } from "../portal/flags.js";
 
 export default function AvatarPicker() {
+  // ⚠️ Sai ANTES de qualquer hook: `SEM_CONTA` é constante de build, então o ramo é sempre o mesmo nesta
+  // build e a ordem dos hooks nunca varia em runtime — o que a regra de hooks proíbe de verdade.
+  if (SEM_CONTA) return null;
   const LB = useLabels();
   const user = useStore(app, s => s.session.user) || {};
   const [file, setFile] = useState(null), [zoom, setZoom] = useState(1), [dy, setDy] = useState(0);

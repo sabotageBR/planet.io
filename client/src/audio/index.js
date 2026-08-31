@@ -32,7 +32,14 @@ export function createAudio(prefs={}){
   // (voltar do mudo teria que adivinhar o que estava ligado antes) e não calaria a voz, que tem barramento
   // próprio. Aqui o master vai a zero e leva tudo junto — efeitos, ambiência, trilha, telas e voz.
   let muted=!!prefs.muted;
-  const masterVol=()=>muted?0:vol;
+  // ANÚNCIO DE PORTAL: o mesmo mecanismo do mudo, e pelo mesmo motivo — a regra dos portais é "pausado e
+  // MUDO durante o anúncio", e mexer em `prefs.muted` para isso seria escrever numa escolha do jogador que
+  // é persistida no servidor e tem tecla própria: um travamento no meio do anúncio o deixaria mudo para
+  // sempre, sem saber por quê. ⚠️ E `suspend()` não serve: `sfx()` chama `resume()` a cada clique de UI, o
+  // `play()` religa o contexto quando o vê parado, e o `wakeAudio` do jogo está pendurado no `pointerdown`
+  // da JANELA — um clique em cima do anúncio traria o som de volta por baixo dele. Daí a trava no resume.
+  let anuncio=false;
+  const masterVol=()=>(muted||anuncio)?0:vol;
   let music=!!prefs.music,ambOn=prefs.ambience!==false,voiceOn=prefs.voice!==false,voiceVol=(prefs.voiceVolume==null?85:prefs.voiceVolume)/100;
   let musicVol=(prefs.musicVolume==null?60:prefs.musicVolume)/100;
   let falando=0;   // quantos clipes de voz estão tocando (o duck só volta quando o último acaba)
@@ -303,7 +310,8 @@ export function createAudio(prefs={}){
      * lê "running" e a guarda antiga engolia o resume — o contexto ficava suspenso para sempre e todo
      * `play()` saía calado. Chamar em contexto já rodando é no-op.
      */
-    resume(){const c=ensure();if(!c)return;try{c.resume();}catch{/* alguns navegadores rejeitam fora de gesto */}
+    resume(){if(anuncio)return;   // durante um anúncio de portal, ninguém religa o som por baixo dele
+      const c=ensure();if(!c)return;try{c.resume();}catch{/* alguns navegadores rejeitam fora de gesto */}
       // o stop() da troca de sala derruba os contínuos; aqui eles voltam. A trilha precisa da MESMA
       // cortesia que a ambiência — sem esta linha ela sumia na primeira troca de sala e não voltava mais.
       if(on&&!loops.has("ambience"))startLoop("ambience");
@@ -390,6 +398,11 @@ export function createAudio(prefs={}){
     stop(){stopLoops();vivas.length=0;ultimo.clear();escadaN=0;duck(false);falando=0;if(buses)alvo(buses.sfx.gain,1,.1);},
     /** Suspende de verdade (só ao destruir o jogo: libera o áudio do navegador). */
     suspend(){stopLoops();vivas.length=0;if(ctx&&ctx.state==="running")try{ctx.suspend();}catch{}},
+    /** Silêncio enquanto o anúncio do portal roda. Não toca em preferência nenhuma (ver `anuncio`). */
+    mudoDeAnuncio(on){const v=!!on;if(v===anuncio)return;anuncio=v;
+      if(v)stopLoops();
+      if(master)master.gain.value=masterVol();
+      if(!v)audio.resume();},
   };
   atual=audio;return audio;}
 
@@ -397,3 +410,5 @@ export function createAudio(prefs={}){
 export const getAudio=()=>atual||createAudio();
 /** Atalho para as telas: `sfx("uiClick")`. */
 export const sfx=kind=>{const a=getAudio();a.resume();a.ui(kind);};
+/** Cala tudo enquanto um anúncio de portal roda, e devolve o som depois. Ver `createAudio`. */
+export const silenciaAnuncio=on=>{try{getAudio().mudoDeAnuncio(on);}catch{/* silêncio nunca derruba o jogo */}};

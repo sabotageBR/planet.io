@@ -17,6 +17,11 @@ const peers=env.PEERS?list('PEERS')
   :Array.from({length:shards},(_,i)=>i).filter(i=>i!==shard).map(i=>peerHost?`${peerName}-${i}.${peerHost}:${port}`:null).filter(Boolean);
 const role=str('ROLE','both');
 if(!['game','api','both'].includes(role))throw new Error(`ROLE inválido: ${role} (game|api|both)`);
+// Origem do WS: o mesmo molde do ROLE (valida no boot, não em runtime). São TRÊS estados de propósito —
+// o navegador sempre manda `Origin` no handshake, então uma lista incompleta não vira erro de CORS: vira
+// "o jogo não conecta". `warn` existe para MEDIR a lista real antes de fechá-la. Ver http/cors.js.
+const wsOriginCheck=str('WS_ORIGIN_CHECK','off');
+if(!['off','warn','on'].includes(wsOriginCheck))throw new Error(`WS_ORIGIN_CHECK inválido: ${wsOriginCheck} (off|warn|on)`);
 export const config=Object.freeze({
   databaseUrl:str('DATABASE_URL',''),
   dbPoolMax:Math.max(1,num('DB_POOL_MAX',5)),
@@ -40,6 +45,11 @@ export const config=Object.freeze({
   adminEmails:list('ADMIN_EMAILS'),   // moderação de avatar (DELETE /api/avatar/:id); vazio = rota desligada
   botChatLlm:bool('BOT_CHAT_LLM',!!str('OLLAMA_URL','')),
   role,
+  // Origens que podem falar com /api de fora (os portais que hospedam o cliente). VAZIA = camada
+  // desligada, e desligada é o comportamento de sempre, byte a byte. Aceita origem exata ou sufixo
+  // (`https://*.itch.zone`) — portal com subdomínio instável é a regra, não a exceção.
+  allowedOrigins:list('ALLOWED_ORIGINS'),
+  wsOriginCheck,
   staticDir:str('STATIC_DIR',''),
   signupCoins:num('SIGNUP_COINS',500),
   tz:str('DB_TZ','America/Sao_Paulo'),

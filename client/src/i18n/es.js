@@ -74,6 +74,7 @@ export default {
   orSep: "o", googleFail: "No se pudo entrar con Google",
   confirm: "Confirmar", cancel: "Cancelar",
   reconnTitle: "¡SEÑAL DÉBIL!", reconnSub: "Buscando el satélite… intento {n}/5",
+  serverDownTitle: "SIN CONTACTO CON LA BASE", serverDownSub: "No pudimos hablar con el servidor de warspace.io. El problema es nuestro, no tuyo.", retry: "Reintentar",
   split: "DIVIDIR", eject: "EXPULSAR", fire: "MISIL", exit: "Salir", keySplit: "ESPACIO", keyEject: "W", keyFire: "F",
   ammo: "misiles",
   fireCd: "cargando", powerups: { magnet: "Imán", shield: "Escudo", merge: "Fusión", autodef: "Autodefensa", zoom: "Visión", feast: "Banquete" }, shieldLevel: "Nv",

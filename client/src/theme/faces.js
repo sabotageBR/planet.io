@@ -31,7 +31,9 @@ export function ensureFace(sk) {
   cache.set(f, null);   // marca ANTES do await: senão 60 frames disparam 60 fetches
   (async () => {
     try {
-      const r = await fetch(`/faces/${f}.webp`, { cache: "force-cache" });
+      // ⚠️ `BASE_URL` (e não "/"): num portal o jogo é servido de um subcaminho, e a raiz do zip é ele.
+      // Ele SEMPRE termina em "/" — daí a interpolação sem barra própria, senão vira ".//faces/".
+      const r = await fetch(`${import.meta.env.BASE_URL}faces/${f}.webp`, { cache: "force-cache" });
       if (!r.ok) return;
       cache.set(f, await createImageBitmap(await r.blob()));
       for (const cb of ouvintes) { try { cb(f); } catch { /* um ouvinte quebrado não derruba os outros */ } }

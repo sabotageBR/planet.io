@@ -19,6 +19,7 @@ import { useLabels } from "../hooks/useTheme.js";
 import { PREFS } from "./prefsTable.js";
 import { PrefRow } from "./Prefs.jsx";
 import { Nick } from "./bits.jsx";
+import { linkConvite } from "../util/convite.js";
 
 // as chaves que valem em partida, na ordem em que se procura por elas
 const RAPIDAS = ["muted", "volume", "music", "musicVolume", "quality", "reduceMotion", "showNames", "showMinimap"];
@@ -57,7 +58,7 @@ export default function Pause({ on }) {
  */
 function HostPanel({ host, room, LB }) {
   const outros = (host.roster || []).filter(l => !l.host);
-  const convite = () => { const url = `${location.origin}/?sala=${room || ""}`;
+  const convite = () => { const url = linkConvite("sala", room || "");
     if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast(LB.hostInvite), () => toast(url, 4000));
     else toast(url, 4000); };
   return <section className="pause-host">

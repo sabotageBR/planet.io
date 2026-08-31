@@ -10,6 +10,7 @@ import {createPartyManager} from '../rooms/Party.js';
 import {shardOf,newCode} from '../rooms/codes.js';
 import {fetchPeerRooms,askPeers} from './peers.js';
 import {createAdminHttp} from './admin.js';
+import {createCors} from './cors.js';
 const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript','.mjs':'application/javascript','.css':'text/css','.ico':'image/x-icon','.png':'image/png','.jpg':'image/jpeg',
   '.svg':'image/svg+xml','.json':'application/json','.webp':'image/webp','.woff2':'font/woff2','.woff':'font/woff','.map':'application/json','.txt':'text/plain','.webmanifest':'application/manifest+json'};
 const byPlayers=(a,b)=>b.players-a.players;
@@ -20,6 +21,10 @@ const byPlayers=(a,b)=>b.players-a.players;
 export function createHttpHandler({config,rooms,persistApi,health,log,parties=null}){
   // O painel /admin é o único consumidor de `/internal/admin/*`, que NÃO é publicado no Ingress.
   const adminHttp=createAdminHttp({rooms,config,log,persistApi});
+  // CORS: o cliente pode estar hospedado por um portal, em outro domínio. Fica AQUI, no topo do
+  // handler, porque `setHeader` antes do roteamento é mesclado por todo `writeHead` de baixo — um
+  // ponto só cobre o sendJson, o avatar (headers próprios E o 304), o 503 sem banco e os estáticos.
+  const cors=createCors({config,log});
   const staticDir=config.staticDir?path.resolve(config.staticDir):null;
   // O lobby de equipe mora AQUI, junto de /api/rooms|auto, e não na API de persistência: ele é estado de sala
   // (memória do shard, com TTL), tem que funcionar sem banco e vale para convidado. Quem identifica a pessoa é
@@ -52,6 +57,7 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
   return async function handler(req,res){
     try{
       const url=new URL(req.url||'/','http://x'),p=url.pathname;
+      if(cors(req,res,p))return;   // era preflight: já respondeu 204. Senão, só marcou os headers e segue
       if(p==='/healthz')return sendJson(res,200,health());
       if(p==='/internal/rooms')return sendJson(res,200,{shard:config.shard,rooms:rooms?rooms.listRooms():[]});
       // `googleClientId` vazio é o interruptor do login com Google: o cliente só desenha o botão quando ele

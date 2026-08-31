@@ -2,6 +2,7 @@
 // ⚠️ O TOKEN VIVE NUMA CHAVE PRÓPRIA (`warspace_admin_token`), nunca em `warspace_token`. É o que garante
 // que o painel e o jogo não emprestem credencial um ao outro: o token do painel é de outro `kind`, e o do
 // jogo não abre o painel. Misturar as duas chaves desfaria isso sem ninguém perceber.
+import { apiUrl } from "../api/base.js";
 const KEY="warspace_admin_token";
 export const getToken=()=>{try{return localStorage.getItem(KEY)||"";}catch{return "";}};
 export const setToken=t=>{try{t?localStorage.setItem(KEY,t):localStorage.removeItem(KEY);}catch{/* modo anônimo */}};
@@ -13,7 +14,7 @@ async function req(method,path,body){
   const h={accept:"application/json"};const tk=getToken();
   if(tk)h.authorization="Bearer "+tk;
   if(body!==undefined)h["content-type"]="application/json";
-  const r=await fetch("/api/admin"+path,{method,headers:h,body:body===undefined?undefined:JSON.stringify(body)});
+  const r=await fetch(apiUrl("/api/admin"+path),{method,headers:h,body:body===undefined?undefined:JSON.stringify(body)});
   if(r.status===204)return null;
   const j=await r.json().catch(()=>null);
   if(r.status===401||r.status===403){setToken("");if(onAuthFail)onAuthFail();}

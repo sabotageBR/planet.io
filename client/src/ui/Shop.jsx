@@ -16,6 +16,7 @@ import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { ScreenHeader, Screen } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
 import AvatarPicker from "./AvatarPicker.jsx";
+import { SEM_CONTA } from "../portal/flags.js";
 import { fmt } from "./format.js";
 
 const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");   // busca sem acento
@@ -36,7 +37,10 @@ function Body() {
       : (s.levelReq || 0) > nivel ? "lowlevel" : s.price > coins ? "poor" : "buyable"; };
   const list = useMemo(() => {
     const nq = norm(q);
-    const out = SKINS.filter(s => (filter === "all" || s.rarity === filter) && (!mineOnly || owned.includes(s.id)) && (!nq || norm(skinName(s)).includes(nq)));
+    // ⚠️ `SEM_CONTA` também tira a Retrato da grade: sem foto ela é uma lendária de 25 000 moedas que
+    // não faz absolutamente nada — pior que não existir.
+    const out = SKINS.filter(s => (filter === "all" || s.rarity === filter) && (!mineOnly || owned.includes(s.id)) && (!nq || norm(skinName(s)).includes(nq))
+      && !(SEM_CONTA && s.pattern === "avatar"));
     const ri = s => RARITY_ORDER.indexOf(s.rarity);
     out.sort(sort === "price" ? (a, b) => a.price - b.price || ri(a) - ri(b)
       : sort === "name" ? (a, b) => skinName(a).localeCompare(skinName(b), currentLang())
