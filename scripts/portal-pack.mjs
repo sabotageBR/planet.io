@@ -90,6 +90,11 @@ function empacota(id) {
   const admin = todos.filter(f => /admin/i.test(path.basename(f)));
   if (admin.length) morre(`o painel /admin foi parar no pacote: ${admin.map(f => path.basename(f)).join(", ")}`);
 
+  // o SDK do Google não pode viajar no pacote: a origem de um portal não é registrável no client_id, e
+  // a tentativa suja o console do revisor com um 403 e o «origin is not allowed» do GSI_LOGGER
+  const gsi = texto.filter(f => /accounts\.google\.com\/gsi/.test(fs.readFileSync(f, "utf8")));
+  if (gsi.length) morre(`o SDK do Google ficou no pacote (${gsi.map(f => path.basename(f)).join(", ")}): a origem do portal não é registrável no client_id`);
+
   const adaptadores = js.filter(f => /\/(gd|crazy|poki)-[^/]*\.js$/.test(f));
   // `import()` com variável viraria glob no Rollup e o zip da GD sairia com o código da Poki dentro
   if (adaptadores.length > 1) morre(`${adaptadores.length} adaptadores de portal no pacote: ${adaptadores.map(f => path.basename(f)).join(", ")}`);

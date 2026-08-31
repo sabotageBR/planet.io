@@ -4,7 +4,7 @@ import { app } from "../state/app.js";
 import { loginGoogle, toast } from "../state/actions.js";
 import { iniciaGsi } from "../api/google.js";
 import { useTheme, useLabels, useLang } from "../hooks/useTheme.js";
-import { SEM_CONTA } from "../portal/flags.js";
+import { SEM_CONTA, PORTAL } from "../portal/flags.js";
 // Uma leitura só, no módulo: `window.top` não muda no meio da vida da página.
 const EMBUTIDO = typeof window !== "undefined" && window.top !== window.self;
 
@@ -27,11 +27,14 @@ export default function GoogleButton({ type = "standard" }) {
   // entra depois. Com ele ligado o botão não renderiza E o SDK do Google nem é baixado, porque o efeito
   // abaixo sai cedo em `!cid` — vale para as duas superfícies do botão, a da entrada e a do modal.
   const cidCfg = useStore(app, s => (s.config || {}).googleClientId) || "";
-  // ⚠️ Nem dentro de um IFRAME. O Google Identity Services valida a origem do DOCUMENTO contra as
-  // "Origens JavaScript autorizadas" do client_id, e a origem de um portal (revision.gamedistribution.com
-  // e companhia) não é nossa para registrar: o botão renderiza, o jogador clica e não acontece nada.
-  // Botão quebrado é pior que botão ausente — e o resto da tela (convidado, senha) continua inteiro.
-  const cid = (SEM_CONTA || EMBUTIDO) ? "" : cidCfg;
+  // ⚠️ Fora no PACOTE DE PORTAL inteiro, e não só dentro de iframe. O Google Identity Services valida a
+  // origem do DOCUMENTO contra as "Origens JavaScript autorizadas" do client_id, e num portal a origem
+  // nunca é nossa para registrar. Medido no console do revision da GameDistribution, aberto em aba de
+  // topo (onde a guarda de iframe não pega): `403` no `button?type=icon…` e
+  // «[GSI_LOGGER]: The given origin is not allowed for the given client ID». Botão quebrado é pior que
+  // botão ausente, e console sujo é o que um revisor abre primeiro. O EMBUTIDO fica porque o site
+  // também pode ser enquadrado por terceiros.
+  const cid = (SEM_CONTA || PORTAL || EMBUTIDO) ? "" : cidCfg;
   const online = useStore(app, s => s.session.online);
   const ref = useRef(null);
   const [falhou, setFalhou] = useState(false);

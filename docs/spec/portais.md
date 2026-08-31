@@ -94,6 +94,10 @@ As *Prohibited Practices* da GameDistribution batem em coisas que o jogo tem no 
 - **URL dentro do jogo**: *"placing contact details or website URLs within the game itself"*. O texto da
   tela de servidor fora dizia "o servidor do warspace.io"; agora diz "o servidor do jogo".
 - **Google Analytics** é citado nominalmente na mesma lista, junto de "any outgoing links".
+- **O botão "entrar com Google" também sai** — do pacote inteiro, não só de dentro de iframe. A origem de
+  um portal não é registrável nas "Origens JavaScript autorizadas" do client_id, e a tentativa suja o
+  console do revisor: `403` no `button?type=icon…` e «[GSI_LOGGER]: The given origin is not allowed for
+  the given client ID» (medido no revision da GameDistribution, aberto em aba de topo).
 
 ## As thumbnails
 
