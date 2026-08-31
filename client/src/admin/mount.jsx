@@ -303,7 +303,8 @@ function App() {
       <span className="quem">{admin.nick}<button onClick={() => { api.logout().catch(() => {}); setToken(""); setAdmin(null); }}>sair</button></span>
     </header>
     <Erro e={msg} onClose={() => setMsg(null)} />
-    <main><div className="ad-wrap"><T erro={erro} /></div></main>
+    {/* ⚠️ `ad-centro` e não `ad-wrap` — um bloqueador de anúncios esconde a segunda (ver admin.css). */}
+    <main><div className="ad-centro"><T erro={erro} /></div></main>
   </div>;
 }
 

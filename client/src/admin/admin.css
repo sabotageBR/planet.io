@@ -126,7 +126,13 @@ html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:no
    borda esquerda com mil pixels de vazio ao lado, e a auditoria esticava as colunas de ponta a ponta num
    monitor largo — o olho tinha de atravessar a tela inteira para ligar a data ao detalhe. */
 .ad main{flex:1;padding:var(--s5);min-height:0}
-.ad-wrap{max-width:var(--wrap);margin:0 auto;min-width:0}
+/* ⚠️ `ad-centro`, e NUNCA `ad-wrap`: um filtro cosmético de bloqueador de anúncios esconde exatamente esse
+   nome (é como se chama o contêiner de anúncio no mercado publicitário), e a tela inteira do painel
+   desaparecia — sem erro no console, sem regra visível em `document.styleSheets`, com o DOM inteiro
+   montado e `getComputedStyle` dizendo `display:none` sem que nenhuma folha da página o mandasse.
+   Medido no navegador: `ad-topo`, `ad-lista`, `ad-tab`, `ad-form`, `ad-split` e até `ad-banner`, `ads` e
+   `ad` passam; só `ad-wrap` cai. O prefixo `ad-` continua seguro — o que não pode é a palavra inteira. */
+.ad-centro{max-width:var(--wrap);margin:0 auto;min-width:0}
 
 /* Mestre-detalhe: a lista à esquerda, o detalhe à direita — sempre nas mesmas duas colunas.
    O `sticky` deixa o detalhe acompanhar a rolagem da lista, que é longa: antes ele saía de vista. */
