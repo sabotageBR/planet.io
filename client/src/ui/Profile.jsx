@@ -43,8 +43,8 @@ function Body() {
       {/* "Reivindicar conta" saiu daqui como saiu da tela inicial — criar conta por senha é o caminho
           longo, e o Google resolve tudo num clique. O que NÃO podia sair é a porta de ENTRAR: este é o
           único lugar que abre o modal de conta, e sem ele quem já tem senha ficaria trancado para fora
-          (o `logout` do registrado leva de volta para convidado). Por isso o botão abre a aba `login`. */}
-      {guest ? <button className="btn-secondary pf-signin" data-go="account" onClick={() => openAccount("login")}>{LB.login}</button>
+          (o `logout` do registrado leva de volta para convidado). O modal agora é só o formulário de entrar. */}
+      {guest ? <button className="btn-secondary pf-signin" data-go="account" onClick={openAccount}>{LB.login}</button>
         : <button className="btn-secondary pf-logout" onClick={() => logout().catch(e => console.warn(e))}>{LB.logout}</button>}
     </div>
     {/* NÍVEL: a barra é o progresso dentro do nível atual — `levelInto/levelNeed` vêm prontos do servidor,
