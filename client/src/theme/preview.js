@@ -33,7 +33,7 @@ const LABELS={
   title:"WARSPACE.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   coinIcon:"🪙",coinWord:"moedas",nameLabel:"Nome do seu planeta",swap:"Trocar",
   modesShort:"Modos",play:"JOGAR",playAuto:"🚀 Jogar (auto)",rooms:"Salas",ranking:"Ranking",profile:"Perfil",shop:"Loja",prefs:"Opções",home:"Início",
-  guestNote:"Jogando como convidado",claim:"Reivindicar conta",login:"Entrar",logout:"Sair",guest:"convidado",registered:"conta protegida",
+  guestNote:"Jogando como convidado",claim:"Criar conta",login:"Entrar",logout:"Sair",guest:"convidado",registered:"conta protegida",
   hint:"mouse = mover · ESPAÇO = dividir · W = ejetar · F/clique = míssil · botão direito = dividir",
   back:"◄ Voltar",equipped:"EQUIPADA",equip:"Equipar",buy:"Comprar",locked:"Bloqueada",secret:"???",
   lbTitle:"PLACAR",massLabel:"MASSA",scoreLabel:"pontos",youLabel:"planeta",killsWord:"abates",botTag:"◆",regTag:"✓",
@@ -46,8 +46,8 @@ const LABELS={
   causes:{eaten:"devorado",blackhole:"buraco negro",left:"saiu",shutdown:"servidor"},
   shopTitle:"LOJA DE SKINS",shopNote:"Moedas se ganham jogando. Skins de conquista desbloqueiam sozinhas.",filterAll:"Todas",unlocked:"desbloqueadas",
   prefsTitle:"PREFERÊNCIAS",save:"Salvar",reset:"Restaurar padrão",saved:"Preferências salvas",
-  accountTitle:"CONTA",claimTab:"Reivindicar",loginTab:"Entrar",nick:"Nick",loginUser:"Usuário",password:"Senha",password2:"Confirmar senha",email:"E-mail (opcional)",
-  claimNote:"Reivindicar a conta leva skins e moedas para outros dispositivos.",loginNote:"Entre com o usuário que você criou.",
+  accountTitle:"CONTA",claimTab:"Criar conta",loginTab:"Entrar",nick:"Nick",loginUser:"Usuário",password:"Senha",password2:"Confirmar senha",email:"E-mail",
+  claimNote:"Crie sua conta para levar skins e moedas para outros dispositivos.",loginNote:"Entre com o usuário que você criou.",
   confirm:"Confirmar",cancel:"Cancelar",
   reconnTitle:"CONEXÃO PERDIDA",reconnSub:"Reconectando… tentativa {n}/5",
   split:"DIVIDIR",eject:"EJETAR",fire:"MÍSSIL",exit:"Sair",keySplit:"ESPAÇO",keyEject:"W",keyFire:"F",
@@ -206,8 +206,8 @@ app.innerHTML=`
     <div class="tabs"><button data-tab="claim" class="on">${LB.claimTab}</button><button data-tab="login">${LB.loginTab}</button></div>
     <form class="tab tab-claim on" onsubmit="return false">
       <p class="hint">${LB.claimNote}</p>
-      ${field("ac-login",LB.loginUser,"text",'value="Evandro"')}${field("ac-pass",LB.password,"password")}${field("ac-pass2",LB.password2,"password")}${field("ac-mail",LB.email,"email")}
-      <div class="modal-actions"><button class="btn-secondary" data-go="entry">${LB.cancel}</button><button class="btn-primary" data-go="entry">${LB.confirm}</button></div>
+      ${field("ac-mail",LB.email,"email")}${field("ac-login",LB.loginUser,"text",'value="Evandro"')}${field("ac-pass",LB.password,"password")}${field("ac-pass2",LB.password2,"password")}
+      <div class="modal-actions"><button class="btn-secondary" data-go="entry">${LB.cancel}</button><button class="btn-primary" data-go="entry">${LB.claim}</button></div>
     </form>
     <form class="tab tab-login" onsubmit="return false">
       <p class="hint">${LB.loginNote}</p>

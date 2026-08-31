@@ -40,11 +40,13 @@ function Body() {
           sem esta linha o jogador volta dias depois sem saber com que nome entra na conta. */}
       <div className="pf-meta"><b className="v-nick pf-nick">{user.nick}</b><i className="v-kind pf-kind" data-kind={guest ? "guest" : "registered"}>{guest ? LB.guest : LB.registered}</i><span className="coinbar">{LB.coinIcon} <b className="v-coins">{fmt(user.coins)}</b></span>
         {user.login ? <span className="hint pf-login">{LB.loginUser}: <b>{user.login}</b></span> : null}</div>
-      {/* "Reivindicar conta" saiu daqui como saiu da tela inicial — criar conta por senha é o caminho
-          longo, e o Google resolve tudo num clique. O que NÃO podia sair é a porta de ENTRAR: este é o
-          único lugar que abre o modal de conta, e sem ele quem já tem senha ficaria trancado para fora
-          (o `logout` do registrado leva de volta para convidado). O modal agora é só o formulário de entrar. */}
-      {guest ? <button className="btn-secondary pf-signin" data-go="account" onClick={openAccount}>{LB.login}</button>
+      {/* As DUAS portas da conta ficam aqui, e só aqui: a tela inicial é para JOGAR (ver Entry.jsx). Cada
+          botão abre o modal já na aba certa — mandar quem quer se cadastrar cair no formulário de entrar
+          e ter que achar a aba é pedir para desistir no meio. ⚠️ `() => openAccount()` e não `openAccount`:
+          passar o evento do clique como argumento faria a aba sair do evento, não da intenção. */}
+      {guest ? <>
+        <button className="btn-secondary pf-claim" data-go="account" onClick={() => openAccount("claim")}>{LB.claim}</button>
+        <button className="btn-secondary pf-signin" data-go="account" onClick={() => openAccount()}>{LB.login}</button></>
         : <button className="btn-secondary pf-logout" onClick={() => logout().catch(e => console.warn(e))}>{LB.logout}</button>}
     </div>
     {/* NÍVEL: a barra é o progresso dentro do nível atual — `levelInto/levelNeed` vêm prontos do servidor,

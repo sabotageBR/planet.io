@@ -27,9 +27,9 @@ export function go(screen) {
   app.update(s => ({ ...s, prevScreen: s.screen === screen ? s.prevScreen : s.screen, screen,
     overlays: { account: false, pause: false, reconn: s.overlays.reconn && screen === "game" } }));
 }
-// O modal de conta é SÓ "entrar" desde que a aba de reivindicar saiu, então não há aba a escolher e
-// `overlays.account` volta a ser um booleano.
-export const openAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: true } }));
+// O modal tem DUAS abas de novo (criar conta · entrar), então `overlays.account` volta a carregar QUAL
+// delas abre — "claim" | "login", as duas truthy, que é o que `App.jsx` lê para montar o overlay.
+export const openAccount = (tab) => app.update(s => ({ ...s, overlays: { ...s.overlays, account: tab === "claim" ? "claim" : "login" } }));
 export const setPause = on => app.update(s => ({ ...s, overlays: { ...s.overlays, pause: !!on } }));
 export const togglePause = () => { const s = app.get(); if (s.screen !== "game" && !s.overlays.pause) return; setPause(!s.overlays.pause); };
 // ── O QUE ACONTECE ENQUANTO UM ANÚNCIO DE PORTAL RODA ──
