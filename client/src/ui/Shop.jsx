@@ -5,7 +5,9 @@
 // cartão nunca gasta moeda, só abre a pergunta.
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { SKINS, skinById, RARITY_LABELS, RARITY_ORDER, RARITY_COLORS } from "@warspace/shared";
+import { SKINS, skinById, RARITY_ORDER, RARITY_COLORS } from "@warspace/shared";
+import { skinName, skinDesc, rarityLabel } from "../i18n/catalog.js";
+import { currentLang } from "../i18n/index.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { buySkin, equipSkin, loadSkins, toast } from "../state/actions.js";
@@ -34,10 +36,10 @@ function Body() {
       : (s.levelReq || 0) > nivel ? "lowlevel" : s.price > coins ? "poor" : "buyable"; };
   const list = useMemo(() => {
     const nq = norm(q);
-    const out = SKINS.filter(s => (filter === "all" || s.rarity === filter) && (!mineOnly || owned.includes(s.id)) && (!nq || norm(s.name).includes(nq)));
+    const out = SKINS.filter(s => (filter === "all" || s.rarity === filter) && (!mineOnly || owned.includes(s.id)) && (!nq || norm(skinName(s)).includes(nq)));
     const ri = s => RARITY_ORDER.indexOf(s.rarity);
     out.sort(sort === "price" ? (a, b) => a.price - b.price || ri(a) - ri(b)
-      : sort === "name" ? (a, b) => a.name.localeCompare(b.name, "pt-BR")
+      : sort === "name" ? (a, b) => skinName(a).localeCompare(skinName(b), currentLang())
       : (a, b) => ri(a) - ri(b) || a.price - b.price);
     return out;
   }, [filter, q, sort, mineOnly, owned]);
@@ -45,12 +47,12 @@ function Body() {
   // loja, e com elas no denominador a barra de progresso nunca chegaria a 100%.
   const TOTAL_VIS = SKINS.filter(s => s.rarity !== "secret").length;
   const ownedVis = owned.filter(id => { const s = skinById(id); return s && s.rarity !== "secret"; }).length;
-  const rotulo = (s, st) => st === "eq" ? "" : st === "owned" ? LB.equip : st === "secret" ? "???" : st === "locked" ? s.desc
+  const rotulo = (s, st) => st === "eq" ? "" : st === "owned" ? LB.equip : st === "secret" ? "???" : st === "locked" ? skinDesc(s)
     : st === "lowlevel" ? `🔒 ${LB.levelReq.replace("{n}", s.levelReq)}` : `${LB.coinIcon} ${fmt(s.price)}`;
   return <>
     <ScreenHeader title={LB.shopTitle} />
     <div className="card shop-eq"><SkinPreview skin={eq} r={40} />
-      <div className="skinmeta"><b id="s-skin">{eq.name}</b><i id="s-rar" style={{ color: RC[eq.rarity] }}>{RARITY_LABELS[eq.rarity]}</i><span className="hint" id="s-count">{ownedVis}/{TOTAL_VIS} {LB.unlocked}</span></div>
+      <div className="skinmeta"><b id="s-skin">{skinName(eq)}</b><i id="s-rar" style={{ color: RC[eq.rarity] }}>{rarityLabel(eq.rarity)}</i><span className="hint" id="s-count">{ownedVis}/{TOTAL_VIS} {LB.unlocked}</span></div>
       <span className="badge">{LB.equipped}</span></div>
     <div className="shop-prog"><i style={{ width: Math.round(ownedVis / TOTAL_VIS * 100) + "%" }} /></div>
     <div className="shop-tools">
@@ -65,7 +67,7 @@ function Body() {
     <div className="filters" id="shop-filters">
       <button data-f="all" className={filter === "all" && !mineOnly ? "on" : ""} onClick={() => { setFilter("all"); setMineOnly(false); }}>{LB.filterAll}</button>
       <button data-f="mine" className={mineOnly ? "on" : ""} onClick={() => setMineOnly(v => !v)}>{LB.onlyMine}</button>
-      {RARITY_ORDER.map(r => <button key={r} data-f={r} className={filter === r ? "on" : ""} style={{ "--rc": RC[r] }} onClick={() => setFilter(r)}>{RARITY_LABELS[r]}</button>)}
+      {RARITY_ORDER.map(r => <button key={r} data-f={r} className={filter === r ? "on" : ""} style={{ "--rc": RC[r] }} onClick={() => setFilter(r)}>{rarityLabel(r)}</button>)}
     </div>
     <div className="shop-grid" id="shop-grid">{list.map(s => { const st = stateOf(s), sec = st === "secret";
       return <div key={s.id} className={"skin-card " + st} data-skin={s.id} data-rar={s.rarity} style={{ "--rc": RC[s.rarity] }}
@@ -76,7 +78,7 @@ function Body() {
             grade dizia isso, e o jogador pagava 25 mil moedas sem saber que ainda havia um passo. */}
         {s.pattern === "avatar" ? <span className="badge av">{LB.avatarBadge}</span> : null}
         <SkinPreview skin={s} r={36} className="" secret={sec} />
-        <b>{sec ? LB.secret : s.name}</b><i>{RARITY_LABELS[s.rarity]}</i>
+        <b>{sec ? LB.secret : skinName(s)}</b><i>{rarityLabel(s.rarity)}</i>
         <em>{rotulo(s, st)}</em></div>; })}
       {list.length ? null : <div className="hint">{LB.noSkins}</div>}</div>
     <div className="shop-note hint">{LB.shopNote}</div>
@@ -98,7 +100,7 @@ function SkinModal({ id, stateOf, onClose }) {
     if (st === "lowlevel") return toast(LB.lowlevelToast.replace("{n}", cur.levelReq).replace("{v}", nivel));
     if (st === "poor") return toast(LB.poorToast);
     if (st === "secret") return toast(LB.secretToast);
-    if (st === "locked") return toast(LB.lockedToast + ": " + cur.desc);
+    if (st === "locked") return toast(LB.lockedToast + ": " + skinDesc(cur));
   };
   const actLabel = st === "eq" ? LB.equipped : st === "owned" ? LB.equip : st === "secret" ? "???" : st === "locked" ? LB.locked
     : st === "lowlevel" ? `🔒 ${LB.levelReq.replace("{n}", cur.levelReq)}` : `${LB.coinIcon} ${fmt(cur.price)}`;
@@ -113,7 +115,7 @@ function SkinModal({ id, stateOf, onClose }) {
     <div className="card modal skin-modal" style={{ "--rc": RC[cur.rarity] }} role="dialog" aria-modal="true" aria-label={cur.name}>
       <SkinPreview skin={cur} r={48} className="" secret={st === "secret"} />
       <div className="sm-info"><b>{st === "secret" ? LB.secret : cur.name}</b>
-        <i>{RARITY_LABELS[cur.rarity]}</i><span>{cur.desc}</span>
+        <i>{rarityLabel(cur.rarity)}</i><span>{skinDesc(cur)}</span>
         {pergunta ? <em className="sm-ask">{pergunta}</em> : null}</div>
       {/* a foto vem AQUI, não escondida no fim da tela: quem acabou de equipar a Retrato está olhando
           exatamente para este cartão, e é este o momento em que a foto faz sentido */}

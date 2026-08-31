@@ -29,21 +29,24 @@ export const TIER_BY_ID=new Map(TIERS.map(t=>[t.id,t]));
  *   "match" = da PARTIDA que acabou (recordes de uma vida: sobreviver, massa, sequência)
  *   "stats" = do acumulado do jogador em `user_stats` (contadores que só crescem)
  * `fmt` só existe para a descrição ficar em unidade humana (segundos → minutos).
+ * ⚠️ `descArg` é essa CONTA sozinha, sem o texto em volta, e `one` marca a família que tem variante de
+ * singular. Os dois existem porque o cliente monta a frase no idioma do jogador (client/src/i18n) e não
+ * pode reimplementar a conversão — o `desc` daqui continua sendo o pt-BR do servidor (log e payload).
  * @type {Array<{id:string,title:string,icon:string,metric:string,per:string,goals:number[],desc:(n:number)=>string,single?:boolean}>}
  */
 export const FAMILIES=[
-  {id:"survive",title:"Sobrevivente",icon:"🛡️",metric:"durationS", per:"match",goals:[300,600,1200,1800],desc:n=>`Sobreviva ${n/60} minutos numa vida`},
+  {id:"survive",title:"Sobrevivente",icon:"🛡️",metric:"durationS", per:"match",goals:[300,600,1200,1800],descArg:n=>n/60,desc:n=>`Sobreviva ${n/60} minutos numa vida`},
   {id:"mass",   title:"Massivo",     icon:"⚖️",metric:"maxMass",   per:"match",goals:[5e3,25e3,1e5,5e5],  desc:n=>`Alcance massa ${n.toLocaleString("pt-BR")}`},
   {id:"streak", title:"Imparável",   icon:"🌪️",metric:"bestStreak",per:"match",goals:[5,10,20,35],        desc:n=>`${n} abates sem morrer`},
-  {id:"top1",   title:"Campeão",     icon:"🏆",metric:"top1Ticks", per:"match",goals:[10800,36000,90000,216000],desc:n=>`Fique em 1º por ${Math.round(n/3600)} minutos`},
+  {id:"top1",   title:"Campeão",     icon:"🏆",metric:"top1Ticks", per:"match",goals:[10800,36000,90000,216000],descArg:n=>Math.round(n/3600),desc:n=>`Fique em 1º por ${Math.round(n/3600)} minutos`},
   {id:"eat",    title:"Devorador",   icon:"👅",metric:"kills",     per:"stats",goals:[50,250,1000,5000],   desc:n=>`Coma ${n.toLocaleString("pt-BR")} planetas`},
   {id:"hunt",   title:"Caçador",     icon:"🎯",metric:"botKills",  per:"stats",goals:[10,100,500,2000],    desc:n=>`Coma ${n.toLocaleString("pt-BR")} adversários`},
   {id:"split",  title:"Divisor",     icon:"✂️",metric:"splits",    per:"stats",goals:[100,1000,5000,20000],desc:n=>`Divida ${n.toLocaleString("pt-BR")} vezes`},
   {id:"eject",  title:"Ejector",     icon:"💨",metric:"ejects",    per:"stats",goals:[200,2000,10000,50000],desc:n=>`Ejete massa ${n.toLocaleString("pt-BR")} vezes`},
   {id:"games",  title:"Veterano",    icon:"🎖️",metric:"games",     per:"stats",goals:[10,50,250,1000],     desc:n=>`Jogue ${n.toLocaleString("pt-BR")} partidas`},
-  {id:"brwin",  title:"Último de Pé",icon:"👑",metric:"brWins",    per:"stats",goals:[1,5,25,100],         desc:n=>n===1?"Vença uma partida de Battle Royale":`Vença ${n} partidas de Battle Royale`},
-  {id:"brtop",  title:"Finalista",   icon:"🎗️",metric:"brTop10",   per:"stats",goals:[1,10,50,200],        desc:n=>n===1?"Termine no top 10 do Battle Royale":`Termine ${n} vezes no top 10 do Battle Royale`},
-  {id:"brteam", title:"Esquadrão",   icon:"🛰️",metric:"brTeamWins",per:"stats",goals:[1,5,25,100],         desc:n=>n===1?"Vença o Battle Royale em equipe":`Vença ${n} vezes o Battle Royale em equipe`},
+  {id:"brwin",  title:"Último de Pé",icon:"👑",metric:"brWins",    per:"stats",goals:[1,5,25,100],one:true, desc:n=>n===1?"Vença uma partida de Battle Royale":`Vença ${n} partidas de Battle Royale`},
+  {id:"brtop",  title:"Finalista",   icon:"🎗️",metric:"brTop10",   per:"stats",goals:[1,10,50,200],one:true,desc:n=>n===1?"Termine no top 10 do Battle Royale":`Termine ${n} vezes no top 10 do Battle Royale`},
+  {id:"brteam", title:"Esquadrão",   icon:"🛰️",metric:"brTeamWins",per:"stats",goals:[1,5,25,100],one:true,desc:n=>n===1?"Vença o Battle Royale em equipe":`Vença ${n} vezes o Battle Royale em equipe`},
   // Visitar os 4 quadrantes não escala: 4 é o mapa inteiro. Fica de tier único — a estrutura aceita
   // famílias de um nível só, e forçar quatro aqui seria inventar meta ("visite 4 quadrantes 10 vezes")
   // que ninguém persegue de propósito.

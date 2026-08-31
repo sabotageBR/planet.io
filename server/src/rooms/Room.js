@@ -323,7 +323,9 @@ export class Room{
     if(this.isHost(alvo))return null;   // o dono não se expulsa: entregaria a sala à transferência com um clique
     const nome=alvo.name||'';
     if(ban)this.bans.set(`p${pid}`,{userId:alvo.userId,key:alvo.key||null,nick:nome,at:Date.now()});
-    alvo.error('ROOM',ban?'você foi banido desta sala':'você foi removido da sala pelo dono');
+    // dois códigos porque são duas coisas: quem foi BANIDO não volta nem digitando o código, quem foi
+    // expulso volta. Com o mesmo código o cliente traduzido diria a mesma frase para as duas.
+    alvo.error(ban?'ROOM_BANNED':'ROOM_KICKED',ban?'você foi banido desta sala':'você foi removido da sala pelo dono');
     this.leave(alvo,'left');
     this.log.info(`sala ${this.code}: ${nome} foi ${ban?'banido':'removido'} pelo dono`);
     const h=this.hostSession();if(h)this.sendHost(h);

@@ -6,7 +6,8 @@ import { go } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
 import NavIcon from "./NavIcons.jsx";
-import { flagOf, countryName } from "@warspace/shared";
+import { flagOf } from "@warspace/shared";
+import { countryNameIn } from "../i18n/catalog.js";
 
 // ⚠️ O `<i className="nav-ico">` era VAZIO: o desenho vinha de `content:` emoji no CSS de cada tema, e
 // os três só definiam SEIS chaves — faltando justo `modes`, que nasceu depois dos mockups. Resultado: um
@@ -44,10 +45,11 @@ export function Select({ id, label, children, ...rest }) {
  * única bandeira acesa entre 49 vazias diria quem é gente antes de qualquer outra coisa.
  */
 export function Nick({ p, tag = null }) {
+  const LB = useLabels();
   if (!p) return null;
   return <span className={"kf-who" + (p.me ? " me" : "") + (p.ally ? " ally" : "")}>
-    {p.country ? <i className="flag" title={countryName(p.country)}>{flagOf(p.country)}</i> : null}
-    {p.level > 0 ? <i className="lvl" title={`nível ${p.level}`}>{p.level}</i> : null}
+    {p.country ? <i className="flag" title={countryNameIn(p.country)}>{flagOf(p.country)}</i> : null}
+    {p.level > 0 ? <i className="lvl" title={`${LB.levelWord} ${p.level}`}>{p.level}</i> : null}
     <b className="nk">{p.name}</b>{tag}</span>;
 }
 /** Top N do ranking diário (.mini-rank > .mr-row). */

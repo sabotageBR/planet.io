@@ -5,7 +5,8 @@ import { app } from "../state/app.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { ScreenHeader, Screen } from "./bits.jsx";
 import { fmt, ord } from "./format.js";
-import { flagOf, countryName, kdOf } from "@warspace/shared";
+import { flagOf, kdOf } from "@warspace/shared";
+import { countryNameIn } from "../i18n/catalog.js";
 
 // ⚠️ O SEGMENTO DE MÉTRICA SAIU. Ele reordenava a mesma tabela por seis critérios diferentes — e a tabela
 // já mostra os cinco números (nível, partículas, abates, K/D) em colunas, lado a lado, então trocar a
@@ -35,8 +36,8 @@ function Body() {
       <div className="seg" id="rk-period">{PERIODS.map(p => <button key={p} data-p={p} className={p === period ? "on" : ""} onClick={() => setPeriod(p)}>{LB.periods[p]}</button>)}</div>
       <div className="seg" id="rk-scope">
         <button className={scope === "global" ? "on" : ""} onClick={() => setScope("global")}>{LB.scopeGlobal}</button>
-        <button className={scope === "country" ? "on" : ""} disabled={!pais} title={pais ? countryName(pais) : LB.noCountry}
-          onClick={() => pais && setScope("country")}>{pais ? `${flagOf(pais)} ${countryName(pais)}` : LB.scopeCountry}</button>
+        <button className={scope === "country" ? "on" : ""} disabled={!pais} title={pais ? countryNameIn(pais) : LB.noCountry}
+          onClick={() => pais && setScope("country")}>{pais ? `${flagOf(pais)} ${countryNameIn(pais)}` : LB.scopeCountry}</button>
       </div>
     </div>
     <div className="card rank-table"><table id="rk-table">
@@ -55,7 +56,7 @@ function Body() {
               sempre somou por `user_id`, então trocar de nick nunca fez ninguém perder posição; o que
               faltava era o pódio DIZER de quem é a marca. Quem entrou com Google tem o nome de lá
               (`users.display_name`); quem não tem cai no nick, que é o que sempre foi. */}
-          <td className="c-nick">{r.country ? <i className="flag" title={countryName(r.country)}>{flagOf(r.country)}</i> : null}
+          <td className="c-nick">{r.country ? <i className="flag" title={countryNameIn(r.country)}>{flagOf(r.country)}</i> : null}
             {r.name || r.nick}{r.name && r.name !== r.nick ? <em className="c-alias">{r.nick}</em> : null}</td>
           <td className="c-lvl num">{r.level}</td><td className="c-food num">{fmt(r.foodEaten)}</td>
           <td className="c-kills num">{fmt(r.kills)}</td><td className="c-kd num">{kdOf(r.kills, r.deaths).toFixed(2)}</td>

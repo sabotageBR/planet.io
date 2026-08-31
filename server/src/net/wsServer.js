@@ -42,7 +42,7 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
     const rate=()=>{if(s.violation())s.error('RATE','muitas mensagens; conexão encerrada');};
     async function join(msg){
       if(s.joining)return;
-      if(shuttingDown)return s.error('ROOM','servidor reiniciando; tente de novo em instantes');
+      if(shuttingDown)return s.error('ROOM_RESTART','servidor reiniciando; tente de novo em instantes');
       if(msg.protocol!=null&&msg.protocol!==PROTOCOL_VERSION)return s.error('VERSION',`protocolo ${msg.protocol} incompatível (servidor ${PROTOCOL_VERSION}); recarregue a página`);
       s.joining=true;
       try{
@@ -72,12 +72,12 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         // de nick; quem entrou pelo automático nunca chega aqui, porque `findOrCreateRoom` já pulou a sala.
         if(room.nickTaken(nick)){
           if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});
-          return s.error('NICK_IN_ROOM',`já há alguém chamado "${nick}" nessa sala`);}
+          return s.error('NICK_IN_ROOM',`já há alguém chamado "${nick}" nessa sala`,{nick});}
         // BANIDO pelo dono da sala. Fica AQUI, ao lado do nick, e não em `acceptsJoin()`: aquele é chamado
         // pelo matchmaking e refletido em `info().open`, onde ainda não há jogador nenhum para identificar.
         if(room.banned({userId:res.userId??null,key:sessionKey(msg.token)})){
           if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});
-          return s.error('ROOM','você foi banido dessa sala');}
+          return s.error('ROOM_BANNED','você foi banido dessa sala');}
         s.sessionId=res.sessionId||randomUUID();s.userId=res.userId??null;s.key=sessionKey(msg.token);s.name=nick;s.unsaved=!!res.unsaved;
         s.level=res.level|0;s.avatar=res.avatar||null;s.country=res.country||null;
         room.join(s,{name:s.name,registered:!!res.registered,skinId:res.skinId|0,sessionId:s.sessionId,userId:s.userId,level:s.level,country:s.country,party});
@@ -89,7 +89,7 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
       finally{s.joining=false;}}
     function resume(msg){
       const old=rooms.findSession(msg.sessionId);
-      if(!old||!old.room||old.resumeToken!==msg.resumeToken||(!old.ws&&Date.now()-old.disconnectedAt>NET.RESUME_MS))return s.error('ROOM','sessão expirada; entre de novo');
+      if(!old||!old.room||old.resumeToken!==msg.resumeToken||(!old.ws&&Date.now()-old.disconnectedAt>NET.RESUME_MS))return s.error('ROOM_EXPIRED','sessão expirada; entre de novo');
       const prev=old.ws;live.delete(s);if(s.room)s.room.leave(s,'left');s=old;live.add(old);
       old.room.resume(old,ws);if(msg.view)old.setView(msg.view.w,msg.view.h,msg.view.z);
       if(prev&&prev!==ws){try{prev.terminate();}catch{}}                 // outra aba roubou a sessão

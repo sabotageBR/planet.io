@@ -150,7 +150,7 @@ test('resume: reconecta dentro da graça → mesmo slot, snapshots voltam',async
   const n=B.json.length;B.reconnect();await B.open();B.send({t:'resume',sessionId,resumeToken,view:{w:1280,h:720}});
   const r=await B.until(()=>B.jsonOf('room',n)||B.jsonOf('error',n),3000,'room');assert.equal(r.t,'room');assert.equal(r.slot,slot);assert.equal(r.sessionId,sessionId);B.room=r;
   await B.until(()=>B.mine().length>0,3000,'peça própria após resume');assert.equal(room.sessions.get(slot).ws.readyState,1);
-  const bad=new Client();await bad.open();bad.send({t:'resume',sessionId,resumeToken:'0'.repeat(32)});await bad.until(()=>bad.closeCode!=null,3000,'close');assert.equal(bad.jsonOf('error').code,'ROOM');
+  const bad=new Client();await bad.open();bad.send({t:'resume',sessionId,resumeToken:'0'.repeat(32)});await bad.until(()=>bad.closeCode!=null,3000,'close');assert.equal(bad.jsonOf('error').code,'ROOM_EXPIRED');
 });
 test('morte: dead + rewards; PLAYERS marca DEAD; join de novo recomeça com sessionId novo',async()=>{
   const room=roomOf(roomCode),bot=[...room.sim.players.values()].find(p=>p.isBot);const n=A.json.length;

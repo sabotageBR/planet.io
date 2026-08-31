@@ -1,4 +1,7 @@
 // ── CONEXÃO: ws `${wss}://${host}/ws/${shard}` (ou socket falso do LocalServer) ──────
+// ⚠️ As `message` em pt-BR daqui NÃO são o texto que o jogador lê: quem escreve a frase é
+// `i18n/errors.js`, a partir do `code` (UNREACHABLE · LOST · VERSION). Elas ficam como paraquedas do
+// paraquedas — se um dia o dicionário perder a chave, ainda sai algo em vez de vazio.
 // Máquina: idle → connecting → (join|resume) → connected; queda não deliberada → reconnecting
 // (backoff 0.5→1→2→4→4 s, 5 tentativas) → closed. `error` JSON do servidor é fatal (o servidor
 // fecha com 4400+ em seguida). PROTOCOL_VERSION diferente no `room` → onState VERSION + reload em 1 s.

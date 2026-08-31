@@ -40,6 +40,8 @@ server/src/    index.js (composition root + startServer) · loop.js (scheduler 6
                config.js · log.js · tunables.js (parâmetros do painel) · db/ (pool, migrate, migrations/) · auth/ (tokens, password, nick, ratelimit)
                repos/ (+ settings, audit) · api/ (router + rotas, incl. admin.js) · http/admin.js (salas/kick/aviso) · persist/ (session, rewards, queue, hooks)
 client/src/    main.jsx (3 entradas: jogo · /admin · ?sfx) · app/ (App, theme bridge) · admin/ (o painel: mount/api/admin.css)
+               i18n/ (index.js o motor · pt-BR|en|es.js os dicionários · errors.js código→texto · catalog.js skins/conquistas/países)
+               assets/scene/ (a arte do cenário do menu: logo + 5 sprites + 3 fundos, WebP)
                ui/ (telas React + Round.jsx, Modes/Party/Chat/KillFeed/Notice/AvatarPicker/Pause (o menu do Esc + o painel do dono), icons.js
                Logo.jsx + logoArt.js = a marca · NavIcons.jsx + navIconArt.js = os ícones da entrada) · util/image.js · api/client.js · state/ (store) · hooks/
                audio/ (index.js motor: 4 barramentos, prioridade de vozes, loops · kit.js receitas · mic.js push-to-talk · audition.js a mesa de som do ?sfx)
@@ -716,6 +718,72 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   nomeado no prompt: dizer "responda no idioma da mensagem" acertava quase sempre, e "quase" devolvia português para quem escreveu em
   espanhol. Carregar o modelo custa ~27 s e responder ~0,5 s — daí `keep_alive`, `warmup()` no boot e o disjuntor REAQUECER enquanto
   está aberto.
+- **IDIOMA** (`client/src/i18n/`, pref `lang`): pt-BR (base), inglês e espanhol; `auto` lê `navigator.languages`.
+  O motor é o GÊMEO do de tema — `resolveLang` é pura como `resolveThemeId`, `setLang` aplica e avisa por
+  `warspace:lang` como `applyTheme` faz com `warspace:theme` —, e os dois eixos se encontram num lugar só:
+  `useLabels()`, que assina os DOIS eventos. Por isso trocar o idioma nas Opções retraduz a tela inteira sem
+  reload e sem um `useEffect` nos 24 componentes. ⚠️ O snapshot tem que ser REFERÊNCIA ESTÁVEL (`getLabels`
+  memoiza por (idioma, tema)), senão o React 19 entra em laço de render.
+  ⚠️ O pt-BR é ESTÁTICO e os outros vêm por `import()` (~19 KB de chunk cada, 8 KB comprimidos), no mesmo
+  padrão de `/admin` e `?sfx`. `bootLang()` roda ANTES do primeiro render lendo `localStorage.warspace_lang`
+  — porque as prefs só chegam com o `GET /api/me` e sem esse atalho todo estrangeiro veria a tela em
+  português por 200 ms — mas **com teto de 600 ms**: se o chunk demorar, a tela sobe em pt-BR e o evento a
+  retraduz quando chegar. Tela branca é pior que flash.
+  ⚠️ **O texto do TEMA e o da tela de Opções mudaram de casa**: os três `theme/*/index.js` repetiam as mesmas
+  11 chaves (só `tagline` e `deadSub` divergiam) e `prefsTable.js` tinha 55 strings cravadas — nos dois casos
+  era impossível traduzir sem carregar 3 idiomas em cada arquivo. Hoje são os grupos `themes` e `opt` do
+  dicionário; `prefsTable.js` guarda só chaves e tipos, e o rótulo de cada opção segue a convenção
+  `opt[chave_valor]`. ⚠️ Grupo novo NÃO pode ter o nome de uma chave que já existe: `prefs` era o rótulo
+  "Opções" do menu, virou objeto e o React morreu com "Objects are not valid as a React child". O teste
+  "nenhuma chave de topo vira grupo por acidente" existe por causa disso.
+  ⚠️ **O ERRO DO SERVIDOR agora é traduzido pelo CÓDIGO** (`i18n/errors.js`), e o `message` pt-BR virou o
+  último paraquedas — era o contrário (`toast(e.message)` em 18 pontos), e bastava algo dar errado para a
+  tela ficar bilíngue. Não foi preciso tocar nos 18: o `ApiError` já carregava o código, então a tradução
+  entra no CONSTRUTOR. Isso obrigou a quebrar códigos que o servidor reusava com sentidos diferentes —
+  `ROOM` valia por cinco coisas, e "você foi banido" viraria "não deu para entrar" (ver docs/spec/protocol.md).
+  O `ctx` de `errText` desempata o resto (`not_found` é sala, equipe OU conta).
+  ⚠️ **O catálogo de `shared/` não sabe que existe idioma**: `skins.js` e `achievements.js` seguem sendo a
+  fonte pt-BR (é ela que alimenta o `seedSkins` do banco e o payload do servidor), e a tradução é uma camada
+  em cima (`i18n/catalog.js`). No pt-BR o grupo `skins` é DERIVADO do catálogo em uma linha — repetir 238
+  textos criaria uma segunda verdade que diverge na primeira skin nova. As descrições de conquista viraram
+  moldes `{n}`, e a CONTA que produz o número (segundos→minutos) ficou em `descArg`, no shared. Um teste-ouro
+  compara `achDesc(pt-BR)` com o gerador de lá para as duas verdades não se separarem.
+  ⚠️ **Os 255 países saem de `Intl.DisplayNames`**, com a lista versionada de `countries.js` como chão: são
+  510 traduções à mão que o navegador já tem. A ORDEM alfabética muda com o idioma, então o `<select>` do
+  Perfil reordena pelo nome exibido.
+  ⚠️ `format.js` segue o locale ativo (o id do idioma JÁ é uma tag BCP-47, sem tabela de conversão) e o
+  ORDINAL virou `Intl.PluralRules` com `type:"ordinal"` — "1º" só existe em português, em inglês são quatro
+  formas. Foi ele que aposentou o array `places` do pódio, e com isso o dicionário ficou sem nenhum array.
+  Quem impede a tradução de apodrecer é `client/test/i18n.test.js`: paridade exata de chaves, moldes `{n}`
+  que precisam sobreviver, o ouro dos temas e o do catálogo.
+- **CENÁRIO DAS TELAS DE MENU** (`ui/Scene.jsx` + o bloco `CENÁRIO` de `styles/ui.css`): fundo estrelado com
+  planetas, lua e mísseis flutuando atrás do painel. Antes o fundo do menu era o CANVAS DO PIXI (o céu do
+  jogo, parado) com um véu do tema por cima — a cor do menu dependia da hora sobre um céu que ninguém estava
+  jogando. O `#cena` mora ENTRE o `#game` e o `#hud`, com `z-index:1`.
+  ⚠️ Ele é desligado por INVERSÃO, não por lista de telas: nasce ligado e sai em `rail` (há partida VIVA
+  atrás — a gaveta existe para ver a sala continuar ao lado), `game` e `dead`. Assim uma tela de menu nova o
+  ganha de graça. ⚠️ O **BIG CRUNCH saiu do rail** (`App.jsx`): `conn` continua "connected" quando a rodada
+  acaba, então o pódio caía na gaveta de 480 px com um mundo vazio ao lado — a sala já foi aposentada.
+  ⚠️ `--screen-top` deixou de ser um número e passou a ser A ALTURA DO LOGO (`--ws-logo-h`). O mockup cravava
+  `clamp(200px,28vh,260px)`, que é o RESULTADO da conta a 1920 px; em tela baixa ele joga o painel para fora
+  da janela. E o `min(…,44vh)` do logo é a peça central: a ALTURA da janela limita o logo, e o logo limita o
+  topo da caixa. **Celular deitado não ganha offset nenhum** — com 375 px de altura contra o
+  `min-height:min(420px,100%)` da caixa, qualquer topo empurra a barra de navegação (e com ela os três
+  `sticky;bottom:74px` dos temas) para fora. Lá o logo sai do cenário e a marca volta para dentro do cartão.
+  ⚠️ Três fundos, um por tema, e as três `url()` moram em `ui.css` porque `theme/*/screens.css` é GERADO.
+  O véu vem na MESMA declaração da arte, então fica sob os sprites e sob os cartões sem escurecer o logo.
+  ⚠️ O `#s-round` virou DOIS cartões (pódio + resto do placar) e precisou desfazer a ancoragem absoluta que
+  o bloco "TODA TELA NO MESMO LUGAR" dá ao `.dead-card` — um filho absoluto sai do flex, e o pódio pousava
+  por cima do outro cartão. A regra que desfaz repete a cadeia daquele bloco e **tem que vir depois dele**.
+  ⚠️ `scripts/responsive-check.mjs` ganhou um 5º critério ("a caixa cabe na janela") porque os quatro
+  antigos NÃO pegavam isto: um ancestral `overflow:hidden` com conteúdo transbordando para baixo tem
+  `scrollHeight>clientHeight`, e a sonda o classificava como "rola". Ele só acusa quando não há ancestral
+  rolável — senão reprovaria a tela inicial, que é alta de propósito. **Sem crase em comentário dentro da
+  sonda: ela é um template literal.**
+- **A MARCA É A ARTE, o SÍMBOLO é o ícone** (`ui/Logo.jsx`, `assets/scene/logo.webp`): o wordmark 3D dourado
+  substituiu o SVG por token na tela e no `og.png`. ⚠️ Ele **não vira favicon**: é um wordmark DEITADO
+  (742×269) e a 32 px seria um borrão de 32×12. Quem continua virando favicon, ícone de app e prévia dos
+  temas é o símbolo de `logoArt.js` — desenhado em paths justamente para caber em 16 px. Uma marca, dois usos.
 - **Kill feed estilo CS** (`FEED` em constants, `server/src/rooms/feed.js`, `client/src/ui/KillFeed.jsx`): "quem matou
   quem" no FIM da coluna direita, abaixo da massa e do placar (ver "A COLUNA DIREITA"); radar e chat na ESQUERDA. Vai em **JSON de
   controle** (`{t:"feed",v:[…]}`) difundido à sala INTEIRA, sem AOI — o EVENT binário tem 13 bytes fixos com o
@@ -962,7 +1030,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 ## Convenções
 
 - Estilo denso: uma instrução por linha separada por `;`, comentários de seção `// ── SEÇÃO ──`, comentários e UI em pt-BR. `// @ts-check` + JSDoc em `shared/`.
-- Constantes só em `shared/src/constants.js`; textos de UI em `client/src/ui/labels.js` (+ `labels` do tema).
+- Constantes só em `shared/src/constants.js`; **todo texto de UI em `client/src/i18n/<idioma>.js`** — o pt-BR é
+  a base e o chão de qualquer chave que falte nos outros. Nada de string na tela fora dali (as exceções vivas
+  são o painel `/admin` e as ferramentas de dev `?sfx`/`theme-preview`, fora do escopo por decisão).
 - Mensagens de commit: uma linha, imperativo, sem corpo.
 - Não versionar `.env`; o Secret do banco vive só no cluster.
 

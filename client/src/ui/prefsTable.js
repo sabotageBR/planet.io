@@ -1,39 +1,44 @@
 // ── TABELA DE PREFERÊNCIAS ────────────────────────────────────────────────────
 // Mesmos grupos de mockups/v2/src/data.js, mas só com as chaves da whitelist de PATCH /api/me/prefs
-// (sens/trails/fx/parallax ficaram de fora). `v` = padrão (também em state/app.js PREF_DEFAULTS).
-import { ACTION_KEYS, KEY_LABEL } from "@warspace/shared";
-// As opções de tecla saem da lista COMPARTILHADA: a mesma que o Keyboard.js casa e que o servidor
-// valida. Montada aqui, uma tecla nova aparece nos três lugares de uma vez.
-const KEY_OPTS = ACTION_KEYS.map(k => [k, KEY_LABEL[k] || k]);
+// (sens/trails/fx/parallax ficaram de fora). O padrão de cada uma está em state/app.js PREF_DEFAULTS.
+//
+// ⚠️ Aqui só moram CHAVES e TIPOS. O texto (55 strings) morava cravado neste arquivo e era o único
+// dicionário do cliente que nenhuma tradução alcançaria — hoje sai do grupo `prefs` de i18n/*.js, pela
+// convenção `prefs[chave]` para o rótulo da linha e `prefs[chave_valor]` para o de cada opção.
+// Duas exceções, porque não são texto de UI: as TECLAS (o rótulo é a tecla física, grupo `keys`) e os
+// nomes de IDIOMA, que ficam sempre no próprio idioma — quem fala inglês procura "English" na lista.
+import { ACTION_KEYS } from "@warspace/shared";
+import { LANG_PREFS } from "../i18n/index.js";
 export const PREFS = [
-  { id: "controls", title: "Controles", items: [
-    { key: "joystick", label: "Joystick virtual (celular)", type: "toggle" },
-    { key: "rightSplit", label: "Botão direito divide", type: "toggle" },
-    { key: "holdEject", label: "Segurar a tecla ejeta contínuo", type: "toggle" },
-    { key: "wheelZoom", label: "Roda do mouse dá zoom (0 volta ao normal)", type: "toggle" },
-    { key: "keySplit", label: "Tecla de dividir", type: "select", opts: KEY_OPTS },
-    { key: "keyEject", label: "Tecla de ejetar", type: "select", opts: KEY_OPTS } ] },
-  { id: "graphics", title: "Gráficos", items: [
-    { key: "theme", label: "Tema", type: "select", opts: [["auto", "Automático (hora local)"], ["dawn", "Amanhecer"], ["sunset", "Crepúsculo"], ["dusk", "Anoitecer"]] },
-    { key: "quality", label: "Qualidade", type: "select", opts: [["auto", "Automática"], ["low", "Baixa"], ["high", "Alta"]] },
-    { key: "showGrid", label: "Grade do mapa", type: "toggle" } ] },
-  { id: "sound", title: "Som", items: [
-    { key: "muted", label: "Mudo (tecla M)", type: "toggle" },
-    { key: "sound", label: "Efeitos sonoros", type: "toggle" },
-    { key: "music", label: "Música", type: "toggle" },
-    { key: "musicVolume", label: "Volume da música", type: "range", min: 0, max: 100 },
-    { key: "ambience", label: "Ambiência", type: "toggle" },
-    { key: "volume", label: "Volume", type: "range", min: 0, max: 100 },
-    { key: "voice", label: "Voz dos jogadores (Ctrl para falar)", type: "toggle" },
-    { key: "voiceVolume", label: "Volume da voz", type: "range", min: 0, max: 100 } ] },
-  { id: "ui", title: "Interface", items: [
-    { key: "showNames", label: "Mostrar nomes", type: "toggle" },
-    { key: "showMinimap", label: "Minimapa", type: "toggle" },
-    { key: "showFps", label: "Mostrar FPS e ping", type: "toggle" },
-    { key: "lbSize", label: "Linhas do placar", type: "select", opts: [[5, "5"], [8, "8"], [10, "10"]] },
-    { key: "chat", label: "Chat", type: "toggle" } ] },
-  { id: "a11y", title: "Acessibilidade", items: [
-    { key: "colorblind", label: "Modo daltonismo", type: "select", opts: [["off", "Desligado"], ["deutan", "Deuteranopia"], ["protan", "Protanopia"], ["tritan", "Tritanopia"]] },
-    { key: "reduceMotion", label: "Reduzir movimento", type: "toggle" },
-    { key: "bigText", label: "Texto maior", type: "toggle" } ] },
+  { id: "controls", items: [
+    { key: "joystick", type: "toggle" },
+    { key: "rightSplit", type: "toggle" },
+    { key: "holdEject", type: "toggle" },
+    { key: "wheelZoom", type: "toggle" },
+    { key: "keySplit", type: "select", opts: ACTION_KEYS, kind: "key" },
+    { key: "keyEject", type: "select", opts: ACTION_KEYS, kind: "key" } ] },
+  { id: "graphics", items: [
+    { key: "theme", type: "select", opts: ["auto", "dawn", "sunset", "dusk"] },
+    { key: "quality", type: "select", opts: ["auto", "low", "high"] },
+    { key: "showGrid", type: "toggle" } ] },
+  { id: "sound", items: [
+    { key: "muted", type: "toggle" },
+    { key: "sound", type: "toggle" },
+    { key: "music", type: "toggle" },
+    { key: "musicVolume", type: "range", min: 0, max: 100 },
+    { key: "ambience", type: "toggle" },
+    { key: "volume", type: "range", min: 0, max: 100 },
+    { key: "voice", type: "toggle" },
+    { key: "voiceVolume", type: "range", min: 0, max: 100 } ] },
+  { id: "ui", items: [
+    { key: "lang", type: "select", opts: LANG_PREFS, kind: "lang" },
+    { key: "showNames", type: "toggle" },
+    { key: "showMinimap", type: "toggle" },
+    { key: "showFps", type: "toggle" },
+    { key: "lbSize", type: "select", opts: [5, 8, 10], kind: "num" },
+    { key: "chat", type: "toggle" } ] },
+  { id: "a11y", items: [
+    { key: "colorblind", type: "select", opts: ["off", "deutan", "protan", "tritan"] },
+    { key: "reduceMotion", type: "toggle" },
+    { key: "bigText", type: "toggle" } ] },
 ];

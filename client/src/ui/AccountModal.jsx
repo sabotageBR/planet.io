@@ -3,6 +3,7 @@ import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { claim, login, closeAccount , setCountry } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
+import { errText } from "../i18n/errors.js";
 import { COUNTRIES, POPULAR, flagOf, countryName } from "@warspace/shared";
 import { Field, Select } from "./bits.jsx";
 import GoogleButton from "./GoogleButton.jsx";
@@ -20,7 +21,7 @@ function Body() {
   const [l, setL] = useState({ nick: "", pass: "" });
   const [err, setErr] = useState(null), [busy, setBusy] = useState(false);
   useEffect(() => { setC(x => ({ ...x, nick: user.nick || "" })); }, [user.nick]);
-  const fail = e => { setErr({ msg: e.message || String(e), suggestion: e.suggestion }); setBusy(false); };
+  const fail = e => { setErr({ msg: errText(e, "nick"), suggestion: e.suggestion }); setBusy(false); };
   const doClaim = async () => { setErr(null);
     if (c.nick.trim().length < 2 || c.nick.trim().length > 16) return setErr({ msg: LB.nickShort });
     if (c.pass.length < 6) return setErr({ msg: LB.passShort });

@@ -8,6 +8,10 @@ import {statsToPublic} from '../repos/matches.js';
 import {isCountry} from '@warspace/shared/countries.js';
 import {ACTION_KEYS} from '@warspace/shared/constants.js';
 const THEMES=['auto','dawn','sunset','dusk'],QUALITIES=['auto','low','medium','high'];
+// Idioma da interface. A lista é a MESMA de client/src/i18n/index.js (LANG_PREFS) e vive duplicada aqui
+// de propósito: o servidor não importa nada do cliente, e um enum de 4 itens não justifica uma volta
+// pelo `shared`. Idioma novo = uma entrada aqui e outra lá — e o teste de prefs cobre o descompasso.
+const LANGS=['auto','pt-BR','en','es'];
 const bool=v=>typeof v==='boolean'?v:undefined;
 /** whitelist de prefs: chave → validador (undefined = rejeita) */
 export const PREFS={
@@ -21,6 +25,7 @@ export const PREFS={
   musicVolume:v=>typeof v==='number'&&v>=0&&v<=100?Math.round(v):undefined,   // volume da trilha, separado do dos efeitos
   voiceVolume:v=>typeof v==='number'&&v>=0&&v<=100?Math.round(v):undefined,   // 0..100, a mesma unidade do cliente (state/app.js e audio/index.js dividem por 100); com o antigo 0..1 o slider era descartado em silêncio e nunca persistia
   theme:v=>THEMES.includes(v)?v:undefined,
+  lang:v=>LANGS.includes(v)?v:undefined,
   colorblind:v=>typeof v==='boolean'?v:typeof v==='string'&&/^[a-z]{1,16}$/.test(v)?v:undefined,
   lbSize:v=>Number.isInteger(v)&&v>=3&&v<=20?v:undefined,
   // teclas de dividir/ejetar: `KeyboardEvent.code` da lista compartilhada. Validar contra a lista (e não

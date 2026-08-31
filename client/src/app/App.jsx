@@ -5,6 +5,7 @@ import { app } from "../state/app.js";
 import { boot, escape, toggleMute } from "../state/actions.js";
 import { useViewportMode } from "../hooks/useViewportMode.js";
 import GameHost from "../ui/GameHost.jsx";
+import Scene from "../ui/Scene.jsx";
 import Hud from "../ui/Hud.jsx";
 import Entry from "../ui/Entry.jsx";
 import Lobby from "../ui/Lobby.jsx";
@@ -38,7 +39,11 @@ export default function App() {
   // escrito como `true` e nunca voltava, então sair da partida deixava a gaveta à direita com o
   // canvas VAZIO à esquerda — uma gaveta que não é aparte de nada. `leaveGame` zera a conexão,
   // e é ela que responde a pergunta certa.
-  const rail = played && conn !== "idle" && conn !== "closed";
+  // ⚠️ O BIG CRUNCH sai da gaveta. `conn` continua "connected" quando a rodada acaba (o socket só cai
+  // depois), então o pódio caía no `rail` e ficava espremido em 480 px com um mundo VAZIO ao lado — a
+  // sala foi aposentada, não há mais partida para acompanhar. Fora do rail ele ganha a caixa inteira e
+  // o cenário atrás, que é o lugar de uma tela de resultado.
+  const rail = played && conn !== "idle" && conn !== "closed" && screen !== "round";
   useEffect(() => { document.body.dataset.shell = rail ? "rail" : "center"; }, [rail]);
   useEffect(() => { document.body.dataset.online = online == null ? "" : online ? "1" : "0"; }, [online]);
   useEffect(() => {
@@ -66,6 +71,7 @@ export default function App() {
   }, []);
   return <>
     <GameHost />
+    <Scene />
     <Hud />
     <Entry on={screen === "entry"} />
     <Lobby on={screen === "lobby"} />

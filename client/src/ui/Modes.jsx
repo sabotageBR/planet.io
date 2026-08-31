@@ -10,6 +10,7 @@ import { app } from "../state/app.js";
 import { api } from "../api/client.js";
 import { play, setMode, createParty, joinParty, criarSala } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
+import { preenche } from "../i18n/index.js";
 import { Screen, ScreenHeader } from "./bits.jsx";
 
 // ⚠️ Os ícones vêm daqui e do `PW_ICON` do Hud — duas listas para o mesmo desenho divergem na primeira
@@ -101,7 +102,7 @@ function SalaPropria({ offline, registrada, LB }) {
     </div>
     <div className="own-row" role="radiogroup" aria-label={LB.ownTime}>
       {tempos.map(m => <button key={m} className={"chip-btn" + (minOk === m ? " on" : "")} disabled={bloqueado}
-        onClick={() => setMin(m)}>{m ? m + " min" : "∞"}</button>)}
+        onClick={() => setMin(m)}>{m ? preenche(LB.fmt.min, { n: m }) : "∞"}</button>)}
     </div>
     <label className="own-priv"><span>{LB.ownPrivate}</span>
       <button className="toggle" role="switch" aria-checked={priv} disabled={bloqueado} onClick={() => setPriv(!priv)}><i></i></button></label>

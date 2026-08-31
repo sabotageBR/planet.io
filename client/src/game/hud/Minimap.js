@@ -5,6 +5,10 @@
 // isso MOVER o radar é editar `hud.radar.position.corner` nos três theme/<id>/index.js (que NÃO são
 // gerados pelo port.js), e não escrever CSS: estilo inline vence qualquer folha.
 import {WORLD} from "@warspace/shared";
+// A LEGENDA e o número do radar são texto de UI: a fonte e a cor continuam vindo do tema, mas a palavra
+// "RADAR" e o separador de milhar seguem o idioma do jogador.
+import {getLabels} from "../../i18n/index.js";
+import {fmt} from "../../ui/format.js";
 import {bodyMode} from "../util.js";
 
 export function createMinimap({hud,theme,getScene,onPick}){
@@ -79,12 +83,12 @@ export function createMinimap({hud,theme,getScene,onPick}){
         if(p.name){c.lineWidth=3;c.strokeStyle="rgba(0,0,0,.6)";c.strokeText(p.name,px,py-rr-3);
           c.fillStyle=(st.view)||"#fff";c.fillText(p.name,px,py-rr-3);
           if(live()){c.font="600 11px system-ui,sans-serif";c.fillStyle=st.player||"#9ad";
-            c.fillText(Math.round(p.mass||0).toLocaleString("pt-BR"),px,py+rr+13);c.font="700 13px system-ui,sans-serif";}}}}
+            c.fillText(fmt(p.mass||0),px,py+rr+13);c.font="700 13px system-ui,sans-serif";}}}}
     const cam=S.cam,hw=cam.W/(2*cam.scale)*sc,hh=cam.H/(2*cam.scale)*sc;c.strokeStyle=st.view;c.lineWidth=1;c.strokeRect(mx+cam.x*sc-hw,my+cam.y*sc-hh,hw*2,hh*2);
     const md=R0.meDot;c.fillStyle=md.fill;c.strokeStyle=md.stroke;c.lineWidth=md.width;
     for(const p of S.mine){c.beginPath();c.arc(mx+p.x*sc,my+p.y*sc,Math.max(md.r[m]||3,p.r*sc),0,6.283);c.fill();c.stroke();}
     c.restore();
-    if(!big()&&R0.label&&(!R0.label.desktopOnly||m==="desktop")){c.font=R0.label.font;c.fillStyle=R0.label.color;c.textAlign="center";c.textBaseline="middle";c.fillText(R0.label.text,cx,cy+R+R0.label.dy+14);}}
+    if(!big()&&R0.label&&(!R0.label.desktopOnly||m==="desktop")){c.font=R0.label.font;c.fillStyle=R0.label.color;c.textAlign="center";c.textBaseline="middle";c.fillText(getLabels().radar||R0.label.text,cx,cy+R+R0.label.dy+14);}}
   /** Clique no mapa grande → o jogador mais próximo do ponto (o mesmo blip que se vê), em coordenadas de mundo. */
   function pick(e){
     if(!big()||!mapa||!onPick)return;

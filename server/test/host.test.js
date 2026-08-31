@@ -149,7 +149,7 @@ test('expulsar: só o dono pode, o expulso cai, e banido não volta nem pelo có
   // o dono bane
   dono.send({t:'room',act:'ban',pid:alvo.pid});
   await vis.until(()=>vis.of('error'),4000,'o expulso recebe o erro');
-  assert.equal(vis.of('error').code,'ROOM');
+  assert.equal(vis.of('error').code,'ROOM_BANNED');
   await dono.until(()=>room.sessions.size===1,4000,'e sai da sala');
   assert.equal(room.bans.size,1);
   // e não volta, nem digitando o código

@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./app/App.jsx";
 import "./app/theme.js"; // ponte do tema (tokens/CSS quando o módulo real existir)
+import { bootLang } from "./i18n/index.js";
 
 // coletor de erros para os screenshots headless (--dump-dom lê window.__errors)
 if (import.meta.env.DEV) {
@@ -23,5 +24,9 @@ if (location.pathname === "/admin" || location.pathname.startsWith("/admin/")) {
 } else if (new URLSearchParams(location.search).has("sfx")) {
   import("./audio/audition.js").then(m => m.mountAudition());
 } else {
-  createRoot(document.getElementById("app")).render(<React.StrictMode><App /></React.StrictMode>);
+  // O idioma tem que estar DECIDIDO antes do primeiro render: as prefs do jogador só chegam com o
+  // `GET /api/me` do boot, e um dicionário é um chunk à parte. `bootLang()` lê o atalho de localStorage
+  // (ou o navegador, na primeira visita) e resolve os dois — é o gêmeo do `data-theme="dawn"` cravado
+  // no index.html. Nunca rejeita: falhando a carga, fica no pt-BR e a tela sobe do mesmo jeito.
+  bootLang().then(() => createRoot(document.getElementById("app")).render(<React.StrictMode><App /></React.StrictMode>));
 }

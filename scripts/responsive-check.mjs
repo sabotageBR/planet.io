@@ -88,8 +88,28 @@ const SONDA=`(()=>{
       if(cy==='corta'&&(r.bottom>pr.bottom+2||r.top<pr.top-2)){clipado.push(nome(e2)+' cortado em '+nome(p)+'↕');break;}
       if(cx2==='corta'&&(r.right>pr.right+2||r.left<pr.left-2)){clipado.push(nome(e2)+' cortado em '+nome(p)+'↔');break;}}}
   const fora=[...new Set(clipado)];
+  // A CAIXA CABE NA JANELA. O critério "clipado" acima NÃO pega isto, e o motivo é sutil: um ancestral
+  // com overflow:hidden cujo conteúdo transborda para BAIXO tem scrollHeight>clientHeight, então
+  // rolavel() o chama de "rola" e a varredura para ali. Ou seja: empurrar o painel inteiro para debaixo
+  // da dobra passava limpo pela matriz. Isto virou risco de verdade quando --screen-top deixou de ser um
+  // número fixo e passou a ser a altura do logo do cenário: em tela baixa, é o primeiro que estoura.
+  // A barra de navegação entra junto porque ela é o rodapé do cartão: se ela sai da janela, saem com ela
+  // os três blocos que os temas colam em sticky;bottom:74px.
+  // ⚠️ Só vale quando NÃO HÁ COMO ROLAR até lá: a tela inicial é uma caixa de altura livre dentro de um
+  // .screen que rola de propósito, e acusá-la seria confundir "layout alto" com "conteúdo perdido".
+  // (Sem crase em comentário nenhum daqui: a sonda inteira é um template literal.)
+  const caixa=tela&&tela.querySelector('.wrap,.dead-card'),estoura=[];
+  let podeRolar=false;
+  for(let p=caixa&&caixa.parentElement;p&&p!==document.body;p=p.parentElement)
+    if(rolavel(p,'y')==='rola'){podeRolar=true;break;}
+  if(caixa&&vis(caixa)&&!podeRolar){const r=caixa.getBoundingClientRect();
+    if(r.bottom>innerHeight+1)estoura.push('caixa passa '+Math.round(r.bottom-innerHeight)+'px do rodapé');
+    if(r.top<-1)estoura.push('caixa começa '+Math.round(-r.top)+'px acima do topo');
+    const nav=caixa.querySelector(':scope>nav.nav');
+    if(nav&&vis(nav)){const n=nav.getBoundingClientRect();
+      if(n.bottom>innerHeight+1)estoura.push('a barra sai '+Math.round(n.bottom-innerHeight)+'px da janela');}}
   return{modo:document.body.dataset.mode,ponteiro:document.body.dataset.pointer,over,pequenos,cx,
-         fora:fora.slice(0,6),tela:tela?tela.id:'game'};
+         fora:fora.slice(0,6),estoura,tela:tela?tela.id:'game'};
 })()`;
 
 let falhas=0;const linhas=[];
@@ -132,7 +152,7 @@ for(const [nome,w,h,toque,modo] of APARELHOS){
     await new Promise(r=>setTimeout(r,80));
     const r=await ev(SONDA);if(!r)continue;
     await ev(`(()=>{const h=document.getElementById('hud');if(h&&!document.querySelector('.screen.on'))return;if(h)h.classList.add('hidden');})()`);
-    const ruim=r.over>0||r.cx.length||r.pequenos.length||r.fora.length;
+    const ruim=r.over>0||r.cx.length||r.pequenos.length||r.fora.length||(r.estoura&&r.estoura.length);
     if(ruim)falhas++;
     linhas.push({nome,w,h,t,tema,...r,ruim});
   }
@@ -148,6 +168,7 @@ for(const l of linhas){
   if(l.cx.length)p.push("colide: "+l.cx.join(" | "));
   if(l.pequenos.length)p.push("alvo<44: "+l.pequenos.slice(0,4).join(", ")+(l.pequenos.length>4?` (+${l.pequenos.length-4})`:""));
   if(l.fora.length)p.push("clipado: "+l.fora.join(", "));
+  if(l.estoura&&l.estoura.length)p.push("fora da janela: "+l.estoura.join(", "));
   console.log((l.nome+" "+l.w+"x"+l.h).padEnd(28)+l.t.padEnd(10)+String(l.tema).padEnd(10)+String(l.modo).padEnd(10)+String(l.ponteiro).padEnd(10)+p.join("  ·  "));
 }
 console.log(`\n${linhas.length} combinações · ${falhas} com problema · ${linhas.length-falhas} limpas`);

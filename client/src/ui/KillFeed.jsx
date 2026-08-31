@@ -11,6 +11,7 @@
 // linha ficaria eterna até chegar outra.
 import React, { useEffect, useState } from "react";
 import { FEED } from "@warspace/shared";
+import { preenche } from "../i18n/index.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { HOW_ICON, SYS_ICON } from "./icons.js";
 import { Nick } from "./bits.jsx";
@@ -24,22 +25,24 @@ export default function KillFeed({ h }) {
   const vivas = linhas.filter(l => agora - l.at < FEED.TTL_MS);
   if (!vivas.length) return null;
   const F = LB.killFeed || {};
-  const sysText = l => (F["sys_" + l.how] || l.how).replace("{n}", l.how === "crunch" ? crunchLabel(l.n) : (l.a && l.a.name) || l.n);
+  const sysText = l => (F["sys_" + l.how] || l.how).replace("{n}", l.how === "crunch" ? crunchLabel(LB, l.n) : (l.a && l.a.name) || l.n);
   return <div id="kill-feed">
     {/* mais nova em cima, como no CS */}
     {[...vivas].reverse().map(l => l.k === "sys"
       ? <div key={l.id} className={"kf-row kf-sys" + (l.mine ? " mine" : "")}>
           <i className="kf-ico">{SYS_ICON[l.how] || "•"}</i><span>{sysText(l)}</span></div>
       : <div key={l.id} className={"kf-row" + (l.mine ? " mine" : "") + (l.a && l.a.ally ? " ally" : "")}>
-          {l.a ? <Nick p={l.a} /> : <span className="kf-who dim">{F.world || "o espaço"}</span>}
+          {l.a ? <Nick p={l.a} /> : <span className="kf-who dim">{F.world}</span>}
           {/* Com assistência, os DOIS ícones aparecem: o que amoleceu (esmaecido) e o que finalizou. */}
           <span className="kf-how" title={(l.assist ? `${F[l.byHow] || l.byHow} ${F.assist} · ` : "") + (F[l.how] || l.how)}>
             {l.assist ? <><i className="kf-ico assist">{HOW_ICON[l.byHow] || "•"}</i><span className="kf-plus">+</span></> : null}
             <i className="kf-ico">{HOW_ICON[l.how] || "•"}</i></span>
           {/* O verbo depois do ícone: o ícone qualifica ("com o quê") e o verbo dá a DIREÇÃO, que só o
               ícone não dava — "Fulano 🍴 Beltrano" obriga o leitor a adivinhar quem comeu quem. */}
-          <span className="kf-verb">{F.killed || "matou"}</span>
+          <span className="kf-verb">{F.killed}</span>
           {l.b ? <Nick p={l.b} /> : null}</div>)}
   </div>;
 }
-const crunchLabel = s => s >= 60 ? `${Math.round(s / 60)} min` : `${s}s`;
+// "faltam 2 min" / "faltam 30s" — a unidade é texto, e em inglês "min" vira "min" mas o "s" pode virar
+// outra coisa. Os dois moldes vivem no grupo `fmt` do dicionário.
+const crunchLabel = (LB, s) => s >= 60 ? preenche(LB.fmt.min, { n: Math.round(s / 60) }) : preenche(LB.fmt.s, { n: s });

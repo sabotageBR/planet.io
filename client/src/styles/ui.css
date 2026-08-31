@@ -605,8 +605,13 @@ body[data-mode="portrait"] .brl-count b{font-size:2.2em}
    linhas) + dois botões num bloco cortado na altura da tela e SEM rolagem — os botões "Entrar agora" e
    "Lobby" ficavam inalcançáveis em qualquer celular. Aqui a TELA rola, então o fim sempre chega ao fim.
    (O tema mira `#s-dead .dead-card`, nunca `#s-round`, então não há disputa de cascata.) */
-#s-round.on{display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:16px;-webkit-overflow-scrolling:touch}
-#s-round .dead-card{width:min(560px,100%);height:auto;max-height:none;overflow:visible;margin:auto}
+/* Desde que o resto do placar virou um cartão irmão (ui/Round.jsx), a tela é uma COLUNA de dois — o mesmo
+   par de painéis da entrada. `align-items:center` no lugar do `margin:auto` de antes, que centrava um
+   cartão só e empurrava o segundo para a esquerda. */
+#s-round.on{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:12px;
+  overflow:auto;padding:16px;-webkit-overflow-scrolling:touch}
+#s-round .dead-card,#s-round .round-side{width:var(--screen-w,min(560px,100%));height:auto;max-height:none;overflow:visible;margin:0;flex:0 0 auto}
+#s-round .round-side .ph{margin-bottom:6px}
 #s-round .rank-table,#s-round table{max-height:none}
 #s-round .dead-actions{position:sticky;bottom:0;padding-top:8px}   /* os botões acompanham a rolagem: são a saída da tela */
 
@@ -782,13 +787,13 @@ body:not([data-shell="rail"]):not([data-mode="portrait"]) .screen .wrap,
 body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-dead .dead-card,
 body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-round .dead-card{
   position:absolute;left:50%;right:auto;top:var(--screen-top);bottom:auto;transform:translateX(-50%);
-  width:min(520px,100%);height:auto;max-height:calc(100% - var(--screen-top) * 2);
+  width:var(--screen-w,min(520px,100%));height:auto;max-height:calc(100% - var(--screen-top) * 2);
   display:flex;flex-direction:column;align-items:stretch;gap:12px;justify-content:flex-start;
   overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
   border:5px solid var(--line,#0006);border-radius:var(--radius-lg,20px);
   box-shadow:0 14px 40px rgba(0,0,0,.42);
   padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px))}
-body{--screen-top:clamp(12px,4vh,44px)}
+body{--screen-top:clamp(12px,4vh,44px);--screen-w:min(520px,100%)}
 /* ── A BARRA DE NAVEGAÇÃO: DENTRO DA CAIXA, e sempre no mesmo pixel ──────────
    Ela é um filho do `.wrap` (ver `Screen` em ui/bits.jsx) com `order:99;position:sticky;bottom:0`, que é o
    que os TRÊS temas sempre desenharam (screens.css:32, mais as variantes de retrato e paisagem). Aqui só
@@ -1077,9 +1082,12 @@ body[data-mode="portrait"] .lvup-badge b{font-size:27px}
   unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
 :root{--font-display:"Archivo Black",var(--font-ui,system-ui),sans-serif}
 
-/* ── A MARCA ── */
-.logo{display:flex;align-items:center;gap:.34em;line-height:1;font-size:clamp(30px,5.2vw,52px)}
-.logo .logo-mark{width:1.3em;height:1.3em;flex:none}
+/* ── A MARCA ──
+   Virou IMAGEM (ui/Logo.jsx): o wordmark 3D é arte, não mais um `<span>` em Archivo Black ao lado de um
+   SVG. `.logo-mark`/`.logo-word` ficam porque o SÍMBOLO continua vivo — é ele que vira favicon e prévia
+   dos temas, onde um wordmark deitado seria ilegível. */
+.logo{display:block;width:min(320px,74%);height:auto;margin:0 auto}
+.logo-mark{width:1.3em;height:1.3em;flex:none}
 .logo-word{font-family:var(--font-display);font-size:1em;letter-spacing:-.02em;color:var(--text,#fff5c2);
   text-shadow:.06em .06em 0 var(--line,#141026);white-space:nowrap}
 .logo-word i{font-style:normal;color:var(--accent,#ffc22e)}
@@ -1098,7 +1106,7 @@ body[data-shell="center"] #s-entry .entry-wrap.entry-v2{
   display:grid;grid-template-columns:minmax(0,1fr);
   grid-template-areas:"brand" "main" "side";
   align-content:start;justify-content:stretch;
-  gap:clamp(12px,2.4vh,22px);width:min(520px,100%);margin:0 auto;padding:0}
+  gap:clamp(12px,2.4vh,22px);width:var(--screen-w,min(520px,100%));margin:0 auto;padding:0}
 body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .brand-block{grid-area:brand}
 body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-main{grid-area:main}
 body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-side{grid-area:side}
@@ -1235,10 +1243,10 @@ body[data-reduce="1"] #s-entry.on .entry-v2>*{animation:none}
    cabe onde antes não havia coluna para ele. Some só onde a altura é o recurso escasso. */
 body[data-shell="rail"] #s-entry .entry-wrap.entry-v2 .entry-side,
 body[data-mode="portrait"] #s-entry .entry-wrap.entry-v2 .entry-side{display:none}
-body[data-shell="rail"] #s-entry .entry-wrap.entry-v2 .logo{font-size:clamp(24px,5vw,34px)}
+body[data-shell="rail"] #s-entry .entry-wrap.entry-v2 .logo{width:min(240px,80%)}
 body[data-shell="rail"] #s-entry .entry-wrap.entry-v2 .entry-main{box-shadow:none;border-width:3px}
 body[data-mode="landscape"] #s-entry .entry-wrap.entry-v2 .entry-main .hint{display:none}
-body[data-mode="landscape"] #s-entry .entry-wrap.entry-v2 .logo{font-size:26px}
+body[data-mode="landscape"] #s-entry .entry-wrap.entry-v2 .logo{width:min(190px,52%)}
 /* o @media de 900px que quebrava o grid de duas colunas saiu junto com ele: a coluna já é única em
    qualquer largura, e a regra que escondia o TOP 5 aqui apagaria justamente o que agora deve aparecer. */
 /* no dedo o alvo mínimo é 44 px (scripts/responsive-check.mjs falha abaixo disso) */
@@ -1271,3 +1279,141 @@ body[data-pointer="coarse"] #s-entry .entry-wrap.entry-v2 .guest-note .btn-link{
    40 × 1.15 = 46 px de alvo real. Aumentar só o wrapper não resolvia: quem é tocado é o botão de dentro. */
 body[data-pointer="coarse"] .guest-note .gsi-wrap.gsi-icon{min-height:46px}
 body[data-pointer="coarse"] .guest-note .gsi-wrap.gsi-icon > div{transform:scale(1.15)}
+
+/* ══ CENÁRIO DAS TELAS DE MENU ═══════════════════════════════════════════════════════════════════
+   Fundo estrelado + planetas flutuando atrás do painel, do mockup aprovado. Antes daqui o fundo do menu
+   era o CANVAS DO PIXI (o céu do jogo, parado, sem a grade) com um véu semitransparente por cima — e o
+   véu vinha do tema, então a cor do menu dependia da hora do dia sobre um céu que ninguém estava jogando.
+
+   Três coisas que decidem o comportamento e não são gosto:
+
+   1. O cenário é desligado por INVERSÃO, não por lista de telas. Ele nasce ligado e sai em três estados:
+      `rail` (há partida VIVA atrás — a gaveta existe justamente para ver a sala continuar ao lado),
+      `game` e `dead` (morrer é sempre sobre partida viva). Assim uma tela de menu nova o ganha de graça,
+      que é o que "todas as telas fora da partida" quer dizer. `display:none` também PARA as animações.
+   2. `--screen-top` deixou de ser um número e passou a ser A ALTURA DO LOGO. O mockup cravava
+      `clamp(200px,28vh,260px)`, que é o RESULTADO de uma conta feita a 1920 px — em tela baixa ele
+      empurra o painel inteiro para fora da janela. Escrita como conta, ela acompanha a arte.
+   3. O `min(…,44vh)` do logo é a peça central: a ALTURA da janela limita o logo, e o logo limita o topo
+      da caixa. Sem esse terceiro termo, um celular deitado (375 px de altura) receberia um topo de
+      200 px e o painel começaria abaixo da dobra. */
+body{--ws-logo-ar:.3625;                     /* 269/742 do PNG: muda junto se a arte mudar */
+     --ws-logo-w:min(620px,74vw,44vh);
+     --ws-logo-h:calc(var(--ws-logo-w) * var(--ws-logo-ar))}
+
+#cena{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:1;
+  background:var(--bg,#160838) center/cover no-repeat}
+/* Um fundo por tema, e o VÉU vem na MESMA declaração da arte: assim ele fica sob os sprites (que são
+   filhos) e sob os cartões, sem escurecer o logo — que era o efeito colateral do véu do `.screen`.
+   Estas três regras moram AQUI e não nos temas porque o `screens.css` de cada tema é GERADO por port.js.
+   ⚠️ Nome de arquivo com asterisco-barra NÃO entra em comentário CSS: o fecha-comentário do caminho
+   FECHA o comentário ali, e a primeira regra depois dele é engolida em silêncio. Foi assim que
+   `body{--nav-h:74px}` sumiu uma vez. Cite o caminho com <id>, ou por extenso como acima. */
+html[data-theme="dawn"]   #cena{background-image:linear-gradient(180deg,rgba(12,4,28,.10),rgba(12,4,28,.34)),url(../assets/scene/bg-dawn.webp)}
+html[data-theme="sunset"] #cena{background-image:linear-gradient(180deg,rgba(12,4,28,.10),rgba(12,4,28,.34)),url(../assets/scene/bg-sunset.webp)}
+html[data-theme="dusk"]   #cena{background-image:linear-gradient(180deg,rgba(12,4,28,.14),rgba(12,4,28,.42)),url(../assets/scene/bg-dusk.webp)}
+#cena{display:none}
+body[data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]) #cena{display:block}
+/* sem o véu do tema por cima: ele foi escrito para escurecer o céu do Pixi, e sobre a arte nova
+   escureceria duas vezes (o degradê acima já é o véu). (0,3,1) e (1,3,1) para ganhar do tema. */
+body[data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]) .screen,
+body[data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]) #s-entry.screen{background:transparent}
+
+/* ── os sprites ── */
+#cena .sprite{position:absolute;height:auto;user-select:none;will-change:transform}
+#cena .logo{top:calc(10px + env(safe-area-inset-top,0px));left:50%;width:var(--ws-logo-w);
+  transform:translateX(-50%);z-index:2;filter:drop-shadow(0 8px 14px rgba(0,0,0,.45));
+  animation:ws-flutua-logo 5.5s ease-in-out infinite}
+#cena .planeta-l{left:-2vw;top:30vh;width:min(280px,24vw);animation:ws-flutua-a 6.2s ease-in-out infinite}
+#cena .planeta-r{right:-1vw;top:36vh;width:min(270px,23vw);animation:ws-flutua-b 7s ease-in-out infinite}
+#cena .lua{left:14vw;bottom:6vh;width:min(150px,14vw);animation:ws-flutua-c 5.2s ease-in-out infinite}
+#cena .missil{left:20vw;top:44vh;width:min(160px,14vw);animation:ws-flutua-m 8s ease-in-out infinite}
+#cena .missil-2{right:15vw;bottom:12vh;width:min(110px,11vw);animation:ws-flutua-m2 9s ease-in-out infinite}
+
+/* Prefixo `ws-` obrigatório: base.css já usa `spin`, `kfin`, `chatin`, `zonepulse`, `pwlow`, `lvup-*`,
+   e um nome repetido é sobrescrito em silêncio. */
+@keyframes ws-flutua-logo{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-8px)}}
+@keyframes ws-flutua-a{0%,100%{transform:translate(0,0) rotate(-2deg)}50%{transform:translate(10px,-14px) rotate(2deg)}}
+@keyframes ws-flutua-b{0%,100%{transform:translate(0,0) rotate(2deg)}50%{transform:translate(-12px,-10px) rotate(-2deg)}}
+@keyframes ws-flutua-c{0%,100%{transform:translate(0,0) rotate(-3deg)}50%{transform:translate(8px,-16px) rotate(3deg)}}
+@keyframes ws-flutua-m{0%,100%{transform:translate(0,0) rotate(-8deg)}50%{transform:translate(18px,-12px) rotate(-2deg)}}
+@keyframes ws-flutua-m2{0%,100%{transform:scaleX(-1) translate(0,0) rotate(6deg)}50%{transform:scaleX(-1) translate(-16px,-10px) rotate(0deg)}}
+/* quem pediu menos movimento não recebe seis sprites balançando (base.css:192 já zera a duração no
+   data-reduce; aqui fica o que vem do SISTEMA, que o CSS do projeto não cobria) */
+@media (prefers-reduced-motion:reduce){#cena .sprite{animation:none}}
+
+/* ── a caixa: desce o quanto o logo ocupa, e alarga onde há espaço ──
+   ⚠️ A cadeia `:not(...)` se repete em cada modo de propósito: sem ela a regra do modo (0,4,1) perderia
+   para a regra de estado (0,3,1) e a medida do desktop vazaria para o celular. */
+body[data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]){
+  --screen-top:calc(env(safe-area-inset-top,0px) + var(--ws-logo-h) + 26px);
+  --screen-w:min(680px,100%)}
+body[data-mode="tablet"][data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]){
+  --ws-logo-w:min(520px,66vw,38vh);--screen-w:min(620px,100%)}
+body[data-mode="portrait"][data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]){
+  --ws-logo-w:min(320px,62vw,26vh);--screen-w:min(520px,100%)}
+/* ⚠️ CELULAR DEITADO NÃO GANHA OFFSET NENHUM. Com 375 px de ALTURA contra o `min-height:min(420px,100%)`
+   da caixa, qualquer topo acima de ~20 px empurra o rodapé do cartão — e com ele a barra de navegação e
+   os três blocos que os temas colam em `sticky;bottom:74px` — para fora da janela. Lá o logo sai do
+   cenário e a marca volta para dentro do cartão, que é onde ela cabe. */
+body[data-mode="landscape"][data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]){
+  --screen-top:clamp(12px,4vh,44px);--screen-w:min(520px,100%)}
+
+/* ── os sprites por modo: o que cabe em cada tela ── */
+body[data-mode="tablet"] #cena .planeta-l{width:22vw}
+body[data-mode="tablet"] #cena .planeta-r{width:22vw}
+body[data-mode="tablet"] #cena .missil,
+body[data-mode="tablet"] #cena .missil-2{display:none}
+body[data-mode="portrait"] #cena .planeta-l{left:-9vw;top:auto;bottom:8vh;width:34vw}
+body[data-mode="portrait"] #cena .planeta-r{right:-9vw;top:12vh;width:28vw}
+body[data-mode="portrait"] #cena .lua,
+body[data-mode="portrait"] #cena .missil,
+body[data-mode="portrait"] #cena .missil-2{display:none}
+/* deitado: sobra o fundo e um planeta baixo em cada canto — o painel come a faixa central inteira */
+body[data-mode="landscape"] #cena .logo,
+body[data-mode="landscape"] #cena .planeta-r,
+body[data-mode="landscape"] #cena .missil,
+body[data-mode="landscape"] #cena .missil-2{display:none}
+body[data-mode="landscape"] #cena .planeta-l{left:-6vw;top:auto;bottom:-8vh;width:min(150px,30vh)}
+body[data-mode="landscape"] #cena .lua{left:auto;right:4vw;bottom:4vh;width:min(90px,22vh)}
+
+/* ── A MARCA APARECE UMA VEZ SÓ ──
+   O cenário desenha o logo grande no topo; o cartão da entrada tem o seu (`.brand-block .logo`). Com os
+   dois ligados a marca sai duplicada, uma embaixo da outra. Quem sai é o do CARTÃO — o do cenário é
+   maior e é a assinatura da tela. No celular DEITADO é o contrário: lá o cenário não tem altura para o
+   logo (ele é `display:none`), então o do cartão é o único e fica.
+   (1,4,1) para passar por cima do `entry-v2` (1,2,0) e do tema (1,1,0). */
+body[data-shell="center"]:not([data-mode="landscape"]):not([data-screen="game"]):not([data-screen="dead"]) #s-entry .brand-block .logo{display:none}
+/* sem o logo, a tagline vira a legenda do logo do cenário e não precisa de respiro por cima */
+body[data-shell="center"]:not([data-mode="landscape"]) #s-entry .brand-block{padding-top:0;gap:0}
+
+/* ── DOIS ALVOS QUE A MATRIZ COBRAVA HÁ TEMPO ──
+   Os dois só tinham ALTURA de 44 px; a largura ficava por conta do conteúdo, e a matriz mede as duas.
+   1. `.chip-btn` — os chips de duração da sala ("30", "60", "∞") davam 38 px de largura, e o "∞" é o
+      mais estreito de todos justamente por ser um caractere só.
+   2. `#h-menu` — o botão do menu de pausa tinha 44 px por `data-pointer=coarse` e voltava a 30 no
+      RETRATO, na regra logo abaixo dela: mesma especificidade, e quem vem depois ganha. Em celular em
+      pé — que é onde o dedo mais erra — o alvo do menu era o menor do HUD.
+   Casar o modo COM o ponteiro (0,2,0) resolve sem desfazer o aperto de quem usa mouse. */
+body[data-pointer="coarse"] .chip-btn{min-width:44px}
+body[data-mode="portrait"][data-pointer="coarse"] #hud #hud-top #h-menu,
+body[data-mode="portrait"][data-pointer="coarse"] #hud #h-mute{width:44px;height:44px;min-width:44px;font-size:16px}
+
+
+/* ── O PÓDIO SÃO DOIS CARTÕES, E ELES FICAM NO FLUXO ──
+   ⚠️ Esta regra tem que vir DEPOIS do bloco "TODA TELA NO MESMO LUGAR": ela repete a cadeia dele
+   (mesma especificidade, (1,3,1)) e ganha pela ORDEM. Aquele bloco ancora `#s-round .dead-card` como
+   `position:absolute` — foi escrito quando a tela tinha um cartão só —, e um filho absoluto sai do flex:
+   o pódio pousava por cima e o resto do placar subia para o topo da tela. Moldura, superfície e padding
+   continuam vindo de lá; aqui só se desfaz a ancoragem. */
+body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-round .dead-card,
+body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-round .round-side{
+  position:static;transform:none;left:auto;right:auto;top:auto;bottom:auto;margin:0;
+  /* a altura é a do CONTEÚDO: o `max-height` daquele bloco existe para caixas que rolam por dentro, e
+     aqui quem rola é a tela — com ele, os botões de saída ficavam cortados pela borda do cartão */
+  height:auto;max-height:none;overflow:visible;width:var(--screen-w,min(560px,100%))}
+/* ⚠️ E os botões deixam de ser `sticky`. Eles grudavam no fundo do cartão porque, quando esta tela tinha
+   um cartão só, era o CARTÃO que rolava por dentro e eles eram a saída — a única forma de sair da tela.
+   Hoje quem rola é a tela inteira (`#s-round.on{overflow:auto}`), e um sticky num cartão que não rola
+   simplesmente pousa por cima do conteúdo: os três números do rodapé sumiam debaixo deles. */
+#s-round .dead-actions{position:static}

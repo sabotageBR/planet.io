@@ -5,7 +5,8 @@
 // e `ui.css` é escrito à mão, nunca sobrescrito por `node client/src/theme/port.js`.
 // As cores continuam vindo dos tokens do tema, então a tela segue mudando com o relógio.
 import React, { useEffect, useState } from "react";
-import { skinById, RARITY_LABELS, RARITY_COLORS, KEY_LABEL } from "@warspace/shared";
+import { skinById, RARITY_COLORS } from "@warspace/shared";
+import { skinName, rarityLabel } from "../i18n/catalog.js";
 import { keysOf } from "../game/input/Keyboard.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
@@ -25,6 +26,13 @@ export default function Entry({ on }) {
 function Body() {
   const LB = useLabels(), theme = useTheme(), RC = (theme && theme.rarityColor) || RARITY_COLORS;
   const session = useStore(app, s => s.session), top5 = useStore(app, s => s.top5), rooms = useStore(app, s => s.rooms);
+  // O segundo cartão SOME quando não tem o que mostrar. Não dá para fazer isso em CSS: `MiniRank` e a
+  // lista de salas sempre emitem uma linha de "ainda não tem nada", então o `<aside>` nunca é `:empty` —
+  // e um cartão cheio de "nenhuma sala ativa" e "sem ranking ainda" é pior que cartão nenhum.
+  // ⚠️ `roomsAt` é a guarda contra o PISCA: as duas listas nascem vazias e só chegam no primeiro tick do
+  // `useInterval`, então sem ela o cartão apareceria 200 ms depois, no meio da animação de entrada.
+  const carregou = useStore(app, s => s.roomsAt) > 0;
+  const temLado = !carregou || top5.length > 0 || rooms.length > 0;
   const user = session.user || {}, sk = skinById(user.equippedSkin ?? 0), guest = user.kind !== "registered";
   const [nick, setNickLocal] = useState(user.nick || "");
   useEffect(() => { setNickLocal(user.nick || ""); }, [user.nick]);
@@ -34,7 +42,7 @@ function Body() {
   // A dica é a primeira coisa que alguém lê: com as teclas configuráveis, cravar "ESPAÇO/W" nela seria
   // mentir para exatamente quem foi lá trocar.
   const tk = keysOf(session.prefs);
-  const dica = LB.hint.replaceAll("{s}", KEY_LABEL[tk.split] || tk.split).replaceAll("{e}", KEY_LABEL[tk.eject] || tk.eject);
+  const dica = LB.hint.replaceAll("{s}", LB.keys[tk.split] || tk.split).replaceAll("{e}", LB.keys[tk.eject] || tk.eject);
   return <>
     <div className="brand-block">
       <Logo title={LB.title} />
@@ -52,7 +60,7 @@ function Body() {
         <div className="id-fields">
           <Field id="nameIn" label={LB.nameLabel} maxLength={16} autoComplete="off" value={nick}
             onChange={e => setNickLocal(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-          <div className="skinmeta"><b id="m-skin">{sk.name}</b><i id="m-rar" style={{ color: RC[sk.rarity] || "#999" }}>{RARITY_LABELS[sk.rarity] || sk.rarity}</i></div>
+          <div className="skinmeta"><b id="m-skin">{skinName(sk)}</b><i id="m-rar" style={{ color: RC[sk.rarity] || "#999" }}>{rarityLabel(sk.rarity)}</i></div>
         </div>
       </div>
       <button className="btn-primary" data-go="modes" onClick={() => { commit(); go("modes"); }}>{LB.play}</button>
@@ -68,7 +76,7 @@ function Body() {
     {/* Esta coluna existia, era consultada a cada 5 s e os TRÊS temas a escondiam com display:none.
         Ou some o pedido de rede, ou ela aparece — e o que ela mostra (quem está ganhando, onde tem
         gente jogando agora) é exatamente o que convence alguém a entrar. */}
-    <aside className="card entry-side">
+    {temLado ? <aside className="card entry-side">
       <div className="side-block">
         <div className="ph">{LB.top5}</div><MiniRank id="entry-top5" rows={top5} n={5} />
       </div>
@@ -77,10 +85,10 @@ function Body() {
         <div className="mini-rooms" id="entry-rooms">
           {rooms.slice(0, 4).map(r => <div className="mr-row" key={r.code} onClick={() => play({ room: r.code })} role="button" tabIndex={0}
             onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); play({ room: r.code }); } }}>
-            <b className="code">{r.code}</b><span>{r.players}/{r.max}</span><span className="dim">{r.ping != null ? `${r.ping} ms` : `${r.bots} ${LB.botsWord}`}</span></div>)}
+            <b className="code">{r.code}</b><span>{r.players}/{r.max}</span><span className="dim">{r.ping != null ? `${r.ping} ${LB.ping}` : `${r.bots} ${LB.botsWord}`}</span></div>)}
           {!rooms.length ? <div className="mr-row dim"><span>{LB.noRooms}</span></div> : null}
         </div>
       </div>
-    </aside>
+    </aside> : null}
   </>;
 }

@@ -9,13 +9,14 @@ import { gameRef } from "../state/game.js";
 import { leaveGame, toggleMute, setPause } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt } from "./format.js";
+import { preenche } from "../i18n/index.js";
 import Chat from "./Chat.jsx";
 import KillFeed from "./KillFeed.jsx";
 import { Nick } from "./bits.jsx";
 import { WEAPON_ICON } from "./icons.js";
 import BrLobby from "./BrLobby.jsx";
 import Notice from "./Notice.jsx";
-import { MODE, weaponOf, KEY_LABEL, POWERUP, TICK_HZ, flagOf } from "@warspace/shared";
+import { MODE, weaponOf, POWERUP, TICK_HZ, flagOf } from "@warspace/shared";
 import { keysOf } from "../game/input/Keyboard.js";   // a legenda tem que dizer a tecla que está DE FATO ligada (inclusive a do desempate de colisão)
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0, autodef: 0, zoom: 0, feast: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: "", clock: null, notice: null,
@@ -73,7 +74,7 @@ export default function Hud() {
   const ammo = h.ammo || 0, fireCd = Math.ceil(h.fireCd || 0), armed = ammo > 0 && !fireCd, pw = Object.entries(h.powerups || {}).filter(([, v]) => v > 0);
   const splitReady = !(h.splitCd > 0), ejectReady = !(h.ejectCd > 0);
   // Teclas configuráveis: `#hud-cd` desenha a legenda, e uma legenda que mente é pior que nenhuma.
-  const teclas = keysOf(prefs), kSplit = KEY_LABEL[teclas.split] || LB.keySplit, kEject = KEY_LABEL[teclas.eject] || LB.keyEject;
+  const teclas = keysOf(prefs), kSplit = LB.keys[teclas.split] || LB.keySplit, kEject = LB.keys[teclas.eject] || LB.keyEject;
   const br = h.mode === MODE.BR, noLobby = !!h.lobby;
   const arma = weaponOf(h.weapon || 0), armaIco = WEAPON_ICON[h.weapon | 0] || WEAPON_ICON[0];
   const falando = h.talk && h.talk.on;
@@ -152,7 +153,7 @@ export default function Hud() {
       <div id="hud-pw">{pw.map(([k, v]) => {
         const kind = PW_KIND[k] || "time", full = PW_FULL[k] || 0;
         const num = kind === "nivel" ? v : kind === "carga" ? v : Math.ceil(v);
-        const quanto = kind === "nivel" ? `${LB.shieldLevel} ${v}` : kind === "carga" ? `×${v}` : `${num}s`;
+        const quanto = kind === "nivel" ? `${LB.shieldLevel} ${v}` : kind === "carga" ? `×${v}` : preenche(LB.fmt.s, { n: num });
         return <span key={k} className={"pw pw-" + k + (kind === "nivel" ? " lv-" + v : "") + (kind === "time" && v <= 3 ? " low" : "")}
           tabIndex={0} onPointerDown={e => { const el = e.currentTarget; el.classList.add("tip"); setTimeout(() => el.classList.remove("tip"), 2200); }}
           style={kind === "nivel" && LV && LV[v - 1] ? { "--pwc": LV[v - 1].color } : undefined}>

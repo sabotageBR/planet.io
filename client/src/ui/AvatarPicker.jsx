@@ -7,6 +7,8 @@ import { AVATAR } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { useLabels } from "../hooks/useTheme.js";
+import { preenche } from "../i18n/index.js";
+import { errText } from "../i18n/errors.js";
 import { api } from "../api/client.js";
 import { prepararAvatar } from "../util/image.js";
 import { toast } from "../state/actions.js";
@@ -33,7 +35,7 @@ export default function AvatarPicker() {
       const r = await api.uploadAvatar(blob);
       app.update(s => ({ ...s, session: { ...s.session, user: { ...s.session.user, avatar: r.avatar } } }));
       setFile(null); setPrev(null); toast(LB.avatarTitle + " ✓");
-    } catch (e) { toast(e.message || "não deu para subir a imagem"); }
+    } catch (e) { toast(errText(e, "avatar")); }
     finally { setBusy(false); }
   };
   const remover = async () => {
@@ -59,6 +61,6 @@ export default function AvatarPicker() {
         {atual && !file ? <button className="btn-mini" disabled={busy} onClick={remover}>{LB.avatarRemove}</button> : null}
       </div>
     </div>
-    <span className="hint dim">máx. {AVATAR.SIZE}px · {Math.round(AVATAR.MAX_BYTES / 1024)} KB</span>
+    <span className="hint dim">{preenche(LB.fmt.px, { n: AVATAR.SIZE, kb: Math.round(AVATAR.MAX_BYTES / 1024) })}</span>
   </div>;
 }

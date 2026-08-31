@@ -20,9 +20,9 @@ export const tokens={bg:"#141a4a",surface:"#2b2260",text:"#fff1d6",muted:"#b59fd
   line:"#241238",radius:"14px",radiusLg:"20px",space:"14px",fontUi:FONT,fontMono:"'Courier New',monospace",shadow:"6px 6px 0 #241238"};
 export const layout={hud:"bubbles",nav:"sheet"};
 export const rarityColor={free:"#b59fd0",common:"#2ec4b6",rare:"#7fb3ff",epic:"#e0417f",legendary:"#ffb547",earned:"#7ee08a",secret:"#ff5e6c"};
-export const labels={title:"WARSPACE.IO",tagline:"Conquiste a galáxia antes que a noite caia!",play:"JOGAR",playAuto:"🚀 JOGAR (AUTO)",lbTitle:"PÓDIO",
-  dead:"KABOOM!",deadSub:"— você virou poeira ao anoitecer —",respawn:"🔄 DE NOVO!",reconnTitle:"SINAL FRACO!",reconnSub:"Procurando o satélite… tentativa {n}/5",
-  back:"◄",create:"➕ Criar sala",top5:"TOP 5 HOJE"};
+// O `labels` deste tema MUDOU DE CASA: foi para o grupo `themes` de client/src/i18n/*.js. Ele repetia
+// as mesmas 11 chaves nos três temas e só a tagline e o `deadSub` divergiam de verdade — mantê-lo aqui
+// obrigaria cada tema a carregar os três idiomas.
 
 const WARM=["#ffb547","#ff8a3d","#ff5e6c","#ff7ab3","#ffcf9a","#ffd96b","#ff9e57","#e0417f","#ffc0a0","#f4a261","#ff6f91","#ffe1a8"];
 const PK=sk=>sk.ring?2.05:1.3,FK=2.1,EK=1.5,AK=1.3,BK=2.4,MK=2.6,NK=2,PROPK=p=>p.ring?2:1.2;
@@ -236,7 +236,7 @@ export const effects={
         for(let i=0;i<3;i++){const kk=Math.max(0,k-i*.12);P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.15+kk*1.05),color:i?CORAL:CREAM,alpha:a*(1-i*.25),width:Math.max(3,f.r*.03*(1-kk))});}
         P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:16,inner:.45,phase:-k*.5,fill:GOLD,stroke:INK,width:Math.max(2,s*.02),alpha:al});
         P.push({type:"burst",x:f.x,y:f.y,n:14,r0:f.r*(.2+k*.9),r1:f.r*(.35+k*1.15),color:CREAM,alpha:a,width:Math.max(2,f.r*.02)});
-        // O texto vem do `f` (ui/labels.js, via game/index.js): a mesma estrela morre com dois NOMES —
+        // O texto vem do `f` (i18n/*.js, via game/index.js): a mesma estrela morre com dois NOMES —
         // supernova, ou "nebulosa planetária" quando quem a matou foi uma trombada de planeta. O corpo
         // da fonte cai com o comprimento, senão o nome longo sai mais largo que a própria onda.
         {const txt=f.text||"SUPERNOVA!";
@@ -304,4 +304,4 @@ export const hud={
 };
 
 export {foodColor};   // o atlas do BRILHO precisa da cor da bolinha, e cor não sai de theme/
-export default {id,name,schedule,tokens,layout,labels,rarityColor,textures,world,effects,hud,foodColor};
+export default {id,name,schedule,tokens,layout,rarityColor,textures,world,effects,hud,foodColor};

@@ -28,6 +28,9 @@ export const PREF_DEFAULTS = Object.freeze({
   // Teclas de dividir/ejetar: `KeyboardEvent.code`, montadas no MAP por instância (input/Keyboard.js).
   keySplit: "Space", keyEject: "KeyW",
   theme: "auto", reduceMotion: false, bigText: false, colorblind: "off", lbSize: 10,
+  // IDIOMA da interface. "auto" = o do navegador (i18n/resolveLang). Ele é a única pref que precisa
+  // valer ANTES de o servidor responder — daí o atalho em localStorage que `bootLang()` lê no main.jsx.
+  lang: "auto",
   chat: true, voice: true, voiceVolume: 85,   // chat e voz: desligáveis, como todo o resto do som
 });
 export const PREF_KEYS = Object.keys(PREF_DEFAULTS);

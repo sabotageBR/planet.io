@@ -4,6 +4,7 @@ import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { play, loadRooms, loadTop5, toast } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
+import { preenche } from "../i18n/index.js";
 import { useInterval } from "../hooks/useInterval.js";
 import { ScreenHeader, MiniRank, Screen } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
@@ -19,7 +20,7 @@ function Body() {
   const [code, setCode] = useState("");
   useInterval(loadRooms, 5000, true);
   useInterval(loadTop5, 30000, true);
-  const enter = () => { if (code.length !== 4) { toast(LB.roomCode + ": 4 caracteres"); return; } play({ room: code }); };
+  const enter = () => { if (code.length !== 4) { toast(LB.roomCode + ": " + preenche(LB.fmt.chars, { n: 4 })); return; } play({ room: code }); };
   const create = () => {
     const shard = config && config.shard != null ? String(config.shard) : "0";
     let c = shard; for (let i = 0; i < 3; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];

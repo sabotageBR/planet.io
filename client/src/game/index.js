@@ -18,7 +18,7 @@
 import {createStore} from "../state/store.js";
 import {applyTheme,currentTheme,THEMES,resolveThemeId} from "../theme/index.js";
 import {warmFaces} from "../theme/faces.js";
-import {mergeLabels} from "../ui/labels.js";   // o texto desenhado DENTRO do mundo (fx) também é texto de UI
+import {getLabels} from "../i18n/index.js";   // o texto desenhado DENTRO do mundo (fx) também é texto de UI
 import {createAudio} from "../audio/index.js";
 import {api} from "../api/client.js";
 import {app as appStore} from "../state/app.js";
@@ -180,7 +180,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   createRenderer({container,theme:curTheme,prefs:{fx:!curPrefs.reduceMotion}}).then(r=>{if(destroyed){r.destroy();return;}renderer=r;ready=true;
     pointer=createPointer(r.canvas,{onButton:button});joy=createJoystick(r.canvas,hud);aplicaJoystick();applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();warmSkins();
     if(!raf)raf=requestAnimationFrame(frame);
-    if(!inputTimer)inputTimer=setInterval(()=>enviarInput(performance.now()),Math.max(8,Math.round(1000/NET.INPUT_HZ)));}).catch(e=>{console.error("[game] renderer",e&&e.stack||e);container.innerHTML=`<div style="padding:20px;color:#fff">Não foi possível iniciar o renderizador (WebGL indisponível): ${e.message}</div>`;});
+    if(!inputTimer)inputTimer=setInterval(()=>enviarInput(performance.now()),Math.max(8,Math.round(1000/NET.INPUT_HZ)));}).catch(e=>{console.error("[game] renderer",e&&e.stack||e);container.innerHTML=`<div style="padding:20px;color:#fff">${getLabels().err.noWebGL}: ${e.message}</div>`;});
   // DEBOUNCE obrigatório: o observer dispara a cada frame enquanto a borda da janela é arrastada, e
   // `game.resize()` reenvia `{t:"view"}` ao servidor. Sem isso eram ~60 JSON/s contra um balde de 5/s
   // (NET.RATE_JSON) e a 3ª rejeição em 10 s ENCERRAVA a conexão com RATE — arrastar a janela derrubava o
@@ -243,7 +243,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     else if(m.t==="phase"){   // largada: relógio, contagem e céu saem todos do bloco `round` novo
       phase=m.phase;round=m.round||round;startsAt=(m.round&&m.round.startsAt)||0;lastCount=-1;lobby=null;lobbyBeep=false;
       pushHud(performance.now());   // na hora: o HUD roda a 8 Hz e a tela do lobby ficaria até 125 ms por cima da partida já em curso
-      if(phase==="live"){audio.play("matchStart",{mine:true});chatSys("A partida começou!");}}
+      if(phase==="live"){audio.play("matchStart",{mine:true});chatSys(getLabels().killFeed.sys_start);}}
     else if(m.t==="chat"){pushChat(m);}
     else if(m.t==="talk"){view.setTalking(m.slot,!!m.on);}   // push-to-talk de outro: acende/apaga o ícone no planeta dele
     else if(m.t==="feed"){pushFeed(m);}
@@ -278,7 +278,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         // A MESMA estrela morre com dois nomes. Quando quem a matou foi uma TROMBADA de planeta, ela não
         // larga prêmio (STAR.RAM_REWARD) e não é supernova de verdade: é uma nebulosa planetária — e o
         // servidor diz isso mandando o slot de quem trombou no `slotA`, que neste evento estava livre.
-        else if(m.kind===EVENT.SUPERNOVA){const L=mergeLabels(currentTheme()&&currentTheme().labels).fx||{};
+        else if(m.kind===EVENT.SUPERNOVA){const L=getLabels().fx||{};
           f.text=m.slotA!==SEM_SLOT?(L.nebula||"NEBULOSA PLANETÁRIA!"):(L.supernova||"SUPERNOVA!");}
         const mine=m.slotA===view.mySlot||m.slotB===view.mySlot;   // o que envolve a própria peça (já à frente) não espera
         const delay=mine?0:interp.delayMs;

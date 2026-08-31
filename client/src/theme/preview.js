@@ -8,8 +8,10 @@
 // Os dados falsos vêm de mockups/v2/src/data.js (importado como texto pelo Vite).
 import "./all.css";
 import {THEMES,applyTheme} from "./index.js";
+import PT from "../i18n/pt-BR.js";
 import {tier,drawPrims,mulberry} from "./util.js";
-import {logoArt} from "../ui/logoArt.js";       // a MESMA arte da marca que a tela usa
+import {logoArt} from "../ui/logoArt.js";       // o SÍMBOLO (o que vira favicon), ainda desenhado
+import logoUrl from "../assets/scene/logo.webp";  // e o WORDMARK, que virou arte
 import {navIconSvg} from "../ui/navIconArt.js"; // e os MESMOS ícones dos seis botões
 
 const Q=new URLSearchParams(location.search);
@@ -52,7 +54,9 @@ const LABELS={
   ammo:"mísseis",powerups:{magnet:"Ímã",shield:"Escudo"},
   room:"SALA",ping:"ms",fps:"fps",top5:"TOP 5 HOJE",activeRooms:"SALAS ATIVAS",
 };
-const LB=Object.assign({},LABELS,TH.labels||{});
+// O que cada tema diz de diferente mora no dicionário (i18n/pt-BR.js, grupo `themes`) desde que os
+// `labels` saíram dos temas — repetidos nos três, eles impediam traduzir sem carregar 3 idiomas em cada um.
+const LB=Object.assign({},LABELS,(PT.themes&&PT.themes[TH.id])||{});
 const SKINS=D.SKINS,RARITY=D.RARITY,RC=TH.rarityColor||D.RARITY_COLOR,ME=D.ME,mySkin=SKINS[ME.skin];
 
 // ── modo: no app real a viewport é o aparelho; aqui emulamos o tamanho do mockup para comparar com os shots ──
@@ -104,9 +108,9 @@ app.innerHTML=`
 
   <div class="screen" id="s-entry"><div class="wrap entry-wrap entry-v2">
     <div class="brand-block">
-      <div class="logo" role="img" aria-label="${LB.title}">
+      <img class="logo" src="${logoUrl}" alt="${LB.title}" width="992" height="360">
+      <div class="logo-oculto" hidden>
         <svg class="logo-mark" viewBox="0 0 64 64" aria-hidden="true">${logoArt()}</svg>
-        <span class="logo-word" aria-hidden="true">WARSPACE<i>.IO</i></span>
       </div>
       <div class="tagline">${LB.tagline}</div>
     </div>

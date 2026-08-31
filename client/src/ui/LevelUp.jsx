@@ -9,6 +9,7 @@
 // jogo. Ele aparece no instante em que o resultado chega, que é o instante em que o nível de fato subiu.
 import React, { useEffect } from "react";
 import { ACHIEVEMENT_BY_KEY, TIER_BY_ID } from "@warspace/shared";
+import { achTitle, achDescOf, tierName } from "../i18n/catalog.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { closeLevelUp } from "../state/actions.js";
@@ -46,9 +47,9 @@ function Card({ lv }) {
         const t = a.tier ? TIER_BY_ID.get(a.tier) : null;
         return <div className="lvup-ach" key={k} style={t ? { "--tc": t.color } : undefined}>
           <span className="ach-ico">{a.icon}</span>
-          <div><b>{a.title}</b><i>{a.desc}</i></div>
+          <div><b>{achTitle(a.key)}</b><i>{achDescOf(a.key)}</i></div>
           <em>+{a.coins}</em>
-          {t ? <span className="lvup-metal" title={t.name}>{t.icon}</span> : null}
+          {t ? <span className="lvup-metal" title={tierName(t.id)}>{t.icon}</span> : null}
         </div>; })}
     </div> : null}
   </div>;

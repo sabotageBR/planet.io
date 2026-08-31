@@ -66,23 +66,24 @@ for (const n of [180, 192, 512]) {
   console.log(`icon-${n}.png`.padEnd(19) + `${b} B`);
 }
 
-// 3. cartão de compartilhamento. O wordmark aqui é a webfont de verdade: sem ela o cartão sai numa
-//    fonte de sistema qualquer e não é a marca.
+// 3. cartão de compartilhamento. O wordmark é a ARTE (client/src/assets/scene/logo.webp), a mesma que a
+//    tela desenha — antes era texto em Archivo Black, e um cartão que não é a marca do jogo não serve.
+//    ⚠️ Embutida em base64 pelo mesmo motivo da fonte: `file://` dentro de um Chrome headless com
+//    --no-sandbox é frágil, e uma imagem que não carregar sai como um retângulo vazio SEM ERRO NENHUM.
+//    A tagline continua em webfont, então o `throw` da fonte fica.
 const fonte = path.join(PUB, "fonts", "archivo-black-latin.woff2");
 if (!fs.existsSync(fonte)) throw new Error(`falta a fonte da marca em ${fonte}`);
-const fonteB64 = fs.readFileSync(fonte).toString("base64");
+const marca = path.join(RAIZ, "client", "src", "assets", "scene", "logo.webp");
+if (!fs.existsSync(marca)) throw new Error(`falta a arte da marca em ${marca}`);
+const marcaB64 = fs.readFileSync(marca).toString("base64");
 const og = path.join(PUB, "og.png");
 const bytes = assa(
-  `<div class="w"><svg viewBox="0 0 64 64">${logoArt(PALETA_FIXA)}</svg>
-   <div class="t"><b>WARSPACE<i>.IO</i></b><span>Conquiste a galáxia · divida · ejete · devore</span></div></div>`,
-  `@font-face{font-family:AB;src:url(data:font/woff2;base64,${fonteB64}) format("woff2")}
-   .w{width:100%;height:100%;background:linear-gradient(160deg,#232f63,#1b2450 60%,#3b1f6b);
-      display:flex;align-items:center;justify-content:center;gap:44px;padding:0 70px}
-   .w>svg{width:250px;height:250px;flex:none}
-   .t{display:flex;flex-direction:column;gap:18px}
-   b{font-family:AB,sans-serif;font-size:96px;line-height:1;color:${tx};text-shadow:6px 6px 0 ${ink};letter-spacing:-.02em}
-   i{font-style:normal;color:${a1}}
-   span{font-family:system-ui,sans-serif;font-size:27px;letter-spacing:.09em;text-transform:uppercase;color:#8fa0d8}`,
+  `<div class="w"><img src="data:image/webp;base64,${marcaB64}">
+   <span>Conquiste a galáxia · divida · ejete · devore</span></div>`,
+  `.w{width:100%;height:100%;background:linear-gradient(160deg,#232f63,#1b2450 60%,#3b1f6b);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;padding:0 70px}
+   .w>img{width:820px;height:auto;filter:drop-shadow(0 10px 18px rgba(0,0,0,.45))}
+   span{font-family:system-ui,sans-serif;font-size:30px;letter-spacing:.09em;text-transform:uppercase;color:#8fa0d8;text-align:center}`,
   1200, 630, og);
 console.log(`og.png             ${bytes} B`);
 

@@ -3,7 +3,8 @@
 import { api, isUnreachable, isGone } from "../api/client.js";
 import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS } from "./app.js";
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
-import { LABELS } from "../ui/labels.js";
+import { getLabels, setLang, preenche } from "../i18n/index.js";
+import { errText } from "../i18n/errors.js";
 import { skinById } from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 
@@ -54,13 +55,17 @@ export function applySession(me) {
 }
 export const patchUser = patch => app.update(s => ({ ...s, session: { ...s.session, user: { ...(s.session.user || {}), ...patch } } }));
 
-let themeClock = null, lastThemePref = null;
+let themeClock = null, lastThemePref = null, lastLangPref = null;
 const themePref = () => app.get().session.prefs.theme || "auto";
-/** Efeitos imediatos das prefs: tema (aplica já; o relógio reavalia 'auto' a cada minuto/foco), body[data-reduce|bigtext|colorblind]. */
+/** Efeitos imediatos das prefs: idioma, tema (aplica já; o relógio reavalia 'auto' a cada minuto/foco), body[data-reduce|bigtext|colorblind]. */
 export function applyPrefsSideEffects(prefs) {
   const b = document.body.dataset;
   b.reduce = prefs.reduceMotion ? "1" : "0"; b.bigtext = prefs.bigText ? "1" : "0"; b.colorblind = prefs.colorblind || "off";
   if (prefs.theme !== lastThemePref) { lastThemePref = prefs.theme; applyTheme(resolveThemeId(prefs.theme || "auto"), { fade: true }); }   // trocar o tema na mão também passa pelo fade
+  // O idioma vem do mesmo lugar que o tema, mas SEM relógio: `navigator.language` não muda no meio da
+  // sessão. `setLang` é assíncrono (o dicionário é um chunk à parte) e avisa a tela sozinho pelo evento,
+  // então ninguém aqui precisa esperar por ele — a única coisa que não pode é chamá-lo a cada render.
+  if (prefs.lang !== lastLangPref) { lastLangPref = prefs.lang; setLang(prefs.lang || "auto"); }
   if (!themeClock) themeClock = startThemeClock(themePref, null, { getHour: () => clockRef.get().hour });   // dentro da partida o céu segue o relógio da rodada
 }
 
@@ -68,7 +73,7 @@ export async function boot() {
   try { applySession(await api.bootstrap()); }
   catch (e) { app.update({ bootError: e.message || String(e) }); applyPrefsSideEffects(PREF_DEFAULTS); }
   app.update({ booted: true });
-  if (api.server === false) toast(LABELS.offlineNote, 3200); else if (api.online === false) toast(LABELS.noDbNote, 3200);
+  if (api.server === false) toast(getLabels().offlineNote, 3200); else if (api.online === false) toast(getLabels().noDbNote, 3200);
   loadConfig(); loadTop5(); loadRooms();
   const conv = Q.get("party");
   if (conv) { history.replaceState(null, "", location.pathname); joinParty(conv); return; }   // link de convite: cai direto no lobby da equipe do amigo
@@ -166,27 +171,27 @@ export async function setNick(nick) {
   nick = String(nick || "").replace(/\s+/g, " ").trim();
   const cur = (app.get().session.user || {}).nick;
   if (nick === cur) return { ok: true };
-  if (!NICK_RE.test(nick)) { toast(LABELS.nickShort); return { ok: false }; }
-  try { const r = await api.setNick(nick); patchUser(r && r.user ? r.user : { nick }); toast(LABELS.nickSaved); return { ok: true }; }
-  catch (e) { toast(e.message + (e.suggestion ? ` · ${e.suggestion}` : ""), 3000); return { ok: false, suggestion: e.suggestion, error: e }; }
+  if (!NICK_RE.test(nick)) { toast(getLabels().nickShort); return { ok: false }; }
+  try { const r = await api.setNick(nick); patchUser(r && r.user ? r.user : { nick }); toast(getLabels().nickSaved); return { ok: true }; }
+  catch (e) { toast(errText(e, "nick") + (e.suggestion ? ` · ${e.suggestion}` : ""), 3000); return { ok: false, suggestion: e.suggestion, error: e }; }
 }
 export async function claim({ nick, password, email }) {
   const cur = (app.get().session.user || {}).nick;
-  if (nick && nick !== cur) { const r = await setNick(nick); if (!r.ok) throw r.error || new Error(LABELS.nickShort); }
+  if (nick && nick !== cur) { const r = await setNick(nick); if (!r.ok) throw r.error || new Error(getLabels().nickShort); }
   const r = await api.claim({ password, email });
   if (r && r.user) patchUser(r.user); else patchUser({ kind: "registered" });
-  closeAccount(); toast(LABELS.claimed); return r;
+  closeAccount(); toast(getLabels().claimed); return r;
 }
 export async function login({ login: l, password }) {
   await api.login({ login: l, password });
   applySession(await api.bootstrap());
-  closeAccount(); toast(LABELS.loggedIn); loadTop5();
+  closeAccount(); toast(getLabels().loggedIn); loadTop5();
 }
 /** Entrar com Google. `credential` é o id_token que o GSI devolve; o desfecho é o mesmo do `login`. */
 export async function loginGoogle(credential) {
   await api.google(credential);
   applySession(await api.bootstrap());
-  closeAccount(); toast(LABELS.loggedIn); loadTop5();
+  closeAccount(); toast(getLabels().loggedIn); loadTop5();
 }
 /**
  * País do ranking regional. Otimista (a lista responde na hora) e reverte no erro, como as ações da loja.
@@ -196,10 +201,10 @@ export async function setCountry(country) {
   const antes = app.get().session.user;
   app.update(s => ({ ...s, session: { ...s.session, user: { ...s.session.user, country: country || null } } }));
   try { const r = await api.setCountry(country); app.update(s => ({ ...s, session: { ...s.session, user: { ...s.session.user, ...(r.user || {}) } } })); }
-  catch (e) { app.update(s => ({ ...s, session: { ...s.session, user: antes } })); toast(e.message || "não deu para salvar o país"); }
+  catch (e) { app.update(s => ({ ...s, session: { ...s.session, user: antes } })); toast(errText(e)); }
 }
 export async function logout() {
-  await api.logout(); applySession(await api.bootstrap()); toast(LABELS.loggedOut); go("entry");
+  await api.logout(); applySession(await api.bootstrap()); toast(getLabels().loggedOut); go("entry");
 }
 
 // ── preferências ─────────────────────────────────────────────────────────────
@@ -224,14 +229,14 @@ export function toggleMute() {
 export async function flushPrefs() {
   clearTimeout(prefsT); const d = prefsDirty; prefsDirty = {};
   if (!Object.keys(d).length) return true;
-  try { await api.setPrefs(d); return true; } catch (e) { toast(e.message, 2500); return false; }
+  try { await api.setPrefs(d); return true; } catch (e) { toast(errText(e), 2500); return false; }
 }
 export async function savePrefs() {
   const p = app.get().session.prefs; PREF_KEYS.forEach(k => { prefsDirty[k] = p[k]; });
   // salvou = acabou: volta para quem abriu as Opções. Só no SUCESSO — se o PATCH falhou, sair da tela
   // esconderia o erro e o jogador não teria como tentar de novo.
   if (!await flushPrefs()) return;
-  toast(LABELS.saved);
+  toast(getLabels().saved);
   const s = app.get(), volta = s.prevScreen && s.prevScreen !== "prefs" ? s.prevScreen : "entry";
   go(volta);
 }
@@ -244,27 +249,27 @@ export function resetPrefs() {
 // ── loja (UI otimista) ───────────────────────────────────────────────────────
 export async function equipSkin(id) {
   const before = app.get().session.user; if (!before) return;
-  if (!app.get().session.skins.includes(id)) { toast(LABELS.lockedToast); return; }
+  if (!app.get().session.skins.includes(id)) { toast(getLabels().lockedToast); return; }
   patchUser({ equippedSkin: id });
-  try { const r = await api.equip(id); if (r && r.equippedSkin != null) patchUser({ equippedSkin: r.equippedSkin }); toast(LABELS.equippedToast); }
-  catch (e) { patchUser({ equippedSkin: before.equippedSkin }); toast(e.message, 2500); }
+  try { const r = await api.equip(id); if (r && r.equippedSkin != null) patchUser({ equippedSkin: r.equippedSkin }); toast(getLabels().equippedToast); }
+  catch (e) { patchUser({ equippedSkin: before.equippedSkin }); toast(errText(e), 2500); }
 }
 export async function buySkin(id) {
   const s = app.get().session, sk = skinById(id); if (!s.user) return;
   if (s.skins.includes(id)) return equipSkin(id);
-  if (sk.rarity === "secret") { toast(LABELS.secretToast); return; }
-  if (sk.unlockKey || sk.price <= 0) { toast(LABELS.lockedToast + ": " + sk.desc); return; }
-  if (s.user.coins < sk.price) { toast(LABELS.poorToast); return; }
+  if (sk.rarity === "secret") { toast(getLabels().secretToast); return; }
+  if (sk.unlockKey || sk.price <= 0) { toast(getLabels().lockedToast + ": " + sk.desc); return; }
+  if (s.user.coins < sk.price) { toast(getLabels().poorToast); return; }
   const snapshot = { coins: s.user.coins, skins: s.skins, equipped: s.user.equippedSkin };
   app.update(st => ({ ...st, session: { ...st.session, skins: [...st.session.skins, id], user: { ...st.session.user, coins: st.session.user.coins - sk.price, equippedSkin: id } } }));
   try {
     const r = await api.buy(id);
     app.update(st => ({ ...st, session: { ...st.session, skins: r && r.owned ? r.owned : st.session.skins, user: { ...st.session.user, coins: r && typeof r.coins === "number" ? r.coins : st.session.user.coins } } }));
-    toast(LABELS.bought);
+    toast(getLabels().bought);
     try { await api.equip(id); } catch { patchUser({ equippedSkin: snapshot.equipped }); }
   } catch (e) {
     app.update(st => ({ ...st, session: { ...st.session, skins: snapshot.skins, user: { ...st.session.user, coins: snapshot.coins, equippedSkin: snapshot.equipped } } }));
-    toast(e.message, 2500);
+    toast(errText(e), 2500);
   }
 }
 
@@ -275,7 +280,7 @@ export async function play({ room, mode, teamSize, party } = {}) {
   const md = mode != null ? mode | 0 : st.gameMode | 0, ts = teamSize != null ? teamSize | 0 : st.teamSize || 1;
   const pt = party !== undefined ? party : (st.party ? st.party.code : null);
   let code = room ? String(room).toUpperCase() : null;
-  if (!code) { try { const a = await api.auto({ mode: md, teamSize: ts }); if (a && a.code) code = a.code; } catch (e) { if (!isUnreachable(e)) toast(e.message, 2500); } }
+  if (!code) { try { const a = await api.auto({ mode: md, teamSize: ts }); if (a && a.code) code = a.code; } catch (e) { if (!isUnreachable(e)) toast(errText(e), 2500); } }
   app.update(s => ({ ...s, screen: "game", played: true, rewards: null, rewardsPending: false, overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
     gameMode: md, teamSize: ts,
     pendingJoin: { room: code, mode: md, teamSize: ts, party: pt, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
@@ -296,27 +301,27 @@ export async function entrarPorConvite(code) {
   try { const r = await api.roomGet(c); const m = r.room.mode | 0, ts = r.room.teamSize || 1;
     app.update({ gameMode: m, teamSize: ts });
     play({ room: c, mode: m, teamSize: ts, party: null }); }
-  catch (e) { toast(e.message, 3000); go("lobby"); }
+  catch (e) { toast(errText(e, "room"), 3000); go("lobby"); }
 }
 export async function criarSala({ mode = 0, teamSize = 1, minutes = 30, private: priv = false } = {}) {
   try { const r = await api.roomCreate({ mode, teamSize, minutes, private: priv });
     app.update({ gameMode: mode, teamSize });
     play({ room: r.room.code, mode, teamSize, party: null }); return r.room; }
-  catch (e) { toast(e.message, 3000); return null; }
+  catch (e) { toast(errText(e, "room"), 3000); return null; }
 }
 /** Dono da sala: expulsar (`kick`) ou banir da sala (`ban`). Quem autoriza é o servidor. */
 export const hostAct = (act, pid) => { const g = getGame(); if (g) g.hostAct(act, pid); };
 export async function createParty(teamSize) {
   try { const r = await api.partyCreate({ mode: 1, teamSize, nick: meNick(), skinId: meSkin() });
     app.update({ party: r.party, partyMe: r.you || null, partyError: null, gameMode: 1, teamSize: r.party.teamSize, screen: "party" }); return r.party; }
-  catch (e) { toast(e.message, 2800); return null; }
+  catch (e) { toast(errText(e, "party"), 2800); return null; }
 }
 export async function joinParty(code) {
   const c = String(code || "").trim().toUpperCase();
-  if (c.length !== 4) { toast(LABELS.partyCode + ": 4 caracteres"); return null; }
+  if (c.length !== 4) { toast(getLabels().partyCode + ": " + preenche(getLabels().fmt.chars, { n: 4 })); return null; }
   try { const r = await api.partyJoin(c, { nick: meNick(), skinId: meSkin() });
     app.update({ party: r.party, partyMe: r.you || null, partyError: null, gameMode: 1, teamSize: r.party.teamSize, screen: "party" }); return r.party; }
-  catch (e) { toast(e.message, 2800); return null; }
+  catch (e) { toast(errText(e, "party"), 2800); return null; }
 }
 /**
  * Recarrega o lobby (a tela faz polling a 1 Hz — é um lobby, não precisa de WebSocket).
@@ -335,7 +340,7 @@ export async function refreshParty() {
     if (r.party.started && r.party.room && app.get().screen === "party") play({ room: r.party.room, mode: 1, teamSize: r.party.teamSize, party: r.party.code }); }
   catch (e) {
     if (!isGone(e)) { app.update({ partyError: "stale" }); return; }
-    app.update({ party: null, partyMe: null, partyError: "gone" }); toast(LABELS.partyGone, 2500); go("modes"); }
+    app.update({ party: null, partyMe: null, partyError: "gone" }); toast(getLabels().partyGone, 2500); go("modes"); }
   finally { atualizando = false; }
 }
 export async function leaveParty() {
@@ -350,8 +355,8 @@ export async function startParty() {
   try { const a = await api.auto({ mode: 1, teamSize: p.teamSize }); if (a && a.code) code = a.code; } catch { /* toast abaixo */ }
   // sem sala não se começa: o servidor gravaria `room:null` e os companheiros ficariam presos para sempre
   // esperando o `started && room` do polling — o líder entraria na partida sozinho e ninguém saberia.
-  if (!code) { toast(LABELS.partyNoRoom, 2500); return; }
-  try { await api.partyStart(p.code, code); } catch (e) { toast(e.message, 2500); return; }
+  if (!code) { toast(getLabels().partyNoRoom, 2500); return; }
+  try { await api.partyStart(p.code, code); } catch (e) { toast(errText(e, "party"), 2500); return; }
   play({ room: code, mode: 1, teamSize: p.teamSize, party: p.code });
 }
 export function leaveGame(screen = "lobby") {
@@ -416,7 +421,7 @@ export function onConnection(ev) {
   else if (st === "closed" || st === "error") {
     const s = app.get();
     app.update({ conn: "closed", overlays: { ...s.overlays, reconn: false } });
-    if (s.screen === "game") { toast(ev.message || (ev.code === "FULL" ? LABELS.roomFull : LABELS.connLost), 3000); leaveGame("lobby"); }
-    else if (ev.message) toast(ev.message, 3000);
+    if (s.screen === "game") { toast(errText(ev), 3000); leaveGame("lobby"); }
+    else if (ev.code || ev.message) toast(errText(ev), 3000);
   }
 }

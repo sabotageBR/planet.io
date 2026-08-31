@@ -6,7 +6,7 @@ import { app } from "../state/app.js";
 import { play, leaveGame } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
-import { fmt } from "./format.js";
+import { fmt, ord } from "./format.js";
 import { sfx } from "../audio/index.js";
 
 const ORDER = [1, 0, 2];   // 2º | 1º | 3º
@@ -26,7 +26,7 @@ export default function Round({ on }) {
     tick(); const t = setInterval(tick, 250); return () => clearInterval(t);
   }, [on, r]);
   if (!on || !r) return <div className={"screen" + (on ? " on" : "")} id="s-round" />;
-  const board = r.board || [], mine = r.mySlot, rest = board.slice(3), places = LB.places || ["1º", "2º", "3º"];
+  const board = r.board || [], mine = r.mySlot, rest = board.slice(3), places = [ord(1), ord(2), ord(3)];
   const d = r.destaques || null;
   return <div className="screen on" id="s-round"><div className="card dead-card">
     <div className="dead-icon">{LB.roundIcon}</div>
@@ -62,7 +62,16 @@ export default function Round({ on }) {
       <div><b>{left}s</b><i>{LB.nextRoom}</i></div>
       <div><b className={pending ? "pending" : ""}>{rew ? "+" + (rew.coinsEarned || 0) : pending ? LB.saving : "—"}</b><i>{LB.coinsEarned}</i></div>
     </div>
-    {rest.length ? <table>
+    <div className="dead-actions">
+      <button className="btn-primary" data-go="play" onClick={() => { fired.current = true; play({}); }}>{LB.enterNow}</button>
+      <button className="btn-secondary" data-go="lobby" onClick={() => { fired.current = true; leaveGame("lobby"); }}>{LB.toLobby}</button>
+    </div>
+  </div>
+  {/* O resto do placar vira o SEGUNDO cartão — o mesmo par de painéis da tela inicial, e pelo mesmo
+      motivo: o pódio já tem ícone, título, três degraus, quatro destaques e três números; empilhar mais
+      uma tabela de seis colunas dentro dele fazia a caixa rolar por dentro. Ele já nascia condicional,
+      então numa rodada de três jogadores o cartão some sozinho. */}
+  {rest.length ? <div className="card round-side"><div className="ph">{LB.restOfBoard}</div><table>
       <thead><tr><th>{LB.posWord}</th><th>{LB.youLabel}</th><th className="num">{LB.massLabel}</th>
         <th className="num c-food">{LB.stats.foodEaten}</th><th className="num c-kills">{LB.stats.kills}</th><th className="num c-kd">{LB.stats.kd}</th></tr></thead>
       <tbody>{rest.map((b, i) => <tr key={b.key || b.slot} className={(b.slot === mine ? "mine" : "") + (b.left ? " left" : "")}>
@@ -75,10 +84,6 @@ export default function Round({ on }) {
         <td className="num c-kills">{fmt(b.kills || 0)}</td>
         <td className="num c-kd">{(b.kd || 0).toFixed(2)}</td>
       </tr>)}</tbody>
-    </table> : null}
-    <div className="dead-actions">
-      <button className="btn-primary" data-go="play" onClick={() => { fired.current = true; play({}); }}>{LB.enterNow}</button>
-      <button className="btn-secondary" data-go="lobby" onClick={() => { fired.current = true; leaveGame("lobby"); }}>{LB.toLobby}</button>
-    </div>
-  </div></div>;
+    </table></div> : null}
+  </div>;
 }

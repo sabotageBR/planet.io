@@ -12,7 +12,7 @@ Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`.
 | POST | `/api/auth/google` (🔒 opcional) | `{idToken, nick?}` | `{token,user}` · 401 `invalid_credentials` · 409 `email_taken`/`nick_reserved` · 503 `google_disabled` |
 | GET | `/api/me` 🔒 | — | `{user:{id,nick,kind,coins,equippedSkin,createdAt}, skins:[ids], prefs, stats, achievements:[keys]}` |
 | PATCH | `/api/me` 🔒 | `{nick}` | `{user}` · 409 `nick_reserved {suggestion}` |
-| PATCH | `/api/me/prefs` 🔒 | `{…}` (whitelist: quality, showNames, showMass, showGrid, showMinimap, showFps, sound, music, ambience, volume, musicVolume, chat, voice, voiceVolume, joystick, holdEject, rightSplit, keySplit/keyEject (`KeyboardEvent.code` de `ACTION_KEYS`), theme('auto'|'dawn'|'sunset'|'dusk'), reduceMotion, bigText, colorblind, lbSize) | `{prefs}` |
+| PATCH | `/api/me/prefs` 🔒 | `{…}` (whitelist: quality, showNames, showMass, showGrid, showMinimap, showFps, sound, music, ambience, volume, musicVolume, chat, voice, voiceVolume, joystick, holdEject, rightSplit, keySplit/keyEject (`KeyboardEvent.code` de `ACTION_KEYS`), theme('auto'|'dawn'|'sunset'|'dusk'), lang('auto'|'pt-BR'|'en'|'es'), reduceMotion, bigText, colorblind, lbSize) | `{prefs}` |
 | GET | `/api/me/history?limit=20&before=<id>` 🔒 | — | `{matches:[{id,endedAt,score,maxMass,kills,durationS,cause,coinsEarned,roomCode,by}]}` |
 | GET | `/api/skins` (🔒 opcional) | — | `{skins:[catálogo], owned:[ids], equipped}` |
 | POST | `/api/skins/:id/buy` 🔒 | — | `{coins, owned}` · 402 `insufficient_coins` · 409 `already_owned` · 403 `not_purchasable` |

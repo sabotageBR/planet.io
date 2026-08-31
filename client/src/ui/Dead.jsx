@@ -5,6 +5,7 @@ import { gameRef } from "../state/game.js";
 import { play, leaveGame } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { fmt, fmtTime, ord } from "./format.js";
+import { preenche } from "../i18n/index.js";
 import { sfx } from "../audio/index.js";
 
 const EMPTY_SPEC = { get: () => ({ spec: null }), subscribe: () => () => {} };
@@ -40,7 +41,7 @@ export default function Dead({ on }) {
     {m.byZone
       ? <div className="dead-by zone"><b id="d-by">{LB.deadByZone}</b></div>
       : <div className="dead-by"><span id="d-by-lab">{m.byHole ? LB.suckedBy : LB.eatenBy}</span><b id="d-by">{m.by || "—"}</b></div>}
-    {m.placement ? <div className="dead-place"><b>{ord(m.placement)}</b><i>{LB.placementWord} {m.players ? `de ${m.players}` : ""}</i></div> : null}
+    {m.placement ? <div className="dead-place"><b>{ord(m.placement)}</b><i>{LB.placementWord} {m.players ? preenche(LB.fmt.of, { n: m.players }) : ""}</i></div> : null}
     <div className="dead-stats">
       <div><b id="d-mass">{fmt(m.maxMass)}</b><i>{LB.massLabel}</i></div>
       <div><b id="d-kills">{m.kills || 0}</b><i>{LB.killsWord}</i></div>

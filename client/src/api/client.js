@@ -38,7 +38,10 @@ async function request(method, path, body, { auth = true, raw = false, contentTy
   try { data = text ? JSON.parse(text) : null; } catch { /* corpo não-JSON */ }
   if (!res.ok) {
     if (data && data.error) throw new ApiError(res.status, data.error, data.message || data.error, data);
-    throw new ApiError(res.status, res.status >= 500 ? "unreachable" : "http_" + res.status, res.status >= 500 ? "Servidor indisponível" : "Erro " + res.status);
+    // O código é o que o cliente traduz (i18n/errors.js); a mensagem daqui é só o paraquedas do paraquedas.
+    // `http` leva o status no `data` para o molde "Erro {n}" — antes o código era "http_404", que nenhum
+    // dicionário conseguiria cobrir sem uma entrada por status.
+    throw new ApiError(res.status, res.status >= 500 ? "unreachable" : "http", res.status >= 500 ? "Servidor indisponível" : "Erro " + res.status, { status: res.status });
   }
   return data;
 }
