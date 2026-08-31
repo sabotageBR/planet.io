@@ -10,7 +10,7 @@ import { skinName, rarityLabel } from "../i18n/catalog.js";
 import { keysOf } from "../game/input/Keyboard.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { go, openAccount, setNick, loadTop5 } from "../state/actions.js";
+import { go, setNick, loadTop5 } from "../state/actions.js";
 import GoogleButton from "./GoogleButton.jsx";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { useInterval } from "../hooks/useInterval.js";
@@ -19,6 +19,7 @@ import SkinPreview from "./SkinPreview.jsx";
 import Logo from "./Logo.jsx";
 import NavIcon from "./NavIcons.jsx";
 import { fmt } from "./format.js";
+import { nickSorteado } from "../util/nick.js";
 
 export default function Entry({ on }) {
   return <Screen id="entry" on={on} className="entry-wrap entry-v2">{on ? <Body /> : null}</Screen>;
@@ -39,10 +40,17 @@ function Body() {
   const carregou = useStore(app, s => s.top5At) > 0;
   const temLado = !carregou || top5.length > 0;
   const user = session.user || {}, sk = skinById(user.equippedSkin ?? 0), guest = user.kind !== "registered";
-  const [nick, setNickLocal] = useState(user.nick || "");
-  useEffect(() => { setNickLocal(user.nick || ""); }, [user.nick]);
+  // O `Viajante-NNNN` do cadastro de convidado NÃO é uma escolha: pré-preenchê-lo faz o campo parecer
+  // já respondido, e o jogador entra com uma placa sorteada sem perceber que podia se nomear. Vazio, o
+  // placeholder PEDE o nome — e quem já tem um nick escolhido continua vendo o dele.
+  const nickDoUsuario = nickSorteado(user.nick) ? "" : user.nick;
+  const [nick, setNickLocal] = useState(nickDoUsuario);
+  useEffect(() => { setNickLocal(nickDoUsuario); }, [nickDoUsuario]);
   useInterval(loadTop5, 5000, true);   // só o TOP 5: pedir a lista de salas para não desenhá-la é o mesmo erro que a coluna escondida dos temas já foi
-  const commit = async () => { if (nick.trim() !== (user.nick || "")) { const r = await setNick(nick); if (!r.ok) setNickLocal(user.nick || ""); } };
+  // ⚠️ Campo VAZIO é "ainda não escolhi", não erro: sem esta guarda o `setNick("")` recusaria com o
+  // toast de nick curto e o `if(!r.ok)` devolveria o `Viajante-NNNN` para dentro do campo — ou seja,
+  // sair do campo (ou clicar em JOGAR) desfaria exatamente o que o placeholder existe para pedir.
+  const commit = async () => { const v = nick.trim(); if (!v || v === (user.nick || "")) return; const r = await setNick(v); if (!r.ok) setNickLocal(nickDoUsuario); };
   const links = [["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
   // A dica é a primeira coisa que alguém lê: com as teclas configuráveis, cravar "ESPAÇO/W" nela seria
   // mentir para exatamente quem foi lá trocar.
@@ -63,7 +71,7 @@ function Body() {
           <span className="id-swap">{LB.swap}</span>
         </button>
         <div className="id-fields">
-          <Field id="nameIn" label={LB.nameLabel} maxLength={16} autoComplete="off" value={nick}
+          <Field id="nameIn" label={LB.nameLabel} placeholder={LB.namePlaceholder} maxLength={16} autoComplete="off" value={nick}
             onChange={e => setNickLocal(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} />
           <div className="skinmeta"><b id="m-skin">{skinName(sk)}</b><i id="m-rar" style={{ color: RC[sk.rarity] || "#999" }}>{rarityLabel(sk.rarity)}</i></div>
         </div>
@@ -73,7 +81,9 @@ function Body() {
         <button key={s} className="btn-secondary" data-go={s} onClick={() => go(s)}><NavIcon k={s} /><span>{l}</span></button>)}</div>
       <div className="guest-note" data-kind={guest ? "guest" : "registered"}>
         <span className="gn-txt">{guest ? LB.guestNote : LB.registered}{session.online === false ? ` · ${session.server === false ? LB.offlineNote : LB.noDbNote}` : ""}</span>
-        {guest ? <button className="btn-link" data-go="account" onClick={openAccount}>{LB.claim}</button> : null}
+        {/* "Reivindicar conta" saiu daqui: a porta de entrada é para JOGAR, e o cadastro por senha
+            continua a um toque de distância no Perfil (`pf-claim`, o MESMO `openAccount`). O que fica é
+            o Google, que resolve a conta inteira num clique. */}
         {guest ? <GoogleButton type="icon" /> : null}
       </div>
       <div className="hint">{dica}</div>

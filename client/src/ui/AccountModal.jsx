@@ -7,13 +7,13 @@ import { errText } from "../i18n/errors.js";
 import { COUNTRIES, POPULAR, flagOf, countryName } from "@warspace/shared";
 import { Field, Select } from "./bits.jsx";
 import GoogleButton from "./GoogleButton.jsx";
+import { nickSorteado } from "../util/nick.js";
 
 const PAISES = [...POPULAR, ...COUNTRIES.map(([c]) => c).filter(c => !POPULAR.includes(c))];
 /** Sugestão pelo idioma do navegador ("pt-BR" → "BR"). Só PREENCHE o campo; quem salva é o usuário. */
 const paisSugerido = () => { const p = (navigator.language || "").split("-")[1]; return p && PAISES.includes(p.toUpperCase()) ? p.toUpperCase() : ""; };
-/** O nick vira sugestão de usuário — MENOS o `Viajante-NNNN` sorteado: são 9000 valores, e pré-preencher
- *  com ele daria colisão de aniversário (~50 % em ~110 contas) num campo que agora é único de verdade. */
-const sugereLogin = nick => (!nick || /^Viajante-\d{4}$/.test(nick) ? "" : nick);
+/** O nick vira sugestão de usuário — MENOS o `Viajante-NNNN` sorteado (ver util/nick.js). */
+const sugereLogin = nick => (nickSorteado(nick) ? "" : nick);
 export default function AccountModal({ on }) {
   return <div className={"overlay" + (on ? " on" : "")} id="s-account" onClick={e => { if (e.target === e.currentTarget) closeAccount(); }}>{on ? <Body /> : null}</div>;
 }

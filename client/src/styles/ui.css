@@ -1253,6 +1253,10 @@ body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-side{grid-area:si
 #s-entry .entry-wrap.entry-v2 .entry-id .field{order:0;align-items:stretch}
 #s-entry .entry-wrap.entry-v2 .entry-id .field label{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted,#8fa0d8)}
 #s-entry .entry-wrap.entry-v2 .entry-id .field input{width:100%;max-width:none;text-align:left;border-radius:var(--radius,12px)}
+/* O campo nasce VAZIO de propósito (o `Viajante-NNNN` sorteado não é escolha de ninguém), então o
+   placeholder é o PEDIDO — e pedido ilegível não pede nada: o input é #fff sobre #12183a nos três temas,
+   onde o cinza padrão do navegador quase desaparece. Translúcido para pesar menos que o nome digitado. */
+#s-entry .entry-wrap.entry-v2 .entry-id .field input::placeholder{color:var(--muted,#8fa0d8);opacity:.85;font-weight:600}
 #s-entry .entry-wrap.entry-v2 .entry-id .skinmeta{order:1}
 .entry-id .skinmeta{flex-direction:row;align-items:baseline;gap:7px;min-width:0}
 .entry-id .skinmeta b{font-size:13px;color:var(--text,#fff5c2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
