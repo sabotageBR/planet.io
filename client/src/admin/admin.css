@@ -94,3 +94,16 @@ html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:no
   color:#ffd9e0;display:flex;justify-content:space-between;gap:12px;font-size:13px}
 .ad-erro button{background:none;border:0;color:inherit;cursor:pointer}
 .ad-login .ad-erro{margin:0}
+
+/* ── Parâmetros por categoria ────────────────────────────────────────────────
+   A tabela corrida punha o teto do ímã ao lado do jeito de falar dos bots como se fossem a mesma
+   decisão. O título gruda no topo ao rolar: com seis seções, saber em qual delas se está é metade da
+   leitura. `.ad-tab tbody tr{cursor:pointer}` vale para as tabelas em que a LINHA é um link (contas,
+   salas); aqui quem é clicável é o controle, então a mão volta a ser seta. */
+.ad-grupo{margin:0 0 22px}
+.ad-grupo:last-child{margin-bottom:0}
+.ad-grupo>h3{position:sticky;top:0;z-index:1;background:var(--surf);padding:6px 0 5px;margin:0 0 2px;
+  border-bottom:1px solid var(--line)}
+.ad-grupo .ad-tab tbody tr{cursor:default}
+.ad-grupo .ad-tab tbody tr:hover{background:none}
+.ad-grupo select{max-width:100%}

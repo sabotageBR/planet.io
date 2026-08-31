@@ -321,7 +321,7 @@ protege a tela dos outros. Sem histórico — quem entra não recebe o que já p
 Painel numa faixa vertical à ESQUERDA, no meio: os cantos esquerdos já são do placar e do bloco de massa nos três
 temas. Enter abre, Esc fecha, e o `inInput()` do teclado do jogo já garante que digitar não divide o planeta.
 
-## Voz (Ctrl)
+## Voz (K)
 
 Push-to-talk: segurar grava, soltar manda. O servidor é **relay puro** — valida tamanho/duração/cooldown/teto da
 sala e reenvia os bytes, sem decodificar e sem guardar nada.

@@ -1,16 +1,21 @@
-// ── TECLADO: dividir e ejetar são CONFIGURÁVEIS; F = atirar, Q = trocar de arma, Ctrl = falar ──
+// ── TECLADO: dividir e ejetar são CONFIGURÁVEIS; F = atirar, Q = trocar de arma, K = falar ──
 // `inInput()` ignora tudo com o foco num campo de texto — é o que faz digitar no chat NÃO dividir o
-// planeta, e vale de graça para o Ctrl também.
+// planeta, e vale de graça para o K também.
 //
 // O MAP era constante de módulo, ou seja, uma tabela só para o processo inteiro. Agora é montado POR
 // INSTÂNCIA a partir das prefs (`keySplit`/`keyEject`, ver shared/constants.js ACTION_KEYS) e refeito
 // no `setKeys` — o motor já repassa as prefs em tempo real (game/index.js), então trocar a tecla na
 // tela de opções vale na partida em curso, sem recarregar.
 import {ACTION_KEYS} from "@warspace/shared";
-const FIXAS={KeyF:"fire",KeyQ:"swap",ControlLeft:"talk",ControlRight:"talk",ArrowLeft:"specPrev",ArrowRight:"specNext",
+// ⚠️ FALAR É `KeyK`, e não mais o Ctrl. O Ctrl é MODIFICADOR: o navegador o reserva (Ctrl+W fecha a aba,
+// Ctrl+D favorita, Ctrl+roda dá zoom na página), o sistema operacional também, e segurá-lo por segundos
+// enquanto se joga com a outra mão sobre WASD deixava toda tecla do jogo virar um atalho em potencial —
+// era por isso que o `keydown` do `talk` precisava de `preventDefault`. Uma letra livre não tem default
+// nenhum para cancelar. K é o padrão de push-to-talk que o jogador de PC já conhece.
+const FIXAS={KeyF:"fire",KeyQ:"swap",KeyK:"talk",ArrowLeft:"specPrev",ArrowRight:"specNext",
   Digit0:"zoomReset"};   // as setas só fazem algo com o jogador morto (trocar de câmera); o 0 devolve o zoom ao automático, no idioma do Ctrl+0 do navegador
-// ⚠️ `Digit0` pode ser FIXA porque não está em ACTION_KEYS (shared/constants.js) — a lista que `keySplit` e
-// `keyEject` podem escolher —, então não há colisão possível com uma tecla configurável.
+// ⚠️ `Digit0` e `KeyK` podem ser FIXAS porque não estão em ACTION_KEYS (shared/constants.js) — a lista que
+// `keySplit` e `keyEject` podem escolher —, então não há colisão possível com uma tecla configurável.
 const PADRAO={split:"Space",eject:"KeyW"};
 /**
  * Monta a tabela `code → ação`. Duas guardas: code fora da lista compartilhada cai no padrão (perfil
@@ -26,7 +31,7 @@ function montaMap(prefs){
 export function createKeyboard({onAction,enabled=()=>true,prefs=null}){
   const held=new Set();let MAP=montaMap(prefs);
   const inInput=()=>{const a=document.activeElement;return a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName);};
-  const kd=e=>{const a=MAP[e.code];if(!a||inInput()||!enabled())return;if(e.code==="Space"||a==="talk")e.preventDefault();if(e.repeat||held.has(a))return;held.add(a);onAction(a,"down");};   // sem preventDefault o Ctrl continua abrindo atalho do navegador
+  const kd=e=>{const a=MAP[e.code];if(!a||inInput()||!enabled())return;if(e.code==="Space")e.preventDefault();if(e.repeat||held.has(a))return;held.add(a);onAction(a,"down");};   // o Space rola a página; letra solta não tem default a cancelar
   const ku=e=>{const a=MAP[e.code];if(!a)return;if(held.delete(a))onAction(a,"up");};
   const blur=()=>{for(const a of held)onAction(a,"up");held.clear();};
   addEventListener("keydown",kd);addEventListener("keyup",ku);addEventListener("blur",blur);

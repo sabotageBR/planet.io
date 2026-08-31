@@ -173,9 +173,34 @@ export function aberta(texto,temCitacao=false){
   return 'solta';}
 
 // ── prompt ───────────────────────────────────────────────────────────────────
-const SYSTEM=[
+// ── O TIPO DE CONVERSA (BOT_LLM.ESTILO, ajustável no painel /admin) ──
+// O par id→inglês, no molde exato de PERSONA/PERICIA logo abaixo: o id é shared (o painel precisa dele
+// para desenhar o `<select>`), a instrução é server-only.
+// ⚠️ A chave `misto` é o padrão e é o pedido literal — frases curtas, ofensas, piada ou comentário curto.
+// As outras existem para o dia em que a sala pedir um tom só; escolher UMA estreita a fala de propósito.
+const ESTILO_PROMPT={
+  misto:'Mix it up line to line: a very short reply, a jab at someone, a quick joke, or a short comment on the match.',
+  curta:'Keep every line very short: a few words, like someone typing fast with one hand.',
+  ofensa:'Trash talk. Mock whoever is beating you or whoever you just ate, by name.',
+  piada:'Make a quick joke, preferably playing with the other player\'s name.',
+  comentario:'Just comment on what is happening in the match right now, in a few words.',
+  seco:'Keep it dry and matter of fact. Do not mock anyone.',
+};
+/**
+ * O SYSTEM é MONTADO A CADA GERAÇÃO, não é mais uma const de módulo — porque duas coisas dentro dele
+ * agora saem de `constants.js` e podem mudar em RUNTIME pelo painel (o teto de palavras e o tipo de
+ * conversa), e uma string montada no import congelaria as duas no valor do boot.
+ * ⚠️ E ditar o teto AQUI é o que faz o parâmetro funcionar: `sanitiza` RECUSA a linha grande em vez de
+ * cortá-la, então baixar o teto sem contar ao modelo deixaria o bot mudo em vez de breve.
+ * O "usually" é ~3/4 do teto duro de propósito: é essa folga que mantém a taxa de veto baixa.
+ */
+function montaSystem(){
+  const W=Math.max(4,BOT_LLM.MAX_WORDS|0),usual=Math.max(3,Math.round(W*.75));
+  return [
   'You are a player in a fast multiplayer .io game about planets that eat each other. You are NOT an assistant.',
-  'Write ONE short chat line, like a real player typing mid-match: usually under 12 words, never more than 16.',
+  `Write ONE short chat line, like a real player typing mid-match: usually under ${usual} words, never more than ${W}.`,
+  'Never write a full, well-formed sentence with punctuation: that is what gives a bot away. Write like a person in a hurry.',
+  ESTILO_PROMPT[BOT_LLM.ESTILO]||ESTILO_PROMPT.misto,
   'Lowercase is fine, typos are fine.',
   'Be funny and cocky. Trash talk and mockery are welcome, and mild swearing is fine.',
   'Hard limit: no sexual insults, no slurs, nothing about anyone\'s family, body or identity. Provoke about the GAME.',
@@ -195,7 +220,7 @@ const SYSTEM=[
   'React to what is happening to you in the match: if someone is chasing or shooting you, say it TO THEM, by name.',
   'Stay in character. You are typing, not narrating.',
   'Never explain yourself, never use quotes, never use emoji, never mention being an AI, never write more than one line.',
-].join(' ');
+].join(' ');}
 /** Estilo do bot em palavras que o modelo entende (persona = como joga, perícia = quão bem). */
 const PERSONA={cacador:'aggressive hunter',fazendeiro:'cautious farmer',oportunista:'opportunist'};
 const PERICIA={ruim:'clumsy and losing',medio:'average',bom:'good',fera:'dominating the match'};
@@ -375,6 +400,7 @@ export function montaPrompt(c){
   const alvo=dirigida&&c.texto
     ?`[${c.quem||'someone'} says to YOU: "${c.texto}"]\n${ordem}\n`
     :(lang?`${ordem}\n`:'');
+  const SYSTEM=montaSystem();
   const sys=h?`${SYSTEM} You sometimes end your line with "${h.bordao}", but rarely.`:SYSTEM;
   // ORDEM: quem ele é → a PARTIDA em volta → o que está vivendo → o que a sala viu → o gatilho → a
   // conversa → a linha dirigida. O que está mais perto do fim pesa mais, e por isso a partida vem cedo

@@ -179,34 +179,67 @@ function Aviso({ erro }) {
   </div>;
 }
 
+// ── PARÂMETROS ───────────────────────────────────────────────────────────────
+// A tela é montada INTEIRAMENTE a partir do descritor que o servidor manda (shared/src/tunables.js): as
+// seções saem de `grupo`, e que controle desenhar sai de `type`. Parâmetro novo aparece aqui — na seção
+// certa e com o controle certo — sem uma linha de painel.
 function Parametros({ erro }) {
-  const [ts, setTs] = useState([]), [edit, setEdit] = useState({});
-  const carregar = async () => { try { setTs((await api.settings()).tunables); } catch (e) { erro(e.message); } };
+  const [ts, setTs] = useState([]), [grupos, setGrupos] = useState([]), [edit, setEdit] = useState({});
+  const carregar = async () => {
+    try { const r = await api.settings(); setTs(r.tunables); setGrupos(r.grupos || []); }
+    catch (e) { erro(e.message); }
+  };
   useEffect(() => { carregar(); }, []);
-  const salvar = async t => { try { await api.setSetting(t.key, Number(edit[t.key])); setEdit(e => ({ ...e, [t.key]: undefined })); carregar(); } catch (e) { erro(e.message); } };
+  // ⚠️ O valor vai CRU. Com `Number()` aqui, o tipo de conversa viraria NaN a caminho do servidor — o
+  // descritor é quem sabe converter, e ele mora do outro lado.
+  const salvar = async (t, v) => {
+    try { await api.setSetting(t.key, v); setEdit(e => ({ ...e, [t.key]: undefined })); carregar(); }
+    catch (e) { erro(e.message); }
+  };
   const voltar = async t => { try { await api.resetSetting(t.key); carregar(); } catch (e) { erro(e.message); } };
+  const val = t => (edit[t.key] !== undefined ? edit[t.key] : t.value);
+  const sujo = t => edit[t.key] !== undefined;
+  // Seção sem nenhum parâmetro não é desenhada; o que sobrar de um grupo não declarado cai em "Outros",
+  // que é a rede de segurança para um descritor com `grupo` errado — melhor visível do que sumido.
+  const secoes = [...grupos, ["", "Outros"]]
+    .map(([g, titulo]) => [titulo, ts.filter(t => (t.grupo || "") === g)])
+    .filter(([, linhas]) => linhas.length);
+
+  const linha = t => <tr key={t.key} className={t.changed ? "mudado" : ""}>
+    <td><b>{t.label}</b><em>{t.key}</em></td>
+    <td className={t.type === "opt" ? "" : "n"}>
+      {t.scope !== "server"
+        ? <span>{num(t.value)}</span>
+        : t.type === "opt"
+          // A escolha grava no CHANGE: um `<select>` com botão "Salvar" ao lado é um passo a mais para
+          // uma decisão que já foi tomada no instante em que o item foi escolhido.
+          ? <select value={val(t)} onChange={e => salvar(t, e.target.value)}>
+              {t.options.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+            </select>
+          : <input type="number" min={t.min} max={t.max} step={t.step} value={val(t)}
+              onChange={e => setEdit(x => ({ ...x, [t.key]: e.target.value }))} />}
+      {t.unit ? <small> {t.unit}</small> : null}</td>
+    <td className={t.type === "opt" ? "" : "n"}>
+      {t.type === "opt" ? <small>{(t.options.find(o => o.v === t.def) || {}).label || t.def}</small> : num(t.def)}</td>
+    <td className="n">{t.type === "opt" ? <small>{t.options.length} opções</small> : <small>{t.min} – {t.max}</small>}</td>
+    <td>{t.scope === "server"
+      ? <>{sujo(t) ? <button className="pri" onClick={() => salvar(t, Number(edit[t.key]))}>Salvar</button> : null}
+         {t.changed ? <button onClick={() => voltar(t)}>Restaurar</button> : null}</>
+      : <small className="dica">também lido pelo cliente</small>}</td>
+  </tr>;
+
   return <div className="ad-form larga">
     <h2>Parâmetros de jogo</h2>
     <p className="dica">Valem para as salas deste momento em diante, em todos os shards. Os parâmetros que o
       CLIENTE também lê ficam desabilitados: mudá-los de um lado só faria a predição divergir.</p>
-    <table className="ad-tab">
-      <thead><tr><th>parâmetro</th><th>valor</th><th>padrão</th><th>faixa</th><th /></tr></thead>
-      <tbody>{ts.map(t => <tr key={t.key} className={t.changed ? "mudado" : ""}>
-        <td><b>{t.label}</b><em>{t.key}</em></td>
-        <td className="n">
-          {t.scope === "server"
-            ? <input type="number" min={t.min} max={t.max} step={t.step}
-                value={edit[t.key] !== undefined ? edit[t.key] : t.value}
-                onChange={e => setEdit(x => ({ ...x, [t.key]: e.target.value }))} />
-            : <span>{num(t.value)}</span>} <small>{t.unit}</small></td>
-        <td className="n">{num(t.def)}</td>
-        <td className="n"><small>{t.min} – {t.max}</small></td>
-        <td>{t.scope === "server"
-          ? <>{edit[t.key] !== undefined ? <button className="pri" onClick={() => salvar(t)}>Salvar</button> : null}
-             {t.changed ? <button onClick={() => voltar(t)}>Restaurar</button> : null}</>
-          : <small className="dica">também lido pelo cliente</small>}</td>
-      </tr>)}</tbody>
-    </table>
+    {secoes.map(([titulo, linhas]) => <section key={titulo} className="ad-grupo">
+      <h3>{titulo}</h3>
+      <table className="ad-tab">
+        <thead><tr><th>parâmetro</th><th>valor</th><th>padrão</th><th>faixa</th><th /></tr></thead>
+        <tbody>{linhas.map(linha)}</tbody>
+      </table>
+    </section>)}
+    {!secoes.length ? <p className="vazio">…</p> : null}
   </div>;
 }
 

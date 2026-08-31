@@ -160,7 +160,7 @@ export const KIT={
               {t:"tom",type:"square",f0:95,f1:48,dur:.4,gain:.07,at:.05}],
   chatIn:    [{t:"tom",type:"sine",f0:1320,dur:.045,gain:.07},                              // discreto de propósito: o chat não pode competir com o jogo
               {t:"tom",type:"sine",f0:1760,dur:.06,gain:.05,at:.04}],
-  micOn:     [{t:"tom",type:"sine",f0:660,f1:990,dur:.09,gain:.11}],                        // o microfone abriu (confirmação tátil do Ctrl)
+  micOn:     [{t:"tom",type:"sine",f0:660,f1:990,dur:.09,gain:.11}],                        // o microfone abriu (confirmação tátil do K)
   micOff:    [{t:"tom",type:"sine",f0:880,f1:520,dur:.1,gain:.09}],
   fireUp:    [{t:"ruido",f0:900,f1:2600,dur:.55,gain:.05,q:6},                                // assobio da subida: ruído bem estreito subindo
               {t:"tom",type:"sine",f0:520,f1:1500,dur:.55,gain:.05}],

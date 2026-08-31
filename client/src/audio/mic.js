@@ -1,4 +1,4 @@
-// ── MICROFONE: push-to-talk (Ctrl) → clipe curto µ-law 8 kHz → fio ───────────
+// ── MICROFONE: push-to-talk (K) → clipe curto µ-law 8 kHz → fio ──────────────
 // Por que µ-law e não Opus: `MediaRecorder` grava webm/opus no Chrome/Firefox e mp4/aac no Safari, e o
 // Safari NÃO decodifica webm — um clipe gravado no Chrome sairia MUDO para metade da sala. µ-law é 4×
 // mais gordo (8 KB/s, então VOICE.MAX_MS = 40 KB) e em troca é 100% previsível: o AudioBuffer é montado
@@ -53,14 +53,14 @@ function toMuLaw(src,rate){
 /**
  * @param {{audio:any,send:(d:Uint8Array)=>void,onState:(s:any)=>void,onTalk?:(on:boolean)=>void}} o
  * `onTalk(on)` avisa a REDE que o microfone abriu/fechou: é o que acende o ícone de "falando" em cima do
- * planeta dos outros no INSTANTE do Ctrl. O clipe só chega quando a tecla é solta — esperar por ele
+ * planeta dos outros no INSTANTE do K. O clipe só chega quando a tecla é solta — esperar por ele
  * deixaria o ícone sempre atrasado em relação a quem está falando.
  */
 export function createMic({audio,send,onState,onTalk=null}){
   let stream=null,node=null,src=null,ctx=null,chunks=[],total=0,startAt=0,rec=false,quer=false,cdUntil=0,timer=0,erro=null,aviso=null;
   const writer=createWriter(VOICE.MAX_BYTES+256);
   const vivo={on:true,ms:0,k:0};
-  /** Recusa visível: o HUD precisa dizer POR QUE nada aconteceu, senão segurar o Ctrl no cooldown parece bug. */
+  /** Recusa visível: o HUD precisa dizer POR QUE nada aconteceu, senão segurar o K no cooldown parece bug. */
   const recusa=hint=>{erro=hint;aviso={on:false,hint,until:performance.now()+AVISO_MS};onState(aviso);};
   const m={error:()=>erro,
     /** Está gravando agora? (o HUD desenha o círculo por este estado) */
@@ -81,7 +81,7 @@ export function createMic({audio,send,onState,onTalk=null}){
       try{
         ctx=audio.ctx();if(!ctx){quer=false;recusa("audio");return;}
         if(!stream)stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
-        // Soltou o Ctrl enquanto o navegador pedia permissão. A guarda velha testava `node`, que é null na
+        // Soltou o K enquanto o navegador pedia permissão. A guarda velha testava `node`, que é null na
         // PRIMEIRA vez — então o mic abria sozinho e só fechava no teto de 5 s. `quer` é escrito por stop().
         if(!quer){m._teardown();return;}
         chunks=[];total=0;
@@ -101,7 +101,7 @@ export function createMic({audio,send,onState,onTalk=null}){
         if(onTalk)onTalk(true);
         tick();
       }catch(e){quer=false;m._teardown();recusa(e&&e.name==="NotAllowedError"?"denied":"fail");}},
-    /** Soltou o Ctrl (ou estourou o tempo): fecha, codifica e manda. */
+    /** Soltou o K (ou estourou o tempo): fecha, codifica e manda. */
     stop(){
       const gravava=rec;quer=false;
       if(!gravava){m._teardown();return;}                             // soltou durante o pedido de permissão
@@ -110,7 +110,7 @@ export function createMic({audio,send,onState,onTalk=null}){
       m._teardown();
       if(onTalk)onTalk(false);
       audio.play("micOff",{mine:true,bus:"ui"});
-      if(ms<VOICE.MIN_MS){onState(null);return;}                      // toque acidental no Ctrl não vira áudio
+      if(ms<VOICE.MIN_MS){onState(null);return;}                      // toque acidental no K não vira áudio
       const flat=new Float32Array(total);let o=0;for(const c of chunks){flat.set(c,o);o+=c.length;}
       chunks=[];
       let data=toMuLaw(flat,rate);

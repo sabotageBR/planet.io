@@ -4,9 +4,9 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {createWorld} from "../src/physics/index.js";
-import {POWERUP,FOOD,FOOD_TYPE,PLAYER} from "../src/constants.js";
+import {POWERUP,FOOD,FOOD_TYPE,PLAYER,BOT_LLM} from "../src/constants.js";
 import {PIECE_FLAG} from "../src/protocol/constants.js";
-import {listTunables,applyTunable,resetTunable,readTunable,TUNABLE_BY_KEY} from "../src/tunables.js";
+import {listTunables,applyTunable,resetTunable,readTunable,TUNABLE_BY_KEY,GRUPOS} from "../src/tunables.js";
 
 const empty=(seed=1)=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false});
 /** Uma peça de raio `r` come um ímã: ela ganha o poder? (2 passos — o flag sai na integração seguinte) */
@@ -41,12 +41,36 @@ test("tunables: a lista branca é o mecanismo — nada fora dela é gravável",(
   assert.equal(PLAYER.MAX_PIECES,16,"e nada disso encostou na constante");});
 
 test("tunables: todo descritor é coerente (faixa contém o padrão, e o escopo é declarado)",()=>{
+  const gs=new Set(GRUPOS.map(g=>g[0]));
   for(const t of listTunables()){
-    assert.ok(t.min<=t.def&&t.def<=t.max,`${t.key}: o padrão (${t.def}) tem que caber na faixa ${t.min}–${t.max}`);
-    assert.ok(t.label&&t.unit,`${t.key}: precisa de rótulo e unidade — a UI é montada a partir daqui`);
+    assert.ok(t.label,`${t.key}: precisa de rótulo — a UI é montada a partir daqui`);
+    assert.ok(gs.has(t.grupo),`${t.key}: o grupo '${t.grupo}' não está em GRUPOS, e a seção não seria desenhada`);
+    if(t.type==='opt'){
+      assert.ok(t.options&&t.options.length>1,`${t.key}: uma escolha com menos de duas opções não é escolha`);
+      assert.ok(t.options.some(o=>o.v===t.def),`${t.key}: o padrão tem que ser uma das opções`);
+      for(const o of t.options)assert.ok(o.v&&o.label,`${t.key}: toda opção precisa de id e rótulo`);
+    }else{
+      assert.ok(t.min<=t.def&&t.def<=t.max,`${t.key}: o padrão (${t.def}) tem que caber na faixa ${t.min}–${t.max}`);
+      assert.ok(t.unit,`${t.key}: número sem unidade é número que o admin não sabe ler`);}
     assert.ok(t.scope==='server'||t.scope==='both',`${t.key}: escopo tem que ser 'server' ou 'both'`);
     // ⚠️ 'both' significa que o CLIENTE também lê o número, e ele tem a própria cópia do bundle: a rota do
     // painel RECUSA essas chaves (501) em vez de gravar um valor que só metade do jogo enxerga.
   }
   assert.ok(TUNABLE_BY_KEY.get('PLAYER.MAX_R').scope==='both',"PLAYER.MAX_R é lido pela predição do cliente");
   assert.ok(TUNABLE_BY_KEY.get('POWERUP.MAGNET_MAX_R').scope==='server',"o ímã é 100% servidor (predict.js não o consome)");});
+
+test("tunables: a ESCOLHA tem lista branca própria — só um id declarado entra",()=>{
+  const chave='BOT_LLM.ESTILO';
+  try{
+    assert.equal(readTunable(chave),BOT_LLM.ESTILO,"o padrão sai de constants.js");
+    applyTunable(chave,'ofensa');
+    assert.equal(BOT_LLM.ESTILO,'ofensa',"a constante VIVA foi escrita, como nos numéricos");
+    // ⚠️ Esta é a razão de o tipo existir: sem ele o valor passaria por `Number()`, viraria NaN e seria
+    // recusado — o painel diria "salvo" e o parâmetro não valeria nada.
+    assert.throws(()=>applyTunable(chave,'sarcastico'),/out_of_range/,"id fora da lista de opções");
+    assert.throws(()=>applyTunable(chave,7),/out_of_range/,"número também não é um id declarado");
+    assert.equal(BOT_LLM.ESTILO,'ofensa',"e nenhuma das recusas encostou na constante");
+    resetTunable(chave);
+    assert.equal(BOT_LLM.ESTILO,'misto',"restaurar devolve o padrão do arquivo");
+  }finally{resetTunable(chave);}});
+

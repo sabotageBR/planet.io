@@ -12,7 +12,7 @@ import {err} from './router.js';
 import {verifyPassword,dummyHash} from '../auth/password.js';
 import {normalizeNick,normalizeLogin,loginTaken} from '../auth/nick.js';
 import {cleanCountry} from '@warspace/shared/countries.js';
-import {listTunables,applyTunable,resetTunable,TUNABLE_BY_KEY} from '@warspace/shared/tunables.js';
+import {listTunables,applyTunable,resetTunable,TUNABLE_BY_KEY,GRUPOS} from '@warspace/shared/tunables.js';
 import {LIMITS} from '../auth/ratelimit.js';
 
 const RD={scope:'token',lim:{n:120,win:60e3}};    // leitura
@@ -117,7 +117,9 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
   router.add('GET',/^\/api\/admin\/settings$/,async ctx=>{await requireAdmin(ctx);
     const salvos=settings?await settings.all():[];
     const byKey=new Map(salvos.map(r=>[r.key,r]));
-    return{tunables:listTunables().map(t=>{const s=byKey.get(t.key);
+    // `grupos` vai junto porque a ORDEM das seções é do descritor, não da UI: o painel não decide nem quais
+    // categorias existem nem em que sequência aparecem.
+    return{grupos:GRUPOS,tunables:listTunables().map(t=>{const s=byKey.get(t.key);
       return{...t,changed:!!s,updatedAt:s?s.updated_at:null,updatedBy:s?s.updated_by:null};})};},{rate:RD});
 
   router.add('PUT',/^\/api\/admin\/settings\/(?<key>[A-Za-z0-9_.]+)$/,async ctx=>{const adm=await requireAdmin(ctx);
@@ -129,8 +131,11 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
     let v;try{v=applyTunable(key,ctx.body.value);}
     catch(e){throw err(400,e.message==='out_of_range'?'out_of_range':'unknown_key',
       e.message==='out_of_range'?`o valor tem que ficar entre ${t.min} e ${t.max}`:'esse parâmetro não existe');}
-    if(settings)await settings.set(key,{v:Number(ctx.body.value)},adm.id);
-    reg('setting',adm,ctx,{target:key,detail:{value:Number(ctx.body.value)}});
+    // ⚠️ Grava o valor EFETIVO (o que `applyTunable` devolveu), nunca o corpo cru: com o `Number(...)` de
+    // antes, um tunable de ESCOLHA gravaria NaN no banco e a reconciliação o recusaria a cada 30 s — o
+    // painel diria "salvo" e o parâmetro voltaria sozinho ao padrão, sem erro nenhum na tela.
+    if(settings)await settings.set(key,{v},adm.id);
+    reg('setting',adm,ctx,{target:key,detail:{value:v}});
     return{key,value:v,applied:await espalha(ctx)};},{rate:WR});
 
   router.add('DELETE',/^\/api\/admin\/settings\/(?<key>[A-Za-z0-9_.]+)$/,async ctx=>{const adm=await requireAdmin(ctx);

@@ -99,7 +99,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   /** @type {{id:number,at:number,k:string,how:string,n:number,a:object|null,b:object|null,assist:object|null,mine:boolean}[]} */
   let feedLog=[],feedSeq=0;
   const mic=createMic({audio,send:d=>conn&&conn.send(d),onState:st=>{hudStore.update(h=>({...h,talk:st}));},
-    // O ícone de "falando" tem que acender no INSTANTE do Ctrl, não quando o áudio chega (o clipe só sai ao
+    // O ícone de "falando" tem que acender no INSTANTE do K, não quando o áudio chega (o clipe só sai ao
     // soltar a tecla). Vai como JSON de controle: o servidor repassa para os mesmos ouvintes do clipe.
     onTalk:on=>{if(conn&&conn.isOpen&&joined)conn.sendJson({t:"talk",on:!!on});
       if(view.mySlot>=0)view.setTalking(view.mySlot,on);}});
@@ -355,7 +355,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
      * `scope` é só o PEDIDO de quem já morreu no Battle Royale ("all" = arquibancada, "team" = esquadrão).
      */
     sendChat(text,scope){const t=String(text||"").trim();if(!t||!conn||!joined)return false;conn.sendJson({t:"chat",text:t.slice(0,240),scope:scope||undefined});return true;},
-    /** Push-to-talk pelo botão de toque (o espelho do Ctrl para o mobile). */
+    /** Push-to-talk pelo botão de toque (o espelho do K para o mobile). */
     talk(on){if(!joined)return;if(on)mic.start();else mic.stop();},
     /**
      * Morto: troca de quem é a câmera. `dir` ±1 anda na lista de vivos por massa (a mesma do placar) e

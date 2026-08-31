@@ -24,7 +24,11 @@ export function createTunables({settings,log}){
       const t=TUNABLE_BY_KEY.get(r.key);
       if(!t){log&&log.warn(`tunables: chave desconhecida no banco, ignorada: ${r.key}`);continue;}
       vistos.add(r.key);
-      const v=Number(r.value&&r.value.v!=null?r.value.v:r.value);
+      // ⚠️ NÃO coagir a número: desde o `BOT_LLM.ESTILO` há tunable de ESCOLHA, e `Number('misto')` é NaN
+      // — o valor seria recusado por `applyTunable` e o parâmetro salvo pelo painel simplesmente não
+      // valeria, em silêncio, a cada reconciliação. Quem sabe converter é o descritor.
+      const cru=r.value&&r.value.v!=null?r.value.v:r.value;
+      const v=t.type==='opt'?String(cru):Number(cru);
       if(aplicados.get(r.key)===v)continue;
       try{applyTunable(r.key,v);aplicados.set(r.key,v);n++;
         log&&log.info(`tunable ${r.key} = ${v}`);}

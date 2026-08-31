@@ -33,7 +33,7 @@ export function createWorldView({buffer,predictor}){
       for(const k of lbNow.keys())if(!rows.some(r=>r.slot===k)){lbNow.delete(k);lbPrev.delete(k);}
       lbAt=t;v.lbRaw=rows;v.rebuildLb();},
     /**
-     * Push-to-talk de outro jogador, em TEMPO REAL (JSON `talk`, no instante do Ctrl dele). O clipe de áudio
+     * Push-to-talk de outro jogador, em TEMPO REAL (JSON `talk`, no instante do K dele). O clipe de áudio
      * só chega quando a tecla é solta, então esperar por ele deixaria o ícone sempre atrasado. O `talkWire` do
      * PLAYERS continua valendo em paralelo (é o que o placar já usava) — quem apagar primeiro apaga.
      * Guarda um PRAZO, não um bool: se o `off` se perder no caminho, o ícone apaga sozinho.

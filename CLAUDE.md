@@ -447,6 +447,30 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   do bundle, e mudar de um lado só faria `predict.js` divergir. É por PROCESSO, não por sala.
   O caso pedido é o **teto do ímã**, dito em MASSA (100 000 = √ → 316 px de raio), que é o número que o
   jogador lê no HUD.
+  ⚠️ O descritor ganhou **`grupo`** e **`type`**, e a tela é montada inteira a partir dele: as seções saem
+  de `GRUPOS` (a ORDEM da lista é a ordem na tela) e o controle desenhado sai do tipo. Parâmetro novo
+  aparece na seção certa, com o controle certo, sem uma linha de painel — e um `grupo` errado cai em
+  "Outros" em vez de sumir. `type:'opt'` é o primeiro tunable que NÃO é número (o tipo de conversa dos
+  bots): ele não afrouxa a lista branca, tem uma **segunda** lista branca por dentro (as `options`), e
+  `min/max/step` ficam de fora porque um `<select>` não tem faixa. ⚠️ Ele obrigou a tirar o `Number()` de
+  DOIS lugares que o presumiam — `server/src/tunables.js` (o load, que reconcilia a cada 30 s) e o `PUT`
+  de `api/admin.js` (que gravava o corpo cru): com qualquer um deles, o painel diria "salvo", o banco
+  guardaria `NaN` e o parâmetro voltaria sozinho ao padrão, sem erro em lugar nenhum.
+- **TAMANHO E TIPO DA FALA DOS BOTS** (`BOT_LLM.MAX_WORDS`/`MAX_CHARS`/`ESTILO`, `montaSystem` em
+  `rooms/botChat.js`): a queixa era literal — linhas longas e bem construídas denunciam o bot antes de
+  qualquer outra coisa. Os tetos caíram (16/110 → **12/85**) e os três viraram parâmetro do painel.
+  ⚠️ **O teto tem que ser DITADO ao modelo, não só peneirado**, e é por isso que o `SYSTEM` deixou de ser
+  const de módulo e passa a ser montado a cada geração: `sanitiza` RECUSA a linha grande em vez de
+  cortá-la, então baixar o número sem contar ao modelo não encurtaria a fala — trocaria a fala por uma
+  frase enlatada, deixando o bot mais MUDO em vez de mais breve. O "usually" do prompt é ~3/4 do teto
+  duro: é essa folga que mantém a taxa de veto baixa. Duas medidas porque nenhuma sozinha basta (12
+  palavras compridas passam de 85 chars; 85 chars cabem 20 palavrinhas). ⚠️ `MAX_CHARS` ficou ABAIXO de
+  `HIST_CHARS` e nada quebrou — a desigualdade que o teste travava valia enquanto a fala CRESCIA; o corte
+  do histórico existe para a linha do HUMANO, que vai até `CHAT.MAX_CHARS`. O **ESTILO** é o par
+  id→inglês no molde exato de PERSONA/PERICIA: o id mora em `constants.js` (o painel precisa dele para o
+  `<select>`) e a frase em `ESTILO_PROMPT`, server-only pelo mesmo motivo de `botPersonas.js` — `shared/`
+  vai inteiro para o bundle do `?local=1`, e instrução de LLM não tem o que fazer lá. O padrão `misto` é
+  o pedido literal: frase curta, ofensa, piada ou comentário curto.
 - **Chat e voz** (`CHAT`/`VOICE` em constants): chat de sala ou de equipe (o escopo é do servidor), painel na
   faixa esquerda do HUD. **Quem morreu continua falando** — texto e voz —, e o escopo é UMA função
   (`Room._escopoFala`), porque três caminhos precisam da mesma resposta: a linha, o ícone do 🎤 e o clipe.
@@ -457,12 +481,17 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   SESSÃO (`session.chatScope`) porque a voz não tem onde carregá-lo. ⚠️ A linha de escopo `dead` **não entra no
   prompt da LLM** (`_ctxFala` filtra): quem responde é sempre um bot VIVO, e ele devolveria para a sala inteira
   uma resposta a algo que nenhum vivo leu. ⚠️ E a fala de um morto sai da **câmera** dele (`_origemFala`), não de
-  `_centro`: sem peça no mundo aquilo devolveria a origem do mapa e a voz não alcançaria ninguém. Voz é push-to-talk no **Ctrl**, clipes curtos em **µ-law 8 kHz** — não Opus, porque o
+  `_centro`: sem peça no mundo aquilo devolveria a origem do mapa e a voz não alcançaria ninguém. Voz é push-to-talk no **K** (era o Ctrl: ele é MODIFICADOR — o
+  navegador o reserva (Ctrl+W fecha a aba, Ctrl+roda dá zoom na página) e o sistema também, então
+  segurá-lo por segundos com a outra mão sobre WASD fazia toda tecla do jogo virar atalho em potencial;
+  era por isso que o `keydown` do `talk` precisava de `preventDefault`, que saiu junto — letra solta não
+  tem default a cancelar. `KeyK` pode ser FIXA porque não está em `ACTION_KEYS`, o mesmo argumento do
+  `Digit0`), clipes curtos em **µ-law 8 kHz** — não Opus, porque o
   Safari não decodifica o webm que o Chrome grava e metade da sala ficaria muda. O servidor é relay puro (não
   decodifica, não guarda) e o áudio toca num 4º barramento, fora do teto de vozes. ⚠️ o `maxPayload` do WS
   acompanha `VOICE.MAX_BYTES`: com 4 KB o `ws` derrubava o frame e a conexão junto.
   **Quem está falando aparece no mundo**, em tempo real: o clipe só sai quando a tecla é SOLTA, então o ícone
-  não pode esperar por ele. O cliente manda `{t:"talk",on}` no instante do Ctrl e o servidor (`Room.talkState`)
+  não pode esperar por ele. O cliente manda `{t:"talk",on}` no instante do K e o servidor (`Room.talkState`)
   repassa `{t:"talk",slot,on}` para os MESMOS ouvintes do clipe (`Room._ouvintes`) — quem não ouviria o áudio
   não vê o ícone. JSON de controle, sem versionar o fio binário. O desenho é um sprite assado
   (`theme/util.js:paintTalk`) acima do planeta, em `layers/Planets.js`, com tamanho constante em tela

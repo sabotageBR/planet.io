@@ -78,7 +78,7 @@ export default function Hud() {
   const br = h.mode === MODE.BR, noLobby = !!h.lobby;
   const arma = weaponOf(h.weapon || 0), armaIco = WEAPON_ICON[h.weapon | 0] || WEAPON_ICON[0];
   const falando = h.talk && h.talk.on;
-  // Por que o Ctrl "não fez nada": cooldown, permissão negada, navegador sem captura. O mic guardava esse
+  // Por que o K "não fez nada": cooldown, permissão negada, navegador sem captura. O mic guardava esse
   // motivo desde sempre e NINGUÉM o lia — segurar a tecla nos 3 s seguintes a uma fala parecia bug.
   const talkAviso = h.talk && !h.talk.on ? h.talk.hint : null;
   // cinto: as armas com munição (bit 0 = míssil, sempre presente). Com mais de uma, o chip vira botão de troca.

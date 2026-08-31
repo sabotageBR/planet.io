@@ -743,12 +743,32 @@ export const BOT_LLM={
   // ⚠️ MAX_CHARS e HIST_CHARS eram a MESMA constante, em dois papéis diferentes: o teto do que o bot DIZ
   // e o corte de cada linha do HISTÓRICO que entra no prompt. Separá-las é o que deixa a fala crescer sem
   // engordar o prompt em um caractere — e o prompt já estava estourando PROMPT_MAX_CHARS sem ninguém ver.
-  MAX_WORDS:16,MAX_CHARS:110,  // teto do que sai: acima disso vira parágrafo, e ninguém digita parágrafo em
-                               // partida. Subiu de 14/90 porque uma piada com referência do mundo real não
-                               // cabia em 14 palavras — e a peneira RECUSA em vez de cortar, então o teto
-                               // apertado não encurtava a fala: trocava a fala por uma frase enlatada.
+  // ⚠️ O TETO NÃO É SÓ PENEIRA: ele é DITADO NO PROMPT (`montaSystem`, em rooms/botChat.js). Isto não é
+  // detalhe — a peneira RECUSA em vez de cortar, então baixar o teto sem contar ao modelo não encurta a
+  // fala: troca a fala por uma frase enlatada, e o bot fica mais MUDO em vez de mais breve. Com o número
+  // no prompt, o admin que baixar isto no painel vê a fala encolher de verdade no minuto seguinte.
+  // 12/85 (era 16/110): a queixa é literal — linhas longas e bem construídas denunciam o bot antes de
+  // qualquer outra coisa. Ninguém digita 16 palavras no meio de uma partida. A folga entre o que o prompt
+  // PEDE (~3/4 disto) e o que a peneira ACEITA é o que mantém a taxa de veto baixa.
+  MAX_WORDS:12,MAX_CHARS:85,
   HIST_CHARS:90,               // ...e o corte de cada linha do histórico, que continua onde estava
   TEMP:1.05,NUM_PREDICT:48,
+  // ── QUE TIPO DE CONVERSA É ESTA ──
+  // O SYSTEM sempre pediu "seja engraçado e cheio de si", e só. Isso é um estilo — o problema é que era um
+  // estilo CRAVADO: ajustar o tom da sala exigia deploy. Aqui ele vira uma escolha do painel, no molde de
+  // PERSONA/PERICIA (o id mora no shared, a frase em inglês mora no servidor, em rooms/botChat.js).
+  // ⚠️ Só o ID vive aqui. A frase do prompt é server-only pelo mesmo motivo de `botPersonas.js`:
+  // `shared/` vai inteiro para o bundle do `?local=1`, e instrução de LLM não tem o que fazer lá.
+  ESTILO:'misto',
+  // O rótulo é pt-BR e sai direto no painel /admin, que é exceção declarada ao i18n (ver CLAUDE.md).
+  ESTILOS:[
+    {v:'misto',label:'Misto — curtas, ofensas, piadas e comentários'},
+    {v:'curta',label:'Só frases curtas'},
+    {v:'ofensa',label:'Provocação e zoeira'},
+    {v:'piada',label:'Piada com o nome do adversário'},
+    {v:'comentario',label:'Comentário do que está acontecendo'},
+    {v:'seco',label:'Seco — sem provocar ninguém'},
+  ],
   MENTION_ROOM_CD_TICKS:150,   // 2,5 s: responder a quem chama é esperado, então a sala segura bem menos
   MENTION_BOT_CD_TICKS:600,    // 10 s por bot
   MENTION_P:.92,               // citado pelo nome, quase sempre responde

@@ -10,6 +10,7 @@ import {PERSONAS,pickPersona} from '../src/rooms/botPersonas.js';
 import {createRng} from '@warspace/shared/rng.js';
 import {botNick,BOT_LLM,CHAT} from '@warspace/shared/constants.js';
 import * as CONST from '@warspace/shared/constants.js';
+import {applyTunable,resetTunable,TUNABLE_BY_KEY} from '@warspace/shared/tunables.js';
 
 test('menção: a raiz do apelido sobrevive aos quatro formatos de botNick', () => {
   assert.equal(baseNick('Trovao'),'trovao');
@@ -316,10 +317,14 @@ test('peneira: ninguém entrega o preenchimento na tela',()=>{
   assert.ok(sanitiza('bot mode ativado kkkk'),'a palavra solta não pode virar veto');
 });
 
-test('peneira: o teto da SAÍDA subiu, o corte do HISTÓRICO não',()=>{
-  // Os dois eram a MESMA constante em papéis diferentes. A fala cresceu; o prompt não podia crescer junto.
-  assert.ok(BOT_LLM.MAX_CHARS>BOT_LLM.HIST_CHARS,'a saída tem que caber mais que a linha de histórico');
+test('peneira: o teto da SAÍDA e o corte do HISTÓRICO são independentes',()=>{
+  // Os dois eram a MESMA constante em papéis diferentes, e por um tempo este teste travou
+  // `MAX_CHARS > HIST_CHARS` — o que valia enquanto a fala estava CRESCENDO. Ela encolheu (o teto virou
+  // parâmetro do painel, justamente para poder encolher), então a desigualdade se inverteu sem nada
+  // quebrar: HIST_CHARS corta a linha de QUEM QUER QUE SEJA que entra no prompt, e o humano escreve até
+  // CHAT.MAX_CHARS. O que continua sendo invariante é o teto de cada um contra o do chat.
   assert.ok(BOT_LLM.MAX_CHARS<=CHAT.MAX_CHARS,'o bot não pode escrever mais que um humano');
+  assert.ok(BOT_LLM.HIST_CHARS<=CHAT.MAX_CHARS,'cortar acima do que cabe numa linha de chat seria no-op');
   assert.ok(sanitiza('a '.repeat(BOT_LLM.MAX_WORDS).trim()),'exatamente MAX_WORDS tem que passar');
   assert.equal(sanitiza('a '.repeat(BOT_LLM.MAX_WORDS+1).trim()),null,'uma palavra a mais, não');
   assert.ok(sanitiza('x'.repeat(BOT_LLM.MAX_CHARS)));
@@ -343,3 +348,35 @@ test('constantes: os freios da conversa longa são coerentes entre si',()=>{
   assert.ok(CONST.BOT_CHAT.puxa&&CONST.BOT_CHAT.puxa.length>=4,
     'sem pool próprio o _fraseFixa cai no ||BOT_CHAT.kill e o bot diz "peguei" do nada');
 });
+
+// ── O TAMANHO E O TIPO DA FALA SÃO PARÂMETROS DO PAINEL (/admin → Parâmetros) ──
+// O que estes dois travam não é o valor, é o CAMINHO: os dois números saem de `constants.js` e podem
+// mudar em runtime, então o SYSTEM tem que ser montado a cada geração. Enquanto ele foi const de módulo,
+// mexer no teto pelo painel encurtava só a PENEIRA — e a peneira RECUSA em vez de cortar, ou seja, o
+// parâmetro deixaria o bot mais MUDO em vez de mais breve, que é o oposto do pedido.
+test('tamanho da fala: o teto vivo é DITADO ao modelo, não só peneirado',()=>{
+  const chave='BOT_LLM.MAX_WORDS';
+  try{
+    applyTunable(chave,6);
+    assert.match(montaPrompt({nome:'S',kind:'kill'}).system,/never more than 6\b/,'o teto de agora tem que chegar ao prompt');
+    assert.match(montaPrompt({nome:'S',kind:'kill'}).system,/usually under 5\b/,'e o "usual" acompanha, com folga para a peneira');
+    applyTunable(chave,14);
+    assert.match(montaPrompt({nome:'S',kind:'kill'}).system,/never more than 14\b/);
+  }finally{resetTunable(chave);}});
+
+test('tipo de conversa: cada opção do painel vira uma instrução PRÓPRIA no prompt',()=>{
+  const opcoes=TUNABLE_BY_KEY.get('BOT_LLM.ESTILO').options;
+  try{
+    const vistos=new Map();
+    for(const o of opcoes){
+      applyTunable('BOT_LLM.ESTILO',o.v);
+      const sys=montaPrompt({nome:'S',kind:'kill'}).system;
+      // Um id sem frase em ESTILO_PROMPT cairia no `misto` em silêncio, e o admin teria no painel uma
+      // opção que não faz nada — o pior jeito de um parâmetro falhar.
+      for(const [outro,txt] of vistos)assert.notEqual(sys,txt,`'${o.v}' e '${outro}' geram o MESMO prompt`);
+      vistos.set(o.v,sys);}
+    applyTunable('BOT_LLM.ESTILO','ofensa');
+    assert.match(montaPrompt({nome:'S',kind:'kill'}).system,/Trash talk/);
+    applyTunable('BOT_LLM.ESTILO','seco');
+    assert.match(montaPrompt({nome:'S',kind:'kill'}).system,/Do not mock anyone/);
+  }finally{resetTunable('BOT_LLM.ESTILO');}});
