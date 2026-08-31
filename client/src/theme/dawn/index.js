@@ -31,7 +31,7 @@ export const rarityColor={free:"#9aa3c0",common:"#3fc4ff",rare:"#3d7bff",epic:"#
 // obrigaria cada tema a carregar os três idiomas.
 
 // ── fatores de escala: o sprite é assado com raio R/K e desenhado com meia-largura r*K ──
-const PK=sk=>sk.ring?2.05:1.3,FK=2.1,EK=1.5,AK=1.3,BK=2.4,MK=2.6,NK=2,PROPK=p=>p.ring?2:1.2;
+const PK=sk=>sk.ring?2.05:1.3,FK=2.1,EK=1.5,AK=1.3,BK=2.4,MK=3.2,NK=2,PROPK=p=>p.ring?2:1.2;
 
 export const textures={
   scale:{planet:PK,food:FK,ejected:EK,asteroid:AK,blackHole:BK,missile:MK,nova:NK,prop:PROPK,star:1},

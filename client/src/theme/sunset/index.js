@@ -23,7 +23,7 @@ export const rarityColor={free:"#c9a6d8",common:"#2ec4b6",rare:"#7fb3ff",epic:"#
 // comida em 12 matizes quentes (indexados por hue 0–11) — mantém o cache pequeno
 const WARM=["#ffb547","#ff8a3d","#ff5e6c","#ff7ab3","#ffcf9a","#ffd96b","#ff9e57","#e0417f","#ffc0a0","#f4a261","#ff6f91","#ffe1a8"];
 const BH_INK="#0a0714",BH_HOT="#ff9126",BH_RED="#8e1f10";   // buraco negro: rampa SÓ quente (sombra → vermelho → dourado → branco), como as fotos do M87
-const PK=sk=>sk.ring?2.05:1.3,FK=2.1,EK=1.5,AK=1.3,BK=2.4,MK=2.6,NK=2,PROPK=p=>p.ring?2:1.2;
+const PK=sk=>sk.ring?2.05:1.3,FK=2.1,EK=1.5,AK=1.3,BK=2.4,MK=3.2,NK=2,PROPK=p=>p.ring?2:1.2;
 
 export const textures={
   scale:{planet:PK,food:FK,ejected:EK,asteroid:AK,blackHole:BK,missile:MK,nova:NK,prop:PROPK,star:1},

@@ -25,7 +25,7 @@ export const rarityColor={free:"#b59fd0",common:"#2ec4b6",rare:"#7fb3ff",epic:"#
 // obrigaria cada tema a carregar os três idiomas.
 
 const WARM=["#ffb547","#ff8a3d","#ff5e6c","#ff7ab3","#ffcf9a","#ffd96b","#ff9e57","#e0417f","#ffc0a0","#f4a261","#ff6f91","#ffe1a8"];
-const PK=sk=>sk.ring?2.05:1.3,FK=2.1,EK=1.5,AK=1.3,BK=2.4,MK=2.6,NK=2,PROPK=p=>p.ring?2:1.2;
+const PK=sk=>sk.ring?2.05:1.3,FK=2.1,EK=1.5,AK=1.3,BK=2.4,MK=3.2,NK=2,PROPK=p=>p.ring?2:1.2;
 
 export const textures={
   scale:{planet:PK,food:FK,ejected:EK,asteroid:AK,blackHole:BK,missile:MK,nova:NK,prop:PROPK,star:1},
