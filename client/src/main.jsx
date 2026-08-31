@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./app/App.jsx";
 import "./app/theme.js"; // ponte do tema (tokens/CSS quando o módulo real existir)
 import { bootLang } from "./i18n/index.js";
+import { iniciaAnalytics } from "./app/analytics.js";
 
 // coletor de erros para os screenshots headless (--dump-dom lê window.__errors)
 if (import.meta.env.DEV) {
@@ -28,5 +29,8 @@ if (location.pathname === "/admin" || location.pathname.startsWith("/admin/")) {
   // `GET /api/me` do boot, e um dicionário é um chunk à parte. `bootLang()` lê o atalho de localStorage
   // (ou o navegador, na primeira visita) e resolve os dois — é o gêmeo do `data-theme="dawn"` cravado
   // no index.html. Nunca rejeita: falhando a carga, fica no pt-BR e a tela sobe do mesmo jeito.
+  // O gtag do index.html conta a CARGA; daqui para a frente quem conta tela e partida é o analytics,
+  // que só assina o store — fora do React de propósito, para não depender de montagem nem remontar.
+  iniciaAnalytics();
   bootLang().then(() => createRoot(document.getElementById("app")).render(<React.StrictMode><App /></React.StrictMode>));
 }

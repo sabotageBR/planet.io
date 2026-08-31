@@ -7,6 +7,7 @@ import { getLabels, setLang, currentLangPref, preenche } from "../i18n/index.js"
 import { errText } from "../i18n/errors.js";
 import { skinById } from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
+import { partidaIniciada } from "../app/analytics.js";
 
 const Q = new URLSearchParams(location.search);
 const NICK_RE = /^.{2,16}$/;
@@ -288,6 +289,7 @@ export async function play({ room, mode, teamSize, party } = {}) {
   app.update(s => ({ ...s, screen: "game", played: true, rewards: null, rewardsPending: false, overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
     gameMode: md, teamSize: ts,
     pendingJoin: { room: code, mode: md, teamSize: ts, party: pt, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
+  partidaIniciada({ mode: md, teamSize: ts, party: pt });
 }
 // ── modos e lobby de equipe ────────────────────────────────────────────────
 export function setMode(mode, teamSize = 1) { app.update({ gameMode: mode | 0, teamSize: teamSize | 0 || 1 }); }
