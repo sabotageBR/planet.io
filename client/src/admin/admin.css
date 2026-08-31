@@ -1,150 +1,307 @@
 /* ── PAINEL /admin ────────────────────────────────────────────────────────────
    Folha PRÓPRIA e deliberadamente sóbria: o painel não é tematizado. Os três temas do jogo mudam com o
    relógio, e uma ferramenta de operação que troca de cor às 16h é uma ferramenta pior. Aqui é sempre a
-   mesma tela, densa, com tabela de verdade — quem usa isto está procurando uma linha específica. */
-.ad,.ad-login{--bg:#12141c;--surf:#1a1d28;--surf2:#20242f;--line:#2c3140;--txt:#e6e9f2;--dim:#8b93a7;
-  --acc:#4da3ff;--ok:#3ddc5f;--per:#ff5470;--warn:#ffb020;
-  color:var(--txt);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+   mesma tela — densa onde a densidade serve (contas, salas, auditoria: quem usa isto está procurando uma
+   linha específica) e espaçada onde ela não serve (parâmetros, aviso).
+
+   A folha é um SISTEMA, em cinco camadas, e a ORDEM é o mecanismo: tokens → primitivos → componentes →
+   telas → responsivo. Empate de especificidade é resolvido por quem vem depois, então uma regra de tela
+   ganha da do componente sem precisar de !important.
+
+   ⚠️ Ela cresceu por acréscimo, uma tela por vez, e o resultado era que cada tela tinha inventado o
+   próprio vocabulário para as mesmas coisas: quatro formas de cabeçalho, quatro idiomas de badge, cinco
+   formas de DOM para "está vazio" e três superfícies de cartão diferentes. Nada disso aparece lendo uma
+   tela sozinha — só aparece lendo as cinco. */
+
+/* ══ 1. TOKENS ══════════════════════════════════════════════════════════════
+   ⚠️ Declarados em `.ad,.ad-login` e NÃO em `:root`: a mesma página carrega o CSS do jogo (main.jsx
+   importa App.jsx e theme.js estaticamente), e um token solto na raiz vazaria para lá. `.ad-login` está
+   na lista porque ele vive FORA do shell `.ad` — é a tela de antes de haver painel. */
+.ad,.ad-login{
+  /* superfície e traço */
+  --bg:#12141c;--surf:#1a1d28;--surf2:#20242f;--surf3:#262b38;
+  --line:#2c3140;--line-2:#23262f;--sel:#1e3350;
+  /* texto */
+  --txt:#e6e9f2;--dim:#8b93a7;--dim-2:#aab2c5;
+  /* estado. `--on-acc`/`--on-per` são o texto SOBRE a cor cheia: eram #0b1220 e #fff cravados em quatro
+     lugares, e um deles sempre escapava quando o acento mudasse. */
+  --acc:#4da3ff;--on-acc:#0b1220;--ok:#3ddc5f;--per:#ff5470;--on-per:#fff;
+  --per-bg:#3a1c26;--per-txt:#ffd9e0;--warn:#ffb020;
+  /* escala de espaço: eram 2,4,5,6,7,8,10,12,13,14,16,18,26px escolhidos um a um */
+  --s1:4px;--s2:6px;--s3:8px;--s4:12px;--s5:16px;--s6:24px;
+  /* raio: eram 5,6,7,8,12,14 */
+  --r-sm:6px;--r:9px;--r-lg:13px;--r-pill:999px;
+  /* tipografia: eram doze tamanhos entre 10 e 20 */
+  --fs-xs:11px;--fs-sm:12.5px;--fs:13.5px;--fs-lg:16px;--fs-xl:20px;
+  --sh:0 1px 2px rgba(0,0,0,.35);--sh-2:0 6px 20px rgba(0,0,0,.35);
+  /* ⚠️ `--top-h` é APLICADO à barra, e é só por isso que o `top` dos títulos grudados fica certo por
+     construção. Antes havia um `47px` cravado no sticky de Parâmetros que nem batia com a altura real
+     (10+34+10+1 ≈ 55) — e que a quebra de linha do header em tela estreita desalinharia de vez. */
+  --top-h:55px;--wrap:1320px;
+  color:var(--txt);font:var(--fs)/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+
 /* O `index.html` é o mesmo do jogo e carrega os três temas, que pintam `body` e `#app` conforme o relógio.
-   `html[data-admin]` (escrito por `mountAdmin`) ganha com folga e devolve a tela a uma cor só. */
+   `html[data-admin]` (escrito por `mountAdmin`) ganha com folga e devolve a tela a uma cor só.
+   ⚠️ O #12141c aqui é LITERAL de propósito: esta regra está fora do escopo `.ad`, onde `--bg` não existe. */
 html[data-admin],html[data-admin] body{background:#12141c!important;margin:0;height:auto;overflow:auto}
 html[data-admin] #app{position:static;inset:auto;background:none;display:block;min-height:100vh}
 html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:none}
 
-.ad{min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
-.ad-topo{display:flex;align-items:center;gap:18px;padding:10px 16px;background:var(--surf);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
-.ad-topo>b{font-size:15px;letter-spacing:.2px}
-.ad-topo>b span{color:var(--acc);font-weight:600}
-.ad-topo nav{display:flex;gap:2px;flex:1}
-.ad-topo nav button{background:none;border:0;color:var(--dim);padding:7px 12px;border-radius:7px;cursor:pointer;font:inherit}
-.ad-topo nav button:hover{background:var(--surf2);color:var(--txt)}
-.ad-topo nav button.on{background:var(--acc);color:#0b1220;font-weight:600}
-.ad-topo .quem{color:var(--dim);display:flex;align-items:center;gap:10px}
-.ad main{flex:1;padding:14px 16px;min-height:0}
+/* ══ 2. PRIMITIVOS ══════════════════════════════════════════════════════════ */
 
-/* login */
-.ad-login{max-width:340px;margin:14vh auto;padding:26px;background:var(--surf);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;gap:12px}
-.ad-login h1{margin:0;font-size:20px}
-.ad-login p{margin:-8px 0 6px;color:var(--dim);font-size:12.5px}
-.ad-login label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--dim)}
+/* A superfície de cartão, UMA só. `.ad-lista`, `.ad-detalhe`, `.ad-form` e `.pm` são instâncias dela —
+   antes eram três declarações independentes que já divergiam em raio e padding. */
+.ad-lista,.ad-detalhe,.ad-form,.pm{background:var(--surf);border:1px solid var(--line);
+  border-radius:var(--r-lg);box-shadow:var(--sh);min-width:0}
+.ad-lista,.ad-detalhe,.ad-form{padding:var(--s4)}
 
-.ad input,.ad select,.ad textarea,.ad-login input{background:var(--surf2);border:1px solid var(--line);color:var(--txt);
-  border-radius:7px;padding:8px 10px;font:inherit;min-width:0}
-.ad input:focus,.ad select:focus,.ad textarea:focus,.ad-login input:focus{outline:2px solid var(--acc);outline-offset:1px}
-.ad button,.ad-login button{background:var(--surf2);border:1px solid var(--line);color:var(--txt);border-radius:7px;
-  padding:8px 12px;font:inherit;cursor:pointer}
-.ad button:hover,.ad-login button:hover{border-color:var(--acc)}
-.ad button.pri,.ad-login button.pri{background:var(--acc);border-color:var(--acc);color:#0b1220;font-weight:600}
+/* Controles: mesma altura, mesmo raio, e um estado de FOCO — que a folha inteira não tinha. Navegar o
+   painel por teclado era navegar às cegas. `:focus-visible` e não `:focus`: o anel não aparece no clique
+   de mouse, só quando ele é a única pista de onde o teclado está. */
+.ad input,.ad select,.ad textarea,.ad-login input{background:var(--surf2);border:1px solid var(--line);
+  color:var(--txt);border-radius:var(--r);padding:0 10px;height:34px;font:inherit;min-width:0}
+.ad textarea,.ad-login textarea{padding:8px 10px;height:auto;line-height:1.5}
+.ad input::placeholder,.ad textarea::placeholder{color:var(--dim)}
+.ad input:hover,.ad select:hover,.ad textarea:hover{border-color:var(--surf3)}
+.ad :is(input,select,textarea,button):focus-visible,.ad-login :is(input,button):focus-visible{
+  outline:2px solid var(--acc);outline-offset:2px}
+.ad :is(input,select,textarea):focus{border-color:var(--acc)}
+.ad button,.ad-login button{background:var(--surf2);border:1px solid var(--line);color:var(--txt);
+  border-radius:var(--r);padding:0 var(--s4);height:34px;font:inherit;font-weight:500;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:background .12s,border-color .12s}
+.ad button:hover,.ad-login button:hover{border-color:var(--acc);background:var(--surf3)}
+.ad button.pri,.ad-login button.pri{background:var(--acc);border-color:var(--acc);color:var(--on-acc);font-weight:600}
+.ad button.pri:hover,.ad-login button.pri:hover{filter:brightness(1.1)}
 .ad button.per{background:transparent;border-color:var(--per);color:var(--per)}
-.ad button:disabled,.ad-login button:disabled{opacity:.5;cursor:default}
+.ad button.per:hover{background:var(--per-bg);border-color:var(--per)}
+/* O ✕ que fecha um painel: é ícone, não botão de texto — quadrado e discreto até o hover. */
+.ad button.x{width:34px;padding:0;justify-content:center;color:var(--dim);font-size:15px}
+.ad button.x:hover{color:var(--txt)}
+.ad button:disabled,.ad-login button:disabled{opacity:.45;cursor:default}
+.ad button:disabled:hover{border-color:var(--line);background:var(--surf2);filter:none}
 
-/* a lista à esquerda, o detalhe à direita — sempre nas mesmas duas colunas */
-.ad-split{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:14px;align-items:start}
-@media (max-width:1000px){.ad-split{grid-template-columns:1fr}}
-.ad-lista,.ad-detalhe,.ad-form{background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
-.ad-form{max-width:620px}
-.ad-form.larga{max-width:none}
-.ad-form h2,.ad-detalhe h2{margin:0 0 10px;font-size:16px}
-.ad-form h3,.ad-detalhe h3{margin:16px 0 6px;font-size:12.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
-.ad-filtros{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
-.ad-filtros input{flex:1;min-width:160px}
-.ad-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
-.ad-cab small{color:var(--dim);font-weight:400}
-.ad-cab>div{display:flex;gap:6px}
+/* A PÍLULA, uma só. Havia quatro idiomas para o mesmo objeto: `.tag.adm/.ban` (cor cheia), os spans de
+   shard (fundo neutro com texto colorido), o selo "alterado" de Parâmetros (contorno) e o contador de
+   seção. Agora é uma forma — contorno sobre fundo tênue — com um modificador por papel. */
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-xs);font-weight:600;
+  padding:2px 8px;border-radius:var(--r-pill);border:1px solid var(--line);
+  background:var(--surf2);color:var(--dim);white-space:nowrap;line-height:1.6;
+  /* ⚠️ A pílula é usada DENTRO de um `h3` que é uppercase com `letter-spacing` — sem neutralizar, o
+     contador da seção herdaria o espaçamento do título e ficaria com o número descolado do aro. */
+  text-transform:none;letter-spacing:0}
+.tag+.tag{margin-left:var(--s1)}
+.tag.adm{border-color:var(--acc);color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.tag.ban{border-color:var(--per);color:var(--per);background:var(--per-bg)}
+.tag.ok{border-color:color-mix(in srgb,var(--ok) 50%,transparent);color:var(--ok);
+  background:color-mix(in srgb,var(--ok) 10%,transparent)}
+.tag.off{border-color:var(--per);color:var(--per);background:var(--per-bg)}
+.tag.warn{border-color:var(--warn);color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.tag.mudo{border-color:transparent}   /* o contador de uma seção: pílula sem aro, só o número em voz baixa */
 
-.ad-tab{width:100%;border-collapse:collapse;font-size:13px}
-.ad-tab th{text-align:left;color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px;
-  padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
-.ad-tab td{padding:7px 8px;border-bottom:1px solid #23262f;vertical-align:top}
-.ad-tab tbody tr{cursor:pointer}
-.ad-tab tbody tr:hover{background:var(--surf2)}
-.ad-tab tbody tr.on{background:#1e3350}
-.ad-tab tbody tr.mudado td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
-.ad-tab td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.ad-tab td em,.ad-tab td small{color:var(--dim);font-style:normal;display:block;font-size:11.5px}
-.ad-tab td.ua{color:var(--dim);font-size:11.5px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ad-tab.mini td{padding:4px 8px;font-size:12px}
-.vazio{color:var(--dim);text-align:center;padding:24px;font-size:13px}
+/* "Não há nada aqui", numa forma só. Eram cinco DOMs diferentes (td com colSpan, td sem, div, p e o
+   `.ad-detalhe.vazio`), cada um com um resultado visual. */
+.vazio{color:var(--dim);text-align:center;padding:var(--s6);font-size:var(--fs)}
 .ad-detalhe.vazio{display:grid;place-items:center;min-height:180px}
 
-.ad-detalhe dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0 0 12px;font-size:13px}
-.ad-detalhe dt{color:var(--dim);white-space:nowrap}
-.ad-detalhe dd{margin:0}
+/* ══ 3. COMPONENTES ═════════════════════════════════════════════════════════ */
+
+.ad{min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
+/* ⚠️ `flex-wrap` e `min-height` (não `height`): abaixo de ~700 px a marca, cinco abas e o "sair" não
+   cabem numa linha, e sem a quebra a página inteira ganhava barra horizontal — com `user-scalable=no`
+   no index.html, o operador nem podia dar pinch-zoom para compensar. */
+.ad-topo{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s2) var(--s5);padding:0 var(--s5);
+  min-height:var(--top-h);background:var(--surf);border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:5}
+.ad-topo>b{font-size:15px;letter-spacing:.2px;white-space:nowrap}
+.ad-topo>b span{color:var(--acc);font-weight:600}
+.ad-topo nav{display:flex;gap:2px;flex:1;flex-wrap:wrap}
+.ad-topo nav button{background:none;border:0;color:var(--dim);padding:0 var(--s4);height:32px;
+  border-radius:var(--r);cursor:pointer;font:inherit}
+.ad-topo nav button:hover{background:var(--surf2);color:var(--txt)}
+.ad-topo nav button.on{background:var(--acc);color:var(--on-acc);font-weight:600}
+.ad-topo nav button.on:hover{background:var(--acc);filter:brightness(1.1)}
+.ad-topo .quem{color:var(--dim);display:flex;align-items:center;gap:var(--s4);white-space:nowrap}
+
+/* O conteúdo é CENTRADO com largura máxima. Sem isso, "Aviso global" era um cartão de 520 px encostado na
+   borda esquerda com mil pixels de vazio ao lado, e a auditoria esticava as colunas de ponta a ponta num
+   monitor largo — o olho tinha de atravessar a tela inteira para ligar a data ao detalhe. */
+.ad main{flex:1;padding:var(--s5);min-height:0}
+.ad-wrap{max-width:var(--wrap);margin:0 auto;min-width:0}
+
+/* Mestre-detalhe: a lista à esquerda, o detalhe à direita — sempre nas mesmas duas colunas.
+   O `sticky` deixa o detalhe acompanhar a rolagem da lista, que é longa: antes ele saía de vista. */
+.ad-split{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:var(--s4);align-items:start}
+.ad-split>.ad-detalhe{position:sticky;top:calc(var(--top-h) + var(--s4))}
+
+/* CABEÇALHO DE TELA, um só. Havia quatro: `.ad-cab` (detalhe e salas), `.pm-topo` (parâmetros) e um h2
+   solto (aviso, auditoria) — cada um com margem e tamanho próprios. */
+.ad-cab{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  flex-wrap:wrap;margin:0 0 var(--s4)}
+.ad h2{margin:0;font-size:var(--fs-lg);letter-spacing:.2px}
+/* A legenda de uma tela. Era `.ad-form .dica`, e por isso Parâmetros precisava carregar a classe `ad-form`
+   só para herdá-la — o que o obrigava a ANULAR a superfície de cartão que vinha junto. Anulação que
+   funcionava por ORDEM no arquivo (as duas regras empatam em (0,1,0)), não por especificidade: mover o
+   bloco de Parâmetros para cima teria devolvido o fundo, sem erro nenhum. */
+.ad .dica{color:var(--dim);font-size:var(--fs-sm);margin:0 0 var(--s4)}
+.ad-cab small{color:var(--dim);font-weight:400;font-size:var(--fs-sm)}
+.ad-cab>div{display:flex;gap:var(--s2);align-items:center}
+.ad h3{margin:var(--s5) 0 var(--s2);font-size:var(--fs-xs);color:var(--dim);
+  font-weight:700;text-transform:uppercase;letter-spacing:.7px}
+
+/* Barra de ferramentas (os filtros de contas, a busca de parâmetros). */
+.ad-filtros{display:flex;gap:var(--s3);margin-bottom:var(--s4);flex-wrap:wrap;align-items:center}
+.ad-filtros input{flex:1;min-width:180px}
+
+/* TABELA. Cabeçalho grudado no topo, filete em vez de borda cheia, e o hover/cursor agora dependem de
+   `.click`.
+   ⚠️ `cursor:pointer` era global à classe `.ad-tab`, então "Partidas recentes", "Sessões" e a Auditoria
+   inteira — que não respondem a clique nenhum — exibiam mão e destaque de hover. Convidar para um clique
+   que não existe é pior que não convidar. */
+.ad-rolo{overflow-x:auto;margin:0 calc(var(--s4) * -1) calc(var(--s4) * -1);padding:0 var(--s4) var(--s4)}
+.ad-tab{width:100%;border-collapse:collapse;font-size:var(--fs)}
+.ad-tab th{text-align:left;color:var(--dim);font-weight:700;font-size:var(--fs-xs);text-transform:uppercase;
+  letter-spacing:.5px;padding:var(--s2) var(--s3);border-bottom:1px solid var(--line);white-space:nowrap}
+/* ⚠️ Nada de `position:sticky` no `th`: quem cria o contexto de rolagem é o `.ad-rolo` logo acima, que rola
+   só na horizontal e não tem altura limitada — o cabeçalho grudaria num contêiner que nunca rola na
+   vertical, ou seja, regra inerte prometendo uma coisa que não acontece. Quem rola aqui é a PÁGINA. */
+.ad-tab td{padding:var(--s2) var(--s3);border-bottom:1px solid var(--line-2);vertical-align:middle}
+.ad-tab tbody tr:last-child td{border-bottom:0}
+.ad-tab.click tbody tr{cursor:pointer}
+.ad-tab.click tbody tr:hover{background:var(--surf2)}
+.ad-tab tbody tr.on{background:var(--sel)}
+.ad-tab.click tbody tr.on:hover{background:var(--sel)}
+.ad-tab td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ad-tab th.n{text-align:right}
+.ad-tab td em,.ad-tab td small{color:var(--dim);font-style:normal;display:block;font-size:var(--fs-xs)}
+.ad-tab td.ua{color:var(--dim);font-size:var(--fs-xs);max-width:280px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+/* ⚠️ `ad-mono` e não `mono`: `base.css:24` define `.mono,.code{font-family:…}` e o painel carrega o CSS do
+   jogo na mesma página. O seletor daqui venceria por especificidade, mas nome colidido é armadilha para a
+   próxima regra que alguém escrever — toda classe nova leva o prefixo. */
+.ad-tab td.ad-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--fs-xs);color:var(--dim)}
+.ad-tab.mini td{padding:var(--s1) var(--s3);font-size:var(--fs-sm)}
+
+/* Lista de pares rótulo→valor (a ficha da conta). Grade de duas colunas com filete entre as linhas: sem
+   ele, oito pares seguidos viram um bloco de texto em que o olho perde a linha no meio do caminho. */
+.ad-detalhe dl{display:grid;grid-template-columns:auto 1fr;gap:0 var(--s5);margin:0 0 var(--s4);
+  font-size:var(--fs)}
+.ad-detalhe dt{color:var(--dim);white-space:nowrap;padding:5px 0;border-bottom:1px solid var(--line-2)}
+.ad-detalhe dd{margin:0;padding:5px 0;border-bottom:1px solid var(--line-2);min-width:0;word-break:break-word}
+.ad-detalhe dl>:nth-last-child(-n+2){border-bottom:0}
 .ad-detalhe dd.ban{color:var(--per)}
-.ad-acoes{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
-.ad-acoes input{flex:0 1 auto}
-.tag{font-size:10.5px;padding:2px 6px;border-radius:5px;margin-left:4px}
-.tag.adm{background:var(--acc);color:#0b1220}
-.tag.ban{background:var(--per);color:#fff}
-.ad-shards{display:flex;gap:8px;margin-bottom:8px;font-size:12px}
-.ad-shards span,.ad-ok span{padding:3px 8px;border-radius:6px;background:var(--surf2);color:var(--dim);margin-left:6px}
-.ad-shards span.ok,.ad-ok span.ok{color:var(--ok)}
-.ad-shards span.off,.ad-ok span.off{color:var(--per)}
 
-.ad-form textarea{width:100%;min-height:76px;resize:vertical}
-.ad-form .dica{color:var(--dim);font-size:12.5px;margin:0 0 10px}
-.ad-form .cont{color:var(--dim);font-size:12px;margin-right:auto}
-.previa{display:flex;align-items:center;gap:8px;margin-top:12px;padding:10px 16px;border-radius:999px;
-  border:2px solid var(--line);background:var(--surf2);font-weight:700;font-size:13.5px}
-.previa.warn{border-color:var(--per);background:#3a1c26}
-.previa i{font-style:normal}
-.ad-ok{margin-top:10px;color:var(--ok);font-size:12.5px}
+/* Barra de ações. Ganhou moldura e fundo: eram duas fileiras de campos NUS soltas no meio do cartão, sem
+   nada dizendo que o número ao lado de "Banir" pertence ao "Banir". A moldura é o que agrupa. */
+.ad-acoes{display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap;margin:var(--s3) 0;
+  padding:var(--s3);background:var(--surf2);border:1px solid var(--line-2);border-radius:var(--r)}
+.ad-acoes input{flex:0 1 auto;background:var(--surf)}
+.ad-acoes input.mini{width:74px;text-align:right;font-variant-numeric:tabular-nums}
+.ad-acoes input.medio{width:110px;text-align:right;font-variant-numeric:tabular-nums}
 
-.ad-erro{margin:0 16px 10px;padding:9px 12px;border-radius:8px;background:#3a1c26;border:1px solid var(--per);
-  color:#ffd9e0;display:flex;justify-content:space-between;gap:12px;font-size:13px}
-.ad-erro button{background:none;border:0;color:inherit;cursor:pointer}
-.ad-login .ad-erro{margin:0}
+/* Faixa de shards / resultado de entrega. */
+.ad-shards{display:flex;gap:var(--s2);margin-bottom:var(--s4);flex-wrap:wrap}
+.ad-ok{margin-top:var(--s4);color:var(--ok);font-size:var(--fs-sm);display:flex;
+  align-items:center;gap:var(--s2);flex-wrap:wrap}
+
+/* A tarja de mensagem. */
+.ad-erro{margin:0 auto var(--s4);max-width:var(--wrap);padding:10px var(--s4);border-radius:var(--r);
+  background:var(--per-bg);border:1px solid var(--per);color:var(--per-txt);
+  display:flex;justify-content:space-between;gap:var(--s4);font-size:var(--fs);align-items:center}
+.ad-erro button{background:none;border:0;color:inherit;cursor:pointer;font-size:15px;padding:0 4px;height:auto}
+.ad-erro button:hover{background:none;border-color:transparent}
+.ad-login .ad-erro{margin:0;max-width:none}
+
+/* ══ 4. TELAS ═══════════════════════════════════════════════════════════════ */
+
+/* Login */
+.ad-login{max-width:360px;margin:12vh auto;padding:var(--s6);background:var(--surf);
+  border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-2);
+  display:flex;flex-direction:column;gap:var(--s4)}
+.ad-login h1{margin:0;font-size:var(--fs-xl)}
+.ad-login p{margin:-8px 0 var(--s2);color:var(--dim);font-size:var(--fs-sm)}
+.ad-login label{display:flex;flex-direction:column;gap:5px;font-size:var(--fs-sm);color:var(--dim)}
+
+/* Aviso global — formulário estreito, CENTRADO na caixa (era encostado à esquerda). */
+.ad-form{max-width:640px;margin:0 auto}
+.ad-form.larga{max-width:none}
+.ad-form textarea{width:100%;min-height:88px;resize:vertical}
+.ad-form .cont{color:var(--dim);font-size:var(--fs-sm);margin-right:auto;font-variant-numeric:tabular-nums}
+/* A prévia da faixa, como o jogador a vê. ⚠️ `.info` NÃO EXISTIA: o JSX gera `previa info`, e só `.warn`
+   tinha regra — o nível informativo caía no estilo base, sem cor nenhuma, em silêncio. */
+.previa{display:flex;align-items:center;gap:var(--s3);margin-top:var(--s4);padding:10px var(--s5);
+  border-radius:var(--r-pill);border:2px solid var(--line);background:var(--surf2);
+  font-weight:700;font-size:var(--fs);word-break:break-word}
+.previa.info{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--surf2))}
+.previa.warn{border-color:var(--per);background:var(--per-bg)}
+.previa i{font-style:normal;flex:none}
 
 /* ── PARÂMETROS: cartões por categoria ───────────────────────────────────────
    Uma tabela é o certo quando as linhas se comparam entre si — contas, salas, auditoria. Aqui não se
    comparam: "0,002 fração/s" e "600 ticks" não têm nada a dizer um ao outro em coluna, e o resultado
    eram quatro colunas estreitas de números soltos com o controle (a única coisa clicável) espremido no
-   meio. O cartão inverte a hierarquia: nome e controle grandes, metainformação embaixo em voz baixa.
-   A tela é CENTRADA e com largura máxima — `.ad-form.larga` solta o formulário na janela inteira, e
-   numa tela de 2560 px o rodapé do cartão ficava a meio metro do rótulo. */
-.pm-tela{max-width:1180px;margin:0 auto;background:none;border:0;padding:0}
-.pm-topo{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin:0 0 18px}
+   meio. O cartão inverte a hierarquia: nome e controle grandes, metainformação embaixo em voz baixa. */
+.pm-topo{display:flex;align-items:flex-end;gap:var(--s5);flex-wrap:wrap;margin:0 0 var(--s5)}
 .pm-topo>div{flex:1;min-width:260px}
-.pm-topo h2{margin:0 0 4px}
+.pm-topo h2{margin:0 0 var(--s1)}
+.pm-tela{max-width:none}
 .pm-topo .dica{margin:0}
 .pm-topo .dica b{color:var(--warn)}
 .pm-busca{width:220px}
 
-.pm-grupo{margin:0 0 26px}
+.pm-grupo{margin:0 0 var(--s6)}
 .pm-grupo:last-child{margin-bottom:0}
-/* O título gruda no topo ao rolar: com seis seções, saber em qual delas se está é metade da leitura.
-   O `-14px` casa com o `padding` de `.ad main`, para a faixa cobrir a largura toda ao passar por baixo. */
-.pm-grupo>h3{position:sticky;top:47px;z-index:2;display:flex;align-items:center;gap:8px;
-  margin:0 0 10px;padding:8px 0;background:var(--bg);border-bottom:1px solid var(--line)}
-.pm-grupo>h3 span{color:var(--dim);background:var(--surf2);border-radius:999px;padding:1px 7px;
-  font-size:11px;letter-spacing:0;text-transform:none}
+/* ⚠️ O `top` sai de `--top-h`, a MESMA variável que dimensiona a barra — antes era um `47px` cravado que
+   nem batia com a altura real, e que a quebra de linha do header em tela estreita desalinharia de vez. */
+.pm-grupo>h3{position:sticky;top:var(--top-h);z-index:2;display:flex;align-items:center;gap:var(--s3);
+  margin:0 0 var(--s4);padding:var(--s3) 0;background:var(--bg);border-bottom:1px solid var(--line)}
 /* `auto-fill` responde ao CONTÊINER: na janela estreita vira uma coluna sozinho, sem media query. */
-.pm-grade{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(288px,1fr))}
+.pm-grade{display:grid;gap:var(--s4);grid-template-columns:repeat(auto-fill,minmax(288px,1fr))}
 
-.pm{display:flex;flex-direction:column;gap:7px;padding:13px 14px;border-radius:12px;
-  background:var(--surf);border:1px solid var(--line);transition:border-color .12s,box-shadow .12s}
-.pm:hover{border-color:#39405480}
+.pm{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s4) var(--s4) 10px;
+  transition:border-color .12s,box-shadow .12s}
+.pm:hover{border-color:var(--surf3)}
 .pm:focus-within{border-color:var(--acc)}
-.pm header{display:flex;align-items:center;gap:8px;justify-content:space-between}
-.pm header b{font-size:13.5px;line-height:1.3}
-.pm-selo{flex:none;font-size:10px;text-transform:uppercase;letter-spacing:.6px;font-weight:700;
-  color:var(--warn);border:1px solid var(--warn);border-radius:999px;padding:1px 7px}
-.pm code{color:var(--dim);font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+.pm header{display:flex;align-items:center;gap:var(--s3);justify-content:space-between}
+.pm header b{font-size:var(--fs);line-height:1.3}
+.pm code{color:var(--dim);font-size:var(--fs-xs);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* O aro do "alterado" é a resposta à pergunta que se faz ao abrir a tela: o que aqui não é o padrão? */
 .pm.mudado{border-color:var(--warn);box-shadow:inset 3px 0 0 var(--warn)}
 .pm.fixo{opacity:.72}
 
-.pm-campo{display:flex;align-items:center;gap:8px;margin:2px 0 1px}
+.pm-campo{display:flex;align-items:center;gap:var(--s3);margin:var(--s1) 0 2px}
 .pm-campo input{width:118px;text-align:right;font-variant-numeric:tabular-nums;font-size:15px;font-weight:600}
-.pm-campo select{width:100%;font-size:13px}
-.pm-campo small,.pm-ro small{color:var(--dim);font-size:12px}
+.pm-campo select{width:100%}
+.pm-campo small,.pm-ro small{color:var(--dim);font-size:var(--fs-sm)}
 .pm-ro{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
 
-.pm footer{display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;
-  margin-top:auto;padding-top:7px;border-top:1px solid #23262f;min-height:33px}
-.pm-meta{color:var(--dim);font-size:11.5px}
-.pm-meta i{font-style:normal;color:#aab2c5;font-variant-numeric:tabular-nums}
-.pm-acoes{display:flex;align-items:center;gap:6px;margin-left:auto}
-.pm-acoes em{color:var(--dim);font-style:normal;font-size:11.5px}
-.pm-acoes button{padding:5px 10px;font-size:12.5px}
+.pm footer{display:flex;align-items:center;gap:var(--s3);justify-content:space-between;flex-wrap:wrap;
+  margin-top:auto;padding-top:var(--s2);border-top:1px solid var(--line-2);min-height:36px}
+.pm-meta{color:var(--dim);font-size:var(--fs-xs)}
+.pm-meta i{font-style:normal;color:var(--dim-2);font-variant-numeric:tabular-nums}
+.pm-acoes{display:flex;align-items:center;gap:var(--s2);margin-left:auto}
+.pm-acoes em{color:var(--dim);font-style:normal;font-size:var(--fs-xs)}
+.pm-acoes button{padding:0 10px;height:29px;font-size:var(--fs-sm)}
+
+/* ══ 5. RESPONSIVO ══════════════════════════════════════════════════════════
+   A folha inteira tinha UMA media query. As tabelas não tinham contêiner de scroll e `th` é `nowrap`,
+   então sete colunas empurravam a largura da PÁGINA — quem rolava para o lado levava o cabeçalho junto.
+   Quem resolve isso é o `.ad-rolo` lá em cima; aqui ficam as quebras de layout. */
+@media (max-width:1180px){
+  .ad-split{grid-template-columns:1fr}
+  .ad-split>.ad-detalhe{position:static}
+}
+@media (max-width:700px){
+  .ad,.ad-login{--s5:12px;--s6:16px}
+  .ad-topo{padding:var(--s3) var(--s4)}
+  .ad-topo nav{order:3;width:100%;flex:none}
+  .ad main{padding:var(--s4)}
+  .pm-grupo>h3{position:static}   /* com o header quebrado em duas linhas, `--top-h` deixa de valer */
+  .pm-busca{width:100%}
+}
+@media (max-width:480px){
+  .ad-topo .quem{margin-left:auto}
+  .ad-acoes{align-items:stretch;flex-direction:column}
+  .ad-acoes input,.ad-acoes button{width:100%}
+  .ad-acoes input.mini,.ad-acoes input.medio{width:100%;text-align:left}
+}

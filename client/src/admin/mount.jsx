@@ -16,7 +16,7 @@ const num = n => Number(n || 0).toLocaleString("pt-BR");
 
 function Erro({ e, onClose }) {
   if (!e) return null;
-  return <div className="ad-erro" role="alert"><span>{e}</span><button onClick={onClose}>✕</button></div>;
+  return <div className="ad-erro" role="alert"><span>{e}</span><button className="x" onClick={onClose}>✕</button></div>;
 }
 
 function Login({ onOk }) {
@@ -55,8 +55,8 @@ function Usuarios({ erro }) {
         <select value={banned} onChange={e => setBanned(e.target.value)}><option value="">todos</option><option value="1">banidos</option><option value="0">livres</option></select>
         <button onClick={buscar}>Buscar</button>
       </div>
-      <table className="ad-tab">
-        <thead><tr><th>#</th><th>nick</th><th>tipo</th><th>xp</th><th>moedas</th><th>visto</th><th /></tr></thead>
+      <div className="ad-rolo"><table className="ad-tab click">
+        <thead><tr><th>#</th><th>nick</th><th>tipo</th><th className="n">xp</th><th className="n">moedas</th><th>visto</th><th /></tr></thead>
         <tbody>{rows.map(u => <tr key={u.id} className={sel && sel.user.id === u.id ? "on" : ""} onClick={() => abrir(u.id)}>
           <td>{u.id}</td>
           <td>{u.nick}{u.name && u.name !== u.nick ? <em> {u.name}</em> : null}</td>
@@ -66,7 +66,7 @@ function Usuarios({ erro }) {
           <td>{u.isAdmin ? <b className="tag adm">admin</b> : null}{u.bannedUntil && new Date(u.bannedUntil) > new Date() ? <b className="tag ban">banido</b> : null}</td>
         </tr>)}
         {!rows.length && !carregando ? <tr><td colSpan={7} className="vazio">nada encontrado</td></tr> : null}</tbody>
-      </table>
+      </table></div>
     </div>
     {sel ? <Detalhe d={sel} acao={acao} fechar={() => setSel(null)} /> : <div className="ad-detalhe vazio">selecione uma conta</div>}
   </div>;
@@ -76,7 +76,7 @@ function Detalhe({ d, acao, fechar }) {
   const u = d.user, banido = u.bannedUntil && new Date(u.bannedUntil) > new Date();
   const [dias, setDias] = useState(7), [motivo, setMotivo] = useState(""), [moedas, setMoedas] = useState(0);
   return <div className="ad-detalhe">
-    <div className="ad-cab"><h2>{u.nick} <small>#{u.id}</small></h2><button onClick={fechar}>✕</button></div>
+    <div className="ad-cab"><h2>{u.nick} <small>#{u.id}</small></h2><button className="x" onClick={fechar}>✕</button></div>
     <dl>
       {/* o USUÁRIO é o nome de entrar (congelado no cadastro); o nick do topo é livre e o jogador troca */}
       <dt>usuário</dt><dd>{u.login || "—"}</dd>
@@ -92,12 +92,12 @@ function Detalhe({ d, acao, fechar }) {
     <div className="ad-acoes">
       {banido
         ? <button onClick={() => acao(() => api.ban(u.id, 0), "desbanido")}>Desbanir</button>
-        : <><input type="number" min="1" max="3650" value={dias} onChange={e => setDias(+e.target.value)} style={{ width: 70 }} />
+        : <><input className="mini" type="number" min="1" max="3650" value={dias} onChange={e => setDias(+e.target.value)} />
             <input placeholder="motivo" value={motivo} onChange={e => setMotivo(e.target.value)} />
             <button className="per" onClick={() => acao(() => api.ban(u.id, dias, motivo), "banido")}>Banir</button></>}
     </div>
     <div className="ad-acoes">
-      <input type="number" value={moedas} onChange={e => setMoedas(+e.target.value)} style={{ width: 100 }} />
+      <input className="medio" type="number" value={moedas} onChange={e => setMoedas(+e.target.value)} />
       <button onClick={() => acao(() => api.coins(u.id, moedas, "painel"), "moedas ajustadas")}>Somar moedas</button>
       <button onClick={() => acao(() => api.revoke(u.id), "sessões derrubadas")}>Derrubar sessões</button>
       <button className={u.isAdmin ? "per" : ""} onClick={() => acao(() => api.setAdmin(u.id, !u.isAdmin))}>{u.isAdmin ? "Tirar admin" : "Tornar admin"}</button>
@@ -105,7 +105,7 @@ function Detalhe({ d, acao, fechar }) {
     <h3>Partidas recentes</h3>
     <table className="ad-tab mini"><tbody>{d.matches.map(m => <tr key={m.id}>
       <td>{dt(m.ended_at)}</td><td>{m.room_code}</td><td className="n">{num(m.score)}</td><td className="n">{num(m.max_mass)}</td><td>{m.cause}</td></tr>)}
-      {!d.matches.length ? <tr><td className="vazio">nenhuma</td></tr> : null}</tbody></table>
+      {!d.matches.length ? <tr><td colSpan={5} className="vazio">nenhuma</td></tr> : null}</tbody></table>
     <h3>Sessões</h3>
     <table className="ad-tab mini"><tbody>{d.tokens.map(t => <tr key={t.id}>
       <td>{t.kind}</td><td>{dt(t.created_at)}</td><td>{t.revoked_at ? "revogado" : dt(t.expires_at)}</td>
@@ -129,20 +129,20 @@ function Salas({ erro }) {
   if (!d) return <div className="vazio">carregando…</div>;
   return <div className="ad-split">
     <div className="ad-lista">
-      {d.shards ? <div className="ad-shards">{d.shards.map((s, i) => <span key={i} className={s.ok ? "ok" : "off"}>shard {s.shard != null ? s.shard : "?"} {s.ok ? "ok" : "sem resposta"}</span>)}</div> : null}
-      <table className="ad-tab">
+      {d.shards ? <div className="ad-shards">{d.shards.map((s, i) => <span key={i} className={"tag " + (s.ok ? "ok" : "off")}>shard {s.shard != null ? s.shard : "?"} {s.ok ? "ok" : "sem resposta"}</span>)}</div> : null}
+      <div className="ad-rolo"><table className="ad-tab click">
         <thead><tr><th>código</th><th>shard</th><th>modo</th><th>fase</th><th>humanos</th><th>bots</th></tr></thead>
         <tbody>{d.rooms.map(r => <tr key={r.code + r.shard} className={sel && sel.code === r.code ? "on" : ""} onClick={() => abrir(r.code)}>
           <td><b>{r.code}</b></td><td>{r.shard}</td><td>{r.mode === 1 ? "BR" : "livre"}</td><td>{r.phase}</td>
           <td className="n">{r.humans}</td><td className="n">{r.bots}</td></tr>)}
           {!d.rooms.length ? <tr><td colSpan={6} className="vazio">nenhuma sala ativa</td></tr> : null}</tbody>
-      </table>
+      </table></div>
     </div>
     {sel ? <div className="ad-detalhe">
       <div className="ad-cab"><h2>Sala {sel.code}</h2>
-        <div><button className="per" onClick={() => fechar(sel.code)}>Fechar sala</button><button onClick={() => setSel(null)}>✕</button></div></div>
-      <table className="ad-tab">
-        <thead><tr><th>slot</th><th>nome</th><th>nível</th><th>massa</th><th>estado</th><th>ip</th><th /></tr></thead>
+        <div><button className="per" onClick={() => fechar(sel.code)}>Fechar sala</button><button className="x" onClick={() => setSel(null)}>✕</button></div></div>
+      <div className="ad-rolo"><table className="ad-tab">
+        <thead><tr><th>slot</th><th>nome</th><th className="n">nível</th><th className="n">massa</th><th>estado</th><th>ip</th><th /></tr></thead>
         <tbody>{(sel.players || []).map(p => <tr key={p.slot}>
           <td>{p.slot}</td><td>{p.name}{p.country ? <em> {p.country}</em> : null}</td>
           <td className="n">{p.level || "—"}</td><td className="n">{num(p.mass)}</td>
@@ -150,7 +150,7 @@ function Salas({ erro }) {
           <td className="ua">{p.ip || "—"}</td>
           <td><button className="per" onClick={() => remover(sel.code, p)}>Remover</button></td></tr>)}
           {!(sel.players || []).length ? <tr><td colSpan={7} className="vazio">só preenchimento</td></tr> : null}</tbody>
-      </table>
+      </table></div>
     </div> : <div className="ad-detalhe vazio">selecione uma sala</div>}
   </div>;
 }
@@ -163,7 +163,7 @@ function Aviso({ erro }) {
     try { setR(await api.broadcast(text, level, ttl)); setText(""); } catch (e) { erro(e.message); }
   };
   return <div className="ad-form">
-    <h2>Aviso global</h2>
+    <div className="ad-cab"><h2>Aviso global</h2></div>
     <p className="dica">Chega a quem está EM PARTIDA: uma faixa no alto da tela e uma linha no chat.
       Quem está no menu não recebe.</p>
     <textarea maxLength={200} value={text} onChange={e => setText(e.target.value)} placeholder="Manutenção em 10 minutos." />
@@ -175,7 +175,7 @@ function Aviso({ erro }) {
     </div>
     <div className={"previa " + level}><i>{level === "warn" ? "⚠️" : "📣"}</i><span>{text || "prévia da faixa"}</span></div>
     {r ? <div className="ad-ok">entregue a {r.delivered} jogador(es) em {r.rooms} sala(s)
-      {r.shards ? <> · {r.shards.map((s, i) => <span key={i} className={s.ok ? "ok" : "off"}>shard {s.shard != null ? s.shard : "?"}: {s.ok ? s.delivered : "falhou"}</span>)}</> : null}</div> : null}
+      {r.shards ? <> · {r.shards.map((s, i) => <span key={i} className={"tag " + (s.ok ? "ok" : "off")}>shard {s.shard != null ? s.shard : "?"}: {s.ok ? s.delivered : "falhou"}</span>)}</> : null}</div> : null}
   </div>;
 }
 
@@ -220,7 +220,7 @@ function Parametros({ erro }) {
     return <article key={t.key} className={"pm" + (t.changed ? " mudado" : "") + (fixo ? " fixo" : "")}>
       <header>
         <b>{t.label}</b>
-        {t.changed ? <span className="pm-selo">alterado</span> : null}
+        {t.changed ? <span className="tag warn">alterado</span> : null}
       </header>
       <code>{t.key}</code>
       <div className="pm-campo">
@@ -253,7 +253,7 @@ function Parametros({ erro }) {
     </article>;
   };
 
-  return <div className="ad-form larga pm-tela">
+  return <div className="pm-tela">
     <div className="pm-topo">
       <div>
         <h2>Parâmetros de jogo</h2>
@@ -264,7 +264,7 @@ function Parametros({ erro }) {
         onChange={e => setBusca(e.target.value)} />
     </div>
     {secoes.map(([titulo, itens]) => <section key={titulo} className="pm-grupo">
-      <h3>{titulo} <span>{itens.length}</span></h3>
+      <h3>{titulo} <span className="tag mudo">{itens.length}</span></h3>
       <div className="pm-grade">{itens.map(cartao)}</div>
     </section>)}
     {!secoes.length ? <p className="vazio">{ts.length ? "nada com esse nome" : "…"}</p> : null}
@@ -274,11 +274,12 @@ function Parametros({ erro }) {
 function Auditoria({ erro }) {
   const [rows, setRows] = useState([]);
   useEffect(() => { api.audit().then(r => setRows(r.rows)).catch(e => erro(e.message)); }, []);
-  return <div className="ad-form larga"><h2>Auditoria</h2>
-    <table className="ad-tab"><thead><tr><th>quando</th><th>quem</th><th>ação</th><th>alvo</th><th>detalhe</th></tr></thead>
+  return <div className="ad-form larga">
+    <div className="ad-cab"><h2>Auditoria</h2></div>
+    <div className="ad-rolo"><table className="ad-tab"><thead><tr><th>quando</th><th>quem</th><th>ação</th><th>alvo</th><th>detalhe</th></tr></thead>
       <tbody>{rows.map(r => <tr key={r.id}><td>{dt(r.at)}</td><td>{r.adminNick || "#" + r.adminId}</td>
-        <td><b>{r.action}</b></td><td>{r.target || "—"}</td><td className="ua">{JSON.stringify(r.detail)}</td></tr>)}
-        {!rows.length ? <tr><td colSpan={5} className="vazio">nada ainda</td></tr> : null}</tbody></table></div>;
+        <td><b>{r.action}</b></td><td>{r.target || "—"}</td><td className="ua ad-mono">{JSON.stringify(r.detail)}</td></tr>)}
+        {!rows.length ? <tr><td colSpan={5} className="vazio">nada ainda</td></tr> : null}</tbody></table></div></div>;
 }
 
 function App() {
@@ -289,7 +290,10 @@ function App() {
     api.me().then(r => setAdmin(r.admin)).catch(() => {}).finally(() => setPronto(true));
   }, []);
   useEffect(() => { const f = () => setTela(rota()); addEventListener("popstate", f); return () => removeEventListener("popstate", f); }, []);
-  if (!pronto) return <div className="vazio">…</div>;
+  // ⚠️ `ad` junto com `vazio`: este retorno acontece ANTES de o shell `.ad` existir, e os tokens do painel
+  // (--dim inclusive) são declarados EM `.ad`. Sem a classe, a cor do "…" de boot é o que o CSS do jogo
+  // estiver pintando no body naquela hora.
+  if (!pronto) return <div className="ad vazio">…</div>;
   if (!admin) return <Login onOk={setAdmin} />;
   const T = { usuarios: Usuarios, salas: Salas, aviso: Aviso, parametros: Parametros, auditoria: Auditoria }[tela] || Usuarios;
   return <div className="ad">
@@ -299,7 +303,7 @@ function App() {
       <span className="quem">{admin.nick}<button onClick={() => { api.logout().catch(() => {}); setToken(""); setAdmin(null); }}>sair</button></span>
     </header>
     <Erro e={msg} onClose={() => setMsg(null)} />
-    <main><T erro={erro} /></main>
+    <main><div className="ad-wrap"><T erro={erro} /></div></main>
   </div>;
 }
 
