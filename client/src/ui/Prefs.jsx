@@ -6,6 +6,7 @@ import { useLabels } from "../hooks/useTheme.js";
 import { ScreenHeader, Screen } from "./bits.jsx";
 import { PREFS } from "./prefsTable.js";
 import { LANG_NAMES } from "../i18n/index.js";
+import { PORTAL } from "../portal/flags.js";
 
 export default function Prefs({ on }) {
   return <Screen id="prefs" on={on} className="prefs-wrap">{on ? <Body /> : null}</Screen>;
@@ -45,5 +46,9 @@ function Body() {
       </section>)}
     </div>
     <div className="prefs-foot"><button className="btn-secondary" id="pf-reset" onClick={resetPrefs}>{LB.reset}</button><button className="btn-primary" id="pf-save" onClick={savePrefs}>{LB.save}</button></div>
+    {/* A política de privacidade é uma página ESTÁTICA (client/public/privacy.html), fora do bundle: ela
+        tem que abrir mesmo com o jogo fora do ar. ⚠️ E não aparece no pacote de portal — link que tira o
+        jogador do iframe é justamente o que eles proíbem; lá a URL vai no formulário deles. */}
+    {!PORTAL ? <div className="prefs-legal"><a href="/privacy.html" target="_blank" rel="noopener">{LB.privacy}</a></div> : null}
   </>;
 }

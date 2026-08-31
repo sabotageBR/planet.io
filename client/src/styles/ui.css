@@ -1542,3 +1542,10 @@ body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-round .round-side{
 body #room-list .room-row{grid-template-columns:70px 60px 1fr 60px 90px}
 /* No RETRATO o base.css já esconde `.shard` (e escondia `.bots`), então lá são quatro colunas para quatro
    filhos visíveis — a regra de lá continua valendo sozinha. */
+
+/* ── LINK DA POLÍTICA DE PRIVACIDADE (só no site; ver Prefs.jsx) ──
+   Fica ABAIXO da barra de botões de Opções, discreto: é obrigação legal e dos portais, não um destaque
+   da tela. `order:100` porque a `<Nav>` dos temas é `order:99` e a caixa é flex. */
+#s-prefs .prefs-legal{order:100;text-align:center;padding:10px 0 2px;font-size:12px}
+#s-prefs .prefs-legal a{color:var(--dim,#a99fd6);text-decoration:underline;text-underline-offset:3px}
+#s-prefs .prefs-legal a:hover{color:var(--accent,#ffc857)}

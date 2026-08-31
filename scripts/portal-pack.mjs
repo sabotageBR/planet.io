@@ -31,7 +31,9 @@ const PERFIS = {
 // O que veio de client/public e não faz sentido dentro de um iframe: ícone de app, manifest e o cartão
 // de compartilhamento de uma página que ninguém cola em lugar nenhum. `favicon.svg` fica (810 bytes, e
 // alguns portais o mostram); `faces/` fica (são as 35 caricaturas, e o jogo as busca do próprio pacote).
-const PODA = ["og.png", "icon-180.png", "icon-192.png", "icon-512.png", "manifest.webmanifest"];
+// ⚠️ `privacy.html` também sai: dentro do zip ela é peso morto (nada no jogo aponta para ela) e uma
+// página de saída acessível é justamente o que os portais não querem. A URL dela vai no FORMULÁRIO deles.
+const PODA = ["og.png", "icon-180.png", "icon-192.png", "icon-512.png", "manifest.webmanifest", "privacy.html"];
 
 const arquivos = dir => fs.readdirSync(dir, { withFileTypes: true, recursive: true })
   .filter(d => d.isFile()).map(d => path.join(d.parentPath || d.path, d.name));
