@@ -45,8 +45,9 @@ function Body() {
   const error = err ? <p className="form-error" role="alert">{err.msg}{err.suggestion ? <> <button type="button" className="btn-link" onClick={() => { setC(x => ({ ...x, login: err.suggestion })); setErr(null); }}>{LB.useSuggestion}: {err.suggestion}</button></> : null}</p> : null;
   return <div className="card modal account" role="dialog" aria-modal="true">
     <div className="modal-title">{LB.accountTitle}</div>
-    {/* Acima das abas de propósito: entrar com Google resolve as duas (criar e entrar) num clique. */}
-    <div className="gsi-block"><GoogleButton /><div className="or-sep"><span>{LB.orSep}</span></div></div>
+    {/* Acima das abas de propósito: entrar com Google resolve as duas (criar e entrar) num clique. O
+        separador vai como PROP para sumir junto com o botão quando não há Google (ver GoogleButton). */}
+    <GoogleButton sep={LB.orSep} />
     <div className="tabs"><button data-tab="claim" className={tab === "claim" ? "on" : ""} onClick={() => { setTab("claim"); setErr(null); }}>{LB.claimTab}</button><button data-tab="login" className={tab === "login" ? "on" : ""} onClick={() => { setTab("login"); setErr(null); }}>{LB.loginTab}</button></div>
     {/* `tab on` continua: `.tab{display:none}` / `.tab.on{display:flex}` (base.css) e o modo paisagem dos
         temas estilizam `.modal .tab.on` em duas colunas. Sem a classe, o formulário some no celular. */}

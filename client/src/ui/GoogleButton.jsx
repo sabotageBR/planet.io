@@ -21,7 +21,7 @@ const aparencia = id => (id === "dawn" ? "outline" : "filled_black");
  *
  * `type="icon"` é a variante redonda, para a faixa da entrada, onde o botão largo não cabe.
  */
-export default function GoogleButton({ type = "standard" }) {
+export default function GoogleButton({ type = "standard", sep = "" }) {
   const LB = useLabels(), th = useTheme();
   // ⚠️ o hook é chamado SEMPRE (chamada condicional de hook é bug esperando acontecer); o interruptor
   // entra depois. Com ele ligado o botão não renderiza E o SDK do Google nem é baixado, porque o efeito
@@ -57,5 +57,9 @@ export default function GoogleButton({ type = "standard" }) {
     return () => { vivo = false; };
   }, [cid, online, type, temaId, lang]);   // eslint-disable-line react-hooks/exhaustive-deps
   if (!cid || online === false || falhou) return null;
-  return <div className={"gsi-wrap" + (type === "icon" ? " gsi-icon" : "")} ref={ref} />;
+  const botao = <div className={"gsi-wrap" + (type === "icon" ? " gsi-icon" : "")} ref={ref} />;
+  // ⚠️ O separador ("ou", no modal de conta) vem POR DENTRO de propósito: sem client_id, sem banco, no
+  // pacote de portal ou com o SDK bloqueado este componente devolve `null`, e um "ou" escrito por fora
+  // ficava órfão logo abaixo do título — um traço separando coisa nenhuma das abas.
+  return sep ? <div className="gsi-block">{botao}<div className="or-sep"><span>{sep}</span></div></div> : botao;
 }
