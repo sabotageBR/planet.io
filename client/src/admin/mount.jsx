@@ -183,8 +183,13 @@ function Aviso({ erro }) {
 // A tela é montada INTEIRAMENTE a partir do descritor que o servidor manda (shared/src/tunables.js): as
 // seções saem de `grupo`, e que controle desenhar sai de `type`. Parâmetro novo aparece aqui — na seção
 // certa e com o controle certo — sem uma linha de painel.
+// ⚠️ CARTÕES, e não uma tabela. Cada parâmetro tem cinco informações (nome, chave, valor, padrão e
+// faixa) e um controle, e nenhuma delas é comparável entre linhas — ninguém lê "0,002" contra "600" em
+// coluna. Numa tabela isso vira uma coluna larga de rótulos e quatro estreitas de números soltos, e o
+// controle, que é a única coisa clicável, fica espremido no meio. O cartão põe o controle no centro e a
+// metainformação embaixo, em voz baixa, que é a hierarquia real desta tela.
 function Parametros({ erro }) {
-  const [ts, setTs] = useState([]), [grupos, setGrupos] = useState([]), [edit, setEdit] = useState({});
+  const [ts, setTs] = useState([]), [grupos, setGrupos] = useState([]), [edit, setEdit] = useState({}), [busca, setBusca] = useState("");
   const carregar = async () => {
     try { const r = await api.settings(); setTs(r.tunables); setGrupos(r.grupos || []); }
     catch (e) { erro(e.message); }
@@ -196,50 +201,73 @@ function Parametros({ erro }) {
     try { await api.setSetting(t.key, v); setEdit(e => ({ ...e, [t.key]: undefined })); carregar(); }
     catch (e) { erro(e.message); }
   };
-  const voltar = async t => { try { await api.resetSetting(t.key); carregar(); } catch (e) { erro(e.message); } };
-  const val = t => (edit[t.key] !== undefined ? edit[t.key] : t.value);
-  const sujo = t => edit[t.key] !== undefined;
+  const voltar = async t => { try { await api.resetSetting(t.key); setEdit(e => ({ ...e, [t.key]: undefined })); carregar(); } catch (e) { erro(e.message); } };
+
+  const q = busca.trim().toLowerCase();
+  const casa = t => !q || t.label.toLowerCase().includes(q) || t.key.toLowerCase().includes(q);
   // Seção sem nenhum parâmetro não é desenhada; o que sobrar de um grupo não declarado cai em "Outros",
   // que é a rede de segurança para um descritor com `grupo` errado — melhor visível do que sumido.
   const secoes = [...grupos, ["", "Outros"]]
-    .map(([g, titulo]) => [titulo, ts.filter(t => (t.grupo || "") === g)])
-    .filter(([, linhas]) => linhas.length);
+    .map(([g, titulo]) => [titulo, ts.filter(t => (t.grupo || "") === g && casa(t))])
+    .filter(([, itens]) => itens.length);
+  const mudados = ts.filter(t => t.changed).length;
 
-  const linha = t => <tr key={t.key} className={t.changed ? "mudado" : ""}>
-    <td><b>{t.label}</b><em>{t.key}</em></td>
-    <td className={t.type === "opt" ? "" : "n"}>
-      {t.scope !== "server"
-        ? <span>{num(t.value)}</span>
-        : t.type === "opt"
-          // A escolha grava no CHANGE: um `<select>` com botão "Salvar" ao lado é um passo a mais para
-          // uma decisão que já foi tomada no instante em que o item foi escolhido.
-          ? <select value={val(t)} onChange={e => salvar(t, e.target.value)}>
-              {t.options.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
-            </select>
-          : <input type="number" min={t.min} max={t.max} step={t.step} value={val(t)}
-              onChange={e => setEdit(x => ({ ...x, [t.key]: e.target.value }))} />}
-      {t.unit ? <small> {t.unit}</small> : null}</td>
-    <td className={t.type === "opt" ? "" : "n"}>
-      {t.type === "opt" ? <small>{(t.options.find(o => o.v === t.def) || {}).label || t.def}</small> : num(t.def)}</td>
-    <td className="n">{t.type === "opt" ? <small>{t.options.length} opções</small> : <small>{t.min} – {t.max}</small>}</td>
-    <td>{t.scope === "server"
-      ? <>{sujo(t) ? <button className="pri" onClick={() => salvar(t, Number(edit[t.key]))}>Salvar</button> : null}
-         {t.changed ? <button onClick={() => voltar(t)}>Restaurar</button> : null}</>
-      : <small className="dica">também lido pelo cliente</small>}</td>
-  </tr>;
+  const cartao = t => {
+    const fixo = t.scope !== "server";                       // 'both': o cliente também lê, e a rota recusa
+    const sujo = edit[t.key] !== undefined;
+    const val = sujo ? edit[t.key] : t.value;
+    const rotulo = o => (t.options.find(x => x.v === o) || {}).label || o;
+    return <article key={t.key} className={"pm" + (t.changed ? " mudado" : "") + (fixo ? " fixo" : "")}>
+      <header>
+        <b>{t.label}</b>
+        {t.changed ? <span className="pm-selo">alterado</span> : null}
+      </header>
+      <code>{t.key}</code>
+      <div className="pm-campo">
+        {fixo
+          ? <span className="pm-ro">{num(t.value)} <small>{t.unit}</small></span>
+          : t.type === "opt"
+            // A escolha grava no CHANGE: um `<select>` com "Salvar" ao lado é um passo a mais para uma
+            // decisão que já foi tomada no instante em que o item foi escolhido.
+            ? <select value={val} onChange={e => salvar(t, e.target.value)}>
+                {t.options.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+              </select>
+            : <><input type="number" min={t.min} max={t.max} step={t.step} value={val}
+                  onChange={e => setEdit(x => ({ ...x, [t.key]: e.target.value }))}
+                  onKeyDown={e => { if (e.key === "Enter" && sujo) salvar(t, Number(edit[t.key])); }} />
+               {t.unit ? <small>{t.unit}</small> : null}</>}
+      </div>
+      <footer>
+        <span className="pm-meta">
+          {t.type === "opt"
+            ? <>padrão <i>{rotulo(t.def)}</i></>
+            : <>padrão <i>{num(t.def)}</i> · faixa <i>{num(t.min)} – {num(t.max)}</i></>}
+        </span>
+        <span className="pm-acoes">
+          {fixo ? <em>também lido pelo cliente</em> : null}
+          {sujo ? <button className="pri" onClick={() => salvar(t, Number(edit[t.key]))}>Salvar</button> : null}
+          {sujo ? <button onClick={() => setEdit(x => ({ ...x, [t.key]: undefined }))}>Cancelar</button> : null}
+          {!sujo && t.changed ? <button onClick={() => voltar(t)}>Restaurar</button> : null}
+        </span>
+      </footer>
+    </article>;
+  };
 
-  return <div className="ad-form larga">
-    <h2>Parâmetros de jogo</h2>
-    <p className="dica">Valem para as salas deste momento em diante, em todos os shards. Os parâmetros que o
-      CLIENTE também lê ficam desabilitados: mudá-los de um lado só faria a predição divergir.</p>
-    {secoes.map(([titulo, linhas]) => <section key={titulo} className="ad-grupo">
-      <h3>{titulo}</h3>
-      <table className="ad-tab">
-        <thead><tr><th>parâmetro</th><th>valor</th><th>padrão</th><th>faixa</th><th /></tr></thead>
-        <tbody>{linhas.map(linha)}</tbody>
-      </table>
+  return <div className="ad-form larga pm-tela">
+    <div className="pm-topo">
+      <div>
+        <h2>Parâmetros de jogo</h2>
+        <p className="dica">Valem para as salas deste momento em diante, em todos os shards.
+          {mudados ? <> <b>{mudados}</b> fora do padrão.</> : null}</p>
+      </div>
+      <input className="pm-busca" type="search" placeholder="filtrar…" value={busca}
+        onChange={e => setBusca(e.target.value)} />
+    </div>
+    {secoes.map(([titulo, itens]) => <section key={titulo} className="pm-grupo">
+      <h3>{titulo} <span>{itens.length}</span></h3>
+      <div className="pm-grade">{itens.map(cartao)}</div>
     </section>)}
-    {!secoes.length ? <p className="vazio">…</p> : null}
+    {!secoes.length ? <p className="vazio">{ts.length ? "nada com esse nome" : "…"}</p> : null}
   </div>;
 }
 

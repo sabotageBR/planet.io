@@ -95,15 +95,56 @@ html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:no
 .ad-erro button{background:none;border:0;color:inherit;cursor:pointer}
 .ad-login .ad-erro{margin:0}
 
-/* ── Parâmetros por categoria ────────────────────────────────────────────────
-   A tabela corrida punha o teto do ímã ao lado do jeito de falar dos bots como se fossem a mesma
-   decisão. O título gruda no topo ao rolar: com seis seções, saber em qual delas se está é metade da
-   leitura. `.ad-tab tbody tr{cursor:pointer}` vale para as tabelas em que a LINHA é um link (contas,
-   salas); aqui quem é clicável é o controle, então a mão volta a ser seta. */
-.ad-grupo{margin:0 0 22px}
-.ad-grupo:last-child{margin-bottom:0}
-.ad-grupo>h3{position:sticky;top:0;z-index:1;background:var(--surf);padding:6px 0 5px;margin:0 0 2px;
-  border-bottom:1px solid var(--line)}
-.ad-grupo .ad-tab tbody tr{cursor:default}
-.ad-grupo .ad-tab tbody tr:hover{background:none}
-.ad-grupo select{max-width:100%}
+/* ── PARÂMETROS: cartões por categoria ───────────────────────────────────────
+   Uma tabela é o certo quando as linhas se comparam entre si — contas, salas, auditoria. Aqui não se
+   comparam: "0,002 fração/s" e "600 ticks" não têm nada a dizer um ao outro em coluna, e o resultado
+   eram quatro colunas estreitas de números soltos com o controle (a única coisa clicável) espremido no
+   meio. O cartão inverte a hierarquia: nome e controle grandes, metainformação embaixo em voz baixa.
+   A tela é CENTRADA e com largura máxima — `.ad-form.larga` solta o formulário na janela inteira, e
+   numa tela de 2560 px o rodapé do cartão ficava a meio metro do rótulo. */
+.pm-tela{max-width:1180px;margin:0 auto;background:none;border:0;padding:0}
+.pm-topo{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin:0 0 18px}
+.pm-topo>div{flex:1;min-width:260px}
+.pm-topo h2{margin:0 0 4px}
+.pm-topo .dica{margin:0}
+.pm-topo .dica b{color:var(--warn)}
+.pm-busca{width:220px}
+
+.pm-grupo{margin:0 0 26px}
+.pm-grupo:last-child{margin-bottom:0}
+/* O título gruda no topo ao rolar: com seis seções, saber em qual delas se está é metade da leitura.
+   O `-14px` casa com o `padding` de `.ad main`, para a faixa cobrir a largura toda ao passar por baixo. */
+.pm-grupo>h3{position:sticky;top:47px;z-index:2;display:flex;align-items:center;gap:8px;
+  margin:0 0 10px;padding:8px 0;background:var(--bg);border-bottom:1px solid var(--line)}
+.pm-grupo>h3 span{color:var(--dim);background:var(--surf2);border-radius:999px;padding:1px 7px;
+  font-size:11px;letter-spacing:0;text-transform:none}
+/* `auto-fill` responde ao CONTÊINER: na janela estreita vira uma coluna sozinho, sem media query. */
+.pm-grade{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(288px,1fr))}
+
+.pm{display:flex;flex-direction:column;gap:7px;padding:13px 14px;border-radius:12px;
+  background:var(--surf);border:1px solid var(--line);transition:border-color .12s,box-shadow .12s}
+.pm:hover{border-color:#39405480}
+.pm:focus-within{border-color:var(--acc)}
+.pm header{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.pm header b{font-size:13.5px;line-height:1.3}
+.pm-selo{flex:none;font-size:10px;text-transform:uppercase;letter-spacing:.6px;font-weight:700;
+  color:var(--warn);border:1px solid var(--warn);border-radius:999px;padding:1px 7px}
+.pm code{color:var(--dim);font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* O aro do "alterado" é a resposta à pergunta que se faz ao abrir a tela: o que aqui não é o padrão? */
+.pm.mudado{border-color:var(--warn);box-shadow:inset 3px 0 0 var(--warn)}
+.pm.fixo{opacity:.72}
+
+.pm-campo{display:flex;align-items:center;gap:8px;margin:2px 0 1px}
+.pm-campo input{width:118px;text-align:right;font-variant-numeric:tabular-nums;font-size:15px;font-weight:600}
+.pm-campo select{width:100%;font-size:13px}
+.pm-campo small,.pm-ro small{color:var(--dim);font-size:12px}
+.pm-ro{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+
+.pm footer{display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;
+  margin-top:auto;padding-top:7px;border-top:1px solid #23262f;min-height:33px}
+.pm-meta{color:var(--dim);font-size:11.5px}
+.pm-meta i{font-style:normal;color:#aab2c5;font-variant-numeric:tabular-nums}
+.pm-acoes{display:flex;align-items:center;gap:6px;margin-left:auto}
+.pm-acoes em{color:var(--dim);font-style:normal;font-size:11.5px}
+.pm-acoes button{padding:5px 10px;font-size:12.5px}
