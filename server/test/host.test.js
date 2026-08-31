@@ -41,14 +41,21 @@ const api=(p,o={})=>fetch(base+p,{headers:{'content-type':'application/json',aut
   .then(async r=>({status:r.status,body:await r.json().catch(()=>null)}));
 const post=(p,body,o={})=>api(p,{method:'POST',body:JSON.stringify(body||{}),...o});
 let nIp=0;
-/** Conta REGISTRADA nova (guest + claim): é a única que pode ser dona de sala. */
+/**
+ * Conta REGISTRADA nova (guest + claim): é a única que pode ser dona de sala.
+ * ⚠️ O `login` vai EXPLÍCITO e com carimbo de tempo. Sem ele o claim congela o nick do convidado
+ * ("Viajante-NNNN", 9000 valores) como login, e o login é ÚNICO: este arquivo roda contra o banco de
+ * dev, que ninguém limpa, então em algumas dezenas de execuções o claim começaria a devolver 409
+ * `login_taken` e a conta viria `null` — um teste que quebra por causa do histórico da máquina.
+ */
 async function conta(nick){
   const ip=`10.8.${(nIp>>8)&255}.${(nIp++)&255}`;
   const g=await fetch(base+'/api/auth/guest',{method:'POST',headers:{'content-type':'application/json','x-forwarded-for':ip},body:'{}'});
   if(g.status!==201)return null;
   const tok=(await g.json()).token;
+  const login=`t${Date.now()%1e9}${nIp}`.slice(0,16);
   const c=await fetch(base+'/api/auth/claim',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${tok}`,'x-forwarded-for':ip},
-    body:JSON.stringify({nick,password:'senha-de-teste-123'})});
+    body:JSON.stringify({nick,login,password:'senha-de-teste-123'})});
   return c.ok?tok:null;}
 async function convidado(){
   const ip=`10.9.${(nIp>>8)&255}.${(nIp++)&255}`;

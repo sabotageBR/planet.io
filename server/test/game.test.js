@@ -241,6 +241,40 @@ test('rodada: fim do mundo manda roundEnd com campeão e placar, aposenta a sala
     C.close();C2.close();
   }finally{await s2.close();}
 });
+// A ÚNICA regra de unicidade de nick que sobrou depois da migração 0009. No mundo o nick é livre — dois
+// jogadores podem se chamar "Messi", com a caricatura do Messi —, mas na MESMA sala não: o kill feed, o
+// chat e o placar passariam a mentir. O caminho que importa é o do CÓDIGO (é por ele que a EQUIPE entra,
+// porque `Party.start` manda todos para a mesma sala); pelo automático o matchmaking desvia sozinho.
+// ⚠️ Servidor PRÓPRIO: o teste mexe em `usedNicks` e no ciclo de vida de uma sala, e as salas do servidor
+// compartilhado deste arquivo são as que os outros testes contam jogador por jogador.
+test('nick livre no mundo, ÚNICO na sala: dois "Messi" só não jogam juntos',async t=>{
+  if(unsavedMode)return t.skip('sem banco');
+  const s2=await startServer({port:0,logLevel:LOG,migrateOnStart:false});
+  try{
+    const url=`ws://127.0.0.1:${s2.port}/ws/0`,sala=c=>s2.rooms.rooms.get(c);
+    const batiza=async(tok,nick)=>{const r=await fetch(base+'/api/me',{method:'PATCH',
+      headers:{'content-type':'application/json',authorization:`Bearer ${tok}`},body:JSON.stringify({nick})});
+      assert.equal(r.status,200,'o banco aceita o nick repetido: ele não é mais único');};
+    const t1=await novoToken(),t2=await novoToken();
+    await batiza(t1,'Messi');await batiza(t2,'Messi');
+    const M1=new Client(url);await M1.open();const r1=await M1.join('Messi',null,{w:1280,h:720},t1);
+    assert.equal(sala(r1.code).sim.players.get(M1.slot).name,'Messi');
+    // 1) pelo CÓDIGO, na sala do outro: recusa — com o nick e a sugestão, para o cliente ter o que oferecer
+    const M2=new Client(url);await M2.open();
+    await assert.rejects(M2.join('Messi',r1.code,{w:1280,h:720},t2),/NICK_IN_ROOM/);
+    const e=M2.jsonOf('error');assert.equal(e.nick,'Messi');assert.match(e.suggestion,/_\d{4}$/);
+    await M2.until(()=>M2.closeCode!=null,2000,'close');assert.equal(M2.closeCode,ERROR_CODE.NICK_IN_ROOM);
+    // 2) sem código, o automático PULA a sala ocupada e ele entra como Messi em outra
+    const M3=new Client(url);await M3.open();const r3=await M3.join('Messi',null,{w:1280,h:720},t2);
+    assert.notEqual(r3.code,r1.code,'o matchmaking desviou da sala onde o nick está em uso');
+    assert.equal(sala(r3.code).sim.players.get(M3.slot).name,'Messi');
+    // 3) e quando o primeiro sai, o nome volta a ficar livre naquela sala (usedNicks é limpo no leave)
+    M1.close();await sleep(100);const q=sala(r1.code);
+    for(const ss of q.sessions.values())ss.disconnectedAt-=NET.RESUME_MS+1;
+    q.housekeeping(Date.now());assert.equal(q.nickTaken('messi'),false);
+    M3.close();
+  }finally{await s2.close();}
+});
 test('saída: fecha os sockets, salas expiram as sessões',async()=>{
   A.close();B.close();await sleep(100);const room=roomOf(roomCode);assert.equal(room.humanCount,3,'A, B e Carol na graça');assert.ok([...room.sessions.values()].every(s=>!s.ws));
   for(const s of room.sessions.values())s.disconnectedAt-=NET.RESUME_MS+1;room.housekeeping(Date.now());assert.equal(room.humanCount,0);

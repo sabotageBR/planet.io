@@ -6,7 +6,7 @@ A simulação nunca fala com o banco; ela chama hooks (objeto injetado em `creat
 ```js
 hooks.onPlayerJoin({token, fallbackNick, remoteAddr, userAgent})
   -> Promise<{ok:true, userId, nick, registered, skinId, prefs, sessionId, unsaved}
-            |{ok:false, code:'AUTH'|'NICK_RESERVED', message, suggestion?}>
+            |{ok:false, code:'AUTH', message}>   // NICK_RESERVED morreu com a 0009: o nick é livre
   // banco fora → {ok:true, userId:null, nick:fallbackNick, registered:false, skinId:0, unsaved:true}
 hooks.onStat({sessionId, key:'split'|'eject'|'eat'|'eatBot'|'food'})     // contadores incrementais
 hooks.onKill({sessionId, killerSessionId, victimSessionId, victimIsBot, weapon:'eat'|'missile'|'blackhole', tick})

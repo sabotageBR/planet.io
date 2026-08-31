@@ -2,16 +2,20 @@
 // @ts-check
 import {err} from './router.js';
 import {LIMITS} from '../auth/ratelimit.js';
-import {normalizeNick,randomGuestNick,suggestNick,isReservedByOther,NICK_MAX} from '../auth/nick.js';
+import {normalizeNick,normalizeLogin,randomGuestNick,suggestNick,loginTaken,NICK_MAX} from '../auth/nick.js';
 import {hashPassword,verifyPassword,validPassword,dummyHash,PASSWORD_MIN} from '../auth/password.js';
 import {toPublic} from '../repos/users.js';
 const EMAIL_RE=/^[^\s@]{1,64}@[^\s@]{1,255}$/;
 export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities,google,limiter,requireUser,optionalUser,log}){
-  const nickOf=async(raw,userId)=>{const nick=normalizeNick(raw);if(!nick)throw err(400,'invalid_nick','nick deve ter de 2 a 16 caracteres');
-    if(await isReservedByOther(db,nick,userId))throw err(409,'nick_reserved','esse nick pertence a um jogador registrado',{suggestion:suggestNick(nick)});return nick;};
+  // O NICK é livre desde a 0009 (só não repete DENTRO de uma sala): aqui sobrou o formato.
+  const nickOf=raw=>{const nick=normalizeNick(raw);if(!nick)throw err(400,'invalid_nick','nick deve ter de 2 a 16 caracteres');return nick;};
+  /** O LOGIN é o que virou único. Ocupado → 409 com sugestão; o guarda de verdade é o 23505 lá embaixo. */
+  const loginOf=async(raw,userId)=>{const login=normalizeLogin(raw);
+    if(!login)throw err(400,'invalid_login','usuário deve ter de 2 a 16 caracteres, sem @');
+    if(await loginTaken(db,login,userId))throw err(409,'login_taken','esse usuário já está em uso',{suggestion:suggestNick(login)});return login;};
   // POST /api/auth/guest {nick?} → 201 {token,user}
   router.add('POST',/^\/api\/auth\/guest$/,async ctx=>{
-    const nick=ctx.body.nick!=null&&ctx.body.nick!==''?await nickOf(ctx.body.nick,null):randomGuestNick();
+    const nick=ctx.body.nick!=null&&ctx.body.nick!==''?nickOf(ctx.body.nick):randomGuestNick();
     const out=await db.tx(async c=>{
       const u=await users.insertGuest(c,nick);
       await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
@@ -22,17 +26,23 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
     log.info(`guest criado: #${out.user.id} ${out.user.nick} (${ctx.ip})`);
     return[201,out];
   },{rate:{scope:'ip',lim:LIMITS.guest}});
-  // POST /api/auth/claim {password,email?} 🔒 → {user}
+  /**
+   * POST /api/auth/claim {login?,password,email?} 🔒 → {user}
+   * É aqui que o LOGIN nasce e congela — o nick continua livre depois. ⚠️ `login` é OPCIONAL e cai no
+   * nick atual: o cliente é outra imagem e fica em CACHE no navegador, então durante o rollout chegam
+   * claims sem ele; exigi-lo mataria o botão "Reivindicar" para todo mundo por algumas horas. O
+   * fallback reproduz exatamente o comportamento de antes da 0009 (o nick vira o login).
+   */
   router.add('POST',/^\/api\/auth\/claim$/,async ctx=>{
     const me=await requireUser(ctx);
     if(me.kind!=='guest')throw err(400,'already_registered','essa conta já é registrada');
     if(!validPassword(ctx.body.password))throw err(400,'invalid_password',`senha deve ter pelo menos ${PASSWORD_MIN} caracteres`);
     let email=ctx.body.email==null||ctx.body.email===''?null:String(ctx.body.email).trim().toLowerCase();
     if(email&&!EMAIL_RE.test(email))throw err(400,'invalid_email','e-mail inválido');
-    await nickOf(me.nick,me.id);
+    const login=await loginOf(ctx.body.login!=null&&ctx.body.login!==''?ctx.body.login:me.nick,me.id);
     const passwordHash=await hashPassword(ctx.body.password);
-    let u;try{u=await users.claim(me.id,{passwordHash,email});}
-    catch(e){if(e.code==='23505'){if(/email/.test(e.constraint||''))throw err(409,'email_taken','esse e-mail já está em uso');throw err(409,'nick_reserved','esse nick pertence a um jogador registrado',{suggestion:suggestNick(me.nick)});}throw e;}
+    let u;try{u=await users.claim(me.id,{passwordHash,email,login});}
+    catch(e){if(e.code==='23505'){if(e.constraint==='users_email_uq')throw err(409,'email_taken','esse e-mail já está em uso');throw err(409,'login_taken','esse usuário já está em uso',{suggestion:suggestNick(login)});}throw e;}
     if(!u)throw err(400,'already_registered','essa conta já é registrada');
     log.info(`conta reivindicada: #${u.id} ${u.nick}`);
     return{user:toPublic(u)};
@@ -56,15 +66,13 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
   /**
    * Nick vindo do GOOGLE não pode BARRAR a entrada. `normalizeNick` RECUSA acima de 16 caracteres em
    * vez de cortar, então "Alexandre Fernandes Silva" derrubava o login inteiro com `400 invalid_nick`
-   * — e o `randomGuestNick()` que estava ali de fallback nunca era alcançado. Aqui o nome é saneado,
-   * e se ainda colidir com um registrado cai na sugestão: entrar com Google não falha por causa do nome.
-   * Um `nick` explícito no corpo continua ESTRITO (409 com `suggestion`), porque aí é escolha da pessoa.
+   * — e o `randomGuestNick()` que estava ali de fallback nunca era alcançado. Aqui o nome é saneado e
+   * pronto: desde a 0009 não há colisão possível, porque o nick não é mais único (e conta de Google
+   * não tem senha, logo não tem `login`). Um `nick` explícito no corpo passa pela mesma peneira.
    */
-  const nickDoGoogle=async(bruto,userId)=>{
+  const nickDoGoogle=bruto=>{
     const cru=String(bruto||'').normalize('NFKC').replace(/\s+/g,' ').trim();
-    let nick=normalizeNick(cru)||normalizeNick(Array.from(cru).slice(0,NICK_MAX).join(''))||randomGuestNick();
-    for(let i=0;i<3&&await isReservedByOther(db,nick,userId);i++)nick=suggestNick(nick);
-    return await isReservedByOther(db,nick,userId)?randomGuestNick():nick;};
+    return normalizeNick(cru)||normalizeNick(Array.from(cru).slice(0,NICK_MAX).join(''))||randomGuestNick();};
   /**
    * POST /api/auth/google {idToken, nick?} → {token,user}
    * INERTE sem GOOGLE_CLIENT_ID: devolve 503, e como `/api/config` não expõe o clientId, o botão nem
@@ -115,11 +123,11 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
       out=await db.tx(async c=>{
         let u;
         if(atual&&atual.kind==='guest'){
-          const nick=pedido?await nickOf(pedido,atual.id):await nickDoGoogle(atual.nick,atual.id);
+          const nick=pedido?nickOf(pedido):nickDoGoogle(atual.nick);
           u=(await c.query(`UPDATE users SET kind='registered',email=COALESCE($2,email),nick=$3,display_name=COALESCE($4,display_name) WHERE id=$1 RETURNING *`,
             [atual.id,id.email,nick,nome])).rows[0];}
         else{
-          const nick=pedido?await nickOf(pedido,null):await nickDoGoogle(id.name,null);
+          const nick=pedido?nickOf(pedido):nickDoGoogle(id.name);
           u=(await c.query(`INSERT INTO users(kind,nick,email,display_name) VALUES('registered',$1,$2,$3) RETURNING *`,[nick,id.email,nome])).rows[0];
           await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
           if(config.signupCoins>0){const {coins}=await ledger.apply(c,{userId:u.id,delta:config.signupCoins,reason:'signup'});u.coins=coins;}}
@@ -128,7 +136,7 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
         return{token,user:toPublic(u)};});
     }catch(e){
       // corrida: outra requisição gravou este mesmo e-mail entre o `byEmail` de cima e o INSERT daqui
-      if(e.code==='23505'&&/email/.test(e.constraint||''))throw err(409,'email_taken','esse e-mail já está em uso');
+      if(e.code==='23505'&&e.constraint==='users_email_uq')throw err(409,'email_taken','esse e-mail já está em uso');
       throw e;}
     log.info(`google: #${out.user.id} ${out.user.nick} (${atual&&atual.kind==='guest'?'guest promovido':'conta nova'})`);
     return out;

@@ -50,7 +50,7 @@ function Usuarios({ erro }) {
   return <div className="ad-split">
     <div className="ad-lista">
       <div className="ad-filtros">
-        <input placeholder="nick, nome, e-mail ou id" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && buscar()} />
+        <input placeholder="nick, usuário, nome, e-mail ou id" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && buscar()} />
         <select value={kind} onChange={e => setKind(e.target.value)}><option value="">todos</option><option value="registered">registrados</option><option value="guest">convidados</option></select>
         <select value={banned} onChange={e => setBanned(e.target.value)}><option value="">todos</option><option value="1">banidos</option><option value="0">livres</option></select>
         <button onClick={buscar}>Buscar</button>
@@ -78,6 +78,8 @@ function Detalhe({ d, acao, fechar }) {
   return <div className="ad-detalhe">
     <div className="ad-cab"><h2>{u.nick} <small>#{u.id}</small></h2><button onClick={fechar}>✕</button></div>
     <dl>
+      {/* o USUÁRIO é o nome de entrar (congelado no cadastro); o nick do topo é livre e o jogador troca */}
+      <dt>usuário</dt><dd>{u.login || "—"}</dd>
       <dt>nome da conta</dt><dd>{u.name || "—"}</dd>
       <dt>e-mail</dt><dd>{u.email || "—"}</dd>
       <dt>tipo</dt><dd>{u.kind}{u.isAdmin ? " · administrador" : ""}</dd>

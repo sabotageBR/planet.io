@@ -36,7 +36,10 @@ function Body() {
     <ScreenHeader title={LB.profileTitle} />
     <div className="card profile-head">
       <SkinPreview skin={sk} r={40} />
-      <div className="pf-meta"><b className="v-nick pf-nick">{user.nick}</b><i className="v-kind pf-kind" data-kind={guest ? "guest" : "registered"}>{guest ? LB.guest : LB.registered}</i><span className="coinbar">{LB.coinIcon} <b className="v-coins">{fmt(user.coins)}</b></span></div>
+      {/* O USUÁRIO fica à vista de propósito: o nick é livre e se troca num onBlur da tela inicial, então
+          sem esta linha o jogador volta dias depois sem saber com que nome entra na conta. */}
+      <div className="pf-meta"><b className="v-nick pf-nick">{user.nick}</b><i className="v-kind pf-kind" data-kind={guest ? "guest" : "registered"}>{guest ? LB.guest : LB.registered}</i><span className="coinbar">{LB.coinIcon} <b className="v-coins">{fmt(user.coins)}</b></span>
+        {user.login ? <span className="hint pf-login">{LB.loginUser}: <b>{user.login}</b></span> : null}</div>
       {guest ? <button className="btn-secondary pf-claim" data-go="account" onClick={openAccount}>{LB.claim}</button>
         : <button className="btn-secondary pf-logout" onClick={() => logout().catch(e => console.warn(e))}>{LB.logout}</button>}
     </div>

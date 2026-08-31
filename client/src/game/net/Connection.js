@@ -40,7 +40,10 @@ export function createConnection({makeSocket,onJson,onBinary,onState,onOpenSend}
         setState("error",fatal);try{ws.close();}catch{}setTimeout(()=>location.reload(),1000);return;}
       c.session={sessionId:m.sessionId,resumeToken:m.resumeToken,slot:m.slot,shard:m.shard};c.room=m.code;attempt=0;joinedOnce=true;
       setState("connected",{room:m.code,slot:m.slot});}
-    else if(m.t==="error"){fatal={code:m.code,message:m.message,suggestion:m.suggestion};}
+    // O payload INTEIRO vira o `fatal` (menos o `t`): o erro do WS carrega campos de molde — o `nick` do
+    // NICK_IN_ROOM é um deles, e copiar campo a campo o deixava de fora, então a frase saía com as aspas
+    // vazias ("já há alguém chamado \"\" nessa sala").
+    else if(m.t==="error"){const{t,...resto}=m;fatal=resto;}
     onJson(m);}
   function onPong(m){const now=performance.now(),rtt=Math.max(0,now-(m.clientTime>>>0));c.rtt=rtt;c.rttAvg=c.rttAvg?c.rttAvg*.8+rtt*.2:rtt;
     c.pongTick=m.serverTick;c.pongAt=now;const off=m.serverTick+rtt/2*TICK_HZ/1000-now*TICK_HZ/1000;c.tickOffset=Number.isNaN(c.tickOffset)?off:c.tickOffset*.9+off*.1;}

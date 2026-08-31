@@ -21,9 +21,11 @@ export const sessionKey=t=>t?hashToken(t).slice(0,24):null;
 export const ttlSql=kind=>kind==='admin'?`now()+interval '12 hours'`:`now()+interval '${kind==='device'?365:30} days'`;
 // `st.xp` entra por LEFT JOIN em PK: custo zero numa query que já roda em todo join de WS, e é o que faz o
 // badge de nível existir sem uma segunda ida ao banco no caminho mais quente do servidor.
+// ⚠️ Aqui havia um EXISTS(...) AS nick_reserved — uma subconsulta por token resolvido, ou seja em TODA
+// chamada autenticada e em TODO join de WS — só para barrar quem tivesse o nick de um registrado. O nick
+// ficou livre na 0009 e a subconsulta saiu junto.
 const RESOLVE_SQL=`SELECT u.*, t.id AS token_id, t.kind AS token_kind, t.last_used_at AS token_used_at,
-  COALESCE(st.xp,0) AS xp,
-  EXISTS(SELECT 1 FROM users r WHERE r.kind='registered' AND lower(r.nick)=lower(u.nick) AND r.id<>u.id) AS nick_reserved
+  COALESCE(st.xp,0) AS xp
   FROM auth_tokens t JOIN users u ON u.id=t.user_id
   LEFT JOIN user_stats st ON st.user_id=u.id
   WHERE t.token_hash=$1 AND t.revoked_at IS NULL AND t.expires_at>now()`;
@@ -35,7 +37,7 @@ export function createTokens(db,log){
     await c.query(`INSERT INTO auth_tokens(user_id,token_hash,kind,expires_at,user_agent) VALUES($1,$2,$3,${ttlSql(kind)},$4)`,[userId,hashToken(token),kind,userAgent&&String(userAgent).slice(0,255)]);
     return token;
   }
-  /** token → linha de users (+ token_id, token_kind, nick_reserved) ou null; renova expiração deslizante */
+  /** token → linha de users (+ token_id, token_kind) ou null; renova expiração deslizante */
   async function resolve(token){
     if(typeof token!=='string'||!TOKEN_RE.test(token))return null;
     const {rows}=await db.query(RESOLVE_SQL,[hashToken(token)]);const u=rows[0];if(!u)return null;

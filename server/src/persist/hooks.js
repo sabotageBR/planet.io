@@ -1,7 +1,6 @@
 // ── Persistência: implementa docs/spec/hooks.md (sim nunca espera o banco) ─────
 // @ts-check
 import {createTokens} from '../auth/tokens.js';
-import {suggestNick} from '../auth/nick.js';
 import {createUsers} from '../repos/users.js';
 import {createLedger} from '../repos/ledger.js';
 import {createSkins} from '../repos/skins.js';
@@ -42,7 +41,6 @@ export function createPersistence({db,log,config}){
     try{u=await withTimeout(tokens.resolve(token),JOIN_TIMEOUT_MS);}
     catch(e){log.warn(`join sem persistência (${remoteAddr||'?'}): ${e.message}`);return UNSAVED(fb);}
     if(!u)return{ok:false,code:'AUTH',message:'token inválido ou expirado'};
-    if(u.nick_reserved)return{ok:false,code:'NICK_RESERVED',message:'esse nick pertence a um jogador registrado',suggestion:suggestNick(u.nick)};
     // EASTER EGG: quem entra como "Bruxo" joga com a caricatura do Ronaldinho. Decidido AQUI, e não na
     // Room, para que `matches.skin_id` grave a skin realmente usada — e ele NUNCA escreve em
     // `users.equipped_skin_id`: é substituição de uma vida só, e trocar o nick devolve a skin comprada.

@@ -3,7 +3,7 @@
 // o `seedSkins` do banco e o payload do servidor. Aqui é a camada que traduz na hora de desenhar — e ela
 // é só função pura sobre o dicionário, sem estado.
 import { FAMILY_BY_ID, TIER_BY_ID, ACHIEVEMENT_BY_KEY, countryName } from "@warspace/shared";
-import { currentLang, getLabels, preenche, DEFAULT_LANG } from "./index.js";
+import { currentLang, getLabels, preenche, BASE_LANG } from "./index.js";
 import { fmt } from "../ui/format.js";
 
 const t = () => getLabels();
@@ -47,7 +47,7 @@ export function achDescOf(key) {
 const NOMES = new Map();
 export function countryNameIn(code, lang = currentLang()) {
   if (!code) return "";
-  if (lang === DEFAULT_LANG) return countryName(code);
+  if (lang === BASE_LANG) return countryName(code);   // a lista versionada de countries.js é o pt-BR
   let d = NOMES.get(lang);
   if (d === undefined) { try { d = new Intl.DisplayNames([lang], { type: "region" }); } catch { d = null; } NOMES.set(lang, d); }
   if (d) { try { const n = d.of(code); if (n && n !== code) return n; } catch { /* código fora do ICU */ } }

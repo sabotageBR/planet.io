@@ -2,7 +2,7 @@
 // @ts-check
 import {err} from './router.js';
 import {LIMITS} from '../auth/ratelimit.js';
-import {normalizeNick,suggestNick,isReservedByOther} from '../auth/nick.js';
+import {normalizeNick} from '../auth/nick.js';
 import {toPublic} from '../repos/users.js';
 import {statsToPublic} from '../repos/matches.js';
 import {isCountry} from '@warspace/shared/countries.js';
@@ -38,7 +38,7 @@ export function sanitizePrefs(input){
   if(!input||typeof input!=='object')return{};
   const out={};for(const [k,v] of Object.entries(input)){const f=PREFS[k];if(!f)continue;const x=f(v);if(x!==undefined)out[k]=x;}return out;
 }
-export function mountMe(router,{db,users,skins,matches,achievements,requireUser}){
+export function mountMe(router,{users,skins,matches,achievements,requireUser}){
   // GET /api/me 🔒
   router.add('GET',/^\/api\/me$/,async ctx=>{
     const me=await requireUser(ctx);
@@ -51,10 +51,12 @@ export function mountMe(router,{db,users,skins,matches,achievements,requireUser}
     const temNick='nick' in (ctx.body||{}),temPais='country' in (ctx.body||{});
     if(!temNick&&!temPais)throw err(400,'bad_request','informe nick e/ou country');
     let u=me;
+    // O nick é LIVRE desde a 0009: qualquer um pode ser o Messi (com a caricatura do Messi). A única
+    // regra que sobrou é por SALA, e ela mora em `Room.nickTaken` — não aqui. Quem é único é o `login`,
+    // que nasce no claim e não muda.
     if(temNick){
       const nick=normalizeNick(ctx.body.nick);if(!nick)throw err(400,'invalid_nick','nick deve ter de 2 a 16 caracteres');
-      if(await isReservedByOther(db,nick,me.id))throw err(409,'nick_reserved','esse nick pertence a um jogador registrado',{suggestion:suggestNick(nick)});
-      try{u=await users.setNick(me.id,nick);}catch(e){if(e.code==='23505')throw err(409,'nick_reserved','esse nick pertence a um jogador registrado',{suggestion:suggestNick(nick)});throw e;}}
+      u=await users.setNick(me.id,nick);}
     if(temPais){
       // `null`/'' LIMPA: entrar no ranking regional é opcional, e sair dele também tem que ser.
       const c=ctx.body.country;

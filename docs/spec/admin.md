@@ -48,7 +48,7 @@ ausente dele não chega ao handler: cai em 404 (ou no `staticDir`, em dev), sem 
 | GET | `/api/admin/me` 🛡 | — | `{admin}` · 403 `forbidden` |
 | GET | `/api/admin/users?q=&kind=&banned=&limit=&before=` 🛡 | — | `{users:[…],next}` — **sem e-mail** (é do detalhe) |
 | GET | `/api/admin/users/:id` 🛡 | — | `{user,tokens,ledger,matches}` · 404 |
-| PATCH | `/api/admin/users/:id` 🛡 | `{nick?,country?}` | `{user}` · 409 `nick_reserved` |
+| PATCH | `/api/admin/users/:id` 🛡 | `{nick?,login?,country?}` | `{user}` · 400 `bad_nick`/`bad_login` · 409 `login_taken` |
 | POST | `/api/admin/users/:id/ban` 🛡 | `{days,reason}` — `days:0` desbane | `{user}` · 409 `self_ban` |
 | POST | `/api/admin/users/:id/coins` 🛡 | `{delta,reason}` | `{coins}` · 402 `insufficient_coins` |
 | POST | `/api/admin/users/:id/tokens/revoke` 🛡 | — | `{revoked}` |
@@ -147,5 +147,7 @@ DATABASE_URL=postgres://planet:planet@127.0.0.1:5433/planet npm test   # server/
 ```
 Promover a primeira conta em dev:
 ```sql
-UPDATE users SET is_admin=true WHERE nick='SeuNick';
+-- por e-mail ou por id, NUNCA por nick: o nick deixou de ser único na 0009 e um WHERE nick=… pode
+-- promover mais de uma conta de uma vez.
+UPDATE users SET is_admin=true WHERE email='voce@exemplo.com';
 ```

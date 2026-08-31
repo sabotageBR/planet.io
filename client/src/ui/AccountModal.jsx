@@ -11,28 +11,31 @@ import GoogleButton from "./GoogleButton.jsx";
 const PAISES = [...POPULAR, ...COUNTRIES.map(([c]) => c).filter(c => !POPULAR.includes(c))];
 /** Sugestão pelo idioma do navegador ("pt-BR" → "BR"). Só PREENCHE o campo; quem salva é o usuário. */
 const paisSugerido = () => { const p = (navigator.language || "").split("-")[1]; return p && PAISES.includes(p.toUpperCase()) ? p.toUpperCase() : ""; };
+/** O nick vira sugestão de usuário — MENOS o `Viajante-NNNN` sorteado: são 9000 valores, e pré-preencher
+ *  com ele daria colisão de aniversário (~50 % em ~110 contas) num campo que agora é único de verdade. */
+const sugereLogin = nick => (!nick || /^Viajante-\d{4}$/.test(nick) ? "" : nick);
 export default function AccountModal({ on }) {
   return <div className={"overlay" + (on ? " on" : "")} id="s-account" onClick={e => { if (e.target === e.currentTarget) closeAccount(); }}>{on ? <Body /> : null}</div>;
 }
 function Body() {
   const LB = useLabels(); const user = useStore(app, s => s.session.user) || {};
   const [tab, setTab] = useState("claim");
-  const [c, setC] = useState({ nick: user.nick || "", pass: "", pass2: "", mail: "", pais: user.country || paisSugerido() });
-  const [l, setL] = useState({ nick: "", pass: "" });
+  const [c, setC] = useState({ login: sugereLogin(user.nick), pass: "", pass2: "", mail: "", pais: user.country || paisSugerido() });
+  const [l, setL] = useState({ login: "", pass: "" });
   const [err, setErr] = useState(null), [busy, setBusy] = useState(false);
-  useEffect(() => { setC(x => ({ ...x, nick: user.nick || "" })); }, [user.nick]);
+  useEffect(() => { setC(x => (x.login ? x : { ...x, login: sugereLogin(user.nick) })); }, [user.nick]);
   const fail = e => { setErr({ msg: errText(e, "nick"), suggestion: e.suggestion }); setBusy(false); };
   const doClaim = async () => { setErr(null);
-    if (c.nick.trim().length < 2 || c.nick.trim().length > 16) return setErr({ msg: LB.nickShort });
+    if (c.login.trim().length < 2 || c.login.trim().length > 16) return setErr({ msg: LB.loginShort });
     if (c.pass.length < 6) return setErr({ msg: LB.passShort });
     if (c.pass !== c.pass2) return setErr({ msg: LB.passMismatch });
     setBusy(true);
-    try { await claim({ nick: c.nick.trim(), password: c.pass, email: c.mail.trim() || undefined });
+    try { await claim({ login: c.login.trim(), password: c.pass, email: c.mail.trim() || undefined });
       if (c.pais) await setCountry(c.pais);   // depois do claim: o país é do PERFIL, não da criação da conta
       setBusy(false); } catch (e) { fail(e); } };
-  const doLogin = async () => { setErr(null); if (!l.nick.trim() || !l.pass) return setErr({ msg: LB.nickShort });
-    setBusy(true); try { await login({ login: l.nick.trim(), password: l.pass }); setBusy(false); } catch (e) { fail(e); } };
-  const error = err ? <p className="form-error" role="alert">{err.msg}{err.suggestion ? <> <button type="button" className="btn-link" onClick={() => { setC(x => ({ ...x, nick: err.suggestion })); setErr(null); }}>{LB.useSuggestion}: {err.suggestion}</button></> : null}</p> : null;
+  const doLogin = async () => { setErr(null); if (!l.login.trim() || !l.pass) return setErr({ msg: LB.loginShort });
+    setBusy(true); try { await login({ login: l.login.trim(), password: l.pass }); setBusy(false); } catch (e) { fail(e); } };
+  const error = err ? <p className="form-error" role="alert">{err.msg}{err.suggestion ? <> <button type="button" className="btn-link" onClick={() => { setC(x => ({ ...x, login: err.suggestion })); setErr(null); }}>{LB.useSuggestion}: {err.suggestion}</button></> : null}</p> : null;
   return <div className="card modal account" role="dialog" aria-modal="true">
     <div className="modal-title">{LB.accountTitle}</div>
     {/* Acima das abas de propósito: entrar com Google resolve as duas (reivindicar e entrar). */}
@@ -40,7 +43,8 @@ function Body() {
     <div className="tabs"><button data-tab="claim" className={tab === "claim" ? "on" : ""} onClick={() => { setTab("claim"); setErr(null); }}>{LB.claimTab}</button><button data-tab="login" className={tab === "login" ? "on" : ""} onClick={() => { setTab("login"); setErr(null); }}>{LB.loginTab}</button></div>
     <form className={"tab tab-claim" + (tab === "claim" ? " on" : "")} onSubmit={e => { e.preventDefault(); doClaim(); }}>
       <p className="hint">{LB.claimNote}</p>
-      <Field id="ac-nick" label={LB.nick} value={c.nick} maxLength={16} autoComplete="username" onChange={e => setC({ ...c, nick: e.target.value })} />
+      <Field id="ac-login" label={LB.loginUser} value={c.login} maxLength={16} autoComplete="username" onChange={e => setC({ ...c, login: e.target.value })} />
+      <p className="hint">{LB.loginUserHint}</p>
       <Field id="ac-pass" label={LB.password} type="password" value={c.pass} autoComplete="new-password" onChange={e => setC({ ...c, pass: e.target.value })} />
       <Field id="ac-pass2" label={LB.password2} type="password" value={c.pass2} autoComplete="new-password" onChange={e => setC({ ...c, pass2: e.target.value })} />
       <Field id="ac-mail" label={LB.email} type="email" value={c.mail} autoComplete="email" onChange={e => setC({ ...c, mail: e.target.value })} />
@@ -55,7 +59,7 @@ function Body() {
     </form>
     <form className={"tab tab-login" + (tab === "login" ? " on" : "")} onSubmit={e => { e.preventDefault(); doLogin(); }}>
       <p className="hint">{LB.loginNote}</p>
-      <Field id="lg-nick" label={LB.nick} value={l.nick} autoComplete="username" onChange={e => setL({ ...l, nick: e.target.value })} />
+      <Field id="lg-login" label={LB.loginUser} value={l.login} autoComplete="username" onChange={e => setL({ ...l, login: e.target.value })} />
       <Field id="lg-pass" label={LB.password} type="password" value={l.pass} autoComplete="current-password" onChange={e => setL({ ...l, pass: e.target.value })} />
       {tab === "login" ? error : null}
       <div className="modal-actions"><button type="button" className="btn-secondary" data-go="account-close" onClick={closeAccount}>{LB.cancel}</button><button type="submit" className="btn-primary" data-go="account-login" disabled={busy}>{LB.login}</button></div>

@@ -85,7 +85,8 @@ export default {
   sortBy: { rarity: "Por raridade", price: "Por preço", name: "Por nome" },
   prefsTitle: "PREFERÊNCIAS", save: "Salvar", reset: "Restaurar padrão", saved: "Preferências salvas",
   accountTitle: "CONTA", claimTab: "Reivindicar", loginTab: "Entrar", nick: "Nick", password: "Senha", password2: "Confirmar senha", email: "E-mail (opcional)",
-  claimNote: "Reivindicar a conta trava seu nick e leva skins e moedas para outros dispositivos.", loginNote: "Entre com um nick já reivindicado.",
+  loginUser: "Usuário", loginUserHint: "É com ele que você volta à sua conta. Não muda depois — seu nick no jogo continua livre.",
+  claimNote: "Reivindicar a conta leva skins e moedas para outros dispositivos.", loginNote: "Entre com o usuário que você criou.",
   orSep: "ou", googleFail: "Não deu para entrar com o Google",
   confirm: "Confirmar", cancel: "Cancelar",
   reconnTitle: "SINAL FRACO!", reconnSub: "Procurando o satélite… tentativa {n}/5",
@@ -115,6 +116,7 @@ export default {
   claimed: "Conta reivindicada", loggedIn: "Bem-vindo de volta", loggedOut: "Você saiu da conta", nickSaved: "Nick salvo",
   bought: "Skin comprada", equippedToast: "Skin equipada", poorToast: "Moedas insuficientes", lockedToast: "Desbloqueie pela conquista", secretToast: "Segredo oculto…",
   passShort: "Senha com pelo menos 6 caracteres", passMismatch: "As senhas não conferem", nickShort: "Nick com 2 a 16 caracteres",
+  loginShort: "Usuário com 2 a 16 caracteres",
   connLost: "Conexão perdida", roomFull: "Sala cheia", kicked: "Desconectado do servidor",
   // ── O QUE CADA TEMA DIZ DE DIFERENTE ──
   // Os três temas exportavam um `labels` inteiro cada um, com as MESMAS 11 chaves em pt-BR — e só a
@@ -171,6 +173,10 @@ export default {
     avatar: { unknown: "Não deu para subir a imagem." },
     // conta e nick
     bad_nick: "Nick inválido.", invalid_nick: "O nick precisa de 2 a 16 caracteres.",
+    bad_login: "Usuário inválido.", invalid_login: "O usuário precisa de 2 a 16 caracteres, sem @.",
+    login_taken: "Esse usuário já está em uso.",
+    // DORMENTE: o nick ficou livre na migração 0009 e nenhum servidor novo manda mais isto. Fica porque,
+    // durante um rollout, um pod velho ainda manda — e sem a chave a tela ficaria bilíngue.
     nick_reserved: "Esse nick é de outro jogador registrado.",
     invalid_credentials: "Usuário ou senha incorretos.", invalid_password: "A senha precisa de pelo menos {n} caracteres.",
     invalid_email: "E-mail inválido.", email_taken: "Esse e-mail já está em uso.",

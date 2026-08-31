@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import PT from "../src/i18n/pt-BR.js";
-import { resolveLang, getLabels, setLang, LANGS, DEFAULT_LANG, preenche } from "../src/i18n/index.js";
+import { resolveLang, getLabels, setLang, LANGS, BASE_LANG, preenche } from "../src/i18n/index.js";
 import { SKINS, FAMILIES } from "@warspace/shared";
 
 /** Caminhos-folha ordenados: {a:{b:"x"},c:"y"} → ["a.b","c"]. Array é folha (é lista, não dicionário). */
@@ -19,8 +19,8 @@ export function folhas(o, pre = "") {
 const pega = (o, p) => p.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
 const moldes = s => [...String(s).matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort();
 
-const OUTROS = LANGS.filter(l => l !== DEFAULT_LANG);
-const dicts = new Map([[DEFAULT_LANG, PT]]);
+const OUTROS = LANGS.filter(l => l !== BASE_LANG);
+const dicts = new Map([[BASE_LANG, PT]]);
 test("carrega todos os idiomas", async () => {
   for (const id of OUTROS) dicts.set(id, (await import(`../src/i18n/${id}.js`)).default);
   assert.equal(dicts.size, LANGS.length);
@@ -53,7 +53,12 @@ test("os {moldes} sobrevivem à tradução", () => {
 test("resolveLang: pref manda, senão o navegador, senão pt-BR", () => {
   const TABELA = [
     ["auto", ["pt-BR"], "pt-BR"], ["auto", ["pt-PT"], "pt-BR"], ["auto", ["en-US", "pt"], "en"],
-    ["auto", ["es-419"], "es"],   ["auto", ["de", "fr"], "pt-BR"], ["auto", [], "pt-BR"],
+    ["auto", ["es-419"], "es"],
+    // idioma que não falamos → INGLÊS, não português: um alemão entende inglês muito mais provavelmente
+    ["auto", ["de", "fr"], "en"], ["auto", ["ja"], "en"], ["auto", [], "en"],
+    // ⚠️ mas a lista inteira do navegador é varrida antes de desistir: o brasileiro que mora na Alemanha
+    // tem ["de","pt-BR"] e continua caindo no português
+    ["auto", ["de", "pt-BR"], "pt-BR"], ["auto", ["fr-CA", "es-MX"], "es"],
     ["es", ["en-US"], "es"],      ["klingon", ["en"], "en"],   // valor inválido cai no automático
   ];
   for (const [pref, tags, esperado] of TABELA)
@@ -83,10 +88,14 @@ test("preenche: molde sem valor fica literal (é o que o teste de moldes protege
   assert.equal(preenche("nível {n}", {}), "nível {n}");
 });
 
-test("setLang troca o dicionário e volta ao pt-BR quando o idioma não existe", async () => {
+test("setLang troca o dicionário; valor inválido cai no automático", async () => {
   assert.equal(await setLang("es"), "es");
-  assert.equal(getLabels().prefs.lang_auto, dicts.get("es").prefs.lang_auto);
-  assert.equal(await setLang("klingon"), "pt-BR");   // fora da lista → automático → pt-BR (sem navegador)
+  assert.equal(getLabels().opt.lang_auto, dicts.get("es").opt.lang_auto);
+  // ⚠️ O esperado sai do próprio `resolveLang("auto")`, e não de uma constante: o Node 22 TEM um
+  // `navigator.language` (o locale da máquina), então cravar "en" aqui faria o teste passar ou falhar
+  // conforme o idioma de quem roda. Quem prova o fallback em si é a tabela do teste acima, com as tags
+  // passadas na mão.
+  assert.equal(await setLang("klingon"), resolveLang("auto"));
 });
 
 // ⚠️ OURO DO CATÁLOGO. As descrições de conquista passaram a existir em DOIS lugares: o gerador

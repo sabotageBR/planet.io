@@ -5,13 +5,13 @@ Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`.
 
 | método | rota | body | resposta |
 |---|---|---|---|
-| POST | `/api/auth/guest` | `{nick?}` | 201 `{token,user}` · 409 `nick_reserved {suggestion}` · 429 |
-| POST | `/api/auth/claim` 🔒 | `{password,email?}` | `{user}` · 400 `already_registered` · 409 `nick_reserved` |
-| POST | `/api/auth/login` | `{login,password}` | `{token,user}` · 401 `invalid_credentials` · 429 |
+| POST | `/api/auth/guest` | `{nick?}` | 201 `{token,user}` · 400 `invalid_nick` · 429 |
+| POST | `/api/auth/claim` 🔒 | `{login?,password,email?}` | `{user}` · 400 `already_registered`/`invalid_login` · 409 `login_taken {suggestion}`/`email_taken` |
+| POST | `/api/auth/login` | `{login,password}` | `{token,user}` · 401 `invalid_credentials` · 429 — `login` é o USUÁRIO congelado no claim ou o e-mail |
 | POST | `/api/auth/logout` 🔒 | — | 204 |
-| POST | `/api/auth/google` (🔒 opcional) | `{idToken, nick?}` | `{token,user}` · 401 `invalid_credentials` · 409 `email_taken`/`nick_reserved` · 503 `google_disabled` |
-| GET | `/api/me` 🔒 | — | `{user:{id,nick,kind,coins,equippedSkin,createdAt}, skins:[ids], prefs, stats, achievements:[keys]}` |
-| PATCH | `/api/me` 🔒 | `{nick}` | `{user}` · 409 `nick_reserved {suggestion}` |
+| POST | `/api/auth/google` (🔒 opcional) | `{idToken, nick?}` | `{token,user}` · 401 `invalid_credentials` · 409 `email_taken` · 503 `google_disabled` — conta de Google não tem senha, logo não tem `login` |
+| GET | `/api/me` 🔒 | — | `{user:{id,nick,login?,kind,coins,equippedSkin,createdAt}, skins:[ids], prefs, stats, achievements:[keys]}` |
+| PATCH | `/api/me` 🔒 | `{nick}` | `{user}` · 400 `invalid_nick` — o nick é LIVRE, não há 409 |
 | PATCH | `/api/me/prefs` 🔒 | `{…}` (whitelist: quality, showNames, showMass, showGrid, showMinimap, showFps, sound, music, ambience, volume, musicVolume, chat, voice, voiceVolume, joystick, holdEject, rightSplit, keySplit/keyEject (`KeyboardEvent.code` de `ACTION_KEYS`), theme('auto'|'dawn'|'sunset'|'dusk'), lang('auto'|'pt-BR'|'en'|'es'), reduceMotion, bigText, colorblind, lbSize) | `{prefs}` |
 | GET | `/api/me/history?limit=20&before=<id>` 🔒 | — | `{matches:[{id,endedAt,score,maxMass,kills,durationS,cause,coinsEarned,roomCode,by}]}` |
 | GET | `/api/skins` (🔒 opcional) | — | `{skins:[catálogo], owned:[ids], equipped}` |
@@ -30,8 +30,12 @@ Token opaco (`pt_` + 32 bytes base64url), guardado como sha256 em `auth_tokens`.
 | **PAINEL** | **`/api/admin/*`** — ver `docs/spec/admin.md` | | |
 | GET | `/healthz` | — | `{ok, shard, rooms, players, tick:{p50,p99,max,overruns}, loopLagMs:{p50,p99}, net:{outKBps,inMsgps,rateLimitHits}, db:'ok'\|'down', queue, protocol}` |
 
-Regras de nick: 2–16 chars, NFKC, espaços colapsados; registrado único case-insensitive; guest não pode usar nick de
-registrado (checado em guest/PATCH/join) — sugestão `Nick_NNNN`; guest sem nick → `Viajante-NNNN`.
+Regras de **nick**: 2–16 chars, NFKC, espaços colapsados — e mais nada. Ele é LIVRE: dois jogadores podem se
+chamar "Messi" (com a caricatura do Messi, que sai do nick). A ÚNICA unicidade é POR SALA, no join de WS
+(`NICK_IN_ROOM`), porque nick repetido faz o kill feed, o chat e o placar mentirem. Guest sem nick → `Viajante-NNNN`.
+Regras de **login** (o nome de ENTRAR): mesmas do nick, sem `@`, ÚNICO case-insensitive (`users_login_uq`). Nasce no
+`claim` — do corpo, ou do nick da hora quando o corpo não manda — e NÃO muda mais (só pelo `/admin`); sugestão
+`Nick_NNNN` no 409. Conta de Google e convidado não têm login. Era o nick que carregava isso até a migração 0009.
 **Login com Google** (`/api/auth/google`): o cliente manda o `id_token` do Google Identity Services e o
 servidor o valida contra o `tokeninfo` (`aud` = o nosso clientId, `iss`, `exp`, `email_verified`). Não há
 troca de *code*, então o `client_secret` não existe deste lado. `googleClientId` vazio em `/api/config` é o

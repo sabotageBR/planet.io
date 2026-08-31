@@ -46,8 +46,8 @@ const LABELS={
   causes:{eaten:"devorado",blackhole:"buraco negro",left:"saiu",shutdown:"servidor"},
   shopTitle:"LOJA DE SKINS",shopNote:"Moedas se ganham jogando. Skins de conquista desbloqueiam sozinhas.",filterAll:"Todas",unlocked:"desbloqueadas",
   prefsTitle:"PREFERÊNCIAS",save:"Salvar",reset:"Restaurar padrão",saved:"Preferências salvas",
-  accountTitle:"CONTA",claimTab:"Reivindicar",loginTab:"Entrar",nick:"Nick",password:"Senha",password2:"Confirmar senha",email:"E-mail (opcional)",
-  claimNote:"Reivindicar a conta trava seu nick e leva skins e moedas para outros dispositivos.",loginNote:"Entre com um nick já reivindicado.",
+  accountTitle:"CONTA",claimTab:"Reivindicar",loginTab:"Entrar",nick:"Nick",loginUser:"Usuário",password:"Senha",password2:"Confirmar senha",email:"E-mail (opcional)",
+  claimNote:"Reivindicar a conta leva skins e moedas para outros dispositivos.",loginNote:"Entre com o usuário que você criou.",
   confirm:"Confirmar",cancel:"Cancelar",
   reconnTitle:"CONEXÃO PERDIDA",reconnSub:"Reconectando… tentativa {n}/5",
   split:"DIVIDIR",eject:"EJETAR",fire:"MÍSSIL",exit:"Sair",keySplit:"ESPAÇO",keyEject:"W",keyFire:"F",
@@ -206,12 +206,12 @@ app.innerHTML=`
     <div class="tabs"><button data-tab="claim" class="on">${LB.claimTab}</button><button data-tab="login">${LB.loginTab}</button></div>
     <form class="tab tab-claim on" onsubmit="return false">
       <p class="hint">${LB.claimNote}</p>
-      ${field("ac-nick",LB.nick,"text",'value="Evandro"')}${field("ac-pass",LB.password,"password")}${field("ac-pass2",LB.password2,"password")}${field("ac-mail",LB.email,"email")}
+      ${field("ac-login",LB.loginUser,"text",'value="Evandro"')}${field("ac-pass",LB.password,"password")}${field("ac-pass2",LB.password2,"password")}${field("ac-mail",LB.email,"email")}
       <div class="modal-actions"><button class="btn-secondary" data-go="entry">${LB.cancel}</button><button class="btn-primary" data-go="entry">${LB.confirm}</button></div>
     </form>
     <form class="tab tab-login" onsubmit="return false">
       <p class="hint">${LB.loginNote}</p>
-      ${field("lg-nick",LB.nick,"text")}${field("lg-pass",LB.password,"password")}
+      ${field("lg-login",LB.loginUser,"text")}${field("lg-pass",LB.password,"password")}
       <div class="modal-actions"><button class="btn-secondary" data-go="entry">${LB.cancel}</button><button class="btn-primary" data-go="entry">${LB.login}</button></div>
     </form>
   </div></div>

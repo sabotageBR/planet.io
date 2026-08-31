@@ -26,6 +26,13 @@
 body[data-mode="portrait"] .podium .step canvas{width:52px;height:52px}
 body[data-mode="portrait"] .podium .step.p1 canvas{width:68px;height:68px}
 
+/* ── PERFIL: o USUÁRIO embaixo do nick ──
+   O nick virou livre (dois "Messi" são legais) e quem entra na conta é o `login`, congelado no cadastro.
+   Como o nick se troca num onBlur da tela inicial, esta linha é a única que lembra o jogador de qual é o
+   nome de entrar dele. Discreta de propósito: informação de consulta, não de leitura. */
+#s-profile .pf-login{font-size:11px;line-height:1.2;opacity:.8}
+#s-profile .pf-login b{font-weight:700;opacity:1}
+
 /* ── loja: busca/ordem, cartões e painel de detalhe ── */
 /* Os TRÊS temas fixam `.shop-grid{grid-template-columns:repeat(3,1fr)}` (dawn:179, dusk:172, sunset:177),
    anulando o `auto-fill` de base.css. Três colunas fixas respondem à largura da TELA, não à do painel:

@@ -316,12 +316,34 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ A pelota que o gás arranca também precisou LIMPAR o planeta (`ZONE.SHED_DIST`): com velocidade fixa
   ela rendia 70 px de alcance, o gigante a reengolia e chegava a um EQUILÍBRIO — parava de encolher
   exatamente onde a zona devia estar cobrando dele.
-- **Nick é único POR SALA** (`Room.nickTaken`, erro `NICK_IN_ROOM`): dois planetas com o mesmo nome fazem
-  o kill feed, o chat e o placar mentirem — quem morreu não sabe por quem. `usedNicks` sempre existiu, mas
-  era WRITE-ONLY para humanos (só o gerador de bots o lia); agora é consultado na entrada e **limpo na
-  saída**, senão a sala vira uma lista negra que só cresce e quem sai não volta com o próprio nome. O
-  `JOGAR (AUTO)` pula as salas onde o nick está em uso, então a recusa quase só aparece para quem digitou
-  o código. ⚠️ Como o nick de uma conta é o da CONTA, isso também impede a mesma pessoa ter dois planetas
+- **NICK LIVRE, ÚNICO SÓ POR SALA** (`Room.nickTaken`, erro `NICK_IN_ROOM`; migração **0009**): o nick era
+  único no mundo inteiro entre contas registradas (`users_nick_registered_uq`) e isso nunca foi uma regra de
+  JOGO — nick é nome de planeta, e **qualquer um tem que poder ser o Messi**, com a caricatura do Messi (o
+  egg de `eggs.js` sai do nick). A única regra que o jogo precisa é por SALA: dois planetas com o mesmo nome
+  fazem o kill feed, o chat e o placar mentirem — quem morreu não sabe por quem. `usedNicks` é consultado na
+  entrada e **limpo na saída**, senão a sala vira lista negra e quem sai não volta com o próprio nome; o
+  `JOGAR (AUTO)` pula as salas onde o nick está em uso, então a recusa só aparece para quem entrou por
+  CÓDIGO — e o caminho de EQUIPE é justamente esse (`Party.start` manda todos para o mesmo código), por isso
+  a recusa passou a levar `suggestion` e o cliente devolve o jogador à tela INICIAL, com o campo de nome em
+  foco, em vez de despejá-lo na tela de Salas com um toast.
+  ⚠️ **Quem segurava a unicidade global não era o jogo: era o LOGIN.** `POST /api/auth/login` aceita "nick ou
+  e-mail + senha" e o e-mail é OPCIONAL no cadastro — para a maioria das contas o nick ERA o login. Então o
+  nick se partiu em dois: **`users.login`** é o nome de ENTRADA, nasce no `claim` (do corpo, ou do nick da
+  hora quando o corpo não manda — é o que mantém o cliente velho funcionando no rollout), é ÚNICO
+  (`users_login_uq`, parcial em `login IS NOT NULL`) e **não muda mais**; o `nick` é o nome de jogo, livre.
+  Ninguém perdeu o acesso: o backfill gravou `login=nick`, então toda conta continua entrando com o nome de
+  sempre. Conta de Google e convidado ficam com `login` NULL — não entram por senha, não reservam nome.
+  ⚠️ `byLogin` ganhou `password_hash IS NOT NULL` (sem isso uma conta de Google com o mesmo e-mail entrava no
+  `LIMIT 1` e derrubava o login de quem tem senha) e um degrau `login IS NULL AND lower(nick)=…`, que é
+  COMPATIBILIDADE de rollout: conta reivindicada por um pod velho fica sem login e, sem e-mail, ficaria
+  trancada para sempre. ⚠️ O `login` vai no `toPublic` e o **Perfil o mostra**: o nick se troca num `onBlur`
+  da tela inicial, e sem essa linha o jogador volta dias depois sem saber com que nome entra.
+  ⚠️ Saiu junto o `EXISTS(...) AS nick_reserved` do `RESOLVE_SQL` (`auth/tokens.js`) — uma subconsulta em
+  TODA chamada autenticada e em TODO join de WS — e o `ERROR_CODE.NICK_RESERVED` (4409) ficou **dormente**,
+  como `BLACKHOLE.COUNT=0`: nenhum servidor novo o emite, mas um pod velho emite durante o rollout e o
+  cliente precisa saber traduzi-lo. ⚠️ Um `UPDATE users … WHERE nick=…` deixou de identificar UMA conta —
+  `docs/spec/admin.md` promovia o primeiro admin assim.
+  ⚠️ Como o nick de uma conta é o da CONTA, a regra de sala também impede a mesma pessoa ter dois planetas
   na mesma sala — e foi por isso que os testes passaram a criar um token por cliente.
 - **Todo jogador tem PAÍS, inclusive o preenchimento** (`botCountry` em constants, `Room.broadcastFlags`,
   JSON `flags`): o humano já tinha bandeira no ranking, e uma sala de 50 com UMA bandeira acesa apontava
@@ -718,7 +740,17 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   nomeado no prompt: dizer "responda no idioma da mensagem" acertava quase sempre, e "quase" devolvia português para quem escreveu em
   espanhol. Carregar o modelo custa ~27 s e responder ~0,5 s — daí `keep_alive`, `warmup()` no boot e o disjuntor REAQUECER enquanto
   está aberto.
-- **IDIOMA** (`client/src/i18n/`, pref `lang`): pt-BR (base), inglês e espanhol; `auto` lê `navigator.languages`.
+- **IDIOMA** (`client/src/i18n/`, pref `lang`): pt-BR, inglês e espanhol; `auto` lê `navigator.languages`.
+  ⚠️ **BASE e FALLBACK são coisas diferentes**, e juntá-las num `DEFAULT_LANG` só escondia a diferença:
+  `BASE_LANG` (pt-BR) é o dicionário carregado ESTATICAMENTE — o chão de toda chave que faltar numa
+  tradução e a única lista de países escrita à mão —, enquanto `FALLBACK_LANG` (**inglês**) é o idioma de
+  quem chega com um navegador que não falamos. Um alemão entende inglês muito mais provavelmente que
+  português, e num .io o público é o mundo. Quem fala português continua caindo no português: o
+  casamento por raiz ("pt-PT" → "pt-BR") acontece antes da desistência, e a lista INTEIRA do navegador é
+  varrida — o brasileiro morando na Alemanha tem `["de","pt-BR"]` e cai no português na segunda volta.
+  ⚠️ O teste do `setLang` não pode cravar "en" para valor inválido: **o Node 22 tem `navigator.language`
+  próprio** (o locale da máquina), então o esperado sai do próprio `resolveLang("auto")` — quem prova o
+  fallback é a tabela com as tags passadas na mão.
   O motor é o GÊMEO do de tema — `resolveLang` é pura como `resolveThemeId`, `setLang` aplica e avisa por
   `warspace:lang` como `applyTheme` faz com `warspace:theme` —, e os dois eixos se encontram num lugar só:
   `useLabels()`, que assina os DOIS eventos. Por isso trocar o idioma nas Opções retraduz a tela inteira sem
@@ -878,8 +910,10 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 - **O ranking é só de CONTA** (`repos/ranking.js`, `CONTA()`): ele sempre somou por `user_id`, então trocar
   de nick nunca fez ninguém perder posição — o que faltava era o contrário. O convidado escolhe um nick novo
   a cada entrada e pode ter quantos quiser; um pódio construído sobre isso não diz de QUEM é a marca. O
-  filtro é `kind='registered'` e não `email IS NOT NULL`, porque é ele que trava o nick no banco
-  (`users_nick_registered_uq`) — um claim só com senha também trava, e não há por que puni-lo. ⚠️ É filtro de
+  filtro é `kind='registered'` e não `email IS NOT NULL` porque o que separa é ter conta que DURA, e um
+  claim só com senha dura igual (o argumento antigo — "é ele que trava o nick" — morreu com a 0009: o nick
+  é livre e quem é único agora é o `login`; duas contas podem aparecer com o mesmo nick no pódio, e quem as
+  distingue é a coluna do nome da conta). ⚠️ É filtro de
   EXIBIÇÃO: `user_stats` continua somando por `user_id`, e o histórico inteiro aparece no dia em que a conta
   existir. A tela diz isso ao convidado (`LB.rankGuest`), senão "sem posição" parece defeito.
 - **MUDO** (`prefs.muted`, tecla **M**, chip `#h-mute` no HUD): interruptor de urgência, separado de

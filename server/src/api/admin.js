@@ -10,7 +10,7 @@
 // @ts-check
 import {err} from './router.js';
 import {verifyPassword,dummyHash} from '../auth/password.js';
-import {normalizeNick,isReservedByOther} from '../auth/nick.js';
+import {normalizeNick,normalizeLogin,loginTaken} from '../auth/nick.js';
 import {cleanCountry} from '@warspace/shared/countries.js';
 import {listTunables,applyTunable,resetTunable,TUNABLE_BY_KEY} from '@warspace/shared/tunables.js';
 import {LIMITS} from '../auth/ratelimit.js';
@@ -27,7 +27,11 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
   router.add('POST',/^\/api\/admin\/login$/,async ctx=>{
     const login=String(ctx.body.login||'').trim(),senha=String(ctx.body.password||'');
     const u=login?await users.byLogin(login):null;
-    const ok=u&&u.password_hash?await verifyPassword(senha,u.password_hash):await dummyHash(senha);
+    // ⚠️ `dummyHash()` DEVOLVE o hash (uma string, sempre truthy). Escrito como `: await dummyHash(senha)`
+    // isto dava `ok=true` para toda conta registrada SEM senha — e conta de Google é exatamente isso,
+    // e `ADMIN_EMAILS` promove por e-mail: o painel abria com QUALQUER senha. O padrão certo é o de
+    // `api/auth.js`: pagar o tempo do hash e devolver false.
+    const ok=u&&u.password_hash?await verifyPassword(senha,u.password_hash):(await dummyHash(),false);
     if(!u||!ok||!u.is_admin)throw err(401,'invalid_credentials','usuário ou senha inválidos');
     const token=await tokens.issue(u.id,'admin',ctx.userAgent);
     reg('login',u,ctx);
@@ -60,12 +64,17 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
     const id=Number(ctx.params.id),b=ctx.body||{};
     if(b.nick!=null){const nick=normalizeNick(b.nick);
       if(!nick)throw err(400,'bad_nick','nick inválido');
-      if(await isReservedByOther(db,nick,id))throw err(409,'nick_reserved','esse nick é de outra conta registrada');
       await users.setNick(id,nick);}
+    // O LOGIN é congelado no cadastro e o jogador não tem rota para trocá-lo: sem isto, um usuário
+    // errado (ou um `Viajante-NNNN` congelado por engano) só se conserta com UPDATE na mão.
+    if(b.login!=null){const login=normalizeLogin(b.login);
+      if(!login)throw err(400,'bad_login','usuário inválido');
+      if(await loginTaken(db,login,id))throw err(409,'login_taken','esse usuário já está em uso');
+      try{await users.setLogin(id,login);}catch(e){if(e.code==='23505')throw err(409,'login_taken','esse usuário já está em uso');throw e;}}
     if(b.country!==undefined)await users.setCountry(id,cleanCountry(b.country));
     const u=await users.adminById(id);
     if(!u)throw err(404,'not_found','conta não encontrada');
-    reg('edit',adm,ctx,{target:id,detail:{nick:b.nick,country:b.country}});
+    reg('edit',adm,ctx,{target:id,detail:{nick:b.nick,login:b.login,country:b.country}});
     return{user:u};},{rate:WR});
 
   router.add('POST',/^\/api\/admin\/users\/(?<id>\d+)\/ban$/,async ctx=>{const adm=await requireAdmin(ctx);

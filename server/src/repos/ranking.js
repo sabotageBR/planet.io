@@ -25,9 +25,12 @@ const gate=(by,a)=>BY[by].gate?BY[by].gate(a):`${val(by,a)}>0`;
 // Só CONTA, nunca convidado. O ranking sempre somou por `user_id` — trocar de nick nunca fez ninguém
 // perder posição —, mas o convidado é uma identidade descartável: ele escolhe o nick a cada entrada, pode
 // ter quantos quiser e some quando a aba fecha. Um pódio construído sobre isso não diz de QUEM é a marca.
-// `kind='registered'` é a linha certa (e não `email IS NOT NULL`) porque é ela que trava o nick no banco
-// — `users_nick_registered_uq` —, e nick travado é exatamente a propriedade que faltava; um claim só com
-// senha, sem e-mail, também trava, e não há por que puni-lo.
+// `kind='registered'` é a linha certa (e não `email IS NOT NULL`): o que separa é ter uma conta que DURA,
+// e um claim só com senha, sem e-mail, dura igual. (Este comentário já disse que o filtro se justificava
+// por `users_nick_registered_uq` travar o nick — aquele índice não existe mais, o nick é livre desde a
+// 0009, e quem virou único foi o `login`. O filtro continua certo; o argumento é que era emprestado.)
+// ⚠️ Duas contas PODEM aparecer com o mesmo nick no pódio. Quem as distingue é a coluna do nome da conta
+// (`display_name`), que é o que esta tabela mostra primeiro.
 // ⚠️ Convidado NÃO perde nada: `user_stats` continua acumulando por `user_id`, e no dia em que ele
 // registrar a conta aparece com o histórico inteiro. É filtro de exibição, não de coleta.
 const CONTA=a=>`${a}.kind='registered'`;

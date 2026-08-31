@@ -8,13 +8,22 @@
 // português não baixa um byte de espanhol — medido, um dicionário completo dá ~29 KB.
 import base from "./pt-BR.js";
 
-export const DEFAULT_LANG = "pt-BR";
+// ⚠️ SÃO DOIS papéis, e misturá-los num `DEFAULT_LANG` só escondia a diferença:
+//   BASE_LANG     = o dicionário CARREGADO ESTATICAMENTE, chão de toda chave que faltar numa tradução e
+//                   única lista de países escrita à mão. É o pt-BR, e continua sendo.
+//   FALLBACK_LANG = o idioma de quem chega com um navegador que não falamos. Um alemão entendendo inglês
+//                   é muito mais provável que um alemão entendendo português — este é um jogo .io, o
+//                   público é o mundo, e o inglês é a língua franca dele.
+// Quem fala português continua caindo no português: o casamento por raiz ("pt-PT" → "pt-BR") acontece
+// ANTES de chegar aqui.
+export const BASE_LANG = "pt-BR";
+export const FALLBACK_LANG = "en";
 export const LANGS = ["pt-BR", "en", "es"];       // idioma novo = uma entrada aqui + um arquivo ao lado
 export const LANG_PREFS = ["auto", ...LANGS];
 // O nome de cada idioma fica NO PRÓPRIO idioma: quem fala inglês procura "English" na lista, não "Inglês".
 export const LANG_NAMES = { "pt-BR": "Português", en: "English", es: "Español" };
 const CARGA = { en: () => import("./en.js"), es: () => import("./es.js") };
-const DICT = { [DEFAULT_LANG]: base };
+const DICT = { [BASE_LANG]: base };
 const CHAVE = "warspace_lang";   // o idioma tem que estar decidido ANTES do 1º paint (ver bootLang)
 
 // Merge profundo GENÉRICO em vez da lista de grupos que existia aqui: a lista tinha que ser lembrada a
@@ -35,8 +44,11 @@ const navTags = () => (typeof navigator === "undefined" ? []
 
 /**
  * 'auto' → o primeiro de `navigator.languages` que casar (exato e depois pela raiz, então "pt-PT" e
- * "es-419" acham casa); id conhecido → ele mesmo; qualquer outra coisa → pt-BR. Pura e sem relógio:
- * ao contrário do tema, o idioma do navegador não muda no meio da sessão.
+ * "es-419" acham casa); id conhecido → ele mesmo; ninguém casou → FALLBACK_LANG (inglês). Pura e sem
+ * relógio: ao contrário do tema, o idioma do navegador não muda no meio da sessão.
+ *
+ * ⚠️ A varredura é pela LISTA INTEIRA do navegador antes de desistir. Quem tem `["de","pt-BR"]` — um
+ * brasileiro morando na Alemanha — cai no português na segunda volta, e não no inglês da desistência.
  */
 export function resolveLang(pref = "auto", tags = navTags()) {
   if (pref && pref !== "auto" && LANGS.includes(pref)) return pref;
@@ -46,10 +58,10 @@ export function resolveLang(pref = "auto", tags = navTags()) {
     const achou = LANGS.find(l => l.toLowerCase().split("-")[0] === raiz);
     if (achou) return achou;
   }
-  return DEFAULT_LANG;
+  return FALLBACK_LANG;
 }
 
-let idAtual = DEFAULT_LANG, prefAtual = "auto", cache = new Map(), primeira = true;
+let idAtual = BASE_LANG, prefAtual = "auto", cache = new Map(), primeira = true;   // antes de resolver, o que está em memória é o base
 export const currentLang = () => idAtual;
 export const currentLangPref = () => prefAtual;
 
@@ -101,7 +113,9 @@ export async function setLang(pref = "auto") {
     // rede fora no meio da troca: fica no idioma anterior em vez de derrubar a tela
     try { DICT[id] = (await CARGA[id]()).default; } catch { return idAtual; }
   }
-  idAtual = DICT[id] ? id : DEFAULT_LANG;
+  // Carga falhou (rede fora no meio da troca): fica no único dicionário garantido, o base. Não é a
+  // melhor língua para quem pediu inglês — é a única que existe sem uma segunda ida à rede.
+  idAtual = DICT[id] ? id : BASE_LANG;
   aplica();
   return idAtual;
 }

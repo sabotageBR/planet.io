@@ -95,11 +95,31 @@ test('guest → me → PATCH nick → claim',async()=>{
   r=await call('POST','/api/auth/claim',{token:S.t1,body:{password:'segredo123',email:'Evandro@Example.com'}});assert.equal(r.status,200);assert.equal(r.body.user.kind,'registered');
   r=await call('POST','/api/auth/claim',{token:S.t1,body:{password:'segredo123'}});assert.equal(r.status,400);assert.equal(r.body.error,'already_registered');
 });
-test('nick reservado: guest 409 + sugestão; PATCH 409; guest sem nick vira Viajante-NNNN',async()=>{
-  let r=await call('POST','/api/auth/guest',{body:{nick:'evandro moura'},ip:'10.0.0.2'});assert.equal(r.status,409);assert.equal(r.body.error,'nick_reserved');assert.match(r.body.suggestion,/_\d{4}$/);
+// O nick já foi único no mundo inteiro (409 `nick_reserved`, com sugestão `Nick_NNNN`). Não é mais: nick é
+// nome de planeta, qualquer um pode ser o Messi — com a caricatura do Messi —, e a única regra que sobrou é
+// por SALA (`Room.nickTaken` → NICK_IN_ROOM). Quem herdou a unicidade foi o `login`, no teste seguinte.
+test('nick LIVRE: dá para pegar o nick de um registrado; guest sem nick vira Viajante-NNNN',async()=>{
+  let r=await call('POST','/api/auth/guest',{body:{nick:'evandro moura'},ip:'10.0.0.2'});
+  assert.equal(r.status,201,JSON.stringify(r.body));assert.equal(r.body.user.nick,'evandro moura');   // o mesmo nick de S.t1, que é REGISTRADO
   r=await call('POST','/api/auth/guest',{body:{},ip:'10.0.0.2'});assert.equal(r.status,201);assert.match(r.body.user.nick,/^Viajante-\d{4}$/);S.t2=r.body.token;S.u2=r.body.user.id;S.n2=r.body.user.nick;
-  r=await call('PATCH','/api/me',{token:S.t2,body:{nick:'EVANDRO MOURA'}});assert.equal(r.status,409);assert.equal(r.body.error,'nick_reserved');
+  r=await call('PATCH','/api/me',{token:S.t2,body:{nick:'EVANDRO MOURA'}});assert.equal(r.status,200);assert.equal(r.body.user.nick,'EVANDRO MOURA');
   r=await call('PATCH','/api/me',{token:S.t2,body:{nick:'Zé'}});assert.equal(r.status,200);assert.equal(r.body.user.nick,'Zé');S.n2='Zé';
+});
+test('login congelado: o claim reserva o USUÁRIO, e trocar o nick não muda por onde se entra',async()=>{
+  const g=await call('POST','/api/auth/guest',{body:{nick:'Copião'},ip:'10.0.0.3'});assert.equal(g.status,201);const tok=g.body.token;
+  // S.t1 reivindicou sem mandar `login`: o fallback é o nick da hora, então 'Evandro Moura' está ocupado.
+  let r=await call('POST','/api/auth/claim',{token:tok,body:{login:'evandro moura',password:'segredo123'}});
+  assert.equal(r.status,409);assert.equal(r.body.error,'login_taken');assert.match(r.body.suggestion,/_\d{4}$/);
+  r=await call('POST','/api/auth/claim',{token:tok,body:{login:'nao@vale',password:'segredo123'}});
+  assert.equal(r.status,400);assert.equal(r.body.error,'invalid_login');   // '@' faria o login cobrir o e-mail de outra conta
+  r=await call('POST','/api/auth/claim',{token:tok,body:{login:'copiao',password:'segredo123'}});
+  assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(r.body.user.login,'copiao');assert.equal(r.body.user.nick,'Copião');
+  // e aqui está o ponto da mudança: o nick vira o de OUTRA conta registrada, e a entrada continua de pé.
+  r=await call('PATCH','/api/me',{token:tok,body:{nick:'Evandro Moura'}});assert.equal(r.status,200);assert.equal(r.body.user.nick,'Evandro Moura');
+  r=await call('POST','/api/auth/login',{body:{login:'copiao',password:'segredo123'},ip:'10.0.0.31'});
+  assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(r.body.user.id,g.body.user.id);
+  r=await call('POST','/api/auth/login',{body:{login:'Evandro Moura',password:'segredo123'},ip:'10.0.0.32'});
+  assert.equal(r.status,200);assert.equal(r.body.user.id,S.u1,'o nick repetido não sequestra o login de quem o congelou');
 });
 test('login: 401, 429 por nick após 5 falhas, sucesso por nick e por e-mail',async()=>{
   let r=await call('POST','/api/auth/login',{body:{login:'Evandro Moura',password:'errada'}});assert.equal(r.status,401);assert.equal(r.body.error,'invalid_credentials');

@@ -92,9 +92,9 @@ export const api = {
     if (!api.online) { const p = localProfile(); if (nick) p.user.nick = nick; saveLocal(p); return { token: null, user: p.user }; }
     const r = await request("POST", "/api/auth/guest", nick ? { nick } : {}, { auth: false }); setToken(r.token); return r;
   },
-  async claim({ password, email }) {
+  async claim({ login, password, email }) {
     if (!api.online) throw NO_SERVER();
-    const body = { password }; if (email) body.email = email;
+    const body = { password }; if (login) body.login = login; if (email) body.email = email;
     return request("POST", "/api/auth/claim", body);
   },
   async login({ login, password }) {

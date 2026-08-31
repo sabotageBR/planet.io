@@ -35,16 +35,17 @@ before(async()=>{
   if(g.s!==201){semBanco=true;return;}
   jogo=g.j.token;
   const senha='painel-de-teste-123';
-  // ⚠️ NICK PRÓPRIO antes de registrar. O convidado nasce como "Viajante-NNNN", e registrar com esse nome
-  // o RESERVA para sempre — os outros arquivos de teste criam convidados que caem no mesmo gerador e
-  // passariam a esbarrar em NICK_RESERVED, num banco de dev que ninguém limpa entre execuções.
+  // ⚠️ NICK PRÓPRIO antes de registrar. O nick ficou livre, mas o claim CONGELA o nick da hora como
+  // `login` (é o fallback quando o corpo não manda um), e o login é único: registrar como "Viajante-NNNN"
+  // reservaria para sempre um dos 9000 nomes do gerador, e a próxima execução esbarraria em `login_taken`
+  // num banco de dev que ninguém limpa entre execuções.
   await J('PATCH','/api/me',{nick:`Adm${Date.now()%1e8}`},jogo);
   const cl=await J('POST','/api/auth/claim',{password:senha,email:`admin${Date.now()}@teste.local`},jogo);
   if(cl.s!==200){semBanco=true;return;}
-  conta={id:cl.j.user.id,nick:cl.j.user.nick,senha};
+  conta={id:cl.j.user.id,nick:cl.j.user.nick,login:cl.j.user.login||cl.j.user.nick,senha};
   // O primeiro admin nasce por SQL (ou por ADMIN_EMAILS no boot) — é de propósito que não haja rota para isso.
   await srv.db.query('UPDATE users SET is_admin=true WHERE id=$1',[conta.id]);
-  painel=(await J('POST','/api/admin/login',{login:conta.nick,password:conta.senha})).j.token;
+  painel=(await J('POST','/api/admin/login',{login:conta.login,password:conta.senha})).j.token;
 });
 after(async()=>{if(srv)await srv.close();resetTunable('POWERUP.MAGNET_MAX_R');});
 const pula=()=>{if(semBanco)return true;return false;};
@@ -55,8 +56,8 @@ test('admin: a rota EXISTE (o PREFIXES de api/index.js) e recusa quem não é ad
   const senha='outra-senha-123';
   await J('PATCH','/api/me',{nick:`Zé${Date.now()%1e8}`},g.j.token);   // ver a nota do `before`
   const cl=await J('POST','/api/auth/claim',{password:senha,email:`ze${Date.now()}@teste.local`},g.j.token);
-  const naoAdmin=await J('POST','/api/admin/login',{login:cl.j.user.nick,password:senha});
-  const senhaErrada=await J('POST','/api/admin/login',{login:conta.nick,password:'errada'});
+  const naoAdmin=await J('POST','/api/admin/login',{login:cl.j.user.login||cl.j.user.nick,password:senha});
+  const senhaErrada=await J('POST','/api/admin/login',{login:conta.login,password:'errada'});
   assert.equal(naoAdmin.s,401,'⚠️ 404 aqui significa que a família `admin` sumiu do PREFIXES');
   assert.equal(senhaErrada.s,401);
   assert.deepEqual(naoAdmin.j,senhaErrada.j,'a resposta tem que ser IDÊNTICA: senão a rota diz quem é admin');

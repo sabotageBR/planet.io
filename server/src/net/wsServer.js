@@ -14,6 +14,7 @@ import {decodeInput,decodeVoiceUp,encodePong,createWriter} from '@warspace/share
 import {Session} from './Session.js';
 import {clientIp} from '../api/router.js';
 import {sessionKey} from '../auth/tokens.js';
+import {suggestNick} from '../auth/nick.js';
 // MAX_PAYLOAD tem que caber o maior clipe de voz (VOICE.MAX_BYTES + cabeçalho): com os 4 KB de antes o `ws`
 // derrubava o frame — e a conexão junto — antes de o servidor poder recusá-lo. A folga é pequena de propósito:
 // o INPUT tem 10 bytes e o JSON de controle é minúsculo, então este teto existe só para a voz.
@@ -67,12 +68,15 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         // `usedNicks` e o matchmaking descartaria a sala em que ele acabou de jogar.
         if(s.room)s.room.leave(s,'left');                            // join de novo (depois de morrer): sai da sala atual
         if(!room)room=rooms.findOrCreateRoom({...opts,nick,userId:res.userId??null,key:sessionKey(msg.token)});
-        // ⚠️ NICK ÚNICO POR SALA. Dois planetas com o mesmo nome deixam o kill feed, o chat e o placar
-        // mentindo: quem morreu não sabe por quem. Quem escolheu a sala pelo CÓDIGO recebe a recusa e troca
-        // de nick; quem entrou pelo automático nunca chega aqui, porque `findOrCreateRoom` já pulou a sala.
+        // ⚠️ NICK ÚNICO POR SALA — desde a 0009 é a ÚNICA regra de unicidade que existe, e por isso ela
+        // deixou de ser rara: dois "Messi" agora são legais no mundo. Dois planetas com o mesmo nome
+        // deixam o kill feed, o chat e o placar mentindo, então a recusa fica. Quem entrou pelo automático
+        // nunca chega aqui (`findOrCreateRoom` já pulou a sala); quem chega é quem veio por CÓDIGO — e o
+        // caminho de EQUIPE é exatamente esse, porque `Party.start` manda todo mundo para o mesmo código.
+        // Daí a `suggestion`: sem ela o cliente só tinha um toast e nenhuma saída.
         if(room.nickTaken(nick)){
           if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});
-          return s.error('NICK_IN_ROOM',`já há alguém chamado "${nick}" nessa sala`,{nick});}
+          return s.error('NICK_IN_ROOM',`já há alguém chamado "${nick}" nessa sala`,{nick,suggestion:suggestNick(nick)});}
         // BANIDO pelo dono da sala. Fica AQUI, ao lado do nick, e não em `acceptsJoin()`: aquele é chamado
         // pelo matchmaking e refletido em `info().open`, onde ainda não há jogador nenhum para identificar.
         if(room.banned({userId:res.userId??null,key:sessionKey(msg.token)})){
