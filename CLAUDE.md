@@ -606,11 +606,12 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   e nunca `prefs.muted`, que é escolha persistida do jogador. ⚠️ Nada de arquivo chamado `ads.js` (o
   nome vai para a URL do chunk e o bloqueador o mata) nem `import(`./${id}.js`)` (vira glob no Rollup e
   o zip da GD sai com o código da Poki dentro).
-  ⚠️ **AS CARICATURAS NÃO VÃO NO PACOTE.** As regras dos portais proíbem "IP sem direitos de posse" e
-  "uso explícito de política" — e as 35 são de pessoas reais, 11 delas políticos. `faceFile()` devolve
-  null sob `PORTAL` (o planeta cai no disco liso, o caminho que já existia enquanto a arte não chegava) e
-  o empacotador apaga a pasta. Pela mesma lista ("URLs dentro do jogo") o texto de servidor fora deixou
-  de citar o domínio. As thumbnails do catálogo são **JPG** — o Chrome headless só tira PNG, então o PIL
+  ⚠️ **AS CARICATURAS VÃO NO PACOTE, com risco assumido.** As regras dos portais proíbem "IP sem direitos
+  de posse" e "uso explícito de política" — e as 35 são de pessoas reais, 11 delas políticos. Elas
+  chegaram a ser cortadas (`faceFile()` devolvia null sob `PORTAL`, mais `"faces"` na PODA do
+  empacotador) e a decisão foi voltar atrás e manter o jogo igual em todo lugar; se um portal reprovar,
+  o conserto são essas duas linhas. Pela mesma lista ("URLs dentro do jogo") o texto de servidor fora
+  deixou de citar o domínio. As thumbnails do catálogo são **JPG** — o Chrome headless só tira PNG, então o PIL
   converte no mesmo passo do recorte, achatando o alfa sobre o fundo (JPEG não tem alfa: sem o `paste` o
   transparente sai PRETO).
   ⚠️ **As flags do pacote vêm de `define`, não de `import.meta.env`**, e isso foi MEDIDO: com

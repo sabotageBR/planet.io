@@ -85,12 +85,12 @@ aquele objeto inteiro) levanta `ui/Offline.jsx`, que fica até o servidor voltar
 
 As *Prohibited Practices* da GameDistribution batem em coisas que o jogo tem no site:
 
-- **As 35 caricaturas** (`client/public/faces/`) são de pessoas reais, e caem em duas regras ao mesmo
-  tempo: *"use of intellectual properties without proper ownership rights"* (direito de imagem — Messi,
-  Neymar, Elon Musk…) e *"explicit use of … politics"* (Trump, Lula, Bolsonaro, Putin, Zelensky, Milei,
-  Macron, Xi, Modi). No pacote, `faceFile()` devolve null e o planeta cai no disco liso da skin — o mesmo
-  caminho que já existia enquanto a arte não chegava. O empacotador ainda apaga a pasta (−624 KB). O
-  easter egg continua valendo no site.
+- **As 35 caricaturas** (`client/public/faces/`) VÃO no pacote, por decisão, com risco assumido: elas são
+  de pessoas reais e caem em duas regras ao mesmo tempo — *"use of intellectual properties without proper
+  ownership rights"* (direito de imagem: Messi, Neymar, Elon Musk…) e *"explicit use of … politics"*
+  (Trump, Lula, Bolsonaro, Putin, Zelensky, Milei, Macron, Xi, Modi). A escolha foi manter o jogo igual em
+  todo lugar. ⚠️ Se um portal reprovar por isso, o conserto são duas linhas que já existiram: a guarda
+  `!PORTAL` em `faceFile()` (`client/src/theme/faces.js`) e `"faces"` na `PODA` do `portal-pack.mjs`.
 - **URL dentro do jogo**: *"placing contact details or website URLs within the game itself"*. O texto da
   tela de servidor fora dizia "o servidor do warspace.io"; agora diz "o servidor do jogo".
 - **Google Analytics** é citado nominalmente na mesma lista, junto de "any outgoing links".

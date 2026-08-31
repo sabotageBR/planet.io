@@ -9,7 +9,6 @@
 // assada no frame seguinte. É o mesmo truque de `avatars.js`, porque o TextureCache não tem `drop(key)`.
 // @ts-check
 import { skinById } from "@warspace/shared";
-import { PORTAL } from "../portal/flags.js";
 
 /** @type {Map<string,ImageBitmap|null>} arquivo → bitmap pronto (ou null enquanto carrega/falhou) */
 const cache = new Map();
@@ -21,14 +20,18 @@ export function onFaceReady(cb) { ouvintes.add(cb); return () => ouvintes.delete
 
 /**
  * O nome do arquivo da skin, ou null se ela não é uma caricatura.
- * ⚠️ NO PACOTE DE PORTAL, NENHUMA. As 35 caricaturas são de pessoas REAIS, e as regras dos portais
- * batem nelas por dois lados ao mesmo tempo: "use of intellectual properties without proper ownership
- * rights" (direito de imagem — Messi, Neymar, Elon Musk…) e "explicit use of … politics" (Trump, Lula,
- * Bolsonaro, Putin, Zelensky, Milei, Macron, Xi, Modi). Devolvendo null aqui, o planeta cai sozinho no
- * disco liso da cor da skin — o mesmo caminho que já existe enquanto a arte não chegou —, e o
- * empacotador ainda tira os arquivos do zip. O EGG continua valendo no site.
+ *
+ * ⚠️ AS CARICATURAS VÃO NOS PORTAIS TAMBÉM — e isso é uma decisão consciente, com risco conhecido, não
+ * um descuido. Elas chegaram a ser cortadas do pacote (`faceFile` devolvia null sob PORTAL) porque as
+ * *Prohibited Practices* da GameDistribution batem nelas por dois lados: "use of intellectual properties
+ * without proper ownership rights — proof of ownership must be available" (são 35 pessoas REAIS: Messi,
+ * Neymar, Elon Musk…) e "explicit use of … politics" (Trump, Lula, Bolsonaro, Putin, Zelensky, Milei,
+ * Macron, Xi, Modi, Lincoln, Churchill). A escolha foi manter o jogo igual em todo lugar e assumir o
+ * risco de reprovação. Se um portal reprovar por isso, o conserto é voltar a `!PORTAL && …` aqui e a
+ * linha `"faces"` na PODA de scripts/portal-pack.mjs — e o planeta cai sozinho no disco liso da skin,
+ * que é o mesmo caminho já usado enquanto a arte não chegou.
  */
-export const faceFile = sk => (!PORTAL && sk && sk.face) || null;
+export const faceFile = sk => (sk && sk.face) || null;
 /** O bitmap, se já estiver pronto. Nunca espera — quem desenha está dentro de um frame. */
 export const faceBitmap = sk => { const f = faceFile(sk); return f ? cache.get(f) || null : null; };
 /** Sufixo de chave: só muda quando o bitmap CHEGA, que é exatamente quando a textura tem que ser refeita. */
