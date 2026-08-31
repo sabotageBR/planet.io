@@ -396,10 +396,17 @@ test('fala dos bots: sai pelo caminho do chat e o orçamento segura o coro',asyn
   gatilho();
   assert.equal(room.ditas.length,0,'passou do teto de falas da partida');
   // 3) sem repetir dentro da janela de memória da sala (duas falas seguidas nunca podem ser iguais)
+  // ⚠️ O sorteio do GATILHO sai da conta (`BOT_TALK.P.kill` é 0,22, e esperar ~9 falas em 40 tentativas
+  // fazia este bloco depender de estatística para medir uma coisa — a variedade das FRASES — que não tem
+  // relação nenhuma com ele. O sorteio da frase continua livre, que é o que está sendo testado.
+  const chance0=room.rng.chance.bind(room.rng);
+  room.rng.chance=p=>p===BOT_TALK.P.kill?true:chance0(p);
   room.ditas.length=0;const ditas=[];
-  for(let i=0;i<40;i++){room.botTalkAt=-1e9;bot.talked=0;bot.talkedAt=-1e9;gatilho();
-    const u=room.ditas[room.ditas.length-1];
-    if(u!==undefined&&u!==ditas[ditas.length-1])ditas.push(u);}
+  try{
+    for(let i=0;i<40;i++){room.botTalkAt=-1e9;bot.talked=0;bot.talkedAt=-1e9;gatilho();
+      const u=room.ditas[room.ditas.length-1];
+      if(u!==undefined&&u!==ditas[ditas.length-1])ditas.push(u);}
+  }finally{room.rng.chance=chance0;}
   assert.ok(ditas.length>=4,`só ${ditas.length} falas em 40 gatilhos — o sorteio não está saindo`);
   for(let i=1;i<ditas.length;i++)
     assert.ok(!ditas.slice(Math.max(0,i-BOT_TALK.NO_REPEAT),i).includes(ditas[i]),`"${ditas[i]}" repetida dentro de ${BOT_TALK.NO_REPEAT} falas`);
@@ -680,16 +687,24 @@ test('corrente bot↔bot TERMINA, mesmo com uma LLM que sempre cita outro bot',a
   const chance=room.rng.chance.bind(room.rng);room.rng.chance=()=>true;   // nada pode depender do sorteio
   try{
     c.send({t:'chat',text:`${bots[0].name} vem ca seu covarde`});
-    await sleep(2500);                       // tempo de sobra para toda a corrente possível se desenrolar
-    assert.ok(agendas.length>0,'nem a primeira resposta saiu');
+    // ⚠️ ESPERA POR CONDIÇÃO, não por relógio. Com CADEIA_MAX=5 uma corrente inteira leva 5 × (agendamento
+    // 0,15–1,1 s + geração + digitação 0,45–3,4 s) e passa de 15 s: um `sleep(2500)` mediria os dois
+    // primeiros elos e declararia vitória — teste verde que não prova nada é pior que teste vermelho. É
+    // também a cura da intermitência que este arquivo carregava.
+    await c.until(()=>agendas.length>0,5000,'a primeira resposta');
+    await c.until(()=>!room.falaFila.length&&!room.digitaFila.length&&!room.gerando,25000,'a corrente inteira drenar');
     // A invariante é POR CORRENTE, não por sala: uma fala espontânea que cita alguém abre uma corrente
     // nova e legítima, e somar todas as linhas mediria outra coisa.
     for(const a of agendas){
       assert.ok(a.depth<=BOT_LLM.CADEIA_MAX,`profundidade ${a.depth} passou de CADEIA_MAX`);
-      assert.ok(!a.cadeia.includes(a.slot),`slot ${a.slot} reentrou na própria corrente`);
-      assert.equal(new Set(a.cadeia).size===a.cadeia.length||a.cadeia.length<=2,true,'cadeia com slot repetido');
+      // A JANELA substituiu o "nunca repetir slot": com CADEIA_MAX=5 aquilo exigia CINCO bots distintos
+      // por conversa — revezamento, não conversa. O que continua proibido é A→B→A no mesmo fôlego.
+      assert.ok(!a.cadeia.slice(-BOT_LLM.CADEIA_JANELA).includes(a.slot),
+        `slot ${a.slot} voltou a falar antes da janela de ${BOT_LLM.CADEIA_JANELA} elos`);
       assert.ok(a.cadeia.length<=BOT_LLM.CADEIA_MAX+2,`cadeia de ${a.cadeia.length}: não fechou`);}
-    await c.until(()=>room.falaFila.length===0,3000,'a fila drenar');
+    // E o TETO DE CONVERSA: sem ele uma linha de humano podia pedir 15 gerações.
+    assert.ok(room.conversa.gastas<=BOT_LLM.CONVERSA_MAX_GER,
+      `${room.conversa.gastas} gerações numa conversa só (teto ${BOT_LLM.CONVERSA_MAX_GER})`);
     assert.equal(room.falaFila.length,0,'a fila ficou com resto pendurado');
   }finally{room.rng.chance=chance;room._agenda=agenda;room.botChat=null;}
   c.close();
@@ -715,6 +730,9 @@ test('pergunta aberta vira coro escalonado; frase solta, não',async()=>{
       assert.ok(agendados[i].ms>agendados[i-1].ms,'as respostas saíram no mesmo instante');
     assert.ok(agendados[0].ms>=BOT_LLM.CORO_D0_MS[0],'a primeira resposta saiu instantânea');
     agendados.length=0;room.mencaoAt=-1e9;room.falaFila.length=0;
+    // ⚠️ ...e o ORÇAMENTO DE CONVERSA junto: sem isto a segunda metade ("frase solta não acorda coro")
+    // passaria porque a conversa esgotou, não porque a frase é solta — teste verde que não prova nada.
+    room.conversa={n:0,gastas:0,teto:0,ate:0,solta:false};
     room.chat({slot:r.slot,chatAt:[]},'olha o tamanho daquele planeta ali');
     assert.equal(agendados.length,0,'frase solta não deve acordar coro nenhum');
   }finally{room._agenda=agenda;room.botChat=null;}
@@ -740,9 +758,146 @@ test('ninguém fica mudo: chamado pelo nome com a LLM fora, sai o repertório',a
     const n=c.json.length;
     c.send({t:'chat',text:`${bot.name} vem ca`});
     await sleep(120);vivo=false;                 // o disjuntor abre entre o agendamento e o despacho
-    const resp=await c.until(()=>c.json.slice(n).find(m=>m.t==='chat'&&m.slot===bot.slot),5000,'resposta enlatada');
+    const resp=await c.until(()=>c.json.slice(n).find(m=>m.t==='chat'&&m.slot===bot.slot),8000,'resposta enlatada');
     assert.ok(BOT_CHAT.resposta.includes(resp.text),
       `"${resp.text}" não veio do repertório de resposta`);
   }finally{room.rng.chance=chance;room.botChat=null;}
+  c.close();
+});
+
+test('ninguém fica mudo: nem com a LLM fora DESDE O COMEÇO, nem sem LLM nenhuma',async()=>{
+  // ⚠️ O teste acima cobria só metade do caminho: ele derruba a LLM DEPOIS do agendamento, e por isso
+  // exercitava o `_filaTick`. A porta de ENTRADA (`_botResponde`) checava `bc.ativo()` — que é
+  // "disjuntor fechado E gerações em voo < teto", uma condição de OCUPAÇÃO usada como condição de
+  // EXISTÊNCIA. Bastavam 4 gerações em voo em QUALQUER sala do shard para quem fosse chamado pelo nome em
+  // qualquer outra ficar MUDO, e o repertório de resposta nunca era alcançado. Aqui a LLM está fora desde
+  // antes da primeira palavra, que é o caso do disjuntor aberto e o de um deploy sem OLLAMA_URL.
+  const {citou}=await import('../src/rooms/botChat.js');
+  const {BOT_CHAT,BOT_TALK}=await import('@warspace/shared/constants.js');
+  for(const cenario of ['ocupada','ausente']){
+    const c=new C(wsUrl);await c.open();
+    const r=await c.join({nick:'Humano',room:newRoom()});
+    const room=roomOf(r.code);
+    const bot=[...room.sim.players.values()].find(g=>g.isBot);
+    // 'ocupada' = disjuntor aberto ou teto de gerações batido; 'ausente' = servidor sem OLLAMA_URL
+    room.botChat=cenario==='ocupada'?{ativo:()=>false,citou,gerar:async()=>null}:null;
+    const chance=room.rng.chance.bind(room.rng);
+    room.rng.chance=p=>p!==BOT_TALK.TYPO_P;
+    try{
+      const n=c.json.length;
+      c.send({t:'chat',text:`${bot.name} vem ca`});
+      const resp=await c.until(()=>c.json.slice(n).find(m=>m.t==='chat'&&m.slot===bot.slot),8000,
+        `resposta enlatada (${cenario})`);
+      assert.ok(BOT_CHAT.resposta.includes(resp.text),`"${resp.text}" não veio do repertório (${cenario})`);
+      // ...e a linha enlatada também LEVA TEMPO PARA DIGITAR: sair instantânea enquanto as geradas levam
+      // 0,5–3,4 s é a assinatura de bot que o DIGITA_CPS existe para apagar.
+      assert.ok(room.digitaFila.length===0,'a fila de digitação tinha que ter drenado junto com a resposta');
+    }finally{room.rng.chance=chance;room.botChat=null;}
+    c.close();}
+});
+
+test('a corrente longa TERMINA mesmo quando a LLM nunca cita ninguém',async()=>{
+  // ⚠️ O TESTE MAIS IMPORTANTE do lote. Enquanto a corrente exigia vocativo, a frase sem nome era o que a
+  // MATAVA — e era por isso que uma conversa nunca passava de duas réplicas. Agora ela CONTINUA
+  // (`CADEIA_SOLTA_P`), e este é o único caminho do arquivo que pode virar ping-pong infinito. Com
+  // `rng.chance` forçado a true a probabilidade some da equação e sobram só as guardas duras.
+  const {citou}=await import('../src/rooms/botChat.js');
+  const {BOT_LLM}=await import('@warspace/shared/constants.js');
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Humano',room:newRoom()});
+  const room=roomOf(r.code);
+  const bots=[...room.sim.players.values()].filter(g=>g.isBot&&!g.dead);
+  assert.ok(bots.length>=3);
+  const agendas=[];
+  room.botChat={ativo:()=>true,citou,gerar:async()=>'kkkk'};   // NUNCA cita ninguém: é a regra numa conversa de gente
+  const agenda=room._agenda.bind(room);
+  room._agenda=(gp,g,ms)=>{agendas.push({slot:gp.slot,kind:g.kind,depth:g.depth|0,cadeia:(g.cadeia||[]).slice()});return agenda(gp,g,ms);};
+  const chance=room.rng.chance.bind(room.rng);room.rng.chance=()=>true;
+  for(const gp of room.sim.players.values())gp._eraLider=true;   // cala o `lider` espontâneo (ver o teste da menção)
+  room.sim.botTalk.length=0;
+  try{
+    c.send({t:'chat',text:`${bots[0].name} vem ca seu covarde`});
+    await c.until(()=>agendas.length>0,5000,'a primeira resposta');
+    await c.until(()=>!room.falaFila.length&&!room.digitaFila.length&&!room.gerando,25000,'a corrente drenar');
+    const elos=agendas.filter(a=>a.kind==='cadeia');
+    assert.ok(elos.length>0,'a corrente NÃO continuou sem vocativo: era exatamente isto que travava a conversa');
+    for(const a of agendas){
+      assert.ok(a.depth<=BOT_LLM.CADEIA_MAX,`profundidade ${a.depth}`);
+      assert.ok(!a.cadeia.slice(-BOT_LLM.CADEIA_JANELA).includes(a.slot),`slot ${a.slot} voltou antes da janela`);}
+    assert.ok(room.conversa.gastas<=BOT_LLM.CONVERSA_MAX_GER,
+      `${room.conversa.gastas} gerações: o orçamento de conversa não segurou`);
+  }finally{room.rng.chance=chance;room._agenda=agenda;room.botChat=null;}
+  c.close();
+});
+
+test('a sala PUXA ASSUNTO quando fica calada — e só então',async()=>{
+  const {citou}=await import('../src/rooms/botChat.js');
+  const {BOT_TALK}=await import('@warspace/shared/constants.js');
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Humano',room:newRoom()});
+  const room=roomOf(r.code);
+  const ctxs=[];
+  room.botChat={ativo:()=>true,citou,gerar:async ctx=>{ctxs.push(ctx);return'alguem vivo ai';}};
+  // ⚠️ Conferido NO SERVIDOR, nunca pelo socket: a publicação passa por `digitaFila` e mediria o relógio
+  // de digitar, não a decisão de puxar assunto.
+  try{
+    const t=()=>room.sim.tick;
+    // a sala ACABOU de falar: não puxa assunto nenhum
+    room.falaAt=t();room.iniciativaAt=-1e9;room.iniciativas=0;
+    room._iniciativaTick(room.sim,t());
+    assert.equal(ctxs.length,0,'puxou assunto com a sala ainda conversando');
+    // agora calada há tempo: puxa
+    room.falaAt=t()-BOT_TALK.SILENCIO_TICKS-1;room.conversa.ate=0;
+    room._iniciativaTick(room.sim,t());
+    assert.equal(ctxs.length,1,'a sala calada não puxou assunto');
+    assert.equal(ctxs[0].kind,'puxa');
+    assert.ok(['gas','feed','lider','poucos','partida'].includes(ctxs[0].assunto),
+      `assunto inventado: ${ctxs[0].assunto} — ele tem que sair do que ESTÁ acontecendo`);
+    assert.equal(room.iniciativas,1);
+    // ...e não de novo em seguida: o cooldown próprio segura
+    room.falaAt=t()-BOT_TALK.SILENCIO_TICKS-1;
+    room._iniciativaTick(room.sim,t());
+    assert.equal(ctxs.length,1,'duas iniciativas seguidas: o cooldown não segurou');
+    // com fala em voo a sala NÃO está em silêncio — está esperando alguém terminar de digitar
+    room.iniciativaAt=-1e9;room.falaAt=t()-BOT_TALK.SILENCIO_TICKS-1;room.conversa.ate=0;
+    room.digitaFila.push({atTick:t()+9999,slot:-1,gp:null,txt:'x',g:{}});
+    room._iniciativaTick(room.sim,t());
+    assert.equal(ctxs.length,1,'falou por cima de quem estava digitando');
+    room.digitaFila.length=0;
+    // sem plateia, puxar assunto é falar sozinho
+    room.iniciativaAt=-1e9;room.falaAt=t()-BOT_TALK.SILENCIO_TICKS-1;room.conversa.ate=0;
+    const sess=[...room.sessions.entries()];room.sessions.clear();
+    room._iniciativaTick(room.sim,t());
+    assert.equal(ctxs.length,1,'puxou assunto numa sala sem ninguém para ler');
+    for(const [k,v] of sess)room.sessions.set(k,v);
+  }finally{room.botChat=null;}
+  c.close();
+});
+
+test('míssil de HUMANO faz o bot reclamar; de bot, não',async()=>{
+  // `tiro` e `escudo` tinham pool, probabilidade e tradução — e nenhum `_talk` os emitia: gatilhos mortos.
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Humano',room:newRoom()});
+  const room=roomOf(r.code),sim=room.sim;
+  const bots=[...sim.players.values()].filter(g=>g.isBot&&!g.dead);
+  assert.ok(bots.length>=2);
+  const eu=sim.players.get(r.slot);
+  // `_consume` lê de `world.events` e o campo é `type` — é o formato que a física produz.
+  const solta=ev=>{sim.world.events.length=0;sim.world.events.push(ev);sim.botTalk.length=0;sim._consume();};
+  // o evento do HUMANO acertando um bot: vira fala, e ela leva o nome de quem atirou
+  solta({type:'BOOM',slot:bots[0].slot,bySlot:eu.slot,x:0,y:0,r:20,weapon:0});
+  const meu=sim.botTalk.filter(g=>g.kind==='tiro');
+  assert.equal(meu.length,1,'levar míssil de gente não virou fala');
+  assert.equal(meu[0].slot,bots[0].slot);
+  assert.equal(meu[0].quem,eu.name,'a fala precisa do nome de quem atirou — é para ele que ela serve');
+  // ...e o mesmo evento entre dois bots não vira nada: não tem plateia, e BOOM é o evento mais frequente
+  // da sala — sem este filtro ele ganharia a loteria e apagaria kill, morte e lider.
+  solta({type:'BOOM',slot:bots[0].slot,bySlot:bots[1].slot,x:0,y:0,r:20,weapon:0});
+  assert.equal(sim.botTalk.filter(g=>g.kind==='tiro').length,0,'míssil entre bots virou fala');
+  // escudo quebrado por gente também fala; o escudo que SEGUROU (SHIELD_HIT) não — seria mentira
+  solta({type:'SHIELD_BREAK',slot:bots[0].slot,bySlot:eu.slot,x:0,y:0,r:20,weapon:0});
+  assert.equal(sim.botTalk.filter(g=>g.kind==='escudo').length,1);
+  solta({type:'SHIELD_HIT',slot:bots[0].slot,bySlot:eu.slot,x:0,y:0,r:20,weapon:0,nx:1,ny:0,level:1});
+  assert.equal(sim.botTalk.filter(g=>g.kind==='escudo').length,0,'o escudo aguentou: "perdi o escudo" seria mentira');
   c.close();
 });

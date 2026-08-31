@@ -35,7 +35,9 @@ const FORMATO=/^[A-Za-z0-9_]{2,16}$/;
  * @param {string} nick
  */
 export function recusa(nick){
-  const n=String(nick||'').trim();
+  // ⚠️ NÃO apara: valida a string EXATAMENTE como ela vai ser usada. Aparando aqui, " pad " passaria e o
+  // chamador gravaria o nick COM os espaços — quem apara é `parseLote`, antes de chamar.
+  const n=String(nick??'');
   if(!FORMATO.test(n))return 'formato';                       // 2..16, sem espaço, sem pontuação, sem acento
   if(PROIBIDOS.has(n.toLowerCase()))return 'valor-vazio';     // se confunde com campo vazio no placar e no log
   // Sem raiz não há MENÇÃO: `citou()` compara a raiz, e um apelido que vira raiz vazia deixa o bot surdo

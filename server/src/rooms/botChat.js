@@ -92,11 +92,12 @@ const OFENSA=new RegExp('\\b('+[
 // ⚠️ "esquerda" e "direita" NÃO entram soltas: são direções dentro do jogo ("vem pela esquerda"), e
 // vetá-las comeria fala legítima de partida o dia inteiro.
 const POLITICA=new RegExp('\\b('+[
-  'elei[çc][ãa]o','eleitor','eleitoral','votar','voto','urna','presidente','deputado','senador','partido',
+  'elei[çc][ãa]o','elei[çc][õo]es','eleitor','eleitoral','vot[ao]','vot[ae]m','votar','votou','votos?','urna','presidente','deputado','senador','partido',
   'comunista','socialista','fascista','ditadura','golpe','corrup[çc][ãa]o','impeachment','esquerdista','direitista',
   'petista','bolsonarista','nazi','nazista','guerra','religi[ãa]o','igreja','deus','jesus','al[aá]',
   'election','voter','ballot','president','senator','congress','communist','socialist','fascist','dictator',
   'coup','impeach','leftist','rightist','nazi','war','religion','church','god','jesus','allah',
+  'ateu','ateia','crente','evangelic[oa]','cat[óo]lic[oa]','atheist','christian','muslim','jew',
 ].join('|')+')\\b','i');
 // A linha que ENTREGA o preenchimento. No Battle Royale o bot não se identifica (`anonBots` tirou o
 // PLAYER_FLAG.BOT do fio de propósito), e bastava um deles escrever "vc é bot" para desfazer isso na tela.

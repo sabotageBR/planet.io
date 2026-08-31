@@ -4,13 +4,14 @@
 // Esses dois são pura função e é o que este arquivo trava. node --test server/test/botchat.test.js
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {citou,baseNick,sanitiza,normalizar,montaPrompt,detectaIdioma,createBotChat,aberta,estadoLinha,agressorLinha} from '../src/rooms/botChat.js';
+import {citou,baseNick,sanitiza,normalizar,montaPrompt,detectaIdioma,createBotChat,aberta,estadoLinha,agressorLinha,
+  elencoLinha,escolheAssunto,paisEn} from '../src/rooms/botChat.js';
 import {PERSONAS,pickPersona} from '../src/rooms/botPersonas.js';
 import {createRng} from '@warspace/shared/rng.js';
 import {botNick,BOT_LLM,CHAT} from '@warspace/shared/constants.js';
 import * as CONST from '@warspace/shared/constants.js';
 
-test('menção: a raiz do apelido sobrevive aos cinco formatos de botNick', () => {
+test('menção: a raiz do apelido sobrevive aos quatro formatos de botNick', () => {
   assert.equal(baseNick('Trovao'),'trovao');
   assert.equal(baseNick('Trovao42'),'trovao');
   assert.equal(baseNick('Trovao_137'),'trovao');
@@ -223,4 +224,122 @@ test('peneira: provocação passa, insulto sexual e xingamento de família não'
     assert.equal(sanitiza(t),null,`"${t}" passou`);
   for(const t of ['evandro, sua bala e lenta kkkk','calma evandro, vai chorar no fim','trash? i am winning u idiot','peguei','vem pro meio'])
     assert.ok(sanitiza(t),`"${t}" foi bloqueada e não devia`);
+});
+
+// ── QUEM É QUEM: a identidade do mundo real no prompt ─────────────────────────
+test('elenco: a caricatura é o dado forte, e quem não tem o que dizer não gasta caractere',()=>{
+  const l=elencoLinha([{nome:'Messi',egg:'Lionel Messi',pais:'AR',nivel:31},
+                       {nome:'Solares',egg:null,pais:'BR',nivel:2}],'Solares');
+  assert.match(l,/"Messi" plays as Lionel Messi/,'a caricatura é o que transforma um nick numa piada');
+  assert.match(l,/from Argentina/,'o país sai em INGLÊS: o prompt inteiro é inglês');
+  assert.match(l,/level 31/);
+  assert.match(l,/\byou from Brazil\b/,'o próprio bot é "you", nunca o nome dele');
+  assert.ok(!/level 2\b/.test(l),'nível baixo não é adjetivo de nada');
+  // quem não tem caricatura, nem país, nem nível alto não entra
+  assert.equal(elencoLinha([{nome:'Zeca',egg:null,pais:null,nivel:3}],'eu'),'');
+  assert.equal(elencoLinha([],'eu'),'');
+  assert.equal(elencoLinha(null,'eu'),'');
+});
+
+test('país: sai em inglês, e código inválido nunca derruba a fala',()=>{
+  assert.equal(paisEn('BR'),'Brazil');
+  assert.equal(paisEn('AR'),'Argentina');
+  // ⚠️ `Intl.DisplayNames` LANÇA em código inválido, e `gp.country` de um humano vem do banco: aqui o
+  // pior caso tem que ser um texto ruim, nunca uma exceção subindo pelo caminho da fala.
+  for(const v of ['',null,undefined,'ZZZZ','1','br ']) assert.doesNotThrow(()=>paisEn(v));
+  assert.equal(paisEn(''),'');
+});
+
+// ── O ASSUNTO DA INICIATIVA ──────────────────────────────────────────────────
+test('assunto: o bot puxa conversa sobre o que ESTÁ acontecendo, por ordem de urgência',()=>{
+  // o relógio ganha de tudo
+  assert.equal(escolheAssunto({zonaS:12,feedFresco:true,lider:'X',fracLider:.1,vivos:3}).assunto,'gas');
+  // a fofoca fresca ganha do líder
+  assert.equal(escolheAssunto({zonaS:0,feedFresco:true,lider:'X',fracLider:.1}).assunto,'feed');
+  // o líder só vira assunto quando ele está MUITO na frente
+  const l=escolheAssunto({feedFresco:false,lider:'Trovao',fracLider:.1,vivos:20});
+  assert.equal(l.assunto,'lider');assert.equal(l.quem,'Trovao','o nome vai junto, senão a linha fica sobre ninguém');
+  assert.equal(escolheAssunto({lider:'Trovao',fracLider:.9,vivos:20}).assunto,'partida','empatado com o líder não é notícia');
+  assert.equal(escolheAssunto({vivos:4}).assunto,'poucos');
+  assert.equal(escolheAssunto({vivos:30}).assunto,'partida');
+  assert.equal(escolheAssunto(null).assunto,'partida','sem contexto nenhum ainda tem que devolver algo');
+});
+
+test('prompt: a iniciativa dá licença para ABRIR conversa, e não cai no caso genérico',()=>{
+  const p=montaPrompt({nome:'Solares',kind:'puxa',assunto:'lider',quem:'Trovao',historico:[]});
+  assert.match(p.user,/nobody is talking/,'é o "ninguém está falando" que autoriza o bot a começar');
+  assert.match(p.user,/Trovao/,'e o assunto tem que ter um sujeito');
+  // ⚠️ A armadilha irmã do `||BOT_CHAT.kill`: sem um case próprio isto cairia no default e a iniciativa
+  // viraria uma linha genérica sobre nada.
+  assert.ok(!p.user.includes('the match is going on'),'caiu no default: o kind não tem case próprio');
+  for(const a of ['gas','feed','poucos','partida']){
+    const q=montaPrompt({nome:'S',kind:'puxa',assunto:a,historico:[]});
+    assert.ok(!q.user.includes('the match is going on'),`assunto "${a}" caiu no default`);}
+});
+
+test('prompt: o elenco entra e vem ANTES da partida (identidade é pano de fundo)',()=>{
+  const p=montaPrompt({nome:'Solares',kind:'kill',quem:'Messi',vivos:10,modo:'free-for-all',
+    gente:[{nome:'Messi',egg:'Lionel Messi',pais:'AR',nivel:31}],historico:[]});
+  const linhas=p.user.split('\n');
+  const iQuem=linhas.findIndex(l=>l.startsWith('[who is who:'));
+  const iPart=linhas.findIndex(l=>l.startsWith('[the match:'));
+  assert.ok(iQuem>0,'o bloco de identidade não saiu');
+  assert.ok(iQuem<iPart,'identidade é o pano de fundo mais estável: vem antes da partida');
+  // sem elenco o bloco simplesmente não existe — nada de rótulo vazio ocupando prompt
+  assert.ok(!montaPrompt({nome:'S',kind:'kill',historico:[]}).user.includes('who is who'));
+});
+
+// ── A PENEIRA NOVA ───────────────────────────────────────────────────────────
+test('peneira: a piada com o personagem passa, a manchete política não',()=>{
+  for(const t of ['esse einstein nao calcula nada kkkk','o messi aqui so sabe correr',
+                  'trump ta pequeno demais pra falar','vem pela esquerda que eu te pego',
+                  'vira a direita rapido'])
+    assert.ok(sanitiza(t),`"${t}" foi bloqueada e não devia — é fala de partida`);
+  for(const t of ['vota no bolsonaro','esse comunista de merda','a eleicao foi roubada',
+                  'deus me livre desse cara','isso e uma ditadura','vai ter guerra'])
+    assert.equal(sanitiza(t),null,`"${t}" passou`);
+  // ⚠️ E o LIMITE, escrito de propósito: "lula roubou tudo" PASSA, porque o único termo político dela é o
+  // nome — que é justamente o que o SYSTEM autoriza brincar — e "roubou" é palavra de partida ("ele roubou
+  // minha massa"). Vetá-la exigiria vetar o verbo, que é o mesmo erro de vetar "esquerda"/"direita": o
+  // filtro comeria fala legítima o dia inteiro para pegar um caso. A peneira pega o vocabulário
+  // INEQUÍVOCO; a defesa contra o resto é o SYSTEM, e a defesa em profundidade é aceitar que ele erra
+  // pouco em vez de mutilar a fala do jogo.
+  assert.ok(sanitiza('lula roubou minha massa kkkk'),'o verbo do jogo não pode ser vetado');
+});
+
+test('peneira: ninguém entrega o preenchimento na tela',()=>{
+  // ⚠️ No Battle Royale o `anonBots` tirou o PLAYER_FLAG.BOT do fio de propósito; bastava um bot escrever
+  // isto para desfazer o disfarce inteiro na frente da sala.
+  for(const t of ['voce e um bot','vcs sao tudo bot','you are a bot','esses npc sao ruins'])
+    assert.equal(sanitiza(t),null,`"${t}" passou`);
+  // ...mas a palavra sozinha é gíria de partida e não pode calar ninguém
+  assert.ok(sanitiza('bot mode ativado kkkk'),'a palavra solta não pode virar veto');
+});
+
+test('peneira: o teto da SAÍDA subiu, o corte do HISTÓRICO não',()=>{
+  // Os dois eram a MESMA constante em papéis diferentes. A fala cresceu; o prompt não podia crescer junto.
+  assert.ok(BOT_LLM.MAX_CHARS>BOT_LLM.HIST_CHARS,'a saída tem que caber mais que a linha de histórico');
+  assert.ok(BOT_LLM.MAX_CHARS<=CHAT.MAX_CHARS,'o bot não pode escrever mais que um humano');
+  assert.ok(sanitiza('a '.repeat(BOT_LLM.MAX_WORDS).trim()),'exatamente MAX_WORDS tem que passar');
+  assert.equal(sanitiza('a '.repeat(BOT_LLM.MAX_WORDS+1).trim()),null,'uma palavra a mais, não');
+  assert.ok(sanitiza('x'.repeat(BOT_LLM.MAX_CHARS)));
+  assert.equal(sanitiza('x'.repeat(BOT_LLM.MAX_CHARS+1)),null);
+  // o histórico é aparado em HIST_CHARS, e é isso que impede a fala maior de engordar o prompt
+  const p=montaPrompt({nome:'S',kind:'kill',historico:[{name:'Z',text:'y'.repeat(CHAT.MAX_CHARS)}]});
+  assert.ok(p.user.includes('y'.repeat(BOT_LLM.HIST_CHARS-1)+'…'));
+});
+
+test('constantes: os freios da conversa longa são coerentes entre si',()=>{
+  // No espírito do `STALE_MS > TIMEOUT_MS` que este arquivo já cobra: números que se contradizem viram
+  // funcionalidade morta em silêncio, que é o pior jeito de quebrar.
+  assert.ok(BOT_LLM.CADEIA_SOLTA_P<BOT_LLM.CADEIA_P,'continuar sem ser chamado tem que ser mais raro que ser chamado');
+  assert.ok(BOT_LLM.CADEIA_JANELA<BOT_LLM.CADEIA_MAX,'janela >= profundidade trava a corrente no primeiro elo');
+  assert.ok(BOT_LLM.CADEIA_BOT_CD_TICKS<BOT_LLM.MENTION_BOT_CD_TICKS,
+    'com o cooldown da MENÇÃO valendo dentro da corrente, afrouxar a janela é um no-op');
+  assert.ok(BOT_LLM.CONVERSA_MAX_GER_BOT<BOT_LLM.CONVERSA_MAX_GER,'quem puxou assunto sozinho tem menos crédito');
+  assert.ok(BOT_LLM.FILA_MAX>=BOT_LLM.CONVERSA_MAX_GER,'a fila é o amortecedor: menor que o teto ela transborda por construção');
+  assert.ok(CONST.BOT_TALK.SILENCIO_TICKS>CONST.BOT_TALK.ROOM_CD_TICKS,
+    'a iniciativa não pode disparar antes de a sala poder falar de novo');
+  assert.ok(CONST.BOT_CHAT.puxa&&CONST.BOT_CHAT.puxa.length>=4,
+    'sem pool próprio o _fraseFixa cai no ||BOT_CHAT.kill e o bot diz "peguei" do nada');
 });

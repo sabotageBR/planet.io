@@ -260,6 +260,32 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   a vaga é sempre do humano (quem chega derruba um preenchimento). Nenhum snapshot nessa fase — sem peça não há o
   que enquadrar —, então o estado do lobby vai em JSON e em MILISSEGUNDOS. `Room.roundStart`, que nascia 0 e nunca
   era escrito, é o gancho: escrevê-lo na largada ajusta relógio, contagem e céu sozinho.
+  **O APELIDO DO PREENCHIMENTO PODE VIR DA LLM** (`server/src/rooms/botNames.js`): `botNick` sorteia uma
+  das 373 bases de `BOT_NICKS` em quatro formatos, e o país vinha DEPOIS, derivado do nick — com coerência
+  só para as 76 raízes de `US_ROOTS`, então um "Kaua73" saía com bandeira do Japão. Agora a ordem se
+  inverte: sorteia-se o PAÍS e pedem-se apelidos DELE, metade nome de gente daquela língua e metade zoeira
+  (`ninja_do_acai`, `cafe_com_leite`, `pibe_loco`), que é o que uma sala de verdade tem.
+  ⚠️ A LLM NUNCA é consultada no nascimento de um bot: o lobby do BR pede até 50 nicks num ÚNICO tick e o
+  `step()` é de todas as salas a 60 Hz. Ela enche um BALDE em segundo plano (o molde de `tunables.js`: um
+  `setInterval` escreve num objeto que o laço lê síncrono) e quem nasce tira do balde. `take()` devolver
+  `null` é a resposta NORMAL — e aí vale `botNick`, que continua sendo o CHÃO e a única verdade offline
+  (`shared` vai para o bundle do `?local=1`, que não tem servidor com quem falar).
+  ⚠️ O ponto de injeção é UM só: `Room._botNome()`, que cobre o Livre e o lobby do BR sem tocar em
+  `_nasceBot`/`topUpBots`/`fillTo`. `botNick` registra em `usedNicks` por DENTRO; o caminho do balde tem
+  que registrar à mão, senão saem dois preenchimentos com o mesmo nome.
+  ⚠️ **DETERMINISMO**: servir do balde pula os 2–3 sorteios de `botNick` e desloca todo o stream do rng da
+  sala (`botSpawnR`, `skinId`, `pickPersona`, `botCountry`). Isso é inofensivo porque **o balde só existe
+  com a LLM configurada** e a suíte roda sem `OLLAMA_URL` — sem ela o caminho é byte a byte o de sempre, e
+  é por isso que os testes de semente de `roombots.test.js` continuam valendo sem uma linha alterada.
+  ⚠️ O **VALIDADOR** (`recusa()`) é obrigatório e todas as suas regras já existiam — como asserção de teste
+  sobre as listas ESTÁTICAS, nenhuma como função que rodasse em produção. A que mais importa é
+  `eggSkinFor(n)===null`: o prompt pede "nada de celebridades" e o modelo escapa uma em dez, e um
+  preenchimento chamado "messi" ganharia a caricatura do Messi no `_quemE` e seria tratado como ele no chat
+  — o oposto exato de passar por gente. As outras: formato 2..16, `baseNick(n).length>=2` (sem raiz o bot
+  fica surdo ao próprio nome, porque `citou` compara a raiz), a lista `COMUNS` (nick que é palavra comum faz
+  o bot responder a quem NÃO o chamou) e os valores que se confundem com campo vazio.
+  ⚠️ `recusa()` **não apara** a string: valida o que vai ser usado. Aparando, `" pad "` passaria e o
+  chamador gravaria o nick com espaços — quem apara é `parseLote`, antes de chamar.
   **Todo preenchimento usa apelido de gente** (`realNicks`, os dois modos): os 60 nomes temáticos de
   `BOT_NAMES` denunciavam o bot pelo NOME antes de qualquer movimento denunciar. `anonBots` é coisa separada
   e continua só no BR — no Livre o ◆ do placar segue aparecendo.
@@ -740,10 +766,33 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   tick e **nenhum kind de EVENTO entra na fila**; ela só transporta os conversacionais, onde 0,5–3 s não é
   atraso. `CORO_WAIT_MS` (espera proposital) e `STALE_MS` (latência da geração) são relógios DIFERENTES e
   somá-los seria confundir uma feature com uma falha. Bot responde a bot com **corrente curta**: a reentrada
-  fica em `publica()` dentro de `_falar` (e não no `_pushChat`, que é o difusor comum), continua só quando a
-  linha GERADA cita alguém pelo nome — e a frase do repertório nunca cita, então a corrente morre sozinha ali.
-  Termina por cinco razões independentes: profundidade limitada, exigência de citação, `CADEIA_P`, o conjunto
-  `cadeia` (que proíbe repetir slot) e os orçamentos por bot.
+  fica em `publica()` dentro de `_falar` (e não no `_pushChat`, que é o difusor comum).
+  ⚠️ **A CORRENTE DEIXOU DE EXIGIR VOCATIVO** (`CADEIA_SOLTA_P`, `CADEIA_MAX` 2 → 5). Ela só continuava
+  quando a linha GERADA citava alguém pelo nome — e numa conversa de gente a maioria das linhas NÃO tem
+  vocativo ("kkkk", "nem vi", "tu ta doido"), então toda conversa morria no SEGUNDO elo. Hoje a linha sem
+  nome continua na metade das vezes, e é `CADEIA_SOLTA_P` — não o `CADEIA_MAX` — o botão de "conversa mais
+  longa": o MAX só diz onde ela é cortada à força.
+  Termina por SEIS razões independentes: profundidade limitada por `CADEIA_MAX` (a ÚNICA que não é sorteio,
+  e portanto a prova de que acaba); `CADEIA_P`/`CADEIA_SOLTA_P`; a **JANELA** de `CADEIA_JANELA` elos; os
+  orçamentos por bot; o **ORÇAMENTO DE CONVERSA**; e a marca `solta`.
+  ⚠️ A **JANELA** substituiu o conjunto `cadeia` que proibia repetir slot: com `CADEIA_MAX=5` aquilo exigia
+  CINCO bots distintos por conversa — revezamento, não conversa. A janela de 2 proíbe o que incomoda
+  (A→B→A no mesmo fôlego) e libera o que parece gente (A→B→C→A).
+  ⚠️ O **ORÇAMENTO DE CONVERSA** (`Room.conversa`, `CONVERSA_MAX_GER`) nasceu com ela: uma linha de humano
+  podia pedir 15 gerações (5 elos × coro de 3). O teto por BOT não segura (são bots diferentes) e o
+  `MAX_INFLIGHT_ROOM` também não — ele só ENFILEIRA. Ele estrangula o elo bot↔bot e o CORO, **nunca a
+  menção dirigida de um humano**: ser chamado pelo nome e ficar mudo é o pecado que este arquivo combate,
+  e um teto de custo não pode reintroduzi-lo.
+  ⚠️ E a **marca `solta`** existe porque toda fala espontânea já nasce como raiz de cadeia (`botChatTick` →
+  `_falar` → `_digitaTick` → `_encadeia`, com `depth=1`). Sem ela, cada "peguei" de bot viraria o começo de
+  um papo entre bots por cima do jogo.
+  ⚠️ Dois COOLDOWNS tiveram que se separar, e sem isso nada acima aparece na tela: o de bot dentro da
+  corrente é `CADEIA_BOT_CD_TICKS` (2 s) e não os 10 s da MENÇÃO — um elo chega 1–4 s depois do anterior, e
+  com o cooldown longo valendo ali afrouxar a janela seria um NO-OP; e o `mencaoAt` da SALA parou de ser
+  refrescado a cada elo (`if(!depth)`), porque numa corrente de 5 ele fechava a porta por 15–25 s para o
+  próximo humano que chamasse um bot pelo nome — os bots conversando e o jogador ignorado.
+  ⚠️ `gp.mencaoAt??-1e9`, nunca `||`: o tick **0 é falsy**, e com `||` o cooldown por bot simplesmente não
+  existia para quem falou no primeiro tick da sala.
   ⚠️ **O bot LEVA TEMPO PARA DIGITAR** (`BOT_LLM.DIGITA_CPS`, `Room._digitaTick`). A linha do modelo saía
   INTEIRA no instante em que ele terminava, então uma frase de 45 letras chegava tão rápido quanto um
   "kkkk" — que é o jeito mais barato de denunciar que ali não tem gente. Agora ela espera `len/CPS` antes
@@ -757,6 +806,35 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   por ser específica e vir depois, ganhava: as duas se contradiziam e uma tinha que sair. Saiu a que fazia
   o bot parecer um bot. `sanitiza` também passou a cortar o próprio nome quando vem como prefixo de turno
   ("Manu: cala a boca" → "cala a boca"), porque o histórico vai para o prompt no formato `Nome: texto`.
+  **A LLM SABE COM QUEM ESTÁ FALANDO** (`elencoLinha` em `botChat.js`, `Room._quemE`, `eggDe` em
+  `shared/src/eggs.js`): o prompt sabia o que o bot estava vivendo e não sabia quem era NINGUÉM — os nomes
+  entravam como etiquetas vazias. Agora vai um bloco `[who is who]` com as pessoas que o prompt já cita (o
+  próprio bot, quem falou com ele, o líder, o alvo, o agressor): a **caricatura**, o país (em INGLÊS, por
+  `Intl.DisplayNames` — o prompt inteiro é inglês e "from Brasil" é a única linha que destoa) e o nível
+  quando é alto. Só quem tem o que dizer entra; o resto não gasta um caractere.
+  ⚠️ A caricatura é **FATO, não palpite**: `eggSkinFor(nick)` decide a skin daquela vida em
+  `persist/hooks.js`, e o resultado mora em `gp.skinId` — o servidor SEMPRE soube que quem se chama "messi"
+  está com a cara do Messi, e nunca tinha contado a ninguém. `EGG_BY_SKIN` existia, era exportado e **não
+  tinha um único consumidor**; `eggDe()` é ele. Vai o campo `real` (o nome CANÔNICO), nunca `nome`: metade
+  dos rótulos de skin é apelido — "Bruxo" não diz nada a um modelo, "Ronaldinho Gaúcho" diz tudo.
+  ⚠️ O resto da associação com o mundo real é **inferência da LLM, autorizada no SYSTEM**: ela já sabia que
+  "pizzalover" é comida e que "coringa" é personagem; o que faltava era a permissão. Medido na bancada, com
+  o país junto ela chega a "vai chorar no italiano" e a chamar o Messi de "la pulga".
+  ⚠️ `isBot` NÃO entra no elenco, e o SYSTEM proíbe dizer que alguém é bot: no Battle Royale o `anonBots`
+  tirou o `PLAYER_FLAG.BOT` do fio justamente para o placar e o radar não entregarem o preenchimento, e uma
+  linha de chat desfaria isso de graça.
+  ⚠️ A **PENEIRA ganhou política e meta-bot** (`POLITICA`, `BOT_META` em `sanitiza`). O jogo tem caricaturas
+  de Trump, Lula, Bolsonaro, Putin, Zelensky e Milei e a graça é a PERSONA, não a manchete — e o SYSTEM é um
+  PEDIDO, que o modelo escapa uma em dez. Mora na peneira pelo mesmo motivo de `OFENSA`. ⚠️ "esquerda" e
+  "direita" ficaram DE FORA: são direções dentro do jogo ("vem pela esquerda"), e vetá-las comeria fala
+  legítima o dia inteiro. Pelo mesmo motivo "lula roubou tudo" PASSA — o único termo político dela é o nome,
+  e "roubou" é palavra de partida. A peneira pega o vocabulário INEQUÍVOCO; o resto é com o SYSTEM.
+  ⚠️ E o teto da SAÍDA separou-se do corte do HISTÓRICO (`MAX_CHARS` 110 / `HIST_CHARS` 90), que eram a mesma
+  constante em dois papéis: a fala precisou de espaço para a piada com referência caber (a peneira RECUSA,
+  não corta — teto apertado não encurtava a fala, trocava-a por uma frase enlatada), e o prompt não podia
+  crescer junto. ⚠️ `PROMPT_MAX_CHARS` foi para 1900 porque **já estava estourado**: o teste montava um
+  cenário sem `feed`/`modo`/`lider`/`zonaS`, media 1225 e aprovava, enquanto a produção mandava 1531 contra
+  um teto de 1500. Um teto só vale o que o pior caso do teste vale.
   **A LLM sabe o que o bot está VIVENDO**: `estadoLinha` lê `gp.brain` (mode/target/press/zu — que o `_think`
   já preenchia e ninguém lia, custo zero) e `agressorLinha` lê `gp.mem`, um anel de 6 carimbado em
   `Sim._consume` nos eventos que já traziam `bySlot`. Quando o agressor É de quem ele foge, as duas viram UMA
@@ -775,6 +853,34 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   viram nome de graça. O atraso proposital da resposta caiu (`CORO_D0_MS` [300,900] → [150,500]): esperar
   mais de um segundo pela primeira letra não parece gente digitando, parece fila — e abaixo de ~150 ms
   também não, aí é rápido demais para quem teria que ler e escrever.
+  ⚠️ **SEM LLM, QUEM É CHAMADO PELO NOME NÃO FICA MAIS MUDO.** `_botResponde` abria com `!bc.ativo()` — e
+  `ativo()` é "disjuntor fechado E gerações em voo < teto", ou seja uma condição de **OCUPAÇÃO** usada como
+  condição de **EXISTÊNCIA**. Bastavam 4 gerações em voo em QUALQUER sala do shard para quem fosse chamado
+  em qualquer outra ficar calado, e `BOT_CHAT.resposta`/`_fraseResposta` — que existem exatamente para isso,
+  e cujo comentário afirmava que rodavam — nunca eram alcançados. Quem escolhe entre gerar e enlatar é
+  `_filaTick`, no despacho, onde a informação é atual. O contrato por `kind`: `mention` sempre enlata,
+  `coro` enlata mas com UM só (três frases fixas para um "e aí galera" é o coro de robô que o escalonamento
+  evita), `reply` e `cadeia` continuam calados (aí a frase fixa É responder fora de contexto).
+  ⚠️ E a linha ENLATADA também passa pelo `digitaFila`: com o disjuntor aberto ela vira a resposta padrão da
+  sala, e sair INSTANTÂNEA enquanto as geradas levam 0,5–3,4 s é a assinatura de bot que `DIGITA_CPS` existe
+  para apagar. O item vai marcado `fixa` para não encadear — repertório não cita ninguém e não conversa.
+  **O BOT PUXA ASSUNTO** (`Room._iniciativaTick`, `BOT_TALK.SILENCIO_TICKS`): a conversa só nascia de um
+  humano digitar, e uma sala em que ninguém NUNCA começa nada é tão estranha quanto uma em que ninguém fala.
+  Com 45 s de silêncio, humano presente e **nada em voo** (fila de fala, de digitação ou geração — sala com
+  fala na fila não está calada, está esperando alguém terminar de digitar), um bot abre conversa. ⚠️ O
+  assunto NÃO é inventado: sai de `escolheAssunto` (pura, em `botChat.js`) sobre o que está acontecendo — o
+  gás, a fofoca fresca do feed, o líder que disparou, os poucos que restam. ⚠️ Quem puxa também não é
+  sorteio: é o líder, ou o bot mais PERTO de um humano — o planeta que a pessoa tem na tela. ⚠️ Não passa
+  por `botChatTick` (lá um item é sorteado da leva e o resto vai fora, e a iniciativa perderia a loteria
+  para qualquer abate do mesmo tick) e tem orçamento próprio, com metade do teto de conversa.
+  ⚠️ `botChatTick` passou a sortear **PELO PESO** de `BOT_TALK.P`: o sorteio era uniforme e o `P` só era
+  conferido DEPOIS, então um gatilho frequente e de baixo valor (o míssil, que acerta o tempo todo)
+  ganhava a loteria, derrubava um `kill` do mesmo tick e ainda tinha 90% de chance de não sair — o
+  resultado líquido era MENOS fala, e pior. O peso decide QUAL; o `chance` continua decidindo SE.
+  ⚠️ Os gatilhos `tiro` e `escudo` eram MORTOS: tinham pool em `BOT_CHAT`, probabilidade em `BOT_TALK.P` e
+  tradução em `evento()`, e nenhum `_talk` os emitia. Ligados em `Sim._consume`, e **só quando quem atirou é
+  gente** (a fala serve para quem vai LER; e `BOOM` é o evento mais frequente da sala, então sem esse filtro
+  ele apagaria `kill`, `morte` e `lider` da loteria).
   Responder a quem CHAMA tem orçamento próprio, bem mais folgado (ser chamado pelo nome e ficar mudo é o que não passa por gente), e a
   menção é aproximada (`citou`: raiz do nick, sufixo de diminutivo, apelido cortado, 1–2 letras de erro). O pecado grave é o FALSO
   positivo — responder a quem não chamou É poluir o chat —, então há lista de palavras comuns e uma VARREDURA em
