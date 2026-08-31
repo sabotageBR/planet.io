@@ -45,7 +45,6 @@ export default {
   respawn: "🔄 ¡OTRA VEZ!", toLobby: "Salas", timeWord: "tiempo", rankWord: "clasificación diaria", coinsEarned: "monedas ganadas",
   lobbyTitle: "SALAS", roomCode: "CÓDIGO", enter: "Entrar", create: "➕ Crear sala", autoNote: "Entra en la sala más llena con lugar", shard: "shard", botsWord: "bots",
   rankTitle: "CLASIFICACIÓN", scopeGlobal: "Global", scopeCountry: "Mi país", noCountry: "elige tu país en el perfil",
-  rankGuest: "la clasificación es solo de cuentas: reclama la tuya y todo tu historial entra",
   muteHint: "Silencio (M)",
   zoomHint: "Zoom manual — 0 o el botón central vuelve al automático",
   pauseTitle: "PAUSA", pauseHint: "Menú (Esc)", resume: "Volver al juego", exitMatch: "Salir de la partida",

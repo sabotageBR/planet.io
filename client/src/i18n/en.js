@@ -45,7 +45,6 @@ export default {
   respawn: "🔄 AGAIN!", toLobby: "Lobby", timeWord: "time", rankWord: "daily ranking", coinsEarned: "coins earned",
   lobbyTitle: "ROOMS", roomCode: "CODE", enter: "Join", create: "➕ Create room", autoNote: "Joins the fullest room with a free slot", shard: "shard", botsWord: "bots",
   rankTitle: "RANKING", scopeGlobal: "Global", scopeCountry: "My country", noCountry: "pick your country in your profile",
-  rankGuest: "the ranking is for accounts only — claim yours and your whole history joins in",
   muteHint: "Mute (M)",
   zoomHint: "Manual zoom — 0 or the middle button goes back to automatic",
   pauseTitle: "PAUSED", pauseHint: "Menu (Esc)", resume: "Back to the game", exitMatch: "Leave the match",

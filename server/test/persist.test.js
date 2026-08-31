@@ -64,7 +64,7 @@ const randomUUID=()=>crypto.randomUUID();
 /** Cria um convidado e devolve {token,userId}. */
 const novoGuest=async nick=>{const r=await call('POST','/api/auth/guest',{body:{nick}});
   assert.equal(r.status,201,JSON.stringify(r.body));return{token:r.body.token,userId:r.body.user.id};};
-/** Conta de verdade (guest promovido). O RANKING só lista `kind='registered'` — ver repos/ranking.js. */
+/** Conta de verdade (guest promovido). */
 const novaConta=async(nick,email)=>{const g=await novoGuest(nick);
   const r=await call('POST','/api/auth/claim',{token:g.token,body:{password:'segredo123',email}});
   assert.equal(r.status,200,JSON.stringify(r.body));return g;};
@@ -294,7 +294,7 @@ test('país: PATCH aceita, valida e limpa; o ranking regional filtra',async()=>{
 
 test('ranking: o país entra na CHAVE do cache (senão o Brasil vê o ranking do mundo)',async()=>{
   // Foi a regressão mais provável de toda esta frente: o cache é de 10 s e a chave não tinha o país.
-  const t=await novaConta('Cacheado','cacheado@exemplo.com');   // guest não entra mais no ranking
+  const t=await novaConta('Cacheado','cacheado@exemplo.com');
   await req('PATCH','/api/me',{country:'PT'},t.token);
   await persist.finishMatch({sessionId:randomUUID(),userId:t.userId,startedAt:Date.now()-1000,durationS:10,score:999999,
     maxMass:1,kills:0,botKills:0,splits:0,ejects:0,food:0,bestStreak:0,top1Ticks:0,quadrants:0,cause:'left',mode:0,teamSize:1,skinId:0});
@@ -305,26 +305,31 @@ test('ranking: o país entra na CHAVE do cache (senão o Brasil vê o ranking do
   assert.ok(pt.some(r=>r.userId===t.userId));
 });
 
-test('ranking: convidado NÃO aparece — e entra inteiro no dia em que registrar',async()=>{
-  // O ranking sempre somou por `user_id`, então trocar de nick nunca fez ninguém perder posição. O que
-  // faltava era o contrário: o convidado escolhe um nick novo a cada entrada e pode ter quantos quiser,
-  // e um pódio construído sobre isso não diz de QUEM é a marca. O filtro é de EXIBIÇÃO — a coleta
-  // continua igual, e é por isso que o histórico dele aparece inteiro assim que a conta existe.
+test('ranking: convidado APARECE — e a conta não perde nada ao ser criada',async()=>{
+  // O ranking já somou só CONTA, e o argumento era que o convidado escolhia um nick novo a cada entrada.
+  // Isso acabou: o nome do planeta passou a ser EXIGIDO e fica gravado na conta de convidado, que dura
+  // enquanto o token viver no navegador — enquanto o cadastro por senha saiu da tela, deixando 3 % da base
+  // elegível a um pódio que é o cartão da tela inicial. A coleta nunca mudou (soma por `user_id`), e é por
+  // isso que registrar depois não move um número: ele já estava lá.
   const g=await novoGuest('Passageiro');
   const partida=uid=>persist.finishMatch({sessionId:randomUUID(),userId:uid,startedAt:Date.now()-1000,durationS:10,
     score:888888,maxMass:1,kills:0,botKills:0,splits:0,ejects:0,food:0,bestStreak:0,top1Ticks:0,quadrants:0,
     cause:'left',mode:0,teamSize:1,skinId:0});
   await partida(g.userId);
   let rk=(await req('GET','/api/ranking?by=score&limit=47')).body;
-  assert.ok(!rk.rows.some(r=>r.userId===g.userId),'convidado não pode aparecer no ranking');
-  assert.equal((await req('GET','/api/ranking?by=score&limit=47',null,g.token)).body.me,null,'nem com posição própria');
+  const antes=rk.rows.find(r=>r.userId===g.userId);
+  assert.ok(antes,'convidado tem que aparecer no ranking');
+  assert.equal(antes.registered,false,'e viajar marcado como convidado, para quem quiser distinguir');
+  assert.equal(antes.name,'Passageiro','sem display_name o nome da linha cai no nick');
+  assert.ok((await req('GET','/api/ranking?by=score&limit=47',null,g.token)).body.me.rank>=1,'com posição própria');
   assert.equal((await call('POST','/api/auth/claim',{token:g.token,body:{password:'segredo123',email:'passageiro@exemplo.com'}})).status,200);
   // ⚠️ `limit` diferente de propósito: ele entra na CHAVE do cache de 10 s do /api/ranking, e sem isso a
   // consulta de depois do registro devolveria a resposta de antes dele — o teste passaria pelo motivo errado.
   rk=(await req('GET','/api/ranking?by=score&limit=48',null,g.token)).body;
   const linha=rk.rows.find(r=>r.userId===g.userId);
-  assert.ok(linha,'depois de registrar, entra');
-  assert.equal(linha.value,888888,'e com a pontuação que já tinha — nada do que ele jogou se perdeu');
+  assert.ok(linha,'depois de registrar, continua');
+  assert.equal(linha.value,888888,'com a mesma pontuação — registrar não cria nem apaga histórico');
+  assert.equal(linha.registered,true,'e agora marcado como conta');
 });
 
 test('skin lendária: o nível é gate de verdade, e ele destrava com XP',async()=>{

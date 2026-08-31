@@ -29,7 +29,7 @@ function Body() {
     return () => { alive = false; }; }, [period, by, country]);
   // sem país escolhido não dá para entrar no recorte regional — o botão fica desabilitado com a dica
   useEffect(() => { if (scope === "country" && !pais) setScope("global"); }, [scope, pais]);
-  const myId = user && user.id, convidado = !!user && user.kind !== "registered";
+  const myId = user && user.id;
   return <>
     <ScreenHeader title={LB.rankTitle} />
     <div className="toggles">
@@ -63,17 +63,15 @@ function Body() {
           <td className="c-val num">{fmt(r.value)}</td></tr>; })}
         {!data.rows.length ? <tr className="empty"><td colSpan={7} className="dim">{data.loading ? LB.loading : LB.noRank}</td></tr> : null}</tbody>
     </table></div>
-    {/* O ranking é só de CONTA (ver repos/ranking.js): o convidado escolhe outro nick a cada entrada, e um
-        pódio feito disso não diz de quem é a marca. Ele não perde nada — o `user_stats` continua somando
-        por `user_id` e o histórico inteiro aparece no dia em que ele registrar —, mas precisa LER isso
-        aqui, senão "sem posição" parece defeito. */}
+    {/* O convidado ENTRA no ranking desde que o nome do planeta virou obrigatório (ver repos/ranking.js):
+        havia aqui um ramo próprio que dizia "sem posição · registre a sua conta" mesmo para quem tinha
+        pontuado, e ele apontava para um cadastro que não existe mais na tela. Hoje a faixa é uma só, e
+        "sem posição" volta a significar o que a frase diz: ainda não pontuou nesse período. */}
     {/* ⚠️ `sem posição` NÃO vai no <b>: ele é a tipografia do ORDINAL (24 px), e uma frase de duas palavras
         ali quebra em duas linhas gigantes e empurra o resto da faixa para fora. Número grande é número;
         texto é texto. */}
-    {convidado
-      ? <div className="card rank-me guest" id="rk-me"><span>{LB.you}</span><span className="rk-none">{LB.noRank}</span><span className="hint">{LB.rankGuest}</span></div>
-      : <div className="card rank-me" id="rk-me"><span>{LB.you}</span>
-          {data.me && data.me.rank != null ? <b>{ord(data.me.rank)}</b> : <span className="rk-none">{LB.noRank}</span>}
-          <span>{data.me ? `${fmt(data.me.value)} ${LB.stats.xp}` : ""}</span></div>}
+    <div className="card rank-me" id="rk-me"><span>{LB.you}</span>
+      {data.me && data.me.rank != null ? <b>{ord(data.me.rank)}</b> : <span className="rk-none">{LB.noRank}</span>}
+      <span>{data.me ? `${fmt(data.me.value)} ${LB.stats.xp}` : ""}</span></div>
   </>;
 }

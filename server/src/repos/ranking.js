@@ -22,18 +22,21 @@ export const BY={
 const val =(by,a)=>BY[by].col?`${a}.${BY[by].col}`:BY[by].expr(a);
 const gate=(by,a)=>BY[by].gate?BY[by].gate(a):`${val(by,a)}>0`;
 // ── QUEM ENTRA NO RANKING ────────────────────────────────────────────────────
-// Só CONTA, nunca convidado. O ranking sempre somou por `user_id` — trocar de nick nunca fez ninguém
-// perder posição —, mas o convidado é uma identidade descartável: ele escolhe o nick a cada entrada, pode
-// ter quantos quiser e some quando a aba fecha. Um pódio construído sobre isso não diz de QUEM é a marca.
-// `kind='registered'` é a linha certa (e não `email IS NOT NULL`): o que separa é ter uma conta que DURA,
-// e um claim só com senha, sem e-mail, dura igual. (Este comentário já disse que o filtro se justificava
-// por `users_nick_registered_uq` travar o nick — aquele índice não existe mais, o nick é livre desde a
-// 0009, e quem virou único foi o `login`. O filtro continua certo; o argumento é que era emprestado.)
-// ⚠️ Duas contas PODEM aparecer com o mesmo nick no pódio. Quem as distingue é a coluna do nome da conta
-// (`display_name`), que é o que esta tabela mostra primeiro.
-// ⚠️ Convidado NÃO perde nada: `user_stats` continua acumulando por `user_id`, e no dia em que ele
-// registrar a conta aparece com o histórico inteiro. É filtro de exibição, não de coleta.
-const CONTA=a=>`${a}.kind='registered'`;
+// TODO MUNDO, convidado incluído. Havia aqui um `kind='registered'`, e o argumento era que o convidado
+// é uma identidade descartável — "escolhe o nick a cada entrada, pode ter quantos quiser". As duas
+// pernas desse argumento caíram:
+//  (a) o nick deixou de ser sorteado e passou a ser EXIGIDO (`semNome` no cliente): o convidado hoje
+//      escolhe um nome e ele fica na conta dele, que dura enquanto o token viver no navegador; e
+//  (b) o cadastro por senha SAIU da tela — só o Google cria conta nova. Medido na produção no dia da
+//      mudança: 1153 convidados contra 35 contas, e 34 dessas 35 tinham nascido justamente do cadastro
+//      que acabou de fechar. Um pódio de 3 % da base não é um pódio exigente, é uma sala vazia — e ele
+//      é o cartão da TELA INICIAL, a primeira coisa que alguém vê antes de decidir jogar.
+// O que nunca mudou é a coleta: `user_stats` sempre somou por `user_id`, então quem registrar a conta
+// continua entrando com o histórico inteiro; o que mudou é que ele não precisa mais registrar para ser
+// visto. `registered` continua viajando em cada linha — quem quiser distinguir os dois, distingue.
+// ⚠️ Duas contas PODEM aparecer com o mesmo nick no pódio (o nick é livre desde a 0009; quem é único é o
+// `login`). Quem as distingue é a coluna do nome da conta (`display_name`), que é o que a tabela mostra
+// primeiro — e para o convidado, que não tem `display_name`, ela cai no nick.
 
 export function createRanking(db){
   /**
@@ -52,7 +55,7 @@ export function createRanking(db){
               COALESCE(${st}.food_eaten,0) AS food_eaten,COALESCE(${st}.games,0) AS games,
               ${val(by,'s')} AS value
          FROM ${src} s JOIN users u ON u.id=s.user_id ${join}
-        WHERE ${gate(by,'s')} AND ${CONTA('u')} AND ($2::char(2) IS NULL OR u.country=$2)
+        WHERE ${gate(by,'s')} AND ($2::char(2) IS NULL OR u.country=$2)
         ORDER BY ${val(by,'s')} DESC,s.user_id ASC LIMIT $1`,[limit,country||null]);
     return r.rows.map((x,i)=>linha(x,i+1));
   }
@@ -62,10 +65,10 @@ export function createRanking(db){
     const r=await db.query(
       `SELECT ${val(by,'s')} AS value,
               (SELECT count(*) FROM ${src} o JOIN users uo ON uo.id=o.user_id
-                WHERE ${val(by,'o')}>${val(by,'s')} AND ${gate(by,'o')} AND ${CONTA('uo')}
+                WHERE ${val(by,'o')}>${val(by,'s')} AND ${gate(by,'o')}
                   AND ($2::char(2) IS NULL OR uo.country=$2))::int+1 AS rank
          FROM ${src} s JOIN users u ON u.id=s.user_id
-        WHERE s.user_id=$1 AND ${gate(by,'s')} AND ${CONTA('u')}`,[userId,country||null]);
+        WHERE s.user_id=$1 AND ${gate(by,'s')}`,[userId,country||null]);
     return r.rows[0]?{rank:r.rows[0].rank,value:Number(r.rows[0].value)}:null;
   }
   return{top,rankOf};
