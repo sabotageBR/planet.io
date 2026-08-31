@@ -86,7 +86,7 @@ export default {
     feast: "Food is worth double while it lasts.",
   },
   powerupsTitle: "POWER-UPS", powerupsNote: "They show up as little orbs on the map. Run them over to pick them up.",
-  room: "ROOM", ping: "ms", fps: "fps", top5: "TOP 5 TODAY", activeRooms: "ACTIVE ROOMS",
+  room: "ROOM", ping: "ms", fps: "fps", top5: "TOP 5 TODAY",
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— the universe collapsed into a point; the next galaxy is already being born —",
   champion: "ROOM CHAMPION", nextRoom: "next room", enterNow: "🚀 Join now", playersWord: "on the board", posWord: "#",
   podium: "PODIUM", restOfBoard: "And the rest of the galaxy",

@@ -104,7 +104,7 @@ export default {
     feast: "A comida vale o dobro enquanto durar.",
   },
   powerupsTitle: "POWERUPS", powerupsNote: "Aparecem como bolinhas no mapa. Passe por cima para pegar.",
-  room: "SALA", ping: "ms", fps: "fps", top5: "TOP 5 HOJE", activeRooms: "SALAS ATIVAS",
+  room: "SALA", ping: "ms", fps: "fps", top5: "TOP 5 HOJE",
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— o universo desabou num ponto; a próxima galáxia já está nascendo —",
   champion: "CAMPEÃO DA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar agora", playersWord: "no placar", posWord: "#",
   podium: "PÓDIO", restOfBoard: "E o resto da galáxia",

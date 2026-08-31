@@ -80,7 +80,8 @@ test('Livre continua igual: entra, a sala já está em partida e os bots do env 
   assert.equal(r.teamSize,1);assert.equal(r.team,-1,'no Livre ninguém tem equipe');
   assert.equal(r.round.phase,'live','o Livre não tem aquecimento');
   const room=roomOf(r.code);
-  assert.equal(room.sim.botCount(),srv.config.roomBots,'os bots continuam vindo do env, não do descritor do modo');
+  // ⚠️ O ALVO, não a população: a sala abre com ROOM.BOT_SEED e enche aos poucos (Room._chegadaBots).
+  assert.equal(room.botCount,srv.config.roomBots,'os bots continuam vindo do env, não do descritor do modo');
   assert.equal(room.max,srv.config.roomMax);
   const pl=await c.until(()=>c.players.length?c.players:null,4000,'PLAYERS');
   for(const p of pl)assert.equal(p.team,NO_TEAM,'PLAYERS leva team = NO_TEAM no Livre');

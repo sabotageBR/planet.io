@@ -10,7 +10,7 @@ import { skinName, rarityLabel } from "../i18n/catalog.js";
 import { keysOf } from "../game/input/Keyboard.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { go, play, openAccount, setNick, loadRooms, loadTop5 } from "../state/actions.js";
+import { go, openAccount, setNick, loadTop5 } from "../state/actions.js";
 import GoogleButton from "./GoogleButton.jsx";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { useInterval } from "../hooks/useInterval.js";
@@ -25,18 +25,23 @@ export default function Entry({ on }) {
 }
 function Body() {
   const LB = useLabels(), theme = useTheme(), RC = (theme && theme.rarityColor) || RARITY_COLORS;
-  const session = useStore(app, s => s.session), top5 = useStore(app, s => s.top5), rooms = useStore(app, s => s.rooms);
-  // O segundo cartão SOME quando não tem o que mostrar. Não dá para fazer isso em CSS: `MiniRank` e a
-  // lista de salas sempre emitem uma linha de "ainda não tem nada", então o `<aside>` nunca é `:empty` —
-  // e um cartão cheio de "nenhuma sala ativa" e "sem ranking ainda" é pior que cartão nenhum.
-  // ⚠️ `roomsAt` é a guarda contra o PISCA: as duas listas nascem vazias e só chegam no primeiro tick do
+  const session = useStore(app, s => s.session), top5 = useStore(app, s => s.top5);
+  // ⚠️ A LISTA DE SALAS ATIVAS SAIU DAQUI. Num jogo que está começando ela só sabia dizer duas coisas, e
+  // as duas afastam quem chega: "nenhuma sala ativa" (ninguém está jogando) e, quando havia sala, quantos
+  // BOTS ela tinha — ou seja, que os adversários não eram gente. A tela de Salas continua com a lista
+  // inteira para quem for procurá-la; a porta de entrada não anuncia sala vazia.
+  //
+  // O segundo cartão SOME quando não tem o que mostrar (hoje: quando o TOP 5 do dia está vazio). Não dá
+  // para fazer isso em CSS — `MiniRank` sempre emite uma linha de "ainda não tem nada", então o `<aside>`
+  // nunca é `:empty`, e um cartão só com "sem ranking ainda" é pior que cartão nenhum.
+  // ⚠️ `top5At` é a guarda contra o PISCA: a lista nasce vazia e só chega no primeiro tick do
   // `useInterval`, então sem ela o cartão apareceria 200 ms depois, no meio da animação de entrada.
-  const carregou = useStore(app, s => s.roomsAt) > 0;
-  const temLado = !carregou || top5.length > 0 || rooms.length > 0;
+  const carregou = useStore(app, s => s.top5At) > 0;
+  const temLado = !carregou || top5.length > 0;
   const user = session.user || {}, sk = skinById(user.equippedSkin ?? 0), guest = user.kind !== "registered";
   const [nick, setNickLocal] = useState(user.nick || "");
   useEffect(() => { setNickLocal(user.nick || ""); }, [user.nick]);
-  useInterval(() => { loadRooms(); loadTop5(); }, 5000, true);
+  useInterval(loadTop5, 5000, true);   // só o TOP 5: pedir a lista de salas para não desenhá-la é o mesmo erro que a coluna escondida dos temas já foi
   const commit = async () => { if (nick.trim() !== (user.nick || "")) { const r = await setNick(nick); if (!r.ok) setNickLocal(user.nick || ""); } };
   const links = [["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
   // A dica é a primeira coisa que alguém lê: com as teclas configuráveis, cravar "ESPAÇO/W" nela seria
@@ -74,20 +79,11 @@ function Body() {
       <div className="hint">{dica}</div>
     </div>
     {/* Esta coluna existia, era consultada a cada 5 s e os TRÊS temas a escondiam com display:none.
-        Ou some o pedido de rede, ou ela aparece — e o que ela mostra (quem está ganhando, onde tem
-        gente jogando agora) é exatamente o que convence alguém a entrar. */}
+        Ou some o pedido de rede, ou ela aparece — e o que ela mostra, quem está ganhando hoje, é o que
+        convence alguém a entrar. (A lista de salas era o outro bloco daqui e saiu: ver acima.) */}
     {temLado ? <aside className="card entry-side">
       <div className="side-block">
         <div className="ph">{LB.top5}</div><MiniRank id="entry-top5" rows={top5} n={5} />
-      </div>
-      <div className="side-block">
-        <div className="ph">{LB.activeRooms}</div>
-        <div className="mini-rooms" id="entry-rooms">
-          {rooms.slice(0, 4).map(r => <div className="mr-row" key={r.code} onClick={() => play({ room: r.code })} role="button" tabIndex={0}
-            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); play({ room: r.code }); } }}>
-            <b className="code">{r.code}</b><span>{r.players}/{r.max}</span><span className="dim">{r.ping != null ? `${r.ping} ${LB.ping}` : `${r.bots} ${LB.botsWord}`}</span></div>)}
-          {!rooms.length ? <div className="mr-row dim"><span>{LB.noRooms}</span></div> : null}
-        </div>
       </div>
     </aside> : null}
   </>;

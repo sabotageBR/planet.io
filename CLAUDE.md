@@ -756,6 +756,25 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   formas. Foi ele que aposentou o array `places` do pódio, e com isso o dicionário ficou sem nenhum array.
   Quem impede a tradução de apodrecer é `client/test/i18n.test.js`: paridade exata de chaves, moldes `{n}`
   que precisam sobreviver, o ouro dos temas e o do catálogo.
+- **A PORTA DE ENTRADA NÃO ANUNCIA SALA VAZIA** (`ui/Entry.jsx`): a lista de SALAS ATIVAS saiu da tela
+  inicial. Num jogo que está começando ela só sabia dizer duas coisas, e as duas afastam quem chega:
+  "nenhuma sala ativa" — ninguém está jogando — e, quando havia sala, `{n} bots`, ou seja, que os
+  adversários não são gente. O segundo cartão ficou com o TOP 5 do dia, que é o oposto: mostra que
+  alguém jogou e quanto fez. A tela de **Salas** continua com a lista inteira, para quem for procurá-la.
+  ⚠️ O `loadRooms` saiu do `useInterval` da entrada junto com a lista — pedir de 5 em 5 segundos uma
+  lista que ninguém desenha é exatamente o defeito que a coluna escondida pelos temas já tinha. E a
+  guarda anti-pisca do cartão passou de `roomsAt` para **`top5At`** (novo em `state/app.js`), senão ela
+  dependeria de um pedido que não é mais feito.
+- **A SALA NÃO NASCE CHEIA** (`ROOM.BOT_SEED`/`BOT_JOIN_TICKS`, `Room._chegadaBots`): ela abria com os 15
+  preenchimentos no MESMO tick, e quinze planetas surgindo juntos no instante em que você entra é a coisa
+  mais fácil de notar num .io. Agora a porta abre com `BOT_SEED` (3) e um novo entra a cada 6–14 s
+  sorteados, até o alvo — a sala leva ~2 min para encher, que é o tempo que uma sala de verdade levaria.
+  ⚠️ Sala VAZIA seria pior que sala com bot (não há o que perseguir nem de quem fugir), e por isso existe
+  a semente. ⚠️ Só vale no **Livre**: no Battle Royale quem preenche é o LOBBY, com a curva própria dele
+  (`BR.FILL_EXP`), e lá `botCount` é 0 justamente porque o preenchimento não passa por aqui. ⚠️ No Livre o
+  bot RENASCE ao morrer (`mode.respawnBots`), então a população não cai e a chegada se esgota sozinha
+  depois que a sala enche — não é um relógio que fica acordando para sempre. Quem prova é
+  `server/test/roombots.test.js`, que também trava o "para no alvo e não passa dele".
 - **CENÁRIO DAS TELAS DE MENU** (`ui/Scene.jsx` + o bloco `CENÁRIO` de `styles/ui.css`): fundo estrelado com
   planetas, lua e mísseis flutuando atrás do painel. Antes o fundo do menu era o CANVAS DO PIXI (o céu do
   jogo, parado) com um véu do tema por cima — a cor do menu dependia da hora sobre um céu que ninguém estava

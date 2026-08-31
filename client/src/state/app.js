@@ -84,7 +84,7 @@ export const initialState = {
   rewards: null,         // {saved, coinsEarned, coins, achievements, skinsUnlocked, rank:{day}}
   rewardsPending: false,
   rooms: [], roomsAt: 0,
-  top5: [],
+  top5: [], top5At: 0,
   config: null,
 };
 export const app = createStore(initialState);

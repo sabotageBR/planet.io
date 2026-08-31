@@ -154,7 +154,7 @@ function mostrarTela(s) {
 export async function loadConfig() { try { app.update({ config: await api.config() }); } catch { /* opcional */ } }
 export async function loadTop5() {
   try { const r = await api.ranking("day", "score", 5);
-    app.update(s => ({ ...s, top5: r.rows || [], session: { ...s.session, dayRank: r.me ? r.me.rank : null } })); }
+    app.update(s => ({ ...s, top5: r.rows || [], top5At: Date.now(), session: { ...s.session, dayRank: r.me ? r.me.rank : null } })); }
   catch { /* opcional */ }
 }
 export async function loadRooms() {

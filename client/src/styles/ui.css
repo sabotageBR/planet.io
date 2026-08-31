@@ -1417,3 +1417,12 @@ body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-round .round-side{
    Hoje quem rola é a tela inteira (`#s-round.on{overflow:auto}`), e um sticky num cartão que não rola
    simplesmente pousa por cima do conteúdo: os três números do rodapé sumiam debaixo deles. */
 #s-round .dead-actions{position:static}
+
+/* ── A LISTA DE SALAS PERDEU A COLUNA DE BOTS ──
+   Ela dizia em números que os adversários daquela sala não são gente. O grid dos temas e do base.css tem
+   SEIS colunas (código · shard · jogadores · bots · ping · ação) e a linha agora tem cinco filhos — sem
+   redefinir o template, o botão "Entrar" cairia na coluna do ping e a última sobraria vazia.
+   (1,1,0) e (0,2,0) para passar por cima do `:where` dos temas e do base.css. */
+body #room-list .room-row{grid-template-columns:70px 60px 1fr 60px 90px}
+/* No RETRATO o base.css já esconde `.shard` (e escondia `.bots`), então lá são quatro colunas para quatro
+   filhos visíveis — a regra de lá continua valendo sozinha. */

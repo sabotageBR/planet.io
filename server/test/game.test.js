@@ -17,7 +17,7 @@ process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';proce
 process.env.GOOGLE_CLIENT_ID='';
 const {startServer}=await import('../src/index.js');
 const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG,PROTOCOL_VERSION}=await import('@warspace/shared/protocol/index.js');
-const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE,WORLD}=await import('@warspace/shared/constants.js');
+const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE,WORLD,ROOM}=await import('@warspace/shared/constants.js');
 const {rectHas,viewRect}=await import('@warspace/shared/camera.js');
 const {setR}=await import('@warspace/shared/physics/body.js');
 const {newCode,shardOf,isValidCode,normalizeCode}=await import('../src/rooms/codes.js');
@@ -85,7 +85,12 @@ test('join: room + PLAYERS com bots + snapshots com criações na AOI',async()=>
   A=new Client();await A.open();const r=await A.join('Alice');roomCode=r.code;
   assert.equal(r.protocol,PROTOCOL_VERSION);assert.equal(shardOf(r.code),0);assert.match(r.sessionId,/^[0-9a-f-]{36}$/);assert.match(r.resumeToken,/^[0-9a-f]{32}$/);assert.deepEqual(r.world,{w:WORLD.w,h:WORLD.h});
   await A.until(()=>A.players,3000,'PLAYERS');
-  const bots=A.players.filter(p=>p.flags&PLAYER_FLAG.BOT);assert.equal(bots.length,srv.config.roomBots);
+  // ⚠️ A sala não nasce cheia: abre com ROOM.BOT_SEED e vai enchendo (Room._chegadaBots). O que o env
+  // manda é o ALVO, e é ele que se confere aqui — contar a população no primeiro PLAYERS mediria o
+  // relógio da chegada, não a configuração.
+  const bots=A.players.filter(p=>p.flags&PLAYER_FLAG.BOT);
+  assert.equal(roomOf(roomCode).botCount,srv.config.roomBots,'o alvo continua vindo do env');
+  assert.ok(bots.length>=ROOM.BOT_SEED&&bots.length<=srv.config.roomBots,`preenchimento entre a semente e o alvo (${bots.length})`);
   // O Livre passou a usar APELIDO de gente (realNicks), como o Battle Royale: os 60 nomes temáticos de
   // BOT_NAMES denunciavam o preenchimento pelo nome. O ◆ continua vindo no fio — o que muda é só o nome.
   assert.ok(bots.every(p=>p.name&&p.name.length<=16),'nick de preenchimento fora do formato');
@@ -239,5 +244,5 @@ test('rodada: fim do mundo manda roundEnd com campeão e placar, aposenta a sala
 test('saída: fecha os sockets, salas expiram as sessões',async()=>{
   A.close();B.close();await sleep(100);const room=roomOf(roomCode);assert.equal(room.humanCount,3,'A, B e Carol na graça');assert.ok([...room.sessions.values()].every(s=>!s.ws));
   for(const s of room.sessions.values())s.disconnectedAt-=NET.RESUME_MS+1;room.housekeeping(Date.now());assert.equal(room.humanCount,0);
-  assert.equal(room.sim.humanCount(),0);assert.equal(room.sim.botCount(),srv.config.roomBots);
+  assert.equal(room.sim.humanCount(),0);assert.ok(room.sim.botCount()>=ROOM.BOT_SEED,'o preenchimento fica na sala depois que os humanos saem');
 });

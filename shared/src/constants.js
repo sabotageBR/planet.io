@@ -4,7 +4,17 @@
 export const WORLD={w:9600,h:9600};
 export const TICK_HZ=60,DT=1/60,SNAPSHOT_EVERY=3,LEADERBOARD_EVERY=30,SAMPLE_EVERY=30;
 export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600,
-  HOST_HOLD_MS:120000,HOST_GRACE_MS:30000};
+  HOST_HOLD_MS:120000,HOST_GRACE_MS:30000,
+  // ── A SALA NÃO NASCE CHEIA ──
+  // Ela nascia com os 15 preenchimentos no MESMO tick, e isso é a coisa mais fácil de notar num jogo .io:
+  // quinze planetas surgindo juntos, do nada, no instante em que você entra. Gente de verdade chega aos
+  // poucos — então o preenchimento chega aos poucos também. `BOT_SEED` são os que já estão lá quando a
+  // porta abre (sala vazia é pior que sala com bot: não há o que perseguir e nem o que fugir), e um novo
+  // entra a cada intervalo sorteado em `BOT_JOIN_TICKS`, até o alvo. Com 15 e 6-14 s, a sala leva de 1 a 3
+  // minutos para encher — o mesmo tempo que uma sala de verdade levaria num horário morno.
+  // ⚠️ Só vale no LIVRE: no Battle Royale quem preenche é o LOBBY, com a curva própria dele (BR.FILL_EXP),
+  // e lá `botCount` é 0 justamente porque o preenchimento não passa por aqui.
+  BOT_SEED:3,BOT_JOIN_TICKS:[360,840]};
 // HOST_HOLD_MS: uma sala COM DONO não é recolhida enquanto essa carência não vencer. O ceifador padrão a
 // apagaria em 35 s sem humanos — e uma sala privada existe justamente para esperar os amigos chegarem, então
 // o comportamento normal a mataria antes de o segundo jogador abrir o link. Só o REMOVE é adiado: a sala

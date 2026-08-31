@@ -37,6 +37,7 @@ export class Room{
     // Battle Royale: quem manda é o modo, e a capacidade fecha no tamanho de equipe (modeCap).
     this.max=this.mode.lobby?modeCap(this.modeId,this.teamSize):config.roomMax;
     this.botCount=this.mode.lobby?0:config.roomBots;
+    this._proxBot=Infinity;   // quem agenda a 1ª chegada é o `start()`; antes dele ninguém entra
     // ⚠️ `roundTicks!=null`, NUNCA `roundTicks||…`: **0 é o valor de SEM FIM**, e o `||` o transformaria em
     // silêncio na rodada do env. É a mesma armadilha do `config.roundTicks||ROUND.TICKS` que já estava aqui.
     this.roundTicks=roundTicks!=null?roundTicks:(this.mode.lobby?this.mode.roundTicks:(config.roundTicks||ROUND.TICKS));
@@ -121,10 +122,25 @@ export class Room{
     this.sim.on('rewards',({slot,sessionId,rewards})=>{const s=this.sessions.get(slot);
       if(s&&s.sessionId===sessionId)s.deliverRewards(rewards);else if(this.onRewards)this.onRewards(sessionId,rewards);});}
   // ── ciclo de vida ──
-  start(){if(this.running)return;this.running=true;this.topUpBots();}
+  start(){if(this.running)return;this.running=true;
+    // A sala abre com POUCOS e vai enchendo (ver ROOM.BOT_SEED): quinze planetas nascendo no mesmo tick
+    // era o jeito mais rápido de dizer ao jogador que aquilo ali não é gente.
+    this.topUpBots(-1,ROOM.BOT_SEED);this._agendaBot();}
   stop(){this.running=false;}
-  topUpBots(team=-1){let have=this.sim.botCount();
-    for(;have<this.botCount;have++)this._nasceBot({name:this._botNome(),team});}
+  /** @param {number} team @param {number} max quantos podem nascer AGORA (o resto fica para a chegada gradual) */
+  topUpBots(team=-1,max=Infinity){let have=this.sim.botCount(),n=0;
+    for(;have<this.botCount&&n<max;have++,n++)this._nasceBot({name:this._botNome(),team});
+    return n;}
+  _agendaBot(){this._proxBot=this.sim.tick+this.rng.int(ROOM.BOT_JOIN_TICKS[0],ROOM.BOT_JOIN_TICKS[1]);}
+  /**
+   * UM preenchimento entrando, de tempos em tempos, até o alvo. Roda dentro do `step` e é O(1) enquanto a
+   * sala está cheia — `botCount()` é um contador, não uma varredura.
+   * ⚠️ No Livre o bot RENASCE quando morre (`mode.respawnBots`), então a população não cai e isto se
+   * esgota sozinho depois que a sala enche: não é um relógio que fica acordando para sempre.
+   */
+  _chegadaBots(){
+    if(this.sim.tick<this._proxBot||this.sim.botCount()>=this.botCount)return;
+    this.topUpBots(-1,1);this._agendaBot();}
   /**
    * O nome de um preenchimento. `realNicks` (os dois modos) usa o gerador de APELIDOS — "trovao_137",
    * "xXzecaXx", "Bia" —, que é o que faz a sala parecer cheia de gente. Os 60 nomes temáticos de BOT_NAMES
@@ -1031,6 +1047,7 @@ export class Room{
     // tick, e a sala do dono acabaria antes de existir. O fim continua alcançável por `lastAlive` e pelo
     // `close` do painel.
     if(this.roundTicks&&sim.tick-this.roundStart>=this.roundTicks){this.endRound('time');return;}
+    this._chegadaBots();
     sim.step();
     if(sim.botTalk.length)this.botChatTick();
     if(this.falaFila.length)this._filaTick();

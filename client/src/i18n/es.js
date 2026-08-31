@@ -86,7 +86,7 @@ export default {
     feast: "La comida vale el doble mientras dure.",
   },
   powerupsTitle: "POTENCIADORES", powerupsNote: "Aparecen como bolitas en el mapa. Pásales por encima para cogerlos.",
-  room: "SALA", ping: "ms", fps: "fps", top5: "TOP 5 DE HOY", activeRooms: "SALAS ACTIVAS",
+  room: "SALA", ping: "ms", fps: "fps", top5: "TOP 5 DE HOY",
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— el universo colapsó en un punto; la próxima galaxia ya está naciendo —",
   champion: "CAMPEÓN DE LA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar ahora", playersWord: "en el marcador", posWord: "#",
   podium: "PODIO", restOfBoard: "Y el resto de la galaxia",

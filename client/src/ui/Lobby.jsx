@@ -38,10 +38,16 @@ function Body() {
         <button className="btn-secondary" data-go="play" onClick={create}>{LB.create}</button></div>
     </div>
     <div className="card room-list" id="room-list">
-      <div className="room-row head"><span className="code">{LB.roomCode}</span><span className="shard">{LB.shard}</span><span className="pl">{LB.youLabel}s</span><span className="bots">{LB.botsWord}</span><span className="ping">{LB.ping}</span><span className="act"></span></div>
-      {rooms.map(r => { const full = r.players >= r.max; return <div className={"room-row" + (full ? " full" : "")} data-code={r.code} key={r.code}>
+      {/* ⚠️ A coluna de BOTS saiu. Ela dizia, em números, que os adversários daquela sala não são gente — e
+          numa sala de 1 humano + 15 preenchimentos ela era o dado mais visível da linha. O que ficou é o que
+          ajuda a escolher: código, shard, quão cheia está, ping. */}
+      <div className="room-row head"><span className="code">{LB.roomCode}</span><span className="shard">{LB.shard}</span><span className="pl">{LB.youLabel}s</span><span className="ping">{LB.ping}</span><span className="act"></span></div>
+      {rooms.map(r => { const full = r.players >= r.max, dentro = Math.min(r.players + (r.bots || 0), r.max); return <div className={"room-row" + (full ? " full" : "")} data-code={r.code} key={r.code}>
         <b className="code">{r.code}</b><span className="shard">{r.shard}</span>
-        <span className="pl"><i className="bar" style={{ "--p": r.max ? r.players / r.max : 0 }}></i>{r.players}/{r.max}</span><span className="bots">{r.bots}</span><span className="ping">{r.ping != null ? r.ping : "—"}</span>
+        {/* quantos estão DENTRO, humanos e preenchimento no mesmo número — sem os bots, uma sala movimentada
+            aparecia como "1/30" e parecia deserta. ⚠️ Quem decide se ainda cabe alguém continua sendo o
+            `full`, que olha só os humanos: é a mesma conta que o servidor faz em `acceptsJoin`. */}
+        <span className="pl"><i className="bar" style={{ "--p": r.max ? dentro / r.max : 0 }}></i>{dentro}/{r.max}</span><span className="ping">{r.ping != null ? r.ping : "—"}</span>
         <span className="act"><button className="btn-mini" data-go="play" data-room={r.code} disabled={full} onClick={() => play({ room: r.code })}>{LB.enter}</button></span></div>; })}
       {!rooms.length ? <div className="room-row empty dim" style={{ display: "block" }}><span className="hint">{LB.noRooms}</span></div> : null}
     </div>
