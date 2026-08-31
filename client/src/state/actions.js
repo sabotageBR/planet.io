@@ -3,7 +3,7 @@
 import { api, isUnreachable, isGone } from "../api/client.js";
 import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS } from "./app.js";
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
-import { getLabels, setLang, preenche } from "../i18n/index.js";
+import { getLabels, setLang, currentLangPref, preenche } from "../i18n/index.js";
 import { errText } from "../i18n/errors.js";
 import { skinById } from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
@@ -71,7 +71,11 @@ export function applyPrefsSideEffects(prefs) {
 
 export async function boot() {
   try { applySession(await api.bootstrap()); }
-  catch (e) { app.update({ bootError: e.message || String(e) }); applyPrefsSideEffects(PREF_DEFAULTS); }
+  // ⚠️ O idioma sobrevive ao boot que falhou. Este ramo reaplica os PADRÕES, e `lang` é a única pref que
+  // também mora fora do perfil (o atalho de localStorage que o `bootLang` lê antes do 1º render): sem
+  // preservá-la aqui, um servidor fora do ar fazia o jogador que escolheu inglês ver o padrão "auto"
+  // gravado por cima da escolha dele — e o idioma voltava para o do navegador no F5 seguinte.
+  catch (e) { app.update({ bootError: e.message || String(e) }); applyPrefsSideEffects({ ...PREF_DEFAULTS, lang: currentLangPref() }); }
   app.update({ booted: true });
   if (api.server === false) toast(getLabels().offlineNote, 3200); else if (api.online === false) toast(getLabels().noDbNote, 3200);
   loadConfig(); loadTop5(); loadRooms();
