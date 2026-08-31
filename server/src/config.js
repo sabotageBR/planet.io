@@ -39,6 +39,9 @@ export const config=Object.freeze({
   ollamaTimeoutMs:num('OLLAMA_TIMEOUT_MS',BOT_LLM.TIMEOUT_MS),
   ollamaMaxInflight:Math.max(1,num('OLLAMA_MAX_INFLIGHT',BOT_LLM.MAX_INFLIGHT)),
   googleClientId:str('GOOGLE_CLIENT_ID',''),   // vazio = /api/auth/google devolve 503 e o botão não aparece
+  // O id que a CrazyGames dá ao jogo no painel deles. É ele que amarra o JWT do jogador A ESTE jogo
+  // (o `gameId` do token) — sem ele a rota /api/auth/crazygames responde 503, como a do Google.
+  crazyGameId:str('CRAZY_GAME_ID',''),
   adminToken:str('ADMIN_TOKEN',''),
   // Contas promovidas a administrador no boot. SÓ PROMOVE, nunca rebaixa: rebaixar por ConfigMap
   // significa que apagar uma vírgula tranca todo mundo para fora do painel. Rebaixar é ação do /admin.

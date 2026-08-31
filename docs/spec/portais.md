@@ -107,6 +107,26 @@ por isso `scripts/brand-assets.mjs` monta a cena com os planetas do menu, o mís
 em vez de só a marca. ⚠️ A de 200×120 sai **sem tipografia**: a 120 px de altura qualquer texto vira
 mancha, e é a que mais aparece nas grades dos publishers.
 
+## CrazyGames: conta e sala (o "Full")
+
+Eles pedem mais que a GD, e o jogo atende:
+
+- **Conta**: `SDK.user.getUserToken()` a cada carga → `POST /api/auth/crazygames`, que verifica o JWT
+  (RS256, chave em `sdk.crazygames.com/publicKey.json`, com cache e re-fetch) e liga a identidade
+  `provider='crazygames'` — a mesma tabela do Google, sem migração. Bearer de convidado é PROMOVIDO, para
+  ninguém perder moedas e skins no primeiro login. O `username` deles vira `display_name`, que é o nome
+  que o jogo mostra (requisito: *"CrazyGames usernames must be displayed in-game"*).
+  ⚠️ O perfil `crazy` do empacotador vai com **`strict: true`**, e não é escolha: eles proíbem
+  *"logging out and allowing login with external options (Facebook, Google, email)"*.
+  ⚠️ Botão de login no canto superior direito, nunca como CTA principal (`ui/PortalLogin.jsx`), e o
+  prompt só abre por clique. Sem login, joga-se como convidado — eles exigem que isso continue possível.
+- **Sala**: `updateRoom({roomId, isJoinable, inviteParams})` quando a conexão abre, `leftRoom()` ao sair,
+  `addJoinRoomListener` para o amigo que aceita o convite (cai no mesmo `entrarPorConvite` do link
+  `?sala=`) e `inviteLink` no botão de convite. O `roomId` é o nosso código de sala, que já é único no
+  jogo inteiro — que é exatamente o que eles exigem dele.
+- **Áudio**: `game.settings.muteAudio` é o mudo do site deles e tem prioridade sobre o ajuste interno;
+  vai pelo mesmo caminho do mudo de anúncio, sem tocar em `prefs.muted`.
+
 ## As regras que reprovam
 
 Do guia da GameDistribution, as que encostam no código: **§2.1** preroll+midroll obrigatórios, jogo

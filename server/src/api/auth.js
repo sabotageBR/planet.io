@@ -6,7 +6,7 @@ import {normalizeNick,normalizeLogin,randomGuestNick,suggestNick,loginTaken,NICK
 import {hashPassword,verifyPassword,validPassword,dummyHash,PASSWORD_MIN} from '../auth/password.js';
 import {toPublic} from '../repos/users.js';
 const EMAIL_RE=/^[^\s@]{1,64}@[^\s@]{1,255}$/;
-export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities,google,limiter,requireUser,optionalUser,log}){
+export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities,google,crazygames,limiter,requireUser,optionalUser,log}){
   // O NICK é livre desde a 0009 (só não repete DENTRO de uma sala): aqui sobrou o formato.
   const nickOf=raw=>{const nick=normalizeNick(raw);if(!nick)throw err(400,'invalid_nick','nick deve ter de 2 a 16 caracteres');return nick;};
   /** O LOGIN é o que virou único. Ocupado → 409 com sugestão; o guarda de verdade é o 23505 lá embaixo. */
@@ -139,6 +139,56 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
       if(e.code==='23505'&&e.constraint==='users_email_uq')throw err(409,'email_taken','esse e-mail já está em uso');
       throw e;}
     log.info(`google: #${out.user.id} ${out.user.nick} (${atual&&atual.kind==='guest'?'guest promovido':'conta nova'})`);
+    return out;
+  },{rate:{scope:'ip',lim:LIMITS.loginIp}});
+
+  /**
+   * POST /api/auth/crazygames {userToken, nick?} → {token,user}
+   * O jogador já está logado NO PORTAL; o SDK deles nos dá um JWT de 1 h e `auth/crazygames.js` o
+   * verifica (RS256 contra a chave pública deles). Gêmeo da rota do Google, com duas diferenças que
+   * importam:
+   *   • NÃO HÁ E-MAIL. Some com ele o caminho "o e-mail já é de alguém", que lá existe para não esbarrar
+   *     no `users_email_uq`. Aqui a identidade é o `userId` deles e mais nada.
+   *   • O `username` do portal vira `display_name`. Isso não é enfeite: a CrazyGames EXIGE que o nome
+   *     do jogador apareça dentro do jogo ("CrazyGames usernames must be displayed in-game so players
+   *     can recognize their friends"), e `display_name` é o campo que o ranking já mostra.
+   * Três caminhos: identidade conhecida · Bearer de um GUEST (promove, para ninguém perder moedas e
+   * skins ao entrar pela primeira vez) · conta nova com o mesmo bônus de boas-vindas.
+   */
+  router.add('POST',/^\/api\/auth\/crazygames$/,async ctx=>{
+    if(!crazygames||!crazygames.enabled)throw err(503,'crazygames_disabled','login da CrazyGames não está configurado neste servidor');
+    let id;try{id=await crazygames.verify(ctx.body.userToken);}
+    catch(e){log.warn(`crazygames: ${e&&e.message}`);throw err(401,'invalid_credentials','não deu para validar sua conta CrazyGames');}
+    const entra=async(u,via)=>{const token=await tokens.issue(u.id,'session',ctx.userAgent);users.touchSeen(u.id).catch(()=>{});
+      log.info(`crazygames: #${u.id} ${u.nick} (${via})`);return{token,user:toPublic(u)};};
+    const nome=id.name?String(id.name).trim().slice(0,64):null;
+    const guardaNome=(uid,c=db)=>nome?c.query(`UPDATE users SET display_name=$2 WHERE id=$1`,[uid,nome]).catch(()=>{}):null;
+
+    const existente=await identities.find('crazygames',id.subject);
+    if(existente){
+      const u=await users.byId(existente.user_id);
+      if(!u)throw err(401,'invalid_credentials','conta não encontrada');
+      await identities.touch('crazygames',id.subject);
+      await guardaNome(u.id);u.display_name=nome||u.display_name;
+      return entra(u,'identidade conhecida');}
+
+    const atual=ctx.token?await optionalUser(ctx):null;
+    const pedido=ctx.body.nick!=null&&ctx.body.nick!==''?String(ctx.body.nick):null;
+    const out=await db.tx(async c=>{
+      let u;
+      if(atual&&atual.kind==='guest'){
+        const nick=pedido?nickOf(pedido):nickDoGoogle(id.name||atual.nick);
+        u=(await c.query(`UPDATE users SET kind='registered',nick=$2,display_name=COALESCE($3,display_name) WHERE id=$1 RETURNING *`,
+          [atual.id,nick,nome])).rows[0];}
+      else{
+        const nick=pedido?nickOf(pedido):nickDoGoogle(id.name);
+        u=(await c.query(`INSERT INTO users(kind,nick,display_name) VALUES('registered',$1,$2) RETURNING *`,[nick,nome])).rows[0];
+        await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
+        if(config.signupCoins>0){const {coins}=await ledger.apply(c,{userId:u.id,delta:config.signupCoins,reason:'signup'});u.coins=coins;}}
+      await identities.link(c,{userId:u.id,provider:'crazygames',subject:id.subject,email:null});
+      const token=await tokens.issue(u.id,'session',ctx.userAgent,c);
+      return{token,user:toPublic(u)};});
+    log.info(`crazygames: #${out.user.id} ${out.user.nick} (${atual&&atual.kind==='guest'?'guest promovido':'conta nova'})`);
     return out;
   },{rate:{scope:'ip',lim:LIMITS.loginIp}});
 }

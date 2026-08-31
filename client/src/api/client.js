@@ -96,6 +96,16 @@ export const api = {
       throw e;
     }
   },
+  /**
+   * Entra com a conta do PORTAL (CrazyGames). O SDK deles dá um JWT de 1 h e o servidor o verifica —
+   * ver server/src/auth/crazygames.js. Mandamos o Bearer atual de propósito: se for um convidado, o
+   * servidor PROMOVE aquela conta em vez de criar outra, e ninguém perde moedas nem skins ao entrar.
+   */
+  async crazyLogin(userToken) {
+    const r = await request("POST", "/api/auth/crazygames", { userToken }, { auth: true });
+    if (r && r.token) setToken(r.token);
+    return r;
+  },
   async guest(nick) {
     if (!api.online) { const p = localProfile(); if (nick) p.user.nick = nick; saveLocal(p); return { token: null, user: p.user }; }
     const r = await request("POST", "/api/auth/guest", nick ? { nick } : {}, { auth: false }); setToken(r.token); return r;

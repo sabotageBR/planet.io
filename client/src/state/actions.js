@@ -38,6 +38,10 @@ export const togglePause = () => { const s = app.get(); if (s.screen !== "game" 
 // só sai por ação dele, e o `Pause` já é exatamente isso — sai no clique do RETOMAR e larga o COMANDO sem
 // derrubar a conexão. Registrado no módulo, uma vez, e não em componente: anúncio não espera montagem.
 if (PORTAL) {
+  // convite aceito no portal: cai direto na sala do amigo, pelo mesmo `play()` do link `?sala=`
+  portal.aoEntrarNaSala(code => { if (code) entrarPorConvite(code); });
+  // trocou de conta no site deles enquanto jogava: refaz a identidade
+  portal.aoTrocarConta(() => { entraPeloPortal(); });
   portal.aoPausar(() => silenciaAnuncio(true));
   portal.aoRetomar(() => { silenciaAnuncio(false);
     const s = app.get(); if (s.screen === "game" && !s.overlays.pause) setPause(true); });
@@ -89,6 +93,29 @@ export function applyPrefsSideEffects(prefs) {
   if (!themeClock) themeClock = startThemeClock(themePref, null, { getHour: () => clockRef.get().hour });   // dentro da partida o céu segue o relógio da rodada
 }
 
+/**
+ * CONTA DO PORTAL. A CrazyGames exige que quem já está logado no site DELES seja reconhecido aqui sem
+ * ter que fazer nada — e que quem não está possa jogar como convidado do mesmo jeito. O JWT deles vale
+ * 1 h e não é guardado: quem o troca pelo nosso token é o servidor (`/api/auth/crazygames`).
+ * ⚠️ Mandamos o Bearer atual junto: se for um convidado, o servidor PROMOVE aquela conta em vez de criar
+ * outra — senão quem jogou antes de logar perderia moedas e skins no primeiro login.
+ * ⚠️ Falhar aqui não pode derrubar o boot: sem isso o jogador fica como convidado, que é um estado
+ * legítimo e previsto por eles.
+ */
+async function entraPeloPortal() {
+  if (!PORTAL) return;
+  try {
+    const t = await portal.identidade(); if (!t) return;
+    const r = await api.crazyLogin(t);
+    if (r && r.user) applySession(await api.bootstrap());
+  } catch (e) { console.warn("[portal] login:", e && e.message); }
+}
+/** Botão de login do portal (só sai de um clique do jogador — é o que o SDK deles exige). */
+export async function loginDoPortal() {
+  try { const t = await portal.pedirLogin(); if (!t) return;
+    await api.crazyLogin(t); applySession(await api.bootstrap()); toast(getLabels().welcome || "", 1800); }
+  catch (e) { toast(errText(e), 3000); }
+}
 /** Botão "tentar de novo" da tela de servidor fora: refaz o boot inteiro. */
 export async function tentarDeNovo() { app.update({ servidorFora: false, booted: false }); await boot(); }
 
@@ -100,6 +127,7 @@ export async function boot() {
   // gravado por cima da escolha dele — e o idioma voltava para o do navegador no F5 seguinte.
   catch (e) { app.update({ bootError: e.message || String(e) }); applyPrefsSideEffects({ ...PREF_DEFAULTS, lang: currentLangPref() }); }
   app.update({ booted: true });
+  await entraPeloPortal();
   // ⚠️ No pacote de portal, servidor fora NÃO pode virar um toast de 3 s e uma partida contra bots: ali
   // não existe "modo local" que faça sentido (o jogador clicou num .io para jogar com gente), e o
   // silêncio faz o jogo PARECER que funcionou. Vira uma tela que fica.
@@ -434,7 +462,7 @@ export async function startParty() {
   play({ room: code, mode: 1, teamSize: p.teamSize, party: p.code });
 }
 export function leaveGame(screen = "lobby") {
-  if (PORTAL) portal.jogoParou();
+  if (PORTAL) { portal.jogoParou(); portal.saiuDaSala(); }
   app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
 let rewardsT = null, levelUpN = 0;
@@ -490,7 +518,10 @@ export function onRewards(r) {
 /** Callback do jogo: {state:'connecting'|'connected'|'reconnecting'|'closed'|'error', room?, attempt?, code?, message?} */
 export function onConnection(ev) {
   const st = ev && ev.state;
-  if (st === "connected") app.update(s => ({ ...s, conn: "connected", room: ev.room || s.room, overlays: { ...s.overlays, reconn: false }, reconnAttempt: 0 }));
+  if (st === "connected") { app.update(s => ({ ...s, conn: "connected", room: ev.room || s.room, overlays: { ...s.overlays, reconn: false }, reconnAttempt: 0 }));
+    // o portal precisa saber em que sala o jogador está para oferecer "entrar com o amigo" (o Full da
+    // CrazyGames). O código da nossa sala já é único no jogo inteiro, que é o que eles pedem do roomId.
+    if (PORTAL && ev.room) portal.sala(ev.room, true); }
   else if (st === "connecting") app.update(s => ({ ...s, conn: "connecting", room: ev.room || s.room }));
   else if (st === "reconnecting") app.update(s => ({ ...s, conn: "reconnecting", reconnAttempt: ev.attempt || 1, overlays: { ...s.overlays, reconn: true } }));
   else if (st === "closed" || st === "error") {

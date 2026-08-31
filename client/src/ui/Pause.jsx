@@ -20,6 +20,8 @@ import { PREFS } from "./prefsTable.js";
 import { PrefRow } from "./Prefs.jsx";
 import { Nick } from "./bits.jsx";
 import { linkConvite } from "../util/convite.js";
+import { PORTAL } from "../portal/flags.js";
+import { portal } from "../portal/index.js";
 
 // as chaves que valem em partida, na ordem em que se procura por elas
 const RAPIDAS = ["muted", "volume", "music", "musicVolume", "quality", "reduceMotion", "showNames", "showMinimap"];
@@ -58,7 +60,9 @@ export default function Pause({ on }) {
  */
 function HostPanel({ host, room, LB }) {
   const outros = (host.roster || []).filter(l => !l.host);
-  const convite = () => { const url = linkConvite("sala", room || "");
+  // ⚠️ No portal o convite é o LINK DELES (`inviteLink`), que abre o jogo na página deles já na sala —
+  // é o que a CrazyGames chama de "copying direct invite links within your game". Fora dali, o de sempre.
+  const convite = async () => { const url = (PORTAL && await portal.convite(room || "")) || linkConvite("sala", room || "");
     if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast(LB.hostInvite), () => toast(url, 4000));
     else toast(url, 4000); };
   return <section className="pause-host">

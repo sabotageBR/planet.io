@@ -24,7 +24,10 @@ const API = (process.env.WARSPACE_API_BASE || "https://warspace.io").replace(/\/
 // decisão foi manter o cadastro e assumir o risco. Reprovou? Vira true e o pacote seguinte já sai limpo.
 const PERFIS = {
   gd:    { nome: "GameDistribution", strict: false, env: { VITE_GD_GAME_ID: "c352686e02ec4cd19e7a9ac436d38875" } },
-  crazy: { nome: "CrazyGames", strict: false, env: {} },
+  // ⚠️ `strict` LIGADO na CrazyGames, e não é escolha: eles proíbem, por escrito, "logging out and
+  // allowing login with external options (Facebook, Google, email)". A conta ali é a DELES — o jogo
+  // recebe o jogador já logado pelo SDK (ver client/src/portal/crazy.js e server/src/auth/crazygames.js).
+  crazy: { nome: "CrazyGames", strict: true, env: {} },
   poki:  { nome: "Poki", strict: false, env: {} },
   itch:  { nome: "itch.io", strict: false, env: {} },   // sem SDK: o adaptador não existe e tudo vira no-op
 };

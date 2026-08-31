@@ -74,7 +74,7 @@ export default {
   orSep: "o", googleFail: "No se pudo entrar con Google",
   confirm: "Confirmar", cancel: "Cancelar",
   reconnTitle: "¡SEÑAL DÉBIL!", reconnSub: "Buscando el satélite… intento {n}/5",
-  privacy: "Política de privacidad",
+  privacy: "Política de privacidad", portalLogin: "Entrar",
   serverDownTitle: "SIN CONTACTO CON LA BASE", serverDownSub: "No pudimos hablar con el servidor del juego. El problema es nuestro, no tuyo.", retry: "Reintentar",
   split: "DIVIDIR", eject: "EXPULSAR", fire: "MISIL", exit: "Salir", keySplit: "ESPACIO", keyEject: "W", keyFire: "F",
   ammo: "misiles",

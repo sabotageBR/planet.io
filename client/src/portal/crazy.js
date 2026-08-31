@@ -34,7 +34,33 @@ export async function criar({ pausou, retomou }) {
     mudo = q; silenciaAnuncio(q);
   }, MUTE_MS);
 
+  const mod = () => sdk() || {};   // nome diferente do `g` local dos métodos abaixo, de propósito
   return {
+    // ── conta (requisito "account integration" deles) ──
+    // ⚠️ `getUserToken()` é chamado TODA VEZ que o jogo inicia, e o token NUNCA é guardado: ele vale 1 h
+    //    e quem o troca pelo nosso é o servidor. `isUserAccountAvailable` é falso quando a CrazyGames
+    //    embute o jogo em domínio de terceiro — aí não há login a oferecer, e o convidado é o caminho.
+    temConta() { const u = mod().user; return !!(u && u.isUserAccountAvailable); },
+    async identidade() { const u = mod().user;
+      if (!u || !u.isUserAccountAvailable || !u.getUserToken) return null;
+      const usr = u.getUser ? await u.getUser().catch(() => null) : null;
+      if (!usr) return null;   // ninguém logado no portal: joga como convidado, que eles exigem permitir
+      return await u.getUserToken(); },
+    async pedirLogin() { const u = mod().user; if (!u || !u.showAuthPrompt) return null;
+      await u.showAuthPrompt(); return this.identidade(); },
+    aoTrocarConta(cb) { const u = mod().user; if (u && u.addAuthListener) u.addAuthListener(() => { cb(); }); },
+
+    // ── sala (o "Full": convidar e ser convidado) ──
+    // `roomId` tem que ser único no jogo inteiro a qualquer momento — o nosso código de sala já é isso.
+    // `inviteParams` volta para quem aceita o convite, e é dali que sai o código no `aoEntrarNaSala`.
+    sala(codigo, aberta) { const j = mod().game; if (!j || !j.updateRoom) return;
+      j.updateRoom({ roomId: String(codigo), isJoinable: !!aberta, inviteParams: { sala: String(codigo) } }); },
+    saiuDaSala() { const j = mod().game; if (j && j.leftRoom) j.leftRoom(); },
+    aoEntrarNaSala(cb) { const j = mod().game; if (!j || !j.addJoinRoomListener) return;
+      j.addJoinRoomListener(p => { const c = p && (p.sala || p.roomName); if (c) cb(String(c).toUpperCase()); }); },
+    async convite(codigo) { const j = mod().game; if (!j || !j.inviteLink) return null;
+      return await j.inviteLink({ sala: String(codigo) }); },
+
     carregou() { const g = sdk(); if (g && g.game && g.game.loadingStop) g.game.loadingStop(); },
     jogoComecou() { const g = sdk(); if (g && g.game && g.game.gameplayStart) g.game.gameplayStart(); },
     jogoParou() { const g = sdk(); if (g && g.game && g.game.gameplayStop) g.game.gameplayStop(); },

@@ -91,7 +91,7 @@ export default {
   reconnTitle: "SINAL FRACO!", reconnSub: "Procurando o satélite… tentativa {n}/5",
   // servidor fora (pacote de portal): a internet do jogador está boa, quem caiu foi o nosso lado — e
   // dizer o contrário manda a pessoa reiniciar o roteador por um problema que não é dela
-  privacy: "Política de privacidade",
+  privacy: "Política de privacidade", portalLogin: "Entrar",
   serverDownTitle: "SEM CONTATO COM A BASE", serverDownSub: "Não conseguimos falar com o servidor do jogo. O problema é do nosso lado, não do seu.", retry: "Tentar de novo",
   split: "DIVIDIR", eject: "EJETAR", fire: "MÍSSIL", exit: "Sair", keySplit: "ESPAÇO", keyEject: "W", keyFire: "F",
   ammo: "mísseis",

@@ -1549,3 +1549,13 @@ body #room-list .room-row{grid-template-columns:70px 60px 1fr 60px 90px}
 #s-prefs .prefs-legal{order:100;text-align:center;padding:10px 0 2px;font-size:12px}
 #s-prefs .prefs-legal a{color:var(--dim,#a99fd6);text-decoration:underline;text-underline-offset:3px}
 #s-prefs .prefs-legal a:hover{color:var(--accent,#ffc857)}
+
+/* ── ENTRAR COM A CONTA DO PORTAL (só no pacote de portal; ver ui/PortalLogin.jsx) ──
+   Canto superior direito e discreto, que é o que a CrazyGames pede: o CTA principal continua sendo o
+   JOGAR. `z-index` acima do cenário (#cena é 1) e abaixo de qualquer modal. */
+.portal-login{position:fixed;top:calc(10px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));
+  z-index:5;padding:7px 14px;border-radius:999px;cursor:pointer;
+  font:600 13px/1 var(--font-ui,system-ui),sans-serif;letter-spacing:.03em;
+  color:var(--tx,#e8e4ff);background:rgba(13,11,31,.72);border:1px solid rgba(139,92,255,.55)}
+.portal-login:hover{background:rgba(28,20,64,.9);border-color:#8b5cff}
+body[data-mode="portrait"] .portal-login{font-size:12px;padding:6px 12px}

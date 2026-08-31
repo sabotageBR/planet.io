@@ -21,6 +21,7 @@ no handshake, e origem AUSENTE é sempre aceita.
 | POST | `/api/auth/claim` 🔒 | `{login?,password,email?}` | `{user}` · 400 `already_registered`/`invalid_login` · 409 `login_taken {suggestion}`/`email_taken` |
 | POST | `/api/auth/login` | `{login,password}` | `{token,user}` · 401 `invalid_credentials` · 429 — `login` é o USUÁRIO congelado no claim ou o e-mail |
 | POST | `/api/auth/logout` 🔒 | — | 204 |
+| POST | `/api/auth/crazygames` (🔒 opcional) | `{userToken, nick?}` | `{token,user}` · 401 `invalid_credentials` · 503 `crazygames_disabled` — o JWT do SDK deles, verificado por nós (RS256 contra `sdk.crazygames.com/publicKey.json`); identidade = `userId`, e o `username` vira `display_name` |
 | POST | `/api/auth/google` (🔒 opcional) | `{idToken, nick?}` | `{token,user}` · 401 `invalid_credentials` · 409 `email_taken` · 503 `google_disabled` — conta de Google não tem senha, logo não tem `login` |
 | GET | `/api/me` 🔒 | — | `{user:{id,nick,login?,kind,coins,equippedSkin,createdAt}, skins:[ids], prefs, stats, achievements:[keys]}` |
 | PATCH | `/api/me` 🔒 | `{nick}` | `{user}` · 400 `invalid_nick` — o nick é LIVRE, não há 409 |

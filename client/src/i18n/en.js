@@ -74,7 +74,7 @@ export default {
   orSep: "or", googleFail: "Couldn't sign in with Google",
   confirm: "Confirm", cancel: "Cancel",
   reconnTitle: "WEAK SIGNAL!", reconnSub: "Looking for the satellite… attempt {n}/5",
-  privacy: "Privacy policy",
+  privacy: "Privacy policy", portalLogin: "Log in",
   serverDownTitle: "NO CONTACT WITH BASE", serverDownSub: "We couldn't reach the game server. It's on our side, not yours.", retry: "Try again",
   split: "SPLIT", eject: "EJECT", fire: "MISSILE", exit: "Leave", keySplit: "SPACE", keyEject: "W", keyFire: "F",
   ammo: "missiles",

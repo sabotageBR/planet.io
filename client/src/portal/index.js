@@ -71,5 +71,30 @@ export const portal = {
   /** O anúncio começou / acabou. Quem liga o áudio e a tela de pausa é `state/actions.js`. */
   aoPausar(cb) { aoPausar.push(cb || nada); },
   aoRetomar(cb) { aoRetomar.push(cb || nada); },
+
+  // ── CONTA DO PORTAL ────────────────────────────────────────────────────────
+  // A CrazyGames exige que o jogador logado LÁ seja reconhecido AQUI ("new logged-in users are
+  // automatically registered & logged into the game"), que dê para jogar como convidado sem login, e
+  // que o nome dele apareça no jogo. Quem troca o JWT deles pelo nosso token é `state/actions.js`.
+  /** JWT curto do portal, ou null (sem SDK, sem conta disponível, ou ninguém logado). NUNCA guardar. */
+  async identidade() { await pronto; if (!sdk || !sdk.identidade) return null;
+    try { return await sdk.identidade(); } catch { return null; } },
+  /** Dá para oferecer login? (falso quando o portal embute o jogo em domínio de terceiro) */
+  get temConta() { return !!(sdk && sdk.temConta && sdk.temConta()); },
+  /** Abre o modal de login DELES. Só pode ser chamado a partir de um clique do jogador. */
+  async pedirLogin() { await pronto; if (sdk && sdk.pedirLogin) try { return await sdk.pedirLogin(); } catch { /* cancelou */ } return null; },
+  /** O jogador entrou/saiu/trocou de conta no portal enquanto jogava. */
+  aoTrocarConta(cb) { pronto.then(() => { if (sdk && sdk.aoTrocarConta) sdk.aoTrocarConta(cb); }); },
+
+  // ── SALA (o "Full" da CrazyGames: convidar e ser convidado pelos amigos) ────
+  /** Estou nesta sala, e ela aceita (ou não) mais gente. */
+  sala(codigo, aberta) { if (sdk && sdk.sala) try { sdk.sala(codigo, aberta); } catch { /**/ } },
+  /** Saí da sala. */
+  saiuDaSala() { if (sdk && sdk.saiuDaSala) try { sdk.saiuDaSala(); } catch { /**/ } },
+  /** Um amigo aceitou o convite: o callback recebe o código da sala. */
+  aoEntrarNaSala(cb) { pronto.then(() => { if (sdk && sdk.aoEntrarNaSala) sdk.aoEntrarNaSala(cb); }); },
+  /** Link de convite DO PORTAL (é ele que abre o jogo na página deles, já na sala). */
+  async convite(codigo) { await pronto; if (!sdk || !sdk.convite) return null;
+    try { return await sdk.convite(codigo); } catch { return null; } },
 };
 export default portal;

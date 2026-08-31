@@ -12,6 +12,7 @@ import {createRanking} from '../repos/ranking.js';
 import {createAvatars} from '../repos/avatars.js';
 import {createIdentities} from '../repos/identities.js';
 import {createGoogle} from '../auth/google.js';
+import {createCrazyGames} from '../auth/crazygames.js';
 import {mountAuth} from './auth.js';
 import {mountMe} from './me.js';
 import {mountSkins} from './skins.js';
@@ -40,7 +41,8 @@ export function createApi({db,log,config,persist=null,limiter=createRateLimiter(
   // `google` injetável: é o gancho que deixa o teste exercitar o caminho FELIZ do login sem ir à rede
   // do Google (a validação real é uma ida ao `tokeninfo`). Em produção ninguém passa nada e nada muda.
   const google=googleImpl||createGoogle({config,log});
-  const deps={db,log,config,users,tokens,ledger,skins,matches,achievements,ranking,avatars,identities,settings,audit,tunables,google,limiter,requireUser,optionalUser};
+  const crazygames=createCrazyGames({config,log});
+  const deps={db,log,config,users,tokens,ledger,skins,matches,achievements,ranking,avatars,identities,settings,audit,tunables,google,crazygames,limiter,requireUser,optionalUser};
   mountAuth(router,deps);mountMe(router,deps);mountSkins(router,deps);mountRanking(router,deps);mountAvatar(router,deps);mountAdmin(router,deps);
   // Parâmetros salvos entram ANTES da primeira sala existir; depois o poll reconcilia. E o `ADMIN_EMAILS`
   // é reconciliado no boot — SÓ PROMOVE: rebaixar por ConfigMap tranca o admin para fora por um typo.

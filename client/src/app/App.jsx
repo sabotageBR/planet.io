@@ -21,6 +21,7 @@ import AccountModal from "../ui/AccountModal.jsx";
 import Pause from "../ui/Pause.jsx";
 import ReconnOverlay from "../ui/ReconnOverlay.jsx";
 import Offline from "../ui/Offline.jsx";
+import PortalLogin from "../ui/PortalLogin.jsx";
 import Toast from "../ui/Toast.jsx";
 import LevelUp from "../ui/LevelUp.jsx";
 import { sfx } from "../audio/index.js";
@@ -93,6 +94,7 @@ export default function App() {
     <Pause on={overlays.pause} />
     <ReconnOverlay on={overlays.reconn} />
     <Offline />
+    <PortalLogin />
     <Toast />
     <LevelUp />
   </>;
