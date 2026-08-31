@@ -19,7 +19,7 @@ export default function AccountModal({ on }) {
 }
 function Body() {
   const LB = useLabels(); const user = useStore(app, s => s.session.user) || {};
-  const [tab, setTab] = useState("claim");
+  const [tab, setTab] = useState(app.get().overlays.account === "login" ? "login" : "claim");   // o Body só monta com o modal aberto, então ler UMA vez na montagem é o estado certo
   const [c, setC] = useState({ login: sugereLogin(user.nick), pass: "", pass2: "", mail: "", pais: user.country || paisSugerido() });
   const [l, setL] = useState({ login: "", pass: "" });
   const [err, setErr] = useState(null), [busy, setBusy] = useState(false);

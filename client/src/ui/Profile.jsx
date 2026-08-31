@@ -40,7 +40,11 @@ function Body() {
           sem esta linha o jogador volta dias depois sem saber com que nome entra na conta. */}
       <div className="pf-meta"><b className="v-nick pf-nick">{user.nick}</b><i className="v-kind pf-kind" data-kind={guest ? "guest" : "registered"}>{guest ? LB.guest : LB.registered}</i><span className="coinbar">{LB.coinIcon} <b className="v-coins">{fmt(user.coins)}</b></span>
         {user.login ? <span className="hint pf-login">{LB.loginUser}: <b>{user.login}</b></span> : null}</div>
-      {guest ? <button className="btn-secondary pf-claim" data-go="account" onClick={openAccount}>{LB.claim}</button>
+      {/* "Reivindicar conta" saiu daqui como saiu da tela inicial — criar conta por senha é o caminho
+          longo, e o Google resolve tudo num clique. O que NÃO podia sair é a porta de ENTRAR: este é o
+          único lugar que abre o modal de conta, e sem ele quem já tem senha ficaria trancado para fora
+          (o `logout` do registrado leva de volta para convidado). Por isso o botão abre a aba `login`. */}
+      {guest ? <button className="btn-secondary pf-signin" data-go="account" onClick={() => openAccount("login")}>{LB.login}</button>
         : <button className="btn-secondary pf-logout" onClick={() => logout().catch(e => console.warn(e))}>{LB.logout}</button>}
     </div>
     {/* NÍVEL: a barra é o progresso dentro do nível atual — `levelInto/levelNeed` vêm prontos do servidor,

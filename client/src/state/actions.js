@@ -23,7 +23,12 @@ export function go(screen) {
   app.update(s => ({ ...s, prevScreen: s.screen === screen ? s.prevScreen : s.screen, screen,
     overlays: { account: false, pause: false, reconn: s.overlays.reconn && screen === "game" } }));
 }
-export const openAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: true } }));
+// `overlays.account` deixou de ser booleano e passou a ser a ABA de abertura ("claim" | "login") — os
+// `false` que fecham o modal em toda parte continuam valendo, porque quem lê só pergunta se é truthy.
+// Foi preciso porque a porta do modal virou uma só (o botão "Entrar" do Perfil) depois que o CTA de
+// "Reivindicar conta" saiu da tela inicial e do Perfil: sem escolher a aba, quem já tem conta cairia no
+// formulário de CRIAR uma. ⚠️ O ternário também normaliza o evento do onClick, que chega como 1º argumento.
+export const openAccount = (tab = "claim") => app.update(s => ({ ...s, overlays: { ...s.overlays, account: tab === "login" ? "login" : "claim" } }));
 export const setPause = on => app.update(s => ({ ...s, overlays: { ...s.overlays, pause: !!on } }));
 export const togglePause = () => { const s = app.get(); if (s.screen !== "game" && !s.overlays.pause) return; setPause(!s.overlays.pause); };
 export const closeAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: false } }));
