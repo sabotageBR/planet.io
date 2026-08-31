@@ -440,6 +440,40 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ E há DOIS padrões de fan-out que não podem ser trocados: sala **roteia pelo dono** (`askPeers`),
   aviso e parâmetro **difundem** (`tellPeers`, que devolve o que CADA irmão respondeu, com as falhas — um
   broadcast feito com `askPeers` entregaria a um shard e diria "ok").
+- **A FOLHA DO PAINEL É UM SISTEMA, EM CINCO CAMADAS** (`client/src/admin/admin.css`: tokens → primitivos
+  → componentes → telas → responsivo; a ORDEM é o mecanismo, e por isso nada ali precisa de `!important`).
+  Ela cresceu uma tela por vez, e o resultado era que cada tela tinha inventado o próprio vocabulário para
+  as mesmas coisas: quatro formas de cabeçalho, quatro idiomas de badge, cinco formas de DOM para "está
+  vazio", três superfícies de cartão. Isso não aparece lendo uma tela — só lendo as cinco. Os tokens de
+  cor eram os únicos que existiam (havia nove cores cravadas fora deles, doze tamanhos de fonte e sete
+  raios); agora há escala de espaço, raio e tipografia.
+  ⚠️ **`ad-wrap` É UM NOME PROIBIDO**: um filtro cosmético de bloqueador de anúncios esconde exatamente
+  essa classe (é como o mercado publicitário chama o contêiner de anúncio), e a tela INTEIRA do painel
+  sumia — com o DOM montado, sem erro no console e sem nenhuma regra correspondente em
+  `document.styleSheets`, porque o bloqueador injeta fora do documento. `getComputedStyle` dizia
+  `display:none` e nenhuma folha da página mandava aquilo. Medido no navegador, um a um: `ad-topo`,
+  `ad-lista`, `ad-tab`, `ad-form`, `ad-split`, `ad-cab` e até `ad-banner`, `ads` e `ad` passam — só
+  `ad-wrap` cai. O prefixo `ad-` continua seguro; o que não pode é a palavra inteira. Hoje é `ad-centro`.
+  ⚠️ Os tokens continuam declarados em `.ad,.ad-login` e **não** em `:root`: a mesma página carrega o CSS
+  do jogo (`main.jsx` importa `App.jsx` e `theme.js` estaticamente), e `--bg`/`--line`/`--ok` são os
+  MESMOS nomes dos tokens de tema — na raiz eles repintariam o jogo. Quem prova que não há vazamento é
+  medir o painel com `data-theme` em `dawn`/`sunset`/`dusk`: 9 alvos × 11 propriedades têm que dar
+  idêntico, porque o painel é o único lugar do projeto que NÃO obedece ao relógio.
+  ⚠️ `--top-h` é APLICADO à barra, e é só por isso que o `top` do título de seção grudado fica certo por
+  construção — antes havia um `47px` cravado que nem batia com a altura real (~55). E como a barra agora
+  QUEBRA em duas linhas abaixo de 700 px (sem isso a página inteira ganhava barra horizontal, e o
+  `user-scalable=no` do `index.html` impede o pinch-zoom que compensaria), a altura deixa de ser uma só:
+  por isso o sticky vira `static` no mesmo ponto de quebra. Medido: 55 → 89 → 123 px.
+  ⚠️ O wrapper de rolagem (`.ad-rolo`) fica EM VOLTA da tabela, nunca acima dela na árvore: `overflow` num
+  ancestral mata as duas stickies (a barra e o título de seção) em silêncio. E nada de `position:sticky`
+  no `th` — quem cria o contexto de rolagem é o `.ad-rolo`, que rola só na horizontal, então o cabeçalho
+  grudaria num contêiner que nunca rola na vertical. Quem rola aqui é a PÁGINA.
+  ⚠️ `cursor:pointer` era global à classe `.ad-tab`, então "Partidas recentes", "Sessões" e a Auditoria
+  inteira — que não respondem a clique nenhum — exibiam mão e destaque de hover. Quem convida agora é o
+  modificador `.click`. E `.previa.info` NÃO EXISTIA: o JSX gera `previa info`, só `.warn` tinha regra, e
+  o nível informativo saía sem cor nenhuma, em silêncio.
+  ⚠️ Toda classe nova leva prefixo (`ad-`/`pm-`): `base.css` já define `.card`, `.badge`, `.chip`, `.mono`,
+  `.wrap`, `.tab`, `.modal`… e `.badge` lá é `position:absolute`.
 - **Parâmetros de jogo em runtime** (`shared/src/tunables.js` + `admin_settings`): lista BRANCA, nada fora
   dela é gravável. Escrever custa ZERO no laço de 60 Hz porque `world.js` faz `const PW=POWERUP` — isso
   aliasa o OBJETO, e os objetos de `constants.js` não são congelados. O **banco é a verdade**; o push
