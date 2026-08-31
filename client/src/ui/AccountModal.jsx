@@ -7,6 +7,7 @@ import { errText } from "../i18n/errors.js";
 import { Field } from "./bits.jsx";
 import GoogleButton from "./GoogleButton.jsx";
 import { nickSorteado } from "../util/nick.js";
+import { SEM_CONTA } from "../portal/flags.js";
 
 // ── MODAL DE CONTA: CRIAR CONTA · ENTRAR ──────────────────────────────────────
 // O cadastro por senha VOLTOU, e simples: e-mail, usuário, senha e a confirmação — nada mais. O país
@@ -21,6 +22,9 @@ const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/;   // peneira de FORMATO; 
 /** O nick vira sugestão de usuário — MENOS o `Viajante-NNNN` sorteado (ver util/nick.js). */
 const sugereLogin = nick => (nickSorteado(nick) ? "" : nick);
 export default function AccountModal({ on }) {
+  // ⚠️ Porta fechada no pacote com conta do portal: ver o comentário em ui/Profile.jsx. É uma segunda
+  // tranca de propósito — esconder só o botão deixaria o modal alcançável por qualquer estado antigo.
+  if (SEM_CONTA) return null;
   return <div className={"overlay" + (on ? " on" : "")} id="s-account" onClick={e => { if (e.target === e.currentTarget) closeAccount(); }}>{on ? <Body /> : null}</div>;
 }
 function Body() {

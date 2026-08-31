@@ -10,6 +10,7 @@ import { ScreenHeader, Screen, Select } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
 import AvatarPicker from "./AvatarPicker.jsx";
 import { fmt, fmtTime } from "./format.js";
+import { SEM_CONTA } from "../portal/flags.js";
 
 export default function Profile({ on }) {
   return <Screen id="profile" on={on} className="profile-wrap">{on ? <Body /> : null}</Screen>;
@@ -44,7 +45,12 @@ function Body() {
           botão abre o modal já na aba certa — mandar quem quer se cadastrar cair no formulário de entrar
           e ter que achar a aba é pedir para desistir no meio. ⚠️ `() => openAccount()` e não `openAccount`:
           passar o evento do clique como argumento faria a aba sair do evento, não da intenção. */}
-      {guest ? <>
+      {/* ⚠️ `SEM_CONTA` apaga as três: no pacote de portal com conta própria (CrazyGames) a identidade é
+          DELES, e o formulário de submissão avisa em letras laranjas que "games that provide external log
+          in methods (Google, Facebook, etc...) will be rejected" — a doc de account integration inclui
+          e-mail nessa lista, e proíbe o logout junto. Quem entra ali entra pelo SDK do portal, e o botão
+          que sobra é o `ui/PortalLogin.jsx`. */}
+      {SEM_CONTA ? null : guest ? <>
         <button className="btn-secondary pf-claim" data-go="account" onClick={() => openAccount("claim")}>{LB.claim}</button>
         <button className="btn-secondary pf-signin" data-go="account" onClick={() => openAccount()}>{LB.login}</button></>
         : <button className="btn-secondary pf-logout" onClick={() => logout().catch(e => console.warn(e))}>{LB.logout}</button>}
