@@ -10,7 +10,7 @@ import { skinName, rarityLabel } from "../i18n/catalog.js";
 import { keysOf } from "../game/input/Keyboard.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { go, setNick, loadTop5 } from "../state/actions.js";
+import { go, setNick, loadTop5, toast, focaNome, play } from "../state/actions.js";
 import GoogleButton from "./GoogleButton.jsx";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { useInterval } from "../hooks/useInterval.js";
@@ -50,7 +50,15 @@ function Body() {
   // ⚠️ Campo VAZIO é "ainda não escolhi", não erro: sem esta guarda o `setNick("")` recusaria com o
   // toast de nick curto e o `if(!r.ok)` devolveria o `Viajante-NNNN` para dentro do campo — ou seja,
   // sair do campo (ou clicar em JOGAR) desfaria exatamente o que o placeholder existe para pedir.
-  const commit = async () => { const v = nick.trim(); if (!v || v === (user.nick || "")) return; const r = await setNick(v); if (!r.ok) setNickLocal(nickDoUsuario); };
+  const commit = async () => { const v = nick.trim(); if (!v) return false; if (v === (user.nick || "")) return true; const r = await setNick(v); if (!r.ok) setNickLocal(nickDoUsuario); return !!r.ok; };
+  // O JOGAR valida ANTES de navegar — o campo está aqui, e mandar a pessoa para Modos só para o `play()`
+  // devolvê-la a esta mesma tela seria dar a volta para chegar ao mesmo aviso. Quem GARANTE a regra
+  // continua sendo o `semNome()` do `play()`; isto é o atalho educado do caminho principal.
+  // ⚠️ E RETOMA o que a guarda segurou: quem chegou por um link de convite (`?sala=`) ou clicou em
+  // renascer sem nunca ter nomeado o planeta foi trazido para cá com o pedido guardado em `pendingPlay`
+  // — mandá-lo para a tela de Modos aqui faria o link do amigo terminar numa sala qualquer.
+  const jogar = async () => { if (!nick.trim()) { toast(LB.nickAsk, 3500); focaNome(); return; } if (!await commit()) return;
+    const pp = app.get().pendingPlay; if (pp) play(pp); else go("modes"); };
   const links = [["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
   // A dica é a primeira coisa que alguém lê: com as teclas configuráveis, cravar "ESPAÇO/W" nela seria
   // mentir para exatamente quem foi lá trocar.
@@ -76,7 +84,7 @@ function Body() {
           <div className="skinmeta"><b id="m-skin">{skinName(sk)}</b><i id="m-rar" style={{ color: RC[sk.rarity] || "#999" }}>{rarityLabel(sk.rarity)}</i></div>
         </div>
       </div>
-      <button className="btn-primary" data-go="modes" onClick={() => { commit(); go("modes"); }}>{LB.play}</button>
+      <button className="btn-primary" data-go="modes" onClick={jogar}>{LB.play}</button>
       <div className="entry-links">{links.map(([s, l]) =>
         <button key={s} className="btn-secondary" data-go={s} onClick={() => go(s)}><NavIcon k={s} /><span>{l}</span></button>)}</div>
       <div className="guest-note" data-kind={guest ? "guest" : "registered"}>

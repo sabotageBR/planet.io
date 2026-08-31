@@ -8,6 +8,7 @@ import { errText } from "../i18n/errors.js";
 import { skinById } from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
+import { nickSorteado } from "../util/nick.js";
 
 const Q = new URLSearchParams(location.search);
 const NICK_RE = /^.{2,16}$/;
@@ -188,7 +189,7 @@ export async function setNick(nick) {
   const cur = (app.get().session.user || {}).nick;
   if (nick === cur) return { ok: true };
   if (!NICK_RE.test(nick)) { toast(getLabels().nickShort); return { ok: false }; }
-  try { const r = await api.setNick(nick); patchUser(r && r.user ? r.user : { nick }); toast(getLabels().nickSaved); return { ok: true }; }
+  try { const r = await api.setNick(nick); patchUser(r && r.user ? r.user : { nick }); app.update({ nomeado: true }); toast(getLabels().nickSaved); return { ok: true }; }
   catch (e) { toast(errText(e, "nick") + (e.suggestion ? ` · ${e.suggestion}` : ""), 3000); return { ok: false, suggestion: e.suggestion, error: e }; }
 }
 /**
@@ -292,8 +293,29 @@ export async function buySkin(id) {
 }
 
 // ── partida ──────────────────────────────────────────────────────────────────
+/** Devolve o cursor ao campo da tela inicial. Os 60 ms esperam o React montar a Entrada. */
+export const focaNome = () => setTimeout(() => { const el = document.getElementById("nameIn"); if (el) { el.focus(); el.select(); } }, 60);
+/**
+ * ⚠️ NINGUÉM ENTRA SEM NOMEAR O PLANETA. O campo da tela inicial nasce VAZIO de propósito — o
+ * `Viajante-NNNN` é placa sorteada pelo servidor (`randomGuestNick`), não escolha de ninguém —, e sem
+ * esta guarda o jogador entrava com a placa: o pedido do placeholder era enfeite.
+ * A validação mora no `play()`, e não no botão JOGAR, porque `play()` é a porta ÚNICA — Modos, Salas
+ * (auto, código e lista), o respawn da tela de morte e a entrada automática depois do BIG CRUNCH passam
+ * todos por aqui. Validar no botão cobriria um caminho de seis.
+ * ⚠️ `leaveGame` e não `go` quando já se está em partida: o respawn é chamado com a conexão VIVA, e
+ * trocar de tela sem derrubá-la deixaria um socket de jogo pendurado atrás do menu.
+ */
+export function semNome(pedido = null) {
+  const st = app.get(), u = st.session.user || {};
+  if (st.nomeado || !nickSorteado(u.nick)) return false;
+  app.update({ pendingPlay: pedido });
+  toast(getLabels().nickAsk, 3500);
+  if (st.screen === "game") leaveGame("entry"); else go("entry");
+  focaNome(); return true;
+}
 /** Entra numa sala: `room` explícito, senão GET /api/auto (offline → sala local do stub). */
 export async function play({ room, mode, teamSize, party } = {}) {
+  if (semNome({ room, mode, teamSize, party })) return;
   const st = app.get();
   const md = mode != null ? mode | 0 : st.gameMode | 0, ts = teamSize != null ? teamSize | 0 : st.teamSize || 1;
   const pt = party !== undefined ? party : (st.party ? st.party.code : null);
@@ -301,6 +323,7 @@ export async function play({ room, mode, teamSize, party } = {}) {
   if (!code) { try { const a = await api.auto({ mode: md, teamSize: ts }); if (a && a.code) code = a.code; } catch (e) { if (!isUnreachable(e)) toast(errText(e), 2500); } }
   app.update(s => ({ ...s, screen: "game", played: true, rewards: null, rewardsPending: false, overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
     gameMode: md, teamSize: ts,
+    pendingPlay: null,
     pendingJoin: { room: code, mode: md, teamSize: ts, party: pt, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
   partidaIniciada({ mode: md, teamSize: ts, party: pt });
 }
@@ -444,8 +467,7 @@ export function onConnection(ev) {
     // legais no mundo) isso deixou de ser raro — e cai bem no caminho de EQUIPE, onde todos entram pelo
     // mesmo código. Mandar para a tela de Salas era um beco: a frase não diz onde se troca o nome.
     if (s.screen === "game" && ev.code === "NICK_IN_ROOM") {
-      toast(errText(ev) + (ev.suggestion ? ` · ${ev.suggestion}` : ""), 4000); leaveGame("entry");
-      setTimeout(() => { const el = document.getElementById("nameIn"); if (el) { el.focus(); el.select(); } }, 60);
+      toast(errText(ev) + (ev.suggestion ? ` · ${ev.suggestion}` : ""), 4000); leaveGame("entry"); focaNome();
     }
     else if (s.screen === "game") { toast(errText(ev), 3000); leaveGame("lobby"); }
     else if (ev.code || ev.message) toast(errText(ev), 3000);

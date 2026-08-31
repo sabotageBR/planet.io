@@ -34,7 +34,7 @@ export default {
   watching: "assistindo", specPrev: "anterior", specNext: "próximo",
   mapOpen: "🗺 MAPA", mapClose: "🗺 FECHAR", liveOpen: "📡 TEMPO REAL", liveClose: "📡 FECHAR",
   title: "WARSPACE.IO", tagline: "CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
-  coinIcon: "🪙", coinWord: "moedas", nameLabel: "Nome do seu planeta", namePlaceholder: "Informe o nome do seu planeta", swap: "Trocar",
+  coinIcon: "🪙", coinWord: "moedas", nameLabel: "Nome do seu planeta", namePlaceholder: "Informe o nome do seu planeta", nickAsk: "Dê um nome ao seu planeta para jogar", swap: "Trocar",
   play: "JOGAR", playAuto: "🚀 JOGAR (AUTO)", rooms: "Salas", ranking: "Ranking", profile: "Perfil", shop: "Loja", prefs: "Opções", home: "Início",
   guestNote: "Jogando como convidado", claim: "Reivindicar conta", login: "Entrar", logout: "Sair", guest: "convidado", registered: "conta protegida",
   // {s}/{e}: as teclas de dividir e ejetar são configuráveis (prefs keySplit/keyEject), então a dica é um MOLDE.

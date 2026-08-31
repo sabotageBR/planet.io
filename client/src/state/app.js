@@ -68,6 +68,15 @@ export const initialState = {
   reconnAttempt: 0,
   room: null,            // código da sala atual (do evento `room` do jogo)
   pendingJoin: null,     // {room, mode, teamSize, party, n} — GameHost faz o join quando muda
+  // O pedido de partida que a guarda de nome (`semNome`) segurou. Sem ele o link de convite MORRE
+  // exatamente para quem ele existe — o amigo novo, que nunca nomeou nada: o código se perderia na volta
+  // à tela inicial e o JOGAR o levaria a uma sala qualquer. O JOGAR retoma este pedido.
+  pendingPlay: null,     // {room, mode, teamSize, party} guardado por semNome()
+  // ⚠️ A guarda de nome reconhece a placa sorteada pelo PADRÃO (`Viajante-NNNN`), e um jogador tem o
+  // direito de escolher justamente esse nome — aí ele salvaria, a guarda continuaria vendo a placa e ele
+  // ficaria preso num laço sem explicação. Este sinal é a prova de que a pessoa DIGITOU um nome nesta
+  // carga da página; não persiste de propósito (é evidência do gesto, não um dado do perfil).
+  nomeado: false,
   gameMode: 0,           // MODE.* escolhido na tela de modos (NÃO confundir com `mode`, que é a orientação da tela)
   teamSize: 1,           // 1 = solo; 2..4 = equipe
   party: null,           // {code,shard,teamSize,members,...} do lobby de equipe (GET /api/party/:code)
