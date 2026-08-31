@@ -9,7 +9,7 @@ externo mediante liberação de CSP, e a GameDistribution tem a exceção por es
 
 ```
 node scripts/portal-pack.mjs gd|crazy|poki|itch|all   → portal/warspace-<id>.zip
-node scripts/brand-assets.mjs                         → brand/thumb-{512x512,512x384,200x120}.png
+node scripts/brand-assets.mjs                         → brand/thumb-*.jpg (5 tamanhos de catálogo)
 ```
 
 ## As quatro coisas que mudam no pacote
@@ -21,8 +21,12 @@ node scripts/brand-assets.mjs                         → brand/thumb-{512x512,5
 | sourcemap | sim | **não** (entrega protocolo e predição a quem quiser trapacear) |
 | Google Analytics | sim | **não** (regra 7 deles cita o produto pelo nome) |
 
-Tudo o mais é o mesmo código. O que decide é `client/src/portal/flags.js`, com a forma textual exata
-que o Vite substitui e o Rollup poda — é ela que faz o chunk do `/admin` nem ser emitido no zip.
+Tudo o mais é o mesmo código. O que decide é `client/src/portal/flags.js`, alimentado pelo `define` do
+`vite.config.js`: os valores viram texto literal no bundle e o Rollup poda em cima deles — é isso que faz
+o chunk do `/admin` e os adaptadores dos outros portais nem serem emitidos. ⚠️ Não use `import.meta.env`
+ali: fora do Vite (o `node --test` de texturas chega em `faces.js`) ele não existe, e a leitura defensiva
+que conserta o teste mata a poda — o zip da GD sai com o código da Poki dentro. Quem pegou isso foi a
+guarda do `portal-pack.mjs`.
 
 ## O interruptor
 
