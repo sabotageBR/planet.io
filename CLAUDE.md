@@ -381,6 +381,27 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   broadcast de PLAYERS, para um dado que muda quando alguém entra ou sai, é caro.
   ⚠️ O `xX…Xx` saiu de `botNick`: é a assinatura de um gerador, não de uma pessoa. `baseNick` continua
   desfazendo o padrão porque HUMANOS ainda escolhem nicks assim.
+  ⚠️ **UMA BANDEIRA NÃO PODE TOMAR A SALA** (`ROOM.PAIS_TETO_DIV`, `Room._paisesCheios`, `botCountry` com
+  `evita`): a bandeira existe para dizer que a sala é internacional, e só diz isso se elas forem
+  DIFERENTES. Duas causas somadas faziam o contrário. (a) `botCountry` sorteia cada bot numa roleta em que
+  o BR pesa 46 de 100 — a mesma bandeira sair 6 ou 7 vezes em 15 não é azar, é o valor esperado. (b) O
+  BALDE de apelidos era pior: o lote é de UM país só, era grande (24), único em voo e servido em LIFO, e
+  então a sala INTEIRA nascia da mesma remessa — medido em produção, 7 de 7 portuguesas, sem erro e sem
+  log. O conserto tem quatro peças e nenhuma sozinha basta: teto por bandeira na SALA que sobe com o
+  tamanho dela (`1+⌊bots/5⌋`), lotes pequenos e SIMULTÂNEOS de países diferentes (`NICK_FILL_PAR`),
+  reabastecimento por número de BANDEIRAS e não só de apelidos (`NICK_PAISES_MIN` — um balde cheio de duas
+  bandeiras rende dois preenchimentos, porque a sala recusa o resto) e um `take` que RODA entre as
+  bandeiras que tem. Medido depois: 6 bandeiras em 15 planetas, com o nome coerente com o país
+  (`nottebionda8` 🇮🇹, `harry_wolf` 🇬🇧, `caipirinha9` 🇧🇷).
+  ⚠️ Quem aplica o teto é a PRÓPRIA roleta (`botCountry` recebe as bandeiras cheias e reparte o peso delas
+  entre as outras), e **não** um laço de re-sorteio: re-sortear é estatística — com o BR em 46 %, uma
+  tentativa azarada em cada 500 fura o teto sem que ninguém entenda por quê (aconteceu, e o teste pegou).
+  Filtrando, o teto é garantido e o consumo do rng da sala continua sendo UM sorteio por bot, que é o que
+  mantém "a mesma semente dá a mesma sala".
+  ⚠️ `_paisesCheios` mede o tamanho da sala pela SOMA de `paisesBot`, não por `sim.botCount()`: ele é
+  chamado nos DOIS lados do nascimento (em `_botNome`, antes de o bot existir, e em `_nasceBot`, depois do
+  `addBot`), e com o contador do Sim o mesmo bot media a sala com dois tamanhos e ganhava um degrau de
+  teto de brinde. E `trimBots` DECREMENTA — sem isso a sala vira lista negra de países.
 - **ZOOM MANUAL NA RODA** (`zoomSpan`/`clampZoom` em `shared/src/camera.js`, `ZOOM` em constants,
   `client/src/game/input/Wheel.js`): a câmera era 100 % automática. A roda agora escolhe dentro de uma
   FAIXA em torno do `zoomFor`, e a largura da faixa vem da MASSA — ver mais mundo é VANTAGEM, e dá-la de

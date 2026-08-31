@@ -45,9 +45,10 @@ export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS
   // `1 + floor(bots/PAIS_TETO_DIV)`. Com 5 e uma sala de 15, nenhuma bandeira passa de 3 e há pelo menos
   // cinco países na mesa. ⚠️ É teto, não cota: quem escolhe continua sendo a roleta ponderada (a base do
   // jogo é brasileira e o placar tem que continuar parecendo com ela), só que ela não pode mais pintar a
-  // sala inteira de uma cor só. `PAIS_TENTATIVAS` é o quanto se insiste antes de aceitar o que veio: o
-  // sorteio é do rng da SALA, então re-sortear é determinístico e barato.
-  PAIS_TETO_DIV:5,PAIS_TENTATIVAS:8};
+  // sala inteira de uma cor só — e quem aplica o teto é a PRÓPRIA roleta (`botCountry` recebe as
+  // bandeiras cheias e reparte o peso delas entre as outras), e não um laço de re-sorteio: re-sortear é
+  // estatística, e uma tentativa azarada fura o teto de vez em quando sem que ninguém entenda por quê.
+  PAIS_TETO_DIV:5};
 // HOST_HOLD_MS: uma sala COM DONO não é recolhida enquanto essa carência não vencer. O ceifador padrão a
 // apagaria em 35 s sem humanos — e uma sala privada existe justamente para esperar os amigos chegarem, então
 // o comportamento normal a mataria antes de o segundo jogador abrir o link. Só o REMOVE é adiado: a sala
@@ -648,13 +649,26 @@ const US_ROOTS=new Set(["mike","jake","tyler","logan","mason","chase","blake","t
   "dozer","ripper","gunner"]);
 /**
  * País de um preenchimento, sorteado pelo rng da sala e coerente com o nome.
+ * `evita` são as bandeiras que já bateram o teto da SALA (ver ROOM.PAIS_TETO_DIV): a roleta simplesmente
+ * as tira do tabuleiro e reparte o peso delas entre as outras. É por isso que ela é FILTRADA em vez de
+ * re-sorteada até dar certo — com o BR pesando 46 de 100, "tenta de novo" é estatística, e uma tentativa
+ * azarada em cada 500 fura o teto sem que ninguém entenda por quê. Filtrando, o teto é garantido e o
+ * custo continua sendo UM sorteio por bot, que é o que mantém o determinismo por semente.
+ * ⚠️ Com TODAS as bandeiras evitadas o veto é ignorado em vez de devolver nada: teto é teto, mas um bot
+ * sem bandeira nenhuma seria pior que uma bandeira repetida.
  * @param {{next:()=>number,int:(a:number,b:number)=>number}} rng @param {string} nick
+ * @param {Set<string>|null} [evita]
  */
-export function botCountry(rng,nick){
+export function botCountry(rng,nick,evita=null){
+  const veta=c=>!!(evita&&evita.has(c));
   const raiz=String(nick||"").toLowerCase().replace(/[_\d]+$/,"");
-  if(US_ROOTS.has(raiz))return rng.next()<.82?"US":"CA";
-  let r=rng.next()*BOT_COUNTRY_TOTAL;
-  for(const [c,p] of BOT_COUNTRIES){r-=p;if(r<=0)return c;}
+  if(US_ROOTS.has(raiz)&&!(veta("US")&&veta("CA"))){   // as duas cheias: o nome americano cai na roleta geral
+    if(!veta("US")&&!veta("CA"))return rng.next()<.82?"US":"CA";
+    return veta("US")?"CA":"US";}
+  let total=0;for(const [c,p] of BOT_COUNTRIES)if(!veta(c))total+=p;
+  if(total<=0){evita=null;total=BOT_COUNTRY_TOTAL;}
+  let r=rng.next()*total;
+  for(const [c,p] of BOT_COUNTRIES){if(veta(c))continue;r-=p;if(r<=0)return c;}
   return "BR";}
 /**
  * Apelido de preenchimento, determinístico pelo rng da sala. Mistura quatro formatos porque uma lista só de
@@ -875,6 +889,10 @@ export const BOT_LLM={
   // três bandeiras quase juntas — mesmo total de apelidos por rodada, mesmo custo, sem o bloco de uma cor.
   NICK_LOTE:8,                 // apelidos por pedido. Um país por lote, sorteado pela distribuição de sempre
   NICK_FILL_PAR:3,             // pedidos SIMULTÂNEOS, cada um de um país que ainda não está no balde
+  NICK_PAISES_MIN:5,           // ...e o balde também se reabastece com POUCAS BANDEIRAS, mesmo cheio: o
+                               // que a sala consome não é apelido, é apelido COM bandeira, e um balde de
+                               // 40 nomes de dois países só rende duas bandeiras (`Room._paisesCheios`
+                               // recusa o resto e a sala cai no chão). Diversidade é critério de estoque.
   NICK_POOL_MIN:16,            // abaixo disto o balde se reabastece
   NICK_POOL_MAX:96,            // ...e para de encher aqui: 96 cobre duas salas de BR cheias
   NICK_FILL_MS:20000,          // de quanto em quanto se olha o balde. Não há pressa: quem chega e o encontra

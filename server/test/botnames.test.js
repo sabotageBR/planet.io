@@ -5,10 +5,15 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {recusa,parseLote,createBotNames} from '../src/rooms/botNames.js';
-import {BOT_NICKS,BOT_NAMES,BOT_LLM,botNick} from '@warspace/shared/constants.js';
+import {BOT_NICKS,BOT_NAMES,BOT_LLM,botNick,botCountry} from '@warspace/shared/constants.js';
 import {baseNick} from '@warspace/shared/util.js';
 import {eggSkinFor} from '@warspace/shared/eggs.js';
 import {createRng} from '@warspace/shared/rng.js';
+
+// A roleta de `botCountry` é privada de constants.js; aqui basta a lista do que ela pode devolver, e ela
+// sai da própria função — 400 sorteios cobrem até o país de peso 1.
+const BOT_COUNTRY_CODES=(()=>{const rng=createRng(99),s=new Set();
+  for(let i=0;i<400;i++)s.add(botCountry(rng,''));return s;})();
 
 test('validador: cada regra existe por um motivo, e o motivo volta no nome da recusa',()=>{
   // ⚠️ A MAIS IMPORTANTE. O prompt pede "nada de celebridades" e um modelo escapa uma em dez — é a mesma
@@ -85,7 +90,10 @@ test('balde: serve o que gerou, respeita os nomes já em uso na sala e não repe
   bn.start();
   await new Promise(r=>setTimeout(r,30));   // o `enche` do start é assíncrono
   assert.ok(bn.size>0,'o balde encheu');
-  assert.equal(pedidos,1);
+  // ⚠️ São NICK_FILL_PAR pedidos, não um: um lote é de UM país só, e um balde de um país só era servido
+  // em sequência — a sala inteira nascia com a mesma bandeira. Vários lotes pequenos e simultâneos, de
+  // países diferentes, custam o mesmo e dão bandeira variada.
+  assert.equal(pedidos,BOT_LLM.NICK_FILL_PAR);
   const usados=new Set(['turbo']);          // já tem um TURBO na sala
   const vistos=new Set();
   for(let i=0;i<5;i++){const g=bn.take(usados);if(!g)break;
@@ -94,6 +102,39 @@ test('balde: serve o que gerou, respeita os nomes já em uso na sala e não repe
     assert.ok(!vistos.has(g.nick),'repetiu no mesmo balde');vistos.add(g.nick);
     assert.match(g.pais,/^[A-Z]{2}$/,'o país vem JUNTO com o apelido — é a inversão que a feature faz');}
   assert.ok(vistos.size>=3,`serviu só ${vistos.size}`);
+  bn.stop();
+});
+
+test('balde: os lotes são de países DIFERENTES, e o take alterna bandeira',async()=>{
+  // O defeito que este teste tranca foi visto em produção: as 7 linhas do placar com a MESMA bandeira.
+  // A causa eram duas somadas — um lote inteiro de um país só e um `take` em LIFO, que serve o lote na
+  // ordem em que ele chegou.
+  let n=0;
+  const llm={ok:()=>true,chat:async()=>{n++;return Array.from({length:6},(_,i)=>`nick${n}x${i}`).join('\n');}};
+  const bn=createBotNames({llm});
+  bn.start();
+  await new Promise(r=>setTimeout(r,40));
+  const paises=new Set();
+  for(let i=0;i<6;i++){const g=bn.take(new Set());if(!g)break;paises.add(g.pais);}
+  assert.ok(paises.size>=2,`seis apelidos seguidos saíram com ${paises.size} bandeira(s)`);
+  bn.stop();
+});
+
+test('balde: a bandeira que a SALA já tem no teto é PULADA, não descartada',async()=>{
+  // O balde é de PROCESSO e não sabe quem está em qual sala — quem conhece a diversidade da mesa é o
+  // Room, e é ele que passa `evita`. O item evitado fica para a PRÓXIMA sala, que pode não ter aquela
+  // bandeira; sem nada servível o balde devolve `null` e a sala volta ao chão (`botNick`), que sorteia o
+  // país por conta própria.
+  const llm={ok:()=>true,chat:async()=>'joaozinho\npizzaman\nvitin09\nmari'};
+  const bn=createBotNames({llm});
+  bn.start();
+  await new Promise(r=>setTimeout(r,40));
+  const tam=bn.size;
+  assert.ok(tam>0,'o balde encheu');
+  const veto=new Set(BOT_COUNTRY_CODES);                    // a sala já está no teto em TODAS as bandeiras
+  assert.equal(bn.take(new Set(),veto),null,'serviu uma bandeira que a sala pediu para evitar');
+  assert.equal(bn.size,tam,'o item evitado foi consumido — ele tinha que ficar para a próxima sala');
+  assert.ok(bn.take(new Set()),'e sem veto ele continua servindo normalmente');
   bn.stop();
 });
 
@@ -120,4 +161,10 @@ test('constantes: o lote cabe no que se pede ao modelo',()=>{
   assert.ok(BOT_LLM.NICK_TIMEOUT_MS>BOT_LLM.TIMEOUT_MS,'o lote não tem prazo; a fala tem — não podem usar o mesmo');
   assert.ok(BOT_LLM.NICK_POOL_MIN<BOT_LLM.NICK_POOL_MAX);
   assert.ok(BOT_LLM.NICK_LOTE>0&&BOT_LLM.NICK_LOTE<=BOT_LLM.NICK_POOL_MAX);
+  // ⚠️ O balde se reabastece por BANDEIRAS além de por apelidos: pedir mais bandeiras do que a roleta
+  // tem para dar seria pedir um enchimento que nunca termina — e ele é disparado a cada nascimento.
+  assert.ok(BOT_LLM.NICK_PAISES_MIN<=BOT_COUNTRY_CODES.size,
+    `${BOT_LLM.NICK_PAISES_MIN} bandeiras pedidas e só ${BOT_COUNTRY_CODES.size} na roleta`);
+  assert.ok(BOT_LLM.NICK_FILL_PAR*BOT_LLM.NICK_LOTE<=BOT_LLM.NICK_POOL_MAX,
+    'uma rodada de enchimento sozinha estoura o teto do balde');
 });

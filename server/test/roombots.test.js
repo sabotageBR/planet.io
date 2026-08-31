@@ -48,6 +48,32 @@ test('cada preenchimento entra com nome próprio', () => {
   assert.equal(new Set(nomes.map(n=>n.toLowerCase())).size,nomes.length,'sem nick repetido na sala');
 });
 
+// ── ...E COM BANDEIRA VARIADA ────────────────────────────────────────────────
+// A bandeira do preenchimento existe para dizer que a sala é internacional, e só diz isso se as bandeiras
+// forem diferentes. `botCountry` sorteia cada bot numa roleta em que o BR pesa 46 de 100, então a mesma
+// bandeira sair 6 ou 7 vezes numa sala de 15 é o valor ESPERADO — foi o que apareceu em produção. O teto
+// de ROOM.PAIS_TETO_DIV é o que impede uma cor só de tomar o placar.
+const bandeiras=r=>{const m=new Map();
+  for(const p of r.sim.players.values())if(p.isBot)m.set(p.country,(m.get(p.country)||0)+1);
+  return m;};
+const teto=n=>1+Math.floor((n-1)/ROOM.PAIS_TETO_DIV);   // o teto é medido no NASCIMENTO do último bot
+
+test('nenhuma bandeira toma a sala', () => {
+  for(const seed of [1,7,42,99,1234,55555]){
+    const r=new Room({code:'TST0',shard:0,seed,hooks:null,log:mudo,
+      metrics:{inc(){},add(){}},config:{roomMax:30,roomBots:15},mode:MODE.FREE});
+    r.start(); anda(r,60*TICK_HZ*5);
+    const m=bandeiras(r),n=[...m.values()].reduce((a,b)=>a+b,0);
+    assert.equal(n,15,`seed ${seed}: a sala não encheu`);
+    for(const [c,k] of m)
+      assert.ok(k<=teto(n),`seed ${seed}: ${k} bots com a bandeira ${c} (teto ${teto(n)})`);
+    assert.ok(m.size>=5,`seed ${seed}: só ${m.size} bandeiras em 15 planetas`);
+    // e a bandeira volta ao sorteio quando a vaga volta: sem isso a sala vira lista negra de países
+    r.trimBots(15);
+    assert.equal([...bandeiras(r).values()].reduce((a,b)=>a+b,0),0);
+    assert.equal(r.paisesBot.size,0,`seed ${seed}: sala esvaziada e a contagem de bandeiras ficou para trás`);}
+});
+
 // ── ...E NÃO NASCE TODA PEQUENA ──────────────────────────────────────────────
 // Os preenchimentos nasciam todos na mesma faixa, do tamanho de quem acabou de entrar: a sala nova
 // PARECIA nova. Aqui prova-se que a abertura tem planeta de todo tamanho e que isso se esgota — quem

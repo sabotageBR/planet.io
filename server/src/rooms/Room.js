@@ -233,22 +233,26 @@ export class Room{
   /**
    * As bandeiras que já bateram no teto desta sala (ver ROOM.PAIS_TETO_DIV). O teto sobe com o tamanho
    * da mesa: com 5 e uma sala de 15, nenhuma passa de 3 e há pelo menos cinco países no placar.
+   * ⚠️ O tamanho sai da SOMA de `paisesBot` e não de `sim.botCount()`. Não é preciosismo: isto é chamado
+   * nos dois lados do nascimento — em `_botNome`, antes de o bot existir, e em `_nasceBot`, depois de
+   * `addBot` —, e com o contador do Sim o mesmo bot media a sala com dois tamanhos diferentes, subindo o
+   * teto em um justamente no último a nascer.
    * @returns {Set<string>}
    */
-  _paisesCheios(){const teto=1+Math.floor(this.sim.botCount()/ROOM.PAIS_TETO_DIV),s=new Set();
-    for(const [c,n] of this.paisesBot)if(n>=teto)s.add(c);
+  _paisesCheios(){let n=0;for(const k of this.paisesBot.values())n+=k;
+    const teto=1+Math.floor(n/ROOM.PAIS_TETO_DIV),s=new Set();
+    for(const [c,k] of this.paisesBot)if(k>=teto)s.add(c);
     return s;}
   /**
-   * O país de um preenchimento cujo nome NÃO veio do balde. É a roleta ponderada de sempre
-   * (`botCountry`, que também mantém a coerência de US_ROOTS), re-sorteada enquanto cair numa bandeira
-   * que já encheu — a roleta devolve BR quase metade das vezes, e sem esse desvio uma sala de 15 sai com
-   * 6 ou 7 bandeiras iguais, que é o oposto do que a bandeira do bot existe para dizer.
-   * ⚠️ Consome rng da SALA (determinístico, é o mesmo gerador de tudo aqui) e desiste depois de
-   * `PAIS_TENTATIVAS`: com todas as bandeiras cheias, vale o que a roleta deu.
+   * O país de um preenchimento cujo nome NÃO veio do balde: a roleta ponderada de sempre (`botCountry`,
+   * que também mantém a coerência de US_ROOTS), com as bandeiras que já encheram FORA do tabuleiro. A
+   * roleta devolve BR quase metade das vezes, e sem esse filtro uma sala de 15 sai com 6 ou 7 bandeiras
+   * iguais — que é o oposto do que a bandeira do preenchimento existe para dizer.
+   * ⚠️ Um sorteio só, como antes: o filtro é DENTRO da roleta, e não um laço de tentativas. Isso mantém
+   * o consumo do rng da sala igual ao de sempre — e é o rng da sala que faz "a mesma semente dá a mesma
+   * sala" continuar valendo.
    */
-  _paisBotSala(name){const cheios=this._paisesCheios();
-    for(let t=0;t<ROOM.PAIS_TENTATIVAS;t++){const c=botCountry(this.rng,name);if(!cheios.has(c))return c;}
-    return botCountry(this.rng,name);}
+  _paisBotSala(name){return botCountry(this.rng,name,this._paisesCheios());}
   /**
    * Nível do preenchimento — o badge que aparece ao lado do nick no placar, no chat e no feed. Ele é
    * sorteado junto com o nome de gente pelo mesmo motivo (badge zerado entrega quem é quem), mas agora
