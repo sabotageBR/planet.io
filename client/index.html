@@ -18,6 +18,14 @@
   <meta property="og:description" content="Cresça, divida, ejete e devore. Livre ou battle royale de 50 planetas numa zona que fecha.">
   <meta property="og:image" content="/og.png">
   <meta name="twitter:card" content="summary_large_image">
+  <!-- Google Analytics (gtag.js): a SPA só troca de URL em /admin, então o page_view automático é por CARGA da página -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-40CHSTVFQT"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-40CHSTVFQT");
+  </script>
 </head>
 <body data-mode="desktop">
   <!-- #app é a raiz do React: canvas do jogo (#game), HUD, telas, overlays e #toast nascem aqui dentro -->
