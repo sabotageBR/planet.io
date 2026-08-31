@@ -15,7 +15,7 @@ export function createMetrics(){
   // baixo quer dizer que o teto de gerações está apertando; `fail` alto quer dizer que o modelo saiu da
   // memória; `veto` alto quer dizer que o prompt está produzindo coisa que a peneira recusa.
   const llmMs=new Ring(120);
-  const llmN={ask:0,ok:0,veto:0,fail:0,stale:0,drop:0,teto:0,fallback:0};
+  const llmN={ask:0,ok:0,veto:0,fail:0,stale:0,drop:0,teto:0,fallback:0,conv:0,puxa:0};
   let llmInflight=()=>0,llmBreaker=()=>false;
   const startedAt=Date.now();
   // janela de WIN s em baldes por segundo (bytes de saída, mensagens de entrada)
@@ -26,7 +26,7 @@ export function createMetrics(){
   return{
     tick:ms=>tick.push(ms),lag:ms=>lag.push(ms),overrun:()=>{overruns++;},
     bytesOut:n=>{bo[bucket()]+=n;bytesOutTotal+=n;},msgIn:()=>{mi[bucket()]++;msgsInTotal++;},rateLimitHit:()=>{rateLimitHits++;},
-    /** @param {'ask'|'ok'|'veto'|'fail'|'stale'|'drop'|'teto'|'fallback'} ev */
+    /** @param {'ask'|'ok'|'veto'|'fail'|'stale'|'drop'|'teto'|'fallback'|'conv'|'puxa'} ev */
     llm:(ev,ms)=>{if(llmN[ev]!=null)llmN[ev]++;if(ms>=0&&(ev==='ok'||ev==='fail'))llmMs.push(ms);},
     /** O cliente do Ollama é criado depois das métricas; estes dois getters fecham o laço sem inverter a ordem. */
     llmSource:(inflight,breaker)=>{llmInflight=inflight;llmBreaker=breaker;},

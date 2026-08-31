@@ -266,6 +266,22 @@ body[data-mode="portrait"] #hud #hud-right{width:min(46vw,178px)}
 body[data-mode="portrait"] #hud #hud-right .lb-row{font-size:11px;padding:2px 2px;gap:5px}
 body[data-mode="landscape"] #hud #hud-right{width:min(44vw,266px)}
 body[data-mode="landscape"] #hud #hud-right>.panel{width:min(34vw,206px)}
+/* ── EM PÉ OS PAINÉIS OCUPAM A COLUNA INTEIRA ───────────────────────────────
+   Eles ficavam com a largura de DESKTOP (`min(238px,22vw)`) dentro de uma coluna que aqui é bem mais
+   estreita — e `22vw` num celular de 430 px dá 94 px, contra os 178 px da coluna. Os 84 px de sobra não
+   eram só desperdício: a `.lb-row` é a grade `18px 1fr auto`, então em 94 px a posição (18) + a bandeira
+   (~13) + o badge (~19) + a massa de seis dígitos (~42) + os gaps já estouram, e o `1fr` do NOME fica com
+   ZERO. O placar do celular era uma lista de bandeiras e números sem uma única identidade — um placar que
+   não deixa comparar ninguém. Os dois painéis vão juntos de propósito: larguras diferentes empilhadas à
+   direita dão a borda serrilhada que o bloco do placar lá em cima combate.
+   ⚠️ Só em PÉ. No deitado os painéis já têm 206 px e o nome cabe com ~99 px de sobra: esticá-los até os
+   266 px da coluna engordaria o HUD em 60 px na tela onde a largura nunca foi o problema (lá o recurso
+   escasso é a ALTURA — é por isso que o feed cai para duas linhas e o placar para três). */
+body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
+/* ⚠️ E o `min-width:172px` do TEMA (theme/<id>/hud.css, `.lb-row`) sobrevivia da TERCEIRA linha em diante:
+   a regra de (2,0,0) lá em cima só o anula em `:nth-child(1)` e `(2)`. Numa coluna de 178 px isso cabia por
+   6 px — o tipo de coisa que quebra na primeira mudança de largura, e em silêncio. */
+#hud #hud-right .lb-row{min-width:0}
 
 /* ── KILL FEED ── */
 #kill-feed{display:flex;flex-direction:column;align-items:flex-end;gap:4px;max-width:min(340px,32vw);pointer-events:none}
@@ -276,11 +292,22 @@ body[data-mode="landscape"] #hud #hud-right>.panel{width:min(34vw,206px)}
    conteúdo. Sem ele, uma linha com dois nicks longos e assistência (dois ícones + o "+") fica mais larga
    que o feed, e como a coluna é alinhada à DIREITA o excesso sai pela esquerda e o `overflow:hidden` de
    #hud-right decepa o começo da frase — some justo o nome de quem matou. Com min-width:0 quem cede é o
-   nick, que já tem reticências. O verbo e os ícones não encolhem: são eles que dão a direção da frase. */
+   nick, que já tem reticências. Os ícones e a seta não encolhem: são eles que dão a direção da frase. */
 #kill-feed .kf-row{overflow:hidden}
-#kill-feed .kf-who{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:12ch;overflow:hidden;text-overflow:ellipsis}   /* 12ch: só cabe porque o feed deixou de obedecer à largura da coluna (ver #hud-right #kill-feed) */
-#kill-feed .kf-verb{opacity:.62;font-size:.92em;flex:none}
+#kill-feed .kf-who{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:16ch;overflow:hidden;text-overflow:ellipsis}   /* 16ch: subiu de 12 quando o verbo e o badge saíram da linha — ver o bloco A DIREÇÃO É UMA SETA */
 #kill-feed .kf-how,#kill-feed .kf-row>i,#kill-feed .kf-row .lvl{flex:none}
+/* ── A DIREÇÃO É UMA SETA, E O NÍVEL NÃO ENTRA ──────────────────────────────
+   A linha era `[nível][nome] 🍴 matou [nível][nome]`. Fazendo a conta com os números daqui numa coluna de
+   178 px (celular em pé): dois badges ~46 px com os gaps, o verbo ~34, o ícone ~13 e três gaps de 6 — sobram
+   50 px para os DOIS nomes, 25 px cada, ou seja DUAS LETRAS ("28 p.. 🍴 matou 21 B.."). Metade da largura
+   gasta com o que não é o nome, num painel que existe só para dizer quem matou quem.
+   A seta sai do `::after` do PRÓPRIO `.kf-how` — não de um elemento novo — para que ícone e seta leiam como
+   uma unidade ("com isto, nele") e para não gastar mais um gap de flex. `›` (U+203A) e não emoji: emoji muda
+   de desenho a cada sistema operacional (é o motivo de navIconArt.js existir), e este glifo está em qualquer
+   fonte. ⚠️ O badge de nível é escondido AQUI, no contexto do feed, e não no componente: `Nick` (ui/bits.jsx)
+   é o mesmo do placar e do chat, que têm largura para o selo — tirá-lo de lá levaria o mérito junto. */
+#kill-feed .kf-how::after{content:"\203A";opacity:.5;margin-left:1px;font-style:normal}
+#kill-feed .kf-who .lvl{display:none}
 /* o `min-width:0` tem que descer até AQUI: `.nk` é item de flex dentro do `.kf-who` (que já é inline-flex),
    e enquanto ele não puder encolher a linha inteira continua larga demais e o começo dela é decepado */
 #kill-feed .kf-who .nk{min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -288,7 +315,16 @@ body[data-mode="landscape"] #hud #hud-right>.panel{width:min(34vw,206px)}
 #kill-feed .kf-how{display:inline-flex;align-items:center;gap:2px}
 #kill-feed .kf-ico{font-style:normal}
 #kill-feed .kf-ico.assist{opacity:.5;font-size:.85em}   /* quem AMOLECEU antes de alguém colher */
+/* ⚠️ As linhas de MARCO ("{n} assumiu a liderança", "BIG CRUNCH em {n}") são frases inteiras e herdavam o
+   `white-space:nowrap` da `.kf-row` com `overflow:hidden` — ou seja, eram cortadas SEM reticências: no
+   celular a frase simplesmente terminava no meio de uma palavra e nada dizia que faltava alguma coisa.
+   As reticências resolvem em UMA linha. Deixá-las quebrar em duas foi a primeira tentativa e custou 17 px
+   por linha: no iPhone SE (a tela mais baixa da matriz, com o #touch em três fileiras) o feed passou a
+   encostar nos botões de toque. Aqui a altura é o recurso escasso, e a frase quase sempre cabe inteira —
+   quando não cabe, o "…" é honesto. `min-width:0` porque o `<span>` é item de flex e sem isso ele não
+   encolhe abaixo do conteúdo, que é a condição para o `text-overflow` valer. */
 #kill-feed .kf-sys{opacity:.82;font-style:italic}
+#kill-feed .kf-sys>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 #kill-feed .kf-row.ally{box-shadow:inset -3px 0 0 var(--ok,#3ddc5f)}   /* espelho do #hud-lb .lb-row.ally */
 /* CS: a linha em que EU apareço vem destacada — é o que faz o feed valer a atenção num canto da tela */
 #kill-feed .kf-row.mine{border-color:var(--accent,#ffc22e);background:color-mix(in srgb,var(--accent,#ffc22e) 22%,var(--surface,#2226))}
@@ -502,6 +538,23 @@ body[data-mode="portrait"] #hud #hud-top #h-room i{display:none}
 body[data-mode="portrait"] #hud #hud-top{gap:4px}
 body[data-mode="portrait"] #hud #hud-top .chip{padding:3px 8px;font-size:11px}
 body[data-mode="portrait"] #hud #h-mute{width:30px;height:30px;min-width:30px;font-size:13px}
+/* ── E A FAIXA QUEBROU ASSIM MESMO ──────────────────────────────────────────
+   As duas defesas acima não bastaram, porque o par de regras coarse mais abaixo devolve 44 px a `#h-mute` e
+   `#h-menu` (é alvo de toque, e está certo). A conta em 430 px: sala ~60 + relógio ~140 + MS/FPS ~90 + 44 +
+   44 + gaps = ~390 numa faixa de 414, e o primeiro chip a mais joga a linha para baixo — foi o que a captura
+   mostrou, com o botão de som encavalado no do menu. Então em vez de encolher mais um pouco, sai o que não é
+   jogo: */
+/* (a) MS/FPS é DIAGNÓSTICO, e nasce ligado (`showFps:true`). No celular ele custa ~90 px da única faixa que
+   não pode quebrar, para dizer algo que ninguém consulta no meio de uma partida. A pref continua valendo no
+   desktop — quem quer medir, mede lá. */
+body[data-mode="portrait"] #hud #hud-top #h-net{display:none}
+/* (b) o chip do relógio fica só com a CONTAGEM REGRESSIVA (~55 px). A hora do relógio do espaço é o que
+   pinta o céu, não o que decide alguma coisa; o que o jogador consulta é quanto falta para o BIG CRUNCH.
+   ⚠️ O `inline-flex` não é enfeite: em contêiner flex os nós de texto só com espaço em branco NÃO geram
+   caixa, então esconder os dois primeiros filhos não deixa um espaço órfão antes da ampulheta. */
+body[data-mode="portrait"] #hud #hud-top #h-clock{display:inline-flex;align-items:center;gap:4px}
+body[data-mode="portrait"] #hud #hud-top #h-clock>i:first-of-type,
+body[data-mode="portrait"] #hud #hud-top #h-clock>b:first-of-type{display:none}
 body[data-mode="portrait"] #hud-right{top:150px;right:8px;gap:6px;max-width:min(56vw,240px)}
 body[data-mode="portrait"] #kill-feed{max-width:100%}
 /* ⚠️ E menos linhas: `overflow:hidden` na coluna esconde o excesso mas NÃO encolhe a caixa do filho, que é
@@ -519,7 +572,12 @@ body[data-mode="portrait"] #hud #hud-right .score-row{display:none}   /* fica s�
    (`#touch{bottom:16px;right:16px}` nos três temas) e são altos. O teto sai da altura deles mais a folga —
    sem isto o placar entrava por baixo dos botões em tablet deitado e em celular. */
 body[data-pointer="coarse"] #hud-right{max-height:calc(100% - 2*var(--tbtn,66px) - 64px)}
-body[data-mode="portrait"] #hud-right{max-height:calc(100% - 2*var(--tbtn,66px) - 190px)}
+/* ⚠️ Em RETRATO o `#touch` é `flex-wrap` em duas colunas (base.css), então com CINCO botões — dividir,
+   ejetar, atirar, falar e TROCAR DE ARMA, que aparece assim que o jogador pega a segunda — ele tem TRÊS
+   fileiras, 214 px, e não as duas que esta conta assumia. Faltavam ~56 px, e o feed entrava por cima dos
+   botões exatamente no aparelho mais baixo da matriz. Agora a conta é escrita por partes, com o pior caso:
+   o próprio `top` da coluna, três fileiras com os gaps, o `bottom` do #touch e uma folga. */
+body[data-mode="portrait"] #hud-right{max-height:calc(100% - 150px - 3*var(--tbtn,66px) - 38px)}
 /* ⚠️ `overflow:hidden` na coluna esconde o excesso, mas NÃO encolhe a caixa do filho — e é a caixa que
    colide (e que a matriz de responsividade mede). Quem tem que encolher é a LISTA: no dedo o placar mostra
    menos linhas, e a própria continua sempre (é a regra que os três temas já usam para o top 10). */
@@ -528,6 +586,13 @@ body[data-pointer="coarse"] #hud #hud-right .lb-row:nth-child(n+7):not(.mine){di
 /* Bloco de arma/powerups × botões de toque, em retrato: o #touch ocupa duas colunas no canto inferior
    direito e o #hud-status cresce para a direita com cada powerup ativo. Um teto de largura resolve — e é
    um problema que já existia, mas que só apareceu quando a matriz passou a medir a tela de jogo com dados. */
+/* ── NO DEDO A ARMA APARECE UMA VEZ SÓ ──────────────────────────────────────
+   O chip `🚀 2 MÍSSIL` do canto inferior esquerdo e o botão redondo MÍSSIL do canto direito são a MESMA
+   informação: o `#t-fire` já traz o ícone da arma, a munição no badge e a contagem de carência do spawn
+   (`#t-fire .fire-cd`), e a troca tem o `#t-swap` próprio ao lado. Duas cópias da mesma coisa em cantos
+   opostos de uma tela de 430 px é a que ocupa a faixa de baixo à esquerda sem dizer nada de novo. No mouse
+   ele fica: lá não existe `#touch`, e o chip é o único lugar onde a arma aparece. */
+body[data-pointer="coarse"] #hud #hud-status #hud-ammo{display:none}
 body[data-mode="portrait"] #hud #hud-status{max-width:calc(100% - 2*var(--tbtn,66px) - 44px)}
 body[data-mode="portrait"] #hud #hud-status #hud-pw{flex-wrap:wrap}
 body[data-mode="portrait"] #hud-mode{bottom:118px}
@@ -828,6 +893,10 @@ body[data-pointer="coarse"] #hud #h-mute{width:44px;height:44px;min-width:44px;f
 #hud #h-zoom.fresh,#hud #h-zoom:hover,#hud #h-zoom:focus-visible{opacity:1}
 body[data-pointer="coarse"] #hud #h-zoom{height:44px;font-size:13px}
 body[data-mode="portrait"] #hud #hud-top #h-zoom{height:30px;padding:0 6px;font-size:11px}
+/* ⚠️ ...mas no DEDO não: 30 px é alvo reprovado, e este é o único chip do topo que tinha ficado de fora do
+   par de regras (0,2,0) que devolveu 44 px ao mudo e ao menu. Ele só aparece fora do zoom automático, então
+   é justamente o botão que o jogador procura de primeira e erra. */
+body[data-mode="portrait"][data-pointer="coarse"] #hud #hud-top #h-zoom{height:44px;font-size:12px}
 
 /* ── MENU DE PAUSA (Esc) ────────────────────────────────────────────────────────────────────
    O modal em si já é posicionado por `.card.modal` na seção "MODAIS SEMPRE NO MEIO" (mais acima) e o véu
@@ -868,6 +937,16 @@ body[data-mode="portrait"] #hud #hud-top #h-menu{width:30px;height:30px;min-widt
 body{--nav-h:74px}
 body[data-mode="portrait"]{--nav-h:66px}
 body[data-mode="landscape"]{--nav-h:64px}
+/* ── `--tbtn` É A ALTURA DOS BOTÕES DE TOQUE, E NUNCA TINHA SIDO DECLARADA ───
+   Ela é usada em quatro contas (base.css, na largura do `#touch`; e aqui, no teto de altura da coluna
+   direita e na largura máxima do bloco de arma/powerups), e todas as quatro caíam no fallback `66px`
+   escrito à mão em cada uma. 66 é o valor do RETRATO; os temas dão 72 px no tablet e 60 px no deitado
+   (theme/<id>/hud.css, `.tbtn`), então os dois casos calculavam com um botão que não é o da tela — o teto
+   da coluna sobrava 12 px no deitado e faltava 12 no tablet. Os fallbacks ficam onde estão de propósito:
+   se um dia esta linha sumir de novo, o comportamento volta ao de hoje em vez de virar `calc()` inválido. */
+body{--tbtn:72px}
+body[data-mode="portrait"]{--tbtn:66px}
+body[data-mode="landscape"]{--tbtn:60px}
 /* A barra sangra para fora do padding do `.wrap` (é isso que a faz encostar nas duas bordas do cartão, como
    nos mockups) e o cantinho de baixo dela acompanha o raio da caixa. `#app .wrap>nav.nav` vale (1,1,1) e
    ganha do `:where(...)` dos temas — que soma zero e, por vir depois, venceria um empate. */
@@ -944,7 +1023,29 @@ body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(sa
 /* o "+" entre o ícone de quem amoleceu e o de quem finalizou */
 #kill-feed .kf-plus{opacity:.4;font-size:.8em;margin:0 1px}
 
-/* ── DESTAQUES DA SALA (#s-round): campeão · mais partículas · mais abates · maior K/D ────────────
+/* ── A FAIXA DO CAMPEÃO (#s-round) ────────────────────────────────────────────────────────────────
+   O campeão é quem tem a MAIOR MASSA no instante do BIG CRUNCH, e o destaque da tela é dele. Ele já
+   estava no degrau maior do pódio E num dos quatro cartões de destaque logo abaixo — a mesma pessoa
+   três vezes, e nenhuma delas em tamanho de campeão. A faixa resolve as duas coisas: ela é o primeiro
+   bloco depois do título, numa linha só (ícone · planeta · rótulo · nome · massa), e o cartão que ela
+   liberou virou "mais pontos". No retrato o nome desce para a segunda linha, senão a massa é decepada.
+   ⚠️ Vive aqui e não nos temas: theme/<id>/screens.css é GERADO pelo port.js. Como ui.css é importado
+   ANTES deles, empate de especificidade PERDE — por isso o seletor carrega o #s-round. */
+#s-round .champ-banner{display:grid;grid-template-columns:auto auto auto 1fr auto;align-items:center;gap:8px;
+  width:100%;margin:4px 0 2px;padding:8px 12px;border-radius:var(--radius,10px);
+  border:2px solid var(--accent,#ffc22e);background:var(--surface,#2226)}
+#s-round .champ-banner .cb-ico{font-style:normal;font-size:1.5em;line-height:1}
+#s-round .champ-banner .cb-skin{width:34px;height:34px}
+#s-round .champ-banner canvas{width:34px;height:34px}
+#s-round .champ-banner .cb-k{font-size:.62em;letter-spacing:.08em;opacity:.7;text-transform:uppercase;white-space:nowrap}
+#s-round .champ-banner .cb-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.1em}
+#s-round .champ-banner .cb-val{font-style:normal;color:var(--accent,#ffc22e);white-space:nowrap}
+#s-round .champ-banner.me{box-shadow:0 0 0 2px var(--accent,#ffc22e) inset}
+body[data-mode="portrait"] #s-round .champ-banner{grid-template-columns:auto auto 1fr auto;row-gap:2px}
+body[data-mode="portrait"] #s-round .champ-banner .cb-k{grid-column:3/-1;font-size:.58em}
+body[data-mode="portrait"] #s-round .champ-banner .cb-name{grid-column:3}
+
+/* ── DESTAQUES DA SALA (#s-round): mais pontos · mais partículas · mais abates · maior K/D ────────
    Nasceram depois dos mockups, como o resto de #s-round, então moram aqui e usam só tokens do tema. */
 .awards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;margin:6px 0 2px}
 .award{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 6px;

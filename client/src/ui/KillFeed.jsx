@@ -2,6 +2,14 @@
 // Uma linha por morte: matador → ícone de COMO → vítima. As linhas em que EU apareço (matando, morrendo ou
 // dando assistência) vêm destacadas, que é o que faz o feed valer a atenção num canto da tela.
 //
+// ⚠️ A DIREÇÃO É UMA SETA, NÃO UMA PALAVRA. O verbo ocupava ~34 px de uma linha que no celular tem 178, e
+// com os dois badges de nível sobravam 50 px para os DOIS nomes — duas letras cada ("p.. 🍴 matou 21 B.."),
+// ou seja, o feed deixava de responder a única pergunta que existe para responder. Hoje a seta sai do
+// `::after` do próprio `.kf-how` (ui.css), colada ao ícone, e o nível não é desenhado aqui (o selo continua
+// no placar e no chat, que têm largura para ele). A frase por extenso vive no `aria-label`: `killFeed.killed`
+// segue vivo nos três dicionários e quem usa leitor de tela continua ouvindo "Fulano matou Beltrano".
+// `title=` não serviria para isso — o feed é `pointer-events:none` e o balão nativo nunca apareceria.
+//
 // ⚠️ Uma coisa que o jogo obriga a contar direito: `killPiece` só é chamado com `eaten`, `zone` e
 // `blackhole` — míssil, estrela, asteroide e supernova NUNCA matam sozinhos (todos param no piso
 // MIN_PIECE_R). Eles AMOLECEM. Por isso `how` (com o quê) e o matador são campos separados, e existe a
@@ -26,20 +34,19 @@ export default function KillFeed({ h }) {
   if (!vivas.length) return null;
   const F = LB.killFeed || {};
   const sysText = l => (F["sys_" + l.how] || l.how).replace("{n}", l.how === "crunch" ? crunchLabel(LB, l.n) : (l.a && l.a.name) || l.n);
+  // o que a seta diz sem escrever: "Fulano matou Beltrano". Só para leitor de tela.
+  const frase = l => `${l.a ? l.a.name : F.world} ${F.killed} ${l.b ? l.b.name : ""}`.trim();
   return <div id="kill-feed">
     {/* mais nova em cima, como no CS */}
     {[...vivas].reverse().map(l => l.k === "sys"
       ? <div key={l.id} className={"kf-row kf-sys" + (l.mine ? " mine" : "")}>
           <i className="kf-ico">{SYS_ICON[l.how] || "•"}</i><span>{sysText(l)}</span></div>
-      : <div key={l.id} className={"kf-row" + (l.mine ? " mine" : "") + (l.a && l.a.ally ? " ally" : "")}>
+      : <div key={l.id} className={"kf-row" + (l.mine ? " mine" : "") + (l.a && l.a.ally ? " ally" : "")} aria-label={frase(l)}>
           {l.a ? <Nick p={l.a} /> : <span className="kf-who dim">{F.world}</span>}
           {/* Com assistência, os DOIS ícones aparecem: o que amoleceu (esmaecido) e o que finalizou. */}
           <span className="kf-how" title={(l.assist ? `${F[l.byHow] || l.byHow} ${F.assist} · ` : "") + (F[l.how] || l.how)}>
             {l.assist ? <><i className="kf-ico assist">{HOW_ICON[l.byHow] || "•"}</i><span className="kf-plus">+</span></> : null}
             <i className="kf-ico">{HOW_ICON[l.how] || "•"}</i></span>
-          {/* O verbo depois do ícone: o ícone qualifica ("com o quê") e o verbo dá a DIREÇÃO, que só o
-              ícone não dava — "Fulano 🍴 Beltrano" obriga o leitor a adivinhar quem comeu quem. */}
-          <span className="kf-verb">{F.killed}</span>
           {l.b ? <Nick p={l.b} /> : null}</div>)}
   </div>;
 }

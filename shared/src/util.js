@@ -15,9 +15,11 @@ export const unpackDir=x=>({nx:((x&255)-128)/127,ny:(((x>>>8)&255)-128)/127,vn:x
 export function normalizar(s){
   return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
 /**
- * A RAIZ de um apelido. `botNick` monta os nicks em cinco formatos (`base`, `base42`, `base_137`, `BASE`,
- * `xXbaseXx`) — quem escreve no chat digita a raiz, não o enfeite: quem chama "Trovao_137" chama de
+ * A RAIZ de um apelido. `botNick` monta os nicks em quatro formatos (`base`, `base42`, `base_137`,
+ * `BASE`) — quem escreve no chat digita a raiz, não o enfeite: quem chama "Trovao_137" chama de
  * "trovao". Sem desmontar isso, metade das menções passaria batida.
+ * ⚠️ O `xXbaseXx` continua sendo desmontado aqui mesmo tendo saído de `botNick` (é assinatura de gerador,
+ * não de pessoa): HUMANOS ainda escolhem nicks assim, e é deles que a raiz precisa ser achada.
  */
 export function baseNick(nick){
   let n=normalizar(nick).replace(/\s+/g,'');

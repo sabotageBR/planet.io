@@ -35,7 +35,7 @@ const CORTE_MIN=5,CORTE_K=.6,DIST_MIN=4,SUF_MIN=4,TOL2_MIN=9;   // ver os caminh
 // e sem esta lista o bot "PRO" respondia a todo "vem pro meio", e o "vex" a todo "vem". Falso positivo é o
 // pecado grave aqui: responder a quem não te chamou é exatamente o "não polua o chat".
 // Um nick que seja exatamente uma destas nunca é reconhecido por menção — é o preço, e é o barato.
-const COMUNS=new Set(('que com para pra pro por uma uns seu sua meu nao sim vem vai vou tem ter foi era ele ela eles isso essa esse '
+export const COMUNS=new Set(('que com para pra pro por uma uns seu sua meu nao sim vem vai vou tem ter foi era ele ela eles isso essa esse '
  +'isto aqui ali la ta to tu voce vcs vc todo toda tudo nada mais bem mal boa bom bora agora ja so ate dai sai sao dos das num nem '
  +'quem como onde cade calma corre gente mano cara gas top gg glhf kkk eita vish opa oi ola valeu foda '
  +'the and you your are was get got out off run hey yes yep nope lol wtf omg brb this that here there come '
@@ -84,6 +84,24 @@ const OFENSA=new RegExp('\\b('+[
   'fdp','filho da','vai se','vtnc','tnc','arrombad[ao]s?','desgraçad[ao]s?','retardad[ao]s?','mongol[oó]ide',
   'ass\\b','asshole','bitch','cunt','fag','faggot','whore','slut','dick','pussy','suck my','blow me','retard',
 ].join('|')+')\\b','i');
+// ── O QUE NÃO SE FALA NUMA PARTIDA ────────────────────────────────────────────
+// O jogo tem caricaturas de Trump, Lula, Bolsonaro, Putin, Zelensky e Milei, e o SYSTEM agora AUTORIZA
+// brincar com quem o jogador está vestindo. A graça é a PERSONA — "esse Einstein não calcula nada" —, e
+// o que não pode sair é a manchete: opinião política, eleição, partido, guerra, religião. Isto mora aqui
+// e não só no SYSTEM pelo mesmo motivo de OFENSA: a instrução é um PEDIDO, e o modelo escapa uma em dez.
+// ⚠️ "esquerda" e "direita" NÃO entram soltas: são direções dentro do jogo ("vem pela esquerda"), e
+// vetá-las comeria fala legítima de partida o dia inteiro.
+const POLITICA=new RegExp('\\b('+[
+  'elei[çc][ãa]o','eleitor','eleitoral','votar','voto','urna','presidente','deputado','senador','partido',
+  'comunista','socialista','fascista','ditadura','golpe','corrup[çc][ãa]o','impeachment','esquerdista','direitista',
+  'petista','bolsonarista','nazi','nazista','guerra','religi[ãa]o','igreja','deus','jesus','al[aá]',
+  'election','voter','ballot','president','senator','congress','communist','socialist','fascist','dictator',
+  'coup','impeach','leftist','rightist','nazi','war','religion','church','god','jesus','allah',
+].join('|')+')\\b','i');
+// A linha que ENTREGA o preenchimento. No Battle Royale o bot não se identifica (`anonBots` tirou o
+// PLAYER_FLAG.BOT do fio de propósito), e bastava um deles escrever "vc é bot" para desfazer isso na tela.
+const BOT_META=/\b(bot|bots|npc|ia|ai|rob[ôo]|robot|script|fake)\b/i;
+const APONTA=/\b(voce|vocês|voces|você|tu|ele|ela|eles|sao|são|é|eh|you|u r|ur|is|are|these|those)\b/i;
 /**
  * A saída de um modelo não é uma linha de chat até provar que é. Corta no primeiro `\n` (ele adora listar),
  * tira o próprio nome quando ele vem como prefixo de turno, tira aspas e asteriscos de "narração", derruba
@@ -105,8 +123,12 @@ export function sanitiza(txt,nome=''){
   if(!s)return null;
   if(SUSPEITO.test(s))return null;
   if(OFENSA.test(s))return null;
+  if(POLITICA.test(s))return null;
+  // Meta-bot só conta quando APONTA para alguém: "bot" sozinho é gíria de partida ("robô" de futebol,
+  // "ai" em espanhol), e vetar a palavra solta calaria fala normal. O par é que denuncia.
+  if(BOT_META.test(s)&&APONTA.test(s))return null;
   if(s.split(' ').length>BOT_LLM.MAX_WORDS)return null;    // parágrafo não é fala de partida: melhor calar
-  if(s.length>Math.min(BOT_LLM.MAX_CHARS,CHAT.MAX_CHARS))return null;
+  if(s.length>Math.min(BOT_LLM.MAX_CHARS,CHAT.MAX_CHARS))return null;   // ⚠️ MAX_CHARS é o teto da SAÍDA; o corte do histórico é HIST_CHARS
   return s;}
 
 // ── idioma ───────────────────────────────────────────────────────────────────
@@ -152,9 +174,19 @@ export function aberta(texto,temCitacao=false){
 // ── prompt ───────────────────────────────────────────────────────────────────
 const SYSTEM=[
   'You are a player in a fast multiplayer .io game about planets that eat each other. You are NOT an assistant.',
-  'Write ONE short chat line, like a real player typing mid-match: max 10 words, lowercase is fine, typos are fine.',
+  'Write ONE short chat line, like a real player typing mid-match: usually under 12 words, never more than 16.',
+  'Lowercase is fine, typos are fine.',
   'Be funny and cocky. Trash talk and mockery are welcome, and mild swearing is fine.',
   'Hard limit: no sexual insults, no slurs, nothing about anyone\'s family, body or identity. Provoke about the GAME.',
+  // ── O NOME DO JOGADOR É MATÉRIA-PRIMA ──
+  // Metade da graça de um .io está no nick que a pessoa escolheu, e o bot ignorava isso completamente.
+  // O bloco [who is who] traz o que o SERVIDOR sabe de verdade (a caricatura que o jogador está vestindo,
+  // o país, o nível); esta instrução libera o que só o MODELO sabe — que "pizzalover" é comida e que
+  // "coringa" é um personagem. A LLM já tinha esse conhecimento; o que faltava era a permissão.
+  'Player names are often references: a footballer, a singer, a politician, a meme, a food, a city, a movie.',
+  'When a name obviously refers to something real, play with it — that is half the joke in this game.',
+  'Never say anyone is a bot, an NPC, fake or a script: everyone here is a person.',
+  'Never talk about politics, elections, parties, war or religion. Joke about the PERSON as a character, never about their opinions.',
   'LANGUAGE RULE, follow it strictly: when a message is addressed to you, reply in THAT message\'s language,',
   'even if the rest of the chat is in another one. Otherwise use the language of the recent chat.',
   'With no chat at all, use Brazilian Portuguese.',
@@ -223,6 +255,49 @@ export function partidaLinha(c){
       :`you are almost as big as ${c.lider}`);}
   if(c.zonaS>0&&c.zonaS<45)P.push(`the gas closes in ${c.zonaS} seconds`);
   return P.join('; ');}
+/**
+ * QUEM É QUEM. O prompt sabia o que o bot estava vivendo e não sabia quem era NINGUÉM — os nomes
+ * entravam como etiquetas vazias, e o bot provocava "o Messi" sem fazer ideia de que ali havia um Messi.
+ * A caricatura é o dado mais forte do prompt inteiro, e é FATO: o servidor decidiu a skin daquela vida a
+ * partir do nick (shared/src/eggs.js), então "quem se chama messi está com a cara do Messi" é algo que
+ * ele SABE, não algo que o modelo adivinha.
+ * Em palavras e só quem tem o que dizer: quem não tem caricatura, nem país, nem nível alto não gasta um
+ * caractere — o prompt tem teto (BOT_LLM.PROMPT_MAX_CHARS) e prompt gordo é prompt lento.
+ * @param {{nome:string,egg?:string|null,pais?:string|null,nivel?:number}[]} gente @param {string} eu
+ */
+export function elencoLinha(gente,eu){
+  const P=[];
+  for(const g of gente||[]){
+    const q=[];
+    if(g.egg)q.push(`plays as ${g.egg}`);
+    if(g.pais)q.push(`from ${paisEn(g.pais)}`);
+    if((g.nivel||0)>=BOT_LLM.NIVEL_ALTO)q.push(`level ${g.nivel}`);
+    if(q.length)P.push(`${g.nome===eu?'you':`"${g.nome}"`} ${q.join(', ')}`);}
+  return P.join('; ');}
+/**
+ * O país em INGLÊS. `countryName` de shared/countries.js devolve pt-BR, e o prompt inteiro é inglês —
+ * "from Brasil" no meio dele é a única linha que destoa, e o modelo responde pior a mistura.
+ * ⚠️ `Intl.DisplayNames` LANÇA em código inválido, e `gp.country` de um humano vem do banco: o código
+ * cru é a saída de emergência, nunca uma exceção subindo pelo caminho da fala.
+ */
+const REGIAO=(()=>{try{return new Intl.DisplayNames(['en'],{type:'region'});}catch{return null;}})();
+export function paisEn(cc){
+  const c=String(cc||'').toUpperCase();if(!/^[A-Z]{2}$/.test(c))return '';
+  try{return (REGIAO&&REGIAO.of(c))||c;}catch{return c;}}
+/**
+ * O ASSUNTO que a sala está pedindo, por ordem de urgência: o relógio (o gás fechando), a fofoca (quem
+ * acabou de morrer), o topo (alguém ficou enorme) e, na falta de tudo, a partida.
+ * PURA de propósito, no molde de `aberta`/`rankLinha`: é o que impede a INICIATIVA de inventar assunto —
+ * o bot só puxa conversa sobre o que está de fato acontecendo — e é testável sem subir sala nem rede.
+ * @param {{zonaS?:number,feedFresco?:boolean,lider?:string|null,fracLider?:number,vivos?:number}} c
+ */
+export function escolheAssunto(c){
+  const o=c||{};
+  if(o.zonaS>0&&o.zonaS<30)return{assunto:'gas',quem:null};
+  if(o.feedFresco)return{assunto:'feed',quem:null};
+  if(o.lider&&o.fracLider>0&&o.fracLider<.35)return{assunto:'lider',quem:o.lider};
+  if(o.vivos>1&&o.vivos<=6)return{assunto:'poucos',quem:null};
+  return{assunto:'partida',quem:null};}
 /** As últimas mortes da sala, em uma linha. É a fofoca: o que todo mundo acabou de ver acontecer. */
 export function feedLinha(feed){
   const v=(feed||[]).filter(Boolean);
@@ -244,11 +319,23 @@ function evento(c){
     case 'escudo':return c.quem?`${c.quem} just broke your shield`:'your shield just broke';
     case 'cacado':return c.quem?`${c.quem} is hunting you down right now`:'someone is hunting you down right now';
     case 'lider':return 'you just took the lead';
+    // ⚠️ Sem um case PRÓPRIO isto cairia no `default` ('the match is going on') e a iniciativa viraria uma
+    // linha genérica sobre nada — a mesma armadilha do `||BOT_CHAT.kill` de `_fraseFixa`. O que faz a
+    // iniciativa funcionar é o "nobody is talking": é ele que dá licença ao modelo para ABRIR conversa em
+    // vez de responder a alguém.
+    case 'puxa':return c.assunto==='gas'?'nobody is talking and the gas ring is about to close on everyone'
+      :c.assunto==='feed'?'nobody is talking, and you want to comment on what the room just saw happen'
+      :c.assunto==='lider'?(c.quem?`nobody is talking. ${c.quem} is running away with this match and you want to say something about it`
+                                  :'nobody is talking and you want to say something about who is winning')
+      :c.assunto==='poucos'?'nobody is talking and there are almost no players left'
+      :'the chat has been quiet for a while and you feel like starting a conversation about this match';
     default:return 'the match is going on';}}
 /**
  * @param {{nome:string,persona?:string,pericia?:string,historia?:{quem:string,jeito:string,bordao:string}|null,
  *   rank?:number,vivos?:number,modo?:string,equipe?:boolean,kind:string,quem?:string,texto?:string,
- *   estado?:object,agressor?:object|null,historico?:{name:string,text:string}[]}} c
+ *   estado?:object,agressor?:object|null,assunto?:string|null,
+ *   gente?:{nome:string,egg?:string|null,pais?:string|null,nivel?:number}[],
+ *   historico?:{name:string,text:string}[]}} c
  *
  * Ordem do `user`, e por que ela é essa: quem ele é → o que está vivendo AGORA → quem está batendo nele →
  * o gatilho → a conversa → a linha dirigida a ele. O que está mais perto do fim pesa mais na resposta, e a
@@ -275,7 +362,7 @@ export function montaPrompt(c){
   // Cada linha do histórico é aparada: uma frase de 140 chars é legítima no chat, mas quatro delas são
   // 560 chars de contexto de baixo valor competindo com o TIMEOUT_MS. A mensagem DIRIGIDA (lá embaixo)
   // não é aparada — essa é a que o bot precisa responder.
-  const corta=t=>{const x=String(t||'');return x.length>BOT_LLM.MAX_CHARS?x.slice(0,BOT_LLM.MAX_CHARS-1)+'…':x;};
+  const corta=t=>{const x=String(t||'');return x.length>BOT_LLM.HIST_CHARS?x.slice(0,BOT_LLM.HIST_CHARS-1)+'…':x;};
   const hist=(c.historico||[]).slice(-nHist).map(l=>`${l.name}: ${corta(l.text)}`).join('\n');
   // A mensagem dirigida REPETIDA no fim, sozinha e com a ordem de idioma colada nela. Enterrada no meio do
   // histórico ela perdia: numa sala onde os bots vinham falando português, um "hey X, you are trash" era
@@ -291,8 +378,11 @@ export function montaPrompt(c){
   // ORDEM: quem ele é → a PARTIDA em volta → o que está vivendo → o que a sala viu → o gatilho → a
   // conversa → a linha dirigida. O que está mais perto do fim pesa mais, e por isso a partida vem cedo
   // (é pano de fundo) e a linha dirigida fica por último (é o que ele tem que responder).
-  const part=partidaLinha(c),ff=feedLinha(c.feed);
-  const user=`${cab}\n`+(part?`[the match: ${part}]\n`:'')
+  const part=partidaLinha(c),ff=feedLinha(c.feed),quem=elencoLinha(c.gente,c.nome);
+  // O elenco entra CEDO, logo depois de quem ele é: identidade é o pano de fundo mais estável do prompt,
+  // e o que fica perto do FIM é o que o modelo tem que responder.
+  const user=`${cab}\n`+(quem?`[who is who: ${quem}]\n`:'')
+    +(part?`[the match: ${part}]\n`:'')
     +(agora?`[right now: ${agora}]\n`:'')
     +(ff?`[the room just saw: ${ff}]\n`:'')
     +`[what just happened: ${evento(c)}]\n`
@@ -309,7 +399,7 @@ export function montaPrompt(c){
 export function createBotChat({llm,log=null,metrics=null}){
   return{
     ativo(){return !!(llm&&llm.ok());},
-    citou,sanitiza,montaPrompt,baseNick,aberta,estadoLinha,agressorLinha,
+    citou,sanitiza,montaPrompt,baseNick,aberta,estadoLinha,agressorLinha,elencoLinha,escolheAssunto,
     async gerar(ctx){
       if(!llm||!llm.ok())return null;
       const {system,user}=montaPrompt(ctx);

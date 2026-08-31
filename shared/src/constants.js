@@ -14,7 +14,27 @@ export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS
   // minutos para encher — o mesmo tempo que uma sala de verdade levaria num horário morno.
   // ⚠️ Só vale no LIVRE: no Battle Royale quem preenche é o LOBBY, com a curva própria dele (BR.FILL_EXP),
   // e lá `botCount` é 0 justamente porque o preenchimento não passa por aqui.
-  BOT_SEED:3,BOT_JOIN_TICKS:[360,840]};
+  // ── ...E NÃO NASCE TODA PEQUENA ──
+  // Os preenchimentos nasciam TODOS na mesma faixa (PLAYER.BOT_R), do tamanho de quem acabou de entrar —
+  // então a sala nova parecia uma sala NOVA, que é o contrário do que a porta do Livre promete (entra-se
+  // "direto, numa sala em andamento"). A abertura passa a ter planeta de todo tamanho: `SEED_R` são as
+  // faixas de raio dos dois tiers GRANDES (gigante e médio; o pequeno continua sendo `PLAYER.BOT_R`, e
+  // repetir [24,58] aqui só criaria uma segunda verdade) e `SEED_MIX` diz QUANTOS de cada um há na
+  // SEMENTE — 2 gigantes e 3 médios dos BOT_SEED (6), o resto pequeno. Números, não frações: fração aqui
+  // MENTE (`.25` de 6 arredonda para 2, que é 33%) e ninguém consegue pedir "um gigante a menos" mexendo
+  // nela. E é COTA, não probabilidade: com sorteio independente uma sala em cada vinte sai só de
+  // bolinhas, e a sensação de "isto já estava rolando" não pode depender de sorte.
+  // `BOT_SEED` subiu de 3 para 6 pelo mesmo motivo: a semente deixou de ser o mínimo para a sala não
+  // estar vazia e passou a ser a sala que já estava rolando — três planetas não contam essa história, e
+  // a chegada gradual continua igual (faltam 9 para o alvo de 15). ⚠️ 7 é o teto prático: com 8 a sala
+  // enche dentro da janela do teste de chegada gradual (server/test/roombots.test.js).
+  // `SEED_WINDOW_TICKS` é o quanto a abertura ainda vale para quem CHEGA depois, e ele é METADE do
+  // critério: quem manda é o MENOR entre esse relógio e o quanto a sala ainda tem de vaga. Só o relógio
+  // não servia — a sala enche em ~93 s e a janela é de 120 s, então o decaimento nunca chegava a zero e
+  // toda chegada vinha com chance de gigante; e ele ainda ficava amarrado ao env `ROOM_BOTS` e ao
+  // `BOT_JOIN_TICKS` em silêncio. O enchimento se normaliza sozinho: cheia é cheia em qualquer ritmo.
+  SEED_R:[[200,250],[80,150]],SEED_MIX:[2,3],SEED_WINDOW_TICKS:7200,
+  BOT_SEED:6,BOT_JOIN_TICKS:[360,840]};
 // HOST_HOLD_MS: uma sala COM DONO não é recolhida enquanto essa carência não vencer. O ceifador padrão a
 // apagaria em 35 s sem humanos — e uma sala privada existe justamente para esperar os amigos chegarem, então
 // o comportamento normal a mataria antes de o segundo jogador abrir o link. Só o REMOVE é adiado: a sala
@@ -473,12 +493,17 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:316.2278,MAGNET_RANGE:5.5,MAGNET_RA
 // puxa a recompensa E o perigo — ligar o ímã perto de um cinturão é escolha, não acidente
 // escudo: não expira; nível 1..SHIELD_MAX_LEVEL (N mísseis para destruir), sobe 1 nível a cada SHIELD_EVOLVE_TICKS sem ser atingido; cai ao disparar/dividir
 // ímã e escudo valem POR PEÇA: só a parte que pegou o powerup se beneficia; ao fundir, os poderes das duas se juntam (escudo soma até o teto, ímã soma o tempo restante)
-export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1.3,HUNT_DIST:900,FOOD_DIST:520,MAX_PIECES:8,SPLIT_P:.06,FIRE_P:.014,
-  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:420,SPLIT_REACH:780,AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
-  STICK:1.28,HAZ_TTL:6,DANG_N:6,FIRE_CD:[50,130],FEED_CD:40,
+export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1.3,HUNT_DIST:900,FOOD_DIST:520,MAX_PIECES:8,
+  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:420,AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
+  STICK:1.28,HAZ_TTL:6,DANG_N:6,FIRE_CD:[50,130],FEED_CD:40,MISSILE_MIN_D:1100,
+  // Quanto dura o ARREMESSO do salto: o tick em que |v| do canal de impulso cai abaixo de BOOST.STOP.
+  // DERIVADO, nunca cravado — o filho é dirigível o voo inteiro (integratePiece soma o ponteiro por cima
+  // do boost), e é essa janela que o bot usa para segurar a mira na presa em vez de voltar ao flanco.
+  JUMP_TICKS:Math.ceil(Math.log(SPLIT.DIST*BOOST.K/BOOST.STOP)/BOOST.K*TICK_HZ),
   COMMIT:{hunt:90,flee:45,food:60,zone:0,hold:150,intercept:30,wander:40},
   HAND:{DIST:620,JITTER_STEP:.05,JITTER_MAX:.28,FLICK:[8,15],STOP_R:26,LEAD_MAX:1.15,IDLE_TURN:.06},
-  HUNT:{ARC_DIRS:8,ARC_STEP:560,OPEN:.62,FLANK:.7,SPLIT_MARGIN:1.08,THIRD_R:900,TEAM_SIDE:.85,DODGE:1.05},
+  HUNT:{ARC_DIRS:8,ARC_STEP:560,OPEN:.62,FLANK:.7,SPLIT_MARGIN:1.08,THIRD_R:900,TEAM_SIDE:.85,DODGE:1.05,
+    SPLIT_GAIN:.04,SPLIT_GAIN_SHIELD:.09,SPLIT_GAIN_N:.6,SPLIT_OPEN:.62,SPLIT_CONE:.45,BITE_CLEAR:520,BITE_PENALTY:.6},
   GAS:{RING:.7,EDGE:.86,LOOT_R:.5,LOOT_MIN_R:120,LOOT_TICKS:150,LATE_ALIVE:8,LATE_PULL:1.5},
   PERSONAS:[{id:"cacador",hunt:1.15,flee:.85,food:.7,fire:1.4,edge:.5},{id:"fazendeiro",hunt:.8,flee:1.25,food:1.45,fire:.7,edge:.15},{id:"oportunista",hunt:1,flee:1,food:1,fire:1,edge:.32}],
   SKILLS:[{id:"ruim",   w:18,react:20,turn:.11,jitter:1.7,lead:.15,zoneMargin:.85,mistake:.22,split:.45,weapon:.30,flee:.80},
@@ -503,6 +528,43 @@ export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1
 // braço confortável. STOP_R: apontar para DENTRO desse raio FREIA a peça (é como o bot "para", coisa que o
 // cérebro velho nunca fazia). FLICK: mirar custa movimento (o AIM escolhe pelo cursor), então atirar em algo
 // fora da direção de marcha é um puxão curto do ponteiro e a volta — igualzinho ao humano.
+//
+// ── A ECONOMIA DO SALTO (HUNT.SPLIT_*) ──
+// O salto de ataque era vetado por `!shield`, e isso estava errado por um fator de 2 a 7. Medido numa arena
+// de Livre (8 sementes × 7200 ticks × 24 bots): **73 % do tempo de caça** ficava barrado por esse veto, e o
+// bot passa a maior parte da partida blindado — o escudo não expira e sobe um nível a cada
+// SHIELD_EVOLVE_TICKS, então quem pega um nunca mais dividia na vida. Os dois lados da conta, na MESMA
+// unidade (fração da minha massa), que é todo o motivo de o preço ser dito em massa:
+//   ganho de um salto  = (rb/ra)², com teto (1/(√2·EAT.RATIO·SPLIT_MARGIN))² = 32 % (EAT.GAIN=1: a presa entra inteira)
+//   preço do escudo    = P(chegar míssil na janela de 30 s de mergeTicks) × (1 − MISSILE.HIT_SHRINK²) ≈ 0,23 × 19 % ≈ 4,4 %
+// SPLIT_GAIN (.04) é o piso quando não há escudo a perder: abaixo disso a mordida não paga os 30 s dividido.
+// SPLIT_GAIN_SHIELD (.09) é o preço COM escudo, e é o VALOR ESPERADO medido dele: um bot absorve ~0,5 míssil
+// a cada 30 s (a janela em que a fusão o mantém dividido) e cada absorção poupa 1 − MISSILE.HIT_SHRINK² =
+// 19 % da massa da peça → 0,49 × 19 % ≈ 9 %. Sem fator de segurança: é a conta, e foi também o melhor ponto
+// medido numa varredura de .16/.12/.09 em 24 arenas (137 → 176 → 246 saltos, com a massa média parada).
+// Exige `rb ≥ 0,30·ra`, ou seja o salto blindado só sai por uma presa que vale ≥ 9 % da minha massa — é o
+// "só de forma estratégica" do pedido, e não um veto.
+// ⚠️ O preço NÃO escala com o nível do escudo, embora `breakShield` leve o escudo inteiro e um nível 3
+// "valha" 47 % contra 19 % do nível 1. Foi tentado e é PIOR (246 → 113 saltos): com só ~0,5 míssil chegando
+// na janela, o 2º e o 3º nível quase nunca chegam a ser usados, então o valor ESPERADO é praticamente o
+// mesmo dos três — e cobrar pelo nível fecha o portão justo nos bots que sobreviveram o bastante para
+// chegar ao nível 3, que são exatamente os que têm tamanho para saltar.
+// ⚠️ E ele só ficou calibrável depois de tapar o vazamento do gatilho (ver o tiro em bot.js): enquanto o bot
+// destruía o próprio escudo atirando, ele vivia desblindado e este número quase não era consultado.
+// SPLIT_GAIN_N (.6) encarece cada salto seguinte (já dividido, o segundo renova o relógio de fusão e me
+// expõe a predadores de 0,813·r).
+// ⚠️ Quem NÃO relaxou foi o veto do TIRO: `applyFire` cobra um nível por puxão de gatilho, e o bot destrói o
+// próprio escudo 92× no gatilho contra 1× no salto (medido). Os dois usos precisam de leituras DIFERENTES —
+// o tiro cobra da PRIMEIRA peça viva, o salto quebra o escudo de TODA peça com r ≥ SPLIT.MIN_R.
+// SPLIT_OPEN (.62) substitui um `.35` cravado no código. `open` mede parede+gás+estrelas, e no Livre não há
+// zona num mapa de 9600²: o valor medido é 0,933, então aquele fator era 0,35 PERMANENTE. 0,62 preserva o
+// bônus de arco fechado (0,62→1,0 quando open→0), que continua valendo no Battle Royale.
+// SPLIT_CONE (.45 rad = 26°): o erro angular entre o ponteiro e a presa no instante do disparo tinha p50 0,38
+// e p75 1,17 rad — 41 % dos saltos saíam torto, porque `applySplit` arremessa na direção do PONTEIRO e a mão
+// do bot é filtrada por HAND/turn. Agora ele leva o ponteiro ao alvo e só então aperta, como gente.
+// BITE_CLEAR (520 px) / BITE_PENALTY (.6): caçar um PEDAÇO pequeno de um jogador grande. O bocado só vale se
+// estiver a mais de BITE_CLEAR do guarda (depois de morder eu estou a r/√2 e o guarda anda ~340 px no tempo
+// do voo + engolir), e vale menos que uma presa limpa da mesma massa — é presa de segunda, colada a quem me come.
 // HUNT.OPEN: fração do arco de fuga livre acima da qual a presa está em campo aberto e a caça não vale a pena.
 // FLANK: quanto o bot desvia da linha reta para FECHAR o lado aberto (encurralar) em vez de correr atrás.
 // SPLIT_MARGIN: folga sobre o predicado REAL de comer depois do salto (r/√2 ≥ 1,15·rb ⇒ rb ≤ r/1,626).
@@ -521,7 +583,7 @@ export const BOT_NAMES=["Nebulox","Vortexia","Cosmara","Drakonis","Stellara","Gr
 // BOT_NICKS é a lista do Battle Royale, onde o preenchimento NÃO se identifica: são apelidos no estilo do
 // que um jogador de verdade escolhe (pt-BR, com e sem número), e não nomes de nave espacial. Com 20 nomes
 // temáticos numa sala de 50 a farsa cairia na primeira olhada no placar — repetidos, todos do mesmo tema.
-// São 295 aqui, mais os cinco formatos de `botNick`. Com 50 por sala isso é folga de sobra dentro de UMA
+// São 373 aqui, mais os quatro formatos de `botNick`. Com 50 por sala isso é folga de sobra dentro de UMA
 // partida, mas o número grande é para as partidas SEGUIDAS: com 96 bases o jogador via a mesma escalação
 // de nomes toda vez, que denuncia tanto quanto repetir dentro da sala.
 export const BOT_NICKS=[
@@ -599,6 +661,29 @@ export function botNick(rng,usados){
       :base.toUpperCase();
     if(!usados.has(n.toLowerCase())){usados.add(n.toLowerCase());return n.slice(0,16);}}
   return("j"+rng.int(1000,999999)).slice(0,16);}
+/**
+ * TAMANHO de um preenchimento que ENTRA na sala (ver ROOM.SEED_R). O do respawn continua sendo
+ * `PLAYER.BOT_R` puro: quem morre recomeça pequeno, como todo mundo.
+ * `i` é quantos bots já estão na sala e `f` (1 → 0) é o quanto a abertura ainda vale.
+ * Os `ROOM.BOT_SEED` primeiros seguem a COTA de `ROOM.SEED_MIX` — a sala tem que parecer em andamento
+ * SEMPRE, e sorteio independente às vezes entrega seis bolinhas.
+ * ⚠️ GIGANTE SÓ NA SEMENTE. Ele é o veterano que já estava lá quando você chegou; um planeta de 250 de
+ * raio nascendo no minuto 3, dentro da câmera de quem já cresceu, é o pop-in que o `BOT_SEED` existe
+ * para evitar — voltando pela porta dos fundos. Quem chega depois da abertura entra no máximo MÉDIO, com
+ * a chance decaindo por `f`, e a mistura volta ao [24,58] de sempre sozinha.
+ * ⚠️ `f <= 0` cala TAMBÉM a cota da semente, e não só o sorteio: é isso que faz um `f` zerado (um modo
+ * que não é o Livre) devolver o tamanho de sempre pelos DOIS ramos, em vez de semear gigante calado.
+ * ⚠️ O raio sai de `rng.range` DENTRO do tier: dois gigantes com o mesmo raio na mesma sala denunciariam
+ * o gerador tão bem quanto o `xX…Xx` que saiu do `botNick`.
+ * @param {{next:()=>number,range:(a:number,b:number)=>number}} rng @param {number} i @param {number} f
+ */
+export function botSpawnR(rng,i,f){
+  const g=ROOM.SEED_MIX[0],m=ROOM.SEED_MIX[1],n=ROOM.BOT_SEED;let tier=2;
+  if(f>0){
+    if(i<n)tier=i<g?0:i<g+m?1:2;                                     // a semente: cota, sem sorteio
+    else if(rng.next()<m/n*(f<1?f:1))tier=1;                         // depois dela: no máximo um médio, cada vez mais raro
+  }
+  const faixa=tier<2?ROOM.SEED_R[tier]:PLAYER.BOT_R;return rng.range(faixa[0],faixa[1]);}
 // ── FALA DOS BOTS ────────────────────────────────────────────────────────────
 // Uma sala de 50 pessoas que atravessa a partida inteira em silêncio é tão estranha quanto um bot correndo
 // em linha reta. As falas são CURTAS, minúsculas e presas a um gatilho do jogo — nada de papo solto, que é
@@ -620,10 +705,23 @@ export const BOT_CHAT={
   // Resposta ENLATADA a quem chamou pelo nome. Existe porque ser chamado e ficar mudo é o que mais denuncia
   // um bot — e a LLM cai (disjuntor, teto de geração, fila cheia) com muito mais frequência do que se imagina.
   resposta:["fala ai","que isso mano","kkkk","calma ai","vem entao","pode vir","que foi","to aqui",
-            "sei nao hein","fala serio","era so o que faltava","ta bom ne"]};
+            "sei nao hein","fala serio","era so o que faltava","ta bom ne"],
+  // A INICIATIVA: o bot PUXA assunto quando a sala está calada (Room._iniciativaTick). Sem LLM ela não
+  // inventa assunto nenhum — só quebra o silêncio, que é o que uma frase enlatada sabe fazer honestamente.
+  // Pool próprio é obrigatório: sem ele o `||BOT_CHAT.kill` de _fraseFixa faria o bot dizer "peguei" do nada.
+  puxa:["alguem vivo ai","que silencio","essa sala ta quieta","quem ta ganhando","cade a galera",
+        "ta osso essa partida","alguem viu esse gigante","to quase morrendo aqui"]};
 export const BOT_TALK={ROOM_CD_TICKS:420,BOT_CD_TICKS:2400,MAX_PER_MATCH:3,NO_REPEAT:6,
-  P:{start:.35,kill:.22,morte:.3,zona:.18,poucos:.3,equipe:.28,tiro:.10,escudo:.14,cacado:.06,lider:.12},
-  TYPO_P:.12,QUEUE_MAX:12};
+  P:{start:.35,kill:.22,morte:.3,zona:.18,poucos:.3,equipe:.28,tiro:.10,escudo:.14,cacado:.06,lider:.12,puxa:.5},
+  TYPO_P:.12,QUEUE_MAX:12,
+  // ── INICIATIVA: quebrar o silêncio ──
+  // Até aqui a conversa só nascia de um humano digitar, e uma sala em que ninguém NUNCA começa nada é tão
+  // estranha quanto uma em que ninguém fala. Orçamento próprio (não passa por `botChatTick`, onde perderia
+  // a loteria para qualquer abate do mesmo tick).
+  SILENCIO_TICKS:2700,          // 45 s sem uma linha na sala. Abaixo de ~30 s isso atropela a conversa que
+                                // estava só respirando entre uma resposta e outra
+  INICIATIVA_CD_TICKS:3600,     // 60 s entre duas iniciativas da MESMA sala
+  INICIATIVA_MAX_PER_MATCH:4};  // quatro vezes por rodada alguém quebra o gelo, não mais
 // Gatilho novo NÃO aumenta o número de linhas: todos passam por botChatTick, que sorteia UM da fila e joga o
 // resto fora, e por ROOM_CD_TICKS/BOT_CD_TICKS/MAX_PER_MATCH. O que ele aumenta é a chance de a única linha
 // que sai ser sobre o que acabou de acontecer com AQUELE bot.
@@ -642,13 +740,20 @@ export const BOT_LLM={
   HIST:8,               // linhas de chat que entram no prompt
   HIST_DIRIGIDA:6,      // quando falaram COM o bot, a linha dirigida vale mais que o backlog — mas 4 linhas
                         // deixavam o bot responder no vácuo, sem saber do que a sala estava falando
-  MAX_WORDS:14,MAX_CHARS:90,   // teto do que sai: acima disso vira parágrafo, e ninguém digita parágrafo em partida
+  // ⚠️ MAX_CHARS e HIST_CHARS eram a MESMA constante, em dois papéis diferentes: o teto do que o bot DIZ
+  // e o corte de cada linha do HISTÓRICO que entra no prompt. Separá-las é o que deixa a fala crescer sem
+  // engordar o prompt em um caractere — e o prompt já estava estourando PROMPT_MAX_CHARS sem ninguém ver.
+  MAX_WORDS:16,MAX_CHARS:110,  // teto do que sai: acima disso vira parágrafo, e ninguém digita parágrafo em
+                               // partida. Subiu de 14/90 porque uma piada com referência do mundo real não
+                               // cabia em 14 palavras — e a peneira RECUSA em vez de cortar, então o teto
+                               // apertado não encurtava a fala: trocava a fala por uma frase enlatada.
+  HIST_CHARS:90,               // ...e o corte de cada linha do histórico, que continua onde estava
   TEMP:1.05,NUM_PREDICT:48,
   MENTION_ROOM_CD_TICKS:150,   // 2,5 s: responder a quem chama é esperado, então a sala segura bem menos
   MENTION_BOT_CD_TICKS:600,    // 10 s por bot
   MENTION_P:.92,               // citado pelo nome, quase sempre responde
   REPLY_P:.16,                 // sem citação, só quem falou por último tem direito de réplica — e raramente
-  MAX_MENTION_PER_MATCH:6,
+  MAX_MENTION_PER_MATCH:12,    // dobrado: uma conversa longa gasta 2–3 do mesmo bot numa cadeia só
   // ── CORO: quantos bots respondem à MESMA mensagem ──
   // Uma pergunta jogada para a sala ("e aí galera, tudo bem?") com UMA resposta parece script; com três
   // chegando em tempos diferentes parece gente digitando. Provocação dirigida a um bot continua sendo dele.
@@ -672,22 +777,72 @@ export const BOT_LLM={
   DIGITA_MIN_MS:450,           // um "kkkk" também não sai instantâneo
   DIGITA_MAX_MS:3400,          // e ninguém espera mais que isso por uma linha de chat de partida
   CORO_POP_MAX:2,              // itens despachados por tick (o step() é de 60 Hz e é de TODAS as salas)
-  FILA_MAX:6,                  // fila de fala agendada por sala; cheia, o NOVO é descartado
+  FILA_MAX:8,                  // fila de fala agendada por sala; cheia, o NOVO é descartado. Era 6, e com
+                               // CONVERSA_MAX_GER=8 o amortecedor ficou apertado por construção
   // ── CORRENTE: bot respondendo a bot ──
   // Liberado, mas curto: só continua quando a linha CITA alguém pelo nome, e a profundidade é limitada.
-  CADEIA_MAX:2,                // no máximo 2 réplicas depois da linha do humano
-  CADEIA_P:.75,                // mesmo citado, às vezes a corrente simplesmente morre
+  CADEIA_MAX:5,                // era 2. É a ÚNICA terminação que não depende de sorteio — a prova de que a
+                               // corrente acaba. Todo o resto abaixo é probabilidade.
+  CADEIA_P:.75,                // a linha CITOU alguém: quase sempre continua
+  // A linha NÃO citou ninguém. Numa conversa de gente isso é a REGRA, não a exceção ("kkkk", "nem vi",
+  // "tu ta doido") — exigir vocativo para continuar era o que matava a corrente no SEGUNDO elo, e é por
+  // isso que uma conversa nunca passava de duas réplicas. Continuar sem ser chamado é mais fraco que ser
+  // chamado, e a probabilidade tem que dizer isso: SOLTA_P < CADEIA_P.
+  // ⚠️ É ESTE o botão de "conversa mais longa", não o CADEIA_MAX. Subir para .65 leva a cadeia média de
+  // 2,6 para 3,2 elos; o CADEIA_MAX só define onde ela é cortada à força.
+  CADEIA_SOLTA_P:.5,
+  // Quantos elos um bot espera para voltar a falar. Com CADEIA_MAX=5, o "nunca repetir slot" de antes
+  // exigia CINCO bots distintos por conversa — revezamento, não conversa. A janela de 2 proíbe o que
+  // incomoda (A→B→A no mesmo fôlego) e libera o que parece gente (A→B→C→A). Com 1, A↔B↔A↔B ficaria
+  // liberado, que é dois bots monopolizando a sala.
+  CADEIA_JANELA:2,
+  CADEIA_BOT_CD_TICKS:120,     // 2 s: o cooldown por bot DENTRO da corrente. Sem ele o de MENÇÃO (10 s)
+                               // continuaria valendo nos elos, e o elo seguinte chega 1–4 s depois — ou
+                               // seja, afrouxar a janela acima seria um NO-OP.
+  // ── ORÇAMENTO DA CONVERSA ──
+  // A cadeia longa transformou UMA linha de humano em várias gerações: com CADEIA_MAX=5 e coro de até 3,
+  // uma frase podia pedir 15. O teto por BOT não segura (são bots diferentes) e MAX_INFLIGHT_ROOM também
+  // não — ele só ENFILEIRA. Quem segura é este.
+  CONVERSA_MAX_GER:8,          // gerações que UMA conversa inteira pode consumir
+  CONVERSA_MAX_GER_BOT:4,      // ...e metade quando quem abriu foi a INICIATIVA: puxar assunto não dá o
+                               // mesmo crédito que ser chamado por um humano
+  CONVERSA_CD_TICKS:900,       // 15 s depois do último elo até a sala aceitar CORO novo. Menção dirigida
+                               // NUNCA passa por aqui: ser chamado pelo nome e ficar mudo é o pecado.
   CADEIA_SCAN_MAX:24,          // teto de candidatos varridos por `citou` (Levenshtein por palavra)
   // ── MEMÓRIA CURTA do bot (quem atirou nele, quem o mordeu) ──
   MEM_N:6,                     // anel por bot; a leitura ignora o que passou do TTL, então não há varredura
   MEM_TTL_TICKS:900,           // 15 s: mais que isso e "o Evandro atirou em mim" já não é sobre agora
   MEM_QUENTE_TICKS:300,        // 5 s: dentro disto a fala é "acabou de atirar", não "vive atirando"
+  // ── QUEM É QUEM ──
+  // O prompt sabia o que o bot estava vivendo e não sabia quem era NINGUÉM: os nomes entravam como
+  // strings vazias de sentido. O servidor, porém, JÁ SABE quando um jogador está vestido de personagem
+  // real (shared/src/eggs.js decide a skin a partir do nick), e sabe o país e o nível de todo mundo.
+  ELENCO_MAX:4,                // pessoas descritas por prompt. Medido: 284 chars no pior caso (4 com
+                               // caricatura + país + nível), 91 no típico. Com 5 não cabe no teto.
+  NIVEL_ALTO:20,               // daqui para cima o nível vira adjetivo no prompt; abaixo não diz nada
   FEED_KEEP:12,                // mortes recentes guardadas na sala (o kill feed em texto, para o prompt)
   FEED_HIST:3,                 // e quantas delas entram: o bot comenta o que a sala ACABOU de ver, não a partida inteira
-  PROMPT_MAX_CHARS:1500,       // teto do `user` no pior caso — prompt gordo é prompt lento (ver TIMEOUT_MS)
-  // 1100 não é chute: é o pior caso MEDIDO (1026 chars ≈ 260 tokens) com a persona mais longa, o histórico
-  // cheio de linhas no tamanho máximo e a mensagem dirigida inteira, mais uma folga. Existe para que
-  // acrescentar contexto ao prompt tenha que passar por um teste, em vez de engordar em silêncio.
+  FEED_FRESCO_TICKS:900,       // 15 s: até aqui a última morte ainda é ASSUNTO. Passou disso, quem puxa
+                               // conversa comentando um abate parece estar lendo o log, não jogando.
+  PROMPT_MAX_CHARS:1900,       // teto do `user` no pior caso — prompt gordo é prompt lento (ver TIMEOUT_MS)
+  // 1900 não é chute: é o pior caso MEDIDO (1815 chars) com a persona mais longa, o histórico cheio de
+  // linhas no tamanho máximo, a mensagem dirigida inteira, o elenco com ELENCO_MAX pessoas e uma folga.
+  // Existe para que acrescentar contexto ao prompt tenha que passar por um teste, em vez de engordar em
+  // silêncio. ⚠️ E ele JÁ ESTAVA ESTOURADO em 1500: o teste montava um cenário sem `feed`, `modo`,
+  // `lider` e `zonaS` — campos que `Room._ctxFala` passa SEMPRE —, media 1225 e dava tudo certo,
+  // enquanto a produção mandava 1531. Um teto só vale o que o pior caso do teste vale.
+  // ── BALDE DE APELIDOS (server/src/rooms/botNames.js) ──
+  // A LLM também escreve os NOMES dos preenchimentos, para eles parecerem gente daquele país em vez de
+  // sorteios de uma lista fixa. Ela nunca é consultada no nascimento do bot (o lobby do BR pede até 50
+  // nicks num tick só): enche um balde em segundo plano, e `botNick` continua sendo o CHÃO.
+  NICK_LOTE:24,                // apelidos por pedido. Um país por lote, sorteado pela distribuição de sempre
+  NICK_POOL_MIN:16,            // abaixo disto o balde se reabastece
+  NICK_POOL_MAX:96,            // ...e para de encher aqui: 96 cobre duas salas de BR cheias
+  NICK_FILL_MS:20000,          // de quanto em quanto se olha o balde. Não há pressa: quem chega e o encontra
+                               // vazio simplesmente usa o nome de sempre, e ninguém percebe
+  NICK_NUM_PREDICT:420,        // ⚠️ o default (NUM_PREDICT 48) é de UMA linha de chat e cortaria o lote no meio
+  NICK_TIMEOUT_MS:25000,       // ⚠️ e este pedido NÃO tem prazo — é o oposto da fala, que é do INSTANTE
+  NICK_TEMP:1.15,              // um pouco mais solto que a fala: repetir apelido é o defeito a evitar aqui
   KEEP_ALIVE:'30m',            // carregar o modelo custa ~27 s; descarregá-lo entre partidas seria fatal
   FAILS_OPEN:6,BREAKER_MS:30000};   // N falhas seguidas → desiste por um tempo, em vez de pagar o timeout a cada gatilho
 // FAILS_OPEN subiu de 4 para 6 por causa do coro: três respostas que estourem o prazo já eram 3 falhas

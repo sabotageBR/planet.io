@@ -799,7 +799,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   dependeria de um pedido que não é mais feito.
 - **A SALA NÃO NASCE CHEIA** (`ROOM.BOT_SEED`/`BOT_JOIN_TICKS`, `Room._chegadaBots`): ela abria com os 15
   preenchimentos no MESMO tick, e quinze planetas surgindo juntos no instante em que você entra é a coisa
-  mais fácil de notar num .io. Agora a porta abre com `BOT_SEED` (3) e um novo entra a cada 6–14 s
+  mais fácil de notar num .io. Agora a porta abre com `BOT_SEED` (6) e um novo entra a cada 6–14 s
   sorteados, até o alvo — a sala leva ~2 min para encher, que é o tempo que uma sala de verdade levaria.
   ⚠️ Sala VAZIA seria pior que sala com bot (não há o que perseguir nem de quem fugir), e por isso existe
   a semente. ⚠️ Só vale no **Livre**: no Battle Royale quem preenche é o LOBBY, com a curva própria dele
@@ -807,6 +807,30 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   bot RENASCE ao morrer (`mode.respawnBots`), então a população não cai e a chegada se esgota sozinha
   depois que a sala enche — não é um relógio que fica acordando para sempre. Quem prova é
   `server/test/roombots.test.js`, que também trava o "para no alvo e não passa dele".
+- **...E NÃO NASCE TODA PEQUENA** (`ROOM.SEED_R`/`SEED_MIX`/`SEED_WINDOW_TICKS`, `botSpawnR`,
+  `Room.topUpBots`): a outra metade do mesmo defeito. Os preenchimentos nasciam TODOS na faixa
+  `PLAYER.BOT_R` ([24,58], do tamanho de quem acabou de entrar), então a sala nova continuava PARECENDO
+  nova — e `docs/design/modos.md` já prometia o contrário ("entrada: direto, sala em andamento"). A
+  abertura passa a ter planeta de todo tamanho: `SEED_MIX` diz QUANTOS de cada tier há na semente
+  (2 gigantes de r 200–250 e 3 médios de r 80–150 dos 6; o resto é o pequeno de sempre). ⚠️ É COTA, não
+  probabilidade: com sorteio independente uma sala em cada vinte sai só de bolinhas, e a sensação de
+  "isto já estava rolando" não pode depender de sorte. E são NÚMEROS, não frações — fração mente aqui
+  (`.25` de 6 arredonda para 2, que é 33%) e ninguém consegue pedir um gigante a menos mexendo nela.
+  ⚠️ **GIGANTE SÓ NA SEMENTE**: ele é o veterano que já estava lá quando você chegou, e um planeta de
+  250 de raio nascendo no minuto 3 dentro da câmera de quem já cresceu é o pop-in que o `BOT_SEED`
+  existe para evitar, voltando pela porta dos fundos. Quem chega depois entra no máximo MÉDIO, com a
+  chance decaindo pelo `f` — e `f` é o MENOR entre um relógio (`SEED_WINDOW_TICKS`, 2 min) e o quanto a
+  sala ainda tem de vaga. Só o relógio não servia: a sala enche em ~93 s contra uma janela de 120 s,
+  então o decaimento nunca chegava a zero e ele ainda ficava amarrado, em silêncio, ao env `ROOM_BOTS` e
+  ao `BOT_JOIN_TICKS`. ⚠️ O bot grande NÃO ganha `score` nem `food` de presente: o score só aparece na
+  tela no cartão "mais pontos" do BIG CRUNCH, e dar pontos de graça a um preenchimento tornaria mentiroso
+  justamente o prêmio que o jogador tem chance real de disputar. Ele chegou grande; o que fizer daqui em
+  diante é o que conta. ⚠️ O **nível** do preenchimento passou a acompanhar o tamanho (`Room._nivelBot`):
+  um planeta de 62 mil de massa com "nível 3" ao lado do nick é a mesma denúncia que o nome de catálogo
+  era. ⚠️ E `PLAYER.DECAY` desfaz a semente sozinha — a faixa gigante perde massa líquida e murcha para
+  a casa dos 150 de raio em 10–15 min se não comer: a semente é um ESTADO INICIAL, não um regime.
+  O `?local=1` usa a MESMA `botSpawnR`, decaindo pelo índice (lá os bots nascem todos no mesmo tick, e
+  passar `f=1` para os 24 daria o dobro de gigantes do servidor).
 - **CENÁRIO DAS TELAS DE MENU** (`ui/Scene.jsx` + o bloco `CENÁRIO` de `styles/ui.css`): fundo estrelado com
   planetas, lua e mísseis flutuando atrás do painel. Antes o fundo do menu era o CANVAS DO PIXI (o céu do
   jogo, parado) com um véu do tema por cima — a cor do menu dependia da hora sobre um céu que ninguém estava
@@ -965,11 +989,27 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 - **Placar da SALA** (`Room.roster`): a rodada do Livre caiu para **30 min** (`ROUND.TICKS` 108000, `DAYS` 2 —
   o dia do espaço continua com 15 min; ⚠️ quem manda em produção é o env `ROUND_TICKS`, e `roundInfo()` passou
   a mandar `days` porque cliente novo com env velho desenhava o céu na metade da velocidade). No fim vêm
-  QUATRO destaques (campeão · mais partículas · mais abates · maior K/D, este com piso de
+  QUATRO destaques (mais pontos · mais partículas · mais abates · maior K/D, este último com piso de
   `ROUND.AWARD_MIN_KILLS`). O roster existe porque `Sim.endRound` itera `sim.players`, onde só está quem
   ficou: `Room.leave` remove do mundo, e no Livre **morrer e renascer é `leave` + `join` num slot NOVO**.
   Chave estável: `u<userId>` → `r<resumeToken>` → `n<nick>` → `b<slot>`; **nunca `sessionId`**, que é por VIDA
   e agruparia errado justamente no respawn. `_rosterFold` é idempotente por vida (`gp.rosterFolded`) e ACUMULA.
+- **O CAMPEÃO É UMA FAIXA, E QUEM MAIS PONTUOU GANHOU O CARTÃO DELE** (`Room._mergeBoard` → `destaques
+  .pontuador`, `.champ-banner` em `ui/Round.jsx` + `styles/ui.css`): o campeão é quem tem a MAIOR MASSA no
+  instante do BIG CRUNCH — `vivos.sort` por massa e `board[0]`, o que sempre foi —, mas ele aparecia três
+  vezes na mesma tela (degrau maior do pódio, um dos quatro cartões de destaque e, no Battle Royale, o
+  subtítulo) e em nenhuma delas em tamanho de campeão. Agora é uma FAIXA logo abaixo do título, e o cartão
+  que ela liberou virou **mais pontos** — o `score` viajava no `roundEnd` em toda linha do board desde
+  sempre e NENHUM componente do cliente o lia. Ele é o único destaque que não mede tamanho nem violência
+  (sobe com cada grão, cada fragmento e cada planeta comido), e por isso é o que um humano tem chance real
+  de disputar contra 15 preenchimentos que passaram 30 min acumulando. ⚠️ A faixa sai de `r.champion`, e
+  não de `d.campeao`: o `?local=1` não manda `destaques`, e no fim por morte simultânea é o `champion` que
+  carrega o fallback do `lastAlive`. ⚠️ E ela NÃO aparece no Battle Royale, onde o subtítulo já diz quem (ou
+  qual equipe) venceu — numa vitória de equipe a faixa mostraria um nome só, contradizendo a linha de cima.
+  ⚠️ A chave `LB.champion` ("CAMPEÃO DA SALA") existia no dicionário e não era usada por ninguém; quem saiu
+  foi `awards.champion`. O payload de demonstração de `actions.js` (`mostrarTela("round")`) ganhou
+  `destaques` para a sonda de `scripts/responsive-check.mjs` medir a faixa e a fileira — sem eles o
+  `.awards` nem existe no DOM e as 432 combinações passavam por cima de metade da tela.
 - **Loja: a confirmação onde o clique aconteceu** (`ui/Shop.jsx`): clicar num cartão abre um MODAL com a skin grande, o
   preço e as duas saídas. O painel de detalhe ficava embaixo da grade, fora da vista de quem tinha acabado de clicar:
   selecionar e confirmar aconteciam a uma tela de distância um do outro, e ninguém descobria que ainda faltava

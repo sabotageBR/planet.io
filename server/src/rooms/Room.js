@@ -8,11 +8,14 @@
 // cada encode devolve uma vista reutilizada; se um socket ficou com bytes pendentes trocamos de
 // writer (o antigo fica com o socket até drenar) em vez de copiar a cada envio.
 // @ts-check
-import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,botCountry,BOT_CHAT,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,NOTICE,VOICE,FEED,WEAPON} from '@warspace/shared/constants.js';
+import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,botCountry,botSpawnR,BOT_CHAT,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,NOTICE,VOICE,FEED,WEAPON} from '@warspace/shared/constants.js';
 import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent,encodeZone,encodeVoice} from '@warspace/shared/protocol/index.js';
 import {rectHas} from '@warspace/shared/camera.js';
 import {createRng} from '@warspace/shared/rng.js';
 import {kdOf} from '@warspace/shared/levels.js';
+// O lookup REVERSO do easter egg: dado o skinId de um jogador, QUEM ele está vestindo. O servidor já
+// decidiu isso a partir do nick (persist/hooks.js) e nunca tinha contado a ninguém — ver `_quemE`.
+import {eggDe} from '@warspace/shared/eggs.js';
 import {createZone,stepZone,zoneAt,zoneNextIn} from '@warspace/shared/zone.js';
 import {EVENT} from '@warspace/shared/protocol/constants.js';
 import {Sim} from '../sim/Sim.js';
@@ -21,12 +24,12 @@ import {createFeed,drenaFeed} from './feed.js';
 import {pickPersona} from './botPersonas.js';
 // `aberta` é função PURA (classifica a mensagem), então vem por import e não pelo objeto injetado: só a
 // LLM é dependência de verdade, e um `botChat` falso de teste não deveria precisar reimplementá-la.
-import {aberta} from './botChat.js';
+import {aberta,citou,escolheAssunto} from './botChat.js';
 const WRITER_SIZE=32768,BOT_SKINS=35;   // bots usam skins 0..34 (compráveis; nada de "earned"/secretas)
 export class Room{
   /** @param {{code:string,shard:number,seed:number,hooks:any,log:any,metrics:any,config:{roomMax:number,roomBots:number},onRewards?:Function}} o */
   constructor({code,shard,seed,hooks,log,metrics,config,onRewards=null,mode=MODE.FREE,teamSize=1,botChat=null,
-    roundTicks=null,private:priv=false,hostUserId=null,hostNick=null}){
+    botNames=null,roundTicks=null,private:priv=false,hostUserId=null,hostNick=null}){
     this.code=code;this.shard=shard;this.seed=seed;this.rng=createRng(seed);this.log=log;this.metrics=metrics;
     this.mode=modeOf(mode);this.modeId=this.mode.id;
     this.teamSize=this.mode.teamSizes.includes(teamSize)?teamSize:this.mode.teamSizes[0];
@@ -68,7 +71,21 @@ export class Room{
     /** @type {Map<string,number>} código de party → equipe (para os amigos caírem juntos) */this.parties=new Map();
     this.roundStart=0;this.over=false;this.endedAt=0;this.endReason='time';this.champion=null;this.voiceAt=0;this.voiceN=0;this.botTalkAt=-1e9;/** @type {string[]} */this.ditas=[];
     // fala gerada (Ollama): opcional em tudo — sem ela a sala volta ao repertório fixo de BOT_CHAT
-    this.botChat=botChat;this.mencaoAt=-1e9;this.ultimoBot=null;
+    this.botChat=botChat;this.botNames=botNames;this.mencaoAt=-1e9;this.ultimoBot=null;
+    this._paisBot=null;   // o país que veio junto do apelido do balde, entre `_botNome` e `_nasceBot`
+    /**
+     * ORÇAMENTO DA CONVERSA. A cadeia longa transformou UMA linha de humano em várias gerações: com
+     * CADEIA_MAX=5 e coro de até 3, uma frase podia pedir 15. O teto por BOT não segura (são bots
+     * diferentes) e MAX_INFLIGHT_ROOM também não — ele só ENFILEIRA, e a fila drena. Quem segura é este.
+     * É UM registro, não um Map: o chat da sala é UM fluxo, e duas conversas de bots correndo em paralelo
+     * por cima do mesmo jogo é exatamente o ruído que o resto do arquivo evita.
+     * `ate` é o tick em que a sala volta a aceitar CORO novo; menção dirigida nunca passa por ele.
+     * @type {{n:number,gastas:number,teto:number,ate:number,solta:boolean}}
+     */
+    this.conversa={n:0,gastas:0,teto:0,ate:0,solta:false};
+    // O relógio do SILÊNCIO, para a INICIATIVA. `chatLog` carrega `at` em MILISSEGUNDOS e todo o resto da
+    // fala é TICK — misturar os dois é exatamente como se erra isto.
+    this.falaAt=0;this.iniciativaAt=-1e9;this.iniciativas=0;
     /** @type {{name:string,text:string,team:number,bot:boolean}[]} últimas CHAT.KEEP linhas: é o que a LLM lê como conversa */
     this.chatLog=[];
     /** Marcos do kill feed (troca de líder, BIG CRUNCH): o orçamento das linhas de SISTEMA. */
@@ -80,7 +97,7 @@ export class Room{
      * viram nome sem custo nenhum, e lido só quando há prompt para montar.
      * @type {string[]}
      */
-    this.feedLog=[];
+    this.feedLog=[];this.feedAt=-1e9;   // quando a última morte entrou: é o que separa fofoca FRESCA de história velha
     /**
      * FILA DE FALA AGENDADA. Só transporta kinds CONVERSACIONAIS (`mention`, `coro`, `cadeia`) — os
      * gatilhos de EVENTO continuam sendo do instante (`sim.botTalk` é esvaziado todo tick, como sempre).
@@ -127,9 +144,28 @@ export class Room{
     // era o jeito mais rápido de dizer ao jogador que aquilo ali não é gente.
     this.topUpBots(-1,ROOM.BOT_SEED);this._agendaBot();}
   stop(){this.running=false;}
-  /** @param {number} team @param {number} max quantos podem nascer AGORA (o resto fica para a chegada gradual) */
+  /**
+   * @param {number} team @param {number} max quantos podem nascer AGORA (o resto fica para a chegada gradual)
+   * O TAMANHO sai daqui porque só aqui se sabe quantos bots a sala já tem: `have` é o índice que faz a cota
+   * de `botSpawnR` funcionar sem que este laço precise saber se está semeando (start) ou completando
+   * (_chegadaBots) — os `ROOM.BOT_SEED` primeiros da sala SÃO a semente, por definição.
+   * ⚠️ `f` decai com o tick da SALA, não com o relógio de parede: uma sala parada pelo ceifador (30 s sem
+   * humanos) congela o tick, e ao religar ela volta a ser "nova" para quem chega — que é o certo.
+   * ⚠️ E é zero fora do Livre: no Battle Royale quem preenche é o LOBBY (`fillTo`), que chama `_nasceBot`
+   * sem `r` e continua com a faixa de sempre.
+   * ⚠️ `have` só serve de índice porque `botCount()` NUNCA cai no Livre: `trimBots` é só do lobby
+   * (`join`), o painel do dono não enxerga preenchimento e o bot morto RENASCE no mesmo slot. Se algum
+   * dos três mudar, `have` volta a ficar abaixo de `BOT_SEED` e nasceria um gigante no minuto 25 — mas o
+   * `f` do enchimento já estaria em zero a essa altura, e é ele o cinto de segurança.
+   */
   topUpBots(team=-1,max=Infinity){let have=this.sim.botCount(),n=0;
-    for(;have<this.botCount&&n<max;have++,n++)this._nasceBot({name:this._botNome(),team});
+    const janela=this.mode.respawnBots?1-this.sim.tick/ROOM.SEED_WINDOW_TICKS:0,vagas=this.botCount-ROOM.BOT_SEED;
+    for(;have<this.botCount&&n<max;have++,n++){
+      // a SEMENTE é a abertura por definição (só o relógio a limita); da sétima em diante manda o MENOR
+      // entre o relógio e o quanto ainda falta encher — sala cheia é sala cheia em qualquer ritmo.
+      const enche=vagas>0?(this.botCount-have)/vagas:0;
+      const f=have<ROOM.BOT_SEED?janela:(janela<enche?janela:enche);
+      this._nasceBot({name:this._botNome(),team,r:botSpawnR(this.rng,have,f)});}
     return n;}
   _agendaBot(){this._proxBot=this.sim.tick+this.rng.int(ROOM.BOT_JOIN_TICKS[0],ROOM.BOT_JOIN_TICKS[1]);}
   /**
@@ -147,19 +183,55 @@ export class Room{
    * ("Nebulox", "Cassiona") ficam de reserva: eles denunciavam o preenchimento pelo nome, mesmo quando o
    * resto do jogo não denunciava. `usedNicks` já carrega os nicks dos humanos, então não há colisão.
    */
-  _botNome(){return this.mode.realNicks?botNick(this.rng,this.usedNicks):BOT_NAMES[this._botName++%BOT_NAMES.length];}
+  /**
+   * O apelido de um preenchimento. Ponto de entrada ÚNICO — cobre o Livre (`topUpBots`) e o lobby do
+   * Battle Royale (`fillTo`/`fillStep`) de uma vez.
+   * O BALDE primeiro (server/src/rooms/botNames.js): apelidos escritos por LLM, que parecem de gente de um
+   * país de verdade em vez de sorteios de uma lista fixa. Ele devolve `null` o tempo todo — sem OLLAMA_URL,
+   * com o disjuntor aberto ou com o balde vazio — e aí vale `botNick`, que é o CHÃO e continua sendo a
+   * única verdade offline (o `?local=1` importa `shared` e não tem servidor com quem falar).
+   * ⚠️ `botNick` registra em `usedNicks` por DENTRO (constants.js); o caminho do balde tem que registrar
+   * aqui, senão dois preenchimentos saem com o mesmo nome — e o placar com nome repetido é justamente o
+   * que denuncia a farsa.
+   * ⚠️ DETERMINISMO: servir do balde PULA os 2–3 sorteios que `botNick` consome, e todo o stream do rng da
+   * sala desloca junto (`botSpawnR`, `skinId`, `_nivelBot`, `pickPersona`, `botCountry`). Isso é
+   * inofensivo porque o balde só existe COM a LLM configurada, e a suíte roda sem OLLAMA_URL: sem ela o
+   * caminho é byte a byte o de sempre, e é por isso que os testes de semente continuam valendo. Quem um
+   * dia ligar a LLM no ambiente de teste vai ver `roombots.test.js` mudar — e o motivo está escrito aqui.
+   */
+  _botNome(){
+    if(!this.mode.realNicks)return BOT_NAMES[this._botName++%BOT_NAMES.length];
+    const g=this.botNames?this.botNames.take(this.usedNicks):null;
+    if(g){this._paisBot=g.pais;this.usedNicks.add(g.nick.toLowerCase());return g.nick;}
+    this._paisBot=null;   // ⚠️ zerar SEMPRE: sem isto um bot herdaria o país do bot anterior
+    return botNick(this.rng,this.usedNicks);}
   /**
    * Um preenchimento nasce aqui, e não em `Sim.addBot`, porque nome, skin e HISTÓRIA são coisas da sala —
    * o Sim é construído nos testes sem nada disso. `level` é sorteado junto com o nome de gente: badge de
    * nível zerado ao lado de um apelido plausível seria o denunciador que o apelido acabou de tirar.
    */
-  _nasceBot({name,team=-1,spawn=true}){
-    const gp=this.sim.addBot(this.freeSlot(),{name,skinId:this.rng.int(0,BOT_SKINS-1),team,spawn,
-      level:this.mode.realNicks?this.rng.int(1,35):0});
+  _nasceBot({name,team=-1,spawn=true,r=0}){
+    const gp=this.sim.addBot(this.freeSlot(),{name,skinId:this.rng.int(0,BOT_SKINS-1),team,spawn,r,
+      level:this._nivelBot(r)});
     gp.persona=pickPersona(this.rng,this._personas);
-    gp.country=botCountry(this.rng,name);   // bandeira ao lado do nick: o humano já tinha país, e 49 vazias apontavam quem era gente
+    // A bandeira ao lado do nick: o humano já tinha país, e 49 vazias apontavam quem era gente.
+    // Quando o apelido veio do BALDE o país vem JUNTO com ele — a ordem se inverteu: sorteia-se o país e
+    // pedem-se nomes DELE, em vez de adivinhar o país a partir do nome (que só acertava via US_ROOTS).
+    gp.country=this._paisBot||botCountry(this.rng,name);
+    this._paisBot=null;
     this.flagsDirty=true;
     return gp;}
+  /**
+   * Nível do preenchimento — o badge que aparece ao lado do nick no placar, no chat e no feed. Ele é
+   * sorteado junto com o nome de gente pelo mesmo motivo (badge zerado entrega quem é quem), mas agora
+   * ele também precisa CONCORDAR com o tamanho: um planeta de 62 mil de massa com "nível 3" pendurado é
+   * exatamente a denúncia que o nome de catálogo era. Quem chegou grande jogou muito. As duas faixas se
+   * sobrepõem de propósito — nível não é tabela de conversão de massa, é uma pista.
+   * `r` 0 é "sem informação" (o lobby do Battle Royale, onde ninguém tem corpo ainda): faixa inteira.
+   */
+  _nivelBot(r){if(!this.mode.realNicks)return 0;
+    if(!r)return this.rng.int(1,35);
+    return r>=ROOM.SEED_R[1][0]?this.rng.int(12,35):this.rng.int(1,20);}
   /** Par que faltava do topUpBots: tira bots (o Battle Royale abre vaga para humano até o último segundo). */
   trimBots(n){let k=n;
     for(const gp of [...this.sim.players.values()])
@@ -390,6 +462,10 @@ export class Room{
     // 3. a partida começa: relógio, zona e fim da paz
     this.roundStart=w.tick;this.zone=createZone(w.tick);w.setZone(this.zone);w.peace=false;this.phase='live';this.startsAt=0;
     this.feedLog.length=0;   // a fofoca é da RODADA: a sala é reaproveitada, e morte da partida passada não é assunto
+    // ...e a conversa também, pelo mesmo motivo. Sem isto uma sala reaproveitada nasce com o orçamento
+    // gasto e um `ate` no futuro, e os bots atravessam a rodada nova sem abrir um coro sequer.
+    this.conversa={n:0,gastas:0,teto:0,ate:0,solta:false};
+    this.iniciativaAt=-1e9;this.iniciativas=0;this.falaAt=sim.tick;
     sim.playersDirty=true;
     for(let i=0;i<3;i++)this._talkAlgum('start');   // largada: alguém diz alguma coisa, como em qualquer sala
     this._pushFeed({k:'sys',a:-1,b:-1,how:'start',by:null});
@@ -533,6 +609,9 @@ export class Room{
     // O `scope` vai junto: a linha da arquibancada não pode entrar no prompt de um bot vivo (ver `_botResponde`).
     this.chatLog.push({name:gp.name,text:msg,team:gp.team,bot:!!gp.isBot,scope:escopo});
     if(this.chatLog.length>CHAT.KEEP)this.chatLog.shift();
+    // O relógio do SILÊNCIO (ver `_iniciativaTick`). Escopo `dead` não conta: a arquibancada não é a
+    // sala falando, e uma sala em que só os mortos conversam continua calada para quem está jogando.
+    if(escopo!=='dead')this.falaAt=this.sim.tick;
     for(const s of this._destinos(gp,escopo))s.sendJson(out);}
   /**
    * Fala dos preenchimentos. Uma sala de 50 pessoas que atravessa a partida inteira em silêncio é tão
@@ -548,9 +627,16 @@ export class Room{
     const tick=sim.tick;
     if(this.phase!=='live'||!this.sessions.size){fila.length=0;return;}
     if(tick-this.botTalkAt<BOT_TALK.ROOM_CD_TICKS){fila.length=0;return;}   // a fila é do INSTANTE: guardar gera coro atrasado
-    const g=fila[this.rng.int(0,fila.length-1)];fila.length=0;
+    // O sorteio era UNIFORME e o `P` só era conferido DEPOIS: um gatilho frequente e de baixo valor (o
+    // míssil, que acerta o tempo todo) ganhava a loteria, DERRUBAVA um `kill` do mesmo tick e ainda tinha
+    // 90% de chance de não sair — o resultado líquido era MENOS fala, e pior. O peso decide QUAL; o
+    // `chance` logo abaixo continua decidindo SE.
+    let soma=0;for(const it of fila)soma+=BOT_TALK.P[it.kind]||.15;
+    let r=this.rng.range(0,soma),g=fila[fila.length-1];
+    for(const it of fila){r-=BOT_TALK.P[it.kind]||.15;if(r<=0){g=it;break;}}
+    fila.length=0;
     const gp=sim.players.get(g.slot);if(!gp||!gp.isBot)return;
-    if(gp.talked>=BOT_TALK.MAX_PER_MATCH||tick-(gp.talkedAt||-1e9)<BOT_TALK.BOT_CD_TICKS)return;
+    if(gp.talked>=BOT_TALK.MAX_PER_MATCH||tick-(gp.talkedAt??-1e9)<BOT_TALK.BOT_CD_TICKS)return;
     if(!this.rng.chance(BOT_TALK.P[g.kind]||.15))return;
     // O orçamento é gasto AQUI, antes de qualquer coisa assíncrona: se a reserva esperasse a resposta da
     // LLM, dois gatilhos no mesmo tick passariam os dois pela porta e sairia o coro que tudo isto evita.
@@ -606,7 +692,8 @@ export class Room{
       fila.splice(i,1);
       if(this.over||this.phase!=='live'||!this.sessions.size)continue;
       const gp=it.gp;if(this.sim.players.get(it.slot)!==gp||gp.dead)continue;
-      this.ultimoBot=gp;this._pushChat(gp,it.txt);this._encadeia(gp,it.txt,it.g);}}
+      this.ultimoBot=gp;this._pushChat(gp,it.txt);
+      if(!it.fixa)this._encadeia(gp,it.txt,it.g);}}   // repertório não cita ninguém: não abre corrente
   /** O que a LLM precisa saber para escrever uma linha: quem é o bot, o que aconteceu e o que o chat disse. */
   /**
    * O que o bot está VIVENDO agora. Sai inteiro de `gp.brain`, que o `_think` já preenche a cada
@@ -649,47 +736,98 @@ export class Room{
     // virava um ordinal ("mid-table"), a zona só virava um booleano, e o kill feed não chegava. O bot
     // falava como quem está numa sala vazia. Nada disto custa consulta nova: `leaderboard()` é cacheado
     // por tick, `zoneNextIn` é aritmética sobre a zona que a sala já tem, e o feed vem do anel do difusor.
-    const lider=rows.length?rows[0]:null,minha=rows.find(r=>r.slot===gp.slot);
-    // ⚠️ `zoneNextIn` devolve TICKS, e `Infinity` quando a zona já terminou de fechar.
-    const zt=this.zone?zoneNextIn(this.zone,sim.tick):Infinity;
+    const pf=this._panoDeFundo(gp);
+    const estado=this._estado(gp),agressor=this._agressor(gp);
     return{nome:gp.name,
       persona:gp.brain?gp.brain.p.id:null,pericia:gp.brain?gp.brain.s.id:null,
       historia:gp.persona||null,
-      rank:rank||0,vivos:sim.aliveCount(),
+      rank:rank||0,vivos:pf.vivos,
       // "metade do tamanho do líder" é uma frase que o modelo sabe usar; "massa 4820" não é.
-      fracLider:lider&&minha&&lider.mass>0?minha.mass/lider.mass:0,
-      lider:lider&&lider.slot!==gp.slot?this._nomeDe(lider.slot):null,
-      zonaS:Number.isFinite(zt)&&zt>0?Math.round(zt/TICK_HZ):0,
+      fracLider:pf.fracLider,lider:pf.lider,zonaS:pf.zonaS,
       feed:this.feedLog.slice(-BOT_LLM.FEED_HIST),
-      estado:this._estado(gp),agressor:this._agressor(gp),
+      estado,agressor,
+      // ── QUEM É QUEM ──
+      // Só os nomes que JÁ entram no prompt. O bot falava com strings anônimas: sabia o que estava
+      // vivendo e não fazia ideia de quem era ninguém — nem que o sujeito que ele está caçando se chama
+      // "messi" e está com a CARA do Messi, coisa que o servidor decidiu e sempre soube.
+      gente:this._quemE([gp.name,g.quem,pf.lider,estado&&estado.alvo,agressor&&agressor.nome,
+        ...hist.slice(-3).map(l=>l.name)]),
       modo:this.mode.lastAlive?'battle royale, last one standing':'free-for-all',
-      equipe,kind:g.kind,quem:g.quem||null,texto:g.texto||null,historico:hist};}
+      equipe,kind:g.kind,quem:g.quem||null,texto:g.texto||null,assunto:g.assunto||null,historico:hist};}
+  /**
+   * Quem é cada pessoa que o prompt vai citar, na ordem em que importam. O custo é um `Map.get` por nome
+   * — são no máximo ELENCO_MAX — e o ganho é o bot deixar de conversar com etiquetas vazias.
+   * A CARICATURA é FATO, não palpite: `eggSkinFor` decidiu a skin daquela vida a partir do nick (em
+   * persist/hooks.js), então o servidor sabe que quem se chama "messi" está jogando com a cara do Messi.
+   * O resto da associação com o mundo real é inferência da LLM, autorizada no SYSTEM.
+   * ⚠️ `isBot` NÃO é colhido de propósito: no Battle Royale o preenchimento não se identifica
+   * (`anonBots` tirou o PLAYER_FLAG.BOT do fio justamente para o placar e o radar não o entregarem), e
+   * um bot dizendo "você é um bot" na tela desfaria isso de graça.
+   */
+  _quemE(nomes){
+    const out=[],vistos=new Set();
+    for(const nome of nomes){
+      if(!nome||vistos.has(nome))continue;vistos.add(nome);
+      const o=this._gpPorNome(nome);if(!o)continue;
+      const egg=eggDe(o.skinId);
+      if(!egg&&!o.country&&(o.level|0)<BOT_LLM.NIVEL_ALTO)continue;   // não tem nada a dizer: não gasta caractere
+      out.push({nome,egg:egg?egg.real:null,pais:o.country||null,nivel:o.level|0});
+      if(out.length>=BOT_LLM.ELENCO_MAX)break;}
+    return out;}
+  /** O GamePlayer de um nome. Os nomes são únicos por sala (`usedNicks`), então a busca é exata. */
+  _gpPorNome(nome){
+    for(const gp of this.sim.players.values())if(gp.name===nome)return gp;
+    return null;}
   /**
    * Alguém escreveu no chat. Um bot responde quando é CHAMADO — e ninguém digita o apelido inteiro e certo
    * no meio de uma partida, então a comparação é por raiz, sufixo e distância (`botChat.citou`). Sem
    * citação nenhuma, só quem acabou de falar tem direito a uma réplica, e raramente: o padrão continua
    * sendo o silêncio, senão o chat vira dois bots conversando sozinhos por cima do jogo.
-   * Sem LLM não há resposta: o repertório fixo não sabe responder a nada, e responder fora de contexto é
-   * pior do que não responder.
+   * Sem LLM a sala NÃO fica muda: quem foi chamado pelo nome responde do repertório (`BOT_CHAT.resposta`),
+   * porque ser chamado e não responder é o que mais denuncia um preenchimento. O que continua calado é o
+   * que não faz sentido enlatar — a réplica sem vocativo e o elo de corrente —, porque aí a frase fixa É
+   * responder fora de contexto, que é pior do que não responder.
    */
   _botResponde(autor,texto,o={}){
-    const bc=this.botChat;if(!bc||!bc.ativo()||this.phase!=='live'||this.over)return;
-    const sim=this.sim,tick=sim.tick,depth=o.depth|0,cadeia=o.cadeia||[];
-    // O cooldown de SALA vale para o que o humano diz; na corrente ele é pulado de propósito — quem
-    // segura a corrente é a profundidade, e uma réplica que chega 7 s depois já não é réplica.
-    if(!depth&&tick-this.mencaoAt<BOT_LLM.MENTION_ROOM_CD_TICKS)return;
+    // ⚠️ NÃO se checa `bc.ativo()` aqui, e essa linha era um BUG de dois anos de comentário: `ativo()` é
+    // "disjuntor fechado E gerações em voo < teto", ou seja uma condição de OCUPAÇÃO usada como condição
+    // de EXISTÊNCIA. Com 4 gerações em voo em QUALQUER sala do shard, quem fosse chamado pelo nome em
+    // qualquer outra ficava MUDO — e `BOT_CHAT.resposta`/`_fraseResposta`, que existem exatamente para
+    // esse caso, nunca eram alcançados. Quem escolhe entre gerar e enlatar é `_filaTick`, no despacho,
+    // onde a informação é atual; aqui só se decide QUEM fala.
+    if(this.phase!=='live'||this.over)return;
+    const bc=this.botChat,sim=this.sim,tick=sim.tick,depth=o.depth|0,cadeia=o.cadeia||[];
+    const cit=(bc&&bc.citou)||citou;   // honra o botChat falso dos testes E funciona com botChat===null
+    // ── ORÇAMENTO DA CONVERSA ──
+    if(depth&&this.conversa.gastas>=this.conversa.teto){this._m('conv');return;}
+    if(!depth&&tick>=this.conversa.ate)   // a conversa anterior esfriou: esta linha abre outra
+      this.conversa={n:this.conversa.n+1,gastas:0,teto:BOT_LLM.CONVERSA_MAX_GER,ate:0,solta:true};
     const equipe=this.mode.chat==='team'&&autor.team>=0;
-    const cands=[];
-    for(const gp of sim.players.values()){
-      if(!gp.isBot||gp.dead||gp.slot===autor.slot)continue;
+    // Dentro da corrente o cooldown por bot é OUTRO. Com os 10 s da MENÇÃO valendo aqui, afrouxar a
+    // janela abaixo não mudaria NADA: o elo seguinte chega 1–4 s depois e o bot ainda está de molho.
+    const cd=depth?BOT_LLM.CADEIA_BOT_CD_TICKS:BOT_LLM.MENTION_BOT_CD_TICKS;
+    // Numa corrente, quem JÁ ESTÁ nela vem primeiro: `CADEIA_SCAN_MAX` corta a varredura em 24 e, numa
+    // sala de 50, o participante do elo anterior pode estar num slot alto e nunca entrar no pool.
+    const ordem=depth?cadeia.filter(x=>x>=0).concat([...sim.players.keys()]):[...sim.players.keys()];
+    const cands=[],visto=new Set();
+    for(const slot of ordem){
+      if(visto.has(slot))continue;visto.add(slot);
+      const gp=sim.players.get(slot);
+      if(!gp||!gp.isBot||gp.dead||gp.slot===autor.slot)continue;
       if(equipe&&gp.team!==autor.team)continue;                                   // não ouviu, não responde
-      if(cadeia.includes(gp.slot))continue;                                       // já falou nesta linha: nada de ping-pong A→B→A
-      if(tick-(gp.mencaoAt||-1e9)<BOT_LLM.MENTION_BOT_CD_TICKS)continue;
+      // A JANELA, não o conjunto inteiro: com CADEIA_MAX=5 o "nunca repetir slot" exigia CINCO bots
+      // distintos por conversa, e conversa de gente não é revezamento — A e B trocam três frases e C
+      // entra no meio. A janela proíbe o que incomoda (A→B→A no mesmo fôlego) e libera o que parece
+      // gente (A→B→C→A).
+      if(cadeia.slice(-BOT_LLM.CADEIA_JANELA).includes(gp.slot))continue;
+      // ⚠️ `??` e não `||`: o tick 0 é FALSY, então `gp.mencaoAt||-1e9` dizia "nunca falou" para quem
+      // acabou de falar no primeiro tick da sala — e o cooldown por bot simplesmente não existia ali.
+      if(tick-(gp.mencaoAt??-1e9)<cd)continue;
       if((gp.mencoes|0)>=BOT_LLM.MAX_MENTION_PER_MATCH)continue;
       cands.push(gp);
       if(cands.length>=BOT_LLM.CADEIA_SCAN_MAX)break;}   // teto do custo de `citou` (Levenshtein por palavra × candidatos)
     if(!cands.length)return;
-    const citados=cands.filter(gp=>bc.citou(texto,gp.name));
+    const citados=cands.filter(gp=>cit(texto,gp.name));
     // ── quem responde, e quantos ──
     /** @type {{gp:any,kind:string}[]} */const escolhidos=[];
     if(citados.length){
@@ -699,15 +837,40 @@ export class Room{
         const pool=citados.slice();
         const n=Math.min(pool.length,depth?1:BOT_LLM.CORO_MAX_CITADOS);
         for(let i=0;i<n;i++)escolhidos.push({gp:pool.splice(this.rng.int(0,pool.length-1),1)[0],kind:depth?'cadeia':'mention'});}
-    }else if(!depth){
+    }else if(depth){
+      // ── CADEIA SOLTA ──
+      // A linha gerada não citou ninguém. Numa conversa de gente isso é a REGRA, não a exceção ("kkkk",
+      // "nem vi", "tu ta doido") — exigir vocativo para continuar era o que matava toda corrente no
+      // SEGUNDO elo, e é a razão de uma conversa nunca ter passado de duas réplicas.
+      // ⚠️ Só vale em conversa marcada `solta`: a que um HUMANO abriu, ou a da INICIATIVA. Sem essa
+      // marca, cada "peguei" espontâneo de bot viraria o começo de um papo entre bots por cima do jogo —
+      // toda fala espontânea já nasce como raiz de cadeia (botChatTick → _falar → _digitaTick → _encadeia).
+      // ⚠️ E é sempre UM só: coro dentro de corrente é a receita de dois bots tomando a sala.
+      if(o.solta&&this.rng.chance(BOT_LLM.CADEIA_SOLTA_P)){
+        // Quem continua é quem JÁ ESTÁ na conversa; bot novo é o último recurso. Trocar de gente a cada
+        // linha não é conversa, é revezamento — e denuncia mais rápido que o silêncio.
+        const dentro=cands.filter(gp=>cadeia.includes(gp.slot));
+        const pool=dentro.length?dentro:cands;
+        escolhidos.push({gp:pool[this.rng.int(0,pool.length-1)],kind:'cadeia'});}
+    }else{
+      // O cooldown de SALA vale AQUI e só aqui: coro e réplica são a sala se OFERECENDO, e ser chamado
+      // pelo NOME não passa por ele — é justamente o caso que não pode ficar mudo. (Antes ele era a
+      // guarda de entrada do método, e barrava a menção junto.)
+      if(tick-this.mencaoAt<BOT_LLM.MENTION_ROOM_CD_TICKS)return;
+      if(this.conversa.gastas>=this.conversa.teto)return;   // conversa esgotada não abre coro novo
       // Ninguém citado. Pergunta jogada para a SALA vale coro; frase solta continua valendo só a réplica
       // rara de quem falou por último, exatamente como antes.
       const tipo=aberta(texto,false);
       if(tipo==='pergunta'){
-        const n=this._sorteiaCoro(cands.length);
+        // ⚠️ Sem LLM o coro é de UM. Três frases ENLATADAS para um "e aí galera" é exatamente o coro de
+        // robô que o escalonamento existe para evitar; uma só é o que uma pessoa faz.
+        const vivo=!!(bc&&bc.ativo());
+        const n=vivo?this._sorteiaCoro(cands.length):1;
         const pool=cands.slice();
         for(let i=0;i<n&&pool.length;i++)escolhidos.push({gp:pool.splice(this.rng.int(0,pool.length-1),1)[0],kind:'coro'});}
-      else if(this.ultimoBot&&cands.includes(this.ultimoBot)&&this.rng.chance(BOT_LLM.REPLY_P))
+      // ⚠️ `reply` EXIGE LLM: é resposta a uma linha que não chamou ninguém, e frase enlatada aí é
+      // literalmente "responder fora de contexto", que é pior do que não responder.
+      else if(bc&&bc.ativo()&&this.ultimoBot&&cands.includes(this.ultimoBot)&&this.rng.chance(BOT_LLM.REPLY_P))
         escolhidos.push({gp:this.ultimoBot,kind:'reply'});}
     if(!escolhidos.length)return;
     // ── agendamento escalonado ──
@@ -717,8 +880,14 @@ export class Room{
     for(const {gp,kind} of escolhidos){
       // O orçamento é debitado AQUI, no agendamento — nunca no callback. Se esperasse a resposta, dois
       // gatilhos no mesmo tick passariam os dois pela porta.
-      gp.mencaoAt=tick;gp.mencoes=(gp.mencoes|0)+1;this.mencaoAt=tick;
-      this._agenda(gp,{kind,quem:autor.name,texto,depth,cadeia:cadeia.concat(autor.slot)},d);
+      gp.mencaoAt=tick;gp.mencoes=(gp.mencoes|0)+1;
+      // ⚠️ O cooldown de SALA é do que o HUMANO diz. Refrescá-lo a CADA ELO fechava a porta para o
+      // próximo humano por 15–25 s numa corrente de 5: os bots conversando entre si e o jogador que
+      // chamou um deles pelo nome sendo ignorado — o oposto exato do que este arquivo existe para evitar.
+      if(!depth)this.mencaoAt=tick;
+      this.conversa.gastas++;this.conversa.ate=tick+BOT_LLM.CONVERSA_CD_TICKS;
+      this._agenda(gp,{kind,quem:autor.name,texto,depth,cadeia:cadeia.concat(autor.slot),
+        solta:depth?!!o.solta:!autor.isBot},d);
       d+=this.rng.range(BOT_LLM.CORO_D_MS[0],BOT_LLM.CORO_D_MS[1]);}}
   /** 1, 2 ou 3 respostas, pelos pesos de CORO_N_W. */
   _m(ev){if(this.metrics&&this.metrics.llm)this.metrics.llm(ev);}
@@ -739,7 +908,12 @@ export class Room{
     const txt=fallback();if(!txt)return;
     this._m('fallback');
     this.ditas.push(txt);if(this.ditas.length>BOT_TALK.NO_REPEAT)this.ditas.shift();
-    this.ultimoBot=gp;this._pushChat(gp,txt);}
+    // A frase ENLATADA também leva tempo para digitar. Com o disjuntor aberto ela vira a resposta padrão
+    // da sala, e sair INSTANTÂNEA enquanto as geradas levam 0,45–3,4 s é a assinatura de bot que o
+    // DIGITA_CPS existe justamente para apagar. `fixa` impede o `_encadeia` no outro lado: repertório
+    // não cita ninguém e não conversa.
+    const ms=Math.min(BOT_LLM.DIGITA_MAX_MS,Math.max(BOT_LLM.DIGITA_MIN_MS,txt.length/BOT_LLM.DIGITA_CPS*1000));
+    this.digitaFila.push({atTick:this.sim.tick+Math.round(ms/1000*TICK_HZ),slot:gp.slot,gp,txt,g,fixa:true});}
   /**
    * Resposta do repertório. A menção tinha fallback `null` — sem LLM o bot chamado pelo nome ficava MUDO,
    * que é justamente o que mais denuncia um preenchimento. Na corrente o silêncio continua sendo o certo:
@@ -751,10 +925,13 @@ export class Room{
     const txt=lista[this.rng.int(0,lista.length-1)];
     return this.rng.chance(BOT_TALK.TYPO_P)?botTypo(this.rng,txt):txt;}
   /**
-   * Corrente bot↔bot. Só continua quando a linha GERADA cita alguém pelo nome — e a frase do repertório
-   * nunca cita ninguém, então a corrente morre sozinha ali, sem caso especial.
-   * Termina por cinco razões independentes: `depth` cresce e é limitado; exige citação; `CADEIA_P` mata
-   * parte das correntes; `cadeia` proíbe repetir slot; e os orçamentos por bot continuam valendo.
+   * Corrente bot↔bot. Continua quando a linha GERADA cita alguém pelo nome e, mais raramente, mesmo quando
+   * não cita (`CADEIA_SOLTA_P`) — porque numa conversa de gente a maioria das linhas NÃO tem vocativo, e
+   * exigi-lo era o que matava toda corrente no segundo elo.
+   * Termina por SEIS razões independentes: `depth` cresce e é limitado por CADEIA_MAX (a única que não é
+   * sorteio, e portanto a prova de que acaba); `CADEIA_P`/`CADEIA_SOLTA_P`; a JANELA de `CADEIA_JANELA`
+   * elos, que proíbe A→B→A; os orçamentos por bot; o ORÇAMENTO DE CONVERSA (`this.conversa`); e a marca
+   * `solta`, que impede uma fala espontânea de virar papo entre bots.
    */
   _encadeia(gp,txt,g){
     const d=(g&&g.depth|0)+1;
@@ -762,7 +939,7 @@ export class Room{
     if(!this.botChat||!this.botChat.ativo())return;   // sem LLM não há corrente: o repertório não conversa
     // A cadeia NÃO ganha `gp.slot` aqui: quem fala vira o `autor` da chamada abaixo, e é `_botResponde` que
     // anexa o autor ao agendar. Anexar nos dois lugares punha o mesmo slot duas vezes na lista.
-    this._botResponde(gp,txt,{depth:d,cadeia:(g&&g.cadeia)||[]});}
+    this._botResponde(gp,txt,{depth:d,cadeia:(g&&g.cadeia)||[],solta:!!(g&&g.solta)});}
   /**
    * Drena a fila agendada. Roda dentro do step(), que é de 60 Hz e percorre TODAS as salas do processo —
    * daí o teto por tick. Nada aqui espera: quando não dá para gerar, publica o repertório e segue.
@@ -783,6 +960,12 @@ export class Room{
       if(gp!==it.gp||!gp||gp.dead)continue;
       const podeGerar=this.gerando<BOT_LLM.MAX_INFLIGHT_ROOM&&this.botChat&&this.botChat.ativo();
       if(podeGerar)this._falar(gp,it.g,it.fallback);
+      // Elo de corrente sem LLM não tem o que dizer (`_fraseResposta` devolve null para `cadeia`), e a
+      // DEVOLUÇÃO não é preciosismo: o débito acontece no AGENDAMENTO, então sem ela o teto da conversa
+      // encolhe a cada elo que morreu calado — e a conversa seguinte nasce com o orçamento já gasto.
+      else if(it.g&&it.g.kind==='cadeia'){this._m('teto');
+        gp.mencoes=Math.max(0,(gp.mencoes|0)-1);
+        this.conversa.gastas=Math.max(0,this.conversa.gastas-1);}
       else{this._m('teto');this._falarJa(gp,it.g,it.fallback);}}}
   // ── voz ──
   /**
@@ -874,7 +1057,7 @@ export class Room{
   broadcastFeed(){
     const v=drenaFeed(this.sim.feed);if(!v)return;
     for(const it of v){const a=this._nomeDe(it.a),b=this._nomeDe(it.b);
-      if(it.k!=='sys'&&b)this.feedLog.push(a?`${a} killed ${b}`:`${b} died`);}
+      if(it.k!=='sys'&&b){this.feedLog.push(a?`${a} killed ${b}`:`${b} died`);this.feedAt=this.sim.tick;}}
     if(this.feedLog.length>BOT_LLM.FEED_KEEP)this.feedLog.splice(0,this.feedLog.length-BOT_LLM.FEED_KEEP);
     const msg={t:'feed',v,at:Date.now()};
     for(const s of this.sessions.values())if(s.ws)s.sendJson(msg);}
@@ -996,6 +1179,12 @@ export class Room{
     const melhor=(cmp,filtro)=>{let m=null;for(const b of board){if(filtro&&!filtro(b))continue;if(!m||cmp(b,m)>0)m=b;}return m;};
     const destaques={
       campeao:board[0]||null,
+      // MAIS PONTOS é o único destaque que não sai do tamanho nem da violência: pontua quem comeu muito
+      // grão, quem catou fragmento, quem devorou gente — a rodada inteira num número só. Ele existe porque
+      // o `score` sempre viajou no roundEnd e a tela NUNCA o mostrou; e ele ficou com o lugar do cartão
+      // "Campeão", que era repetição do degrau maior do pódio, logo acima. O campeão continua no payload:
+      // agora é a FAIXA em cima do pódio que o desenha.
+      pontuador:melhor((a,b)=>a.score-b.score,b=>b.score>0),
       glutao:melhor((a,b)=>a.food-b.food,b=>b.food>0),
       carrasco:melhor((a,b)=>a.kills-b.kills,b=>b.kills>0),
       // Piso de abates: numa rodada de 30 min quase ninguém passa de 5, e sem ele "maior K/D" é sempre de
@@ -1084,10 +1273,68 @@ export class Room{
         if(o&&!o.isBot)sim._talk(gp.slot,'cacado',o.name);}   // só quando quem persegue é GENTE: é para ele que a fala serve
       if(lider&&lider.slot===gp.slot&&gp._eraLider!==true)sim._talk(gp.slot,'lider',null);
       gp._eraLider=lider&&lider.slot===gp.slot;}}
+  /**
+   * INICIATIVA: um preenchimento PUXA ASSUNTO. Até aqui a conversa só nascia de um humano digitar — e uma
+   * sala em que ninguém NUNCA começa nada é tão estranha quanto uma em que ninguém fala. O que não pode
+   * acontecer é o bot INVENTAR assunto: o que ele diz sai do que está acontecendo (o líder, o gás, quem
+   * acabou de morrer), pela mesma `_ctxFala` de sempre.
+   * ⚠️ Não passa por `botChatTick` de propósito: lá UM item é sorteado da leva e o resto vai fora, e a
+   * iniciativa perderia a loteria para qualquer abate do mesmo tick. Orçamento próprio.
+   */
+  _iniciativaTick(sim,t){
+    if(this.phase!=='live'||this.over||!this.botChat)return;
+    if(!this.sessions.size)return;                                   // sem plateia, puxar assunto é falar sozinho
+    if(this.iniciativas>=BOT_TALK.INICIATIVA_MAX_PER_MATCH)return;
+    if(t-this.iniciativaAt<BOT_TALK.INICIATIVA_CD_TICKS)return;
+    if(t-this.falaAt<BOT_TALK.SILENCIO_TICKS)return;                 // a sala está calada há SILENCIO_TICKS
+    // ...e calada DE VERDADE: nada em voo. Uma sala com fala na fila não está em silêncio, está esperando
+    // alguém terminar de digitar — e falar por cima disso é o coro que o resto do arquivo evita.
+    if(this.falaFila.length||this.digitaFila.length||this.gerando)return;
+    if(t<this.conversa.ate)return;                                   // a conversa anterior mal esfriou
+    const gp=this._quemPuxa(sim,t);if(!gp)return;
+    const a=escolheAssunto(this._panoDeFundo(gp));
+    gp.talked=(gp.talked|0)+1;gp.talkedAt=t;this.botTalkAt=t;        // gasta o MESMO orçamento do espontâneo
+    this.iniciativaAt=t;this.iniciativas++;
+    // A iniciativa ABRE conversa — é para isso que ela existe —, com METADE do orçamento: quem puxou
+    // assunto sozinho não tem o crédito de quem foi chamado por um humano.
+    this.conversa={n:this.conversa.n+1,gastas:1,teto:BOT_LLM.CONVERSA_MAX_GER_BOT,ate:t+BOT_LLM.CONVERSA_CD_TICKS,solta:true};
+    this._m('puxa');
+    this._falar(gp,{kind:'puxa',assunto:a.assunto,quem:a.quem,solta:true},()=>this._fraseFixa(gp,'puxa'));}
+  /**
+   * QUEM PUXA: quem a sala está OLHANDO. O líder, se for preenchimento e couber no orçamento; senão o
+   * preenchimento mais PERTO de um humano — é o planeta que a pessoa tem na tela, e uma linha dele lê como
+   * alguém falando do lado. Sorteio puro poria a fala num bot do outro canto do mapa, sobre nada.
+   * `leaderboard()` já traz x,y de TODOS os vivos e é cacheado por tick: custo zero.
+   */
+  _quemPuxa(sim,t){
+    const rows=sim.leaderboard();
+    const ok=gp=>gp&&gp.isBot&&!gp.dead&&(gp.talked|0)<BOT_TALK.MAX_PER_MATCH
+      &&t-(gp.talkedAt??-1e9)>=BOT_TALK.BOT_CD_TICKS;
+    const lider=rows.length?sim.players.get(rows[0].slot):null;
+    if(ok(lider))return lider;
+    const humanos=rows.filter(r=>{const g=sim.players.get(r.slot);return g&&!g.isBot;});
+    if(!humanos.length)return null;
+    let melhor=null,d2=Infinity;
+    for(const r of rows){const gp=sim.players.get(r.slot);if(!ok(gp))continue;
+      for(const h of humanos){const dx=r.x-h.x,dy=r.y-h.y,d=dx*dx+dy*dy;if(d<d2){d2=d;melhor=gp;}}}
+    return melhor;}
+  /**
+   * Os números da PARTIDA que o assunto usa. Extraído de `_ctxFala` porque `escolheAssunto` precisa deles
+   * ANTES de existir um gatilho — e repetir a conta criaria duas verdades sobre a mesma sala.
+   */
+  _panoDeFundo(gp){
+    const sim=this.sim,rows=sim.leaderboard();
+    const lider=rows.length?rows[0]:null,minha=rows.find(r=>r.slot===gp.slot);
+    const zt=this.zone?zoneNextIn(this.zone,sim.tick):Infinity;
+    return{vivos:sim.aliveCount(),
+      fracLider:lider&&minha&&lider.mass>0?minha.mass/lider.mass:0,
+      lider:lider&&lider.slot!==gp.slot?this._nomeDe(lider.slot):null,
+      zonaS:Number.isFinite(zt)&&zt>0?Math.round(zt/TICK_HZ):0,
+      feedFresco:sim.tick-this.feedAt<BOT_LLM.FEED_FRESCO_TICKS&&this.feedLog.length>0};}
   /** Envio por tick: PLAYERS se mudou, snapshots a 20 Hz, eventos por AOI e o placar a 2 Hz. */
   _flush(sim){
     const t=sim.tick;
-    if(t%LEADERBOARD_EVERY===0){this._expiraFala(sim,t);this._humor(sim,t);}
+    if(t%LEADERBOARD_EVERY===0){this._expiraFala(sim,t);this._humor(sim,t);this._iniciativaTick(sim,t);}
     if(sim.playersDirty){sim.playersDirty=false;this.broadcastPlayers();}
     if(t%SNAPSHOT_EVERY===0){this.snapshotter.beginTick();for(const s of this.sessions.values())this.snapshotter.send(s);this.flushEvents();sim.gone.clear();}
     else if(sim.wireEvents.length>=200)this.flushEvents();

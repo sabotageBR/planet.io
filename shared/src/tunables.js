@@ -18,7 +18,7 @@
 // rodada. Parametrizar por sala exigiria carregar um objeto de tunables por Room→Sim→World→rules, tocando
 // toda assinatura da física e o predict — não vale por um punhado de números.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both',min:number,max:number,step:number,def:number,read:()=>number,write:(v:number)=>void}} Tunable */
 
@@ -50,6 +50,15 @@ export const TUNABLES=[
   num('ZONE.BURN_K','Multiplicador do gás no círculo final','×','server',1,5,.1,ZONE,'BURN_K'),
   num('PLAYER.DECAY','Decaimento de massa por segundo','fração/s','server',0,.02,.0005,PLAYER,'DECAY'),
   num('BOT_LLM.DIGITA_CPS','Velocidade de digitação dos bots','car/s','server',3,60,1,BOT_LLM,'DIGITA_CPS'),
+  // ── QUÃO FALANTE É A SALA ──
+  // "Conversam demais" e "conversam de menos" é julgamento que só se faz OLHANDO uma sala cheia de gente
+  // real, e não se quer um deploy por clique. Estes quatro são os botões dessa régua, do mais grosso para
+  // o mais fino: quantas réplicas uma conversa pode ter, com que frequência ela continua sem vocativo,
+  // quantas gerações ela pode gastar e quanto tempo de silêncio faz um bot puxar assunto.
+  num('BOT_LLM.CADEIA_MAX','Réplicas máximas de uma conversa','elos','server',1,8,1,BOT_LLM,'CADEIA_MAX'),
+  num('BOT_LLM.CADEIA_SOLTA_P','Continuar a conversa sem citar ninguém','probab.','server',0,1,.05,BOT_LLM,'CADEIA_SOLTA_P'),
+  num('BOT_LLM.CONVERSA_MAX_GER','Teto de falas geradas por conversa','falas','server',1,20,1,BOT_LLM,'CONVERSA_MAX_GER'),
+  num('BOT_TALK.SILENCIO_TICKS','Silêncio até um bot puxar assunto','ticks','server',600,7200,60,BOT_TALK,'SILENCIO_TICKS'),
   // 'both' fica declarado para o dia em que houver entrega ao cliente — e a rota recusa até lá, em vez de
   // gravar um número que só metade do jogo enxerga.
   num('PLAYER.MAX_R','Raio máximo de uma peça','px','both',100,2000,10,PLAYER,'MAX_R'),

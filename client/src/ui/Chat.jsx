@@ -64,6 +64,10 @@ export default function Chat({ h, persist = false }) {
           onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); enviar(); } else if (e.key === "Escape") { e.preventDefault(); setOpen(false); setText(""); e.currentTarget.blur(); } }}
           onBlur={() => setOpen(false)} />
-      : <button className="chat-open" onClick={() => { setOpen(true); setTimeout(() => inp.current && inp.current.focus(), 0); }}>{LB.chatHint}</button>}
+      : <button className="chat-open" onClick={() => { setOpen(true); setTimeout(() => inp.current && inp.current.focus(), 0); }}>{dedo() ? LB.chatHintTouch : LB.chatHint}</button>}
   </div>;
 }
+// "Enter para falar" num aparelho que não tem Enter. Legenda que mente é pior que legenda nenhuma — é a
+// mesma razão de `keysOf(prefs)` existir para o #hud-cd. `body[data-pointer]` é escrito pelo app (a medida
+// fina é decisão do CSS), então lê-se de lá em vez de duplicar um matchMedia aqui.
+const dedo = () => typeof document !== "undefined" && document.body.dataset.pointer === "coarse";

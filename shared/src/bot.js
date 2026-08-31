@@ -91,18 +91,20 @@ export class BotBrain{
     this.edge=rng.next()<this.p.edge;   // parte dos bots joga o anel de dentro da borda, como gente faz em BR
     this._c={x:0,y:0,big:0,n:0,bx:0,by:0,vx:0,vy:0};this._o={x:0,y:0,big:0,n:0,bx:0,by:0,vx:0,vy:0};
     this._ap={x:0,y:0};this._ld={x:0,y:0};this._q=[];
+    this._t={x:0,y:0,big:0,n:0,bx:0,by:0,vx:0,vy:0};   // vista do alvo no _plan — separado do _o do act
+    this._pc={gd:0,gx:0,gy:0,br:0,bid:-1,bx:0,by:0};   // guarda e bocado de um inimigo multi-peça
     /** perigos próximos (jogador grande, estrela armada, asteroide que eu estouraria) — a lista que a fuga usa */
     this.dang=[];for(let i=0;i<BOT.DANG_N;i++)this.dang.push({x:0,y:0,w:0,d:0});this.dn=0;
     this.reset();}
 
   reset(){
-    this.mode="wander";this.target=-1;this.nextThink=0;this.commitUntil=0;
+    this.mode="wander";this.target=-1;this.tpid=-1;this.thx=0;this.thy=0;this.nextThink=0;this.commitUntil=0;
     this.wx=0;this.wy=0;this.gx=0;this.gy=0;this.zx=0;this.zy=0;this.fx=0;this.fy=0;this.zu=0;
     this.aim=this.r?this.r.next()*TAU:0;this.jit=0;this.reactAt=0;
     this.flickUntil=0;this.fkx=0;this.fky=0;this.fireReadyAt=0;
     this.wantFire=false;this.wantAim=false;this.wantSplit=false;this.wantWeapon=-1;
     this.fireAt=0;this.swapAt=0;this.swapTries=0;this.feedAt=0;this.feed=-1;
-    this.haz=null;this.hazAt=0;this.safeAt=0;this.juke=1;this.dn=0;this.press=0;this.alive=0;this.mate=-1;this.lootUntil=0;this.open=1;}
+    this.ed=Infinity;this.haz=null;this.hazAt=0;this.safeAt=0;this.juke=1;this.dn=0;this.press=0;this.alive=0;this.mate=-1;this.lootUntil=0;this.open=1;}
 
   // ── AÇÃO (todo tick; só conta O(1) — o que varre lista mora no _think) ──────
   act(tick){
@@ -115,14 +117,22 @@ export class BotBrain{
     if(tick>=this.hazAt){this.haz=this._nearestHazard(c);this.hazAt=tick+BOT.HAZ_TTL;}
     let flags=0,hold=false,gx=this.gx,gy=this.gy;
     const armed=ammoOf(ps)>0&&tick>=ps.fireCdUntil;   // na carência de spawn o applyFire recusa: nem gasta o input
-    let shield=false;for(let i=0;i<ps.pieces.length;i++){const q=ps.pieces[i];if(!q.dead){shield=q.shieldLv>0;break;}}
     // ── alvo do modo ──
     const m=this.mode;
     if(m==="hunt"||m==="flee"){
-      const o=w.players.get(this.target),oc=o&&o.alive?centroid(o,this._o):null;
+      const o=w.players.get(this.target);
+      const oc=m==="hunt"?this._alvo(this._o):(o&&o.alive?centroid(o,this._o):null);
       if(!oc){this._wander(c);gx=this.wx;gy=this.wy;}
       else if(m==="hunt"){const a=this._approach(c,oc);gx=a.x;gy=a.y;
-        if(this.wantSplit&&!shield&&c.n<BOT.MAX_PIECES){
+        // ⚠️ Testado e DESCARTADO: (a) segurar o ponteiro na presa pelos BOT.JUMP_TICKS do arremesso e
+        // (b) só apertar com a mira dentro de um cone (HUNT.SPLIT_CONE). Medido em 24 arenas de Livre, os
+        // dois PIORAM: 186 saltos → 146 (a) e → 137 (b), com os abates caindo de 86 para 74 nos dois.
+        // O motivo de (a) é que `_approach` JÁ devolve o ponto de antecipação quando `dd` está dentro do
+        // alcance do salto — que é exatamente a situação de quem acabou de saltar —, então a perseguição
+        // só substituía o flanco (que estava ajudando) por uma linha reta. O de (b) é que a mira raramente
+        // fecha antes de o `_plan` seguinte desarmar o `wantSplit`, e o salto some. As constantes
+        // JUMP_TICKS e SPLIT_CONE ficam, dormentes, como BLACKHOLE.COUNT: voltam com uma janela armada.
+        if(this.wantSplit&&c.n<BOT.MAX_PIECES){   // o preço do escudo já foi pago na decisão (_plan); aqui só a geometria
           const d=Math.hypot(oc.x-c.x,oc.y-c.y);
           if(d<c.big+oc.big+SPLIT.DIST*.9){flags|=INPUT_FLAG.SPLIT;this.wantSplit=false;}}}
       else{
@@ -131,8 +141,12 @@ export class BotBrain{
         // humano faz e é a única defesa real contra o split, já que fugir "para trás" é sempre mais lento.
         // (Cuspir para correr foi testado e descartado: 6 pelotas custam ~16 % da massa e devolvem 4 % de
         // velocidade, e não ajudam em nada contra o salto, que é o que realmente alcança.)
-        const perto=Math.hypot(oc.x-c.x,oc.y-c.y)<c.big+oc.big+SPLIT.DIST;
-        if(tick>=this.safeAt){this._safeDir(c,oc.x,oc.y,perto?this.juke*BOT.HUNT.DODGE:0);this.safeAt=tick+3;}
+        // de quem se foge é a PEÇA que engole, relida TODO tick (o _think tem até 55 de atraso): o centróide
+        // de um sujeito espalhado é espaço vazio, e fugir para lá é correr para o meio dele.
+        let ax=oc.x,ay=oc.y;
+        if(oc.n>1){const q=this._pecas(o,c);if(q.gd<Infinity){ax=q.gx;ay=q.gy;}}
+        const perto=Math.hypot(ax-c.x,ay-c.y)<c.big+oc.big+SPLIT.DIST;
+        if(tick>=this.safeAt){this._safeDir(c,ax,ay,perto?this.juke*BOT.HUNT.DODGE:0);this.safeAt=tick+3;}
         gx=this.fx;gy=this.fy;}}
     else if(m==="intercept"){const mi=w.entityById.get(this.target);
       if(!mi||mi.dead){this._wander(c);gx=this.wx;gy=this.wy;}
@@ -140,7 +154,11 @@ export class BotBrain{
         // sem AIM: o applyFire escolhe a interceptação. O `!shield` que havia aqui era consequência do
         // tiro custar um nível de escudo — o bot blindado preferia levar o míssil a gastar a blindagem.
         // Agora o tiro DEFENSIVO não cobra nada (rules.applyFire), então recusar era só morrer de graça.
-        if(armed&&tick>=this.fireAt){flags|=INPUT_FLAG.FIRE;this.fireAt=tick+30;}}}
+        // ⚠️ revalidar o entrante: depois que o primeiro interceptador cobre o míssil, `incomingMissile`
+        // com `livres` não o acha mais e o tiro seguinte sai OFENSIVO — cobrando um nível de escudo por um
+        // alvo que ninguém escolheu. É o mesmo predicado que dá o desconto em applyFire.
+        if(armed&&tick>=this.fireAt&&incomingMissile(w,this.slot,c.x,c.y,MISSILE.INTERCEPT_DIST,true)){
+          flags|=INPUT_FLAG.FIRE;this.fireAt=tick+30;}}}
     else if(m==="food"){const f=w.entityById.get(this.target);
       if(f&&!f.dead){gx=f.x;gy=f.y;}else{this._wander(c);gx=this.wx;gy=this.wy;}}
     else if(m==="zone"){gx=this.zx;gy=this.zy;}
@@ -193,20 +211,34 @@ export class BotBrain{
     const fleeRatio=BOT.FLEE_RATIO/p.flee,huntRatio=BOT.HUNT_RATIO/p.hunt;
     // ── varredura ÚNICA de jogadores: ameaça, presa, companheiro e a lista de perigos da fuga ──
     this.dn=0;
-    let prey=-1,pv=-Infinity,preyBig=0,press=0,mate=-1,md=Infinity,mateBig=0,alive=0,threat=-1,td=Infinity;
+    let prey=-1,pv=-Infinity,preyBig=0,preyX=0,preyY=0,preyPiece=-1,press=0,mate=-1,md=Infinity,mateBig=0,alive=0,threat=-1,td=Infinity,ed=Infinity,thx=0,thy=0;
     for(const o of w.players.values()){
       if(!o.alive)continue;alive++;if(o===ps)continue;
       const oc=centroid(o,TMP);if(!oc)continue;
       const dx=oc.x-c.x,dy=oc.y-c.y,d=Math.sqrt(dx*dx+dy*dy);
       if(sameTeam(w,o.slot,this.slot)){if(d<md){md=d;mate=o.slot;mateBig=oc.big;}continue;}
+      if(d<ed)ed=d;   // inimigo mais próximo: é o que separa um tiro de um disparo para o vazio
       if(oc.big>=c.big*fleeRatio){
+        // ele é maior NO TODO — mas "maior" é do jogador, e quem come é a PEÇA. Com ele partido, a peça que
+        // me engole pode estar longe e sobrar um pedaço comível perto: é o pedido literal do dono.
+        const q=oc.n>1?this._pecas(o,c):null;
+        const gd=q&&q.gd<Infinity?q.gd:d,gx=q&&q.gd<Infinity?q.gx:oc.x,gy=q&&q.gd<Infinity?q.gy:oc.y;
+        // ⚠️ `press` continua saindo do CENTRÓIDE: ele é contrato (Room._humor lê press>1.5 e a fala dos bots
+        // lê press>1.2), e medir pela peça o infla — a sala inteira passaria a gritar que está sendo caçada.
         if(d<BOT.FLEE_DIST){press+=(1-d/BOT.FLEE_DIST)*(oc.big/c.big)*sk.flee;
-          this._danger(oc.x,oc.y,oc.big*2.4,d);
-          if(d<td){td=d;threat=o.slot;}}}
+          this._danger(gx,gy,oc.big*2.4,gd);
+          if(gd<td){td=gd;threat=o.slot;thx=gx;thy=gy;}}
+        // ── BOCADO: o pedaço solto de um gigante, se estiver LIMPO do guarda ──
+        if(q&&q.bid>=0){const bd=Math.hypot(q.bx-c.x,q.by-c.y);
+          if(bd<BOT.HUNT_DIST&&(q.gd===Infinity||Math.hypot(q.bx-q.gx,q.by-q.gy)>BOT.HUNT.BITE_CLEAR)){
+            const v=(q.br*(o.isBot?1:HUMAN_BONUS)-bd*.1)*BOT.HUNT.BITE_PENALTY;
+            if(v>pv){pv=v;prey=o.slot;preyBig=q.br;preyX=q.bx;preyY=q.by;preyPiece=q.bid;}}}}
       else if(c.big>=oc.big*huntRatio&&d<BOT.HUNT_DIST){
         if(!o.isBot&&tick-o.spawnTick<BOT.SPAWN_GRACE_TICKS)continue;   // acabou de cair no mapa: deixa o humano respirar
-        const v=oc.big*(o.isBot?1:HUMAN_BONUS)-d*.1;if(v>pv){pv=v;prey=o.slot;preyBig=oc.big;}}}
-    this.press=press;this.alive=alive;this.mate=mate;
+        const v=oc.big*(o.isBot?1:HUMAN_BONUS)-d*.1;
+        if(v>pv){pv=v;prey=o.slot;preyBig=oc.big;preyX=oc.x;preyY=oc.y;preyPiece=-1;}}}
+    this.press=press;this.alive=alive;this.mate=mate;this.ed=ed;
+    if(threat>=0){this.thx=thx;this.thy=thy;}   // de onde se foge: a PEÇA que engole, não o centro do sujeito
     // companheiro maior e colado: passar massa para quem pode ganhar é a jogada certa em equipe
     this.feed=(mate>=0&&md<340&&mateBig>c.big*1.35&&rng.chance(sk.weapon*.5))?mate:-1;
     // ── perigos do mapa entram na mesma lista (a fuga precisa deles para não trocar predador por estrela) ──
@@ -221,13 +253,12 @@ export class BotBrain{
     if(zu>0)oferta("zone",zu>=sk.zoneMargin?3+zu:.35*zu,-1);
     if(press>0&&threat>=0)oferta("flee",1.5*press+(td<c.big+240?2:0),threat);
     this.open=1;
-    if(prey>=0){const o=w.players.get(prey),oc=o?centroid(o,TMP):null;
-      if(oc){this.open=this._openness(oc.x,oc.y);
-        const dd=Math.hypot(oc.x-c.x,oc.y-c.y),fecha=1-this.open;
-        // presa em campo aberto quase não pontua: perseguir quem é mais rápido que eu é perder tempo
-        let sc=1.35*(.45+.55*fecha)*Math.max(.15,1-dd/(BOT.HUNT_DIST*1.4))*p.hunt*(.55+.45*sk.split);
-        if(c.big>=preyBig*SPLIT_R*BOT.HUNT.SPLIT_MARGIN&&dd<c.big+preyBig+SPLIT.DIST*.9)sc+=.5*sk.split;
-        oferta("hunt",sc,prey);}}
+    if(prey>=0){this.open=this._openness(preyX,preyY);
+      const dd=Math.hypot(preyX-c.x,preyY-c.y),fecha=1-this.open;
+      // presa em campo aberto quase não pontua: perseguir quem é mais rápido que eu é perder tempo
+      let sc=1.35*(.45+.55*fecha)*Math.max(.15,1-dd/(BOT.HUNT_DIST*1.4))*p.hunt*(.55+.45*sk.split);
+      if(c.big>=preyBig*SPLIT_R*BOT.HUNT.SPLIT_MARGIN&&dd<c.big+preyBig+SPLIT.DIST*.9)sc+=.5*sk.split;
+      oferta("hunt",sc,prey);}
     const f=this._bestFood(ps,c,tick);
     if(f)oferta("food",Math.min(1.5,f.s*8)*p.food,f.b.id);
     // parar para fundir: dividido, sem pressão e com a fusão perto — é a diferença mais visível entre gente e script
@@ -240,11 +271,13 @@ export class BotBrain{
     // compromisso: trocar antes do mínimo exige folga grande (zona em urgência e perigo colado furam sozinhos)
     const preso=tick<this.commitUntil&&b1!==this.mode&&b1!=="zone"&&!(b1==="flee"&&td<c.big+240);
     if(!preso&&(b1!==this.mode||t1!==this.target)){
-      this.mode=b1;this.target=t1;this.juke=rng.chance(.5)?1:-1;   // o lado do desvio é escolhido ao entrar na fuga, não a cada tick
+      this.mode=b1;this.target=t1;this.tpid=(b1==="hunt"&&t1===prey)?preyPiece:-1;
+      this.juke=rng.chance(.5)?1:-1;   // o lado do desvio é escolhido ao entrar na fuga, não a cada tick
       this.commitUntil=tick+(BOT.COMMIT[b1]||40);
       this.reactAt=tick+sk.react;}   // intenção nova não chega na mão no mesmo quadro
     if(this.mode==="wander"&&Math.hypot(this.wx-c.x,this.wy-c.y)<BOT.WAYPOINT_DONE)this._wander(c);
-    if(this.mode==="flee"){const o=w.players.get(this.target),oc=o&&o.alive?centroid(o,TMP):null;
+    if(this.mode==="flee"&&this.target===threat)this._safeDir(c,thx,thy);
+    else if(this.mode==="flee"){const o=w.players.get(this.target),oc=o&&o.alive?centroid(o,TMP):null;
       if(oc)this._safeDir(c,oc.x,oc.y);}
     this._plan(ps,c,tick);}
 
@@ -252,26 +285,50 @@ export class BotBrain{
   _plan(ps,c,tick){
     const w=this.w,sk=this.s,p=this.p,rng=this.rng,tudo=ammoOf(ps)>0&&tick>=ps.fireCdUntil;
     this.wantSplit=false;
-    let shield=false;for(let i=0;i<ps.pieces.length;i++){const q=ps.pieces[i];if(!q.dead){shield=q.shieldLv>0;break;}}
-    // ── salto: só quando o predicado REAL de comer vale DEPOIS do salto e a presa não tem para onde correr ──
-    if(this.mode==="hunt"){const o=w.players.get(this.target),oc=o&&o.alive?centroid(o,TMP):null;
+    // ⚠️ UMA passada, TRÊS respostas — as duas decisões que dependem de escudo têm regras DIFERENTES, e ler
+    // um booleano só para as duas estava errado nas duas pontas: `applyFire` cobra um nível da PRIMEIRA peça
+    // viva, enquanto `applySplit` quebra o escudo INTEIRO de CADA peça com r ≥ SPLIT.MIN_R (a peça pequena
+    // demais para dividir mantém o dela). `nSplit` é quantas peças de fato nascem.
+    let shieldFire=false,lvSplit=0,nSplit=0,primeira=true,sx=c.x,sy=c.y;
+    for(let i=0;i<ps.pieces.length;i++){const q=ps.pieces[i];if(q.dead)continue;
+      if(primeira){shieldFire=q.shieldLv>0;sx=q.x;sy=q.y;primeira=false;}
+      if(q.r>=SPLIT.MIN_R){nSplit++;if(q.shieldLv>lvSplit)lvSplit=q.shieldLv;}}
+    // ── salto: o predicado REAL de comer DEPOIS do salto, e o PREÇO do que ele custa ──
+    if(this.mode==="hunt"){const oc=this._alvo(this._t);   // ⚠️ _t, não TMP: _thirdParty escreve em TMP por dentro
       // o salto é o ÚNICO fechador em campo aberto (a presa é sempre mais rápida), então ele não pode exigir
       // que ela já esteja encurralada — o arco fechado entra na CHANCE, não como veto.
-      if(oc&&!shield&&c.n<BOT.MAX_PIECES&&c.big>=oc.big*SPLIT_R*BOT.HUNT.SPLIT_MARGIN
+      // O escudo deixou de ser VETO e virou PREÇO (ver A ECONOMIA DO SALTO em constants.js): ele barrava 73 %
+      // do tempo de caça por uma blindagem que vale ~4,4 % da massa contra um salto que rende até 32 %.
+      // `nSplit>0` é o piso SPLIT.MIN_R, que NINGUÉM checava: a flag saía, queimava splitCdUntil e não nascia
+      // peça nenhuma. E `c.n+nSplit` é o guarda certo — applySplit DOBRA as peças elegíveis, então o
+      // `c.n<MAX_PIECES` de antes deixava 7 peças virarem 14.
+      const ganho=oc?(oc.big*oc.big)/(c.big*c.big):0;
+      const preco=(lvSplit>0?BOT.HUNT.SPLIT_GAIN_SHIELD:BOT.HUNT.SPLIT_GAIN)*(1+BOT.HUNT.SPLIT_GAIN_N*(c.n-1));
+      if(oc&&nSplit>0&&c.n+nSplit<=BOT.MAX_PIECES&&ganho>=preco&&c.big>=oc.big*SPLIT_R*BOT.HUNT.SPLIT_MARGIN
         &&Math.hypot(oc.x-c.x,oc.y-c.y)<c.big+oc.big+SPLIT.DIST*1.4
-        &&!this._thirdParty(oc.x,oc.y,c.big)&&rng.chance(sk.split*(.35+.65*(1-this.open))))this.wantSplit=true;}
-    if(!tudo||tick<this.fireAt||(shield&&this.mode!=="flee")){this.wantWeapon=-1;this.wantFire=false;return;}
+        &&!this._thirdParty(oc.x,oc.y,c.big)
+        &&rng.chance(sk.split*(BOT.HUNT.SPLIT_OPEN+(1-BOT.HUNT.SPLIT_OPEN)*(1-this.open))))this.wantSplit=true;}
+    // ⚠️ o veto do TIRO continua inteiro: é ele que segura o gasto de escudo no gatilho, que é 92× o do salto.
+    if(!tudo||tick<this.fireAt||(shieldFire&&this.mode!=="flee")){this.wantWeapon=-1;this.wantFire=false;return;}
     // ── arma da situação (só quem tem mão para isso troca) ──
     if(rng.chance(sk.weapon)){const q=this._bestWeapon(ps,c);
       if(q!==ps.weapon&&ps.ammo[q]>0){this.wantWeapon=q;this.swapTries=WEAPONS.length;this.swapAt=tick;}
       else this.wantWeapon=-1;}
     // ── alvo do tiro ──
     let tx=0,ty=0,mira=false,vale=false;
-    if(this.mode==="hunt"){const o=w.players.get(this.target),oc=o&&o.alive?centroid(o,TMP):null;
+    if(this.mode==="hunt"){const oc=this._alvo(this._t);
       if(oc&&Math.hypot(oc.x-c.x,oc.y-c.y)<MISSILE.AIM_RANGE){
         const lead=this._lead(c,oc,sk);tx=lead.x;ty=lead.y;mira=rng.chance(BOT.AIM_CHANCE*(.5+.5*sk.lead));vale=true;}}
-    else if(this.mode==="flee"&&this.press>0){tx=c.x;ty=c.y;mira=false;vale=true;}   // atira sem mira: o alvo está atrás
-    else if(this.mode==="food"&&ammoOf(ps)>=weaponOf(ps.weapon).ammo&&rng.chance(p.fire*.35)){tx=c.x;ty=c.y;vale=true;}
+    else if(this.mode==="flee"&&this.press>0){
+      // atira sem mira: o alvo está atrás. ⚠️ Mas a fuga era o único modo ISENTO da guarda de escudo, e
+      // `applyFire` cobra um nível por puxão quando o tiro NÃO é interceptação — então o bot blindado
+      // queimava a blindagem num tiro cego. Agora, com escudo, só puxa o gatilho quando ele sai DE GRAÇA:
+      // o predicado é o MESMO de applyFire (sem mira + arma teleguiada + entrante ainda descoberto), medido
+      // da primeira peça viva, que é a que paga. Sem escudo nada muda.
+      if(!shieldFire||incomingMissile(w,this.slot,sx,sy,MISSILE.INTERCEPT_DIST,true)){tx=c.x;ty=c.y;mira=false;vale=true;}}
+    // descarte com a munição cheia — mas só com alguém no alcance: atirar para o vazio é o tiro que só
+    // queima escudo e faz barulho (BOT.MISSILE_MIN_D, não AIM_RANGE, que é largo demais para cortar algo).
+    else if(this.mode==="food"&&ammoOf(ps)>=weaponOf(ps.weapon).ammo&&this.ed<BOT.MISSILE_MIN_D&&rng.chance(p.fire*.35)){tx=c.x;ty=c.y;vale=true;}
     if(!vale||!rng.chance(.38*p.fire*(.4+sk.weapon))){this.wantFire=false;return;}
     this.wantFire=true;this.wantAim=mira;
     if(mira){this.fkx=tx;this.fky=ty;this.flickUntil=tick+rng.int(BOT.HAND.FLICK[0],BOT.HAND.FLICK[1]);this.fireReadyAt=this.flickUntil-1;}
@@ -281,7 +338,7 @@ export class BotBrain{
   _bestWeapon(ps,c){
     const a=ps.ammo;
     if(a[WEAPON.NOVA]>0&&this.press>=1.3)return WEAPON.NOVA;
-    const o=this.mode==="hunt"?this.w.players.get(this.target):null,oc=o&&o.alive?centroid(o,TMP):null;
+    const oc=this.mode==="hunt"?this._alvo(this._t):null;
     const d=oc?Math.hypot(oc.x-c.x,oc.y-c.y):Infinity;
     if(a[WEAPON.BURST]>0&&d<700)return WEAPON.BURST;
     if(a[WEAPON.CLUSTER]>0&&d>900&&d<MISSILE.AIM_RANGE)return WEAPON.CLUSTER;
@@ -332,6 +389,40 @@ export class BotBrain{
       if(ok)livre++;}
     return livre/n;}
 
+  /**
+   * UMA passada pelas peças de um inimigo, com as duas respostas que o centróide não dá:
+   *  · o GUARDA — a peça mais próxima que me ENGOLE. É dela que se foge: o centróide de um jogador espalhado
+   *    é espaço VAZIO, e a fuga mirava esse vazio (medido: 15 % dos encontros têm a maior peça a mais de um
+   *    raio do centróide).
+   *  · o BOCADO — a MAIOR peça que eu engulo depois do salto. Um gigante partido em pedaços é a presa mais
+   *    gorda do jogo, e comparar `big` com `big` fazia dele só uma ameaça: os pedaços eram invisíveis.
+   * `gd` volta Infinity quando ninguém ali me come, e `bid` −1 quando não há bocado.
+   * @param {PlayerState} o
+   */
+  _pecas(o,c){
+    const q=this._pc;q.gd=Infinity;q.gx=0;q.gy=0;q.br=0;q.bid=-1;q.bx=0;q.by=0;
+    const comeMe=c.big*EAT.RATIO,comivel=c.big/(SPLIT_R*BOT.HUNT.SPLIT_MARGIN),arr=o.pieces;
+    let bd2=Infinity;
+    for(let i=0;i<arr.length;i++){const p=arr[i];if(p.dead)continue;
+      const dx=p.x-c.x,dy=p.y-c.y,d2=dx*dx+dy*dy;
+      if(p.r>=comeMe){const d=Math.sqrt(d2);if(d<q.gd){q.gd=d;q.gx=p.x;q.gy=p.y;}}
+      // maior primeiro (vale mais massa) e, entre iguais, a mais PERTO — um gigante se parte em pedaços do
+      // mesmo tamanho, e sem o desempate ele iria atrás do primeiro do array, que pode ser o do outro lado.
+      else if(p.r<=comivel&&(p.r>q.br||(p.r===q.br&&d2<bd2))){q.br=p.r;q.bid=p.id;q.bx=p.x;q.by=p.y;bd2=d2;}}
+    return q;}
+  /**
+   * A vista do alvo da CAÇA: a PEÇA, quando o bot escolheu morder um pedaço (`tpid`), ou o jogador inteiro.
+   * Devolve a mesma forma do `centroid`, então _approach, _lead, _bestWeapon e o predicado do salto não
+   * precisam saber a diferença. `this.target` continua sendo o SLOT — é o que Room._estado/_humor leem.
+   */
+  _alvo(buf){
+    const w=this.w,o=w.players.get(this.target);
+    if(!o||!o.alive){this.tpid=-1;return null;}
+    if(this.tpid>=0){const pc=w.entityById.get(this.tpid);
+      if(pc&&!pc.dead&&pc.owner===this.target){
+        buf.x=buf.bx=pc.x;buf.y=buf.by=pc.y;buf.big=pc.r;buf.n=1;buf.vx=pc.svx+pc.vx;buf.vy=pc.svy+pc.vy;return buf;}
+      this.tpid=-1;}   // o pedaço foi comido ou se fundiu: volta a caçar o dono
+    return centroid(o,buf);}
   /** Terceiro maior que eu no raio da queda do salto: dividir na frente dele é entregar as duas metades. */
   _thirdParty(x,y,big){
     const w=this.w,R=BOT.HUNT.THIRD_R;

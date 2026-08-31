@@ -40,6 +40,37 @@ em ticks ficaria parada na tela. Quem suaviza o número é o cliente.
 O gancho que fez isso caber: `Room.roundStart` nascia 0 e **nunca era escrito**. Escrevê-lo na largada faz
 relógio do espaço, contagem do fim e troca de céu se ajustarem sozinhos.
 
+## A sala do Livre já estava andando
+
+A tabela acima promete "entrada: direto, sala em andamento", e por muito tempo isso era meia verdade: a
+sala nova abria com um punhado de preenchimentos, todos sorteados na mesma faixa de raio (`PLAYER.BOT_R`,
+[24,58]) — ou seja, todos do tamanho de quem tinha acabado de entrar. Quem chegava via uma sala NOVA, que
+é a coisa que menos convida a ficar num .io.
+
+Hoje a abertura tem planeta de todo tamanho (`ROOM.SEED_R`/`SEED_MIX`, `botSpawnR`): dos `BOT_SEED` (6)
+que já estão lá quando a porta abre, **2 são gigantes** (r 200–250, 40–62 mil de massa), **3 são médios**
+(r 80–150) e **1 é pequeno**. O jogador entra com 900 de massa, em último no placar, com dois planetas
+grandes e uma dúzia de médios à frente — que é exatamente a leitura de uma partida que começou sem ele.
+
+Três decisões que sustentam isso:
+
+- **É cota, não sorteio.** Sorteando cada bot de forma independente, uma sala em cada vinte sai só de
+  bolinhas — e a sensação não pode depender de sorte. Os números vão declarados (`SEED_MIX:[2,3]`), não
+  em fração: `.25` de 6 arredonda para 2, que é 33%, e ninguém consegue pedir "um gigante a menos"
+  mexendo num número que mente.
+- **Gigante só na semente.** Ele é o veterano que já estava lá. Um planeta de 250 de raio nascendo no
+  minuto 3, dentro da câmera de quem já cresceu, é o pop-in que a chegada gradual existe para evitar —
+  voltando pela porta dos fundos. Quem chega depois entra no máximo MÉDIO, e cada vez mais raro.
+- **O decaimento é o menor entre dois relógios**: a janela de 2 min (`SEED_WINDOW_TICKS`) e o quanto a
+  sala ainda tem de vaga. Só o tempo não bastava — a sala enche em ~93 s contra uma janela de 120 s, então
+  a chance de vir grande nunca chegava a zero, e ainda ficava amarrada em silêncio ao env `ROOM_BOTS`.
+
+O preenchimento grande **não** ganha pontuação nem contagem de partículas de presente: ele chegou grande,
+e o que fizer daqui em diante é o que conta. O nível ao lado do nick acompanha o tamanho, porque um
+planeta de 62 mil de massa com "nível 3" denuncia tão bem quanto um nome de catálogo. E `PLAYER.DECAY`
+desfaz a semente sozinho: sem comer, o gigante murcha para a casa dos 150 de raio em 10–15 min. É um
+estado inicial, não um regime.
+
 ## Os outros 49 não se apresentam
 
 O preenchimento entra com **nome de jogador** (`BOT_NICKS` + `botNick`: "Lipe", "sniper3", "xXraposaXx",

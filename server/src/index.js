@@ -18,6 +18,7 @@ import {createRoomManager} from './rooms/RoomManager.js';
 import {createWsServer} from './net/wsServer.js';
 import {createOllama} from './llm/ollama.js';
 import {createBotChat} from './rooms/botChat.js';
+import {createBotNames} from './rooms/botNames.js';
 import {createHttpHandler} from './http/api.js';
 /** @param {Partial<typeof baseConfig>} [overrides] */
 export async function startServer(overrides={}){
@@ -36,18 +37,23 @@ export async function startServer(overrides={}){
   // fechadas por causa disso. Até ele terminar, as salas usam o repertório fixo — que é o mesmo caminho
   // de quando o Ollama não existe, então não há um segundo comportamento para manter.
   const game=cfg.role!=='api';
-  let botChat=null;
+  let botChat=null,botNames=null;
   if(game&&cfg.botChatLlm&&cfg.ollamaUrl){
     const llm=createOllama({url:cfg.ollamaUrl,model:cfg.ollamaModel,timeoutMs:cfg.ollamaTimeoutMs,
       maxInflight:cfg.ollamaMaxInflight,metrics,log});
     metrics.llmSource(()=>llm.inflight,()=>llm.breakerOpen);
     botChat=createBotChat({llm,log,metrics});
+    // O BALDE DE APELIDOS divide a MESMA instância de `llm` com a fala: mesmo disjuntor, mesmo teto de
+    // gerações em voo, mesmas métricas. Ele é raro (só quando o balde cai do piso) e não tem prazo, então
+    // não usa `force`: se `ok()` recusar porque a fala está ocupando o teto, ele tenta no próximo
+    // intervalo — a fala é do INSTANTE e tem preferência, um apelido pode esperar 20 s.
+    botNames=createBotNames({llm,log,metrics});botNames.start();
     llm.warmup().catch(()=>{});
     log.info(`fala dos bots por LLM: ${cfg.ollamaModel} em ${cfg.ollamaUrl} (até ${cfg.ollamaMaxInflight} ao mesmo tempo)`);}
   else if(game&&cfg.ollamaUrl)log.info('BOT_CHAT_LLM desligado: a fala dos bots usa o repertório fixo');
   // ── salas + laço ──
   const scheduler=game?new Scheduler({metrics,log}):null;
-  const rooms=game?createRoomManager({config:cfg,hooks,log,metrics,scheduler,botChat}):null;
+  const rooms=game?createRoomManager({config:cfg,hooks,log,metrics,scheduler,botChat,botNames}):null;
   const health=()=>({ok:true,shard:cfg.shard,role:cfg.role,rooms:rooms?rooms.rooms.size:0,players:rooms?rooms.playerCount():0,...metrics.snapshot(),
     ...(db?healthFields({db,persist}):{db:'none',queue:0}),protocol:PROTOCOL_VERSION});
   // ── http + ws ──

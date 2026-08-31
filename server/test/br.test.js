@@ -593,6 +593,14 @@ test('fala gerada: o bot responde a quem o CHAMA, e o orçamento segura o resto'
   const pedidos=[];
   room.botChat={ativo:()=>true,citou,gerar:async ctx=>{pedidos.push(ctx);return`eu ouvi, ${ctx.quem}`;}};
   const chance=room.rng.chance.bind(room.rng);room.rng.chance=()=>true;   // MENTION_P é 0,92: o teste não pode depender do sorteio
+  // ⚠️ ...e é ESTE forçar que obriga a calar os gatilhos ESPONTÂNEOS aqui. Com `chance` sempre true todo
+  // gatilho da fila passa, e o `lider` — que o `_humor` dispara na primeira varredura de 2 Hz, para o bot
+  // que estiver na ponta — sai com `quem:null`. Quando o bot CITADO é justamente o líder (a semente abre
+  // com gigantes, então é comum), a linha do `lider` chegava ANTES da resposta e o teste lia "eu ouvi,
+  // null" — a intermitência que este arquivo carregava. Marcar `_eraLider` é dizer "ele já era líder
+  // antes", que é o que `_humor` compara.
+  for(const gp of room.sim.players.values())gp._eraLider=true;
+  room.sim.botTalk.length=0;
   try{
     let n=c.json.length;
     c.send({t:'chat',text:`${bot.name} vem ca seu covarde`});

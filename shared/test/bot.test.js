@@ -10,19 +10,19 @@ import {BotBrain} from "../src/bot.js";
 import {createRng} from "../src/rng.js";
 import {createZone,stepZone} from "../src/zone.js";
 import {INPUT_FLAG} from "../src/protocol/constants.js";
-import {BOT,BR,PLAYER,FOOD,STAR,SPEED,TICK_HZ,ZONE} from "../src/constants.js";
+import {BOT,BR,PLAYER,FOOD,STAR,SPEED,TICK_HZ,ZONE,ROOM} from "../src/constants.js";
 
 const TURN_MAX=BOT.SKILLS.reduce((a,s)=>Math.max(a,s.turn),0);
 const JIT=BOT.HAND.JITTER_STEP*BOT.SKILLS.reduce((a,s)=>Math.max(a,s.jitter),0);
 
 /** Roda uma partida e devolve tudo que dá para medir dela. */
-function arena({seed=1,n=40,ticks=7200,zone=true,team=0}={}){
-  const w=createWorld({seed,food:FOOD.COUNT,asteroids:true,stars:STAR.COUNT,holes:0,weapons:true});
+function arena({seed=1,n=40,ticks=7200,zone=true,team=0,weapons=true,respawn=false}={}){
+  const w=createWorld({seed,food:FOOD.COUNT,asteroids:true,stars:STAR.COUNT,holes:0,weapons});
   const rng=createRng(seed*104729+7);
   const uso={split:0,fire:0,swap:0,eject:0,parado:0,inputs:0},giro=[],ang=new Map();
   const emit=(slot,c)=>{
     const ps=w.players.get(slot);if(!ps)return;
-    uso.inputs++;
+    uso.inputs++;ultima.set(slot,c.flags);
     if(c.flags&INPUT_FLAG.SPLIT)uso.split++;
     if(c.flags&INPUT_FLAG.FIRE)uso.fire++;
     if(c.flags&INPUT_FLAG.SWAP)uso.swap++;
@@ -46,6 +46,11 @@ function arena({seed=1,n=40,ticks=7200,zone=true,team=0}={}){
       x:w.w/2+Math.cos(a)*ring,y:w.h/2+Math.sin(a)*ring});
     brains.push(new BotBrain(w,s,rng,emit));}
   const z=zone?createZone(0):null;if(z)w.setZone(z);
+  // escudo perdido: a QUEM atribuir. applyFire cobra um nível por puxão de gatilho e applySplit derruba o
+  // escudo inteiro de cada peça que divide — os dois com bySlot −1, então o evento não distingue. Quem
+  // distingue é a flag que o bot pediu NESTE tick.
+  const esc={split:0,fire:0,outro:0},shAntes=new Array(n).fill(0),ultima=new Map();
+  const shield=s=>{const ps=w.players.get(s);if(!ps)return 0;let t=0;for(const p of ps.pieces)if(!p.dead)t+=p.shieldLv;return t;};
   const morte=[],gas=new Map(),vivo=new Map();
   let ms=0,eat=0,splitEat=0;const splitAt=new Map();
   for(let i=0;i<ticks;i++){
@@ -54,10 +59,14 @@ function arena({seed=1,n=40,ticks=7200,zone=true,team=0}={}){
     for(const b of brains){const ps=w.players.get(b.slot);if(ps&&ps.alive)b.act(w.tick);}
     ms+=Number(process.hrtime.bigint()-t0)/1e6;
     for(const b of brains){const ps=w.players.get(b.slot);if(ps&&ps.alive&&(ps.splitReq))splitAt.set(b.slot,w.tick);}
+    for(let s=0;s<n;s++)shAntes[s]=shield(s);
     w.step();
+    for(let s=0;s<n;s++){const d=shAntes[s]-shield(s);if(d<=0)continue;const f=ultima.get(s)|0;
+      if(f&INPUT_FLAG.SPLIT)esc.split+=d;else if(f&INPUT_FLAG.FIRE)esc.fire+=d;else esc.outro+=d;}
     for(const e of w.events){
       if(e.type==="EAT"){eat++;const t=splitAt.get(e.killerSlot);if(t!==undefined&&w.tick-t<180)splitEat++;}
-      if(e.type==="PLAYER_DEAD")morte.push({slot:e.slot,tick:w.tick,cause:e.cause,skill:brains[e.slot].s.id});}
+      if(e.type==="PLAYER_DEAD"){morte.push({slot:e.slot,tick:w.tick,cause:e.cause,skill:brains[e.slot].s.id});
+      if(respawn){w.respawnPlayer(e.slot,{r:rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1])});brains[e.slot].reset();}}}
     const zc=w.zoneNow();
     for(const b of brains){const ps=w.players.get(b.slot);if(!ps||!ps.alive)continue;
       const k=b.s.id;vivo.set(k,(vivo.get(k)|0)+1);
@@ -66,7 +75,7 @@ function arena({seed=1,n=40,ticks=7200,zone=true,team=0}={}){
     let viv=0;for(const p of w.players.values())if(p.alive)viv++;
     if(viv<=1)break;}
   giro.sort((a,b)=>a-b);
-  return{w,brains,morte,uso,gas,vivo,eat,splitEat,ms,ticks:w.tick,
+  return{w,brains,morte,uso,esc,gas,vivo,eat,splitEat,ms,ticks:w.tick,
     giro:{p50:giro[giro.length>>1]||0,p99:giro[Math.floor(giro.length*.99)]||0},
     vivos:[...w.players.values()].filter(p=>p.alive).length};
 }
@@ -147,4 +156,85 @@ test("custo: o cérebro cabe no orçamento do tick", ()=>{
   const a=arena({seed:31,n:50,ticks:3600});
   const porTick=a.ms/a.ticks;
   assert.ok(porTick<2,`${porTick.toFixed(3)} ms/tick só de bots — o passo inteiro tem 16,7 ms para 60 Hz`);
+});
+
+// ── CENAS SINTÉTICAS: as peças plantadas à mão ───────────────────────────────
+// A arena mede a SALA, e há duas regras que ela não consegue provar porque uma sala só de bots quase não
+// produz a cena: um jogador GRANDE e PARTIDO, e um bot blindado diante de uma presa de tamanho exato.
+// (Medido: o bocado aparece em 0,7 % do tempo de caça da arena.) Aqui o mundo é pelado, as peças são postas
+// na mão e o `emit` é vazio — ninguém se move, a cena fica de pé e só a DECISÃO é medida. Custa milissegundos
+// e é 100 % determinístico: sem isto, as duas regras voltariam a quebrar em silêncio.
+
+/** Mundo pelado: sem comida, sem perigo, sem decaimento. Só os planetas que o teste planta. */
+const palco=(seed=9)=>createWorld({seed,food:0,asteroids:false,stars:0,holes:0,weapons:false,decay:false});
+/** Cérebro com perícia e estilo FIXOS — sem isso quem decide o teste é o sorteio da perícia. */
+function cerebro(w,slot,emit=()=>{},skill=3,persona=0){
+  const b=new BotBrain(w,slot,createRng(4242),emit);
+  b.s=BOT.SKILLS[skill];b.p=BOT.PERSONAS[persona];return b;}
+
+test("salto: o escudo é PREÇO e não veto — a MESMA presa vale sem blindagem e não vale com ela", ()=>{
+  // ganho = (rb/ra)² da minha massa; preço = HUNT.SPLIT_GAIN sem escudo e HUNT.SPLIT_GAIN_SHIELD com ele.
+  // Os raios saem da fórmula, não de números escolhidos: `magra` fica ENTRE os dois preços de propósito, que
+  // é o único ponto onde a regra se vê.
+  const ra=200,rDe=g=>Math.round(ra*Math.sqrt(g));
+  const magra=rDe((BOT.HUNT.SPLIT_GAIN+BOT.HUNT.SPLIT_GAIN_SHIELD)/2),gorda=rDe(BOT.HUNT.SPLIT_GAIN_SHIELD*2);
+  const cena=(rb,lv,ticks=900)=>{
+    const w=palco();
+    w.addPlayer(0,{r:ra,isBot:true,x:2000,y:2000});
+    w.addPlayer(1,{r:rb,isBot:true,x:2500,y:2000});
+    // ⚠️ o que prova a decisão é a FLAG EMITIDA, não `wantSplit`: o `act` zera o desejo no mesmo tick em que
+    // o converte em INPUT_FLAG.SPLIT. E o emit não APLICA nada — a cena tem que ficar de pé.
+    let pediu=false;
+    const b=cerebro(w,0,(s,c)=>{if(c.flags&INPUT_FLAG.SPLIT)pediu=true;}),pc=w.piecesOf(0)[0];
+    for(let i=0;i<ticks;i++){
+      pc.shieldLv=lv;pc.shieldEvolveAt=1e9;                 // o escudo é a ÚNICA variável da cena
+      w.setTarget(0,2000,2000);w.setTarget(1,2500,2000);    // os dois parados: sem alvo eles correm para (0,0)
+      b.act(w.tick);if(pediu)return true;
+      w.step();}
+    return false;};
+  assert.ok(cena(magra,0),`presa de r=${magra} não armou o salto SEM escudo (ganho ${(magra*magra/(ra*ra)).toFixed(3)} ≥ ${BOT.HUNT.SPLIT_GAIN})`);
+  assert.ok(!cena(magra,3),`a mesma presa armou o salto COM escudo 3: a blindagem tem que cobrar ${BOT.HUNT.SPLIT_GAIN_SHIELD}`);
+  assert.ok(cena(gorda,3),`presa de r=${gorda} não armou o salto com escudo — o preço não pode virar veto de novo`);
+});
+
+test("bocado: o pedaço solto de um gigante é presa — e o gigante inteiro não é", ()=>{
+  // O pedido literal: "se um player tem pedaços pequenos e é grande, o bot pode caçar esses pequenos pedaços".
+  // O guarda fica longe do pedaço (mais que HUNT.BITE_CLEAR), senão morder é entregar as duas metades.
+  const gx=2000,mx=5000,bx=5200,pequeno=45;
+  const cena=comPedacos=>{
+    const w=palco(11);
+    w.addPlayer(0,{r:120,isBot:true,x:bx,y:2000});
+    w.addPlayer(1,{r:300,isBot:true,x:gx,y:2000});
+    if(comPedacos)for(const dy of [-300,0,300])w.newPiece(1,mx,2000+dy,pequeno);
+    const b=cerebro(w,0);
+    // ⚠️ o gigante mira a PRÓPRIA peça grande: um alvo em cima dos pedaços os faria convergir e FUNDIR,
+    // e um r=45·√3 já não caberia no predicado de comer — a cena se desmontaria sozinha.
+    for(let i=0;i<60;i++){w.setTarget(0,bx,2000);w.setTarget(1,gx,2000);b.act(w.tick);w.step();}
+    return b;};
+  const com=cena(true);
+  assert.equal(com.mode,"hunt","com pedaços comíveis por perto o gigante vira PRESA, não só ameaça");
+  assert.equal(com.target,1,"a caça é do DONO do pedaço: o alvo público continua sendo o slot");
+  assert.ok(com.tpid>=0,"o alvo tem que ser a PEÇA (tpid), senão ele foi atrás do centróide do gigante");
+  const alvo=com.w.entityById.get(com.tpid);
+  assert.ok(alvo&&alvo.r===pequeno,`mordeu a peça errada (r=${alvo?alvo.r:"?"}): tem que ser a pequena, não a de 300`);
+  // ⚠️ Controle negativo: sem ele, o teste acima passaria por um bot que simplesmente caça tudo.
+  assert.notEqual(cena(false).mode,"hunt","sem pedaço comível o mesmo gigante NÃO pode virar presa");
+});
+
+test("arena Livre: o salto virou ataque de verdade, e o escudo não vaza mais no gatilho", ()=>{
+  // ⚠️ A arena nasceu Battle Royale (weapons+zone) e o modo Livre — o que o pedido citou — nunca era medido.
+  // Aqui vai o Livre de verdade: sem zona, sem armas especiais e COM respawn de bot, como Sim._died faz.
+  const rs=[11,12,13].map(seed=>arena({seed,n:ROOM.BOTS,zone:false,weapons:false,respawn:true}));
+  const soma=f=>rs.reduce((a,r)=>a+f(r),0);
+  const split=soma(r=>r.uso.split),fire=soma(r=>r.uso.fire);
+  console.log("DBG livre:",{split,fire,splitEat:soma(r=>r.splitEat),escSplit:soma(r=>r.esc.split),escFire:soma(r=>r.esc.fire),escOutro:soma(r=>r.esc.outro),mortes:soma(r=>r.morte.length),piso:rs.length*ROOM.BOTS*.5});
+  // piso do denominador ANTES de qualquer razão: razão sobre amostra minúscula é o que derrubou o assert
+  // removido lá em cima. Meio salto por bot é ~0,25 % das decisões de uma partida.
+  assert.ok(split>=rs.length*ROOM.BOTS*.5,`só ${split} saltos em ${rs.length} salas de ${ROOM.BOTS}: o bot voltou a não atacar dividindo`);
+  assert.ok(soma(r=>r.splitEat)>0,"nenhum abate depois de um salto: está saltando à toa");
+  assert.ok(fire/split<12,`${(fire/split).toFixed(1)} mísseis por salto — o míssil voltou a ser a única coisa que o bot faz`);
+  // ESTRUTURAL, não calibrado: applyFire só cobra escudo quando o tiro NÃO é interceptação, ou seja todo
+  // nível pago no gatilho é um tiro que ninguém precisava dar. O bot só pode pagar escudo por escolha: saltar.
+  const eSplit=soma(r=>r.esc.split),eFire=soma(r=>r.esc.fire);
+  assert.ok(eFire<=eSplit*.25,`escudo queimado no gatilho (${eFire}) contra o gasto no salto (${eSplit}): o vazamento voltou`);
 });

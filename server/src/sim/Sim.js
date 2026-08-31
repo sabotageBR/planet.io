@@ -81,9 +81,14 @@ export class Sim{
     this._lastHit.delete(slot);
     this.world.addPlayer(slot,{r:PLAYER.START_R,isBot:false,missiles:0,team,spawn});
     const gp=this._mk(slot,{name,registered,skinId,sessionId,userId,isBot:false,team,level});this.players.set(slot,gp);this.playersDirty=true;return gp;}
-  addBot(slot,{name,skinId=0,team=-1,level=0,spawn=true}={}){
+  /**
+   * Preenchimento. `r` é OPCIONAL e existe para a sala poder abrir em andamento (Room.topUpBots →
+   * `botSpawnR`): sem ele vale a faixa de sempre, que é o que mantém o Sim construível nos testes e no
+   * lobby do Battle Royale sem nenhum dos dois saber que existe semente de tamanhos.
+   */
+  addBot(slot,{name,skinId=0,team=-1,level=0,spawn=true,r=0}={}){
     if(this.players.has(slot))this.remove(slot);
-    this.world.addPlayer(slot,{r:spawn?this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]):PLAYER.START_R,isBot:true,missiles:0,team,spawn});
+    this.world.addPlayer(slot,{r:spawn?(r>0?r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1])):PLAYER.START_R,isBot:true,missiles:0,team,spawn});
     const gp=this._mk(slot,{name,skinId,isBot:true,team,level});gp.brain=new BotBrain(this.world,slot,this.rng,this._botInput);
     // Só bot ganha o anel de memória: são 6 objetos por bot, e 30 humanos não têm o que fazer com ele.
     gp.mem={i:0,n:0,buf:Array.from({length:BOT_LLM.MEM_N},()=>({k:'',slot:-1,at:0}))};
@@ -179,11 +184,20 @@ export class Sim{
       // (renumerar custa um PROTOCOL_VERSION novo sem ganho nenhum).
       case 'CHIP':this._mark(e.slot,-1,'asteroid');this._ev(EVENT.CHIP,e.x,e.y,e.r,e.slot,NO_SLOT,packDir(e.nx,e.ny,0));break;
       case 'BOUNCE':this._ev(EVENT.BOUNCE,e.x,e.y,e.r,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,e.vn));break;
-      case 'BOOM':this._mark(e.slot,e.bySlot,armaKey(e.weapon));this._memo(e.slot,'tiro',e.bySlot);
-        this._ev(EVENT.BOOM,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;
+      // ⚠️ `tiro` e `escudo` tinham pool em BOT_CHAT, probabilidade em BOT_TALK.P e tradução em
+      // botChat.evento() — e nenhum `_talk` os emitia: eram gatilhos MORTOS, e o caminho só existia pela
+      // memória passiva do `_memo`. Só quando quem atirou é GENTE, pela mesma razão do `cacado`: a fala
+      // serve para quem vai LER, e míssil entre bots não tem plateia. Sem esse filtro o BOOM, que é o
+      // evento mais frequente da sala, ganharia a loteria do botChatTick e apagaria kill/morte/lider.
+      case 'BOOM':{this._mark(e.slot,e.bySlot,armaKey(e.weapon));this._memo(e.slot,'tiro',e.bySlot);
+        const b=e.bySlot>=0?this.players.get(e.bySlot):null;
+        if(b&&!b.isBot)this._talk(e.slot,'tiro',b.name);
+        this._ev(EVENT.BOOM,e.x,e.y,e.r,e.slot<0?NO_SLOT:e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;}
       case 'SHOOT':this._ev(EVENT.SHOOT,e.x,e.y,0,NO_SLOT,NO_SLOT,packDir(e.nx,e.ny,0));break;
-      case 'SHIELD_BREAK':this._mark(e.slot,e.bySlot,armaKey(e.weapon));this._memo(e.slot,'escudo',e.bySlot);
-        this._ev(EVENT.SHIELD_BREAK,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;
+      case 'SHIELD_BREAK':{this._mark(e.slot,e.bySlot,armaKey(e.weapon));this._memo(e.slot,'escudo',e.bySlot);
+        const b=e.bySlot>=0?this.players.get(e.bySlot):null;
+        if(b&&!b.isBot)this._talk(e.slot,'escudo',b.name);
+        this._ev(EVENT.SHIELD_BREAK,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;}
       case 'SHIELD_HIT':this._mark(e.slot,e.bySlot,armaKey(e.weapon));this._memo(e.slot,'tiro',e.bySlot);
         this._ev(EVENT.SHIELD_HIT,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,packDir(e.nx,e.ny,e.level));break;
       case 'SHIELD_UP':this._ev(EVENT.SHIELD_UP,e.x,e.y,e.r,e.slot,NO_SLOT,e.level);break;

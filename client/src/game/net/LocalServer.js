@@ -6,7 +6,7 @@
 // com último estado quantizado (UPDATE só se mudou). ?lag=<ms> simula latência nos dois sentidos.
 import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,encodePong,decodeInput,
   MSG,KIND,PIECE_FLAG,PLAYER_FLAG,SELF_FLAG,POWER_BIT,UPD,REMOVE,EVENT,INPUT_FLAG,PROTOCOL_VERSION,NO_TEAM,
-  WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,botNick,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,POWERUP,
+  WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,botNick,botSpawnR,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,POWERUP,
   focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,clampZoom,ZOOM,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir,FEED} from "@warspace/shared";
 import {createWorld,applySplit,incomingMissile,firstLive} from "@warspace/shared/physics/index.js";
 import {ammoOf,ownedMask} from "@warspace/shared/physics/rules.js";
@@ -30,13 +30,21 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     w.setEjectHold(slot,(flags&INPUT_FLAG.EJECT_HOLD)!==0);
     if(flags&INPUT_FLAG.SWAP)w.requestSwap(slot);
     if(flags&INPUT_FLAG.FIRE)w.requestFire(slot,(flags&INPUT_FLAG.AIM)!==0);}
-  function addBot(x=NaN,y=NaN){const slot=nextSlot++;const r=rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]);w.addPlayer(slot,{x,y,r,isBot:true,missiles:rng.chance(.3)?1:0});
+  // `i` é a posição na sala e `f` o quanto a abertura ainda vale: a mesma `botSpawnR` do servidor, então
+  // a sala offline também abre em ANDAMENTO (gigantes, médios e uns poucos pequenos) em vez de com um
+  // punhado de bolinhas iguais. Sem isto o `?local=1` divergiria em silêncio, que é o defeito que o
+  // `botInput` acima já teve uma vez. ⚠️ Aqui não há chegada gradual — os bots nascem todos no mesmo
+  // tick —, então quem decai é o ÍNDICE: passar `f=1` para os 24 daria o dobro de gigantes do servidor.
+  function addBot(x=NaN,y=NaN,i=-1,f=0){const slot=nextSlot++;const r=i>=0?botSpawnR(rng,i,f):rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]);w.addPlayer(slot,{x,y,r,isBot:true,missiles:rng.chance(.3)?1:0});
     // Apelido de gente (o mesmo gerador do servidor), e não os nomes temáticos de BOT_NAMES: eles
     // denunciavam o preenchimento pelo NOME antes de qualquer movimento denunciar. `level` sorteado pelo
     // mesmo motivo — badge zerado ao lado de um apelido plausível voltaria a entregar quem é quem.
-    meta.set(slot,{slot,name:botNick(rng,nicksUsados),skinId:rng.int(0,34),level:rng.int(1,35),isBot:true,registered:false});
+    // nível COERENTE com o tamanho, como no servidor (Room._nivelBot): um planeta de 62 mil de massa com
+    // "nível 3" no placar é a mesma denúncia que o nome de catálogo era.
+    meta.set(slot,{slot,name:botNick(rng,nicksUsados),skinId:rng.int(0,34),level:r>=ROOM.SEED_R[1][0]?rng.int(12,35):rng.int(1,20),isBot:true,registered:false});
     brains.set(slot,new BotBrain(w,slot,rng,botInput));playersDirty=true;return slot;}
-  for(let i=0;i<bots;i++)addBot();
+  const vagas=bots>ROOM.BOT_SEED?bots-ROOM.BOT_SEED:1;
+  for(let i=0;i<bots;i++)addBot(NaN,NaN,i,i<ROOM.BOT_SEED?1:(bots-i)/vagas);
   // ── sessões ──
   function mkSocket(){const sock={readyState:0,binaryType:"arraybuffer",onopen:null,onmessage:null,onclose:null,onerror:null,
     send(data){if(sock.readyState!==1)return;const d=typeof data==="string"?data:(data.buffer?data.slice().buffer:data);defer(()=>recv(sock,d));},

@@ -27,13 +27,27 @@ export default function Round({ on }) {
   }, [on, r]);
   if (!on || !r) return <div className={"screen" + (on ? " on" : "")} id="s-round" />;
   const board = r.board || [], mine = r.mySlot, rest = board.slice(3), places = [ord(1), ord(2), ord(3)];
-  const d = r.destaques || null;
+  // ⚠️ No Battle Royale o subtítulo logo acima JÁ diz quem (ou qual equipe) venceu, então a faixa sairia
+  // repetindo o nome — e numa vitória de EQUIPE ela contradiria o subtítulo, mostrando um nome só.
+  const d = r.destaques || null, champ = r.reason === "lastAlive" ? null : (r.champion || board[0] || null);
   return <div className="screen on" id="s-round"><div className="card dead-card">
     <div className="dead-icon">{LB.roundIcon}</div>
     <div className="dead-title">{r.reason === "lastAlive" ? LB.lastAliveTitle : LB.roundTitle}</div>
     <div className="dead-sub">{r.reason === "lastAlive"
       ? (r.champTeam != null ? `${LB.champTeam} ${r.champTeam + 1}` : (r.champion ? r.champion.name : LB.roundSub))
       : LB.roundSub}</div>
+    {/* O CAMPEÃO é quem tem a maior massa no instante do BIG CRUNCH (o servidor ordena os VIVOS por massa
+        e manda `board[0]`), e o pedido era que o destaque fosse dele. Ele já ocupava um dos quatro cartões
+        de destaque logo abaixo, repetindo o degrau maior do pódio; aqui ele vira faixa, e o cartão que
+        sobrou passou a ser "mais pontos". Sai de `r.champion` e não de `d.campeao` porque o `?local=1`
+        não manda destaques — e porque no fim por morte simultânea é o `champion` que carrega o fallback. */}
+    {champ ? <div className={"champ-banner" + (champ.slot === mine ? " me" : "")}>
+      <i className="cb-ico">🏆</i>
+      <SkinPreview skin={skinById(champ.skinId)} r={30} size={72} className="cb-skin" />
+      <span className="cb-k">{LB.champion}</span>
+      <b className="cb-name">{champ.name}</b>
+      <em className="cb-val">{fmt(champ.mass)}</em>
+    </div> : null}
     <div className="podium">{ORDER.map(i => { const b = board[i];
       return <div key={i} className={"step p" + (i + 1) + (b ? "" : " empty") + (b && b.slot === mine ? " me" : "")}>
         <SkinPreview skin={skinById(b ? b.skinId : 0)} r={i === 0 ? 32 : 26} size={112} className="" />
@@ -43,9 +57,12 @@ export default function Round({ on }) {
       </div>; })}</div>
     {/* Os quatro destaques da SALA, calculados no servidor sobre o roster inteiro — inclusive quem já tinha
         saído. "Maior K/D" só considera quem passou de ROUND.AWARD_MIN_KILLS abates: numa rodada de 30 min
-        quase ninguém passa de cinco, e sem o piso o prêmio seria sempre de quem fez um e não morreu. */}
+        quase ninguém passa de cinco, e sem o piso o prêmio seria sempre de quem fez um e não morreu.
+        "Mais pontos" é o único que não mede tamanho nem violência: `score` sobe com cada grão, cada
+        fragmento e cada planeta comido — a rodada inteira num número só, que até hoje viajava no
+        `roundEnd` e nunca aparecia na tela. */}
     {d ? <div className="awards">
-      {[["champion", "🏆", d.campeao, b => fmt(b.mass)],
+      {[["score", "⭐", d.pontuador, b => fmt(b.score || 0)],
         ["food", "🍬", d.glutao, b => fmt(b.food)],
         ["kills", "⚔️", d.carrasco, b => fmt(b.kills)],
         ["kd", "🎯", d.letal, b => (b.kd || 0).toFixed(2)]].map(([k, ico, b, val]) =>

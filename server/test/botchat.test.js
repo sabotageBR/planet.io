@@ -174,10 +174,17 @@ test('prompt: fugir DE quem atira em mim vira UMA oração, não duas',()=>{
 test('prompt: a persona entra e o pior caso cabe no teto de caracteres',()=>{
   const pior=PERSONAS.reduce((a,b)=>(b.quem+b.jeito).length>(a.quem+a.jeito).length?b:a);
   const hist=Array.from({length:BOT_LLM.HIST+4},(_,i)=>({name:'Jogador'+i,text:'x'.repeat(CHAT.MAX_CHARS)}));
+  // ⚠️ O PIOR CASO tem que ser o que `Room._ctxFala` MANDA, não um subconjunto dele. Este teste media um
+  // cenário sem `feed`, `modo`, `fracLider`, `lider`, `zonaS` e `gente` — campos que o `_ctxFala` passa
+  // SEMPRE —, dava 1225 chars e aprovava, enquanto a produção mandava 1531 contra um teto de 1500. Um teto
+  // só vale o que o pior caso do teste vale, e este estava estourado havia tempo sem ninguém ver.
+  const gente=Array.from({length:BOT_LLM.ELENCO_MAX},()=>({nome:'N'.repeat(16),egg:'Michael Schumacher',pais:'BR',nivel:60}));
   const p=montaPrompt({nome:'x'.repeat(16),historia:pior,rank:1,vivos:50,kind:'mention',
     quem:'y'.repeat(16),texto:'z'.repeat(CHAT.MAX_CHARS),
     estado:{modo:'flee',alvo:'y'.repeat(16),press:2},agressor:{nome:'w'.repeat(16),k:'tiro',n:5,recente:true},
-    historico:hist});
+    modo:'battle royale, last one standing',fracLider:.05,lider:'L'.repeat(16),zonaS:44,
+    feed:Array.from({length:BOT_LLM.FEED_HIST},()=>`${'A'.repeat(16)} killed ${'B'.repeat(16)}`),
+    gente,historico:hist});
   assert.ok(p.user.includes(pior.quem),'a história do bot não chegou ao prompt');
   assert.ok(p.system.includes(pior.bordao),'o bordão mora no SYSTEM (string estável, reaproveitada)');
   assert.ok(p.user.length<=BOT_LLM.PROMPT_MAX_CHARS,
