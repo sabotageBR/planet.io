@@ -34,7 +34,20 @@ export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS
   // toda chegada vinha com chance de gigante; e ele ainda ficava amarrado ao env `ROOM_BOTS` e ao
   // `BOT_JOIN_TICKS` em silêncio. O enchimento se normaliza sozinho: cheia é cheia em qualquer ritmo.
   SEED_R:[[200,250],[80,150]],SEED_MIX:[2,3],SEED_WINDOW_TICKS:7200,
-  BOT_SEED:6,BOT_JOIN_TICKS:[360,840]};
+  BOT_SEED:6,BOT_JOIN_TICKS:[360,840],
+  // ── UMA BANDEIRA NÃO PODE TOMAR A SALA ──
+  // A bandeira do preenchimento existe para dizer que a sala é INTERNACIONAL — e ela só diz isso se as
+  // bandeiras forem DIFERENTES. `botCountry` sorteia cada bot de forma INDEPENDENTE numa roleta em que o
+  // BR pesa 46 de 100, então a mesma bandeira sair 6 ou 7 vezes numa sala de 15 não é azar: é o valor
+  // esperado. E o balde de apelidos da LLM levava isso ao extremo — ele pede um lote inteiro de UM país
+  // só e servia em LIFO, então a sala inteira saía com a mesma bandeira (medido em produção: 7 de 7
+  // portuguesas). Aqui o sorteio ganha um TETO por bandeira, que sobe com o tamanho da sala:
+  // `1 + floor(bots/PAIS_TETO_DIV)`. Com 5 e uma sala de 15, nenhuma bandeira passa de 3 e há pelo menos
+  // cinco países na mesa. ⚠️ É teto, não cota: quem escolhe continua sendo a roleta ponderada (a base do
+  // jogo é brasileira e o placar tem que continuar parecendo com ela), só que ela não pode mais pintar a
+  // sala inteira de uma cor só. `PAIS_TENTATIVAS` é o quanto se insiste antes de aceitar o que veio: o
+  // sorteio é do rng da SALA, então re-sortear é determinístico e barato.
+  PAIS_TETO_DIV:5,PAIS_TENTATIVAS:8};
 // HOST_HOLD_MS: uma sala COM DONO não é recolhida enquanto essa carência não vencer. O ceifador padrão a
 // apagaria em 35 s sem humanos — e uma sala privada existe justamente para esperar os amigos chegarem, então
 // o comportamento normal a mataria antes de o segundo jogador abrir o link. Só o REMOVE é adiado: a sala
@@ -855,12 +868,18 @@ export const BOT_LLM={
   // A LLM também escreve os NOMES dos preenchimentos, para eles parecerem gente daquele país em vez de
   // sorteios de uma lista fixa. Ela nunca é consultada no nascimento do bot (o lobby do BR pede até 50
   // nicks num tick só): enche um balde em segundo plano, e `botNick` continua sendo o CHÃO.
-  NICK_LOTE:24,                // apelidos por pedido. Um país por lote, sorteado pela distribuição de sempre
+  // ⚠️ O LOTE ENCOLHEU (24 → 8) E PASSOU A SER VÁRIOS AO MESMO TEMPO. Um lote é de UM país só — é essa a
+  // inversão que a feature faz (sorteia-se o país e pedem-se nomes DELE) —, e com 24 por pedido o balde
+  // ficava monocromático por muito tempo: como `take` servia em LIFO, uma sala inteira nascia com a mesma
+  // bandeira. Oito de cada vez, com `NICK_FILL_PAR` pedidos em voo para países DIFERENTES, dá ao balde
+  // três bandeiras quase juntas — mesmo total de apelidos por rodada, mesmo custo, sem o bloco de uma cor.
+  NICK_LOTE:8,                 // apelidos por pedido. Um país por lote, sorteado pela distribuição de sempre
+  NICK_FILL_PAR:3,             // pedidos SIMULTÂNEOS, cada um de um país que ainda não está no balde
   NICK_POOL_MIN:16,            // abaixo disto o balde se reabastece
   NICK_POOL_MAX:96,            // ...e para de encher aqui: 96 cobre duas salas de BR cheias
   NICK_FILL_MS:20000,          // de quanto em quanto se olha o balde. Não há pressa: quem chega e o encontra
                                // vazio simplesmente usa o nome de sempre, e ninguém percebe
-  NICK_NUM_PREDICT:420,        // ⚠️ o default (NUM_PREDICT 48) é de UMA linha de chat e cortaria o lote no meio
+  NICK_NUM_PREDICT:180,        // ⚠️ o default (NUM_PREDICT 48) é de UMA linha de chat e cortaria o lote no meio
   NICK_TIMEOUT_MS:25000,       // ⚠️ e este pedido NÃO tem prazo — é o oposto da fala, que é do INSTANTE
   NICK_TEMP:1.15,              // um pouco mais solto que a fala: repetir apelido é o defeito a evitar aqui
   KEEP_ALIVE:'30m',            // carregar o modelo custa ~27 s; descarregá-lo entre partidas seria fatal

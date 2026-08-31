@@ -74,6 +74,14 @@ export class Room{
     this.botChat=botChat;this.botNames=botNames;this.mencaoAt=-1e9;this.ultimoBot=null;
     this._paisBot=null;   // o país que veio junto do apelido do balde, entre `_botNome` e `_nasceBot`
     /**
+     * Quantos preenchimentos VIVOS de cada bandeira (ver ROOM.PAIS_TETO_DIV). É por SALA porque a
+     * diversidade é uma propriedade da MESA: o balde de apelidos é de processo e não sabe quem está onde,
+     * e `botCountry` sorteia cada bot de forma independente. Sobe em `_nasceBot` e desce em `trimBots` —
+     * o bot que MORRE no Livre renasce no mesmo `gp`, com a mesma bandeira, então não passa por aqui.
+     * @type {Map<string,number>}
+     */
+    this.paisesBot=new Map();
+    /**
      * ORÇAMENTO DA CONVERSA. A cadeia longa transformou UMA linha de humano em várias gerações: com
      * CADEIA_MAX=5 e coro de até 3, uma frase podia pedir 15. O teto por BOT não segura (são bots
      * diferentes) e MAX_INFLIGHT_ROOM também não — ele só ENFILEIRA, e a fila drena. Quem segura é este.
@@ -201,7 +209,7 @@ export class Room{
    */
   _botNome(){
     if(!this.mode.realNicks)return BOT_NAMES[this._botName++%BOT_NAMES.length];
-    const g=this.botNames?this.botNames.take(this.usedNicks):null;
+    const g=this.botNames?this.botNames.take(this.usedNicks,this._paisesCheios()):null;
     if(g){this._paisBot=g.pais;this.usedNicks.add(g.nick.toLowerCase());return g.nick;}
     this._paisBot=null;   // ⚠️ zerar SEMPRE: sem isto um bot herdaria o país do bot anterior
     return botNick(this.rng,this.usedNicks);}
@@ -217,10 +225,30 @@ export class Room{
     // A bandeira ao lado do nick: o humano já tinha país, e 49 vazias apontavam quem era gente.
     // Quando o apelido veio do BALDE o país vem JUNTO com ele — a ordem se inverteu: sorteia-se o país e
     // pedem-se nomes DELE, em vez de adivinhar o país a partir do nome (que só acertava via US_ROOTS).
-    gp.country=this._paisBot||botCountry(this.rng,name);
+    gp.country=this._paisBot||this._paisBotSala(name);
     this._paisBot=null;
+    this.paisesBot.set(gp.country,(this.paisesBot.get(gp.country)||0)+1);
     this.flagsDirty=true;
     return gp;}
+  /**
+   * As bandeiras que já bateram no teto desta sala (ver ROOM.PAIS_TETO_DIV). O teto sobe com o tamanho
+   * da mesa: com 5 e uma sala de 15, nenhuma passa de 3 e há pelo menos cinco países no placar.
+   * @returns {Set<string>}
+   */
+  _paisesCheios(){const teto=1+Math.floor(this.sim.botCount()/ROOM.PAIS_TETO_DIV),s=new Set();
+    for(const [c,n] of this.paisesBot)if(n>=teto)s.add(c);
+    return s;}
+  /**
+   * O país de um preenchimento cujo nome NÃO veio do balde. É a roleta ponderada de sempre
+   * (`botCountry`, que também mantém a coerência de US_ROOTS), re-sorteada enquanto cair numa bandeira
+   * que já encheu — a roleta devolve BR quase metade das vezes, e sem esse desvio uma sala de 15 sai com
+   * 6 ou 7 bandeiras iguais, que é o oposto do que a bandeira do bot existe para dizer.
+   * ⚠️ Consome rng da SALA (determinístico, é o mesmo gerador de tudo aqui) e desiste depois de
+   * `PAIS_TENTATIVAS`: com todas as bandeiras cheias, vale o que a roleta deu.
+   */
+  _paisBotSala(name){const cheios=this._paisesCheios();
+    for(let t=0;t<ROOM.PAIS_TENTATIVAS;t++){const c=botCountry(this.rng,name);if(!cheios.has(c))return c;}
+    return botCountry(this.rng,name);}
   /**
    * Nível do preenchimento — o badge que aparece ao lado do nick no placar, no chat e no feed. Ele é
    * sorteado junto com o nome de gente pelo mesmo motivo (badge zerado entrega quem é quem), mas agora
@@ -236,6 +264,9 @@ export class Room{
   trimBots(n){let k=n;
     for(const gp of [...this.sim.players.values()])
       if(k>0&&gp.isBot){if(gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());
+        // a bandeira volta ao sorteio junto com a vaga: sem isto a sala vira lista negra de países
+        if(gp.country){const n=(this.paisesBot.get(gp.country)||0)-1;
+          if(n>0)this.paisesBot.set(gp.country,n);else this.paisesBot.delete(gp.country);}
         this.sim.remove(gp.slot);k--;this.flagsDirty=true;}   // Sim.remove marca as peças com REMOVE.DESPAWN, que o snapshot já traduz
     return n-k;}
   freeSlot(){let s=0;while(this.sim.players.has(s))s++;return s;}

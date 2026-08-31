@@ -5,6 +5,8 @@ import { loginGoogle, toast } from "../state/actions.js";
 import { iniciaGsi } from "../api/google.js";
 import { useTheme, useLabels, useLang } from "../hooks/useTheme.js";
 import { SEM_CONTA } from "../portal/flags.js";
+// Uma leitura só, no módulo: `window.top` não muda no meio da vida da página.
+const EMBUTIDO = typeof window !== "undefined" && window.top !== window.self;
 
 // O widget é DESENHADO pelo Google (a marca dele tem regras), então o que dá para escolher é a
 // aparência: contorno no tema claro, preenchido escuro nos outros.
@@ -25,7 +27,11 @@ export default function GoogleButton({ type = "standard" }) {
   // entra depois. Com ele ligado o botão não renderiza E o SDK do Google nem é baixado, porque o efeito
   // abaixo sai cedo em `!cid` — vale para as duas superfícies do botão, a da entrada e a do modal.
   const cidCfg = useStore(app, s => (s.config || {}).googleClientId) || "";
-  const cid = SEM_CONTA ? "" : cidCfg;
+  // ⚠️ Nem dentro de um IFRAME. O Google Identity Services valida a origem do DOCUMENTO contra as
+  // "Origens JavaScript autorizadas" do client_id, e a origem de um portal (revision.gamedistribution.com
+  // e companhia) não é nossa para registrar: o botão renderiza, o jogador clica e não acontece nada.
+  // Botão quebrado é pior que botão ausente — e o resto da tela (convidado, senha) continua inteiro.
+  const cid = (SEM_CONTA || EMBUTIDO) ? "" : cidCfg;
   const online = useStore(app, s => s.session.online);
   const ref = useRef(null);
   const [falhou, setFalhou] = useState(false);

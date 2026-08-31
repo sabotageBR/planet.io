@@ -26,7 +26,11 @@ export function createConnection({makeSocket,onJson,onBinary,onState,onOpenSend}
     sock.onerror=()=>{};
     sock.onclose=ev=>{if(ws!==sock)return;stopPing();ws=null;
       if(deliberate){setState("closed");return;}
-      if(fatal){setState("closed",{code:fatal.code,message:fatal.message});return;}
+      // ⚠️ O `fatal` INTEIRO, não `{code,message}`: o payload carrega campos de molde — o `nick` do
+      // NICK_IN_ROOM e a `suggestion` que a tela oferece. Copiar dois campos aqui desfazia, em silêncio,
+      // o mesmo conserto feito no `handleJson` logo acima: a frase saía com as aspas vazias ("já há
+      // alguém chamado \"\" nessa sala") e o jogador ficava sem o nome sugerido.
+      if(fatal){setState("closed",fatal);return;}
       if(!joinedOnce&&attempt===0){setState("error",{code:"UNREACHABLE",message:"Não foi possível conectar ao servidor"});return;}
       scheduleReconnect(ev&&ev.code);};}
   function fail(e){setState("error",{code:"UNREACHABLE",message:e&&e.message||"falha ao abrir o socket"});}

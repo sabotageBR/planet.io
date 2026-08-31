@@ -85,14 +85,27 @@ export function parseLote(txt){
 export function createBotNames({llm,log=null,metrics=null}){
   /** @type {{nick:string,pais:string}[]} */const pool=[];
   const usadosGlobal=new Set();   // não repetir dentro do PROCESSO: duas salas com o mesmo nick raro chama atenção
-  let timer=null,enchendo=false;
-  /** Sorteia um país pela MESMA distribuição de sempre: `botCountry` sem nick cai na roleta ponderada. */
-  const sorteiaPais=()=>botCountry({next:Math.random,int:(a,b)=>a+Math.floor(Math.random()*(b-a+1))},'');
+  let timer=null,enchendo=0;      // pedidos EM VOO (era um booleano: um lote por vez fazia o balde monocromático)
+  const emVoo=new Set();          // os países dos lotes em voo — sem isto, dois pedidos simultâneos sorteiam o mesmo
+  /**
+   * Sorteia um país pela MESMA distribuição de sempre (`botCountry` sem nick cai na roleta ponderada),
+   * mas EVITANDO o que o balde já tem e o que está em voo. Sem esse desvio a roleta devolve BR quase
+   * metade das vezes e o balde — que é servido em sequência — vira um bloco de uma bandeira só, que é
+   * exatamente o defeito que esta feature tinha em produção.
+   * ⚠️ A insistência tem teto: passado ele, vale o que a roleta deu. Um balde com todas as bandeiras já
+   * representadas não pode PARAR de encher só porque não sobrou país novo.
+   */
+  const roleta=()=>botCountry({next:Math.random,int:(a,b)=>a+Math.floor(Math.random()*(b-a+1))},'');
+  const sorteiaPais=()=>{
+    const tem=new Set(emVoo);for(const it of pool)tem.add(it.pais);
+    for(let t=0;t<BOT_LLM.NICK_FILL_PAR*4;t++){const c=roleta();if(!tem.has(c))return c;}
+    return roleta();};
   async function enche(){
-    if(enchendo||!llm||!llm.ok()||pool.length>=BOT_LLM.NICK_POOL_MAX)return;
-    enchendo=true;
+    if(enchendo>=BOT_LLM.NICK_FILL_PAR||!llm||!llm.ok()||pool.length>=BOT_LLM.NICK_POOL_MAX)return;
+    enchendo++;
+    const cc=sorteiaPais();emVoo.add(cc);
     try{
-      const cc=sorteiaPais(),pais=COUNTRY_BY_CODE.get(cc)||'Brasil';
+      const pais=COUNTRY_BY_CODE.get(cc)||'Brasil';
       // ⚠️ `numPredict` e `timeoutMs` PRECISAM vir explícitos: o default é 48 tokens (dimensionado para
       // UMA linha de chat) e não caberia um lote. Este pedido não tem prazo — o oposto da fala, que é do
       // INSTANTE —, então pode esperar bem mais.
@@ -109,23 +122,33 @@ export function createBotNames({llm,log=null,metrics=null}){
       if(metrics&&metrics.llm)metrics.llm(n?'ok':'veto');
       if(log)log.debug(`apelidos: +${n} de ${pais} (balde ${pool.length})`);
     }catch(e){if(log)log.debug(`apelidos falharam: ${e&&e.message}`);}
-    finally{enchendo=false;}}
+    finally{enchendo--;emVoo.delete(cc);}}
+  /** Dispara até `NICK_FILL_PAR` lotes de países diferentes de uma vez. Nunca esperado por quem chama. */
+  const encheTudo=()=>{for(let i=0;i<BOT_LLM.NICK_FILL_PAR;i++)enche().catch(()=>{});};
   const cli={
     /**
      * Um apelido do balde, ou null. `usados` é o `usedNicks` da SALA — quem já está lá não pode repetir,
      * e o item é DESCARTADO nesse caso em vez de devolvido: insistir num nome disputado é trabalho à toa.
+     * `evita` são as bandeiras que a SALA já tem no teto (Room._paisesCheios): o balde é de PROCESSO e não
+     * sabe quem está em qual sala, então quem conhece a diversidade da mesa é quem chama. Item de país
+     * evitado NÃO é descartado — ele é pulado e fica para a próxima sala, que pode não ter aquela bandeira.
+     * Sem nada servível devolve `null`, e aí vale `botNick` com o país sorteado pela sala: o CHÃO de sempre.
+     * ⚠️ Percorre de trás para frente porque o balde cresce por lotes de um país só; varrer é o que faz
+     * duas bandeiras diferentes saírem em sequência em vez de oito iguais.
      */
-    take(usados){
-      while(pool.length){
-        const it=pool.pop();
-        if(usados&&usados.has(it.nick.toLowerCase()))continue;
-        if(pool.length<BOT_LLM.NICK_POOL_MIN)enche().catch(()=>{});   // repõe sem esperar
+    take(usados,evita=null){
+      for(let i=pool.length-1;i>=0;i--){
+        const it=pool[i];
+        if(usados&&usados.has(it.nick.toLowerCase())){pool.splice(i,1);continue;}   // nome ocupado: não serve a ninguém nesta sala
+        if(evita&&evita.has(it.pais))continue;
+        pool.splice(i,1);
+        if(pool.length<BOT_LLM.NICK_POOL_MIN)encheTudo();   // repõe sem esperar
         return it;}
-      enche().catch(()=>{});
+      encheTudo();
       return null;},
     start(){if(timer||!llm)return;
-      enche().catch(()=>{});
-      timer=setInterval(()=>{if(pool.length<BOT_LLM.NICK_POOL_MIN)enche().catch(()=>{});},BOT_LLM.NICK_FILL_MS);
+      encheTudo();
+      timer=setInterval(()=>{if(pool.length<BOT_LLM.NICK_POOL_MIN)encheTudo();},BOT_LLM.NICK_FILL_MS);
       // `unref` para o balde não segurar o processo vivo — é o mesmo cuidado de `tunables.js`.
       if(timer.unref)timer.unref();},
     stop(){if(timer){clearInterval(timer);timer=null;}},
