@@ -30,7 +30,11 @@ const { ink, a1, tx } = PALETA_FIXA;
 // janela com folga e recortamos os w×h de cima — o resultado não depende da versão do Chrome.
 const FOLGA = 200;
 
-/** Renderiza um HTML num PNG de exatamente w×h com o Chrome headless. */
+/**
+ * Renderiza um HTML em exatamente w×h com o Chrome headless. PNG por padrão; se `saida` terminar em
+ * `.jpg`, o PIL converte no mesmo passo do recorte — as thumbnails dos portais são obrigatoriamente JPG
+ * ("Upload thumbnails in JPG format"), e o Chrome headless só sabe tirar PNG.
+ */
 function assa(corpo, css, w, h, saida) {
   const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "warspace-brand-"));
   const pagina = path.join(tmp, "a.html");
@@ -39,14 +43,18 @@ function assa(corpo, css, w, h, saida) {
 html,body{background:transparent}
 #a{position:absolute;left:0;top:0;width:${w}px;height:${h}px;overflow:hidden}
 ${css}</style><div id="a">${corpo}</div>`);
+  const jpg = /\.jpe?g$/i.test(saida);
+  const bruto = jpg ? saida.replace(/\.jpe?g$/i, ".tmp.png") : saida;
   const r = spawnSync(CHROME, ["--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--hide-scrollbars",
-    "--default-background-color=00000000", `--screenshot=${saida}`, `--window-size=${w},${h + FOLGA}`, "file://" + pagina],
+    "--default-background-color=00000000", `--screenshot=${bruto}`, `--window-size=${w},${h + FOLGA}`, "file://" + pagina],
     { stdio: "ignore", timeout: 60000 });
   fs.rmSync(tmp, { recursive: true, force: true });
-  if (r.status !== 0 || !fs.existsSync(saida)) throw new Error(`Chrome falhou ao assar ${path.basename(saida)} (status ${r.status}). CHROME_BIN=${CHROME}`);
-  // recorta os w×h de cima; sem isto sobra a faixa da folga no rodapé
-  const c = spawnSync("python3", ["-c",
-    `from PIL import Image;i=Image.open(${JSON.stringify(saida)});i.crop((0,0,${w},${h})).save(${JSON.stringify(saida)})`],
+  if (r.status !== 0 || !fs.existsSync(bruto)) throw new Error(`Chrome falhou ao assar ${path.basename(saida)} (status ${r.status}). CHROME_BIN=${CHROME}`);
+  // recorta os w×h de cima (sem isto sobra a faixa da folga no rodapé) e, no JPG, achata sobre o fundo:
+  // JPEG não tem alfa, e sem o `paste` o transparente sairia PRETO.
+  const c = spawnSync("python3", ["-c", jpg
+    ? `from PIL import Image;i=Image.open(${JSON.stringify(bruto)}).crop((0,0,${w},${h})).convert("RGBA");f=Image.new("RGB",i.size,(27,36,80));f.paste(i,mask=i.split()[3]);f.save(${JSON.stringify(saida)},quality=92,optimize=True);import os;os.remove(${JSON.stringify(bruto)})`
+    : `from PIL import Image;i=Image.open(${JSON.stringify(saida)});i.crop((0,0,${w},${h})).save(${JSON.stringify(saida)})`],
     { stdio: "pipe" });
   if (c.status !== 0) throw new Error("recorte falhou (PIL): " + String(c.stderr));
   return fs.statSync(saida).size;
@@ -106,35 +114,49 @@ fs.writeFileSync(path.join(PUB, "manifest.webmanifest"), JSON.stringify({
 console.log("manifest.webmanifest");
 
 // ── 5. THUMBNAILS DOS PORTAIS ────────────────────────────────────────────────
-// Obrigatórias na GameDistribution (§5.1) e pedidas pelos outros nos mesmos três formatos. Saem daqui
-// e não de um editor de imagem porque a máquina já existe (`assa`) e porque thumbnail feita à mão
-// diverge da marca na primeira mudança dela.
-// ⚠️ A de 200×120 leva SÓ o wordmark. A 120 px de altura, qualquer texto abaixo de ~14 px vira borrão —
-//    é a que todo mundo erra, e é a que mais aparece (é ela que vai na grade dos publishers).
-// ⚠️ Fundo OPACO: o `assa` pede screenshot com fundo transparente, e thumbnail com alfa fica com um
-//    quadriculado ou um preto chapado dependendo de onde o portal a desenha.
-// ⚠️ O texto é em INGLÊS: o catálogo dos portais é internacional e o idioma padrão exigido por eles é o
-//    inglês. É a única superfície do projeto onde isso vale — a UI continua saindo do i18n.
+// Obrigatórias na GameDistribution e pedidas pelos outros nos mesmos formatos. Saem daqui e não de um
+// editor porque a máquina já existe (`assa`) e porque thumbnail feita à mão diverge da marca na primeira
+// mudança dela. As regras deles, na letra:
+//   · JPG, e os tamanhos EXATOS 512×384, 512×512 e 200×120 (mandatórios) + 1280×720 e 1280×550;
+//   · nada de bordas arredondadas — a imagem inteira, como uma ilustração;
+//   · "combine colors, shapes and characters", nada de screenshot cru, e tipografia só nos formatos
+//     grandes. Daí os PERSONAGENS (os mesmos planetas com cara do cenário do menu) entrarem em todas, e
+//     o wordmark sair da menor: a 120 px de altura ele viraria borrão.
 fs.mkdirSync(BRAND, { recursive: true });
-const FUNDO = "background:linear-gradient(160deg,#232f63,#1b2450 60%,#3b1f6b)";
+const b64 = f => fs.readFileSync(path.join(RAIZ, "client", "src", "assets", "scene", f)).toString("base64");
+const ART = { logo: b64("logo.webp"), laranja: b64("planeta-laranja.webp"), azul: b64("planeta-azul.webp"),
+  lua: b64("lua.webp"), missil: b64("missil.webp"), ceu: b64("bg-dawn.webp") };
+const img = (k, cls) => `<img class="${cls}" src="data:image/webp;base64,${ART[k]}">`;
+// o céu do jogo é o fundo; os planetas brigando são o "personagem"; o míssil dá o movimento que eles
+// pedem ("displaying movement tends to be more effective than static images")
+const CENA = `.w{position:absolute;inset:0;overflow:hidden;background:#1b2450}
+  .ceu{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .p{position:absolute;filter:drop-shadow(0 8px 16px rgba(0,0,0,.5))}
+  .marca{position:absolute;left:50%;transform:translateX(-50%);filter:drop-shadow(0 6px 14px rgba(0,0,0,.55))}`;
+
 const THUMBS = [
-  // 1:1 — o wordmark é DEITADO (742×269) e num quadrado sobraria uma faixa vazia em cima e embaixo:
-  // aqui quem manda é o símbolo, com o nome pequeno embaixo.
-  { w: 512, h: 512, corpo: `<div class="w"><svg viewBox="0 0 64 64">${logoArt(PALETA_FIXA)}</svg><b>WARSPACE.IO</b></div>`,
-    css: `.w{width:100%;height:100%;${FUNDO};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px}
-          .w svg{width:58%;height:58%}
-          b{font-family:system-ui,sans-serif;font-size:44px;letter-spacing:.10em;color:#f0d68a}` },
-  // 4:3 — a receita do og.png reescalada: aqui o wordmark cabe inteiro e é ele que identifica o jogo
-  { w: 512, h: 384, corpo: `<div class="w"><img src="data:image/webp;base64,${marcaB64}"><span>CONQUER THE GALAXY</span></div>`,
-    css: `.w{width:100%;height:100%;${FUNDO};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:0 28px}
-          .w>img{width:88%;height:auto;filter:drop-shadow(0 6px 12px rgba(0,0,0,.45))}
-          span{font-family:system-ui,sans-serif;font-size:17px;letter-spacing:.14em;color:#8fa0d8}` },
-  // 5:3 pequena — só a marca, o maior possível
-  { w: 200, h: 120, corpo: `<div class="w"><img src="data:image/webp;base64,${marcaB64}"></div>`,
-    css: `.w{width:100%;height:100%;${FUNDO};display:flex;align-items:center;justify-content:center}
-          .w>img{width:86%;height:auto}` },
+  // 4:3 e 16:9 — cabe a briga inteira e o wordmark
+  { w: 512, h: 384, css: `${CENA}
+      .marca{top:6%;width:88%} .laranja{left:-14%;bottom:-16%;width:56%} .azul{right:-12%;bottom:-10%;width:50%}
+      .missil{left:36%;top:52%;width:26%;transform:rotate(-12deg)} .lua{left:6%;top:6%;width:16%;opacity:.9}` },
+  { w: 1280, h: 720, css: `${CENA}
+      .marca{top:7%;width:66%} .laranja{left:-8%;bottom:-18%;width:42%} .azul{right:-6%;bottom:-14%;width:38%}
+      .missil{left:40%;top:56%;width:20%;transform:rotate(-12deg)} .lua{left:8%;top:10%;width:11%;opacity:.9}` },
+  { w: 1280, h: 550, css: `${CENA}
+      .marca{top:6%;width:58%} .laranja{left:-6%;bottom:-26%;width:38%} .azul{right:-5%;bottom:-22%;width:34%}
+      .missil{left:41%;top:52%;width:18%;transform:rotate(-12deg)} .lua{left:8%;top:12%;width:10%;opacity:.9}` },
+  // 1:1 — o wordmark é DEITADO (742×269); num quadrado ele fica pequeno, então os personagens dominam
+  { w: 512, h: 512, css: `${CENA}
+      .marca{top:5%;width:92%} .laranja{left:-16%;bottom:-8%;width:66%} .azul{right:-14%;bottom:-4%;width:60%}
+      .missil{left:34%;top:56%;width:30%;transform:rotate(-12deg)} .lua{left:4%;top:30%;width:20%;opacity:.85}` },
+  // 5:3 pequena — SEM texto: a 120 px de altura qualquer tipografia vira mancha. É a que mais aparece.
+  { w: 200, h: 120, semMarca: true, css: `${CENA}
+      .laranja{left:-10%;bottom:-30%;width:62%} .azul{right:-8%;bottom:-26%;width:56%}
+      .missil{left:34%;top:38%;width:34%;transform:rotate(-12deg)} .lua{left:6%;top:8%;width:22%;opacity:.9}` },
 ];
 for (const t of THUMBS) {
-  const p = path.join(BRAND, `thumb-${t.w}x${t.h}.png`);
-  console.log(`thumb-${t.w}x${t.h}.png`.padEnd(19) + `${assa(t.corpo, t.css, t.w, t.h, p)} B`);
+  const corpo = `<div class="w">${img("ceu","ceu")}${img("lua","p lua")}${img("laranja","p laranja")}` +
+    `${img("azul","p azul")}${img("missil","p missil")}${t.semMarca ? "" : img("logo","marca")}</div>`;
+  const p = path.join(BRAND, `thumb-${t.w}x${t.h}.jpg`);
+  console.log(`thumb-${t.w}x${t.h}.jpg`.padEnd(21) + `${assa(corpo, t.css, t.w, t.h, p)} B`);
 }

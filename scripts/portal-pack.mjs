@@ -30,10 +30,13 @@ const PERFIS = {
 };
 // O que veio de client/public e não faz sentido dentro de um iframe: ícone de app, manifest e o cartão
 // de compartilhamento de uma página que ninguém cola em lugar nenhum. `favicon.svg` fica (810 bytes, e
-// alguns portais o mostram); `faces/` fica (são as 35 caricaturas, e o jogo as busca do próprio pacote).
+// alguns portais o mostram).
+// ⚠️ `faces/` SAI: são caricaturas de pessoas reais, e as regras dos portais as proíbem por IP e por
+// política (ver theme/faces.js). O cliente do pacote já não as pede; levá-las no zip seria só entregar
+// 624 KB de material que o revisor não pode aprovar.
 // ⚠️ `privacy.html` também sai: dentro do zip ela é peso morto (nada no jogo aponta para ela) e uma
 // página de saída acessível é justamente o que os portais não querem. A URL dela vai no FORMULÁRIO deles.
-const PODA = ["og.png", "icon-180.png", "icon-192.png", "icon-512.png", "manifest.webmanifest", "privacy.html"];
+const PODA = ["og.png", "icon-180.png", "icon-192.png", "icon-512.png", "manifest.webmanifest", "privacy.html", "faces"];
 
 const arquivos = dir => fs.readdirSync(dir, { withFileTypes: true, recursive: true })
   .filter(d => d.isFile()).map(d => path.join(d.parentPath || d.path, d.name));
@@ -54,7 +57,7 @@ function empacota(id) {
   });
   if (r.status !== 0) morre("o build falhou");
 
-  for (const f of PODA) fs.rmSync(path.join(dist, f), { force: true });
+  for (const f of PODA) fs.rmSync(path.join(dist, f), { force: true, recursive: true });
 
   // ── guardas ────────────────────────────────────────────────────────────────
   const todos = arquivos(dist);
@@ -80,6 +83,12 @@ function empacota(id) {
   const js = todos.filter(f => f.endsWith(".js"));
   // prova que a injeção da origem pegou: sem ela o jogo cai em modo local e PARECE ter funcionado
   if (!js.some(f => fs.readFileSync(f, "utf8").includes(API))) morre(`a origem ${API} não aparece no bundle: a injeção de VITE_API_BASE não pegou`);
+
+  // o painel de administração não pode viajar no pacote: um revisor esbarrando numa tela de login de
+  // admin é péssimo, e é a poda de `portal/flags.js` que o remove — se ela parar de funcionar (uma
+  // mudança na forma de ler a env basta), isto avisa na hora em vez de no dia da revisão
+  const admin = todos.filter(f => /admin/i.test(path.basename(f)));
+  if (admin.length) morre(`o painel /admin foi parar no pacote: ${admin.map(f => path.basename(f)).join(", ")}`);
 
   const adaptadores = js.filter(f => /\/(gd|crazy|poki)-[^/]*\.js$/.test(f));
   // `import()` com variável viraria glob no Rollup e o zip da GD sairia com o código da Poki dentro

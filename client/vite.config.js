@@ -48,6 +48,14 @@ export default defineConfig(({ mode }) => {
   const portal = mode === "portal";
   return {
     base: portal ? "./" : "/",
+    // As flags do pacote de portal viram TEXTO no bundle (ver client/src/portal/flags.js): é a poda em
+    // cima delas que tira o chunk do /admin e os adaptadores dos outros portais do zip. Fora do Vite os
+    // identificadores simplesmente não existem, e o `typeof` de lá devolve o padrão.
+    define: {
+      __PORTAL__: JSON.stringify(portal ? "1" : "0"),
+      __PORTAL_ID__: JSON.stringify(process.env.VITE_PORTAL_ID || ""),
+      __PORTAL_STRICT__: JSON.stringify(process.env.VITE_PORTAL_STRICT || "0"),
+    },
     plugins: [react(), ...(portal ? [htmlDoPortal()] : [])],
     resolve: { dedupe: ["react", "react-dom"] },
     optimizeDeps: { exclude: ["@warspace/shared"] },

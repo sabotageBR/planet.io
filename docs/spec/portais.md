@@ -77,12 +77,34 @@ jogador clicou num `.io` para jogar com gente, e um single-player silencioso **p
 `servidorFora` (campo de topo do estado, nunca dentro de `overlays` — `go()` e `play()` reescrevem
 aquele objeto inteiro) levanta `ui/Offline.jsx`, que fica até o servidor voltar.
 
+## O que NÃO vai no pacote (e por quê)
+
+As *Prohibited Practices* da GameDistribution batem em coisas que o jogo tem no site:
+
+- **As 35 caricaturas** (`client/public/faces/`) são de pessoas reais, e caem em duas regras ao mesmo
+  tempo: *"use of intellectual properties without proper ownership rights"* (direito de imagem — Messi,
+  Neymar, Elon Musk…) e *"explicit use of … politics"* (Trump, Lula, Bolsonaro, Putin, Zelensky, Milei,
+  Macron, Xi, Modi). No pacote, `faceFile()` devolve null e o planeta cai no disco liso da skin — o mesmo
+  caminho que já existia enquanto a arte não chegava. O empacotador ainda apaga a pasta (−624 KB). O
+  easter egg continua valendo no site.
+- **URL dentro do jogo**: *"placing contact details or website URLs within the game itself"*. O texto da
+  tela de servidor fora dizia "o servidor do warspace.io"; agora diz "o servidor do jogo".
+- **Google Analytics** é citado nominalmente na mesma lista, junto de "any outgoing links".
+
+## As thumbnails
+
+**JPG** (não PNG), nos tamanhos exatos **512×384, 512×512 e 200×120** — mais **1280×720** e **1280×550**,
+que eles recomendam. Sem bordas arredondadas, sem distorção, e "combine colors, shapes and characters":
+por isso `scripts/brand-assets.mjs` monta a cena com os planetas do menu, o míssil (movimento) e o céu,
+em vez de só a marca. ⚠️ A de 200×120 sai **sem tipografia**: a 120 px de altura qualquer texto vira
+mancha, e é a que mais aparece nas grades dos publishers.
+
 ## As regras que reprovam
 
 Do guia da GameDistribution, as que encostam no código: **§2.1** preroll+midroll obrigatórios, jogo
 pausado e mudo, tela de pausa na volta · **§3.3** iframe e fullscreen sem cortes, 800×600 como tamanho
 padrão · **§4.1** idioma padrão inglês (o `resolveLang` já cai em inglês para quem não fala pt/es) ·
-**§5.1** thumbnails 512×512, 512×384 e 200×120 · **§5.3** descrição e instruções em inglês, 200–500
+**§5.1** thumbnails em JPG, 512×512, 512×384 e 200×120 · **§5.3** descrição e instruções em inglês, 200–500
 caracteres · **§6.1** nenhum link de saída, o que inclui o convite de sala (no pacote ele é só o
 CÓDIGO) · **§6.3** nenhuma referência a app store · **§7** nada de coleta de dados nem tracker de
 terceiro.

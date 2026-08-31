@@ -92,7 +92,7 @@ export default {
   // servidor fora (pacote de portal): a internet do jogador está boa, quem caiu foi o nosso lado — e
   // dizer o contrário manda a pessoa reiniciar o roteador por um problema que não é dela
   privacy: "Política de privacidade",
-  serverDownTitle: "SEM CONTATO COM A BASE", serverDownSub: "Não conseguimos falar com o servidor do warspace.io. O problema é do nosso lado, não do seu.", retry: "Tentar de novo",
+  serverDownTitle: "SEM CONTATO COM A BASE", serverDownSub: "Não conseguimos falar com o servidor do jogo. O problema é do nosso lado, não do seu.", retry: "Tentar de novo",
   split: "DIVIDIR", eject: "EJETAR", fire: "MÍSSIL", exit: "Sair", keySplit: "ESPAÇO", keyEject: "W", keyFire: "F",
   ammo: "mísseis",
   fireCd: "carregando", powerups: { magnet: "Ímã", shield: "Escudo", merge: "Fusão", autodef: "Auto-defesa", zoom: "Visão", feast: "Banquete" }, shieldLevel: "Nv",
