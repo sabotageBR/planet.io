@@ -673,6 +673,48 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   na hora certa em vez de reagir queimando. `BOT.PERSONAS` dá o estilo e `BOT.SKILLS` dá a MÃO (4 níveis com peso: ~18 % ruins, 46 %
   medianos, 28 % bons, 8 % feras) — 50 adversários igualmente competentes é o maior denunciador de bot que existe. Graça de spawn para
   humanos. Quem valida é `shared/test/bot.test.js`: uma arena headless roda a partida inteira e mede o que denunciaria um script.
+- **O SALTO DO BOT É ECONOMIA, não veto** (`BOT.HUNT.SPLIT_*`, a derivação inteira em `constants.js`): o bot
+  quase não atacava dividindo — 12 mísseis para cada salto —, e a causa era UMA linha: `_plan` vetava o salto
+  com `!shield`. Medido numa arena de Livre (24 sementes × 7200 ticks × 24 bots), esse veto barrava **73–81 %
+  do tempo de caça**, porque o escudo não expira e sobe um nível a cada `SHIELD_EVOLVE_TICKS`: quem pegava um
+  nunca mais dividia. E estava errado por um fator de 2 a 7 — o escudo vale ~9 % da massa na janela de 30 s
+  da fusão (0,5 absorção × `1−MISSILE.HIT_SHRINK²`) contra um salto que rende até 32 % (`(rb/ra)²`, teto em
+  `1/(√2·EAT.RATIO·SPLIT_MARGIN)`). Hoje é PREÇO: `ganho ≥ SPLIT_GAIN` sem escudo, `≥ SPLIT_GAIN_SHIELD` com
+  ele, tudo × `SPLIT_GAIN_N` por peça já aberta. Resultado: **3,5× mais saltos, 2,5× mais abates por salto,
+  míssil:salto de 12,1 para 1,9**, com massa média parada (−1 %) e o custo do cérebro CAINDO.
+  ⚠️ O preço **não** escala com o nível do escudo (foi tentado, é pior — com ~0,5 míssil chegando na janela, o
+  2º e o 3º nível quase nunca são usados, e cobrar por eles fecha o portão justo em quem tem tamanho para
+  saltar). ⚠️ Dois defeitos mudos saíram junto: `SPLIT.MIN_R` **nunca era checado** (a flag saía, queimava
+  `splitCdUntil` e não nascia peça) e `c.n<MAX_PIECES` era o guarda errado, porque `applySplit` DOBRA as peças
+  elegíveis. ⚠️ E a leitura de escudo virou UMA passada com TRÊS respostas, porque as regras são diferentes:
+  `applyFire` cobra um nível da PRIMEIRA peça viva, `applySplit` derruba o escudo INTEIRO de cada peça com
+  `r ≥ SPLIT.MIN_R`. ⚠️ **Testado e descartado** (medido, os dois PIORAM): segurar o ponteiro na presa durante
+  os `BOT.JUMP_TICKS` do arremesso — `_approach` JÁ devolve a antecipação dentro do alcance do salto — e só
+  apertar com a mira dentro de `SPLIT_CONE`, que raramente fecha antes de o `_plan` seguinte desarmar o
+  desejo. As duas constantes ficam dormentes, como `BLACKHOLE.COUNT`.
+- **O bot só paga escudo por ESCOLHA** (o tiro, em `bot.js`): ele destruía o próprio escudo **92× no gatilho
+  para cada 1× no salto** — `applyFire` cobra um nível por puxão quando o tiro não é interceptação, e havia
+  dois furos: o modo `flee` era o único ISENTO da guarda de escudo (tiro cego para trás, blindagem queimada) e
+  o `intercept` atirava a cada 30 ticks sem reconferir se ainda havia entrante DESCOBERTO — depois do primeiro
+  interceptador o tiro virava ofensivo. Os dois passaram a exigir o MESMO predicado que dá o desconto em
+  `applyFire` (`incomingMissile(...,livres)`), e o tiro de descarte do modo `food` passou a exigir alguém
+  dentro de `BOT.MISSILE_MIN_D`. Níveis de escudo queimados no gatilho: **241 → 0**; os mísseis caíram pela
+  metade sem tocar em `FIRE_CD`, e nenhum tiro removido tinha alvo escolhido.
+- **O bot enxerga PEÇA, não só jogador** (`_pecas`/`_alvo` em `bot.js`): `centroid()` reduzia cada inimigo à
+  MAIOR peça, então um gigante partido era só ameaça e os pedaços comíveis eram invisíveis. Uma passada por
+  `o.pieces` dá as duas coisas que o centróide não dá: o **GUARDA** (a peça mais próxima que me engole — de
+  quem se foge, já que o centro de um sujeito espalhado é espaço VAZIO, medido em 15 % dos encontros) e o
+  **BOCADO** (a maior peça que eu engulo depois do salto). O bocado vira presa quando está a mais de
+  `HUNT.BITE_CLEAR` do guarda, com nota × `BITE_PENALTY` — é presa de segunda, colada a quem me come.
+  `_alvo` devolve a PEÇA na mesma forma do `centroid`, então `_approach`, `_lead`, `_bestWeapon` e o predicado
+  do salto não sabem a diferença, e `this.target` continua sendo o SLOT (é o que `Room._estado`/`_humor` leem
+  para o prompt da LLM). ⚠️ Buffers DEDICADOS (`this._o`, `this._t`): `_thirdParty` e `_approach` escrevem em
+  `TMP` por dentro, e a presa virtual ali seria aliasing silencioso. ⚠️ `press` continua saindo do CENTRÓIDE —
+  ele é contrato (`Room.js` lê `press>1.5`, a fala lê `>1.2`), e medi-lo pela peça o infla.
+  ⚠️ Numa sala só de bots o bocado aparece em ~1 % do tempo de caça (bot dividido é raro), então quem prova
+  isso são as CENAS SINTÉTICAS de `bot.test.js` — mundo pelado, peças plantadas à mão, com controle negativo.
+  A arena de lá também passou a rodar o **Livre** (`{zone:false,weapons:false,respawn:true}`): ela nasceu
+  Battle Royale e o modo citado no pedido nunca era medido.
 - **Tela de morte: MAPA e TEMPO REAL** — duas vistas da mesma fonte (o placar traz TODOS os vivos com
   posição, a 2 Hz, fora da AOI). MAPA é o radar ampliado, um instrumento para escolher quem assistir;
   TEMPO REAL ocupa o espaço todo, o blip vira o planeta na COR DA SKIN com nome e massa, e a posição é
