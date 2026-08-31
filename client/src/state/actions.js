@@ -30,10 +30,13 @@ export const closeAccount = () => app.update(s => ({ ...s, overlays: { ...s.over
 export const setReconn = (on, attempt) => app.update(s => ({ ...s, overlays: { ...s.overlays, reconn: !!on }, reconnAttempt: on ? (attempt || s.reconnAttempt || 1) : 0 }));
 /**
  * Esc: fecha modal → tira foco do input → abre/fecha a PAUSA (no jogo) → volta à entrada (fora dele).
- * ⚠️ A cadeia é resolvida AQUI, num lugar só. Há outros listeners de Escape na árvore (Chat, Shop, Dead) e
- * todos são `keydown` na janela, em bolha — ou seja, vale a ordem de REGISTRO, não a de aninhamento. O do
- * Chat é neto e registra ANTES deste, então com o campo aberto o Esc fecha o chat primeiro, que é o certo:
- * quem está digitando quer sair do campo, não abrir um menu.
+ * ⚠️ A cadeia é resolvida AQUI, num lugar só. Há outros listeners de Escape na árvore (Chat, Shop, Dead), e
+ * todos são `keydown` na JANELA: a ordem entre eles é a de REGISTRO, e como esses componentes montam DEPOIS
+ * do App o de cá roda PRIMEIRO — apostar em aninhamento aqui é apostar errado. Quem cede a vez é
+ * `e.defaultPrevented`, checado no listener de App.jsx: quem consumiu o Esc marca o evento. Com o campo do
+ * chat em foco quem marca é o `onKeyDown` do <input>, handler React ancorado no #app — abaixo da janela na
+ * bolha, portanto sempre antes daqui. Sem isso o Esc do chat abria a pausa: o campo já tinha perdido o foco
+ * e a guarda de INPUT abaixo não via mais nada.
  */
 export function escape() {
   const s = app.get();
@@ -180,10 +183,12 @@ export async function setNick(nick) {
   try { const r = await api.setNick(nick); patchUser(r && r.user ? r.user : { nick }); toast(getLabels().nickSaved); return { ok: true }; }
   catch (e) { toast(errText(e, "nick") + (e.suggestion ? ` · ${e.suggestion}` : ""), 3000); return { ok: false, suggestion: e.suggestion, error: e }; }
 }
-export async function claim({ nick, password, email }) {
-  const cur = (app.get().session.user || {}).nick;
-  if (nick && nick !== cur) { const r = await setNick(nick); if (!r.ok) throw r.error || new Error(getLabels().nickShort); }
-  const r = await api.claim({ password, email });
+/**
+ * Reivindicar a conta. O que se escolhe aqui é o USUÁRIO (o nome de entrar), não o nick: ele congela no
+ * cadastro e é o único nome único do jogo. O nick continua sendo editado na tela inicial — e é livre.
+ */
+export async function claim({ login, password, email }) {
+  const r = await api.claim({ login, password, email });
   if (r && r.user) patchUser(r.user); else patchUser({ kind: "registered" });
   closeAccount(); toast(getLabels().claimed); return r;
 }
@@ -427,7 +432,14 @@ export function onConnection(ev) {
   else if (st === "closed" || st === "error") {
     const s = app.get();
     app.update({ conn: "closed", overlays: { ...s.overlays, reconn: false } });
-    if (s.screen === "game") { toast(errText(ev), 3000); leaveGame("lobby"); }
+    // NICK_IN_ROOM não é "deu erro": é "troque o nome". Desde que o nick ficou livre (dois "Messi" são
+    // legais no mundo) isso deixou de ser raro — e cai bem no caminho de EQUIPE, onde todos entram pelo
+    // mesmo código. Mandar para a tela de Salas era um beco: a frase não diz onde se troca o nome.
+    if (s.screen === "game" && ev.code === "NICK_IN_ROOM") {
+      toast(errText(ev) + (ev.suggestion ? ` · ${ev.suggestion}` : ""), 4000); leaveGame("entry");
+      setTimeout(() => { const el = document.getElementById("nameIn"); if (el) { el.focus(); el.select(); } }, 60);
+    }
+    else if (s.screen === "game") { toast(errText(ev), 3000); leaveGame("lobby"); }
     else if (ev.code || ev.message) toast(errText(ev), 3000);
   }
 }

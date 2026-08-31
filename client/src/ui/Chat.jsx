@@ -26,7 +26,10 @@ export default function Chat({ h, persist = false }) {
     const kd = e => {
       const alvo = document.activeElement, digitando = alvo && /INPUT|TEXTAREA/.test(alvo.tagName);
       if (e.code === "Enter" && !digitando) { e.preventDefault(); setOpen(true); setTimeout(() => inp.current && inp.current.focus(), 0); }
-      else if (e.code === "Escape" && digitando) { setOpen(false); setText(""); alvo.blur(); }
+      // ⚠️ `preventDefault` não é enfeite: é o que diz ao Esc de App.jsx que este já foi gasto em sair do
+      // chat. Sem ele o campo perdia o foco aqui e o `escape()` de lá, vendo o foco JÁ no body, abria o
+      // menu de pausa — voltar do chat para o jogo custava dois Esc.
+      else if (e.code === "Escape" && digitando) { e.preventDefault(); setOpen(false); setText(""); alvo.blur(); }
     };
     addEventListener("keydown", kd); return () => removeEventListener("keydown", kd);
   }, [prefs.chat]);
@@ -59,7 +62,7 @@ export default function Chat({ h, persist = false }) {
     {open
       ? <input ref={inp} className="chat-input" maxLength={CHAT.MAX_CHARS} placeholder={LB.chatPlaceholder} value={text}
           onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); enviar(); } else if (e.key === "Escape") { setOpen(false); setText(""); e.currentTarget.blur(); } }}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); enviar(); } else if (e.key === "Escape") { e.preventDefault(); setOpen(false); setText(""); e.currentTarget.blur(); } }}
           onBlur={() => setOpen(false)} />
       : <button className="chat-open" onClick={() => { setOpen(true); setTimeout(() => inp.current && inp.current.focus(), 0); }}>{LB.chatHint}</button>}
   </div>;

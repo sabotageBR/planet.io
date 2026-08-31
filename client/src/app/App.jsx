@@ -52,7 +52,9 @@ export default function App() {
     const digitando = e => { const t = e.target, n = t && t.tagName;
       return n === "INPUT" || n === "TEXTAREA" || n === "SELECT" || (t && t.isContentEditable); };
     const onKey = e => {
-      if (e.code === "Escape" && escape()) return e.preventDefault();
+      // `defaultPrevented`: quem estava por baixo (o campo do chat) já gastou este Esc. O handler React do
+      // <input> roda no #app, ou seja ANTES de qualquer listener de janela, então a marca já chegou aqui.
+      if (e.code === "Escape" && !e.defaultPrevented && escape()) return e.preventDefault();
       if (e.code === "KeyM" && !e.ctrlKey && !e.metaKey && !e.altKey && !digitando(e)) {
         e.preventDefault(); toggleMute();
       }
