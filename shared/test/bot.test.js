@@ -227,14 +227,17 @@ test("arena Livre: o salto virou ataque de verdade, e o escudo não vaza mais no
   const rs=[11,12,13].map(seed=>arena({seed,n:ROOM.BOTS,zone:false,weapons:false,respawn:true}));
   const soma=f=>rs.reduce((a,r)=>a+f(r),0);
   const split=soma(r=>r.uso.split),fire=soma(r=>r.uso.fire);
-  console.log("DBG livre:",{split,fire,splitEat:soma(r=>r.splitEat),escSplit:soma(r=>r.esc.split),escFire:soma(r=>r.esc.fire),escOutro:soma(r=>r.esc.outro),mortes:soma(r=>r.morte.length),piso:rs.length*ROOM.BOTS*.5});
   // piso do denominador ANTES de qualquer razão: razão sobre amostra minúscula é o que derrubou o assert
   // removido lá em cima. Meio salto por bot é ~0,25 % das decisões de uma partida.
-  assert.ok(split>=rs.length*ROOM.BOTS*.5,`só ${split} saltos em ${rs.length} salas de ${ROOM.BOTS}: o bot voltou a não atacar dividindo`);
+  // O piso fica ENTRE os dois cérebros, não colado no medido: nesta configuração o cérebro anterior dava ~5
+  // saltos e este dá 34. Um quarto de salto por bot é 3,6× o de lá e 1,9× abaixo daqui — larga o bastante
+  // para o ruído da arena e apertado o bastante para acusar a volta de um veto no salto.
+  assert.ok(split>=rs.length*ROOM.BOTS*.25,`só ${split} saltos em ${rs.length} salas de ${ROOM.BOTS}: o bot voltou a não atacar dividindo`);
   assert.ok(soma(r=>r.splitEat)>0,"nenhum abate depois de um salto: está saltando à toa");
   assert.ok(fire/split<12,`${(fire/split).toFixed(1)} mísseis por salto — o míssil voltou a ser a única coisa que o bot faz`);
   // ESTRUTURAL, não calibrado: applyFire só cobra escudo quando o tiro NÃO é interceptação, ou seja todo
   // nível pago no gatilho é um tiro que ninguém precisava dar. O bot só pode pagar escudo por escolha: saltar.
   const eSplit=soma(r=>r.esc.split),eFire=soma(r=>r.esc.fire);
+  // medido: 81 níveis no gatilho antes, 0 depois — o bot só paga escudo por ESCOLHA, que é saltar.
   assert.ok(eFire<=eSplit*.25,`escudo queimado no gatilho (${eFire}) contra o gasto no salto (${eSplit}): o vazamento voltou`);
 });
