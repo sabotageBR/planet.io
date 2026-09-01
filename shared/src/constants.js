@@ -228,6 +228,19 @@ export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:1000,MAX_PIECES:16,BOT_R:[2
 // divide sozinha (rules.autoSplit), e só com as 16 peças ocupadas é que o raio é cortado.
 export const SPEED={K:2110.6,EXP:.449,MIN:48,MAX:460,RAMP:32};
 export const BOOST={K:2.634,MAX_STEP:32.5,STOP:8};
+export const JOY={SPREAD_K:6};
+// ── ANALÓGICO: a distância do alvo tem que CRESCER com o espalhamento das peças ──────────────
+// SPEED.RAMP é freio de chegada de UMA peça, e o alvo é UM ponto para o jogador inteiro (World.setTarget),
+// mas `integratePiece` mede a distância de CADA peça até ele. Enquanto há uma peça só as duas coisas são a
+// mesma: a peça está em cima do centróide, `d = RAMP·k`, e a rampa devolve exatamente o curso do polegar —
+// analógico de verdade. Dividido, o alvo a 32 px do centróide cai DENTRO do aglomerado (SPLIT.DIST=780 põe
+// cada peça a ~390 px dele) e todas correm a vmax cheia PARA O CENTRO, não na direção do polegar: medido, o
+// grupo anda a 8% da velocidade com o eixo do split perpendicular ao rumo e a EXATAMENTE ZERO com ele
+// alinhado — as duas metades correndo uma contra a outra, presas pelo separateOwn até a fusão (~57 s).
+// SPREAD_K é o que faz o alvo dominar o espalhamento (`d = RAMP·k + spread·SPREAD_K`), como o mouse já faz
+// de graça e como BOT.HAND.DIST (620 px) já fazia pelos bots. Com spread=0 a conta colapsa em RAMP·k, então
+// quem não dividiu não sente nada. 6 é o equilíbrio: 98,7% da direção com o alvo a 2372 px (K=8 daria 99,2%
+// a 6432 px, dois terços do mapa, e aí o clamp de borda passaria a atuar o tempo todo).
 // ── MOVIMENTO: dois canais somados por tick, EXATAMENTE como no agar.io. Não existe velocidade de jogador. ──
 // 1) DIREÇÃO: deslocamento instantâneo `û·vmax(r)·min(d,RAMP)/RAMP` por tick — sem inércia, sem aceleração,
 //    sem arrasto. Vira na hora e nunca perde velocidade na curva: é a "velocidade padrão" do jogo.

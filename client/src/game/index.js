@@ -636,8 +636,15 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(own0.length){w=alvo;w.x=cx;w.y=cy;input.setTarget(cx,cy);predictor.setTarget(cx,cy);}
       if(conn.isOpen)input.update(now);
       return;}
-    if(joy&&joy.enabled&&joy.state.on&&own0.length){const t=joy.target(cx,cy);w=alvo;w.x=t.x;w.y=t.y;}   // analógico: direção do polegar, distância = velocidade
-    else if(joy&&joy.enabled)   { if(own0.length){w=alvo;w.x=cx;w.y=cy;} }                                // analógico solto = parado (é o ponto do analógico)
+    if(joy&&joy.enabled&&joy.state.on&&own0.length){
+      // ESPALHAMENTO (o `spread` do focusOf, à mão): o alvo do analógico tem que ficar longe o bastante para
+      // DOMINÁ-LO, senão ele cai dentro do próprio cacho e as peças se anulam — 8% da velocidade dividido, e
+      // ZERO com o eixo do split alinhado ao rumo (ver joyTarget). `focusOf` espera {x,y,r} e own0 tem
+      // {rx,ry,rr}, então reusá-lo custaria um .map() por envio, 30×/s, para devolver dois números que aqui
+      // não servem; e comparar d² deixa UMA raiz no fim, como faz o integrate.js.
+      let s2=0;if(own0.length>1)for(const p of own0){const dx=p.rx-cx,dy=p.ry-cy,d2=dx*dx+dy*dy;if(d2>s2)s2=d2;}
+      w=joy.target(cx,cy,s2>0?Math.sqrt(s2):0,alvo);}   // analógico: direção do polegar, distância = velocidade (+ espalhamento)
+    else if(joy&&joy.enabled)   { if(own0.length){w=alvo;w.x=cx;w.y=cy;} }                                // solto = alvo no centróide: peça única PARA; dividido, as peças CONVERGEM (reagrupar) — não existe alvo único que pare peças dispersas, ver joyTarget
     else if(pointer&&pointer.state.active)w=cam.toWorld(pointer.state.sx,pointer.state.sy);
     else if(own0.length){w=alvo;w.x=cx;w.y=cy;}   // sem ponteiro ainda: fica parado
     if(w){input.setTarget(w.x,w.y);predictor.setTarget(w.x,w.y);}   // o alvo é marcado mesmo com o socket caído (a predição local continua)

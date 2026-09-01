@@ -212,6 +212,32 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   vai em `client/src/styles/ui.css`, à mão. Quem prova é `node scripts/responsive-check.mjs` (12 aparelhos × 11 telas × 3 temas:
   transbordo, clipado sem rolagem, alvo < 44 px, HUD sobreposto) mais `client/test/viewport.test.js` (a classificação, que o CDP
   não consegue emular). O analógico virtual é `game/input/Joystick.js`, ligado por `prefs.joystick`, e só vale no dedo.
+- **O ALVO É UM SÓ, MAS A RAMPA É POR PEÇA** (`joyTarget` em `game/input/Joystick.js`, `JOY.SPREAD_K`): quem
+  produz alvo tem que mirar LONGE, e o analógico era o único lugar do jogo que não fazia isso. `integratePiece`
+  mede `min(d,SPEED.RAMP)/RAMP` de CADA peça até o alvo, e `World.setTarget` guarda UM ponto por jogador — com
+  uma peça as duas coisas são a mesma (a peça está em cima do centróide, `d = RAMP·k`, e o curso do polegar
+  vira a velocidade: analógico de verdade). Dividido, `SPLIT.DIST`=780 põe cada peça a ~390 px do centróide e
+  um alvo a 32 px dele cai DENTRO do cacho: todas correm a `vmax` cheia PARA O CENTRO. Medido, o grupo andava a
+  **8 % da velocidade** com o eixo do split perpendicular ao rumo e a **ZERO** com ele alinhado — as duas
+  metades uma contra a outra, presas pelo `separateOwn` até a fusão (~57 s). Era o "no celular, dividido, o
+  movimento fica extremamente lento", e no mouse nunca apareceu porque o cursor já mora a centenas de px (os
+  bots também já sabiam: `BOT.HAND.DIST` é 620 px). Hoje `d = RAMP·k + spread·SPREAD_K` — com `spread` = 0 a
+  conta colapsa em `RAMP·k` e quem não dividiu não sente nada. O preço, geometricamente inevitável com alvo
+  único: dividido o analógico deixa de graduar a velocidade (dar meio curso a peças espalhadas exigiria
+  `d ≤ RAMP` para TODAS ao mesmo tempo). Isso consertou de graça o split e o eject, que saíam PARA TRÁS nas
+  peças da frente (`rules.js` chama `dirTo(pc.x,pc.y,ps.tx,ps.ty)`).
+  ⚠️ **O recorte ao mundo é do RAIO, nunca do EIXO.** `qPos` (`protocol/quant.js`) e `World.setTarget` saturam
+  eixo a eixo, e por eixo o corte TORCE a direção: medido, centróide em (9000,4800) com o polegar a 25,8° e o
+  alvo a 2372 px vira **59,9°** — 34 graus de erro, o jogador empurra para a direita e anda na diagonal. Não
+  aparecia antes porque o alvo nunca saía do mundo: ficava a 32 px do jogador.
+  ⚠️ **Soltar o analógico com as peças dispersas as faz CONVERGIR, e é o certo**: não existe alvo único que
+  pare peças espalhadas (o motor só freia dentro de `RAMP` de cada uma), e convergir é o gesto de reagrupar.
+  ⚠️ Um efeito de borda que NÃO é regressão: o tiro MIRADO (segurar 160 ms) usa `ps.tx/ty` como cursor
+  (`aimTarget`, `AIM_PICK`=700 px do ponto), e no dedo esse "cursor" é o alvo de MOVIMENTO — a mira da metade
+  direita do analógico só move a retícula local, nunca chegou ao servidor. Dividido, ele deixa de travar no
+  que está colado em mim e passa a travar à frente, na direção da marcha. Não se perde nada: o CLIQUE RÁPIDO
+  é teleguiado e escolhe o inimigo mais próximo de quem atira sozinho, sem olhar o alvo — antes o mirado era
+  redundante com ele, agora os dois fazem coisas diferentes. Com uma peça, `d ≤ 32` e nada disso muda.
 - **Modos de jogo** (`MODE`/`MODES` em constants, `docs/design/modos.md`): **Livre** é o jogo de sempre e não mudou.
   **Battle Royale** é sala de 50, **sem respawn**, com **zona que encolhe** (`shared/src/zone.js`; fora dela a peça
   queima `zoneBurnRate(r)` da massa/s e MORRE no piso — a única coisa que mata sozinha) e vitória do último vivo.
