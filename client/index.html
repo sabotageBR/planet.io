@@ -4,8 +4,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#1b2450">
+  <style>
+    /* ── TELA DE CARGA ──────────────────────────────────────────────────────────
+       Vai INLINE, no primeiro byte, porque é a única coisa que chega antes do
+       bundle: o `#app` nasce vazio sobre `background:#000` (styles/base.css) e o
+       JS são ~308 KB gz mais um RTT do dicionário — em rede lenta isso é tela
+       morta por segundos, que um revisor de portal lê como "não carregou".
+       Nada de imagem aqui: o logo é um .webp hasheado pelo bundler, ou seja,
+       chega DEPOIS do que esta tela existe para cobrir. Some no primeiro render
+       (`tiraBoot()` em main.jsx), nas três entradas. */
+    #boot{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;
+      justify-content:center;gap:22px;background:#0d0b1f;
+      font:800 clamp(30px,7vw,62px)/1 system-ui,"Segoe UI",sans-serif;letter-spacing:.06em}
+    #boot s{text-decoration:none;color:#ffc94d}
+    #boot s em{font-style:normal;color:#2ee6ff}
+    #boot b{display:block;width:min(260px,58vw);height:4px;border-radius:4px;background:#1c1440;overflow:hidden}
+    #boot b::after{content:"";display:block;width:38%;height:100%;border-radius:4px;background:#8b5cff;
+      animation:boot 1.1s ease-in-out infinite}
+    @keyframes boot{from{transform:translateX(-110%)}to{transform:translateX(370%)}}
+    @media (prefers-reduced-motion:reduce){#boot b::after{animation-duration:2.4s}}
+  </style>
   <title>warspace.io — conquiste a galáxia</title>
-  <meta name="description" content="warspace.io — agar.io espacial multiplayer: cresça, divida, ejete e devore. Modo livre e battle royale de 50 planetas numa zona que fecha.">
+  <meta name="description" content="Cresça, divida e devore planetas numa arena viva: desvie de asteroides, fuja de estrelas que explodem, dispare mísseis teleguiados e lute até o último planeta de pé enquanto o gás fecha. Sozinho ou em esquadrão de 4.">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icon-180.png">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -13,7 +33,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="warspace.io">
   <meta property="og:title" content="warspace.io — conquiste a galáxia">
-  <meta property="og:description" content="Cresça, divida, ejete e devore. Livre ou battle royale de 50 planetas numa zona que fecha.">
+  <meta property="og:description" content="Cresça, divida e devore planetas. Asteroides, supernovas, mísseis teleguiados e um gás que fecha — sozinho ou em esquadrão de 4.">
   <!-- absoluta de propósito: um crawler resolve o relativo contra a origem, mas a URL crua no chat de
        terceiros nem sempre — e no pacote de portal esta meta nem existe (ver o plugin do vite.config) -->
   <meta property="og:image" content="https://warspace.io/og.png">
@@ -29,6 +49,7 @@
 </head>
 <body data-mode="desktop">
   <!-- #app é a raiz do React: canvas do jogo (#game), HUD, telas, overlays e #toast nascem aqui dentro -->
+  <div id="boot"><s>WARSPACE<em>.IO</em></s><b></b></div>
   <div id="app"></div>
   <script type="module" src="/src/main.jsx"></script>
 </body>

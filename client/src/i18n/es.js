@@ -4,7 +4,7 @@
 // Los nombres propios no se traducen: las 35 caricaturas (84-118) son nombres de personas.
 export default {
   modesTitle: "ELIGE EL MODO", modesShort: "Modos", partyTitle: "TU EQUIPO",
-  modeFree: "LIBRE", modeFreeSub: "El juego de siempre: crece, come y sobrevive hasta el fin del mundo.",
+  modeFree: "LIBRE", modeFreeSub: "Arena sin fin, con asteroides, estrellas que estallan en supernova y misiles. Crece, devora y reina hasta el BIG CRUNCH.",
   modeSolo: "BATTLE ROYALE", modeSoloSub: "50 planetas en una arena que se cierra. Sin revivir. El último en pie se lo lleva todo.",
   modeTeam: "EN EQUIPO", modeTeamSub: "El mismo battle royale, con quien tú invites: no se comen entre ustedes y comparten masa.",
   teamSizeLabel: "TAMAÑO DEL EQUIPO", duo: "DÚO", trio: "TRÍO", quad: "CUARTETO",

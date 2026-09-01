@@ -4,7 +4,7 @@
 // Proper nouns stay put: the 35 caricature skins (84-118) are people's names, and the brand is the brand.
 export default {
   modesTitle: "CHOOSE A MODE", modesShort: "Modes", partyTitle: "YOUR SQUAD",
-  modeFree: "FREE FOR ALL", modeFreeSub: "The usual game: grow, eat and survive until the world ends.",
+  modeFree: "FREE FOR ALL", modeFreeSub: "Endless arena with asteroid belts, stars that go supernova and homing missiles. Grow, devour and rule until the BIG CRUNCH.",
   modeSolo: "BATTLE ROYALE", modeSoloSub: "50 planets in a shrinking arena. No respawn. Last one standing takes it all.",
   modeTeam: "SQUADS", modeTeamSub: "The same battle royale, with whoever you bring — you can't eat each other and you share mass.",
   teamSizeLabel: "SQUAD SIZE", duo: "DUO", trio: "TRIO", quad: "SQUAD OF 4",

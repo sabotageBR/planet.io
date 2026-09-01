@@ -11,7 +11,7 @@ import { TIERS, FAMILIES } from "@warspace/shared/achievements.js";
 export default {
   // ── modos, equipe, chat e voz ──
   modesTitle: "ESCOLHA O MODO", modesShort: "Modos", partyTitle: "SUA EQUIPE",
-  modeFree: "LIVRE", modeFreeSub: "O jogo de sempre: cresça, coma e sobreviva até o fim do mundo.",
+  modeFree: "LIVRE", modeFreeSub: "Arena sem fim, com asteroides, estrelas que viram supernova e mísseis. Cresça, devore e reine até o BIG CRUNCH.",
   modeSolo: "BATTLE ROYALE", modeSoloSub: "50 planetas numa arena que fecha. Sem renascer. O último de pé leva tudo.",
   modeTeam: "EM EQUIPE", modeTeamSub: "O mesmo battle royale, com quem você chamar — vocês não se comem e dividem massa.",
   teamSizeLabel: "TAMANHO DA EQUIPE", duo: "DUPLA", trio: "TRIO", quad: "QUARTETO",

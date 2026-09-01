@@ -26,6 +26,18 @@ function unreachable(proxy) {
 // O plugin abaixo faz a cirurgia no index.html só nesse modo. É plugin e não um segundo arquivo HTML
 // porque duas cópias do mesmo HTML divergem na primeira correção — a mesma lição do dicionário e do
 // theme/port.js.
+// ⚠️ O QUE O REVISOR DO PORTAL LÊ ANTES DE VER O JOGO. O `lang`, o `<title>` e a `description` do site
+// são pt-BR, e a descrição se apresentava como "agar.io espacial multiplayer": no zip que vai para a
+// revisão, o produto se declarava clone de outro jogo, num idioma que o revisor não fala, e ainda citava
+// o próprio domínio (a §6.1 da GameDistribution proíbe URL dentro do jogo). A CrazyGames reprovou com
+// "the concept is quite close to existing titles" — que é, palavra por palavra, o que estas três linhas
+// diziam. O texto agora fala do que ESTE jogo tem, em inglês, dentro dos 200–500 caracteres da §5.3.
+const TITULO_PORTAL = "Warspace.io — Planet Battle Royale";
+const DESC_PORTAL = "Grow your planet in a living arena: split, eject and devour rivals, dodge asteroid " +
+  "belts and run from stars that go supernova. Fire homing missiles that shatter anyone bigger than you, " +
+  "grab shields and magnets, and fight to the last planet standing as the gas closes in. Free-for-all or " +
+  "a 50-planet battle royale, solo or in a squad of four.";
+
 function htmlDoPortal() {
   return {
     name: "warspace-html-portal", apply: "build", enforce: "pre",
@@ -39,7 +51,11 @@ function htmlDoPortal() {
         .replace(/\s*<link rel="apple-touch-icon"[^>]*>/, "")
         // cartão de compartilhamento não existe para uma página que ninguém cola em lugar nenhum
         .replace(/\s*<!-- cartão de compartilhamento[\s\S]*?<meta name="twitter:card"[^>]*>/, "")
-        .replace('href="/favicon.svg"', 'href="favicon.svg"');
+        .replace('href="/favicon.svg"', 'href="favicon.svg"')
+        // ver o comentário acima do TITULO_PORTAL: idioma, nome e descrição do pacote.
+        .replace('<html lang="pt-BR"', '<html lang="en"')
+        .replace(/<title>[\s\S]*?<\/title>/, `<title>${TITULO_PORTAL}</title>`)
+        .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${DESC_PORTAL}">`);
     } },
   };
 }
