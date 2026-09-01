@@ -19,6 +19,8 @@ export default {
   aliveLeft: "LEFT", placementWord: "placement", zoneOut: "⚠ IN THE GAS", zoneShrinking: "THE GAS IS CLOSING IN",
   chatTitle: "CHAT", chatHint: "Enter to talk", chatHintTouch: "Tap to talk", chatTeam: "squad", chatPlaceholder: "Message…",
   chatAll: "everyone", chatScopeHint: "who you're talking to", chatDeadTag: "☠ ",
+  playerActions: "what to do about this player", mutePlayer: "🔇 Mute", reportPlayer: "⚠ Report",
+  reportSent: "report sent", unmuteAll: "unmute everyone",
   talkHint: "K = talk", talkOn: "RECORDING", micDenied: "The browser blocked the microphone.", micUnsupported: "This browser can't record audio.",
   micCooldown: "Hold on a moment before talking again.", micFail: "Couldn't open the microphone.",
   weapons: { missile: "Missile", burst: "Burst", cluster: "Cluster", nova: "Nova" },

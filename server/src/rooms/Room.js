@@ -22,6 +22,7 @@ import {Sim} from '../sim/Sim.js';
 import {createSnapshotter} from '../net/snapshot.js';
 import {createFeed,drenaFeed} from './feed.js';
 import {pickPersona} from './botPersonas.js';
+import {mascara} from '../palavrao.js';
 // `aberta` é função PURA (classifica a mensagem), então vem por import e não pelo objeto injetado: só a
 // LLM é dependência de verdade, e um `botChat` falso de teste não deveria precisar reimplementá-la.
 import {aberta,citou,escolheAssunto} from './botChat.js';
@@ -610,7 +611,12 @@ export class Room{
    */
   chat(session,text,scope){
     const gp=this.sim.players.get(session.slot);if(!gp)return false;
-    const msg=String(text||'').normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,CHAT.MAX_CHARS);
+    // ⚠️ `mascara` por último, e é a única peneira que a linha de uma PESSOA tem. Até aqui ela chegava à
+    // sala inteira depois de três transformações puramente mecânicas — normalizar, tirar caractere de
+    // controle, cortar em MAX_CHARS —, ou seja, o preenchimento era censurado (`sanitiza`, botChat.js) e
+    // quem joga não. Mascara em vez de recusar: linha que some em silêncio parece chat quebrado, e a
+    // pessoa só reescreve com outra grafia. Ver o cabeçalho de server/src/palavrao.js.
+    const msg=mascara(String(text||'').normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,CHAT.MAX_CHARS));
     if(!msg)return false;
     const now=Date.now();
     if(!session.chatAt)session.chatAt=[];
@@ -625,6 +631,31 @@ export class Room{
     // escopo `dead` não fala com bot: o respondedor é sempre um bot VIVO (ver `_botResponde`), e ele
     // devolveria, na frente da sala inteira, uma resposta a uma linha que nenhum vivo leu.
     if(escopo!=='dead')this._botResponde(gp,msg);
+    return true;}
+  /**
+   * DENÚNCIA de um jogador. O que ela faz é REGISTRAR, e só: ninguém é expulso, silenciado nem punido
+   * por denúncia — senão a denúncia vira arma, e numa sala de 50 seria a primeira coisa que alguém
+   * descobriria. Quem quer parar de ouvir alguém tem o SILENCIAR, que é local, instantâneo e não depende
+   * de mais ninguém concordar (client/src/game/index.js).
+   *
+   * O registro sai daqui e não do cliente por dois motivos: o servidor é o único que sabe quem é a pessoa
+   * atrás do slot (`session.userId`, que o cliente nunca vê) e é ele que tem as últimas linhas dela —
+   * `chatLog` já existia, para o prompt da LLM, e é exatamente o contexto que uma denúncia sem texto não
+   * tem. Sem isso, "fulano denunciou beltrano" é uma linha que ninguém consegue julgar depois.
+   * ⚠️ Rate limit por sessão: sem ele a denúncia é um botão de flood de log.
+   */
+  report(session,slot){
+    const gp=this.sim.players.get(session.slot);if(!gp)return false;
+    if(slot===session.slot)return false;                       // denunciar a si mesmo não existe
+    const alvo=this.sim.players.get(slot);if(!alvo)return false;
+    const agora=Date.now();
+    if(agora-(session.reportAt||0)<CHAT.REPORT_CD_MS)return false;
+    session.reportAt=agora;
+    // as últimas linhas DELE, que é o que dá para julgar depois; o resto da conversa não interessa
+    const falas=this.chatLog.filter(l=>l.name===alvo.name).slice(-CHAT.REPORT_LINES).map(l=>l.text);
+    this.log.warn(`denúncia na sala ${this.code}: ${gp.name} → ${alvo.name}`,
+      JSON.stringify({sala:this.code,de:{nick:gp.name,userId:session.userId||null},
+        alvo:{nick:alvo.name,bot:!!alvo.isBot,userId:alvo.userId||null},falas}));
     return true;}
   /** Sessões que recebem uma fala no escopo dado. Uma lista só, usada pelo texto e pela voz. */
   _destinos(gp,escopo){

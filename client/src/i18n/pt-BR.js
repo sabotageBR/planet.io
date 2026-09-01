@@ -26,6 +26,8 @@ export default {
   aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ NO GÁS", zoneShrinking: "O GÁS ESTÁ AVANÇANDO",
   chatTitle: "CHAT", chatHint: "Enter para falar", chatHintTouch: "Toque para falar", chatTeam: "equipe", chatPlaceholder: "Mensagem…",
   chatAll: "todos", chatScopeHint: "para quem você fala", chatDeadTag: "☠ ",
+  playerActions: "o que fazer com este jogador", mutePlayer: "🔇 Silenciar", reportPlayer: "⚠ Denunciar",
+  reportSent: "denúncia enviada", unmuteAll: "devolver a voz a todos",
   talkHint: "K = falar", talkOn: "GRAVANDO", micDenied: "O navegador negou o microfone.", micUnsupported: "Este navegador não grava áudio.",
   micCooldown: "Espere um instante para falar de novo.", micFail: "Não deu para abrir o microfone.",
   weapons: { missile: "Míssil", burst: "Rajada", cluster: "Cacho", nova: "Nova" },

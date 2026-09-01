@@ -9,6 +9,7 @@
 // nomes de IDIOMA, que ficam sempre no próprio idioma — quem fala inglês procura "English" na lista.
 import { ACTION_KEYS } from "@warspace/shared";
 import { LANG_PREFS } from "../i18n/index.js";
+import { SEM_VOZ } from "../portal/flags.js";
 export const PREFS = [
   { id: "controls", items: [
     { key: "joystick", type: "toggle" },
@@ -28,8 +29,10 @@ export const PREFS = [
     { key: "musicVolume", type: "range", min: 0, max: 100 },
     { key: "ambience", type: "toggle" },
     { key: "volume", type: "range", min: 0, max: 100 },
-    { key: "voice", type: "toggle" },
-    { key: "voiceVolume", type: "range", min: 0, max: 100 } ] },
+    // ⚠️ Sob SEM_VOZ estas duas SOMEM: no pacote de portal o push-to-talk não abre (ver portal/flags.js),
+    // e um par de controles que não liga nada é pior que controle nenhum.
+    ...(SEM_VOZ ? [] : [{ key: "voice", type: "toggle" },
+    { key: "voiceVolume", type: "range", min: 0, max: 100 }]) ] },
   { id: "ui", items: [
     { key: "lang", type: "select", opts: LANG_PREFS, kind: "lang" },
     { key: "showNames", type: "toggle" },

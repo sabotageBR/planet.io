@@ -371,6 +371,29 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
 #chat .chat-open:hover{opacity:.9}
 #chat .chat-input{pointer-events:auto;padding:6px 9px;border-radius:var(--radius,10px);border:2px solid var(--accent,#ffc22e);
   background:var(--bg,#111c);color:inherit;font-size:.9em;width:100%}
+/* ── SILENCIAR E DENUNCIAR ──────────────────────────────────────────────────────
+   O nome de quem fala vira alvo de clique, e é a ÚNICA coisa clicável dentro de uma linha — por isso o
+   `pointer-events:auto` é dele e não da linha inteira: `#hud` é `pointer-events:none` de propósito (os
+   painéis engoliam o ponteiro e congelavam o alvo do jogador), e devolver o clique a um retângulo de
+   280 px em cima do canvas traria o defeito de volta. O menu que ele abre é que ganha superfície. */
+#chat .chat-nick{pointer-events:auto;background:none;border:0;padding:0;font:inherit;color:inherit;
+  cursor:pointer;text-decoration:underline dotted transparent;text-underline-offset:2px}
+#chat .chat-nick:hover,#chat .chat-nick:focus-visible{text-decoration-color:currentColor}
+#chat .chat-mudos{pointer-events:auto;margin-left:auto;background:none;border:0;padding:0 2px;
+  font:inherit;color:inherit;cursor:pointer;opacity:.8}
+#chat .chat-alvo{pointer-events:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  padding:5px 8px;border-radius:var(--radius,10px);border:1px solid var(--accent,#ffc22e);
+  background:var(--bg,#111d);font-size:.78em}
+#chat .chat-alvo b{color:var(--accent,#ffc22e);flex:none;max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#chat .chat-alvo i{opacity:.75}
+#chat .chat-alvo button{pointer-events:auto;padding:2px 7px;border-radius:99px;border:1px solid var(--line,#0006);
+  background:transparent;color:inherit;font:inherit;cursor:pointer}
+#chat .chat-alvo button:hover{border-color:var(--accent,#ffc22e)}
+#chat .chat-alvo button.warn{border-color:color-mix(in srgb,var(--bad,#e5484d) 60%,transparent);color:var(--bad,#e5484d)}
+#chat .chat-alvo button.x{margin-left:auto;border:0;opacity:.6}
+/* ⚠️ O menu NÃO desbota junto com as linhas: `.quiet` some com a conversa depois do CHAT.FADE_MS, e um
+   painel de decisão que se apaga sozinho debaixo do dedo é a pior coisa que se pode fazer aqui. */
+#chat.quiet .chat-alvo{opacity:1}
 #chat.quiet .chat-lines{opacity:0;transition:opacity .5s ease}
 #chat.open{max-height:34vh}
 #chat.open .chat-lines{opacity:1}

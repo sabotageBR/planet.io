@@ -3,6 +3,7 @@
 // O NICK é nome de planeta: livre, trocável, repetível — só não pode repetir DENTRO de uma sala
 // (`Room.nickTaken`). O LOGIN é o nome de ENTRADA: nasce no cadastro, é ÚNICO (users_login_uq) e não
 // muda mais. Eram a mesma coluna até a migração 0009, e era o login que obrigava o nick a ser único.
+import {temGrave} from '../palavrao.js';
 export const NICK_MIN=2,NICK_MAX=16;
 const rnd4=()=>String(1000+Math.floor(Math.random()*9000));
 /** normaliza; devolve null se inválido */
@@ -11,6 +12,10 @@ export function normalizeNick(raw){
   const s=raw.normalize('NFKC').replace(/\s+/g,' ').trim();
   if(/[\p{C}]/u.test(s))return null;                       // controles/invisíveis
   const len=Array.from(s).length;if(len<NICK_MIN||len>NICK_MAX)return null;
+  // ⚠️ Aqui se RECUSA, não se mascara (o chat faz o contrário, e por um motivo): o nick fica no placar, no
+  // kill feed, no chat e no radar a partida inteira, e um `Fulano****` no pódio é pior que pedir outro
+  // nome no instante em que a pessoa está escolhendo. Vale para o LOGIN também, que passa por aqui.
+  if(temGrave(s))return null;
   return s;
 }
 /**

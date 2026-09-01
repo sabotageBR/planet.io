@@ -616,7 +616,7 @@ export const BOT_NAMES=["Nebulox","Vortexia","Cosmara","Drakonis","Stellara","Gr
 export const BOT_NICKS=[
   "Lucas","Pedro","Gabi","Rafa","Bia","Thiago","Mari","Caio","Duda","Vitor","Lele","Bruno","Nanda","Igor","Manu","Leo",
   "Ju","Felipe","Carol","Diego","Alice","Murilo","Sofia","Enzo","Lara","Davi","Isa","Otavio","Nina","Arthur","Cleo","Tom",
-  "Zeca","Kiko","Nando","Dede","Binho","Teteu","Gugu","Lipe","Mila","Rick","Cacau","Juca","Bel","Nego","Tuca","Vivi",
+  "Zeca","Kiko","Nando","Dede","Binho","Teteu","Gugu","Lipe","Mila","Rick","Cacau","Juca","Bel","Baiao","Tuca","Vivi",
   "Matheus","Gustavo","Larissa","Rodrigo","Camila","Fernando","Bruna","Ricardo","Paula","Andre","Jessica","Marcelo",
   "Renata","Vinicius","Amanda","Eduardo","Priscila","Guilherme","Tati","Rafael","Aline","Henrique","Debora","Fabio",
   "Natalia","Marcos","Luana","Alan","Simone","Wesley","Karol","Everton","Elis","Joao","Yasmin","Samuel","Livia",
@@ -624,14 +624,14 @@ export const BOT_NICKS=[
   "Anthony","Agatha","Ryan","Rebeca","Erick","Milena","Kevin","Sabrina","Wallace","Taina","Jonas","Elaine",
   "Bibi","Fefe","Gigi","Lulu","Nene","Pipo","Tuti","Dudu","Fifi","Kaka","Mimi","Tico","Bento","Chico","Betinho",
   "Juninho","Neto","Sandro","Serginho","Toninho","Careca","Magrao","Loirinho","Moreno","Baiano","Mineiro","Gaucho",
-  "Carioca","Paulista","Xandao","Nandinho","Rafinha","Duda2","Lelezinho","Biel","Yuri","Kelvin","Jean","Ronaldo",
+  "Carioca","Paulista","Xande","Nandinho","Rafinha","Duda2","Lelezinho","Biel","Yuri","Kelvin","Jean","Rogerio",
   "ninja","dragao","lobo","tigre","corvo","raposa","panda","coruja","alpha","turbo","sombra","trovao","gelo","fenix",
   "kraken","vespa","cobra","falcao","urso","onca","piloto","capitao","mestre","doutor","chefe","rei","lorde","barao",
-  "jacare","piranha","arara","tucano","jaguar","suricato","javali","morcego","escorpiao","aranha","formiga","abelha",
+  "jacare","pirarucu","arara","tucano","jaguar","suricato","javali","morcego","escorpiao","aranha","formiga","abelha",
   "besouro","polvo","tubarao","enguia","baleia","golfinho","pinguim","foca","lontra","texugo","hiena","chacal",
   "leopardo","puma","gaviao","aguia","condor","albatroz","garca","pelicano","marreco","capivara","quati","tamandua",
   "pixel","glitch","turbo9","noob","pro","gamer","player","sniper","tank","rush","clutch","combo","hyper","mega",
-  "rage","spawn","respawn","lagado","ping","fps","headshot","camper","tryhard","carry","smurf","boost","nerf","buff",
+  "rage","spawn","respawn","lagado","ping","fps","dourado","camper","tryhard","carry","smurf","boost","nerf","buff",
   "meta","kernel","patch","beta","hotfix","zerado","speedrun","noscope","tilt","spam","kite","poke","gank","farm",
   "jungle","supp","void","byte","hex","root","sudo","ctrl","esc","alt","cache","proxy","bug","combo9","nulo",
   "pastel","coxinha","brigadeiro","acai","tapioca","farofa","feijao","churrasco","pipoca","sorvete","goiaba","jabuti",
@@ -988,7 +988,10 @@ export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:
 // contra 128–185 estáveis no Livre — é o que fazia o frame estourar e, por tabela, atrasar o input e sacudir
 // a predição. O teto corta o ANEL DE FORA (o mais longe do jogador, onde o grão tem 1–2 px na tela): o que
 // está perto entra sempre, e quem já é conhecido nunca some por causa do teto (sumir seria pior que faltar).
-export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40};
+// ⚠️ REPORT_CD_MS é generoso de propósito (1 min): denunciar não é uma ação que se repete numa partida,
+// e sem cooldown o botão vira flood de log. REPORT_LINES é o contexto anexado — as últimas falas do
+// denunciado —, porque "fulano denunciou beltrano" sem texto é uma linha que ninguém julga depois.
+export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40,REPORT_CD_MS:60000,REPORT_LINES:5};
 // ── AVISO GLOBAL (painel /admin) ────────────────────────────────────────────
 // Uma faixa no HUD e uma linha de sistema no chat. JSON de controle, como `avatars` e `talk`, então o
 // PROTOCOL_VERSION não muda. ⚠️ Ele NÃO passa por `Room._pushChat`, de propósito: `_pushChat` exige um

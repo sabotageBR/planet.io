@@ -18,8 +18,14 @@ export default function Chat({ h, persist = false }) {
   const [open, setOpen] = useState(false), [text, setText] = useState("");
   const [tick, setTick] = useState(0);
   const [paraEquipe, setParaEquipe] = useState(false);   // morto no BR: TODOS (padrão) ↔ EQUIPE
+  // Clicar num NOME abre as duas saídas que o jogo não tinha: silenciar (local, ver game/index.js) e
+  // denunciar (vai ao servidor). Antes, contra alguém insuportável, só existia desligar o chat inteiro
+  // nas Opções — desistir da sala por causa de uma pessoa. Um menu por linha, e não um botão fixo em
+  // cada uma: o chat tem 4 linhas de altura e vive em cima do jogo.
+  const [alvo, setAlvo] = useState(null);
+  const [avisou, setAvisou] = useState(false);
   const inp = useRef(null);
-  const linhas = h.chat || [];
+  const linhas = h.chat || [], mudos = h.mudos || [];
   // Enter abre; o listener é da janela porque o painel não tem foco enquanto se joga
   useEffect(() => {
     if (prefs.chat === false) return;
@@ -53,12 +59,31 @@ export default function Chat({ h, persist = false }) {
       {escolhe
         ? <button className={"chat-scope pick" + (paraEquipe ? " team" : "")} onClick={() => setParaEquipe(v => !v)}
             title={LB.chatScopeHint}>{paraEquipe ? LB.chatTeam : LB.chatAll}</button>
-        : equipe ? <i className="chat-scope">{LB.chatTeam}</i> : null}</div>
+        : equipe ? <i className="chat-scope">{LB.chatTeam}</i> : null}
+      {mudos.length ? <button className="chat-mudos" onClick={() => game && game.unmuteAll()}
+        title={LB.unmuteAll}>🔇 {mudos.length}</button> : null}</div>
     <div className="chat-lines" data-n={vivas.length}>
       {vivas.map((l, i) => <div key={l.at + ":" + i} className={"chat-line" + (l.mine ? " mine" : "") + (l.slot < 0 ? " sys" : "") + (l.dead ? " dead" : "")}>
-        {l.slot >= 0 ? <b>{l.dead ? LB.chatDeadTag : ""}{l.name}</b> : null}<span>{l.text}</span>
+        {l.slot >= 0
+          ? (l.mine
+            ? <b>{l.dead ? LB.chatDeadTag : ""}{l.name}</b>
+            : <b><button className="chat-nick" onClick={() => { setAvisou(false); setAlvo({ slot: l.slot, name: l.name }); }}
+                title={LB.playerActions}>{l.dead ? LB.chatDeadTag : ""}{l.name}</button></b>)
+          : null}<span>{l.text}</span>
       </div>)}
     </div>
+    {alvo
+      ? <div className="chat-alvo">
+          <b>{alvo.name}</b>
+          {avisou
+            ? <i>{LB.reportSent}</i>
+            : <>
+              <button onClick={() => { if (game) game.mute(alvo.slot, true); setAlvo(null); }}>{LB.mutePlayer}</button>
+              <button className="warn" onClick={() => { if (game) game.report(alvo.slot); setAvisou(true); }}>{LB.reportPlayer}</button>
+            </>}
+          <button className="x" onClick={() => setAlvo(null)}>✕</button>
+        </div>
+      : null}
     {open
       ? <input ref={inp} className="chat-input" maxLength={CHAT.MAX_CHARS} placeholder={LB.chatPlaceholder} value={text}
           onChange={e => setText(e.target.value)}

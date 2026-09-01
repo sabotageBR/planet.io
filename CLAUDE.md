@@ -554,6 +554,45 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `<select>`) e a frase em `ESTILO_PROMPT`, server-only pelo mesmo motivo de `botPersonas.js` — `shared/`
   vai inteiro para o bundle do `?local=1`, e instrução de LLM não tem o que fazer lá. O padrão `misto` é
   o pedido literal: frase curta, ofensa, piada ou comentário curto.
+- **A MODERAÇÃO ESTAVA DO LADO ERRADO** (`server/src/palavrao.js`, `Room.report`, `game.mute`): havia
+  peneira de palavrão no jogo, mas só na saída da LLM (`sanitiza`) — o PREENCHIMENTO era censurado e a
+  PESSOA não. A linha de um humano ia para a sala inteira depois de três transformações mecânicas
+  (normalizar NFKC, tirar caractere de controle, cortar em `CHAT.MAX_CHARS`), e não havia denylist
+  nenhuma. Poki e CrazyGames classificam o catálogo em PEGI 12 e pedem, por escrito, que o jogador
+  consiga se proteger de outro; aqui não havia nem filtro, nem silenciar, nem denunciar — só desligar o
+  chat INTEIRO nas Opções, que é desistir da sala por causa de uma pessoa.
+  A lista é UMA (senão diverge na primeira correção) e os dois lados a usam diferente, porque o custo do
+  erro é diferente: o **bot RECUSA** a linha (`temGrave` — ele tem repertório fixo para cair, então
+  recusar não o deixa mudo) e o **humano é MASCARADO** (`mascara`, `merda` → `m****`), porque linha que
+  some em silêncio parece chat quebrado e a pessoa só reescreve com outra grafia.
+  ⚠️ Três grupos, não um: `GRAVE` (insulto sexual, slur, xingamento de família) recusa no bot e mascara
+  no humano; `LEVE` (palavrão de todo dia) só mascara — o SYSTEM autoriza "mild swearing" de propósito, e
+  recusar isso do bot trocaria fala gerada por frase enlatada, deixando-o mais MUDO em vez de mais limpo;
+  e `AMBIGUO` (`pinto`, `rola`, `bunda`, `piranha`, `macaco`) **só recusa do bot** — ali o falso positivo
+  custa uma frase enlatada, e mascarar "o Pinto entrou" ou "a bola rola" na fala de uma pessoa é pior que
+  o palavrão que se queria pegar. ⚠️ `fuck` e `shit` **nunca estiveram** na lista original, que era
+  pt-BR-cêntrica; são os mais prováveis num portal internacional.
+  ⚠️ No **NICK** se RECUSA, não se mascara (`normalizeNick`): ele fica no placar, no feed, no chat e no
+  radar a partida inteira, e um `Fulano****` no pódio é pior que pedir outro nome no instante da escolha.
+  Vale para o `login`, que passa pela mesma função.
+  ⚠️ **SILENCIAR é do CLIENTE** (`mudos` em `game/index.js`): não precisa de rede, funciona sem banco,
+  vale no `?local=1` e ninguém descobre que foi silenciado. Cala as DUAS bocas — a linha nem entra no
+  `chatLog` (guardada, ela reapareceria, porque o fade é por IDADE) e o clipe de voz é descartado em
+  `onVoice`. Vale por SALA: o slot é reciclado, então `leave()` limpa — carregar para a sala seguinte
+  silenciaria um desconhecido.
+  ⚠️ **DENUNCIAR só REGISTRA** (`Room.report`): ninguém é expulso, silenciado ou punido por denúncia,
+  senão ela vira arma e numa sala de 50 é a primeira coisa que alguém descobre. Vai ao servidor porque só
+  ele sabe quem é a pessoa atrás do slot e só ele tem as últimas falas dela — `chatLog`, que já existia
+  para o prompt da LLM, é o contexto sem o qual "fulano denunciou beltrano" é uma linha que ninguém julga
+  depois. Cooldown de `CHAT.REPORT_CD_MS` por sessão: sem ele o botão é um flood de log.
+  ⚠️ **A VOZ NÃO VAI NO PACOTE DE PORTAL** (`SEM_VOZ` em `portal/flags.js`), por duas razões
+  independentes: o servidor é relay puro (não decodifica, não grava, não loga), então não há o que
+  moderar nem o que auditar; e o iframe deles não dá a permissão — medido, o GameFlare embute com
+  `allow="autoplay; fullscreen"`, e ali o `getUserMedia` do K morre em "Permissions policy violation" no
+  console do revisor enquanto o jogador leva um toast dizendo que "o navegador bloqueou". Os dois
+  controles de voz somem da tela de Opções junto (`prefsTable.js`): interruptor que não liga nada é pior
+  que interruptor nenhum. ⚠️ O harness `portal/iframe.html` PEDIA microfone e por isso nunca reproduziu
+  isso — ele tem que ser o `allow` mais POBRE que já se mediu num portal, não o mais generoso.
 - **Chat e voz** (`CHAT`/`VOICE` em constants): chat de sala ou de equipe (o escopo é do servidor), painel na
   faixa esquerda do HUD. **Quem morreu continua falando** — texto e voz —, e o escopo é UMA função
   (`Room._escopoFala`), porque três caminhos precisam da mesma resposta: a linha, o ícone do 🎤 e o clipe.

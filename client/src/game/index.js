@@ -30,6 +30,7 @@ import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
 import {createMic} from "../audio/mic.js";
+import {SEM_VOZ} from "../portal/flags.js";
 import {createSnapshotBuffer} from "./state/SnapshotBuffer.js";
 import {createInterpolator} from "./state/Interpolator.js";
 import {createPredictor} from "./state/Predictor.js";
@@ -126,7 +127,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       else ejHold=false;}
     // PUSH-TO-TALK: segurar grava, soltar manda. Não passa pelo `actions` porque não é ação de jogo —
     // não vira flag de INPUT nem é predita; é uma mensagem própria (MSG.VOICE_UP).
-    if(a==="talk"){if(ph==="down"){if(joined&&curPrefs.voice!==false)mic.start();}else mic.stop();return;}   // morto também fala: o escopo é do servidor (Room._escopoFala)
+    if(a==="talk"){if(ph==="down"){if(joined&&!SEM_VOZ&&curPrefs.voice!==false)mic.start();}else mic.stop();return;}   // morto também fala: o escopo é do servidor (Room._escopoFala)
     if(a==="specPrev"||a==="specNext"){if(ph==="down")game.spectate({dir:a==="specNext"?1:-1});return;}
     if(a==="zoomReset"){if(ph==="down")zoomReset();return;}
     if(a==="swap"&&ph==="down")audio.play("weapon",{mine:true});
@@ -294,7 +295,17 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         if(delay)setTimeout(som,delay);else som();   // o som acompanha o efeito (terceiros esperam o atraso de interpolação)
         break;}}}
   // ── chat ──
+  /**
+   * SILENCIAR ALGUÉM é do CLIENTE, e de propósito. O jogo não tinha nada disso — dava para desligar o
+   * chat e a voz INTEIROS nas Opções, o que é desistir da sala por causa de uma pessoa —, e é requisito
+   * formal dos portais que o jogador possa se proteger de outro. Aqui, e não no servidor, porque o efeito
+   * é sobre o que ESTE jogador vê e ouve: não precisa de rede, funciona sem banco, vale no `?local=1` e
+   * ninguém descobre que foi silenciado. ⚠️ Vale por SALA: o slot é reciclado quando alguém sai, então
+   * `leave()` limpa — carregar isto para a sala seguinte silenciaria um desconhecido.
+   */
+  const mudos=new Map();   // slot → nome de quem foi silenciado (o nome é para a UI conseguir desfazer)
   function pushChat(m){
+    if(mudos.has(m.slot))return;   // nem entra no log: o fade é por idade, e uma linha guardada voltaria a aparecer
     chatLog.push({slot:m.slot,name:m.name,team:m.team==null?null:m.team,text:m.text,at:m.at||Date.now(),mine:m.slot===view.mySlot,dead:!!m.dead,scope:m.scope||null});
     if(chatLog.length>40)chatLog.shift();
     hudStore.update(h=>({...h,chat:chatLog.slice()}));
@@ -327,6 +338,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
    * no Livre a distância é a de verdade, e o motor usa o MESMO cálculo dos efeitos.
    */
   function onVoice(m){
+    if(mudos.has(m.slot))return;   // silenciar é das DUAS bocas: texto e voz. Só uma seria meio silêncio.
     const eu=modeId!==MODE.FREE&&myTeam>=0&&teamMate(m.slot);
     audio.playVoice(m.data,m.codec,{x:m.x,y:m.y,cam,mine:eu});
     const pl=view.players.get(m.slot);
@@ -366,6 +378,20 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
      */
     spectate({slot=-1,dir=0}={}){if(!conn||!joined||!dead)return;conn.sendJson({t:"spectate",slot,dir});},
     zoomReset(){zoomReset();},   // o chip do HUD (e a tecla 0, e o botão do meio) devolvem a câmera ao automático
+    /** Silencia (ou devolve a voz a) um jogador. Local, por sala — ver o comentário de `mudos`. */
+    mute(slot,on=true){const sl=slot|0;if(sl<0||sl===view.mySlot)return;
+      if(on){const p=view.players.get(sl);mudos.set(sl,p?p.name:"?");
+        chatLog=chatLog.filter(l=>l.slot!==sl);hudStore.update(h=>({...h,chat:chatLog.slice()}));}
+      else mudos.delete(sl);
+      hudStore.update(h=>({...h,mudos:[...mudos].map(([slot,name])=>({slot,name}))}));},
+    unmuteAll(){mudos.clear();hudStore.update(h=>({...h,mudos:[]}));},
+    /**
+     * Denúncia. Vai ao servidor e não a lugar nenhum do cliente: silenciar resolve para MIM, denunciar é
+     * para o resto da sala — e o servidor é o único que sabe quem é a pessoa por trás do slot e tem as
+     * últimas linhas dela (`Room.chatLog`) para anexar ao registro.
+     */
+    report(slot){const sl=slot|0;if(!conn||!joined||sl<0||sl===view.mySlot)return false;
+      conn.sendJson({t:"report",slot:sl});return true;},
     /**
      * Dono da sala: expulsar / banir. Vai pelo WS e não por HTTP porque o socket do dono JÁ está no shard que
      * conhece a sala (ele foi aberto em `/ws/<shardOf(code)>`) — não há nada a rotear, e a identidade dele já
@@ -409,7 +435,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa
     // por aqui (ela é do Connection, e volta pelo `resume`), então nada disso atrapalha quem só caiu.
     leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);
+      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar

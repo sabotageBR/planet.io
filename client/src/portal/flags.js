@@ -19,3 +19,18 @@
 export const PORTAL = typeof __PORTAL__ !== "undefined" && __PORTAL__ === "1";
 export const PORTAL_ID = typeof __PORTAL_ID__ !== "undefined" ? __PORTAL_ID__ : "";
 export const SEM_CONTA = typeof __PORTAL_STRICT__ !== "undefined" && __PORTAL_STRICT__ === "1";
+/**
+ * SEM_VOZ — o push-to-talk não existe no pacote de portal, e são duas razões independentes:
+ *  • MODERAÇÃO. O servidor é relay puro (não decodifica, não grava, não loga), então não há como
+ *    responder a um relatório de abuso nem o que auditar. Poki e CrazyGames classificam o catálogo em
+ *    PEGI 12 e exigem, para voz, moderação ativa ou retenção — e nós não temos nem uma nem outra.
+ *  • O IFRAME DELES NÃO DÁ A PERMISSÃO. Medido: o GameFlare embute com `allow="autoplay; fullscreen"`,
+ *    sem `microphone`. Ali o `getUserMedia` do K morre em "Permissions policy violation" no console do
+ *    revisor e o jogador leva um toast dizendo que "o navegador bloqueou" — o jogo mentindo sobre uma
+ *    coisa que nunca ia funcionar. ⚠️ O harness `portal/iframe.html` PEDE microfone e por isso nunca
+ *    reproduziu isso; ele foi corrigido junto.
+ * Deriva de PORTAL de propósito: se um portal um dia aceitar voz, isto vira um campo de perfil como o
+ * `strict`, e não um `if` novo espalhado pelo cliente. O chat de TEXTO continua, com a peneira do
+ * servidor (server/src/palavrao.js).
+ */
+export const SEM_VOZ = PORTAL;

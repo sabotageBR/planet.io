@@ -10,6 +10,7 @@
 // @ts-check
 import {BOT_LLM,CHAT} from '@warspace/shared/constants.js';
 import {normalizar,baseNick} from '@warspace/shared/util.js';
+import {temGrave} from '../palavrao.js';
 
 // ── nomes ────────────────────────────────────────────────────────────────────
 // `normalizar` e `baseNick` mudaram para shared/src/util.js quando os easter eggs (shared/src/eggs.js)
@@ -78,12 +79,10 @@ const SUSPEITO=/(\bas an ai\b|\bi'?m an ai\b|language model|\bassistant\b|como u
 // (scripts/llm-bench.mjs), o modelo obedecia na maioria das vezes e escapava numa a cada dez — e "na
 // maioria das vezes" não serve para o que aparece na tela de todo mundo numa sala de 50.
 // Recusar aqui não deixa ninguém mudo: quem chama `sanitiza` cai no repertório fixo de BOT_CHAT.
-const OFENSA=new RegExp('\\b('+[
-  'put[ao]s?','viado[s]?','veado[s]?','bicha[s]?','corno[s]?','vagabund[ao]s?','piranha[s]?','cuzao','cuzão',
-  'buceta[s]?','pinto','pau no','rola','bunda','cu\\b','foder','fuder','trepar','chupa[r]?','mamar',
-  'fdp','filho da','vai se','vtnc','tnc','arrombad[ao]s?','desgraçad[ao]s?','retardad[ao]s?','mongol[oó]ide',
-  'ass\\b','asshole','bitch','cunt','fag','faggot','whore','slut','dick','pussy','suck my','blow me','retard',
-].join('|')+')\\b','i');
+// ⚠️ A lista saiu daqui para `server/src/palavrao.js` porque ela tinha UM consumidor e precisava de dois: a linha do
+// JOGADOR não passava por peneira nenhuma — o preenchimento era censurado e a pessoa não. Lá também estão
+// os buracos que a varredura achou (`fuck` e `shit` nunca estiveram nesta lista) e a separação entre o que
+// se RECUSA do bot e o que se MASCARA do humano.
 // ── O QUE NÃO SE FALA NUMA PARTIDA ────────────────────────────────────────────
 // O jogo tem caricaturas de Trump, Lula, Bolsonaro, Putin, Zelensky e Milei, e o SYSTEM agora AUTORIZA
 // brincar com quem o jogador está vestindo. A graça é a PERSONA — "esse Einstein não calcula nada" —, e
@@ -123,7 +122,7 @@ export function sanitiza(txt,nome=''){
   s=s.replace(/\s+/g,' ').trim();
   if(!s)return null;
   if(SUSPEITO.test(s))return null;
-  if(OFENSA.test(s))return null;
+  if(temGrave(s))return null;
   if(POLITICA.test(s))return null;
   // Meta-bot só conta quando APONTA para alguém: "bot" sozinho é gíria de partida ("robô" de futebol,
   // "ai" em espanhol), e vetar a palavra solta calaria fala normal. O par é que denuncia.
