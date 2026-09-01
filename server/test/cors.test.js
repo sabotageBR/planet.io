@@ -6,6 +6,7 @@
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
+import {readFileSync} from 'node:fs';
 process.env.LOG_LEVEL='silent';process.env.SHARD='0';process.env.SHARDS='1';process.env.PEERS='';
 process.env.DATABASE_URL='';process.env.ALLOWED_ORIGINS='';process.env.WS_ORIGIN_CHECK='off';
 const {startServer}=await import('../src/index.js');
@@ -37,6 +38,27 @@ test('matcher: exato, sufixo, e tudo que PARECE mas não é', () => {
   // "null" é o Origin de um iframe com sandbox, de data: e de file: — qualquer atacante produz um
   assert.equal(ok('null'),false);assert.equal(ok(''),false);assert.equal(ok(undefined),false);
 });
+// ⚠️ A LISTA QUE VAI PARA PRODUÇÃO, contra a origem em que cada portal SERVE o jogo de fato. Esta é a
+// única falha desta camada que ninguém vê: o pacote sobe, carrega, desenha o menu — e o JOGAR não
+// conecta, dias depois, no domínio de outra pessoa. As origens abaixo foram MEDIDAS (o documento de
+// dentro do iframe, não a página em volta): `storage.y8.com` é onde o Y8 põe um zip de estúdio, e
+// `www.y8.com` seria a resposta errada. Falhar aqui = a entrada foi estreitada ou perdida no ConfigMap.
+test('a lista do ConfigMap aceita a origem real de cada portal empacotado', () => {
+  const yaml=readFileSync(new URL('../../k8s/05-config.yaml',import.meta.url),'utf8');
+  const linha=/^\s*ALLOWED_ORIGINS:\s*"([^"]*)"/m.exec(yaml);
+  assert.ok(linha,'ALLOWED_ORIGINS sumiu do k8s/05-config.yaml');
+  const ok=createOriginMatcher(linha[1].split(',').map(s=>s.trim()));
+  for(const [portal,origem] of [
+    ['GameDistribution','https://html5.gamedistribution.com'],
+    ['GD (revisão)','https://revision.gamedistribution.com'],
+    ['CrazyGames','https://games.crazygames.com'],
+    ['Poki','https://games.poki.com'],
+    ['itch.io','https://html-classic.itch.zone'],
+    ['Y8','https://storage.y8.com'],
+  ]) assert.equal(ok(origem),true,`${portal}: ${origem} deixou de ser aceita`);
+  assert.equal(ok('https://storage.y8.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
+});
+
 test('matcher: entrada quebrada é DESCARTADA, nunca vira "casa tudo"', () => {
   // `https://` é o que sobra de `https://__HOST__` quando se aplica com NO_INGRESS=1
   const ok=createOriginMatcher(['https://','warspace.io','*','',null,'https://*.']);

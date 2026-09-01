@@ -25,7 +25,7 @@ data:
   # origem nova não vale, sem erro — é preciso `kubectl rollout restart statefulset/warspace-server`,
   # que derruba um shard por vez e mata as salas dele. Por isso o sufixo `*.` vale mais que a origem
   # exata em portal com subdomínio instável: errar a lista custa um rollout.
-  ALLOWED_ORIGINS: "https://__HOST__,https://html5.gamedistribution.com,https://revision.gamedistribution.com,https://*.crazygames.com,https://*.poki.com,https://*.itch.zone"
+  ALLOWED_ORIGINS: "https://__HOST__,https://html5.gamedistribution.com,https://revision.gamedistribution.com,https://*.crazygames.com,https://*.poki.com,https://*.itch.zone,https://*.y8.com"
   # off | warn | on — ver .env.example. Estreia em off; só depois de LER os avisos de `warn` é que fecha.
   WS_ORIGIN_CHECK: "off"
   # fala dos bots pela LLM: o Ollama vive fora do cluster, na 192.168.8.251 (rede roteada até os nós).

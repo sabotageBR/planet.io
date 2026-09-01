@@ -574,7 +574,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   é dono antes de tocar em nada. Quem prova é `server/test/party-shards.test.js`, que sobe DOIS shards no mesmo processo —
   os testes de party de `br.test.js` fixam `SHARDS=1` e por isso nunca viram o bug.
 - **O CLIENTE PODE MORAR FORA DAQUI** (`docs/spec/portais.md`, `client/src/portal/`, `server/src/http/cors.js`):
-  os portais de jogo (GameDistribution, CrazyGames, Poki, itch.io) pedem um **.zip com `index.html` na
+  os portais de jogo (GameDistribution, CrazyGames, Poki, itch.io, Y8) pedem um **.zip com `index.html` na
   raiz** e hospedam os arquivos no domínio DELES, num iframe — o servidor multiplayer continua sendo
   warspace.io. O zip é só `client/dist`, e é isso que o `scripts/portal-pack.mjs` monta.
   ⚠️ **O modo de falha era MENTIR DUAS VEZES**: a sonda de `/api/config` morava dentro do
@@ -627,6 +627,17 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   cookie no projeto**. Origem desconhecida recebe a resposta normal SEM o header — 403 derrubaria o jogo
   no dia em que a própria origem saísse da lista, porque o navegador manda `Origin` em todo POST
   same-origin.
+- **Y8** (`client/src/portal/y8.js`, `docs/spec/portais.md`): quinto portal, mesmo molde — o que ele
+  acrescenta são duas armadilhas próprias. ⚠️ A origem a liberar é **`storage.y8.com`** (medida: um zip
+  de estúdio roda em `storage.y8.com/y8-studio/html5/<estúdio>/<jogo>/index.html`), NÃO `www.y8.com`,
+  que é só a página em volta do iframe — errar isso dá o sintoma pior de todos: carrega, desenha o
+  menu e o JOGAR não conecta. Quem trava é `server/test/cors.test.js`, que lê o `k8s/05-config.yaml` de
+  verdade e confere a origem real de CADA portal empacotado. ⚠️ O SDK deles é a **Ad Placement API do
+  Google** com outra roupa (`preloadAdBreaks`, `type:start|pause|next|browse`, `adBreakDone.breakStatus`),
+  daí `preroll→"start"` e `midroll→"next"`; e o `y8sdk.ready` PODE JÁ TER PASSADO quando o chunk carrega,
+  então o listener vai antes do script e ainda se chama `emitReadyEvent()` depois. `autoLogin:false`
+  contra o snippet do painel: não consumimos o `onAuth`, e autenticar para jogar fora o resultado é
+  chamada de rede de graça.
 - **`/ads.txt` É DO SITE, E O `try_files` MENTIA SOBRE ELE** (`client/public/ads.txt`,
   `docs/spec/portais.md`): o GamePix tem uma segunda porta além do catálogo de jogos — a de *publisher*,
   onde warspace.io é a propriedade `24C97` —, e o que ela pede não é zip: é o `ads.txt` do IAB na RAIZ do

@@ -1,6 +1,6 @@
 # Portais de jogo (o cliente hospedado fora de warspace.io)
 
-GameDistribution, CrazyGames, Poki e itch.io distribuem jogos HTML5 e pedem **um .zip com
+GameDistribution, CrazyGames, Poki, itch.io e Y8 distribuem jogos HTML5 e pedem **um .zip com
 `index.html` na raiz**. O zip é só o **cliente**: eles hospedam os arquivos estáticos no domínio deles,
 dentro de um `<iframe>`, e o servidor multiplayer continua sendo warspace.io. É o modelo normal de um
 `.io` em portal — a CrazyGames diz na documentação que hospeda só os arquivos, a Poki aceita servidor
@@ -183,3 +183,43 @@ anúncio de uma rede concorrente.
 ⚠️ **A lista envelhece.** A primeira linha carrega `#gpx-last-updated-<data>` e o painel acende
 "You are required to PUBLISH AND UPDATE your Ads.txt" quando eles mexem nela. Atualizar é rebaixar o
 template, trocar o `{id}` e publicar o cliente de novo.
+
+## Y8 (`developer.y8.com`)
+
+Painel próprio (BETA), separado do `y8.com/upload` antigo: **Basic Info · SDK Initialization · Builds ·
+QA · Leaderboard · Achievements**, com *Request Review* no alto. O jogo é `war_space`, **Game ID
+`281845`** e **App ID `6a94f08b7d2d9d6de36661db`** — os dois saem da aba *SDK Initialization* e são
+coisas diferentes: o App ID identifica o estúdio/aplicativo (`appConfig`) e o Game ID identifica este
+jogo no inventário de anúncio (`adConfig`). O build vai em *Builds* → **Drag & drop ZIP**, com
+**"Adapts to any size or aspect ratio"** marcado, que é o nosso caso ("Games must be responsive to be
+approved on Y8").
+
+⚠️ **A origem que importa é `storage.y8.com`, e foi MEDIDA.** Um zip de estúdio passa a rodar em
+`https://storage.y8.com/y8-studio/html5/<estúdio>/<jogo>/index.html` — quem faz as chamadas à nossa API
+é esse documento, não a página `www.y8.com` em volta do iframe. Liberar `www.y8.com` seria a resposta
+errada, e o sintoma seria o pior possível: o pacote carrega, desenha o menu e o JOGAR não conecta.
+`https://*.y8.com` cobre os dois e o apex. Quem trava isso é
+`server/test/cors.test.js`, que lê o `k8s/05-config.yaml` de verdade e confere a origem real de cada
+portal empacotado — a prova negativa foi feita: tirar a entrada reprova o teste.
+
+⚠️ **O SDK deles é a Ad Placement API do Google (AFP) com outra roupa.** `preloadAdBreaks`, os quatro
+`type` (`start|pause|next|browse`) e o `adBreakDone(info)` com `breakStatus` vêm de lá — o que explica o
+mapa `preroll→"start"` e `midroll→"next"`. Duas consequências práticas: o dinheiro é AdSense (no modelo
+AFP quem paga é o Google, na conta do desenvolvedor) e o `type:"start"` é, por definição, o anúncio de
+ENTRADA da sessão, que é exatamente o que `play()` faz na primeira vez.
+
+⚠️ **`autoLogin: false`, contra o snippet do painel.** Eles geram `autoLogin: true` + `onAuth(...)`, mas
+a conta aqui é a do warspace.io e nós não consumimos o `onAuth`: pedir uma autenticação para jogar o
+resultado fora é chamada de rede e risco de UI de graça. Integrar a conta do Y8 de verdade é outro
+trabalho, do tamanho do que a CrazyGames pediu (`server/src/auth/crazygames.js`) — e é o que
+destravaria as abas *Leaderboard* e *Achievements* do painel deles, hoje vazias por escolha.
+
+⚠️ **O adaptador não usa `pausou`/`retomou`.** Diferente da GD, que pausa o jogo sozinha com
+`SDK_GAME_PAUSE`, o Y8 só anuncia quando nós chamamos — e a fachada já cala o som antes e levanta a tela
+de pausa depois. O que o adaptador precisa garantir é o CONTRÁRIO: que a promessa sempre termine. São
+quatro saídas independentes (`afterAd`, `adBreakDone`, a promessa do `showAd` e o relógio da fachada),
+porque `afterAd` só sai quando um anúncio de fato tocou e `adBreakDone` é o único que sai sempre.
+
+⚠️ **O `y8sdk.ready` pode já ter passado.** O adaptador é um chunk sob demanda e o script vem do cache:
+o listener é registrado ANTES do `carregaScript` e, depois dele, ainda se chama `emitReadyEvent()` — que
+existe na API deles exatamente para isso.
