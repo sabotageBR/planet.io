@@ -34,7 +34,7 @@ export default {
   guestNote: "Playing as a guest", claim: "Sign up", login: "Sign in", logout: "Sign out", guest: "guest", registered: "protected account",
   hint: "mouse = move · {s} = split · {e} = eject · F/click = missile (hold to aim, {s} cancels) · right click = split",
   back: "◄", equipped: "EQUIPPED", equip: "Equip", buy: "Buy", locked: "Locked", secret: "???",
-  lbTitle: "LEADERBOARD", massLabel: "MASS", scoreLabel: "points", youLabel: "planet", killsWord: "kills", botTag: "◆", regTag: "✓",
+  lbTitle: "LEADERBOARD", lbToggle: "Show/collapse the leaderboard", massLabel: "MASS", scoreLabel: "points", youLabel: "planet", killsWord: "kills", botTag: "◆", regTag: "✓",
   dead: "KABOOM!", deadIcon: "💥", deadSub: "— the galaxy carries on without you —", eatenBy: "DEVOURED BY", suckedBy: "SUCKED IN BY",
   killFeed: {
     eat: "devoured", missile: "missile", burst: "burst", cluster: "cluster", nova: "nova",

@@ -42,7 +42,7 @@ export default {
   // {s}/{e}: as teclas de dividir e ejetar são configuráveis (prefs keySplit/keyEject), então a dica é um MOLDE.
   hint: "mouse = mover · {s} = dividir · {e} = ejetar · F/clique = míssil (segure para mirar, {s} cancela) · botão direito = dividir",
   back: "◄", equipped: "EQUIPADA", equip: "Equipar", buy: "Comprar", locked: "Bloqueada", secret: "???",
-  lbTitle: "PÓDIO", massLabel: "MASSA", scoreLabel: "pontos", youLabel: "planeta", killsWord: "abates", botTag: "◆", regTag: "✓",
+  lbTitle: "PÓDIO", lbToggle: "Mostrar/recolher o placar", massLabel: "MASSA", scoreLabel: "pontos", youLabel: "planeta", killsWord: "abates", botTag: "◆", regTag: "✓",
   dead: "KABOOM!", deadIcon: "💥", deadSub: "— a galáxia continua sem você —", eatenBy: "DEVORADO POR", suckedBy: "SUGADO POR",
   // ── KILL FEED ──  (o nome do grupo está em GROUPS lá embaixo: sem isso um tema que sobrescreva UMA
   // chave apagaria o objeto inteiro, porque `mergeLabels` só faz merge profundo no que está em GROUPS)

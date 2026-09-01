@@ -34,7 +34,7 @@ export default {
   guestNote: "Jugando como invitado", claim: "Crear cuenta", login: "Entrar", logout: "Salir", guest: "invitado", registered: "cuenta protegida",
   hint: "ratón = mover · {s} = dividir · {e} = expulsar · F/clic = misil (mantén para apuntar, {s} cancela) · clic derecho = dividir",
   back: "◄", equipped: "EQUIPADA", equip: "Equipar", buy: "Comprar", locked: "Bloqueada", secret: "???",
-  lbTitle: "PODIO", massLabel: "MASA", scoreLabel: "puntos", youLabel: "planeta", killsWord: "bajas", botTag: "◆", regTag: "✓",
+  lbTitle: "PODIO", lbToggle: "Mostrar/plegar el marcador", massLabel: "MASA", scoreLabel: "puntos", youLabel: "planeta", killsWord: "bajas", botTag: "◆", regTag: "✓",
   dead: "¡KABOOM!", deadIcon: "💥", deadSub: "— la galaxia sigue sin ti —", eatenBy: "DEVORADO POR", suckedBy: "ABSORBIDO POR",
   killFeed: {
     eat: "devoró a", missile: "misil", burst: "ráfaga", cluster: "racimo", nova: "nova",

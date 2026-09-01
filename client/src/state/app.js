@@ -28,6 +28,12 @@ export const PREF_DEFAULTS = Object.freeze({
   // Teclas de dividir/ejetar: `KeyboardEvent.code`, montadas no MAP por instância (input/Keyboard.js).
   keySplit: "Space", keyEject: "KeyW",
   theme: "auto", reduceMotion: false, bigText: false, colorblind: "off", lbSize: 10,
+  // PLACAR ABERTO OU RECOLHIDO, em DUAS chaves — uma para o celular em pé e outra para o resto. Não é
+  // duplicação: os padrões são opostos porque as telas são (no desktop e no deitado a lateral é sobra e o
+  // placar nasce aberto; em pé a lateral É o jogo, e lá o chip do topo já dá massa e posição), e as prefs
+  // viajam com a CONTA. Com uma chave só, recolher no desktop reabriria o placar no celular do jogador —
+  // desfazendo, à distância, exatamente o padrão que existe para não tapar a área de jogo dele.
+  lbShow: true, lbShowPortrait: false,
   // IDIOMA da interface. "auto" = o do navegador (i18n/resolveLang). Ele é a única pref que precisa
   // valer ANTES de o servidor responder — daí o atalho em localStorage que `bootLang()` lê no main.jsx.
   lang: "auto",

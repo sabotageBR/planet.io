@@ -28,6 +28,7 @@ export const PREFS={
   lang:v=>LANGS.includes(v)?v:undefined,
   colorblind:v=>typeof v==='boolean'?v:typeof v==='string'&&/^[a-z]{1,16}$/.test(v)?v:undefined,
   lbSize:v=>Number.isInteger(v)&&v>=3&&v<=20?v:undefined,
+  lbShow:bool,lbShowPortrait:bool,   // placar aberto/recolhido; DUAS chaves porque os padrões e as telas são opostos (ver PREF_DEFAULTS)
   // teclas de dividir/ejetar: `KeyboardEvent.code` da lista compartilhada. Validar contra a lista (e não
   // com uma regex) é o que impede guardar um code que o cliente nunca vai casar — a ação ficaria sem
   // tecla e o jogador não teria como descobrir por quê.

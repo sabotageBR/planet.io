@@ -6,7 +6,7 @@ import React, { useMemo, useSyncExternalStore } from "react";
 import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
-import { leaveGame, toggleMute, setPause } from "../state/actions.js";
+import { leaveGame, toggleMute, setPause, setPref } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt, ord } from "./format.js";
 import { preenche } from "../i18n/index.js";
@@ -57,11 +57,19 @@ export default function Hud() {
   const LB = useLabels(), th = useTheme();
   const LV = th && th.hud && th.hud.cell && th.hud.cell.powerups ? th.hud.cell.powerups.shieldLevels : null;
   const screen = useStore(app, s => s.screen), room = useStore(app, s => s.room), session = useStore(app, s => s.session);
+  // FORMA da tela (desktop|tablet|landscape|portrait): quem a mantém é useViewportMode, que já a publica no
+  // store — ler o `body[data-mode]` daqui seria uma segunda verdade, e uma que o React não sabe observar.
+  const mode = useStore(app, s => s.mode);
   const game = useStore(gameRef, s => s.game);
   const store = useMemo(() => (game && game.hudStore ? throttleStore(game.hudStore, 50) : EMPTY_STORE), [game]);
   const h = useSyncExternalStore(store.subscribe, store.get, store.get) || EMPTY;
   const user = session.user || {}, prefs = session.prefs;
   const lbSize = +prefs.lbSize || 8, rows = h.lb || [];
+  // ABERTO OU RECOLHIDO, com a escolha guardada POR FORMA DE TELA (ver PREF_DEFAULTS): as prefs viajam com
+  // a conta, e uma chave só faria recolher no desktop reabrir o placar no celular do jogador.
+  const lbKey = mode === "portrait" ? "lbShowPortrait" : "lbShow";
+  const lbAberto = prefs[lbKey] !== false;
+  const lbToggle = () => setPref(lbKey, !lbAberto);
   // A própria linha entra SEMPRE. Quando ela não está no top N, vem anexada no fim e precisa de um filete
   // acima: sem ele o placar mente, mostrando "11º" logo abaixo do 8º como se fossem vizinhos.
   let shown = rows.slice(0, lbSize); const meRow = rows.find(r => r.me); let sep = false;
@@ -98,7 +106,8 @@ export default function Hud() {
           comiam a lateral direita inteira por cima da área de jogo — e no celular a lateral é onde o polegar
           direito trabalha. Aqui as duas únicas coisas que o jogador consulta no meio de uma partida (o meu
           tamanho e se estou ganhando) viram um chip na faixa que já existe, e a coluna fica só com o feed. */}
-      <span className="chip" id="h-rank"><b id="v-rank">{h.rank > 0 ? ord(h.rank) : "—"}</b> <b id="v-mass-top">{fmt(h.mass)}</b></span>
+      <button className={"chip" + (lbAberto ? " on" : "")} id="h-rank" title={LB.lbToggle} aria-pressed={lbAberto}
+        aria-controls="hud-lb" onClick={lbToggle}><b id="v-rank">{h.rank > 0 ? ord(h.rank) : "—"}</b> <b id="v-mass-top">{fmt(h.mass)}</b><i className="cev" aria-hidden="true" /></button>
       <span className="chip" id="h-net" style={prefs.showFps ? undefined : { display: "none" }}><b id="v-ping">{h.ping || 0}</b><i>{LB.ping}</i> <b id="v-fps">{h.fps || 0}</b><i>{LB.fps}</i></span>
       {/* MUDO à mão. A tecla M resolve para quem já sabe que ela existe; este botão é para quem precisa
           calar o jogo AGORA e não vai abrir Opções → Som para procurar quatro interruptores diferentes. */}
@@ -127,7 +136,13 @@ export default function Hud() {
       <div className="score-row"><span className="k">{LB.youLabel}</span> <b id="v-name">{user.nick || ""}</b>{nivel > 0 ? <i className="lvl">{nivel}</i> : null}</div>
       <div className="score-row"><span className="k">{LB.coinIcon}</span> <b id="v-coins">{fmt(coins)}</b></div>
     </div>
-    <div className="panel" id="hud-lb"><div className="ph">{LB.lbTitle}</div><div id="lb-rows">
+    {/* RECOLHER: no desktop e no deitado o placar mora numa lateral que é sobra, mas ainda assim tapa o
+        canto de cima — e quem está numa briga ali quer o canto limpo. O cabeçalho FICA quando recolhido,
+        porque ele é o alvo de clique que traz o placar de volta; sumir inteiro deixaria o jogador sem
+        como desfazer. Em pé quem faz esse papel é o chip do topo, e aí o painel some por completo. */}
+    <div className={"panel" + (lbAberto ? "" : " off")} id="hud-lb">
+      <button className="ph" title={LB.lbToggle} aria-expanded={lbAberto} aria-controls="lb-rows" onClick={lbToggle}>
+        <span className="ph-t">{LB.lbTitle}</span><i className="cev" aria-hidden="true" /></button><div id="lb-rows">
       {shown.map((r, i) => <div key={r.slot != null ? r.slot : r.name} className={"lb-row" + (r.me ? " mine" : "") + (r.ally ? " ally" : "") + (r.rank <= 3 ? " top" : "") + (sep && i === shown.length - 1 ? " sep" : "")} style={{ "--p": ((r.mass || 0) / lbMax).toFixed(3) }}>
         <span className="lb-pos">{r.rank}</span>
         <span className="lb-name">{r.talking ? <i className="talk-dot">🎤</i> : null}{r.country ? <i className="flag">{flagOf(r.country)}</i> : null}{r.level > 0 ? <i className="lvl">{r.level}</i> : null}{r.name}{r.isBot ? <> <i className="bot">{LB.botTag}</i></> : null}{r.registered ? <> <i className="reg">{LB.regTag}</i></> : null}</span>

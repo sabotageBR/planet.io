@@ -909,6 +909,20 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   faixa cabe com 48 a 118 px de folga em 360–430 px.
   ⚠️ `--radar-top` nasceu junto com isso: o chat mora logo abaixo do radar por `calc(12px + var(--radar-h))`,
   e aquele `12px` cravado deixou de ser verdade no instante em que a margem do topo passou a variar.
+  ⚠️ **O PLACAR RECOLHE, e a escolha é POR FORMA DE TELA** (`lbShow` / `lbShowPortrait`): duas chaves de
+  pref, não um tri-estado nem um booleano só. As prefs viajam com a CONTA, então uma chave única faria
+  recolher no desktop reabrir o placar no celular do jogador — desfazendo à distância exatamente o padrão
+  que existe para não tapar a área de jogo dele. Os padrões são opostos porque as telas são: `true` no
+  desktop/tablet/deitado (a lateral é sobra) e `false` em pé. Quem alterna são DOIS alvos: em pé, o próprio
+  chip `#h-rank` do topo; no resto, o cabeçalho do painel, que virou `<button>` — ele já era a única coisa
+  do placar que não é dado, e recolhido é o que sobra para trazê-lo de volta (sumir inteiro deixaria o
+  jogador sem como desfazer). No deitado o RÓTULO sai e fica só o chevron, por 14 px de altura em vez de 26.
+  ⚠️ `body[data-mode="landscape"] #hud #hud-right .ph{display:none}` teve que sair: escondia o cabeçalho
+  para poupar altura, e desde que ele é o botão isso tirava do deitado justamente o controle que a tela com
+  menos altura mais precisa. ⚠️ E no DEDO ele volta aos 44 px (`body[data-pointer="coarse"]`): o que se
+  poupa ali é pixel de TEXTO, não área de clique — `scripts/responsive-check.mjs` pegou o `.ph 190x14`.
+  ⚠️ O modo vem de `app.mode` (o store que `useViewportMode` escreve na MESMA linha do `body[data-mode]`),
+  nunca do atributo do body: ler o DOM daqui seria uma segunda verdade que o React não sabe observar.
   ⚠️ O chip é renderizado SEMPRE e escondido por CSS fora do retrato — `Hud.jsx` é reavaliado a 8 Hz, e um nó
   que entra e sai do DOM ao girar o aparelho pisca. E `#hud.spec` já escondia massa e placar por conta
   própria (`#hud-right > *:not(#kill-feed)`), então o espectador não mudou.

@@ -213,7 +213,28 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
   box-shadow:inset 0 0 0 1px rgba(139,92,255,.14),0 0 14px rgba(139,92,255,.28);
   color:var(--nx-ink)}
 #hud #hud-lb{min-width:0;padding:5px 7px 6px}
+/* ── RECOLHER O PLACAR ───────────────────────────────────────────────────────
+   O cabeçalho virou BOTÃO: ele já era a única coisa do painel que não é dado, e no estado recolhido é o que
+   sobra para trazer o placar de volta. `appearance:none` mais o reset de fundo/borda porque `.ph` nasceu
+   como <div> e os temas o estilizam como texto — um <button> cru traria a moldura do navegador por baixo.
+   Em pé quem faz esse papel é o chip #h-rank do topo, e lá este cabeçalho nem aparece. */
 #hud #hud-lb .ph{font-size:10px;letter-spacing:.12em;opacity:.8;margin:0 0 4px 2px;color:var(--nx-hi)}
+#hud #hud-lb>.ph{display:flex;align-items:center;gap:5px;width:100%;appearance:none;-webkit-appearance:none;
+  background:none;border:0;padding:2px 0 3px;font:inherit;font-size:10px;letter-spacing:.12em;
+  text-align:left;cursor:pointer;pointer-events:auto;box-shadow:none;border-radius:0}
+#hud #hud-lb>.ph:hover{opacity:1}
+#hud #hud-lb>.ph:focus-visible{outline:2px solid var(--nx-data,#2ee6ff);outline-offset:2px}
+/* O chevron é um quadrado girado 45° com dois lados: sem SVG, sem emoji (que muda de forma por
+   plataforma) e sem glifo de fonte — é o mesmo truque das setas do projeto. `margin-left:auto` o joga
+   para a direita do cabeçalho, e a rotação diz o estado: para cima aberto, para baixo recolhido. */
+#hud .cev{width:6px;height:6px;border:solid currentColor;border-width:0 1.5px 1.5px 0;
+  transform:rotate(-135deg);margin-left:auto;margin-bottom:2px;flex:none;transition:transform .15s ease}
+#hud #hud-lb.off>.ph .cev{transform:rotate(45deg);margin-bottom:0;margin-top:2px}
+/* Recolhido, some a LISTA e o painel encolhe para a altura do cabeçalho. `display:none` no #lb-rows em vez
+   de altura zero: as linhas continuam sendo renderizadas pelo React (o placar chega a 2 Hz de qualquer
+   jeito), e o que não pode é elas ocuparem espaço nem receberem clique. */
+#hud #hud-lb.off #lb-rows{display:none}
+#hud #hud-lb.off{padding-bottom:4px}
 #hud #hud-right #lb-rows{display:flex;flex-direction:column;align-items:stretch;gap:0;padding-left:0}
 /* a linha vira UMA GRADE: é o `1fr` do meio que faz os três números da direita caírem na mesma coluna,
    por mais curto ou comprido que seja o nick ao lado */
@@ -543,7 +564,16 @@ body[data-mode="landscape"] #hud-right{top:52px;right:8px;gap:4px;max-width:min(
 body[data-mode="landscape"] #kill-feed .kf-row:nth-child(n+3){display:none}
 body[data-mode="landscape"] #hud #hud-right .lb-row:nth-child(n+4):not(.mine){display:none}
 body[data-mode="landscape"] #hud #hud-right .score-row{display:none}
-body[data-mode="landscape"] #hud #hud-right .ph{display:none}
+/* ⚠️ O cabeçalho do PLACAR não pode sumir aqui: desde que ele virou o botão de recolher, escondê-lo tira
+   do deitado justamente o controle que o modo mais precisa (é a tela com menos altura). O que sai é só o
+   RÓTULO — o chevron fica, e com ele o alvo de clique, por 14 px de altura em vez de 26. */
+body[data-mode="landscape"] #hud #hud-lb>.ph{padding:0;min-height:14px}
+body[data-mode="landscape"] #hud #hud-lb>.ph .ph-t{display:none}
+/* ⚠️ NO DEDO ele volta aos 44 px, como todo alvo de toque do projeto — inclusive no deitado, onde o rótulo
+   saiu para poupar altura: o que se poupa ali é PIXEL DE TEXTO, não área de clique. Um chevron de 14 px é
+   um alvo que erra, e errar aqui abre ou fecha o placar no meio de uma briga. Quem cobra é
+   `scripts/responsive-check.mjs` (critério 2), que pegou exatamente isto: `.ph 190x14`. */
+body[data-pointer="coarse"] #hud #hud-lb>.ph{min-height:44px}
 
 /* ── RETRATO: o #hud-top vira COLUNA À DIREITA nos três temas (`right:12px;top:112px`), exatamente onde
    agora mora a coluna do CS. Em vez de espremer os dois no mesmo canto, o topo volta a ser o que é em
@@ -590,7 +620,22 @@ body[data-mode="portrait"] #hud #hud-top #h-net{display:none}
 body[data-mode="portrait"] #hud #hud-top #h-rank{display:inline-flex;align-items:center;gap:5px}
 body[data-mode="portrait"] #hud #hud-top #h-rank #v-rank{color:var(--accent,#ffc22e)}
 body[data-mode="portrait"] #hud #hud-top #h-rank #v-mass-top{font-variant-numeric:tabular-nums}
-body[data-mode="portrait"] #hud #hud-score,body[data-mode="portrait"] #hud #hud-lb{display:none}
+/* Ele é BOTÃO (abre e fecha o placar), então precisa de ponteiro e de alvo de toque — o `#hud` é
+   `pointer-events:none` e todo filho que recebe clique tem que devolver o `auto` por conta própria. */
+body[data-mode="portrait"] #hud #hud-top #h-rank{pointer-events:auto;cursor:pointer;min-height:30px}
+body[data-mode="portrait"][data-pointer="coarse"] #hud #hud-top #h-rank{min-height:44px}
+/* O chevron diz o que o clique FAZ, e por isso aqui ele nasce ao contrário do painel: fechado aponta para
+   BAIXO ("abre"), aberto aponta para CIMA ("recolhe") — a mesma convenção do cabeçalho, com os estados
+   trocados porque a classe `.on` marca o ABERTO. */
+body[data-mode="portrait"] #hud #hud-top #h-rank .cev{margin-left:1px;margin-bottom:0;margin-top:2px;opacity:.75;transform:rotate(45deg)}
+body[data-mode="portrait"] #hud #hud-top #h-rank.on .cev{transform:rotate(-135deg);margin-top:0;margin-bottom:2px}
+/* O cartão de massa não volta nem aberto: o chip do topo já dá massa e posição, e trazer os dois de volta
+   seria mostrar o mesmo número duas vezes ocupando a lateral. Quem alterna é só o TOP N. */
+body[data-mode="portrait"] #hud #hud-score{display:none}
+body[data-mode="portrait"] #hud #hud-lb.off{display:none}
+/* Em pé o painel some INTEIRO quando recolhido (o chip do topo é o alvo que o traz de volta), então o
+   cabeçalho não precisa ficar de pé — e como ele é o único elemento clicável do painel, some junto. */
+body[data-mode="portrait"] #hud #hud-lb>.ph{display:none}
 /* (b) o chip do relógio fica só com a CONTAGEM REGRESSIVA (~55 px). A hora do relógio do espaço é o que
    pinta o céu, não o que decide alguma coisa; o que o jogador consulta é quanto falta para o BIG CRUNCH.
    ⚠️ O `inline-flex` não é enfeite: em contêiner flex os nós de texto só com espaço em branco NÃO geram
