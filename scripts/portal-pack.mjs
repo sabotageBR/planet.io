@@ -39,7 +39,12 @@ const PERFIS = {
 // "faces" à lista abaixo e volte a guarda de lá — as duas coisas andam juntas.
 // ⚠️ `privacy.html` também sai: dentro do zip ela é peso morto (nada no jogo aponta para ela) e uma
 // página de saída acessível é justamente o que os portais não querem. A URL dela vai no FORMULÁRIO deles.
-const PODA = ["og.png", "icon-180.png", "icon-192.png", "icon-512.png", "manifest.webmanifest", "privacy.html"];
+// ⚠️ `ads.txt` sai pelo mesmo motivo, e é o caso mais claro de todos: um ads.txt SÓ é lido na RAIZ do
+// domínio (`https://<dominio>/ads.txt`), e dentro do zip ele iria parar em `html5.gamedistribution.com/
+// <id>/ads.txt`, onde ninguém o lê — mas onde ele DECLARA, no pacote de um portal, as centenas de
+// parceiros de anúncio de OUTRA rede (o GamePix). São 39 KB de lista de concorrente dentro do jogo que
+// se manda para revisão. Ele mora em client/public porque o SITE precisa dele; o portal, não.
+const PODA = ["og.png", "icon-180.png", "icon-192.png", "icon-512.png", "manifest.webmanifest", "privacy.html", "ads.txt"];
 
 const arquivos = dir => fs.readdirSync(dir, { withFileTypes: true, recursive: true })
   .filter(d => d.isFile()).map(d => path.join(d.parentPath || d.path, d.name));

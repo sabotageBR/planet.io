@@ -154,3 +154,32 @@ site e a URL vai no formulário do portal — nunca como link dentro do jogo, qu
 4. Num `<iframe>` de 800×600, não em aba de topo: aba de topo esconde storage particionado, autoplay e
    permissões — exatamente o que quebra num portal.
 5. Por fim, o link de revisão da própria GD (`https://revision.gamedistribution.com/<id>/?correlator=…`).
+
+## GamePix: o `ads.txt` é do SITE, não do pacote
+
+O GamePix tem duas portas, e elas não se parecem. Pela porta de *desenvolvedor* (Games Catalog) vale
+tudo o que está acima. Pela de *publisher* (**Properties**) o domínio é registrado como propriedade —
+warspace.io é a `24C97` — e aí o que eles pedem não é zip nenhum: é o arquivo **`/ads.txt` na raiz do
+domínio**, que é o padrão do IAB para dizer quem está autorizado a vender o inventário de anúncio de um
+site. Sem ele a propriedade fica `ads.txt: NOT VALID` / `Status: PENDING` e não monetiza.
+
+O conteúdo **não se escreve à mão**: é o template deles, servido em
+`https://my.gamepix.com/assets/<data>-property-ads-v2.txt` (878 linhas, 39 KB), com `{id}` trocado pelo
+id da propriedade na primeira linha. É exatamente o que o botão *Verify ads.txt* → *Copy* entrega no
+painel. Ele vive em **`client/public/ads.txt`**, byte a byte igual ao deles — nada de comentário nosso
+no meio, porque quem confere é um robô que compara linhas.
+
+⚠️ **O `try_files` faz um arquivo ausente virar a SPA, com 200.** É a armadilha de verdade aqui: sem o
+arquivo, `GET /ads.txt` respondia `200 text/html` com o `index.html` inteiro, e o robô do GamePix lia
+aquilo como um ads.txt inválido — não um 404, um 200 mentindo. Vale para toda verificação de domínio
+que ainda vier (Search Console, outra rede de anúncio): o arquivo tem que EXISTIR em `client/public/`,
+senão o nginx responde a página do jogo e o erro do outro lado não diz nada disso.
+
+⚠️ **Ele é podado do pacote de portal** (`PODA` em `scripts/portal-pack.mjs`). Um ads.txt só é lido na
+raiz de um domínio; dentro do zip ele iria para `html5.gamedistribution.com/<id>/ads.txt`, onde ninguém
+o lê — mas onde estaria declarando, no jogo que se manda para a revisão de um portal, os parceiros de
+anúncio de uma rede concorrente.
+
+⚠️ **A lista envelhece.** A primeira linha carrega `#gpx-last-updated-<data>` e o painel acende
+"You are required to PUBLISH AND UPDATE your Ads.txt" quando eles mexem nela. Atualizar é rebaixar o
+template, trocar o `{id}` e publicar o cliente de novo.

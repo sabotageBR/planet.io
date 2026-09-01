@@ -627,6 +627,16 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   cookie no projeto**. Origem desconhecida recebe a resposta normal SEM o header — 403 derrubaria o jogo
   no dia em que a própria origem saísse da lista, porque o navegador manda `Origin` em todo POST
   same-origin.
+- **`/ads.txt` É DO SITE, E O `try_files` MENTIA SOBRE ELE** (`client/public/ads.txt`,
+  `docs/spec/portais.md`): o GamePix tem uma segunda porta além do catálogo de jogos — a de *publisher*,
+  onde warspace.io é a propriedade `24C97` —, e o que ela pede não é zip: é o `ads.txt` do IAB na RAIZ do
+  domínio. O conteúdo não se escreve à mão (878 linhas do template deles, `{id}` trocado na 1ª linha, byte
+  a byte igual porque quem confere é um robô). ⚠️ A armadilha vale para TODA verificação de domínio que
+  ainda vier: sem o arquivo em `client/public/`, o `try_files $uri $uri/ /index.html` do `client/nginx.conf`
+  responde **200 com o `index.html`** — não um 404 —, então o robô do outro lado lê a página do jogo como
+  se fosse o arquivo e reprova sem dizer por quê. ⚠️ E ele é PODADO do pacote de portal: ads.txt só é lido
+  na raiz de um domínio, e dentro do zip ele declararia os parceiros de anúncio de uma rede concorrente no
+  jogo que se manda para a revisão de outra.
 - **Identidade**: token opaco `pt_…` (sha256 no banco), guest por padrão (`POST /api/auth/guest`), reivindicar com senha (scrypt nativo)
   trava o nick; `join {token}` — nick/skin nunca vêm do cliente. Banco fora → modo sem persistência (`unsaved`), o tick nunca espera o banco
   (fila com retry, circuit-breaker). Moedas/conquistas só no servidor (`persist/rewards.js`).
