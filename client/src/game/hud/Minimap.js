@@ -35,14 +35,23 @@ export function createMinimap({hud,theme,getScene,onPick}){
       cv.style.transform="translate(-50%,-50%)";cv.style.pointerEvents="auto";cv.style.cursor="pointer";}
     else{
       const P=R0.position||{corner:"top-right",margin:12},mg=P.margin==null?12:P.margin,c=P.corner||"top-right";
-      cv.style.top=c.startsWith("top")?mg+"px":"auto";cv.style.bottom=c.startsWith("bottom")?mg+"px":"auto";
+      // MARGEM DE TOPO POR MODO, no mesmo molde de `size`. Ela existe por causa do RETRATO: lá o #hud-top é
+      // uma faixa que atravessa a tela inteira, e o radar no canto superior esquerdo comia 112 px justo dela
+      // — com `left:50%` a faixa nem chegava ali, mas isso era um acidente do shrink-to-fit (ver o bloco da
+      // faixa em ui.css). Descer o radar abaixo da faixa é o que permite ela ter a largura toda: o canto
+      // continua sendo o dele, 44 px mais abaixo, sobre área de jogo que estava vazia.
+      const mt=P.marginTop&&P.marginTop[m]!=null?P.marginTop[m]:mg;
+      cv.style.top=c.startsWith("top")?mt+"px":"auto";cv.style.bottom=c.startsWith("bottom")?mg+"px":"auto";
       cv.style.right=c.endsWith("right")?mg+"px":"auto";cv.style.left=c.endsWith("left")?mg+"px":"auto";
       cv.style.transform="none";cv.style.pointerEvents="none";cv.style.cursor="";}
     // Publica a altura MEDIDA para o CSS: o chat fica logo abaixo do radar, e o tamanho dele muda por tema
     // e por data-mode. Repetir 150/120/92/84 no ui.css sairia do ar na primeira mudança de tema.
     // (Seguro porque Hud.jsx renderiza #hud sem prop `style`: o React não gerencia esse atributo e não o
     // reverte no próximo render.)
-    if(hud&&hud.style)hud.style.setProperty("--radar-h",h+"px");}
+    // `--radar-top` acompanha `--radar-h` pelo mesmo motivo: o chat mora logo abaixo do radar e o `12px` que
+    // havia cravado no `calc()` deixou de ser verdade no instante em que a margem do topo passou a variar.
+    if(hud&&hud.style){hud.style.setProperty("--radar-h",h+"px");
+      hud.style.setProperty("--radar-top",(big()?0:(R0.position&&R0.position.marginTop&&R0.position.marginTop[m]!=null?R0.position.marginTop[m]:(R0.position&&R0.position.margin!=null?R0.position.margin:12)))+"px");}}
   layout();
   function draw(now,zone){const R0=th.hud.radar,m=bodyMode();if(m!==mode)layout();const S=getScene();if(!S)return;
     const c=ctx,R=D/2,cx=R+1,cy=R+1,t=now;c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,cv.width,cv.height);c.lineJoin="round";

@@ -8,7 +8,7 @@ import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
 import { leaveGame, toggleMute, setPause } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
-import { fmt } from "./format.js";
+import { fmt, ord } from "./format.js";
 import { preenche } from "../i18n/index.js";
 import Chat from "./Chat.jsx";
 import KillFeed from "./KillFeed.jsx";
@@ -94,6 +94,11 @@ export default function Hud() {
       {/* `leftS == null` é a sala SEM FIM (o dono escolheu ∞): o relógio do espaço continua girando, mas não
           há contagem regressiva — e um "0:00" ali diria que a partida acabou. */}
       {h.clock ? <span className="chip" id="h-clock"><i>🕒</i> <b>{String(h.clock.h).padStart(2, "0")}:{String(h.clock.m).padStart(2, "0")}</b> <i>⏳</i> <b>{h.clock.leftS == null ? "∞" : `${Math.floor(h.clock.leftS / 60)}:${String(Math.floor(h.clock.leftS % 60)).padStart(2, "0")}`}</b></span> : null}
+      {/* MASSA + COLOCAÇÃO, e só no RETRATO (o CSS o esconde no resto). Em pé, o cartão de massa e o placar
+          comiam a lateral direita inteira por cima da área de jogo — e no celular a lateral é onde o polegar
+          direito trabalha. Aqui as duas únicas coisas que o jogador consulta no meio de uma partida (o meu
+          tamanho e se estou ganhando) viram um chip na faixa que já existe, e a coluna fica só com o feed. */}
+      <span className="chip" id="h-rank"><b id="v-rank">{h.rank > 0 ? ord(h.rank) : "—"}</b> <b id="v-mass-top">{fmt(h.mass)}</b></span>
       <span className="chip" id="h-net" style={prefs.showFps ? undefined : { display: "none" }}><b id="v-ping">{h.ping || 0}</b><i>{LB.ping}</i> <b id="v-fps">{h.fps || 0}</b><i>{LB.fps}</i></span>
       {/* MUDO à mão. A tecla M resolve para quem já sabe que ela existe; este botão é para quem precisa
           calar o jogo AGORA e não vai abrir Opções → Som para procurar quatro interruptores diferentes. */}

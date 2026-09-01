@@ -354,7 +354,7 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
    muda por tema e por data-mode, e repetir 150/120/92/84 aqui à mão sairia do ar na primeira mudança.
    (Havia um hack por tema: o `dusk` empurrava o chat para `bottom:136px` porque placar e massa trocavam de
    canto conforme o RELÓGIO. Com as colunas fixas ele perdeu a razão de ser e saiu.) */
-#hud #chat{position:absolute;left:12px;top:calc(12px + var(--radar-h,166px) + 10px);bottom:auto;
+#hud #chat{position:absolute;left:12px;top:calc(var(--radar-top,12px) + var(--radar-h,166px) + 10px);bottom:auto;
   right:auto;width:min(280px,26vw);max-height:26vh;
   display:flex;flex-direction:column;justify-content:flex-end;gap:4px;z-index:6;pointer-events:none}
 #chat .chat-head{display:flex;align-items:baseline;gap:6px;font-size:.7em;letter-spacing:.14em;opacity:.55}
@@ -549,8 +549,15 @@ body[data-mode="landscape"] #hud #hud-right .ph{display:none}
    agora mora a coluna do CS. Em vez de espremer os dois no mesmo canto, o topo volta a ser o que é em
    todo o resto do layout: uma FAIXA no alto. Aí a coluna direita começa logo abaixo dela.
    Precisa de (2,0,0) para vencer o tema — ver a nota de especificidade lá em cima. */
-body[data-mode="portrait"] #hud #hud-top{left:50%;right:auto;top:8px;transform:translateX(-50%);
-  flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 16px)}
+/* ⚠️ E A FAIXA TINHA METADE DA LARGURA DA TELA, o que é a causa RAIZ da quebra descrita abaixo. Ela era
+   `left:50%` SEM `right`: para um absolutamente posicionado, o shrink-to-fit mede da borda `left` até o fim
+   do contêiner, ou seja 50% — e o `max-width:calc(100% - 16px)` é um TETO, nunca chega a valer. Medido em
+   headless: 188 px de faixa num iPhone SE de 375 (375/2), 180 em 360, 195 em 390, contra 215 px de chips.
+   Só o Pro Max (430/2 = 215) cabia, raspando — que é por que o defeito parecia intermitente. Com
+   `left:8px;right:8px` a faixa passa a ter a largura inteira e o `justify-content:center` centra o conteúdo
+   nela, sem transform. As duas defesas abaixo continuam: elas seguram o caso de 360 px com o chip novo. */
+body[data-mode="portrait"] #hud #hud-top{left:8px;right:8px;top:8px;transform:none;
+  flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;max-width:none}
 /* ⚠️ A faixa do topo tem que caber em UMA linha. Ela é `flex-wrap`, então cada chip novo é um candidato a
    empurrá-la para a segunda linha — e aí ela desce por cima do kill feed, que começa num `top` fixo. Foi
    exatamente o que o botão de mudo fez em 375 px: 50 px de sobreposição, medidos pela matriz.
@@ -571,6 +578,19 @@ body[data-mode="portrait"] #hud #h-mute{width:30px;height:30px;min-width:30px;fo
    não pode quebrar, para dizer algo que ninguém consulta no meio de uma partida. A pref continua valendo no
    desktop — quem quer medir, mede lá. */
 body[data-mode="portrait"] #hud #hud-top #h-net{display:none}
+/* ── EM PÉ, O PLACAR SAI DA ÁREA DE JOGO ────────────────────────────────────
+   O cartão de massa e o top 10 ficavam na coluna direita, do topo até quase a metade da tela — medido, 290 px
+   de altura sobre 240 de largura, bem onde o polegar direito trabalha e bem em cima do que o jogador precisa
+   VER. No desktop a lateral é sobra; no celular em pé é o jogo. Aqui as duas informações que se consulta no
+   meio de uma partida — o meu tamanho e se estou ganhando — viram UM chip na faixa que já existe, e a coluna
+   fica só com o kill feed. O placar completo continua no desktop, no deitado e no mapa grande da tela de morte.
+   ⚠️ O chip é renderizado SEMPRE e escondido fora do retrato (não é montado condicionalmente): `Hud.jsx` é
+   reavaliado a 8 Hz e um nó que entra e sai do DOM ao girar o aparelho pisca. */
+#hud #hud-top #h-rank{display:none}
+body[data-mode="portrait"] #hud #hud-top #h-rank{display:inline-flex;align-items:center;gap:5px}
+body[data-mode="portrait"] #hud #hud-top #h-rank #v-rank{color:var(--accent,#ffc22e)}
+body[data-mode="portrait"] #hud #hud-top #h-rank #v-mass-top{font-variant-numeric:tabular-nums}
+body[data-mode="portrait"] #hud #hud-score,body[data-mode="portrait"] #hud #hud-lb{display:none}
 /* (b) o chip do relógio fica só com a CONTAGEM REGRESSIVA (~55 px). A hora do relógio do espaço é o que
    pinta o céu, não o que decide alguma coisa; o que o jogador consulta é quanto falta para o BIG CRUNCH.
    ⚠️ O `inline-flex` não é enfeite: em contêiner flex os nós de texto só com espaço em branco NÃO geram
@@ -578,7 +598,9 @@ body[data-mode="portrait"] #hud #hud-top #h-net{display:none}
 body[data-mode="portrait"] #hud #hud-top #h-clock{display:inline-flex;align-items:center;gap:4px}
 body[data-mode="portrait"] #hud #hud-top #h-clock>i:first-of-type,
 body[data-mode="portrait"] #hud #hud-top #h-clock>b:first-of-type{display:none}
-body[data-mode="portrait"] #hud-right{top:150px;right:8px;gap:6px;max-width:min(56vw,240px)}
+/* Sem os dois painéis sobra o feed, e a faixa do topo voltou a caber em uma linha: os 150 px reservavam
+   espaço para um placar que não está mais ali. 60 px = 8 (top) + 44 (o alvo de toque do mudo/menu) + folga. */
+body[data-mode="portrait"] #hud-right{top:60px;right:8px;gap:6px;max-width:min(56vw,240px)}
 body[data-mode="portrait"] #kill-feed{max-width:100%}
 /* ⚠️ E menos linhas: `overflow:hidden` na coluna esconde o excesso mas NÃO encolhe a caixa do filho, que é
    o que colide com os botões de toque (e o que a matriz mede). Quem tem que encolher é a LISTA. */

@@ -284,7 +284,7 @@ export const effects={
 
 // ── HUD/rótulos/rastro (drawHud, drawTrail, drawCell) ──
 export const hud={
-  radar:{shape:"circle",size:{desktop:150,tablet:120,portrait:92,landscape:84},position:{corner:"top-left",margin:12},
+  radar:{shape:"circle",size:{desktop:150,tablet:120,portrait:92,landscape:84},position:{corner:"top-left",margin:12,marginTop:{portrait:60}},
     shadow:{color:INK,dx:4,dy:4},face:"#12183a",border:{color:INK,width:4},
     rings:{color:"rgba(63,196,255,.3)",width:1.5,at:[.33,.66],crosshair:true},
     sweep:{fill:"rgba(63,196,255,.16)",line:BLU,width:2,speed:.0025,span:.7},

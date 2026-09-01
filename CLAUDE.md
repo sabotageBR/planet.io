@@ -886,6 +886,32 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   FEED, não a dos painéis** — `#hud-right` é `overflow:hidden`, então filho mais largo que ela tem o começo
   DECEPADO, e como a coluna é alinhada à direita o que se perde é o nome de quem matou. Alargar só o
   `#kill-feed` não resolve nada.
+- **EM PÉ, O PLACAR SAI DA ÁREA DE JOGO** (`#h-rank` em `Hud.jsx`, o bloco homônimo em `ui.css`): no celular
+  em pé o cartão de massa e o top 10 ocupavam a coluna direita do topo até quase a metade da tela — medido,
+  290 px de altura sobre 240 de largura, bem onde o polegar direito trabalha e bem em cima do que o jogador
+  precisa VER. No desktop a lateral é sobra; em pé ela é o jogo. As duas coisas que se consulta no meio de
+  uma partida — o meu tamanho e se estou ganhando — viram UM chip na faixa do topo (`1º 52.020`), e a coluna
+  fica só com o kill feed (290 → 82 px). O placar inteiro continua no desktop, no deitado e na tela de morte.
+  ⚠️ **A FAIXA DO TOPO TINHA METADE DA LARGURA DA TELA**, e essa era a causa raiz — a mesma que já havia
+  levado o MS/FPS e a hora do relógio para fora dali. Ela é `left:50%` SEM `right`: para um absolutamente
+  posicionado, o shrink-to-fit mede do `left` até o fim do contêiner, ou seja 50%, e o
+  `max-width:calc(100% - 16px)` é um TETO que nunca chega a valer. Medido em headless: 188 px de faixa num
+  iPhone SE de 375 (375/2), 180 em 360, 195 em 390, contra 215 px de chips — só o Pro Max (430/2 = 215)
+  cabia, raspando, que é por que o defeito parecia intermitente. Com `left:8px;right:8px` ela passa a ter a
+  largura inteira.
+  ⚠️ **E aí o RADAR virou o problema**: ele é 92 px no retrato, canto superior esquerdo com margem 12, ou
+  seja ocupa x 12..112 e y 12..112 — exatamente por onde a faixa larga agora passa. Com `left:50%` a faixa
+  nunca chegava ali, mas isso era ACIDENTE do shrink-to-fit, não desenho. Espremer a faixa entre o radar e a
+  borda não resolve: sobrariam 234 px no Galaxy S8 para 296 px de chips, e o que restava para cortar já era
+  tudo jogo (o código da sala é como se convida alguém, e mute/menu são alvos de 44 px). Quem desce é o
+  RADAR: `position.marginTop:{portrait:60}` nos três `theme/<id>/index.js`, lido por `Minimap.layout()` no
+  mesmo molde de `size`. Ele continua no canto dele, 44 px mais abaixo, sobre área que estava vazia — e a
+  faixa cabe com 48 a 118 px de folga em 360–430 px.
+  ⚠️ `--radar-top` nasceu junto com isso: o chat mora logo abaixo do radar por `calc(12px + var(--radar-h))`,
+  e aquele `12px` cravado deixou de ser verdade no instante em que a margem do topo passou a variar.
+  ⚠️ O chip é renderizado SEMPRE e escondido por CSS fora do retrato — `Hud.jsx` é reavaliado a 8 Hz, e um nó
+  que entra e sai do DOM ao girar o aparelho pisca. E `#hud.spec` já escondia massa e placar por conta
+  própria (`#hud-right > *:not(#kill-feed)`), então o espectador não mudou.
 - **O feed dura 22 s e morre em DEGRADÊ** (`FEED.TTL_MS`, `#kill-feed .kf-row:nth-child` em `ui.css`): a
   linha sumia inteira em 9 s e quem estava olhando o jogo perdia o abate. Agora a mais nova fica opaca e as
   de baixo desbotam conforme as novas as empurram, até o corte em `FEED.ROWS`. ⚠️ As quatro regras de
