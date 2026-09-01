@@ -28,6 +28,15 @@ export const PREF_DEFAULTS = Object.freeze({
   // Teclas de dividir/ejetar: `KeyboardEvent.code`, montadas no MAP por instância (input/Keyboard.js).
   keySplit: "Space", keyEject: "KeyW",
   theme: "auto", reduceMotion: false, bigText: false, colorblind: "off", lbSize: 10,
+  // ── A TELA DE FIM DE RODADA: qual dos três modelos, e se ela tem abertura ──
+  // Os três desenham os MESMOS dados (campeão, pódio, destaques, placar) e mudam o que a tela põe em
+  // primeiro plano: `podio` é o pódio de sempre com o campeão em tamanho de campeão, `cinema` entrega a
+  // tela inteira a ele, `dossie` é o relatório da partida em duas colunas. Ninguém perde informação
+  // escolhendo — o cartão do resto do placar é o mesmo nos três.
+  // `roundIntro` é o colapso de 2 s antes do placar. Ela também obedece a `reduceMotion`, mas tem chave
+  // própria porque são pedidos diferentes: um é acessibilidade (vale para o jogo inteiro) e o outro é
+  // pressa de quem entra em sala nova o dia todo e já viu a animação cem vezes.
+  roundStyle: "cinema", roundIntro: true,
   // PLACAR ABERTO OU RECOLHIDO, em DUAS chaves — uma para o celular em pé e outra para o resto. Não é
   // duplicação: os padrões são opostos porque as telas são (no desktop e no deitado a lateral é sobra e o
   // placar nasce aberto; em pé a lateral É o jogo, e lá o chip do topo já dá massa e posição), e as prefs

@@ -44,7 +44,7 @@ client/src/    api/base.js (a ÚNICA fonte de "onde mora o servidor") · portal/
                main.jsx (3 entradas: jogo · /admin · ?sfx) · app/ (App, theme bridge) · admin/ (o painel: mount/api/admin.css)
                i18n/ (index.js o motor · pt-BR|en|es.js os dicionários · errors.js código→texto · catalog.js skins/conquistas/países)
                assets/scene/ (a arte do cenário do menu: logo + 5 sprites + 3 fundos, WebP)
-               ui/ (telas React + Round.jsx, Modes/Party/Chat/KillFeed/Notice/AvatarPicker/Pause (o menu do Esc + o painel do dono), icons.js
+               ui/ (telas React + Round.jsx/RoundIntro.jsx (o fim de rodada: 3 modelos + a abertura), Modes/Party/Chat/KillFeed/Notice/AvatarPicker/Pause (o menu do Esc + o painel do dono), icons.js
                Logo.jsx + logoArt.js = a marca · NavIcons.jsx + navIconArt.js = os ícones da entrada) · util/image.js · api/client.js · state/ (store) · hooks/
                audio/ (index.js motor: 4 barramentos, prioridade de vozes, loops · kit.js receitas · mic.js push-to-talk · audition.js a mesa de som do ?sfx)
                theme/ (index.js + dawn|sunset|dusk: tokens/hud/screens.css gerados por port.js, index.js com textures/effects/hud) · styles/base.css
@@ -626,7 +626,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (começa 05:00; um dia a cada 15 min → 12 trocas de céu, cada uma com o **crossfade do céu** feito dentro do Pixi por
   `renderer/layers/Background.js` — só o fundo dissolve; HUD, telas e o jogo continuam visíveis); no fim vem o
   **BIG CRUNCH**, o maior planeta vivo é o campeão, vai um `roundEnd` com o placar, a sala é aposentada e o cliente entra sozinho
-  numa sala nova depois de 15 s (`ui/Round.jsx` mostra o pódio dos 3 primeiros + o resto do placar).
+  numa sala nova depois de 15 s (`ui/Round.jsx`: abertura de 2 s, campeão grande e um dos três modelos de placar).
 - **Salas por shard** como na v1: código `1ABC` → shard 1 (1º char base36); o Ingress roteia `/ws/<shard>` para `warspace-server-<shard>`;
   `/api/*` balanceado (qualquer shard responde, tudo stateless no Postgres). `findOrCreateRoom` enche a sala mais cheia com vaga.
   ⚠️ **Uma coisa NÃO é stateless: o lobby de equipe** (`rooms/Party.js`), que vive na memória do pod que gerou o código —
@@ -815,7 +815,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   Nessa tela quem rola é o `.screen`, não o `.wrap` — sem moldura não há caixa por dentro da qual rolar, e uma barra de
   rolagem interna comeria 15 px justo da medida que tem que bater com a das outras telas.
   `scripts/responsive-check.mjs` cobre `dead`, `round`, `entry@rail` e `shop@rail` (a gaveta com o conteúdo mais largo
-  do jogo — 432 combinações).
+  do jogo — 504 combinações, com os três modelos do fim de rodada).
 - **A BARRA DE NAVEGAÇÃO VOLTOU PARA DENTRO DA CAIXA** (`Screen` em `ui/bits.jsx`), que é onde os TRÊS
   temas sempre a desenharam (`order:99;position:sticky;bottom:0`, mais as variantes de retrato e paisagem).
   O motivo de ela ter saído era real e continua escrito abaixo — mas o conserto não era tirá-la da caixa:
@@ -1497,22 +1497,54 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ficou: `Room.leave` remove do mundo, e no Livre **morrer e renascer é `leave` + `join` num slot NOVO**.
   Chave estável: `u<userId>` → `r<resumeToken>` → `n<nick>` → `b<slot>`; **nunca `sessionId`**, que é por VIDA
   e agruparia errado justamente no respawn. `_rosterFold` é idempotente por vida (`gp.rosterFolded`) e ACUMULA.
-- **O CAMPEÃO É UMA FAIXA, E QUEM MAIS PONTUOU GANHOU O CARTÃO DELE** (`Room._mergeBoard` → `destaques
-  .pontuador`, `.champ-banner` em `ui/Round.jsx` + `styles/ui.css`): o campeão é quem tem a MAIOR MASSA no
-  instante do BIG CRUNCH — `vivos.sort` por massa e `board[0]`, o que sempre foi —, mas ele aparecia três
-  vezes na mesma tela (degrau maior do pódio, um dos quatro cartões de destaque e, no Battle Royale, o
-  subtítulo) e em nenhuma delas em tamanho de campeão. Agora é uma FAIXA logo abaixo do título, e o cartão
-  que ela liberou virou **mais pontos** — o `score` viajava no `roundEnd` em toda linha do board desde
-  sempre e NENHUM componente do cliente o lia. Ele é o único destaque que não mede tamanho nem violência
-  (sobe com cada grão, cada fragmento e cada planeta comido), e por isso é o que um humano tem chance real
-  de disputar contra 15 preenchimentos que passaram 30 min acumulando. ⚠️ A faixa sai de `r.champion`, e
-  não de `d.campeao`: o `?local=1` não manda `destaques`, e no fim por morte simultânea é o `champion` que
-  carrega o fallback do `lastAlive`. ⚠️ E ela NÃO aparece no Battle Royale, onde o subtítulo já diz quem (ou
-  qual equipe) venceu — numa vitória de equipe a faixa mostraria um nome só, contradizendo a linha de cima.
-  ⚠️ A chave `LB.champion` ("CAMPEÃO DA SALA") existia no dicionário e não era usada por ninguém; quem saiu
-  foi `awards.champion`. O payload de demonstração de `actions.js` (`mostrarTela("round")`) ganhou
-  `destaques` para a sonda de `scripts/responsive-check.mjs` medir a faixa e a fileira — sem eles o
-  `.awards` nem existe no DOM e as 432 combinações passavam por cima de metade da tela.
+- **A TELA DE FIM DE RODADA TEM ABERTURA, CAMPEÃO GRANDE E TRÊS MODELOS** (`ui/Round.jsx` +
+  `ui/RoundIntro.jsx`, o bloco "FIM DE RODADA v2" de `styles/ui.css`, prefs `roundStyle`/`roundIntro`):
+  trinta minutos de sala terminavam num corte seco — o placar já estava lá no primeiro frame — e o
+  campeão, que é o assunto da tela, era desenhado com **34 px** na faixa e 86 px no degrau do pódio, o
+  tamanho de um chip do HUD. Agora o fim tem tempo e tem tamanho.
+  **A ABERTURA** dura 2 s: o universo é sugado para um ponto (é literalmente o que o BIG CRUNCH é),
+  estoura, e do estouro nasce o planeta que venceu; só então o placar monta em cascata.
+  ⚠️ As fases são `animation-delay` de CSS num DOM montado UMA vez, não state: um `setState` por fase
+  re-renderizaria a tela inteira quatro vezes no meio da animação. Os únicos timers são os três sons
+  (`suck` 0 ms · `bigCrunch` 880 ms · `podium` 1280 ms) e o `onDone`, e todos morrem no mesmo cleanup,
+  que é também o caminho do "pular" — qualquer clique ou tecla encerra na hora.
+  ⚠️ **`key={chave}` no `<RoundIntro>`**: os timers vivem num `useEffect([])`, que NÃO roda de novo
+  quando o React REUSA o componente. Sem a chave, um segundo `roundEnd` durante a abertura do primeiro
+  herda os timers velhos e a animação nova é cortada no meio pelo `onDone` da anterior — foi medido
+  assim, com dois `mostrarTela("round")` em sequência.
+  ⚠️ A contagem para a próxima sala parte de `prontoAt` (o instante em que o placar apareceu), não de
+  `r.at`: senão a animação comeria 2 dos 15 segundos que o jogador tem para decidir.
+  **OS TRÊS MODELOS** são três ARRANJOS das mesmas peças, e nenhum esconde o que outro mostra — só muda
+  onde a tabela do resto começa (`CORTE`), porque o que a tela de cima já desenhou não se repete
+  embaixo. `podio` é o pódio de sempre com o 1º em tamanho de campeão (e por isso a FAIXA saiu: o
+  campeão aparecia três vezes na mesma tela); `cinema` entrega a tela ao vencedor e rebaixa 2º e 3º a
+  fichas; `dossie` é o relatório em duas colunas, e é o único em que se COMPARA — a barra diz "ganhou
+  por quanto", que nem o pódio nem a faixa diziam. A largura da caixa muda por modelo redefinindo
+  `--screen-w` no próprio `#s-round[data-style]`, sem um `width` novo: o bloco "TODA TELA NO MESMO
+  LUGAR" já lê a variável. `?round=1|2|3` passa por cima da pref para comparar os três sem gastar um
+  PATCH por troca.
+  ⚠️ **O TAMANHO DO PLANETA NÃO SE MUDA PELO `r`** (`--champ-d`): `paintSkin` escala por `cv.width/112`,
+  então o `r` é sempre medido na escala de 112 e quem cresce é o `size` (a resolução). Subir o `r` junto
+  estoura o aro das skins com anel (`1,85·r`) para fora do canvas, que CORTA. E o disco ocupa ~57 % do
+  canvas — o resto é a folga do aro —, então o CSS deixa o canvas transbordar o bloco em 132 %, centrado
+  por absoluto, e o disco fica com ~75 % de `--champ-d`. Pelo mesmo motivo o `.cp` tem `margin-bottom`:
+  sem a folga o disco pousa em cima do próprio nome.
+  ⚠️ **A MESMA CONTA CONDENAVA AS MINIATURAS**, e isso era um defeito ANTIGO: os cartões de destaque
+  pediam `r=14, size=56` num canvas de 28 px, ou seja um disco de **7 px** — na tela aquilo lê como
+  sujeira, não como planeta. Hoje é `r=30` com o canvas maior e margem negativa devolvendo o espaço, e
+  a fileira não mudou de altura.
+  ⚠️ **`<i>` GENÉRICO É ARMADILHA DE CASCATA**: a coroa do pódio é um `<i>` dentro do degrau, e
+  `#s-round .podium.v2 .p1 i` — escrita para a MASSA — a capturava por especificidade ((1,3,1) contra
+  (1,1,0) de `#s-round .cp-coroa`), deixando-a com 16 px e a cor do número, em silêncio. Hoje as duas
+  regras do degrau são de FILHO DIRETO (`.p1>b`, `.p1>i`), e a coroa leva `opacity:1` explícito porque
+  `.podium .step i` a deixava com 72 %.
+  ⚠️ No Battle Royale o campeão passou a aparecer grande também (antes ele era suprimido para não
+  repetir o subtítulo). Quem mudou foi o SUBTÍTULO, que parou de repetir o nome; numa vitória de
+  ESQUADRÃO o rótulo acima do nome vira a EQUIPE, que é a única coisa que um planeta só não diz.
+  ⚠️ A sonda (`scripts/responsive-check.mjs`) mede os TRÊS (`round:podio|cinema|dossie` via
+  `mostrarTela`, que sob esse sufixo também DESLIGA a abertura — com ela no ar a sonda mediria o
+  overlay) e espera 900 ms em vez de 420: a cascata de entrada acaba em 760 ms, e medir no meio dela lê
+  um `translateY` de transição como transbordo. São 504 combinações.
 - **Loja: a confirmação onde o clique aconteceu** (`ui/Shop.jsx`): clicar num cartão abre um MODAL com a skin grande, o
   preço e as duas saídas. O painel de detalhe ficava embaixo da grade, fora da vista de quem tinha acabado de clicar:
   selecionar e confirmar aconteciam a uma tela de distância um do outro, e ninguém descobria que ainda faltava

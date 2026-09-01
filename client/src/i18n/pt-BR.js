@@ -114,6 +114,9 @@ export default {
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— o universo desabou num ponto; a próxima galáxia já está nascendo —",
   champion: "CAMPEÃO DA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar agora", playersWord: "no placar", posWord: "#",
   podium: "PÓDIO", restOfBoard: "E o resto da galáxia",
+  // ── FIM DE RODADA v2: a abertura, o campeão grande e os três modelos de placar ──
+  lastAliveSub: "— o gás fechou e sobrou um planeta de pé —", skipHint: "clique para pular",
+  boardTop: "OS MAIORES DA SALA", champCrown: "🏆",
   // extras do shell (não existem no mockup)
   offlineNote: "Sem servidor: jogando em modo local",
   noDbNote: "Servidor sem banco: progresso não é salvo", saving: "salvando…", noRank: "sem posição", loading: "carregando…",
@@ -154,6 +157,8 @@ export default {
     showNames: "Mostrar nomes", showMinimap: "Minimapa", showFps: "Mostrar FPS e ping", lbSize: "Linhas do placar", chat: "Chat",
     colorblind: "Modo daltonismo", colorblind_off: "Desligado", colorblind_deutan: "Deuteranopia", colorblind_protan: "Protanopia", colorblind_tritan: "Tritanopia",
     reduceMotion: "Reduzir movimento", bigText: "Texto maior",
+    roundStyle: "Placar final", roundStyle_podio: "Pódio", roundStyle_cinema: "Cinema", roundStyle_dossie: "Dossiê",
+    roundIntro: "Abertura do fim de rodada",
   },
   // ── ERROS ──
   // O servidor manda `{error:<código>, message:<pt-BR>}` e o cliente mostrava o MESSAGE cru — o que

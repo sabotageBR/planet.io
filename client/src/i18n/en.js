@@ -94,6 +94,8 @@ export default {
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— the universe collapsed into a point; the next galaxy is already being born —",
   champion: "ROOM CHAMPION", nextRoom: "next room", enterNow: "🚀 Join now", playersWord: "on the board", posWord: "#",
   podium: "PODIUM", restOfBoard: "And the rest of the galaxy",
+  lastAliveSub: "— the gas closed in and one planet was left standing —", skipHint: "click to skip",
+  boardTop: "THE BIGGEST IN THE ROOM", champCrown: "🏆",
   offlineNote: "No server: playing in local mode",
   noDbNote: "Server without a database: progress isn't saved", saving: "saving…", noRank: "unranked", loading: "loading…",
   noRooms: "No active room — play to create one", noHistory: "No match yet", useSuggestion: "Use suggestion",
@@ -120,6 +122,8 @@ export default {
     showNames: "Show names", showMinimap: "Minimap", showFps: "Show FPS and ping", lbSize: "Leaderboard rows", chat: "Chat",
     colorblind: "Color blind mode", colorblind_off: "Off", colorblind_deutan: "Deuteranopia", colorblind_protan: "Protanopia", colorblind_tritan: "Tritanopia",
     reduceMotion: "Reduce motion", bigText: "Bigger text",
+    roundStyle: "End-of-round board", roundStyle_podio: "Podium", roundStyle_cinema: "Cinema", roundStyle_dossie: "Dossier",
+    roundIntro: "End-of-round intro",
   },
   err: {
     unknown: "Something went wrong.",

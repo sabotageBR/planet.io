@@ -184,19 +184,27 @@ function mostrarTela(s) {
   if (s === "account") { go("entry"); openAccount(); }
   else if (s === "game") play({});
   else if (s === "reconn") { play({}); setTimeout(() => setReconn(true, 2), 400); }
-  else if (s === "dead" || s === "round") {
+  else if (s === "dead" || s === "round" || s.startsWith("round:")) {
     if (!import.meta.env.DEV) return;
     app.update({ room: "1ABC", played: true, conn: "connected", lastMatch: { by: "Nebulox", byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, room: "1ABC", at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
-    if (s === "round") { const linhas = [{ slot: 1, name: "Vortexia", mass: 12400, score: 9100, food: 610, kills: 4, kd: 2, isBot: true, skinId: 30 },
+    if (s === "round" || s.startsWith("round:")) { const linhas = [{ slot: 1, name: "Vortexia", mass: 12400, score: 9100, food: 610, kills: 4, kd: 2, isBot: true, skinId: 30 },
       { slot: 3, name: "Você", mass: 8200, score: 11800, food: 840, kills: 3, kd: 1.5, skinId: 18 }, { slot: 5, name: "Drakonis", mass: 3100, score: 4200, food: 300, kills: 6, kd: 3, isBot: true, skinId: 34 },
       { slot: 7, name: "Cosmara", mass: 2400, score: 3100, food: 210, kills: 1, kd: .5, isBot: true, skinId: 13 }, { slot: 9, name: "Stellara", mass: 1800, score: 2400, food: 160, kills: 0, kd: 0, isBot: true, skinId: 26 },
-      { slot: 11, name: "Graviton", mass: 900, score: 1200, food: 90, kills: 0, kd: 0, isBot: true, skinId: 20 }];
-      // com `destaques` a sonda de responsividade passa a medir também a FAIXA do campeão e a fileira de
-      // quatro cartões — sem eles o `.awards` simplesmente não existe no DOM e as 432 combinações passavam
+      { slot: 11, name: "Graviton", mass: 900, score: 1200, food: 90, kills: 0, kd: 0, isBot: true, skinId: 20 },
+      { slot: 13, name: "xXcapitaoXx", mass: 640, score: 980, food: 70, kills: 1, kd: .33, isBot: true, skinId: 7, left: true },
+      { slot: 15, name: "Perseu", mass: 420, score: 610, food: 44, kills: 0, kd: 0, isBot: true, skinId: 41, registered: true }];
+      // com `destaques` a sonda de responsividade passa a medir também o bloco do campeão e a fileira de
+      // quatro cartões — sem eles o `.awards` simplesmente não existe no DOM e as combinações passavam
       // por cima da metade da tela.
-      app.update({ room: "1ABC", roundResult: { code: "1ABC", mySlot: 3, at: Date.now(), nextInMs: 15000, total: linhas.length,
-        champion: linhas[0], board: linhas,
-        destaques: { campeao: linhas[0], pontuador: linhas[1], glutao: linhas[1], carrasco: linhas[2], letal: linhas[2] } }, rewards: null, rewardsPending: true, screen: "round" }); }
+      // ⚠️ O SUFIXO `round:<estilo>` fixa o modelo E DESLIGA a abertura (só no state local, sem PATCH):
+      // a sonda mede o PLACAR, e com a animação de 2 s no ar ela mediria o overlay dela. Quem quiser ver
+      // a abertura usa `mostrarTela("round")` sem sufixo, que respeita as prefs.
+      const estilo = s.startsWith("round:") ? s.slice(6) : null;
+      app.update(st => ({ ...st, room: "1ABC", rewards: null, rewardsPending: true, screen: "round",
+        session: estilo ? { ...st.session, prefs: { ...st.session.prefs, roundStyle: estilo, roundIntro: false } } : st.session,
+        roundResult: { code: "1ABC", mySlot: 3, at: Date.now(), nextInMs: 15000, total: linhas.length,
+          champion: linhas[0], board: linhas,
+          destaques: { campeao: linhas[0], pontuador: linhas[1], glutao: linhas[1], carrasco: linhas[2], letal: linhas[2] } } })); }
     // A sonda de responsividade mede o HUD DE ESPECTADOR que agora existe atrás destas telas (chat + o
     // bloco de "assistindo"). Sem semear o hudStore o painel tem altura zero, o `vis()` o descarta, e as
     // ~400 combinações passariam sem ver a única coisa nova na tela.

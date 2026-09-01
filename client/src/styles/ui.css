@@ -1113,27 +1113,216 @@ body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(sa
 /* o "+" entre o ícone de quem amoleceu e o de quem finalizou */
 #kill-feed .kf-plus{opacity:.4;font-size:.8em;margin:0 1px}
 
-/* ── A FAIXA DO CAMPEÃO (#s-round) ────────────────────────────────────────────────────────────────
-   O campeão é quem tem a MAIOR MASSA no instante do BIG CRUNCH, e o destaque da tela é dele. Ele já
-   estava no degrau maior do pódio E num dos quatro cartões de destaque logo abaixo — a mesma pessoa
-   três vezes, e nenhuma delas em tamanho de campeão. A faixa resolve as duas coisas: ela é o primeiro
-   bloco depois do título, numa linha só (ícone · planeta · rótulo · nome · massa), e o cartão que ela
-   liberou virou "mais pontos". No retrato o nome desce para a segunda linha, senão a massa é decepada.
-   ⚠️ Vive aqui e não nos temas: theme/<id>/screens.css é GERADO pelo port.js. Como ui.css é importado
-   ANTES deles, empate de especificidade PERDE — por isso o seletor carrega o #s-round. */
-#s-round .champ-banner{display:grid;grid-template-columns:auto auto auto 1fr auto;align-items:center;gap:8px;
-  width:100%;margin:4px 0 2px;padding:8px 12px;border-radius:var(--radius,10px);
-  border:2px solid var(--accent,#ffc22e);background:var(--surface,#2226)}
-#s-round .champ-banner .cb-ico{font-style:normal;font-size:1.5em;line-height:1}
-#s-round .champ-banner .cb-skin{width:34px;height:34px}
-#s-round .champ-banner canvas{width:34px;height:34px}
-#s-round .champ-banner .cb-k{font-size:.62em;letter-spacing:.08em;opacity:.7;text-transform:uppercase;white-space:nowrap}
-#s-round .champ-banner .cb-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.1em}
-#s-round .champ-banner .cb-val{font-style:normal;color:var(--accent,#ffc22e);white-space:nowrap}
-#s-round .champ-banner.me{box-shadow:0 0 0 2px var(--accent,#ffc22e) inset}
-body[data-mode="portrait"] #s-round .champ-banner{grid-template-columns:auto auto 1fr auto;row-gap:2px}
-body[data-mode="portrait"] #s-round .champ-banner .cb-k{grid-column:3/-1;font-size:.58em}
-body[data-mode="portrait"] #s-round .champ-banner .cb-name{grid-column:3}
+/* ── FIM DE RODADA v2: A ABERTURA, O CAMPEÃO GRANDE E OS TRÊS MODELOS ─────────────────────────────
+   Tudo daqui até o fim da seção nasceu depois dos mockups, como o resto de `#s-round`, então mora
+   aqui e usa só tokens do tema. ⚠️ Os seletores carregam `#s-round`: `theme/<id>/screens.css` é
+   GERADO pelo port.js e `ui.css` é importado ANTES dele, então empate de especificidade PERDE.
+
+   A LARGURA da caixa é escolhida por modelo, e não com um `width` novo: o bloco "TODA TELA NO MESMO
+   LUGAR" já resolve a largura por `var(--screen-w)`, então redefinir a variável aqui basta e não
+   duplica cascata nenhuma. Na gaveta quem manda é `--drawer-w` e nada disto vale.  */
+#s-round[data-style="cinema"]{--screen-w:min(620px,100%)}
+#s-round[data-style="dossie"]{--screen-w:min(720px,100%)}
+
+/* ── ABERTURA (ui/RoundIntro.jsx) ─────────────────────────────────────────────────────────────────
+   As fases são `animation-delay`, não state: o DOM monta uma vez e o navegador toca a linha do tempo
+   sozinho (ver o comentário do componente). Os três marcos batem com os três sons de lá — 0 ms
+   sucção, 880 ms estouro, 1280 ms nascimento —, e mexer num lado sem o outro se lê como defeito.  */
+.rd-intro{position:absolute;inset:0;z-index:30;overflow:hidden;pointer-events:none;
+  display:grid;place-items:center;contain:layout paint}
+.rd-intro>*{grid-area:1/1}
+.ri-void{width:100%;height:100%;background:radial-gradient(circle at 50% 50%,rgba(0,0,0,.35),rgba(0,0,0,.88) 70%);
+  animation:ri-void .35s ease-out both}
+@keyframes ri-void{from{opacity:0}to{opacity:1}}
+/* a matéria caindo para o ponto: 18 riscos com ângulo, distância e atraso ligeiramente diferentes */
+.ri-campo{width:0;height:0}
+.ri-risco{position:absolute;left:0;top:0;width:16vmin;height:3px;margin-top:-1.5px;transform-origin:0 50%;
+  background:linear-gradient(90deg,transparent,var(--accent,#ffc22e));border-radius:3px;opacity:0;
+  box-shadow:0 0 8px rgba(255,194,46,.6);animation:ri-cai .95s cubic-bezier(.55,0,.9,.35) both}
+@keyframes ri-cai{
+  0%{transform:rotate(var(--a)) translateX(var(--d)) scaleX(1);opacity:0}
+  18%{opacity:.95}
+  100%{transform:rotate(var(--a)) translateX(0) scaleX(.12);opacity:0}}
+.ri-titulo{font-family:var(--font-display,inherit);font-size:clamp(26px,7vmin,64px);letter-spacing:.06em;
+  color:var(--text,#fff);text-shadow:0 0 24px rgba(0,0,0,.8);white-space:nowrap;
+  animation:ri-titulo .9s cubic-bezier(.6,0,.9,.4) both}
+@keyframes ri-titulo{0%{opacity:0;transform:scale(1.5);filter:blur(6px)}
+  22%{opacity:1;transform:scale(1);filter:blur(0)}
+  100%{opacity:0;transform:scale(.05);filter:blur(3px)}}
+.ri-flash{width:36vmin;height:36vmin;border-radius:50%;opacity:0;
+  background:radial-gradient(circle,#fff 0%,var(--accent,#ffc22e) 34%,transparent 70%);
+  animation:ri-flash .5s ease-out .88s both}
+@keyframes ri-flash{0%{opacity:0;transform:scale(.05)}18%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.6)}}
+.ri-onda{width:20vmin;height:20vmin;border-radius:50%;opacity:0;
+  border:3px solid var(--accent,#ffc22e);animation:ri-onda .75s cubic-bezier(.15,.7,.3,1) .9s both}
+.ri-onda.o2{border-color:var(--accent2,#ff6b4a);animation-delay:1.02s;animation-duration:.85s}
+@keyframes ri-onda{0%{opacity:0;transform:scale(.1)}12%{opacity:.9}100%{opacity:0;transform:scale(5)}}
+/* e do estouro nasce o planeta que venceu — este é o instante para o qual a animação inteira existe */
+.ri-heroi{display:flex;flex-direction:column;align-items:center;gap:2px;
+  animation:ri-heroi .8s cubic-bezier(.2,1.5,.4,1) 1.24s both}
+@keyframes ri-heroi{0%{opacity:0;transform:scale(.06)}55%{opacity:1}100%{opacity:1;transform:scale(1)}}
+.ri-disco{position:relative;width:min(44vmin,300px);height:min(44vmin,300px)}
+.ri-disco canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:132%;height:132%;
+  filter:drop-shadow(0 0 26px rgba(255,194,46,.55))}
+.ri-nome{font-family:var(--font-display,inherit);font-size:clamp(18px,4vmin,34px);color:var(--text,#fff);
+  max-width:80vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;animation:ri-fade .4s ease-out 1.6s both}
+.ri-massa{font-style:normal;font-size:clamp(13px,2.6vmin,20px);color:var(--accent,#ffc22e);
+  font-variant-numeric:tabular-nums;animation:ri-fade .4s ease-out 1.72s both}
+@keyframes ri-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.ri-skip{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
+  font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted,#8fa0d8);opacity:0;
+  animation:ri-fade .5s ease-out .7s both}
+
+/* ── O PLANETA DO CAMPEÃO ─────────────────────────────────────────────────────────────────────────
+   Ele valia 34 px na faixa e 86 px no degrau — o tamanho de um chip de HUD para o que a tela inteira
+   existe para anunciar. Agora o tamanho é `--champ-d`, escolhido por MODELO e por forma de tela.
+   ⚠️ `--champ-d` é o lado do BLOCO, não o do disco: `paintSkin` desenha o planeta com ~57 % do canvas
+   (o resto é a folga do aro das skins com anel), e por isso o canvas transborda o bloco em 132 % e é
+   centrado por absoluto — assim o disco fica com ~75 % de `--champ-d` e o aro continua inteiro.  */
+#s-round .champ{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;margin:2px 0 6px}
+/* o canvas transborda o bloco em 132%, ou seja 16% para cada lado: sem esta folga o disco pousa em cima
+   do próprio nome, que é a linha que a tela existe para mostrar */
+#s-round .cp{margin-bottom:calc(var(--champ-d,300px) * .1)}
+#s-round .cp{position:relative;width:min(var(--champ-d,300px),100%);aspect-ratio:1;flex:0 0 auto}
+#s-round .cp canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:132%;height:132%;
+  filter:drop-shadow(0 6px 18px rgba(0,0,0,.45))}
+/* a glória: raios estáticos por trás do disco, girando devagar. Cônico em vez de N divs — é uma
+   camada só, e o navegador a compõe na GPU sem tocar no layout. */
+#s-round .cp-gloria{position:absolute;inset:-18%;border-radius:50%;opacity:.35;pointer-events:none;
+  background:repeating-conic-gradient(from 0deg,var(--accent,#ffc22e) 0deg 5deg,transparent 5deg 16deg);
+  -webkit-mask-image:radial-gradient(circle,transparent 34%,#000 46%,transparent 76%);
+  mask-image:radial-gradient(circle,transparent 34%,#000 46%,transparent 76%);
+  animation:cp-gira 24s linear infinite}
+@keyframes cp-gira{to{transform:rotate(1turn)}}
+#s-round .cp-halo{position:absolute;inset:-6%;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,rgba(255,194,46,.30) 34%,transparent 66%);animation:cp-pulsa 3.2s ease-in-out infinite}
+@keyframes cp-pulsa{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+/* `opacity:1` explícito: no pódio a coroa é um `<i>` dentro de `.step`, e `.podium .step i` a deixava
+   com 72% — meio apagada, que é o oposto do que uma coroa faz numa tela de campeão. */
+#s-round .cp-coroa{position:absolute;left:50%;top:-2%;transform:translateX(-50%);font-style:normal;opacity:1;
+  font-size:calc(var(--champ-d,300px) * .17);line-height:1;filter:drop-shadow(0 3px 6px rgba(0,0,0,.5))}
+#s-round .cp-k{font-size:.66em;letter-spacing:.14em;text-transform:uppercase;color:var(--muted,#8fa0d8)}
+#s-round .cp-nome{font-family:var(--font-display,inherit);font-size:clamp(20px,4.4vmin,36px);line-height:1.1;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text,#fff)}
+#s-round .cp-nome .lvl{margin-right:6px}
+#s-round .cp-massa{font-style:normal;font-size:clamp(16px,3vmin,26px);color:var(--accent,#ffc22e);font-variant-numeric:tabular-nums}
+#s-round .cp-massa small{font-size:.5em;letter-spacing:.1em;opacity:.7;margin-left:5px}
+#s-round .champ.me .cp-nome{color:var(--accent,#ffc22e)}
+/* a ficha do campeão: os quatro números que a rodada dele rendeu, sem virar mais uma tabela */
+#s-round .cp-ficha{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:100%;margin-top:8px}
+#s-round .cp-ficha>div{display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 4px;
+  border-radius:var(--radius,10px);background:rgba(0,0,0,.22)}
+#s-round .cp-ficha b{font-size:1.05em;font-variant-numeric:tabular-nums}
+#s-round .cp-ficha i{font-style:normal;font-size:.6em;letter-spacing:.06em;text-transform:uppercase;opacity:.66}
+
+/* ── MODELO 1: PÓDIO ─────────────────────────────────────────────────────────────────────────────
+   O pódio de sempre, com o degrau do meio em tamanho de campeão. Assim o campeão aparece UMA vez —
+   antes ele estava no degrau, na faixa acima dele e num dos cartões de destaque, três vezes e nenhuma
+   grande. As regras de `.podium` lá do topo continuam valendo para o resto; aqui só o que muda.  */
+#s-round[data-style="podio"]{--champ-d:230px}
+#s-round .podium.v2{align-items:flex-end;gap:6px;margin:6px 0 8px}
+#s-round .podium.v2 .step{position:relative}
+#s-round .podium.v2 .step.p1{flex:1.5 1 0;max-width:none;z-index:2}
+#s-round .podium.v2 .st-disco{position:relative;width:76px;height:76px}
+#s-round .podium.v2 .st-disco canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:132%;height:132%}
+#s-round .podium.v2 .p1 .cp{margin-bottom:calc(var(--champ-d,230px) * .14)}
+/* ⚠️ FILHO DIRETO, não descendente: o nome e a massa do degrau são `b`/`i` soltos no `.step`, mas a
+   COROA também é um `<i>` — e ela mora lá dentro, no `.cp`. Como descendente, estas duas regras
+   ganhavam de `#s-round .cp-coroa` por especificidade ((1,3,1) contra (1,1,0)) e a coroa saía com
+   16 px e a cor da massa, em silêncio. `.podium .step i` do topo do arquivo é (0,2,1) e perde. */
+#s-round .podium.v2 .p1>b{font-family:var(--font-display,inherit);font-size:1.25em}
+#s-round .podium.v2 .p1>i{font-size:1em;opacity:.9;color:var(--accent,#ffc22e)}
+#s-round .podium.v2 .p1 .base{height:64px}
+#s-round .podium.v2 .p2 .base{height:44px}
+#s-round .podium.v2 .p3 .base{height:32px}
+
+/* ── MODELO 2: CINEMA ────────────────────────────────────────────────────────────────────────────
+   A tela é do vencedor. O pódio inteiro competiria com ele, então 2º e 3º viram duas fichas
+   pequenas em linha, e os quatro destaques se comprimem numa faixa de chips.  */
+#s-round[data-style="cinema"]{--champ-d:340px}
+#s-round[data-style="cinema"] .dead-title{font-size:clamp(24px,5vmin,40px)}
+#s-round .vices{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;margin:8px 0 2px}
+#s-round .vice{position:relative;display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:8px;
+  padding:7px 10px;border-radius:var(--radius,10px);border:2px solid var(--line,#0006);background:var(--surface,#2226)}
+#s-round .vice.me{border-color:var(--accent,#ffc22e)}
+#s-round .vice.empty{opacity:.4}
+#s-round .vice .vc-pos{font-size:.8em;opacity:.66;font-variant-numeric:tabular-nums}
+#s-round .vice .vc-disco{position:relative;width:38px;height:38px}
+#s-round .vice canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:132%;height:132%}
+#s-round .vice b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.95em}
+#s-round .vice em{font-style:normal;font-size:.85em;color:var(--accent,#ffc22e);font-variant-numeric:tabular-nums}
+#s-round .awards.faixa{grid-template-columns:repeat(4,1fr);gap:6px}
+#s-round .awards.faixa .award{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:4px;padding:6px 5px}
+#s-round .awards.faixa .aw-k{flex:1 0 100%;order:-1}
+#s-round .awards.faixa canvas{display:none}
+#s-round .awards.faixa .aw-name{font-size:.8em}
+
+/* ── MODELO 3: DOSSIÊ ────────────────────────────────────────────────────────────────────────────
+   O relatório da partida: campeão e a ficha dele à esquerda, os cinco maiores e os quatro destaques
+   à direita. É o único modelo em que se compara — a barra diz "ganhou por QUANTO", que nem o pódio
+   nem a faixa dizem.  */
+#s-round[data-style="dossie"]{--champ-d:240px}
+#s-round[data-style="dossie"] .cp-ficha{grid-template-columns:repeat(2,1fr)}
+#s-round .dossie{display:grid;grid-template-columns:minmax(0,44%) minmax(0,1fr);gap:14px;align-items:start;width:100%;margin:4px 0 2px}
+#s-round .dossie .champ{margin:0}
+#s-round .ds-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+#s-round .barras{display:flex;flex-direction:column;gap:5px}
+#s-round .barras .ph{margin-bottom:2px}
+#s-round .bar{display:grid;grid-template-columns:auto 22px minmax(0,1fr) auto;align-items:center;gap:6px;
+  grid-template-areas:"pos skin nome val" "pos skin trilho trilho"}
+#s-round .bar .br-pos{grid-area:pos;font-size:.75em;opacity:.6;font-variant-numeric:tabular-nums;min-width:22px}
+#s-round .bar .br-skin{grid-area:skin;width:34px;height:34px;margin:-6px}
+#s-round .bar .br-nome{grid-area:nome;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.86em}
+#s-round .bar .br-val{grid-area:val;font-style:normal;font-size:.78em;opacity:.8;font-variant-numeric:tabular-nums}
+#s-round .bar .br-trilho{grid-area:trilho;height:6px;border-radius:99px;background:rgba(0,0,0,.3);overflow:hidden}
+#s-round .bar .br-trilho i{display:block;height:100%;border-radius:99px;background:var(--muted,#8fa0d8);
+  animation:ds-cresce .6s cubic-bezier(.2,.8,.3,1) both}
+#s-round .bar:first-of-type .br-trilho i{background:var(--accent,#ffc22e)}
+#s-round .bar.me .br-nome{color:var(--accent,#ffc22e)}
+@keyframes ds-cresce{from{transform:scaleX(0);transform-origin:0 50%}to{transform:none}}
+#s-round .awards.linhas{grid-template-columns:1fr;gap:5px}
+#s-round .awards.linhas .award{flex-direction:row;align-items:center;gap:7px;padding:6px 9px;text-align:left}
+#s-round .awards.linhas .aw-k{flex:1 0 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#s-round .awards.linhas .aw-name{flex:1 1 auto;text-align:right}
+#s-round .awards.linhas canvas{width:34px;height:34px;margin:-6px}
+
+/* ── OS BLOCOS ENTRAM EM CASCATA ─────────────────────────────────────────────────────────────────
+   A abertura termina e o cartão inteiro apareceria de um frame para o outro, que é exatamente o que
+   ela existe para desfazer. Cada filho direto sobe com 60 ms de diferença; são seis no máximo, então
+   a cascata acaba em ~350 ms e não atrasa quem quer clicar em "Entrar agora".
+   ⚠️ Ela roda uma vez porque o cartão MONTA uma vez — o contador de 1 s re-renderiza o texto, não o
+   nó. E `[data-reduce="1"]` desliga tudo daqui, inclusive a glória e o halo que ficam em loop.  */
+#s-round .dead-card>*{animation:rd-sobe .42s cubic-bezier(.2,.9,.3,1) both}
+#s-round .dead-card>*:nth-child(2){animation-delay:.05s}
+#s-round .dead-card>*:nth-child(3){animation-delay:.1s}
+#s-round .dead-card>*:nth-child(4){animation-delay:.16s}
+#s-round .dead-card>*:nth-child(5){animation-delay:.22s}
+#s-round .dead-card>*:nth-child(6){animation-delay:.28s}
+#s-round .dead-card>*:nth-child(n+7){animation-delay:.34s}
+#s-round .round-side{animation:rd-sobe .42s cubic-bezier(.2,.9,.3,1) .34s both}
+@keyframes rd-sobe{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+body[data-reduce="1"] #s-round .dead-card>*,body[data-reduce="1"] #s-round .round-side,
+body[data-reduce="1"] #s-round .cp-gloria,body[data-reduce="1"] #s-round .cp-halo,
+body[data-reduce="1"] #s-round .bar .br-trilho i{animation:none}
+
+/* ── FORMAS DE TELA ──────────────────────────────────────────────────────────────────────────────
+   O campeão grande é o ponto da tela, mas ele não pode empurrar os botões de saída para fora da
+   janela: na gaveta e no celular em pé ele encolhe, e o dossiê vira uma coluna só.  */
+body[data-shell="rail"] #s-round[data-style="podio"]{--champ-d:170px}
+body[data-shell="rail"] #s-round[data-style="cinema"]{--champ-d:220px}
+body[data-shell="rail"] #s-round[data-style="dossie"]{--champ-d:190px}
+body[data-mode="portrait"] #s-round[data-style="podio"]{--champ-d:150px}
+body[data-mode="portrait"] #s-round[data-style="cinema"]{--champ-d:230px}
+body[data-mode="portrait"] #s-round[data-style="dossie"]{--champ-d:190px}
+body[data-mode="landscape"] #s-round[data-style="podio"]{--champ-d:150px}
+body[data-mode="landscape"] #s-round[data-style="cinema"]{--champ-d:190px}
+body[data-mode="landscape"] #s-round[data-style="dossie"]{--champ-d:170px}
+body[data-mode="portrait"] #s-round .dossie,body[data-mode="landscape"] #s-round .dossie{grid-template-columns:1fr}
+body[data-shell="rail"] #s-round .dossie{grid-template-columns:1fr}
+body[data-mode="portrait"] #s-round .vices,body[data-shell="rail"] #s-round .vices{grid-template-columns:1fr}
+body[data-mode="portrait"] #s-round .cp-ficha{grid-template-columns:repeat(2,1fr)}
+body[data-mode="portrait"] #s-round .podium.v2 .st-disco{width:56px;height:56px}
+body[data-mode="portrait"] #s-round .awards.faixa{grid-template-columns:repeat(2,1fr)}
 
 /* ── DESTAQUES DA SALA (#s-round): mais pontos · mais partículas · mais abates · maior K/D ────────
    Nasceram depois dos mockups, como o resto de #s-round, então moram aqui e usam só tokens do tema. */
@@ -1146,7 +1335,9 @@ body[data-mode="portrait"] #s-round .champ-banner .cb-name{grid-column:3}
 .award .aw-k{font-size:.62em;letter-spacing:.08em;opacity:.7;text-transform:uppercase}
 .award .aw-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9em}
 .award .aw-val{font-style:normal;font-size:.8em;color:var(--accent,#ffc22e)}
-.award canvas{width:28px;height:28px}
+/* ⚠️ o disco ocupa ~57% do canvas (o resto é a folga do aro): a 28 px ele virava um ponto de 7 px.
+   O canvas cresce e a margem negativa devolve o espaço, então a fileira não muda de altura. */
+.award canvas{width:40px;height:40px;margin:-6px}
 /* quem saiu antes do fim continua listado — jogou a rodada, e o placar é da SALA, não de quem sobrou */
 #s-round tr.left{opacity:.62}
 #s-round .left-tag{font-style:normal;font-size:.7em;opacity:.6;letter-spacing:.06em}

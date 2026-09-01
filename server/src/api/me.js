@@ -12,6 +12,7 @@ const THEMES=['auto','dawn','sunset','dusk'],QUALITIES=['auto','low','medium','h
 // de propósito: o servidor não importa nada do cliente, e um enum de 4 itens não justifica uma volta
 // pelo `shared`. Idioma novo = uma entrada aqui e outra lá — e o teste de prefs cobre o descompasso.
 const LANGS=['auto','pt-BR','en','es'];
+const ROUND_STYLES=['podio','cinema','dossie'];   // os três modelos do placar de fim de rodada (client/src/ui/Round.jsx)
 const bool=v=>typeof v==='boolean'?v:undefined;
 /** whitelist de prefs: chave → validador (undefined = rejeita) */
 export const PREFS={
@@ -28,6 +29,10 @@ export const PREFS={
   lang:v=>LANGS.includes(v)?v:undefined,
   colorblind:v=>typeof v==='boolean'?v:typeof v==='string'&&/^[a-z]{1,16}$/.test(v)?v:undefined,
   lbSize:v=>Number.isInteger(v)&&v>=3&&v<=20?v:undefined,
+  // Qual dos três modelos da tela de fim de rodada, e se ela tem a abertura de 2 s. Lista fechada pelo
+  // mesmo motivo das teclas: valor fora dela deixaria a tela sem layout e o jogador sem saber por quê.
+  roundStyle:v=>ROUND_STYLES.includes(v)?v:undefined,
+  roundIntro:bool,
   lbShow:bool,lbShowPortrait:bool,   // placar aberto/recolhido; DUAS chaves porque os padrões e as telas são opostos (ver PREF_DEFAULTS)
   // teclas de dividir/ejetar: `KeyboardEvent.code` da lista compartilhada. Validar contra a lista (e não
   // com uma regex) é o que impede guardar um code que o cliente nunca vai casar — a ação ficaria sem

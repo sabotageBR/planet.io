@@ -39,7 +39,10 @@ export const PREFS = [
     { key: "showMinimap", type: "toggle" },
     { key: "showFps", type: "toggle" },
     { key: "lbSize", type: "select", opts: [5, 8, 10], kind: "num" },
-    { key: "chat", type: "toggle" } ] },
+    { key: "chat", type: "toggle" },
+    // Os três modelos da tela de fim de rodada e a abertura dela (ver PREF_DEFAULTS em state/app.js).
+    { key: "roundStyle", type: "select", opts: ["podio", "cinema", "dossie"] },
+    { key: "roundIntro", type: "toggle" } ] },
   { id: "a11y", items: [
     { key: "colorblind", type: "select", opts: ["off", "deutan", "protan", "tritan"] },
     { key: "reduceMotion", type: "toggle" },

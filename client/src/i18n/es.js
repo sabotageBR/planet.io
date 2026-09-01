@@ -94,6 +94,8 @@ export default {
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— el universo colapsó en un punto; la próxima galaxia ya está naciendo —",
   champion: "CAMPEÓN DE LA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar ahora", playersWord: "en el marcador", posWord: "#",
   podium: "PODIO", restOfBoard: "Y el resto de la galaxia",
+  lastAliveSub: "— el gas se cerró y quedó un planeta en pie —", skipHint: "clic para saltar",
+  boardTop: "LOS MÁS GRANDES DE LA SALA", champCrown: "🏆",
   offlineNote: "Sin servidor: jugando en modo local",
   noDbNote: "Servidor sin base de datos: el progreso no se guarda", saving: "guardando…", noRank: "sin puesto", loading: "cargando…",
   noRooms: "Ninguna sala activa — juega para crear una", noHistory: "Ninguna partida todavía", useSuggestion: "Usar sugerencia",
@@ -120,6 +122,8 @@ export default {
     showNames: "Mostrar nombres", showMinimap: "Minimapa", showFps: "Mostrar FPS y ping", lbSize: "Líneas del marcador", chat: "Chat",
     colorblind: "Modo daltonismo", colorblind_off: "Desactivado", colorblind_deutan: "Deuteranopía", colorblind_protan: "Protanopía", colorblind_tritan: "Tritanopía",
     reduceMotion: "Reducir movimiento", bigText: "Texto más grande",
+    roundStyle: "Marcador final", roundStyle_podio: "Podio", roundStyle_cinema: "Cine", roundStyle_dossie: "Dosier",
+    roundIntro: "Apertura del fin de ronda",
   },
   err: {
     unknown: "Algo salió mal.",
