@@ -26,14 +26,26 @@ const GAME_ID = import.meta.env.VITE_GM_GAME_ID || "";
 export async function criar({ pausou, retomou }) {
   if (!GAME_ID) return null;
   let pendente = null;   // o `ok` da promessa de anúncio em curso, ou null
+  let sdkPausou = false; // o SDK pausou por conta própria (verificador do painel, ou anúncio dele)
   const fecha = () => { const p = pendente; pendente = null; if (p) { retomou(); p(); } };
 
   window.SDK_OPTIONS = {
     gameId: GAME_ID,
     onEvent(e) {
       const n = e && e.name;
-      if (n === "SDK_GAME_PAUSE") pausou();
-      else if (n === "SDK_GAME_START" || n === "SDK_ERROR") fecha();
+      // ⚠️ QUEM CALA TEM QUE RELIGAR, MESMO QUANDO A PAUSA NÃO FOI NOSSA. `fecha()` só chama `retomou()`
+      // se havia promessa PENDENTE — e o SDK pausa por conta própria (o verificador do painel faz isso
+      // com o botão `pauseGame`, e o SDK também o faz quando decide anunciar sozinho). Nesses casos o
+      // jogo era calado e NUNCA religado: mudo até recarregar a página, sem erro em lugar nenhum. E é o
+      // contrário do que a doc deles diz do `SDK_GAME_START` ("resume game logic and unmute audio").
+      // O `sdkPausou` é o que distingue os dois casos, e sem ele a correção quebraria a guarda de
+      // ambiguidade: o `SDK_GAME_START` que sai na INICIALIZAÇÃO não vem depois de pausa nenhuma.
+      if (n === "SDK_GAME_PAUSE") { sdkPausou = true; pausou(); return; }
+      if (n !== "SDK_GAME_START" && n !== "SDK_ERROR") return;
+      const meu = !!pendente;          // a pausa veio de um anúncio que NÓS pedimos?
+      fecha();                         // resolve a promessa — e aí o `retomou()` já sai de dentro dela
+      if (sdkPausou && !meu) retomou();
+      sdkPausou = false;
     },
   };
   if (!(await carregaScript(SRC, "gamemonetize-sdk"))) return null;
