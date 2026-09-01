@@ -53,9 +53,11 @@ const PERFIS = {
 // O que veio de client/public e não faz sentido dentro de um iframe: ícone de app, manifest e o cartão
 // de compartilhamento de uma página que ninguém cola em lugar nenhum. `favicon.svg` fica (810 bytes, e
 // alguns portais o mostram).
-// ⚠️ `faces/` FICA, por decisão: as caricaturas vão nos portais também, com o risco de IP e de política
-// que o cabeçalho de client/src/theme/faces.js registra. Se um portal reprovar por isso, acrescente
-// "faces" à lista abaixo e volte a guarda de lá — as duas coisas andam juntas.
+// ⚠️ `faces/` SAI, e as duas metades do corte andam juntas: esta linha e o `!PORTAL` de `faceFile()`
+// (client/src/theme/faces.js, onde o motivo está escrito por extenso). Só a guarda do cliente não basta
+// — os 35 arquivos continuariam dentro do zip, e o NOME entrega a identidade sem ninguém abrir a imagem
+// (`07_putin.webp` ao lado de `12_zelensky.webp`). Só a poda também não basta: sem a guarda, o cliente
+// pediria `faces/*.webp` e o console do revisor encheria de 404. No SITE nada muda.
 // ⚠️ `privacy.html` também sai: dentro do zip ela é peso morto (nada no jogo aponta para ela) e uma
 // página de saída acessível é justamente o que os portais não querem. A URL dela vai no FORMULÁRIO deles.
 // ⚠️ `ads.txt` sai pelo mesmo motivo, e é o caso mais claro de todos: um ads.txt SÓ é lido na RAIZ do
@@ -63,7 +65,7 @@ const PERFIS = {
 // <id>/ads.txt`, onde ninguém o lê — mas onde ele DECLARA, no pacote de um portal, as centenas de
 // parceiros de anúncio de OUTRA rede (o GamePix). São 39 KB de lista de concorrente dentro do jogo que
 // se manda para revisão. Ele mora em client/public porque o SITE precisa dele; o portal, não.
-const PODA = ["og.png", "icon-180.png", "icon-192.png", "icon-512.png", "manifest.webmanifest", "privacy.html", "ads.txt"];
+const PODA = ["og.png", "icon-180.png", "icon-192.png", "icon-512.png", "manifest.webmanifest", "privacy.html", "ads.txt", "faces"];
 
 const arquivos = dir => fs.readdirSync(dir, { withFileTypes: true, recursive: true })
   .filter(d => d.isFile()).map(d => path.join(d.parentPath || d.path, d.name));

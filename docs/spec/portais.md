@@ -21,6 +21,8 @@ node scripts/brand-assets.mjs                         → brand/thumb-*.jpg (5 t
 | origem da API/WS | relativa (`location.host`) | absoluta, assada no bundle (`VITE_API_BASE`) |
 | sourcemap | sim | **não** (entrega protocolo e predição a quem quiser trapacear) |
 | Google Analytics | sim | **não** (regra 7 deles cita o produto pelo nome) |
+| `lang` / `<title>` / `description` | pt-BR | **inglês**, sem citar outro jogo e sem citar o domínio |
+| `faces/` (as 35 caricaturas) | sim | **não** (ver "O que NÃO vai no pacote") |
 
 Tudo o mais é o mesmo código. O que decide é `client/src/portal/flags.js`, alimentado pelo `define` do
 `vite.config.js`: os valores viram texto literal no bundle e o Rollup poda em cima deles — é isso que faz
@@ -86,12 +88,19 @@ aquele objeto inteiro) levanta `ui/Offline.jsx`, que fica até o servidor voltar
 
 As *Prohibited Practices* da GameDistribution batem em coisas que o jogo tem no site:
 
-- **As 35 caricaturas** (`client/public/faces/`) VÃO no pacote, por decisão, com risco assumido: elas são
-  de pessoas reais e caem em duas regras ao mesmo tempo — *"use of intellectual properties without proper
-  ownership rights"* (direito de imagem: Messi, Neymar, Elon Musk…) e *"explicit use of … politics"*
-  (Trump, Lula, Bolsonaro, Putin, Zelensky, Milei, Macron, Xi, Modi). A escolha foi manter o jogo igual em
-  todo lugar. ⚠️ Se um portal reprovar por isso, o conserto são duas linhas que já existiram: a guarda
-  `!PORTAL` em `faceFile()` (`client/src/theme/faces.js`) e `"faces"` na `PODA` do `portal-pack.mjs`.
+- **As 35 caricaturas** (`client/public/faces/`) **NÃO vão** no pacote. Elas são de pessoas reais e caem
+  em duas regras ao mesmo tempo — *"use of intellectual properties without proper ownership rights"*
+  (direito de imagem: Messi, Neymar, Elon Musk…) e *"explicit use of … politics"* (Trump, Lula,
+  Bolsonaro, Putin, Zelensky, Milei, Macron, Xi, Modi). Chegou a valer o contrário, por decisão, com o
+  risco escrito aqui — e o risco se realizou: CrazyGames e GameMonetize reprovaram, esta última citando
+  "AI-generated games", que é o que 35 caricaturas geradas parecem antes de qualquer outra coisa.
+  ⚠️ O corte tem DUAS metades e nenhuma serve sozinha: `!PORTAL` em `faceFile()`
+  (`client/src/theme/faces.js`) e `"faces"` na `PODA` do `portal-pack.mjs`. Só a guarda deixaria os 35
+  arquivos dentro do zip, onde o NOME já entrega a identidade (`07_putin.webp` ao lado de
+  `12_zelensky.webp`); só a poda faria o cliente pedir `faces/*.webp` e encher de 404 o console do
+  revisor. ⚠️ E quem pergunta é `faceFile(skin)`, **nunca** `skin.face`: o campo do catálogo continua lá,
+  e `layers/Planets.js` decide por ele se o planeta ganha NOME — lendo o campo cru, as 35 skins virariam
+  discos lisos e anônimos no portal. Medido: o zip da Poki caiu de 1,32 MB / 63 arquivos para 757 KB / 26.
 - **URL dentro do jogo**: *"placing contact details or website URLs within the game itself"*. O texto da
   tela de servidor fora dizia "o servidor do warspace.io"; agora diz "o servidor do jogo".
 - **Google Analytics** é citado nominalmente na mesma lista, junto de "any outgoing links".

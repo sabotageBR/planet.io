@@ -7,7 +7,7 @@
 //    pop(id,delay): "gulp" de quem acabou de engolir alguém — o corpo incha e achata por POP_MS (a absorção do EAT).
 import {Container,Sprite,Graphics,BitmapText,BitmapFont,Cache,MeshPlane} from "pixi.js";
 import {ensureAvatar,avatarBitmap,avatarKey} from "../../../theme/avatars.js";
-import {ensureFace,faceBitmap,faceKey} from "../../../theme/faces.js";
+import {ensureFace,faceBitmap,faceKey,faceFile} from "../../../theme/faces.js";
 import {PIECE_FLAG,mergeTicks,rectHas} from "@warspace/shared";
 import {colorOf,dashPolyline,seedUnit} from "../../util.js";
 import {paintTalk,paintNameBand} from "../../../theme/util.js";
@@ -121,8 +121,12 @@ export function createPlanets(R){
         const av=pl&&pl.avatar?pl.avatar:null;if(av)ensureAvatar(av);
         const avV=av?avatarKey(av):null,avBmp=av?avatarBitmap(av):null;
         // a caricatura do easter egg: mesmo caminho da foto, só que a arte é estática e vem do /faces
-        if(skin.face)ensureFace(skin);
-        const fcBmp=skin.face?faceBitmap(skin):null;
+        // ⚠️ `faceFile(skin)` e NÃO `skin.face`: no pacote de portal as caricaturas são cortadas, e o
+        // campo do catálogo continua lá. Quem sabe disso é `faceFile` — e é por isso que o nome do
+        // planeta, lá embaixo, pergunta a MESMA coisa: com o rosto cortado, o disco liso tem que voltar
+        // a ter nome, senão o corte transforma 35 skins em planetas anônimos.
+        const fc=faceFile(skin);if(fc)ensureFace(skin);
+        const fcBmp=fc?faceBitmap(skin):null;
         const size=TX.tier(e.rr),tex=R.cache.get(TX.key("planet",{skin,isMe,avatar:avBmp?avV:null,face:faceKey(skin)},size),size,
           (c,s)=>TX.planet(c,s,{skin,isMe,avatarBmp:avBmp,faceBmp:fcBmp}));
         const d=e.rr*PK(skin);let sx=1,sy=1;const pat=pops.get(e.id);   // gulp da absorção: incha e achata de leve
@@ -136,12 +140,12 @@ export function createPlanets(R){
         // boca e o Ronaldinho o sorriso, justo a parte pela qual a ilustração existe. A caricatura JÁ diz
         // quem é o jogador, e quem ela não identifica continua tendo o nome no placar, no chat, no kill feed
         // e no mapa grande da tela de morte — o planeta nunca fica anônimo, só o rosto fica limpo.
-        // O predicado é `skin.face` (o mesmo campo que escolhe a textura, acima), e NÃO `rarity==="secret"`:
+        // O predicado é `faceFile(skin)` (o mesmo que escolhe a textura, acima), e NÃO `rarity==="secret"`:
         // as skins 45–48 também são secretas e são `pattern:"plain"` — pela raridade, quatro skins sem rosto
         // nenhum perderiam o nome de graça. Nem é `pl.avatar`: a skin Retrato é a foto do PRÓPRIO jogador e
         // fica com o nome, por decisão.
         const fs=L.size(e.rr);
-        const lab=e.rr>L.minR&&showNames&&fs*cam.scale>=NAME_MIN_PX&&!skin.face;v.name.visible=lab;
+        const lab=e.rr>L.minR&&showNames&&fs*cam.scale>=NAME_MIN_PX&&!fc;v.name.visible=lab;
         if(lab){const nm=pl.name;
           // A largura é medida UMA vez por nome, com a escala forçada a 1. ⚠️ Medir sem zerar a escala lê a
           // largura já escalada do frame anterior, e aí o texto encolhe a cada quadro até sumir — em silêncio.

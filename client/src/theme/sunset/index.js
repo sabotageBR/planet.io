@@ -5,7 +5,7 @@
 // Placar dourado, radar quente, botões teal/ouro/coral. Contrato: ver ../dawn/index.js.
 import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow,fireworkPrims} from "../util.js";
 import {paintPattern,paintHole,paintNova} from "../patterns.js";
-import {ensureFace,faceBitmap} from "../faces.js";
+import {ensureFace,faceBitmap,faceFile} from "../faces.js";
 
 const INK="#241238",CREAM="#fff1d6",GOLD="#ffb547",CORAL="#ff5e6c",TEAL="#2ec4b6",PEACH="#ffcf9a",PLUM="#3b1f6b",MAG="#e0417f",ORA="#ff8a3d",SIL="#2a1550";
 const FONT="'Trebuchet MS',Verdana,sans-serif",T=900;
@@ -114,8 +114,8 @@ export const textures={
     // a caricatura na PRÉVIA (loja, perfil, entrada): `ensureFace` é disparar e esquecer, e o `SkinPreview`
     // repinta quando o tema muda — mas na primeira vez o bitmap ainda não chegou, então quem garante o
     // repinte é o `faceReady` de theme/faces.js, que avisa a UI quando a arte fica pronta.
-    if(sk&&sk.face)ensureFace(sk);
-    textures.planet(c,size,{skin:sk,isMe:false,faceBmp:sk&&sk.face?faceBitmap(sk):null});c.restore();},
+    if(faceFile(sk))ensureFace(sk);   // `faceFile` e não `sk.face`: no pacote de portal a caricatura é cortada
+    textures.planet(c,size,{skin:sk,isMe:false,faceBmp:faceFile(sk)?faceBitmap(sk):null});c.restore();},
 
   background(x,W,H,{rng}={}){x.lineJoin="round";x.lineCap="round";
     const gd=x.createLinearGradient(0,0,0,H);gd.addColorStop(0,SIL);gd.addColorStop(.22,PLUM);gd.addColorStop(.6,MAG);gd.addColorStop(1,ORA);x.fillStyle=gd;x.fillRect(0,0,W,H);

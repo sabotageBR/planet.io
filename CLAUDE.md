@@ -632,14 +632,38 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   e nunca `prefs.muted`, que é escolha persistida do jogador. ⚠️ Nada de arquivo chamado `ads.js` (o
   nome vai para a URL do chunk e o bloqueador o mata) nem `import(`./${id}.js`)` (vira glob no Rollup e
   o zip da GD sai com o código da Poki dentro).
-  ⚠️ **AS CARICATURAS VÃO NO PACOTE, com risco assumido.** As regras dos portais proíbem "IP sem direitos
-  de posse" e "uso explícito de política" — e as 35 são de pessoas reais, 11 delas políticos. Elas
-  chegaram a ser cortadas (`faceFile()` devolvia null sob `PORTAL`, mais `"faces"` na PODA do
-  empacotador) e a decisão foi voltar atrás e manter o jogo igual em todo lugar; se um portal reprovar,
-  o conserto são essas duas linhas. Pela mesma lista ("URLs dentro do jogo") o texto de servidor fora
+  ⚠️ **AS CARICATURAS NÃO VÃO NO PACOTE — o risco deixou de ser hipótese.** As regras dos portais
+  proíbem "IP sem direitos de posse" e "uso explícito de política", e as 35 são de pessoas reais, 11
+  delas políticos: num jogo chamado WARspace, Putin e Zelensky com bandeira no mesmo catálogo são o
+  pior par possível. Elas já tinham sido cortadas uma vez, a decisão foi voltar atrás e manter o jogo
+  igual em todo lugar — e então a CrazyGames e a GameMonetize reprovaram, esta última com a palavra
+  "AI-generated", que é exatamente o que 35 caricaturas geradas parecem. O corte tem DUAS metades e
+  nenhuma serve sozinha: `!PORTAL` em `faceFile()` (só ela deixaria os 35 arquivos dentro do zip, e o
+  NOME entrega a identidade sem ninguém abrir a imagem — `07_putin.webp`) e `"faces"` na PODA do
+  empacotador (só ela faria o cliente pedir `faces/*.webp` e encher de 404 o console do revisor).
+  ⚠️ Quem pergunta é **`faceFile(skin)`, nunca `skin.face`** — o campo do catálogo continua lá, e três
+  lugares o liam direto. O que importa é `layers/Planets.js`: ele decide o NOME do planeta por esse
+  predicado (o rótulo mora no centro do disco e cairia em cima do nariz), então lendo o campo cru as 35
+  skins viravam discos lisos **e anônimos** no portal. No site nada muda.
+  Pela mesma lista ("URLs dentro do jogo") o texto de servidor fora
   deixou de citar o domínio. As thumbnails do catálogo são **JPG** — o Chrome headless só tira PNG, então o PIL
   converte no mesmo passo do recorte, achatando o alfa sobre o fundo (JPEG não tem alfa: sem o `paste` o
   transparente sai PRETO).
+  ⚠️ **O QUE O REVISOR LÊ ANTES DE VER O JOGO É O `index.html`, e ele estava contra nós**
+  (`htmlDoPortal()` em `client/vite.config.js`): o plugin tirava GA, manifest, apple-touch-icon e og —
+  e deixava passar as três linhas que decidem a primeira impressão. `lang="pt-BR"`, um `<title>` em
+  português e uma `description` que dizia **"agar.io espacial multiplayer"**: no zip mandado para a
+  revisão, o produto se declarava clone de outro jogo, num idioma que o revisor não fala, e ainda
+  citava o próprio domínio (a §6.1 proíbe URL dentro do jogo). A CrazyGames reprovou com *"the concept
+  is quite close to existing titles"* — palavra por palavra, o que aquelas linhas diziam. Pelo mesmo
+  motivo o cartão do modo Livre deixou de dizer "o jogo de sempre" (`modeFreeSub`, nos três
+  dicionários): é o primeiro texto que se lê na tela de Modos, e é o cartão em que se clica.
+  ⚠️ **A TELA DE CARGA é inline, no `index.html`** (`#boot`), e vale para o site também: o `#app` nasce
+  vazio sobre `background:#000` e o bundle são ~308 KB gz mais um RTT do dicionário — em 4G throttled
+  (que é como um QA de portal testa) isso é tela preta por 6–10 s, que se lê como "não carregou". Nada
+  de imagem ali: o logo é um `.webp` hasheado pelo bundler, ou seja chega DEPOIS do que a tela existe
+  para cobrir. Quem a remove é `tiraBoot()` em `main.jsx`, nas **três** entradas — esquecer numa delas
+  deixa o `/admin` atrás de uma cortina que nunca sai.
   ⚠️ **As flags do pacote vêm de `define`, não de `import.meta.env`**, e isso foi MEDIDO: com
   `import.meta.env.VITE_X` o `node --test` de texturas morre (ele chega em `faces.js` sem Vite), e com a
   leitura defensiva o valor deixa de ser literal, o Rollup para de podar e o zip da GameDistribution sai

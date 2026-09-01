@@ -9,6 +9,7 @@
 // assada no frame seguinte. É o mesmo truque de `avatars.js`, porque o TextureCache não tem `drop(key)`.
 // @ts-check
 import { skinById } from "@warspace/shared";
+import { PORTAL } from "../portal/flags.js";
 
 /** @type {Map<string,ImageBitmap|null>} arquivo → bitmap pronto (ou null enquanto carrega/falhou) */
 const cache = new Map();
@@ -21,17 +22,22 @@ export function onFaceReady(cb) { ouvintes.add(cb); return () => ouvintes.delete
 /**
  * O nome do arquivo da skin, ou null se ela não é uma caricatura.
  *
- * ⚠️ AS CARICATURAS VÃO NOS PORTAIS TAMBÉM — e isso é uma decisão consciente, com risco conhecido, não
- * um descuido. Elas chegaram a ser cortadas do pacote (`faceFile` devolvia null sob PORTAL) porque as
- * *Prohibited Practices* da GameDistribution batem nelas por dois lados: "use of intellectual properties
- * without proper ownership rights — proof of ownership must be available" (são 35 pessoas REAIS: Messi,
- * Neymar, Elon Musk…) e "explicit use of … politics" (Trump, Lula, Bolsonaro, Putin, Zelensky, Milei,
- * Macron, Xi, Modi, Lincoln, Churchill). A escolha foi manter o jogo igual em todo lugar e assumir o
- * risco de reprovação. Se um portal reprovar por isso, o conserto é voltar a `!PORTAL && …` aqui e a
- * linha `"faces"` na PODA de scripts/portal-pack.mjs — e o planeta cai sozinho no disco liso da skin,
- * que é o mesmo caminho já usado enquanto a arte não chegou.
+ * ⚠️ AS CARICATURAS NÃO VÃO NO PACOTE DE PORTAL, e o risco deixou de ser hipótese: a decisão anterior
+ * era mantê-las em todo lugar e assumir a reprovação, e a reprovação veio. As *Prohibited Practices* da
+ * GameDistribution batem nelas por dois lados — "use of intellectual properties without proper ownership
+ * rights — proof of ownership must be available" (são 35 pessoas REAIS: Messi, Neymar, Elon Musk…) e
+ * "explicit use of … politics" (Trump, Lula, Bolsonaro, Putin, Zelensky, Milei, Macron, Xi, Modi,
+ * Lincoln, Churchill) — e, num jogo chamado WARspace, Putin e Zelensky com bandeira no mesmo catálogo
+ * são o pior par possível. Some a isso que elas são arte GERADA, e "jogo feito por IA" foi a palavra
+ * exata de uma das reprovações.
+ *
+ * O corte é de EXIBIÇÃO e tem duas metades que andam juntas: este `!PORTAL` e a linha `"faces"` na PODA
+ * de scripts/portal-pack.mjs (sem ela, os 35 arquivos continuariam dentro do zip, com o nome entregando
+ * a identidade — `07_putin.webp` — mesmo sem ninguém desenhá-los). O SERVIDOR continua escolhendo a skin
+ * de egg pelo nick (`persist/hooks.js`), porque ele é o mesmo do site; o que muda é que o planeta cai no
+ * disco liso da cor da skin — o mesmo caminho já usado enquanto a arte não chegou. No site, nada muda.
  */
-export const faceFile = sk => (sk && sk.face) || null;
+export const faceFile = sk => (!PORTAL && sk && sk.face) || null;
 /** O bitmap, se já estiver pronto. Nunca espera — quem desenha está dentro de um frame. */
 export const faceBitmap = sk => { const f = faceFile(sk); return f ? cache.get(f) || null : null; };
 /** Sufixo de chave: só muda quando o bitmap CHEGA, que é exatamente quando a textura tem que ser refeita. */

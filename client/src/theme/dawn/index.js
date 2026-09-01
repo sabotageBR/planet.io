@@ -13,7 +13,7 @@
 //   hud / world                    números do drawHud / drawTrail / drawCell / drawWorld
 import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow,fireworkPrims} from "../util.js";
 import {paintPattern,paintHole,paintNova} from "../patterns.js";
-import {ensureFace,faceBitmap} from "../faces.js";
+import {ensureFace,faceBitmap,faceFile} from "../faces.js";
 
 const INK="#141026",CREAM="#fff5c2",YEL="#ffc22e",ORA="#ff6b4a",BLU="#3fc4ff",PUR="#c56bff",GRN="#3ddc5f";
 const NAVY="#1b2450",SKY="#3fa9e8",PEACH="#ffd58a",PALE="#ffe9b8",DUST="#4d68a8";
@@ -129,8 +129,8 @@ export const textures={
     // a caricatura na PRÉVIA (loja, perfil, entrada): `ensureFace` é disparar e esquecer, e o `SkinPreview`
     // repinta quando o tema muda — mas na primeira vez o bitmap ainda não chegou, então quem garante o
     // repinte é o `faceReady` de theme/faces.js, que avisa a UI quando a arte fica pronta.
-    if(sk&&sk.face)ensureFace(sk);
-    textures.planet(c,size,{skin:sk,isMe:false,faceBmp:sk&&sk.face?faceBitmap(sk):null});c.restore();},
+    if(faceFile(sk))ensureFace(sk);   // `faceFile` e não `sk.face`: no pacote de portal a caricatura é cortada
+    textures.planet(c,size,{skin:sk,isMe:false,faceBmp:faceFile(sk)?faceBitmap(sk):null});c.restore();},
 
   // fundo assado por resolução: céu de manhã cedo (marinho → azul céu → pêssego, SEM sol) e estrelas pálidas no terço de cima
   // (sem os planetas distantes: confundiam com planeta de verdade)

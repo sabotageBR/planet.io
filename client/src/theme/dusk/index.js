@@ -7,7 +7,7 @@
 // pêssego. Contrato: ver ../dawn/index.js.
 import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow,fireworkPrims} from "../util.js";
 import {paintPattern,paintHole,paintNova} from "../patterns.js";
-import {ensureFace,faceBitmap} from "../faces.js";
+import {ensureFace,faceBitmap,faceFile} from "../faces.js";
 
 const INK="#241238",CREAM="#fff1d6",GOLD="#ffb547",CORAL="#ff5e6c",TEAL="#2ec4b6",PEACH="#ffcf9a",MAG="#e0417f",SIL="#2a1550";
 const NAVY="#141a4a",VIO="#3b2a6e",EMB1="#7a2f63",EMB2="#c8542f";
@@ -114,8 +114,8 @@ export const textures={
     // a caricatura na PRÉVIA (loja, perfil, entrada): `ensureFace` é disparar e esquecer, e o `SkinPreview`
     // repinta quando o tema muda — mas na primeira vez o bitmap ainda não chegou, então quem garante o
     // repinte é o `faceReady` de theme/faces.js, que avisa a UI quando a arte fica pronta.
-    if(sk&&sk.face)ensureFace(sk);
-    textures.planet(c,size,{skin:sk,isMe:false,faceBmp:sk&&sk.face?faceBitmap(sk):null});c.restore();},
+    if(faceFile(sk))ensureFace(sk);   // `faceFile` e não `sk.face`: no pacote de portal a caricatura é cortada
+    textures.planet(c,size,{skin:sk,isMe:false,faceBmp:faceFile(sk)?faceBitmap(sk):null});c.restore();},
 
   // fundo: marinho → violeta, brasa magenta → laranja queimado só nos ~18% de baixo (sem sol); estrelas no alto (60%) com fade
   // (sem as calotas de montes no horizonte: viravam calombos escuros na tela)
