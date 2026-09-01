@@ -64,11 +64,20 @@ export async function criar({ pausou, retomou }) {
     carregou() { const g = sdk(); if (g && g.game && g.game.loadingStop) g.game.loadingStop(); },
     jogoComecou() { const g = sdk(); if (g && g.game && g.game.gameplayStart) g.game.gameplayStart(); },
     jogoParou() { const g = sdk(); if (g && g.game && g.game.gameplayStop) g.game.gameplayStop(); },
+    // ⚠️ Eles PROÍBEM anúncio antes do primeiro gameplay ("should not appear before the user has
+    // experienced a reasonable amount of gameplay"), e o jogo mandava preroll em todo portal por igual.
+    // Quem lê isto é a fachada.
+    semPreroll: true,
+    // ⚠️ Reaplicar o mudo DO SITE é a última coisa a acontecer, e por isso mora aqui e não no callback de
+    // fim do anúncio: lá ele rodava ANTES do `avisa(aoRetomar)` da fachada, que desmutava por cima — e
+    // quem tinha desligado o som na página deles voltava a ouvir o jogo para sempre. Pelo mesmo motivo o
+    // `retomou()` saiu do `fim`: quem retoma é a fachada, e chamar duas vezes era o que escondia a ordem.
+    reaplica() { if (mudo) silenciaAnuncio(true); },
     anuncio() {
       const g = sdk();
       if (!g || !g.ad || !g.ad.requestAd) return Promise.resolve();
       return new Promise(ok => {
-        const fim = () => { emAnuncio = false; retomou(); if (mudo) silenciaAnuncio(true); ok(); };
+        const fim = () => { emAnuncio = false; ok(); };
         try { emAnuncio = true; g.ad.requestAd("midgame", { adStarted: pausou, adFinished: fim, adError: fim }); }
         catch { fim(); }
       });

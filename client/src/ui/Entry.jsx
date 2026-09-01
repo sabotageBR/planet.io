@@ -14,6 +14,7 @@ import { go, setNick, loadTop5, toast, focaNome, play } from "../state/actions.j
 import GoogleButton from "./GoogleButton.jsx";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { useInterval } from "../hooks/useInterval.js";
+import { PORTAL } from "../portal/flags.js";
 import { Field, MiniRank, Screen } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
 import Logo from "./Logo.jsx";
@@ -57,8 +58,16 @@ function Body() {
   // ⚠️ E RETOMA o que a guarda segurou: quem chegou por um link de convite (`?sala=`) ou clicou em
   // renascer sem nunca ter nomeado o planeta foi trazido para cá com o pedido guardado em `pendingPlay`
   // — mandá-lo para a tela de Modos aqui faria o link do amigo terminar numa sala qualquer.
-  const jogar = async () => { if (!nick.trim()) { toast(LB.nickAsk, 3500); focaNome(); return; } if (!await commit()) return;
-    const pp = app.get().pendingPlay; if (pp) play(pp); else go("modes"); };
+  // ⚠️ NO PORTAL O BOTÃO ENTRA NA PARTIDA, e não na tela de Modos: são dois cliques e uma tela a menos
+  // até o primeiro frame, que é o que a CrazyGames exige do Full Launch ("land directly in gameplay").
+  // A tela de Modos continua a um clique de distância, na grade de baixo — quem quer battle royale ou
+  // esquadrão a encontra; quem só quer ver o jogo não passa por ela. Fora do portal nada muda: no site a
+  // escolha do modo ANTES de entrar é o que a tela inicial sempre ofereceu.
+  const jogar = async () => { if (!PORTAL && !nick.trim()) { toast(LB.nickAsk, 3500); focaNome(); return; } if (nick.trim() && !await commit()) return;
+    const pp = app.get().pendingPlay;
+    if (pp) play(pp);
+    else if (PORTAL) play({ mode: app.get().gameMode | 0, teamSize: 1, party: null });
+    else go("modes"); };
   const links = [["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
   // A dica é a primeira coisa que alguém lê: com as teclas configuráveis, cravar "ESPAÇO/W" nela seria
   // mentir para exatamente quem foi lá trocar.

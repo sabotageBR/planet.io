@@ -355,6 +355,12 @@ export const focaNome = () => setTimeout(() => { const el = document.getElementB
  * trocar de tela sem derrubá-la deixaria um socket de jogo pendurado atrás do menu.
  */
 export function semNome(pedido = null) {
+  // ⚠️ NO PACOTE DE PORTAL A GUARDA NÃO VALE, e não é descuido: eles exigem, por escrito, que o jogador
+  // novo caia direto no jogo ("new users should land in gameplay immediately", no máximo 1 clique). Aqui
+  // o primeiro clique em JOGAR não fazia NADA além de um toast pedindo um nome — o revisor da CrazyGames
+  // travava na tela inicial. A placa sorteada vira o nome de estreia (é o que todo .io faz) e o campo
+  // continua ali, na mesma tela, para quem quiser trocar antes ou depois de jogar.
+  if (PORTAL) return false;
   const st = app.get(), u = st.session.user || {};
   if (st.nomeado || !nickSorteado(u.nick)) return false;
   app.update({ pendingPlay: pedido });

@@ -35,7 +35,7 @@ const carrega = () => {
   return null;   // itch.io e qualquer id desconhecido: o jogo roda igual, sem anúncio
 };
 
-let sdk = null, ultimoAd = 0;
+let sdk = null, ultimoAd = 0, emJogo = false;
 const aoPausar = [], aoRetomar = [];
 const avisa = lista => { for (const cb of lista) { try { cb(); } catch { /* um ouvinte quebrado não derruba os outros */ } } };
 
@@ -59,17 +59,40 @@ export const portal = {
   async anuncio(tipo = "midroll") {
     await pronto;
     if (!sdk || !sdk.anuncio) return;
+    // ⚠️ PREROLL NÃO É UNIVERSAL. A GameDistribution EXIGE (§2.1); a CrazyGames PROÍBE, na letra:
+    // "advertisements should not appear before the user has experienced a reasonable amount of
+    // gameplay". Isto era um `await portal.anuncio("preroll")` igual para todos, em `play()` — ou seja,
+    // o revisor da CrazyGames levava um anúncio antes de ver um único frame do jogo. Quem declara é o
+    // ADAPTADOR (`semPreroll`) e não uma flag de build: a regra é do SDK, e é junto dele que ela vive.
+    if (tipo === "preroll" && sdk.semPreroll) return;
     const agora = Date.now();
     if (tipo !== "preroll" && agora - ultimoAd < P.MIN_AD_MS) return;
     ultimoAd = agora;
+    // ⚠️ O gameplay TEM que fechar antes de pedir anúncio, e reabrir depois. `gameplayStart` sem
+    // `gameplayStop` é item de QA da CrazyGames, e o pareamento estava quebrado onde ninguém olha: só
+    // `leaveGame()` chamava `jogoParou()`, então respawn e fim de rodada passavam direto por `play()` e o
+    // SDK recebia N × start para 1 × stop numa sessão normal. Resolver aqui, e não em cada chamador,
+    // porque `play()` é uma porta só e o estado é DESTA fachada.
+    const voltar = emJogo; if (voltar) await portal.jogoParou();
     avisa(aoPausar);
     try { await prazo(sdk.anuncio(tipo), P.AD_MS, null); }
     catch { /* sem preenchimento, bloqueado, o que for: joga do mesmo jeito */ }
-    finally { avisa(aoRetomar); }
+    finally {
+      avisa(aoRetomar);
+      // ⚠️ DEPOIS do `avisa`, e é o conserto de um bug real: o adaptador da CrazyGames re-mutava o áudio
+      // (o mudo do SITE deles, que tem prioridade por contrato) dentro do próprio callback de fim, ou
+      // seja ANTES desta linha — e o `avisa(aoRetomar)` desmutava por cima. Quem tinha desligado o som na
+      // página deles voltava a ouvir o jogo, para sempre, depois do primeiro anúncio. Quem reaplica
+      // estado de portal é o portal, e por último.
+      if (sdk.reaplica) try { sdk.reaplica(); } catch { /**/ }
+      if (voltar) await portal.jogoComecou();
+    }
   },
   /** Começou/parou de jogar de fato (o SDK usa isso para escolher a hora do anúncio e medir sessão). */
-  async jogoComecou() { await pronto; if (sdk && sdk.jogoComecou) try { sdk.jogoComecou(); } catch { /**/ } },
-  async jogoParou() { await pronto; if (sdk && sdk.jogoParou) try { sdk.jogoParou(); } catch { /**/ } },
+  async jogoComecou() { await pronto; if (emJogo) return; emJogo = true;
+    if (sdk && sdk.jogoComecou) try { sdk.jogoComecou(); } catch { /**/ } },
+  async jogoParou() { await pronto; if (!emJogo) return; emJogo = false;
+    if (sdk && sdk.jogoParou) try { sdk.jogoParou(); } catch { /**/ } },
   /** O anúncio começou / acabou. Quem liga o áudio e a tela de pausa é `state/actions.js`. */
   aoPausar(cb) { aoPausar.push(cb || nada); },
   aoRetomar(cb) { aoRetomar.push(cb || nada); },

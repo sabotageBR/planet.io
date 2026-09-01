@@ -662,6 +662,28 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   servida em `http://127.0.0.1`, tentaria `ws://` contra um servidor `wss://` e você culparia o servidor.
   ⚠️ **NUNCA criar `client/.env`** (sem sufixo de modo): ele valeria para o `npm run build` de dentro do
   `client/Dockerfile` e toda chamada de produção viraria cross-origin, em silêncio.
+  ⚠️ **PREROLL NÃO É UNIVERSAL, e `gameplayStart` precisa de `gameplayStop`** (`portal/index.js`): a GD
+  EXIGE preroll (§2.1) e a CrazyGames PROÍBE — *"advertisements should not appear before the user has
+  experienced a reasonable amount of gameplay"* —, e o jogo mandava o mesmo `anuncio("preroll")` para
+  todos, ou seja o revisor deles levava anúncio antes de ver um frame. Quem declara é o ADAPTADOR
+  (`semPreroll` em `crazy.js`), não uma flag de build: a regra é do SDK e mora junto dele. E o par
+  start/stop estava quebrado onde ninguém olha — só `leaveGame()` chamava `jogoParou()`, então respawn e
+  fim de rodada passavam por `play()` e o SDK recebia N × start para 1 × stop numa sessão normal. O
+  estado (`emJogo`) é da FACHADA e o `anuncio()` fecha e reabre o gameplay em volta do anúncio, então
+  nenhum chamador precisa lembrar disso.
+  ⚠️ **O MUDO DO SITE DELES SÓ DURAVA ATÉ O PRIMEIRO ANÚNCIO.** `crazy.js` re-mutava dentro do próprio
+  callback de fim (`if(mudo)silenciaAnuncio(true)`) e o `finally` da fachada chamava `avisa(aoRetomar)`
+  DEPOIS, desmutando por cima — quem tinha desligado o som na página da CrazyGames voltava a ouvir o
+  jogo para sempre, contra um requisito escrito ("muteAudio has priority"). Hoje o adaptador expõe
+  `reaplica()` e a fachada o chama por último; o `retomou()` duplicado saiu do `fim`, e era ele que
+  escondia a ordem.
+  ⚠️ **NO PACOTE, O BOTÃO JOGAR ENTRA NA PARTIDA** (`semNome` em `state/actions.js`, `jogar()` em
+  `Entry.jsx`): a CrazyGames exige que o jogador novo caia direto no jogo (máx. 1 clique), e aqui o
+  PRIMEIRO clique não fazia nada além de um toast pedindo um nome — depois vinha a tela de Modos, e só
+  então a partida. São 3 cliques, 1 campo de texto e 2 telas antes do primeiro frame. Sob `PORTAL` a
+  guarda do nome não vale (a placa sorteada vira o nome de estreia, como em todo .io) e o botão chama
+  `play()` no modo padrão. No site nada muda: escolher o modo antes de entrar é o que a tela inicial
+  sempre ofereceu.
   ⚠️ **Anúncio (preroll + midroll) tem UM ponto de chamada: `play()`** — a porta única por onde passam
   Modos, Salas, convite, equipe, o respawn da morte e a sala nova do BIG CRUNCH —, e o tipo sai de
   `played`, que já existia. É no RESPAWN e nunca no instante da morte: atrás da tela de morte a rodada

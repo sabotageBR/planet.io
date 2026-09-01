@@ -106,6 +106,16 @@ function empacota(id) {
     const t = fs.readFileSync(f, "utf8");
     if (/(src|href)="\//.test(t) || /url\(\/[^/]/.test(t)) abs.push(path.basename(f));
   }
+  // ⚠️ O .js TAMBÉM, e ele estava de fora — passava por sorte: hoje o único caminho de asset montado em
+  // JS é `${import.meta.env.BASE_URL}faces/…`, que resolve certo. Um `fetch("/algo")` cravado amanhã
+  // sairia daqui sem alarme e viraria 404 no subcaminho do portal, que é o modo de falha mais caro deste
+  // script (a página do revisor carrega e o recurso não). `/api/` fica fora: ele passa por `apiUrl()`,
+  // que assa a ORIGEM absoluta — e é justamente o que a guarda de VITE_API_BASE, logo abaixo, confere.
+  for (const f of texto.filter(f => /\.js$/.test(f))) {
+    const t = fs.readFileSync(f, "utf8");
+    const m = t.match(/(?:fetch|import|src\s*[:=]|href\s*[:=])\s*\(?\s*["'`]\/(?!\/|api\/)[a-z0-9_-]/i);
+    if (m) abs.push(path.basename(f) + ` (${m[0].slice(0, 24)}…)`);
+  }
   // caminho absoluto é a PÁGINA BRANCA: o portal serve de um subcaminho, e /assets/… lá é 404
   if (abs.length) morre(`caminho absoluto em ${abs.join(", ")} — no subcaminho do portal isso é 404 e a página fica branca`);
 
