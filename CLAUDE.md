@@ -574,7 +574,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   é dono antes de tocar em nada. Quem prova é `server/test/party-shards.test.js`, que sobe DOIS shards no mesmo processo —
   os testes de party de `br.test.js` fixam `SHARDS=1` e por isso nunca viram o bug.
 - **O CLIENTE PODE MORAR FORA DAQUI** (`docs/spec/portais.md`, `client/src/portal/`, `server/src/http/cors.js`):
-  os portais de jogo (GameDistribution, CrazyGames, Poki, itch.io, Y8) pedem um **.zip com `index.html` na
+  os portais de jogo (GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize) pedem um **.zip com `index.html` na
   raiz** e hospedam os arquivos no domínio DELES, num iframe — o servidor multiplayer continua sendo
   warspace.io. O zip é só `client/dist`, e é isso que o `scripts/portal-pack.mjs` monta.
   ⚠️ **O modo de falha era MENTIR DUAS VEZES**: a sonda de `/api/config` morava dentro do
@@ -638,6 +638,15 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   então o listener vai antes do script e ainda se chama `emitReadyEvent()` depois. `autoLogin:false`
   contra o snippet do painel: não consumimos o `onAuth`, e autenticar para jogar fora o resultado é
   chamada de rede de graça.
+- **GameMonetize** (`client/src/portal/gm.js`): sexto portal, e o que ele ensina é que **a origem do
+  jogo não se deduz do domínio do site**. O site é `gamemonetize.com`; o jogo roda em
+  `https://html5.gamemonetize.co/<gameId>/` — **`.co`** —, medido no feed público deles, e liberar só o
+  `.com` daria o sintoma de sempre (carrega, menu bonito, JOGAR não conecta). ⚠️ O SDK é o da GD de
+  PRIMEIRA geração com outro nome: mesmo `window.SDK_OPTIONS` lido na carga e o mesmo `SDK_GAME_START`
+  ambíguo, então a guarda de "só fecha promessa PENDENTE" de `gd.js` está repetida ali. ⚠️ E
+  `showBanner()` — que apesar do nome é o INTERSTICIAL — não devolve promessa: sobram duas saídas (o
+  evento e o `PORTAL.AD_MS` da fachada) contra três na GD. ⚠️ O arquivo é `gm.js` pela mesma regra do
+  `ads.js`: o nome vira URL de chunk e bloqueador casa palavra de publicidade no caminho.
 - **`/ads.txt` É DO SITE, E O `try_files` MENTIA SOBRE ELE** (`client/public/ads.txt`,
   `docs/spec/portais.md`): o GamePix tem uma segunda porta além do catálogo de jogos — a de *publisher*,
   onde warspace.io é a propriedade `24C97` —, e o que ela pede não é zip: é o `ads.txt` do IAB na RAIZ do

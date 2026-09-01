@@ -1,6 +1,6 @@
 # Portais de jogo (o cliente hospedado fora de warspace.io)
 
-GameDistribution, CrazyGames, Poki, itch.io e Y8 distribuem jogos HTML5 e pedem **um .zip com
+GameDistribution, CrazyGames, Poki, itch.io, Y8 e GameMonetize distribuem jogos HTML5 e pedem **um .zip com
 `index.html` na raiz**. O zip é só o **cliente**: eles hospedam os arquivos estáticos no domínio deles,
 dentro de um `<iframe>`, e o servidor multiplayer continua sendo warspace.io. É o modelo normal de um
 `.io` em portal — a CrazyGames diz na documentação que hospeda só os arquivos, a Poki aceita servidor
@@ -223,3 +223,28 @@ porque `afterAd` só sai quando um anúncio de fato tocou e `adBreakDone` é o �
 ⚠️ **O `y8sdk.ready` pode já ter passado.** O adaptador é um chunk sob demanda e o script vem do cache:
 o listener é registrado ANTES do `carregaScript` e, depois dele, ainda se chama `emitReadyEvent()` — que
 existe na API deles exatamente para isso.
+
+## GameMonetize (`gamemonetize.com`)
+
+**Game ID `73u3oghoe3br3wpmg3yswmos8pkb3gt1`** (o hash de 32 caracteres do painel deles), empacotado com
+`node scripts/portal-pack.mjs gm`.
+
+⚠️ **O jogo roda no `.co`, não no `.com`.** O site é `gamemonetize.com`, mas o feed público deles
+(`gamemonetize.com/feed.php`, que é a fonte de verdade sobre onde cada jogo mora) devolve
+`https://html5.gamemonetize.co/<gameId>/` — e o gameId É o caminho. Liberar só `*.gamemonetize.com` em
+`ALLOWED_ORIGINS` daria o sintoma de sempre: carrega, desenha o menu, o JOGAR não conecta. Estão
+liberados os dois TLDs, e `server/test/cors.test.js` trava a origem medida.
+
+⚠️ **O SDK é o da GameDistribution de primeira geração com outro nome**: o mesmo `window.SDK_OPTIONS`
+lido na CARGA (por isso ele é escrito antes do script), os mesmos `SDK_GAME_PAUSE`/`SDK_GAME_START` e a
+mesma ambiguidade — o `SDK_GAME_START` também sai quando o SDK termina de inicializar, sem anúncio
+nenhum. A guarda de `gd.js` está repetida em `gm.js` por isso: só fecha promessa PENDENTE.
+
+⚠️ **`showBanner()` é o intersticial** (o nome é herdado) e **não devolve promessa**. Na GD o `showAd()`
+rejeitava sem preenchimento, e isso era uma segunda saída; aqui sobram duas — o evento e o relógio de
+`PORTAL.AD_MS`. É o adaptador com menos rede de segurança dos seis, e é por isso que o relógio da
+fachada não é luxo.
+
+⚠️ **O arquivo é `gm.js`, não `gamemonetize.js`**, pela mesma regra que proíbe `ads.js` aqui: o nome vira
+a URL do chunk e há filtro de bloqueador que casa palavra de publicidade no caminho. E o id do `<script>`
+é `gamemonetize-sdk`, o mesmo do carregador oficial, para nunca haver duas cópias do SDK na página.

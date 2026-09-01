@@ -1,11 +1,11 @@
 // ── PACOTE PARA OS PORTAIS DE JOGO ────────────────────────────────────────────
-// GameDistribution, CrazyGames, Poki, itch.io e Y8 pedem um .zip com index.html na raiz. O zip é só o
+// GameDistribution, CrazyGames, Poki, itch.io, Y8 e GameMonetize pedem um .zip com index.html na raiz. É só o
 // CLIENTE: eles hospedam os arquivos e o servidor multiplayer continua sendo warspace.io — é assim que
 // todo .io vive em portal, e a própria GameDistribution abre a exceção por escrito para "Real
 // Multiplayer games". O que faz isso funcionar é a origem absoluta assada no bundle (VITE_API_BASE) e
 // o CORS do lado de lá (server/src/http/cors.js).
 //
-// uso:  node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|all
+// uso:  node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|all
 //       WARSPACE_API_BASE=https://staging.exemplo node scripts/portal-pack.mjs gd
 //
 // ⚠️ O VALOR DESTE SCRIPT SÃO AS GUARDAS. Cada uma delas corresponde a um jeito conhecido de subir um
@@ -33,6 +33,10 @@ const PERFIS = {
   // O App ID identifica o ESTÚDIO/aplicativo e o Game ID identifica este jogo no inventário de anúncio —
   // são coisas diferentes e o SDK pede as duas em objetos separados (appConfig e adConfig).
   y8:    { nome: "Y8", strict: false, env: { VITE_Y8_APP_ID: "6a94f08b7d2d9d6de36661db", VITE_Y8_GAME_ID: "281845" } },
+  // GameMonetize: o hash de 32 caracteres do painel deles, que é TAMBÉM o caminho em que o jogo passa a
+  // ser servido (`https://html5.gamemonetize.co/<gameId>/`). Sem ele o adaptador devolve null e o pacote
+  // sai sem anúncio — que é o que o "Verify Game" do painel reprova.
+  gm:    { nome: "GameMonetize", strict: false, env: { VITE_GM_GAME_ID: "73u3oghoe3br3wpmg3yswmos8pkb3gt1" } },
   itch:  { nome: "itch.io", strict: false, env: {} },   // sem SDK: o adaptador não existe e tudo vira no-op
 };
 // O que veio de client/public e não faz sentido dentro de um iframe: ícone de app, manifest e o cartão
@@ -107,7 +111,7 @@ function empacota(id) {
   const gsi = texto.filter(f => /accounts\.google\.com\/gsi/.test(fs.readFileSync(f, "utf8")));
   if (gsi.length) morre(`o SDK do Google ficou no pacote (${gsi.map(f => path.basename(f)).join(", ")}): a origem do portal não é registrável no client_id`);
 
-  const adaptadores = js.filter(f => /\/(gd|crazy|poki|y8)-[^/]*\.js$/.test(f));
+  const adaptadores = js.filter(f => /\/(gd|crazy|poki|y8|gm)-[^/]*\.js$/.test(f));
   // `import()` com variável viraria glob no Rollup e o zip da GD sairia com o código da Poki dentro
   if (adaptadores.length > 1) morre(`${adaptadores.length} adaptadores de portal no pacote: ${adaptadores.map(f => path.basename(f)).join(", ")}`);
   if (id !== "itch" && !adaptadores.length) console.warn("  ⚠ nenhum chunk de adaptador — confira se o SDK deste portal está mesmo ligado");

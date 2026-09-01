@@ -55,6 +55,8 @@ test('a lista do ConfigMap aceita a origem real de cada portal empacotado', () =
     ['Poki','https://games.poki.com'],
     ['itch.io','https://html-classic.itch.zone'],
     ['Y8','https://storage.y8.com'],
+    // ⚠️ o jogo do GameMonetize roda no `.co`, não no `.com` do site — foi medido no feed deles
+    ['GameMonetize','https://html5.gamemonetize.co'],
   ]) assert.equal(ok(origem),true,`${portal}: ${origem} deixou de ser aceita`);
   assert.equal(ok('https://storage.y8.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
 });
