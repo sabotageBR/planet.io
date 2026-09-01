@@ -37,7 +37,7 @@ body[data-mode="portrait"] .podium .step.p1 canvas{width:68px;height:68px}
 /* Os TRÊS temas fixam `.shop-grid{grid-template-columns:repeat(3,1fr)}` (dawn:179, dusk:172, sunset:177),
    anulando o `auto-fill` de base.css. Três colunas fixas respondem à largura da TELA, não à do painel:
    na gaveta de 480 px os cartões transbordavam e a loja ganhava uma barra de rolagem horizontal.
-   `auto-fill` responde ao CONTÊINER — a mesma razão pela qual os seis atalhos da entrada o usam. */
+   `auto-fill` responde ao CONTÊINER — a mesma razão pela qual os atalhos da entrada o usam. */
 body #s-shop .shop-grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;
   max-height:none;overflow:visible}
 .shop-tools{grid-area:auto;display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:2px 0 6px}
@@ -1326,8 +1326,27 @@ body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-side{grid-area:si
   background:var(--surface,#232f63);border:4px solid var(--line,#141026);border-radius:var(--radius-lg,20px);
   box-shadow:0 10px 0 var(--line,#141026),0 18px 34px rgba(0,0,0,.32);
   padding:18px}
+/* ── O TOPO DO CARTÃO: moedas + Opções ──
+   Opções era o 6º alvo da grade de baixo, e o número de colunas de lá responde à largura do CARTÃO:
+   no celular em pé cabem cinco, então ele caía sozinho numa segunda fileira — uma linha inteira do
+   cartão para o atalho menos usado. Aqui é um ícone no canto, onde todo aplicativo o põe, e o cartão
+   perde a linha sem ninguém reposicionar nada: `.entry-main` é flex em coluna, o resto sobe sozinho.
+   ⚠️ O `align-self:flex-end` do chip virou `center`: aquele `flex-end` o empurrava para a direita
+   quando ele era uma LINHA inteira da coluna; dentro desta fileira ele passaria a significar
+   "encostado embaixo", desalinhando o chip do botão, que é mais alto. Quem o encosta à direita agora
+   é o `justify-content` daqui. */
+#s-entry .entry-wrap.entry-v2 .entry-main .entry-top{
+  display:flex;align-items:center;justify-content:flex-end;gap:8px;width:100%}
+#s-entry .entry-wrap.entry-v2 .entry-main .entry-opt{
+  flex:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;
+  border-radius:50%;border:3px solid var(--line,#141026);background:var(--bg,#1b2450);color:var(--muted,#8fa0d8);
+  box-shadow:none;text-shadow:none;transition:transform .08s ease,color .08s ease,border-color .08s ease}
+#s-entry .entry-wrap.entry-v2 .entry-main .entry-opt .nav-svg{width:21px;height:21px;flex:none}
+#s-entry .entry-wrap.entry-v2 .entry-main .entry-opt:hover{
+  transform:translateY(-2px);color:var(--accent,#ffc22e);border-color:var(--accent,#ffc22e)}
+#s-entry .entry-wrap.entry-v2 .entry-main .entry-opt:active{transform:translateY(0)}
 #s-entry .entry-wrap.entry-v2 .entry-main .coinbar{
-  position:static;align-self:flex-end;font-size:13px;color:var(--text,#fff5c2);
+  position:static;align-self:center;font-size:13px;color:var(--text,#fff5c2);
   background:var(--bg,#1b2450);border:2px solid var(--line,#141026);border-radius:999px;padding:3px 12px}
 #s-entry .entry-wrap.entry-v2 .entry-main .coinbar b{color:var(--accent,#ffc22e)}
 
@@ -1365,19 +1384,30 @@ body[data-shell="center"] #s-entry .entry-wrap.entry-v2 .entry-side{grid-area:si
 #s-entry .entry-wrap.entry-v2 .entry-main .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 0 var(--line,#141026)}
 #s-entry .entry-wrap.entry-v2 .entry-main .btn-primary:active{transform:translateY(4px);box-shadow:0 2px 0 var(--line,#141026)}
 
-/* ── NAVEGAÇÃO: seis alvos iguais, em grade. Antes era uma coluna flutuante de emojis colada na borda direita. ── */
-/* `auto-fit` + piso de 62 px responde à largura do CONTÊINER, e é isso que o caso exige: na gaveta
+/* ── NAVEGAÇÃO: cinco alvos iguais, em grade. Antes era uma coluna flutuante de emojis colada na borda direita. ── */
+/* `auto-fit` + piso em px responde à largura do CONTÊINER, e é isso que o caso exige: na gaveta
    (min(400px,52vw) no celular deitado) seis colunas fixas davam 37 px de alvo — abaixo dos 44 que
    `scripts/responsive-check.mjs` cobra. Um @media não resolveria: lá a viewport tem 667 px de largura;
-   quem está estreito é a gaveta dentro dela. Aqui a fileira quebra sozinha e o alvo nunca encolhe. */
+   quem está estreito é a gaveta dentro dela. Aqui a fileira quebra sozinha e o alvo nunca encolhe.
+   ⚠️ O PISO CAIU DE 62 PARA 52 px quando Opções saiu daqui: com cinco botões, 62 px só rende fileira
+   única a partir de ~340 px de largura interna de cartão, e num Galaxy S8 (360 px de tela) sobram
+   ~296 px — ou seja, o ganho da linha não chegaria justo aos aparelhos mais estreitos, que são os que
+   precisavam dele. Com 52 px as cinco colunas cabem em todo aparelho em pé da matriz (medido: 57 px de
+   alvo num Galaxy S8, acima dos 44) e a gaveta do deitado segue em 4+1 com os ~62 px de hoje, sem
+   encolher nada. Nada de `repeat(5,1fr)`: coluna FIXA foi exatamente o que dava os 37 px. */
 #s-entry .entry-wrap.entry-v2 .entry-links{
   position:static;transform:none;right:auto;top:auto;width:100%;
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(62px,1fr));gap:8px}
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(52px,1fr));gap:8px}
 #s-entry .entry-wrap.entry-v2 .entry-links .btn-secondary{
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:auto;
-  min-height:60px;padding:8px 3px;border-radius:var(--radius,14px);
+  min-height:60px;padding:8px 2px;border-radius:var(--radius,14px);
   border:3px solid var(--line,#141026);background:var(--bg,#1b2450);color:var(--muted,#8fa0d8);
-  font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;text-shadow:none;box-shadow:none;
+  /* ⚠️ O RÓTULO ACOMPANHA A TELA. Com cinco colunas num aparelho de 360 px o botão tem 56,8 px, e o que
+     sobra para a letra são 44,8 (os 3 px de BORDA de cada lado contam tanto quanto o padding): "RANKING"
+     pede 48,3 e saía "RANKI…" — reticência num rótulo de 7 letras faz a tela parecer apertada sem
+     motivo. O `clamp` só age onde a viewport É o contêiner, ou seja no celular em pé; na gaveta a
+     viewport tem 667 px, o clamp devolve os 9,5 px de sempre e lá continuam quatro colunas largas. */
+  font-size:clamp(8.6px,2.4vw,9.5px);letter-spacing:.06em;text-transform:uppercase;text-shadow:none;box-shadow:none;
   transition:transform .08s ease,color .08s ease,border-color .08s ease}
 /* o emoji vinha de `content:` no CSS de cada tema; agora quem desenha é o <svg> dentro do botão */
 #s-entry .entry-wrap.entry-v2 .entry-links .btn-secondary::before{content:none;display:none}
@@ -1444,7 +1474,7 @@ body[data-reduce="1"] #s-entry.on .entry-v2>*{animation:none}
 
 /* ── GAVETA (rail) e TELAS ESTREITAS ──
    Na gaveta a largura é 480 px e a lateral não cabe; no dedo, idem. O que sobra tem que continuar
-   sendo a decisão inteira: marca, identidade, JOGAR e os seis atalhos. */
+   sendo a decisão inteira: marca, identidade, JOGAR e os cinco atalhos (Opções é o ícone do topo). */
 /* landscape saiu da lista: com a coluna única o TOP 5 vem ABAIXO do cartão e a tela rola, então ele
    cabe onde antes não havia coluna para ele. Some só onde a altura é o recurso escasso. */
 body[data-shell="rail"] #s-entry .entry-wrap.entry-v2 .entry-side,
@@ -1458,6 +1488,7 @@ body[data-mode="landscape"] #s-entry .entry-wrap.entry-v2 .logo{width:min(190px,
 /* no dedo o alvo mínimo é 44 px (scripts/responsive-check.mjs falha abaixo disso) */
 body[data-pointer="coarse"] #s-entry .entry-wrap.entry-v2 .entry-links .btn-secondary{min-height:64px}
 body[data-pointer="coarse"] .entry-id .id-skin{min-width:64px}
+body[data-pointer="coarse"] #s-entry .entry-wrap.entry-v2 .entry-main .entry-opt{width:44px;height:44px}
 /* "Reivindicar conta" é texto inline e media 43,x de altura no celular deitado — passava raspando por
    baixo da régua. 46 dá folga para o arredondamento sem afastar o link do texto ao lado. */
 body[data-pointer="coarse"] #s-entry .entry-wrap.entry-v2 .guest-note .btn-link{

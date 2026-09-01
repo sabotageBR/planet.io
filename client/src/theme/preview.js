@@ -115,7 +115,10 @@ app.innerHTML=`
       <div class="tagline">${LB.tagline}</div>
     </div>
     <div class="card entry-main">
-      <div class="coinbar">${LB.coinIcon} <b class="v-coins"></b> <span>${LB.coinWord}</span></div>
+      <div class="entry-top">
+        <div class="coinbar">${LB.coinIcon} <b class="v-coins"></b> <span>${LB.coinWord}</span></div>
+        <button class="entry-opt" data-go="prefs" title="${LB.prefs}" aria-label="${LB.prefs}">${navIconSvg("prefs")}</button>
+      </div>
       <div class="entry-id">
         <button class="id-skin" data-go="shop"><canvas class="skinprev" width="112" height="112"></canvas><span class="id-swap">${LB.swap}</span></button>
         <div class="id-fields">
@@ -125,8 +128,8 @@ app.innerHTML=`
       </div>
       <button class="btn-primary" data-go="game">${LB.play}</button>
       <div class="entry-links">
-        ${["modes","lobby","rank","profile","shop","prefs"].map((k,i)=>
-          `<button class="btn-secondary" data-go="${k}">${navIconSvg(k)}<span>${[LB.modesShort,LB.rooms,LB.ranking,LB.profile,LB.shop,LB.prefs][i]}</span></button>`).join("")}
+        ${["modes","lobby","rank","profile","shop"].map((k,i)=>
+          `<button class="btn-secondary" data-go="${k}">${navIconSvg(k)}<span>${[LB.modesShort,LB.rooms,LB.ranking,LB.profile,LB.shop][i]}</span></button>`).join("")}
       </div>
       <div class="guest-note"><span class="gn-txt">${LB.guestNote}</span><button class="btn-link" data-go="account">${LB.claim}</button></div>
       <div class="hint">${LB.hint}</div>

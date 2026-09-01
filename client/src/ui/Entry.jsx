@@ -68,7 +68,11 @@ function Body() {
     if (pp) play(pp);
     else if (PORTAL) play({ mode: app.get().gameMode | 0, teamSize: 1, party: null });
     else go("modes"); };
-  const links = [["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
+  // ⚠️ OPÇÕES SAIU DAQUI e virou o ícone do topo do cartão. O número de colunas desta grade responde à
+  // largura do CARTÃO, e no celular em pé cabem cinco: o 6º alvo caía sozinho numa segunda fileira, ou
+  // seja uma linha inteira do cartão para o atalho menos usado. Lá em cima ele é um ícone no canto,
+  // que é onde todo aplicativo o põe, e o resto sobe sozinho (`.entry-main` é flex em coluna).
+  const links = [["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop]];
   // A dica é a primeira coisa que alguém lê: com as teclas configuráveis, cravar "ESPAÇO/W" nela seria
   // mentir para exatamente quem foi lá trocar.
   const tk = keysOf(session.prefs);
@@ -79,7 +83,14 @@ function Body() {
       <div className="tagline">{LB.tagline}</div>
     </div>
     <div className="card entry-main">
-      <div className="coinbar">{LB.coinIcon} <b className="v-coins">{fmt(user.coins)}</b> <span>{LB.coinWord}</span></div>
+      {/* o topo do cartão: o que eu tenho (moedas) e o único controle que não é destino de jogo */}
+      <div className="entry-top">
+        <div className="coinbar">{LB.coinIcon} <b className="v-coins">{fmt(user.coins)}</b> <span>{LB.coinWord}</span></div>
+        {/* só-ícone, com o rótulo em `title`+`aria-label`: o mesmo padrão do `.id-skin` aqui embaixo.
+            O desenho continua sendo o de CURSORES (`navIconArt.js`), o mesmo que a barra `Nav` das
+            telas internas usa — um destino, um símbolo. */}
+        <button className="entry-opt" data-go="prefs" onClick={() => go("prefs")} title={LB.prefs} aria-label={LB.prefs}><NavIcon k="prefs" /></button>
+      </div>
       {/* skin e nick num bloco só: são a MESMA decisão — com quem eu entro. Separados, a tela virava
           uma pilha de controles soltos, e era a pilha que parecia amadora, não cada peça. */}
       <div className="entry-id">

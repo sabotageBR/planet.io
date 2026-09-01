@@ -995,8 +995,26 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   consultado a cada 5 s e escondido com `display:none` nos TRÊS temas; e a navegação por teclado sem foco visível.
   ⚠️ Só a DISPLAY é webfont: `--font-ui` alimenta o `BitmapFont.install` do Pixi (`renderer/layers/Planets.js`), e uma
   fonte que ainda não carregou faria o nome dos planetas ser assado errado num atlas que não é refeito depois.
-  Os seis botões usam `repeat(auto-fit,minmax(62px,1fr))`, que responde ao CONTÊINER: na gaveta do celular deitado
+  Os botões usam `repeat(auto-fit,minmax(52px,1fr))`, que responde ao CONTÊINER: na gaveta do celular deitado
   seis colunas fixas davam alvo de 37 px, e um `@media` não veria isso — a viewport ali tem 667 px de largura.
+  ⚠️ **OPÇÕES SAIU DA GRADE e virou um ícone no topo do cartão**, ao lado do chip de moedas
+  (`.entry-top`/`.entry-opt` em `Entry.jsx` + `ui.css`). Como o número de colunas sai da largura do
+  CARTÃO, no celular em pé cabiam cinco e o 6º alvo caía sozinho numa segunda fileira: uma linha
+  inteira do cartão para o atalho menos usado — e o único dos seis que não é destino de jogo. Lá em
+  cima ele é um ícone no canto (36 px, 44 no dedo), com `LB.prefs` em `title`+`aria-label` no mesmo
+  padrão do `.id-skin`, e o cartão perde a linha sem ninguém reposicionar nada, porque `.entry-main`
+  é flex em coluna. ⚠️ O DESENHO continua sendo o de CURSORES, não uma engrenagem: é o mesmo
+  `navIconArt.prefs` da barra `Nav` das telas internas (um destino, um símbolo), e o motivo escrito lá
+  — engrenagem vira borrão a 20 px — não mudou. ⚠️ O piso da grade caiu junto (62 → **52 px**): com
+  cinco botões, 62 px só rende fileira única a partir de ~340 px de largura interna de cartão, e num
+  Galaxy S8 sobram ~296 px — o ganho da linha não chegaria justo aos aparelhos mais estreitos, que são
+  os que precisavam dele. Nada de `repeat(5,1fr)`: coluna FIXA foi exatamente o que deu os 37 px.
+  ⚠️ O `align-self:flex-end` do `.coinbar` virou `center`: ele empurrava o chip para a direita quando
+  era uma LINHA inteira da coluna, e dentro da fileira nova passaria a significar "encostado embaixo".
+  ⚠️ E o RÓTULO virou `clamp(8.6px,2.4vw,9.5px)`: num aparelho de 360 px o botão fica com 56,8 px e
+  sobram 44,8 para a letra — **os 3 px de BORDA de cada lado contam tanto quanto o padding** —, e
+  "RANKING" pede 48,3, saindo "RANKI…". O `clamp` só age onde a viewport É o contêiner (celular em pé);
+  na gaveta ela tem 667 px, o clamp devolve os 9,5 px de sempre e lá continuam quatro colunas largas.
 - **Preferências e controles** (`client/src/state/app.js` → `ui/prefsTable.js` → whitelist em
   `server/src/api/me.js`; chave nova precisa dos TRÊS, fora da whitelist o servidor descarta em silêncio):
   ⚠️ `holdEject` e `rightSplit` passaram um tempo **dentro de um comentário `//`** no `PREF_DEFAULTS` — como
