@@ -57,8 +57,12 @@ test('a lista do ConfigMap aceita a origem real de cada portal empacotado', () =
     ['Y8','https://storage.y8.com'],
     // ⚠️ o jogo do GameMonetize roda no `.co`, não no `.com` do site — foi medido no feed deles
     ['GameMonetize','https://html5.gamemonetize.co'],
+    // ⚠️ e o do GameFlare roda no `data.`, não no `www.` nem no `distribution.` — os dois últimos são a
+    // página em volta; o iframe do jogo HTML5 vem de data.gameflare.com/games/<id>/<hash>/index.html
+    ['GameFlare','https://data.gameflare.com'],
   ]) assert.equal(ok(origem),true,`${portal}: ${origem} deixou de ser aceita`);
   assert.equal(ok('https://storage.y8.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
+  assert.equal(ok('https://data.gameflare.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
 });
 
 test('matcher: entrada quebrada é DESCARTADA, nunca vira "casa tudo"', () => {

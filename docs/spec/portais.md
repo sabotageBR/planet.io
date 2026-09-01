@@ -1,6 +1,7 @@
 # Portais de jogo (o cliente hospedado fora de warspace.io)
 
-GameDistribution, CrazyGames, Poki, itch.io, Y8 e GameMonetize distribuem jogos HTML5 e pedem **um .zip com
+GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize e GameFlare distribuem jogos HTML5 e pedem **um
+.zip com
 `index.html` na raiz**. O zip é só o **cliente**: eles hospedam os arquivos estáticos no domínio deles,
 dentro de um `<iframe>`, e o servidor multiplayer continua sendo warspace.io. É o modelo normal de um
 `.io` em portal — a CrazyGames diz na documentação que hospeda só os arquivos, a Poki aceita servidor
@@ -8,7 +9,7 @@ externo mediante liberação de CSP, e a GameDistribution tem a exceção por es
 *"We do not permit external hosting of games, except for Real Multiplayer games"*.
 
 ```
-node scripts/portal-pack.mjs gd|crazy|poki|itch|all   → portal/warspace-<id>.zip
+node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|all   → portal/warspace-<id>.zip
 node scripts/brand-assets.mjs                         → brand/thumb-*.jpg (5 tamanhos de catálogo)
 ```
 
@@ -248,3 +249,59 @@ fachada não é luxo.
 ⚠️ **O arquivo é `gm.js`, não `gamemonetize.js`**, pela mesma regra que proíbe `ads.js` aqui: o nome vira
 a URL do chunk e há filtro de bloqueador que casa palavra de publicidade no caminho. E o id do `<script>`
 é `gamemonetize-sdk`, o mesmo do carregador oficial, para nunca haver duas cópias do SDK na página.
+
+## GameFlare (`distribution.gameflare.com/developers/`)
+
+Sétimo portal, e o **primeiro depois do itch.io a não ter SDK nenhum a integrar**. A plataforma por trás é
+a GameArter (mesma empresa); a porta de desenvolvedor é `distribution.gameflare.com/developers/`.
+
+O que eles pedem, na letra do FAQ deles:
+
+> *"We accept any HTML5-based games. If you need to connect users to your server (for example in
+> multiplayer game), the game must support secure (https) protocol."*
+> *"What do you need to upload your game? Only game files. Screenshots are optional."*
+
+Ou seja: multiplayer com servidor externo é aceito **por escrito**, e a única exigência técnica é HTTPS —
+que warspace.io já é. Não há formulário de SDK, não há id de jogo a assar no bundle, e o perfil do
+empacotador é `env: {}` como o do itch.io.
+
+⚠️ **A ORIGEM É `data.gameflare.com`, e não é o domínio do site.** Há três hosts em volta e só um importa:
+
+| host | o que é |
+|---|---|
+| `www.gameflare.com` | o portal deles, a página em volta |
+| `distribution.gameflare.com` | o invólucro que os publishers embutem (`/embed/<slug>/`) |
+| **`data.gameflare.com`** | **os arquivos do jogo — é aqui que o nosso código roda** |
+
+Medido no feed público deles (`distribution.gameflare.com/feed.json`, 164 jogos), abrindo os invólucros e
+lendo o `<iframe>` de dentro. Um jogo HTML5 é servido de:
+
+```
+https://data.gameflare.com/games/<id>/<hash>/index.html
+```
+
+(`splatcha` → `/games/11428/Cxe71CTmnSNgbj/`, `tic-tac-foe` → `/games/11239/Xws6h9FgL5JHGr/`,
+`platform-kid` → `/games/11216/H5lIVLuXBJRTTJ/`.) Liberar `www.` ou `distribution.` daria o sintoma de
+sempre — carrega, desenha o menu e o JOGAR não conecta. `ALLOWED_ORIGINS` leva `https://*.gameflare.com`,
+que cobre os três e o `cdn.gameflare.com` de jogos mais antigos.
+
+⚠️ Repare no CAMINHO, não só no host: `/games/<id>/<hash>/` é **dois níveis de subcaminho**, então a
+`base:"./"` do build de portal não é luxo aqui — com base absoluta o `/assets/…` é 404 e a página fica
+branca. Verificado servindo o pacote em `127.0.0.1:4173/games/11428/Cxe71CTmnSNgbj/`: 18 recursos, zero
+falha.
+
+⚠️ **Quem anuncia é a PÁGINA DELES, não o jogo.** O invólucro carrega `gameflare-asdk.min.js` e roda o
+preroll no `#adsense-container` antes de criar o iframe do jogo — por isso o iframe fica em `/loading/`
+enquanto o anúncio toca. Não há nada a chamar do nosso lado, e é por isso que não existe
+`client/src/portal/gameflare.js`: a fachada devolve `null` para id desconhecido e todo `anuncio()` vira
+no-op, exatamente como no itch.io. O SDK que eles oferecem é **opcional** e é de **sitelock**
+("*Simple sitelock integration · It is optional*"), não de anúncio — integrá-lo travaria o jogo nos
+domínios deles sem trazer receita nenhuma.
+
+⚠️ O iframe deles **não tem `sandbox`** (medido no atributo, não no palpite), então a origem chega como
+`https://data.gameflare.com` de verdade e não como `null` — que o nosso matcher recusa por construção. O
+`allow` é `"autoplay; fullscreen"`: **sem `microphone`**, então o push-to-talk do K não existe lá (degrada
+sozinho, `audio/mic.js`), e sem `clipboard-write`, que é por que o convite cai no caminho de mostrar a URL.
+
+Revenue share: 85 % para o desenvolvedor nos sites do GameFlare, 50 % nos sites dos publishers da rede
+deles. Pagamento mensal, mínimo de 50 €.

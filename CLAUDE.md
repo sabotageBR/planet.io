@@ -18,7 +18,7 @@ npm run build                # client/dist (vite build)
 # PAINEL /admin: rota da MESMA SPA (client/src/admin/, chunk sob demanda). O 1º administrador nasce do env
 # ADMIN_EMAILS (k8s/05-config) no boot — SÓ PROMOVE — ou de um UPDATE users SET is_admin=true. docs/spec/admin.md
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
-node scripts/portal-pack.mjs gd|crazy|poki|itch|all   # o .zip do cliente para os portais (docs/spec/portais.md)
+node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|all   # o .zip do cliente para os portais (docs/spec/portais.md)
 ./scripts/build-push.sh      # builda (contexto = raiz, -f server/Dockerfile / client/Dockerfile) e publica evandromoura/warspace-io-{server,client}
 ./scripts/deploy.sh          # aplica k8s/ + Ingress em warspace.io (WARSPACE_HOST=... troca o host, NO_INGRESS=1 pula)
 ```
@@ -600,7 +600,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   é dono antes de tocar em nada. Quem prova é `server/test/party-shards.test.js`, que sobe DOIS shards no mesmo processo —
   os testes de party de `br.test.js` fixam `SHARDS=1` e por isso nunca viram o bug.
 - **O CLIENTE PODE MORAR FORA DAQUI** (`docs/spec/portais.md`, `client/src/portal/`, `server/src/http/cors.js`):
-  os portais de jogo (GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize) pedem um **.zip com `index.html` na
+  os portais de jogo (GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize, GameFlare) pedem um **.zip com `index.html` na
   raiz** e hospedam os arquivos no domínio DELES, num iframe — o servidor multiplayer continua sendo
   warspace.io. O zip é só `client/dist`, e é isso que o `scripts/portal-pack.mjs` monta.
   ⚠️ **O modo de falha era MENTIR DUAS VEZES**: a sonda de `/api/config` morava dentro do
@@ -673,6 +673,22 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `showBanner()` — que apesar do nome é o INTERSTICIAL — não devolve promessa: sobram duas saídas (o
   evento e o `PORTAL.AD_MS` da fachada) contra três na GD. ⚠️ O arquivo é `gm.js` pela mesma regra do
   `ads.js`: o nome vira URL de chunk e bloqueador casa palavra de publicidade no caminho.
+- **GameFlare** (`scripts/portal-pack.mjs`, perfil `gameflare`): sétimo portal, e o primeiro depois do
+  itch.io **sem SDK nenhum** — o que ele ensina é que "portal sem integração" não quer dizer "portal
+  sem armadilha". A armadilha é a mesma dos outros e de novo em outro lugar: o jogo NÃO roda no
+  domínio do site. `www.gameflare.com` é o portal, `distribution.gameflare.com` é o invólucro que os
+  publishers embutem, e o nosso código roda em **`data.gameflare.com`** —
+  `/games/<id>/<hash>/index.html`, medido no feed público deles (`feed.json`, 164 jogos) abrindo os
+  invólucros e lendo o `<iframe>` de dentro. ⚠️ E o caminho tem **dois níveis**, então a `base:"./"`
+  do build de portal é o que separa carregar de página branca. ⚠️ Quem anuncia é a PÁGINA DELES (o
+  `gameflare-asdk.min.js` roda o preroll no invólucro antes de criar o iframe), então não existe
+  `portal/gameflare.js`: a fachada devolve `null` para id desconhecido e tudo vira no-op. O SDK que
+  eles oferecem é OPCIONAL e é de **sitelock**, não de anúncio — integrá-lo travaria o jogo nos
+  domínios deles sem trazer receita. ⚠️ O iframe deles não tem `sandbox` (medido no ATRIBUTO), então
+  a origem chega de verdade e não como `null`, que o matcher recusa por construção; o `allow` é
+  `"autoplay; fullscreen"`, sem `microphone` — o push-to-talk não existe lá. ⚠️ O aviso "nenhum chunk
+  de adaptador" do empacotador deixou de citar `"itch"` pelo nome e passou a sair de `semSdk` no
+  perfil: com o literal, o portal novo herdaria um alarme falso a cada build.
 - **`/ads.txt` É DO SITE, E O `try_files` MENTIA SOBRE ELE** (`client/public/ads.txt`,
   `docs/spec/portais.md`): o GamePix tem uma segunda porta além do catálogo de jogos — a de *publisher*,
   onde warspace.io é a propriedade `24C97` —, e o que ela pede não é zip: é o `ads.txt` do IAB na RAIZ do

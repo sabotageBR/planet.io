@@ -1,11 +1,12 @@
 // ── PACOTE PARA OS PORTAIS DE JOGO ────────────────────────────────────────────
-// GameDistribution, CrazyGames, Poki, itch.io, Y8 e GameMonetize pedem um .zip com index.html na raiz. É só o
+// GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize e GameFlare pedem um .zip com index.html na raiz. É
+// só o
 // CLIENTE: eles hospedam os arquivos e o servidor multiplayer continua sendo warspace.io — é assim que
 // todo .io vive em portal, e a própria GameDistribution abre a exceção por escrito para "Real
 // Multiplayer games". O que faz isso funcionar é a origem absoluta assada no bundle (VITE_API_BASE) e
 // o CORS do lado de lá (server/src/http/cors.js).
 //
-// uso:  node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|all
+// uso:  node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|all
 //       WARSPACE_API_BASE=https://staging.exemplo node scripts/portal-pack.mjs gd
 //
 // ⚠️ O VALOR DESTE SCRIPT SÃO AS GUARDAS. Cada uma delas corresponde a um jeito conhecido de subir um
@@ -37,7 +38,17 @@ const PERFIS = {
   // ser servido (`https://html5.gamemonetize.co/<gameId>/`). Sem ele o adaptador devolve null e o pacote
   // sai sem anúncio — que é o que o "Verify Game" do painel reprova.
   gm:    { nome: "GameMonetize", strict: false, env: { VITE_GM_GAME_ID: "73u3oghoe3br3wpmg3yswmos8pkb3gt1" } },
-  itch:  { nome: "itch.io", strict: false, env: {} },   // sem SDK: o adaptador não existe e tudo vira no-op
+  // ⚠️ `semSdk` NÃO é o mesmo que "env vazio": a Poki também não tem env aqui e TEM adaptador. Ele diz
+  // que a ausência de chunk de adaptador é o esperado, e é o que desliga o aviso lá embaixo — que
+  // existe para pegar o caso real de o SDK ter sido desligado sem querer.
+  itch:  { nome: "itch.io", strict: false, semSdk: true, env: {} },
+  // GameFlare (a plataforma é a GameArter): não há ID nem SDK a integrar. O SDK deles é OPCIONAL e é de
+  // SITELOCK, não de anúncio — quem anuncia é a PÁGINA DELES, que roda o preroll no invólucro antes de
+  // criar o iframe do jogo. Medido: um jogo HTML5 lá é servido de
+  // `https://data.gameflare.com/games/<id>/<hash>/index.html`, dentro de um iframe SEM `sandbox`
+  // (então a origem chega de verdade, e não como `null`) e com `allow="autoplay; fullscreen"` — sem
+  // `microphone`, então o push-to-talk não existe lá.
+  gameflare: { nome: "GameFlare", strict: false, semSdk: true, env: {} },
 };
 // O que veio de client/public e não faz sentido dentro de um iframe: ícone de app, manifest e o cartão
 // de compartilhamento de uma página que ninguém cola em lugar nenhum. `favicon.svg` fica (810 bytes, e
@@ -114,7 +125,7 @@ function empacota(id) {
   const adaptadores = js.filter(f => /\/(gd|crazy|poki|y8|gm)-[^/]*\.js$/.test(f));
   // `import()` com variável viraria glob no Rollup e o zip da GD sairia com o código da Poki dentro
   if (adaptadores.length > 1) morre(`${adaptadores.length} adaptadores de portal no pacote: ${adaptadores.map(f => path.basename(f)).join(", ")}`);
-  if (id !== "itch" && !adaptadores.length) console.warn("  ⚠ nenhum chunk de adaptador — confira se o SDK deste portal está mesmo ligado");
+  if (!perfil.semSdk && !adaptadores.length) console.warn("  ⚠ nenhum chunk de adaptador — confira se o SDK deste portal está mesmo ligado");
 
   // ── zip ────────────────────────────────────────────────────────────────────
   // ⚠️ O CONTEÚDO da pasta, nunca a pasta: um zip com `dist/index.html` dentro é a rejeição nº 1 em
