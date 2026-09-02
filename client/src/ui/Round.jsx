@@ -43,22 +43,49 @@ const estiloDe = p => (Q && (ESTILOS[+Q - 1] || (ESTILOS.includes(Q) ? Q : null)
 
 // ── peças ─────────────────────────────────────────────────────────────────────
 const Planeta = ({ b, size = 112, r = 30, cls = "" }) => <SkinPreview skin={skinById(b ? b.skinId : 0)} r={r} size={size} className={cls} />;
-/** O bloco do campeão: disco grande, glória atrás, coroa, nome e massa. `--champ-d` dá o tamanho. */
-function Champ({ b, mine, LB, ficha, kicker }) {
-  if (!b) return null;
-  return <div className={"champ" + (b.slot === mine ? " me" : "")}>
-    <div className="cp"><i className="cp-gloria" /><i className="cp-halo" /><Planeta b={b} size={360} cls="" /><i className="cp-coroa">{LB.champCrown}</i></div>
+const soma = (t, k) => t.reduce((a, b) => a + (+b[k] || 0), 0);
+/**
+ * O bloco do campeão: disco grande, glória atrás, coroa, nome e massa. `--champ-d` dá o tamanho.
+ * ⚠️ VITÓRIA DE ESQUADRÃO MOSTRA O ESQUADRÃO INTEIRO (`time`): quem venceu um Battle Royale em dupla
+ * via a tela anunciar UM vencedor e o companheiro sumir justamente do lugar onde ele mais devia estar.
+ * Os planetas entram lado a lado (o CSS reduz `--champ-d` por `data-n`, senão dois de 340 px não cabem
+ * na coluna do dossiê), e a ficha passa a SOMAR a equipe — menos o K/D, que é razão e não soma: ali
+ * vale o total de abates sobre o total de mortes.
+ */
+function Champ({ b, mine, LB, ficha, kicker, time = null }) {
+  const t = time && time.length > 1 ? time : null;
+  if (!b && !t) return null;
+  const meu = t ? t.some(x => x.slot === mine) : b.slot === mine;
+  const massa = t ? soma(t, "mass") : b.mass;
+  const nums = t
+    ? [["score", soma(t, "score")], ["kills", soma(t, "kills")], ["food", soma(t, "food")],
+       ["kd", (soma(t, "kills") / Math.max(1, soma(t, "deaths"))).toFixed(2)]]
+    : [["score", b.score || 0], ["kills", b.kills || 0], ["food", b.food || 0], ["kd", (b.kd || 0).toFixed(2)]];
+  return <div className={"champ" + (t ? " time" : "") + (meu ? " me" : "")} data-n={t ? t.length : 1}>
+    {t ? <div className="ct-linha"><i className="cp-coroa">{LB.champCrown}</i>{t.map(x =>
+      <div key={x.key || x.slot} className={"ct-m" + (x.slot === mine ? " me" : "")}>
+        <div className="cp"><i className="cp-gloria" /><i className="cp-halo" /><Planeta b={x} size={360} cls="" /></div>
+        <b className="ct-nome">{x.level > 0 ? <i className="lvl">{x.level}</i> : null}{x.name}</b>
+        <em className="ct-massa">{fmt(x.mass)}</em>
+      </div>)}</div>
+      : <div className="cp"><i className="cp-gloria" /><i className="cp-halo" /><Planeta b={b} size={360} cls="" /><i className="cp-coroa">{LB.champCrown}</i></div>}
     <span className="cp-k">{kicker || LB.champion}</span>
-    <b className="cp-nome">{b.level > 0 ? <i className="lvl">{b.level}</i> : null}{b.name}</b>
-    <em className="cp-massa">{fmt(b.mass)}<small>{LB.massLabel}</small></em>
-    {ficha ? <div className="cp-ficha">{[["score", b.score || 0], ["kills", b.kills || 0], ["food", b.food || 0], ["kd", (b.kd || 0).toFixed(2)]]
-      .map(([k, v]) => <div key={k}><b>{typeof v === "string" ? v : fmt(v)}</b><i>{LB.metrics[k]}</i></div>)}</div> : null}
+    {t ? null : <b className="cp-nome">{b.level > 0 ? <i className="lvl">{b.level}</i> : null}{b.name}</b>}
+    <em className="cp-massa">{fmt(massa)}<small>{LB.massLabel}</small></em>
+    {ficha ? <div className="cp-ficha">{nums.map(([k, v]) =>
+      <div key={k}><b>{typeof v === "string" ? v : fmt(v)}</b><i>{LB.metrics[k]}</i></div>)}</div> : null}
   </div>;
 }
-/** Degraus 2º·1º·3º. O do meio recebe o planeta grande — o campeão já é o assunto da tela. */
-const Podio = ({ board, mine, LB }) => <div className="podium v2">{ORDER.map(i => { const b = board[i];
+/**
+ * Degraus 2º·1º·3º. O do meio recebe o planeta grande — o campeão já é o assunto da tela.
+ * ⚠️ `simples` quando a vitória é de EQUIPE: aí o bloco do esquadrão já está logo acima, com coroa e
+ * glória, e repetir tudo no degrau punha as mesmas duas pessoas duas vezes na mesma tela, com duas
+ * coroas. Os degraus continuam (são "os maiores PLANETAS", que segue verdade nos dois modos), só param
+ * de disputar o destaque.
+ */
+const Podio = ({ board, mine, LB, simples = false }) => <div className={"podium v2" + (simples ? " simples" : "")}>{ORDER.map(i => { const b = board[i], herói = i === 0 && !simples;
   return <div key={i} className={"step p" + (i + 1) + (b ? "" : " empty") + (b && b.slot === mine ? " me" : "")}>
-    <div className={i === 0 ? "cp" : "st-disco"}>{i === 0 ? <><i className="cp-gloria" /><i className="cp-halo" /></> : null}<Planeta b={b} size={i === 0 ? 360 : 160} cls="" />{i === 0 ? <i className="cp-coroa">{LB.champCrown}</i> : null}</div>
+    <div className={herói ? "cp" : "st-disco"}>{herói ? <><i className="cp-gloria" /><i className="cp-halo" /></> : null}<Planeta b={b} size={herói ? 360 : 160} cls="" />{herói ? <i className="cp-coroa">{LB.champCrown}</i> : null}</div>
     <b>{b ? b.name : "—"}</b>
     <i>{b ? fmt(b.mass) : "—"}</i>
     <div className="base">{ord(i + 1)}</div>
@@ -126,6 +153,11 @@ export default function Round({ on }) {
   // de campeão na tela é o bloco do campeão. O que o subtítulo ainda diz, e o bloco não pode dizer, é a
   // EQUIPE — uma vitória de esquadrão não cabe num planeta só.
   const champ = r.champion || board[0] || null;
+  // A EQUIPE CAMPEÃ inteira, do maior para o menor. Sai do próprio `board` (que agora carrega `team`),
+  // então não custou um campo novo no `roundEnd` — e o companheiro que morreu antes do fim continua na
+  // lista, com massa 0: ele ganhou a partida junto.
+  const equipe = r.champTeam != null ? board.filter(b => b.team === r.champTeam).sort((a, b) => b.mass - a.mass) : null;
+  const time = equipe && equipe.length > 1 ? equipe : null;
   const titulo = br ? LB.lastAliveTitle : LB.roundTitle;
   const sub = br ? LB.lastAliveSub : LB.roundSub;
   // Numa vitória de ESQUADRÃO o planeta grande é o último de pé DAQUELA equipe, e chamá-lo de "campeão
@@ -156,15 +188,18 @@ export default function Round({ on }) {
   return <div className="screen on" id="s-round" data-style={estilo}><div className="card dead-card">
     {cabeca}
     {estilo === "podio" ? <>
-      <Podio board={board} mine={mine} LB={LB} />
+      {/* No pódio a equipe entra ACIMA dos degraus: eles continuam sendo "os maiores PLANETAS", que é
+          verdade nos dois modos — o que faltava era dizer quem ganhou a partida. */}
+      {time ? <Champ b={champ} mine={mine} LB={LB} kicker={kicker} time={time} /> : null}
+      <Podio board={board} mine={mine} LB={LB} simples={!!time} />
       {d ? <Awards d={d} mine={mine} LB={LB} /> : null}
     </> : estilo === "cinema" ? <>
-      <Champ b={champ} mine={mine} LB={LB} kicker={kicker} ficha />
+      <Champ b={champ} mine={mine} LB={LB} kicker={kicker} time={time} ficha />
       <Vices board={board} mine={mine} />
       {d ? <Awards d={d} mine={mine} LB={LB} mod="faixa" /> : null}
     </> : <>
       <div className="dossie">
-        <Champ b={champ} mine={mine} LB={LB} kicker={kicker} ficha />
+        <Champ b={champ} mine={mine} LB={LB} kicker={kicker} time={time} ficha />
         <div className="ds-col">
           <Barras board={board} mine={mine} LB={LB} />
           {d ? <Awards d={d} mine={mine} LB={LB} mod="linhas" /> : null}

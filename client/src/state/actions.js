@@ -209,9 +209,15 @@ function mostrarTela(s) {
       // a sonda mede o PLACAR, e com a animação de 2 s no ar ela mediria o overlay dela. Quem quiser ver
       // a abertura usa `mostrarTela("round")` sem sufixo, que respeita as prefs.
       const estilo = s.startsWith("round:") ? s.slice(6) : null;
+      // ⚠️ `round:<estilo>:eq` monta o fim de um Battle Royale em EQUIPE: `reason:"lastAlive"`, `champTeam`
+      // e o `team` nas linhas. Sem um caso assim nenhuma sonda e nenhuma conferência de olho passa pelo
+      // bloco da equipe campeã — que é justamente o caminho que ficou anos anunciando um vencedor só.
+      const eq = estilo && estilo.endsWith(":eq");
+      if (eq) { linhas[0].team = 0; linhas[1].team = 0; linhas[2].team = 1; linhas[3].team = 1; }
       app.update(st => ({ ...st, room: "1ABC", rewards: null, rewardsPending: true, screen: "round",
-        session: estilo ? { ...st.session, prefs: { ...st.session.prefs, roundStyle: estilo, roundIntro: false } } : st.session,
+        session: estilo ? { ...st.session, prefs: { ...st.session.prefs, roundStyle: eq ? estilo.slice(0, -3) : estilo, roundIntro: false } } : st.session,
         roundResult: { code: "1ABC", mySlot: 3, at: Date.now(), nextInMs: 15000, total: linhas.length,
+          reason: eq ? "lastAlive" : "time", champTeam: eq ? 0 : null, mode: eq ? 1 : 0,
           champion: linhas[0], board: linhas,
           destaques: { campeao: linhas[0], pontuador: linhas[1], glutao: linhas[1], carrasco: linhas[2], letal: linhas[2] } } })); }
     // A sonda de responsividade mede o HUD DE ESPECTADOR que agora existe atrás destas telas (chat + o

@@ -1179,6 +1179,10 @@ body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(sa
    ⚠️ `--champ-d` é o lado do BLOCO, não o do disco: `paintSkin` desenha o planeta com ~57 % do canvas
    (o resto é a folga do aro das skins com anel), e por isso o canvas transborda o bloco em 132 % e é
    centrado por absoluto — assim o disco fica com ~75 % de `--champ-d` e o aro continua inteiro.  */
+/* ⚠️ DUAS variáveis, e não uma: `--champ-d0` é o tamanho ESCOLHIDO por modelo e forma de tela (uma
+   fonte só), `--champ-d` é o que o `.cp` de fato lê. A equipe campeã redefine o segundo em função do
+   primeiro — `--champ-d:calc(var(--champ-d)*.62)` seria ciclo e a declaração inteira cairia. */
+#s-round{--champ-d:var(--champ-d0)}
 #s-round .champ{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;margin:2px 0 6px}
 /* o canvas transborda o bloco em 132%, ou seja 16% para cada lado: sem esta folga o disco pousa em cima
    do próprio nome, que é a linha que a tela existe para mostrar */
@@ -1219,7 +1223,7 @@ body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(sa
    O pódio de sempre, com o degrau do meio em tamanho de campeão. Assim o campeão aparece UMA vez —
    antes ele estava no degrau, na faixa acima dele e num dos cartões de destaque, três vezes e nenhuma
    grande. As regras de `.podium` lá do topo continuam valendo para o resto; aqui só o que muda.  */
-#s-round[data-style="podio"]{--champ-d:230px}
+#s-round[data-style="podio"]{--champ-d0:230px}
 #s-round .podium.v2{align-items:flex-end;gap:6px;margin:6px 0 8px}
 #s-round .podium.v2 .step{position:relative}
 #s-round .podium.v2 .step.p1{flex:1.5 1 0;max-width:none;z-index:2}
@@ -1239,7 +1243,7 @@ body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(sa
 /* ── MODELO 2: CINEMA ────────────────────────────────────────────────────────────────────────────
    A tela é do vencedor. O pódio inteiro competiria com ele, então 2º e 3º viram duas fichas
    pequenas em linha, e os quatro destaques se comprimem numa faixa de chips.  */
-#s-round[data-style="cinema"]{--champ-d:340px}
+#s-round[data-style="cinema"]{--champ-d0:340px}
 #s-round[data-style="cinema"] .dead-title{font-size:clamp(24px,5vmin,40px)}
 #s-round .vices{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;margin:8px 0 2px}
 #s-round .vice{position:relative;display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:8px;
@@ -1261,7 +1265,7 @@ body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(sa
    O relatório da partida: campeão e a ficha dele à esquerda, os cinco maiores e os quatro destaques
    à direita. É o único modelo em que se compara — a barra diz "ganhou por QUANTO", que nem o pódio
    nem a faixa dizem.  */
-#s-round[data-style="dossie"]{--champ-d:240px}
+#s-round[data-style="dossie"]{--champ-d0:240px}
 #s-round[data-style="dossie"] .cp-ficha{grid-template-columns:repeat(2,1fr)}
 #s-round .dossie{display:grid;grid-template-columns:minmax(0,44%) minmax(0,1fr);gap:14px;align-items:start;width:100%;margin:4px 0 2px}
 #s-round .dossie .champ{margin:0}
@@ -1308,15 +1312,15 @@ body[data-reduce="1"] #s-round .bar .br-trilho i{animation:none}
 /* ── FORMAS DE TELA ──────────────────────────────────────────────────────────────────────────────
    O campeão grande é o ponto da tela, mas ele não pode empurrar os botões de saída para fora da
    janela: na gaveta e no celular em pé ele encolhe, e o dossiê vira uma coluna só.  */
-body[data-shell="rail"] #s-round[data-style="podio"]{--champ-d:170px}
-body[data-shell="rail"] #s-round[data-style="cinema"]{--champ-d:220px}
-body[data-shell="rail"] #s-round[data-style="dossie"]{--champ-d:190px}
-body[data-mode="portrait"] #s-round[data-style="podio"]{--champ-d:150px}
-body[data-mode="portrait"] #s-round[data-style="cinema"]{--champ-d:230px}
-body[data-mode="portrait"] #s-round[data-style="dossie"]{--champ-d:190px}
-body[data-mode="landscape"] #s-round[data-style="podio"]{--champ-d:150px}
-body[data-mode="landscape"] #s-round[data-style="cinema"]{--champ-d:190px}
-body[data-mode="landscape"] #s-round[data-style="dossie"]{--champ-d:170px}
+body[data-shell="rail"] #s-round[data-style="podio"]{--champ-d0:170px}
+body[data-shell="rail"] #s-round[data-style="cinema"]{--champ-d0:220px}
+body[data-shell="rail"] #s-round[data-style="dossie"]{--champ-d0:190px}
+body[data-mode="portrait"] #s-round[data-style="podio"]{--champ-d0:150px}
+body[data-mode="portrait"] #s-round[data-style="cinema"]{--champ-d0:230px}
+body[data-mode="portrait"] #s-round[data-style="dossie"]{--champ-d0:190px}
+body[data-mode="landscape"] #s-round[data-style="podio"]{--champ-d0:150px}
+body[data-mode="landscape"] #s-round[data-style="cinema"]{--champ-d0:190px}
+body[data-mode="landscape"] #s-round[data-style="dossie"]{--champ-d0:170px}
 body[data-mode="portrait"] #s-round .dossie,body[data-mode="landscape"] #s-round .dossie{grid-template-columns:1fr}
 body[data-shell="rail"] #s-round .dossie{grid-template-columns:1fr}
 body[data-mode="portrait"] #s-round .vices,body[data-shell="rail"] #s-round .vices{grid-template-columns:1fr}
@@ -2030,3 +2034,32 @@ body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:non
 #s-modes .modes .own-row{gap:5px;flex-wrap:wrap}
 #s-modes .modes .own-priv{margin:0}
 #s-modes .modes .chip-btn{padding:5px 9px}
+
+/* ── A EQUIPE CAMPEÃ INTEIRA (ui/Round.jsx) ──────────────────────────────────────────────────────
+   Vitória de esquadrão anunciava um vencedor só: `champTeam` chegava null porque a linha do placar
+   perdia o `team` no merge do servidor, e mesmo com ele o bloco desenhava um planeta. Agora entram
+   todos, lado a lado — e os discos encolhem por `data-n`, senão dois de 340 px não cabem na coluna do
+   dossiê e três não cabem em lugar nenhum. A coroa passa a ser do CONJUNTO, no topo da linha. */
+#s-round .champ.time[data-n="2"]{--champ-d:calc(var(--champ-d0) * .66)}
+#s-round .champ.time[data-n="3"]{--champ-d:calc(var(--champ-d0) * .5)}
+#s-round .champ.time[data-n="4"]{--champ-d:calc(var(--champ-d0) * .42)}
+#s-round .ct-linha{position:relative;display:flex;align-items:flex-start;justify-content:center;
+  gap:calc(var(--champ-d0,240px) * .04);width:100%;padding-top:calc(var(--champ-d0,240px) * .1)}
+#s-round .ct-linha>.cp-coroa{top:0;font-size:calc(var(--champ-d0,240px) * .15);z-index:2}
+/* ⚠️ LARGURA FIXA por membro, e não `auto`: sem ela quem manda no `.ct-m` é o NOME, e o `.cp` de
+   dentro (que é `min(--champ-d,100%)`) encolhe junto — dois planetas da mesma equipe saíam de
+   tamanhos diferentes só porque um nick era mais curto que o outro, e as legendas desalinhavam. */
+#s-round .ct-m{display:flex;flex-direction:column;align-items:center;gap:0;min-width:0;flex:0 0 auto;
+  width:min(var(--champ-d,150px),100%)}
+#s-round .ct-nome{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.95em;line-height:1.15}
+#s-round .ct-m.me .ct-nome{color:var(--accent,#ffc22e)}
+#s-round .ct-massa{font-style:normal;font-size:.8em;opacity:.8;font-variant-numeric:tabular-nums}
+#s-round .ct-nome .lvl{margin-right:4px}
+/* no dossiê a equipe divide a coluna estreita com a ficha: ali os discos encolhem mais um degrau */
+#s-round[data-style="dossie"] .champ.time[data-n="2"]{--champ-d:calc(var(--champ-d0) * .58)}
+#s-round[data-style="dossie"] .champ.time[data-n="3"]{--champ-d:calc(var(--champ-d0) * .44)}
+#s-round[data-style="dossie"] .champ.time[data-n="4"]{--champ-d:calc(var(--champ-d0) * .36)}
+/* pódio SIMPLES (vitória de equipe): o 1º ainda é o maior degrau, mas sem coroa nem glória — quem
+   celebra ali é o bloco do esquadrão, logo acima */
+#s-round .podium.v2.simples .p1 .st-disco{width:104px;height:104px}
+#s-round .podium.v2.simples .step.p1{flex:1.2 1 0}

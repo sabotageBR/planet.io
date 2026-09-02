@@ -1220,8 +1220,8 @@ export class Room{
     const k=this._rosterKey(gp),massa=Math.round(this.sim.world.massOf(gp.slot)||0);
     let r=this.roster.get(k);
     if(!r){r={key:k,name:gp.name,registered:!!gp.registered,skinId:gp.skinId|0,level:gp.level|0,isBot:!!gp.isBot,
-      lives:0,kills:0,deaths:0,food:0,score:0,mass:0,slot:gp.slot,left:false};this.roster.set(k,r);}
-    r.name=gp.name;r.skinId=gp.skinId|0;r.level=gp.level|0;r.slot=gp.slot;
+      lives:0,kills:0,deaths:0,food:0,score:0,mass:0,slot:gp.slot,left:false,team:gp.team<0?null:gp.team};this.roster.set(k,r);}
+    r.name=gp.name;r.skinId=gp.skinId|0;r.level=gp.level|0;r.slot=gp.slot;r.team=gp.team<0?null:gp.team;
     r.lives++;r.kills+=gp.kills+gp.botKills;r.deaths+=gp.deaths|0;r.food+=gp.food|0;
     r.score+=gp.score|0;if(massa>r.mass)r.mass=massa;
     return r;}
@@ -1240,6 +1240,11 @@ export class Room{
         kills:Math.max(r.kills,vivo?b.kills:0),deaths:r.deaths,food:r.food,
         kd:kdOf(Math.max(r.kills,vivo?b.kills:0),r.deaths),level:r.level,
         skinId:r.skinId,registered:r.registered,isBot:this.mode.anonBots?false:r.isBot,
+        // ⚠️ A EQUIPE TEM QUE VIR NA LINHA. `Sim.endRound` já a mandava, mas quem monta o placar que vai
+        // ao cliente é ESTE merge — e ele a perdia. Com isso `champion.team` era sempre `undefined`,
+        // `champTeam` saía null em TODA vitória de esquadrão, e a tela final anunciava um vencedor só:
+        // quem venceu em dupla via o companheiro sumir do lugar onde ele mais devia estar.
+        team:r.team==null?(vivo&&b.team!=null?b.team:null):r.team,
         left:r.left,lives:r.lives};
       (vivo?vivos:resto).push(linha);}
     vivos.sort((a,b)=>b.mass-a.mass);resto.sort((a,b)=>b.score-a.score);

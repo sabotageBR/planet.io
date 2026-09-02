@@ -1642,6 +1642,29 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `mostrarTela`, que sob esse sufixo também DESLIGA a abertura — com ela no ar a sonda mediria o
   overlay) e espera 900 ms em vez de 420: a cascata de entrada acaba em 760 ms, e medir no meio dela lê
   um `translateY` de transição como transbordo. São 504 combinações.
+- **VITÓRIA DE ESQUADRÃO MOSTRA O ESQUADRÃO** (`Room._rosterFold`/`_mergeBoard`, `Champ` com `time` em
+  `ui/Round.jsx`): quem vencia um Battle Royale em dupla via a tela final anunciar UM vencedor, e o
+  companheiro sumia justamente do lugar onde ele mais devia estar. A causa era muda e ficou anos no ar:
+  `Sim.endRound` SEMPRE mandou `team` na linha do placar, mas quem monta o placar que vai ao cliente é
+  o `_mergeBoard` da Room — e ele reconstrói as linhas a partir do roster, onde `team` não existia.
+  Resultado: `champion.team` era `undefined`, `champTeam` saía **null em toda vitória de equipe**, e
+  nem o subtítulo nem o bloco do campeão sabiam que havia uma equipe. Nada quebrava, nada logava.
+  Agora o roster guarda `team` (então vale também para quem saiu antes do fim) e a linha o carrega.
+  A EQUIPE INTEIRA sai do próprio `board` (`filter(b=>b.team===champTeam)`), sem um campo novo no
+  `roundEnd`, e o companheiro que morreu antes continua na lista com massa 0 — ele ganhou junto.
+  ⚠️ Os discos encolhem por `data-n` (dois de 340 px não cabem na coluna do dossiê), e isso pediu DUAS
+  variáveis: `--champ-d0` é o tamanho escolhido por modelo e forma de tela, `--champ-d` é o que o `.cp`
+  lê. `--champ-d:calc(var(--champ-d)*.66)` seria ciclo e a declaração inteira cairia em silêncio.
+  ⚠️ `.ct-m` tem LARGURA FIXA: com `auto`, quem manda na caixa é o NOME, e o `.cp` de dentro (que é
+  `min(--champ-d,100%)`) encolhe junto — dois planetas da mesma equipe saíam de tamanhos diferentes só
+  porque um nick era mais curto.
+  ⚠️ A ficha SOMA a equipe, menos o K/D: ele é razão, não soma — ali vale o total de abates sobre o
+  total de mortes.
+  ⚠️ No modelo `podio` o degrau do 1º perde coroa e glória quando a vitória é de equipe (`simples`):
+  o bloco do esquadrão já está logo acima, e sem isso as mesmas duas pessoas apareciam duas vezes na
+  mesma tela, com duas coroas. Os degraus ficam — eles são "os maiores PLANETAS", que segue verdade.
+  ⚠️ O teste (`server/test/br.test.js`) compara por SLOT e não por nick: o nick nunca vem do cliente
+  (sai da conta, e um token de teste sem conta ganha um "Viajante-NNNN").
 - **A TELA DE MORTE TAMBÉM TEM TRÊS MODELOS, E QUEM TE MATOU GANHOU UM PLANETA** (`ui/Dead.jsx`, o
   bloco "TELA DE MORTE v2" de `styles/ui.css`, pref `deadStyle`): quem te matou era um NOME numa
   pílula preta — a informação mais importante da tela era a mais pobre, sem planeta, sem tamanho e sem

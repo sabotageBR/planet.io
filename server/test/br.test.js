@@ -235,6 +235,31 @@ test('equipe: membros do mesmo party caem na MESMA equipe e os bots fecham as va
   const linha=pl.find(x=>x.slot===rb.slot);assert.equal(linha.team,ra.team,'o PLAYERS leva a equipe (é como o cliente pinta o aliado)');
   a.close();b.close();
 });
+test('equipe: o fim da rodada leva a EQUIPE inteira, não só o maior planeta dela',async()=>{
+  // ⚠️ Este é o teste do defeito mais mudo que a tela final teve: `Sim.endRound` sempre mandou `team` na
+  // linha, mas quem monta o placar que vai ao cliente é `Room._mergeBoard` — e ele o perdia. `champTeam`
+  // saía null em TODA vitória de esquadrão e a tela anunciava um vencedor só, com o companheiro sumindo
+  // justamente do lugar onde ele mais devia estar. Nada quebrava, nada logava.
+  const p=await post('/api/party',{mode:MODE.BR,teamSize:2,nick:'Chefe'});
+  const code=p.body.party.code;
+  assert.equal((await post(`/api/party/${code}/join`,{nick:'Parça'},{tok:'pt_parca'})).status,200);
+  const a=new C(wsUrl),b=new C(wsUrl);await a.open();await b.open();
+  const ra=await a.join({nick:'Chefe',mode:MODE.BR,teamSize:2,party:code,room:newRoom()});
+  const rb=await b.join({nick:'Parça',mode:MODE.BR,teamSize:2,room:ra.code,party:code});
+  assert.ok(ra.team>=0&&ra.team===rb.team,'os dois na mesma equipe');
+  const room=roomOf(ra.code);room.lobbyUntil=room.sim.tick+60;room.lobbyStart=room.sim.tick;
+  await a.until(()=>a.all('phase').find(x=>x.phase==='live'),8000,'live');
+  room.endRound('time');
+  const fim=await a.until(()=>a.all('roundEnd')[0],4000,'roundEnd');
+  const meus=fim.board.filter(l=>l.team===ra.team);
+  assert.ok(meus.length>=2,`a equipe inteira está no placar (${meus.length} linhas)`);
+  // ⚠️ pelos SLOTS, não pelos nicks: o nick nunca vem do cliente (ele sai da conta, e um token de teste
+  // sem conta ganha um "Viajante-NNNN"). O que importa é que as DUAS pessoas da equipe estão no placar.
+  assert.ok(meus.some(l=>l.slot===ra.slot)&&meus.some(l=>l.slot===rb.slot),'os dois membros, não só o maior planeta');
+  assert.ok(fim.board.every(l=>l.team!==undefined),'toda linha diz a que equipe pertence');
+  assert.equal(typeof fim.champTeam,'number','champTeam é a equipe campeã, não null');
+  a.close();b.close();
+});
 test('party: só o líder começa, sair como líder dissolve e código inválido é 404',async()=>{
   const p=await post('/api/party',{mode:MODE.BR,teamSize:2,nick:'L'});
   const code=p.body.party.code;
