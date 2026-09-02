@@ -2063,3 +2063,5 @@ body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:non
    celebra ali é o bloco do esquadrão, logo acima */
 #s-round .podium.v2.simples .p1 .st-disco{width:104px;height:104px}
 #s-round .podium.v2.simples .step.p1{flex:1.2 1 0}
+/* o rótulo do ranking quando a equipe campeã está logo acima (ver ui/Round.jsx) */
+#s-round .ph.pos-rest{width:100%;margin:6px 0 0;font-size:.68em;letter-spacing:.12em;opacity:.72}

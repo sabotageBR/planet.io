@@ -94,7 +94,7 @@ export default {
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— el universo colapsó en un punto; la próxima galaxia ya está naciendo —",
   champion: "CAMPEÓN DE LA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar ahora", playersWord: "en el marcador", posWord: "#",
   podium: "PODIO", restOfBoard: "Y el resto de la galaxia",
-  recordWord: "récord", newRecord: "¡RÉCORD!", leadersNow: "QUIÉN VA DELANTE", timesBigger: "{n}× tú",
+  bestOfRest: "LOS MÁS GRANDES DESPUÉS DE ELLA", recordWord: "récord", newRecord: "¡RÉCORD!", leadersNow: "QUIÉN VA DELANTE", timesBigger: "{n}× tú",
   lastAliveSub: "— el gas se cerró y quedó un planeta en pie —", skipHint: "clic para saltar",
   boardTop: "LOS MÁS GRANDES DE LA SALA", champCrown: "🏆",
   offlineNote: "Sin servidor: jugando en modo local",

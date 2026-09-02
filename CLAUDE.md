@@ -1684,7 +1684,16 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   total de mortes.
   ⚠️ No modelo `podio` o degrau do 1º perde coroa e glória quando a vitória é de equipe (`simples`):
   o bloco do esquadrão já está logo acima, e sem isso as mesmas duas pessoas apareciam duas vezes na
-  mesma tela, com duas coroas. Os degraus ficam — eles são "os maiores PLANETAS", que segue verdade.
+  mesma tela, com duas coroas.
+  ⚠️ **E O RANKING PARA DE REPETIR QUEM JÁ ESTÁ EM CIMA**: no `podio` e no `cinema` os membros da
+  equipe campeã saem dos degraus/fichas, que passam a ser "os maiores DEPOIS dela" (`LB.bestOfRest`),
+  e a tabela do resto começa depois de tudo o que já foi desenhado — `jaVi`, um conjunto de ids, no
+  lugar do `board.slice(corte)`. ⚠️ A posição vem de `b.pos` (o `placement` do servidor), NUNCA do
+  índice do degrau: renumerar a partir de 1 poria um "1º" embaixo de quem não ganhou a partida. E o
+  rótulo só aparece com equipe, porque um pódio com "3º" no degrau maior sem uma linha explicando é
+  enigma, não informação. ⚠️ O `dossie` fica de fora do filtro: lá o bloco de cima é "OS MAIORES DA
+  SALA", um ranking geral em barras — ali o campeão no topo é a informação, não repetição. Sem equipe,
+  as três linhas colapsam no `board.slice(corte)` de sempre.
   ⚠️ O teste (`server/test/br.test.js`) compara por SLOT e não por nick: o nick nunca vem do cliente
   (sai da conta, e um token de teste sem conta ganha um "Viajante-NNNN").
 - **A TELA DE MORTE TAMBÉM TEM TRÊS MODELOS, E QUEM TE MATOU GANHOU UM PLANETA** (`ui/Dead.jsx`, o

@@ -94,7 +94,7 @@ export default {
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— the universe collapsed into a point; the next galaxy is already being born —",
   champion: "ROOM CHAMPION", nextRoom: "next room", enterNow: "🚀 Join now", playersWord: "on the board", posWord: "#",
   podium: "PODIUM", restOfBoard: "And the rest of the galaxy",
-  recordWord: "record", newRecord: "NEW RECORD!", leadersNow: "WHO IS AHEAD NOW", timesBigger: "{n}× you",
+  bestOfRest: "THE BIGGEST AFTER THEM", recordWord: "record", newRecord: "NEW RECORD!", leadersNow: "WHO IS AHEAD NOW", timesBigger: "{n}× you",
   lastAliveSub: "— the gas closed in and one planet was left standing —", skipHint: "click to skip",
   boardTop: "THE BIGGEST IN THE ROOM", champCrown: "🏆",
   offlineNote: "No server: playing in local mode",

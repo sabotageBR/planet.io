@@ -88,12 +88,16 @@ const Podio = ({ board, mine, LB, simples = false }) => <div className={"podium 
     <div className={herói ? "cp" : "st-disco"}>{herói ? <><i className="cp-gloria" /><i className="cp-halo" /></> : null}<Planeta b={b} size={herói ? 360 : 160} cls="" />{herói ? <i className="cp-coroa">{LB.champCrown}</i> : null}</div>
     <b>{b ? b.name : "—"}</b>
     <i>{b ? fmt(b.mass) : "—"}</i>
-    <div className="base">{ord(i + 1)}</div>
+    {/* ⚠️ A POSIÇÃO É A DO PLACAR (`pos`), não o índice do degrau: numa vitória de equipe estes três
+        são os melhores DEPOIS dela, e renumerá-los a partir de 1 poria um "1º" embaixo de quem não
+        ganhou a partida. Sem equipe, `pos` é o próprio índice+1 e nada muda. */}
+    <div className="base">{ord(b ? b.pos || i + 1 : i + 1)}</div>
   </div>; })}</div>;
-/** 2º e 3º como fichas lado a lado (modelo cinema): o pódio inteiro competiria com o campeão. */
-const Vices = ({ board, mine }) => <div className="vices">{[1, 2].map(i => { const b = board[i];
+/** 2º e 3º como fichas lado a lado. ⚠️ `de` é 1 no normal (o 1º está no bloco do campeão) e 0 quando
+    quem está em cima é a EQUIPE — aí a lista já vem sem ela e o primeiro item é o melhor de fora. */
+const Vices = ({ board, mine, de = 1 }) => <div className="vices">{[de, de + 1].map(i => { const b = board[i];
   return <div key={i} className={"vice" + (b && b.slot === mine ? " me" : "") + (b ? "" : " empty")}>
-    <span className="vc-pos">{ord(i + 1)}</span>
+    <span className="vc-pos">{ord(b ? b.pos || i + 1 : i + 1)}</span>
     <div className="vc-disco"><Planeta b={b} size={160} cls="" /></div>
     <b>{b ? b.name : "—"}</b>
     <em>{b ? fmt(b.mass) : "—"}</em>
@@ -145,7 +149,7 @@ export default function Round({ on }) {
   }, [on, r, intro, prontoAt]);
   const board = useMemo(() => (r && r.board) || [], [r]);
   if (!on || !r) return <div className={"screen" + (on ? " on" : "")} id="s-round" />;
-  const mine = r.mySlot, corte = CORTE[estilo], rest = board.slice(corte);
+  const mine = r.mySlot, corte = CORTE[estilo];
   const br = r.reason === "lastAlive";
   // O CAMPEÃO é quem tinha a maior massa no instante do BIG CRUNCH (o servidor ordena os VIVOS e manda
   // `board[0]`); no Battle Royale é quem sobrou. Ele aparece grande nos TRÊS modelos — inclusive no BR,
@@ -158,6 +162,21 @@ export default function Round({ on }) {
   // lista, com massa 0: ele ganhou a partida junto.
   const equipe = r.champTeam != null ? board.filter(b => b.team === r.champTeam).sort((a, b) => b.mass - a.mass) : null;
   const time = equipe && equipe.length > 1 ? equipe : null;
+  // ── QUEM JÁ APARECEU EM CIMA NÃO APARECE DE NOVO ──────────────────────────────────────────────
+  // Numa vitória de esquadrão o bloco da equipe já mostrou os membros, e o pódio (ou as fichas de
+  // vice) os repetia logo abaixo — as mesmas duas pessoas duas vezes, coladas. Aqui o topo passa a ser
+  // "os maiores DEPOIS da equipe campeã", com a posição REAL de cada um, e a tabela do resto começa
+  // depois de tudo o que já foi desenhado.
+  // ⚠️ O dossiê fica de fora: lá o bloco de cima é "OS MAIORES DA SALA", um ranking geral em barras —
+  // ali o campeão no topo é a informação, não repetição.
+  // ⚠️ Sem equipe (`time` null) as três linhas abaixo colapsam no `board.slice(corte)` de sempre.
+  const idDe = b => b.key || "s" + b.slot;
+  const posto = board.map((b, i) => ({ ...b, pos: b.placement || i + 1 }));
+  const filtra = time && estilo !== "dossie";
+  const fora = filtra ? posto.filter(b => b.team !== r.champTeam) : posto;
+  const topo = fora.slice(0, corte);
+  const jaVi = new Set(filtra ? [...time.map(idDe), ...topo.map(idDe)] : topo.map(idDe));
+  const rest = posto.filter(b => !jaVi.has(idDe(b)));
   const titulo = br ? LB.lastAliveTitle : LB.roundTitle;
   const sub = br ? LB.lastAliveSub : LB.roundSub;
   // Numa vitória de ESQUADRÃO o planeta grande é o último de pé DAQUELA equipe, e chamá-lo de "campeão
@@ -191,17 +210,21 @@ export default function Round({ on }) {
       {/* No pódio a equipe entra ACIMA dos degraus: eles continuam sendo "os maiores PLANETAS", que é
           verdade nos dois modos — o que faltava era dizer quem ganhou a partida. */}
       {time ? <Champ b={champ} mine={mine} LB={LB} kicker={kicker} time={time} /> : null}
-      <Podio board={board} mine={mine} LB={LB} simples={!!time} />
+      {/* ⚠️ O rótulo só existe quando a equipe está em cima: aí os degraus mostram 3º·4º·5º (a posição
+          REAL), e um pódio com "3º" no degrau maior sem uma linha explicando é enigma, não informação. */}
+      {time ? <div className="ph pos-rest">{LB.bestOfRest}</div> : null}
+      <Podio board={topo} mine={mine} LB={LB} simples={!!time} />
       {d ? <Awards d={d} mine={mine} LB={LB} /> : null}
     </> : estilo === "cinema" ? <>
       <Champ b={champ} mine={mine} LB={LB} kicker={kicker} time={time} ficha />
-      <Vices board={board} mine={mine} />
+      {time ? <div className="ph pos-rest">{LB.bestOfRest}</div> : null}
+      <Vices board={topo} mine={mine} de={time ? 0 : 1} />
       {d ? <Awards d={d} mine={mine} LB={LB} mod="faixa" /> : null}
     </> : <>
       <div className="dossie">
         <Champ b={champ} mine={mine} LB={LB} kicker={kicker} time={time} ficha />
         <div className="ds-col">
-          <Barras board={board} mine={mine} LB={LB} />
+          <Barras board={posto} mine={mine} LB={LB} />
           {d ? <Awards d={d} mine={mine} LB={LB} mod="linhas" /> : null}
         </div>
       </div>

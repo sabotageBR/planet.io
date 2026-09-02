@@ -115,7 +115,7 @@ export default {
   champion: "CAMPEÃO DA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar agora", playersWord: "no placar", posWord: "#",
   podium: "PÓDIO", restOfBoard: "E o resto da galáxia",
   // ── TELA DE MORTE v2 ──
-  recordWord: "recorde", newRecord: "RECORDE!", leadersNow: "QUEM ESTÁ NA FRENTE", timesBigger: "{n}× você",
+  bestOfRest: "OS MAIORES DEPOIS DELA", recordWord: "recorde", newRecord: "RECORDE!", leadersNow: "QUEM ESTÁ NA FRENTE", timesBigger: "{n}× você",
   // ── FIM DE RODADA v2: a abertura, o campeão grande e os três modelos de placar ──
   lastAliveSub: "— o gás fechou e sobrou um planeta de pé —", skipHint: "clique para pular",
   boardTop: "OS MAIORES DA SALA", champCrown: "🏆",
