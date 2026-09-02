@@ -239,7 +239,9 @@ resposta chegando e o header faltando); CSP não deixa a requisição nascer. É
 falhar e levantar `servidorFora` / `ui/Offline.jsx` já na tela inicial.
 
 ⚠️ **Nada no nosso código ou no nosso servidor levanta essa CSP.** A liberação é pedida em
-**Settings → Custom Content Security Policy** da página do jogo, pedindo os dois:
+**Settings → CSP da página DO JOGO** (é auto-serviço: *"Go to Settings → CSP on your game in Poki for
+Developers and request the resource update yourself"*, com *"the exact link(s) and a short explanation
+of how they're used"*), pedindo os dois:
 
 ```
 https://warspace.io      (fetch: /api/*)
@@ -254,6 +256,20 @@ extensão caía no `try_files` e respondia o JOGO com 200, a mesma armadilha do 
 
 Depois de aprovado, eles pedem **reenviar o build para limpar o cache** — é o mesmo
 `portal/warspace-poki.zip`, sem gerar nada novo.
+
+⚠️ **ESSA PÁGINA NÃO EXISTE DESDE O COMEÇO, E É AÍ QUE SE PERDE TEMPO PROCURANDO.** O painel
+(`app.poki.dev`) libera as seções por NÍVEL, e o jogo novo entra no **Level 1 — Add your game** com a
+faixa *"Content moderation pending"* (checagem inicial da equipe de conteúdo, só em dia útil). Nesse
+estado o menu do jogo tem **Overview e Versions e mais nada** — não há *Settings*, então não há aba
+CSP, e `…/games/<gameId>/settings` na barra de endereço **redireciona de volta para o Overview**
+(medido). Os cinco níveis são: 1 Add your game · 2 Get player feedback · 3 Player Fit Test · 4 Poki
+Web Fit Test & Game Review · 5 Final Poki Review; a moderação de conteúdo roda em TODA versão nova e
+o jogo *"cannot proceed to testing until it's approved"*. Ou seja: **primeiro sai a moderação, depois
+aparece o Settings, e só então dá para pedir a CSP** — e é por isso que o jogo em revisão fica
+mostrando `servidorFora` sem que exista botão nenhum para consertar isso naquele momento.
+
+⚠️ Consequência prática para o CALENDÁRIO: o multiplayer da Poki **não funciona no Level 1**, por
+construção. Não adianta reenviar zip nem mexer no nosso CORS — o que destrava é a fila deles.
 
 ⚠️ **Quem confirma isso é a ferramenta DELES**, e é onde se verifica de novo sem chutar:
 `https://inspector.poki.dev/?game=poki-<buildId>`. Com o jogo travado pela CSP o Inspector mostra,
