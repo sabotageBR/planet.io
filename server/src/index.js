@@ -63,8 +63,13 @@ export async function startServer(overrides={}){
     // não usa `force`: se `ok()` recusar porque a fala está ocupando o teto, ele tenta no próximo
     // intervalo — a fala é do INSTANTE e tem preferência, um apelido pode esperar 20 s.
     botNames=createBotNames({llm,log,metrics});botNames.start();
-    llm.warmup().catch(()=>{});
-    log.info(`fala dos bots por LLM: ${llm.model} em ${cfg.ollamaUrl} (até ${cfg.ollamaMaxInflight} ao mesmo tempo)`);}
+    // ⚠️ AQUECER DEPOIS DOS TUNABLES, senão aquece o modelo ERRADO: o do env, enquanto o painel já escolheu
+    // outro no banco. Medido em produção — "ollama pronto: gpt-oss" com `BOT_LLM.MODELO = qwen` aplicado 40 ms
+    // antes, e aí a primeira fala paga os ~27 s de load que este aquecimento existe para pagar sozinho.
+    // O `Promise.resolve` cobre o shard de jogo puro (`role='game'`), que não monta a API e não tem promessa.
+    Promise.resolve(persistApi&&persistApi.tunablesReady)
+      .then(()=>{log.info(`fala dos bots por LLM: ${llm.model} em ${cfg.ollamaUrl} (até ${cfg.ollamaMaxInflight} ao mesmo tempo)`);
+        return llm.warmup();}).catch(()=>{});}
   else if(game&&cfg.ollamaUrl)log.info('BOT_CHAT_LLM desligado: a fala dos bots usa o repertório fixo');
   // ── salas + laço ──
   const scheduler=game?new Scheduler({metrics,log}):null;

@@ -46,7 +46,11 @@ export function createApi({db,log,config,persist=null,limiter=createRateLimiter(
   mountAuth(router,deps);mountMe(router,deps);mountSkins(router,deps);mountRanking(router,deps);mountAvatar(router,deps);mountAdmin(router,deps);
   // Parâmetros salvos entram ANTES da primeira sala existir; depois o poll reconcilia. E o `ADMIN_EMAILS`
   // é reconciliado no boot — SÓ PROMOVE: rebaixar por ConfigMap tranca o admin para fora por um typo.
-  tunables.load().then(n=>{if(n)log.info(`tunables: ${n} parâmetro(s) do painel aplicados`);tunables.start();}).catch(()=>{});
+  // ⚠️ A PROMESSA É EXPOSTA (`handler.tunablesReady`) porque alguém no boot precisa ESPERAR por ela: o
+  // aquecimento do Ollama. O modelo virou tunable, então aquecer antes deste `await` aquece o do env e a
+  // primeira fala paga os ~27 s de load do modelo que o painel realmente escolheu — exatamente o que o
+  // warmup existe para evitar. Visto no log de produção: aquecido `gpt-oss`, em uso `qwen`.
+  const tunablesReady=tunables.load().then(n=>{if(n)log.info(`tunables: ${n} parâmetro(s) do painel aplicados`);tunables.start();}).catch(()=>{});
   if(config.adminEmails&&config.adminEmails.length)users.promoteByEmails(config.adminEmails)
     .then(n=>{if(n)log.info(`admin: ${n} conta(s) promovida(s) por ADMIN_EMAILS`);
       else log.warn(`admin: ADMIN_EMAILS não promoveu ninguém (nenhuma conta REGISTRADA com esses e-mails)`);})
@@ -54,5 +58,6 @@ export function createApi({db,log,config,persist=null,limiter=createRateLimiter(
   const handler=(req,res)=>router.handle(req,res);
   handler.healthFields=()=>healthFields({db,persist});
   handler.limiter=limiter;handler.repos={users,tokens,ledger,skins,matches,achievements,ranking,avatars,settings,audit,tunables};handler.router=router;
+  handler.tunablesReady=tunablesReady;
   return handler;
 }

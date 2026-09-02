@@ -555,6 +555,11 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   validação do PUT. `Restaurar` volta ao padrão do CÓDIGO, nunca ao env.
   ⚠️ Trocar **não reaquece sozinho**: o modelo novo paga o load (~27 s) na primeira fala, e nesse
   meio-tempo a sala usa o repertório fixo — o mesmo chão de sempre, não um segundo comportamento.
+  ⚠️ **O AQUECIMENTO ESPERA OS TUNABLES** (`handler.tunablesReady`, exposto por `api/index.js`): o
+  `llm.warmup()` do boot corria solto e aquecia o modelo do ENV enquanto o banco já mandava outro — visto
+  no log de produção, "ollama pronto: gpt-oss" com `BOT_LLM.MODELO = qwen` aplicado 40 ms antes. O
+  aquecimento existe justamente para a primeira fala do dia não pagar os ~27 s de load; aquecendo o modelo
+  errado ele paga do mesmo jeito. `Promise.resolve(...)` cobre o shard `role='game'`, que não monta a API.
   ⚠️ **`think:false` NÃO CALA TODO MUNDO** (`BOT_LLM.THINK`, o interruptor do painel; `perfil()` em
   `llm/ollama.js`): o gpt-oss é raciocinador nativo e, medido, devolve `content` **VAZIO** mesmo com
   `num_predict` folgado (198 tokens) — ele ignora o pedido, o raciocínio come a cota e a fala nem começa.
