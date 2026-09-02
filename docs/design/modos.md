@@ -425,6 +425,8 @@ DITO, responder a quem chama pelo nome e falar no idioma da conversa.
 
 - **Onde**: `server/src/llm/ollama.js` (cliente HTTP, sem dependência nova) e `server/src/rooms/botChat.js`
   (prompt, limpeza, detecção de menção). Ligados por `OLLAMA_URL` / `OLLAMA_MODEL` / `BOT_CHAT_LLM`.
+  ⚠️ `OLLAMA_MODEL` é só a SEMENTE do boot: qual modelo atende é o tunable `BOT_LLM.MODELO` (padrão
+  `gpt-oss:20b`), trocável no /admin sem reiniciar pod — ver `docs/spec/admin.md`.
 - **Nunca bloqueia o tick**: `botChatTick` roda dentro do `step()` da sala e o Scheduler percorre todas as
   salas do processo no mesmo laço de 60 Hz. A geração é disparada e esquecida; quem publica é o callback,
   que revalida tudo (sala viva, fase, bot vivo, socket aberto) e DESCARTA o que passou de `BOT_LLM.STALE_MS`.

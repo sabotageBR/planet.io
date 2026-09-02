@@ -31,7 +31,9 @@ data:
   # fala dos bots pela LLM: o Ollama vive fora do cluster, na 192.168.8.251 (rede roteada até os nós).
   # Fora do ar, o chat cai sozinho no repertório fixo — nada aqui é obrigatório para o jogo subir.
   OLLAMA_URL: "http://192.168.8.251:11434"
-  OLLAMA_MODEL: "qwen3.6:35b-a3b"
+  # SEMENTE do boot: o modelo é tunable (/admin → Parâmetros → Fala dos bots), então trocá-lo aqui só
+  # decide com o que os pods SOBEM — o que estiver em admin_settings ganha 30 s depois.
+  OLLAMA_MODEL: "gpt-oss:20b"
   OLLAMA_MAX_INFLIGHT: "4"   # gerações simultâneas por PROCESSO; ⚠️ inútil acima do OLLAMA_NUM_PARALLEL da máquina do Ollama
   BOT_CHAT_LLM: "1"
   # Login com Google. O client_id é PÚBLICO por definição (vai no HTML da página), então é ConfigMap

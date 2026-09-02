@@ -134,14 +134,39 @@ test('gerar: o que a LLM devolve ainda passa pela peneira, e sem LLM não sai na
 
 test('cliente: sem URL o Ollama nunca é chamado (é o que mantém os testes e o dev offline)', async () => {
   const {createOllama}=await import('../src/llm/ollama.js');
-  const vazio=createOllama({url:'',model:'m'});
+  const vazio=createOllama({url:''});
   assert.equal(vazio.ok(),false);
   assert.equal(await vazio.chat({system:'s',user:'u'}),null);
   assert.equal(await vazio.warmup(),false);
   // e com URL que não responde: devolve null sem lançar, como o fetchPeerRooms
-  const morto=createOllama({url:'http://127.0.0.1:1',model:'m',timeoutMs:250});
+  const morto=createOllama({url:'http://127.0.0.1:1',timeoutMs:250});
   assert.equal(await morto.chat({system:'s',user:'u'}),null);
   assert.ok(BOT_LLM.TIMEOUT_MS>0&&BOT_LLM.STALE_MS>BOT_LLM.TIMEOUT_MS,'o descarte por idade tem que ser mais frouxo que o timeout');
+});
+
+// ── QUAL MODELO ATENDE: o cliente não fecha o nome no closure ────────────────
+// O painel troca `BOT_LLM.MODELO` em runtime, e o cliente é criado UMA vez no boot: se o modelo estivesse
+// capturado na criação, o /admin diria "salvo" e o servidor continuaria chamando o modelo antigo para
+// sempre — em silêncio, que é o pior jeito de quebrar.
+test('modelo: é lido do tunable a cada chamada, e o env semeia sem sair da lista branca', async () => {
+  const {createOllama,seedModelo}=await import('../src/llm/ollama.js');
+  const {applyTunable,resetTunable,TUNABLE_BY_KEY}=await import('@warspace/shared/tunables.js');
+  const modelo0=BOT_LLM.MODELO,lista0=BOT_LLM.MODELOS.slice();
+  try{
+    const cli=createOllama({url:'http://127.0.0.1:1'});
+    assert.equal(cli.model,BOT_LLM.MODELO);
+    assert.equal(BOT_LLM.MODELO,'gpt-oss:20b','o padrão do código');
+    applyTunable('BOT_LLM.MODELO','qwen3.6:35b-a3b');
+    assert.equal(cli.model,'qwen3.6:35b-a3b','o cliente já criado enxerga a troca');
+    assert.throws(()=>applyTunable('BOT_LLM.MODELO','llama-inventado:1b'),/out_of_range/,'lista fechada');
+    // O env pode nomear um modelo que este código não conhece: ele ENTRA na lista, senão o painel abriria
+    // com um select sem o valor em uso.
+    seedModelo('modelo-do-operador:7b');
+    assert.equal(cli.model,'modelo-do-operador:7b');
+    assert.ok(TUNABLE_BY_KEY.get('BOT_LLM.MODELO').options.some(o=>o.v==='modelo-do-operador:7b'),
+      'as options são a lista por REFERÊNCIA, então o acréscimo vale para o PUT e para o painel');
+    assert.equal(resetTunable('BOT_LLM.MODELO'),modelo0,'"voltar ao padrão" é o do código, nunca o do env');
+  }finally{BOT_LLM.MODELO=modelo0;BOT_LLM.MODELOS.length=0;BOT_LLM.MODELOS.push(...lista0);}
 });
 
 // ── O "THINKING": o que o bot está vivendo entra no prompt ───────────────────

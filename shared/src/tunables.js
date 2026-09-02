@@ -18,7 +18,7 @@
 // rodada. Parametrizar por sala exigiria carregar um objeto de tunables por Room→Sim→World→rules, tocando
 // toda assinatura da física e o predict — não vale por um punhado de números.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,TICK_HZ} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both',type:'num'|'opt',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
@@ -35,6 +35,7 @@ export const GRUPOS=[
   ['perigos','Perigos do mapa'],
   ['zona','Zona (Battle Royale)'],
   ['jogador','Jogador'],
+  ['sala','Salas'],
   ['bots','Fala dos bots'],
 ];
 
@@ -84,14 +85,42 @@ export const TUNABLES=[
   // 'both' fica declarado para o dia em que houver entrega ao cliente — e a rota recusa até lá, em vez de
   // gravar um número que só metade do jogo enxerga.
   num('jogador','PLAYER.MAX_R','Raio máximo de uma peça','px','both',100,2000,10,PLAYER,'MAX_R'),
+  // ── SALAS ──
+  // Quanto dura uma sala do LIVRE, em MINUTOS — que é como a duração é dita em todo o resto do jogo (o dono
+  // de sala escolhe minutos, `roundTicksOf` converte). O admin não tem por que fazer a conta de 60 Hz.
+  // ⚠️ Vale para as salas CRIADAS daí em diante: a que já está rodando fixou a duração no construtor, e
+  // encurtar a rodada de quem está no meio dela terminaria a partida no clique.
+  // ⚠️ Só o LIVRE. No Battle Royale o tempo é a rede de segurança da ZONA (`roundTicksOf` recusa abaixo de
+  // `ZONE_TOTAL_TICKS`), e uma sala que acaba por tempo antes de o círculo fechar é o único jeito de aquele
+  // modo terminar sem ter decidido nada.
+  // ⚠️ O DIA DO CÉU ACOMPANHA: `roundInfo()` manda `roundTicks/ROUND.DAYS`, então dobrar a duração dobra o
+  // dia do relógio do espaço (30 min = 2 dias de 15 min). É consequência declarada, não efeito colateral —
+  // o céu tem que virar um número inteiro de vezes por sala, senão a última troca fica pela metade.
+  num('sala','ROUND.TICKS','Duração da sala no modo Livre','minutos','server',5,120,5,ROUND,'TICKS',
+    {para:m=>Math.round(m*60*TICK_HZ),de:t=>Math.round(t/(60*TICK_HZ))}),
   // ── FALA DOS BOTS ──
   // ⚠️ TAMANHO DA FALA. Os dois tetos não são só peneira: `montaSystem` os DITA ao modelo. Baixá-los aqui
   // encurta a linha gerada de verdade; sem isso a peneira apenas RECUSARIA o que veio grande e o bot
   // ficaria mudo (caindo no repertório fixo), que é o contrário do que se quer. Palavras e caracteres são
   // dois tetos porque nenhum sozinho basta: 12 palavras compridas passam de 85 chars, e 85 chars cabem
   // 20 palavrinhas — e é a linha COMPRIDA, em qualquer das duas medidas, que denuncia o bot.
-  num('bots','BOT_LLM.MAX_WORDS','Tamanho da fala do bot (palavras)','palavras','server',4,20,1,BOT_LLM,'MAX_WORDS'),
-  num('bots','BOT_LLM.MAX_CHARS','Tamanho da fala do bot (caracteres)','chars','server',30,140,5,BOT_LLM,'MAX_CHARS'),
+  // ⚠️ VALE O MENOR DOS DOIS, e os rótulos dizem isso porque a confusão já aconteceu: subir só o teto de
+  // CARACTERES para 140 não alonga nada enquanto o de PALAVRAS estiver em 12 — 12 palavras cabem em ~70
+  // chars, então o de caracteres nunca chega a valer. Quem quiser fala mais longa mexe nos DOIS.
+  num('bots','BOT_LLM.MAX_WORDS','Tamanho da fala: palavras (é o teto que morde primeiro)','palavras','server',4,20,1,BOT_LLM,'MAX_WORDS'),
+  // ⚠️ O máximo é 140 porque a peneira faz `min(MAX_CHARS, CHAT.MAX_CHARS)` — 140 é o teto de QUALQUER
+  // linha de chat, do bot ou da pessoa. Oferecer mais no painel seria oferecer um número inerte.
+  num('bots','BOT_LLM.MAX_CHARS','Tamanho da fala: caracteres (só vale se as palavras couberem)','chars','server',30,140,5,BOT_LLM,'MAX_CHARS'),
+  // QUEM ATENDE. `llm/ollama.js` lê `BOT_LLM.MODELO` a cada chamada — o mesmo aliasing que a física faz com
+  // POWERUP —, então a troca vale na fala seguinte, sem reiniciar pod e sem recriar o cliente (o disjuntor,
+  // o teto de gerações em voo e as métricas continuam os mesmos). ⚠️ As `options` são a LISTA do objeto de
+  // constants, por REFERÊNCIA: o boot acrescenta a ela o modelo do env quando é um nome novo, e é isso que
+  // impede o painel de abrir com um select sem o valor em uso.
+  opt('bots','BOT_LLM.MODELO','Modelo da LLM','server',BOT_LLM.MODELOS,BOT_LLM,'MODELO'),
+  // ⚠️ `auto` respeita o que cada modelo aceita; `nao` no gpt-oss deixa a sala inteira no repertório fixo
+  // (medido: `content` vazio, HTTP 200, sem log). O rótulo da opção diz isso — é a única forma de o painel
+  // não parecer quebrado quando alguém a escolhe.
+  opt('bots','BOT_LLM.THINK','Raciocinar antes de falar','server',BOT_LLM.THINKS,BOT_LLM,'THINK'),
   // O TIPO de conversa: entra como uma frase a mais no SYSTEM (ver ESTILO_PROMPT em rooms/botChat.js).
   opt('bots','BOT_LLM.ESTILO','Tipo de conversa','server',BOT_LLM.ESTILOS,BOT_LLM,'ESTILO'),
   num('bots','BOT_LLM.DIGITA_CPS','Velocidade de digitação dos bots','car/s','server',3,60,1,BOT_LLM,'DIGITA_CPS'),

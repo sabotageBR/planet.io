@@ -35,7 +35,7 @@ export const config=Object.freeze({
   // fala dos bots por LLM (Ollama). Sem OLLAMA_URL fica desligada e o chat usa o repertório fixo de sempre —
   // é por isso que os testes não precisam de rede nem de flag: eles simplesmente não têm a variável.
   ollamaUrl:str('OLLAMA_URL',''),
-  ollamaModel:str('OLLAMA_MODEL','qwen3.6:35b-a3b'),
+  ollamaModel:str('OLLAMA_MODEL',BOT_LLM.MODELO),
   ollamaTimeoutMs:num('OLLAMA_TIMEOUT_MS',BOT_LLM.TIMEOUT_MS),
   ollamaMaxInflight:Math.max(1,num('OLLAMA_MAX_INFLIGHT',BOT_LLM.MAX_INFLIGHT)),
   googleClientId:str('GOOGLE_CLIENT_ID',''),   // vazio = /api/auth/google devolve 503 e o botão não aparece

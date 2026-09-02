@@ -195,9 +195,14 @@ const ESTILO_PROMPT={
  */
 function montaSystem(){
   const W=Math.max(4,BOT_LLM.MAX_WORDS|0),usual=Math.max(3,Math.round(W*.75));
+  // ⚠️ OS DOIS TETOS TÊM QUE SER DITADOS, e por muito tempo só o de PALAVRAS era. Subir `MAX_CHARS` no
+  // painel não mudava nada no que o modelo escrevia — ele continuava instruído a caber em ~9 palavras —, e
+  // a queixa que veio de fora foi literal: "aumentei para 140 e continuaram falando pouco". A peneira RECUSA
+  // em vez de cortar, então um teto que só vive nela não alonga a fala: ele apenas decide o que morre.
+  const C=Math.max(30,BOT_LLM.MAX_CHARS|0);
   return [
   'You are a player in a fast multiplayer .io game about planets that eat each other. You are NOT an assistant.',
-  `Write ONE short chat line, like a real player typing mid-match: usually under ${usual} words, never more than ${W}.`,
+  `Write ONE short chat line, like a real player typing mid-match: usually under ${usual} words, never more than ${W}, and at most ${C} characters.`,
   'Never write a full, well-formed sentence with punctuation: that is what gives a bot away. Write like a person in a hurry.',
   ESTILO_PROMPT[BOT_LLM.ESTILO]||ESTILO_PROMPT.misto,
   'Lowercase is fine, typos are fine.',
@@ -430,7 +435,14 @@ export function createBotChat({llm,log=null,metrics=null}){
       if(!llm||!llm.ok())return null;
       const {system,user}=montaPrompt(ctx);
       if(metrics)metrics.llm('ask');
-      const cru=await llm.chat({system,user});
+      // ⚠️ O TERCEIRO TETO, o que ninguém vê: `num_predict`. Ele é dito em TOKENS e os outros dois em
+      // palavras/caracteres, então subir `MAX_CHARS` no painel esbarrava numa cota de 48 tokens que não
+      // acompanhava — a fala saía CORTADA no meio (`done_reason:'length'`), e cortada ela é recusada pela
+      // peneira. Derivar é o que impede os dois números de se separarem na primeira mudança: ~0,7 token por
+      // caractere em pt-BR, com o piso de sempre. É um TETO, não um alvo — o modelo para no `stop`, então
+      // folga aqui não custa latência nenhuma.
+      const numPredict=Math.max(BOT_LLM.NUM_PREDICT,Math.ceil(BOT_LLM.MAX_CHARS*.7));
+      const cru=await llm.chat({system,user,numPredict});
       const txt=sanitiza(cru,ctx&&ctx.nome);
       if(!txt&&cru){if(metrics)metrics.llm('veto');
         if(log)log.debug(`fala descartada: ${JSON.stringify(String(cru).slice(0,120))}`);}

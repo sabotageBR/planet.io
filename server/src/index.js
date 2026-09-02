@@ -5,6 +5,7 @@
 import http from 'node:http';
 import {pathToFileURL} from 'node:url';
 import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
+import {ROUND} from '@warspace/shared/constants.js';
 import {config as baseConfig} from './config.js';
 import {createLogger} from './log.js';
 import {createDb} from './db/pool.js';
@@ -16,7 +17,7 @@ import {createMetrics} from './metrics.js';
 import {Scheduler} from './loop.js';
 import {createRoomManager} from './rooms/RoomManager.js';
 import {createWsServer} from './net/wsServer.js';
-import {createOllama} from './llm/ollama.js';
+import {createOllama,seedModelo} from './llm/ollama.js';
 import {createBotChat} from './rooms/botChat.js';
 import {createBotNames} from './rooms/botNames.js';
 import {createHttpHandler} from './http/api.js';
@@ -32,6 +33,11 @@ export async function startServer(overrides={}){
     persist=createPersistence({db,log,config:cfg});hooks=persist.hooks;
     if(cfg.role!=='game')persistApi=createApi({db,log,config:cfg,persist});
   }else log.warn('DATABASE_URL vazio: jogo sem persistência (rewards saved:false)');
+  // ── A DURAÇÃO DA SALA DO LIVRE: o env semeia, o painel manda ──
+  // Mesmo contrato do modelo da LLM logo abaixo. `ROUND_TICKS` continua sendo a escolha do OPERADOR com que
+  // os pods SOBEM; `Room.js` lê a constante viva, e `admin_settings` a sobrescreve 30 s depois. Sem esta
+  // linha o env seria ignorado (regressão silenciosa nos testes, que encurtam a rodada por aqui).
+  ROUND.TICKS=cfg.roundTicks;
   // ── fala dos bots pela LLM (opcional) ──
   // O aquecimento NÃO é esperado: carregar o modelo leva ~27 s e o servidor não pode ficar de portas
   // fechadas por causa disso. Até ele terminar, as salas usam o repertório fixo — que é o mesmo caminho
@@ -39,7 +45,16 @@ export async function startServer(overrides={}){
   const game=cfg.role!=='api';
   let botChat=null,botNames=null;
   if(game&&cfg.botChatLlm&&cfg.ollamaUrl){
-    const llm=createOllama({url:cfg.ollamaUrl,model:cfg.ollamaModel,timeoutMs:cfg.ollamaTimeoutMs,
+    // ── O ENV É A SEMENTE; DEPOIS QUEM MANDA É O PAINEL ──
+    // `OLLAMA_MODEL` continua sendo a escolha do OPERADOR no boot, mas o modelo virou tunable
+    // (`BOT_LLM.MODELO`), e a ordem de precedência é a de todo tunable: padrão de `constants.js` → env aqui
+    // → `admin_settings`, que `tunables.load()` aplica logo abaixo. ⚠️ Um nome que não está na lista fechada
+    // é ACRESCENTADO a ela em vez de recusado: o operador pode ter subido um modelo que este código não
+    // conhece, e um `<select>` sem o valor em uso mostraria ao admin um modelo que o servidor não está
+    // usando. ⚠️ `resetTunable` volta ao padrão do CÓDIGO, não a este env — que é o que "voltar ao padrão"
+    // quer dizer no resto do painel.
+    seedModelo(cfg.ollamaModel,log);
+    const llm=createOllama({url:cfg.ollamaUrl,timeoutMs:cfg.ollamaTimeoutMs,
       maxInflight:cfg.ollamaMaxInflight,metrics,log});
     metrics.llmSource(()=>llm.inflight,()=>llm.breakerOpen);
     botChat=createBotChat({llm,log,metrics});
@@ -49,7 +64,7 @@ export async function startServer(overrides={}){
     // intervalo — a fala é do INSTANTE e tem preferência, um apelido pode esperar 20 s.
     botNames=createBotNames({llm,log,metrics});botNames.start();
     llm.warmup().catch(()=>{});
-    log.info(`fala dos bots por LLM: ${cfg.ollamaModel} em ${cfg.ollamaUrl} (até ${cfg.ollamaMaxInflight} ao mesmo tempo)`);}
+    log.info(`fala dos bots por LLM: ${llm.model} em ${cfg.ollamaUrl} (até ${cfg.ollamaMaxInflight} ao mesmo tempo)`);}
   else if(game&&cfg.ollamaUrl)log.info('BOT_CHAT_LLM desligado: a fala dos bots usa o repertório fixo');
   // ── salas + laço ──
   const scheduler=game?new Scheduler({metrics,log}):null;

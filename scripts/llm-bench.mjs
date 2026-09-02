@@ -5,16 +5,18 @@
 //   OLLAMA_URL=http://192.168.8.251:11434 node scripts/llm-bench.mjs [n_personas]
 //   ...e `node scripts/llm-bench.mjs nicks [n_lotes]` imprime lotes de APELIDOS com o validador aplicado,
 //   que e o unico jeito honesto de julgar se eles "parecem de gente daquele pais" antes de subir.
-import {createOllama} from '../server/src/llm/ollama.js';
+import {createOllama,seedModelo} from '../server/src/llm/ollama.js';
 import {montaPrompt,sanitiza,aberta} from '../server/src/rooms/botChat.js';
 import {createBotNames,recusa} from '../server/src/rooms/botNames.js';
 import {PERSONAS} from '../server/src/rooms/botPersonas.js';
 import {BOT_LLM} from '@warspace/shared/constants.js';
 
 const url=process.env.OLLAMA_URL||'http://192.168.8.251:11434';
-const model=process.env.OLLAMA_MODEL||'qwen3.6:35b-a3b';
+// O modelo é tunable (BOT_LLM.MODELO): aqui o env entra pela MESMA porta do servidor, para a bancada medir
+// exatamente o que a produção vai rodar — inclusive o `think`/`reserva` que a entrada do modelo declara.
+const model=seedModelo(process.env.OLLAMA_MODEL||BOT_LLM.MODELO);
 const nP=Math.max(1,Math.min(PERSONAS.length,Number(process.argv[2]||3)));
-const llm=createOllama({url,model,log:{info:console.log,warn:console.warn,error:console.error,debug(){}}});
+const llm=createOllama({url,log:{info:console.log,warn:console.warn,error:console.error,debug(){}}});
 
 // O ELENCO: e ele que transforma um nick numa piada que a sala entende. `egg` e FATO (o servidor decidiu
 // a caricatura a partir do nick); pais e nivel tambem saem do GamePlayer.

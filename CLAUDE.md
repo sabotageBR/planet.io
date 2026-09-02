@@ -555,6 +555,35 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   validação do PUT. `Restaurar` volta ao padrão do CÓDIGO, nunca ao env.
   ⚠️ Trocar **não reaquece sozinho**: o modelo novo paga o load (~27 s) na primeira fala, e nesse
   meio-tempo a sala usa o repertório fixo — o mesmo chão de sempre, não um segundo comportamento.
+  ⚠️ **`think:false` NÃO CALA TODO MUNDO** (`BOT_LLM.THINK`, o interruptor do painel; `perfil()` em
+  `llm/ollama.js`): o gpt-oss é raciocinador nativo e, medido, devolve `content` **VAZIO** mesmo com
+  `num_predict` folgado (198 tokens) — ele ignora o pedido, o raciocínio come a cota e a fala nem começa.
+  HTTP 200, sala inteira no repertório fixo, nenhum erro em log. Por isso cada entrada de `MODELOS` declara
+  `think` + `reserva` (tokens que o raciocínio come antes da primeira letra, SOMADOS a todo `num_predict`
+  pelo cliente — o chamador continua pedindo o tamanho da FALA), e o padrão do interruptor é `auto`.
+- **O TAMANHO DA FALA VALE PELO MENOR DOS DOIS TETOS, e metade dele não era ditada** (`montaSystem` em
+  `rooms/botChat.js`): a queixa veio de fora, literal — "aumentei para 140 e continuaram falando pouco".
+  Duas causas independentes, nenhuma visível. (a) **`MAX_CHARS` nunca entrou no SYSTEM**: só `MAX_WORDS`
+  era ditado, e como a peneira RECUSA em vez de cortar, um teto que só vive nela não alonga a fala — ele
+  apenas decide o que morre. É o mesmo argumento que já estava escrito aqui para o teto de palavras,
+  valendo para a outra metade. (b) **`num_predict` não acompanhava**: 48 tokens fixos contra um teto de
+  painel que vai a 140 caracteres, então a fala longa saía CORTADA (`done_reason:'length'`) para ser
+  recusada em seguida; agora é derivado (`max(NUM_PREDICT, ⌈MAX_CHARS·0,7⌉)`, ~0,7 token por caractere em
+  pt-BR). É TETO, não alvo: o modelo para no `stop`, então folga não custa latência. Medido pelo caminho
+  real: média 41 → 60 chars, maior 55 → 88, aceitação 7/8 → 8/8. ⚠️ E o que MORDE é o de PALAVRAS — 12
+  palavras cabem em ~70 chars, então mexer só no de caracteres é inerte; os rótulos do painel dizem isso.
+  ⚠️ O máximo de `MAX_CHARS` é 140 porque a peneira faz `min(MAX_CHARS, CHAT.MAX_CHARS)`: oferecer mais no
+  painel seria oferecer um número que não faz nada.
+- **A DURAÇÃO DA SALA DO LIVRE É PARÂMETRO DO PAINEL** (`ROUND.TICKS`, grupo "Salas", dita em MINUTOS
+  como o ímã é dito em massa): era só o env `ROUND_TICKS`, e `Room.js` lia `config.roundTicks||ROUND.TICKS`
+  — com o env sempre preenchido, tornar a constante tunável não valeria nada, porque o ConfigMap venceria
+  o painel em toda sala nova. Hoje o env SEMEIA `ROUND.TICKS` no boot (`startServer`) e a sala lê a
+  constante viva. ⚠️ `MODES[FREE].roundTicks` virou **getter**: era uma cópia feita na carga do módulo, e
+  cópia congelada faria o descritor do modo anunciar a duração antiga para sempre depois do primeiro
+  clique. ⚠️ Vale para as salas CRIADAS daí em diante (a que roda fixou no construtor) e **só no Livre**:
+  no BR o tempo é a rede de segurança da zona. ⚠️ O DIA DO CÉU acompanha (`roundInfo` manda
+  `roundTicks/ROUND.DAYS`), então dobrar a duração dobra o dia do relógio do espaço — consequência
+  declarada, porque o céu tem que virar um número inteiro de vezes por sala.
 - **TAMANHO E TIPO DA FALA DOS BOTS** (`BOT_LLM.MAX_WORDS`/`MAX_CHARS`/`ESTILO`, `montaSystem` em
   `rooms/botChat.js`): a queixa era literal — linhas longas e bem construídas denunciam o bot antes de
   qualquer outra coisa. Os tetos caíram (16/110 → **12/85**) e os três viraram parâmetro do painel.

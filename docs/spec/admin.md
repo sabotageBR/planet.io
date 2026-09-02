@@ -127,6 +127,59 @@ QUEM pode usar o ímã — o alcance é `min(r·5.5, MAGNET_RANGE_MAX)` e já sa
   rodada. Parametrizar por sala exigiria carregar um objeto por `Room→Sim→World→rules`, tocando toda
   assinatura da física e o predict — não vale por um punhado de números.
 
+### O MODELO DA LLM é um tunable (`BOT_LLM.MODELO`, seção "Fala dos bots")
+
+Qual modelo atende os bots era só `OLLAMA_MODEL` no ConfigMap: trocá-lo pedia editar YAML, aplicar e
+reiniciar os três shards — para uma decisão que só se toma **olhando a sala falar** (um é mais rápido, outro
+é mais engraçado, outro obedece melhor ao teto de palavras). Agora é um `<select>` do painel, no molde exato
+de `BOT_LLM.ESTILO`, e a lista de opções nomeia só o que existe na máquina do Ollama — pedir um modelo
+ausente é trocar a fala dos bots por 404 em silêncio. Padrão: **`gpt-oss:20b`**.
+
+- **O cliente não fecha o nome no closure.** `llm/ollama.js` lê `BOT_LLM.MODELO` a cada chamada (o mesmo
+  aliasing de objeto da física), então a troca vale na fala seguinte, **sem recriar o cliente** e sem zerar
+  o disjuntor, o teto de gerações em voo ou as métricas. Fechado na criação, o painel diria "salvo" e o
+  servidor seguiria chamando o modelo antigo para sempre.
+- **O env é a SEMENTE, não a verdade.** `OLLAMA_MODEL` escreve no tunable no boot (`seedModelo`, chamado
+  pelo composition root) e um nome fora da lista é **acrescentado** a ela em vez de recusado: a máquina do
+  Ollama pode ter um modelo que este código não conhece, e um select sem o valor em uso mostraria ao admin
+  um modelo que o servidor não está usando. Precedência: padrão do código → env → `admin_settings`.
+- **`Restaurar` volta ao padrão do CÓDIGO**, nunca ao env — que é o que "voltar ao padrão" significa no
+  resto do painel.
+- **Trocar não reaquece sozinho.** O modelo novo paga o load (~27 s) na primeira fala, e nesse meio-tempo a
+  sala usa o repertório fixo — o mesmo chão de sempre, não um segundo comportamento.
+- **`Raciocinar antes de falar` (`BOT_LLM.THINK`)**: `auto` (o que cada modelo aceita) · `sim` · `não`.
+  ⚠️ Medido: o gpt-oss com `think:false` devolve `content` **vazio** mesmo com cota folgada de tokens — ele
+  ignora o pedido, pensa assim mesmo e a fala nem começa. HTTP 200, sala inteira no repertório fixo, sem uma
+  linha de log. Por isso `auto` é o padrão e o rótulo da opção `não` diz o preço.
+
+### A DURAÇÃO DA SALA DO LIVRE (`ROUND.TICKS`, seção "Salas")
+
+Dita em **minutos** — como em todo o resto do jogo (o dono de sala escolhe minutos e `roundTicksOf`
+converte); o admin não tem por que fazer a conta de 60 Hz. Padrão 30 min.
+
+- **Vale para as salas CRIADAS daí em diante.** A que já está rodando fixou a duração no construtor;
+  encurtar a rodada de quem está no meio dela terminaria a partida no clique.
+- **Só o Livre.** No Battle Royale o tempo é a rede de segurança da zona, e uma sala que acaba antes de o
+  círculo fechar é o único jeito daquele modo terminar sem ter decidido nada.
+- **O env é semente**, como no modelo: `ROUND_TICKS` escreve em `ROUND.TICKS` no boot e `Room.js` lê a
+  constante viva — lendo `config.roundTicks` o ConfigMap venceria o painel em toda sala nova.
+- **O dia do céu acompanha**: `roundInfo()` manda `roundTicks/ROUND.DAYS`, então dobrar a duração dobra o
+  dia do relógio do espaço. É consequência declarada — o céu tem que virar um número inteiro de vezes por
+  sala, senão a última troca fica pela metade.
+
+### O TAMANHO DA FALA: vale o MENOR dos dois tetos
+
+`MAX_WORDS` e `MAX_CHARS` são tetos independentes e **o que morde primeiro é o de palavras**: 12 palavras
+cabem em ~70 caracteres, então subir só `MAX_CHARS` para 140 não alonga nada. Os rótulos do painel dizem
+isso. Duas correções entraram junto com a queixa ("aumentei para 140 e continuaram falando pouco"):
+
+- **`MAX_CHARS` não era DITADO ao modelo** — só `MAX_WORDS` entrava no `SYSTEM`. Como a peneira RECUSA em
+  vez de cortar, um teto que só vive nela não alonga a fala: ele apenas decide o que morre.
+- **`num_predict` não acompanhava.** Era 48 tokens fixos enquanto o teto do painel ia a 140 caracteres, e a
+  fala longa saía cortada (`done_reason:'length'`) para ser recusada em seguida. Agora é derivado de
+  `MAX_CHARS`. Medido pelo caminho real do jogo: média da linha 41 → 60 chars, maior 55 → 88, aceitação
+  7/8 → 8/8.
+
 ## Segurança
 
 - `toAdmin()` (em `repos/users.js`) é uma **allowlist explícita** de colunas, nunca `...u`: é por um spread

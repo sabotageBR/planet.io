@@ -43,8 +43,11 @@ export class Room{
     this.botCount=this.mode.lobby?0:config.roomBots;
     this._proxBot=Infinity;   // quem agenda a 1ª chegada é o `start()`; antes dele ninguém entra
     // ⚠️ `roundTicks!=null`, NUNCA `roundTicks||…`: **0 é o valor de SEM FIM**, e o `||` o transformaria em
-    // silêncio na rodada do env. É a mesma armadilha do `config.roundTicks||ROUND.TICKS` que já estava aqui.
-    this.roundTicks=roundTicks!=null?roundTicks:(this.mode.lobby?this.mode.roundTicks:(config.roundTicks||ROUND.TICKS));
+    // silêncio na rodada padrão. É a mesma armadilha do `config.roundTicks||ROUND.TICKS` que morava aqui.
+    // ⚠️ E o padrão do Livre sai de `ROUND.TICKS`, não de `config.roundTicks`: a duração virou parâmetro do
+    // painel, e o env só a SEMEIA no boot (`startServer`). Lendo o config, o valor do ConfigMap venceria o
+    // painel em toda sala nova e o parâmetro não valeria nada — dizendo "salvo" a cada clique.
+    this.roundTicks=roundTicks!=null?roundTicks:(this.mode.lobby?this.mode.roundTicks:ROUND.TICKS);
     // ── SALA COM DONO ────────────────────────────────────────────────────────────────────────
     // `private`: fora do automático e de toda listagem pública — entra-se só pelo código, que É o convite
     // (o mesmo contrato do lobby de equipe). `hostUserId` é a identidade do dono: a CONTA, e não o hash do

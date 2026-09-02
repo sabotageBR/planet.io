@@ -4,7 +4,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {createWorld} from "../src/physics/index.js";
-import {POWERUP,FOOD,FOOD_TYPE,PLAYER,BOT_LLM} from "../src/constants.js";
+import {POWERUP,FOOD,FOOD_TYPE,PLAYER,BOT_LLM,ROUND,MODES,MODE,TICK_HZ} from "../src/constants.js";
 import {PIECE_FLAG} from "../src/protocol/constants.js";
 import {listTunables,applyTunable,resetTunable,readTunable,TUNABLE_BY_KEY,GRUPOS} from "../src/tunables.js";
 
@@ -74,3 +74,20 @@ test("tunables: a ESCOLHA tem lista branca própria — só um id declarado entr
     assert.equal(BOT_LLM.ESTILO,'misto',"restaurar devolve o padrão do arquivo");
   }finally{resetTunable(chave);}});
 
+// ── DURAÇÃO DA SALA DO LIVRE ────────────────────────────────────────────────
+// Ela é dita em MINUTOS (como em todo o resto do jogo: o dono de sala escolhe minutos e `roundTicksOf`
+// converte) e guardada em ticks. E o descritor do modo tem que ACOMPANHAR: ele copiava `ROUND.TICKS` na
+// carga do módulo, e uma cópia congelada faria `modeOf(FREE).roundTicks` anunciar a duração antiga para
+// sempre depois do primeiro clique no painel — sem erro em lugar nenhum.
+test("tunables: a duração do Livre é dita em minutos, e o descritor do modo não fica para trás",()=>{
+  const chave='ROUND.TICKS';
+  try{
+    assert.equal(readTunable(chave),30,"o padrão do arquivo são 30 min");
+    assert.equal(MODES[MODE.FREE].roundTicks,ROUND.TICKS,"o modo Livre lê a constante viva, não uma cópia");
+    applyTunable(chave,45);
+    assert.equal(ROUND.TICKS,45*60*TICK_HZ,"minutos entram, ticks saem");
+    assert.equal(MODES[MODE.FREE].roundTicks,45*60*TICK_HZ,"e o descritor do modo acompanha");
+    assert.throws(()=>applyTunable(chave,0),/out_of_range/,"SEM FIM é escolha do DONO da sala, não o padrão do shard");
+    resetTunable(chave);
+    assert.equal(readTunable(chave),30,"restaurar devolve o padrão do arquivo");
+  }finally{resetTunable(chave);}});

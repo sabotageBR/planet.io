@@ -69,8 +69,10 @@ export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,F
 // WARN_S: segundos finais com a contagem gigante na tela.
 // Era 1 h / 4 dias. Cortar para 30 min mantendo DAYS=4 dobraria a velocidade do céu (troca a cada 2,5 min),
 // então DAYS cai junto para 2 e o DIA continua com os mesmos 15 min de sempre.
-// ⚠️ TICKS aqui é só o DEFAULT: quem manda em produção é o env ROUND_TICKS (k8s/05-config.yaml), lido em
-// config.js e usado por Room.js. E DAYS é constante do CLIENTE enquanto os ticks vêm do SERVIDOR — por isso
+// ⚠️ TICKS aqui é o PADRÃO e a constante VIVA: o env ROUND_TICKS (k8s/05-config.yaml) o SEMEIA no boot
+// (`startServer`), e daí em diante quem manda é o painel /admin, que o edita em MINUTOS. `Room.js` lê esta
+// constante — não `config.roundTicks` —, senão o env venceria o painel para sempre e o parâmetro não valeria
+// nada. Vale para as salas CRIADAS daí em diante; a que já está rodando fixou a duração no construtor. E DAYS é constante do CLIENTE enquanto os ticks vêm do SERVIDOR — por isso
 // roundInfo() passou a mandar `days` no JSON: cliente novo com env velho desenharia o céu na metade da
 // velocidade, e o jogador veria o relógio do espaço mentir sem ninguém saber por quê.
 // BOARD_MAX: teto de linhas do placar da sala (com respawn, 30 min rendem mais de 100 participantes).
@@ -178,7 +180,10 @@ export const ZONE_TOTAL_TICKS=ZONE.HOLD_TICKS.reduce((a,b)=>a+b,0)+ZONE.SHRINK_T
 // de perder a estrela para sempre. STAR_SCAN: estrelas conferidas por tick contra o círculo (a lista tem 12).
 // Peça pequena queima devagar e solta raro; planetão solta o tempo todo — que é exatamente a leitura certa.
 export const MODES=[
-  {id:0,key:"free",label:"Livre",max:ROOM.MAX,bots:ROOM.BOTS,roundTicks:ROUND.TICKS,
+  // ⚠️ `roundTicks` do Livre é GETTER, não cópia: ele virou parâmetro do painel (`ROUND.TICKS`, em minutos),
+  // e um valor copiado aqui ficaria congelado no que valia quando o módulo carregou — o admin trocaria a
+  // duração, as salas novas obedeceriam e este descritor seguiria anunciando a antiga, em silêncio.
+  {id:0,key:"free",label:"Livre",max:ROOM.MAX,bots:ROOM.BOTS,get roundTicks(){return ROUND.TICKS;},
     lobby:false,respawnBots:true,lastAlive:false,zone:false,weapons:false,chat:"room",teamSizes:[1],anonBots:false,realNicks:true},
   {id:1,key:"br",label:"Battle Royale",max:BR.PLAYERS,bots:BR.PLAYERS,roundTicks:BR.ROUND_TICKS,
     lobby:true,respawnBots:false,lastAlive:true,zone:true,weapons:true,chat:"team",teamSizes:BR.TEAM_SIZES,anonBots:true,realNicks:true},
@@ -799,6 +804,45 @@ export const BOT_LLM={
   // PERSONA/PERICIA (o id mora no shared, a frase em inglês mora no servidor, em rooms/botChat.js).
   // ⚠️ Só o ID vive aqui. A frase do prompt é server-only pelo mesmo motivo de `botPersonas.js`:
   // `shared/` vai inteiro para o bundle do `?local=1`, e instrução de LLM não tem o que fazer lá.
+  // ── QUAL MODELO ATENDE ──
+  // O modelo era só `OLLAMA_MODEL` no ConfigMap: trocá-lo pedia editar YAML, aplicar e reiniciar os três
+  // shards — para uma decisão que só se toma OLHANDO a sala falar (um modelo é mais rápido, outro é mais
+  // engraçado, outro obedece melhor ao teto de palavras). Aqui ele vira escolha do painel, no molde exato
+  // de ESTILO/ESTILOS: a lista é FECHADA (é a segunda lista branca de que fala tunables.js) e só nomeia o
+  // que existe na máquina do Ollama — pedir um modelo ausente é trocar a fala dos bots por 404 em silêncio.
+  // ⚠️ O env `OLLAMA_MODEL` continua valendo e é a SEMENTE do boot: ele escreve aqui antes da primeira sala
+  // e ACRESCENTA a si mesmo à lista se for um nome novo (ver `server/src/index.js`), senão o painel abriria
+  // com um `<select>` que não contém o valor que o servidor está usando. Depois disso quem manda é o banco.
+  // ⚠️ Trocar o modelo NÃO reaquece sozinho: o novo paga o load (~27 s) na primeira fala, e nesse meio-tempo
+  // a sala usa o repertório fixo — que é o mesmo chão de sempre, não um segundo comportamento.
+  // ⚠️ `think:false` NÃO CALA TODO MUNDO, e o modo de falha é MUDO. O gpt-oss é um raciocinador nativo:
+  // ele ignora o pedido, devolve o raciocínio no campo `thinking` e **`content` vem VAZIO** — medido, com
+  // `num_predict:48` o raciocínio come os 48 tokens e a fala nem começa (`done_reason:'length'`). Ou seja:
+  // trocar o modelo pelo painel deixaria a sala inteira no repertório fixo, com HTTP 200, sem erro e sem
+  // log. Por isso cada entrada declara o que o CLIENTE precisa saber sobre ela:
+  //  · `think` — o que vai no campo do Ollama. `false` desliga (qwen, gemma); `'low'` é o menor esforço de
+  //    raciocínio que o gpt-oss aceita, e é o que o traz para ~900 ms, dentro do TIMEOUT_MS.
+  //  · `reserva` — tokens que o raciocínio come ANTES da primeira letra da resposta. O cliente a SOMA a
+  //    todo `num_predict`, então o chamador continua pedindo o tamanho da FALA (48 numa linha de chat, 180
+  //    num lote de apelidos) sem saber que existe modelo que pensa antes de falar.
+  // O INTERRUPTOR do raciocínio, pedido no painel. `auto` é o que a entrada do modelo declara e é o único
+  // valor que sabe que o gpt-oss QUEBRA com `false`; os outros dois forçam, e o rótulo diz o preço.
+  // ⚠️ MEDIDO, e é o motivo de `auto` ser o padrão: gpt-oss com `think:false` devolve `content` VAZIO
+  // mesmo com num_predict folgado (198 tokens) — ele ignora o pedido, pensa assim mesmo e a fala nem
+  // começa. HTTP 200, sala inteira no repertório fixo, nenhum erro em log. Nos modelos que obedecem
+  // (qwen, gemma), desligar é o comportamento de sempre e economiza segundos.
+  THINK:'auto',
+  THINKS:[
+    {v:'auto',label:'Automático — o que cada modelo aceita (recomendado)'},
+    {v:'sim',label:'Sim — raciocina antes de falar (mais lento)'},
+    {v:'nao',label:'Não — ⚠️ deixa o gpt-oss MUDO; use só com qwen ou gemma'},
+  ],
+  MODELO:'gpt-oss:20b',
+  MODELOS:[
+    {v:'gpt-oss:20b',label:'gpt-oss:20b — padrão',think:'low',reserva:150},
+    {v:'qwen3.6:35b-a3b',label:'qwen3.6:35b-a3b — maior, mais lento',think:false,reserva:0},
+    {v:'gemma4:12b-it-q8_0',label:'gemma4:12b-it-q8_0 — menor, mais rápido',think:false,reserva:0},
+  ],
   ESTILO:'misto',
   // O rótulo é pt-BR e sai direto no painel /admin, que é exceção declarada ao i18n (ver CLAUDE.md).
   ESTILOS:[
