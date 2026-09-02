@@ -8,6 +8,7 @@
 import {randomUUID} from 'node:crypto';
 import {WebSocketServer} from 'ws';
 import {NET,WORLD,MODE,modeOf,VOICE} from '@warspace/shared/constants.js';
+import {wireValues} from '@warspace/shared/tunables.js';
 import {eggSkinFor} from '@warspace/shared/eggs.js';
 import {PROTOCOL_VERSION,MSG,VOICE_UP_HEADER_BYTES} from '@warspace/shared/protocol/constants.js';
 import {decodeInput,decodeVoiceUp,encodePong,createWriter} from '@warspace/shared/protocol/index.js';
@@ -52,6 +53,11 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
     let s=new Session({ws,metrics,log,remoteAddr:clientIp(req),userAgent:req.headers['user-agent']||null});live.add(s);
     const roomMsg=room=>({t:'room',code:room.code,shard:room.shard,slot:s.slot,sessionId:s.sessionId,resumeToken:s.resumeToken,protocol:PROTOCOL_VERSION,
       tick:room.sim.tick,world:{w:WORLD.w,h:WORLD.h},round:room.roundInfo(),
+      // Os parâmetros do /admin que o CLIENTE lê (câmera, arte da estrela). Meia dúzia de números num JSON
+      // que já é mandado uma vez por join — o mesmo argumento do `days` em `Room.roundInfo`, e pelo mesmo
+      // motivo: sem isto o painel mudaria o número só no servidor e o jogo enquadraria diferente dos dois
+      // lados, em silêncio. `Room.broadcastPhase` reemite, para valer no meio da rodada.
+      tun:wireValues(),
       mode:room.modeId,teamSize:room.teamSize,cap:room.max,team:(room.sim.players.get(s.slot)||{team:-1}).team,
       private:!!room.private,host:room.isHost(s)});   // JSON: modo, equipe e dono da sala não custam versão de protocolo
     const rate=()=>{if(s.violation())s.error('RATE','muitas mensagens; conexão encerrada');};

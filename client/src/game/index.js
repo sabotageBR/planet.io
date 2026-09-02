@@ -25,7 +25,12 @@ import {apiUrl,wsUrl} from "../api/base.js";
 import {PORTAL} from "../portal/flags.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,ZOOM,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,ZOOM,CAM,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
+// direto do módulo: `tunables.js` não entra no barril de `shared` (ele é a lista BRANCA do painel, não
+// vocabulário de jogo), e o cliente só precisa do aplicador — a validação vem junto de graça.
+import {aplicaWire} from "@warspace/shared/tunables.js";
+/** As raízes que um tunable 'wire' pode escrever. A chave do descritor É o caminho (`CAM.K`). */
+const RAIZES_WIRE={CAM,ZOOM,STAR};
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
@@ -247,6 +252,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     else c.sendJson({t:"join",token:joinOpts.token||null,room:joinOpts.room||null,view:viewSize(),fallbackNick:joinOpts.fallbackNick||"Viajante",skinId:joinOpts.skinId|0,
       mode:joinOpts.mode|0,teamSize:joinOpts.teamSize|0,party:joinOpts.party||null});}
   function onJson(m){
+    // ⚠️ ANTES de qualquer `cam.update`: `tun` traz os parâmetros do /admin que o CLIENTE lê (a câmera e a
+    // arte da estrela). Sem isto o painel mudaria o número só no servidor e o jogo enquadraria diferente
+    // dos dois lados — a AOI viria por um zoom e a tela desenharia por outro, o que se lê como uma borda
+    // sem comida. `aplicaWire` escreve nos objetos de constants.js, que não são congelados: é o mesmo
+    // aliasing que a física do servidor já usa, e vale para todo leitor no frame seguinte.
+    if(m.t==="room"||m.t==="phase")aplicaWire(m.tun,RAIZES_WIRE);
     if(m.t==="room"){view.mySlot=m.slot;predictor.setSlot(m.slot);view.room=m.code;view.rebuildLb();warmSkins();
       round=m.round||null;roundOver=false;lastCount=-1;warmedSky=null;lastAmmo=0;lastMagnet=false;
       modeId=m.mode|0;teamSize=m.teamSize||1;myTeam=m.team==null?-1:m.team;roomCap=m.cap||0;

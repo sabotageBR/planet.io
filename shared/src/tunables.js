@@ -8,19 +8,26 @@
 // sem chamada de função e sem um import novo em `physics/`. A alternativa (um `getTunable()` dentro do
 // laço) é a única versão com custo por tick real, e não compra nada.
 //
-// ⚠️ ESCOPO. `scope:'server'` é seguro porque só o servidor lê aquele número. `scope:'both'` significa que
-// o CLIENTE também o lê — e o cliente tem a própria cópia deste módulo no bundle, então mudar de um lado só
-// faria `predict.js` divergir e a peça começaria a dar elástico acima de `NET.SNAP_DIST`. Enquanto não
-// houver um caminho para entregar o valor ao cliente (o precedente é o `days` de `Room.roundInfo`), a rota
-// do painel RECUSA as chaves 'both' — em vez de fingir que funcionam.
+// ⚠️ ESCOPO — são TRÊS, e a diferença entre os dois últimos é o que decide se a chave é editável.
+//   'server'  só o servidor lê. Seguro por construção.
+//   'both'    a FÍSICA do cliente lê (`predict.js`). Mudar de um lado só faz a peça dar elástico acima de
+//             `NET.SNAP_DIST`, então a rota do painel RECUSA (501) em vez de fingir que funciona.
+//   'wire'    o cliente lê, mas NÃO é física: é enquadramento (câmera) ou arte. O servidor ENTREGA o valor
+//             no JSON `room` (`wireValues()` abaixo), e o cliente o aplica sobre os objetos de
+//             `constants.js` — que não são congelados, o mesmo aliasing que a física já usa. A assimetria
+//             que essas chaves causam enquanto a mensagem não chega é visual e recuperável (uma borda sem
+//             comida por um snapshot), nunca autoridade divergente. O precedente literal é o `days` de
+//             `Room.roundInfo`, que existe exatamente porque um número do servidor era constante do cliente.
+// ⚠️ `predict.js` importa `DT, WORLD, BLACKHOLE, EJECT, PLAYER` — e mais nada. É por isso que `CAM`/`ZOOM`
+// podem ser 'wire' e `PLAYER.MAX_R` não pode.
 //
 // ⚠️ É POR PROCESSO, não por sala. Mudar o ímã muda para todas as salas do pod, inclusive uma no meio da
 // rodada. Parametrizar por sala exigiria carregar um objeto de tunables por Room→Sim→World→rules, tocando
 // toda assinatura da física e o predict — não vale por um punhado de números.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM} from "./constants.js";
 
-/** @typedef {{key:string,label:string,unit:string,scope:'server'|'both',type:'num'|'opt',grupo:string,
+/** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
  *   read:()=>any,write:(v:any)=>void}} Tunable */
 
@@ -35,6 +42,7 @@ export const GRUPOS=[
   ['perigos','Perigos do mapa'],
   ['zona','Zona (Battle Royale)'],
   ['jogador','Jogador'],
+  ['camera','Câmera e área de interesse'],
   ['sala','Salas'],
   ['chat','Chat'],
   ['bots','Fala dos bots'],
@@ -86,6 +94,22 @@ export const TUNABLES=[
   // 'both' fica declarado para o dia em que houver entrega ao cliente — e a rota recusa até lá, em vez de
   // gravar um número que só metade do jogo enxerga.
   num('jogador','PLAYER.MAX_R','Raio máximo de uma peça','px','both',100,2000,10,PLAYER,'MAX_R'),
+  // ── CÂMERA E ÁREA DE INTERESSE ──
+  // O botão de zoom. 'wire' porque o CLIENTE também chama `zoomFor` — com 'server' a AOI viria por um zoom
+  // e a tela desenharia por outro, o que se lê como uma borda larga e vazia.
+  // ⚠️ Afastar custa ao QUADRADO: peça, asteroide, estrela e míssil vêm pela visão INTEIRA do snapshot, sem
+  // teto de contagem (só a comida tem os dois tetos). Mexer com o `?stats` aberto numa sala cheia.
+  num('camera','CAM.K','Afastamento global da câmera (1 = padrão)','×','wire',.5,2,.05,CAM,'K'),
+  // Estas seis são o ORÇAMENTO da AOI, não o enquadramento: só o servidor as lê, então são 'server' puro.
+  num('camera','CAM.AOI_FOOD_VIEW','Fatia do mundo que a AOI da comida cobre','fração','server',.15,1,.01,CAM,'AOI_FOOD_VIEW'),
+  num('camera','NET.AOI_FOOD_MAX','Teto de grãos de comida por sessão','grãos','server',50,900,25,NET,'AOI_FOOD_MAX'),
+  // ⚠️ AOI_PAD_OUT tem que continuar MAIOR que AOI_PAD: é a histerese que impede a entidade de entrar e
+  // sair da AOI a cada snapshot. Invertidos, tudo pisca — e isso não cabe no descritor, é regra entre duas
+  // chaves. As faixas abaixo não se cruzam de propósito.
+  num('camera','NET.AOI_PAD','Folga da AOI ao ENTRAR','fração','server',0,.4,.02,NET,'AOI_PAD'),
+  num('camera','NET.AOI_PAD_OUT','Folga da AOI ao SAIR (histerese)','fração','server',.42,1.5,.02,NET,'AOI_PAD_OUT'),
+  num('camera','ZOOM.GRACE_TICKS','Carência da AOI ao aproximar','ticks','server',0,300,5,ZOOM,'GRACE_TICKS'),
+  num('camera','ZOOM.ABS_MAX','Teto absoluto do zoom aceito no fio','×','server',1,16,.25,ZOOM,'ABS_MAX'),
   // ── SALAS ──
   // Quanto dura uma sala do LIVRE, em MINUTOS — que é como a duração é dita em todo o resto do jogo (o dono
   // de sala escolhe minutos, `roundTicksOf` converte). O admin não tem por que fazer a conta de 60 Hz.
@@ -150,6 +174,29 @@ export const TUNABLE_BY_KEY=new Map(TUNABLES.map(t=>[t.key,t]));
 export const listTunables=()=>TUNABLES.map(t=>({key:t.key,label:t.label,unit:t.unit,scope:t.scope,
   type:t.type,grupo:t.grupo,min:t.min,max:t.max,step:t.step,options:t.options,def:t.def,value:t.read()}));
 export const readTunable=key=>{const t=TUNABLE_BY_KEY.get(key);return t?t.read():null;};
+/**
+ * Os valores das chaves 'wire', prontos para ir no JSON `room`. É um objeto plano `{chave: valor}` — quem
+ * o aplica no cliente é `aplicaWire`, e a chave É o caminho (`CAM.K`), então acrescentar tunable 'wire'
+ * não pede uma linha em lugar nenhum dos dois lados.
+ */
+export const wireValues=()=>{const out={};
+  for(const t of TUNABLES)if(t.scope==='wire')out[t.key]=t.read();
+  return out;};
+/**
+ * Aplica no CLIENTE o que o servidor entregou. Escreve direto no objeto de `constants.js` (eles não são
+ * congelados), então vale para todo leitor no frame seguinte, sem indireção e sem import novo.
+ * ⚠️ A lista branca continua sendo o mecanismo: só chaves DECLARADAS como 'wire' são aceitas, e um número
+ * fora da faixa é descartado — a mensagem vem do nosso servidor, mas o cliente não tem por que confiar
+ * mais nela do que o painel confia no corpo de uma requisição.
+ * @param {Record<string,any>} vals @param {Record<string,any>} raizes  ex.: {CAM, ZOOM, STAR}
+ */
+export function aplicaWire(vals,raizes){
+  if(!vals)return;
+  for(const [key,v] of Object.entries(vals)){
+    const t=TUNABLE_BY_KEY.get(key);if(!t||t.scope!=='wire')continue;
+    const [raiz,campo]=key.split('.');const obj=raizes[raiz];if(!obj)continue;
+    if(t.type==='opt'){if(t.options.some(o=>o.v===String(v)))obj[campo]=String(v);continue;}
+    const n=Number(v);if(Number.isFinite(n)&&n>=t.min&&n<=t.max)obj[campo]=n;}}
 /**
  * Aplica (validando faixa, ou a lista de opções). Devolve o valor efetivo; lança se a chave não existe
  * ou o valor não serve. ⚠️ `out_of_range` é o código dos DOIS casos de propósito: a rota do painel já o

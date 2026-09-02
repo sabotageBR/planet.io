@@ -213,7 +213,9 @@ function Parametros({ erro }) {
   const mudados = ts.filter(t => t.changed).length;
 
   const cartao = t => {
-    const fixo = t.scope !== "server";                       // 'both': o cliente também lê, e a rota recusa
+    // só 'both' é fixo: a FÍSICA do cliente lê aquele número e a rota recusa (501). 'wire' é gravável —
+    // o servidor entrega o valor ao cliente no JSON da sala (ver wireValues/aplicaWire em shared/tunables).
+    const fixo = t.scope === "both";
     const sujo = edit[t.key] !== undefined;
     const val = sujo ? edit[t.key] : t.value;
     const rotulo = o => (t.options.find(x => x.v === o) || {}).label || o;
@@ -244,7 +246,7 @@ function Parametros({ erro }) {
             : <>padrão <i>{num(t.def)}</i> · faixa <i>{num(t.min)} – {num(t.max)}</i></>}
         </span>
         <span className="pm-acoes">
-          {fixo ? <em>também lido pelo cliente</em> : null}
+          {fixo ? <em>lido pela física do cliente</em> : null}
           {sujo ? <button className="pri" onClick={() => salvar(t, Number(edit[t.key]))}>Salvar</button> : null}
           {sujo ? <button onClick={() => setEdit(x => ({ ...x, [t.key]: undefined }))}>Cancelar</button> : null}
           {!sujo && t.changed ? <button onClick={() => voltar(t)}>Restaurar</button> : null}

@@ -125,9 +125,11 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
   router.add('PUT',/^\/api\/admin\/settings\/(?<key>[A-Za-z0-9_.]+)$/,async ctx=>{const adm=await requireAdmin(ctx);
     const key=ctx.params.key,t=TUNABLE_BY_KEY.get(key);
     if(!t)throw err(400,'unknown_key','esse parâmetro não existe');
-    // 'both' é lido TAMBÉM pelo cliente, que tem a própria cópia do bundle: mudar de um lado só faria a
+    // 'both' é lido pela FÍSICA do cliente, que tem a própria cópia do bundle: mudar de um lado só faria a
     // predição divergir. Recusar é honesto; gravar seria fingir que funciona.
-    if(t.scope!=='server')throw err(501,'client_side','esse parâmetro também é lido pelo cliente e ainda não pode ser mudado em runtime');
+    // ⚠️ 'wire' passa: o cliente também lê, mas o servidor ENTREGA o valor no JSON `room` (ver
+    // `wireValues`/`aplicaWire` em shared/tunables.js), então os dois lados ficam com o mesmo número.
+    if(t.scope==='both')throw err(501,'client_side','esse parâmetro também é lido pela física do cliente e não pode ser mudado em runtime');
     let v;try{v=applyTunable(key,ctx.body.value);}
     catch(e){throw err(400,e.message==='out_of_range'?'out_of_range':'unknown_key',
       e.message==='out_of_range'?`o valor tem que ficar entre ${t.min} e ${t.max}`:'esse parâmetro não existe');}

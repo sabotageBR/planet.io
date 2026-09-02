@@ -1004,7 +1004,15 @@ export function botTypo(rng,txt){
   if(txt.length<3)return txt;
   const i=rng.int(0,txt.length-2);
   return rng.next()<.5?txt.slice(0,i)+txt[i]+txt.slice(i):txt.slice(0,i)+txt[i+1]+txt[i]+txt.slice(i+2);}
-export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,AOI_FOOD_VIEW:.44};
+export const CAM={BASE:64,EXP:.4,K:1,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,AOI_FOOD_VIEW:.44};
+// K é o ÚNICO botão de zoom do /admin, e é multiplicador global: >1 afasta a câmera de todo mundo, <1
+// aproxima. Um botão e não seis porque os outros candidatos são armadilhas — REF_W/REF_H carregam a regra
+// anti-widescreen do agar ("a mesma área de mundo em qualquer tela", travada em teste) e ZOOM.MIN/ZOOM.K
+// estão amarrados a POWERUP.ZOOM_K por outro teste (1+MIN+K = 1,5 = ZOOM_K), então mexer neles quebra uma
+// promessa em vez de girar um botão. Entra ANTES do piso do mundo, junto do powerup.
+// ⚠️ Escopo 'wire': o cliente também lê `zoomFor`, e o servidor entrega o valor no JSON da sala. Com um
+// `scope:'server'` a AOI viria por um zoom e a tela desenharia por outro — que se lê como uma borda larga
+// e vazia, exatamente o defeito que `aoiScaleFood` existe para não ter.
 // zoom EXATO do cliente do agar.io:  S = Σ raio de TODAS as peças próprias;
 //   escala = min(BASE/S, 1)^EXP × max(altura/REF_H, largura/REF_W)
 // Três coisas importam aqui e nenhuma delas é o que havia antes (58/bigR):

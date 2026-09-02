@@ -11,6 +11,7 @@
 import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,botCountry,botSpawnR,BOT_CHAT,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,NOTICE,VOICE,FEED,WEAPON} from '@warspace/shared/constants.js';
 import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent,encodeZone,encodeVoice} from '@warspace/shared/protocol/index.js';
 import {rectHas} from '@warspace/shared/camera.js';
+import {wireValues} from '@warspace/shared/tunables.js';
 import {createRng} from '@warspace/shared/rng.js';
 import {kdOf} from '@warspace/shared/levels.js';
 // O lookup REVERSO do easter egg: dado o skinId de um jogador, QUEM ele está vestindo. O servidor já
@@ -524,6 +525,9 @@ export class Room{
     for(const s of this.sessions.values())s.sendJson(msg);}
   /** A largada: o `room` de novo, com a fase nova (relógio, contagem e céu saem todos do bloco `round`). */
   broadcastPhase(){const msg={t:'phase',code:this.code,phase:this.phase,round:this.roundInfo(),
+    // reemite os parâmetros 'wire' (câmera, arte da estrela): sem isto uma mudança no /admin só valeria
+    // para quem entrasse DEPOIS, e a mesma sala ficaria com dois enquadramentos diferentes
+    tun:wireValues(),
     players:this.sim.humanCount(),cap:this.max,teamSize:this.teamSize,mode:this.modeId};
     for(const s of this.sessions.values())s.sendJson(msg);}
   /**

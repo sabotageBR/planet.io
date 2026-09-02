@@ -52,9 +52,11 @@ test("tunables: todo descritor é coerente (faixa contém o padrão, e o escopo 
     }else{
       assert.ok(t.min<=t.def&&t.def<=t.max,`${t.key}: o padrão (${t.def}) tem que caber na faixa ${t.min}–${t.max}`);
       assert.ok(t.unit,`${t.key}: número sem unidade é número que o admin não sabe ler`);}
-    assert.ok(t.scope==='server'||t.scope==='both',`${t.key}: escopo tem que ser 'server' ou 'both'`);
-    // ⚠️ 'both' significa que o CLIENTE também lê o número, e ele tem a própria cópia do bundle: a rota do
-    // painel RECUSA essas chaves (501) em vez de gravar um valor que só metade do jogo enxerga.
+    assert.ok(t.scope==='server'||t.scope==='both'||t.scope==='wire',`${t.key}: escopo tem que ser 'server', 'both' ou 'wire'`);
+    // ⚠️ 'both' significa que a FÍSICA do cliente lê o número, e ele tem a própria cópia do bundle: a rota
+    // do painel RECUSA essas chaves (501) em vez de gravar um valor que só metade do jogo enxerga.
+    // 'wire' também é lido pelo cliente, mas o servidor ENTREGA o valor no JSON `room`/`phase`, então os
+    // dois lados ficam com o mesmo número — e por isso ela é gravável.
   }
   assert.ok(TUNABLE_BY_KEY.get('PLAYER.MAX_R').scope==='both',"PLAYER.MAX_R é lido pela predição do cliente");
   assert.ok(TUNABLE_BY_KEY.get('POWERUP.MAGNET_MAX_R').scope==='server',"o ímã é 100% servidor (predict.js não o consome)");});

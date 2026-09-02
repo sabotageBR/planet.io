@@ -17,7 +17,10 @@ import {clamp} from "./util.js";
  */
 export function zoomFor(sumR,W,H,mult=1,manual=1){
   const k=sumR>CAM.BASE?CAM.BASE/sumR:1;
-  const z=Math.pow(k,CAM.EXP)*Math.max(H/CAM.REF_H,W/CAM.REF_W)/(mult>1?mult:1);
+  // CAM.K é o botão do /admin (tunable 'wire'): 1 = a câmera de sempre, >1 afasta, <1 aproxima. Ele entra
+  // ANTES do piso, junto do powerup, porque é enquadramento de JOGO e não pode mostrar além do mapa — a
+  // roda, que é escolha do jogador, continua vindo depois.
+  const z=Math.pow(k,CAM.EXP)*Math.max(H/CAM.REF_H,W/CAM.REF_W)/((mult>1?mult:1)*(CAM.K>0?CAM.K:1));
   const zmin=Math.max(W/WORLD.w,H/WORLD.h);   // piso: mostrar o mundo inteiro. O teto de custo é da AOI (aoiScaleFood), não da câmera
   const zp=z<zmin?zmin:z;
   if(!(manual>0)||manual===1)return zp;
