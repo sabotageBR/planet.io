@@ -42,8 +42,16 @@ if (PORTAL) {
   portal.aoEntrarNaSala(code => { if (code) entrarPorConvite(code); });
   // trocou de conta no site deles enquanto jogava: refaz a identidade
   portal.aoTrocarConta(() => { entraPeloPortal(); });
-  portal.aoPausar(() => silenciaAnuncio(true));
-  portal.aoRetomar(() => { silenciaAnuncio(false);
+  // ⚠️ PAUSAR É PARAR, não só calar. Isto era `silenciaAnuncio(true)` e mais nada, e a certificação do
+  // Playgama reprovou com "the game continues running when a system overlay is opened. Subscribe to the
+  // SDK pause event and stop the game loop". Agora a pausa da plataforma faz as TRÊS coisas: cala o som,
+  // levanta o menu de pausa (é ele que solta o COMANDO — `canAct`, teclado e o alvo em cima do próprio
+  // centróide) e avisa o motor por evento de janela, que para o RENDER (game/index.js). O motor não
+  // conhece portal nem React, e o evento é o mesmo caminho de `warspace:theme`/`warspace:lang`.
+  const avisaMotor = on => { try { dispatchEvent(new CustomEvent("warspace:pause", { detail: { on } })); } catch { /**/ } };
+  portal.aoPausar(() => { silenciaAnuncio(true); avisaMotor(true);
+    const s = app.get(); if (s.screen === "game" && !s.overlays.pause) setPause(true); });
+  portal.aoRetomar(() => { silenciaAnuncio(false); avisaMotor(false);
     const s = app.get(); if (s.screen === "game" && !s.overlays.pause) setPause(true); });
 }
 export const closeAccount = () => app.update(s => ({ ...s, overlays: { ...s.overlays, account: false } }));

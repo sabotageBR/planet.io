@@ -94,7 +94,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // o espaço todo, com o blip na cor da skin, nome e massa, e a posição INTERPOLADA entre as amostras de 2 Hz).
   // Só faz sentido MORTO: com o jogador vivo, ver a sala inteira seria vantagem tática.
   let mapOn="";
-  let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,econAlvo=0,statsOv=null;
+  let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,portalPausado=false,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,econAlvo=0,statsOv=null;
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
   // ── modo, equipe, zona, chat e voz ──
   let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0,lobby=null,spec=null;   // `lobby` = o estado da tela de espera (JSON `lobby`, em ms)
@@ -193,6 +193,17 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   let roT=0;const agendaResize=()=>{clearTimeout(roT);roT=setTimeout(()=>game.resize(),RESIZE_MS);};
   const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(agendaResize):null;if(ro)ro.observe(container);
   const onVis=()=>{visible=document.visibilityState!=="hidden";lastT=performance.now();if(visible){frames=0;fpsT=lastT;}};document.addEventListener("visibilitychange",onVis);
+  // ⚠️ PAUSA DA PLATAFORMA (portais): o SDK avisa quando uma camada DELES cobre o jogo — anúncio, menu do
+  // site, diálogo do sistema — e a certificação do Playgama reprova com "the game continues running when
+  // a system overlay is opened. Subscribe to the SDK pause event and stop the game loop". `visibilitychange`
+  // NÃO cobre isso: a aba continua visível. Quem avisa é `state/actions.js`, por evento de janela, porque o
+  // motor não conhece o React nem os portais (ele roda igual no `?local=1`).
+  // ⚠️ O que para é o RENDER, nunca o `enviarInput`: ele tem timer PRÓPRIO (NET.INPUT_HZ, acima) e é por
+  // ele que a pausa manda o alvo em cima do próprio centróide — parar os dois faria o planeta seguir
+  // andando na última direção, que é o oposto de pausar. O jogo é multijogador e autoritativo no servidor:
+  // o mundo continua lá, como continua para qualquer .io.
+  const onPortalPause=e=>{portalPausado=!!(e&&e.detail&&e.detail.on);lastT=performance.now();frames=0;fpsT=lastT;};
+  addEventListener("warspace:pause",onPortalPause);
 
   // ── sumiço de entidades (Interpolator, no tempo de render): planeta comido explode, comida/pellet faísca ──
   function onVanish(e){if(!renderer)return;
@@ -449,7 +460,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
     resize(){if(!renderer)return;renderer.resize();agendaView();},
     destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();game.leave(true);audio.suspend();removeEventListener("pointerdown",wakeAudio);removeEventListener("keydown",wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();actions.destroy();clearTimeout(viewT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
-      if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("warspace:theme",onThemeEvent);if(themeGuard)removeEventListener("warspace:theme",themeGuard);
+      if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("warspace:pause",onPortalPause);removeEventListener("warspace:theme",onThemeEvent);if(themeGuard)removeEventListener("warspace:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,
       hud:()=>hudStore.get(),estado:()=>({modeId,teamSize,myTeam,phase,startsAt,roomCap,lobby,zone}),
@@ -688,6 +699,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(w){input.setTarget(w.x,w.y);predictor.setTarget(w.x,w.y);}   // o alvo é marcado mesmo com o socket caído (a predição local continua)
     if(conn.isOpen)input.update(now);}
   function frame(now){raf=requestAnimationFrame(frame);if(!ready)return;
+    if(portalPausado){lastT=now;return;}   // camada da plataforma por cima: nada de render (ver onPortalPause)
     // o teto do passo tem que bater com o do acumulador do Predictor (.25): com .1 aqui, uma travada de
     // 300 ms fazia o servidor andar 300 ms e a predição só 100 — a peça ficava para trás e o snapshot
     // seguinte passava dos NET.SNAP_DIST e dava o solavanco. O Predictor já limita a 15 sub-passos.

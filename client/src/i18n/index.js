@@ -7,6 +7,7 @@
 // Os outros vêm por `import()` (o mesmo padrão de `/admin` e `?sfx` em main.jsx), então quem joga em
 // português não baixa um byte de espanhol — medido, um dicionário completo dá ~29 KB.
 import base from "./pt-BR.js";
+import { PORTAL } from "../portal/flags.js";
 
 // ⚠️ SÃO DOIS papéis, e misturá-los num `DEFAULT_LANG` só escondia a diferença:
 //   BASE_LANG     = o dicionário CARREGADO ESTATICAMENTE, chão de toda chave que faltar numa tradução e
@@ -43,6 +44,20 @@ const navTags = () => (typeof navigator === "undefined" ? []
   : navigator.language ? [navigator.language] : []);
 
 /**
+ * O idioma que o PORTAL pediu na URL (`?lang=es`, `?language=es`, `?locale=es`) — os três nomes porque
+ * cada portal escolheu o seu (Playgama e GamePix mandam `lang`). Devolve um id NOSSO ou "" — a
+ * resolução passa por `resolveLang`, então "es-419" e "pt-PT" acham casa como em qualquer outra fonte.
+ */
+export function langDaURL() {
+  if (typeof location === "undefined") return "";
+  let tag = "";
+  try { const q = new URLSearchParams(location.search); tag = q.get("lang") || q.get("language") || q.get("locale") || ""; } catch { return ""; }
+  if (!tag) return "";
+  const id = resolveLang("auto", [tag]);
+  return id === FALLBACK_LANG && !/^en/i.test(tag) ? "" : id;   // não casou: melhor o padrão do portal que um chute
+}
+
+/**
  * 'auto' → o primeiro de `navigator.languages` que casar (exato e depois pela raiz, então "pt-PT" e
  * "es-419" acham casa); id conhecido → ele mesmo; ninguém casou → FALLBACK_LANG (inglês). Pura e sem
  * relógio: ao contrário do tema, o idioma do navegador não muda no meio da sessão.
@@ -50,8 +65,18 @@ const navTags = () => (typeof navigator === "undefined" ? []
  * ⚠️ A varredura é pela LISTA INTEIRA do navegador antes de desistir. Quem tem `["de","pt-BR"]` — um
  * brasileiro morando na Alemanha — cai no português na segunda volta, e não no inglês da desistência.
  */
-export function resolveLang(pref = "auto", tags = navTags()) {
+export function resolveLang(pref = "auto", tags) {
   if (pref && pref !== "auto" && LANGS.includes(pref)) return pref;
+  // ⚠️ NUM PORTAL, 'auto' NÃO É O NAVEGADOR. Quem escolhe o idioma ali é a plataforma (o `?lang=` da URL
+  // e, depois do SDK, o `platform.language`), e o padrão dela é o INGLÊS — a certificação do Playgama
+  // reprova com "Default locale is not English. The game started in another language". Sem isto o
+  // conserto no `bootLang` durava 200 ms: o `GET /api/me` chega com `prefs.lang:"auto"` e
+  // `applyPrefsSideEffects` chamava `setLang("auto")`, que caía de volta no navegador do revisor.
+  // `tags` explícito (o teste, e o mapeamento de uma tag de fora) segue puro e sem portal nenhum.
+  if (tags === undefined) {
+    if (PORTAL) return plataforma || langDaURL() || FALLBACK_LANG;
+    tags = navTags();
+  }
   for (const tag of tags || []) {
     if (LANGS.includes(tag)) return tag;
     const raiz = String(tag).toLowerCase().split("-")[0];
@@ -62,6 +87,7 @@ export function resolveLang(pref = "auto", tags = navTags()) {
 }
 
 let idAtual = BASE_LANG, prefAtual = "auto", cache = new Map(), primeira = true;   // antes de resolver, o que está em memória é o base
+let plataforma = "";   // o id que o PORTAL mandou (URL no boot, SDK depois) — ver resolveLang
 export const currentLang = () => idAtual;
 export const currentLangPref = () => prefAtual;
 
@@ -99,10 +125,38 @@ function aplica() {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("warspace:lang", { detail: { id: idAtual } }));
 }
 
-/** Aplica a preferência ('auto' inclusive), carregando o dicionário se preciso. Idempotente. */
-export async function setLang(pref = "auto") {
+/**
+ * O idioma que a PLATAFORMA mandou (`bridge.platform.language` e afins). Registra e reaplica, sem
+ * gravar: escolha do jogador continua sendo a única coisa que vai para o `localStorage`.
+ * Tag de fora ("es-ES", "pt-PT") passa por `resolveLang` com tags explícitas.
+ */
+export function setLangDaPlataforma(tag) {
+  const id = tag ? resolveLang("auto", [String(tag)]) : "";
+  // ⚠️ ESPELHO DO NAVEGADOR NÃO É ESCOLHA DA PLATAFORMA — e essa diferença é a razão de existirem DOIS
+  // findings na certificação do Playgama, que parecem se contradizer: "the default language must be
+  // English" e "language parameter was ignored on initialization". Medido: fora dos portais deles o
+  // `platform.language` devolve o idioma do NAVEGADOR (num Chrome pt-BR veio "pt"), e a QA roda no
+  // navegador do desenvolvedor — obedecer isso é justamente o que faz o jogo "começar em outro idioma".
+  // Quando a plataforma pede algo DIFERENTE do navegador, aí é escolha de verdade (é assim que eles
+  // testam o espanhol) e ela manda. O `?lang=` da URL é sempre explícito e entra por `langDaURL`.
+  if (id && id !== resolveLang("auto", navTags())) plataforma = id;
+  return langSalva() ? Promise.resolve(idAtual) : setLang("auto", { lembrar: false });
+}
+
+/** Há uma escolha GRAVADA de idioma? (só o jogador grava; o que vem da plataforma não) */
+export function langSalva() { try { return !!localStorage.getItem(CHAVE); } catch { return false; } }
+
+/**
+ * Aplica a preferência ('auto' inclusive), carregando o dicionário se preciso. Idempotente.
+ *
+ * ⚠️ `lembrar:false` é para o idioma que vem da PLATAFORMA (o `?lang=` do portal e o
+ * `bridge.platform.language` do Playgama). Gravando, a primeira sessão num portal cravaria aquele
+ * idioma em `localStorage` e a escolha do jogador nas Opções deixaria de ser distinguível do palpite do
+ * portal — e o portal, que troca de idioma entre execuções, nunca mais conseguiria mandar.
+ */
+export async function setLang(pref = "auto", { lembrar = true } = {}) {
   prefAtual = pref || "auto";
-  try { localStorage.setItem(CHAVE, prefAtual); } catch { /* aba anônima, cota cheia: só perde o atalho */ }
+  if (lembrar) try { localStorage.setItem(CHAVE, prefAtual); } catch { /* aba anônima, cota cheia: só perde o atalho */ }
   const id = resolveLang(prefAtual);
   // `primeira` força a aplicação inicial mesmo quando o idioma resolvido já é o ativo: é ela que escreve
   // o `lang` do <html> e o título da aba no boot de quem fala português — sem isso os dois só acertariam
@@ -128,7 +182,11 @@ export async function setLang(pref = "auto") {
 export function bootLang(esperaMs = 600) {
   let pref = "auto";
   try { pref = localStorage.getItem(CHAVE) || "auto"; } catch { /* idem */ }
-  const p = setLang(pref);
+  // ⚠️ Num PORTAL o 'auto' já significa "a plataforma manda" (ver resolveLang): o `?lang=` da URL está
+  // disponível desde o primeiro byte, e o `platform.language` do SDK chega depois, por `portal/pg.js`.
+  // Aqui não se grava nada quando a preferência é 'auto' num portal — gravar cravaria o palpite do
+  // portal por cima da escolha do jogador.
+  const p = setLang(pref, { lembrar: !(PORTAL && pref === "auto") });
   // ⚠️ Com TETO. O dicionário é um chunk à parte, e num 3G ruim esperar por ele deixaria a tela BRANCA —
   // o que é pior que o flash que este atalho existe para evitar. Estourado o prazo, a tela sobe em pt-BR e
   // o `setLang` segue seu caminho: quando chegar, o evento `warspace:lang` retraduz tudo sozinho.

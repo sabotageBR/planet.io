@@ -30,6 +30,7 @@ import { aoAcabarAVida } from "./vidas.js";
 import { app } from "../state/app.js";
 import { api } from "../api/client.js";
 import { applySession } from "../state/actions.js";
+import { setLangDaPlataforma } from "../i18n/index.js";
 const SRC = import.meta.env.VITE_PG_SDK_URL || "https://bridge.playgama.com/v2/stable/playgama-bridge.js";
 const ponte = () => window.bridge || window.playgamaBridge || null;
 /**
@@ -57,6 +58,17 @@ export async function criar({ pausou, retomou }) {
   const escuta = (nome, cb) => { try { if (nome && b.on) b.on(nome, cb); } catch { /* SDK pela metade */ } };
   const recado = m => { try { if (m && b.platform) Promise.resolve(b.platform.sendMessage(m)).catch(() => {}); } catch { /**/ } };
   const audioDaPlataforma = () => { try { return b.platform ? b.platform.isAudioEnabled !== false : true; } catch { return true; } };
+
+  // ── IDIOMA DA PLATAFORMA ───────────────────────────────────────────────────
+  // ⚠️ Quem escolhe o idioma num portal é ELE, não o navegador — e a certificação reprova nas duas
+  // pontas: "Default locale is not English. The game started in another language" e "Localization error
+  // for Spanish … language parameter was ignored on initialization". O `?lang=` já foi lido antes do
+  // primeiro paint (`bootLang`); aqui vem a fonte boa, que só existe depois do SDK. Passa por
+  // `setLangDaPlataforma` porque a tag deles pode ser "es-ES" ou "pt-PT", e não um id nosso — e porque
+  // ela REGISTRA o idioma: num portal o 'auto' das prefs passa a resolver para ele, e não para o
+  // navegador (sem isso o `GET /api/me`, que chega com `lang:"auto"`, desfazia a escolha da plataforma
+  // 200 ms depois do boot). Escolha explícita do jogador nas Opções continua ganhando.
+  try { const tag = b.platform && b.platform.language; if (tag) setLangDaPlataforma(tag); } catch { /* idioma nunca derruba o jogo */ }
 
   escuta(EV.INTERSTITIAL_STATE_CHANGED, e => { if (e === ST.CLOSED || e === ST.FAILED) fecha(); });
   // ⚠️ PAUSA E ÁUDIO SÃO AGREGADOS, E O NOSSO PRÓPRIO ANÚNCIO ENTRA NA CONTA. O Bridge junta cinco
