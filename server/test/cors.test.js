@@ -57,6 +57,19 @@ test('a lista do ConfigMap aceita a origem real de cada portal empacotado', () =
     // — medido no preview do warspace.io. `https://*.poki.com` cobre os três, mas quem tem que estar
     // travado aqui é a origem do DOCUMENTO que faz as chamadas.
     ['Poki (invólucro)','https://games.poki.com'],
+    // ⚠️ A POKI TEM CINCO DOMÍNIOS, e o `poki.com` é só o de cima. As FERRAMENTAS de desenvolvedor
+    // moram noutros TLDs — o Game Inspector é `inspector.poki.dev` e conversa com
+    // `inspector-api.poki.io` (lido no bundle dele) —, o SDK busca ícones em `a.poki-cdn.com` (medido
+    // no nosso próprio pacote rodando) e os JOGOS de terceiros são servidos de `poki-gdn.com` e
+    // `poki-user-content.com` (certificados `*.poki-gdn.com` / `*.poki-user-content.com`, e é por eles
+    // que o Playgama Bridge reconhece a plataforma Poki). Faltando qualquer um, o sintoma é o de
+    // sempre: carrega, desenha o menu e o JOGAR não conecta — foi o que a QA deles devolveu como
+    // "SEM CONTATO COM A BASE" dentro do Inspector. Mesma lição do `.net` da QA Tool do Playgama.
+    ['Poki (Inspector)','https://inspector.poki.dev'],
+    ['Poki (API do Inspector)','https://inspector-api.poki.io'],
+    ['Poki (CDN do SDK)','https://a.poki-cdn.com'],
+    ['Poki (jogos)','https://poki-gdn.com'],
+    ['Poki (conteúdo de usuário)','https://x.poki-user-content.com'],
     ['Poki (o jogo)','https://78e41599-1082-4fac-b0d9-2436753ddd5d.gdn.poki.com'],
     ['itch.io','https://html-classic.itch.zone'],
     ['Y8','https://storage.y8.com'],
