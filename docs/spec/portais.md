@@ -586,3 +586,96 @@ Medido no pacote (Chrome headless, servido no subcaminho): SDK carregado, os qua
 pelo adaptador, `loaded()` resolvendo e `interstitialAd()` desenhando o overlay com o botão de pular,
 tela inicial montada, `#boot` removido, zero 404 e **console limpo**. As duas chamadas que falham ali são
 a API a partir de `127.0.0.1`, que não está em `ALLOWED_ORIGINS`.
+
+## Bounty Board (`bountyboard.gg/arcade`) — o portal que NÃO recebe zip
+
+Décimo portal, e o primeiro que quebra a regra deste arquivo inteiro: **aqui o pacote é o SITE**.
+`node scripts/portal-pack.mjs bountyboard` recusa de propósito, com o motivo escrito.
+
+O Arcade deles aceita duas coisas: *"link an HTTPS build you already host or upload a host-agnostic HTML5
+ZIP"*. São dois TRILHOS diferentes, e para um `.io` com servidor próprio só um funciona — medido no
+bundle do player deles, onde o `<iframe>` do jogo é montado assim:
+
+```js
+eW = r.buildBacked ? "allow-scripts allow-pointer-lock"                      // ZIP enviado
+                   : "allow-scripts allow-same-origin allow-pointer-lock"    // URL externa
+eK = "fullscreen; autoplay; gamepad; pointer-lock; accelerometer; gyroscope; magnetometer; xr-spatial-tracking"
+eZ = r.buildBacked ? "no-referrer" : "origin"                                // referrerPolicy
+```
+
+⚠️ **O ZIP ENVIADO RODA EM ORIGEM OPACA**, e isso mata o jogo de duas maneiras independentes. Sem
+`allow-same-origin`: (a) toda chamada nossa sairia com `Origin: null`, que `server/src/http/cors.js`
+recusa por construção — e tem que continuar recusando, porque qualquer atacante produz um `null`; e (b)
+`localStorage` **lança**, e é lá que moram o token, as preferências e o idioma. A doc deles diz a mesma
+coisa com todas as letras: *"hosted builds run on an opaque origin ... native
+localStorage/sessionStorage/IndexedDB/cookies all THROW"*, e a saída que oferecem (`storage.install()`,
+que espelha o localStorage no cloud save) só vale para jogador LOGADO NELES — não resolve o `Origin`. Um
+zip aqui seria o pior modo de falha do catálogo: sobe, carrega, desenha o menu e **o JOGAR não conecta**.
+
+⚠️ **O trilho é a URL EXTERNA**: eles enquadram `https://warspace.io` com `allow-same-origin`, e aí a
+origem é a NOSSA — API e WS na mesma origem, `localStorage` vivo e **nenhuma linha de `ALLOWED_ORIGINS`
+a mexer**, o único portal em que o CORS não entra na história. A matriz de capacidades deles confirma o
+resto: ciclo de vida, placar, identidade, variantes e multijogador funcionam nesse trilho; cloud save e
+anúncio recompensado, não (*"no payable per-game attribution yet"*).
+
+⚠️ **`allow-forms` NÃO ESTÁ NO SANDBOX, e o `submit` nem é disparado.** Medido em Chrome headless com o
+sandbox exato deles: num formulário com `onSubmit`, o clique no botão `type="submit"` e o Enter no campo
+**não disparam o evento** — o navegador aborta antes ("Blocked form submission … the 'allow-forms'
+permission is not set"). Ou seja, dentro do player deles os botões CRIAR CONTA e ENTRAR do
+`ui/AccountModal.jsx` não fariam nada, em silêncio, para quem clicou. Hoje o clique é `type="button"` +
+`onClick` e o Enter é um `keydown` com `preventDefault` (que também evita a submissão implícita no site,
+então cada caminho dispara UMA vez em todo lugar).
+
+⚠️ **O `allow` não tem `microphone`** (nem `clipboard-write`): a voz sai pelo mesmo interruptor dos
+portais (`SEM_VOZ`, agora `PORTAL || BOUNTY`), e o convite já cai sozinho no caminho de mostrar a URL.
+
+⚠️ **A detecção é do EMBUTIDOR** (`BOUNTY` em `client/src/portal/flags.js`): `location.ancestorOrigins`
+primeiro, `document.referrer` como reserva — e o referrer serve porque o iframe deles manda
+`referrerPolicy="origin"`, então chega a origem crua. Casamento por SUFIXO de domínio, nunca `includes`
+(`client/test/bounty.test.js` trava isso, com `bountyboard.gg.evil.tld` no negativo). `?bb=1` liga à
+força: sem ele não há como PROVAR a integração antes de submeter, porque o ancestral não se falsifica em
+127.0.0.1.
+
+### O SDK (`@bountyboard/arcade-sdk`, script `https://www.bountyboard.gg/arcade-sdk/v1.js`)
+
+Eles publicam um **contrato para agentes** em `https://www.bountyboard.gg/arcade/sdk/llms.txt` — é a
+fonte de verdade, mais completa que a página humana. O que o adaptador (`client/src/portal/bb.js`) usa:
+
+| chamada | quando |
+|---|---|
+| `init()` | na criação, **fire-and-forget** (regra 1: *"The SDK is never load-bearing"*) |
+| `gameLoadingFinished()` | `portal.carregou()`, do `main.jsx`, depois do primeiro render |
+| `gameplayStart()` / `gameplayStop()` | entrando/saindo da partida e na PAUSA (regra 3: menu, pausa e tela de morte não são jogo ativo) |
+| `gameOver(score)` | uma vez por vida (regra 2), com o `score` inteiro da partida |
+
+⚠️ **O ciclo de vida vem do STORE, não de `if (PORTAL)` espalhados.** Os ganchos de portal do jogo são
+guardados por `if (PORTAL)` e aqui PORTAL é **falso** — este é o site. Assinar o `app` (o molde de
+`app/analytics.js`) cobre os mesmos instantes: morrer e o BIG CRUNCH escrevem `screen` e
+`lastMatch`/`roundResult` no MESMO update, então "parou de jogar → acabou" sai na ordem certa num pass
+só. O `gameOver` uma vez por vida é garantido pela abertura da rodada no `gameplayStart`: quem morreu não
+ganha um segundo no fim de rodada, e o campeão que nunca morreu ganha o dele ali.
+
+⚠️ **`lockToHost()` fica de fora, de propósito.** Ele BLOQUEIA o jogo quando não reconhece o embutidor —
+é uma forma nova de o nosso próprio site quebrar sozinho, e anti-rehosting não vale esse preço. Cloud
+save, identidade e variantes também ficam de fora: o progresso daqui mora no nosso Postgres, atrás do
+token, e a identidade é a conta do warspace.io.
+
+⚠️ **O placar deles precisa de uma declaração no formulário** ("Leaderboards"), senão *"the host rejects
+every posted score and the game sees nothing"* — `submitScore`/`gameOver` são fire-and-forget e não
+avisam. O número que mandamos é o `score` da vida, o mesmo do nosso ranking, nunca a massa (que passa de
+um milhão e bate no teto de plausibilidade por jogo).
+
+### Verificado
+
+Chrome headless, o site servido em `127.0.0.1` dentro de um iframe com o sandbox e o `allow` MEDIDOS
+deles, com `?local=1&bb=1`: origem real (`http://127.0.0.1:4189`), `localStorage` vivo, o SDK baixado de
+`bountyboard.gg` e presente na página, e a sequência do ciclo de vida saindo sozinha do store —
+`gameplayStart()` ao entrar na partida, `gameplayStop()` + `gameOver(0)` na morte. Zero erro de console
+que fosse nosso.
+
+### O que vai no formulário deles
+
+- **Embed URL**: `https://warspace.io` (trilho de URL externa; **não** subir zip).
+- **Leaderboards**: declarar, senão o `gameOver` é descartado em silêncio.
+- Orientação **landscape**, toque suportado, multijogador com servidor próprio.
+- Política de privacidade: `https://warspace.io/privacy`.

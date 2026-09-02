@@ -48,6 +48,9 @@ if (!PORTAL && (location.pathname === "/admin" || location.pathname.startsWith("
     createRoot(document.getElementById("app")).render(<React.StrictMode><App /></React.StrictMode>);
     tiraBoot();
     // CrazyGames e Poki contam "o jogo carregou" para decidir a hora do anúncio; a GD não tem equivalente.
-    if (PORTAL) portal.carregou();
+    // ⚠️ SEM o `if (PORTAL)`: a Bounty Board enquadra o SITE (ver portal/flags.js) e o
+    // `gameLoadingFinished` dela sai por aqui. A fachada é no-op quando não há adaptador vivo, então no
+    // site normal isto continua não fazendo nada — e o SDK só desce se um embutidor conhecido pediu.
+    portal.carregou();
   });
 }

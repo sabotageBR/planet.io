@@ -27,6 +27,16 @@ export default function AccountModal({ on }) {
   if (SEM_CONTA) return null;
   return <div className={"overlay" + (on ? " on" : "")} id="s-account" onClick={e => { if (e.target === e.currentTarget) closeAccount(); }}>{on ? <Body /> : null}</div>;
 }
+// ⚠️ ENTER À MÃO, E NÃO PELO `submit`. Medido em Chrome: num iframe com
+// `sandbox="allow-scripts allow-same-origin"` e SEM `allow-forms` — que é exatamente como a Bounty Board
+// enquadra o site (ver portal/flags.js) — o evento `submit` **NÃO É DISPARADO**: o navegador aborta a
+// submissão antes disso ("Blocked form submission ... the 'allow-forms' permission is not set") e o
+// `onSubmit` nunca roda. Ou seja: dentro do player deles os botões CRIAR CONTA e ENTRAR não fariam
+// nada, sem erro visível para quem clicou. Por isso o clique é `type="button"` + `onClick` e o Enter é
+// um `keydown` com `preventDefault` — que também impede a submissão implícita no site, então cada
+// caminho dispara UMA vez em todo lugar. O `onSubmit` fica como rede de segurança.
+const aoEnter = fn => e => { if (e.key === "Enter" && e.target && e.target.tagName === "INPUT") { e.preventDefault(); fn(); } };
+
 function Body() {
   const LB = useLabels(); const user = useStore(app, s => s.session.user) || {};
   const [tab, setTab] = useState(app.get().overlays.account === "claim" ? "claim" : "login");   // o Body só monta com o modal aberto, então ler UMA vez na montagem é o estado certo
@@ -55,7 +65,7 @@ function Body() {
     <div className="tabs"><button data-tab="claim" className={tab === "claim" ? "on" : ""} onClick={() => { setTab("claim"); setErr(null); }}>{LB.claimTab}</button><button data-tab="login" className={tab === "login" ? "on" : ""} onClick={() => { setTab("login"); setErr(null); }}>{LB.loginTab}</button></div>
     {/* `tab on` continua: `.tab{display:none}` / `.tab.on{display:flex}` (base.css) e o modo paisagem dos
         temas estilizam `.modal .tab.on` em duas colunas. Sem a classe, o formulário some no celular. */}
-    <form className={"tab tab-claim" + (tab === "claim" ? " on" : "")} onSubmit={e => { e.preventDefault(); doClaim(); }}>
+    <form className={"tab tab-claim" + (tab === "claim" ? " on" : "")} onSubmit={e => { e.preventDefault(); doClaim(); }} onKeyDown={aoEnter(doClaim)}>
       <p className="hint">{LB.claimNote}</p>
       <Field id="ac-mail" label={LB.email} type="email" value={c.mail} autoComplete="email" onChange={e => setC({ ...c, mail: e.target.value })} />
       <Field id="ac-login" label={LB.loginUser} value={c.login} maxLength={16} autoComplete="username" onChange={e => setC({ ...c, login: e.target.value })} />
@@ -63,14 +73,14 @@ function Body() {
       <Field id="ac-pass" label={LB.password} type="password" value={c.pass} autoComplete="new-password" onChange={e => setC({ ...c, pass: e.target.value })} />
       <Field id="ac-pass2" label={LB.password2} type="password" value={c.pass2} autoComplete="new-password" onChange={e => setC({ ...c, pass2: e.target.value })} />
       {tab === "claim" ? error : null}
-      <div className="modal-actions"><button type="button" className="btn-secondary" data-go="account-close" onClick={closeAccount}>{LB.cancel}</button><button type="submit" className="btn-primary" data-go="account-claim" disabled={busy}>{LB.claim}</button></div>
+      <div className="modal-actions"><button type="button" className="btn-secondary" data-go="account-close" onClick={closeAccount}>{LB.cancel}</button><button type="button" className="btn-primary" data-go="account-claim" disabled={busy} onClick={doClaim}>{LB.claim}</button></div>
     </form>
-    <form className={"tab tab-login" + (tab === "login" ? " on" : "")} onSubmit={e => { e.preventDefault(); doLogin(); }}>
+    <form className={"tab tab-login" + (tab === "login" ? " on" : "")} onSubmit={e => { e.preventDefault(); doLogin(); }} onKeyDown={aoEnter(doLogin)}>
       <p className="hint">{LB.loginNote}</p>
       <Field id="lg-login" label={LB.loginUser} value={l.login} autoComplete="username" onChange={e => setL({ ...l, login: e.target.value })} />
       <Field id="lg-pass" label={LB.password} type="password" value={l.pass} autoComplete="current-password" onChange={e => setL({ ...l, pass: e.target.value })} />
       {tab === "login" ? error : null}
-      <div className="modal-actions"><button type="button" className="btn-secondary" data-go="account-close" onClick={closeAccount}>{LB.cancel}</button><button type="submit" className="btn-primary" data-go="account-login" disabled={busy}>{LB.login}</button></div>
+      <div className="modal-actions"><button type="button" className="btn-secondary" data-go="account-close" onClick={closeAccount}>{LB.cancel}</button><button type="button" className="btn-primary" data-go="account-login" disabled={busy} onClick={doLogin}>{LB.login}</button></div>
     </form>
   </div>;
 }

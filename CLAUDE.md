@@ -868,6 +868,28 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   seguidos na tela do revisor. ⚠️ E o modo de teste (localhost/`file:`/a QA tool deles, detectada por
   `window.name`/`referrer`) é FEATURE: servido em 127.0.0.1 o SDK desenha o anúncio falso sozinho, então
   aqui dá para verificar o caminho do anúncio sem subir o zip — o único portal em que isso é possível.
+- **BOUNTY BOARD: O PACOTE É O SITE** (`client/src/portal/bb.js`, `BOUNTY` em `portal/flags.js`): o
+  Arcade deles tem DOIS trilhos e só um serve para um `.io` com servidor próprio — medido no bundle do
+  player, onde o iframe do jogo nasce com `sandbox="allow-scripts allow-pointer-lock"` para um ZIP
+  enviado e `allow-scripts allow-same-origin allow-pointer-lock` para uma URL EXTERNA. ⚠️ **Zip ali é
+  origem OPACA**, e isso mata o jogo por dois caminhos independentes: `Origin: null` em toda chamada
+  (que `http/cors.js` recusa por construção, e tem que continuar recusando) e `localStorage` que
+  **lança** — onde moram token, prefs e idioma. A doc deles diz o mesmo ("hosted builds run on an opaque
+  origin … localStorage/sessionStorage/cookies all THROW"). Por isso `portal-pack.mjs bountyboard`
+  RECUSA, com o motivo escrito, e o que se submete é `https://warspace.io`: eles enquadram o site, a
+  origem é a nossa e **não há uma linha de `ALLOWED_ORIGINS` a mexer** — o único portal em que o CORS
+  não entra na história. ⚠️ **`allow-forms` não está no sandbox e o `submit` NEM É DISPARADO** (medido em
+  Chrome: o clique no `type="submit"` e o Enter morrem antes do evento): dentro do player deles os
+  botões CRIAR CONTA e ENTRAR do `AccountModal` não fariam NADA, em silêncio — hoje são `type="button"`
+  + `onClick`, e o Enter é um `keydown` com `preventDefault` (que também mata a submissão implícita no
+  site, então cada caminho dispara uma vez em todo lugar). ⚠️ O `allow` deles não tem `microphone`, daí
+  `SEM_VOZ = PORTAL || BOUNTY`. ⚠️ **O ciclo de vida do SDK vem do STORE** (o molde de `app/analytics.js`)
+  e não de `if (PORTAL)` espalhados, porque aqui PORTAL é FALSO: `screen`+`lastMatch`/`roundResult` caem
+  no MESMO update, então "parou de jogar → acabou" sai em ordem num pass só, e o `gameOver` uma vez por
+  vida é garantido pela rodada que o `gameplayStart` abre. ⚠️ `lockToHost()` fica de fora: ele BLOQUEIA o
+  jogo quando não reconhece o embutidor, ou seja é uma forma nova de o nosso site quebrar sozinho.
+  ⚠️ `?bb=1` liga a detecção à força — sem ele não há como provar a integração antes de submeter, porque
+  o ancestral não se falsifica em 127.0.0.1.
 - **`/ads.txt` É DO SITE, E O `try_files` MENTIA SOBRE ELE** (`client/public/ads.txt`,
   `docs/spec/portais.md`): o GamePix tem uma segunda porta além do catálogo de jogos — a de *publisher*,
   onde warspace.io é a propriedade `24C97` —, e o que ela pede não é zip: é o `ads.txt` do IAB na RAIZ do

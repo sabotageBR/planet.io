@@ -86,11 +86,23 @@ const PERFIS = {
 // se manda para revisão. Ele mora em client/public porque o SITE precisa dele; o portal, não.
 const PODA = ["og.png", "icon-180.png", "icon-192.png", "icon-512.png", "manifest.webmanifest", "privacy.html", "ads.txt", "faces"];
 
+// ⚠️ QUEM NÃO TEM ZIP, e por quê. A Bounty Board (bountyboard.gg/arcade) tem DOIS trilhos e só um
+// serve para um `.io` com servidor próprio: o build ENVIADO roda em `sandbox="allow-scripts
+// allow-pointer-lock"` — origem OPACA, `Origin: null` em toda chamada (que o CORS recusa por
+// construção) e `localStorage` que LANÇA. O trilho certo é a URL externa: eles enquadram o site, com
+// `allow-same-origin`. Ou seja o "pacote" dela é a produção de warspace.io, e o adaptador
+// (client/src/portal/bb.js) viaja no bundle do SITE. Isto aqui existe para o dia em que alguém tentar
+// `portal-pack.mjs bountyboard` e receber uma explicação em vez de "portal desconhecido".
+const SEM_ZIP = {
+  bountyboard: "a Bounty Board enquadra o SITE (https://warspace.io), não recebe zip: o build enviado deles\n    roda em origem OPACA e ali o nosso servidor é inalcançável. Ver docs/spec/portais.md.",
+};
+
 const arquivos = dir => fs.readdirSync(dir, { withFileTypes: true, recursive: true })
   .filter(d => d.isFile()).map(d => path.join(d.parentPath || d.path, d.name));
 const morre = m => { console.error("\n✗ " + m + "\n"); process.exit(1); };
 
 function empacota(id) {
+  if (SEM_ZIP[id]) morre(`${id}: ${SEM_ZIP[id]}`);
   const perfil = PERFIS[id]; if (!perfil) morre(`portal desconhecido: ${id} (${Object.keys(PERFIS).join("|")})`);
   const dist = path.join(SAIDA, id, "dist");
   console.log(`\n── ${perfil.nome} ──`);

@@ -33,4 +33,41 @@ export const SEM_CONTA = typeof __PORTAL_STRICT__ !== "undefined" && __PORTAL_ST
  * `strict`, e não um `if` novo espalhado pelo cliente. O chat de TEXTO continua, com a peneira do
  * servidor (server/src/palavrao.js).
  */
-export const SEM_VOZ = PORTAL;
+/**
+ * BOUNTY — o site foi ENQUADRADO pelo player da Bounty Board (bountyboard.gg).
+ *
+ * ⚠️ É a única "distribuição" que NÃO é um zip, e o motivo é medido, não gosto: no Arcade deles um
+ *    build enviado roda com `sandbox="allow-scripts allow-pointer-lock"` — ORIGEM OPACA —, e a doc
+ *    própria confirma ("hosted builds run on an opaque origin ... localStorage/sessionStorage/cookies
+ *    all THROW"). Ali o `Origin` de toda chamada seria `null`, que `server/src/http/cors.js` recusa por
+ *    construção e tem que continuar recusando. O rail certo para um `.io` com servidor próprio é o
+ *    "external URL embed", em que eles enquadram https://warspace.io com
+ *    `sandbox="allow-scripts allow-same-origin allow-pointer-lock"`: origem real, armazenamento vivo,
+ *    API e WS na MESMA origem (nem CORS entra na história). Ver docs/spec/portais.md.
+ * ⚠️ Leitura ÚNICA, no módulo: nem `window.top` nem o pai mudam no meio da vida da página — é o mesmo
+ *    argumento do `EMBUTIDO` de ui/GoogleButton.jsx.
+ * ⚠️ `?bb=1` liga isto à força. Sem ele não há como PROVAR a integração antes de submeter: a detecção
+ *    depende de o ancestral ser bountyboard.gg, e isso não se falsifica em 127.0.0.1. É o mesmo tipo de
+ *    interruptor de bancada que `?local=1`, `?bench` e `?sfx` já são; fora de um embutidor deles o SDK
+ *    resolve tudo como no-op, então ligá-lo por engano não muda nada além de esconder a voz.
+ * ⚠️ `ancestorOrigins` PRIMEIRO e `referrer` como reserva: o Firefox não tem a lista, e o iframe deles
+ *    manda `referrerPolicy="origin"` (medido no bundle do player), então o referrer chega como a
+ *    origem crua — que é exatamente o que se quer comparar. Sufixo de domínio, nunca `includes`: é a
+ *    mesma armadilha do matcher de CORS (`bountyboard.gg.evil.tld`).
+ */
+export const daBounty = u => { try { const h = new URL(u).hostname.toLowerCase();
+  return h === "bountyboard.gg" || h.endsWith(".bountyboard.gg"); } catch { return false; } };
+export const BOUNTY = (() => {
+  if (typeof window === "undefined") return false;
+  try {
+    if (/[?&]bb=1\b/.test(window.location.search)) return true;
+    if (window.top === window.self) return false;
+    const a = window.location.ancestorOrigins;
+    if (a && a.length) return daBounty(a[a.length - 1]) || daBounty(a[0]);
+    return daBounty(document.referrer);
+  } catch { return false; }
+})();
+/** ⚠️ O `allow` do iframe deles é `fullscreen; autoplay; gamepad; pointer-lock; accelerometer;
+ *  gyroscope; magnetometer; xr-spatial-tracking` — MEDIDO, e sem `microphone`. Mesmo caso do GameFlare,
+ *  então a voz sai pelo mesmo interruptor em vez de um `if` novo espalhado pelo cliente. */
+export const SEM_VOZ = PORTAL || BOUNTY;

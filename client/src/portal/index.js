@@ -15,7 +15,7 @@
 // ⚠️ Nenhum arquivo daqui pode se chamar `ads.js`/`ad.js`/`banner.js`: o nome vai para a URL do chunk
 //    (`assets/ads-<hash>.js`) e há filtro de bloqueador que casa isso na URL — o `import()` rejeitaria.
 //    Pelo mesmo motivo as classes de CSS levam prefixo `portal-` (ver o que `ad-wrap` fez com o /admin).
-import { PORTAL, PORTAL_ID } from "./flags.js";
+import { PORTAL, PORTAL_ID, BOUNTY } from "./flags.js";
 import { PORTAL as P } from "@warspace/shared";
 
 const nada = () => {};
@@ -26,7 +26,12 @@ const prazo = (p, ms, saida) => new Promise(res => {
 });
 
 const carrega = () => {
-  if (!PORTAL) return null;
+  // ⚠️ A Bounty Board é o único que NÃO é um pacote: eles enquadram o SITE (o build enviado deles roda
+  // em origem opaca, onde nem o `Origin` nem o `localStorage` sobrevivem — ver portal/flags.js). Por
+  // isso o adaptador dela mora do lado do `!PORTAL`, e é a poda em cima destas constantes que mantém
+  // cada bundle com um adaptador só: no zip `PORTAL` é `true` e esta linha some; no site `PORTAL_ID` é
+  // `""` e somem as de baixo.
+  if (!PORTAL) return BOUNTY ? import("./bb.js") : null;
   if (PORTAL_ID === "gd") return import("./gd.js");
   if (PORTAL_ID === "crazy") return import("./crazy.js");
   if (PORTAL_ID === "poki") return import("./poki.js");
