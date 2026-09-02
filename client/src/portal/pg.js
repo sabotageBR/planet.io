@@ -42,6 +42,8 @@ const ponte = () => window.bridge || window.playgamaBridge || null;
 const PLACAR = "score";
 /** Uma chave só, um blob: é o que a Storage deles guarda por JOGADOR (na nuvem, quando a plataforma tem). */
 const CHAVE = "warspace";
+/** Teto da LEITURA da nuvem deles: ela viaja por postMessage e pode nunca ser respondida. */
+const STORAGE_MS = 4000;
 
 export async function criar({ pausou, retomou }) {
   if (!(await carregaScript(SRC, "playgama-bridge"))) return null;
@@ -110,12 +112,24 @@ export async function criar({ pausou, retomou }) {
   };
   const guarda = () => { const st = b.storage; if (!st || !st.set) return;
     try { Promise.resolve(st.set(CHAVE, blob())).catch(() => {}); } catch { /**/ } };
+  // ⚠️ GRAVA ANTES DE LER, e a ordem aqui é o conserto de uma falha MUDA. O `get` da Storage deles não
+  // é local: no `qa_tool` (e em toda plataforma que implementa o Bridge por postMessage) ele MANDA um
+  // `get_data_from_storage` para a página de fora e fica esperando a resposta — e uma resposta que não
+  // vem pendura a promessa para sempre, sem erro e sem log. Com o `guarda()` depois do `await`, um
+  // silêncio do outro lado apagava a ÚNICA gravação do boot, e a certificação continuava dizendo "the
+  // platform did not detect any attempt to save data" com o código do save inteiro no lugar. Agora a
+  // gravação é a primeira coisa que acontece, e o `get` tem relógio.
+  const idAgora = () => { const u = (app.get().session.user) || {};
+    return (u.kind === "registered" ? "r" : "g") + (u.id || "") + ":" + (api.token || ""); };
+  guarda();
+  const idBoot = idAgora();
+  const prazo = (p, ms) => Promise.race([Promise.resolve(p), new Promise(r => setTimeout(() => r(null), ms))]);
   (async () => {
     try {
       const st = b.storage; if (!st || !st.get) return;
       // ⚠️ O `get` é INCONDICIONAL: a ordem que eles pedem é "no game start, storage.get(...) for the
       // keys you need" e é ela que a certificação observa. Quem é condicional é o USO do que voltou.
-      const bruto = await st.get(CHAVE);
+      const bruto = await prazo(st.get(CHAVE), STORAGE_MS);
       const u = (app.get().session.user) || {};
       const branco = u.kind !== "registered" && !u.login && !u.email && !(u.coins | 0);
       if (branco) {
@@ -123,13 +137,12 @@ export async function criar({ pausou, retomou }) {
         if (d && d.t && d.t !== api.token) { api.adota(d.t); applySession(await api.bootstrap()); }
       }
     } catch { /* nuvem fora: segue com o convidado local, que é o comportamento de sempre */ }
-    // no store, só quando a IDENTIDADE muda (convidado → registrada, ou a que acabou de ser adotada).
-    // ⚠️ `ultimo` nasce com a identidade de AGORA, e não `null`: senão a primeira notificação do store
-    // repetiria o `set` que a linha abaixo acabou de fazer — duas gravações idênticas no boot.
-    const idAgora = () => { const u = (app.get().session.user) || {};
-      return (u.kind === "registered" ? "r" : "g") + (u.id || "") + ":" + (api.token || ""); };
-    guarda();
+    // Daqui em diante, no store, só quando a IDENTIDADE muda (convidado → registrada, ou a que acabou
+    // de ser adotada da nuvem). ⚠️ `ultimo` nasce da identidade de AGORA, nunca de `null`: senão a
+    // primeira notificação do store repetiria o `set` do boot, e duas gravações idênticas em sequência
+    // são ruído no log de quem revisa.
     let ultimo = idAgora();
+    if (ultimo !== idBoot) guarda();   // a adoção trocou a sessão: a nuvem precisa saber
     app.subscribe(() => { const id = idAgora(); if (id === ultimo) return; ultimo = id; guarda(); });
   })();
   aoAcabarAVida(() => guarda());
