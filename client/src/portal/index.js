@@ -33,6 +33,7 @@ const carrega = () => {
   if (PORTAL_ID === "y8") return import("./y8.js");
   if (PORTAL_ID === "gm") return import("./gm.js");
   if (PORTAL_ID === "playgama") return import("./pg.js");
+  if (PORTAL_ID === "gamepix") return import("./gpx.js");
   return null;   // itch.io e qualquer id desconhecido: o jogo roda igual, sem anúncio
 };
 

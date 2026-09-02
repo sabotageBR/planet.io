@@ -70,10 +70,17 @@ test('a lista do ConfigMap aceita a origem real de cada portal empacotado', () =
     // `https://<hru>.games.playgama.com/<build>/__patch__/<patch>/index.html?platform_id=playgama`
     ['Playgama','https://warspace-io.games.playgama.com'],
     ['Playgama (QA/painel)','https://developer.playgama.com'],
+    // ⚠️ o jogo do GamePix NÃO roda no domínio do site nem no do player: `www.gamepix.com` é o
+    // portal, `play.gamepix.com/<ns>/embed` é o player que o embute, e o nosso código roda em
+    // `https://games.builds.gamepix.com/<gameId>/<version>/index.html` — medido no `GameFrame` do
+    // player deles (`CDNGamesSrc`) e conferido baixando o index.html de um jogo publicado
+    ['GamePix','https://games.builds.gamepix.com'],
+    ['GamePix (player)','https://play.gamepix.com'],
   ]) assert.equal(ok(origem),true,`${portal}: ${origem} deixou de ser aceita`);
   assert.equal(ok('https://storage.y8.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
   assert.equal(ok('https://data.gameflare.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
   assert.equal(ok('https://games.playgama.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
+  assert.equal(ok('https://games.builds.gamepix.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
 });
 
 test('matcher: entrada quebrada é DESCARTADA, nunca vira "casa tudo"', () => {

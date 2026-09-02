@@ -18,7 +18,7 @@ npm run build                # client/dist (vite build)
 # PAINEL /admin: rota da MESMA SPA (client/src/admin/, chunk sob demanda). O 1º administrador nasce do env
 # ADMIN_EMAILS (k8s/05-config) no boot — SÓ PROMOVE — ou de um UPDATE users SET is_admin=true. docs/spec/admin.md
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
-node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|all  # o .zip do cliente para os portais (docs/spec/portais.md)
+node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|gamepix|all  # o .zip do cliente para os portais (docs/spec/portais.md)
 ./scripts/build-push.sh      # builda (contexto = raiz, -f server/Dockerfile / client/Dockerfile) e publica evandromoura/warspace-io-{server,client}
 ./scripts/deploy.sh          # aplica k8s/ + Ingress em warspace.io (WARSPACE_HOST=... troca o host, NO_INGRESS=1 pula)
 ```
@@ -848,6 +848,26 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   requisito técnico de "no technical messages, errors". ⚠️ Nada de string de evento cravada —
   `EVENT_NAME`/`PLATFORM_MESSAGE`/`INTERSTITIAL_STATE` vêm do próprio `window.bridge`, que é servido
   por eles em `bridge.playgama.com/v2/stable` e pode mudar sem nos avisar.
+- **GamePix, a porta de DESENVOLVEDOR** (`client/src/portal/gpx.js`, perfil `gamepix`): a mesma empresa
+  do `/ads.txt` do site, a outra porta — lá warspace.io é uma PROPRIEDADE que monetiza, aqui é um JOGO
+  do catálogo, e as duas não se parecem em nada. ⚠️ **A origem não é nem o site nem o player**:
+  `www.gamepix.com` é o portal, `play.gamepix.com/<ns>/embed` é o player que embute, e o nosso código
+  roda em **`games.builds.gamepix.com/<gameId>/<version>/index.html`** — medido no `GameFrame` do
+  bundle do player (`CDNGamesSrc`) e conferido baixando o index.html de um jogo publicado (que traz o
+  SDK deles na 1ª linha do `<head>`). São DOIS níveis de caminho, então a `base:"./"` de novo é o que
+  separa carregar de página branca. ⚠️ **`GamePix.loaded()` é o portão de TUDO, e o modo de falha é
+  MUDO**: sem ele, todo método responde `METHOD_BEFORE_LOADED` e `interstitialAd()` resolve na hora com
+  `{success:false}` — jogo funcionando, revisor sem ver anúncio, e nada no console do jogo explicando.
+  O adaptador memoiza esse `loaded()`, chamado pelo `carregou()` da fachada E esperado dentro do
+  `anuncio()`. ⚠️ `on.pause`/`on.resume`/`on.soundOn`/`on.soundOff` são CAMPOS que se atribuem (o SDK
+  nasce com os quatro indefinidos e loga "pause not defined"), não eventos que se assinam; o par de som
+  é o botão do PLAYER e tem prioridade sobre o ajuste interno, como o `muteAudio` da CrazyGames.
+  Enquanto o anúncio é NOSSO os quatro calam a boca, e quem devolve o estado do site por último é
+  `reaplica()`. ⚠️ **`gameStop()` não é o par de `gameAction()`**: em modo de teste ele DESENHA o
+  anúncio, e a fachada chama `jogoParou()` logo antes de todo anúncio — ligá-lo daria dois anúncios
+  seguidos na tela do revisor. ⚠️ E o modo de teste (localhost/`file:`/a QA tool deles, detectada por
+  `window.name`/`referrer`) é FEATURE: servido em 127.0.0.1 o SDK desenha o anúncio falso sozinho, então
+  aqui dá para verificar o caminho do anúncio sem subir o zip — o único portal em que isso é possível.
 - **`/ads.txt` É DO SITE, E O `try_files` MENTIA SOBRE ELE** (`client/public/ads.txt`,
   `docs/spec/portais.md`): o GamePix tem uma segunda porta além do catálogo de jogos — a de *publisher*,
   onde warspace.io é a propriedade `24C97` —, e o que ela pede não é zip: é o `ads.txt` do IAB na RAIZ do

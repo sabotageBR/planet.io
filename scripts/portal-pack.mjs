@@ -1,12 +1,12 @@
 // ── PACOTE PARA OS PORTAIS DE JOGO ────────────────────────────────────────────
-// GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize, GameFlare e Playgama pedem um .zip com
-// index.html na raiz. É só o
+// GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize, GameFlare, Playgama e GamePix pedem um
+// .zip com index.html na raiz. É só o
 // CLIENTE: eles hospedam os arquivos e o servidor multiplayer continua sendo warspace.io — é assim que
 // todo .io vive em portal, e a própria GameDistribution abre a exceção por escrito para "Real
 // Multiplayer games". O que faz isso funcionar é a origem absoluta assada no bundle (VITE_API_BASE) e
 // o CORS do lado de lá (server/src/http/cors.js).
 //
-// uso:  node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|all
+// uso:  node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|gamepix|all
 //       WARSPACE_API_BASE=https://staging.exemplo node scripts/portal-pack.mjs gd
 //
 // ⚠️ O VALOR DESTE SCRIPT SÃO AS GUARDAS. Cada uma delas corresponde a um jeito conhecido de subir um
@@ -59,6 +59,10 @@ const PERFIS = {
   // pacotes, declarando um SDK que nenhum deles carrega. E o intervalo mínimo sai de `PORTAL.MIN_AD_MS`
   // em vez de um número copiado: o Bridge tem um relógio próprio (60 s de padrão) e, desalinhado do
   // nosso, ele reprova em FAILED anúncios que a fachada considerou legítimos.
+  // GamePix: a porta de DESENVOLVEDOR (my.gamepix.com), que não tem nada a ver com a de publisher — o
+  // `/ads.txt` do site, que continua sendo outra coisa (ver a PODA e docs/spec/portais.md). Não há id a
+  // assar no bundle: o SDK descobre o jogo pelo player que o embute, e o `gameId` só nasce no upload.
+  gamepix: { nome: "GamePix", strict: false, env: {} },
   playgama: { nome: "Playgama", strict: false, env: {}, extras: {
     "playgama-bridge-config.json": JSON.stringify({
       advertisement: { minimumDelayBetweenInterstitial: Math.round(PORTAL.MIN_AD_MS / 1000) },
@@ -150,7 +154,7 @@ function empacota(id) {
   const gsi = texto.filter(f => /accounts\.google\.com\/gsi/.test(fs.readFileSync(f, "utf8")));
   if (gsi.length) morre(`o SDK do Google ficou no pacote (${gsi.map(f => path.basename(f)).join(", ")}): a origem do portal não é registrável no client_id`);
 
-  const adaptadores = js.filter(f => /\/(gd|crazy|poki|y8|gm|pg)-[^/]*\.js$/.test(f));
+  const adaptadores = js.filter(f => /\/(gd|crazy|poki|y8|gm|gpx|pg)-[^/]*\.js$/.test(f));
   // `import()` com variável viraria glob no Rollup e o zip da GD sairia com o código da Poki dentro
   if (adaptadores.length > 1) morre(`${adaptadores.length} adaptadores de portal no pacote: ${adaptadores.map(f => path.basename(f)).join(", ")}`);
   if (!perfil.semSdk && !adaptadores.length) console.warn("  ⚠ nenhum chunk de adaptador — confira se o SDK deste portal está mesmo ligado");

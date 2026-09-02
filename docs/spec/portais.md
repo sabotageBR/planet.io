@@ -1,7 +1,7 @@
 # Portais de jogo (o cliente hospedado fora de warspace.io)
 
-GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize, GameFlare e Playgama distribuem jogos HTML5
-e pedem **um .zip com
+GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize, GameFlare, Playgama e GamePix distribuem
+jogos HTML5 e pedem **um .zip com
 `index.html` na raiz**. O zip é só o **cliente**: eles hospedam os arquivos estáticos no domínio deles,
 dentro de um `<iframe>`, e o servidor multiplayer continua sendo warspace.io. É o modelo normal de um
 `.io` em portal — a CrazyGames diz na documentação que hospeda só os arquivos, a Poki aceita servidor
@@ -9,7 +9,7 @@ externo mediante liberação de CSP, e a GameDistribution tem a exceção por es
 *"We do not permit external hosting of games, except for Real Multiplayer games"*.
 
 ```
-node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|all → portal/warspace-<id>.zip
+node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|gamepix|all → portal/warspace-<id>.zip
 node scripts/brand-assets.mjs                         → brand/thumb-*.jpg (5 tamanhos de catálogo)
 ```
 
@@ -170,6 +170,8 @@ e via o jogo, sem 404 e sem nada que explicasse a recusa. É a mesma armadilha d
 5. Por fim, o link de revisão da própria GD (`https://revision.gamedistribution.com/<id>/?correlator=…`).
 
 ## GamePix: o `ads.txt` é do SITE, não do pacote
+
+*(A outra porta — a de desenvolvedor, com zip e SDK — está no fim deste arquivo.)*
 
 O GamePix tem duas portas, e elas não se parecem. Pela porta de *desenvolvedor* (Games Catalog) vale
 tudo o que está acima. Pela de *publisher* (**Properties**) o domínio é registrado como propriedade —
@@ -504,3 +506,68 @@ Medido no pacote (Chrome headless, servido no subcaminho): Bridge **v2.1.0** ini
 `mock`, config `200`, tela inicial montada, `#boot` removido e **nenhum erro no console** além da linha
 de banner do próprio SDK. As duas chamadas que falham ali são a API a partir de `127.0.0.1`, que não
 está em `ALLOWED_ORIGINS` — é o esperado, e some no domínio deles.
+
+## GamePix: a porta de DESENVOLVEDOR (`my.gamepix.com`)
+
+A mesma empresa da seção do `ads.txt`, a outra porta: aqui o warspace.io é um **jogo do catálogo**, não
+uma propriedade que monetiza. Empacota com `node scripts/portal-pack.mjs gamepix`; **não há id a assar no
+bundle** — o `gameId` só nasce no upload, e o SDK descobre o jogo pelo player que o embute.
+
+⚠️ **A ORIGEM NÃO É NEM O SITE NEM O PLAYER**, e são três hosts de novo:
+
+| host | o que é |
+|---|---|
+| `www.gamepix.com` | o portal deles |
+| `play.gamepix.com` | o **player**: `/<namespace>/embed`, a página com o loader, o anúncio e o iframe |
+| **`games.builds.gamepix.com`** | **os arquivos do jogo — é aqui que o nosso código roda** |
+
+Medido no bundle do player (`play.gamepix.com/player/assets/js/app.js`): o componente `GameFrame` monta
+`gameUrl = CDNGamesSrc + "/" + gid + "/" + version + "/index.html" + querystring + "&lang=…&namespace=…"`,
+com `CDNGamesSrc = "https://games.builds.gamepix.com"`. Conferido de ponta a ponta: a API pública
+(`https://api.gamepix.com/v3/games/ns/<namespace>`) devolve `gameId` e `version` de cada jogo, e baixar
+`https://games.builds.gamepix.com/<gameId>/<version>/index.html` traz o HTML do jogo publicado — com o
+`<script src="https://integration.gamepix.com/sdk/v3/gamepix.sdk.js">` na primeira linha do `<head>`.
+`ALLOWED_ORIGINS` leva `https://*.gamepix.com`, que cobre os três; `server/test/cors.test.js` trava a
+origem medida.
+
+⚠️ **O caminho tem DOIS níveis** (`/<gameId>/<version>/`), então a `base:"./"` do build de portal é o que
+separa carregar de página branca — como no GameFlare e no Playgama.
+
+⚠️ **O iframe do player não tem `sandbox` nem `allow`** (medido nos atributos: só `id`, `name`,
+`frameborder`, `seamless`, `width`, `height`, `scrolling`, `src`). Duas consequências: a origem chega de
+verdade e não como `null`, que o matcher recusa por construção; e sem `allow` não há `microphone`, o que
+mantém o push-to-talk fora (`SEM_VOZ`) por mais um motivo além dos dois de sempre.
+
+⚠️ **`GamePix.loaded()` é o portão de TUDO — e o modo de falha é mudo.** Enquanto ele não completa, todo
+o resto do SDK responde `METHOD_BEFORE_LOADED` e loga um `ERROR`: `interstitialAd()` resolve na hora com
+`{success:false}` e nenhum anúncio jamais toca. O jogo funciona, o revisor não vê anúncio, e nada no
+console do JOGO explica. Por isso o adaptador memoiza `carregado()`, chamado pelo `carregou()` da fachada
+(em `main.jsx`, logo depois do primeiro render) **e esperado dentro do `anuncio()`**. Dentro do player o
+`loaded()` espera o `LOADED_EXECUTED` do pai, com relógio próprio de 10 s.
+
+⚠️ **`on.pause`, `on.resume`, `on.soundOn` e `on.soundOff` são CAMPOS que se atribuem, não eventos que se
+assinam.** O SDK nasce com os quatro indefinidos e, quando o player manda pausar, escreve "pause not
+defined" no console e segue em frente. É assim que os jogos que já estão lá fazem (conferido no
+`index.html` de um jogo publicado). O `soundOff`/`soundOn` é o botão de som DO PLAYER e tem prioridade
+sobre o ajuste interno, como o `muteAudio` da CrazyGames — vai pelo `silenciaAnuncio()`, que zera o
+master sem tocar em `prefs.muted`.
+
+⚠️ **Enquanto o anúncio é NOSSO, os quatro calam a boca.** A fachada já cala o som e levanta a tela de
+pausa em volta do anúncio, e o SDK dispara `on.pause`/`on.resume` no meio disso — repassar os dois
+caminhos é a receita do bug que a CrazyGames ensinou. Quem devolve o estado do site, por último, é o
+`reaplica()`.
+
+⚠️ **`gameStop()` NÃO é o par de `gameAction()`.** Em modo de teste (localhost, `file:` ou a QA tool
+deles, que se anuncia por `window.name`/`referrer`) ele **desenha o anúncio** — o mesmo overlay preto com
+"skip ad" do `interstitialAd()`. Como a fachada chama `jogoParou()` logo ANTES de todo anúncio, ligá-lo
+daria dois anúncios seguidos na tela do revisor. Fica de fora; `jogoComecou()` → `gameAction()`, que no
+player é só um evento de sessão.
+
+⚠️ **O modo de teste é uma FEATURE para a verificação local**: servido em `127.0.0.1`, o SDK não fala com
+player nenhum — ele mesmo desenha o anúncio falso. Ou seja, o passo 2 do "Verificar antes de subir" testa
+o caminho do anúncio de verdade aqui, coisa que em nenhum outro portal dá para fazer sem subir o zip.
+
+Medido no pacote (Chrome headless, servido no subcaminho): SDK carregado, os quatro `on.*` atribuídos
+pelo adaptador, `loaded()` resolvendo e `interstitialAd()` desenhando o overlay com o botão de pular,
+tela inicial montada, `#boot` removido, zero 404 e **console limpo**. As duas chamadas que falham ali são
+a API a partir de `127.0.0.1`, que não está em `ALLOWED_ORIGINS`.
