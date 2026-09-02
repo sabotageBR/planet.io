@@ -24,7 +24,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { skinById } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { play, leaveGame } from "../state/actions.js";
+import { play, leaveGame, soltaLevelUp } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
 import RoundIntro from "./RoundIntro.jsx";
@@ -136,8 +136,13 @@ export default function Round({ on }) {
   const [intro, setIntro] = useState(false), [prontoAt, setProntoAt] = useState(0);
   const [left, setLeft] = useState(0), fired = useRef(false);
   const chave = r ? (r.code || "") + ":" + (r.at || 0) : "";
+  // ⚠️ O ramo `!quer` TAMBÉM solta o cartão de recompensa, e isso não é simetria gratuita: a sonda de
+  // responsividade (`scripts/responsive-check.mjs`) abre esta tela por `mostrarTela("round:<estilo>")`,
+  // que DESLIGA a abertura e dispara um `onRewards` falso — se o portão só existisse no `onDone` do
+  // RoundIntro, o cartão nunca sairia ali, e quem tem "reduzir movimento" ligado ficaria sem ele para
+  // sempre.
   useEffect(() => { if (!on || !r) { setIntro(false); return; }
-    setIntro(quer); if (!quer) { setProntoAt(Date.now()); sfx("podium"); } else setProntoAt(0);
+    setIntro(quer); if (!quer) { setProntoAt(Date.now()); sfx("podium"); soltaLevelUp(); } else setProntoAt(0);
   }, [on, chave]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!on || !r || intro) return;
@@ -187,7 +192,7 @@ export default function Round({ on }) {
   // o componente. Sem a chave, um segundo `roundEnd` chegando durante a abertura do primeiro herdaria os
   // timers velhos — a animação recomeçaria e seria cortada no meio pelo `onDone` da anterior.
   if (intro) return <div className="screen on" id="s-round" data-style={estilo}>
-    <RoundIntro key={chave} champ={champ} title={titulo} onDone={() => { setIntro(false); setProntoAt(Date.now()); }} />
+    <RoundIntro key={chave} champ={champ} title={titulo} onDone={() => { setIntro(false); setProntoAt(Date.now()); soltaLevelUp(); }} />
   </div>;
   const d = r.destaques || null;
   const cabeca = <>

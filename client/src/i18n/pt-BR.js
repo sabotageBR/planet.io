@@ -59,7 +59,9 @@ export default {
   // "Nebulosa planetária" é o nome certo do que sobra de uma estrela que morre SEM supernova de verdade —
   // e é exatamente o caso do atropelamento, o único que não larga prêmio (STAR.RAM_REWARD).
   fx: { supernova: "SUPERNOVA!", nebula: "NEBULOSA PLANETÁRIA!" },
-  respawn: "🔄 DE NOVO!", toLobby: "Lobby", timeWord: "tempo", rankWord: "ranking diário", coinsEarned: "moedas ganhas",
+  // ⚠️ Sem emoji: o ícone vinha do TEXTO (não há <i> nos botões da tela de morte) e o 🔄 competia com
+  // o próprio rótulo num botão que já é o maior da tela.
+  respawn: "DE NOVO!", newMatch: "OUTRA PARTIDA", brWatchHint: "Fique para ver o pódio no fim.", toLobby: "Lobby", timeWord: "tempo", rankWord: "ranking diário", coinsEarned: "moedas ganhas",
   lobbyTitle: "SALAS", roomCode: "CÓDIGO", enter: "Entrar", create: "➕ Criar sala", autoNote: "Entra na sala mais cheia com vaga", shard: "shard", botsWord: "bots",
   rankTitle: "RANKING", scopeGlobal: "Global", scopeCountry: "Meu país", noCountry: "escolha seu país no perfil",
   muteHint: "Mudo (M)",

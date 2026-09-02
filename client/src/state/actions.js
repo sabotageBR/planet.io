@@ -422,7 +422,8 @@ export async function play({ room, mode, teamSize, party } = {}) {
   const pt = party !== undefined ? party : (st.party ? st.party.code : null);
   let code = room ? String(room).toUpperCase() : null;
   if (!code) { try { const a = await api.auto({ mode: md, teamSize: ts }); if (a && a.code) code = a.code; } catch (e) { if (!isUnreachable(e)) toast(errText(e), 2500); } }
-  app.update(s => ({ ...s, screen: "game", played: true, rewards: null, rewardsPending: false, overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
+  levelUpFila = null;
+  app.update(s => ({ ...s, screen: "game", played: true, rewards: null, rewardsPending: false, roundPronto: false, overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
     gameMode: md, teamSize: ts,
     pendingPlay: null,
     pendingJoin: { room: code, mode: md, teamSize: ts, party: pt, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
@@ -505,14 +506,31 @@ export async function startParty() {
 }
 export function leaveGame(screen = "lobby") {
   if (PORTAL) { portal.jogoParou(); portal.saiuDaSala(); }
+  levelUpFila = null;
   app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
-let rewardsT = null, levelUpN = 0;
+let rewardsT = null, levelUpN = 0, levelUpFila = null;
 /** Callback do jogo: fim da rodada — {code, champion, board, nextInMs, tick}. Mostra o placar da sala. */
 export function onRoundEnd(r) {
   clearTimeout(rewardsT);
-  app.update(s => ({ ...s, screen: "round", roundResult: { ...r, at: Date.now() }, rewards: null, rewardsPending: true }));
-  rewardsT = setTimeout(() => { if (app.get().rewardsPending) app.update({ rewardsPending: false }); }, 5000);
+  // ⚠️ NO BATTLE ROYALE A RECOMPENSA JÁ CHEGOU, e zerá-la aqui deixava a tela final mentindo. `Sim.endRound`
+  // só chama `onMatchEnd` para quem ainda está VIVO (`if(gp.isBot||gp.dead)continue`), e no BR quem está
+  // vendo o pódio quase sempre morreu minutos antes — ou seja, nenhum `{t:"rewards"}` novo vem. Com o
+  // `rewards:null` incondicional a tela mostrava "salvando…" por 5 s e depois "—" em MOEDAS GANHAS.
+  // No Livre nada muda: lá o jogador estava vivo, `rewards` é null neste instante e a recompensa chega logo.
+  app.update(s => ({ ...s, screen: "round", roundResult: { ...r, at: Date.now() }, roundPronto: false,
+    levelUp: null,                                   // o cartão da MORTE dura 6,5 s e cobriria a abertura
+    rewards: s.rewards || null, rewardsPending: !s.rewards }));
+  if (!app.get().rewards) rewardsT = setTimeout(() => { if (app.get().rewardsPending) app.update({ rewardsPending: false }); }, 5000);
+}
+/**
+ * A ABERTURA acabou: solta o cartão de nível/conquista que ficou esperando.
+ * Ele NÃO pode ser só escondido por CSS — `LevelUp.jsx` arma o `setTimeout` de 6,5 s a partir de `lv.n`,
+ * então um cartão escondido nasceria com metade da vida gasta. O que se adia é a escrita no store.
+ */
+export function soltaLevelUp() {
+  app.update({ roundPronto: true });
+  if (levelUpFila) { const lv = levelUpFila; levelUpFila = null; app.update({ levelUp: lv }); }
 }
 /** Callback do jogo: {by, byHole, score, maxMass, kills, durationS}. */
 export function onDead(info) {
@@ -554,10 +572,19 @@ export function onRewards(r) {
   if (r) {
     const novas = (r.achievements || []).map(a => (a && a.key) || a).filter(Boolean);
     const subiu = !!(r.xp && r.xp.leveledUp);
-    if (subiu || novas.length) app.update({ levelUp: { subiu,
-      level: r.xp ? r.xp.level : 0, gained: r.xp ? r.xp.gained : 0,
-      into: r.xp ? r.xp.into : 0, need: r.xp ? r.xp.need : 1, pct: r.xp ? r.xp.pct : 0,
-      achievements: novas, n: ++levelUpN } });
+    if (subiu || novas.length) {
+      const cartao = { subiu,
+        level: r.xp ? r.xp.level : 0, gained: r.xp ? r.xp.gained : 0,
+        into: r.xp ? r.xp.into : 0, need: r.xp ? r.xp.need : 1, pct: r.xp ? r.xp.pct : 0,
+        achievements: novas, n: ++levelUpN };
+      // ⚠️ NA TELA DE FIM DE RODADA ELE ESPERA. A ordem `roundEnd` → `rewards` é ESTRUTURAL, não corrida:
+      // o primeiro sai dentro do `step()` do servidor e o segundo passa por fila + transação no Postgres.
+      // São ~200-800 ms, ou seja o cartão nascia no meio dos 2 s de abertura e ainda comia o clique de
+      // "pular" (ele é `pointer-events:auto` e o `RoundIntro` fecha em qualquer pointerdown).
+      const st = app.get();
+      if (st.screen === "round" && !st.roundPronto) levelUpFila = cartao;
+      else app.update({ levelUp: cartao });
+    }
   }
   if (api.online === false && app.get().lastMatch) {
     const m = app.get().lastMatch, u = app.get().session.user;

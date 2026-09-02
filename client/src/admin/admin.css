@@ -42,9 +42,26 @@
 
 /* O `index.html` é o mesmo do jogo e carrega os três temas, que pintam `body` e `#app` conforme o relógio.
    `html[data-admin]` (escrito por `mountAdmin`) ganha com folga e devolve a tela a uma cor só.
-   ⚠️ O #12141c aqui é LITERAL de propósito: esta regra está fora do escopo `.ad`, onde `--bg` não existe. */
-html[data-admin],html[data-admin] body{background:#12141c!important;margin:0;height:auto;overflow:auto}
-html[data-admin] #app{position:static;inset:auto;background:none;display:block;min-height:100vh}
+   ⚠️ O #12141c aqui é LITERAL de propósito: esta regra está fora do escopo `.ad`, onde `--bg` não existe.
+
+   ⚠️ O `overflow` é do HTML, NUNCA do body — e essa distinção era o bug do scroll do mouse. Quem propaga
+   para a VIEWPORT é o do `html`; o mesmo `overflow:auto` no `body` transforma o body num contêiner de
+   rolagem PRÓPRIO, e o conteúdo cabe exatamente nele (`scrollHeight === clientHeight`), então esse
+   contêiner nunca rola. Sozinho isso seria inofensivo (a roda encadearia para a viewport), mas
+   `styles/ui.css` deixa `overscroll-behavior:none` no body — ele existe para o puxar-para-atualizar não
+   disparar no meio de uma partida — e é ele que PROÍBE o encadeamento. Resultado medido: barra de
+   rolagem, teclado e `scrollTo` funcionavam; só a RODA morria, em todas as telas do painel. Por isso o
+   body devolve `overflow:visible` E `overscroll-behavior:auto` — o desfazer do jogo é do painel e mora
+   no painel, e não se toca no `ui.css`, que está certo para o que ele faz.
+
+   ⚠️ `overflow:visible` no `#app` não é enfeite: `styles/base.css` (GERADO pelo port.js) o declara
+   `position:fixed;inset:0;overflow:hidden`, e a regra abaixo desfazia tudo MENOS o overflow. Como o
+   `#app` cresce com o conteúdo, ele não cortava nada — mas continuava sendo um scrollport que nunca
+   rola, e `position:sticky` dentro de um desses morre em SILÊNCIO. Era isso que derrubava as três
+   stickies do painel: a barra `.ad-topo`, os títulos `.pm-grupo>h3` e o `.ad-detalhe`. */
+html[data-admin]{background:#12141c!important;margin:0;height:auto;overflow:auto}
+html[data-admin] body{background:#12141c!important;margin:0;height:auto;overflow:visible;overscroll-behavior:auto}
+html[data-admin] #app{position:static;inset:auto;background:none;display:block;min-height:100vh;overflow:visible}
 html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:none}
 
 /* ══ 2. PRIMITIVOS ══════════════════════════════════════════════════════════ */

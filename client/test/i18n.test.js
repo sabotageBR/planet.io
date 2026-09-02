@@ -70,7 +70,7 @@ test("resolveLang: pref manda, senão o navegador, senão pt-BR", () => {
 // dicionário é fácil "consolidar" e trocar PÓDIO por PLACAR sem ninguém notar — em cinco telas de uma vez.
 test("os três temas continuam dizendo o que sempre disseram", () => {
   const COMUM = { title: "WARSPACE.IO", play: "JOGAR", playAuto: "🚀 JOGAR (AUTO)", lbTitle: "PÓDIO",
-    dead: "KABOOM!", respawn: "🔄 DE NOVO!", reconnTitle: "SINAL FRACO!",
+    dead: "KABOOM!", respawn: "DE NOVO!", reconnTitle: "SINAL FRACO!",
     reconnSub: "Procurando o satélite… tentativa {n}/5", back: "◄", create: "➕ Criar sala", top5: "TOP 5 HOJE" };
   const POR_TEMA = {
     dawn:   { tagline: "Conquiste a galáxia antes do dia clarear!",   deadSub: "— você virou poeira de manhã cedo —" },

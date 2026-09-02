@@ -44,7 +44,7 @@ export default {
     sys_zone: "El gas está avanzando", sys_few: "Quedan {n}", sys_streak: "{n} bajas seguidas",
   },
   fx: { supernova: "¡SUPERNOVA!", nebula: "¡NEBULOSA PLANETARIA!" },
-  respawn: "🔄 ¡OTRA VEZ!", toLobby: "Salas", timeWord: "tiempo", rankWord: "clasificación diaria", coinsEarned: "monedas ganadas",
+  respawn: "¡OTRA VEZ!", newMatch: "OTRA PARTIDA", brWatchHint: "Quédate para ver el podio al final.", toLobby: "Salas", timeWord: "tiempo", rankWord: "clasificación diaria", coinsEarned: "monedas ganadas",
   lobbyTitle: "SALAS", roomCode: "CÓDIGO", enter: "Entrar", create: "➕ Crear sala", autoNote: "Entra en la sala más llena con lugar", shard: "shard", botsWord: "bots",
   rankTitle: "CLASIFICACIÓN", scopeGlobal: "Global", scopeCountry: "Mi país", noCountry: "elige tu país en el perfil",
   muteHint: "Silencio (M)",

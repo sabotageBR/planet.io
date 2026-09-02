@@ -8,7 +8,7 @@
 //   balanco — "essa vida foi boa?": os números contra o SEU recorde, que é a única régua honesta.
 //   sala    — "e agora, o que está acontecendo lá?": os maiores vivos e quantos restam, para quem
 //             vai ficar assistindo até o fim (no Battle Royale isso é metade da partida).
-// Os três mantêm o mesmo rodapé: mapa · tempo real · DE NOVO · lobby. `?dead=1|2|3` na URL passa por
+// Os três mantêm o mesmo rodapé: DE NOVO · lobby, e abaixo mapa · tempo real. `?dead=1|2|3` na URL passa por
 // cima da pref, para comparar os três sem gastar um PATCH por troca.
 //
 // ── O QUE A TELA NÃO MOSTRAVA ────────────────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@
 // partida chegava em `lastMatch` desde sempre sem NENHUM componente lê-lo — o mesmo defeito que o
 // `score` do `roundEnd` tinha.
 import React, { useEffect, useMemo, useSyncExternalStore } from "react";
-import { skinById } from "@warspace/shared";
+import { skinById, MODE } from "@warspace/shared";
 import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
@@ -58,7 +58,9 @@ export default function Dead({ on }) {
       if (e.key === "ArrowLeft") { e.preventDefault(); trocar(-1); }
       else if (e.key === "ArrowRight") { e.preventDefault(); trocar(1); }
       else if (e.key === "m" || e.key === "M") { e.preventDefault(); verMapa("map"); }
-      else if (e.key === "t" || e.key === "T") { e.preventDefault(); verMapa("live"); }
+      // ⚠️ A vista ao vivo é o L, e não mais o T: o T virou a tecla de abrir o CHAT (ui/Chat.jsx), e quem
+      // morreu continua falando — as duas não podiam disputar a mesma letra.
+      else if (e.key === "l" || e.key === "L") { e.preventDefault(); verMapa("live"); }
       // Esc fecha o mapa em vez de sair da tela: aqui ele é o "voltar" mais próximo
       else if (e.key === "Escape" && game.showMap) { e.preventDefault(); game.showMap(""); } };
     addEventListener("keydown", kd); return () => removeEventListener("keydown", kd);
@@ -118,12 +120,25 @@ export default function Dead({ on }) {
      MAPA é o radar ampliado — um instrumento, para escolher quem assistir (clicar num blip troca a
      câmera, o mesmo `spectate` das setas). TEMPO REAL é a SALA: ocupa o espaço todo, o blip vira o
      planeta na cor da skin, com nome e massa, e a posição é interpolada entre as amostras. */
+  /* ⚠️ NO BATTLE ROYALE O "DE NOVO" NÃO PODE APONTAR PARA A MESMA SALA, e era ele que roubava do jogador
+     a tela final inteira. `play({room})` chama `game.join()`, que abre com `game.leave(true)` — manda
+     `{t:"quit"}` e FECHA o socket, ou seja a sessão sai da sala —, e o join seguinte esbarra em
+     `acceptsJoin()`, que no BR em `live` NUNCA aceita: volta `error FULL`, o cliente cai no lobby com um
+     toast, e quando o `endRound` difunde o pódio essa sessão já não está em `room.sessions`. Como este é
+     o único botão grande da tela, o fim do Battle Royale simplesmente não existia para quem clicasse.
+     Aqui ele vira "outra partida" (sala nova, `play({})`), e a dica diz que ficar rende o pódio. */
+  const semRespawn = h.mode === MODE.BR;
   const rodape = <>
+    <div className="dead-actions">
+      <button className="btn-primary" data-go="play"
+        onClick={() => play(semRespawn ? {} : { room: m.room })}>{semRespawn ? LB.newMatch : LB.respawn}</button>
+      <button className="btn-secondary" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.toLobby}</button>
+    </div>
     <div className="dead-views">
       <button className={"btn-secondary dead-map" + (mapa === "map" ? " on" : "")} onClick={() => verMapa("map")}>{mapa === "map" ? LB.mapClose : LB.mapOpen}</button>
       <button className={"btn-secondary dead-live" + (mapa === "live" ? " on" : "")} onClick={() => verMapa("live")}>{mapa === "live" ? LB.liveClose : LB.liveOpen}</button>
     </div>
-    <div className="dead-actions"><button className="btn-primary" data-go="play" onClick={() => play({ room: m.room })}>{LB.respawn}</button><button className="btn-secondary" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.toLobby}</button></div>
+    {semRespawn ? <div className="hint dead-hint">{LB.brWatchHint}</div> : null}
   </>;
   /** Uma linha do balanço: número grande, e a barra só quando existe um recorde para comparar. */
   const linha = (k, valor, atual, rec, novo) => <div className={"dd-linha" + (novo ? " novo" : "")} key={k}>

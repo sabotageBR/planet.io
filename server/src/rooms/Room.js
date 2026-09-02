@@ -1272,15 +1272,29 @@ export class Room{
     // O campeão é fotografado ANTES do endRound: `leaderboard()` só lista VIVOS, então uma morte simultânea
     // (dois últimos se comendo no mesmo tick, ou a zona levando os dois) deixava `champion` nulo.
     const ultimo=this.champion||(this.sim.leaderboard().length?null:null);
-    const live=this.sim.endRound(reason);
-    // Quem ainda estava no mundo entra no roster agora; quem saiu ou morreu já entrou no seu momento.
-    for(const gp of this.sim.players.values())this._rosterFold(gp);
-    const {board,destaques,total}=this._mergeBoard(live);
-    let champion=board.length?board[0]:null;
-    if(ultimo&&(!champion||champion.slot!==ultimo.slot))champion=board.find(b=>b.slot===ultimo.slot)||champion;
-    const msg={t:'roundEnd',code:this.code,reason,mode:this.modeId,teamSize:this.teamSize,champion,
-      champTeam:champion&&champion.team!=null?champion.team:null,
-      board,destaques,total,nextInMs:ROUND.BREAK_MS,tick:this.sim.tick};
+    // ⚠️ A MONTAGEM DO PLACAR NÃO PODE DEIXAR A SALA MUDA. `this.over` já é `true` (senão o `step` seguinte
+    // reentraria aqui a 60 Hz, o que numa falha persistente seria um laço de erro), e `server/src/loop.js`
+    // engole exceções de `step()` num `log.error` — ou seja, um throw em `_rosterFold`/`_mergeBoard`
+    // aposentava a sala sem que NINGUÉM recebesse `roundEnd`, com uma linha de log e nada na tela. O
+    // paraquedas manda o mínimo que a tela de fim sabe desenhar: sem campeão e sem placar ela mostra a
+    // moldura e a contagem para a sala nova, que é infinitamente melhor que ficar preso no jogo.
+    let msg;
+    try{
+      const live=this.sim.endRound(reason);
+      // Quem ainda estava no mundo entra no roster agora; quem saiu ou morreu já entrou no seu momento.
+      for(const gp of this.sim.players.values())this._rosterFold(gp);
+      const {board,destaques,total}=this._mergeBoard(live);
+      let champion=board.length?board[0]:null;
+      if(ultimo&&(!champion||champion.slot!==ultimo.slot))champion=board.find(b=>b.slot===ultimo.slot)||champion;
+      msg={t:'roundEnd',code:this.code,reason,mode:this.modeId,teamSize:this.teamSize,champion,
+        champTeam:champion&&champion.team!=null?champion.team:null,
+        board,destaques,total,nextInMs:ROUND.BREAK_MS,tick:this.sim.tick};
+    }catch(e){
+      this.log.error(`sala ${this.code}: falha ao montar o placar do fim — ${e&&e.message}`);
+      msg={t:'roundEnd',code:this.code,reason,mode:this.modeId,teamSize:this.teamSize,champion:null,
+        champTeam:null,board:[],destaques:null,total:0,nextInMs:ROUND.BREAK_MS,tick:this.sim.tick};
+    }
+    const board=msg.board;
     // O board é cortado em ROUND.BOARD_MAX (com respawn, 30 min rendem mais de 100 participantes), mas
     // ninguém pode ficar de fora do PRÓPRIO placar: quem não coube vai anexado na mensagem da sessão dele.
     const noBoard=new Set(board.map(b=>b.key));
@@ -1290,7 +1304,7 @@ export class Room{
       s.sendJson(r?{...msg,mine:{name:r.name,kills:r.kills,deaths:r.deaths,food:r.food,kd:kdOf(r.kills,r.deaths),
         score:r.score,mass:r.mass,skinId:r.skinId,level:r.level,left:r.left}}:msg);}
     this.broadcastPlayers();
-    this.log.info(`sala ${this.code}: fim (${reason}) — campeão ${champion?champion.name:'ninguém'} (${champion?Math.round(champion.mass):0})`);}
+    this.log.info(`sala ${this.code}: fim (${reason}) — campeão ${msg.champion?msg.champion.name:'ninguém'} (${msg.champion?Math.round(msg.champion.mass):0})`);}
   // ── passo ──
   step(){
     const sim=this.sim;if(this.over)return;

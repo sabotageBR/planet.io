@@ -113,6 +113,10 @@ export const initialState = {
   mode: "desktop",       // desktop|portrait|landscape (body[data-mode])
   lastMatch: null,       // {by, byHole, score, maxMass, kills, durationS, room, at}
   roundResult: null,     // {code, champion, board:[{slot,name,mass,score,kills,isBot,registered}], nextInMs, at} — fim do mundo
+  roundPronto: false,    // a ABERTURA do fim de rodada já acabou? É o portão do cartão de recompensa: o
+                         // `{t:"rewards"}` chega ~200-800 ms depois do `roundEnd`, ou seja NO MEIO dos 2 s
+                         // de animação, e o <LevelUp/> é o último filho de App.jsx com z-index maior que o
+                         // da abertura — o cartão pulava por cima do BIG CRUNCH. Ver `soltaLevelUp`.
   rewards: null,         // {saved, coinsEarned, coins, achievements, skinsUnlocked, rank:{day}}
   rewardsPending: false,
   rooms: [], roomsAt: 0,

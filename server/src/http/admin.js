@@ -92,8 +92,13 @@ export function createAdminHttp({rooms,config,log,persistApi}){
         audita({adminId:adm.id,action:'kick',target:code,detail:{slot,name:nome},ip:null});
         sendJson(res,200,{ok:true,name:nome});return true;}
       const n=room.sessions.size;
+      // ⚠️ `endRound` ANTES de despejar: sem ele a sala virava `over` MUDA — ninguém recebia `roundEnd`,
+      // a partida de quem estava lá não era fechada pela persistência normal (só pelo `leave`), e o
+      // jogador via um erro fatal em vez do placar. Fechar uma sala é um FIM DE RODADA por outro motivo,
+      // e `endRound` é o ponto único que já sabe montar campeão, placar e destaques.
+      room.endRound('closed');
       for(const s of [...room.sessions.values()]){s.error('ROOM','sala encerrada por um administrador');room.leave(s,'left');}
-      room.over=true;room.endedAt=Date.now();
+      room.endedAt=Date.now();
       log.warn(`admin #${adm.id} fechou a sala ${code} (${n} jogador(es))`);
       audita({adminId:adm.id,action:'room_close',target:code,detail:{kicked:n},ip:null});
       sendJson(res,200,{ok:true,kicked:n});return true;}

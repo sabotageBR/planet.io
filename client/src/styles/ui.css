@@ -473,8 +473,15 @@ body[data-mode="portrait"] #hud #notice{font-size:12.5px;padding:8px 12px;max-wi
 #s-prefs .pw-legenda b{font-size:13px;align-self:end}
 #s-prefs .pw-legenda span{font-size:11.5px;color:var(--muted,#9aa3c0);align-self:start;line-height:1.3}
 #s-prefs .pw-legenda>.hint{display:block;margin-top:10px;font-size:11px}
-#s-dead .dead-views{display:flex;gap:8px;align-items:stretch}
+/* ⚠️ `width:100%` porque as duas linhas do rodapé trocaram de lugar (as AÇÕES em cima, as VISTAS
+   embaixo): `.dead-actions` já tem largura cheia por `base.css`, e sem isto a linha de baixo ficava
+   visivelmente mais estreita que a de cima, encolhida ao conteúdo pelo `align-items:center` do cartão.
+   ⚠️ O prefixo `#s-dead` não é opcional em NENHUMA regra deste bloco: os temas miram `.dead-*` com
+   `:where(...)` = (0,2,0), `ui.css` é importado ANTES deles, e empate de especificidade PERDE. E
+   `.dead-actions` é compartilhado com `#s-round`, que a tem `position:sticky`. */
+#s-dead .dead-views{display:flex;gap:8px;align-items:stretch;width:100%}
 #s-dead .dead-views>button{flex:1 1 0;min-width:0;white-space:nowrap;padding-left:8px;padding-right:8px}
+#s-dead .dead-hint{text-align:center;opacity:.7;font-size:.85em}
 
 /* ── VOZ: o anel com o tempo que sobra do clipe, ao lado dos botões de ação ── */
 #talk{position:absolute;right:12px;bottom:140px;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:6;pointer-events:none}
