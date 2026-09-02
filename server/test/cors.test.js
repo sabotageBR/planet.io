@@ -70,6 +70,12 @@ test('a lista do ConfigMap aceita a origem real de cada portal empacotado', () =
     // `https://<hru>.games.playgama.com/<build>/__patch__/<patch>/index.html?platform_id=playgama`
     ['Playgama','https://warspace-io.games.playgama.com'],
     ['Playgama (QA/painel)','https://developer.playgama.com'],
+    // ⚠️ E A QA TOOL SERVE DE OUTRO TLD: o jogo PUBLICADO roda em `<hru>.games.playgama.com` (medido na
+    // API pública deles), mas o build que a QA Tool executa vem de `<buildId>.games.playgama.NET` —
+    // medido no iframe de `developer.playgama.com/qa-tool/<id>`. `*.playgama.com` não cobre `.net`, e o
+    // sintoma é o de sempre: carrega, desenha o menu e o JOGAR não conecta — só que ANTES de submeter,
+    // dentro da ferramenta com que eles certificam o jogo. Os dois TLDs ficam liberados.
+    ['Playgama (build da QA Tool)','https://cmtjhs0gp0u0oo10hxbe5wn9d.games.playgama.net'],
     // ⚠️ o jogo do GamePix NÃO roda no domínio do site nem no do player: `www.gamepix.com` é o
     // portal, `play.gamepix.com/<ns>/embed` é o player que o embute, e o nosso código roda em
     // `https://games.builds.gamepix.com/<gameId>/<version>/index.html` — medido no `GameFrame` do
@@ -80,6 +86,7 @@ test('a lista do ConfigMap aceita a origem real de cada portal empacotado', () =
   assert.equal(ok('https://storage.y8.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
   assert.equal(ok('https://data.gameflare.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
   assert.equal(ok('https://games.playgama.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
+  assert.equal(ok('https://games.playgama.net.evil.tld'),false,'e o sufixo continua sendo sufixo');
   assert.equal(ok('https://games.builds.gamepix.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
 });
 

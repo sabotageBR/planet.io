@@ -452,6 +452,21 @@ https://<hru>.games.playgama.com/<buildId>/__patch__/<patchId>/index.html?platfo
 JOGAR não conecta). `ALLOWED_ORIGINS` leva `https://*.playgama.com`, que cobre o subdomínio do jogo e o
 `developer.playgama.com` da QA Tool deles; `server/test/cors.test.js` trava a origem medida.
 
+⚠️ **E NÃO BASTA: A QA TOOL SERVE DE OUTRO TLD.** O jogo PUBLICADO roda em `<hru>.games.playgama.com`,
+mas o build que a *QA Tool* executa vem de **`<buildId>.games.playgama.NET`** — medido no `<iframe>` de
+`developer.playgama.com/qa-tool/<id>`:
+
+```
+https://cmtjhs0gp0u0oo10hxbe5wn9d.games.playgama.net/cmtjhs0gp0u0oo10hxbe5wn9d/index.html
+```
+
+`*.playgama.com` não casa `.net`, então o pacote reprova **antes de ser submetido**, dentro da própria
+ferramenta com que eles certificam o jogo — e com o sintoma de sempre (carrega, menu bonito, JOGAR não
+conecta). Os DOIS TLDs ficam em `ALLOWED_ORIGINS`. É o mesmo erro do `.co` do GameMonetize, mais uma
+vez: **o domínio do site nunca diz onde o jogo roda**, e agora nem o do jogo publicado diz onde o jogo é
+TESTADO. ⚠️ Aqui não há CSP: medido, o documento do jogo vem sem `Content-Security-Policy` (é o oposto
+da Poki), então a assinatura é a outra — a requisição SAI e volta sem o header.
+
 ⚠️ **Repare no CAMINHO**: `/<buildId>/__patch__/<patchId>/` são **três** níveis de subcaminho — a
 `base:"./"` do build de portal é o que separa carregar de página branca, como no GameFlare.
 
