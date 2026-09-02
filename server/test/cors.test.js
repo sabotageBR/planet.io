@@ -52,7 +52,12 @@ test('a lista do ConfigMap aceita a origem real de cada portal empacotado', () =
     ['GameDistribution','https://html5.gamedistribution.com'],
     ['GD (revisão)','https://revision.gamedistribution.com'],
     ['CrazyGames','https://games.crazygames.com'],
-    ['Poki','https://games.poki.com'],
+    // ⚠️ A Poki tem TRÊS hosts e só o último importa: `poki.com` é o portal, `games.poki.com` é o
+    // invólucro que embute o jogo, e o nosso código roda em `<gameId>.gdn.poki.com/<buildId>/index.html`
+    // — medido no preview do warspace.io. `https://*.poki.com` cobre os três, mas quem tem que estar
+    // travado aqui é a origem do DOCUMENTO que faz as chamadas.
+    ['Poki (invólucro)','https://games.poki.com'],
+    ['Poki (o jogo)','https://78e41599-1082-4fac-b0d9-2436753ddd5d.gdn.poki.com'],
     ['itch.io','https://html-classic.itch.zone'],
     ['Y8','https://storage.y8.com'],
     // ⚠️ o jogo do GameMonetize roda no `.co`, não no `.com` do site — foi medido no feed deles

@@ -147,8 +147,12 @@ caracteres · **§6.1** nenhum link de saída, o que inclui o convite de sala (n
 CÓDIGO) · **§6.3** nenhuma referência a app store · **§7** nada de coleta de dados nem tracker de
 terceiro.
 
-Falta publicar uma **política de privacidade** (a Poki exige e o upload de foto pede uma). Ela mora no
-site e a URL vai no formulário do portal — nunca como link dentro do jogo, que é a §6.1.
+A **política de privacidade** (a Poki exige, e o upload de foto pede uma) é `client/public/privacy.html`,
+estática de propósito: ela tem que abrir com o jogo fora do ar, sem bundle, sem React e sem chamada de
+API. Vale por **`https://warspace.io/privacy`** e por `/privacy.html`; a URL vai no formulário do portal
+— nunca como link dentro do jogo, que é a §6.1. ⚠️ A URL sem extensão precisou de regra própria no
+`client/nginx.conf`: pelo `try_files` ela respondia **200 com o `index.html`** — o revisor abria o link
+e via o jogo, sem 404 e sem nada que explicasse a recusa. É a mesma armadilha do `/ads.txt`.
 
 ## Verificar antes de subir
 
@@ -193,6 +197,72 @@ anúncio de uma rede concorrente.
 ⚠️ **A lista envelhece.** A primeira linha carrega `#gpx-last-updated-<data>` e o painel acende
 "You are required to PUBLISH AND UPDATE your Ads.txt" quando eles mexem nela. Atualizar é rebaixar o
 template, trocar o `{id}` e publicar o cliente de novo.
+
+## Poki: o que reprova é a CSP DELES, não o nosso CORS
+
+**Game ID `78e41599-1082-4fac-b0d9-2436753ddd5d`**, empacotado com `node scripts/portal-pack.mjs poki`.
+O preview do painel é `https://poki.com/en/preview/<gameId>/<buildId>`.
+
+O sintoma no preview é o de sempre — carrega, desenha o menu e não conecta —, e por isso a primeira
+suspeita é o CORS. **Não é**, e essa é a coisa que este bloco existe para poupar um dia de depuração.
+
+⚠️ **A Poki tem TRÊS hosts, e o nosso `https://*.poki.com` já cobre os três:**
+
+| host | o que é |
+|---|---|
+| `poki.com` | o portal, a página em volta |
+| `games.poki.com` | o invólucro (`/<gameId>/<buildId>`), que embute o jogo e fala com o SDK |
+| **`<gameId>.gdn.poki.com`** | **os arquivos do jogo — é aqui que o nosso código roda** |
+
+Medido lendo o `#gameframe` de dentro do invólucro: o documento é
+`https://78e41599-….gdn.poki.com/62fbc498-…/index.html?…&csp=2`. Como o matcher casa por SUFIXO,
+`*.poki.com` aceita o subdomínio de gameId, e a prova é direta — `curl -H 'Origin: https://games.poki.com'
+https://warspace.io/api/config` devolve `access-control-allow-origin` de volta.
+
+⚠️ **O que bloqueia é a Content-Security-Policy que a Poki serve no documento do jogo.** Medida no
+header daquela URL, com o jogo já publicado no preview:
+
+```
+content-security-policy: default-src 'self' data: 'unsafe-inline' 'unsafe-hashes' 'unsafe-eval' blob:
+  https://a.poki-cdn.com/ https://auds.poki.io https://devs-api.poki.com/gameinfo/ https://dialog.poki.io
+  https://game-cdn.poki.com/loaders/ https://game-cdn.poki.com/scripts/ https://games.poki.com/savegame
+  https://geo.poki.io https://img.poki-cdn.com/cdn-cgi/image/ https://leveldata.poki.io
+  https://mystery-game-tile.poki.io/v0/metric https://netlib.poki.io https://t.poki.io/game-cookies
+  https://t.poki.io/game-event https://t.poki.io/ge wss://auds.poki.io wss://netlib.poki.io
+  wss://playtest-recorder.poki.io/ws; upgrade-insecure-requests
+```
+
+Não há `connect-src`, então vale o `default-src 'self'`: `https://warspace.io` e `wss://warspace.io`
+são recusados pelo NAVEGADOR, antes de sair da máquina. A assinatura que distingue isto de qualquer
+problema nosso é **zero requisição a warspace.io no painel de rede** — CORS recusado APARECE lá (com a
+resposta chegando e o header faltando); CSP não deixa a requisição nascer. É o que faz `api/config`
+falhar e levantar `servidorFora` / `ui/Offline.jsx` já na tela inicial.
+
+⚠️ **Nada no nosso código ou no nosso servidor levanta essa CSP.** A liberação é pedida em
+**Settings → Custom Content Security Policy** da página do jogo, pedindo os dois:
+
+```
+https://warspace.io      (fetch: /api/*)
+wss://warspace.io        (WebSocket: /ws/0|1|2)
+```
+
+Pela política deles (*"Poki blocks all external requests by default. Your game may not call any
+third-party URLs unless they've been explicitly approved"*), servidor de multiplayer é uma das exceções
+analisáveis, e o pedido exige uma **política de privacidade publicada e acessível** — é por isso que
+`client/public/privacy.html` existe e que o nginx passou a servi-la também em `/privacy` (a URL sem
+extensão caía no `try_files` e respondia o JOGO com 200, a mesma armadilha do `/ads.txt`).
+
+Depois de aprovado, eles pedem **reenviar o build para limpar o cache** — é o mesmo
+`portal/warspace-poki.zip`, sem gerar nada novo.
+
+⚠️ O bundle do pacote da Poki referencia exatamente DUAS origens externas (medido com `grep` no
+`portal/poki/dist`): `https://warspace.io` e `https://game-cdn.poki.com` — esta última já está na CSP
+deles. Ou seja, a liberação pedida acima é a lista COMPLETA, e não um primeiro pedido de vários.
+
+⚠️ O `allow` do iframe do jogo aqui é generoso (`autoplay; camera; microphone *; clipboard-write;
+gamepad; screen-wake-lock`…), então o push-to-talk funcionaria tecnicamente. Ele continua fora
+(`SEM_VOZ`) pela outra razão, que não mudou: sem moderação nem retenção de áudio não há como responder
+a um relatório de abuso.
 
 ## Y8 (`developer.y8.com`)
 

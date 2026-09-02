@@ -1,8 +1,13 @@
 // ── Poki ──────────────────────────────────────────────────────────────────────
-// ⚠️ ANTES DE EMPACOTAR PARA A POKI: peça na página de Settings do jogo a CSP customizada liberando
-//    `https://warspace.io` e `wss://warspace.io`. Eles servem o jogo sob uma CSP estrita, e sem essa
-//    liberação TUDO vira "Refused to connect" — e você vai passar o dia depurando um CORS que está
-//    certo. É a única exigência de infraestrutura que este portal tem a mais que os outros.
+// ⚠️ ANTES DE EMPACOTAR PARA A POKI: peça em Settings → Custom Content Security Policy a liberação de
+//    `https://warspace.io` e `wss://warspace.io`. Isto NÃO é precaução — foi medido no preview: o
+//    documento do jogo (`<gameId>.gdn.poki.com/<buildId>/index.html`) chega com
+//    `default-src 'self' … https://game-cdn.poki.com/scripts/ … wss://netlib.poki.io` e NENHUM
+//    `connect-src`, então todo `fetch` e todo WebSocket para cá morre no navegador, antes de sair.
+//    A assinatura que separa isto de um problema nosso é ZERO requisição a warspace.io no painel de
+//    rede: CORS recusado aparece lá (resposta chega, header falta), CSP nem deixa nascer. Sem a
+//    liberação o jogador vê a tela de `servidorFora` e você passa o dia depurando um CORS que está
+//    certo — `*.poki.com` já cobre os três hosts deles. Ver docs/spec/portais.md.
 // A Poki também quer política de privacidade publicada; ela mora no site, e o link vai no formulário
 // deles — nunca dentro do jogo (link de saída é proibido em portal).
 import { carregaScript } from "./script.js";
