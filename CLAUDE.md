@@ -1519,7 +1519,10 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   embaixo. `podio` é o pódio de sempre com o 1º em tamanho de campeão (e por isso a FAIXA saiu: o
   campeão aparecia três vezes na mesma tela); `cinema` entrega a tela ao vencedor e rebaixa 2º e 3º a
   fichas; `dossie` é o relatório em duas colunas, e é o único em que se COMPARA — a barra diz "ganhou
-  por quanto", que nem o pódio nem a faixa diziam. A largura da caixa muda por modelo redefinindo
+  por quanto", que nem o pódio nem a faixa diziam, e por isso é ele o PADRÃO (escolhido de olho, com os
+  três medidos lado a lado). ⚠️ O padrão mora em DOIS lugares que têm que concordar: `PREF_DEFAULTS` em
+  `state/app.js`, que é o que o jogador recebe, e o fallback de `estiloDe` em `ui/Round.jsx`, que vale
+  quando a pref vem com lixo ou ainda não chegou do `GET /api/me`. A largura da caixa muda por modelo redefinindo
   `--screen-w` no próprio `#s-round[data-style]`, sem um `width` novo: o bloco "TODA TELA NO MESMO
   LUGAR" já lê a variável. `?round=1|2|3` passa por cima da pref para comparar os três sem gastar um
   PATCH por troca.

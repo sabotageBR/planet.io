@@ -37,7 +37,9 @@ const CORTE = { podio: 3, cinema: 3, dossie: 5 };
 const ORDER = [1, 0, 2];   // 2º | 1º | 3º
 const Q = typeof location !== "undefined" ? new URLSearchParams(location.search).get("round") : null;
 const estiloDe = p => (Q && (ESTILOS[+Q - 1] || (ESTILOS.includes(Q) ? Q : null)))
-  || (ESTILOS.includes(p && p.roundStyle) ? p.roundStyle : "cinema");
+// ⚠️ O padrão está em DOIS lugares e eles têm que concordar: `PREF_DEFAULTS` (state/app.js), que é o
+// que o jogador recebe, e este fallback, que vale quando a pref chega com lixo ou ainda não chegou.
+  || (ESTILOS.includes(p && p.roundStyle) ? p.roundStyle : "dossie");
 
 // ── peças ─────────────────────────────────────────────────────────────────────
 const Planeta = ({ b, size = 112, r = 30, cls = "" }) => <SkinPreview skin={skinById(b ? b.skinId : 0)} r={r} size={size} className={cls} />;
