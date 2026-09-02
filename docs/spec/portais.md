@@ -522,6 +522,70 @@ Medido no pacote (Chrome headless, servido no subcaminho): Bridge **v2.1.0** ini
 de banner do próprio SDK. As duas chamadas que falham ali são a API a partir de `127.0.0.1`, que não
 está em `ALLOWED_ORIGINS` — é o esperado, e some no domínio deles.
 
+### A QA Tool reprovou duas vezes, e as duas causas eram nossas
+
+A ferramenta deles (`developer.playgama.com/qa-tool/<id>`) roda o jogo e devolve *findings*. Vieram dois,
+e vale registrar o diagnóstico inteiro porque nenhum dos dois aparecia no console:
+
+**1. "No advertising is implemented — certification requires at least one type of advertising."**
+Duas causas somadas, e nenhuma sozinha explicava:
+
+- O adaptador declarava `semPreroll`, então o ÚNICO anúncio possível era o midroll da SEGUNDA partida —
+  e o certificador joga uma. A doc deles pede para não chamar `showInterstitial()` *"at game start"*, mas
+  o nosso preroll não é a largada do jogo: é o clique em JOGAR, a passagem do menu para a partida, que é
+  o *"level transition"* que eles dão como exemplo de hora certa. Anúncio duplicado não acontece: se a
+  plataforma já anunciou, o teto deles devolve `failed` e a fachada segue.
+- **O teto DELES recusava o primeiro anúncio de toda sessão.** Medido no bundle:
+  `initialInterstitialDelay` (60 s de padrão) é contado a partir do `game_ready`, e `show()` devolve
+  `failed` antes disso. Como o nosso preroll sai poucos segundos depois do boot, ele nunca passaria. O
+  config agora manda `initialInterstitialDelay: 0` — quem espaça anúncio aqui é `PORTAL.MIN_AD_MS`, na
+  fachada.
+
+**2. "The game did not save progress — the platform did not detect any attempt to save data."**
+Nunca tínhamos tocado na Storage do Bridge, e a doc é explícita: nada de `localStorage` direto, tudo
+por ela, senão *"the data won't reach cloud saves"*. O que aqui é "progresso" merece cuidado: moedas,
+nível, skins e conquistas moram no NOSSO Postgres, atrás da credencial da sessão — copiar os números
+para a nuvem deles seria guardar algo que o servidor recalcula por cima na partida seguinte. O que
+preserva progresso é a credencial, então o blob é `{v,t,n}` numa chave só, com duas regras:
+
+- **Só convidado.** Guardar na plataforma o Bearer de uma conta REGISTRADA seria delegar a ela um acesso
+  que vale muito mais que um save — e quem tem login entra por ele em qualquer aparelho. Ao registrar, o
+  blob é reescrito sem a credencial.
+- **Restaura só em conta em branco.** Quando o SDK fica pronto, o boot já criou um convidado local
+  (~200 ms contra os segundos do Bridge), então "não tem sessão" nunca acontece; o caso real é "tem um
+  convidado que nunca jogou", e aí adotar o da nuvem é o certo. Havendo progresso local, a sessão de
+  agora manda e a nuvem vira espelho dela.
+
+⚠️ **E havia uma terceira causa, essa da fachada e valendo para TODOS os portais**: o
+`prazo(..., PORTAL.SDK_MS)` de `portal/index.js` jogava o adaptador fora quando ele demorava mais de
+6 s — para o resto da sessão. Somando o download do SDK de terceiro, o `initialize()` dele e a primeira
+carga sem cache, 6 s é justamente o caso do revisor. Hoje o prazo só limita quanto o botão JOGAR espera;
+o adaptador atrasado é instalado assim mesmo, e o `carregou()` é repetido para ele.
+
+### O placar SaaS (o *app public token*)
+
+O token sai do painel deles (o cartão do jogo → aba **Leaderboards**) e é **público por definição**:
+viaja dentro do zip, legível por qualquer jogador. Ele vai no config, que o empacotador escreve:
+
+```json
+{
+  "saas": { "publicToken": "<token>", "leaderboards": { "platforms": ["playgama", "qa_tool"] } },
+  "leaderboards": [{ "id": "score" }]
+}
+```
+
+⚠️ **São TRÊS coisas, e faltando uma o silêncio é o mesmo**: o token (autentica, via `x-public-token`),
+o bloco `saas.leaderboards.platforms` (é ele que liga o adaptador SaaS — sem ele o Bridge tenta o placar
+NATIVO da plataforma, que no Playgama não existe) e o placar CRIADO no painel com o mesmo id que o jogo
+manda. Medido na API deles: id que não existe responde `404 {"message":"Leaderboard not found"}`, e a
+promessa rejeita sem que nada apareça no jogo. `qa_tool` está na lista porque a ferramenta de teste é uma
+plataforma à parte — a mesma lição do `.net` no CORS.
+
+⚠️ **`setScore` REJEITA para quem não está logado na plataforma** (medido: sem `playerId` a chamada nem
+sai da máquina), e esse é o caso NORMAL num portal. O número mandado é o `score` da vida — inteiro, uma
+vez por vida (`client/src/portal/vidas.js`, o mesmo contador que a Bounty Board usa) — e nunca a massa,
+que passa de um milhão e bateria no teto de plausibilidade por jogo.
+
 ## GamePix: a porta de DESENVOLVEDOR (`my.gamepix.com`)
 
 A mesma empresa da seção do `ads.txt`, a outra porta: aqui o warspace.io é um **jogo do catálogo**, não

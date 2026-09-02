@@ -70,6 +70,12 @@ export const api = {
   online: null,   // serviço de contas (banco) disponível?
   server: null,   // servidor de jogo alcançável (/api/config)?
   get token() { return getToken(); },
+  /**
+   * Adota um Bearer que veio de FORA (hoje: o save na nuvem do Playgama, client/src/portal/pg.js).
+   * Só troca o token — quem refaz a sessão é `applySession(await api.bootstrap())`, e um token inválido
+   * cai sozinho no 401 de lá, que o limpa e cria um convidado novo.
+   */
+  adota(t) { setToken(t || null); },
   get: p => request("GET", p),
   post: (p, b) => request("POST", p, b === undefined ? {} : b),
   patch: (p, b) => request("PATCH", p, b),

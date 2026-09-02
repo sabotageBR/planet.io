@@ -24,6 +24,10 @@ const API = (process.env.WARSPACE_API_BASE || "https://warspace.io").replace(/\/
 
 // `strict` liga o interruptor da regra 7 (sem conta, sem Google, sem foto). Hoje todos em false: a
 // decisão foi manter o cadastro e assumir o risco. Reprovou? Vira true e o pacote seguinte já sai limpo.
+// App public token do Playgama (painel → cartão do jogo → Leaderboards). Público por definição: vai
+// dentro do zip. `PLAYGAMA_TOKEN=` troca sem editar o arquivo.
+const PG_TOKEN = process.env.PLAYGAMA_TOKEN || "cmtjgxfnd0sxdkl0h2rx0tugt";
+
 const PERFIS = {
   gd:    { nome: "GameDistribution", strict: false, env: { VITE_GD_GAME_ID: "c352686e02ec4cd19e7a9ac436d38875" } },
   // ⚠️ `strict` LIGADO na CrazyGames, e não é escolha: eles proíbem, por escrito, "logging out and
@@ -65,7 +69,23 @@ const PERFIS = {
   gamepix: { nome: "GamePix", strict: false, env: {} },
   playgama: { nome: "Playgama", strict: false, env: {}, extras: {
     "playgama-bridge-config.json": JSON.stringify({
-      advertisement: { minimumDelayBetweenInterstitial: Math.round(PORTAL.MIN_AD_MS / 1000) },
+      // ⚠️ `initialInterstitialDelay: 0` NÃO é ganância: o padrão da plataforma é 60 s CONTADOS DO
+      // `game_ready` (medido no bundle deles), e é ele que recusava o PRIMEIRO anúncio de toda sessão —
+      // exatamente o que a QA Tool devolveu como "No advertising is implemented". Quem decide a hora do
+      // anúncio aqui é a fachada (`play()`, a passagem do menu para a partida) e quem os ESPAÇA é
+      // `PORTAL.MIN_AD_MS`, que continua valendo entre um e outro.
+      advertisement: { minimumDelayBetweenInterstitial: Math.round(PORTAL.MIN_AD_MS / 1000), initialInterstitialDelay: 0 },
+      // ⚠️ O TOKEN É PÚBLICO POR DEFINIÇÃO — ele viaja dentro do zip, legível por qualquer jogador, e é
+      // por isso que fica aqui e não num Secret. Sai do painel deles (developer.playgama.com → o cartão
+      // do jogo → aba Leaderboards) e é o que autentica as chamadas SaaS (`x-public-token`). Sozinho ele
+      // só carimba a analítica: quem LIGA o placar SaaS é o bloco `leaderboards.platforms` abaixo — sem
+      // ele o Bridge cai no placar NATIVO da plataforma, que no Playgama não existe.
+      // ⚠️ `qa_tool` junto com `playgama`: a QA Tool deles é uma PLATAFORMA à parte (`platform_id`
+      // próprio), e sem essa entrada o placar simplesmente não funciona justo na ferramenta em que se
+      // testa antes da moderação — a mesma lição do `.net` da QA Tool no CORS.
+      saas: { publicToken: PG_TOKEN, leaderboards: { platforms: ["playgama", "qa_tool"] } },
+      // o id de dentro do jogo (client/src/portal/pg.js) — tem que existir com este nome no painel
+      leaderboards: [{ id: "score" }],
     }, null, 2) + "\n",
   } },
 };

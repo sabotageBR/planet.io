@@ -19,14 +19,15 @@
 //    Assinar o `app` cobre os mesmos momentos sem espalhar `if` por arquivo nenhum e sem depender de
 //    montagem de componente: entrar em partida, pausar, morrer e o BIG CRUNCH são todos escritas no
 //    store.
-// ⚠️ `gameOver` UMA VEZ POR VIDA (regra 2 deles) — quem garante isso é o `rodada`, que só é aberto pelo
-//    `gameplayStart`. Morrer e o fim de rodada chegam no MESMO update (screen + lastMatch/roundResult),
-//    então a ordem "parou de jogar → acabou" sai de graça, num pass só; e o campeão que NÃO morreu tem
-//    o `gameOver` do fim de rodada, enquanto quem já morreu não ganha um segundo.
+// ⚠️ `gameOver` UMA VEZ POR VIDA (regra 2 deles) — quem garante isso é `portal/vidas.js`, o mesmo
+//    contador de vidas que o placar SaaS do Playgama usa: a vida abre ao entrar na partida e fecha no
+//    primeiro fim que chegar, então quem morreu não ganha um segundo `gameOver` no fim de rodada e o
+//    campeão que nunca morreu ganha o dele ali.
 // ⚠️ Placar deles é INTEIRO e com teto de plausibilidade por jogo: `Math.trunc`, e nunca a massa (que
 //    passa de um milhão) — o `score` da vida é o mesmo número que o nosso ranking usa.
 import { carregaScript } from "./script.js";
 import { app } from "../state/app.js";
+import { aoAcabarAVida } from "./vidas.js";
 const SRC = import.meta.env.VITE_BB_SDK_URL || "https://www.bountyboard.gg/arcade-sdk/v1.js";
 const bb = () => window.BBArcade || null;
 
@@ -38,25 +39,17 @@ export async function criar() {
   try { Promise.resolve(s.init()).catch(() => {}); } catch { /* SDK pela metade */ }
   const chama = (m, ...a) => { try { const g = bb(); if (g && typeof g[m] === "function") g[m](...a); } catch { /* nunca derruba o jogo */ } };
 
-  let jogando = false, rodada = false, ultimaMorte = null, ultimoFim = null;
-  const abre = () => { if (jogando) return; jogando = true; rodada = true; chama("gameplayStart"); };
+  let jogando = false;
+  const abre = () => { if (jogando) return; jogando = true; chama("gameplayStart"); };
   const para = () => { if (!jogando) return; jogando = false; chama("gameplayStop"); };
-  const acaba = n => { if (!rodada) return; rodada = false; chama("gameOver", Math.trunc(+n || 0)); };
-  /** Meu score no fim de rodada: a linha do placar do meu slot, ou o `mine` que o servidor anexa a quem não coube nele. */
-  const meuFim = r => { const b = (r && r.board) || [], m = b.find(x => x && x.slot === r.mySlot);
-    return (m && m.score) || (r && r.mine && r.mine.score) || 0; };
 
-  const passo = st => {
-    // "Menus, pauses, death prompts, and ad breaks are not active play" (regra 3 deles)
-    if (st.screen === "game" && !st.overlays.pause) abre(); else para();
-    if (st.lastMatch && st.lastMatch !== ultimaMorte) { ultimaMorte = st.lastMatch; acaba(st.lastMatch.score); }
-    if (st.roundResult && st.roundResult !== ultimoFim) { ultimoFim = st.roundResult; acaba(meuFim(st.roundResult)); }
-  };
+  // ⚠️ "Menus, pauses, death prompts, and ad breaks are not active play" (regra 3 deles): o jogo ativo é
+  // a tela de partida SEM a pausa por cima. O fim da VIDA é outra coisa e mora em `vidas.js`, junto com
+  // a garantia do "uma vez por vida" que a regra 2 deles exige — o Playgama precisa da mesma resposta.
+  const passo = st => { if (st.screen === "game" && !st.overlays.pause) abre(); else para(); };
   app.subscribe(passo);
-  // ⚠️ E o estado de AGORA: o SDK é um script de terceiro e a assinatura só existe depois que ele
-  // carrega. Numa rede ruim o jogador entra em partida antes disso, e sem esta linha o `gameplayStart`
-  // dessa primeira vida sairia só no próximo update do store — ou nunca.
   passo(app.get());
+  aoAcabarAVida(n => { para(); chama("gameOver", n); });
 
   return {
     // o `#boot` já saiu e a tela inicial está montada: é o "primeira cena jogável" deles

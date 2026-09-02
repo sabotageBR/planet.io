@@ -731,6 +731,14 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   servida em `http://127.0.0.1`, tentaria `ws://` contra um servidor `wss://` e você culparia o servidor.
   ⚠️ **NUNCA criar `client/.env`** (sem sufixo de modo): ele valeria para o `npm run build` de dentro do
   `client/Dockerfile` e toda chamada de produção viraria cross-origin, em silêncio.
+  ⚠️ **O PRAZO DO SDK É PARA QUEM ESPERA, NÃO PARA O ADAPTADOR** (`portal/index.js`): o `prazo(...,
+  PORTAL.SDK_MS)` jogava o adaptador FORA quando ele passava de 6 s — para o resto da sessão. E 6 s não
+  é folgado somando o download do SDK de terceiro, o `initialize()` dele (que ainda busca config e o
+  pedaço da plataforma no CDN deles) e tudo isso SEM cache, que é exatamente a primeira carga do
+  REVISOR. O sintoma é mudo: nenhum anúncio, nenhuma mensagem de ciclo de vida, nenhum placar, e nada no
+  console. Hoje o prazo só decide quanto o botão JOGAR espera; o adaptador atrasado é instalado do mesmo
+  jeito, e o `carregou()` (que sai UMA vez, do `main.jsx`) é REPETIDO para ele — em vários SDKs é esse
+  marco que libera o anúncio.
   ⚠️ **PREROLL NÃO É UNIVERSAL, e `gameplayStart` precisa de `gameplayStop`** (`portal/index.js`): a GD
   EXIGE preroll (§2.1) e a CrazyGames PROÍBE — *"advertisements should not appear before the user has
   experienced a reasonable amount of gameplay"* —, e o jogo mandava o mesmo `anuncio("preroll")` para
@@ -858,8 +866,26 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   outros sete pacotes, e sem ele o Bridge loga `CONFIG_LOAD_FAILED` no console do revisor. O único
   valor lá dentro é `minimumDelayBetweenInterstitial`, DERIVADO de `PORTAL.MIN_AD_MS` — o Bridge tem
   relógio próprio (60 s) e, desalinhado, reprova em `failed` anúncios que a fachada achou legítimos.
-  ⚠️ **Sem preroll**, e a regra é deles ("calling it explicitly can result in duplicate ads"): é o
-  mesmo `semPreroll` da CrazyGames. ⚠️ Pausa e áudio são AGREGADOS lá (cinco fontes num estado só) e o
+  ⚠️ **O PREROLL VOLTOU, e o config precisou de `initialInterstitialDelay: 0`**: a QA Tool deles
+  reprovou com "No advertising is implemented", e as duas causas eram nossas — o adaptador declarava
+  `semPreroll` (a doc pede para não anunciar "at game start", mas o nosso preroll é o clique em JOGAR, o
+  "level transition" que eles dão como exemplo) e o teto DELES, contado a partir do `game_ready` e
+  valendo 60 s por padrão, recusava o primeiro anúncio de toda sessão antes de ele existir. Quem espaça
+  anúncio continua sendo `PORTAL.MIN_AD_MS`, na fachada.
+  ⚠️ **PROGRESSO NA STORAGE DELES** (`bridge.storage`), pela outra reprovação ("the platform did not
+  detect any attempt to save data"). O que preserva progresso aqui é a CREDENCIAL da sessão, não uma
+  cópia de moedas/nível — eles vivem no nosso Postgres —, então o blob é `{v,t,n}`. **Só para
+  convidado**: entregar à plataforma o Bearer de uma conta registrada seria delegar um acesso que vale
+  mais que o save, e quem tem login entra por ele em qualquer aparelho. E só RESTAURA em conta em
+  branco: quando o SDK fica pronto o boot já criou um convidado local (~200 ms contra segundos), então
+  o caso real não é "sem sessão", é "convidado que nunca jogou".
+  ⚠️ **O placar SaaS precisa de TRÊS coisas, e faltando uma o silêncio é o mesmo**: o
+  `saas.publicToken` (painel → aba Leaderboards), o bloco `saas.leaderboards.platforms` (é ele que liga
+  o adaptador SaaS; sem ele o Bridge tenta o placar NATIVO, que no Playgama não existe — e `qa_tool` é
+  uma plataforma à parte, que precisa estar na lista) e o placar criado no painel com o id que o jogo
+  manda (`score`). Medido: id inexistente responde `404 Leaderboard not found`, e `setScore` REJEITA
+  para quem não está logado na plataforma — o caso normal num portal.
+  ⚠️ Pausa e áudio são AGREGADOS lá (cinco fontes num estado só) e o
   NOSSO intersticial entra na conta — repassar os dois caminhos é a receita do bug que a CrazyGames
   ensinou, então enquanto o anúncio é nosso os eventos são ignorados e quem devolve o estado da
   plataforma, por último, é `reaplica()`. ⚠️ `platform.sendMessage('game_ready')` REJEITA na segunda

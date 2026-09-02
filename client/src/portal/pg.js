@@ -6,9 +6,15 @@
 //
 // ⚠️ O ARQUIVO É `pg.js` pela mesma regra que proíbe `ads.js` aqui: o nome vira a URL do chunk e há
 //    filtro de bloqueador que casa palavra de publicidade no caminho.
-// ⚠️ SEM PREROLL, e a regra é DELES, na letra da doc: "Do not call showInterstitial() at game start;
-//    platforms that allow it show it automatically, and calling it explicitly can result in duplicate
-//    ads." É o mesmo `semPreroll` da CrazyGames, e é o adaptador que declara — a fachada não sabe.
+// ⚠️ O PREROLL VOLTOU, e não foi capricho: a certificação deles reprova com "No advertising is
+//    implemented — certification requires at least one type of advertising". A doc pede para não chamar
+//    `showInterstitial()` "at game start", e o nosso preroll não é a largada do JOGO: é o clique em
+//    JOGAR, ou seja a passagem do menu para a partida — literalmente o "level transition" que eles dão
+//    como exemplo de hora certa. Se a plataforma já tiver anunciado sozinha, o teto deles devolve
+//    `failed` e a fachada segue: anúncio duplicado é o que NÃO acontece.
+// ⚠️ E o teto deles precisou sair do caminho no config: `initialInterstitialDelay` conta a partir do
+//    `game_ready` e vale 60 s por padrão, ou seja o PRIMEIRO anúncio de toda sessão era recusado antes
+//    de existir. Quem espaça anúncio aqui é `PORTAL.MIN_AD_MS` (2 min), na fachada.
 // ⚠️ NADA DE STRING DE EVENTO CRAVADA: o Bridge publica `EVENT_NAME`, `PLATFORM_MESSAGE` e
 //    `INTERSTITIAL_STATE` no próprio objeto (medido no bundle deles), e ler dali é o que sobrevive a
 //    uma renomeação da versão `stable` — que é servida por eles, não fixada por nós.
@@ -20,8 +26,22 @@
 //    falha com CONFIG_LOAD_FAILED no console (defaults aplicados, jogo funcionando, revisor lendo erro).
 import { carregaScript } from "./script.js";
 import { silenciaAnuncio } from "../audio/index.js";
+import { aoAcabarAVida } from "./vidas.js";
+import { app } from "../state/app.js";
+import { api } from "../api/client.js";
+import { applySession } from "../state/actions.js";
 const SRC = import.meta.env.VITE_PG_SDK_URL || "https://bridge.playgama.com/v2/stable/playgama-bridge.js";
 const ponte = () => window.bridge || window.playgamaBridge || null;
+/**
+ * O id do placar SaaS deles, e ele tem que existir com ESTE nome no painel
+ * (developer.playgama.com → o cartão do jogo → aba Leaderboards, o mesmo lugar de onde sai o
+ * `saas.publicToken` que o empacotador grava no config). Medido na API deles: um id que não existe
+ * responde `404 {"message":"Leaderboard not found"}` — a promessa rejeita e ninguém no jogo fica
+ * sabendo, que é o modo de falha silenciosa de sempre.
+ */
+const PLACAR = "score";
+/** Uma chave só, um blob: é o que a Storage deles guarda por JOGADOR (na nuvem, quando a plataforma tem). */
+const CHAVE = "warspace";
 
 export async function criar({ pausou, retomou }) {
   if (!(await carregaScript(SRC, "playgama-bridge"))) return null;
@@ -49,8 +69,54 @@ export async function criar({ pausou, retomou }) {
   escuta(EV.AUDIO_STATE_CHANGED, ligado => { if (!meuAnuncio) silenciaAnuncio(!ligado); });
   silenciaAnuncio(!audioDaPlataforma());
 
+  // ── PLACAR SaaS ────────────────────────────────────────────────────────────
+  // O `score` da vida, uma vez por vida (`portal/vidas.js`, o mesmo contador da Bounty Board), e nunca
+  // a massa — o placar deles é inteiro e o score é o número que o nosso próprio ranking usa.
+  // ⚠️ Três coisas fazem isto existir, e faltando UMA o resultado é o mesmo silêncio: o
+  // `saas.publicToken` no config (do painel deles), o bloco `saas.leaderboards.platforms` (que é o que
+  // liga o adaptador SaaS — sem ele o Bridge tenta o placar NATIVO da plataforma) e o placar criado no
+  // painel com o id `PLACAR`.
+  // ⚠️ `setScore` REJEITA para convidado (medido no bundle deles: sem `playerId` nem sai da máquina), e
+  // isso é o caso NORMAL — a maioria de quem joga num portal não está logada nele.
+  aoAcabarAVida(n => { try { const lb = b.leaderboards;
+    if (lb && typeof lb.setScore === "function") Promise.resolve(lb.setScore(PLACAR, n)).catch(() => {}); } catch { /* nunca derruba o jogo */ } });
+
+  // ── PROGRESSO NA NUVEM DELES (a Storage do Bridge) ─────────────────────────
+  // A certificação reprova com "The game did not save progress — the platform did not detect any
+  // attempt to save data", e a doc é explícita: nada de `localStorage` direto, tudo pela Storage, senão
+  // "the data won't reach cloud saves".
+  // ⚠️ O QUE É "PROGRESSO" AQUI: moedas, nível, skins e conquistas moram no NOSSO Postgres, atrás da
+  // credencial da sessão — então o que preserva progresso é ELA, não uma cópia dos números (que o
+  // servidor recalcularia por cima na partida seguinte). Daí o blob ser `{v,t,n}` e não um save de jogo.
+  // ⚠️ SÓ CONVIDADO. Guardar na plataforma a credencial de uma conta REGISTRADA seria delegar a ela um
+  // acesso que vale muito mais que o save — e quem tem login não precisa disto: entra pelo login em
+  // qualquer aparelho. Ao registrar, o blob é reescrito SEM a credencial.
+  // ⚠️ RESTAURA SÓ EM CONTA EM BRANCO. Quando o SDK fica pronto o boot já criou um convidado local
+  // (~200 ms contra os segundos do Bridge), então "não tem sessão" nunca acontece; o que existe é "tem
+  // um convidado que nunca jogou". Aí adotar o da nuvem é o certo — é o mesmo jogador voltando em outro
+  // aparelho. Havendo progresso local, a sessão de agora manda e a nuvem vira espelho dela.
+  const guarda = (() => { let ultimo = null; return () => {
+    const st = b.storage; if (!st || !st.set) return;
+    const u = (app.get().session.user) || {}, t = u.kind === "registered" ? "" : (api.token || "");
+    if (t === ultimo) return; ultimo = t;
+    try { Promise.resolve(st.set(CHAVE, JSON.stringify({ v: 1, t, n: u.nick || "" }))).catch(() => {}); } catch { /**/ }
+  }; })();
+  (async () => {
+    try {
+      const st = b.storage; if (!st || !st.get) return;
+      const u = (app.get().session.user) || {};
+      const branco = u.kind !== "registered" && !u.login && !u.email && !(u.coins | 0);
+      if (branco) {
+        const bruto = await st.get(CHAVE);
+        const d = JSON.parse((Array.isArray(bruto) ? bruto[0] : bruto) || "null");
+        if (d && d.t && d.t !== api.token) { api.adota(d.t); applySession(await api.bootstrap()); }
+      }
+    } catch { /* nuvem fora: segue com o convidado local, que é o comportamento de sempre */ }
+    guarda();
+    app.subscribe(guarda);   // trocou de conta (convidado → registrada, ou a adotada agora): grava de novo
+  })();
+
   return {
-    semPreroll: true,
     carregou() { recado(MSG.GAME_READY); },
     jogoComecou() { recado(MSG.GAMEPLAY_STARTED); },
     jogoParou() { recado(MSG.GAMEPLAY_STOPPED); },

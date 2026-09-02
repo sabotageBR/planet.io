@@ -42,14 +42,30 @@ const carrega = () => {
   return null;   // itch.io e qualquer id desconhecido: o jogo roda igual, sem anúncio
 };
 
-let sdk = null, ultimoAd = 0, emJogo = false;
+let sdk = null, ultimoAd = 0, emJogo = false, pediuCarregou = false;
 const aoPausar = [], aoRetomar = [];
 const avisa = lista => { for (const cb of lista) { try { cb(); } catch { /* um ouvinte quebrado não derruba os outros */ } } };
 
-/** Resolve quando o SDK respondeu OU desistiu — nunca rejeita, nunca demora mais que `PORTAL.SDK_MS`. */
+/**
+ * Resolve quando o SDK respondeu OU desistiu — nunca rejeita, nunca demora mais que `PORTAL.SDK_MS`.
+ *
+ * ⚠️ O PRAZO É PARA QUEM ESPERA, NÃO PARA O ADAPTADOR. Isto era um `await prazo(...)` e ponto: passando
+ *    de 6 s, o adaptador era JOGADO FORA — para sempre, na sessão inteira. E 6 s não é folgado quando se
+ *    soma o download do SDK de terceiro, o `initialize()` dele (que ainda busca config e o pedaço da
+ *    plataforma no CDN deles) e a primeira carga de tudo isso sem cache: é exatamente o caso do REVISOR
+ *    do portal. Sintoma: nenhum anúncio, nenhuma mensagem de ciclo de vida, nenhum placar — e nada no
+ *    console dizendo por quê. Foi o que a QA Tool do Playgama devolveu como "No advertising is
+ *    implemented". Agora o prazo só decide quanto tempo o botão JOGAR espera; o adaptador que chega
+ *    atrasado é INSTALADO do mesmo jeito e vale de lá em diante.
+ * ⚠️ E o `carregou()` é REPETIDO nesse caso: ele sai uma vez só, do `main.jsx`, e quem chegou depois
+ *    dele perderia o "o jogo carregou" — que em vários SDKs é o marco que libera o anúncio.
+ */
 const pronto = (async () => {
   const mod = carrega(); if (!mod) return null;
-  sdk = await prazo(mod.then(m => m.criar({ pausou: () => avisa(aoPausar), retomou: () => avisa(aoRetomar) })).catch(() => null), P.SDK_MS, null);
+  const feito = mod.then(m => m.criar({ pausou: () => avisa(aoPausar), retomou: () => avisa(aoRetomar) })).catch(() => null);
+  feito.then(s => { if (!s || sdk) return; sdk = s;
+    if (pediuCarregou && s.carregou) { try { s.carregou(); } catch { /* nunca derruba o jogo */ } } });
+  sdk = await prazo(feito, P.SDK_MS, null);
   return sdk;
 })();
 
@@ -58,7 +74,7 @@ export const portal = {
   get ativo() { return !!sdk; },
   pronto,
   /** O jogo terminou de carregar (CrazyGames e Poki contam isso; a GD não tem equivalente). */
-  async carregou() { await pronto; if (sdk && sdk.carregou) try { sdk.carregou(); } catch { /* nunca derruba */ } },
+  async carregou() { pediuCarregou = true; await pronto; if (sdk && sdk.carregou) try { sdk.carregou(); } catch { /* nunca derruba */ } },
   /**
    * Anúncio antes de entrar em partida. `tipo` é "preroll" (a primeira desta carga) ou "midroll".
    * SEMPRE resolve, e respeita o intervalo mínimo — quem chama não precisa lembrar de nada disso.
