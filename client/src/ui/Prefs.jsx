@@ -36,6 +36,27 @@ export function PrefRow({ it, v, pfx = "pref-" }) {
       : <span className="range"><input id={id} type="range" min={it.min} max={it.max} value={+v || 0} data-pref={it.key} onChange={e => setPref(it.key, +e.target.value)} /><b>{+v || 0}</b></span>}
   </div>;
 }
+// ⚠️ Os ícones vêm daqui e do `PW_ICON` do Hud — duas listas para o mesmo desenho divergem na primeira
+// correção. A ordem é a de quem aparece mais no jogo (POWERUP.DROP), não a do enum.
+const PW_LEGENDA = [["magnet", "🧲"], ["shield", "🛡️"], ["autodef", "🛰️"], ["feast", "🍀"], ["merge", "⚛️"]];
+/**
+ * AJUDA: o que cada powerup faz. Em partida ninguém lê palavra — o HUD é ícone e número, e é assim que
+ * tem que ser —, mas alguém precisa dizer UMA vez o que "🍀" significa: quem pega um trevo pela primeira
+ * vez não tinha como descobrir que a comida passou a valer o dobro. Isto morava na tela de MODOS, que é
+ * onde se está com pressa de entrar; aqui é onde se está lendo. Sai da MESMA fonte do balão do HUD
+ * (`LB.powerups` + `LB.powerupHints`), então as duas não podem divergir.
+ */
+function Ajuda() {
+  const LB = useLabels();
+  return <section className="card pg pw-legenda" id="pg-help">
+    <h2>{LB.opt.g_help}</h2>
+    <div className="ph">{LB.powerupsTitle}</div>
+    <ul>{PW_LEGENDA.map(([k, ico]) => <li key={k}>
+      <i className={"pw-l pw-" + k}>{ico}</i>
+      <b>{LB.powerups[k]}</b><span>{LB.powerupHints[k]}</span></li>)}</ul>
+    <span className="hint">{LB.powerupsNote}</span>
+  </section>;
+}
 function Body() {
   const LB = useLabels(); const prefs = useStore(app, s => s.session.prefs);
   return <>
@@ -44,6 +65,7 @@ function Body() {
       {PREFS.map(gp => <section className="card pg" id={"pg-" + gp.id} key={gp.id}><h2>{LB.opt["g_" + gp.id]}</h2>
         {gp.items.map(it => <PrefRow key={it.key} it={it} v={prefs[it.key]} />)}
       </section>)}
+      <Ajuda />
     </div>
     <div className="prefs-foot"><button className="btn-secondary" id="pf-reset" onClick={resetPrefs}>{LB.reset}</button><button className="btn-primary" id="pf-save" onClick={savePrefs}>{LB.save}</button></div>
     {/* A política de privacidade é uma página ESTÁTICA (client/public/privacy.html), fora do bundle: ela

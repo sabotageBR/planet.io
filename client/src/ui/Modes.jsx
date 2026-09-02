@@ -13,10 +13,6 @@ import { useLabels } from "../hooks/useTheme.js";
 import { preenche } from "../i18n/index.js";
 import { Screen, ScreenHeader } from "./bits.jsx";
 
-// ⚠️ Os ícones vêm daqui e do `PW_ICON` do Hud — duas listas para o mesmo desenho divergem na primeira
-// correção. A ordem é a de quem aparece mais no jogo (POWERUP.DROP), não a do enum.
-const PW_LEGENDA = [["magnet", "🧲"], ["shield", "🛡️"], ["autodef", "🛰️"], ["feast", "🍀"], ["merge", "⚛️"]];
-
 export default function Modes({ on }) {
   return <Screen id="modes" on={on} className="modes-wrap">{on ? <Body /> : null}</Screen>;
 }
@@ -59,21 +55,18 @@ function Body() {
           <button className="btn-secondary" disabled={offline} onClick={() => joinParty(code)}>{LB.joinParty}</button>
         </div>
       </div>
+      {/* ⚠️ "Sala sua" entra na MESMA grade, e não solto embaixo dela: fora, ele era uma quarta linha de
+          largura inteira e a tela passava dos 1.300 px de altura — o cartão "Em equipe" ficava cortado ao
+          meio pela borda da caixa e ninguém via que havia mais coisa abaixo. Dentro, ele divide a segunda
+          fileira com "Em equipe" (os dois altos, os dois com controles) e a tela cabe. */}
+      <SalaPropria offline={offline} registrada={user.kind === "registered"} LB={LB} />
     </div>
-    <SalaPropria offline={offline} registrada={user.kind === "registered"} LB={LB} />
     {offline ? <div className="hint">{LB.offlineNote}</div> : null}
-    {/* A LEGENDA DOS POWERUPS. Em partida ninguém lê palavra — o HUD é ícone e número, e é assim que tem
-        que ser. Mas alguém precisa dizer, UMA vez, o que "🍀" significa: quem pega um trevo pela primeira
-        vez não tinha como descobrir que a comida passou a valer o dobro. Aqui, antes de entrar, é o lugar
-        onde há tempo de ler. Sai da MESMA fonte do balão do HUD (`LB.powerups` + `LB.powerupHints`), então
-        as duas não podem divergir. */}
-    <div className="card pw-legenda">
-      <div className="ph">{LB.powerupsTitle}</div>
-      <ul>{PW_LEGENDA.map(([k, ico]) => <li key={k}>
-        <i className={"pw-l pw-" + k}>{ico}</i>
-        <b>{LB.powerups[k]}</b><span>{LB.powerupHints[k]}</span></li>)}</ul>
-      <span className="hint">{LB.powerupsNote}</span>
-    </div>
+    {/* ⚠️ A LEGENDA DOS POWERUPS morava aqui e foi para a AJUDA, em Opções (ui/Prefs.jsx). Esta é a tela
+        de ESCOLHER O MODO — quatro cartões que já não cabem numa janela de notebook —, e uma tabela de
+        cinco linhas de texto explicativo no fim dela empurrava "Sala sua" para fora da vista e fazia a
+        caixa rolar por cima do cabeçalho. Quem quer ler o que é o trevo tem tempo; quem está escolhendo
+        o modo, não. */}
   </>;
 }
 /**

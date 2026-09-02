@@ -37,6 +37,10 @@ export const PREF_DEFAULTS = Object.freeze({
   // própria porque são pedidos diferentes: um é acessibilidade (vale para o jogo inteiro) e o outro é
   // pressa de quem entra em sala nova o dia todo e já viu a animação cem vezes.
   roundStyle: "dossie", roundIntro: true,
+  // ── A TELA DE MORTE, no mesmo molde: três respostas à pergunta que se faz ao morrer (ui/Dead.jsx) ──
+  // `duelo` mostra quem te pegou e o quanto ele era maior, `balanco` mede a vida contra o SEU recorde,
+  // `sala` mostra quem está na frente agora — para quem vai ficar assistindo.
+  deadStyle: "duelo",
   // PLACAR ABERTO OU RECOLHIDO, em DUAS chaves — uma para o celular em pé e outra para o resto. Não é
   // duplicação: os padrões são opostos porque as telas são (no desktop e no deitado a lateral é sobra e o
   // placar nasce aberto; em pé a lateral É o jogo, e lá o chip do topo já dá massa e posição), e as prefs

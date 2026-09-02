@@ -264,7 +264,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(!venci||m.reason!=="lastAlive")endOfWorld();          // o mundo só explode quando acabou o TEMPO (ou quando não fui eu)
       pushHud(performance.now());if(onRoundEnd)onRoundEnd({...m,mySlot:view.mySlot});}
     else if(m.t==="dead"){dead=true;input.setHold(false);mic.cancel();aplicaRadar();pushHud(performance.now());
-      if(onDead)onDead({by:m.by,byHole:!!m.byHole,byZone:!!m.byZone,score:m.score,maxMass:m.maxMass,kills:m.kills,durationS:m.durationS,placement:m.placement||0,players:m.players||0});}
+      // QUEM ME MATOU, com planeta. O `bySlot` já existia no `info` do servidor e parava no `Room.js`; com
+      // ele o cliente resolve skin e nível pelo PLAYERS (que traz a sala inteira, não só a AOI) e a tela de
+      // morte deixa de dizer só um nome. A skin do MORTO também vai daqui e não de `session.user`: a skin da
+      // vida é decidida no servidor (o easter egg por nick mora em `gp.skinId`) e só o PLAYERS a conhece.
+      const alg=m.bySlot>=0?view.playerOf(m.bySlot):null,eu=view.playerOf(view.mySlot);
+      if(onDead)onDead({by:m.by,bySlot:m.bySlot>=0?m.bySlot:-1,bySkin:alg?alg.skinId|0:0,byLevel:alg?alg.level|0:0,
+        mySkin:eu?eu.skinId|0:0,myLevel:eu?eu.level|0:0,myName:eu?eu.name:"",
+        byHole:!!m.byHole,byZone:!!m.byZone,score:m.score,maxMass:m.maxMass,kills:m.kills,durationS:m.durationS,placement:m.placement||0,players:m.players||0});}
     else if(m.t==="spectate"){specSlot=m.slot>=0?m.slot:-1;spec={slot:specSlot,name:m.name||null,vivos:m.vivos|0};if(mapOn)minimap.setView(mapOn,specSlot);pushHud(performance.now());}   // morto: de quem é a cena que continua rodando atrás da tela de KABOOM
     else if(m.t==="rewards"){if(onRewards)onRewards(m);}}
   function onBinary(m){const now=performance.now();

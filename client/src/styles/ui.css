@@ -465,14 +465,14 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
 @keyframes noticeIn{from{opacity:0;transform:translateX(-50%) translateY(-8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 body[data-mode="portrait"] #hud #notice{font-size:12.5px;padding:8px 12px;max-width:92vw}
 /* ── LEGENDA DOS POWERUPS (tela de Modos) ── o único lugar do jogo onde há tempo de LER o que cada um faz */
-#s-modes .pw-legenda ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-#s-modes .pw-legenda li{display:grid;grid-template-columns:34px 1fr;gap:4px 10px;align-items:center}
-#s-modes .pw-legenda .pw-l{grid-row:span 2;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+#s-prefs .pw-legenda ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+#s-prefs .pw-legenda li{display:grid;grid-template-columns:34px 1fr;gap:4px 10px;align-items:center}
+#s-prefs .pw-legenda .pw-l{grid-row:span 2;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
   font-style:normal;font-size:17px;border:2px solid var(--line,#0006);
   background:color-mix(in srgb,var(--surface,#1a2350) 80%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--pwc,#888) 45%,transparent) inset}
-#s-modes .pw-legenda b{font-size:13px;align-self:end}
-#s-modes .pw-legenda span{font-size:11.5px;color:var(--muted,#9aa3c0);align-self:start;line-height:1.3}
-#s-modes .pw-legenda>.hint{display:block;margin-top:10px;font-size:11px}
+#s-prefs .pw-legenda b{font-size:13px;align-self:end}
+#s-prefs .pw-legenda span{font-size:11.5px;color:var(--muted,#9aa3c0);align-self:start;line-height:1.3}
+#s-prefs .pw-legenda>.hint{display:block;margin-top:10px;font-size:11px}
 #s-dead .dead-views{display:flex;gap:8px;align-items:stretch}
 #s-dead .dead-views>button{flex:1 1 0;min-width:0;white-space:nowrap;padding-left:8px;padding-right:8px}
 
@@ -1871,3 +1871,162 @@ body #room-list .room-row{grid-template-columns:70px 60px 1fr 60px 90px}
   color:var(--tx,#e8e4ff);background:rgba(13,11,31,.72);border:1px solid rgba(139,92,255,.55)}
 .portal-login:hover{background:rgba(28,20,64,.9);border-color:#8b5cff}
 body[data-mode="portrait"] .portal-login{font-size:12px;padding:6px 12px}
+
+/* ── TELA DE MORTE v2: quem te matou tem planeta, e há três modelos ──────────────────────────────
+   (ui/Dead.jsx. Mesmo molde do fim de rodada: `#s-dead[data-style]` escolhe o arranjo, e o rodapé —
+   mapa · tempo real · DE NOVO · lobby — é o mesmo nos três.)
+   ⚠️ Os temas miram `#s-dead .dead-card` com `:where(html[data-theme=…])`, que vale (0,2,0); tudo
+   aqui carrega o `#s-dead` e ganha sem `!important`. E `ui.css` é importado ANTES dos temas, então
+   empate de especificidade PERDERIA — por isso nada aqui é escrito só com classe.  */
+#s-dead[data-style="duelo"]{--screen-w:min(560px,100%)}
+#s-dead[data-style="balanco"]{--screen-w:min(520px,100%)}
+#s-dead[data-style="sala"]{--screen-w:min(540px,100%)}
+
+/* ── o alvo (eu · quem me matou): disco grande, rótulo, nome, massa ──
+   O canvas transborda o bloco em 132% e é centrado por absoluto — o disco ocupa ~57% do canvas (o
+   resto é a folga do aro das skins com anel), e sem isso o planeta sai pequeno demais. Ver Round.jsx. */
+#s-dead .dd-alvo{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0;flex:1 1 0}
+/* ⚠️ O TETO É 74%, não 100%: o canvas é absoluto e mede 132% do bloco, então um disco com a largura
+   inteira do `.dd-alvo` (que no duelo é um terço da caixa) empurra 16% para cada lado — e o cartão
+   ganhava barra de rolagem horizontal na gaveta. 132% de 74% dá 98%, ou seja o aro cabe sempre.
+   No desktop o `--dd-d` ainda é menor que 74% da coluna, então lá nada encolhe. */
+#s-dead .dd-disco{position:relative;width:min(var(--dd-d,150px),74%);aspect-ratio:1;display:grid;place-items:center}
+#s-dead .dd-disco canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:132%;height:132%;
+  filter:drop-shadow(0 5px 14px rgba(0,0,0,.45))}
+#s-dead .dd-ico{font-style:normal;font-size:calc(var(--dd-d,150px) * .5);line-height:1;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5))}
+#s-dead .dd-k{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted,#8fa0d8);text-align:center}
+#s-dead .dd-nome{font-size:1.05em;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#s-dead .dd-alvo.eu .dd-nome{color:var(--accent,#ffc22e)}
+#s-dead .dd-alvo:not(.eu) .dd-nome{color:var(--accent2,#ff6b4a)}
+#s-dead .dd-massa{font-style:normal;font-size:.9em;opacity:.85;font-variant-numeric:tabular-nums}
+#s-dead .dd-nome .lvl{margin-right:5px}
+
+/* ── MODELO 1: DUELO ── os dois planetas frente a frente, e no meio o quanto ele era maior ── */
+#s-dead[data-style="duelo"]{--dd-d:150px}
+#s-dead .dd-duelo{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin:2px 0 4px}
+/* o algoz é desenhado MAIOR de propósito: ele é o assunto, e o tamanho relativo é a resposta visual
+   à pergunta "por que eu perdi?" */
+#s-dead .dd-duelo .dd-alvo:not(.eu){--dd-d:calc(var(--dd-base,150px) * 1.28)}
+#s-dead .dd-duelo .dd-alvo.eu{--dd-d:calc(var(--dd-base,150px) * .82)}
+#s-dead[data-style="duelo"]{--dd-base:150px}
+#s-dead .dd-vs{display:flex;flex-direction:column;align-items:center;gap:2px;flex:0 0 auto;
+  font-size:20px;line-height:1;color:var(--muted,#8fa0d8)}
+#s-dead .dd-vs em{font-style:normal;font-size:11px;letter-spacing:.04em;color:var(--accent2,#ff6b4a);white-space:nowrap}
+
+/* ── quem me matou, versão de UMA LINHA (balanço e sala) ── */
+#s-dead .dd-quem{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:8px;width:100%;
+  padding:6px 12px;border-radius:999px;background:var(--line,#0006)}
+#s-dead .dd-mini{position:relative;width:34px;height:34px;flex:0 0 auto;display:grid;place-items:center}
+#s-dead .dd-mini canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:132%;height:132%}
+#s-dead .dd-mini .dd-ico{font-size:22px}
+#s-dead .dd-quem>span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted,#8fa0d8);white-space:nowrap}
+#s-dead .dd-quem>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.15em;color:var(--accent2,#ff6b4a)}
+#s-dead .dd-quem>em{font-style:normal;font-size:.85em;opacity:.8;font-variant-numeric:tabular-nums}
+
+/* ── MODELO 2: BALANÇO ── cada número contra o recorde de quem morreu ── */
+#s-dead .dd-balanco{display:flex;flex-direction:column;gap:5px;width:100%;margin:4px 0 2px}
+#s-dead .dd-linha{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;
+  grid-template-areas:"k v rec" "trilho trilho trilho";padding:6px 10px;border-radius:var(--radius,10px);
+  background:var(--surface,#2226);border:2px solid var(--line,#0006)}
+#s-dead .dd-linha .dl-k{grid-area:k;font-size:10px;letter-spacing:.12em;text-transform:uppercase;opacity:.7}
+#s-dead .dd-linha .dl-v{grid-area:v;text-align:right;font-size:1.25em;font-variant-numeric:tabular-nums}
+#s-dead .dd-linha .dl-rec{grid-area:rec;font-style:normal;font-size:.72em;opacity:.7;white-space:nowrap}
+#s-dead .dd-linha .dl-trilho{grid-area:trilho;height:5px;margin-top:4px;border-radius:99px;background:rgba(0,0,0,.32);overflow:hidden}
+#s-dead .dd-linha .dl-trilho i{display:block;height:100%;border-radius:99px;background:var(--muted,#8fa0d8);
+  animation:dd-cresce .55s cubic-bezier(.2,.8,.3,1) both}
+@keyframes dd-cresce{from{transform:scaleX(0);transform-origin:0 50%}to{transform:none}}
+#s-dead .dd-linha.novo{border-color:var(--accent,#ffc22e)}
+#s-dead .dd-linha.novo .dl-rec{color:var(--accent,#ffc22e);opacity:1;font-weight:700}
+#s-dead .dd-linha.novo .dl-trilho i{background:var(--accent,#ffc22e)}
+
+/* ── MODELO 3: SALA ── quem está na frente AGORA; clicar troca a câmera ── */
+#s-dead .dd-sala{display:flex;flex-direction:column;gap:4px;width:100%;margin:2px 0}
+#s-dead .dd-sala .ph{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:2px}
+#s-dead .dd-sala .ph em{font-style:normal;font-size:.72em;opacity:.7;letter-spacing:.06em}
+#s-dead .dd-vivo{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:7px;
+  grid-template-areas:"pos nome massa" "pos trilho trilho";width:100%;text-align:left;
+  padding:5px 9px;border-radius:var(--radius,10px);border:2px solid transparent;background:rgba(0,0,0,.2)}
+#s-dead .dd-vivo:hover{border-color:var(--muted,#8fa0d8)}
+#s-dead .dd-vivo.vendo{border-color:var(--accent,#ffc22e)}
+#s-dead .dd-vivo.algoz{border-color:var(--accent2,#ff6b4a)}
+#s-dead .dd-vivo .dv-pos{grid-area:pos;font-size:.72em;opacity:.6;min-width:22px;font-variant-numeric:tabular-nums}
+#s-dead .dd-vivo .dv-nome{grid-area:nome;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9em}
+#s-dead .dd-vivo .dv-massa{grid-area:massa;font-style:normal;font-size:.78em;opacity:.8;font-variant-numeric:tabular-nums}
+#s-dead .dd-vivo .dv-trilho{grid-area:trilho;height:5px;margin-top:3px;border-radius:99px;background:rgba(0,0,0,.32);overflow:hidden}
+#s-dead .dd-vivo .dv-trilho i{display:block;height:100%;border-radius:99px;background:var(--muted,#8fa0d8);
+  animation:dd-cresce .55s cubic-bezier(.2,.8,.3,1) both}
+#s-dead .dd-vivo:first-of-type .dv-trilho i{background:var(--accent,#ffc22e)}
+#s-dead .dd-vivo.algoz .dv-trilho i{background:var(--accent2,#ff6b4a)}
+
+/* ── OS QUATRO NÚMEROS DEIXAM DE SER UM ARCO-ÍRIS ──
+   Os temas pintam cada `.dead-stats div` de uma cor (azul · dourado · verde · roxo) e ainda os
+   rotacionam 2° alternando o sentido. Quatro cores sem significado nenhum, e a rotação faz o bloco
+   inteiro parecer torto: a cor aqui tem que dizer alguma coisa ou não estar lá. Superfície única, e
+   o DOURADO fica reservado para o que é mérito (as moedas ganhas). */
+/* ⚠️ E deixam de quebrar em 3+1: o tema fixa DUAS colunas dentro de `width:min(320px,100%)`, e com o
+   texto real dos rótulos aquilo virava três em cima e uma órfã embaixo. `auto-fit` com piso de 84 px
+   dá quatro numa linha onde cabe e duas onde não cabe, sem um `@media` por forma de tela. */
+#s-dead .dead-stats{width:100%;grid-template-columns:repeat(auto-fit,minmax(84px,1fr))}
+#s-dead .dead-stats.duo{grid-template-columns:repeat(2,1fr);width:min(320px,100%)}
+#s-dead .dead-stats div{background:var(--surface,#2226);border:2px solid var(--line,#0006);
+  color:inherit;box-shadow:none;transform:none;border-radius:var(--radius,10px);min-width:0}
+#s-dead .dead-stats div:nth-child(4) b{color:var(--accent,#ffc22e)}
+#s-dead .dead-stats b{color:inherit}
+
+/* ── A ENTRADA TEM IMPACTO, mas não segura o jogador ──
+   Morrer é frequente: uma abertura como a do fim de rodada seria um pedágio a cada morte. Aqui o
+   conteúdo já está pronto no primeiro frame e só CHEGA batendo (450 ms), com o 💥 estourando junto.
+   `[data-reduce="1"]` desliga tudo, como no resto do projeto. */
+#s-dead .dead-card{animation:dd-bate .45s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes dd-bate{from{opacity:0;transform:scale(.94)}60%{opacity:1}to{opacity:1;transform:none}}
+#s-dead .dead-icon{animation:dd-estoura .5s cubic-bezier(.2,1.8,.4,1) both}
+@keyframes dd-estoura{from{transform:scale(0) rotate(-25deg)}to{transform:none}}
+body[data-reduce="1"] #s-dead .dead-card,body[data-reduce="1"] #s-dead .dead-icon,
+body[data-reduce="1"] #s-dead .dl-trilho i,body[data-reduce="1"] #s-dead .dv-trilho i{animation:none}
+
+/* ── formas de tela ── */
+body[data-shell="rail"] #s-dead[data-style="duelo"]{--dd-base:132px}
+body[data-mode="portrait"] #s-dead[data-style="duelo"]{--dd-base:112px}
+body[data-mode="landscape"] #s-dead[data-style="duelo"]{--dd-base:92px}
+body[data-mode="portrait"] #s-dead .dd-quem{grid-template-columns:auto 1fr auto;row-gap:0}
+body[data-mode="portrait"] #s-dead .dd-quem>span{grid-column:2/-1;font-size:9px}
+body[data-mode="portrait"] #s-dead .dd-quem>b{grid-column:2}
+body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:none}
+
+/* ── O CABEÇALHO GRUDADO DEIXAVA O CONTEÚDO APARECER ACIMA DELE ─────────────────────────────────
+   `.sh` é `position:sticky;top:0` dentro de um `.wrap` que ROLA e tem `padding-top:18px`. Sticky mede
+   contra o SCROLLPORT, e o padding faz parte dele: grudado, o cabeçalho para 18 px abaixo do topo da
+   caixa e o conteúdo passa por essa faixa — foi assim que o cartão "Em equipe" apareceu cortado em
+   cima do título "ESCOLHA O MODO". Vale para TODAS as telas com cabeçalho, não só Modos.
+   ⚠️ O conserto é um pseudo-elemento que estende o fundo do cabeçalho para cima, e não margem/padding
+   negativos: o `.sh` tem `padding:6px 0 10px` vindo dos temas (que são GERADOS pelo port.js), e mexer
+   nele aqui seria reescrever à mão um número que a próxima geração desfaz. E ele é invisível quando
+   nada está grudado porque o fundo do `.sh` é o MESMO do `.wrap` nos três temas — medido. */
+.screen .wrap>.sh::after{content:"";position:absolute;left:0;right:0;bottom:100%;height:24px;
+  background:inherit;pointer-events:none}
+
+/* ── O CARTÃO "EM EQUIPE" OCUPA A LINHA INTEIRA ──
+   A grade é `auto-fit minmax(240px,1fr)`, ou seja duas colunas na caixa de 520 px. Livre e Battle
+   Royale são cartões curtos e ficam lado a lado; "Em equipe" tem três chips, um botão e um campo de
+   código, então é duas vezes mais alto — e ao cair na coluna esquerda deixava um BURACO do tamanho
+   dele à direita. Ocupando a linha, os controles ganham a largura que precisam e o vazio some. */
+/* A CAIXA DE MODOS É MAIS LARGA que as outras telas (a variável é lida pelo bloco "TODA TELA NO MESMO
+   LUGAR", então basta redefini-la): são QUATRO cartões, dois deles com chips, botão e campo de código.
+   Em 520 px eles empilham em quatro fileiras e a tela passa de 1.300 px de altura — o dobro do que
+   cabe. Em 760 px são duas fileiras de dois, e a tela inteira cabe sem rolar. */
+#s-modes{--screen-w:min(760px,100%)}
+#s-modes .modes{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+/* os dois cartões altos dividem a segunda fileira e ficam da mesma altura (o padrão `stretch` do grid) */
+#s-modes .modes .mode-card.own{margin:0}
+/* E os cartões ENCOLHEM. Com quatro deles a tela ainda passava do rodapé da caixa — que aqui começa
+   depois do logo (`--screen-top` é a ALTURA DELE) e termina acima da barra de navegação, sobrando
+   ~590 px numa janela de 950. O que sai é folga, não informação: ícone menor, padding e entrelinha
+   mais apertados, e os chips de duração numa fileira só. */
+#s-modes .modes .mode-card{padding:12px 14px;gap:4px}
+#s-modes .modes .mode-ico{font-size:26px}
+#s-modes .modes .mode-card b{font-size:1.15em}
+#s-modes .modes .mode-card span{font-size:.85em;line-height:1.25}
+#s-modes .modes .mode-card.team{gap:7px}
+#s-modes .modes .own-row{gap:5px;flex-wrap:wrap}
+#s-modes .modes .own-priv{margin:0}
+#s-modes .modes .chip-btn{padding:5px 9px}

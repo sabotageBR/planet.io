@@ -539,6 +539,22 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   DOIS lugares que o presumiam — `server/src/tunables.js` (o load, que reconcilia a cada 30 s) e o `PUT`
   de `api/admin.js` (que gravava o corpo cru): com qualquer um deles, o painel diria "salvo", o banco
   guardaria `NaN` e o parâmetro voltaria sozinho ao padrão, sem erro em lugar nenhum.
+- **QUAL MODELO ATENDE OS BOTS é um tunable** (`BOT_LLM.MODELO`/`MODELOS`, padrão **`gpt-oss:20b`**;
+  `seedModelo` em `server/src/llm/ollama.js`): era só `OLLAMA_MODEL` no ConfigMap, ou seja editar YAML,
+  aplicar e reiniciar os três shards para uma decisão que só se toma OLHANDO a sala falar (um modelo é mais
+  rápido, outro é mais engraçado, outro obedece melhor ao teto de palavras). A lista de opções nomeia só o
+  que existe na máquina do Ollama — pedir um modelo ausente é trocar a fala dos bots por 404 em silêncio.
+  ⚠️ **O cliente não fecha o nome no closure**: `createOllama` deixou de receber `model` e lê
+  `BOT_LLM.MODELO` a cada chamada, o mesmo aliasing de objeto da física — assim a troca vale na fala
+  seguinte, sem recriar o cliente e sem zerar o disjuntor, o teto de gerações em voo e as métricas. Fechado
+  na criação, o painel diria "salvo" e o servidor seguiria chamando o modelo antigo para sempre.
+  ⚠️ **O env é SEMENTE, não verdade** (padrão do código → `OLLAMA_MODEL` no boot → `admin_settings`), e um
+  nome fora da lista é ACRESCENTADO a ela em vez de recusado: a máquina do Ollama pode ter um modelo que
+  este código não conhece, e um `<select>` sem o valor em uso mostraria ao admin um modelo que o servidor
+  não está usando. Como `options` é a lista de `constants.js` por REFERÊNCIA, o acréscimo já vale para a
+  validação do PUT. `Restaurar` volta ao padrão do CÓDIGO, nunca ao env.
+  ⚠️ Trocar **não reaquece sozinho**: o modelo novo paga o load (~27 s) na primeira fala, e nesse
+  meio-tempo a sala usa o repertório fixo — o mesmo chão de sempre, não um segundo comportamento.
 - **TAMANHO E TIPO DA FALA DOS BOTS** (`BOT_LLM.MAX_WORDS`/`MAX_CHARS`/`ESTILO`, `montaSystem` em
   `rooms/botChat.js`): a queixa era literal — linhas longas e bem construídas denunciam o bot antes de
   qualquer outra coisa. Os tetos caíram (16/110 → **12/85**) e os três viraram parâmetro do painel.
@@ -815,7 +831,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   Nessa tela quem rola é o `.screen`, não o `.wrap` — sem moldura não há caixa por dentro da qual rolar, e uma barra de
   rolagem interna comeria 15 px justo da medida que tem que bater com a das outras telas.
   `scripts/responsive-check.mjs` cobre `dead`, `round`, `entry@rail` e `shop@rail` (a gaveta com o conteúdo mais largo
-  do jogo — 504 combinações, com os três modelos do fim de rodada).
+  do jogo — 576 combinações, com os três modelos do fim de rodada e os três da tela de morte).
 - **A BARRA DE NAVEGAÇÃO VOLTOU PARA DENTRO DA CAIXA** (`Screen` em `ui/bits.jsx`), que é onde os TRÊS
   temas sempre a desenharam (`order:99;position:sticky;bottom:0`, mais as variantes de retrato e paisagem).
   O motivo de ela ter saído era real e continua escrito abaixo — mas o conserto não era tirá-la da caixa:
@@ -1107,7 +1123,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   silêncio, e a fila é do INSTANTE (guardar gatilho vira comentário atrasado). Sai pelo mesmo `_pushChat` do humano, então respeita o
   escopo do modo.
   **A frase pode vir de uma LLM** (`BOT_LLM`, `server/src/llm/ollama.js` + `server/src/rooms/botChat.js`, env `OLLAMA_URL`/
-  `OLLAMA_MODEL`/`BOT_CHAT_LLM`): o repertório fixo continua sendo o CHÃO — é o que sai sem a variável, com o serviço fora ou quando a
+  `OLLAMA_MODEL`/`BOT_CHAT_LLM`; ⚠️ o MODELO é o tunable `BOT_LLM.MODELO`, e o env só o semeia no boot): o repertório fixo continua sendo o CHÃO — é o que sai sem a variável, com o serviço fora ou quando a
   resposta demora —, e o que a LLM acrescenta é reagir ao que foi DITO, responder a quem chama e falar no idioma da conversa.
   `Room._pushChat` guarda as últimas `CHAT.KEEP` linhas (o servidor nunca guardou nenhuma): sem histórico não há conversa para ler.
   **Nada disso pode esperar**: `botChatTick` roda dentro do `step()` e o Scheduler percorre TODAS as salas do processo no mesmo laço de
@@ -1548,6 +1564,60 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `mostrarTela`, que sob esse sufixo também DESLIGA a abertura — com ela no ar a sonda mediria o
   overlay) e espera 900 ms em vez de 420: a cascata de entrada acaba em 760 ms, e medir no meio dela lê
   um `translateY` de transição como transbordo. São 504 combinações.
+- **A TELA DE MORTE TAMBÉM TEM TRÊS MODELOS, E QUEM TE MATOU GANHOU UM PLANETA** (`ui/Dead.jsx`, o
+  bloco "TELA DE MORTE v2" de `styles/ui.css`, pref `deadStyle`): quem te matou era um NOME numa
+  pílula preta — a informação mais importante da tela era a mais pobre, sem planeta, sem tamanho e sem
+  nível, enquanto o pódio do fim de rodada já desenhava o campeão inteiro. E o `score` da partida
+  chegava em `lastMatch` desde sempre **sem nenhum componente lê-lo**, o mesmo defeito que o `score` do
+  `roundEnd` tinha.
+  Os três modelos respondem à pergunta que se faz ao morrer, que não é a mesma para todo mundo:
+  `duelo` põe os dois planetas frente a frente com o "2,6× você" no meio; `balanco` mede a vida contra
+  o SEU recorde (a única régua honesta: "927" não diz nada, "927 contra os seus 4.820" diz tudo);
+  `sala` mostra quem está na frente AGORA e quantos restam, para quem vai ficar assistindo — no Battle
+  Royale isso é metade da partida, e clicar numa linha troca a câmera.
+  ⚠️ **O `bySlot` já existia e parava no `Room.js`**: `Sim._died` sempre montou o `info` com ele, e a
+  mensagem `dead` mandava só o nome. Com o slot, o cliente resolve skin e nível pelo PLAYERS (que traz
+  a sala inteira, não só a AOI) em `game/index.js`. A skin do MORTO vem do mesmo lugar e **não** de
+  `session.user.equipped_skin_id`: a skin daquela vida é decidida no servidor (o easter egg por nick
+  mora em `gp.skinId`), e só o PLAYERS a conhece.
+  ⚠️ **A massa do algoz é AO VIVO**, do `lb` do hudStore (todos os vivos, 2 Hz, fora da AOI): ela
+  continua subindo na tela enquanto ele joga, e é isso que faz o "quanto ele era maior" doer.
+  ⚠️ **O RECORDE VIAJA NA FOTO DA PARTIDA** (`recMass`/`recScore` em `onDead`), não é lido da conta na
+  hora de desenhar: `session.stats` vem do `GET /api/me` do boot e `onRewards` não mexe em
+  `bestMass`/`bestScore` — sem isso a segunda partida da sessão compararia com o recorde de antes da
+  PRIMEIRA e diria "RECORDE!" de novo, com um número menor.
+  ⚠️ **A entrada tem impacto mas não é uma abertura**: morrer é frequente, e um pedágio de 2 s a cada
+  morte seria o oposto de melhorar a tela. O conteúdo já está pronto no primeiro frame e só CHEGA
+  batendo (450 ms), com o 💥 estourando junto.
+  ⚠️ **Os quatro números deixaram de ser um arco-íris**: os temas pintam cada `.dead-stats div` de uma
+  cor (azul · dourado · verde · roxo) e ainda os rotacionam 2° alternando o sentido — quatro cores sem
+  significado nenhum. Superfície única, e o dourado fica reservado para o que é mérito (as moedas). E
+  a fileira deixou de quebrar em 3+1: o tema fixa DUAS colunas dentro de `width:min(320px,100%)`.
+  ⚠️ **O disco tem teto de 74% da coluna, não 100%**: o canvas é absoluto e mede 132% do bloco (ver o
+  fim de rodada), então um disco com a largura inteira do `.dd-alvo` — que no duelo é um terço da
+  caixa — empurra 16% para cada lado, e o cartão ganhava barra de rolagem horizontal na gaveta.
+- **A TELA DE MODOS: DOIS POR DOIS, E A LEGENDA DOS POWERUPS FOI PARA A AJUDA** (`ui/Modes.jsx`,
+  `ui/Prefs.jsx`): eram QUATRO cartões numa caixa de 520 px, empilhados em quatro fileiras, e a tela
+  passava de 1.300 px de altura — "Em equipe" ficava cortado ao meio pela borda e ninguém via que
+  havia mais coisa abaixo. Três mudanças, e nenhuma sozinha resolvia: a caixa ficou mais larga
+  (`#s-modes{--screen-w:min(760px,100%)}`, redefinindo a variável que o bloco "TODA TELA NO MESMO
+  LUGAR" já lê), "Sala sua" entrou DENTRO da grade `.modes` (fora, era uma quarta fileira de largura
+  inteira; dentro, divide a segunda fileira com "Em equipe" — os dois altos, os dois com controles) e
+  os cartões encolheram no que era folga (ícone, padding, entrelinha).
+  ⚠️ A LEGENDA DOS POWERUPS saiu daqui e virou a seção **Ajuda** da tela de Opções. Ela é cinco linhas
+  de texto explicativo no fim da tela em que se está com PRESSA de entrar; quem quer saber o que é o
+  trevo tem tempo, quem está escolhendo o modo não tem. O componente é o mesmo e sai da MESMA fonte do
+  balão do HUD (`LB.powerups` + `LB.powerupHints`) — o que mudou de casa foi o `PW_LEGENDA` e o
+  prefixo dos seletores (`#s-modes .pw-legenda` → `#s-prefs`).
+- **O CABEÇALHO GRUDADO DEIXAVA O CONTEÚDO APARECER ACIMA DELE** (`.screen .wrap>.sh::after` em
+  `ui.css`): `.sh` é `position:sticky;top:0` dentro de um `.wrap` que ROLA e tem `padding-top:18px`.
+  Sticky mede contra o SCROLLPORT e o padding faz parte dele, então o cabeçalho grudado para 18 px
+  abaixo do topo da caixa e o conteúdo passa por essa faixa — foi assim que "Em equipe" apareceu
+  cortado em cima do título "ESCOLHA O MODO". Vale para TODAS as telas com cabeçalho, não só Modos.
+  ⚠️ O conserto é um pseudo-elemento que estende o fundo do cabeçalho para cima, e **não** margem ou
+  padding negativos: o `.sh` recebe `padding:6px 0 10px` dos temas, que são GERADOS pelo `port.js`, e
+  reescrever isso à mão é trabalho que a próxima geração desfaz. Ele é invisível quando nada está
+  grudado porque o fundo do `.sh` é o MESMO do `.wrap` nos três temas — medido, não suposto.
 - **Loja: a confirmação onde o clique aconteceu** (`ui/Shop.jsx`): clicar num cartão abre um MODAL com a skin grande, o
   preço e as duas saídas. O painel de detalhe ficava embaixo da grade, fora da vista de quem tinha acabado de clicar:
   selecionar e confirmar aconteciam a uma tela de distância um do outro, e ninguém descobria que ainda faltava

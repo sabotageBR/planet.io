@@ -114,6 +114,8 @@ export default {
   roundTitle: "BIG CRUNCH", roundIcon: "🕳️", roundSub: "— o universo desabou num ponto; a próxima galáxia já está nascendo —",
   champion: "CAMPEÃO DA SALA", nextRoom: "próxima sala", enterNow: "🚀 Entrar agora", playersWord: "no placar", posWord: "#",
   podium: "PÓDIO", restOfBoard: "E o resto da galáxia",
+  // ── TELA DE MORTE v2 ──
+  recordWord: "recorde", newRecord: "RECORDE!", leadersNow: "QUEM ESTÁ NA FRENTE", timesBigger: "{n}× você",
   // ── FIM DE RODADA v2: a abertura, o campeão grande e os três modelos de placar ──
   lastAliveSub: "— o gás fechou e sobrou um planeta de pé —", skipHint: "clique para pular",
   boardTop: "OS MAIORES DA SALA", champCrown: "🏆",
@@ -145,7 +147,7 @@ export default {
   // único que nenhuma tradução alcançaria. Agora a tabela guarda só chaves e tipos, e o texto sai daqui.
   // Rótulo de opção segue a convenção `<chave>_<valor>`, que é o que `PrefRow` procura.
   opt: {
-    g_controls: "Controles", g_graphics: "Gráficos", g_sound: "Som", g_ui: "Interface", g_a11y: "Acessibilidade",
+    g_controls: "Controles", g_graphics: "Gráficos", g_sound: "Som", g_ui: "Interface", g_a11y: "Acessibilidade", g_help: "Ajuda",
     joystick: "Joystick virtual (celular)", rightSplit: "Botão direito divide", holdEject: "Segurar a tecla ejeta contínuo",
     wheelZoom: "Roda do mouse dá zoom (0 volta ao normal)", keySplit: "Tecla de dividir", keyEject: "Tecla de ejetar",
     theme: "Tema", theme_auto: "Automático (hora local)", theme_dawn: "Amanhecer", theme_sunset: "Crepúsculo", theme_dusk: "Anoitecer",
@@ -157,6 +159,7 @@ export default {
     showNames: "Mostrar nomes", showMinimap: "Minimapa", showFps: "Mostrar FPS e ping", lbSize: "Linhas do placar", chat: "Chat",
     colorblind: "Modo daltonismo", colorblind_off: "Desligado", colorblind_deutan: "Deuteranopia", colorblind_protan: "Protanopia", colorblind_tritan: "Tritanopia",
     reduceMotion: "Reduzir movimento", bigText: "Texto maior",
+    deadStyle: "Tela de morte", deadStyle_duelo: "Duelo", deadStyle_balanco: "Balanço", deadStyle_sala: "Sala",
     roundStyle: "Placar final", roundStyle_podio: "Pódio", roundStyle_cinema: "Cinema", roundStyle_dossie: "Dossiê",
     roundIntro: "Abertura do fim de rodada",
   },

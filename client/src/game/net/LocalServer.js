@@ -148,7 +148,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
             pushFeed({k:ev.bySlot>=0?"kill":"hazard",a:ev.bySlot>=0?ev.bySlot:-1,b:ev.slot,how,by:assist<0?null:assist,byHow:assist<0?null:byHow});}
           if(m&&m.isBot){const ps=w.players.get(ev.slot);w.respawnPlayer(ev.slot,{score:Math.floor((ps?ps.score:0)*BOT.RESPAWN_SCORE)});const bp=w.players.get(ev.slot);if(bp)bp.ammo[0]=rng.chance(.3)?1:0;playersDirty=true;}
           else for(const s of sessions)if(s.slot===ev.slot&&!s.dead){s.dead=true;playersDirty=true;const ps=w.players.get(ev.slot),by=meta.get(ev.bySlot),durationS=Math.round((tick-s.startTick)/TICK_HZ);
-            const info={by:ev.cause==="blackhole"?"buraco negro":(by?by.name:"?"),byHole:ev.cause==="blackhole",score:ps?ps.score:0,maxMass:Math.round(s.maxMass),kills:s.kills,durationS};
+            const info={by:ev.cause==="blackhole"?"buraco negro":(by?by.name:"?"),bySlot:ev.bySlot,byHole:ev.cause==="blackhole",score:ps?ps.score:0,maxMass:Math.round(s.maxMass),kills:s.kills,durationS};
             sendJson(s.sock,{t:"dead",...info});const coins=SCORE_COINS(info.score,info.kills,0,durationS);
             setTimeout(()=>sendJson(s.sock,{t:"rewards",saved:false,coinsEarned:coins,coins:null,achievements:[],skinsUnlocked:[],rank:{day:null}}),600);
             spectate(s,ev.bySlot);}

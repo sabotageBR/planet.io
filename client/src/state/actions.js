@@ -184,9 +184,18 @@ function mostrarTela(s) {
   if (s === "account") { go("entry"); openAccount(); }
   else if (s === "game") play({});
   else if (s === "reconn") { play({}); setTimeout(() => setReconn(true, 2), 400); }
-  else if (s === "dead" || s === "round" || s.startsWith("round:")) {
+  else if (s === "dead" || s.startsWith("dead:") || s === "round" || s.startsWith("round:")) {
     if (!import.meta.env.DEV) return;
-    app.update({ room: "1ABC", played: true, conn: "connected", lastMatch: { by: "Nebulox", byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, room: "1ABC", at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
+    // ⚠️ O SUFIXO `dead:<estilo>` fixa o modelo no state local (sem PATCH), como `round:<estilo>`: é o
+    // que a sonda de responsividade usa para medir os três.
+    const dEstilo = s.startsWith("dead:") ? s.slice(5) : null;
+    app.update(st => ({ ...st, room: "1ABC", played: true, conn: "connected", rewards: null, rewardsPending: true, screen: "dead",
+      session: dEstilo ? { ...st.session, prefs: { ...st.session.prefs, deadStyle: dEstilo } } : st.session,
+      // os campos novos da foto da partida: quem matou tem SLOT e SKIN (o `bySlot` vem do servidor e o
+      // cliente resolve skin/nível pelo PLAYERS), e o recorde ANTERIOR viaja junto para a comparação
+      lastMatch: { by: "Nebulox", bySlot: 1, bySkin: 30, byLevel: 12, mySkin: 18, myLevel: 7, myName: "Você",
+        byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, placement: 4, players: 17,
+        recMass: 7400, recScore: 5200, room: "1ABC", at: Date.now() } }));
     if (s === "round" || s.startsWith("round:")) { const linhas = [{ slot: 1, name: "Vortexia", mass: 12400, score: 9100, food: 610, kills: 4, kd: 2, isBot: true, skinId: 30 },
       { slot: 3, name: "Você", mass: 8200, score: 11800, food: 840, kills: 3, kd: 1.5, skinId: 18 }, { slot: 5, name: "Drakonis", mass: 3100, score: 4200, food: 300, kills: 6, kd: 3, isBot: true, skinId: 34 },
       { slot: 7, name: "Cosmara", mass: 2400, score: 3100, food: 210, kills: 1, kd: .5, isBot: true, skinId: 13 }, { slot: 9, name: "Stellara", mass: 1800, score: 2400, food: 160, kills: 0, kd: 0, isBot: true, skinId: 26 },
@@ -210,7 +219,12 @@ function mostrarTela(s) {
     // ~400 combinações passariam sem ver a única coisa nova na tela.
     const g = gameRef.get().game;
     if (g && g.hudStore) { const t = Date.now();
-      g.hudStore.update(h => ({ ...h, dead: true, map: false, room: "1ABC", spec: { slot: 1, name: "Nebulox", vivos: 12 },
+      // `lb`/`alive` são o que o modelo "sala" da tela de morte desenha (quem está na frente AGORA, do
+      // placar de 2 Hz). Sem eles aquele bloco não existe no DOM e a sonda passaria por cima dele.
+      g.hudStore.update(h => ({ ...h, dead: true, map: false, room: "1ABC", spec: { slot: 1, name: "Nebulox", vivos: 12 }, alive: 12,
+        lb: [{ slot: 1, name: "Nebulox", mass: 12400, level: 12, rank: 1 }, { slot: 3, name: "Você", mass: 4820, level: 7, rank: 2, me: true },
+          { slot: 5, name: "Drakonis", mass: 3100, level: 4, rank: 3 }, { slot: 7, name: "Cosmara", mass: 2400, level: 9, rank: 4 },
+          { slot: 9, name: "Stellara", mass: 1800, level: 2, rank: 5 }],
         chat: [{ slot: 2, name: "Stellara", text: "quem pegou o buraco negro?", at: t, mine: false },
           { slot: 3, name: "xXcapitaoXx", text: "fui eu, desculpa aí", at: t, mine: false, dead: true },
           { slot: -1, name: null, text: "🎤 Meteora", at: t, mine: false }] })); }
@@ -489,7 +503,15 @@ export function onRoundEnd(r) {
 /** Callback do jogo: {by, byHole, score, maxMass, kills, durationS}. */
 export function onDead(info) {
   const s = app.get();
-  app.update({ lastMatch: { ...info, room: s.room, at: Date.now() }, rewards: null, rewardsPending: true, screen: "dead" });
+  // ⚠️ O RECORDE VIAJA NA FOTO DA PARTIDA, não é lido da conta na hora de desenhar. `session.stats` vem
+  // do `GET /api/me` do boot e o `onRewards` não mexe em `bestMass`/`bestScore` — então, sem isto, a
+  // segunda partida da sessão continuaria comparando com o recorde de antes da PRIMEIRA e diria
+  // "RECORDE!" de novo com um número menor. Aqui se guarda o recorde ANTERIOR (é ele que a tela compara)
+  // e se atualiza o da conta em memória, para a próxima morte comparar com o número certo.
+  const st = s.session.stats || {}, recMass = +st.bestMass || 0, recScore = +st.bestScore || 0;
+  app.update(a => ({ ...a, lastMatch: { ...info, room: a.room, at: Date.now(), recMass, recScore },
+    session: { ...a.session, stats: { ...st, bestMass: Math.max(recMass, +info.maxMass || 0), bestScore: Math.max(recScore, +info.score || 0) } },
+    rewards: null, rewardsPending: true, screen: "dead" }));
   clearTimeout(rewardsT); rewardsT = setTimeout(() => { if (app.get().rewardsPending) app.update({ rewardsPending: false }); }, 5000);
 }
 /** Callback do jogo: {saved, coinsEarned, coins, achievements:[{key,title}], skinsUnlocked:[id], rank:{day}} */

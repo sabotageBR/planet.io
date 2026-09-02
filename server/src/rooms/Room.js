@@ -139,7 +139,7 @@ export class Room{
       // morre e renasce no Livre perderia tudo o que fez na vida anterior.
       const gpm=this.sim.players.get(info.slot);if(gpm)this._rosterFold(gpm);
       const s=this.sessions.get(info.slot);if(!s)return;
-      s.sendJson({t:'dead',by:info.by,byHole:info.byHole,byZone:info.byZone,score:info.score,maxMass:info.maxMass,kills:info.kills,durationS:info.durationS,placement:info.placement,players:info.players});
+      s.sendJson({t:'dead',by:info.by,bySlot:info.bySlot,byHole:info.byHole,byZone:info.byZone,score:info.score,maxMass:info.maxMass,kills:info.kills,durationS:info.durationS,placement:info.placement,players:info.players});
       // Livre: a câmera fica PARADA onde o jogador morreu (`slot:-1` → a AOI congela na última posição) —
       // ali a partida não tem fim nem placar para acompanhar, e sair passeando atrás da tela de morte
       // desorienta. Battle Royale mantém o espectador: assiste quem te matou, ou o companheiro vivo.
@@ -393,7 +393,7 @@ export class Room{
     return this.spectateTargetFor(session,slot);}
   /** JSON `dead` da vida atual (null se vivo). */
   deadMsg(slot){const gp=this.sim.players.get(slot);if(!gp||!gp.dead||!gp.deathInfo)return null;const i=gp.deathInfo;
-    return{t:'dead',by:i.by,byHole:i.byHole,byZone:i.byZone,score:i.score,maxMass:i.maxMass,kills:i.kills,durationS:i.durationS,placement:i.placement,players:i.players};}
+    return{t:'dead',by:i.by,bySlot:i.bySlot,byHole:i.byHole,byZone:i.byZone,score:i.score,maxMass:i.maxMass,kills:i.kills,durationS:i.durationS,placement:i.placement,players:i.players};}
   /** Expira sessões sem socket há mais de NET.RESUME_MS (chamado a cada 1 s pelo RoomManager). */
   housekeeping(now){for(const s of this.sessions.values())if(!s.ws&&now-s.disconnectedAt>NET.RESUME_MS){this.leave(s,'left');this.log.info(`${s.name} saiu da sala ${this.code} (sessão expirada)`);}
     this._hostTick(now);}
