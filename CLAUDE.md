@@ -48,7 +48,7 @@ client/src/    api/base.js (a ÚNICA fonte de "onde mora o servidor") · portal/
                Logo.jsx + logoArt.js = a marca · NavIcons.jsx + navIconArt.js = os ícones da entrada) · util/image.js · api/client.js · state/ (store) · hooks/
                audio/ (index.js motor: 4 barramentos, prioridade de vozes, loops · kit.js receitas · mic.js push-to-talk · audition.js a mesa de som do ?sfx)
                theme/ (index.js + dawn|sunset|dusk: tokens/hud/screens.css gerados por port.js, index.js com textures/effects/hud) · styles/base.css
-               game/ (index.js createGame · net/ · state/ · renderer/ · input/ (Pointer·Keyboard·Touch·Joystick·Wheel) · hud/ · bench.js)
+               game/ (index.js createGame · quality.js (a política de nível econômico, pura) · net/ · state/ · renderer/ · input/ (Pointer·Keyboard·Touch·Joystick·Wheel) · hud/ · bench.js)
 docs/spec/     protocol.md · api.md · admin.md · hooks.md · server-game.md · client-game.md · portais.md      docs/design/  telas.md · theme-time.md · rodada-1.md · som.md · modos.md
 k8s/           00-namespace · 05-config (ConfigMap) · 10-server (StatefulSet 3 shards, envFrom ConfigMap+Secret) · 20-client
                30-ingress (warspace.io: /ws/0|1|2 por shard, /api no Service agregador, / no cliente; + o 301 de www) · 40-backup
@@ -1875,6 +1875,74 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   as fontes bitmap usam `skipKerning` (o kerning do Pixi é O(n²) — era ele que congelava a tela) e o céu seguinte é assado
   `PREWARM_S` antes da virada (`renderer.prewarmTheme`, disparado pelo relógio da rodada em `game/index.js`). Quem segura textura sem
   pedi-la por frame (atlas de comida/ejetados/parallax, tile da grade) chama `cache.keepAlive()`, senão a eviction a destrói em uso.
+- **A TELA PISCAVA PORQUE O CONSERTO ERA APLICADO NA HORA ERRADA** (`game/quality.js`, `aplicaEcon` em
+  `game/index.js`, `Background.setRes`): o sintoma era o canvas INTEIRO vazio — sem céu, sem grade, sem
+  planetas — com o HUD vivo e o contador marcando 70 fps. Esses dois fatos juntos já dizem o mecanismo: o
+  HUD é DOM e é escrito DEPOIS de `renderer.render(...)`, e não há try/catch em lugar nenhum do laço, então
+  se o render lançasse o HUD congelaria. Ele estava vivo ⇒ o render retornava sem desenhar. E o canvas é
+  `backgroundAlpha:0`, então "não desenhar" mostra o fundo do CSS.
+  Eram DUAS causas somadas. (a) `econCheck` roda no FIM do frame e ali mesmo chamava `setEcon` →
+  `setResolution` → `app.resize()`, que troca o backing store e **limpa o canvas**: o buraco durava até o
+  render do frame seguinte — que ainda por cima carregava o `bg.resize()`, ou seja o bake do céu de tela
+  cheia, o item mais caro do jogo, no instante em que o FPS já estava ruim. Hoje `econCheck` só MARCA o
+  nível e quem aplica é `aplicaEcon`, na ABERTURA do frame: resize e render caem no mesmo tick e o
+  navegador nunca chega a compor um quadro vazio. (b) A perda de contexto WebGL, abaixo.
+  ⚠️ **O rebake da troca realimentava o gatilho**: o frame longo que a própria correção produz era lido
+  como lentidão pela medição seguinte, que subia o nível de novo — uma queda virava uma ESCADA de trocas,
+  cada degrau piscando. Por isso `QUALITY.SEGURA_MS` (carência de 1,5 s depois de qualquer troca), que é a
+  peça sem a qual a histerese não fecha.
+  ⚠️ `bg.resize()` no caminho da RESOLUÇÃO era duplamente errado: ele chama `rebuildStars()`, que recria o
+  ParticleContainer inteiro (~1800 partículas em 1080p) e depende de `R.W/R.H` — que são pixels de CSS e
+  **não mudam** quando só a resolução muda —, e destrói o `ready`, sabotando o pré-aquecimento do céu da
+  próxima virada. Daí `setRes()`, um caminho separado do resize de janela.
+  ⚠️ E `bakeBg` VAZAVA uma textura de tela cheia por troca de resolução: `ready=null` cru, sem destruir,
+  quando a chave do pré-assado não batia — que é exatamente o caso quando `resFor` muda.
+  ⚠️ A decisão virou função PURA (`quality.js`, tabela em `client/test/quality.test.js`), no molde de
+  `modeFor`: ela vivia colada ao laço em cinco variáveis soltas, e por isso a oscilação que o jogador via
+  não tinha como ser conferida.
+- **PERDER O CONTEXTO WEBGL É NORMAL; FICAR PERDIDO É QUE NÃO PODE** (`onLost`/`onRestored` em
+  `renderer/Renderer.js`): não havia UMA linha tratando `webglcontextlost` no cliente, e o Pixi 8 só
+  restaura sozinho quando a perda foi FORÇADA por ele (`GlContextSystem`: `if(this._contextLossForced)`).
+  Numa perda real — o navegador matando o contexto porque a memória de GPU estourou — ele chama
+  `preventDefault()` e não faz mais nada, sem avisar a aplicação. O jogo seguia girando o rAF, contando
+  fps e chamando um `app.render()` cujas chamadas GL viraram no-ops silenciosas: canvas vazio, HUD vivo.
+  Agora a perda pede `restoreContext()` (3 tentativas espaçadas — restaurar na hora, com a memória ainda
+  estourada, só perde o contexto de novo) e a volta chama o **`cache.invalidate()` que existia desde
+  sempre e nunca teve chamador**, remonta as camadas pelo caminho de `setTheme` e reassa o céu.
+  ⚠️ Invalidar e remontar não é exagero: quem SEGURA textura sem repedir por frame (os atlas de
+  comida/ejetados/parallax e o tile da grade) apontaria para fontes mortas — confiar no re-upload cobriria
+  só metade dos consumidores.
+  ⚠️ `__warspace.loseContext()` existe para conferir isso sem ter de estourar a memória de verdade. É a
+  parte que faltava: o defeito durou porque não havia como reproduzi-lo.
+- **O ORÇAMENTO DE TEXTURA MEDIA A COISA ERRADA** (`cache.setExternal`, `IDADES` em `TextureCache.js`,
+  `Background.bytes()`): a meta escrita é "texturas ≤ 48 MB" e ela era falsa por dois motivos ao mesmo
+  tempo. Os **céus não passam pelo TextureCache** (são assados e destruídos à mão, e até TRÊS coexistem —
+  atual + crossfade + pré-assado —, ~14 MB cada), então o item mais caro do jogo ficava fora da conta e
+  fora do `texMB` do `?stats`, que por isso mentia justamente sobre o que estoura a memória. E a eviction
+  só considerava entradas paradas há mais de 120 frames: bastava tudo estar sendo desenhado para a lista
+  vir VAZIA, nada ser despejado e `bytes` crescer sem teto — o orçamento era decoração. Hoje a carência
+  CEDE sob pressão (120 → 30 → 3 frames), o que é seguro pelo contrato do cache (quem desenha repede a
+  textura pela chave todo frame), com UMA varredura por frame — sem essa guarda, com o conjunto quente
+  acima do teto, cada `get` pagaria três varreduras ordenadas do mapa inteiro e o remédio custaria mais
+  que a doença.
+  ⚠️ Isso ACORDA um defeito que estava dormente: os props de cenário (`Background.js`) pegam a textura uma
+  vez em `rebuild()` e nunca mais a repedem nem a carimbam — são o único consumidor sem `keepAlive`. Hoje
+  os três temas devolvem `props:[]`, mas a eviction agressiva os destruiria em uso. O carimbo entrou junto.
+  ⚠️ `R.texCap` é o teto de tier do modo econômico: `theme/util.js:tier` é função só do RAIO, então no
+  nível mínimo (res .6) o planetão continuava assando e segurando 512² ≈ 1,34 MB para uma tela que desenha
+  com pouco mais da metade dos pixels.
+- **O `kind` DO OVERLAY MENTIA, E O CANVAS 2D QUEBRAVA O JOGO INTEIRO** (`Renderer.js`, `R.mesh`):
+  `preference:"webgl"` é uma PREFERÊNCIA — o Pixi cai para canvas 2D por conta própria, **sem lançar**, e
+  o `catch` do `app.init` não é o único caminho para o fallback. `kind` ficava dizendo "webgl" com o
+  CanvasRenderer no ar, e isso aparece no `?stats`, que é ferramenta de diagnóstico: medido numa máquina
+  sem WebGL, 3 fps com o overlay jurando webgl. Quem sabe a verdade é `app.renderer.name`.
+  ⚠️ E o **CanvasRenderer não tem o pipe de malha** (medido: ele traz sprite/graphics/particle/
+  tilingSprite/bitmapText, e nenhum "mesh"). O blob dos planetas é um `MeshPlane`, então na primeira peça
+  grande da tela `renderPipes.mesh` vinha undefined e o `app.render()` passava a LANÇAR — todo frame. Como
+  não há try/catch no laço e o `raf` é re-agendado na primeira linha, o laço sobrevivia mas tudo abaixo do
+  erro era pulado: HUD congelado, som mudo e, ironia, o próprio `econCheck` nunca rodando. Ou seja,
+  justamente na máquina sem WebGL — que é quem mais precisa da degradação automática — ela era a primeira
+  coisa a morrer.
 - **Blob dos planetas**: o corpo vira `MeshPlane` (grade 9×9 com a mesma textura assada) e os vértices são deslocados por frame —
   ondulação sutil na beirada (peso r⁴, ~2% do raio) + squash na direção do movimento, sem girar a arte. Cada malha é um draw call,
   então só as maiores da tela viram blob (`WOB_MAX`, `WOB_MIN_PX`) e nada disso acontece no modo econômico ou com "menos movimento".

@@ -13,7 +13,7 @@ const starItems=TX=>[{key:"sq",size:4,draw:c=>{c.fillStyle="#fff";c.fillRect(-2,
 export function createBackground(R){
   const root=new Container(),props=new Container(),bg=new Sprite(Texture.EMPTY),prev=new Sprite(Texture.EMPTY);root.addChild(bg,prev);
   prev.visible=false;
-  let stars=null,atlas=null,atlasKey="",band=null,bgTex=null,bgKey="",metas=[],propSprites=[];
+  let stars=null,atlas=null,atlasKey="",band=null,bgTex=null,bgKey="",metas=[],propSprites=[],propKeys=[],bgDirty=false;
   let prevTex=null,fade=0,handoff=false;   // handoff: a próxima bake é troca de tema (guarda o céu velho em vez de destruí-lo)
   let ready=null;   // céu do PRÓXIMO tema, já assado (prewarm): na virada é só trocar a referência
   /** Resolução do bake do céu: teto de 3,5 Mpx (o canvas é do tamanho da tela). */
@@ -25,7 +25,11 @@ export function createBackground(R){
     return{key,tex:new Texture({source:new CanvasSource({resource:c,resolution:res,scaleMode:"linear"})})};}
   function bakeBg(){const th=R.theme,W=R.W,H=R.H;if(W<2||H<2)return;
     const key=skyKey(th,W,H,resFor(W,H));if(key===bgKey)return;
-    const made=(ready&&ready.key===key)?ready:bakeSky(th,W,H);ready=null;   // pré-assado na virada = custo zero aqui
+    // ⚠️ `ready=null` cru VAZAVA: quando a chave não bate (é o caso da troca de RESOLUÇÃO, que muda `resFor`),
+    // o céu pré-assado era largado sem destruir — uma textura de tela cheia por vez.
+    const serve=ready&&ready.key===key,made=serve?ready:bakeSky(th,W,H);
+    if(ready&&!serve)ready.tex.destroy(true);
+    ready=null;   // pré-assado na virada = custo zero aqui
     bgKey=made.key;
     const old=bgTex;bgTex=made.tex;bg.texture=bgTex;bg.width=W;bg.height=H;
     if(old&&handoff){dropPrev();prevTex=old;prev.texture=old;prev.width=W;prev.height=H;prev.alpha=1;prev.visible=true;fade=1;}   // crossfade: o céu velho sai por cima
@@ -34,8 +38,8 @@ export function createBackground(R){
   function dropPrev(){if(prevTex){prev.texture=Texture.EMPTY;prevTex.destroy(true);prevTex=null;}prev.visible=false;fade=0;}
   function rebuild(){const th=R.theme,TX=th.textures;band=TX.bandLayers({WW:WORLD.w,WH:WORLD.h});
     atlasKey=`${th.id}:bgatlas`;atlas=R.cache.atlas(atlasKey,starItems(TX));
-    for(const s of propSprites)s.destroy();propSprites=[];props.removeChildren();
-    band.props.forEach((p,i)=>{const sp=new Sprite(R.cache.get(TX.key("prop",{i}),256,(c,s)=>TX.prop(c,s,{prop:p,i})));sp.anchor.set(.5);sp.position.set(p.x,p.y);
+    for(const s of propSprites)s.destroy();propSprites=[];props.removeChildren();propKeys=[];
+    band.props.forEach((p,i)=>{const pk=TX.key("prop",{i});propKeys.push(pk);const sp=new Sprite(R.cache.get(pk,256,(c,s)=>TX.prop(c,s,{prop:p,i})));sp.anchor.set(.5);sp.position.set(p.x,p.y);
       const d=p.r*TX.scale.prop(p);sp.width=sp.height=d*2;sp.alpha=band.propsAlpha!=null?band.propsAlpha:.55;sp._r=d;props.addChild(sp);propSprites.push(sp);});
     rebuildStars();}
   function rebuildStars(){if(!band)return;if(stars){root.removeChild(stars);stars.destroy();stars=null;}metas=[];
@@ -58,8 +62,21 @@ export function createBackground(R){
       ready=bakeSky(th,W,H);
       R.cache.warmAtlas(`${th.id}:bgatlas`,starItems(th.textures));},
     resize(){bgKey="";if(ready){ready.tex.destroy(true);ready=null;}bakeBg();rebuildStars();},   // tela mudou de tamanho: o pré-assado não serve mais
+    /**
+     * Só a RESOLUÇÃO mudou (troca de nível econômico). É outra coisa que o resize e por isso tem caminho
+     * próprio: `R.W/R.H` são pixels de CSS e NÃO mudam aqui, então `rebuildStars()` — que recria o
+     * ParticleContainer inteiro (~1800 partículas em 1080p) — era trabalho jogado fora, pago no frame em que
+     * o FPS já estava ruim. O céu é reassado no `render`, que é o mesmo tick em que a tela é redesenhada:
+     * `bakeBg` só troca a referência DEPOIS de assar o novo, então o céu velho fica na tela até lá.
+     */
+    setRes(){bgDirty=true;},
     render(f){const cam=f.cam,W=R.W,H=R.H;if(!band)return;
+      if(bgDirty){bgDirty=false;bgKey="";bakeBg();}   // resolução nova: assa aqui, no tick do desenho
       R.cache.keepAlive(atlasKey);   // o atlas do parallax fica preso ao ParticleContainer das estrelas
+      // ⚠️ Os props pegam a textura UMA vez, em rebuild(), e nunca mais a repedem: sem este carimbo eles são
+      // o único consumidor que a eviction pode destruir estando em uso (hoje os três temas devolvem
+      // `props:[]`, então o defeito está dormente — mas a eviction sob pressão o acordaria).
+      for(const k of propKeys)R.cache.keepAlive(k);
       if(fade>0){fade-=f.dt*1000/Math.max(80,ROUND.FADE_MS||600);   // troca de tema: só o céu faz o fade
         if(fade<=0)dropPrev();else{prev.alpha=fade;if(stars)stars.alpha=1-fade;}}
       const on=!R.econ&&f.parallax;stars.visible=on;
@@ -68,5 +85,12 @@ export function createBackground(R){
           const x=(m.s.x+ox)%T+m.i*T,y=(m.s.y+oy)%T+m.j*T,lim=m.big?Y0-FD*.5:Y0;
           if(y>lim||x>W+20||y<-20){m.p.alpha=0;continue;}m.p.x=x;m.p.y=y;m.p.alpha=(m.big?l.alpha:m.s.a)*Math.min(1,(Y0-y)/FD);}}
       const showProps=R.econLevel<2;for(const sp of propSprites)sp.visible=showProps&&rectHas(f.rect,sp.x,sp.y,sp._r);},
+    /**
+     * Bytes das texturas de céu, que NÃO passam pelo TextureCache (são assadas e destruídas à mão aqui).
+     * São o item mais caro do jogo — até três coexistem (atual + crossfade + pré-assado) — e ficavam fora do
+     * orçamento e do `texMB` do ?stats, que por isso mentia justamente sobre o que estoura a memória.
+     */
+    bytes(){let n=0;for(const t of [bgTex,prevTex,ready&&ready.tex]){const src=t&&t.source;
+      if(src)n+=(src.pixelWidth||src.width||0)*(src.pixelHeight||src.height||0)*4*1.34;}return n;},
     destroy(){dropPrev();if(ready)ready.tex.destroy(true);root.destroy({children:true});props.destroy({children:true});if(bgTex)bgTex.destroy(true);},
   };}

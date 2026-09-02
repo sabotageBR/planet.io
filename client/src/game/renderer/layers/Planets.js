@@ -104,7 +104,8 @@ export function createPlanets(R){
     pop(id,delay=0){pops.set(id,performance.now()+(delay||0));},
     render(f){frame++;const th=R.theme,TX=th.textures,L=th.hud.labels,cell=th.hud.cell,view=f.view,rect=f.rect,rt=f.rt,t=f.t;
       const showNames=f.showNames,PK=TX.scale.planet;
-      const cam=f.cam,wob=f.wobble!==false&&!R.econ;let blobs=0;
+      const cam=f.cam,wob=f.wobble!==false&&!R.econ&&R.mesh;let blobs=0;   // `R.mesh`: sem o pipe de malha (canvas 2D) o blob faz o render LANÇAR — ver Renderer.js
+      
       counts.clear();maior.clear();
       // view.pieces vem ordenado por raio CRESCENTE, então o último gravado por dono é a maior peça dele
       for(const e of view.pieces){counts.set(e.owner,(counts.get(e.owner)||0)+1);maior.set(e.owner,e.id);}
@@ -127,7 +128,10 @@ export function createPlanets(R){
         // a ter nome, senão o corte transforma 35 skins em planetas anônimos.
         const fc=faceFile(skin);if(fc)ensureFace(skin);
         const fcBmp=fc?faceBitmap(skin):null;
-        const size=TX.tier(e.rr),tex=R.cache.get(TX.key("planet",{skin,isMe,avatar:avBmp?avV:null,face:faceKey(skin)},size),size,
+        // ⚠️ `R.texCap` é o teto de tier do modo econômico: `TX.tier` é função só do RAIO, então no nível
+        // mínimo (res .6) o planetão continuava assando e segurando 512² ≈ 1,34 MB para uma tela que está
+        // desenhando com pouco mais da metade dos pixels.
+        const size=Math.min(TX.tier(e.rr),R.texCap),tex=R.cache.get(TX.key("planet",{skin,isMe,avatar:avBmp?avV:null,face:faceKey(skin)},size),size,
           (c,s)=>TX.planet(c,s,{skin,isMe,avatarBmp:avBmp,faceBmp:fcBmp}));
         const d=e.rr*PK(skin);let sx=1,sy=1;const pat=pops.get(e.id);   // gulp da absorção: incha e achata de leve
         if(pat!=null){const age=t-pat;if(age>POP_MS)pops.delete(e.id);else if(age>=0){const u=Math.sin(age/POP_MS*Math.PI);sx=1+POP_AMP*u;sy=1-POP_AMP*.35*u;}}

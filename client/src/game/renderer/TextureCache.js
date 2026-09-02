@@ -12,10 +12,16 @@ import {Texture,CanvasSource,Rectangle} from "pixi.js";
 
 const WARM_PER_FRAME=2;
 export function createTextureCache({budgetMB=48,upload=null}={}){
-  const map=new Map(),queue=[];let bytes=0,frame=0;
+  const map=new Map(),queue=[];let bytes=0,frame=0,externo=0,evictFrame=-1;
   const mk=(canvas,resolution=1)=>new Texture({source:new CanvasSource({resource:canvas,autoGenerateMipmaps:true,scaleMode:"linear",resolution})});
   const cache={
     get bytes(){return bytes;},get size(){return map.size;},get pending(){return queue.length;},
+    /**
+     * Memória de textura que NÃO passa por aqui mas divide a mesma GPU: hoje são os céus do Background
+     * (até três de tela cheia ao mesmo tempo, ~14 MB cada). Sem isto o orçamento media só metade do consumo
+     * real e o teto de 48 MB era uma conta sobre o item errado.
+     */
+    setExternal(n){externo=n>0?n:0;},
     tick(){frame++;for(let i=0;i<WARM_PER_FRAME&&queue.length;i++){const q=queue.shift();if(map.has(q.key))continue;
       const tex=q.atlasItems?cache.atlas(q.key,q.atlasItems).texture:cache.get(q.key,q.size,q.draw);
       if(upload)try{upload(tex);}catch{/* sem GPU: fica para o 1º draw */}}},
@@ -46,11 +52,23 @@ export function createTextureCache({budgetMB=48,upload=null}={}){
         frames.set(it.key,new Texture({source:src,frame:new Rectangle(cx+off,cy+off,it.size,it.size)}));});
       const atlas={texture:new Texture({source:src}),frames,cell};
       e={tex:atlas.texture,atlas,bytes:c.width*c.height*4*1.34,last:frame};map.set(key,e);bytes+=e.bytes;evict();return atlas;},
-    invalidate(){for(const e of map.values())destroy(e);map.clear();queue.length=0;bytes=0;},
+    invalidate(){for(const e of map.values())destroy(e);map.clear();queue.length=0;bytes=0;evictFrame=-1;},
     destroy(){cache.invalidate();},
   };
   function destroy(e){try{if(e.atlas)for(const t of e.atlas.frames.values())t.destroy(false);e.tex.destroy(true);}catch{}}
-  function evict(){if(bytes<=budgetMB*1048576)return;
-    const old=[...map.entries()].filter(([,e])=>frame-e.last>120).sort((a,b)=>a[1].last-b[1].last);
-    for(const [k,e] of old){map.delete(k);bytes-=e.bytes;destroy(e);if(bytes<=budgetMB*1048576*.85)break;}}
+  // ⚠️ O ORÇAMENTO ERA MOLE, e é isso que deixava a memória de GPU crescer até o navegador matar o contexto:
+  // a carência única de 120 frames podia devolver lista VAZIA (basta tudo estar sendo desenhado), e aí nada
+  // era despejado e `bytes` passava dos 48 MB sem teto nenhum. Agora a carência CEDE sob pressão — 120, 30 e
+  // por fim 3 frames. Despejar algo com 3 frames de idade é seguro pelo contrato do cache: quem desenha
+  // repede a textura pela chave todo frame (e quem a segura sem repedir carimba com keepAlive), então o pior
+  // caso é reassar. Perder o contexto é muito pior que reassar.
+  const IDADES=[120,30,3];
+  function evict(){const teto=budgetMB*1048576;if(bytes+externo<=teto)return;
+    // uma varredura por frame: com o conjunto quente acima do teto, nada é liberado e sem esta guarda cada
+    // `get` pagaria três varreduras ordenadas do mapa inteiro — o remédio custaria mais que a doença.
+    if(evictFrame===frame)return;evictFrame=frame;
+    const alvo=teto*.85;
+    for(const idade of IDADES){
+      const old=[...map.entries()].filter(([,e])=>frame-e.last>idade).sort((a,b)=>a[1].last-b[1].last);
+      for(const [k,e] of old){map.delete(k);bytes-=e.bytes;destroy(e);if(bytes+externo<=alvo)return;}}}
   return cache;}

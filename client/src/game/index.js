@@ -45,6 +45,7 @@ import {createTouchButtons} from "./input/Touch.js";
 import {createActions} from "./input/actions.js";
 import {createMinimap} from "./hud/Minimap.js";
 import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./bench.js";
+import {passoQualidade,qualidadeZero} from "./quality.js";
 import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0,autodef:0,zoom:0,feast:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
@@ -93,7 +94,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // o espaço todo, com o blip na cor da skin, nome e massa, e a posição INTERPOLADA entre as amostras de 2 Hz).
   // Só faz sentido MORTO: com o jogador vivo, ver a sala inteira seria vantagem tática.
   let mapOn="";
-  let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,slowSince=0,econAt=0,statsOv=null;
+  let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,econAlvo=0,statsOv=null;
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
   // ── modo, equipe, zona, chat e voz ──
   let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0,lobby=null,spec=null;   // `lobby` = o estado da tela de espera (JSON `lobby`, em ms)
@@ -453,7 +454,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,
       hud:()=>hudStore.get(),estado:()=>({modeId,teamSize,myTeam,phase,startsAt,roomCap,lobby,zone}),
       zoom:()=>({f:zoomF,pausado,joined,dead,pref:curPrefs.wheelZoom,span:own0.length?zoomSpan(focusOf(own0.map(p=>({x:p.rx,y:p.ry,r:p.rr}))).sumR):null,pecas:own0.length}),
-      fogos:()=>celebrate()},   // aprovar a salva de olho sem ter de vencer um battle royale
+      fogos:()=>celebrate(),   // aprovar a salva de olho sem ter de vencer um battle royale
+      // Derruba o contexto WebGL de propósito. É o único jeito de conferir a recuperação sem ter de estourar
+      // a memória de GPU de verdade — e é por não haver esse jeito que o defeito passou tanto tempo no ar.
+      loseContext:()=>{if(renderer)renderer.loseContext();},
+      qualidade:()=>({nivel:econLevel,alvo:econAlvo,pref:curPrefs.quality||"auto",st:qSt,perdido:!!(renderer&&renderer.R.lost)})},
   };
 
   // ── qualidade / modo econômico (0 = cheio, 1 = econômico, 2 = mínimo) ──
@@ -466,19 +471,19 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const noDedo=()=>typeof matchMedia!=="undefined"&&matchMedia("(pointer: coarse)").matches;
   function applyQuality(){if(!renderer)return;const q=curPrefs.quality||"auto";
     if(q==="low")setEcon(2);else if(q==="high")setEcon(0);else if(!econLevel)setEcon(noDedo()?1:0);}
-  function setEcon(lv){econLevel=lv;econ=lv>0;if(!renderer)return;renderer.setEcon(lv);
+  function setEcon(lv){econLevel=lv;econAlvo=lv;econ=lv>0;if(!renderer)return;renderer.setEcon(lv);
     renderer.setResolution(lv?ECON_RES[lv]:Math.min(2,devicePixelRatio||1));}
-  // Decide pelo tempo REAL entre frames (o custo de CPU medido não enxerga o trabalho da GPU: um jogo a 20 fps
-  // podia ter "6 ms de frame" e o modo econômico nunca ligava). > SLOW_MS (menos de 50 fps) por 1 s → sobe um
-  // nível; < FAST_MS (55 fps+, folga com vsync a 60 Hz) por 2 s e passado o backoff → desce. O backoff dobra
-  // até 5 min quando a queda se repete rápido, para a nitidez não ficar piscando.
-  const SLOW_MS=20,FAST_MS=18;
-  let econBackoff=30000,econLeftAt=-1e9,fastSince=0;
+  // A decisão mora em `quality.js`, pura e conferida em tabela (client/test/quality.test.js). Aqui só entram
+  // o gatilho e a aplicação — que são coisas separadas DE PROPÓSITO, e é essa separação que tira a piscada:
+  // `econCheck` roda no FIM do frame (é onde o tempo do frame fica pronto) e apenas MARCA o nível desejado;
+  // quem aplica é `aplicaEcon`, na ABERTURA do frame seguinte. Aplicando no fim, o `app.resize()` de
+  // `setResolution` trocava o backing store — o que LIMPA o canvas — e o buraco durava até o render do frame
+  // seguinte, que ainda por cima carregava o rebake do céu. Aplicando na abertura, resize e render caem no
+  // mesmo tick e o navegador nunca chega a compor um quadro vazio.
+  let qSt=qualidadeZero();
   function econCheck(now,ms){if((curPrefs.quality||"auto")!=="auto")return;
-    if(ms>SLOW_MS){fastSince=0;
-      if(econLevel<2){if(!slowSince)slowSince=now;else if(now-slowSince>1000){if(now-econLeftAt<5000)econBackoff=Math.min(300000,econBackoff*2);setEcon(econLevel+1);econAt=now;slowSince=0;}}}
-    else{slowSince=0;
-      if(econLevel>0&&ms<FAST_MS){if(!fastSince)fastSince=now;else if(now-fastSince>2000&&now-econAt>econBackoff){setEcon(econLevel-1);econAt=now;econLeftAt=now;fastSince=0;}}else fastSince=0;}}
+    const r=passoQualidade(qSt,{now,ms,nivel:econLevel});qSt=r.st;econAlvo=r.nivel;}
+  function aplicaEcon(){if(econAlvo!==econLevel)setEcon(econAlvo);}
 
   // ── rodada: relógio do espaço (um dia inteiro por rodada), contagem final e explosão do mundo ──
   // Tudo derivado do tick do servidor (buffer.tickAt) + o bloco `round` do JSON `room`: nada extra no fio.
@@ -690,6 +695,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     frames++;if(now-fpsT>1000){fps=Math.round(frames*1000/(now-fpsT));frames=0;fpsT=now;}
     if(forced&&document.documentElement.dataset.theme!==forced&&now-themeAt>500){themeAt=now;applyTheme(forced);}
     if(renderer.R.theme!==curTheme)renderer.setTheme(curTheme);
+    aplicaEcon();   // a troca de nível acontece AQUI, no mesmo tick do render — ver econCheck
     enviarInput(now);
     predictor.update(dt);interp.update(now);view.build();roundTick(now);
     const own=[];predictor.forEach(pc=>own.push(pc));own0=own;cam.W=renderer.W;cam.H=renderer.H;
