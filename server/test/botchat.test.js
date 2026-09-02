@@ -246,10 +246,23 @@ test('persona: determinística pela semente, sem repetir e sempre completa',()=>
 test('peneira: provocação passa, insulto sexual e xingamento de família não',()=>{
   // Medido na bancada (scripts/llm-bench.mjs): o SYSTEM pede e o modelo obedece na maioria das vezes —
   // e "na maioria" não serve para o que aparece na tela de uma sala de 50. Quem garante é a peneira.
-  for(const t of ['evandro, sua puta! nao me encosta','vou comer teu bunda','vem tomar no cu','you asshole','seu corno'])
-    assert.equal(sanitiza(t),null,`"${t}" passou`);
-  for(const t of ['evandro, sua bala e lenta kkkk','calma evandro, vai chorar no fim','trash? i am winning u idiot','peguei','vem pro meio'])
-    assert.ok(sanitiza(t),`"${t}" foi bloqueada e não devia`);
+  // ⚠️ Isto é o nível LIGADO do filtro (`CHAT.FILTRO`), que não é mais o padrão: xingar virou decisão de
+  // produto e a estreia é `livre`. O que sobra do bot no livre está logo abaixo — e é o ÓDIO, sempre.
+  const antes=CHAT.FILTRO;CHAT.FILTRO='pesado';
+  try{
+    for(const t of ['evandro, sua puta! nao me encosta','vou comer teu bunda','vem tomar no cu','you asshole','seu corno'])
+      assert.equal(sanitiza(t),null,`"${t}" passou`);
+    for(const t of ['evandro, sua bala e lenta kkkk','calma evandro, vai chorar no fim','trash? i am winning u idiot','peguei','vem pro meio'])
+      assert.ok(sanitiza(t),`"${t}" foi bloqueada e não devia`);
+  }finally{CHAT.FILTRO=antes;}
+});
+
+test('peneira no padrão LIVRE: o bot xinga como a sala, mas o ÓDIO é piso',()=>{
+  assert.equal(CHAT.FILTRO,'livre','o padrão do arquivo mudou sem o teste acompanhar');
+  for(const t of ['seu corno','you asshole','vem tomar no cu'])
+    assert.ok(sanitiza(t),`"${t}" devia passar com o chat livre — senão o bot fica mais contido que a sala`);
+  for(const t of ['seu viado','nigger','retardado'])
+    assert.equal(sanitiza(t),null,`"${t}": slur é o que o servidor não inventa em nível nenhum`);
 });
 
 // ── QUEM É QUEM: a identidade do mundo real no prompt ─────────────────────────

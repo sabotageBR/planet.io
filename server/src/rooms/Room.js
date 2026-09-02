@@ -614,11 +614,12 @@ export class Room{
    */
   chat(session,text,scope){
     const gp=this.sim.players.get(session.slot);if(!gp)return false;
-    // ⚠️ `mascara` por último, e é a única peneira que a linha de uma PESSOA tem. Até aqui ela chegava à
-    // sala inteira depois de três transformações puramente mecânicas — normalizar, tirar caractere de
-    // controle, cortar em MAX_CHARS —, ou seja, o preenchimento era censurado (`sanitiza`, botChat.js) e
-    // quem joga não. Mascara em vez de recusar: linha que some em silêncio parece chat quebrado, e a
-    // pessoa só reescreve com outra grafia. Ver o cabeçalho de server/src/palavrao.js.
+    // ⚠️ `mascara` por último, e é a única peneira que a linha de uma PESSOA tem — e no padrão (`livre`)
+    // ela é IDENTIDADE: a linha sai como foi escrita. Xingar faz parte de um .io, e o que os portais
+    // pedem por escrito (silenciar, denunciar, kick/ban do dono) não passa por aqui. Ligar o filtro é um
+    // clique no /admin (`CHAT.FILTRO`), sem deploy. Quando ligado, MASCARA em vez de recusar: linha que
+    // some em silêncio parece chat quebrado, e a pessoa só reescreve com outra grafia.
+    // Ver o cabeçalho de server/src/palavrao.js.
     const msg=mascara(String(text||'').normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,CHAT.MAX_CHARS));
     if(!msg)return false;
     const now=Date.now();

@@ -167,6 +167,21 @@ converte); o admin não tem por que fazer a conta de 60 Hz. Padrão 30 min.
   dia do relógio do espaço. É consequência declarada — o céu tem que virar um número inteiro de vezes por
   sala, senão a última troca fica pela metade.
 
+### O FILTRO DE PALAVRÃO (`CHAT.FILTRO`, seção "Chat")
+
+`livre` (padrão) · `pesado` · `tudo`. Mascarar a linha de quem joga é decisão de produto, e num .io xingar
+faz parte; o que os portais pedem por escrito não passa por aqui e vale em qualquer nível — silenciar
+(cliente), denunciar (`Room.report`) e o kick/ban do dono da sala. **Antes de mandar um pacote para revisão
+de portal, subir para `pesado` é um clique, sem deploy.**
+
+Duas coisas não seguem o nível, e não é censura escondida — é escopo:
+
+- **O que o servidor GERA.** A lista `ODIO` (slur racial/homofóbico/transfóbico/capacitista) saiu de `GRAVE`
+  e barra a fala do bot em todos os níveis: xingar pesado ele pode, inventar slur não. O `SYSTEM` acompanha
+  o nível pelo mesmo motivo — com a peneira solta e o prompt ainda pedindo comedimento, o modelo obedece e o
+  preenchimento fica mais contido que a sala.
+- **O nick** (`nickProibido`): fica no placar, no feed e no radar a partida inteira e é escolhido a frio.
+
 ### O TAMANHO DA FALA: vale o MENOR dos dois tetos
 
 `MAX_WORDS` e `MAX_CHARS` são tetos independentes e **o que morde primeiro é o de palavras**: 12 palavras

@@ -604,7 +604,26 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `<select>`) e a frase em `ESTILO_PROMPT`, server-only pelo mesmo motivo de `botPersonas.js` — `shared/`
   vai inteiro para o bundle do `?local=1`, e instrução de LLM não tem o que fazer lá. O padrão `misto` é
   o pedido literal: frase curta, ofensa, piada ou comentário curto.
-- **A MODERAÇÃO ESTAVA DO LADO ERRADO** (`server/src/palavrao.js`, `Room.report`, `game.mute`): havia
+- **O FILTRO DE PALAVRÃO É ESCOLHA, E O PADRÃO É LIVRE** (`CHAT.FILTRO`, combo em /admin → Chat;
+  `server/src/palavrao.js`): mascarar a linha de quem joga é decisão de PRODUTO, não de engenharia — num
+  .io xingar faz parte, e o pedido do dono do jogo foi literal. Três níveis (`livre` · `pesado` · `tudo`,
+  este último é o comportamento de estreia descrito abaixo) e o padrão é `livre`: a linha sai como foi
+  escrita. O que os portais pedem POR ESCRITO continua de pé em qualquer nível e não passa por aqui — o
+  jogador SILENCIA (`game.mute`, do cliente) e DENUNCIA (`Room.report`), e o dono da sala tem kick e ban.
+  Antes de mandar um pacote para revisão, subir para `pesado` é um clique, sem deploy.
+  ⚠️ **DUAS COISAS NÃO SEGUEM O NÍVEL**, e não é censura escondida — é escopo. (1) O que o **SERVIDOR
+  GERA**: um slur na boca de um preenchimento não é liberdade de ninguém, é o nosso processo inventando a
+  palavra. Por isso a lista **`ODIO`** (slur racial/homofóbico/transfóbico/capacitista + estupro) saiu de
+  `GRAVE` e barra o bot em TODOS os níveis — xingar pesado ele pode, inventar slur não. (2) O **NICK**
+  (`nickProibido`, em `auth/nick.js`), que fica no placar, no feed e no radar a partida inteira e é
+  escolhido a frio: "chat livre" é uma decisão, "qualquer coisa no pódio" é outra.
+  ⚠️ **O PROMPT ACOMPANHA O NÍVEL**, senão a liberação é meia: com a peneira solta e o `SYSTEM` ainda
+  pedindo comedimento, o modelo obedece — a peneira nem chega a ser exercida e o preenchimento fica mais
+  contido que as pessoas da sala. No `livre` a linha dura do prompt vira só o ÓDIO.
+  ⚠️ As regex são montadas UMA vez, na carga; o nível só escolhe entre elas. `_pushChat` roda em toda
+  linha de todas as salas do shard, e um `new RegExp` com 60 alternativas ali seria trabalho por mensagem
+  para um valor que muda uma vez por mês.
+- **(o comportamento de estreia, hoje o nível `tudo`) A MODERAÇÃO ESTAVA DO LADO ERRADO** (`server/src/palavrao.js`, `Room.report`, `game.mute`): havia
   peneira de palavrão no jogo, mas só na saída da LLM (`sanitiza`) — o PREENCHIMENTO era censurado e a
   PESSOA não. A linha de um humano ia para a sala inteira depois de três transformações mecânicas
   (normalizar NFKC, tirar caractere de controle, cortar em `CHAT.MAX_CHARS`), e não havia denylist

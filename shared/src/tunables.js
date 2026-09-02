@@ -18,7 +18,7 @@
 // rodada. Parametrizar por sala exigiria carregar um objeto de tunables por Room→Sim→World→rules, tocando
 // toda assinatura da física e o predict — não vale por um punhado de números.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,TICK_HZ} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both',type:'num'|'opt',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
@@ -36,6 +36,7 @@ export const GRUPOS=[
   ['zona','Zona (Battle Royale)'],
   ['jogador','Jogador'],
   ['sala','Salas'],
+  ['chat','Chat'],
   ['bots','Fala dos bots'],
 ];
 
@@ -98,6 +99,13 @@ export const TUNABLES=[
   // o céu tem que virar um número inteiro de vezes por sala, senão a última troca fica pela metade.
   num('sala','ROUND.TICKS','Duração da sala no modo Livre','minutos','server',5,120,5,ROUND,'TICKS',
     {para:m=>Math.round(m*60*TICK_HZ),de:t=>Math.round(t/(60*TICK_HZ))}),
+  // ── CHAT ──
+  // Quanto da linha de uma PESSOA é mascarado. O padrão é `livre` por decisão de produto (xingar faz parte
+  // de um .io); os portais continuam atendidos por silenciar/denunciar/kick, que valem em qualquer nível.
+  // ⚠️ Isto NÃO afrouxa duas coisas, e o motivo está no cabeçalho de `server/src/palavrao.js`: o NICK
+  // (que fica na tela a partida inteira) e o ÓDIO na fala de um BOT (que é o servidor gerando, não um
+  // jogador falando). Subir para `pesado` antes de mandar um pacote a revisão é um clique, sem deploy.
+  opt('chat','CHAT.FILTRO','Filtro de palavrão no chat','server',CHAT.FILTROS,CHAT,'FILTRO'),
   // ── FALA DOS BOTS ──
   // ⚠️ TAMANHO DA FALA. Os dois tetos não são só peneira: `montaSystem` os DITA ao modelo. Baixá-los aqui
   // encurta a linha gerada de verdade; sem isso a peneira apenas RECUSARIA o que veio grande e o bot

@@ -206,8 +206,15 @@ function montaSystem(){
   'Never write a full, well-formed sentence with punctuation: that is what gives a bot away. Write like a person in a hurry.',
   ESTILO_PROMPT[BOT_LLM.ESTILO]||ESTILO_PROMPT.misto,
   'Lowercase is fine, typos are fine.',
-  'Be funny and cocky. Trash talk and mockery are welcome, and mild swearing is fine.',
-  'Hard limit: no sexual insults, no slurs, nothing about anyone\'s family, body or identity. Provoke about the GAME.',
+  // ⚠️ O PROMPT ACOMPANHA O NÍVEL DO CHAT, senão a liberação é meia: com `CHAT.FILTRO='livre'` a peneira
+  // deixa o bot xingar pesado, mas o SYSTEM continuava PEDINDO comedimento — e o modelo obedece, então a
+  // peneira nem chegava a ser exercida e o preenchimento ficava mais contido que as pessoas da sala.
+  // O piso não muda em nível nenhum: slur e ataque à identidade são o que este processo não inventa.
+  ...(CHAT.FILTRO==='livre'
+    ? ['Be funny and cocky. Trash talk, mockery and swearing are all welcome — this is a rough game lobby.',
+       'Hard limit: no slurs and nothing about anyone\'s race, gender or identity. Everything else is fair game — provoke about the GAME.']
+    : ['Be funny and cocky. Trash talk and mockery are welcome, and mild swearing is fine.',
+       'Hard limit: no sexual insults, no slurs, nothing about anyone\'s family, body or identity. Provoke about the GAME.']),
   // ── O NOME DO JOGADOR É MATÉRIA-PRIMA ──
   // Metade da graça de um .io está no nick que a pessoa escolheu, e o bot ignorava isso completamente.
   // O bloco [who is who] traz o que o SERVIDOR sabe de verdade (a caricatura que o jogador está vestindo,

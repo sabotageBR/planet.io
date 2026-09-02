@@ -1035,7 +1035,18 @@ export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:
 // ⚠️ REPORT_CD_MS é generoso de propósito (1 min): denunciar não é uma ação que se repete numa partida,
 // e sem cooldown o botão vira flood de log. REPORT_LINES é o contexto anexado — as últimas falas do
 // denunciado —, porque "fulano denunciou beltrano" sem texto é uma linha que ninguém julga depois.
-export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40,REPORT_CD_MS:60000,REPORT_LINES:5};
+export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40,REPORT_CD_MS:60000,REPORT_LINES:5,
+  // FILTRO: quanto da linha de uma PESSOA é mascarado (`server/src/palavrao.js` faz a conta). Xingar faz
+  // parte de um .io, e mascarar o que o jogador escreve é decisão de PRODUTO — por isso o padrão é `livre`
+  // e o resto é um clique no /admin. O que os portais pedem por escrito continua de pé em qualquer nível:
+  // silenciar (do cliente), denunciar e o kick/ban do dono da sala.
+  // ⚠️ O nível NÃO vale para o NICK nem para o ÓDIO na boca de um bot — ver o cabeçalho de palavrao.js.
+  FILTRO:'livre',
+  FILTROS:[
+    {v:'livre',label:'Livre — a linha do jogador sai como foi escrita'},
+    {v:'pesado',label:'Mascara o pesado — insulto sexual, família e slur'},
+    {v:'tudo',label:'Mascara tudo — inclui palavrão do dia a dia (merda, porra)'},
+  ]};
 // ── AVISO GLOBAL (painel /admin) ────────────────────────────────────────────
 // Uma faixa no HUD e uma linha de sistema no chat. JSON de controle, como `avatars` e `talk`, então o
 // PROTOCOL_VERSION não muda. ⚠️ Ele NÃO passa por `Room._pushChat`, de propósito: `_pushChat` exige um
