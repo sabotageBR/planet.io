@@ -68,7 +68,15 @@ export async function criar({ pausou, retomou }) {
   // ela REGISTRA o idioma: num portal o 'auto' das prefs passa a resolver para ele, e não para o
   // navegador (sem isso o `GET /api/me`, que chega com `lang:"auto"`, desfazia a escolha da plataforma
   // 200 ms depois do boot). Escolha explícita do jogador nas Opções continua ganhando.
-  try { const tag = b.platform && b.platform.language; if (tag) setLangDaPlataforma(tag); } catch { /* idioma nunca derruba o jogo */ }
+  // ⚠️ E LÊ MAIS DE UMA VEZ. Medido no adaptador da QA Tool deles: o getter `platformLanguage` AVISA a
+  // ferramenta que o jogo leu ("get_language") e, enquanto ela não responde, devolve o idioma do
+  // NAVEGADOR. Ou seja, a primeira leitura — a única que existia aqui — chega cedo demais e traz o
+  // palpite, não a escolha; é a resposta seguinte que traz o "es" com que eles testam a localização.
+  // Reler algumas vezes nos primeiros segundos é barato e resolve sem inventar evento que o SDK não tem.
+  { let ultimaTag = "";
+    const leIdioma = () => { try { const tag = b.platform && b.platform.language;
+      if (tag && String(tag) !== ultimaTag) { ultimaTag = String(tag); setLangDaPlataforma(tag); } } catch { /* idioma nunca derruba o jogo */ } };
+    leIdioma(); for (const ms of [400, 1200, 3000, 6000]) setTimeout(leIdioma, ms); }
 
   escuta(EV.INTERSTITIAL_STATE_CHANGED, e => { if (e === ST.CLOSED || e === ST.FAILED) fecha(); });
   // ⚠️ PAUSA E ÁUDIO SÃO AGREGADOS, E O NOSSO PRÓPRIO ANÚNCIO ENTRA NA CONTA. O Bridge junta cinco
@@ -81,7 +89,14 @@ export async function criar({ pausou, retomou }) {
   // da PÁGINA deles (que tem prioridade sobre o ajuste interno, como na CrazyGames) e pausa do site.
   escuta(EV.PAUSE_STATE_CHANGED, p => { if (meuAnuncio) return; if (p) pausou(); else retomou(); });
   escuta(EV.AUDIO_STATE_CHANGED, ligado => { if (!meuAnuncio) silenciaAnuncio(!ligado); });
-  silenciaAnuncio(!audioDaPlataforma());
+  // ⚠️ SÓ MUTA SE ELA DISSER NÃO, e a assimetria é de propósito: `mudoDeAnuncio(true)` zera o master E
+  // TRAVA O `resume()`, então um mudo aplicado no boot é o mais caro de todos — uma plataforma que
+  // comece "desligada" e não mande o evento de volta deixa o jogo mudo para sempre, e "No audio. The
+  // game should not be completely silent" é um dos findings da certificação deles. Medido no Bridge: o
+  // estado nasce ENABLED (o agregador começa vazio), então na prática esta linha não dispara no boot —
+  // ela existe para a plataforma que já entra muda por escolha do jogador. Desligar o mudo é sempre o
+  // EVENTO acima (ou o `reaplica()` depois de um anúncio nosso).
+  if (!audioDaPlataforma()) silenciaAnuncio(true);
 
   // ── PLACAR SaaS ────────────────────────────────────────────────────────────
   // O `score` da vida, uma vez por vida (`portal/vidas.js`, o mesmo contador da Bounty Board), e nunca
