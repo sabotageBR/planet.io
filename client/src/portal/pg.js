@@ -95,26 +95,44 @@ export async function criar({ pausou, retomou }) {
   // (~200 ms contra os segundos do Bridge), então "não tem sessão" nunca acontece; o que existe é "tem
   // um convidado que nunca jogou". Aí adotar o da nuvem é o certo — é o mesmo jogador voltando em outro
   // aparelho. Havendo progresso local, a sessão de agora manda e a nuvem vira espelho dela.
-  const guarda = (() => { let ultimo = null; return () => {
-    const st = b.storage; if (!st || !st.set) return;
-    const u = (app.get().session.user) || {}, t = u.kind === "registered" ? "" : (api.token || "");
-    if (t === ultimo) return; ultimo = t;
-    try { Promise.resolve(st.set(CHAVE, JSON.stringify({ v: 1, t, n: u.nick || "" }))).catch(() => {}); } catch { /**/ }
-  }; })();
+  // ⚠️ GRAVA NO FIM DE CADA PARTIDA, e não só quando a credencial muda. A primeira versão tinha um
+  // `if (t === ultimo) return` que valia para tudo: como a credencial não muda depois do boot, a
+  // gravação acontecia UMA vez, no segundo em que o SDK ficava pronto — e a certificação continuou
+  // dizendo "the platform did not detect any attempt to save data". A doc deles pede gravar "on
+  // meaningful state change (level complete, purchase, settings change)", e o nosso momento é o fim da
+  // vida: é quando moedas, nível e recorde mudam de verdade. O dedupe fica só no caminho do STORE, que
+  // dispara a cada toast e cada preferência.
+  const blob = () => { const s = app.get().session, u = s.user || {}, st = s.stats || {};
+    return JSON.stringify({ v: 1, t: u.kind === "registered" ? "" : (api.token || ""), n: u.nick || "",
+      // espelho, nunca verdade: quem manda nestes números é o servidor. Estão aqui para o save ter o que
+      // um humano reconhece como progresso quando abrir o painel deles.
+      c: u.coins | 0, s: +st.bestScore || 0, at: Date.now() });
+  };
+  const guarda = () => { const st = b.storage; if (!st || !st.set) return;
+    try { Promise.resolve(st.set(CHAVE, blob())).catch(() => {}); } catch { /**/ } };
   (async () => {
     try {
       const st = b.storage; if (!st || !st.get) return;
+      // ⚠️ O `get` é INCONDICIONAL: a ordem que eles pedem é "no game start, storage.get(...) for the
+      // keys you need" e é ela que a certificação observa. Quem é condicional é o USO do que voltou.
+      const bruto = await st.get(CHAVE);
       const u = (app.get().session.user) || {};
       const branco = u.kind !== "registered" && !u.login && !u.email && !(u.coins | 0);
       if (branco) {
-        const bruto = await st.get(CHAVE);
         const d = JSON.parse((Array.isArray(bruto) ? bruto[0] : bruto) || "null");
         if (d && d.t && d.t !== api.token) { api.adota(d.t); applySession(await api.bootstrap()); }
       }
     } catch { /* nuvem fora: segue com o convidado local, que é o comportamento de sempre */ }
+    // no store, só quando a IDENTIDADE muda (convidado → registrada, ou a que acabou de ser adotada).
+    // ⚠️ `ultimo` nasce com a identidade de AGORA, e não `null`: senão a primeira notificação do store
+    // repetiria o `set` que a linha abaixo acabou de fazer — duas gravações idênticas no boot.
+    const idAgora = () => { const u = (app.get().session.user) || {};
+      return (u.kind === "registered" ? "r" : "g") + (u.id || "") + ":" + (api.token || ""); };
     guarda();
-    app.subscribe(guarda);   // trocou de conta (convidado → registrada, ou a adotada agora): grava de novo
+    let ultimo = idAgora();
+    app.subscribe(() => { const id = idAgora(); if (id === ultimo) return; ultimo = id; guarda(); });
   })();
+  aoAcabarAVida(() => guarda());
 
   return {
     carregou() { recado(MSG.GAME_READY); },

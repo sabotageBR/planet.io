@@ -60,12 +60,17 @@ const avisa = lista => { for (const cb of lista) { try { cb(); } catch { /* um o
  * ⚠️ E o `carregou()` é REPETIDO nesse caso: ele sai uma vez só, do `main.jsx`, e quem chegou depois
  *    dele perderia o "o jogo carregou" — que em vários SDKs é o marco que libera o anúncio.
  */
+let venceu = false;   // o prazo acabou? (é o que separa "chegou atrasado" de "chegou a tempo")
 const pronto = (async () => {
   const mod = carrega(); if (!mod) return null;
   const feito = mod.then(m => m.criar({ pausou: () => avisa(aoPausar), retomou: () => avisa(aoRetomar) })).catch(() => null);
+  // ⚠️ O `venceu` não é detalhe: sem ele, o adaptador que chega A TEMPO leva o `carregou()` DUAS vezes —
+  // uma aqui e outra por quem estava esperando o `pronto`. Vários SDKs recusam o segundo (o Playgama
+  // rejeita a promessa do `game_ready` repetido), e isso é ruído no console do revisor.
   feito.then(s => { if (!s || sdk) return; sdk = s;
-    if (pediuCarregou && s.carregou) { try { s.carregou(); } catch { /* nunca derruba o jogo */ } } });
+    if (venceu && pediuCarregou && s.carregou) { try { s.carregou(); } catch { /* nunca derruba o jogo */ } } });
   sdk = await prazo(feito, P.SDK_MS, null);
+  venceu = true;
   return sdk;
 })();
 
