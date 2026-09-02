@@ -1,5 +1,5 @@
 // ── PORTAL: a fachada neutra ──────────────────────────────────────────────────
-// GameDistribution, CrazyGames e Poki cada um tem o seu SDK, e o jogo não pode saber de nenhum deles.
+// GameDistribution, CrazyGames, Poki e Playgama cada um tem o seu SDK, e o jogo não pode saber de nenhum deles.
 // Aqui mora o vocabulário comum — anúncio, pausa, "carreguei", "comecei a jogar" — e cada adaptador
 // traduz. itch.io não tem SDK: é a ausência de adaptador, e tudo vira no-op.
 //
@@ -32,6 +32,7 @@ const carrega = () => {
   if (PORTAL_ID === "poki") return import("./poki.js");
   if (PORTAL_ID === "y8") return import("./y8.js");
   if (PORTAL_ID === "gm") return import("./gm.js");
+  if (PORTAL_ID === "playgama") return import("./pg.js");
   return null;   // itch.io e qualquer id desconhecido: o jogo roda igual, sem anúncio
 };
 

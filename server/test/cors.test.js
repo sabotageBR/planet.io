@@ -65,9 +65,15 @@ test('a lista do ConfigMap aceita a origem real de cada portal empacotado', () =
     // ⚠️ e o do GameFlare roda no `data.`, não no `www.` nem no `distribution.` — os dois últimos são a
     // página em volta; o iframe do jogo HTML5 vem de data.gameflare.com/games/<id>/<hash>/index.html
     ['GameFlare','https://data.gameflare.com'],
+    // ⚠️ o jogo do Playgama roda num SUBDOMÍNIO POR JOGO de `games.playgama.com`, não em playgama.com:
+    // medido na API pública deles (`/api/v1/games/<hru>`), o `game_url` de um jogo hospedado lá é
+    // `https://<hru>.games.playgama.com/<build>/__patch__/<patch>/index.html?platform_id=playgama`
+    ['Playgama','https://warspace-io.games.playgama.com'],
+    ['Playgama (QA/painel)','https://developer.playgama.com'],
   ]) assert.equal(ok(origem),true,`${portal}: ${origem} deixou de ser aceita`);
   assert.equal(ok('https://storage.y8.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
   assert.equal(ok('https://data.gameflare.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
+  assert.equal(ok('https://games.playgama.com.evil.tld'),false,'e o sufixo continua sendo sufixo');
 });
 
 test('matcher: entrada quebrada é DESCARTADA, nunca vira "casa tudo"', () => {

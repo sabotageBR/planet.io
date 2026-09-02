@@ -1,12 +1,12 @@
 // ── PACOTE PARA OS PORTAIS DE JOGO ────────────────────────────────────────────
-// GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize e GameFlare pedem um .zip com index.html na raiz. É
-// só o
+// GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize, GameFlare e Playgama pedem um .zip com
+// index.html na raiz. É só o
 // CLIENTE: eles hospedam os arquivos e o servidor multiplayer continua sendo warspace.io — é assim que
 // todo .io vive em portal, e a própria GameDistribution abre a exceção por escrito para "Real
 // Multiplayer games". O que faz isso funcionar é a origem absoluta assada no bundle (VITE_API_BASE) e
 // o CORS do lado de lá (server/src/http/cors.js).
 //
-// uso:  node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|all
+// uso:  node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|all
 //       WARSPACE_API_BASE=https://staging.exemplo node scripts/portal-pack.mjs gd
 //
 // ⚠️ O VALOR DESTE SCRIPT SÃO AS GUARDAS. Cada uma delas corresponde a um jeito conhecido de subir um
@@ -16,6 +16,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { PORTAL } from "@warspace/shared";
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SAIDA = path.join(RAIZ, "portal");
@@ -49,6 +50,20 @@ const PERFIS = {
   // (então a origem chega de verdade, e não como `null`) e com `allow="autoplay; fullscreen"` — sem
   // `microphone`, então o push-to-talk não existe lá.
   gameflare: { nome: "GameFlare", strict: false, semSdk: true, env: {} },
+  // Playgama: não há id a assar no bundle — o Bridge descobre a plataforma pelo hostname (e eles ainda
+  // penduram `?platform_id=playgama` na URL do jogo). O que este perfil tem de diferente é o `extras`:
+  // o SDK deles BUSCA `./playgama-bridge-config.json` ao lado do index.html na inicialização, e sem o
+  // arquivo a carga falha com CONFIG_LOAD_FAILED no console — jogo funcionando, defaults aplicados e o
+  // revisor lendo um erro, contra o requisito técnico deles de "no technical messages, errors".
+  // ⚠️ Ele é ESCRITO aqui e não mora em `client/public/`: lá ele iria para o site e para os OUTROS sete
+  // pacotes, declarando um SDK que nenhum deles carrega. E o intervalo mínimo sai de `PORTAL.MIN_AD_MS`
+  // em vez de um número copiado: o Bridge tem um relógio próprio (60 s de padrão) e, desalinhado do
+  // nosso, ele reprova em FAILED anúncios que a fachada considerou legítimos.
+  playgama: { nome: "Playgama", strict: false, env: {}, extras: {
+    "playgama-bridge-config.json": JSON.stringify({
+      advertisement: { minimumDelayBetweenInterstitial: Math.round(PORTAL.MIN_AD_MS / 1000) },
+    }, null, 2) + "\n",
+  } },
 };
 // O que veio de client/public e não faz sentido dentro de um iframe: ícone de app, manifest e o cartão
 // de compartilhamento de uma página que ninguém cola em lugar nenhum. `favicon.svg` fica (810 bytes, e
@@ -87,6 +102,7 @@ function empacota(id) {
   if (r.status !== 0) morre("o build falhou");
 
   for (const f of PODA) fs.rmSync(path.join(dist, f), { force: true, recursive: true });
+  for (const [nome, conteudo] of Object.entries(perfil.extras || {})) fs.writeFileSync(path.join(dist, nome), conteudo);
 
   // ── guardas ────────────────────────────────────────────────────────────────
   const todos = arquivos(dist);
@@ -134,7 +150,7 @@ function empacota(id) {
   const gsi = texto.filter(f => /accounts\.google\.com\/gsi/.test(fs.readFileSync(f, "utf8")));
   if (gsi.length) morre(`o SDK do Google ficou no pacote (${gsi.map(f => path.basename(f)).join(", ")}): a origem do portal não é registrável no client_id`);
 
-  const adaptadores = js.filter(f => /\/(gd|crazy|poki|y8|gm)-[^/]*\.js$/.test(f));
+  const adaptadores = js.filter(f => /\/(gd|crazy|poki|y8|gm|pg)-[^/]*\.js$/.test(f));
   // `import()` com variável viraria glob no Rollup e o zip da GD sairia com o código da Poki dentro
   if (adaptadores.length > 1) morre(`${adaptadores.length} adaptadores de portal no pacote: ${adaptadores.map(f => path.basename(f)).join(", ")}`);
   if (!perfil.semSdk && !adaptadores.length) console.warn("  ⚠ nenhum chunk de adaptador — confira se o SDK deste portal está mesmo ligado");

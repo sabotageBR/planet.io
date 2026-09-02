@@ -18,7 +18,7 @@ npm run build                # client/dist (vite build)
 # PAINEL /admin: rota da MESMA SPA (client/src/admin/, chunk sob demanda). O 1º administrador nasce do env
 # ADMIN_EMAILS (k8s/05-config) no boot — SÓ PROMOVE — ou de um UPDATE users SET is_admin=true. docs/spec/admin.md
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
-node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|all   # o .zip do cliente para os portais (docs/spec/portais.md)
+node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|all  # o .zip do cliente para os portais (docs/spec/portais.md)
 ./scripts/build-push.sh      # builda (contexto = raiz, -f server/Dockerfile / client/Dockerfile) e publica evandromoura/warspace-io-{server,client}
 ./scripts/deploy.sh          # aplica k8s/ + Ingress em warspace.io (WARSPACE_HOST=... troca o host, NO_INGRESS=1 pula)
 ```
@@ -824,6 +824,30 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `"autoplay; fullscreen"`, sem `microphone` — o push-to-talk não existe lá. ⚠️ O aviso "nenhum chunk
   de adaptador" do empacotador deixou de citar `"itch"` pelo nome e passou a sair de `semSdk` no
   perfil: com o literal, o portal novo herdaria um alarme falso a cada build.
+- **Playgama** (`client/src/portal/pg.js`, perfil `playgama`): oitavo portal, e o primeiro cujo SDK é
+  uma FACHADA como a nossa — o *Bridge* existe para publicar o mesmo zip em dezenas de plataformas
+  (`PLATFORM_ID` traz vk, yandex, crazy_games, game_distribution, poki, y8, youtube). ⚠️ **A origem é
+  um SUBDOMÍNIO POR JOGO**, medido na API pública deles (`/api/v1/games/<hru>` → `game_url`):
+  `https://<hru>.games.playgama.com/<build>/__patch__/<patch>/index.html?platform_id=playgama` — o
+  apex é só o portal, e liberá-lo daria o sintoma de sempre (carrega, menu bonito, JOGAR não conecta);
+  e o caminho tem TRÊS níveis, então a `base:"./"` é o que separa carregar de página branca. ⚠️ O
+  `?platform_id=` **não é enfeite**: o Bridge resolve a plataforma por `forciblySetPlatformId` → esse
+  parâmetro → predicado de hostname → `mock`, e não existe predicado para o Playgama — por isso o
+  nosso config NUNCA escreve `forciblySetPlatformId`, que travaria em Playgama um zip que eles
+  redistribuem. ⚠️ O `playgama-bridge-config.json` é escrito pelo EMPACOTADOR ao lado do index.html
+  (campo `extras` do perfil, o primeiro do script): em `client/public/` ele iria para o site e para os
+  outros sete pacotes, e sem ele o Bridge loga `CONFIG_LOAD_FAILED` no console do revisor. O único
+  valor lá dentro é `minimumDelayBetweenInterstitial`, DERIVADO de `PORTAL.MIN_AD_MS` — o Bridge tem
+  relógio próprio (60 s) e, desalinhado, reprova em `failed` anúncios que a fachada achou legítimos.
+  ⚠️ **Sem preroll**, e a regra é deles ("calling it explicitly can result in duplicate ads"): é o
+  mesmo `semPreroll` da CrazyGames. ⚠️ Pausa e áudio são AGREGADOS lá (cinco fontes num estado só) e o
+  NOSSO intersticial entra na conta — repassar os dois caminhos é a receita do bug que a CrazyGames
+  ensinou, então enquanto o anúncio é nosso os eventos são ignorados e quem devolve o estado da
+  plataforma, por último, é `reaplica()`. ⚠️ `platform.sendMessage('game_ready')` REJEITA na segunda
+  chamada (medido no bundle deles): sem `.catch()` é rejeição não tratada no console, contra o
+  requisito técnico de "no technical messages, errors". ⚠️ Nada de string de evento cravada —
+  `EVENT_NAME`/`PLATFORM_MESSAGE`/`INTERSTITIAL_STATE` vêm do próprio `window.bridge`, que é servido
+  por eles em `bridge.playgama.com/v2/stable` e pode mudar sem nos avisar.
 - **`/ads.txt` É DO SITE, E O `try_files` MENTIA SOBRE ELE** (`client/public/ads.txt`,
   `docs/spec/portais.md`): o GamePix tem uma segunda porta além do catálogo de jogos — a de *publisher*,
   onde warspace.io é a propriedade `24C97` —, e o que ela pede não é zip: é o `ads.txt` do IAB na RAIZ do

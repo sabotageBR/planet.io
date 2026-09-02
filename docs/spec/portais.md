@@ -1,7 +1,7 @@
 # Portais de jogo (o cliente hospedado fora de warspace.io)
 
-GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize e GameFlare distribuem jogos HTML5 e pedem **um
-.zip com
+GameDistribution, CrazyGames, Poki, itch.io, Y8, GameMonetize, GameFlare e Playgama distribuem jogos HTML5
+e pedem **um .zip com
 `index.html` na raiz**. O zip é só o **cliente**: eles hospedam os arquivos estáticos no domínio deles,
 dentro de um `<iframe>`, e o servidor multiplayer continua sendo warspace.io. É o modelo normal de um
 `.io` em portal — a CrazyGames diz na documentação que hospeda só os arquivos, a Poki aceita servidor
@@ -9,7 +9,7 @@ externo mediante liberação de CSP, e a GameDistribution tem a exceção por es
 *"We do not permit external hosting of games, except for Real Multiplayer games"*.
 
 ```
-node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|all   → portal/warspace-<id>.zip
+node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|all → portal/warspace-<id>.zip
 node scripts/brand-assets.mjs                         → brand/thumb-*.jpg (5 tamanhos de catálogo)
 ```
 
@@ -422,3 +422,85 @@ sozinho, `audio/mic.js`), e sem `clipboard-write`, que é por que o convite cai 
 
 Revenue share: 85 % para o desenvolvedor nos sites do GameFlare, 50 % nos sites dos publishers da rede
 deles. Pagamento mensal, mínimo de 50 €.
+
+## Playgama (`developer.playgama.com`)
+
+Oitavo portal, e o primeiro cujo SDK é uma **fachada como a nossa**: o *Playgama Bridge* existe para
+publicar o mesmo zip em dezenas de plataformas (o `PLATFORM_ID` dele lista `vk`, `yandex`,
+`crazy_games`, `game_distribution`, `poki`, `y8`, `youtube`, `telegram`…). Empacota com
+`node scripts/portal-pack.mjs playgama`; **não há id a assar no bundle**.
+
+O que eles pedem, na letra dos *Technical requirements*: `index.html` na raiz do arquivo, **300 MB** de
+teto, nomes de arquivo só em latim, **o Bridge integrado**, nenhum sistema de analytics embutido (citam
+o Google Analytics, como a GD) e *"Registration or authorization on external services is not required
+for launching and using the game"* — a conta aqui é opcional em toda tela, então o perfil vai com
+`strict: false`, como o da GD e o da Poki.
+
+⚠️ **A ORIGEM É UM SUBDOMÍNIO POR JOGO, e foi MEDIDA na API pública deles.**
+`GET https://playgama.com/api/v1/games/<hru>` devolve o `game_url` de cada jogo; para os que estão
+hospedados lá (`"source":"playgama"`) ele é:
+
+```
+https://<hru>.games.playgama.com/<buildId>/__patch__/<patchId>/index.html?platform_id=playgama
+```
+
+(`kubzio`, `sletterio`, `big-fluff`, `eat-blobs-simulator` — quatro medidos, mesmo formato.) Ou seja:
+`playgama.com` é o portal, `static.playgama.com` são as imagens do catálogo, e **o nosso código roda em
+`<slug>.games.playgama.com`** — liberar o apex daria o sintoma de sempre (carrega, desenha o menu e o
+JOGAR não conecta). `ALLOWED_ORIGINS` leva `https://*.playgama.com`, que cobre o subdomínio do jogo e o
+`developer.playgama.com` da QA Tool deles; `server/test/cors.test.js` trava a origem medida.
+
+⚠️ **Repare no CAMINHO**: `/<buildId>/__patch__/<patchId>/` são **três** níveis de subcaminho — a
+`base:"./"` do build de portal é o que separa carregar de página branca, como no GameFlare.
+
+⚠️ **`?platform_id=playgama` não é enfeite: é o que ESCOLHE a plataforma.** O Bridge resolve nesta ordem
+(medido no bundle deles): `forciblySetPlatformId` do config → o parâmetro `platform_id` da URL → uma
+tabela de predicados por *hostname* → `mock`. Não existe predicado de hostname para o Playgama, então
+quem manda ali é o parâmetro que eles próprios penduram. Consequência prática: **nunca escrever
+`forciblySetPlatformId` no nosso config** — seria travar em Playgama um zip que eles redistribuem para
+Yandex, VK e YouTube Playables.
+
+⚠️ **O `playgama-bridge-config.json` mora AO LADO do `index.html`** e é o empacotador que o escreve
+(campo `extras` do perfil), não `client/public/`: de lá ele iria para o site e para os outros sete
+pacotes, declarando um SDK que nenhum deles carrega. O Bridge o busca sozinho em
+`./playgama-bridge-config.json` na inicialização e, sem o arquivo, a carga falha com
+`CONFIG_LOAD_FAILED` no console — jogo funcionando, defaults aplicados e o revisor lendo um erro, contra
+o requisito deles de *"no technical messages, errors, or crashes"*. O conteúdo é uma linha só:
+`advertisement.minimumDelayBetweenInterstitial`, derivado de `PORTAL.MIN_AD_MS` em vez de copiado — o
+Bridge tem relógio próprio (60 s de padrão) e, desalinhado do nosso, ele reprova em `failed` anúncios
+que a fachada considerou legítimos.
+
+⚠️ **SEM PREROLL, e a regra é DELES**: *"Do not call showInterstitial() at game start; platforms that
+allow it show it automatically, and calling it explicitly can result in duplicate ads."* É o mesmo
+`semPreroll` da CrazyGames, declarado no adaptador — a fachada não sabe de portal nenhum.
+
+⚠️ **Pausa e áudio são AGREGADOS, e o nosso próprio anúncio entra na conta.** O Bridge junta cinco
+fontes (`interstitial`, `rewarded`, `visibility`, `platform`, `rate`) num estado só e emite
+`pause_state_changed` / `audio_state_changed` — inclusive quando somos NÓS que pedimos o intersticial,
+que é exatamente quando a fachada já está calando o som e levantando a tela de pausa. Repassar os dois
+caminhos é a receita do bug que a CrazyGames nos ensinou (a ordem entre o `retomou()` da fachada e o
+evento do SDK decide se o jogador fica mudo para sempre): enquanto o anúncio é nosso os eventos são
+ignorados, e quem devolve o estado da plataforma, por último, é o `reaplica()`. O que sobra para os
+eventos é o que só o portal sabe — aba escondida e o mudo da PÁGINA deles, que tem prioridade sobre o
+ajuste interno do jogo.
+
+⚠️ **`platform.sendMessage('game_ready')` REJEITA na segunda chamada** (medido: um `#jt` no bundle deles
+devolve `Promise.reject()` sem motivo). Sem `.catch()` isso é uma rejeição não tratada no console do
+revisor — de novo o requisito de "nenhuma mensagem técnica". Os três recados que mandamos são
+`game_ready` (no `carregou()`), `gameplay_started` e `gameplay_stopped`.
+
+⚠️ **Nada de string de evento cravada**: `EVENT_NAME`, `PLATFORM_MESSAGE` e `INTERSTITIAL_STATE` são
+publicados no próprio objeto `window.bridge`, e ler dali é o que sobrevive a uma troca da versão
+`stable` — que é servida por eles (`https://bridge.playgama.com/v2/stable/playgama-bridge.js`), não
+fixada por nós. Fora dos portais deles o Bridge cai na plataforma `mock`, com
+`isInterstitialSupported === false`, e o `anuncio()` resolve na hora.
+
+⚠️ **A Storage API deles fica de fora, por decisão**: a doc pede *"never use localStorage directly"*
+para o progresso, e aqui o progresso **não é local** — mora no nosso Postgres, atrás do token. O que
+está no `localStorage` é a credencial de sessão e as preferências de quem nem conta tem, que é
+exatamente o que a Storage API não resolveria.
+
+Medido no pacote (Chrome headless, servido no subcaminho): Bridge **v2.1.0** inicializado, plataforma
+`mock`, config `200`, tela inicial montada, `#boot` removido e **nenhum erro no console** além da linha
+de banner do próprio SDK. As duas chamadas que falham ali são a API a partir de `127.0.0.1`, que não
+está em `ALLOWED_ORIGINS` — é o esperado, e some no domínio deles.
