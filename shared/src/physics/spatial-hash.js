@@ -4,7 +4,11 @@
 // prefix-sum; query()/queryRect() deduplicam por carimbo; forEachPair() reporta cada par
 // (i<j) exatamente uma vez — só na célula mínima comum aos dois AABBs.
 // @ts-check
-export const GRID_CELL=128;
+// 160 e não 128: a célula acompanha o LADO do mundo (9600/128 = 75 colunas; 12000/160 = 75 também). O
+// `clear()` faz `cellStart.fill(0)` a cada tick em DOIS grids e o `forEachPair` varre `cols×rows` mesmo
+// com o mapa vazio — manter a célula em 128 num mundo 25% maior custaria 56% a mais de custo FIXO por tick,
+// por sala, sem melhorar a resolução do broad-phase (o maior corpo continua sendo do mesmo tamanho).
+export const GRID_CELL=160;
 
 /**
  * @typedef {object} Grid

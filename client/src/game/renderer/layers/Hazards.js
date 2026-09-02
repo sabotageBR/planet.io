@@ -10,12 +10,24 @@ import {Container,Sprite,Graphics} from "pixi.js";
 import {BLACKHOLE,STAR,STAR_PHASE,rectHas} from "@warspace/shared";
 import {colorOf,seedAngle} from "../../util.js";
 
+/** Lista vazia compartilhada: o laço da cobertura não pode alocar um array por frame quando ela está off. */
+const VAZIO=[];
+
 export const BH_TEX=512;
 const BH_SIZE=BH_TEX,SPARK_MIN_PX=26;   // 512: as estriações do disco não sobrevivem a 256 (os 5 buracos dividem UMA textura por tema)
 
 export function createHazards(R){
   const asteroids=new Container(),holes=new Container(),stars=new Container();const aById=new Map(),hById=new Map(),sById=new Map();let frame=0;
-  return{asteroids,holes,stars,setTheme(){},
+  // ⚠️ `starsFront` é a MESMA estrela desenhada de novo, e ela existe por causa de uma regra de física:
+  // abaixo de STAR.PASS_R a peça ATRAVESSA o disco e se esconde lá dentro (rules.js `starPass`). Só que a
+  // camada de estrelas fica ABAIXO de `planets.root` na montagem do Renderer (o halo tem que vazar por
+  // baixo dos corpos), então o planeta escondido aparecia inteiro POR CIMA da estrela — a mecânica não
+  // lia na tela, e "estou escondido" virava fé no manual. Esta é a metade quente do sprite, repetida
+  // acima dos planetas com alfa baixo: quem está dentro fica submerso, e quem está fora não muda em nada
+  // (o alfa é pequeno e o disco já era claro). É o mesmo espírito da promessa
+  // `CRUSH_K == textures.scale.blackHole` do buraco negro: o limiar tem que ser visível.
+  const starsFront=new Container();const fById=new Map();
+  return{asteroids,holes,stars,starsFront,setTheme(){},
     render(f){frame++;const th=R.theme,TX=th.textures,view=f.view,rect=f.rect,rt=f.rt,t=f.t,zoom=f.cam.scale;
       const AK=TX.scale.asteroid,BK=TX.scale.blackHole;
       for(const e of view.asteroids){let rec=aById.get(e.id);
@@ -64,7 +76,22 @@ export function createHazards(R){
             g.stroke({width:rg.width,color:colorOf(rg.color).c,alpha:1,cap:"round"});}}
         rec.ring.position.set(e.rx,e.ry);rec.ring.rotation=rec.a0*2+rt*rg.spinK;rec.ring.tint=colorOf(old?rg.colorOld:rg.color).c;
         rec.ring.alpha=(rg.alpha[0]+(rg.alpha[1]-rg.alpha[0])*(.5+.5*Math.sin(t*(old?rg.pulseOld:rg.pulse))))*e.alpha;}
-      for(const [id,rec] of sById)if(rec.f!==frame){rec.sp.destroy();rec.ring.destroy();sById.delete(id);}},
+      for(const [id,rec] of sById)if(rec.f!==frame){rec.sp.destroy();rec.ring.destroy();sById.delete(id);}
+      // A COBERTURA: um sprite por estrela, o mesmo do cache (nenhuma textura nova), acima dos planetas.
+      // Sai inteira no modo econômico — é enfeite de leitura, não informação que falte em outro lugar.
+      const cobre=ST.front&&!R.econ;
+      for(const e of cobre?view.stars:VAZIO){let rec=fById.get(e.id);
+        if(!rec){const sp=new Sprite();sp.anchor.set(.5);sp.blendMode="add";starsFront.addChild(sp);rec={sp,f:0,a0:seedAngle(e.seed)};fById.set(e.id,rec);}
+        rec.f=frame;const old=e.phase===STAR_PHASE.OLD,halo=e.rr*STAR.HALO,k=Math.min(1,Math.max(0,e.influenceR/halo));
+        if(!rectHas(rect,e.rx,e.ry,halo)){rec.sp.visible=false;continue;}rec.sp.visible=true;
+        const size=Math.min(TX.tier(e.rr),R.texCap);rec.sp.texture=R.cache.get(TX.key("nova",{old},size),size,(c,s)=>TX.nova(c,s,{old}));
+        const pul=1+ST.pulse.amp*Math.sin(t*(old?ST.pulse.speedOld:ST.pulse.speed));
+        // só o MIOLO (`front.k`, bem menor que o SK do sprite de baixo): a coroa de plasma por cima dos
+        // planetas viraria uma mancha em volta da estrela, e o que precisa cobrir é o disco onde se esconde
+        const d=e.rr*ST.front.k*pul*(.35+.65*k);
+        rec.sp.width=rec.sp.height=d*2;rec.sp.position.set(e.rx,e.ry);rec.sp.rotation=rec.a0+rt*ST.spin;
+        rec.sp.alpha=ST.front.alpha*Math.min(1,k*ST.alphaK)*e.alpha;}
+      for(const [id,rec] of fById)if(rec.f!==frame){rec.sp.destroy();fById.delete(id);}},
     counts(){return{asteroids:aById.size,holes:hById.size,stars:sById.size};},
-    destroy(){asteroids.destroy({children:true});holes.destroy({children:true});stars.destroy({children:true});aById.clear();hById.clear();sById.clear();},
+    destroy(){asteroids.destroy({children:true});holes.destroy({children:true});stars.destroy({children:true});starsFront.destroy({children:true});aById.clear();hById.clear();sById.clear();fById.clear();},
   };}

@@ -52,9 +52,12 @@ test("modeCap: a capacidade fecha no tamanho de equipe (equipe incompleta não e
   assert.equal(modeCap(MODE.BR,0),modeOf(MODE.BR).max,"teamSize 0 não divide por zero");});
 
 // ── 2. zona ─────────────────────────────────────────────────────────────────
-test("zona: a máquina fecha em 30 000 ticks e o círculo novo SEMPRE cabe dentro do anterior",()=>{
+test("zona: a máquina fecha em 37 500 ticks e o círculo novo SEMPRE cabe dentro do anterior",()=>{
   const total=ZONE.HOLD_TICKS.reduce((a,b)=>a+b,0)+ZONE.SHRINK_TICKS.reduce((a,b)=>a+b,0);
-  assert.equal(total,30000,"8 min 20 s: o fechamento inteiro");
+  // 10 min 25 s: os 8 min 20 s de sempre × 1,25, porque o mapa cresceu 25% de lado. O tempo tem que
+  // acompanhar a TRAVESSIA, senão quem está na borda simplesmente não chega e o gás vira a assassina
+  // principal — que é o que `bot.test.js` mede e recusa.
+  assert.equal(total,37500,"10 min 25 s: o fechamento inteiro");
   assert.ok(total<BR.ROUND_TICKS,"a zona tem que fechar ANTES do teto da partida, senão o BR acaba sem decidir nada");
   assert.equal(ZONE.R.length,ZONE.STAGES+1,"um raio por etapa mais o final");
   for(let i=1;i<ZONE.R.length;i++)assert.ok(ZONE.R[i]<ZONE.R[i-1],`R[${i}] menor que o anterior`);
@@ -166,6 +169,33 @@ test("zona: o gás ARRANCA pelotas da peça, para FORA, e a transferência é ex
   const maisLonge=pelotas.filter(e=>Math.hypot(e.x-cx,e.y-cy)>dPeca).length;
   assert.ok(maisLonge>=pelotas.length*.7,`a maioria tem que sair para fora (${maisLonge}/${pelotas.length})`);
   for(const e of pelotas)assert.equal(e.owner,0,"a pelota é minha: dá para voltar e pegar, pagando o preço");});
+test("zona: colher DENTRO do gás vale ZONE.GAS_GAIN — acampar na beirada era renda líquida",()=>{
+  // ⚠️ O par de mundos é o mecanismo do teste: mesma peça, mesma pelota, mesma distância. O que muda é
+  // só onde está o círculo — longe (peça 100% exposta) contra em cima dela (peça 100% dentro).
+  const monta=(seed,zx,zy)=>{
+    const w=empty(seed);w.addPlayer(0,{x:1000,y:1000,r:120});
+    w.setZone({x0:zx,y0:zy,r0:600,x1:zx,y1:zy,r1:600,t0:0,t1:Infinity});
+    const pc=w.piecesOf(0)[0];
+    // pelota parada colada na peça, SEM dono (owner -1) para não pegar o cooldown de reabsorção
+    const e=w.addEjected(pc.x+pc.r*.4,pc.y,0,0,10,400,-1,0,600,0);
+    return{w,pc,e,m0:pc.mass};};
+  const fora=monta(90,8000,8000),dentro=monta(91,1000,1000);
+  for(const c of [fora,dentro]){c.w.setTarget(0,c.pc.x,c.pc.y);c.w.step();
+    assert.ok(c.e.dead,"a pelota foi absorvida nos dois casos");}
+  // dentro do círculo o ganho é o de sempre; exposto, é a fração declarada
+  const gDentro=dentro.pc.mass-dentro.m0;
+  assert.ok(Math.abs(gDentro-400)<1e-6,`dentro do círculo a massa volta INTEIRA (veio ${gDentro})`);
+  // fora, a peça também está queimando no mesmo tick — então compara-se o GANHO da absorção, medido
+  // contra uma peça gêmea que não come nada
+  const ctrl=monta(90,8000,8000);ctrl.e.dead=true;ctrl.w.setTarget(0,ctrl.pc.x,ctrl.pc.y);ctrl.w.step();
+  const gFora=fora.pc.mass-ctrl.pc.mass;
+  assert.ok(Math.abs(gFora-400*ZONE.GAS_GAIN)<1e-3,`exposto ao gás vale ZONE.GAS_GAIN (esperado ${400*ZONE.GAS_GAIN}, veio ${gFora})`);
+  // e no modo LIVRE (sem zona) nada disso existe
+  const livre=empty(92);livre.addPlayer(0,{x:1000,y:1000,r:120});
+  const lp=livre.piecesOf(0)[0],lm=lp.mass;
+  const le=livre.addEjected(lp.x+lp.r*.4,lp.y,0,0,10,400,-1,0,600,0);
+  livre.setTarget(0,lp.x,lp.y);livre.step();
+  assert.ok(le.dead&&Math.abs(lp.mass-lm-400)<1e-6,"sem zona o ganho é intocado");});
 test("zona: quem morre no gás larga TUDO ali, sem dono",()=>{
   const w=empty(32);w.addPlayer(0,{x:1000,y:1000});
   w.setZone({x0:8000,y0:8000,r0:400,x1:8000,y1:8000,r1:400,t0:0,t1:Infinity});
@@ -362,6 +392,27 @@ test("chavear: Q anda pelas armas com munição, e o míssil está sempre na rod
   w.requestSwap(0);w.step();
   assert.equal(ps.weapon,WEAPON.BURST,"e volta para a rajada: a roda é circular");
   assert.equal(ownedMask(ps),(1<<WEAPON.MISSILE)|(1<<WEAPON.BURST),"o bitmask do HUD diz o que dá para chavear");});
+test("trava: depois do Q, arma do chão só ABASTECE — nunca arranca da mão o que o jogador escolheu",()=>{
+  const w=empty(43);w.addPlayer(0,{x:4000,y:4000,r:100,missiles:1});
+  const ps=w.players.get(0),pc=w.piecesOf(0)[0];
+  const solta=type=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;w.foodDirty=true;w.step();};
+  solta(FOOD_TYPE.W_BURST);
+  assert.equal(ps.weapon,WEAPON.BURST,"o PRIMEIRO contato com armas continua equipando (não há escolha a respeitar ainda)");
+  assert.equal(ps.weaponPin,false,"e não trava nada: quem escolheu foi o jogo, não o jogador");
+  w.requestSwap(0);w.step();
+  assert.equal(ps.weapon,WEAPON.MISSILE,"o jogador escolheu o míssil");
+  assert.equal(ps.weaponPin,true,"a partir daqui a escolha é dele");
+  solta(FOOD_TYPE.W_CLUSTER);
+  assert.equal(ps.weapon,WEAPON.MISSILE,"pisar num cacho NÃO arranca o míssil da mão");
+  assert.equal(ps.ammo[WEAPON.CLUSTER],WEAPONS[WEAPON.CLUSTER].ammo,"mas o cacho entrou no cinto, cheio");
+  assert.equal(ownedMask(ps),(1<<WEAPON.MISSILE)|(1<<WEAPON.BURST)|(1<<WEAPON.CLUSTER),"e o HUD mostra as três");
+  // o único estado ruim que a trava poderia criar: preso numa arma VAZIA pisando numa cheia
+  ps.ammo[WEAPON.MISSILE]=0;
+  solta(FOOD_TYPE.W_BURST);
+  assert.equal(ps.weapon,WEAPON.BURST,"travado numa arma sem munição, a arma nova volta para a mão");
+  // e morrer devolve tudo ao começo
+  w.respawnPlayer(0);
+  assert.equal(ps.weaponPin,false,"vida nova, escolha nova");});
 test("chavear: arma que zerou sai da roda (mas o míssil fica)",()=>{
   const w=empty(42);w.addPlayer(0,{x:4000,y:4000,r:100,missiles:1});
   const ps=w.players.get(0);

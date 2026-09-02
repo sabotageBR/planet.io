@@ -92,7 +92,13 @@ test('a duração escolhida vira os ticks da sala, e a validação é a MESMA do
   // ⚠️ no Battle Royale não há SEM FIM: o tempo é a rede de segurança da zona
   assert.equal(roundTicksOf(MODE.BR,0),null,'BR não aceita sem fim');
   assert.equal((await post('/api/rooms',{mode:MODE.BR,minutes:0},{tok})).status,409);
-  assert.ok(roundTicksOf(MODE.BR,10)>=ZONE_TOTAL_TICKS,'e o piso do BR é derivado da zona, não copiado');});
+  // ⚠️ O piso do BR é DERIVADO da zona, não copiado — então a menor duração válida se move sozinha quando
+  // as etapas mudam. Com o mapa de 12000 a zona fecha em 37 500 ticks (10 min 25 s) e os 10 minutos
+  // deixaram de caber: o menor que serve passou a ser 20. Por isso o teste procura, em vez de cravar.
+  const menor=ROUND.CHOICES_MIN.filter(m=>m>0&&roundTicksOf(MODE.BR,m)!==null).sort((a,b)=>a-b)[0];
+  assert.ok(menor,'alguma duração da lista tem que servir ao BR');
+  assert.ok(roundTicksOf(MODE.BR,menor)>=ZONE_TOTAL_TICKS,'e o piso do BR é derivado da zona, não copiado');
+  assert.equal(roundTicksOf(MODE.BR,menor-10),null,'e o degrau abaixo dele não serve');});
 
 // ── 3. SEM FIM: o bug do `0 >= 0` e a cascata de BIG CRUNCH ────────────────────────────────
 test('tempo infinito: a rodada não acaba no primeiro tick e não sai um aviso de fim de mundo',async()=>{

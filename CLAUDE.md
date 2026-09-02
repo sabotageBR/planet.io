@@ -59,7 +59,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 ## Arquitetura
 
 - **Autoridade no servidor, física compartilhada.** `shared/physics` roda a 60 Hz no servidor (`World.step`) e no cliente só para as
-  próprias peças (`predict.js`). Determinística: `mulberry32` por sala, tick inteiro, sem gerador nativo. Spatial hash de 128 px.
+  próprias peças (`predict.js`). Determinística: `mulberry32` por sala, tick inteiro, sem gerador nativo. Spatial hash de 160 px (a célula acompanha o LADO do mundo: 12000/160 = 75 colunas, o mesmo de 9600/128).
   Regras: engolir só com `EAT.RATIO` (1.15) e centro dentro; senão quique elástico;
   **conservação de massa** (`FRAG`, `fragR`/`fragLife` em constants): tudo que é arrancado de um planeta (split, lasca, míssil,
   pedágio do buraco negro) vira fragmento com a massa REAL que saiu — só o ejetado pode ter `mass ≠ r²`, e o raio é `fragR(mass)`,
@@ -83,7 +83,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   **meteoro grande** (r ≥ `ASTEROID.SMASH_MIN_R`) que trombar nela faz a estrela explodir e morrer, e a rocha morre
   junto — também sem multiplicar; a estrela nasce longe do anel dos cinturões (`BELT_SAFE`), senão vira moedor);
   buracos negros (**DESLIGADOS por enquanto**: `BLACKHOLE.COUNT = 0`, porque a mecânica não ficou boa; o perigo foi para as estrelas,
-  `STAR.COUNT` = 12. O código continua inteiro e volta trocando o número — todos os consumidores são laços sobre `w.holes`, que viram
+  `STAR.COUNT` = 19. O código continua inteiro e volta trocando o número — todos os consumidores são laços sobre `w.holes`, que viram
   no-op com a lista vazia. Como era: força ∝ 1/d² com parte tangencial `SWIRL` = espiral, influência `CORE_R·INFLUENCE` ≈ 380 px; **não há
   teleporte**: quem chega ao núcleo é ESMAGADO — morre e a massa INTEIRA volta como `SPAGHETTI_N` pellets comíveis num anel
   logo FORA da influência. Mas só quem cabe: peça com `r ≥ rc·CRUSH_K` (2.4, o mesmo número de `textures.scale.blackHole`
@@ -154,7 +154,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   era a atração que dava embalo ao reintegrar. Nada de velocidade acumulada = nada de embalo de graça.
 - **Resto do modelo do agar** (divisão/teto/câmera): `r/√2` nas duas metades, até `PLAYER.MAX_PIECES`=16, `SPLIT.MIN_R`=60
   (=`EJECT.MIN_R`), fusão em `max(30 s, 0,2·r s)`, arremesso de 780 px absolutos com controle total do ponteiro durante ele.
-  `PLAYER.MAX_R`=1000 (mesma proporção mundo/célula do agar) e passar dele **não trava**: `rules.autoSplit` reparte em
+  `PLAYER.MAX_R`=1250 (mesma proporção mundo/célula do agar: 12000/1250 = 9,6) e passar dele **não trava**: `rules.autoSplit` reparte em
   ⌊mass/MAX_R²⌋ filhos; só sem vaga de peça o raio é cortado. Câmera (`shared/camera.js`):
   `min(CAM.BASE/ΣR, 1)^0.4 × max(H/1080, W/1920)` com suavização `CAM.TAU_POS`/`TAU_ZOOM`. A câmera é LIVRE (piso =
   mostrar o mundo inteiro); quem tem teto é a **AOI da comida** (`camera.aoiScaleFood`, `CAM.AOI_FOOD_VIEW`) — juntar
@@ -247,7 +247,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   em diagonal era atalho). **A COMIDA SEGUE A ZONA**: `spawnFood` sorteia dentro do círculo, o alvo de população é
   `foodTarget() = clamp(π·r²/ZONE.FOOD_AREA, FOOD_MIN, FOOD.COUNT)`, o que fica no gás MORRE
   (`_cullFoodOutOfZone`, `ZONE.FOOD_SCAN` grãos por tick) e a reposição tem RENDA (`ZONE.FOOD_FILL_S`: a
-  população inteira a cada 2 s), não torneira — repor na hora é inofensivo em 92 M px² e é FONTE INFINITA num
+  população inteira a cada 2 s), não torneira — repor na hora é inofensivo em 144 M px² e é FONTE INFINITA num
   círculo de 480 px, onde o líder cobre quase tudo e reengole cada grão no tick seguinte: medido com 49 bots, o
   consumo ia de ~200 para 7 579 grãos/s nos últimos 30 s e o líder saía de 355 mil para 1,02 MILHÃO em 15 s — o
   tapete engordava o gigante. Com a renda o pequeno não perde nada (ele só alcança ~43 grãos/s) e em 60 s no
@@ -256,9 +256,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ABSOLUTA, então vale 2 % para quem tem 900 de massa e 0,01 % para quem tem 200 000, que ainda perde `PLAYER.DECAY`
   por segundo. Sem isso o círculo final era um deserto de 20 grãos e a última fase premiava tamanho acumulado, não
   jogada.
-  ⚠️ **A zona fecha em 30 000 ticks (8 min 20 s), não em 21 300**: as três primeiras etapas ganharam quase
+  ⚠️ **A zona fecha em 37 500 ticks (10 min 25 s)**: as três primeiras etapas ganharam quase
   todo o tempo extra e as duas últimas não mudaram — o começo deixou de ser corrido e o fim continua tenso.
-  `BR.ROUND_TICKS` subiu junto (27 000 → 36 000), e os dois andam SEMPRE juntos: alongar a zona sem alongar o
+  `BR.ROUND_TICKS` subiu junto (36 000 → 45 000), e os dois andam SEMPRE juntos: alongar a zona sem alongar o
   teto faz a partida acabar por tempo antes de o círculo fechar, que é o único jeito de o Battle Royale
   terminar sem ter decidido nada. Em produção quem manda é o env `ROUND_TICKS` (`k8s/05-config`). O piso de
   comida do círculo final caiu (`FOOD_MIN` 60 → 28): 60 grãos num círculo de 144 px é 2,2× a densidade do
@@ -268,7 +268,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   encosta no gás.
   **A ESTRELA TAMBÉM SEGUE A ZONA** (`ZONE.STAR_*`): ela nascia sorteada no mapa inteiro, então o
   círculo fechado não tinha nenhuma e o perigo saía da partida justo quando ela fica interessante. Um
-  predicado "está dentro do círculo?" não resolveria — com o círculo em 480 px de 9600, o ponto uniforme
+  predicado "está dentro do círculo?" não resolveria — com o círculo em 600 px de 12000, o ponto uniforme
   acerta 0,8 % das vezes e o `_farSpot` DEVOLVE a última tentativa —, então quem mudou foi a AMOSTRAGEM:
   polar dentro do disco (`d=√u·r`), o mesmo caminho que a comida já usava. `MIN_SEP` afrouxa junto com o
   raio (1400 px de folga não cabem num círculo de 1400) e, abaixo de `ZONE.STAR_MIN_R`, o respawn **ADIA**
@@ -331,6 +331,88 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   10 bytes. O míssil nunca sai do cinto, nem zerado. `acceptsJoin()` é a porta única de entrada da sala.
   **Vitória tem fogos**: quem vence vê a salva sair do próprio planeta (`fireworkPrims` em theme/util.js —
   física compartilhada, paleta por tema; traço em vez de ponto, arrasto, gravidade, cor em 3 tempos, cintilação).
+- **O MAPA É 12000×12000** (`WORLD` em constants; era 9600, +25% de lado e +56% de área). É edição de
+  BUILD e **nunca** tunable: `protocol/codec.js` captura `const W=WORLD.w` no LOAD DO MÓDULO e o cliente
+  tem cópia própria do bundle — dois valores diferentes corrompem `qPos/dqPos` e toda posição do fio sai
+  deslocada, em silêncio; os 3 shards e o cliente têm que subir na MESMA imagem. O que é FRAÇÃO acompanha
+  sozinho (a zona, o anel de largada do BR, o piso da câmera, a quantização, a grade, o radar, o fundo);
+  o que é CONTAGEM ou DISTÂNCIA foi escalado à mão, cada um com o expoente certo — **s² para população**
+  (`FOOD.COUNT` 2500→3900, `ASTEROID.BELTS` 4→6 e `WANDERERS` 18→28, `MAX_EXTRA` 6→9, `STAR.COUNT` 12→19,
+  `ZONE.FOOD_MIN` 1200→1875) e **s para alcance e tempo** (`PLAYER.MAX_R` 1000→1250, as duas listas de
+  `ZONE.HOLD/SHRINK_TICKS`, `BR.ROUND_TICKS` 36000→45000, `VOICE.DIST` 3200→4000, `MISSILE.LIFE_TICKS`
+  500→625 e os alcances de alerta e mira, `GRID_CELL` 128→160).
+  ⚠️ **`CAM.AOI_FOOD_VIEW` vai no sentido CONTRÁRIO** (.55 → .44): ela é a fatia do MUNDO que a AOI da
+  comida pode cobrir, então mantê-la faria a janela crescer 25% em px e a varredura de células 56% — o
+  orçamento de rede não cresce com o mapa.
+  ⚠️ O que NÃO escala: `NET.AOI_FOOD_MAX` (é teto de rede), `FOOD.MARGIN/STAR_CLEAR/NEAR_HAZARD_R` e
+  `ASTEROID.BELT_RADIUS` (geometria LOCAL do perigo), `STAR.MIN_SEP/SAFE_SPAWN`, `ZONE.MIN_R/FOOD_AREA`
+  (densidade, não tamanho) e `SPLIT.DIST`/`EJECT`/`BOUNCE`, que são o modelo do agar.
+  ⚠️ **O piso da câmera muda de comportamento, não só de valor**: `zmin` cai de .2 para .16 e passa a
+  morder em ΣR ≈ 6245 (era 3578), ou seja o gigante afasta mais antes de bater nele — e peça, asteroide,
+  estrela e míssil vêm pela visão INTEIRA, sem teto de contagem. É o maior risco de rede do mapa maior e
+  não aparece em teste nenhum: medir com `?stats` numa sala cheia.
+  ⚠️ **O menor Battle Royale possível subiu de 10 para 20 min**: `roundTicksOf` recusa abaixo de
+  `ZONE_TOTAL_TICKS`, que agora é 37 500. A tela de "Sala sua" já filtra por essa função, então o chip de
+  10 min some sozinho — mas um teste que cravasse 10 quebra, e é isso que ele deve fazer.
+  ⚠️ Custo medido do tick (arena de `physics.test.js`): média 0,97 → 1,32 ms, p99 3,31 → 3,74. O `GRID_CELL`
+  maior é o que segura o custo FIXO (`cellStart.fill(0)` em dois grids por tick, mais o `forEachPair` sobre
+  `cols×rows`, que rodam mesmo com o mapa vazio).
+- **O PEQUENO ATRAVESSA A ESTRELA E SE ESCONDE LÁ DENTRO** (`STAR.PASS_R`, `rules.starPass`): abaixo de
+  40 px de raio a peça não é empurrada, não queima, não estilhaça e — o que faz o esconderijo existir —
+  **não detona a estrela**. `pieceStar` chamava `supernova(...,rammed)` de forma INCONDICIONAL, então o
+  pedaço mínimo já não estilhaçava (`SHATTER_MIN_R`) mas matava o abrigo mesmo assim: a mecânica se
+  autodestruía no primeiro uso. Contra o gigante é assimétrico de propósito — ele não cabe, e entrar lhe
+  custa `BURN` e a estrela.
+  ⚠️ **É RAIO ABSOLUTO, e os dois lados do número são escolhidos**: 40 > `PLAYER.START_R` (30), então quem
+  acabou de nascer cabe; e 40 < `SPLIT.MIN_R/√2` (42,43), que é o MENOR raio que um jogador consegue
+  produzir de propósito — acima dele "esconder-se" viraria um botão do médio (picar-se em 16 pedacinhos),
+  o mesmo exploit que `shatterBlock`/`STUCK` existe para fechar. Fração do raio da estrela seria elegante
+  (é o que `BLACKHOLE.CRUSH_K` faz), mas ela INCHA até `R·SWELL`=80,5 na fase OLD e o buraco cresceria
+  junto, abrindo a brecha sozinho.
+  ⚠️ **O miolo da supernova NÃO poupa o passante**, e é o contra-jogo: quem se escondeu é cuspido quando a
+  estrela morre, e acima de `SHATTER_MIN_R` estilhaça junto. Um abrigo que ninguém consegue arrombar não é
+  abrigo, é invulnerabilidade.
+  ⚠️ **Sem espelho em `predict.js`** — ele não menciona estrela em nenhuma das 47 linhas —, e a mudança
+  ainda apaga de graça um erro que existia: o `addBoost` de `PUSH_TOUCH_DIST` (160 px) passa de
+  `NET.SNAP_DIST` (120), ou seja encostar em estrela DAVA snap no cliente.
+  ⚠️ **O bot precisou aprender** (`temeEstrela` em `bot.js`): o medo era `r·HALO·STAR_FEAR` sem olhar o
+  PRÓPRIO raio, nos três lugares (`_openness`, `_mapDangers`, `_nearestHazard`). Sem isso um bot pequeno
+  fugindo recusaria justamente o único lugar que o salva. O molde é a linha do buraco negro logo ao lado
+  ("só assusta quem ele consegue esmagar").
+  ⚠️ **E precisou de uma camada de render** (`hazards.starsFront`, montada DEPOIS de `planets.root` em
+  `Renderer.js`): a estrela é desenhada por baixo dos corpos (o halo tem que vazar por baixo), então o
+  planeta escondido aparecia inteiro POR CIMA dela e a mecânica não lia na tela. É a metade quente do
+  MESMO sprite (nenhuma textura nova), repetida acima dos planetas com alfa baixo — o mesmo espírito da
+  promessa `CRUSH_K == textures.scale.blackHole`.
+- **COLHER DENTRO DO GÁS VALE METADE** (`ZONE.GAS_GAIN`, `rules.gasGain`): acampar na beirada era RENDA
+  LÍQUIDA, e o laço se fechava sozinho — `zoneBurn` arranca `pc.shed` e cospe pelotas para FORA, e passada
+  a imunidade `pieceEject` devolvia 100% (`EAT.EJECT_GAIN`=1). Quem ficava no gás queimava e recolhia a
+  própria queimadura indefinidamente, enquanto o círculo apertava em cima de quem estava jogando o jogo.
+  Vale para a comida também, e para o SCORE junto: descontar só a massa deixaria o campista subindo no
+  placar de graça.
+  ⚠️ O desconto é **linear na exposição**, não degrau (`exp=1` dá exatamente .5): a borda fica monótona e
+  não oscila a 60 Hz — é a mesma razão de `ZONE.EXPOSE_MIN` existir.
+  ⚠️ **Quem paga é a exposição do COMEDOR**, nunca a posição do fragmento: com peça de até `MAX_R` de raio
+  e círculo final de 960 px, um gigante com o centro fora engoliria caco de dentro — é o mesmo erro que
+  fez `zoneExposure` substituir o critério do centro.
+  ⚠️ Isto faz do gás o **quarto sumidouro de massa** do jogo, ao lado de `PLAYER.DECAY`, `STAR.BURN` e da
+  comida que morre no gás. O `zc` já estava em escopo no `step` (`world.js`), então não custou lookup nem
+  protocolo; e `predict.js` não prediz absorção (`Predictor` reescreve `r`/`mass` do snapshot), então não
+  há espelho a manter. **Não mexer em `zoneBurnRate`/`zoneMass`/`zoneExposure`**: essas três SÃO espelhadas
+  e qualquer mudança nelas quebra a paridade de 1e-9.
+- **A ARMA FICA TRAVADA NO QUE O Q ESCOLHEU** (`ps.weaponPin`): `eatFood` fazia DUAS coisas na mesma linha
+  — abastecer o cinto (sempre desejável) e EQUIPAR —, então pisar numa Rajada arrancava da mão a arma que
+  o jogador tinha acabado de escolher, no meio de uma briga e sem nada que ele pudesse fazer. Agora o
+  pickup só reequipa enquanto o jogador **nunca** apertou o Q.
+  ⚠️ O pin é armado no ramo de `swapWeapon` que troca DE VERDADE, nunca no `swapReq` nem no topo da
+  função: o Q com uma arma só no cinto é um no-op, e depois dele o jogador ainda tem que ver a PRIMEIRA
+  arma que pisar vir para a mão ("pegar e não ver nada acontecer é pior que não pegar").
+  ⚠️ `||ammoOf(ps)<=0` fecha o único estado ruim que a trava cria: travado numa arma VAZIA, pisando numa
+  cheia e continuando sem tiro.
+  ⚠️ **Não custa protocolo**: `PlayerState` não é serializado (o fio só leva o `self` de tamanho fixo), e o
+  precedente é `aimLockId`/`aimLockUntil`. Zera em `_spawnPiece`, que é o caminho ÚNICO cobrindo
+  `addPlayer`, `respawnPlayer` e a largada do BR. O bot troca pelo mesmo `INPUT_FLAG.SWAP`, então o pin
+  vale para ele também — e `_bestWeapon` volta a pedir a troca sozinho.
 - **O PREÇO QUE NÃO CABE EM PEÇAS** (`shatterBlock` em `rules.js`, `EVENT.STUCK`, **PROTOCOL_VERSION 14**):
   estrela, míssil e asteroide cobram METADE do preço PARTINDO o alvo — e com as `PLAYER.MAX_PIECES`
   ocupadas isso simplesmente não acontecia, **em silêncio** (`shatterPiece` devolvia um `false` que
@@ -360,8 +442,8 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   Medindo a exposição ele **derrete até caber**, e quem já cabe não sente nada. Três atalhos antes de
   qualquer `acos` (cabe inteira · inteira fora · o CÍRCULO dentro da peça, que é `1 − R²/r²` e é o caso do
   gigante) mantêm o custo por tick: ~50 µs no pior caso absoluto, contra 1,5 ms de orçamento.
-  ⚠️ A cauda de `ZONE.R` mudou junto (final .015 → **.08**, 144 → 768 px) — sem isso a cura mata o
-  paciente: o teto geométrico seria 20 736 de massa para a SALA INTEIRA. 768 px é ~um arremesso de split
+  ⚠️ A cauda de `ZONE.R` mudou junto (final .015 → **.08**, hoje 960 px no mapa de 12000) — sem isso a cura mata o
+  paciente: o teto geométrico seria 20 736 de massa para a SALA INTEIRA. 960 px é ~um arremesso de split
   de raio: cabe a briga, não cabe o planeta. E cada etapa passou a tirar METADE da área, então a pressão é
   constante do começo ao fim. O teto de massa do fim virou geométrico e de graça: `Σr² ≤ R²` = 590 mil
   para a sala toda. `ZONE.FOOD_MIN` subiu junto (28 → 1200), senão o tapete de comida do círculo final —

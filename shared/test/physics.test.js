@@ -157,7 +157,16 @@ test("predição: com o W segurado a peça própria continua batendo com o servi
   assert.ok(own[0].r<100,`o planeta esvaziou de verdade durante o teste (r final ${own[0].r.toFixed(0)})`);});
 
 // 9. desempenho: sala cheia
-test("desempenho: sala cheia (30×16 peças, mundo e população de produção, 120 ejetados) — média ≤ 1.5 ms/passo",t=>{
+// ⚠️ O TETO SUBIU DE 1,5 PARA 2,0 ms COM O MAPA DE 12000, e não é afrouxamento: o custo do tick é
+// proporcional à POPULAÇÃO, e manter a densidade de comida num mapa 56% maior significa 3 900 grãos em vez
+// de 2 500. Medido nesta mesma bancada, isolando só a comida (mundo 12000 nos três):
+//     FOOD.COUNT 2500 → 1,13 ms · 3200 → 1,32 ms · 3900 → 1,51 ms
+// ou seja ~0,27 µs por grão, e a comida é ~90% das entidades. O que segurou o resto foi o `GRID_CELL`
+// (128 → 160): a contagem de células ficou igual (75×75), então o custo FIXO por tick — o `cellStart.fill(0)`
+// de DOIS grids mais o `forEachPair` sobre `cols×rows`, que rodam mesmo com o mapa vazio — não cresceu.
+// 2,0 ms de pior caso a 60 Hz ainda deixa ~8 salas nesse regime por shard, e o pior caso aqui é 30 jogadores
+// com 16 peças CADA, que uma sala de verdade não sustenta.
+test("desempenho: sala cheia (30×16 peças, mundo e população de produção, 120 ejetados) — média ≤ 2.0 ms/passo",t=>{
   const w=createWorld({seed:2024}),script=createRng(5);
   for(let s=0;s<30;s++){w.addPlayer(s,{isBot:s>=5,r:280,missiles:1});w.setTarget(s,script.range(0,WORLD.w),script.range(0,WORLD.h));}
   for(let round=0;round<3;round++){for(let s=0;s<30;s++)w.requestSplit(s);for(let i=0;i<SPLIT.COOLDOWN_TICKS+1;i++)w.step();}
@@ -173,7 +182,7 @@ test("desempenho: sala cheia (30×16 peças, mundo e população de produção, 
   t.diagnostic(`passo: média ${avg.toFixed(3)} ms · p50 ${p50.toFixed(3)} · p99 ${p99.toFixed(3)} · máx ${max.toFixed(3)} · peças máx ${maxPieces} · comida ${w.food.length} · asteroides ${w.asteroids.length} · ejetados ${w.ejected.length}`);
   console.log(`[perf] média ${avg.toFixed(3)} ms · p50 ${p50.toFixed(3)} ms · p99 ${p99.toFixed(3)} ms · máx ${max.toFixed(3)} ms · peças máx ${maxPieces}`);
   assert.ok(maxPieces>=200,`sala deveria ter ≥200 peças (teve ${maxPieces})`);assert.equal(w.food.length,FOOD.COUNT);
-  assert.ok(avg<=1.5,`média ${avg.toFixed(3)} ms > 1.5 ms`);});
+  assert.ok(avg<=2.0,`média ${avg.toFixed(3)} ms > 2.0 ms`);});
 
 // 10. fusão por proximidade
 test("fusão: não há atração entre peças próprias (elas se juntam pelo ponteiro) e nenhuma ganha impulso ao fundir",()=>{
@@ -353,11 +362,22 @@ test("estrela: encostar QUEIMA STAR.BURN da massa e estilhaça o resto, com cool
   assert.ok(parts.some(p=>boostLeft(p)>STAR.SHATTER_DIST*.5),"saem voando");
   const n1=parts.length;for(let t=0;t<STAR.SHATTER_CD_TICKS-2;t++)w.step();
   assert.equal(w.events.filter(e=>e.type==="STAR_BURST").length,0,"cooldown segura o segundo estilhaço");
-  // peça abaixo de SHATTER_MIN_R só é cuspida para fora
+  // peça abaixo de STAR.PASS_R ATRAVESSA: não estilhaça, não é empurrada e — o que faz o esconderijo
+  // existir — não detona a estrela. Antes ela era cuspida (PUSH_TOUCH) e matava o abrigo mesmo assim.
   const w2=empty(71),s2=w2.spawnStar(true);s2.x=1000;s2.y=1000;
-  const q=w2.addPlayer(0,{x:1000+s2.r+2,y:1000,r:STAR.SHATTER_MIN_R-4});w2.setTarget(0,1000,1000);w2.step();
-  assert.ok(!w2.events.some(e=>e.type==="STAR_BURST"),"pequena não estilhaça");assert.ok(q.vx>0&&boostLeft(q)>0,"foi empurrada para fora");
+  const q=w2.addPlayer(0,{x:1000+s2.r+2,y:1000,r:STAR.PASS_R-4});const mq=q.mass;w2.setTarget(0,1000,1000);
+  for(let t=0;t<30;t++)w2.step();
+  assert.ok(!w2.events.some(e=>e.type==="STAR_BURST"),"pequena não estilhaça");
+  assert.equal(boostLeft(q),0,"não foi cuspida para fora: ela ENTRA");
+  assert.ok(!w2.events.some(e=>e.type==="SUPERNOVA")&&!s2.dead,"e a estrela continua viva — senão o esconderijo se desfaz no primeiro uso");
+  assert.ok(Math.abs(q.mass-mq)<1e-6,"nem queima");
+  assert.ok(Math.hypot(q.x-s2.x,q.y-s2.y)<s2.r,"chegou a ficar DENTRO do disco");
   assert.equal(w2.piecesOf(0).length,1);assert.ok(n1>1);
+  // e o limiar é de verdade: um fio acima de PASS_R a estrela cobra como sempre
+  const w4=empty(75),s4=w4.spawnStar(true);s4.x=1000;s4.y=1000;
+  const q4=w4.addPlayer(0,{x:1000+s4.r+2,y:1000,r:STAR.PASS_R+2});w4.setTarget(0,1000,1000);
+  let b4=null;for(let t=0;t<30&&!b4;t++){w4.step();b4=w4.events.find(e=>e.type==="STAR_BURST")||null;}
+  assert.ok(b4,"acima de PASS_R continua queimando");assert.ok(s4.dead,"e a estrela explode no contato");
   // o escudo NÃO salva da estrela (ele defende só de míssil e asteroide), e encostar faz a estrela EXPLODIR
   const w3=empty(74),s3=w3.spawnStar(true);s3.x=1000;s3.y=1000;
   const p3=w3.addPlayer(0,{x:1000+s3.r+40,y:1000,r:60});p3.shieldLv=2;p3.shieldEvolveAt=1e9;w3.setTarget(0,s3.x,s3.y);

@@ -92,6 +92,18 @@ export function zoneBurnRate(r){
   return ZONE.BURN*(1+(ZONE.BURN_K-1)*k);}
 /** Massa depois de um tick fora: a MESMA conta no servidor e na predição do cliente (a paridade é testada). */
 export const zoneMass=(m,dt,r=ZONE.R[0]*WORLD.w,exp=1)=>m*(1-zoneBurnRate(r)*exp*dt);
+/**
+ * Quanto vale o que se recolhe DENTRO do gás (1 fora do BR e dentro do círculo, `ZONE.GAS_GAIN` exposto).
+ * O porquê está em `ZONE.GAS_GAIN`: acampar no gás recolhendo a própria queimadura era renda líquida.
+ * ⚠️ Mede a exposição de QUEM COME, não de onde está o grão — ver o aviso na constante.
+ * ⚠️ Não mexer em `zoneBurnRate`/`zoneMass`/`zoneExposure`: as três são espelhadas em `predict.js` e
+ * qualquer mudança nelas quebra a paridade de 1e-9 e faz a peça pulsar na borda. Este fator é só do
+ * servidor — o cliente não prevê absorção (`Predictor` reescreve `r`/`mass` do snapshot).
+ */
+export const gasGain=(pc,zc)=>{
+  if(!zc)return 1;
+  const e=zoneExposure(pc,zc);
+  return e<=ZONE.EXPOSE_MIN?1:1-(1-ZONE.GAS_GAIN)*e;};
 export function zoneBurn(w,pc,zc,dt){
   const exp=zoneExposure(pc,zc);if(exp<=ZONE.EXPOSE_MIN)return false;
   const m0=pc.mass,m=zoneMass(m0,dt,zc.r,exp),floor=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;
@@ -188,7 +200,7 @@ export function eatPiece(w,killer,A,victim,B){
  * coisa do conjunto) ou massa. Ímã/escudo pegos com o planeta dividido valem só para esta parte — as outras não sentem nada.
  * @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} f
  */
-export function eatFood(w,ps,pc,f){
+export function eatFood(w,ps,pc,f,zc=null){
   f.dead=true;w.foodDirty=true;const t=f.type,tick=w.tick;
   if(t===FOOD_TYPE.AMMO){const cap=weaponOf(ps.weapon).ammo;if(ammoOf(ps)<cap)addAmmo(ps,1);w.events.push({type:"AMMO",slot:ps.slot});}   // munição é da arma EQUIPADA (no míssil o teto é o MAX_AMMO de sempre)
   else if(t===FOOD_TYPE.SHIELD){if(pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL)pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
@@ -198,7 +210,7 @@ export function eatFood(w,ps,pc,f){
   else if(t===FOOD_TYPE.MAGNET){
     if(pc.r<=POWERUP.MAGNET_MAX_R){pc.magnetUntil=(pc.magnetUntil>tick?pc.magnetUntil:tick)+POWERUP.TICKS;
       w.events.push({type:"POWERUP",slot:ps.slot,kind:"magnet"});}
-    else{const k=ps.feastUntil>tick?POWERUP.FEAST_K:1;addMass(pc,f.mass*EAT.FOOD_GAIN*k);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD*k);}}
+    else{const k=(ps.feastUntil>tick?POWERUP.FEAST_K:1)*gasGain(pc,zc);addMass(pc,f.mass*EAT.FOOD_GAIN*k);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD*k);}}
   else if(t===FOOD_TYPE.MERGE){const arr=ps.pieces;for(let i=0;i<arr.length;i++){const q=arr[i];if(!q.dead)q.mergeAt=tick;}   // vale para TODAS as peças: o poder é justamente juntar quem foi picado
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"merge"});}
   // ── os quatro de JOGADOR (ver POWERUP em constants.js) ──
@@ -217,11 +229,21 @@ export function eatFood(w,ps,pc,f){
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"zoom"});}
   else if(t===FOOD_TYPE.FEAST){ps.feastUntil=(ps.feastUntil>tick?ps.feastUntil:tick)+POWERUP.FEAST_TICKS;
     w.events.push({type:"POWERUP",slot:ps.slot,kind:"feast"});}
-  else if(isWeaponFood(t)){const wi=weaponOfFood(t);   // entra no cinto E já vem na mão (pegar e não ver nada acontecer é pior que não pegar)
-    if(wi>0){ps.ammo[wi]=WEAPONS[wi].ammo;ps.weapon=wi;w.events.push({type:"POWERUP",slot:ps.slot,kind:"weapon",weapon:wi});}}
+  // A arma do chão SEMPRE entra no cinto; equipar é outra coisa, e ela para no dia em que o jogador
+  // escolheu (`weaponPin`, armado pelo Q em `swapWeapon`). Antes as duas moravam na mesma linha, então
+  // pisar numa Rajada arrancava da mão a arma que a pessoa tinha acabado de escolher — no meio de uma
+  // briga, e sem nada que ela pudesse fazer a respeito.
+  // ⚠️ O `||ammoOf(ps)<=0` fecha o único estado ruim que a trava cria: travado numa arma VAZIA, pisando
+  // numa cheia e continuando sem tiro. Aí a arma nova vem para a mão de novo.
+  // ⚠️ Sem `weaponPin` o comportamento é o de sempre — o primeiro contato com armas continua equipando.
+  else if(isWeaponFood(t)){const wi=weaponOfFood(t);
+    if(wi>0){ps.ammo[wi]=WEAPONS[wi].ammo;
+      if(!ps.weaponPin||ammoOf(ps)<=0)ps.weapon=wi;
+      w.events.push({type:"POWERUP",slot:ps.slot,kind:"weapon",weapon:wi});}}
   // FEAST dobra só a COMIDA. Encostar em pieceEject (EAT.EJECT_GAIN=1) quebraria a conservação de massa,
   // que é estrutural aqui: o que sai de um planeta tem que voltar exatamente igual, ou cuspir vira lucro.
-  else{const k=ps.feastUntil>tick?POWERUP.FEAST_K:1;addMass(pc,f.mass*EAT.FOOD_GAIN*k);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD*k);}
+  // (A ÚNICA exceção é o gás — `gasGain` —, e ela é do BR, some fora dele e está documentada em ZONE.GAS_GAIN.)
+  else{const k=(ps.feastUntil>tick?POWERUP.FEAST_K:1)*gasGain(pc,zc);addMass(pc,f.mass*EAT.FOOD_GAIN*k);ps.score+=Math.floor(f.r*EAT.SCORE_FOOD*k);}
   w.events.push({type:"FOOD_EATEN",slot:ps.slot,foodId:f.id,foodType:t,x:f.x,y:f.y});}
 
 // ── ejetados ──
@@ -229,12 +251,16 @@ export function eatFood(w,ps,pc,f){
  * Peça absorve fragmento (centro dentro; do próprio dono só após cdUntil): devolve a massa INTEIRA
  * (EAT.EJECT_GAIN = 1) — cuspir e recolher fecha em zero, e o pedaço de um planetão engorda mais do que
  * uma pelota comum. A pontuação sai de √mass, não de `e.r`: o raio visual satura em FRAG.R_MAX e daria
- * a mesma migalha de pontos por um caco que vale um planeta. @param {World} w @param {Body} pc @param {Body} e
+ * a mesma migalha de pontos por um caco que vale um planeta.
+ * ⚠️ A conservação vale DENTRO do círculo. Exposto ao gás o ganho cai para `ZONE.GAS_GAIN` (ver `gasGain`):
+ * acampar na beirada recolhendo a própria queimadura era o único jeito de a zona virar renda.
+ * @param {World} w @param {Body} pc @param {Body} e @param {?{x:number,y:number,r:number}} zc
  */
-export function pieceEject(w,pc,e){
+export function pieceEject(w,pc,e,zc=null){
   if(e.owner===pc.owner&&w.tick<e.cdUntil)return;
   const dx=e.x-pc.x,dy=e.y-pc.y;if(dx*dx+dy*dy>=pc.r*pc.r)return;
-  const ps=w.players.get(pc.owner);addMass(pc,e.mass*EAT.EJECT_GAIN);ps.score+=Math.floor(Math.sqrt(e.mass)*EAT.SCORE_EJECT);e.dead=true;
+  const ps=w.players.get(pc.owner),g=gasGain(pc,zc);
+  addMass(pc,e.mass*EAT.EJECT_GAIN*g);ps.score+=Math.floor(Math.sqrt(e.mass)*EAT.SCORE_EJECT*g);e.dead=true;
   w.events.push({type:"EJECT_EATEN",slot:ps.slot,ejectId:e.id,x:e.x,y:e.y});}
 /**
  * Pellet alimenta asteroide (+FEED de raio, teto MASS_R_MAX, acumula direção); acima de SHOOT_AT dispara um filho.
@@ -340,12 +366,18 @@ export function tickStar(w,st){
 /**
  * Peça encosta na estrela armada: sempre é cuspida para fora (PUSH_TOUCH) e, fora do cooldown de dano de contato
  * (`chipUntil`) e com r ≥ SHATTER_MIN_R, **queima STAR.BURN da massa** e estilhaça o que sobrou (starShatter).
+ * Abaixo de `STAR.PASS_R` nada disso acontece: a peça ATRAVESSA e se esconde lá dentro (ver `starPass`).
  * O escudo não salva: ele só defende de míssil e asteroide.
  * A estrela morre no contato, mas a supernova sai com `rammed` — quem trombou não leva o berçário junto.
  * @param {World} w @param {Body} pc @param {Body} st
  */
 export function pieceStar(w,pc,st){
   if(st.k<STAR.ARM_K)return;
+  // ⚠️ O ESCONDERIJO. Tem que sair ANTES do `addBoost` (senão o passante é cuspido e nunca chega a entrar)
+  // e antes do `if(w.peace)`, senão ele leva o empurrão no aquecimento do BR. E os TRÊS efeitos saem
+  // juntos: pular só o `starShatter` deixaria a linha do `supernova` lá embaixo matando a estrela — o
+  // abrigo se desfaria no primeiro uso, que é o defeito que esta guarda existe para não ter.
+  if(starPass(pc))return;
   const dx=pc.x-st.x,dy=pc.y-st.y,d2=dx*dx+dy*dy,lim=pc.r+st.r;if(d2>=lim*lim)return;
   const d=Math.sqrt(d2),ux=d>1e-6?dx/d:1,uy=d>1e-6?dy/d:0,tick=w.tick;
   addBoost(pc,ux,uy,STAR.PUSH_TOUCH_DIST);
@@ -359,6 +391,12 @@ export function pieceStar(w,pc,st){
  * todos com o cooldown de fusão renovado. Usada pela estrela E pelo míssil (o tiro parte o alvo).
  * @param {World} w @param {PlayerState} ps @param {Body} pc
  */
+/**
+ * A peça é pequena o bastante para ATRAVESSAR a estrela? Ver o porquê do número em `STAR.PASS_R`.
+ * Mora aqui, ao lado de `shatterBlock`, porque é a casa das guardas nomeadas — e porque `supernova`
+ * também precisa dela para não estilhaçar quem estava escondido dentro do miolo.
+ */
+export const starPass=pc=>pc.r<STAR.PASS_R;
 export const SHATTER_OK=0,SHATTER_NO_ROOM=1,SHATTER_TOO_SMALL=2;
 /** De onde veio o preço que não coube em peças (vai no `cause` do evento STUCK e vira ícone no kill feed). */
 export const STUCK_STAR=0,STUCK_MISSILE=1,STUCK_ASTEROID=2;
@@ -475,6 +513,10 @@ export function supernova(w,st,rammed=false,bySlot=-1){
   const pcs=w.pieces,n=pcs.length,lethal=blast*STAR.NOVA_SHATTER,l2=lethal*lethal,tick=w.tick;   // n fixo: os estilhaços nascem em w.pieces e não podem estilhaçar de novo em cascata
   for(let i=0;i<n;i++){const pc=pcs[i];if(pc.dead)continue;const dx=pc.x-st.x,dy=pc.y-st.y,d2=dx*dx+dy*dy;if(d2>=b2)continue;
     const d=Math.sqrt(d2)||1,ux=dx/d,uy=dy/d,k=STAR.PUSH_DIST*(1-d/blast);addBoost(pc,ux,uy,k);
+    // ⚠️ AQUI O PASSANTE **NÃO** É POUPADO, e é de propósito: é o contra-jogo do esconderijo. Quem se
+    // escondeu na estrela continua sendo empurrado quando ela morre e, acima de SHATTER_MIN_R, estilhaça
+    // junto — ou seja, o grande pode expulsá-lo pagando o preço de detonar a estrela (BURN, ou 3 mísseis).
+    // Um abrigo que ninguém consegue arrombar não é abrigo, é invulnerabilidade.
     if(d2>=l2||tick<pc.chipUntil||pc.r<STAR.SHATTER_MIN_R)continue;   // fora do miolo (ou no cooldown de contato) é só o empurrão
     pc.chipUntil=tick+STAR.SHATTER_CD_TICKS;
     starShatter(w,w.players.get(pc.owner),pc,st,ux,uy);}   // o escudo não salva da supernova (só míssil e asteroide)
@@ -825,6 +867,12 @@ export function swapWeapon(w,ps){
   const n=ps.ammo.length;
   for(let i=1;i<=n;i++){const cand=(ps.weapon+i)%n;
     if(cand===WEAPON.MISSILE||ps.ammo[cand]>0){if(cand===ps.weapon)return false;
+      // ⚠️ O PIN É ARMADO AQUI, no ramo que troca DE VERDADE — nunca no `swapReq` nem no topo da função.
+      // O Q apertado com uma arma só no cinto é um no-op (cai no `return false` acima), e depois dele o
+      // jogador ainda tem que ver a primeira arma que pisar vir para a mão: "pegar e não ver nada
+      // acontecer é pior que não pegar". Armar na INTENÇÃO trocaria o primeiro contato com armas por
+      // silêncio — e é o que o teste "chavear: Q anda pelas armas" pega.
+      ps.weaponPin=true;
       ps.weapon=cand;w.events.push({type:"SWAP",slot:ps.slot,weapon:cand});return true;}}
   return false;}
 export function applyFire(w,ps){

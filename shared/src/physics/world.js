@@ -28,6 +28,9 @@ import * as R from "./rules.js";
  * @property {number} weapon        WEAPON.* na mão (troca com INPUT_FLAG.SWAP)
  * @property {number[]} ammo        munição POR ARMA (o jogador carrega várias); `self.missiles` no fio é o
  *                                  espelho de ammo[weapon]. Ímã e escudo continuam POR PEÇA, ver Body
+ * @property {boolean} weaponPin    o jogador JÁ escolheu arma com o Q? Daí em diante pegar arma no chão só
+ *                                  ABASTECE o cinto, nunca reequipa (ver rules.eatFood). Não vai ao fio:
+ *                                  o `self` é de tamanho fixo e isto é estado de servidor, como aimLock*
  * @property {number} splitCdUntil
  * @property {number} ejectCdUntil
  * @property {number} fireCdUntil   carência de tiro do nascimento (MISSILE.SPAWN_CD_TICKS)
@@ -290,9 +293,9 @@ export class World{
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true}={}){
     let ps=this.players.get(slot);
-    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,autoDefN:0,autoFireAt:0,zoomUntil:0,feastUntil:0,aimLockId:-1,aimLockKind:0,aimLockUntil:0,
+    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),weaponPin:false,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,autoDefN:0,autoFireAt:0,zoomUntil:0,feastUntil:0,aimLockId:-1,aimLockKind:0,aimLockUntil:0,
       ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false};this.players.set(slot,ps);}
-    else{this._dropPieces(ps);ps.isBot=isBot;ps.ammo=newAmmo(missiles);ps.team=team;ps.weapon=weapon;}
+    else{this._dropPieces(ps);ps.isBot=isBot;ps.ammo=newAmmo(missiles);ps.team=team;ps.weapon=weapon;ps.weaponPin=false;}
     // `spawn:false` = entrou na SALA mas ainda não no MAPA. É o lobby do battle royale: o jogador existe
     // (ocupa vaga, aparece no PLAYERS, escolhe equipe) e só ganha corpo na largada, via respawnPlayer.
     // Sem isso a única forma de "esperar" seria estar no mundo, comendo — que é outro jogo.
@@ -303,7 +306,7 @@ export class World{
     // cair colado numa delas custaria 30% da massa antes de encostar no primeiro grão.
     if(Number.isNaN(x)){const s=this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE);x=s.x;y=s.y;}
     ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.ejectRamp=0;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
-    ps.autoDefN=0;ps.autoFireAt=0;ps.zoomUntil=0;ps.feastUntil=0;ps.aimLockId=-1;ps.aimLockUntil=0;   // vida nova, powerups zerados — mesmo caminho do fireCdUntil, e é ele que cobre addPlayer, respawnPlayer e a largada do BR de uma vez
+    ps.autoDefN=0;ps.autoFireAt=0;ps.zoomUntil=0;ps.feastUntil=0;ps.aimLockId=-1;ps.aimLockUntil=0;ps.weaponPin=false;   // vida nova, powerups zerados — mesmo caminho do fireCdUntil, e é ele que cobre addPlayer, respawnPlayer e a largada do BR de uma vez
     const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;return pc;}
   _dropPieces(ps){for(let i=0;i<ps.pieces.length;i++){const pc=ps.pieces[i];pc.dead=true;this.entityById.delete(pc.id);}
     ps.pieces.length=0;const arr=this.pieces;let k=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)arr[k++]=arr[i];arr.length=k;}
@@ -422,7 +425,8 @@ export class World{
         if(magnet&&d2<range*range&&d2>1e-6){const d=Math.sqrt(d2),hv=(f.type===FOOD_TYPE.COMET||f.type===FOOD_TYPE.STAR)?PW.MAGNET_HEAVY:1;
           let s=PW.MAGNET_PULL*hv*(1+(PW.MAGNET_NEAR-1)*(1-d/range))*DT;if(s>d)s=d;
           f.x+=dx/d*s;f.y+=dy/d*s;f.flags|=FOOD_FLAG.MOVED;this.foodDirty=true;dx=pc.x-f.x;dy=pc.y-f.y;d2=dx*dx+dy*dy;}
-        const lim=pc.r+f.r*ov;if(d2<lim*lim)R.eatFood(this,ps,pc,f);}
+        // `zc` é o círculo da zona já calculado no topo do step: quem colhe EXPOSTO ao gás recebe menos
+        const lim=pc.r+f.r*ov;if(d2<lim*lim)R.eatFood(this,ps,pc,f,zc);}
       if(magnet){const m=grid.query(pc.x,pc.y,range,q);
         for(let k=0;k<m;k++){const b=dyn[q[k]];if(b.dead)continue;
           if(b.kind===KIND.EJECT){if(b.owner===pc.owner&&tick<b.cdUntil)continue;
@@ -435,7 +439,7 @@ export class World{
           if(sd2>=range*range||sd2<1e-6)continue;const sd=Math.sqrt(sd2);let sp=PW.MAGNET_PULL*PW.MAGNET_STAR*DT;if(sp>sd)sp=sd;
           st.x=clamp(st.x+sx/sd*sp,st.r,W-st.r);st.y=clamp(st.y+sy/sd*sp,st.r,H-st.r);}}}
     for(let p=0;p<np;p+=3){const code=pb[p+2];if(code!==PE&&code!==EA)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;
-      if(code===PE)R.pieceEject(this,A,B);else R.ejectAsteroid(this,A,B);}
+      if(code===PE)R.pieceEject(this,A,B,zc);else R.ejectAsteroid(this,A,B);}
     // ── 8. mísseis: míssil×míssil (O(n²) sobre w.missiles, teste varrido — fora da grade), depois peça×míssil e asteroide×míssil ──
     for(let i=0;i<missiles.length;i++){const A=missiles[i];if(A.dead)continue;for(let j=i+1;j<missiles.length;j++){const B=missiles[j];if(!B.dead&&R.missileMissile(this,A,B))break;}}
     for(let p=0;p<np;p+=3){const code=pb[p+2];if(code!==PM&&code!==AM)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;

@@ -45,6 +45,16 @@ const ZC={x:0,y:0,r:0};
  * porque isto roda para todo jogador a cada decisão de cada bot.
  * @param {PlayerState} ps
  */
+/**
+ * A estrela é perigo para este bot? Abaixo de `STAR.PASS_R` a peça ATRAVESSA (rules.js `starPass`), então
+ * ela deixa de ser parede e vira ABRIGO — e um bot que continuasse fugindo dela recusaria justamente o
+ * único lugar que o salva de quem o está caçando. É o gêmeo literal da linha do buraco negro em
+ * `_nearestHazard` ("só assusta quem ele consegue esmagar").
+ * ⚠️ Mede a MAIOR peça: com um pedaço grande em campo o bot continua tendo o que perder.
+ */
+const temeEstrela=big=>big>=STAR.PASS_R;
+/** Lista vazia compartilhada: trocar `w.stars` por `[]` num laço de 60 Hz não pode alocar por chamada. */
+const VAZIO=[];
 function centroid(ps,out){let sx=0,sy=0,big=0,n=0,bx=0,by=0,vx=0,vy=0;const arr=ps.pieces;
   for(let i=0;i<arr.length;i++){const p=arr[i];if(p.dead)continue;sx+=p.x;sy+=p.y;n++;
     if(p.r>big){big=p.r;bx=p.x;by=p.y;vx=p.svx+p.vx;vy=p.svy+p.vy;}}
@@ -383,7 +393,8 @@ export class BotBrain{
     for(let i=0;i<n;i++){const a=i/n*TAU,x=px+Math.cos(a)*step,y=py+Math.sin(a)*step;
       if(x<m||y<m||x>w.w-m||y>w.h-m)continue;
       if(zc){const dx=x-zc.x,dy=y-zc.y;if(dx*dx+dy*dy>zc.r*zc.r)continue;}
-      let ok=true;const st=w.stars;
+      // ⚠️ Para quem cabe dentro dela (STAR.PASS_R) a estrela não fecha o arco: ela é ABRIGO, não parede.
+      let ok=true;const st=temeEstrela(this._c.big)?w.stars:VAZIO;
       for(let j=0;j<st.length;j++){const s=st[j];if(s.dead||s.k<STAR.ARM_K)continue;
         const dx=x-s.x,dy=y-s.y,ri=s.r*STAR.HALO*BOT.STAR_FEAR;if(dx*dx+dy*dy<ri*ri){ok=false;break;}}
       if(ok)livre++;}
@@ -465,7 +476,7 @@ export class BotBrain{
   /** Estrelas armadas, asteroides que EU estouraria e buracos que me esmagam entram na lista de perigos. */
   _mapDangers(c){
     const w=this.w,st=w.stars,as=w.asteroids,ho=w.holes;
-    for(let i=0;i<st.length;i++){const s=st[i];if(s.dead||s.k<STAR.ARM_K)continue;
+    if(temeEstrela(c.big))for(let i=0;i<st.length;i++){const s=st[i];if(s.dead||s.k<STAR.ARM_K)continue;
       const ri=s.r*STAR.HALO*BOT.STAR_FEAR,d=Math.hypot(c.x-s.x,c.y-s.y);if(d<ri*1.6)this._danger(s.x,s.y,ri,d);}
     for(let i=0;i<as.length;i++){const a=as[i];if(a.dead||c.big<=a.r*ASTEROID.POP_RATIO)continue;
       const ri=a.r*BOT.AST_FEAR*BOT.HOLE_AVOID,d=Math.hypot(c.x-a.x,c.y-a.y);if(d<ri*1.6)this._danger(a.x,a.y,ri,d);}
@@ -477,7 +488,9 @@ export class BotBrain{
     const take=(b,ri)=>{const dx=c.x-b.x,dy=c.y-b.y,d2=dx*dx+dy*dy;if(d2<ri*ri&&d2<bd){bd=d2;best=b;}};
     const holes=w.holes;   // buraco só assusta quem ele consegue esmagar: acima de rc·CRUSH_K a peça passa por cima
     for(let i=0;i<holes.length;i++){const h=holes[i];if(!h.dead&&h.k>0&&c.big<h.r*h.k*BLACKHOLE.CRUSH_K)take(h,h.r*BLACKHOLE.INFLUENCE*h.k*BOT.HOLE_AVOID);}
-    const stars=w.stars;for(let i=0;i<stars.length;i++){const st=stars[i];if(!st.dead&&st.k>=STAR.ARM_K)take(st,st.r*STAR.HALO*BOT.STAR_FEAR);}
+    // estrela só assusta quem ela consegue queimar: abaixo de STAR.PASS_R a peça atravessa e se esconde
+    const stars=temeEstrela(c.big)?w.stars:VAZIO;
+    for(let i=0;i<stars.length;i++){const st=stars[i];if(!st.dead&&st.k>=STAR.ARM_K)take(st,st.r*STAR.HALO*BOT.STAR_FEAR);}
     const asts=w.asteroids;   // só assusta quem pode estourá-lo: o pop parte o planeta em vários pedaços
     for(let i=0;i<asts.length;i++){const a=asts[i];if(!a.dead&&c.big>a.r*ASTEROID.POP_RATIO)take(a,a.r*BOT.AST_FEAR*BOT.HOLE_AVOID);}
     return best;}

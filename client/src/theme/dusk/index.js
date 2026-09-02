@@ -250,7 +250,12 @@ export const effects={
   missileFlame:{amp:.25,speed:.05},
   blackHole:{ring:{color:GOLD,alpha:[.16,.26],pulse:.004,width:3,dash:[14,18],spinK:-.4},ring2:{color:CREAM,alpha:[.5,.95],pulse:.013,width:3,dash:[10,9],spinK:.9,rK:2.4},spark:{n:9,speed:.022,rxK:.95,ryK:.14,r:d=>Math.max(1.5,d*.05),color:CREAM,alpha:[.25,.95]},alphaK:1.2},   // ring = raio de influência; ring2 = a LINHA DA MORTE (rK = BLACKHOLE.CRUSH_K): cabe dentro dela, é esmagado; alpha do sprite = min(1,k·alphaK)
   // estrela do mundo: pulso do sprite, giro e coroa tracejada no halo (vermelha e nervosa na fase OLD)
-  star:{ring:{color:GOLD,colorOld:CORAL,alpha:[.18,.4],pulse:.005,pulseOld:.02,width:3,dash:[18,16],spinK:-.15},pulse:{amp:.06,speed:.004,speedOld:.02},spin:.004,alphaK:1.15},
+  star:{ring:{color:GOLD,colorOld:CORAL,alpha:[.18,.4],pulse:.005,pulseOld:.02,width:3,dash:[18,16],spinK:-.15},pulse:{amp:.06,speed:.004,speedOld:.02},spin:.004,alphaK:1.15,
+    // A COBERTURA que faz o esconderijo ler na tela (ver Hazards.js `starsFront`). `k` é a fração do
+    // raio FÍSICO da estrela — bem abaixo do `scale.nova`, porque o que precisa cobrir é o disco onde
+    // se esconde, não a coroa de plasma. O alfa é baixo de propósito: quem passa por fora não deve
+    // notar diferença nenhuma, e quem está dentro fica submerso.
+    front:{k:1.15,alpha:.5}},
   aim:{color:CREAM,width:3,dash:[16,12],head:26,alpha:[.45,.85],pulse:.008},                          // reta pontilhada do tiro mirado
   threat:{color:CORAL,width:5,size:34,margin:54,alpha:[.35,1],pulse:.012},
   // ZONA do Battle Royale: o anel vermelho pulsa, o tracejado mostra o destino e `dim` tinge só o lado de FORA.

@@ -1,7 +1,13 @@
 // ── CONSTANTES ÚNICAS (servidor e cliente importam daqui; nada duplicado) ─────
 // Unidades: px, segundos, px/s. Passo fixo de 60 Hz.
 // @ts-check
-export const WORLD={w:9600,h:9600};
+// ⚠️ EDIÇÃO DE BUILD, NUNCA TUNABLE: `protocol/codec.js` captura `const W=WORLD.w` no LOAD DO MÓDULO,
+// e o cliente tem cópia própria do bundle — dois valores diferentes corrompem `qPos/dqPos` e TODA posição
+// do fio sai deslocada, em silêncio. Cliente e servidor têm que subir na mesma imagem.
+// 9600 → 12000 (+25% de lado, +56% de área). O que é FRAÇÃO acompanha sozinho (zona, anel de largada do
+// BR, piso da câmera, quantização, grade, radar, fundo); o que é CONTAGEM ou DISTÂNCIA teve que ser
+// escalado à mão logo abaixo — cada um com o expoente certo, s² para população e s para alcance.
+export const WORLD={w:12000,h:12000};
 export const TICK_HZ=60,DT=1/60,SNAPSHOT_EVERY=3,LEADERBOARD_EVERY=30,SAMPLE_EVERY=30;
 export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600,
   HOST_HOLD_MS:120000,HOST_GRACE_MS:30000,
@@ -86,7 +92,7 @@ export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,F
 export const MODE={FREE:0,BR:1};
 export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
   LOBBY_TICKS:1800,COUNTDOWN_TICKS:300,FILL_EXP:1.7,ARRIVE_JITTER:.55,
-  SPAWN_RING:.44,START_AMMO:1,ROUND_TICKS:36000,WEAPON_P:.05,JOIN_GRACE_TICKS:120};
+  SPAWN_RING:.44,START_AMMO:1,ROUND_TICKS:45000,WEAPON_P:.05,JOIN_GRACE_TICKS:120};
 // PLAYERS é o total (humanos + bots): a sala livre já roda 30 humanos + 15 bots = 45, então 50 é o MESMO
 // regime de tick, não um salto de escala. Capacidade efetiva = PLAYERS − PLAYERS%teamSize (50/50/48/48):
 // equipe incompleta contra equipes cheias não é dificuldade, é sorteio.
@@ -104,9 +110,9 @@ export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
 // isto aqui faz a partida terminar por tempo antes de o círculo fechar, que é o único jeito de o Battle
 // Royale acabar sem ter decidido nada. Em produção quem manda é o env ROUND_TICKS (k8s/05-config).
 export const ZONE={STAGES:6,R:[.62,.45,.32,.225,.16,.113,.08],
-  HOLD_TICKS:[6000,4500,3300,1800,900,600],SHRINK_TICKS:[3600,3000,2400,1800,1200,900],
-  DRIFT:.45,BURN:.10,BURN_K:2.2,EXPOSE_MIN:.02,WARN_TICKS:180,MIN_R:60,SHED_TICKS:24,SHED_DIST:180,SHED_SPREAD:.85,SHED_MIN:1,SHED_N_DEATH:7,
-  FOOD_AREA:2400,FOOD_MIN:1200,FOOD_SCAN:96,FOOD_FILL_S:3,
+  HOLD_TICKS:[7500,5625,4125,2250,1125,750],SHRINK_TICKS:[4500,3750,3000,2250,1500,1125],
+  DRIFT:.45,BURN:.10,BURN_K:2.2,GAS_GAIN:.5,EXPOSE_MIN:.02,WARN_TICKS:180,MIN_R:60,SHED_TICKS:24,SHED_DIST:180,SHED_SPREAD:.85,SHED_MIN:1,SHED_N_DEATH:7,
+  FOOD_AREA:2400,FOOD_MIN:1875,FOOD_SCAN:96,FOOD_FILL_S:3,
   STAR_PAD:360,STAR_MIN_R:1200,STAR_SEP_K:.5,STAR_RETRY_TICKS:300,STAR_SCAN:2};
 /**
  * Quanto a zona leva para FECHAR de vez. DERIVADO das listas acima, nunca copiado: `BR.ROUND_TICKS` e a zona
@@ -114,6 +120,18 @@ export const ZONE={STAGES:6,R:[.62,.45,.32,.225,.16,.113,.08],
  * (Mora aqui, e não em zone.js, porque `roundTicksOf` precisa dele e constants.js é a raiz — não importa nada.)
  */
 export const ZONE_TOTAL_TICKS=ZONE.HOLD_TICKS.reduce((a,b)=>a+b,0)+ZONE.SHRINK_TICKS.reduce((a,b)=>a+b,0);
+// GAS_GAIN: ACAMPAR NO GÁS ERA RENDA LÍQUIDA. O laço se fechava sozinho — `zoneBurn` arranca `pc.shed` e
+// cospe pelotas para FORA, e passada a imunidade `pieceEject` devolvia 100% (EAT.EJECT_GAIN=1). Quem ficava
+// na beirada queimava e recolhia a própria queimadura, indefinidamente, enquanto o círculo apertava em cima
+// de quem estava jogando o jogo. Agora quem colhe EXPOSTO recebe metade, e o desconto acompanha a exposição
+// (linear, não degrau: `exp=1` dá exatamente .5 e a borda fica monótona, sem oscilar a 60 Hz — é a mesma
+// razão de EXPOSE_MIN existir). Vale para a comida também, e para o SCORE junto: descontar só a massa
+// deixaria o campista subindo no placar de graça.
+// ⚠️ Isto faz do gás o QUARTO sumidouro de massa do jogo, ao lado de PLAYER.DECAY, STAR.BURN e da comida
+// que morre no gás. É o único deles que não some de vez: o valor é descontado no instante da absorção.
+// ⚠️ Quem paga é a exposição do COMEDOR, nunca a posição do fragmento: com peça de até MAX_R de raio e
+// círculo final de 768 px, um gigante com o centro fora engoliria caco de dentro — é o mesmo erro que fez
+// `zoneExposure` substituir o critério do centro.
 // zona = círculo. R é o RAIO como fração de WORLD.w: começa em .62 (5 952 px — cobre o mapa, cujo
 // centro→canto é 6 788) e fecha em .08 (768 px). As razões entre etapas são ~√.5, ou seja **cada etapa tira
 // metade da ÁREA**: a pressão é constante do começo ao fim, e o que muda é o tamanho de quem está dentro.
@@ -216,7 +234,7 @@ export function roundTicksOf(modeId,min){
   const t=m*60*TICK_HZ;
   if(modeOf(modeId).lastAlive){if(!m)return null;return t<ZONE_TOTAL_TICKS?null:t;}   // BR: sem fim não, e nunca menos que a zona
   return t;}
-export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:1000,MAX_PIECES:16,BOT_R:[24,58],DECAY:.002,OVER_N:6,OVER_DIST:420};
+export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:1250,MAX_PIECES:16,BOT_R:[24,58],DECAY:.002,OVER_N:6,OVER_DIST:420};
 // OVER_N/OVER_DIST: o que fazer com a massa acima de MAX_R quando NÃO HÁ VAGA de peça para repartir. Era
 // `setR(pc,MAX_R)` e pronto — o único ponto do jogo, fora do DECAY, em que massa de JOGADOR simplesmente
 // evaporava, e em silêncio. Agora o excesso vira OVER_N fragmentos arremessados OVER_DIST px além da borda,
@@ -304,7 +322,7 @@ export const BOUNCE={E:.55,E_SHIELD:.9,POS_CORR:.3,FX_MIN_VN:96,PUSH_S:.3,DIST_M
 // quique: a correção posicional é a de sempre, mas o empurrão vira BOOST de `vn·PUSH_S` px (teto DIST_MAX).
 // Curto de propósito: a trombada do asteroide tem que dar o solavanco e devolver a velocidade padrão na hora.
 export const WALL={E:.4,E_AST:.9,E_EJECT:.5};
-export const FOOD={COUNT:2500,R_MIN:6,R_MAX:15,SPECIAL_R:13,AMMO_P:.055,POWER_P:.07,HUES:12,MARGIN:40,NEAR_HAZARD_P:.22,NEAR_HAZARD_R:[260,620],STAR_CLEAR:200,
+export const FOOD={COUNT:3900,R_MIN:6,R_MAX:15,SPECIAL_R:13,AMMO_P:.055,POWER_P:.07,HUES:12,MARGIN:40,NEAR_HAZARD_P:.22,NEAR_HAZARD_R:[260,620],STAR_CLEAR:200,
   TYPES:["dust","comet","star","rock","missile_ammo","powerup_merge","powerup_magnet","powerup_shield","w_burst","w_cluster","w_nova",
     "powerup_autodef","powerup_ammo_plus","powerup_zoom","powerup_feast"]};   // índice = FOOD_TYPE
 export const FOOD_TYPE={DUST:0,COMET:1,STAR:2,ROCK:3,AMMO:4,MERGE:5,MAGNET:6,SHIELD:7,W_BURST:8,W_CLUSTER:9,W_NOVA:10,
@@ -332,9 +350,9 @@ export const isWeaponFood=t=>t>=FOOD_TYPE.W_BURST&&t<=FOOD_TYPE.W_NOVA;
 // do planeta; de raspão ela ricocheteia com E (bola de sinuca), em vez de atravessar como acontecia antes.
 /** Quantos níveis de escudo uma batida de rocha custa, pela velocidade de aproximação (0 = nem sente). */
 export const shieldTierFor=vn=>{const T=ASTEROID.SHIELD_VN;return vn>=T[2]?3:vn>=T[1]?2:vn>=T[0]?1:0;};
-export const ASTEROID={BELTS:4,PER_BELT:5,WANDERERS:18,R_MIN:30,R_MAX:62,MASS_R_MAX:80,BELT_RADIUS:[400,700],BELT_SPEED:[15,25],BELT_SPRING:.24,BELT_DAMP:.96,
+export const ASTEROID={BELTS:6,PER_BELT:5,WANDERERS:28,R_MIN:30,R_MAX:62,MASS_R_MAX:80,BELT_RADIUS:[400,700],BELT_SPEED:[15,25],BELT_SPRING:.24,BELT_DAMP:.96,
   WANDER_SPEED:[20,60],POP_RATIO:1.1,POP_DIST:.82,CHIP:.04,CHIP_STUCK:.22,CHIP_STUCK_DIST:520,CHIP_CD_TICKS:30,FEED:1.6,SHOOT_AT:72,SHOOT_R:36,CHILD_R:28,CHILD_SPEED:540,
-  E:.85,E_AST:.9,SAFE_SPAWN:500,RESPAWN_TICKS:300,MAX_EXTRA:6,SHIELD_VN:[220,520,900],
+  E:.85,E_AST:.9,SAFE_SPAWN:500,RESPAWN_TICKS:300,MAX_EXTRA:9,SHIELD_VN:[220,520,900],
   SMASH_MIN_R:34,SMASH_R:.45,SMASH_N:[3,5],SMASH_SPEED:520,BELT_SAFE:520};
 // CHIP_STUCK/CHIP_STUCK_DIST: a rocha que ESTOURARIA a peça (r > POP_RATIO·ra, mirando o miolo) e não tem
 // vaga de peça para estourar. Isso caía na lasca comum — e a lasca comum é REEMBOLSO: 4% que voltam como
@@ -371,10 +389,23 @@ export const BLACKHOLE={COUNT:0,CORE_R:38,INFLUENCE:10,G:5.5e7,A_MAX:2200,SWIRL:
 // SPAGHETTI_*: a massa do esmagado não evapora, volta INTEIRA como SPAGHETTI_N partículas comíveis em volta do
 // buraco. Elas nascem em SPAGHETTI_R do raio de INFLUÊNCIA, ou seja logo FORA do alcance da sucção — dentro dele
 // o buraco as engoliria de volta em segundos e ninguém aproveitaria
-export const STAR={COUNT:12,R:46,BURN:.30,RAM_REWARD:false,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2400,4200],OLD_TICKS:480,RESPAWN_TICKS:600,HALO:2.2,
-  SHATTER_MIN_R:24,SHATTER_N:[3,6],SHATTER_DIST:342,SHATTER_CD_TICKS:45,BURN_STUCK:.55,PUSH_TOUCH_DIST:160,
+export const STAR={COUNT:19,R:46,BURN:.30,RAM_REWARD:false,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2400,4200],OLD_TICKS:480,RESPAWN_TICKS:600,HALO:2.2,
+  SHATTER_MIN_R:24,SHATTER_N:[3,6],SHATTER_DIST:342,SHATTER_CD_TICKS:45,BURN_STUCK:.55,PUSH_TOUCH_DIST:160,PASS_R:40,
   NOVA_R:8,NOVA_SHATTER:.45,NOVA_PARTICLES:24,NOVA_FOOD:16,NOVA_FOOD_R:.3,NOVA_SPEED:[380,820],NOVA_PART_MASS:3,NOVA_LIFE_TICKS:900,AST_KICK:1500,PUSH_DIST:342,SAFE_SPAWN:700,MIN_SEP:1400,
   DRAG:1.4,HIT_PUSH:280,EJECT_PUSH:70,HITS_TO_SPLIT:3,HIT_CD_TICKS:30,SPLIT_N:3,SPLIT_R:.62,SPLIT_SPEED:520,SPLIT_BLAST:5,SPLIT_LIFE_TICKS:[900,1500]};
+// PASS_R: A PEÇA PEQUENA ATRAVESSA A ESTRELA E SE ESCONDE LÁ DENTRO. Abaixo deste raio ela não é empurrada,
+// não queima, não estilhaça e — o que faz o esconderijo existir — NÃO detona a estrela. Sem essa última
+// parte a mecânica se autodestruiria no primeiro uso: `pieceStar` chamava `supernova(...,rammed)` de forma
+// incondicional, então o pedaço mínimo já não estilhaçava (SHATTER_MIN_R) mas matava o abrigo mesmo assim.
+// Contra o gigante isso é assimétrico de propósito: ele não cabe, e se tentar entrar paga BURN e estoura a
+// estrela — o pequeno perde o esconderijo, mas o grande pagou por isso.
+// ⚠️ É RAIO ABSOLUTO, e os dois lados do número são escolhidos:
+//   40 > PLAYER.START_R (30)  → quem acabou de nascer cabe; o abrigo serve para quem mais precisa dele.
+//   40 < SPLIT.MIN_R/√2 (42,43) → é o MENOR raio que um jogador consegue produzir de propósito, e acima
+//   dele "esconder-se" viraria um botão do médio (picar-se em 16 pedacinhos), que é exatamente o exploit
+//   que shatterBlock/STUCK existe para fechar.
+// Fração do raio da estrela seria elegante (é o que BLACKHOLE.CRUSH_K faz), mas ela INCHA até R·SWELL=80,5
+// na fase OLD — o buraco cresceria junto e abriria a brecha sozinho justo no fim da vida dela.
 // BURN_STUCK: com as PLAYER.MAX_PIECES ocupadas o estilhaço não acontece — e é POR ISSO que o jogador chega
 // às 16 de propósito antes de atravessar uma estrela. O preço da estrela sempre foram DUAS coisas: BURN de
 // massa E ser espalhado em 4..7 pedaços que não fundem por 30 s; em 16 peças ele só pagava a primeira, e a
@@ -399,8 +430,8 @@ export const STAR={COUNT:12,R:46,BURN:.30,RAM_REWARD:false,SWELL:1.75,ARM_K:.5,G
 // raio blast·NOVA_FOOD_R (a estrela morta vira um berçário: ponto de interesse fixo no mapa),
 // asteroides a AST_KICK e peças a PUSH; dentro de r·NOVA_R·NOVA_SHATTER
 // (o miolo) é como encostar na estrela: o escudo cai inteiro e salva, sem escudo a peça estilhaça.
-export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:500,MAX_AMMO:3,AMMO_OVER:1,R:11,SPAWN_CD_TICKS:600,HIT_SHRINK:.9,STUCK_SHRINK:.82,HIT_DEBRIS:5,DEBRIS_DIST:560,DEBRIS_SPREAD:.9,SHATTER_N:[3,6],SHATTER_DIST:342,
-  INTERCEPT_DIST:1100,ALERT_DIST:2600,AST_KICK:420,AIM_PICK:700,AIM_RANGE:2200,AIM_HOLD_TICKS:180};
+export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:625,MAX_AMMO:3,AMMO_OVER:1,R:11,SPAWN_CD_TICKS:600,HIT_SHRINK:.9,STUCK_SHRINK:.82,HIT_DEBRIS:5,DEBRIS_DIST:560,DEBRIS_SPREAD:.9,SHATTER_N:[3,6],SHATTER_DIST:342,
+  INTERCEPT_DIST:1100,ALERT_DIST:3250,AST_KICK:420,AIM_PICK:700,AIM_RANGE:2750,AIM_HOLD_TICKS:180};
 // DEBRIS_DIST/DEBRIS_SPREAD/STUCK_SHRINK: o impacto sem escudo era REEMBOLSO, não dano. Os HIT_DEBRIS cacos
 // nasciam no CENTRO da peça, em TODAS as direções (o spread era 2π, e spillFrag com spread>=6.28 sorteia o
 // ângulo) e a 540 px/s — como o ejetado integra com arrasto puro, o alcance é v/DRAG = 146 px, ou seja DENTRO
@@ -973,7 +1004,7 @@ export function botTypo(rng,txt){
   if(txt.length<3)return txt;
   const i=rng.int(0,txt.length-2);
   return rng.next()<.5?txt.slice(0,i)+txt[i]+txt.slice(i):txt.slice(0,i)+txt[i+1]+txt[i]+txt.slice(i+2);}
-export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,AOI_FOOD_VIEW:.55};
+export const CAM={BASE:64,EXP:.4,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,AOI_FOOD_VIEW:.44};
 // zoom EXATO do cliente do agar.io:  S = Σ raio de TODAS as peças próprias;
 //   escala = min(BASE/S, 1)^EXP × max(altura/REF_H, largura/REF_W)
 // Três coisas importam aqui e nenhuma delas é o que havia antes (58/bigR):
@@ -1092,7 +1123,7 @@ export const AVATAR={SIZE:256,MIN:64,MAX_BYTES:12*1024,MIME:["image/webp","image
 // de JSON que a sessão já tem (NET.RATE_JSON), porque aquele existe para proteger o servidor e este para
 // não deixar um jogador encher a tela dos outros. FADE_MS: a linha some sozinha — o painel não pode virar
 // uma parede permanente em cima do jogo.
-export const VOICE={MAX_MS:5000,MIN_MS:300,CD_MS:3000,TALK_CD_MS:250,RATE_HZ:8000,MAX_BYTES:44000,ROOM_CPS:4,LISTENERS:8,DIST:3200,PAN:1600};
+export const VOICE={MAX_MS:5000,MIN_MS:300,CD_MS:3000,TALK_CD_MS:250,RATE_HZ:8000,MAX_BYTES:44000,ROOM_CPS:4,LISTENERS:8,DIST:4000,PAN:2000};
 // TALK_CD_MS: intervalo mínimo entre dois avisos de "abri o microfone" (JSON `talk`, o que acende o ícone em
 // cima do planeta no INSTANTE do Ctrl). Não é o cooldown da FALA (CD_MS): é só o anti-flood de quem martela a
 // tecla — cada aviso vira um PLAYERS difundido para a sala inteira.

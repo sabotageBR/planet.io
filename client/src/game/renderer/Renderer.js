@@ -46,7 +46,9 @@ export async function createRenderer({container,theme,prefs}){
   const layers=[bg,grid,food,ejected,hazards,planets,missiles,aim,zone,threat,fx];
   function mount(){world.removeChildren();world.addChild(bg.props,grid.root,hazards.holes,hazards.stars,
     food.glow,ejected.glow,   // os halos vão POR BAIXO dos corpos: o brilho vaza para fora do disco, não por cima dele
-    food.root,ejected.root,hazards.asteroids,missiles.root,planets.trails,planets.root,aim.root,zone.root,threat.root,fx.root);}
+    food.root,ejected.root,hazards.asteroids,missiles.root,planets.trails,planets.root,
+    hazards.starsFront,   // a estrela por CIMA dos planetas: quem cabe nela (STAR.PASS_R) se esconde lá dentro
+    aim.root,zone.root,threat.root,fx.root);}
   // A troca de tema NÃO invalida o cache: as chaves de textura já são prefixadas com o id do tema, então os
   // temas convivem, voltar a um céu já visto é acerto de cache e nada é reassado dentro do frame da virada.
   // Quem segura textura sem pedi-la por frame chama cache.keepAlive() (ver TextureCache).
