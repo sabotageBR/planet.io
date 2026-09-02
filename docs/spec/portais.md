@@ -255,6 +255,28 @@ extensão caía no `try_files` e respondia o JOGO com 200, a mesma armadilha do 
 Depois de aprovado, eles pedem **reenviar o build para limpar o cache** — é o mesmo
 `portal/warspace-poki.zip`, sem gerar nada novo.
 
+⚠️ **Quem confirma isso é a ferramenta DELES**, e é onde se verifica de novo sem chutar:
+`https://inspector.poki.dev/?game=poki-<buildId>`. Com o jogo travado pela CSP o Inspector mostra,
+em *Warnings → External resource loading*, **um único item: `warspace.io`** — ou seja, a lista do
+pedido de CSP é exatamente essa, e não um primeiro pedido de vários. O *Event Log* dele prova que o
+lado do SDK está inteiro (`SDK initialized`, `Game loading finished`, `Measure game/loading/complete`),
+e os dois itens vermelhos de *SDK Basics* (`gameplayStart()` / `gameplayStop()`) são CONSEQUÊNCIA do
+bloqueio: sem servidor não há partida para começar, então o QA inteiro fica parado atrás da CSP.
+
+⚠️ **O CHAT precisa ser liberado À PARTE, e vale pedir junto.** A política de recursos externos deles
+lista *"in-game chat systems"* entre as categorias barradas por padrão, e o checklist do Inspector
+pergunta *"If your game has been **cleared** to have in-game chat, is it protected with a strong
+profanity/content filter?"* — "cleared" é aprovação separada. Pedir só o servidor e descobrir isso
+depois é um segundo ciclo de revisão de graça. A resposta que temos é `server/src/palavrao.js`
+(três grupos, máscara na fala do humano e RECUSA no nick, que é o que fica no placar a partida
+inteira), mais silenciar por sala no cliente e denunciar com as últimas falas em log. E a VOZ não
+existe no pacote (`SEM_VOZ`), o que também é resposta a eles.
+
+⚠️ Dois itens do checklist que são código nosso e **já passam**: `Space` chama `preventDefault`
+(`client/src/game/input/Keyboard.js`) — sem isso a barra de espaço, que é o DIVIDIR, rolaria a página
+do iframe —, e todo acesso a `localStorage` está embrulhado em `try/catch` (`api/client.js`,
+`i18n/index.js`, `admin/api.js`), que é o requisito de aba anônima.
+
 ⚠️ O bundle do pacote da Poki referencia exatamente DUAS origens externas (medido com `grep` no
 `portal/poki/dist`): `https://warspace.io` e `https://game-cdn.poki.com` — esta última já está na CSP
 deles. Ou seja, a liberação pedida acima é a lista COMPLETA, e não um primeiro pedido de vários.
