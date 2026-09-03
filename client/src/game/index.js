@@ -756,6 +756,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         waitMs:lobby.waitMs?Math.max(0,lobby.waitMs-(now-lobby.at)):0,
         roster:[...view.players.values()].map(p=>({slot:p.slot,name:p.name,skinId:p.skinId,me:p.slot===view.mySlot}))}:null,
       alive:s?s.alive:0,weapon:s?s.weapon|0:0,owned:s?s.owned|1:1,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
+      // CONTADOR DO FECHAMENTO DO GÁS: `zone.t1` já chega pelo fio (MSG.ZONE, ver protocol/codec.js) —
+      // é o tick em que a FASE ATUAL (parada ou fechamento) termina, então `(t1-tk)/TICK_HZ` é quanto
+      // falta em segundos sem precisar rodar a máquina de fases do servidor aqui (shared/zone.js é dele).
+      // `t1` chega `Infinity` quando a zona já fechou tudo (`done`) — aí não há mais o que contar.
+      // "Parada = origem e destino iguais" (mesmo comentário do codec): é isso que distingue mostrar
+      // "fecha em" (contando para o PRÓXIMO fechamento começar) de "O GÁS ESTÁ AVANÇANDO" (já em curso).
+      zoneIn:zone&&Number.isFinite(zone.t1)?Math.max(0,(zone.t1-tk)/TICK_HZ):null,
+      zoneShrinking:!!(zone&&(zone.x0!==zone.x1||zone.y0!==zone.y1||zone.r0!==zone.r1)),
       // O ROSTER DO TAB não custa um byte de protocolo: o PLAYERS já traz a sala INTEIRA fora da AOI (slot,
       // nome, skin, nível, equipe, bot, morto) e o `view.lb` já cruza isso com o placar de 2 Hz, que tem a
       // massa de todos os vivos. O que falta ali são os MORTOS, e eles estão em `view.players` com a flag.

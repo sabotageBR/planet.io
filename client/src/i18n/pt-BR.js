@@ -12,6 +12,7 @@ import { TIERS, FAMILIES } from "@warspace/shared/achievements.js";
 export default {
   // ── modos, equipe, chat e voz ──
   modesTitle: "ESCOLHA O MODO", modesShort: "Modos", partyTitle: "SUA EQUIPE",
+  modesNone: "Nenhum modo disponível no momento.",
   modeFree: "LIVRE", modeFreeSub: "Arena sem fim. Cresça, devore e reine.",
   modeSolo: "BATTLE ROYALE", modeSoloSub: "A arena fecha. Sem renascer. O último leva tudo.",
   modeTeam: "EM EQUIPE",
@@ -24,7 +25,7 @@ export default {
   brLobbyTitle: "BATTLE ROYALE", brWaiting: "procurando jogadores…", brStarting: "a partida começa em",
   brHint: "O último planeta de pé leva tudo. A zona fecha, e não há como renascer.",
   brCancel: "Cancelar entrada",
-  aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ NO GÁS", zoneShrinking: "O GÁS ESTÁ AVANÇANDO",
+  aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ NO GÁS", zoneShrinking: "O GÁS ESTÁ AVANÇANDO", zoneCloses: "gás fecha em",
   admJoin: "🟢 {n} entrou no jogo", admJoinTitle: "warspace.io",
   rosterTitle: "NA SALA",
   chatTitle: "CHAT", chatHint: "T para falar", chatHintTouch: "Toque para falar", chatTeam: "equipe", chatPlaceholder: "Mensagem…",

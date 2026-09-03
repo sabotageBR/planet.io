@@ -137,6 +137,13 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 #hud-mode .chip.warmup em{font-style:normal;opacity:.7;margin-left:6px}
 #hud-mode .chip.zone-out{background:var(--danger,#ff3d5a);color:#fff;animation:zonepulse 1s ease-in-out infinite}
 @keyframes zonepulse{0%,100%{opacity:1}50%{opacity:.45}}
+/* Contador do fechamento do gás: `b` (o número) muda de cor conforme a fase — âmbar enquanto o círculo
+   está PARADO (contagem para ele começar a fechar), vermelho enquanto ele já está FECHANDO (`.shrinking`,
+   "O GÁS ESTÁ AVANÇANDO"). `.warn` (≤10s) pisca com a MESMA animação do chip "fora da zona" — é o mesmo
+   aviso, só que chegando antes de doer. */
+#hud-mode .chip.zone-timer b{color:var(--accent,#ffc22e);font-variant-numeric:tabular-nums}
+#hud-mode .chip.zone-timer.shrinking b{color:var(--danger,#ff3d5a)}
+#hud-mode .chip.zone-timer.warn{animation:zonepulse 1s ease-in-out infinite}
 
 /* placar: companheiro e quem está falando */
 #hud-lb .lb-row.ally{box-shadow:inset 3px 0 0 var(--ok,#3ddc5f)}
@@ -2095,23 +2102,28 @@ body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:non
    quatro chips, um botão e um campo de código, e ele passaria por cima do campo. O do Livre segue o
    mesmo lugar por SIMETRIA: um mascote grande no rodapé de um cartão e outro pequeno no topo do
    vizinho lia como dois componentes diferentes lado a lado. */
-#s-modes .mode-card[data-mode="free"] .mode-mascote,
-#s-modes .mode-card[data-mode="br"] .mode-mascote{position:absolute;top:6px;
+#s-modes .mode-card[data-side="left"] .mode-mascote,
+#s-modes .mode-card[data-side="right"] .mode-mascote{position:absolute;top:6px;
   width:clamp(52px,20%,72px);height:auto}
-/* ⚠️ ESPELHADOS: Marte na ESQUERDA do cartão do Livre e a Terra na DIREITA do vizinho. A altura é a mesma
-   nos dois (é ela que faz a dupla ler como um par); o que muda é o lado, e com isso os dois planetas ficam
-   nas BORDAS EXTERNAS da grade em vez de um atrás do outro no meio dela. */
-#s-modes .mode-card[data-mode="free"] .mode-mascote{left:2px}
-#s-modes .mode-card[data-mode="br"] .mode-mascote{right:2px}
+/* ⚠️ ESPELHADOS PELO LADO, NÃO PELO MODO: `data-side` (Modes.jsx) é a posição na GRADE, calculada a
+   partir de `ENTRY_PANELS.ORDER` (/admin → Tela de Modos) — quando os dois cartões estão visíveis, o
+   admin escolhe qual fica à esquerda; sozinho, um cartão fica sempre no lado de sempre (Livre='left',
+   BR='right'). `data-mode` (Livre/BR) é sobre CONTEÚDO e não muda com a ordem; `data-side` é sobre
+   POSIÇÃO e é ele que estas regras têm que seguir — presas a `data-mode`, o mascote do BR continuaria
+   à direita mesmo com o BR movido para a esquerda, colando os dois planetas no MEIO da dupla, exatamente
+   o que este parágrafo describe evitar. Com a ordem padrão os dois lêem IDÊNTICO a antes (Livre='left',
+   BR='right'); invertida, os planetas continuam nas BORDAS EXTERNAS, só que trocados. */
+#s-modes .mode-card[data-side="left"] .mode-mascote{left:2px}
+#s-modes .mode-card[data-side="right"] .mode-mascote{right:2px}
 /* só o CABEÇALHO divide espaço com o planeta; os controles usam a largura inteira do cartão. Reservar a
    faixa no cartão (com `padding-right`) e depois devolvê-la com margem negativa nos filhos funcionava,
    mas é o tipo de acrobacia que a próxima pessoa desfaz sem saber por que existia. */
-/* a faixa reservada acompanha o LADO do planeta: no Livre ele está à esquerda, então quem recua é o
+/* a faixa reservada acompanha o LADO do planeta (`data-side`, ver acima): quem está à esquerda recua o
    começo da linha — com `padding-right` ali o título passaria por baixo dele. */
-#s-modes .mode-card[data-mode="free"]>b,
-#s-modes .mode-card[data-mode="free"]>span{padding-left:78px}
-#s-modes .mode-card[data-mode="br"]>b,
-#s-modes .mode-card[data-mode="br"]>span{padding-right:78px}
+#s-modes .mode-card[data-side="left"]>b,
+#s-modes .mode-card[data-side="left"]>span{padding-left:78px}
+#s-modes .mode-card[data-side="right"]>b,
+#s-modes .mode-card[data-side="right"]>span{padding-right:78px}
 /* ⚠️ O JOGAR DO LIVRE OCUPA O MESMO ESPAÇO QUE O DO VIZINHO: a largura sai de graça (`.btn-primary` é
    `width:100%` no base.css, e é por isso que ele tem que ser filho DIRETO do cartão), e o
    `margin-block:auto` resolve a altura — a grade estica os dois cartões ao mesmo tamanho e o do Livre
@@ -2146,15 +2158,22 @@ body[data-pointer="coarse"] #s-modes .team-sizes .chip-btn{min-width:44px}
 /* ── O PAINEL DO TAB (ui/Roster.jsx) ─────────────────────────────────────────────────────────────
    Segurar TAB mostra quem está na sala, e o JOGO CONTINUA VIVO por baixo — é por isso que aqui NÃO há
    `backdrop-filter` (o `.overlay` dos temas tem um blur de 2 px, e borrar uma partida em andamento para
-   ler uma lista é o oposto do que este painel existe para fazer) e o overlay é `pointer-events:none`:
-   ele não pode capturar o ponteiro, senão o alvo do jogador congela — o mesmo motivo pelo qual o `#hud`
-   inteiro é `pointer-events:none`. Ninguém clica nele: abre com a tecla, fecha soltando. */
+   ler uma lista é o oposto do que este painel existe para fazer) e o overlay é `pointer-events:none`
+   por padrão: sem capturar o ponteiro em lugar nenhum, o mouse atravessa e o planeta segue mirando.
+   ⚠️ Mas `.rs-lista` (a lista em si, quando não cabe inteira) precisa de `auto`: com `none` até nela,
+   a RODA não tinha em cima de quem agir — o navegador faz o hit-test antes de rolar, e um elemento sem
+   pointer-events simplesmente não é alvo de wheel, então segurar TAB numa sala cheia mostrava só os
+   primeiros nomes sem jeito de ver o resto. Isto NÃO reintroduz o risco do parágrafo acima: o alvo do
+   jogador é lido na JANELA (`game/input/Pointer.js`), não pelo hover de um elemento — é o mesmo motivo
+   que já destravou o balão de ajuda dos powerups sem travar a mira —, e down/up de jogo (split/eject)
+   ficam só no CANVAS, que a lista nem é ancestral nem descendente dele. Clicar na lista não faz nada,
+   e é isso que se quer: ela só existe para SER ROLADA. */
 #s-roster{background:rgba(0,0,0,.35);backdrop-filter:none;pointer-events:none}
 #s-roster .roster{pointer-events:none;width:min(420px,92vw);max-height:min(70vh,560px);
   display:flex;flex-direction:column;gap:6px;padding:14px 16px}
 #s-roster .rs-sala{margin-left:8px;font-style:normal;opacity:.6;font-size:.8em;letter-spacing:.06em}
 #s-roster .rs-conta{opacity:.65;font-size:.85em;margin-top:-4px}
-#s-roster .rs-lista{overflow:hidden auto;display:flex;flex-direction:column;gap:1px;min-height:0}
+#s-roster .rs-lista{overflow:hidden auto;display:flex;flex-direction:column;gap:1px;min-height:0;pointer-events:auto}
 #s-roster .rs-row{display:flex;align-items:center;gap:8px;padding:3px 4px;border-radius:6px;min-width:0}
 #s-roster .rs-row.me{background:color-mix(in srgb,var(--accent) 16%,transparent)}
 #s-roster .rs-row.morto{opacity:.45}

@@ -4,6 +4,7 @@
 // Proper nouns stay put: the 35 caricature skins (84-118) are people's names, and the brand is the brand.
 export default {
   modesTitle: "CHOOSE A MODE", modesShort: "Modes", partyTitle: "YOUR SQUAD",
+  modesNone: "No modes available right now.",
   modeFree: "FREE FOR ALL", modeFreeSub: "Endless arena. Grow, devour, rule.",
   modeSolo: "BATTLE ROYALE", modeSoloSub: "The arena closes. No respawn. Last one takes all.",
   modeTeam: "SQUADS",
@@ -16,7 +17,7 @@ export default {
   brLobbyTitle: "BATTLE ROYALE", brWaiting: "looking for players…", brStarting: "match starts in",
   brHint: "The last planet standing takes it all. The zone closes in, and there is no respawn.",
   brCancel: "Cancel",
-  aliveLeft: "LEFT", placementWord: "placement", zoneOut: "⚠ IN THE GAS", zoneShrinking: "THE GAS IS CLOSING IN",
+  aliveLeft: "LEFT", placementWord: "placement", zoneOut: "⚠ IN THE GAS", zoneShrinking: "THE GAS IS CLOSING IN", zoneCloses: "gas closes in",
   admJoin: "🟢 {n} joined the game", admJoinTitle: "warspace.io",
   rosterTitle: "IN THE ROOM",
   chatTitle: "CHAT", chatHint: "T to talk", chatHintTouch: "Tap to talk", chatTeam: "squad", chatPlaceholder: "Message…",

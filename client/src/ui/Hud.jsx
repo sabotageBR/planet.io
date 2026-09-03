@@ -8,7 +8,7 @@ import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
 import { leaveGame, toggleMute, setPause, setPref } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
-import { fmt, ord } from "./format.js";
+import { fmt, ord, fmtTime } from "./format.js";
 import { preenche } from "../i18n/index.js";
 import Chat from "./Chat.jsx";
 import KillFeed from "./KillFeed.jsx";
@@ -20,7 +20,7 @@ import { MODE, weaponOf, POWERUP, TICK_HZ, flagOf } from "@warspace/shared";
 import { keysOf } from "../game/input/Keyboard.js";   // a legenda tem que dizer a tecla que está DE FATO ligada (inclusive a do desempate de colisão)
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0, autodef: 0, zoom: 0, feast: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: "", clock: null, notice: null,
-  mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, talk: null, chat: [], feed: [], lobby: null };
+  mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, zoneIn: null, zoneShrinking: false, talk: null, chat: [], feed: [], lobby: null };
 const TALK_MSG = { cd: "micCooldown", denied: "micDenied", unsupported: "micUnsupported", audio: "micFail", fail: "micFail" };   // motivo → chave da label
 /**
  * Anel de tempo: o arco encolhe com o que resta. Serve ao push-to-talk e aos powerups temporizados — é o
@@ -186,6 +186,12 @@ export default function Hud() {
     </div>
     {br && !noLobby ? <div id="hud-mode" className={h.zoneHurt ? "hurt" : ""}>
       <span className="chip alive"><i>💀</i> <b>{h.alive || 0}</b> <span>{LB.aliveLeft}</span></span>
+      {/* Contador do fechamento do gás: `zoneIn` só vem `null` quando a zona já fechou tudo (`done`),
+          então o chip some sozinho no círculo final — não há mais "próximo fechamento" para contar.
+          O rótulo troca com `zoneShrinking` (mesma leitura do servidor: "parada = origem e destino
+          iguais"): parado, é contagem PARA o gás começar a avançar; avançando, é para ele parar de novo. */}
+      {h.zoneIn != null ? <span className={"chip zone-timer" + (h.zoneShrinking ? " shrinking" : "") + (h.zoneIn <= 10 ? " warn" : "")}>
+        <i>⏳</i> <b>{fmtTime(h.zoneIn)}</b> <span>{h.zoneShrinking ? LB.zoneShrinking : LB.zoneCloses}</span></span> : null}
       {h.zoneHurt ? <span className="chip zone-out">{LB.zoneOut}</span> : null}
     </div> : null}
     <BrLobby lobby={h.lobby} />

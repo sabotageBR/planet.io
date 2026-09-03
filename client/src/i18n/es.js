@@ -4,6 +4,7 @@
 // Los nombres propios no se traducen: las 35 caricaturas (84-118) son nombres de personas.
 export default {
   modesTitle: "ELIGE EL MODO", modesShort: "Modos", partyTitle: "TU EQUIPO",
+  modesNone: "Ningún modo disponible en este momento.",
   modeFree: "LIBRE", modeFreeSub: "Arena sin fin. Crece, devora y reina.",
   modeSolo: "BATTLE ROYALE", modeSoloSub: "La arena se cierra. Sin revivir. El último se lo lleva todo.",
   modeTeam: "EN EQUIPO",
@@ -16,7 +17,7 @@ export default {
   brLobbyTitle: "BATTLE ROYALE", brWaiting: "buscando jugadores…", brStarting: "la partida empieza en",
   brHint: "El último planeta en pie se lo lleva todo. La zona se cierra y no hay manera de revivir.",
   brCancel: "Cancelar",
-  aliveLeft: "QUEDAN", placementWord: "puesto", zoneOut: "⚠ EN EL GAS", zoneShrinking: "EL GAS ESTÁ AVANZANDO",
+  aliveLeft: "QUEDAN", placementWord: "puesto", zoneOut: "⚠ EN EL GAS", zoneShrinking: "EL GAS ESTÁ AVANZANDO", zoneCloses: "el gas cierra en",
   admJoin: "🟢 {n} entró al juego", admJoinTitle: "warspace.io",
   rosterTitle: "EN LA SALA",
   chatTitle: "CHAT", chatHint: "T para hablar", chatHintTouch: "Toca para hablar", chatTeam: "equipo", chatPlaceholder: "Mensaje…",
