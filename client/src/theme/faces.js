@@ -1,4 +1,4 @@
-// ── CARICATURAS DOS EASTER EGGS (as skins escolhidas pelo NICK) ───────────────
+// ── AS ARTES QUE VÃO DENTRO DO DISCO: caricaturas de egg e os TRÊS MASCOTES ───
 // Gêmeo de `avatars.js`, e pelo mesmo motivo: `paintPattern` é SÍNCRONO — roda dentro de `cache.get`/`warm`
 // do TextureCache, onde não há await —, então o bitmap tem que estar decodificado ANTES de a textura ser
 // assada. Aqui a arte é ESTÁTICA (vem de `client/public/faces/`), o que torna tudo mais simples que a foto
@@ -10,6 +10,31 @@
 // @ts-check
 import { skinById } from "@warspace/shared";
 import { PORTAL } from "../portal/flags.js";
+
+/**
+ * OS TRÊS MASCOTES. Mesma máquina das caricaturas — mesmo cache, mesma chave, mesmo "assa liso agora e
+ * reassa quando o bitmap chegar" — e três diferenças que são o ponto:
+ *  1. eles NUNCA são cortados no pacote de portal. As 35 caricaturas são de pessoas reais e caem no
+ *     `!PORTAL` de `faceFile`; estes são personagens NOSSOS, e é justamente por isso que eles servem
+ *     como skin premium num portal.
+ *  2. a arte é a MESMA que o cenário do menu (`ui/Scene.jsx`) e os cartões da tela de modos já usam. Não
+ *     há cópia em `client/public/`: `new URL(..., import.meta.url)` é reescrito pelo Vite para o asset
+ *     hasheado — o mesmo arquivo que o `import` daqueles dois módulos emite —, então o zip não engorda
+ *     um byte e o cache do navegador é compartilhado.
+ *     ⚠️ `new URL(...)` e NÃO `import`: este módulo está na cadeia de import dos TRÊS temas, e
+ *     `client/test/textures.test.js` os carrega no `node --test`, onde importar um `.webp` derruba o
+ *     loader. `new URL` é só aritmética de URL — o Node a avalia sem tocar no arquivo.
+ *  3. elas não têm moldura própria: a arte tem fundo TRANSPARENTE e é desenhada SOBRE o disco da cor da
+ *     skin (ver `mascote()` em patterns.js), enquanto a caricatura é uma imagem cheia de borda a borda.
+ * @type {Record<string,string>}
+ */
+const MASCOTES = {
+  marte: new URL("../assets/scene/planeta-laranja.webp", import.meta.url).href,
+  terra: new URL("../assets/scene/planeta-azul.webp", import.meta.url).href,
+  lua: new URL("../assets/scene/lua.webp", import.meta.url).href,
+};
+/** A chave de um mascote leva `@` para nunca colidir com um nome de arquivo de caricatura. */
+const chaveMascote = m => "@" + m;
 
 /** @type {Map<string,ImageBitmap|null>} arquivo → bitmap pronto (ou null enquanto carrega/falhou) */
 const cache = new Map();
@@ -36,8 +61,13 @@ export function onFaceReady(cb) { ouvintes.add(cb); return () => ouvintes.delete
  * a identidade — `07_putin.webp` — mesmo sem ninguém desenhá-los). O SERVIDOR continua escolhendo a skin
  * de egg pelo nick (`persist/hooks.js`), porque ele é o mesmo do site; o que muda é que o planeta cai no
  * disco liso da cor da skin — o mesmo caminho já usado enquanto a arte não chegou. No site, nada muda.
+ *
+ * ⚠️ O MASCOTE PASSA EM TODO LUGAR, portal incluído, e responde por esta MESMA função de propósito: quem
+ * pergunta "esta skin tem arte dentro do disco?" são quatro lugares (a textura do planeta, a chave do
+ * cache, a prévia da loja e — o que menos se lembra — a decisão de NÃO escrever o nome do jogador em
+ * cima dela, em `layers/Planets.js`), e duas respostas para a mesma pergunta divergem na 1ª correção.
  */
-export const faceFile = sk => (!PORTAL && sk && sk.face) || null;
+export const faceFile = sk => (sk && sk.mascot ? chaveMascote(sk.mascot) : (!PORTAL && sk && sk.face) || null);
 /** O bitmap, se já estiver pronto. Nunca espera — quem desenha está dentro de um frame. */
 export const faceBitmap = sk => { const f = faceFile(sk); return f ? cache.get(f) || null : null; };
 /** Sufixo de chave: só muda quando o bitmap CHEGA, que é exatamente quando a textura tem que ser refeita. */
@@ -51,7 +81,10 @@ export function ensureFace(sk) {
     try {
       // ⚠️ `BASE_URL` (e não "/"): num portal o jogo é servido de um subcaminho, e a raiz do zip é ele.
       // Ele SEMPRE termina em "/" — daí a interpolação sem barra própria, senão vira ".//faces/".
-      const r = await fetch(`${import.meta.env.BASE_URL}faces/${f}.webp`, { cache: "force-cache" });
+      // O mascote já vem com a URL pronta do bundler; a caricatura mora em `public/faces/`.
+      const url = f[0] === "@" ? MASCOTES[f.slice(1)] : `${import.meta.env.BASE_URL}faces/${f}.webp`;
+      if (!url) return;
+      const r = await fetch(url, { cache: "force-cache" });
       if (!r.ok) return;
       cache.set(f, await createImageBitmap(await r.blob()));
       for (const cb of ouvintes) { try { cb(f); } catch { /* um ouvinte quebrado não derruba os outros */ } }
@@ -63,6 +96,8 @@ export function ensureFace(sk) {
  * custo de descobrir isso no meio da partida é o planeta do adversário piscando de liso para cara.
  */
 export function warmFaces(skinIds) {
-  for (const id of skinIds || []) { const sk = skinById(id); if (sk && sk.face) ensureFace(sk); }
+  // `faceFile` e não `sk.face`: sem isso o MASCOTE ficaria de fora do aquecimento e só seria descoberto
+  // no meio da partida — o planeta do adversário piscando de liso para arte, que é o que isto evita.
+  for (const id of skinIds || []) { const sk = skinById(id); if (faceFile(sk)) ensureFace(sk); }
 }
 export function clearFaces() { for (const b of cache.values()) if (b && b.close) b.close(); cache.clear(); }

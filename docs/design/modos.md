@@ -397,6 +397,19 @@ As três escolhas da tela de modos põem o jogador numa sala que o SERVIDOR esco
   convite — o mesmo contrato do lobby de equipe, e sem senha. ⚠️ Sala privada morta LIBERA o código:
   `getRoom` materializa uma sala nova, pública, para qualquer código deste shard. Não se conserta isso com
   uma lista persistente de códigos; é o preço de a sala ser memória.
+- **Quem preenche a sala do dono é o CONVITE, não o servidor.** Privada, ela não recebe um bot: no Livre
+  `botCount` nasce 0 e no Battle Royale a guarda mora dentro de `fillTo`, que é o caminho único dos três
+  chamadores (a largada, o passo do lobby e o fecho da janela). ⚠️ E aí o lobby de um BR fechado com UM
+  humano **espera** em vez de largar: `aliveTeams()<=1` é a condição de vitória e já estaria satisfeita
+  antes do primeiro tick — o dono veria a largada e o pódio no mesmo segundo.
+  Pública, ela também **não nasce em andamento**: a semente de `ROOM.BOT_SEED` e os tamanhos grandes
+  existem para contar "isto já estava rolando" a quem cai numa sala que o SERVIDOR escolheu, e na sala que
+  o próprio jogador acabou de abrir a história é falsa — ele está olhando e veria os seis nascerem de uma
+  vez, dois deles gigantes. Lá a semente é ZERO, ele entra sozinho, todo mundo chega pequeno
+  (`abreEmAndamento` zera o `f` de `botSpawnR`) e o intervalo é `ROOM.HOST_BOT_JOIN_TICKS` (15–35 s, contra
+  6–14 s da automática): ele está esperando os amigos, e uma sala que se enche de bot em dois minutos é
+  uma sala sem vaga para eles. ⚠️ Quem distingue a sala do dono da automática é `hostUserId`, nunca
+  `private` sozinho — a sala de EQUIPE também é fechada e continua precisando de preenchimento.
 - **O dono pode cair e voltar** (a comparação é por conta, não por sessão). Passado `ROOM.HOST_GRACE_MS` fora,
   a coroa vai ao humano mais antigo presente — uma sala de 20 pessoas sem ninguém que possa expulsar um
   invasor é pior que uma com dono improvisado. E o ceifador não recolhe a sala enquanto `ROOM.HOST_HOLD_MS`

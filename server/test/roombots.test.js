@@ -12,8 +12,10 @@ const {ROOM,MODE,TICK_HZ,PLAYER}=await import('@warspace/shared/constants.js');
 const {setR}=await import('@warspace/shared/physics/body.js');
 
 const mudo={info(){},warn(){},error(){},debug(){}};
-const sala=(bots=15)=>new Room({code:'TST0',shard:0,seed:7,hooks:null,log:mudo,
-  metrics:{inc(){},add(){}},config:{},roomMax:30,roomBots:bots,mode:MODE.FREE});
+const sala=(bots=15,extra={})=>new Room({code:'TST0',shard:0,seed:7,hooks:null,log:mudo,
+  metrics:{inc(){},add(){}},config:{},roomMax:30,roomBots:bots,mode:MODE.FREE,...extra});
+/** A sala do DONO: o que a distingue da automática é ter `hostUserId` (http/api.js sempre o manda). */
+const salaDono=(priv,bots=15)=>sala(bots,{private:priv,hostUserId:53,hostNick:'dono'});
 const anda=(r,ticks)=>{for(let i=0;i<ticks;i++)r.step();};
 
 test('abre com o punhado inicial, não com a sala cheia', () => {
@@ -186,4 +188,71 @@ test('quem morreu e voltou continua no placar — e é o campeão se estiver mai
   assert.equal(fim.board[0].name,'SnoopDog','e ele é o 1º do placar');
   assert.ok(fim.board[0].mass>0,'com a massa de verdade, não zerada como quem saiu');
   assert.equal(fim.board[0].left,false,'a linha não pode ficar marcada como "saiu da sala"');
+});
+
+// ── A SALA DO DONO ───────────────────────────────────────────────────────────
+// "Só por convite" quer dizer que quem preenche é o CONVITE: fechada, a sala não recebe um bot. E mesmo
+// aberta ela não nasce em andamento — o dono acabou de abri-la e está olhando, então ver seis planetas
+// (dois deles gigantes) nascerem no primeiro tick é o oposto do que a semente existe para fazer.
+test('sala do dono FECHADA não recebe preenchimento nenhum', () => {
+  const r=salaDono(true); r.start();
+  assert.equal(r.sim.botCount(),0,'abre vazia');
+  anda(r,60*TICK_HZ*10);                      // dez minutos: tempo de sobra para qualquer chegada
+  assert.equal(r.sim.botCount(),0,'e continua vazia');
+});
+
+// No Battle Royale quem preenche não é `topUpBots` e sim o LOBBY, por `fillTo` — três chamadores (a
+// largada, o passo do lobby e o fecho da janela). A guarda mora na função, então basta provar `fillTo`.
+test('sala do dono FECHADA no Battle Royale: o lobby não enche', () => {
+  const r=sala(15,{mode:MODE.BR,private:true,hostUserId:53,hostNick:'dono'}); r.start();
+  r.fillTo(r.max);
+  assert.equal(r.sim.players.size,0,'ninguém foi convidado pelo servidor');
+});
+
+// Sem preenchimento e com UM humano, `aliveTeams()<=1` já vale antes da largada: a partida acabaria no
+// primeiro tick e o dono veria a largada e o pódio no mesmo segundo. A janela espera.
+test('sala do dono FECHADA no BR: sozinho, a largada não vem', () => {
+  const r=sala(15,{mode:MODE.BR,private:true,hostUserId:53,hostNick:'dono'}); r.start();
+  assert.equal(r.phase,'lobby','o Battle Royale abre no lobby');
+  r.sim.addHuman(0,{name:'dono',sessionId:'s1',spawn:false});
+  anda(r,r.lobbyTicks*3);                     // três janelas inteiras
+  assert.equal(r.phase,'lobby','continua esperando');
+  assert.equal(r.startsAt,0,'e a contagem regressiva não começou');
+  assert.equal(r.sim.players.size,1,'e ninguém foi convidado pelo servidor');
+});
+
+test('sala do dono ABERTA no Battle Royale: o lobby enche como sempre', () => {
+  const r=sala(15,{mode:MODE.BR,private:false,hostUserId:53,hostNick:'dono'}); r.start();
+  r.fillTo(4);
+  assert.equal(r.sim.players.size,4,'aberta, o preenchimento continua valendo');
+});
+
+test('sala do dono ABERTA: ele entra sozinho e os bots chegam depois', () => {
+  const r=salaDono(false); r.start();
+  assert.equal(r.sim.botCount(),0,'nasce sem semente: quem abriu está olhando');
+  anda(r,ROOM.HOST_BOT_JOIN_TICKS[1]+1);      // o MAIOR intervalo possível: aí alguém já entrou
+  assert.equal(r.sim.botCount(),1,'e aí chega UM');
+});
+
+test('sala do dono ABERTA enche mais devagar que a automática', () => {
+  const auto=sala(15); auto.start();
+  const dono=salaDono(false); dono.start();
+  anda(auto,60*TICK_HZ*2); anda(dono,60*TICK_HZ*2);   // dois minutos nas duas
+  assert.ok(dono.sim.botCount()<auto.sim.botCount(),
+    `a do dono tem menos gente (${dono.sim.botCount()} contra ${auto.sim.botCount()})`);
+});
+
+// ⚠️ O raio tem que ser medido NO TICK EM QUE O BOT NASCE. Dez minutos depois todos cresceram comendo,
+// e a asserção passaria a falar de outra coisa — foi assim que a primeira versão deste teste falhou com
+// um bot de raio 88 que tinha entrado com 40.
+test('na sala do dono ninguém chega GIGANTE', () => {
+  const r=salaDono(false); r.start();
+  const vistos=new Set(); let novos=0;
+  for(let i=0;i<60*TICK_HZ*10;i++){ r.step();
+    for(const gp of r.sim.players.values()){
+      if(!gp.isBot||vistos.has(gp.slot))continue;
+      vistos.add(gp.slot); novos++;
+      for(const pc of r.sim.world.piecesOf(gp.slot)||[])
+        assert.ok(pc.r<=PLAYER.BOT_R[1]+1e-6,`entrou com raio ${pc.r}, acima da faixa de quem acaba de chegar`);}}
+  assert.ok(novos>0,'alguém chegou');
 });

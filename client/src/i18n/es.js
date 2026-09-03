@@ -52,7 +52,9 @@ export default {
   muteHint: "Silencio (M)",
   zoomHint: "Zoom manual — 0 o el botón central vuelve al automático",
   pauseTitle: "PAUSA", pauseHint: "Menú (Esc)", resume: "Volver al juego", exitMatch: "Salir de la partida",
-  ownRoom: "TU PROPIA SALA", ownRoomSub: "Tu modo, tu tiempo, tu gente", ownOpen: "CREA TU SALA",
+  ownRoom: "TU PROPIA SALA", ownRoomSub: "Tu modo, tu tiempo, tu gente", ownOpen: "CREA TU SALA", ownClose: "VOLVER A LOS MODOS",
+  ownPrivateNote: "Solo entra quien tiene el código, y la sala no recibe relleno.",
+  ownPublicNote: "Entras solo y el relleno va llegando poco a poco.",
   ownTime: "Duración", ownPrivate: "Solo con invitación", ownCreate: "➕ ABRIR SALA",
   ownNeedAccount: "Hace falta una cuenta: el anfitrión expulsa y banea.",
   hostPanel: "TU SALA", hostKick: "Expulsar", hostBan: "Banear", hostBanned: "Baneados", hostNobody: "Solo tú por aquí",
@@ -247,5 +249,8 @@ export default {
     111: { n: "Lincoln", d: "Secreto oculto" }, 112: { n: "Elon Musk", d: "Secreto oculto" }, 113: { n: "Zuckerberg", d: "Secreto oculto" },
     114: { n: "Senna", d: "Secreto oculto" }, 115: { n: "Schumacher", d: "Secreto oculto" }, 116: { n: "Hamilton", d: "Secreto oculto" },
     117: { n: "Churchill", d: "Secreto oculto" }, 118: { n: "Einstein", d: "Secreto oculto" },
+    // los tres mascotas del juego: nombre propio de personaje, pero el adjetivo sí se traduce
+    119: { n: "Marte Bravo", d: "El buscapleitos rojo" }, 120: { n: "Tierra Brava", d: "La buscapleitos azul" },
+    121: { n: "Luna Soldado", d: "Casco puesto y mal humor" },
   },
 };

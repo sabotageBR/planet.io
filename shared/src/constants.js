@@ -49,6 +49,14 @@ export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS
   // `BOT_JOIN_TICKS` em silêncio. O enchimento se normaliza sozinho: cheia é cheia em qualquer ritmo.
   SEED_R:[[200,250],[80,150]],SEED_MIX:[2,3],SEED_WINDOW_TICKS:7200,
   BOT_SEED:6,BOT_JOIN_TICKS:[360,840],
+  // ── A SALA DO DONO NÃO É A SALA AUTOMÁTICA ──
+  // Ela não nasce "em andamento": quem abre uma sala sua entra SOZINHO e vê os preenchimentos chegarem.
+  // A semente e os tamanhos grandes existem para contar "isto já estava rolando" a quem cai numa sala que
+  // o SERVIDOR escolheu — na sala que o próprio jogador acabou de abrir essa história é falsa, e ele vê os
+  // seis nascerem de uma vez no primeiro tick. Por isso lá a semente é ZERO, todo mundo chega pequeno e o
+  // intervalo é este, bem mais largo: ele espera os amigos, e uma sala que se enche de bot em dois minutos
+  // é uma sala que já não tem vaga para eles. Com 15 preenchimentos, 15–35 s dá de 4 a 9 minutos.
+  HOST_BOT_JOIN_TICKS:[900,2100],
   // ── UMA BANDEIRA NÃO PODE TOMAR A SALA ──
   // A bandeira do preenchimento existe para dizer que a sala é INTERNACIONAL — e ela só diz isso se as
   // bandeiras forem DIFERENTES. `botCountry` sorteia cada bot de forma INDEPENDENTE numa roleta em que o

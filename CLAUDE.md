@@ -35,7 +35,7 @@ Mockups aprovados continuam em `mockups/v2/` (CommonJS; `node mockups/v2/src/bui
 
 ```
 shared/src/    constants.js (ÚNICA fonte de tunables; ZOOM/roundTicksOf/ZONE_TOTAL_TICKS) · tunables.js (a lista BRANCA do que o /admin pode mudar em runtime)
-               skins.js (94 skins) · achievements.js · levels.js (XP/nível/K-D) · countries.js · eggs.js (nick → skin) · rng.js · camera.js · util.js · zone.js · bot.js
+               skins.js (122 skins) · achievements.js · levels.js (XP/nível/K-D) · countries.js · eggs.js (nick → skin) · rng.js · camera.js · util.js · zone.js · bot.js
                physics/ (body, spatial-hash, integrate, collide, rules, world, predict) · protocol/ (constants, quant, writer, reader, codec, dto)
 server/src/    index.js (composition root + startServer) · loop.js (scheduler 60 Hz) · metrics.js
                llm/ollama.js · rooms/botChat.js · rooms/botPersonas.js (histórias, server-only) · rooms/feed.js (marcos do kill feed)
@@ -616,6 +616,23 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `sessionId`, `userId` e IP — o dono é jogador, não administrador; o handle é um `pid` opaco por sala,
   nunca o slot (recicla). ⚠️ `users.id` é BIGINT e o driver o entrega como STRING: sem `Number()` no
   `hostUserId`, `'53'===53` é falso e o dono simplesmente não seria dono, sem erro nenhum.
+  ⚠️ **QUEM PREENCHE A SALA DO DONO É O CONVITE, NÃO O SERVIDOR** (`Room.semBots`/`abreEmAndamento`/
+  `botSeed`, `ROOM.HOST_BOT_JOIN_TICKS`). "Só por convite" quer dizer o que está escrito: FECHADA, a sala
+  não ganha um bot — nem no Livre (`botCount` = 0) nem no lobby do Battle Royale, e lá a guarda mora
+  DENTRO de `fillTo`, que é o caminho único dos três chamadores (a largada, o passo do lobby e o fecho da
+  janela); a partida começa quando a janela fecha, com quem chegou. ABERTA, ela também **não nasce em
+  andamento**: `ROOM.BOT_SEED` e os tamanhos grandes existem para contar "isto já estava rolando" a quem
+  cai numa sala que o SERVIDOR escolheu, e na sala que o próprio jogador acabou de abrir a história é
+  falsa — ele está olhando e veria os seis nascerem de uma vez, dois deles gigantes. Então a semente é
+  ZERO, ele entra sozinho e os preenchimentos chegam a cada 15–35 s (contra 6–14 s da automática): ele
+  está esperando os amigos, e uma sala que se enche de bot em dois minutos é uma sala sem vaga para eles.
+  ⚠️ **Zerar a semente não basta**: `botSpawnR` decide o tier pelo `f`, e é `abreEmAndamento` zerando a
+  `janela` de `topUpBots` que o faz cair no `[24,58]` de sempre pelos DOIS ramos — sem isso o primeiro
+  que chegasse ainda viria da cota de `SEED_MIX`, ou seja um gigante nascendo na frente do dono.
+  ⚠️ Quem distingue a sala do dono da automática é **`hostUserId`**, nunca `private` sozinho: a sala de
+  EQUIPE também é fechada e continua precisando de preenchimento.
+  ⚠️ A tela DIZ isso (`ownPrivateNote`/`ownPublicNote`, sob a chave): sem a linha, o jogador só descobre
+  a diferença depois de abrir a sala.
   ⚠️ O ceifador não recolhe a sala do dono enquanto `ROOM.HOST_HOLD_MS` não vencer (ela existe para
   esperar os amigos), e o filtro de PRIVADA mora em `RoomManager.listRooms` — não em `Room.info()`, que é
   a base do `adminInfo`.
@@ -1976,6 +1993,27 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **O disco tem teto de 74% da coluna, não 100%**: o canvas é absoluto e mede 132% do bloco (ver o
   fim de rodada), então um disco com a largura inteira do `.dd-alvo` — que no duelo é um terço da
   caixa — empurra 16% para cada lado, e o cartão ganhava barra de rolagem horizontal na gaveta.
+- **O CARTÃO DO LIVRE TEM UM JOGAR, E DOIS MASCOTES** (`ui/Modes.jsx`, `.free-row` em `ui.css`): ele era
+  o ÚNICO cartão da tela sem botão nenhum — o clique era no cartão inteiro —, e ao lado de um vizinho com
+  um JOGAR grande e amarelo isso lê como "este aqui ainda não está pronto". Agora os dois têm a mesma
+  chamada à ação no mesmo lugar, com **Marte à esquerda, JOGAR no meio e a Lua à direita**.
+  ⚠️ **Ele deixou de ser `<button>`** pelo mesmo motivo do Battle Royale: botão dentro de botão é HTML
+  inválido e prende o foco. Perde-se "clicar em qualquer lugar entra"; o `<button>` de dentro mantém o
+  teclado, que era a razão de ser um botão.
+  ⚠️ **Os mascotes saíram do ABSOLUTO e entraram na fileira.** No absoluto eles funcionavam porque era UM,
+  num cartão que só tinha duas linhas de texto — o vazio de baixo era dele. Com DOIS e um alvo de 44 px
+  no meio, o `overflow:hidden` esconde o excesso mas **não impede a colisão**.
+  ⚠️ Casa-se a ALTURA e não a largura (`height:clamp(...)`, `width:auto`): as artes têm proporções
+  diferentes (448×463 e 256×321), e casando a largura a Lua sai mais alta que o Marte. O teto é 74 px e
+  não 96 porque são dois — no 96 eles somavam mais largura que o botão, e a chamada à ação virava o menor
+  bloco da fileira.
+  ⚠️ **A Lua saiu do botão de "Sala sua"** e `#cena .lua` entrou na lista de sprites escondidos nesta
+  tela: é o mesmo argumento que já valia para o Marte — o mesmo sprite duas vezes na mesma tela lê como
+  erro de montagem.
+  ⚠️ **Abrir "Sala sua" ESCONDE os dois cartões.** Eles não são alternativa ao formulário: o primeiro
+  controle dele é justamente Livre × Battle Royale, então deixá-los no ar oferece a mesma decisão duas
+  vezes, com dois botões de entrar competindo — e empurra o formulário para fora da caixa. O botão vira
+  o caminho de volta e troca o rótulo (`ownClose`).
 - **A TELA DE MODOS: DOIS CARTÕES COM MASCOTE** (`ui/Modes.jsx`, o bloco "TELA DE MODOS" de `ui.css`).
   Eram QUATRO — Livre · Solo · Em equipe · Sala sua — e a tela passava dos 1.300 px de altura: o último
   cartão ficava cortado ao meio pela borda da caixa e ninguém via que havia mais coisa abaixo. Duas fusões
@@ -2036,7 +2074,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `ui.css` devolve o `auto-fill` com especificidade maior. A skin **Retrato** ganhou selo próprio na grade (ela é a
   única que pede algo além da compra — a foto), o `AvatarPicker` mudou para DENTRO do modal e também para o Perfil, junto
   do nick e do país: trocar a foto não deveria exigir reencontrar uma skin numa grade de 94.
-- **Skins novas** (75–118): 8 lendárias com `levelReq` (10–50) que são EMBLEMAS, não texturas de planeta — é o
+- **Skins novas** (75–121): 8 lendárias com `levelReq` (10–50) que são EMBLEMAS, não texturas de planeta — é o
   que as faz legíveis a 24 px; a skin **Retrato** (83), que põe a FOTO do jogador dentro do disco; e **35
   caricaturas de easter egg** (84–118, `rarity:"secret"`, escondidas da loja e recusadas pela compra),
   escolhidas pelo NICK em `shared/src/eggs.js` — casamento EXATO da raiz (`baseNick`), porque prefixo fazia
@@ -2044,6 +2082,33 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   e **nunca** escreve em `users.equipped_skin_id`; `prefs.eggs:false` desliga. ⚠️ `seedSkins` tem uma faca: um
   pod com o `shared/skins.js` ANTIGO faz `UPDATE skins SET active=false` nas skins novas — os 3 shards têm que
   estar na MESMA imagem antes de qualquer skin nova ficar comprável.
+- **AS TRÊS SKINS DE MASCOTE** (119–121: Marte Bravo, Terra Brava e Lua Soldado; `pattern:"mascote"` +
+  `mascot` em `skins.js`, `mascote()` em `theme/patterns.js`, o bloco `MASCOTES` de `theme/faces.js`):
+  os personagens do jogo viraram skin compráveis. Passam pela MESMA máquina das caricaturas — mesmo
+  cache, mesma chave, mesmo "assa liso agora e reassa quando o bitmap chegar" — e a pergunta continua
+  sendo respondida por **`faceFile(sk)`**, que agora conhece as duas famílias: são QUATRO consumidores
+  (a textura do planeta, a chave do cache, a prévia da loja e a decisão de não escrever o nome do
+  jogador em cima da arte), e duas respostas para a mesma pergunta divergiriam na primeira correção.
+  ⚠️ **Elas NÃO são cortadas no pacote de portal.** O `!PORTAL` de `faceFile` existe porque as 35
+  caricaturas são de pessoas reais; estas são personagens NOSSOS, e é justamente por isso que servem de
+  skin premium num portal. Medido no zip da Poki: o `define` poda o ramo da caricatura e o compilado
+  vira `t=>t&&t.mascot?…:null`.
+  ⚠️ **A arte é a MESMA do cenário e dos cartões da tela de modos, sem cópia em `public/`:**
+  `new URL("../assets/scene/x.webp", import.meta.url)` é reescrito pelo Vite para o asset hasheado — o
+  mesmo arquivo que o `import` de `Scene.jsx`/`Modes.jsx` emite —, então o zip não engorda um byte
+  (medido: um arquivo por mascote, duas referências no bundle). ⚠️ `new URL` e **não** `import`:
+  `faces.js` está na cadeia de import dos três temas e `client/test/textures.test.js` os carrega no
+  `node --test`, onde importar um `.webp` derruba o loader; `new URL` é aritmética de URL, o Node a
+  avalia sem tocar no arquivo.
+  ⚠️ **O desenho é diferente do da caricatura**, e por duas razões: a arte tem fundo TRANSPARENTE (o
+  disco da cor da skin vai por baixo, senão o personagem é um recorte flutuando) e não é quadrada, então
+  o `drawImage(-r,-r,r*2,r*2)` de lá esticaria as três de um jeito cada. É `contain`, e o **fator é por
+  personagem** (`MASC_FIT`): Marte e Terra SÃO a esfera e entram em 2.06 (no 2 exato sobrava um fio da
+  cor da skin em volta deles); a Lua é esfera COM CAPACETE, e em 2.06 a cúpula caía fora do círculo e
+  era decepada pelo recorte — ela entra em 1.8, e a faixa que sobra ao lado não custa nada porque a cor
+  da skin é o mesmo cinza dela.
+  ⚠️ `seedSkins` continua sendo a faca de sempre: um pod com o `shared/skins.js` ANTIGO faz
+  `UPDATE skins SET active=false` nas três — os shards têm que subir na MESMA imagem.
 - **As caricaturas são ILUSTRAÇÃO, não canvas** (`client/public/faces/*.webp`, 256², ~15 KB cada;
   `client/src/theme/faces.js`): houve aqui um rosto procedural montado com elipses e recolorido por
   personagem, e ele saiu inteiro. O motivo é medível: dez caricaturas feitas de elipses saem parecidas entre

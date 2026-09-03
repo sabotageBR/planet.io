@@ -64,6 +64,20 @@ export class Room{
     // `'53'===53` é falso e o dono da sala simplesmente NÃO seria dono — sem erro nenhum, só um painel que
     // nunca aparece.
     this.private=!!priv;this.hostUserId=hostUserId==null?null:Number(hostUserId);this.hostNick=hostNick||null;this.hostLeftAt=0;
+    // ── QUEM PREENCHE A SALA DO DONO É O CONVITE, NÃO O SERVIDOR ─────────────────────────────
+    // "Só por convite" quer dizer o que está escrito: a sala é de quem receber o código, e um
+    // preenchimento ali é o servidor convidando por conta própria — no Livre e no lobby do Battle Royale
+    // (`fillTo`, que é por onde o BR enche). Fechada, ela não ganha um bot.
+    // ABERTA, ela também não nasce EM ANDAMENTO: quem abre entra sozinho e os preenchimentos vão
+    // chegando, mais devagar (`ROOM.HOST_BOT_JOIN_TICKS`) e todos pequenos. A semente e os tamanhos
+    // grandes existem para contar "isto já estava rolando" a quem cai numa sala que o SERVIDOR escolheu;
+    // na sala que o próprio jogador acabou de abrir a história é falsa — ele vê os seis nascerem.
+    // ⚠️ `hostUserId` é o que distingue a sala do dono da automática: `http/api.js` sempre o manda, e
+    // `private` sozinho não serve (a sala de EQUIPE também é fechada e continua precisando de gente).
+    this.semBots=this.private&&this.hostUserId!=null;
+    this.abreEmAndamento=this.hostUserId==null;
+    this.botSeed=this.abreEmAndamento?ROOM.BOT_SEED:0;
+    if(this.semBots)this.botCount=0;
     this.holdUntil=hostUserId?Date.now()+ROOM.HOST_HOLD_MS:0;
     /** @type {Map<string,{userId:number|null,key:string|null,nick:string,at:number}>} */this.bans=new Map();
     // handle OPACO do jogador para o painel do dono. Nunca o slot (recicla — é o 409 `slot_changed` que o
@@ -162,7 +176,9 @@ export class Room{
   start(){if(this.running)return;this.running=true;
     // A sala abre com POUCOS e vai enchendo (ver ROOM.BOT_SEED): quinze planetas nascendo no mesmo tick
     // era o jeito mais rápido de dizer ao jogador que aquilo ali não é gente.
-    this.topUpBots(-1,ROOM.BOT_SEED);this._agendaBot();}
+    // ⚠️ `this.botSeed` e não a constante: na sala do DONO ela é ZERO — ele abriu a sala e está olhando,
+    // então os seis nasceriam na frente dele, que é o oposto do que a semente existe para fazer.
+    this.topUpBots(-1,this.botSeed);this._agendaBot();}
   stop(){this.running=false;}
   /**
    * @param {number} team @param {number} max quantos podem nascer AGORA (o resto fica para a chegada gradual)
@@ -179,15 +195,20 @@ export class Room{
    * `f` do enchimento já estaria em zero a essa altura, e é ele o cinto de segurança.
    */
   topUpBots(team=-1,max=Infinity){let have=this.sim.botCount(),n=0;
-    const janela=this.mode.respawnBots?1-this.sim.tick/ROOM.SEED_WINDOW_TICKS:0,vagas=this.botCount-ROOM.BOT_SEED;
+    // ⚠️ `abreEmAndamento` zera a janela na sala do DONO, e isso não é detalhe: `botSpawnR` com `f<=0` cai
+    // no [24,58] de sempre pelos DOIS ramos, ou seja é ele que impede um gigante de aparecer do nada na
+    // frente de quem abriu a sala — a mesma razão do `botSeed` zerado, um passo adiante.
+    const janela=this.mode.respawnBots&&this.abreEmAndamento?1-this.sim.tick/ROOM.SEED_WINDOW_TICKS:0;
+    const vagas=this.botCount-this.botSeed;
     for(;have<this.botCount&&n<max;have++,n++){
       // a SEMENTE é a abertura por definição (só o relógio a limita); da sétima em diante manda o MENOR
       // entre o relógio e o quanto ainda falta encher — sala cheia é sala cheia em qualquer ritmo.
       const enche=vagas>0?(this.botCount-have)/vagas:0;
-      const f=have<ROOM.BOT_SEED?janela:(janela<enche?janela:enche);
+      const f=have<this.botSeed?janela:(janela<enche?janela:enche);
       this._nasceBot({name:this._botNome(),team,r:botSpawnR(this.rng,have,f)});}
     return n;}
-  _agendaBot(){this._proxBot=this.sim.tick+this.rng.int(ROOM.BOT_JOIN_TICKS[0],ROOM.BOT_JOIN_TICKS[1]);}
+  _agendaBot(){const j=this.abreEmAndamento?ROOM.BOT_JOIN_TICKS:ROOM.HOST_BOT_JOIN_TICKS;
+    this._proxBot=this.sim.tick+this.rng.int(j[0],j[1]);}
   /**
    * UM preenchimento entrando, de tempos em tempos, até o alvo. Roda dentro do `step` e é O(1) enquanto a
    * sala está cheia — `botCount()` é um contador, não uma varredura.
@@ -565,6 +586,10 @@ export class Room{
    * Em equipe, fecha primeiro os times incompletos, para ninguém jogar 2 contra 3.
    */
   fillTo(n){
+    // ⚠️ A GUARDA MORA AQUI, e não nos chamadores: são três (`begin`, `fillStep` e o fecho da janela em
+    // `lobbyTick`), e é este o caminho ÚNICO por onde o Battle Royale ganha preenchimento. Numa sala
+    // fechada o lobby simplesmente não enche e a largada vem quando a janela fecha, com quem chegou.
+    if(this.semBots)return;
     const sim=this.sim,lobby=this.phase==='lobby';
     const nome=()=>this._botNome();
     if(this.teamCount>0)
@@ -582,6 +607,12 @@ export class Room{
     const sim=this.sim,tick=sim.tick;
     if(sim.humanCount()<BR.MIN_HUMANS){this.lobbyUntil=0;this.startsAt=0;return;}
     if(!this.lobbyUntil){this.lobbyStart=tick;this.lobbyUntil=tick+this.lobbyTicks;}
+    // ⚠️ SALA FECHADA E SOZINHA: a janela ESPERA em vez de fechar. Sem preenchimento (`semBots`) e com um
+    // humano só, o battle royale acabaria no PRIMEIRO tick — `aliveTeams()<=1` é a condição de vitória, e
+    // ela já está satisfeita antes de a partida começar: o dono veria a largada e o pódio no mesmo
+    // segundo. Ele abriu uma sala só por convite justamente porque está esperando alguém; e sala sem
+    // humano nenhum o RoomManager recolhe sozinho, então isto não é um relógio que fica acordando.
+    if(this.semBots&&sim.players.size<2){this.lobbyStart=tick;this.lobbyUntil=tick+this.lobbyTicks;this.startsAt=0;}
     if(!this.startsAt){
       this.fillStep(tick);
       if(tick>=this.lobbyUntil)this.fillTo(this.max);   // janela fechada: completa de uma vez, senão a contagem começaria em 49/50 e o número pularia na largada

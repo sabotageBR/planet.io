@@ -5,13 +5,16 @@
 // rings2·eye·sparkle·void·nebula·metal·scales·plasma; as LENDÁRIAS de nível acrescentam
 // belt·magma·prism·orbits·tide·crown·phoenix·singular, `avatar` é a foto do jogador e `face` são as
 // caricaturas dos easter eggs (o `egg` de shared/src/eggs.js escolhe qual, pelo id da skin).
+// `mascote` são os TRÊS personagens do jogo (Marte, Terra e Lua), a mesma arte que o cenário do menu e os
+// cartões da tela de modos já usam — e é por isso que elas NÃO são cortadas no pacote de portal como as
+// caricaturas: aquelas são 35 pessoas reais, estas são nossas. O campo `mascot` diz qual.
 // `levelReq` (opcional) é o nível MÍNIMO para comprar: quem valida é POST /api/skins/:id/buy, e o
 // `seedSkins` do migrate replica a coluna para o banco. Ids nunca mudam (o banco guarda o que cada um comprou).
 // @ts-check
 export const RARITY_LABELS={"free":"Grátis","common":"Comum","rare":"Raro","epic":"Épico","legendary":"Lendário","earned":"Conquista","secret":"Secreto"};
 export const RARITY_ORDER=["free","common","rare","epic","legendary","earned","secret"];
 export const RARITY_COLORS={"free":"#aaaaaa","common":"#88ccff","rare":"#44aaff","epic":"#aa44ff","legendary":"#ffcc00","earned":"#44ffaa","secret":"#ff4488"};
-/** @type {Array<{id:number,name:string,emoji:string,rarity:string,price:number,color:string,ring:boolean,glow:string,desc:string,pattern?:string,accent?:string,unlockKey?:string,levelReq?:number}>} */
+/** @type {Array<{id:number,name:string,emoji:string,rarity:string,price:number,color:string,ring:boolean,glow:string,desc:string,pattern?:string,accent?:string,unlockKey?:string,levelReq?:number,face?:string,mascot?:string}>} */
 export const SKINS=[
   {"id": 0, "name": "Planeta Padrão", "emoji": "🪐", "rarity": "free", "price": 0, "color": "#4ECDC4", "ring": false, "glow": "#4ECDC4", "desc": "Seu ponto de partida", "pattern": "clouds", "accent": "#a9f3ec"},
   {"id": 1, "name": "Marte", "emoji": "🔴", "rarity": "common", "price": 200, "color": "#c1440e", "ring": false, "glow": "#ff6644", "desc": "O planeta vermelho", "pattern": "craters", "accent": "#e07a4a"},
@@ -131,7 +134,10 @@ export const SKINS=[
   {"id": 115, "name": "Schumacher", "emoji": "🏎️", "rarity": "secret", "price": 0, "color": "#e8cfb8", "ring": false, "glow": "#e03b3b", "desc": "Segredo oculto", "pattern": "face", "face": "32_michael_schumacher", "accent": "#e03b3b"},
   {"id": 116, "name": "Hamilton", "emoji": "🏆", "rarity": "secret", "price": 0, "color": "#4a3324", "ring": false, "glow": "#3ddc5f", "desc": "Segredo oculto", "pattern": "face", "face": "33_lewis_hamilton", "accent": "#3ddc5f"},
   {"id": 117, "name": "Churchill", "emoji": "🎖️", "rarity": "secret", "price": 0, "color": "#e8d0bc", "ring": false, "glow": "#b9c4d4", "desc": "Segredo oculto", "pattern": "face", "face": "34_winston_churchill", "accent": "#b9c4d4"},
-  {"id": 118, "name": "Einstein", "emoji": "🧠", "rarity": "secret", "price": 0, "color": "#e8ded0", "ring": false, "glow": "#c56bff", "desc": "Segredo oculto", "pattern": "face", "face": "35_albert_einstein", "accent": "#c56bff"}
+  {"id": 118, "name": "Einstein", "emoji": "🧠", "rarity": "secret", "price": 0, "color": "#e8ded0", "ring": false, "glow": "#c56bff", "desc": "Segredo oculto", "pattern": "face", "face": "35_albert_einstein", "accent": "#c56bff"},
+  {"id": 119, "name": "Marte Bravo", "emoji": "😡", "rarity": "epic", "price": 2100, "color": "#e8450a", "ring": false, "glow": "#ff7a3c", "desc": "O encrenqueiro vermelho", "pattern": "mascote", "mascot": "marte", "accent": "#8c2606"},
+  {"id": 120, "name": "Terra Brava", "emoji": "🌍", "rarity": "epic", "price": 2100, "color": "#0a72cc", "ring": false, "glow": "#4fb4ff", "desc": "A encrenqueira azul", "pattern": "mascote", "mascot": "terra", "accent": "#2eae5a"},
+  {"id": 121, "name": "Lua Soldado", "emoji": "🪖", "rarity": "epic", "price": 1900, "color": "#a8a8b2", "ring": false, "glow": "#e6e9f2", "desc": "De capacete e mau humor", "pattern": "mascote", "mascot": "lua", "accent": "#6e727e"}
 ];
 export const SKIN_BY_ID=new Map(SKINS.map(s=>[s.id,s]));
 export const skinById=id=>SKIN_BY_ID.get(id)||SKINS[0];

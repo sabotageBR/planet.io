@@ -1,6 +1,7 @@
 // Escolha do modo: o funil que estava faltando entre a Entrada e o `play()`.
-// DOIS cartões grandes, com os mascotes do jogo: LIVRE (um clique e entra) e BATTLE ROYALE, que absorveu o
-// cartão de EQUIPE — Solo virou o primeiro dos quatro chips (1·Solo, 2·Dupla, 3·Trio, 4·Quarteto), porque
+// DOIS cartões grandes, com os mascotes do jogo: LIVRE (Marte à esquerda, a Lua à direita e o JOGAR entre
+// os dois) e BATTLE ROYALE, que absorveu o cartão de EQUIPE — Solo virou o primeiro dos quatro chips
+// (1·Solo, 2·Dupla, 3·Trio, 4·Quarteto), porque
 // "solo" e "em dupla" nunca foram dois MODOS, eram o mesmo battle royale com outro tamanho de esquadrão, e
 // tê-los como cartões irmãos fazia a tela ter quatro escolhas onde há duas. Solo cai direto no lobby de
 // matchmaking; 2+ passa antes pelo lobby de convite (Party.jsx), porque aí o jogador precisa de um código
@@ -46,15 +47,32 @@ function Body() {
   // mandar o solo por lá é reprova de certificação.
   const entrarBR = () => { setMode(MODE.BR, ts);
     if (ts > 1) createParty(ts); else play({ mode: MODE.BR, teamSize: 1, party: null }); };
+  const entrarLivre = () => { setMode(MODE.FREE, 1); play({ mode: MODE.FREE, teamSize: 1, party: null }); };
   return <>
     <ScreenHeader title={LB.modesTitle} />
-    <div className="modes duo">
-      {/* LIVRE continua sendo um <button>: um clique e entra. */}
-      <button className="mode-card grande" data-mode="free" onClick={() => { setMode(MODE.FREE, 1); play({ mode: MODE.FREE, teamSize: 1, party: null }); }}>
-        <img className="mode-mascote" src={marte} alt="" aria-hidden="true" width="448" height="463" decoding="async" />
+    {/* ⚠️ ABRIR "Sala sua" ESCONDE OS DOIS CARTÕES. Eles não são alternativa ao formulário: quem clicou
+        em CRIAR SUA SALA já escolheu o modo lá dentro (o primeiro controle do cartão é justamente
+        Livre × Battle Royale), então deixá-los no ar oferece a mesma decisão duas vezes, com dois
+        botões de entrar competindo na mesma tela — e empurra o formulário para fora da caixa. */}
+    {abrirSala ? null : <div className="modes duo">
+      {/* ⚠️ LIVRE DEIXOU DE SER <button> pelo mesmo motivo do Battle Royale: ele ganhou um JOGAR de
+          verdade dentro dele, e botão dentro de botão é HTML inválido e prende o foco. O que se perde é
+          "clicar em qualquer lugar do cartão entra"; o que se ganha é a MESMA chamada à ação nos dois
+          cartões, no mesmo ponto da tela — antes o Livre era o único cartão sem botão nenhum, e quem
+          chegava procurava o JOGAR que só o vizinho tinha. */}
+      <div className="mode-card grande" data-mode="free">
         <b>{LB.modeFree}</b>
         <span>{LB.modeFreeSub}</span>
-      </button>
+        {/* Os dois mascotes ENTRARAM NA FILEIRA do botão, em vez de ficarem no absoluto: com dois deles
+            no mesmo cartão o de baixo passava por cima do JOGAR em tela estreita, e o `overflow:hidden`
+            esconde o excesso mas não impede a colisão. Marte à esquerda, a Lua à direita, o botão entre
+            os dois — e a Lua saiu do botão de "Sala sua", senão ela aparecia duas vezes na mesma tela. */}
+        <div className="free-row">
+          <img className="mode-mascote" src={marte} alt="" aria-hidden="true" width="448" height="463" decoding="async" />
+          <button className="btn-primary" data-go="play" onClick={entrarLivre}>{LB.play}</button>
+          <img className="mode-mascote" src={lua} alt="" aria-hidden="true" width="256" height="321" decoding="async" />
+        </div>
+      </div>
       {/* ⚠️ BATTLE ROYALE deixou de ser <button> porque passou a ter controles dentro: botão dentro de botão
           é HTML inválido e prende o foco — é a mesma razão de "Em equipe" e "Sala sua" já serem <div>. */}
       <div className={"mode-card grande br" + (offline ? " off" : "")} data-mode="br">
@@ -75,15 +93,12 @@ function Body() {
           <button className="btn-secondary" disabled={offline} onClick={() => joinParty(code)}>{LB.joinParty}</button>
         </div>
       </div>
-    </div>
+    </div>}
     {/* ⚠️ Fora da grade agora que ela tem só DOIS cartões: um terceiro item deixaria um buraco do tamanho
         dele à direita. E o botão continua VISÍVEL para quem não tem conta, desabilitado e com o porquê ao
         lado — some o botão, some a explicação, e o jogador não descobre por que não pode abrir sala. */}
     <button className={"btn-secondary own-toggle" + (abrirSala ? " on" : "")} aria-expanded={abrirSala} aria-controls="own-card"
-      onClick={() => setAbrirSala(v => !v)}>
-      <img className="own-mascote" src={lua} alt="" aria-hidden="true" width="256" height="321" decoding="async" />
-      {LB.ownOpen}
-    </button>
+      onClick={() => setAbrirSala(v => !v)}>{abrirSala ? LB.ownClose : LB.ownOpen}</button>
     {abrirSala ? <SalaPropria offline={offline} registrada={user.kind === "registered"} LB={LB} /> : null}
     {offline ? <div className="hint">{LB.offlineNote}</div> : null}
     {/* ⚠️ A LEGENDA DOS POWERUPS morava aqui e foi para a AJUDA, em Opções (ui/Prefs.jsx). Esta é a tela
@@ -122,6 +137,10 @@ function SalaPropria({ offline, registrada, LB }) {
     </div>
     <label className="own-priv"><span>{LB.ownPrivate}</span>
       <button className="toggle" role="switch" aria-checked={priv} disabled={bloqueado} onClick={() => setPriv(!priv)}><i></i></button></label>
+    {/* A chave não muda só quem ENTRA: fechada, a sala não recebe preenchimento nenhum (é do dono e de
+        quem ele convidar); aberta, ele entra sozinho e os bots chegam devagar. Sem esta linha o jogador
+        descobre a diferença só depois de abrir a sala — ver `semBots` em server/src/rooms/Room.js. */}
+    <span className="hint own-note">{priv ? LB.ownPrivateNote : LB.ownPublicNote}</span>
     <button className="btn-primary" disabled={bloqueado} onClick={() => criarSala({ mode: modo, teamSize: 1, minutes: minOk, private: priv })}>{LB.ownCreate}</button>
     {!registrada && !offline ? <span className="hint">{LB.ownNeedAccount}</span> : null}
   </div>;

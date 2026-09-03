@@ -73,7 +73,10 @@ export default {
   muteHint: "Mudo (M)",
   zoomHint: "Zoom manual — 0 ou o botão do meio volta ao automático",
   pauseTitle: "PAUSA", pauseHint: "Menu (Esc)", resume: "Voltar ao jogo", exitMatch: "Sair da partida",
-  ownRoom: "SALA SUA", ownRoomSub: "Seu modo, seu tempo, sua gente", ownOpen: "CRIAR SUA SALA",
+  ownRoom: "SALA SUA", ownRoomSub: "Seu modo, seu tempo, sua gente", ownOpen: "CRIAR SUA SALA", ownClose: "VOLTAR AOS MODOS",
+  // o que a chave "só por convite" muda de verdade, dito na hora de escolher (ver Room.semBots)
+  ownPrivateNote: "Só entra quem tem o código, e a sala não recebe preenchimento.",
+  ownPublicNote: "Você entra sozinho e os preenchimentos vão chegando aos poucos.",
   ownTime: "Duração", ownPrivate: "Só por convite", ownCreate: "➕ ABRIR SALA",
   ownNeedAccount: "Precisa de conta: o dono expulsa e bane.",
   hostPanel: "SUA SALA", hostKick: "Expulsar", hostBan: "Banir", hostBanned: "Banidos", hostNobody: "Só você por aqui",

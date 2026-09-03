@@ -164,6 +164,8 @@ export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2",avatar=null,f
       break;}
     // ── EASTER EGG: a caricatura escolhida pelo NICK (shared/src/eggs.js) ──────
     case "face":face(c,r,sk,faceBmp,{ink});break;
+    // ── OS TRÊS MASCOTES do jogo (Marte, Terra e Lua) ──────────────────────────
+    case "mascote":mascote(c,r,sk,faceBmp,{ink,light});break;
     // ── A FOTO DO JOGADOR (skin "Retrato") ────────────────────────────────────
     // `paintPattern` é SÍNCRONO (roda dentro de cache.get/warm), então a imagem tem que chegar já
     // decodificada em `P.avatar`. Enquanto não chega, desenha a silhueta e devolve `true` — devolver
@@ -196,6 +198,33 @@ function face(c,r,sk,face,{ink}){
     c.strokeStyle=rgba(ink,.55);c.lineWidth=Math.max(1.5,r*.045);c.beginPath();c.arc(0,0,r*.98,0,TAU);c.stroke();return;}
   c.fillStyle=sk.color;arc(c,0,0,r);
   c.fillStyle=rgba(ink,.12);c.beginPath();c.ellipse(0,r*.2,r*.55,r*.4,0,Math.PI,TAU);c.fill();}
+
+/**
+ * OS TRÊS MASCOTES dentro do disco. Chega pelo MESMO caminho da caricatura (`theme/faces.js`, mesmo cache
+ * e mesma chave), e desenha diferente por duas razões que não dá para ignorar:
+ *  1. a arte tem FUNDO TRANSPARENTE — o disco da cor da skin vai por BAIXO, senão o personagem fica um
+ *     recorte flutuando no vazio, com o buraco mostrando o que estiver atrás do planeta;
+ *  2. ela NÃO É QUADRADA (448×463, 448×431 e 256×321), então o `drawImage(-r,-r,r*2,r*2)` da caricatura
+ *     esticaria as três de um jeito diferente cada — a Lua, que é a mais alta, viraria uma bola. É
+ *     `contain`: a MAIOR dimensão vira o diâmetro e a outra acompanha a proporção.
+ * ⚠️ O FATOR É POR PERSONAGEM, e não um só, porque o que cada arte tem de sobra é diferente. Marte e
+ * Terra SÃO a esfera — a arte vem cortada rente a ela, então 2.06 (e não 2) põe a bola encostando na
+ * borda do disco; com 2 exato sobrava um fio da cor da skin em volta deles, que é justamente o que não
+ * se quer ver. A LUA não: ela é uma esfera COM CAPACETE, e o capacete é o personagem. Em 2.06 a cúpula
+ * dele cai fora do círculo e é decepada pelo recorte — então ela entra menor, e a faixa de cor que
+ * sobra ao lado do corpo não custa nada porque a cor da skin é o MESMO cinza da lua. O excesso do
+ * Marte e da Terra também não vaza: quem chama `paintPattern` já recortou o disco.
+ * É por isso que o disco tem relevo: sem o brilho e a sombra, aquela faixa seria um chapado.
+ */
+const MASC_FIT={marte:2.06,terra:2.06,lua:1.8};
+function mascote(c,r,sk,bmp,{ink,light}){
+  c.fillStyle=sk.color;arc(c,0,0,r);
+  c.fillStyle=rgba(light,.18);c.beginPath();c.ellipse(-r*.34,-r*.36,r*.42,r*.25,-.7,0,TAU);c.fill();
+  c.fillStyle=rgba(ink,.18);c.beginPath();c.ellipse(0,r*.22,r*.62,r*.46,0,Math.PI,TAU);c.fill();
+  if(bmp){const k=r*(MASC_FIT[sk.mascot]||2)/Math.max(bmp.width,bmp.height),w=bmp.width*k,h=bmp.height*k;
+    c.drawImage(bmp,-w/2,-h/2,w,h);}
+  // o mesmo fio de tinta da caricatura: cola a ilustração no corpo e esconde a beirada crua do recorte
+  c.strokeStyle=rgba(ink,.55);c.lineWidth=Math.max(1.5,r*.045);c.beginPath();c.arc(0,0,r*.98,0,TAU);c.stroke();}
 
 /**
  * Buraco negro (Gargantua/M87): sombra preta GRANDE, disco de acreção quase de perfil com a face de TRÁS lenteada

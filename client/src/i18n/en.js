@@ -52,7 +52,9 @@ export default {
   muteHint: "Mute (M)",
   zoomHint: "Manual zoom — 0 or the middle button goes back to automatic",
   pauseTitle: "PAUSED", pauseHint: "Menu (Esc)", resume: "Back to the game", exitMatch: "Leave the match",
-  ownRoom: "YOUR OWN ROOM", ownRoomSub: "Your mode, your time, your people", ownOpen: "CREATE YOUR ROOM",
+  ownRoom: "YOUR OWN ROOM", ownRoomSub: "Your mode, your time, your people", ownOpen: "CREATE YOUR ROOM", ownClose: "BACK TO MODES",
+  ownPrivateNote: "Only the code gets you in, and the room takes no fill-in players.",
+  ownPublicNote: "You start on your own and fill-in players trickle in.",
   ownTime: "Length", ownPrivate: "Invite only", ownCreate: "➕ OPEN ROOM",
   ownNeedAccount: "Account required: the host kicks and bans.",
   hostPanel: "YOUR ROOM", hostKick: "Kick", hostBan: "Ban", hostBanned: "Banned", hostNobody: "Just you around here",
@@ -247,5 +249,8 @@ export default {
     111: { n: "Lincoln", d: "Hidden secret" }, 112: { n: "Elon Musk", d: "Hidden secret" }, 113: { n: "Zuckerberg", d: "Hidden secret" },
     114: { n: "Senna", d: "Hidden secret" }, 115: { n: "Schumacher", d: "Hidden secret" }, 116: { n: "Hamilton", d: "Hidden secret" },
     117: { n: "Churchill", d: "Hidden secret" }, 118: { n: "Einstein", d: "Hidden secret" },
+    // os três mascotes do jogo: nome próprio de personagem, mas o adjetivo é do idioma
+    119: { n: "Angry Mars", d: "The red troublemaker" }, 120: { n: "Angry Earth", d: "The blue troublemaker" },
+    121: { n: "Trooper Moon", d: "Helmet on, mood off" },
   },
 };
