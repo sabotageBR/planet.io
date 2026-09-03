@@ -42,7 +42,17 @@ export function joyTarget(cx,cy,dx,dy,k,spread=0,out=T,w=WORLD.w,h=WORLD.h){
     d=t>0?d*t:0;}
   out.x=cx+dx*d;out.y=cy+dy*d;return out;}
 
-const RAIO=52,MORTO=.14;   // raio da base em px de tela; abaixo de MORTO o toque é considerado parado
+// RAIO: raio da base em px de TELA. MORTO: abaixo dessa fração do raio o toque é considerado parado (evita
+// tremor perto do centro). PLATO: só existe por causa de um bug de PERCEPÇÃO, não de fórmula — no mouse o
+// cursor mora a centenas de px do planeta, então ele passa a maior parte do tempo acima de `SPEED.RAMP`
+// (32 px de MUNDO) e anda a vmax cheia; no analógico `k` é literal (d/RAIO) e `d=RAMP·k`, então vmax cheia
+// exigia encostar o dedo EXATAMENTE na borda física de 52 px — qualquer folga de alguns pixels (o normal de
+// um polegar, que não é um ponteiro) já cortava a velocidade, e como o corte é LINEAR em k, cortava a
+// velocidade NA MESMA proporção: 90% do raio = 90% da velocidade máxima. Era "empurro até o talo e o
+// planeta anda devagar assim mesmo". PLATO satura em k=1 a partir de 75% do curso: sobra 25% de raio como
+// MARGEM DE ERRO do dedo antes de perder velocidade máxima, e o trecho MORTO..PLATO continua proporcional
+// (analógico de verdade), só que comprimido — não muda o tamanho da base na tela, só facilita CHEGAR a 100%.
+const RAIO=52,MORTO=.14,PLATO=.75;
 const T={x:0,y:0};   // saída reusada: isto roda a NET.INPUT_HZ, não é lugar de alocar objeto por chamada
 
 export function createJoystick(alvo,hud){
@@ -66,9 +76,9 @@ export function createJoystick(alvo,hud){
     if(!ligado)return;
     const r=alvo.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
     if(e.pointerId!==pid){if(st.aim&&x>meia()){st.aimX=x;st.aimY=y;}return;}
-    const dx=x-ox,dy=y-oy,d=Math.hypot(dx,dy);
-    st.k=Math.min(1,d/RAIO);st.dx=d>0?dx/d:0;st.dy=d>0?dy/d:0;
-    if(st.k<MORTO)st.k=0;
+    const dx=x-ox,dy=y-oy,d=Math.hypot(dx,dy),raw=Math.min(1,d/RAIO);
+    st.k=raw<MORTO?0:raw>=PLATO?1:(raw-MORTO)/(PLATO-MORTO);
+    st.dx=d>0?dx/d:0;st.dy=d>0?dy/d:0;
     põe();e.stopPropagation();e.preventDefault();};
   const up=e=>{
     if(!ligado)return;
