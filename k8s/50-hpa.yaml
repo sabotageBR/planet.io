@@ -10,18 +10,23 @@
 #
 # ⚠️ O HPA só mexe em `replicas`. Ele NÃO cria o Service `warspace-server-<n>` nem o path `/ws/<n>`
 # do Ingress — sem os dois, um pod novo sobe e fica INALCANÇÁVEL, sem erro em lugar nenhum. Por isso
-# `k8s/10-server.yaml` e `k8s/30-ingress.yaml` já trazem os 24, e `maxReplicas` aqui é exatamente
-# esse teto: subir o número aqui sem gerar os manifestos de lá é criar pod fantasma.
-# ⚠️ `SHARDS` no ConfigMap é o mesmo TETO (24), não a contagem viva: é dele que sai a lista de peers
-# de cada pod (party e `/api/rooms` entre irmãos) e o guarda `dono < config.shards` do roteamento por
-# código de sala. Com o teto, um shard que o HPA subir DEPOIS já é conhecido por quem estava de pé;
-# os índices ainda sem pod apenas não resolvem no DNS, o que falha rápido e não atrapalha.
+# `k8s/10-server.yaml` e `k8s/30-ingress.yaml` trazem 24 (Service + rota), e `maxReplicas` aqui pode
+# ficar ABAIXO desse número sem problema — é subir `maxReplicas` acima do que os manifestos provêm
+# que cria pod fantasma, nunca o contrário.
+# ⚠️ `SHARDS` no ConfigMap continua 24 (o mesmo TETO de sempre, não a contagem viva): é dele que sai a
+# lista de peers de cada pod (party e `/api/rooms` entre irmãos) e o guarda `dono < config.shards` do
+# roteamento por código de sala. Manter SHARDS acima de `maxReplicas` é inofensivo — os índices ainda
+# sem pod apenas não resolvem no DNS, o que falha rápido e não atrapalha.
 # ⚠️ E `replicas` foi REMOVIDO do StatefulSet de propósito (ver o comentário lá): declarado nos dois
 # lugares, cada `deploy.sh` desfaria o que o HPA fez.
 #
 # Medido em 2026-09-03 (scripts/loadtest.mjs, 500 jogadores em 12 shards): 500/500 dentro, RTT p50
 # 37 ms, shard mais carregado em 790–918m de 1000m. É daí que sai o alvo de 700m: acima disso o RTT
-# começa a subir, e o teto de 1 core é intransponível porque o servidor é Node single-thread.
+# começa a subir. O LIMITE DO POD subiu de 1 para 2 cores (decisão operacional, mesma data): o laço
+# do jogo continua Node single-thread e não passa de ~1 core sozinho, então os 700m de alvo seguem
+# valendo — o segundo core é folga para o resto do processo (libuv, GC, TLS/zlib), não uma promessa
+# de o laço principal usar mais que um núcleo. `minReplicas`/`maxReplicas` caíram para 3–9 na mesma
+# decisão: a frota roda mais enxuta, e a autoescala continua livre para variar dentro dessa faixa.
 apiVersion: autoscaling/v2beta2   # o cluster é k8s 1.21: `autoscaling/v2` só existe a partir do 1.23
 kind: HorizontalPodAutoscaler
 metadata:
@@ -35,12 +40,12 @@ spec:
   # frota chegar. Reduzir de verdade é escalar o StatefulSet À MÃO, e isso MATA as partidas que estão na
   # memória dos pods removidos (sala é estado local do processo): manutenção em janela, nunca reação.
   minReplicas: 3
-  # ⚠️ 24 é o teto porque é até onde `k8s/10-server.yaml` e `k8s/30-ingress.yaml` têm Service e rota.
-  # ⚠️ E há um efeito de USABILIDADE a partir daqui: o 1º caractere do código da sala é o shard em
-  # base36 (`rooms/codes.js`), então o shard 18 abre salas começando com "I" e o 24 abriria com "O" —
-  # as duas letras que `CODE_CHARS` exclui de propósito para ninguém confundir com 1 e 0 ao digitar um
-  # convite. Passar de 18 shards já convive com isso; passar de 24 exige antes arrumar o `shardChar`.
-  maxReplicas: 24
+  # ⚠️ 9 é decisão operacional, bem abaixo do que `k8s/10-server.yaml`/`k8s/30-ingress.yaml` provêm
+  # (24 Services + rotas) — sobra headroom para subir de novo sem gerar manifesto novo. Se um dia
+  # `maxReplicas` precisar passar de 24, aí sim exige arrumar o `shardChar` primeiro: o 1º caractere
+  # do código da sala é o shard em base36 (`rooms/codes.js`), e o shard 24 abriria salas com "O" — a
+  # letra que `CODE_CHARS` exclui de propósito para ninguém confundir com 0 ao digitar um convite.
+  maxReplicas: 9
   metrics:
     # AverageValue, não Utilization: `Utilization` é uma porcentagem do REQUEST (200m), então um pod
     # em 750m — que é o normal com a sala cheia — apareceria como 375% e o HPA iria direto ao teto na
