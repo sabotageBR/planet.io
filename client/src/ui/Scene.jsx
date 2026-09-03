@@ -23,9 +23,9 @@ import missil from "../assets/scene/missil.webp";
 export default function Scene() {
   return <div id="cena" aria-hidden="true">
     <img className="sprite logo"      src={logo}     alt="" width="992" height="360" fetchPriority="high" decoding="async" />
-    <img className="sprite planeta-l" src={planetaL} alt="" width="448" height="463" decoding="async" />
-    <img className="sprite planeta-r" src={planetaR} alt="" width="448" height="431" decoding="async" />
-    <img className="sprite lua"       src={lua}      alt="" width="256" height="321" decoding="async" />
+    <img className="sprite planeta-l" src={planetaL} alt="" width="619" height="640" decoding="async" />
+    <img className="sprite planeta-r" src={planetaR} alt="" width="640" height="616" decoding="async" />
+    <img className="sprite lua"       src={lua}      alt="" width="486" height="609" decoding="async" />
     <img className="sprite missil"    src={missil}   alt="" width="256" height="130" decoding="async" />
     <img className="sprite missil-2"  src={missil}   alt="" width="256" height="130" decoding="async" />
   </div>;

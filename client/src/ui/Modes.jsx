@@ -68,15 +68,15 @@ function Body() {
             esconde o excesso mas não impede a colisão. Marte à esquerda, a Lua à direita, o botão entre
             os dois — e a Lua saiu do botão de "Sala sua", senão ela aparecia duas vezes na mesma tela. */}
         <div className="free-row">
-          <img className="mode-mascote" src={marte} alt="" aria-hidden="true" width="448" height="463" decoding="async" />
+          <img className="mode-mascote" src={marte} alt="" aria-hidden="true" width="619" height="640" decoding="async" />
           <button className="btn-primary" data-go="play" onClick={entrarLivre}>{LB.play}</button>
-          <img className="mode-mascote" src={lua} alt="" aria-hidden="true" width="256" height="321" decoding="async" />
+          <img className="mode-mascote" src={lua} alt="" aria-hidden="true" width="486" height="609" decoding="async" />
         </div>
       </div>
       {/* ⚠️ BATTLE ROYALE deixou de ser <button> porque passou a ter controles dentro: botão dentro de botão
           é HTML inválido e prende o foco — é a mesma razão de "Em equipe" e "Sala sua" já serem <div>. */}
       <div className={"mode-card grande br" + (offline ? " off" : "")} data-mode="br">
-        <img className="mode-mascote" src={terra} alt="" aria-hidden="true" width="448" height="431" decoding="async" />
+        <img className="mode-mascote" src={terra} alt="" aria-hidden="true" width="640" height="616" decoding="async" />
         <b>{LB.modeSolo}</b>
         <span>{LB.modeSoloSub}</span>
         <em className="mode-tag">{preenche(LB.fmt.planets, { n: BR.PLAYERS })}</em>

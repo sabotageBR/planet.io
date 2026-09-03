@@ -2107,6 +2107,15 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   cor da skin em volta deles); a Lua é esfera COM CAPACETE, e em 2.06 a cúpula caía fora do círculo e
   era decepada pelo recorte — ela entra em 1.8, e a faixa que sobra ao lado não custa nada porque a cor
   da skin é o mesmo cinza dela.
+  ⚠️ **A ARTE SUBIU DE RESOLUÇÃO POR CAUSA DELAS** (`client/src/assets/scene/*.webp`, reencodadas do kit
+  original em `warspace_poki/characters/*.png` com o maior lado em **640**, q82): os arquivos existiam
+  para o CENÁRIO do menu, onde nenhum passa de ~190 px, e por isso estavam em 256–448. Como skin a conta
+  é outra — o baker desenha a arte com o maior lado em `2.06·r` e no tier de 512 isso dá **527 px**, ou
+  seja a Lua (256 px de largura) era ampliada **2,06×** e o planetão saía com o traço borrado. Medido
+  lado a lado a 527 px: contorno, crateras e os rebites do capacete. Custo: +49 KB no zip de portal
+  (775 → 824 KB), e de brinde o cenário deixa de ser mole em tela de dpr 3.
+  ⚠️ Os atributos `width`/`height` dos `<img>` de `Scene.jsx` e `Modes.jsx` acompanham o ARQUIVO: eles
+  reservam a proporção antes de a imagem chegar, e desencontrados dão salto de layout na carga.
   ⚠️ `seedSkins` continua sendo a faca de sempre: um pod com o `shared/skins.js` ANTIGO faz
   `UPDATE skins SET active=false` nas três — os shards têm que subir na MESMA imagem.
 - **As caricaturas são ILUSTRAÇÃO, não canvas** (`client/public/faces/*.webp`, 256², ~15 KB cada;
