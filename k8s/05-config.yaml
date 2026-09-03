@@ -6,7 +6,7 @@ metadata:
   namespace: warspace
   labels: {app: warspace-server}
 data:
-  SHARDS: "12"
+  SHARDS: "24"
   PEER_HOST: "warspace-server.warspace.svc.cluster.local"
   PEER_NAME: "warspace-server"
   ROOM_MAX: "30"

@@ -1,0 +1,79 @@
+# ── AUTOESCALA ────────────────────────────────────────────────────────────────
+# ⚠️ LEIA ISTO ANTES DE MEXER: o servidor do jogo NÃO é stateless, e é por isso que este arquivo é
+# assimétrico — ele SOBE sozinho e DESCE só na mão.
+#
+# Uma sala vive na MEMÓRIA de um pod: o código dela começa pelo índice do shard (`rooms/codes.js`),
+# o Ingress manda `/ws/<n>` para o Service daquele pod e o cliente pega o shard do pod que respondeu
+# `/api/config`. Tirar um pod não "redistribui carga": mata todas as partidas que estavam nele, no
+# meio da rodada, junto com o placar da sala. Por isso `scaleDown` está DESABILITADO — reduzir shard
+# é decisão de manutenção, feita numa janela, e não uma reação a dois minutos de CPU baixa.
+#
+# ⚠️ O HPA só mexe em `replicas`. Ele NÃO cria o Service `warspace-server-<n>` nem o path `/ws/<n>`
+# do Ingress — sem os dois, um pod novo sobe e fica INALCANÇÁVEL, sem erro em lugar nenhum. Por isso
+# `k8s/10-server.yaml` e `k8s/30-ingress.yaml` já trazem os 24, e `maxReplicas` aqui é exatamente
+# esse teto: subir o número aqui sem gerar os manifestos de lá é criar pod fantasma.
+# ⚠️ `SHARDS` no ConfigMap é o mesmo TETO (24), não a contagem viva: é dele que sai a lista de peers
+# de cada pod (party e `/api/rooms` entre irmãos) e o guarda `dono < config.shards` do roteamento por
+# código de sala. Com o teto, um shard que o HPA subir DEPOIS já é conhecido por quem estava de pé;
+# os índices ainda sem pod apenas não resolvem no DNS, o que falha rápido e não atrapalha.
+# ⚠️ E `replicas` foi REMOVIDO do StatefulSet de propósito (ver o comentário lá): declarado nos dois
+# lugares, cada `deploy.sh` desfaria o que o HPA fez.
+#
+# Medido em 2026-09-03 (scripts/loadtest.mjs, 500 jogadores em 12 shards): 500/500 dentro, RTT p50
+# 37 ms, shard mais carregado em 790–918m de 1000m. É daí que sai o alvo de 700m: acima disso o RTT
+# começa a subir, e o teto de 1 core é intransponível porque o servidor é Node single-thread.
+apiVersion: autoscaling/v2beta2   # o cluster é k8s 1.21: `autoscaling/v2` só existe a partir do 1.23
+kind: HorizontalPodAutoscaler
+metadata:
+  name: warspace-server
+  namespace: warspace
+  labels: {app: warspace-server}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: StatefulSet, name: warspace-server}
+  minReplicas: 12
+  # ⚠️ 24 é o teto porque é até onde `k8s/10-server.yaml` e `k8s/30-ingress.yaml` têm Service e rota.
+  # ⚠️ E há um efeito de USABILIDADE a partir daqui: o 1º caractere do código da sala é o shard em
+  # base36 (`rooms/codes.js`), então o shard 18 abre salas começando com "I" e o 24 abriria com "O" —
+  # as duas letras que `CODE_CHARS` exclui de propósito para ninguém confundir com 1 e 0 ao digitar um
+  # convite. Passar de 18 shards já convive com isso; passar de 24 exige antes arrumar o `shardChar`.
+  maxReplicas: 24
+  metrics:
+    # AverageValue, não Utilization: `Utilization` é uma porcentagem do REQUEST (200m), então um pod
+    # em 750m — que é o normal com a sala cheia — apareceria como 375% e o HPA iria direto ao teto na
+    # primeira partida movimentada. O que interessa aqui é o valor absoluto contra o core que o pod tem.
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: AverageValue, averageValue: 700m}
+  behavior:
+    scaleUp:
+      # Um shard novo nasce vazio e só recebe QUEM ENTRAR DEPOIS (o cliente escolhe o shard no
+      # `/api/config`), então subir cedo não alivia quem já está numa sala cheia — mas prepara a
+      # próxima leva. 60 s de janela evita reagir a um pico de 15 s.
+      stabilizationWindowSeconds: 60
+      policies:
+        - {type: Pods, value: 4, periodSeconds: 60}   # no máximo 4 shards novos por minuto
+      selectPolicy: Max
+    scaleDown:
+      selectPolicy: Disabled   # ⚠️ ver o cabeçalho: descer = matar as partidas do pod removido
+---
+# O CLIENTE é o caso fácil: nginx servindo estáticos, sem estado nenhum. Aqui a autoescala é a
+# convencional, nos dois sentidos, porque tirar uma réplica não custa nada a ninguém.
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: warspace-client
+  namespace: warspace
+  labels: {app: warspace-client}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: warspace-client}
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 70}   # request é 50m: aqui a porcentagem serve
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300   # 5 min de calmaria antes de devolver réplica, para não oscilar

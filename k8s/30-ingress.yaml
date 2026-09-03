@@ -51,6 +51,42 @@ spec:
           - path: /ws/11
             pathType: Prefix
             backend: {service: {name: warspace-server-11, port: {number: 3000}}}
+          - path: /ws/12
+            pathType: Prefix
+            backend: {service: {name: warspace-server-12, port: {number: 3000}}}
+          - path: /ws/13
+            pathType: Prefix
+            backend: {service: {name: warspace-server-13, port: {number: 3000}}}
+          - path: /ws/14
+            pathType: Prefix
+            backend: {service: {name: warspace-server-14, port: {number: 3000}}}
+          - path: /ws/15
+            pathType: Prefix
+            backend: {service: {name: warspace-server-15, port: {number: 3000}}}
+          - path: /ws/16
+            pathType: Prefix
+            backend: {service: {name: warspace-server-16, port: {number: 3000}}}
+          - path: /ws/17
+            pathType: Prefix
+            backend: {service: {name: warspace-server-17, port: {number: 3000}}}
+          - path: /ws/18
+            pathType: Prefix
+            backend: {service: {name: warspace-server-18, port: {number: 3000}}}
+          - path: /ws/19
+            pathType: Prefix
+            backend: {service: {name: warspace-server-19, port: {number: 3000}}}
+          - path: /ws/20
+            pathType: Prefix
+            backend: {service: {name: warspace-server-20, port: {number: 3000}}}
+          - path: /ws/21
+            pathType: Prefix
+            backend: {service: {name: warspace-server-21, port: {number: 3000}}}
+          - path: /ws/22
+            pathType: Prefix
+            backend: {service: {name: warspace-server-22, port: {number: 3000}}}
+          - path: /ws/23
+            pathType: Prefix
+            backend: {service: {name: warspace-server-23, port: {number: 3000}}}
           - path: /ws/0
             pathType: Prefix
             backend: {service: {name: warspace-server-0, port: {number: 3000}}}

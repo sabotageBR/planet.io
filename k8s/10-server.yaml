@@ -171,6 +171,150 @@ spec:
     statefulset.kubernetes.io/pod-name: warspace-server-11
   ports: [{name: http, port: 3000, targetPort: 3000}]
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-12
+  namespace: warspace
+  labels: {app: warspace-server, shard: "12"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-12
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-13
+  namespace: warspace
+  labels: {app: warspace-server, shard: "13"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-13
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-14
+  namespace: warspace
+  labels: {app: warspace-server, shard: "14"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-14
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-15
+  namespace: warspace
+  labels: {app: warspace-server, shard: "15"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-15
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-16
+  namespace: warspace
+  labels: {app: warspace-server, shard: "16"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-16
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-17
+  namespace: warspace
+  labels: {app: warspace-server, shard: "17"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-17
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-18
+  namespace: warspace
+  labels: {app: warspace-server, shard: "18"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-18
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-19
+  namespace: warspace
+  labels: {app: warspace-server, shard: "19"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-19
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-20
+  namespace: warspace
+  labels: {app: warspace-server, shard: "20"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-20
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-21
+  namespace: warspace
+  labels: {app: warspace-server, shard: "21"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-21
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-22
+  namespace: warspace
+  labels: {app: warspace-server, shard: "22"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-22
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-23
+  namespace: warspace
+  labels: {app: warspace-server, shard: "23"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-23
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -179,7 +323,9 @@ metadata:
   labels: {app: warspace-server}
 spec:
   serviceName: warspace-server
-  replicas: 12
+  # ⚠️ SEM `replicas` DE PROPÓSITO: quem manda nele é o HPA (k8s/50-hpa.yaml). Declarado aqui, todo
+  # `./scripts/deploy.sh` devolveria o número do arquivo e DERRUBARIA os shards que o HPA tinha subido
+  # — com as salas deles dentro. O server-side apply não mexe em campo que o manifesto não declara.
   podManagementPolicy: Parallel
   selector:
     matchLabels: {app: warspace-server}

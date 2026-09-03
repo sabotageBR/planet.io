@@ -1197,6 +1197,23 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   no meio dos grupos e a faixa "Você 1º" cobrindo as linhas do Ranking eram **o mesmo defeito**, três vezes.
   No celular em pé a caixa É a folha de rodapé, então a barra dentro dela continua colada embaixo — que é
   exatamente o que o pedido "no desktop ela tem que ficar no painel central" queria dizer.
+  ⚠️ **ERA ELA QUE FAZIA A TELA ROLAR DE LADO NO CELULAR**, por 2 px, em TODA tela com barra. Duas causas
+  somadas, e nenhuma sozinha bastava. (a) O sangramento era `-18px` cravado, e em RETRATO os três temas dão
+  `padding:0 16px` ao `.wrap` (18 px no resto) — a barra passava 2 px do padding box. Hoje o número é
+  `--wrap-pad`, declarado nos dois casos no mesmo bloco de `ui.css`: separados foi exatamente como
+  divergiram. (b) O `.wrap` em retrato é **grid de `1fr`**, e item de grid nasce com `min-width:auto`: a
+  barra não encolhia abaixo do próprio conteúdo e a TRILHA crescia para caber. Num Galaxy S8 (360 px) os
+  sete botões pedem 352 px (308 de botão + 24 de vão + 20 de padding) contra 350 de caixa, então a trilha
+  ia a 320 e a barra a 352. `min-width:0` corta a propagação e um aperto lateral em retrato
+  (`padding-inline:6px;gap:2px`, o mesmo remédio que a gaveta deitada já usava) faz a barra CABER de
+  verdade — 47 px de alvo, acima do piso de 44. Medido depois: trilha 318, barra 350, `scrollWidth ==
+  clientWidth` em 360/375/390/430.
+  ⚠️ **A matriz não pegava isso, e agora pega** (critério 6 de `scripts/responsive-check.mjs`): o critério 1
+  mede `document.documentElement.scrollWidth`, e aqui o documento NÃO transbordava — quem ganhou eixo
+  horizontal foi a caixa, que é `overflow:auto`. Nenhuma tela do jogo tem conteúdo horizontal, então
+  qualquer contêiner com `overflow-x:auto|scroll` e sobra é defeito. `hidden`/`clip` ficam de fora: eles
+  CORTAM (é o caso do `#cena`, que planta sprites fora da tela de propósito) e quem cobra corte é o
+  critério "clipado".
   O texto abaixo é o histórico de por que ela chegou a sair:
 - **(histórico) A BARRA DE NAVEGAÇÃO ESTEVE em `App.jsx`**: antes cada tela renderizava a sua DENTRO da caixa, e
   o resultado dependia da altura do conteúdo. Os temas a colam com `order:99;position:sticky;bottom:0`
@@ -1993,23 +2010,26 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **O disco tem teto de 74% da coluna, não 100%**: o canvas é absoluto e mede 132% do bloco (ver o
   fim de rodada), então um disco com a largura inteira do `.dd-alvo` — que no duelo é um terço da
   caixa — empurra 16% para cada lado, e o cartão ganhava barra de rolagem horizontal na gaveta.
-- **O CARTÃO DO LIVRE TEM UM JOGAR, E DOIS MASCOTES** (`ui/Modes.jsx`, `.free-row` em `ui.css`): ele era
-  o ÚNICO cartão da tela sem botão nenhum — o clique era no cartão inteiro —, e ao lado de um vizinho com
-  um JOGAR grande e amarelo isso lê como "este aqui ainda não está pronto". Agora os dois têm a mesma
-  chamada à ação no mesmo lugar, com **Marte à esquerda, JOGAR no meio e a Lua à direita**.
+- **OS DOIS CARTÕES DA TELA DE MODOS TÊM O MESMO DESENHO** (`ui/Modes.jsx`, `ui.css`): planeta pequeno no
+  alto à direita, texto ao lado dele e um JOGAR da largura do cartão embaixo. O do Livre era o ÚNICO da
+  tela sem botão nenhum — o clique era no cartão inteiro —, e ao lado de um vizinho com um JOGAR grande e
+  amarelo isso lê como "este aqui ainda não está pronto".
   ⚠️ **Ele deixou de ser `<button>`** pelo mesmo motivo do Battle Royale: botão dentro de botão é HTML
   inválido e prende o foco. Perde-se "clicar em qualquer lugar entra"; o `<button>` de dentro mantém o
   teclado, que era a razão de ser um botão.
-  ⚠️ **Os mascotes saíram do ABSOLUTO e entraram na fileira.** No absoluto eles funcionavam porque era UM,
-  num cartão que só tinha duas linhas de texto — o vazio de baixo era dele. Com DOIS e um alvo de 44 px
-  no meio, o `overflow:hidden` esconde o excesso mas **não impede a colisão**.
-  ⚠️ Casa-se a ALTURA e não a largura (`height:clamp(...)`, `width:auto`): as artes têm proporções
-  diferentes (448×463 e 256×321), e casando a largura a Lua sai mais alta que o Marte. O teto é 74 px e
-  não 96 porque são dois — no 96 eles somavam mais largura que o botão, e a chamada à ação virava o menor
-  bloco da fileira.
-  ⚠️ **A Lua saiu do botão de "Sala sua"** e `#cena .lua` entrou na lista de sprites escondidos nesta
-  tela: é o mesmo argumento que já valia para o Marte — o mesmo sprite duas vezes na mesma tela lê como
-  erro de montagem.
+  ⚠️ **Quem impõe a posição do mascote é o cartão do BATTLE ROYALE**: lá o planeta não pode descer, porque
+  abaixo dele há quatro chips, um botão e um campo de código, e ele passaria por cima do campo. O do Livre
+  segue o mesmo lugar por SIMETRIA — um mascote grande no rodapé de um cartão e outro pequeno no topo do
+  vizinho lia como dois componentes diferentes lado a lado.
+  ⚠️ **O JOGAR do Livre tem que ser filho DIRETO do cartão**: a largura sai de `.btn-primary{width:100%}`
+  do `base.css`, e é ela que faz o botão ocupar o mesmo espaço que o do vizinho. A altura é
+  `margin-block:auto` — a grade estica os dois cartões ao mesmo tamanho e o do Livre tem duas linhas de
+  texto contra os seis blocos do outro, então sem isso ele ficava colado no topo com um palmo de vazio
+  embaixo; centrado na sobra, pousa na mesma faixa do JOGAR do Battle Royale.
+  ⚠️ **Houve aqui uma versão com os DOIS mascotes na mesma fileira** (Marte · JOGAR · Lua) e ela saiu: o
+  cartão deixava de rimar com o vizinho, e a Lua tinha de sair do botão de "Sala sua" e do `#cena` para
+  não aparecer duas vezes na tela. Hoje cada mascote aparece uma vez e em um lugar só — Marte e Terra nos
+  cartões, a Lua no botão (30 px, colada ao rótulo) e no cenário.
   ⚠️ **Abrir "Sala sua" ESCONDE os dois cartões.** Eles não são alternativa ao formulário: o primeiro
   controle dele é justamente Livre × Battle Royale, então deixá-los no ar oferece a mesma decisão duas
   vezes, com dois botões de entrar competindo — e empurra o formulário para fora da caixa. O botão vira
@@ -2354,6 +2374,26 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   fica sem endpoint e o ingress responde 503 naquele `/ws/N`. Uma varredura dos 12 no meio de um
   rollout acusa "1 shard roteando errado" a cada rodada, em shards diferentes — não é roteamento, é o
   rollout. Espere `12/12 prontos` antes de medir qualquer coisa.
+- **AUTOESCALA: SOBE SOZINHA, DESCE NA MÃO** (`k8s/50-hpa.yaml`, `autoscaling/v2beta2` — o cluster é
+  1.21 e `autoscaling/v2` só existe a partir do 1.23). O HPA do servidor vai de 12 a 24 shards por CPU
+  média de **700m** (o ponto em que o RTT começou a subir nas medições), com `scaleUp` de no máximo 4
+  pods/min e **`scaleDown: Disabled`**: tirar um pod não redistribui carga, MATA as partidas que estão
+  na memória dele. Reduzir shard é manutenção em janela, nunca reação a dois minutos de CPU baixa.
+  Provado ponta a ponta baixando o alvo para 300m sob 500 jogadores: **12 → 16 → 20 → 24 em três
+  minutos**, a CPU média caindo de 660m para 400m, e os 24 `/ws/N` roteando certo depois (os shards
+  novos abrem salas "C…", "D…" — o 1º char do código é o índice em base36).
+  ⚠️ **`AverageValue`, nunca `Utilization`**: a porcentagem é sobre o REQUEST (200m), então um pod em
+  750m — o normal com sala cheia — apareceria como 375% e o HPA iria ao teto na primeira partida.
+  ⚠️ **O HPA só mexe em `replicas`**: Service `warspace-server-<n>` e path `/ws/<n>` do Ingress são
+  PRÉ-CRIADOS até 24. Sem eles o pod novo sobe e fica inalcançável, sem erro em lugar nenhum — e
+  `SHARDS` no ConfigMap é o mesmo TETO (24) para que os shards de pé já conheçam como peer quem o HPA
+  subir depois; índice ainda sem pod só não resolve no DNS, o que falha rápido.
+  ⚠️ **`replicas` SAIU dos dois manifestos** (StatefulSet e Deployment do cliente) porque declarado nos
+  dois lugares cada deploy desfaria a escala do HPA. **E isso tem uma armadilha que só se aprende
+  errando**: com server-side apply, tirar o campo do manifesto o REMOVE do objeto e o default (1) passa
+  a valer — foi assim que 12 shards viraram UM no meio de um deploy. Por isso `scripts/k8s_apply.py`
+  agora LÊ o `replicas` vivo do cluster e o reinjeta quando o manifesto não o declara: o deploy ficou
+  cego para a escala em vez de destruí-la.
   ⚠️ **O jogador honesto é desconectado quando o servidor engasga**: com o tick atrasado, os INPUT
   acumulados chegam em rajada, o balde de `NET.RATE_INPUTS` (40/s, burst 60) estoura e 3 violações em
   10 s fecham a conexão com 4429. Ou seja, a saturação não degrada — ela EXPULSA, e expulsa mais quem

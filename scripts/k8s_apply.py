@@ -29,6 +29,8 @@ RESOURCES = {
     "StatefulSet": ("apis/apps/v1", "statefulsets", True),
     "Ingress":     ("apis/networking.k8s.io/v1", "ingresses", True),
     "CronJob":     ("apis/batch/v1", "cronjobs", True),   # batch/v1 é GA desde o k8s 1.21 (este cluster)
+    # ⚠️ v2beta2 e não v2: `autoscaling/v2` só existe a partir do k8s 1.23, e este cluster é 1.21.
+    "HorizontalPodAutoscaler": ("apis/autoscaling/v2beta2", "horizontalpodautoscalers", True),
 }
 
 
@@ -90,6 +92,17 @@ def apply(cl, doc, dry_run=False):
     if kind not in RESOURCES:
         print(f"  ERRO  {kind}/{name}: kind desconhecido (acrescente em RESOURCES)")
         return False
+    # ⚠️ ESCALA VIVA NÃO PODE SER APAGADA PELO DEPLOY. Quando o manifesto NÃO declara `replicas` (é o
+    # caso do StatefulSet do jogo e do Deployment do cliente, porque quem manda neles é o HPA), o
+    # server-side apply REMOVE o campo — e aí o default vale. Medido do jeito ruim em 2026-09-03: os 12
+    # shards caíram para UM no meio de um deploy, com as salas deles. Aqui o valor de AGORA é lido do
+    # cluster e reinjetado, então o deploy passa a ser cego para a escala em vez de destruí-la.
+    if kind in ("Deployment", "StatefulSet") and "replicas" not in doc.get("spec", {}):
+        atual = cl.request("GET", path_for(kind, name, ns))
+        viva = (atual.get("spec") or {}).get("replicas")
+        if isinstance(viva, int):
+            doc = {**doc, "spec": {**doc["spec"], "replicas": viva}}
+            print(f"  ..    {kind}/{name}: replicas={viva} preservado (quem manda é o HPA)")
     p = path_for(kind, name, ns) + f"?fieldManager={FIELD_MANAGER}&force=true" + ("&dryRun=All" if dry_run else "")
     res = cl.request("PATCH", p, yaml.safe_dump(doc), "application/apply-patch+yaml")
     if res.get("kind") == "Status" and res.get("status") == "Failure":

@@ -5,7 +5,8 @@ metadata:
   namespace: warspace
   labels: {app: warspace-client}
 spec:
-  replicas: 2
+  # ⚠️ SEM `replicas`: quem manda é o HPA (k8s/50-hpa.yaml). Declarado nos dois lugares, cada
+  # `deploy.sh` devolveria o número do arquivo e desfaria a escala.
   selector:
     matchLabels: {app: warspace-client}
   template:

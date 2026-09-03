@@ -104,7 +104,7 @@ async function pegaTokens(n){
 const MSG_INPUT=0x01,MSG_SNAP=0x10,MSG_PONG=0x14;
 function criaCliente(i,conta,st){
   const buf=Buffer.alloc(10);buf[0]=MSG_INPUT;
-  const shard=i%(st.shards||1);
+  const shard=st.vivos[i%st.vivos.length];
   const url=`${WS_BASE}/ws/${shard}`;
   const c={i,ws:null,dentro:false,seq:0,tick:0,world:12000,cx:0,cy:0,fase:Math.random()*6.28,
     raio:900+Math.random()*2600,vel:.4+Math.random()*.8,pingAt:0,timerI:0,timerP:0,vivo:true};
@@ -162,10 +162,20 @@ function criaCliente(i,conta,st){
 // ── um processo de carga (pai sem workers, ou filho) ─────────────────────────
 async function roda(de,ate,contas){
   const st={abertos:0,dentro:0,fechados:0,mortes:0,bytes:0,msgs:0,snaps:0,enviados:0,rtt:[],
-    erros:new Map(),closeCodes:new Map(),sockErr:new Map(),shards:CFG.shards};
-  if(!st.shards){
-    try{const r=await fetch(`${API}/api/config`,{headers:headers()});const j=await r.json();st.shards=j.shards||1;}
-    catch{st.shards=1;}}
+    erros:new Map(),closeCodes:new Map(),sockErr:new Map(),shards:CFG.shards,vivos:null};
+  // ⚠️ O SHARD VEM DO POD QUE ATENDE, NÃO DA CONTAGEM. `/api/config` anuncia `shards` como o TETO
+  // (o `SHARDS` do ConfigMap, hoje 24 por causa do HPA), e o índice vivo pode ser qualquer
+  // subconjunto dele — `i % shards` mandava metade dos clientes para `/ws/12..23`, que ainda não têm
+  // pod, e o 503 parecia saturação do jogo. O cliente de verdade usa o campo `shard` da resposta
+  // (`game/index.js`), que só pode vir de um pod PRONTO porque o Service da API balanceia entre eles;
+  // aqui a mesma coisa, amostrada algumas vezes para achar o conjunto inteiro.
+  if(!st.vivos){
+    const achados=new Set();
+    for(let i=0;i<40&&achados.size<(st.shards||99);i++){
+      try{const r=await fetch(`${API}/api/config`,{headers:headers(),cache:'no-store'});const j=await r.json();
+        if(j.shard!=null)achados.add(j.shard|0);if(j.shards)st.shards=j.shards;}catch{}}
+    st.vivos=achados.size?[...achados].sort((a,b)=>a-b):[0];
+    if(!slice)console.log(`shards vivos: ${st.vivos.join(',')} (teto anunciado: ${st.shards||'?'})`);}
   const clientes=[];
   const total=ate-de,porTick=Math.max(1,Math.round(CFG.ramp/10));
   // ⚠️ REUSO DE CONTA: `POST /api/auth/guest` tem rate de 30/h por (shard, IP) e o ingress-nginx
