@@ -2079,13 +2079,20 @@ body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:non
    mesmo lugar por SIMETRIA: um mascote grande no rodapé de um cartão e outro pequeno no topo do
    vizinho lia como dois componentes diferentes lado a lado. */
 #s-modes .mode-card[data-mode="free"] .mode-mascote,
-#s-modes .mode-card[data-mode="br"] .mode-mascote{position:absolute;right:2px;top:6px;
+#s-modes .mode-card[data-mode="br"] .mode-mascote{position:absolute;top:6px;
   width:clamp(52px,20%,72px);height:auto}
+/* ⚠️ ESPELHADOS: Marte na ESQUERDA do cartão do Livre e a Terra na DIREITA do vizinho. A altura é a mesma
+   nos dois (é ela que faz a dupla ler como um par); o que muda é o lado, e com isso os dois planetas ficam
+   nas BORDAS EXTERNAS da grade em vez de um atrás do outro no meio dela. */
+#s-modes .mode-card[data-mode="free"] .mode-mascote{left:2px}
+#s-modes .mode-card[data-mode="br"] .mode-mascote{right:2px}
 /* só o CABEÇALHO divide espaço com o planeta; os controles usam a largura inteira do cartão. Reservar a
    faixa no cartão (com `padding-right`) e depois devolvê-la com margem negativa nos filhos funcionava,
    mas é o tipo de acrobacia que a próxima pessoa desfaz sem saber por que existia. */
+/* a faixa reservada acompanha o LADO do planeta: no Livre ele está à esquerda, então quem recua é o
+   começo da linha — com `padding-right` ali o título passaria por baixo dele. */
 #s-modes .mode-card[data-mode="free"]>b,
-#s-modes .mode-card[data-mode="free"]>span,
+#s-modes .mode-card[data-mode="free"]>span{padding-left:78px}
 #s-modes .mode-card[data-mode="br"]>b,
 #s-modes .mode-card[data-mode="br"]>span{padding-right:78px}
 /* ⚠️ O JOGAR DO LIVRE OCUPA O MESMO ESPAÇO QUE O DO VIZINHO: a largura sai de graça (`.btn-primary` é
