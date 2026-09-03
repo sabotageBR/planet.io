@@ -649,6 +649,20 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   o nível informativo saía sem cor nenhuma, em silêncio.
   ⚠️ Toda classe nova leva prefixo (`ad-`/`pm-`): `base.css` já define `.card`, `.badge`, `.chip`, `.mono`,
   `.wrap`, `.tab`, `.modal`… e `.badge` lá é `position:absolute`.
+- **A TELA DE PARÂMETROS TEM ABAS LATERAIS** (`Parametros` em `client/src/admin/mount.jsx`, o bloco
+  "AS ABAS DOS GRUPOS" de `admin.css`): a lista passou de 28 para 40 parâmetros em 10 grupos, e uma página
+  corrida punha o teto do ímã ao lado do tamanho do mundo como se fossem a mesma decisão. As abas saem do
+  MESMO descritor que já dava as seções (`GRUPOS`), então grupo novo aparece sem uma linha de painel — e
+  cada aba mostra quantos itens tem e quantos estão fora do padrão.
+  ⚠️ **Com BUSCA no ar a aba é ignorada** e todos os grupos que casam aparecem: quem digita num campo
+  "filtrar…" espera achar a chave onde quer que ela esteja, não "nada com esse nome" porque o resultado
+  caiu na aba de trás.
+  ⚠️ A aba ativa é resolvida a cada render contra a lista VISÍVEL (`visiveis.includes(aba)`): o `carregar()`
+  troca `grupos` inteiro depois de cada gravação, e um grupo que sumiu deixaria a tela vazia.
+  ⚠️ `minmax(0,1fr)` na coluna da direita, nunca `1fr`: item de grid nasce com `min-width:auto` e a grade
+  de cartões empurraria a largura da PÁGINA em vez de encolher.
+  ⚠️ O `sticky` da coluna de abas só funciona por causa do conserto do `#app{overflow}` na camada 1 — antes
+  dele, toda sticky do painel morria em silêncio.
 - **Parâmetros de jogo em runtime** (`shared/src/tunables.js` + `admin_settings`): lista BRANCA, nada fora
   dela é gravável. Escrever custa ZERO no laço de 60 Hz porque `world.js` faz `const PW=POWERUP` — isso
   aliasa o OBJETO, e os objetos de `constants.js` não são congelados. O **banco é a verdade**; o push

@@ -280,6 +280,23 @@ html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:no
 /* `auto-fill` responde ao CONTÊINER: na janela estreita vira uma coluna sozinho, sem media query. */
 .pm-grade{display:grid;gap:var(--s4);grid-template-columns:repeat(auto-fill,minmax(288px,1fr))}
 
+/* ── AS ABAS DOS GRUPOS ──
+   A lista passou de 28 para 40 parâmetros em 10 grupos, e a página corrida punha o teto do ímã ao lado do
+   tamanho do mundo como se fossem a mesma decisão. As abas saem do MESMO descritor que já dava as seções
+   (`GRUPOS` em shared/tunables.js), então grupo novo aparece aqui sem uma linha de painel.
+   ⚠️ `minmax(0,1fr)` na coluna da direita, e não `1fr`: item de grid nasce com `min-width:auto` e a grade
+   de cartões dentro dele empurraria a largura da página inteira em vez de encolher.
+   ⚠️ O `sticky` da coluna SÓ funciona porque `#app` deixou de ser `overflow:hidden` (ver a camada 1). */
+.pm-corpo{display:grid;grid-template-columns:210px minmax(0,1fr);gap:var(--s5);align-items:start}
+.pm-abas{position:sticky;top:calc(var(--top-h) + var(--s4));display:flex;flex-direction:column;gap:2px;min-width:0}
+/* mesmo vocabulário dos botões da barra de navegação: nada de inventar um sexto idioma de botão */
+.pm-aba{display:flex;align-items:center;gap:var(--s2);width:100%;height:auto;min-height:34px;
+  padding:var(--s2) var(--s3);background:none;border:0;border-radius:var(--r);color:var(--dim);
+  font:inherit;text-align:left;cursor:pointer}
+.pm-aba>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm-aba:hover{background:var(--surf2);color:var(--txt)}
+.pm-aba.on{background:var(--surf2);color:var(--txt);box-shadow:inset 2px 0 0 var(--acc)}
+
 .pm{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s4) var(--s4) 10px;
   transition:border-color .12s,box-shadow .12s}
 .pm:hover{border-color:var(--surf3)}
@@ -313,6 +330,12 @@ html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:no
 @media (max-width:1180px){
   .ad-split{grid-template-columns:1fr}
   .ad-split>.ad-detalhe{position:static}
+  /* as abas viram uma fileira rolável em cima do conteúdo: 210 px de coluna fixa mais a grade de cartões
+     não cabem, e empilhar a coluna à esquerda em tela estreita é a mesma armadilha do `.ad-split` */
+  .pm-corpo{grid-template-columns:1fr}
+  .pm-abas{position:static;flex-direction:row;overflow:auto hidden;gap:var(--s2);padding-bottom:var(--s2)}
+  .pm-aba{width:auto;flex:0 0 auto}
+  .pm-aba.on{box-shadow:inset 0 -2px 0 var(--acc)}
 }
 @media (max-width:700px){
   .ad,.ad-login{--s5:12px;--s6:16px}

@@ -190,6 +190,7 @@ function Aviso({ erro }) {
 // metainformação embaixo, em voz baixa, que é a hierarquia real desta tela.
 function Parametros({ erro }) {
   const [ts, setTs] = useState([]), [grupos, setGrupos] = useState([]), [edit, setEdit] = useState({}), [busca, setBusca] = useState("");
+  const [aba, setAba] = useState("");
   const carregar = async () => {
     try { const r = await api.settings(); setTs(r.tunables); setGrupos(r.grupos || []); }
     catch (e) { erro(e.message); }
@@ -255,6 +256,16 @@ function Parametros({ erro }) {
     </article>;
   };
 
+  // ⚠️ A ABA ATIVA precisa sobreviver ao `carregar()` (que troca `grupos` inteiro depois de cada gravação)
+  // e a um grupo que sumiu. `visiveis` é a lista de abas DEPOIS do filtro: com a busca no ar, uma aba sem
+  // resultado não deve existir para ser clicada.
+  const visiveis = secoes.map(([titulo]) => titulo);
+  const atual = visiveis.includes(aba) ? aba : visiveis[0];
+  // ⚠️ Com BUSCA no ar a aba é ignorada e TODOS os grupos que casam aparecem: quem digita num campo
+  // "filtrar…" espera achar a chave onde quer que ela esteja, e não "nada com esse nome" porque o
+  // resultado caiu na aba de trás. É o mesmo motivo pelo qual a contagem de cada aba já vem filtrada.
+  const mostrar = q ? secoes : secoes.filter(([titulo]) => titulo === atual);
+
   return <div className="pm-tela">
     <div className="pm-topo">
       <div>
@@ -265,11 +276,29 @@ function Parametros({ erro }) {
       <input className="pm-busca" type="search" placeholder="filtrar…" value={busca}
         onChange={e => setBusca(e.target.value)} />
     </div>
-    {secoes.map(([titulo, itens]) => <section key={titulo} className="pm-grupo">
-      <h3>{titulo} <span className="tag mudo">{itens.length}</span></h3>
-      <div className="pm-grade">{itens.map(cartao)}</div>
-    </section>)}
-    {!secoes.length ? <p className="vazio">{ts.length ? "nada com esse nome" : "…"}</p> : null}
+    {/* A lista cresceu para 40 parâmetros em 10 grupos, e uma página corrida põe o teto do ímã ao lado do
+        tamanho do mundo como se fossem a mesma decisão. As abas saem do MESMO descritor que já dava as
+        seções — grupo novo aparece aqui sem uma linha de painel. */}
+    <div className="pm-corpo">
+      <aside className="pm-abas" role="tablist" aria-label="Grupos de parâmetros">
+        {secoes.map(([titulo, itens]) => {
+          const fora = itens.filter(t => t.changed).length;
+          return <button key={titulo} role="tab" aria-selected={titulo === atual}
+            className={"pm-aba" + (titulo === atual && !q ? " on" : "")} onClick={() => { setAba(titulo); setBusca(""); }}>
+            <span>{titulo}</span>
+            <i className="tag mudo">{itens.length}</i>
+            {fora ? <i className="tag warn">{fora}</i> : null}
+          </button>;
+        })}
+      </aside>
+      <div className="pm-conteudo">
+        {mostrar.map(([titulo, itens]) => <section key={titulo} className="pm-grupo">
+          {q ? <h3>{titulo} <span className="tag mudo">{itens.length}</span></h3> : null}
+          <div className="pm-grade">{itens.map(cartao)}</div>
+        </section>)}
+        {!secoes.length ? <p className="vazio">{ts.length ? "nada com esse nome" : "…"}</p> : null}
+      </div>
+    </div>
   </div>;
 }
 
