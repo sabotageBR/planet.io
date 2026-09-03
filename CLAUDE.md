@@ -2330,8 +2330,21 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   desconexões por `RATE`. Banda: **3–6 KB/s por jogador**, ou seja rede não é o gargalo — CPU é.
   ⚠️ **Subir `limits.cpu` NÃO ajuda**: o servidor é Node single-thread, então um shard é um core por
   construção e já encosta nele. Quem escala é o número de SHARDS (processos), e cada um novo custa
-  `replicas` + `SHARDS` no ConfigMap + um Service + um path de Ingress. O cluster tem 128 cores
-  alocáveis e usa 3 — o teto de hoje é de configuração, não de hardware.
+  `replicas` + `SHARDS` no ConfigMap + um Service + um path de Ingress.
+  **Feito: 3 → 12 shards, e 500 jogadores entram.** Medido em 2026-09-03 com o gerador acima:
+  **500 de 500 dentro, 167 s estáveis, ZERO quedas, RTT p50 37 ms / p95 92 ms**, 9 616 snapshots/s e
+  3,2 MB/s de banda. Custo: **8,5–9,6 cores dos 12**, o shard mais carregado em 790–918m de 1000m, e
+  **565–606 Mi somando os DOZE pods** (~50 Mi cada, contra 512 Mi de limite) — memória nunca foi o
+  gargalo, e o Postgres também não (`max_connections` 600, 12×5 do pool).
+  ⚠️ **`/ws/1` casaria `/ws/10`.** Os paths do Ingress são `pathType: Prefix`, que no nginx vira
+  prefixo de string: os de DOIS dígitos são declarados PRIMEIRO em `k8s/30-ingress.yaml`, e o
+  roteamento foi conferido shard a shard (conectar em `/ws/N` e ler o `shard` do JSON `room` — o 1º
+  char do código da sala confirma: shard 10 abre sala "A…", shard 11 abre "B…"). Sem essa prova, o
+  sintoma seria um jogador entrando na sala do shard errado, em silêncio.
+  ⚠️ **O rollout do StatefulSet é SEQUENCIAL** (11 → 0, ~20 s por pod): durante ele, um shard por vez
+  fica sem endpoint e o ingress responde 503 naquele `/ws/N`. Uma varredura dos 12 no meio de um
+  rollout acusa "1 shard roteando errado" a cada rodada, em shards diferentes — não é roteamento, é o
+  rollout. Espere `12/12 prontos` antes de medir qualquer coisa.
   ⚠️ **O jogador honesto é desconectado quando o servidor engasga**: com o tick atrasado, os INPUT
   acumulados chegam em rajada, o balde de `NET.RATE_INPUTS` (40/s, burst 60) estoura e 3 violações em
   10 s fecham a conexão com 4429. Ou seja, a saturação não degrada — ela EXPULSA, e expulsa mais quem

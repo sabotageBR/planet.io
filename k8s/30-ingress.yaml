@@ -45,6 +45,12 @@ spec:
       http:
         paths:
           # ── WebSocket: um pod por shard (Service dedicado, seletor por pod-name) ──
+          - path: /ws/10
+            pathType: Prefix
+            backend: {service: {name: warspace-server-10, port: {number: 3000}}}
+          - path: /ws/11
+            pathType: Prefix
+            backend: {service: {name: warspace-server-11, port: {number: 3000}}}
           - path: /ws/0
             pathType: Prefix
             backend: {service: {name: warspace-server-0, port: {number: 3000}}}
@@ -54,7 +60,28 @@ spec:
           - path: /ws/2
             pathType: Prefix
             backend: {service: {name: warspace-server-2, port: {number: 3000}}}
-          # ── API: balanceada entre os 3 shards (tudo stateless no Postgres — menos o lobby de equipe,
+          - path: /ws/3
+            pathType: Prefix
+            backend: {service: {name: warspace-server-3, port: {number: 3000}}}
+          - path: /ws/4
+            pathType: Prefix
+            backend: {service: {name: warspace-server-4, port: {number: 3000}}}
+          - path: /ws/5
+            pathType: Prefix
+            backend: {service: {name: warspace-server-5, port: {number: 3000}}}
+          - path: /ws/6
+            pathType: Prefix
+            backend: {service: {name: warspace-server-6, port: {number: 3000}}}
+          - path: /ws/7
+            pathType: Prefix
+            backend: {service: {name: warspace-server-7, port: {number: 3000}}}
+          - path: /ws/8
+            pathType: Prefix
+            backend: {service: {name: warspace-server-8, port: {number: 3000}}}
+          - path: /ws/9
+            pathType: Prefix
+            backend: {service: {name: warspace-server-9, port: {number: 3000}}}
+          # ── API: balanceada entre os 12 shards (tudo stateless no Postgres — menos o lobby de equipe,
           #    que vive na memória do pod dono do código e é encaminhado por /internal/party) ──
           - path: /api
             pathType: Prefix

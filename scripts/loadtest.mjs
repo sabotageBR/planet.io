@@ -121,7 +121,11 @@ function criaCliente(i,conta,st){
         if(!c.dentro){c.dentro=true;st.dentro++;}
         c.world=(m.world&&m.world.w)||12000;
         c.cx=c.world*(.2+Math.random()*.6);c.cy=c.world*(.2+Math.random()*.6);
-        // INPUT e ping só começam DEPOIS do room: antes disso não há slot e o servidor descarta
+        // INPUT e ping só começam DEPOIS do room: antes disso não há slot e o servidor descarta.
+        // ⚠️ E LIMPAM os anteriores: morrer manda `join` de novo, o que traz um segundo `room` — sem
+        // isto cada respawn somava um timer, a taxa de INPUT dobrava e o servidor derrubava o cliente
+        // por `RATE` (4429). O sintoma ficava parecido com saturação do servidor e não era.
+        clearInterval(c.timerI);clearInterval(c.timerP);
         c.timerI=setInterval(()=>manda(),Math.max(10,Math.round(1000/CFG.hz)));
         c.timerP=setInterval(()=>{if(ws.readyState===1){c.pingAt=Date.now();ws.send(JSON.stringify({t:'ping',c:c.pingAt>>>0}));}},1000);
       }else if(m.t==='error'){st.erros.set(m.code||'?',(st.erros.get(m.code||'?')||0)+1);}

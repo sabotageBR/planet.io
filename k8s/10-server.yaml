@@ -63,6 +63,114 @@ spec:
     statefulset.kubernetes.io/pod-name: warspace-server-2
   ports: [{name: http, port: 3000, targetPort: 3000}]
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-3
+  namespace: warspace
+  labels: {app: warspace-server, shard: "3"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-3
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-4
+  namespace: warspace
+  labels: {app: warspace-server, shard: "4"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-4
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-5
+  namespace: warspace
+  labels: {app: warspace-server, shard: "5"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-5
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-6
+  namespace: warspace
+  labels: {app: warspace-server, shard: "6"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-6
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-7
+  namespace: warspace
+  labels: {app: warspace-server, shard: "7"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-7
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-8
+  namespace: warspace
+  labels: {app: warspace-server, shard: "8"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-8
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-9
+  namespace: warspace
+  labels: {app: warspace-server, shard: "9"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-9
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-10
+  namespace: warspace
+  labels: {app: warspace-server, shard: "10"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-10
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: warspace-server-11
+  namespace: warspace
+  labels: {app: warspace-server, shard: "11"}
+spec:
+  selector:
+    app: warspace-server
+    statefulset.kubernetes.io/pod-name: warspace-server-11
+  ports: [{name: http, port: 3000, targetPort: 3000}]
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -71,7 +179,7 @@ metadata:
   labels: {app: warspace-server}
 spec:
   serviceName: warspace-server
-  replicas: 3
+  replicas: 12
   podManagementPolicy: Parallel
   selector:
     matchLabels: {app: warspace-server}
