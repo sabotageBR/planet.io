@@ -334,9 +334,13 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   **Vitória tem fogos**: quem vence vê a salva sair do próprio planeta (`fireworkPrims` em theme/util.js —
   física compartilhada, paleta por tema; traço em vez de ponto, arrasto, gravidade, cor em 3 tempos, cintilação).
 - **O MAPA É 12000×12000** (`WORLD` em constants; era 9600, +25% de lado e +56% de área). É edição de
-  BUILD e **nunca** tunable: `protocol/codec.js` captura `const W=WORLD.w` no LOAD DO MÓDULO e o cliente
-  tem cópia própria do bundle — dois valores diferentes corrompem `qPos/dqPos` e toda posição do fio sai
-  deslocada, em silêncio; os 3 shards e o cliente têm que subir na MESMA imagem. O que é FRAÇÃO acompanha
+  BUILD, e o cliente tem cópia própria do bundle — dois valores diferentes corrompem `qPos/dqPos` e toda
+  posição do fio sai deslocada, em silêncio; os 3 shards e o cliente têm que subir na MESMA imagem.
+  ⚠️ Este bloco já disse "**nunca** tunable: `codec.js` captura `const W=WORLD.w` no LOAD DO MÓDULO", e as
+  duas metades estão obsoletas há tempo — `WORLD.LADO` É tunable (grupo "Salas") e `codec.js` lê `WORLD.w`
+  a CADA chamada. O texto novo foi acrescentado 35 linhas abaixo sem apagar o velho, e o mesmo par
+  contraditório vivia em `shared/src/constants.js`. O que continua verdade é a consequência: dois valores
+  diferentes corrompem tudo em silêncio. O que é FRAÇÃO acompanha
   sozinho (a zona, o anel de largada do BR, o piso da câmera, a quantização, a grade, o radar, o fundo);
   o que é CONTAGEM ou DISTÂNCIA foi escalado à mão, cada um com o expoente certo — **s² para população**
   (`FOOD.COUNT` 2500→3900, `ASTEROID.BELTS` 4→6 e `WANDERERS` 18→28, `MAX_EXTRA` 6→9, `STAR.COUNT` 12→19,
@@ -382,13 +386,37 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **Mexer nele não reescala nada em volta**: comida, cinturões, estrelas e os tempos da zona continuam
   nos números do build. Mundo maior com a mesma população = mapa mais vazio. É ferramenta de teste, não um
   botão de "mundo maior" pronto — o mundo maior de verdade é a tabela de escalas do bloco acima.
-- **CLIENTE DE BUILD ANTIGA NÃO ENTRA EM OUTRO LOBBY: ELE RECARREGA.** Um processo de servidor roda UMA
-  física só, e um cliente velho tem outras regras (o esconderijo da estrela, o ganho no gás, a trava de
-  arma) além de outro `WORLD` — num "lobby de build antiga" ele dessincronizaria do mesmo jeito, porque
-  quem simula é o servidor novo. Quem separa é o `PROTOCOL_VERSION`: `wsServer` recusa o join com
-  `error VERSION` e `net/Connection.js` fecha e dá `location.reload()` em 1 s. Por isso mudança que toca o
-  fio SOBE a versão (esta entrega vai para a 15), e por isso os 3 shards e o cliente têm que subir na
-  MESMA imagem.
+- **A VERSÃO É NEGOCIADA, NÃO IMPOSTA** (`PROTOCOL_MIN`=11 ao lado do `PROTOCOL_VERSION`; `wsServer.join`,
+  `Connection.handleJson`): o join DECLARA a versão do cliente, o servidor aceita a faixa
+  `[PROTOCOL_MIN..PROTOCOL_VERSION]` e o `room` **ECOA a versão do cliente** em vez de anunciar a dele.
+  Quem não declara — toda build publicada até a v15 — entra, e o campo SAI do `room`: ausente é
+  "não checado", que é o que a guarda dos dois lados sempre significou.
+  ⚠️ **A trava do servidor era CÓDIGO MORTO.** `wsServer.js` só conferia `msg.protocol` e o cliente NUNCA
+  mandava o campo — o texto que ficou aqui por meses ("`wsServer` recusa o join") descrevia algo que nunca
+  aconteceu em produção. Quem recusava era o CLIENTE, sozinho, ao ver um número diferente no `room`, e com
+  `location.reload()` em 1 s: no site isso conserta (o nginx serve o `index.html` com `no-cache`), mas no
+  zip de um PORTAL o reload traz a MESMA build congelada — laço infinito. E a recusa vinha DEPOIS de
+  `room.join()`, então cada volta do laço deixava um planeta fantasma segurando slot por `NET.RESUME_MS`.
+  ⚠️ **O piso é 11 porque a v11 foi a única inserção NO MEIO de um registro** (`level`, no PLAYERS): um
+  leitor v10 o lê como o `u8 len` do `str8` e desalinha a linha e todas as seguintes. Da v12 para cá tudo é
+  campo no FIM do `self` (o `readSnapshot` o lê por último e não confere comprimento, então a cauda que o
+  cliente não conhece fica sem leitor), kind no FIM do EVENT, ou bit novo em campo existente. **Regra:**
+  aditivo sobe só o VERSION; tamanho, ordem ou reinterpretação que o leitor antigo não mascara sobe o MIN.
+  ⚠️ **A v15 é o "aditivo" que não era**: o bit 0x100 foi para um `extra` que o leitor v14 lê CRU, então
+  ele mostra "ESCUDO 257". Bit novo só é aditivo se o leitor antigo JÁ mascarava.
+  ⚠️ **No cliente, os dois sentidos não são a mesma coisa** — tratá-los como um só foi o defeito. Servidor
+  À FRENTE = a minha build é velha: recarrega UMA vez (marca em `sessionStorage`, com guarda porque em
+  origem opaca ele LANÇA) e depois vira a tela `OUTDATED`, que FICA. Servidor ATRÁS = rollout em curso: o
+  Deployment do cliente sobe em segundos e o StatefulSet dos 12–24 shards é sequencial (minutos), então o
+  cliente NOVO sorteia um shard velho pelo `/api/config` — ali recarregar não conserta nada, e o que se
+  faz é pedir OUTRO SHARD (`onStale` em `game/index.js`, refazendo a consulta, que é balanceada).
+  `scripts/deploy.sh` também publica o cliente só DEPOIS dos shards, o que é redundância proposital.
+  ⚠️ **O `protocol` de `/api/config` existia desde sempre e ninguém o lia.** Agora que o servidor não força
+  mais ninguém a recarregar, é ele quem empurra a atualização — no BOOT, e não no meio de uma partida.
+  ⚠️ **Quem ainda não tem conserto é o mundo**: build anterior a 12000 não obedece o `world:{w,h}` do
+  `room` e joga na escala errada. No site o boot a recarrega; num portal, só quando eles aceitarem zip novo.
+  A distribuição de versões dos joins está no `/healthz` (`metrics.join`) — é a única medida de quanta
+  gente ainda está atrás.
 - **O PEQUENO ATRAVESSA A ESTRELA E SE ESCONDE LÁ DENTRO** (`STAR.PASS_R`, `rules.starPass`): abaixo de
   40 px de raio a peça não é empurrada, não queima, não estilhaça e — o que faz o esconderijo existir —
   **não detona a estrela**. `pieceStar` chamava `supernova(...,rammed)` de forma INCONDICIONAL, então o

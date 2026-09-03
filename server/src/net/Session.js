@@ -21,6 +21,11 @@ export class Session{
     // `isAdmin`: só para RECEBER o aviso de "entrou gente" (Room._avisaAdmins). Agir continua exigindo o
     // token de outro `kind` — roubar a aba do jogo de um administrador não pode abrir o painel.
     this.isAdmin=false;
+    // Versão do protocolo que ESTA sessão declarou no join/resume, ou null quando o cliente não declarou
+    // (é o caso de toda build publicada até a v15). Ela é a resposta do `room`: o servidor ECOA a versão do
+    // cliente em vez de anunciar a dele, e assim o cliente antigo não se acha desatualizado. `null` faz o
+    // campo ser OMITIDO — campo ausente é "não checado" nos dois lados desde sempre.
+    /** @type {number|null} */this.protocol=null;
     // `pid`: handle OPACO por sala, para o painel do dono (ver Room.hostRoster). `key`: hash do token, o
     // mesmo `keyOf` do lobby de equipe — é o que permite banir quem não tem conta.
     this.resumeToken=randomBytes(16).toString('hex');

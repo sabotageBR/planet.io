@@ -17,6 +17,12 @@ export function createMetrics(){
   const llmMs=new Ring(120);
   const llmN={ask:0,ok:0,veto:0,fail:0,stale:0,drop:0,teto:0,fallback:0,conv:0,puxa:0};
   let llmInflight=()=>0,llmBreaker=()=>false;
+  // ── quem entrou, e em QUE VERSÃO ──
+  // A distribuição das versões declaradas no join é a única medida de quanta gente ainda joga numa build
+  // antiga, e ela não existia: nenhum código de erro do WS era contado, e a recusa por versão acontecia no
+  // NAVEGADOR do jogador, onde nada é reportado. `n/d` é o cliente que não declara nada (toda build
+  // publicada até a v15). `versionRefused` conta quem ficou fora da faixa [PROTOCOL_MIN..PROTOCOL_VERSION].
+  /** @type {Map<string,number>} */const proto=new Map();let joins=0,versionRefused=0;
   const startedAt=Date.now();
   // janela de WIN s em baldes por segundo (bytes de saída, mensagens de entrada)
   const secs=new Float64Array(WIN).fill(-1),bo=new Float64Array(WIN),mi=new Float64Array(WIN);
@@ -26,6 +32,9 @@ export function createMetrics(){
   return{
     tick:ms=>tick.push(ms),lag:ms=>lag.push(ms),overrun:()=>{overruns++;},
     bytesOut:n=>{bo[bucket()]+=n;bytesOutTotal+=n;},msgIn:()=>{mi[bucket()]++;msgsInTotal++;},rateLimitHit:()=>{rateLimitHits++;},
+    /** @param {number|null} v versão declarada no join (null = o cliente não declarou) */
+    join:v=>{joins++;const k=v==null?'n/d':String(v);proto.set(k,(proto.get(k)||0)+1);},
+    versionRefused:()=>{versionRefused++;},
     /** @param {'ask'|'ok'|'veto'|'fail'|'stale'|'drop'|'teto'|'fallback'|'conv'|'puxa'} ev */
     llm:(ev,ms)=>{if(llmN[ev]!=null)llmN[ev]++;if(ms>=0&&(ev==='ok'||ev==='fail'))llmMs.push(ms);},
     /** O cliente do Ollama é criado depois das métricas; estes dois getters fecham o laço sem inverter a ordem. */
@@ -36,6 +45,7 @@ export function createMetrics(){
       const m=llmMs.pct();
       return{tick:{p50:r3(t.p50),p99:r3(t.p99),max:r3(t.max),overruns},loopLagMs:{p50:r3(l.p50),p99:r3(l.p99)},
         net:{outKBps:r3(rate(bo)/1024),inMsgps:r3(rate(mi)),rateLimitHits},
-        llm:{...llmN,p50:r3(m.p50),p99:r3(m.p99),inflight:llmInflight()|0,breaker:!!llmBreaker()}};},
+        llm:{...llmN,p50:r3(m.p50),p99:r3(m.p99),inflight:llmInflight()|0,breaker:!!llmBreaker()},
+        joins:{total:joins,refused:versionRefused,proto:Object.fromEntries(proto)}};},
   };
 }

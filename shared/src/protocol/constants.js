@@ -9,6 +9,19 @@ export const PROTOCOL_VERSION=15;   // 15: SHIELD_UP diz se o nível SUBIU (bit 
 // 9: MODOS DE JOGO — PLAYERS leva `team`, `self` leva `weapon`/`alive`, MISSILE leva `weapon`, e entram ZONE/VOICE/VOICE_UP
 // 8: `self` leva threat/threatDir (míssil teleguiado vindo em mim) · 7: fireCd (carência de tiro do spawn) · 6: LEADERBOARD leva x,y de TODOS os vivos
 // 5: o `hue` do EJECT deixou de ser o skinId (que o cliente ignorava) e virou FRAG_KIND
+export const PROTOCOL_MIN=11;   // a MAIS ANTIGA que este servidor aceita falar — a versão deixou de ser um martelo binário
+// O join DECLARA a versão dele, o servidor aceita a faixa [PROTOCOL_MIN..PROTOCOL_VERSION] e o `room` ECOA
+// a versão do CLIENTE, que por isso nunca mais se auto-recarrega. Join sem declarar (todo cliente publicado
+// até aqui) é aceito e o `room` sai SEM o campo — que é exatamente o que a guarda dos dois lados sempre
+// significou: campo ausente = não checado.
+// ⚠️ Por que 11 e não 10: a v11 inseriu `level` (u8) no MEIO do registro do PLAYERS, então um leitor v10 lê
+// o `level` como o `u8 len` do `str8` e desalinha aquela linha E todas as seguintes. Foi a única inserção
+// no meio que houve; da v11 para cá é sempre campo NO FIM, kind NO FIM ou reinterpretação do mesmo tamanho.
+// REGRA DE MANUTENÇÃO: mudança aditiva sobe só o VERSION e NÃO mexe aqui; mudança de TAMANHO, de ORDEM, ou
+// reinterpretação que o leitor antigo não mascara sobe o MIN para a versão nova — daí em diante o cliente
+// velho não estaria lendo errado, estaria MENTINDO na tela, que é pior.
+// ⚠️ A v15 é o caso de "aditivo" que não era: o bit 0x100 foi para um `extra` que o leitor v14 lê CRU
+// (`f.level=m.extra`), e ele mostra "ESCUDO 257". Bit novo só é aditivo se o leitor antigo JÁ mascarava.
 export const MSG={INPUT:0x01,VOICE_UP:0x02,SNAPSHOT:0x10,PLAYERS:0x11,LEADERBOARD:0x12,EVENT:0x13,PONG:0x14,ZONE:0x15,VOICE:0x16};
 // VOICE_UP (cliente→servidor) e VOICE (servidor→cliente) carregam bytes opacos de áudio: o servidor
 // valida tamanho/duração/cooldown e RELAYA, nunca decodifica. ZONE é o círculo da zona, na cadência do
@@ -57,7 +70,9 @@ export const INPUT_BYTES=10,SNAPSHOT_HEADER_BYTES=13,SELF_BYTES=31,ZONE_BYTES=21
 //             + 3×u16 autoDefN/zoomT/feastT (12). ⚠️ O 1º é CARGA, os outros dois são TICKS: o tamanho não
 //             mudou entre a v12 e a v13, só o significado — e é por isso que a versão subiu mesmo assim.
 // Os campos novos entram no FIM do bloco, e isso não é arrumação: assim o `readSelf` antigo lê os 25
-// primeiros bytes certos e ignora o resto, então o fio continua legível por um cliente velho. Quem recusa
-// a conexão é só a checagem de PROTOCOL_VERSION no join — o formato em si não quebra.
+// primeiros bytes certos e ignora o resto, então o fio continua legível por um cliente velho — `readSnapshot`
+// lê o `self` por ÚLTIMO e não confere comprimento, então a cauda que ele não conhece fica sem leitor em vez
+// de estourar. É essa disciplina que sustenta o PROTOCOL_MIN lá em cima: o formato não quebra, e por isso a
+// conexão não precisa mais ser recusada por diferença de versão.
 // O INPUT continua com 10 bytes: a troca de arma coube num BIT que já sobrava no `u8 flags` (ainda restam
 // 64 e 128), e o push-to-talk tem mensagem própria.

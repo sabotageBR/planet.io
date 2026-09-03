@@ -112,9 +112,16 @@ def apply(cl, doc, dry_run=False):
     return True
 
 
-def status(cl):
-    """Espera o StatefulSet e o Deployment ficarem prontos."""
+def status(cl, apenas=None):
+    """Espera o StatefulSet e o Deployment ficarem prontos.
+
+    `apenas="server"` espera SÓ os shards. O deploy usa isso para publicar o cliente depois deles: o
+    Deployment do cliente sobe em segundos e o StatefulSet é sequencial (minutos), então sem a espera o
+    cliente NOVO passa minutos sorteando shards ANTIGOS.
+    """
     alvos = [("StatefulSet", "warspace-server"), ("Deployment", "warspace-client")]
+    if apenas == "server":
+        alvos = alvos[:1]
     prazo = time.time() + 240
     while time.time() < prazo:
         pronto = True
@@ -157,6 +164,8 @@ if __name__ == "__main__":
         args = sys.argv[1:]
         if not args:
             print(__doc__)
+        elif args[0] == "--status" and len(args) > 1:
+            sys.exit(0 if status(cl, args[1]) else 1)
         elif args[0] == "--status":
             sys.exit(0 if status(cl) else 1)
         elif args[0] == "--get":

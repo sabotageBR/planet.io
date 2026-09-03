@@ -10,7 +10,7 @@ import {WebSocketServer} from 'ws';
 import {NET,WORLD,MODE,modeOf,VOICE} from '@warspace/shared/constants.js';
 import {wireValues} from '@warspace/shared/tunables.js';
 import {eggSkinFor} from '@warspace/shared/eggs.js';
-import {PROTOCOL_VERSION,MSG,VOICE_UP_HEADER_BYTES} from '@warspace/shared/protocol/constants.js';
+import {PROTOCOL_VERSION,PROTOCOL_MIN,MSG,VOICE_UP_HEADER_BYTES} from '@warspace/shared/protocol/constants.js';
 import {decodeInput,decodeVoiceUp,encodePong,createWriter} from '@warspace/shared/protocol/index.js';
 import {Session} from './Session.js';
 import {clientIp} from '../api/router.js';
@@ -51,7 +51,13 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
     wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws,req));});
   wss.on('connection',(ws,req)=>{
     let s=new Session({ws,metrics,log,remoteAddr:clientIp(req),userAgent:req.headers['user-agent']||null});live.add(s);
-    const roomMsg=room=>({t:'room',code:room.code,shard:room.shard,slot:s.slot,sessionId:s.sessionId,resumeToken:s.resumeToken,protocol:PROTOCOL_VERSION,
+    const roomMsg=room=>({t:'room',code:room.code,shard:room.shard,slot:s.slot,sessionId:s.sessionId,resumeToken:s.resumeToken,
+      // ⚠️ ECO, NUNCA ANÚNCIO: vai a versão que ESTE cliente declarou, não a nossa. Anunciando a nossa, todo
+      // cliente de build anterior se via desatualizado e chamava `location.reload()` — no site isso conserta
+      // sozinho, mas no zip de um PORTAL o reload traz a MESMA build congelada e vira laço infinito. Quem não
+      // declarou (toda build publicada até a v15) recebe o campo OMITIDO, e a guarda `m.protocol!==undefined`
+      // do cliente o deixa passar: campo ausente é "não checado", que é o que ela sempre significou.
+      ...(s.protocol!=null?{protocol:s.protocol}:null),
       tick:room.sim.tick,world:{w:WORLD.w,h:WORLD.h},round:room.roundInfo(),
       // Os parâmetros do /admin que o CLIENTE lê (câmera, arte da estrela). Meia dúzia de números num JSON
       // que já é mandado uma vez por join — o mesmo argumento do `days` em `Room.roundInfo`, e pelo mesmo
@@ -64,7 +70,16 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
     async function join(msg){
       if(s.joining)return;
       if(shuttingDown)return s.error('ROOM_RESTART','servidor reiniciando; tente de novo em instantes');
-      if(msg.protocol!=null&&msg.protocol!==PROTOCOL_VERSION)return s.error('VERSION',`protocolo ${msg.protocol} incompatível (servidor ${PROTOCOL_VERSION}); recarregue a página`);
+      // FAIXA, não igualdade: o fio é aditivo de propósito (campo novo só no FIM do `self`, kind novo só no
+      // FIM do EVENT), então um cliente de [PROTOCOL_MIN..PROTOCOL_VERSION] lê o que conhece e ignora a cauda.
+      // Acima do teto é o cliente que está à frente do POD — a janela de rollout, em que ele sorteia um shard
+      // ainda antigo; quem resolve isso é o cliente tentando outro shard, e não recarregando.
+      // ⚠️ A recusa fica AQUI, antes de `room.join()`: recusando depois (que é onde o cliente descobria
+      // sozinho) o jogador já tinha slot e sessão de persistência, e ia embora 1 s depois deixando um planeta
+      // fantasma segurar o slot por NET.RESUME_MS — num laço de reload isso enchia a sala de defuntos.
+      const pv=msg.protocol==null?null:msg.protocol|0;
+      if(pv!=null&&(pv<PROTOCOL_MIN||pv>PROTOCOL_VERSION)){metrics.versionRefused();return s.error('VERSION',`protocolo ${pv} incompatível (este servidor fala ${PROTOCOL_MIN}..${PROTOCOL_VERSION})`);}
+      s.protocol=pv;
       s.joining=true;
       try{
         if(msg.view)s.setView(msg.view.w,msg.view.h,msg.view.z);
@@ -108,13 +123,20 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         s.sendJson(roomMsg(room));room.sendPlayers(s);room.sendHost(s);
         if(room.avatars&&room.avatars.size)room.broadcastAvatars();   // quem entra precisa saber quem já tem foto
         room.broadcastFlags();                                        // e quem já está na sala precisa ver a bandeira do novato
-        log.info(`${s.name} entrou na sala ${room.code} (slot ${s.slot}, ${room.humanCount}/${room.max}${s.unsaved?', sem persistência':''})`);
+        metrics.join(pv);   // a distribuição de versões é a ÚNICA medida de quanta gente ainda está em build antiga
+        log.info(`${s.name} entrou na sala ${room.code} (slot ${s.slot}, ${room.humanCount}/${room.max}, protocolo ${pv??'n/d'}${s.unsaved?', sem persistência':''})`);
       }catch(e){log.error('join:',e);s.error('ROOM','falha ao entrar na sala');}
       finally{s.joining=false;}}
     function resume(msg){
       const old=rooms.findSession(msg.sessionId);
       if(!old||!old.room||old.resumeToken!==msg.resumeToken||(!old.ws&&Date.now()-old.disconnectedAt>NET.RESUME_MS))return s.error('ROOM_EXPIRED','sessão expirada; entre de novo');
+      // A sessão pode ser retomada por outro socket — e, num rollout, por outra BUILD. Declarou fora da
+      // faixa, recusa aqui; declarou dentro, o eco do `roomMsg` passa a valer para o socket novo; não
+      // declarou, fica o que a sessão já tinha (nunca zerar: `null` faria o campo sumir do `room`).
+      const rv=msg.protocol==null?null:msg.protocol|0;
+      if(rv!=null&&(rv<PROTOCOL_MIN||rv>PROTOCOL_VERSION)){metrics.versionRefused();return s.error('VERSION',`protocolo ${rv} incompatível (este servidor fala ${PROTOCOL_MIN}..${PROTOCOL_VERSION})`);}
       const prev=old.ws;live.delete(s);if(s.room)s.room.leave(s,'left');s=old;live.add(old);
+      if(rv!=null)old.protocol=rv;
       old.room.resume(old,ws);if(msg.view)old.setView(msg.view.w,msg.view.h,msg.view.z);
       if(prev&&prev!==ws){try{prev.terminate();}catch{}}                 // outra aba roubou a sessão
       old.sendJson(roomMsg(old.room));old.room.sendPlayers(old);const dead=old.room.deadMsg(old.slot);if(dead)old.sendJson(dead);

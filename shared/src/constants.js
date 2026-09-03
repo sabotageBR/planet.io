@@ -1,9 +1,12 @@
 // ── CONSTANTES ÚNICAS (servidor e cliente importam daqui; nada duplicado) ─────
 // Unidades: px, segundos, px/s. Passo fixo de 60 Hz.
 // @ts-check
-// ⚠️ EDIÇÃO DE BUILD, NUNCA TUNABLE: `protocol/codec.js` captura `const W=WORLD.w` no LOAD DO MÓDULO,
-// e o cliente tem cópia própria do bundle — dois valores diferentes corrompem `qPos/dqPos` e TODA posição
-// do fio sai deslocada, em silêncio. Cliente e servidor têm que subir na mesma imagem.
+// ⚠️ EDIÇÃO DE BUILD: o cliente tem cópia própria do bundle e dois valores diferentes corrompem
+// `qPos/dqPos` — TODA posição do fio sai deslocada, em silêncio. Cliente e servidor têm que subir na mesma
+// imagem. (Este comentário já dizia "NUNCA TUNABLE" e que `codec.js` capturava `const W=WORLD.w` no LOAD
+// DO MÓDULO: as duas metades ficaram obsoletas e contradiziam o bloco 10 linhas abaixo — hoje `WORLD.LADO`
+// É tunable e `codec.js` lê `WORLD.w` a cada chamada, que é justamente o que deixa o cliente obedecer o
+// `world` da sala e não quebrar com um pod de mundo diferente.)
 // 9600 → 12000 (+25% de lado, +56% de área). O que é FRAÇÃO acompanha sozinho (zona, anel de largada do
 // BR, piso da câmera, quantização, grade, radar, fundo); o que é CONTAGEM ou DISTÂNCIA teve que ser
 // escalado à mão logo abaixo — cada um com o expoente certo, s² para população e s para alcance.

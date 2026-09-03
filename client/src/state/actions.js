@@ -5,7 +5,7 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { getLabels, setLang, currentLangPref, preenche } from "../i18n/index.js";
 import { errText } from "../i18n/errors.js";
-import { skinById } from "@warspace/shared";
+import { skinById, PROTOCOL_VERSION } from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
@@ -135,6 +135,21 @@ export async function loginDoPortal() {
 /** Botão "tentar de novo" da tela de servidor fora: refaz o boot inteiro. */
 export async function tentarDeNovo() { app.update({ servidorFora: false, booted: false }); await boot(); }
 
+/**
+ * O `protocol` de /api/config era buscado desde sempre e NINGUÉM o comparava com nada. Agora que o
+ * servidor não força mais ninguém a recarregar (ele ECOA a versão do cliente para não trancar build
+ * antiga), este é quem empurra a atualização — e no lugar certo: o boot, antes de qualquer partida, e não
+ * no meio de uma. Uma vez só, marcado em sessionStorage, senão volta a ser o laço que se está consertando.
+ * ⚠️ No PORTAL não recarrega: o bundle é uma cópia hospedada por eles e o reload traz o mesmo arquivo.
+ */
+const RELOAD_KEY = "warspace_proto_reload";
+function checaVersao(cfg) {
+  const v = cfg && cfg.protocol;
+  if (!v || v <= PROTOCOL_VERSION || PORTAL) return;
+  try { if (sessionStorage.getItem(RELOAD_KEY) === String(v)) return; sessionStorage.setItem(RELOAD_KEY, String(v)); } catch { }
+  location.reload();
+}
+
 export async function boot() {
   try { applySession(await api.bootstrap()); }
   // ⚠️ O idioma sobrevive ao boot que falhou. Este ramo reaplica os PADRÕES, e `lang` é a única pref que
@@ -256,7 +271,7 @@ function mostrarTela(s) {
 }
 
 // ── dados de apoio ───────────────────────────────────────────────────────────
-export async function loadConfig() { try { app.update({ config: await api.config() }); } catch { /* opcional */ } }
+export async function loadConfig() { try { const c = await api.config(); app.update({ config: c }); checaVersao(c); } catch { /* opcional */ } }
 export async function loadTop5() {
   try { const r = await api.ranking("day", "score", 5);
     app.update(s => ({ ...s, top5: r.rows || [], top5At: Date.now(), session: { ...s.session, dayRank: r.me ? r.me.rank : null } })); }
@@ -620,6 +635,10 @@ export function onConnection(ev) {
     }
     // no portal, "não deu para conectar" também é a tela que fica: o toast some e o jogador acha que
     // clicou errado. `UNREACHABLE`/`LOST` são a queda de rede; o resto continua sendo erro de sala.
+    // Build velha: tela que FICA, no site e no portal. Um toast de 3 s some antes de a pessoa ler, e o
+    // reload automático (Connection.js) já aconteceu UMA vez — chegar aqui quer dizer que ele não bastou:
+    // ou é um portal (o zip é deles) ou o servidor está à frente por algum outro motivo.
+    else if (ev.code === "OUTDATED") { leaveGame("entry"); app.update({ desatualizado: true }); }
     else if (PORTAL && (ev.code === "UNREACHABLE" || ev.code === "LOST")) { leaveGame("entry"); app.update({ servidorFora: true }); }
     else if (s.screen === "game") { toast(errText(ev), 3000); leaveGame("lobby"); }
     else if (ev.code || ev.message) toast(errText(ev), 3000);

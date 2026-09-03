@@ -90,6 +90,9 @@ export const initialState = {
   // reescrevem aquele objeto inteiro. Este aviso precisa do contrário — ele tem que GRUDAR até o
   // servidor voltar, porque sem servidor não há o que jogar.
   servidorFora: false,
+  // Mesmo argumento, outro motivo: a build DESTE cliente ficou para trás do servidor. Também gruda, e por
+  // uma razão a mais — num portal recarregar não conserta (o zip é deles), então o aviso é tudo o que há.
+  desatualizado: false,
   reconnAttempt: 0,
   room: null,            // código da sala atual (do evento `room` do jogo)
   pendingJoin: null,     // {room, mode, teamSize, party, n} — GameHost faz o join quando muda

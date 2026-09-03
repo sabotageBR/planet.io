@@ -25,7 +25,7 @@ import {apiUrl,wsUrl} from "../api/base.js";
 import {PORTAL} from "../portal/flags.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,ZOOM,CAM,WORLD,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,ZOOM,CAM,WORLD,PROTOCOL_VERSION,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
 // direto do módulo: `tunables.js` não entra no barril de `shared` (ele é a lista BRANCA do painel, não
 // vocabulário de jogo), e o cliente só precisa do aplicador — a validação vem junto de graça.
 import {aplicaWire} from "@warspace/shared/tunables.js";
@@ -72,6 +72,10 @@ const AMB_MS=200;      // a ambiência é reajustada 5×/s: ela responde a estad
 const DIR_EVENTS=new Set([EVENT.BOUNCE,EVENT.CHIP,EVENT.SHOOT,EVENT.DEFLECT,EVENT.SHIELD_HIT,EVENT.STAR_HIT,EVENT.SMASH]);
 const shardOf=code=>{const n=parseInt(String(code||"")[0],36);return Number.isFinite(n)?n:0;};
 
+// Quantos shards sortear quando o pod que atendeu está ATRÁS deste cliente (rollout em curso) antes de
+// desistir e cair no backoff normal do Connection. 4×700 ms cobre a troca de pod sem virar laço, e o teto
+// existe porque no começo de um rollout TODOS os shards estão velhos — insistir seria martelar a API.
+const STALE_MAX=4,STALE_WAIT_MS=700;
 export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,onRoundEnd,onConnection}){
   if(getComputedStyle(container).position==="static")container.style.position="absolute";
   // Só `overflow`. O `inset:0` que ficava aqui era ESTILO INLINE: ganhava de qualquer folha, então era
@@ -248,9 +252,13 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   function agendaView(){viewSujo=true;const espera=ZOOM.VIEW_MS-(performance.now()-viewAt);
     if(espera<=0)return enviaView();
     if(!viewT)viewT=setTimeout(()=>{if(viewSujo)enviaView();else viewT=0;},espera);}
-  function onOpenSend(c){if(c.session){buffer.clear();predictor.reset();c.sendJson({t:"resume",sessionId:c.session.sessionId,resumeToken:c.session.resumeToken,view:viewSize()});input.resend();}
+  // ⚠️ `protocol` nos DOIS: era o campo que o servidor conferia e que o cliente NUNCA mandou, então a
+  // guarda de versão de lá (`wsServer.js`) era código morto e quem recusava era este cliente, sozinho,
+  // DEPOIS de já ter slot na sala. Declarando, o servidor decide antes de alocar qualquer coisa e ECOA
+  // esta versão no `room` — é ela que faz um cliente de outra safra parar de se achar desatualizado.
+  function onOpenSend(c){if(c.session){buffer.clear();predictor.reset();c.sendJson({t:"resume",sessionId:c.session.sessionId,resumeToken:c.session.resumeToken,view:viewSize(),protocol:PROTOCOL_VERSION});input.resend();}
     else c.sendJson({t:"join",token:joinOpts.token||null,room:joinOpts.room||null,view:viewSize(),fallbackNick:joinOpts.fallbackNick||"Viajante",skinId:joinOpts.skinId|0,
-      mode:joinOpts.mode|0,teamSize:joinOpts.teamSize|0,party:joinOpts.party||null});}
+      mode:joinOpts.mode|0,teamSize:joinOpts.teamSize|0,party:joinOpts.party||null,protocol:PROTOCOL_VERSION});}
   function onJson(m){
     // ⚠️ ANTES de qualquer `cam.update`: `tun` traz os parâmetros do /admin que o CLIENTE lê (a câmera e a
     // arte da estrela). Sem isto o painel mudaria o número só no servidor e o jogo enquadraria diferente
@@ -435,7 +443,26 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     return best;}
   function onState(ev){if(ev.state==="connected"){game.resize();}
     if(onConnection)onConnection(ev);}
-  function connectWith(makeSocket){conn=createConnection({makeSocket,onJson,onBinary,onState,onOpenSend});conn.open();}
+  function connectWith(makeSocket){conn=createConnection({makeSocket,onJson,onBinary,onState,onOpenSend,onStale});conn.open();}
+  // ⚠️ SHARD NOVO A CADA TENTATIVA, e é isso que tira o jogador de um pod ainda antigo durante um rollout:
+  // sem código de sala o shard vem do /api/config, que é BALANCEADO entre os pods, então refazer a consulta
+  // sorteia de novo. Com código de sala não há escolha (o shard é o 1º char do código) e só resta esperar
+  // aquele pod subir — aí o backoff do Connection é o certo, e é o que o teto abaixo devolve.
+  let staleTries=0;
+  function onStale(){
+    if(!joined)return;
+    if(++staleTries>STALE_MAX||joinOpts.room){if(conn)conn.retry();return;}
+    setTimeout(()=>{if(joined)conectaAoServidor();},STALE_WAIT_MS);}
+  function conectaAoServidor(){
+    if(!joined)return;
+    if(conn){const c=conn;conn=null;c.close();}   // troca de shard: fecha a anterior, senão ficam ping e backoff vivos
+    // O host sai de `api/base.js`, não de `location.host`: no iframe de um portal o host é o PORTAL.
+    const go=shard=>{if(!joined)return;connectWith(()=>new WebSocket(wsUrl(shard)));};
+    if(joinOpts.room)return go(shardOf(joinOpts.room));
+    // ⚠️ Sem código de sala o shard vem do /api/config, e o `catch` NÃO pode mascarar: cair no 0 manda
+    // a sala inteira para o mesmo shard e, com a API fora, esconde a única pista do que aconteceu.
+    fetch(apiUrl("/api/config"),{cache:"no-store"}).then(r=>r.ok?r.json():null).then(c=>go(c&&c.shard!=null?c.shard:0))
+      .catch(e=>{console.warn("[net] /api/config falhou, caindo no shard 0:",e&&e.message);go(0);});}
   const game={hudStore,
     /**
      * Manda uma linha de chat (a tela React chama isto). Quem decide o escopo continua sendo o SERVIDOR;
@@ -496,13 +523,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       const isLocal=useLocal||qflag("local")||isBench()||(api.server===false&&!PORTAL);
       if(isLocal){const rs=+(Q.get("round")||0);   // ?round=<segundos> encurta a rodada local (dev)
         local=createLocalServer(isBench()?benchOptions():{lag:+(Q.get("lag")||0),seed:+(Q.get("seed")||7),...(rs>0?{roundTicks:Math.round(rs*TICK_HZ)}:{})});connectWith(()=>local.connect());return;}
-      // O host sai de `api/base.js`, não de `location.host`: no iframe de um portal o host é o PORTAL.
-      const go=shard=>{if(!joined)return;connectWith(()=>new WebSocket(wsUrl(shard)));};
-      if(room)go(shardOf(room));
-      // ⚠️ Sem código de sala o shard vem do /api/config, e o `catch` NÃO pode mascarar: cair no 0 manda
-      // a sala inteira para o mesmo shard e, com a API fora, esconde a única pista do que aconteceu.
-      else fetch(apiUrl("/api/config"),{cache:"no-store"}).then(r=>r.ok?r.json():null).then(c=>go(c&&c.shard!=null?c.shard:0))
-        .catch(e=>{console.warn("[net] /api/config falhou, caindo no shard 0:",e&&e.message);go(0);});},
+      staleTries=0;conectaAoServidor();},
     // sair é DELIBERADO: avisa o servidor antes de fechar. Sem o `quit`, o `close` do socket é
     // indistinguível de uma queda de rede — a sessão fica em graça por NET.RESUME_MS segurando o slot, e
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa

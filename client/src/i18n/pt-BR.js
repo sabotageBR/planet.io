@@ -106,6 +106,10 @@ export default {
   // dizer o contrário manda a pessoa reiniciar o roteador por um problema que não é dela
   privacy: "Política de privacidade", portalLogin: "Entrar",
   serverDownTitle: "SEM CONTATO COM A BASE", serverDownSub: "Não conseguimos falar com o servidor do jogo. O problema é do nosso lado, não do seu.", retry: "Tentar de novo",
+  // Versão velha. No SITE basta recarregar (e o jogo já tentou uma vez sozinho); num PORTAL o jogo é uma
+  // cópia hospedada por eles, então recarregar traz o mesmo arquivo — quem atualiza é o portal.
+  outdatedTitle: "ESTA VERSÃO FICOU PARA TRÁS", outdatedSub: "O jogo foi atualizado. Recarregue a página para pegar a versão nova.",
+  outdatedSubPortal: "O jogo foi atualizado, e esta página é uma cópia mais antiga. Volte a abri-lo pelo portal daqui a pouco.", reload: "Recarregar",
   split: "DIVIDIR", eject: "EJETAR", fire: "MÍSSIL", exit: "Sair", keySplit: "ESPAÇO", keyEject: "W", keyFire: "F",
   ammo: "mísseis",
   fireCd: "carregando", powerups: { magnet: "Ímã", shield: "Escudo", merge: "Fusão", autodef: "Auto-defesa", zoom: "Visão", feast: "Banquete" }, shieldLevel: "Nv",
@@ -225,6 +229,7 @@ export default {
     AUTH: "Não foi possível entrar.", FULL: "Sala cheia.", MODE: "Essa sala é de outro modo.",
     NICK_IN_ROOM: "Já há alguém chamado \"{nick}\" nessa sala.", NICK_RESERVED: "Esse nick é de um jogador registrado.",
     RATE: "Muitas mensagens; a conexão foi encerrada.", VERSION: "Versão do jogo desatualizada — recarregando.",
+    OUTDATED: "Sua versão do jogo está desatualizada.", UPDATING: "O servidor está atualizando; um instante.",
     ROOM: "Não foi possível entrar na sala.", ROOM_BANNED: "Você foi banido dessa sala.",
     ROOM_KICKED: "O dono removeu você da sala.",
     ROOM_RESTART: "O servidor está reiniciando; tente de novo em instantes.", ROOM_EXPIRED: "Sua sessão expirou; entre de novo.",

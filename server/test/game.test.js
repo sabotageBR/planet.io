@@ -16,7 +16,7 @@ process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';proce
 // teste afirmar o estado DESLIGADO de propósito — que é o contrato que ele quer travar.
 process.env.GOOGLE_CLIENT_ID='';
 const {startServer}=await import('../src/index.js');
-const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG,PROTOCOL_VERSION}=await import('@warspace/shared/protocol/index.js');
+const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG,PROTOCOL_VERSION,PROTOCOL_MIN}=await import('@warspace/shared/protocol/index.js');
 const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE,WORLD,ROOM}=await import('@warspace/shared/constants.js');
 const {rectHas,viewRect}=await import('@warspace/shared/camera.js');
 const {setR}=await import('@warspace/shared/physics/body.js');
@@ -54,9 +54,9 @@ class Client{
   // ⚠️ UM TOKEN POR CLIENTE. O nick é único POR SALA, e o nick de uma conta é o da CONTA — dois clientes
   // com o mesmo token são a mesma pessoa e o servidor recusa o segundo (que é o certo: impede o mesmo
   // jogador ter dois planetas na mesma sala). Quem quiser testar a MESMA pessoa passa `tok` na mão.
-  async join(nick,room=null,view={w:1920,h:1080},tok=null){const n=this.json.length;
+  async join(nick,room=null,view={w:1920,h:1080},tok=null,proto=PROTOCOL_VERSION){const n=this.json.length;
     if(!tok){if(!this.token)this.token=await novoToken();tok=this.token;}else this.token=tok;
-    this.send({t:'join',token:tok,fallbackNick:nick,room,view});
+    this.send({t:'join',token:tok,fallbackNick:nick,room,view,protocol:proto});
     const r=await this.until(()=>this.jsonOf('room',n)||this.jsonOf('error',n),6000,'room');if(r.t==='error')throw new Error(`join: ${r.code} ${r.message}`);this.slot=r.slot;this.room=r;return r;}
   mine(){return[...this.known.values()].filter(e=>e.kind===KIND.PIECE&&(e.flags&PIECE_FLAG.ME));}
   ofKind(k){let n=0;for(const e of this.known.values())if(e.kind===k)n++;return n;}
@@ -83,7 +83,7 @@ test('unitários: códigos de sala e token bucket',()=>{
 let A,B,roomCode;
 test('join: room + PLAYERS com bots + snapshots com criações na AOI',async()=>{
   A=new Client();await A.open();const r=await A.join('Alice');roomCode=r.code;
-  assert.equal(r.protocol,PROTOCOL_VERSION);assert.equal(shardOf(r.code),0);assert.match(r.sessionId,/^[0-9a-f-]{36}$/);assert.match(r.resumeToken,/^[0-9a-f]{32}$/);assert.deepEqual(r.world,{w:WORLD.w,h:WORLD.h});
+  assert.equal(r.protocol,PROTOCOL_VERSION,'o room ecoa a versão que o cliente declarou');assert.equal(shardOf(r.code),0);assert.match(r.sessionId,/^[0-9a-f-]{36}$/);assert.match(r.resumeToken,/^[0-9a-f]{32}$/);assert.deepEqual(r.world,{w:WORLD.w,h:WORLD.h});
   await A.until(()=>A.players,3000,'PLAYERS');
   // ⚠️ A sala não nasce cheia: abre com ROOM.BOT_SEED e vai enchendo (Room._chegadaBots). O que o env
   // manda é o ALVO, e é ele que se confere aqui — contar a população no primeiro PLAYERS mediria o
@@ -227,6 +227,33 @@ test('sem banco: join unsaved, rewards saved:false, FULL, VERSION, sala por cód
     const rw=await X.until(()=>X.jsonOf('rewards'),3000,'rewards');assert.equal(rw.saved,false);
     const h=await (await fetch(`http://127.0.0.1:${s2.port}/healthz`)).json();assert.equal(h.db,'none');assert.equal(h.rooms,2);
     X.close();Q.close();
+  }finally{await s2.close();}
+});
+test('versão: faixa aceita, eco no room, omissão sem declaração, recusa fora dela',async()=>{
+  // O cliente antigo NÃO se recusa mais a jogar, e quem mudou foi o servidor: ele responde na versão do
+  // interlocutor em vez de anunciar a sua. Sem isso, `Connection.js` via a diferença e chamava reload —
+  // que no site conserta e num portal (bundle congelado no domínio deles) é laço infinito.
+  const s2=await startServer({port:0,databaseUrl:'',logLevel:LOG,roomMax:8,roomBots:0});const url=`ws://127.0.0.1:${s2.port}/ws/0`;
+  try{
+    const V=new Client(url);await V.open();const rv=await V.join('Velho',null,{w:1280,h:720},'pt_v',PROTOCOL_MIN);
+    assert.equal(rv.protocol,PROTOCOL_MIN,'ECO: a versão do cliente, não a do servidor');
+    // Quem não declara é toda build publicada até aqui: entra, e o campo SAI do `room` — ausente é
+    // "não checado" nos dois lados, e é essa omissão que destrava quem já está lá fora hoje.
+    const S=new Client(url);await S.open();const n=S.json.length;
+    S.send({t:'join',token:'pt_s',fallbackNick:'Sem',view:{w:1280,h:720}});
+    const rs=await S.until(()=>S.jsonOf('room',n),3000,'room');
+    assert.equal('protocol' in rs,false,'sem declaração, sem campo no room');
+    // Fora da faixa nos DOIS sentidos, e a recusa vem ANTES de `room.join()`: recusando depois, o
+    // jogador já tinha slot e sessão, e num laço de reload a sala enchia de fantasmas.
+    const sala=s2.rooms.rooms.get(rv.code),antes=sala.humanCount;
+    for(const p of [PROTOCOL_MIN-1,PROTOCOL_VERSION+1]){
+      const Z=new Client(url);await Z.open();Z.send({t:'join',token:'pt_z',fallbackNick:'Zé',protocol:p,view:{w:1,h:1}});
+      await Z.until(()=>Z.closeCode!=null,2000,'close');
+      assert.equal(Z.jsonOf('error').code,'VERSION',`protocolo ${p} devia ser recusado`);assert.equal(Z.closeCode,ERROR_CODE.VERSION);}
+    assert.equal(sala.humanCount,antes,'recusado por versão não ocupa slot');
+    const h=await (await fetch(`http://127.0.0.1:${s2.port}/healthz`)).json();
+    assert.equal(h.joins.refused,2);assert.equal(h.joins.proto[String(PROTOCOL_MIN)],1);assert.equal(h.joins.proto['n/d'],1);
+    V.close();S.close();
   }finally{await s2.close();}
 });
 test('soak 10 s: 3 clientes + bots → overruns 0, tick p99 < 3.5 ms',async()=>{
