@@ -235,16 +235,25 @@ function Parametros({ erro }) {
             ? <select value={val} onChange={e => salvar(t, e.target.value)}>
                 {t.options.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
               </select>
-            : <><input type="number" min={t.min} max={t.max} step={t.step} value={val}
-                  onChange={e => setEdit(x => ({ ...x, [t.key]: e.target.value }))}
-                  onKeyDown={e => { if (e.key === "Enter" && sujo) salvar(t, Number(edit[t.key])); }} />
-               {t.unit ? <small>{t.unit}</small> : null}</>}
+            : t.type === "bool"
+              // Mesmo padrão do `opt`: grava no clique, sem Salvar/Cancelar. `.checked`, não `.value`
+              // — um checkbox não tem valor booleano de verdade em `.value`.
+              ? <label className="pm-bool">
+                  <input type="checkbox" checked={!!val} onChange={e => salvar(t, e.target.checked)} />
+                  {val ? "Exibindo" : "Oculto"}
+                </label>
+              : <><input type="number" min={t.min} max={t.max} step={t.step} value={val}
+                    onChange={e => setEdit(x => ({ ...x, [t.key]: e.target.value }))}
+                    onKeyDown={e => { if (e.key === "Enter" && sujo) salvar(t, Number(edit[t.key])); }} />
+                 {t.unit ? <small>{t.unit}</small> : null}</>}
       </div>
       <footer>
         <span className="pm-meta">
           {t.type === "opt"
             ? <>padrão <i>{rotulo(t.def)}</i></>
-            : <>padrão <i>{num(t.def)}</i> · faixa <i>{num(t.min)} – {num(t.max)}</i></>}
+            : t.type === "bool"
+              ? <>padrão <i>{t.def ? "Exibindo" : "Oculto"}</i></>
+              : <>padrão <i>{num(t.def)}</i> · faixa <i>{num(t.min)} – {num(t.max)}</i></>}
         </span>
         <span className="pm-acoes">
           {fixo ? <em>lido pela física do cliente</em> : null}

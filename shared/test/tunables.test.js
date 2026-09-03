@@ -4,7 +4,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {createWorld} from "../src/physics/index.js";
-import {POWERUP,FOOD,FOOD_TYPE,PLAYER,BOT_LLM,ROUND,MODES,MODE,TICK_HZ} from "../src/constants.js";
+import {POWERUP,FOOD,FOOD_TYPE,PLAYER,BOT_LLM,ROUND,MODES,MODE,TICK_HZ,ENTRY_PANELS} from "../src/constants.js";
 import {PIECE_FLAG} from "../src/protocol/constants.js";
 import {listTunables,applyTunable,resetTunable,readTunable,TUNABLE_BY_KEY,GRUPOS} from "../src/tunables.js";
 
@@ -49,6 +49,8 @@ test("tunables: todo descritor é coerente (faixa contém o padrão, e o escopo 
       assert.ok(t.options&&t.options.length>1,`${t.key}: uma escolha com menos de duas opções não é escolha`);
       assert.ok(t.options.some(o=>o.v===t.def),`${t.key}: o padrão tem que ser uma das opções`);
       for(const o of t.options)assert.ok(o.v&&o.label,`${t.key}: toda opção precisa de id e rótulo`);
+    }else if(t.type==='bool'){
+      assert.equal(typeof t.def,'boolean',`${t.key}: padrão de um bool tem que ser boolean`);
     }else{
       assert.ok(t.min<=t.def&&t.def<=t.max,`${t.key}: o padrão (${t.def}) tem que caber na faixa ${t.min}–${t.max}`);
       assert.ok(t.unit,`${t.key}: número sem unidade é número que o admin não sabe ler`);}
@@ -74,6 +76,22 @@ test("tunables: a ESCOLHA tem lista branca própria — só um id declarado entr
     assert.equal(BOT_LLM.ESTILO,'ofensa',"e nenhuma das recusas encostou na constante");
     resetTunable(chave);
     assert.equal(BOT_LLM.ESTILO,'misto',"restaurar devolve o padrão do arquivo");
+  }finally{resetTunable(chave);}});
+
+test("tunables: o BOOL da tela de Modos escreve na constante viva, sem passar por Number()",()=>{
+  const chave='ENTRY_PANELS.BR';
+  try{
+    assert.equal(readTunable(chave),true,"o padrão é visível");
+    applyTunable(chave,false);
+    assert.equal(ENTRY_PANELS.BR,false,"a constante VIVA foi escrita");
+    // ⚠️ Coisas que PARECEM boolean e não são: string 'false' é truthy em JS, e é exatamente o que um
+    // <input type=checkbox> desatento mandaria se lesse `.value` em vez de `.checked` no admin.
+    applyTunable(chave,'false');
+    assert.equal(ENTRY_PANELS.BR,true,"'false' (string) é truthy — !! não faz parsing, só coage");
+    applyTunable(chave,0);
+    assert.equal(ENTRY_PANELS.BR,false,"0 é falsy");
+    resetTunable(chave);
+    assert.equal(ENTRY_PANELS.BR,true,"restaurar devolve o padrão do arquivo");
   }finally{resetTunable(chave);}});
 
 // ── DURAÇÃO DA SALA DO LIVRE ────────────────────────────────────────────────

@@ -186,7 +186,7 @@ test('/healthz: tick p99, overruns, db, protocol',async()=>{
   assert.equal(typeof h.tick.p99,'number');assert.equal(typeof h.tick.overruns,'number');assert.equal(typeof h.loopLagMs.p99,'number');assert.ok(['ok','down','none'].includes(h.db));assert.equal(h.protocol,PROTOCOL_VERSION);assert.ok(h.net.outKBps>0);
   const cfg=await (await fetch(base+'/api/config')).json();
   // `googleClientId` vazio é o interruptor do login com Google: o cliente só desenha o botão quando vem preenchido.
-  assert.deepEqual(cfg,{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:''});
+  assert.deepEqual(cfg,{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:'',entryPanels:{free:true,br:true,own:true,order:'free_br'}});
   // o bloco de métricas da fala gerada sobe junto — é por ele que dá para ver, em produção, se a LLM está
   // realmente falando ou se a sala inteira caiu no repertório fixo
   assert.equal(typeof h.llm,'object');assert.equal(typeof h.llm.ask,'number');assert.equal(typeof h.llm.fallback,'number');

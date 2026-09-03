@@ -24,10 +24,12 @@
 // ⚠️ É POR PROCESSO, não por sala. Mudar o ímã muda para todas as salas do pod, inclusive uma no meio da
 // rodada. Parametrizar por sala exigiria carregar um objeto de tunables por Room→Sim→World→rules, tocando
 // toda assinatura da física e o predict — não vale por um punhado de números.
+// ⚠️ `ENTRY_PANELS` é 'server' pelo mesmo motivo de `ROOM.MAX`: o servidor decide, e `/api/config` ecoa
+// o valor só para a tela poder desenhar antes de existir sala — não é física, não precisa de `wire`.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,ENTRY_PANELS} from "./constants.js";
 
-/** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt',grupo:string,
+/** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt'|'bool',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
  *   read:()=>any,write:(v:any)=>void}} Tunable */
 
@@ -46,6 +48,7 @@ export const GRUPOS=[
   ['sala','Salas'],
   ['chat','Chat'],
   ['bots','Fala dos bots'],
+  ['modos','Tela de Modos'],
 ];
 
 /** Um número inteiro guardado numa constante, com a unidade que o ADMIN entende (ver o do ímã). */
@@ -63,6 +66,11 @@ const num=(grupo,key,label,unit,scope,min,max,step,obj,campo,{para=v=>v,de=v=>v}
 const opt=(grupo,key,label,scope,options,obj,campo)=>({
   key,label,unit:'',scope,grupo,type:'opt',options,def:obj[campo],
   read:()=>obj[campo],write(v){obj[campo]=String(v);}});
+
+/** Um interruptor liga/desliga — sem faixa, sem opções, só um booleano guardado numa constante. */
+const bool=(grupo,key,label,scope,obj,campo)=>({
+  key,label,unit:'',scope,grupo,type:'bool',def:!!obj[campo],
+  read:()=>!!obj[campo],write(v){obj[campo]=!!v;}});
 
 /** @type {Tunable[]} */
 export const TUNABLES=[
@@ -191,6 +199,17 @@ export const TUNABLES=[
   num('bots','BOT_LLM.CADEIA_SOLTA_P','Continuar a conversa sem citar ninguém','probab.','server',0,1,.05,BOT_LLM,'CADEIA_SOLTA_P'),
   num('bots','BOT_LLM.CONVERSA_MAX_GER','Teto de falas geradas por conversa','falas','server',1,20,1,BOT_LLM,'CONVERSA_MAX_GER'),
   num('bots','BOT_TALK.SILENCIO_TICKS','Silêncio até um bot puxar assunto','ticks','server',600,7200,60,BOT_TALK,'SILENCIO_TICKS'),
+  // ── TELA DE MODOS (teste A/B de engajamento) ──
+  // Puramente de EXIBIÇÃO — ver o comentário de `ENTRY_PANELS` em constants.js. Ligar/desligar não
+  // afeta quem já está numa sala, com link direto ou convite de equipe; só decide se o CARTÃO
+  // aparece na tela "Escolha o Modo".
+  bool('modos','ENTRY_PANELS.FREE','Mostrar o cartão do Livre','server',ENTRY_PANELS,'FREE'),
+  bool('modos','ENTRY_PANELS.BR','Mostrar o cartão do Battle Royale','server',ENTRY_PANELS,'BR'),
+  bool('modos','ENTRY_PANELS.OWN','Mostrar o botão de Sala sua','server',ENTRY_PANELS,'OWN'),
+  opt('modos','ENTRY_PANELS.ORDER','Ordem dos cartões (com os dois visíveis)','server',
+    [{v:'free_br',label:'Livre à esquerda · Battle Royale à direita'},
+     {v:'br_free',label:'Battle Royale à esquerda · Livre à direita'}],
+    ENTRY_PANELS,'ORDER'),
 ];
 export const TUNABLE_BY_KEY=new Map(TUNABLES.map(t=>[t.key,t]));
 /**
@@ -234,6 +253,7 @@ export function applyTunable(key,valor){
     const v=String(valor);
     if(!t.options.some(o=>o.v===v))throw new Error('out_of_range');
     t.write(v);return t.read();}
+  if(t.type==='bool'){t.write(!!valor);return t.read();}
   const v=Number(valor);
   if(!Number.isFinite(v)||v<t.min||v>t.max)throw new Error('out_of_range');
   t.write(v);return t.read();}

@@ -3,7 +3,7 @@
 import {readFile,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
-import {modeOf,roundTicksOf,ROOM} from '@warspace/shared/constants.js';
+import {modeOf,roundTicksOf,ROOM,ENTRY_PANELS} from '@warspace/shared/constants.js';
 import {sendJson,readJson,bearer,clientIp} from '../api/router.js';
 import {sessionKey} from '../auth/tokens.js';
 import {createPartyManager} from '../rooms/Party.js';
@@ -64,8 +64,12 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
       // vem preenchido, então sem credencial nada aparece e a rota nem é procurada.
       // ⚠️ `ROOM.MAX`, não `config.roomMax`: o tamanho da sala virou parâmetro do painel e o env só o
       // semeia no boot. Anunciando o número do env, a tela mostraria a capacidade que a sala NÃO tem.
+      // `entryPanels`: mesmo padrão — a tela "Escolha o Modo" é decidida ANTES de qualquer sala/WS
+      // existir, então o valor não pode esperar pelo `room` (mecanismo `wire`); ver ENTRY_PANELS em
+      // shared/src/constants.js.
       if(p==='/api/config')return sendJson(res,200,{shards:config.shards,shard:config.shard,roomMax:ROOM.MAX,
-        protocol:PROTOCOL_VERSION,googleClientId:config.googleClientId||''});
+        protocol:PROTOCOL_VERSION,googleClientId:config.googleClientId||'',
+        entryPanels:{free:ENTRY_PANELS.FREE,br:ENTRY_PANELS.BR,own:ENTRY_PANELS.OWN,order:ENTRY_PANELS.ORDER}});
       if(p==='/api/rooms'&&req.method!=='POST'){const all=(await allRooms()).sort(byPlayers),md=url.searchParams.get('mode');
         return sendJson(res,200,{rooms:md==null?all:all.filter(r=>(r.mode|0)===(+md|0))});}
       // ── SALA COM DONO ────────────────────────────────────────────────────────────────────────

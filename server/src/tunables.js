@@ -28,7 +28,7 @@ export function createTunables({settings,log}){
       // — o valor seria recusado por `applyTunable` e o parâmetro salvo pelo painel simplesmente não
       // valeria, em silêncio, a cada reconciliação. Quem sabe converter é o descritor.
       const cru=r.value&&r.value.v!=null?r.value.v:r.value;
-      const v=t.type==='opt'?String(cru):Number(cru);
+      const v=t.type==='opt'?String(cru):t.type==='bool'?!!cru:Number(cru);
       if(aplicados.get(r.key)===v)continue;
       try{applyTunable(r.key,v);aplicados.set(r.key,v);n++;
         log&&log.info(`tunable ${r.key} = ${v}`);}

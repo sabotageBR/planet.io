@@ -34,6 +34,11 @@ function Body() {
   const LB = useLabels();
   const teamSize = useStore(app, s => s.teamSize);
   const user = useStore(app, s => s.session.user) || {};
+  // Quais painéis aparecem, e em que ordem: parâmetro do /admin (grupo "Tela de Modos"), para medir
+  // qual módulo engaja mais. `entryPanels` chega por `/api/config` — ver ENTRY_PANELS em
+  // shared/src/constants.js para o porquê de não vir pelo `room`. `!==false` trata ausência (modo
+  // offline, ou um servidor mais velho sem o campo) como visível, que é o padrão de sempre.
+  const cfgPanels = useStore(app, s => (s.config || {}).entryPanels) || {};
   const [code, setCode] = useState("");
   // "Sala sua" virou BOTÃO: o cartão de criação é a coisa menos usada da tela e ocupava um quarto dela.
   const [abrirSala, setAbrirSala] = useState(false);
@@ -49,54 +54,75 @@ function Body() {
   const entrarBR = () => { setMode(MODE.BR, ts);
     if (ts > 1) createParty(ts); else play({ mode: MODE.BR, teamSize: 1, party: null }); };
   const entrarLivre = () => { setMode(MODE.FREE, 1); play({ mode: MODE.FREE, teamSize: 1, party: null }); };
+  const showFree = cfgPanels.free !== false, showBr = cfgPanels.br !== false, showOwn = cfgPanels.own !== false;
+  // A ORDEM só importa com os DOIS visíveis — sozinho, um cartão fica sempre no lado de sempre
+  // (Livre='left', BR='right'): é o que faz `sideFree`/`sideBr` abaixo não dependerem de `order`
+  // fora do caso `bothShown`.
+  const order = cfgPanels.order === "br_free" ? "br_free" : "free_br";
+  const bothShown = showFree && showBr;
+  const freeFirst = order !== "br_free";
+  const sideFree = bothShown && !freeFirst ? "right" : "left";
+  const sideBr = bothShown && !freeFirst ? "left" : "right";
+  // ⚠️ LIVRE DEIXOU DE SER <button> pelo mesmo motivo do Battle Royale: ele ganhou um JOGAR de
+  // verdade dentro dele, e botão dentro de botão é HTML inválido e prende o foco. O que se perde é
+  // "clicar em qualquer lugar do cartão entra"; o que se ganha é a MESMA chamada à ação nos dois
+  // cartões, no mesmo ponto da tela — antes o Livre era o único cartão sem botão nenhum, e quem
+  // chegava procurava o JOGAR que só o vizinho tinha.
+  // `data-side` (além de `data-mode`) é quem decide o lado do mascote e o respiro do texto em
+  // ui.css — só ele responde à ORDEM; `data-mode` continua valendo para o que é do CONTEÚDO do
+  // cartão (ex.: o JOGAR do Livre centralizado na sobra vertical), que não muda com a posição.
+  const livre = showFree ? (
+    <div className="mode-card grande" data-mode="free" data-side={sideFree} key="free">
+      <img className="mode-mascote" src={marte} alt="" aria-hidden="true" width="619" height="640" decoding="async" />
+      <b>{LB.modeFree}</b>
+      <span>{LB.modeFreeSub}</span>
+      <button className="btn-primary" data-go="play" onClick={entrarLivre}>{LB.play}</button>
+    </div>
+  ) : null;
+  // ⚠️ BATTLE ROYALE deixou de ser <button> porque passou a ter controles dentro: botão dentro de botão
+  // é HTML inválido e prende o foco — é a mesma razão de "Em equipe" e "Sala sua" já serem <div>.
+  const br = showBr ? (
+    <div className={"mode-card grande br" + (offline ? " off" : "")} data-mode="br" data-side={sideBr} key="br">
+      <img className="mode-mascote" src={terra} alt="" aria-hidden="true" width="640" height="616" decoding="async" />
+      <b>{LB.modeSolo}</b>
+      <span>{LB.modeSoloSub}</span>
+      <em className="mode-tag">{preenche(LB.fmt.planets, { n: BR.PLAYERS })}</em>
+      <div className="team-sizes" role="radiogroup" aria-label={LB.teamSizeLabel}>
+        {SIZES.map(([n, l]) => <button key={n} role="radio" aria-checked={ts === n}
+          className={"chip-btn" + (ts === n ? " on" : "")} disabled={offline}
+          onClick={() => setMode(MODE.BR, n)}>{n} · {l}</button>)}
+      </div>
+      <button className="btn-primary" data-go="play" disabled={offline} onClick={entrarBR}>{ts > 1 ? LB.createParty : LB.play}</button>
+      <div className="code-row">
+        <input maxLength={4} placeholder={LB.partyCode} autoComplete="off" value={code} disabled={offline}
+          onChange={e => setCode(e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 4))}
+          onKeyDown={e => { if (e.key === "Enter") joinParty(code); }} />
+        <button className="btn-secondary" disabled={offline} onClick={() => joinParty(code)}>{LB.joinParty}</button>
+      </div>
+    </div>
+  ) : null;
   return <>
     <ScreenHeader title={LB.modesTitle} />
     {/* ⚠️ ABRIR "Sala sua" ESCONDE OS DOIS CARTÕES. Eles não são alternativa ao formulário: quem clicou
         em CRIAR SUA SALA já escolheu o modo lá dentro (o primeiro controle do cartão é justamente
         Livre × Battle Royale), então deixá-los no ar oferece a mesma decisão duas vezes, com dois
-        botões de entrar competindo na mesma tela — e empurra o formulário para fora da caixa. */}
-    {abrirSala ? null : <div className="modes duo">
-      {/* ⚠️ LIVRE DEIXOU DE SER <button> pelo mesmo motivo do Battle Royale: ele ganhou um JOGAR de
-          verdade dentro dele, e botão dentro de botão é HTML inválido e prende o foco. O que se perde é
-          "clicar em qualquer lugar do cartão entra"; o que se ganha é a MESMA chamada à ação nos dois
-          cartões, no mesmo ponto da tela — antes o Livre era o único cartão sem botão nenhum, e quem
-          chegava procurava o JOGAR que só o vizinho tinha. */}
-      <div className="mode-card grande" data-mode="free">
-        <img className="mode-mascote" src={marte} alt="" aria-hidden="true" width="619" height="640" decoding="async" />
-        <b>{LB.modeFree}</b>
-        <span>{LB.modeFreeSub}</span>
-        <button className="btn-primary" data-go="play" onClick={entrarLivre}>{LB.play}</button>
-      </div>
-      {/* ⚠️ BATTLE ROYALE deixou de ser <button> porque passou a ter controles dentro: botão dentro de botão
-          é HTML inválido e prende o foco — é a mesma razão de "Em equipe" e "Sala sua" já serem <div>. */}
-      <div className={"mode-card grande br" + (offline ? " off" : "")} data-mode="br">
-        <img className="mode-mascote" src={terra} alt="" aria-hidden="true" width="640" height="616" decoding="async" />
-        <b>{LB.modeSolo}</b>
-        <span>{LB.modeSoloSub}</span>
-        <em className="mode-tag">{preenche(LB.fmt.planets, { n: BR.PLAYERS })}</em>
-        <div className="team-sizes" role="radiogroup" aria-label={LB.teamSizeLabel}>
-          {SIZES.map(([n, l]) => <button key={n} role="radio" aria-checked={ts === n}
-            className={"chip-btn" + (ts === n ? " on" : "")} disabled={offline}
-            onClick={() => setMode(MODE.BR, n)}>{n} · {l}</button>)}
-        </div>
-        <button className="btn-primary" data-go="play" disabled={offline} onClick={entrarBR}>{ts > 1 ? LB.createParty : LB.play}</button>
-        <div className="code-row">
-          <input maxLength={4} placeholder={LB.partyCode} autoComplete="off" value={code} disabled={offline}
-            onChange={e => setCode(e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 4))}
-            onKeyDown={e => { if (e.key === "Enter") joinParty(code); }} />
-          <button className="btn-secondary" disabled={offline} onClick={() => joinParty(code)}>{LB.joinParty}</button>
-        </div>
-      </div>
-    </div>}
+        botões de entrar competindo na mesma tela — e empurra o formulário para fora da caixa.
+        E com os DOIS desligados no /admin não sobra nada para desenhar — a grade `auto-fit` já faz
+        1 cartão ocupar a largura inteira sozinha, então só falta não desenhar uma grade vazia. */}
+    {abrirSala || !(showFree || showBr) ? null : <div className="modes duo">{freeFirst ? <>{livre}{br}</> : <>{br}{livre}</>}</div>}
     {/* ⚠️ Fora da grade agora que ela tem só DOIS cartões: um terceiro item deixaria um buraco do tamanho
         dele à direita. E o botão continua VISÍVEL para quem não tem conta, desabilitado e com o porquê ao
         lado — some o botão, some a explicação, e o jogador não descobre por que não pode abrir sala. */}
-    <button className={"btn-secondary own-toggle" + (abrirSala ? " on" : "")} aria-expanded={abrirSala} aria-controls="own-card"
+    {showOwn ? <button className={"btn-secondary own-toggle" + (abrirSala ? " on" : "")} aria-expanded={abrirSala} aria-controls="own-card"
       onClick={() => setAbrirSala(v => !v)}>
       <img className="own-mascote" src={lua} alt="" aria-hidden="true" width="486" height="609" decoding="async" />
       {abrirSala ? LB.ownClose : LB.ownOpen}
-    </button>
-    {abrirSala ? <SalaPropria offline={offline} registrada={user.kind === "registered"} LB={LB} /> : null}
+    </button> : null}
+    {abrirSala && showOwn ? <SalaPropria offline={offline} registrada={user.kind === "registered"} LB={LB} /> : null}
+    {/* Os três desligados ao mesmo tempo não é bloqueado (é ferramenta de teste manual do /admin, não
+        uma regra de jogo) — só não vira tela em branco: cabeçalho + botão voltar sem explicação
+        nenhuma pareceria página quebrada, não um estado válido. */}
+    {!showFree && !showBr && !showOwn ? <div className="hint">{LB.modesNone}</div> : null}
     {offline ? <div className="hint">{LB.offlineNote}</div> : null}
     {/* ⚠️ A LEGENDA DOS POWERUPS morava aqui e foi para a AJUDA, em Opções (ui/Prefs.jsx). Esta é a tela
         de ESCOLHER O MODO — quatro cartões que já não cabem numa janela de notebook —, e uma tabela de

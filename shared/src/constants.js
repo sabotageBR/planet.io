@@ -240,6 +240,20 @@ export const MODES=[
 export const modeOf=id=>MODES[id]||MODES[MODE.FREE];
 /** Capacidade da sala arredondada para baixo no tamanho de equipe. */
 export const modeCap=(id,teamSize=1)=>{const m=modeOf(id),t=teamSize>0?teamSize|0:1;return m.max-m.max%t;};
+// ── PAINÉIS DA TELA DE ENTRADA (teste A/B de engajamento nos portais) ────────────────────────
+// Puramente de EXIBIÇÃO: não é um MODO (`MODE`/`MODES` acima) — "Criar sala" nem escolhe um modo
+// sozinho, é OUTRA FORMA de entrar num Livre/BR (o jogador ainda escolhe MODE.FREE/MODE.BR lá
+// dentro, ver SalaPropria em client/src/ui/Modes.jsx). É só se o CARTÃO aparece na tela "Escolha
+// o Modo"; quem tem link direto, convite de equipe ou já está numa sala continua jogando
+// normalmente com o painel desligado.
+// Entregue por `/api/config`, não pelo `room`: a tela de Modos é escolhida ANTES de qualquer sala
+// existir, então o mecanismo `wire` (que chega no JSON da sala) chegaria tarde demais. O
+// precedente é ROOM.MAX, alguns tunables abaixo em shared/src/tunables.js — também escopo
+// 'server' e também ecoado em `/api/config` (server/src/http/api.js) para a tela poder
+// desenhar/decidir algo antes de entrar numa sala.
+// ORDER é a posição relativa dos dois cartões QUANDO OS DOIS APARECEM: 'free_br' (padrão — Livre
+// à esquerda, Battle Royale à direita) ou 'br_free' (invertido). Com um só visível, não tem efeito.
+export const ENTRY_PANELS={FREE:true,BR:true,OWN:true,ORDER:'free_br'};
 /**
  * Minutos escolhidos pelo dono da sala → ticks de rodada. UM lugar, porque a rota, a tela e os testes têm
  * que concordar — e porque "nada de `if (modo === …)` espalhado" é regra escrita de docs/design/modos.md.

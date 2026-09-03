@@ -118,7 +118,7 @@ test('lista vazia = comportamento de hoje, byte a byte', async () => {
     assert.equal(h(r,'access-control-allow-origin'),null);
     assert.equal(h(r,'vary'),null);
     // o contrato de /api/config é o mesmo que game.test.js trava; o CORS não pode encostar nele
-    assert.deepEqual(await r.json(),{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:''});
+    assert.deepEqual(await r.json(),{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:'',entryPanels:{free:true,br:true,own:true,order:'free_br'}});
     // sem a camada, o OPTIONS continua caindo no roteamento normal: 405 no router de party e — sem
     // banco — 503 nas rotas de conta. O que importa é que NÃO vira o 204 do preflight, e que segue seco.
     const p=await fetch(base+'/api/party/0ABC',{method:'OPTIONS',headers:{Origin:PORTAL}});
@@ -135,7 +135,7 @@ test('origem permitida: eco + Vary, preflight 204 e o 503 sem banco também com 
     const c=await fetch(base+'/api/config',{headers:{Origin:PORTAL}});
     assert.equal(h(c,'access-control-allow-origin'),PORTAL);
     assert.equal(h(c,'vary'),'Origin');
-    assert.deepEqual(await c.json(),{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:''});
+    assert.deepEqual(await c.json(),{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:'',entryPanels:{free:true,br:true,own:true,order:'free_br'}});
 
     const pre=await fetch(base+'/api/me',{method:'OPTIONS',headers:{Origin:PORTAL,
       'Access-Control-Request-Method':'GET','Access-Control-Request-Headers':'authorization'}});
