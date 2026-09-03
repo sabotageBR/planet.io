@@ -80,6 +80,21 @@ spec:
       labels: {app: warspace-server}
     spec:
       terminationGracePeriodSeconds: 20
+      # UM SHARD POR NÓ, quando der. Os três pods são o jogo inteiro — cada um segura as salas cujo
+      # código começa pelo número dele —, então empilhá-los num nó só transforma a queda de UM nó na
+      # queda da partida de todo mundo. Isso não era teórico: em 2026-09-03, com o kube-master
+      # descordonado, o rollout pôs os três lá (e é o mesmo nó por onde o ingress entra desde que o
+      # Service dele virou `externalTrafficPolicy: Local`).
+      # ⚠️ `preferred` e não `required`: com um nó a menos que réplicas, `required` deixaria o shard
+      # em Pending para sempre — e um shard fora do ar é pior que dois no mesmo nó.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels: {app: warspace-server}
       containers:
         - name: server
           image: __IMAGE_SERVER__

@@ -32,6 +32,16 @@ data:
   ALLOWED_ORIGINS: "https://__HOST__,https://html5.gamedistribution.com,https://revision.gamedistribution.com,https://*.crazygames.com,https://*.poki.com,https://*.poki.io,https://*.poki.dev,https://*.poki-cdn.com,https://*.poki-gdn.com,https://*.poki-user-content.com,https://*.itch.zone,https://*.y8.com,https://*.gamemonetize.co,https://*.gamemonetize.com,https://*.gameflare.com,https://*.playgama.com,https://*.playgama.net,https://*.gamepix.com"
   # off | warn | on — ver .env.example. Estreia em off; só depois de LER os avisos de `warn` é que fecha.
   WS_ORIGIN_CHECK: "off"
+  # O X-Forwarded-For que chega aqui é o IP DE UMA PESSOA? Desde 2026-09-03, sim: o controller do
+  # ingress foi fixado no kube-master (o nó por onde o tráfego entra) e o Service dele passou a
+  # `externalTrafficPolicy: Local`, então não há mais o SNAT do kube-proxy que apagava a origem —
+  # antes o servidor via `10.32.0.1` para o mundo inteiro e todo limite "por IP" era um teto global.
+  # ⚠️ Com `0` (ou com o ingress revertido para `Cluster`), o router volta a dimensionar os baldes de
+  # IP por SHARD, que é a única coisa sensata quando o endereço não identifica ninguém.
+  # ⚠️ Só é seguro porque o ingress-nginx está com `use-forwarded-headers` DESLIGADO: ele SUBSTITUI o
+  # header pelo remote_addr real, então o cliente não consegue forjar o próprio IP. Ligar aquilo lá e
+  # isto aqui ao mesmo tempo devolveria a forja a qualquer um.
+  TRUST_CLIENT_IP: "1"
   # fala dos bots pela LLM: o Ollama vive fora do cluster, na 192.168.8.251 (rede roteada até os nós).
   # Fora do ar, o chat cai sozinho no repertório fixo — nada aqui é obrigatório para o jogo subir.
   OLLAMA_URL: "http://192.168.8.251:11434"

@@ -2296,12 +2296,21 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   requisições a `/api/ranking`, **342 levaram 429** vindas de uma máquina só. E o pior caso não é esse
   — é `guest` (30/h por shard = **90 contas novas por hora no site inteiro**): num portal com tráfego,
   o 91º jogador da hora não consegue entrar, e nada no log diz que foi isso.
-  ⚠️ O conserto de raiz é de INFRA e não está feito (ver Arestas). O que está feito é o código parar de
-  transformar cegueira em teto: com `trustClientIp` falso (o padrão), o router escala os limites de IP
-  por `IP_CEGO_K`, porque um balde coletivo tem que ser dimensionado pelo SHARD e não por uma pessoa.
-  `scope:'token'` fica de fora — a chave dele já é a pessoa.
-  ⚠️ Ligue `TRUST_CLIENT_IP=1` **só depois** que o IP real chegar de verdade, senão uma máquina só
-  volta a caber no limite de uma pessoa. O teste de `persist.test.js` cobre as duas metades.
+  ⚠️ **RESOLVIDO no mesmo dia, dos DOIS lados.** Na INFRA (ver Arestas): o controller do ingress foi
+  fixado no `kube-master` — o nó por onde o tráfego entra — e o Service dele virou
+  `externalTrafficPolicy: Local`, que é o que tira o SNAT do caminho. Medido depois: o log do ingress e
+  o do jogo passaram a registrar o endereço público de verdade. No CÓDIGO, `config.trustClientIp`
+  (`TRUST_CLIENT_IP`, hoje `1` no ConfigMap) diz se o endereço identifica uma pessoa; com ele falso o
+  router escala os limites de IP por `IP_CEGO_K`, porque um balde coletivo tem que ser dimensionado
+  pelo SHARD. `scope:'token'` fica de fora — a chave dele já é a pessoa.
+  ⚠️ **O interruptor tem que acompanhar o ingress**: revertê-lo para `Cluster` sem baixar
+  `TRUST_CLIENT_IP` devolve o teto global em silêncio. Prova dos dois estados, com 400 requisições de
+  UMA máquina a `/api/ranking`: cego + escala = 400 passam; IP real + `TRUST_CLIENT_IP=1` = **178
+  passam e 222 levam 429** (60/min × 3 shards), ou seja o abuso volta a punir só quem abusa.
+  ⚠️ E só é seguro porque o ingress-nginx está com `use-forwarded-headers` DESLIGADO: ele SUBSTITUI o
+  `X-Forwarded-For` pelo `remote_addr`, então o cliente não forja o próprio IP (foi tentado e medido).
+  Ligar aquilo lá e este aqui ao mesmo tempo devolveria a forja a qualquer um. O teste de
+  `persist.test.js` cobre as duas metades.
 
 ## Convenções
 
@@ -2353,19 +2362,26 @@ do zero, use só com o banco vazio). Secret `warspace-db` criado via `./scripts/
   tudo é `sudo kubectl --kubeconfig /etc/kubernetes/admin.conf …`. Senha nenhuma mora neste repositório.
   ⚠️ O mesmo bloco resolveria os outros domínios presos do cluster; aqui entraram só os dois do warspace.
 
-- ⚠️ **O IP DO JOGADOR NÃO CHEGA — e o conserto é no ingress, que é do cluster inteiro** (medido em
-  2026-09-03). `ingress-nginx-controller` é um Service **NodePort com `externalTrafficPolicy: Cluster`**
-  (portas 30021/31066) e o controller é um Deployment de UMA réplica, hoje no `kube-worker-2`; o
-  tráfego público entra pelo `kube-master`, então o kube-proxy faz SNAT para levá-lo até o pod e o IP
-  de origem se perde ali. Prova: batendo em cada nó pelo NodePort, o log do controller registra
-  `10.32.0.1`, `10.46.0.0` e `10.40.0.0` (a bridge de pods do nó de entrada), nunca o endereço real.
-  ⚠️ **Trocar só o `externalTrafficPolicy` para `Local` DERRUBA o site**: com `Local`, um nó só atende
-  se tiver um pod do controller, e o nó de entrada não tem. O caminho correto é o controller virar
-  **DaemonSet** (um pod por nó) **e então** `Local` — nessa ordem, com janela, porque o ingress serve
-  os outros domínios do cluster (j4call, itm). Enquanto isso não acontece, `TRUST_CLIENT_IP` fica
-  falso e os limites por IP são dimensionados por shard (ver o bloco em Arquitetura).
-  ⚠️ Isso também significa que **nenhum log deste cluster tem IP de cliente** — o do jogo, o do ingress
-  e a auditoria do /admin inclusive. Investigar abuso hoje é impossível por esse caminho.
+- ✅ **O IP DO JOGADOR VOLTOU A CHEGAR — o controller do ingress mora no nó de ENTRADA e o Service é
+  `Local`** (2026-09-03). Era assim que se perdia: `ingress-nginx-controller` é NodePort (30021/31066)
+  e estava em `externalTrafficPolicy: Cluster` com o controller no `kube-worker-2`, enquanto o tráfego
+  público entra pelo `kube-master` — o kube-proxy fazia SNAT para levá-lo até o pod e a origem morria
+  ali, ANTES de o nginx escrever o `X-Forwarded-For`. Prova: batendo em cada nó pelo NodePort, o log do
+  controller registrava `10.32.0.1`, `10.46.0.0` e `10.40.0.0` (a bridge de pods do nó de entrada) e
+  nunca o endereço real — nem entrando pelo próprio nó do pod, porque com `Cluster` o SNAT é sempre.
+  O conserto tem DUAS peças e a ordem importa: **primeiro** o controller vai para o master
+  (`nodeSelector` + toleration a `node.kubernetes.io/unschedulable`), **depois** o Service vira `Local`.
+  Invertido, o site cai na hora: com `Local` um nó sem pod do controller RECUSA a conexão, e são 41
+  domínios de 12 namespaces pendurados nesse ingress (j4call, itm, gk, gv, igmash, nettools…).
+  ⚠️ **A toleration não é enfeite**: o master é `cordon`ado de propósito, e é ela que mantém o pod lá
+  (um `cordon` não expulsa quem já está, mas sem ela o pod não VOLTA depois de qualquer recriação).
+  Nada de descordonar o master para resolver isso — com ele agendável, o rollout seguinte empilhou os
+  três shards do jogo nele (foi o que aconteceu, e virou a `podAntiAffinity` de `k8s/10-server.yaml`).
+  ⚠️ **O preço é redundância de ENTRADA**: com `Local`, só o master atende: se o pod do ingress cair,
+  os 41 domínios caem juntos, sem o fallback que o `Cluster` dava. Reverter é um patch
+  (`externalTrafficPolicy: Cluster`) — e aí `TRUST_CLIENT_IP` tem que voltar a 0 no mesmo movimento.
+  ⚠️ Antes disso **nenhum log deste cluster tinha IP de cliente** (jogo, ingress e auditoria do /admin),
+  e era por isso que os limites por IP eram tetos globais — ver o bloco em Arquitetura.
 - Sem "esqueci a senha" (reset via SQL). O merge de contas existe SÓ no caminho do Google, por duas portas: um
   guest com Bearer é promovido em vez de virar conta nova, e um e-mail verificado que já pertence a alguém leva
   a identidade para aquela conta. Nos outros caminhos continua sem.
