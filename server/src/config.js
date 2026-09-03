@@ -37,6 +37,12 @@ export const config=Object.freeze({
   worldSide:num('WORLD_SIDE',0),
   lobbyTicks:Math.max(60,num('LOBBY_TICKS',BR.LOBBY_TICKS)),   // janela do lobby do Battle Royale (mesmo motivo do ROUND_TICKS: testar sem esperar 30 s)
   logLevel:str('LOG_LEVEL','info'),
+  // O `X-Forwarded-For` que chega aqui é o IP DE UMA PESSOA? Neste cluster NÃO (medido: o ingress
+  // registra 10.32.0.1 para todo mundo, porque o Service dele é `externalTrafficPolicy: Cluster` e o
+  // kube-proxy faz SNAT antes), e por isso todo limite "por IP" vira um teto global — ver o cabeçalho
+  // de auth/ratelimit.js. Enquanto for falso, o router dimensiona esses baldes por SHARD; ligue só
+  // depois que o IP real de fato chegar, senão uma máquina só volta a caber no limite de uma pessoa.
+  trustClientIp:bool('TRUST_CLIENT_IP',false),
   // fala dos bots por LLM (Ollama). Sem OLLAMA_URL fica desligada e o chat usa o repertório fixo de sempre —
   // é por isso que os testes não precisam de rede nem de flag: eles simplesmente não têm a variável.
   ollamaUrl:str('OLLAMA_URL',''),

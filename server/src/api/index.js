@@ -37,7 +37,7 @@ export function createApi({db,log,config,persist=null,limiter=createRateLimiter(
   const settings=createSettings(db),audit=createAudit(db,log),tunables=createTunables({settings,log});
   const optionalUser=async ctx=>ctx.token?await tokens.resolve(ctx.token):null;
   const requireUser=async ctx=>{if(!ctx.token)throw err(401,'unauthorized','faça login (Bearer)');const u=await tokens.resolve(ctx.token);if(!u)throw err(401,'unauthorized','token inválido ou expirado');return u;};
-  const router=createRouter({log,limiter,prefixes:PREFIXES});
+  const router=createRouter({log,limiter,prefixes:PREFIXES,trustClientIp:!!(config&&config.trustClientIp)});
   // `google` injetável: é o gancho que deixa o teste exercitar o caminho FELIZ do login sem ir à rede
   // do Google (a validação real é uma ida ao `tokeninfo`). Em produção ninguém passa nada e nada muda.
   const google=googleImpl||createGoogle({config,log});

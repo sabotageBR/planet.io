@@ -155,9 +155,24 @@ test('router: JSON inválido, corpo > 16 KB, 404, 405, rotas não tratadas',asyn
   r=await call('GET','/api/auth/nope');assert.equal(r.status,404);r=await call('DELETE','/api/me');assert.equal(r.status,405);
   r=await fetch(base+'/api/rooms');assert.equal(r.status,404);  // não é desta camada → false → 404 do servidor de teste
 });
-test('rate limit: guest 30/h/IP',async()=>{
-  const codes=[];for(let i=0;i<31;i++)codes.push((await call('POST','/api/auth/guest',{body:{},ip:'10.9.9.9'})).status);
+// ⚠️ O limite de guest é 30/h POR PESSOA — e só é isso quando o IP identifica uma pessoa. Atrás do
+// ingress deste cluster ele não identifica (medido: 10.32.0.1 para todo mundo), e aí 30/h vira o teto
+// de contas novas do SITE INTEIRO. Por isso o teste tem duas metades, e a segunda é a que documenta o
+// conserto: com `trustClientIp` falso, 31 seguidos do "mesmo IP" continuam passando.
+test('rate limit: guest 30/h por IP quando o IP é confiável',async()=>{
+  const capi=createApi({db,log,config:{...config,trustClientIp:true},persist});
+  const srv=http.createServer(async(rq,rs)=>{if(await capi(rq,rs))return;rs.writeHead(404);rs.end();});
+  await new Promise(r=>srv.listen(0,'127.0.0.1',r));
+  const b=`http://127.0.0.1:${srv.address().port}`;
+  const post=ip=>fetch(b+'/api/auth/guest',{method:'POST',headers:{'content-type':'application/json','x-forwarded-for':ip},body:'{}'}).then(r=>r.status);
+  const codes=[];for(let i=0;i<31;i++)codes.push(await post('10.9.9.9'));
   assert.deepEqual(codes,[...Array(30).fill(201),429]);
+  assert.equal(await post('10.9.9.10'),201,'outro IP tem balde próprio');
+  srv.close();
+});
+test('rate limit: com o IP cego, o balde por IP é o do SHARD e não o de uma pessoa',async()=>{
+  const codes=[];for(let i=0;i<31;i++)codes.push((await call('POST','/api/auth/guest',{body:{},ip:'10.9.9.11'})).status);
+  assert.deepEqual(codes,Array(31).fill(201),'31 contas do mesmo "IP" não podem virar 429: é um proxy, não uma pessoa');
 });
 
 test('hooks: join → kill/stat/sample → matchEnd salva match, moedas, conquistas, skins; coins = Σ ledger',async()=>{

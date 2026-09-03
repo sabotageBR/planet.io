@@ -1,7 +1,7 @@
 // ── ROUTER mínimo (tabela [método, regex, handler], JSON ≤ 16 KB, bearer, erros) ──
 // @ts-check
 import {isDbUnavailable} from '../db/pool.js';
-import {LIMITS} from '../auth/ratelimit.js';
+import {LIMITS,IP_CEGO_K,escala} from '../auth/ratelimit.js';
 import {hashToken} from '../auth/tokens.js';
 export const BODY_MAX=16*1024;
 /**
@@ -46,8 +46,14 @@ export function sendJson(res,status,body,headers){
  * Handler: async (ctx) → body (200) | [status, body?] ; ctx = {req,res,params,query,body,token,ip,userAgent}
  * Rota: {method, re, handler, rate?:{scope:'ip'|'token',lim}, raw?:{max}} — rate default 60/min/IP
  */
-export function createRouter({log,limiter,prefixes}){
+export function createRouter({log,limiter,prefixes,trustClientIp=false}){
   const routes=[];
+  // O IP identifica uma pessoa? Atrás do ingress deste cluster, NÃO (ver auth/ratelimit.js): todo
+  // mundo chega como o mesmo endereço, e aí um limite "por IP" é um teto global. Enquanto for assim,
+  // o balde é dimensionado por SHARD. O cache é por objeto de limite, então isto não custa nada por
+  // requisição — e some inteiro quando `TRUST_CLIENT_IP=1`.
+  const k=trustClientIp?1:IP_CEGO_K,porIp=new Map();
+  const limIp=lim=>{if(k===1)return lim;let e=porIp.get(lim);if(!e){e=escala(lim,k);porIp.set(lim,e);}return e;};
   const add=(method,re,handler,opts={})=>{routes.push({method,re,handler,...opts});return add;};
   async function handle(req,res){
     const url=new URL(req.url||'/','http://x');const path=url.pathname;
@@ -58,8 +64,11 @@ export function createRouter({log,limiter,prefixes}){
       if(!matched)throw methodMismatch?err(405,'method_not_allowed','método não permitido'):err(404,'not_found','rota não encontrada');
       const {r,m}=matched;const ip=clientIp(req),token=bearer(req);
       const rate=r.rate||{scope:'ip',lim:LIMITS.default};
+      // `scope:'token'` já é por PESSOA (a chave é o hash do token) e não escala — só o balde de IP,
+      // que hoje é coletivo, precisa caber num shard inteiro.
+      const lim=rate.scope==='token'?rate.lim:limIp(rate.lim);
       if(limiter){const key=rate.scope==='token'?`t:${r.re.source}:${token?hashToken(token).slice(0,24):ip}`:`ip:${r.rate?r.re.source:'*'}:${ip}`;
-        if(!limiter.take(key,rate.lim))throw err(429,'rate_limited','muitas requisições; tente de novo em instantes',{retryAfter:limiter.retryAfterS(key,rate.lim)});}
+        if(!limiter.take(key,lim))throw err(429,'rate_limited','muitas requisições; tente de novo em instantes',{retryAfter:limiter.retryAfterS(key,lim)});}
       const temCorpo=req.method==='POST'||req.method==='PATCH'||req.method==='PUT';
       const body=temCorpo&&!r.raw?await readJson(req):{};
       const raw=temCorpo&&r.raw?await readRaw(req,r.raw.max):null;

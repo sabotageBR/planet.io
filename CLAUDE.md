@@ -17,6 +17,8 @@ npm run build                # client/dist (vite build)
 ./scripts/db-secret.sh       # cria o Secret warspace-db (DATABASE_URL do .env) no cluster
 # PAINEL /admin: rota da MESMA SPA (client/src/admin/, chunk sob demanda). O 1º administrador nasce do env
 # ADMIN_EMAILS (k8s/05-config) no boot — SÓ PROMOVE — ou de um UPDATE users SET is_admin=true. docs/spec/admin.md
+node scripts/loadtest.mjs --n 150 --dur 90    # N clientes DE VERDADE (guest → WS → join → INPUT 20 Hz) contra produção
+node scripts/prof-room.mjs --bots 15 --humanos 10   # onde vai o tempo de UMA sala (cérebro · World.step · _consume)
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
 node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|gamepix|all  # o .zip do cliente para os portais (docs/spec/portais.md)
 ./scripts/build-push.sh      # builda (contexto = raiz, -f server/Dockerfile / client/Dockerfile) e publica evandromoura/warspace-io-{server,client}
@@ -2255,6 +2257,52 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ondulação sutil na beirada (peso r⁴, ~2% do raio) + squash na direção do movimento, sem girar a arte. Cada malha é um draw call,
   então só as maiores da tela viram blob (`WOB_MAX`, `WOB_MIN_PX`) e nada disso acontece no modo econômico ou com "menos movimento".
 
+- **QUANTA GENTE CABE: ~50 POR SHARD, E O TETO É UM CORE** (`scripts/loadtest.mjs`, medido em produção
+  em 2026-09-03 com o cluster limpo). O gerador abre N sessões completas — guest pela API, WS no shard,
+  `join`, INPUT a 20 Hz, ping a 1 Hz — e mede do lado de fora: RTT, bytes, snapshots, quedas. Escada:
+  1 jogador (1 sala com 13 preenchimentos) = **~300m de CPU**; 50 jogadores (3 salas, 17 por shard) =
+  **~680m**; 150 jogadores = **974–993m dos 1000m do limite**, com o RTT p95 saindo de 96 para 209 ms e
+  desconexões por `RATE`. Banda: **3–6 KB/s por jogador**, ou seja rede não é o gargalo — CPU é.
+  ⚠️ **Subir `limits.cpu` NÃO ajuda**: o servidor é Node single-thread, então um shard é um core por
+  construção e já encosta nele. Quem escala é o número de SHARDS (processos), e cada um novo custa
+  `replicas` + `SHARDS` no ConfigMap + um Service + um path de Ingress. O cluster tem 128 cores
+  alocáveis e usa 3 — o teto de hoje é de configuração, não de hardware.
+  ⚠️ **O jogador honesto é desconectado quando o servidor engasga**: com o tick atrasado, os INPUT
+  acumulados chegam em rajada, o balde de `NET.RATE_INPUTS` (40/s, burst 60) estoura e 3 violações em
+  10 s fecham a conexão com 4429. Ou seja, a saturação não degrada — ela EXPULSA, e expulsa mais quem
+  manda a 30 Hz (o cliente de verdade) do que quem manda a 20.
+  ⚠️ **500 contas de teste não se criam pela API**: `/api/auth/guest` é 30/h por IP e o IP está cego
+  (ver o bloco abaixo), então o teto real é 90/h no site inteiro. O gerador cacheia os tokens em disco
+  e REUSA cada conta em vários sockets — o que o servidor recusa é o mesmo nick DENTRO de uma sala, e
+  `findOrCreateRoom` já desvia disso sozinho.
+- **O CUSTO DE UMA SALA É A GRADE DA COMIDA, NÃO OS BOTS** (`ensureFoodGrid` em `physics/world.js`,
+  `scripts/prof-room.mjs` + `--cpu-prof`): a suspeita óbvia estava errada. O cérebro dos preenchimentos
+  é **1,2%** do tempo; o maior item isolado é a reconstrução da grade espacial da comida — **3900 grãos
+  reinseridos ~1× por tick, 120 µs cada, 36% a 61% do laço da sala**. A causa é `foodDirty`: basta UM
+  grão ser comido (e sempre é, todo tick, com 30 jogadores na sala) para a grade inteira ser refeita,
+  porque ela guarda ÍNDICES em `this.food` e o `_compact` do fim do tick reordena o array.
+  Medido com o rebuild desligado à força: **0,339 → 0,131 ms por tick, 2,6× mais sala por core** — é o
+  TETO do ganho, não uma implementação. O caminho que o realiza sem mexer na ordem de visita (que é o
+  que mudaria a física de uma semente) é a comida deixar de compactar: free list de slots, índice
+  estável, e a grade atualizada só para o grão que mudou.
+  ⚠️ Depois dela vem o snapshot (`visitFood`/`visit` em `net/snapshot.js`, ~19%), que é custo POR SESSÃO
+  e legítimo. `world.step`, `spatial-hash` e `_compact` fecham a conta; `Sim._consume` é 0,5%.
+- **"POR IP" NÃO É POR PESSOA NESTE CLUSTER, E ISSO ERA UM TETO GLOBAL** (`auth/ratelimit.js`,
+  `config.trustClientIp`): o ingress-nginx registra `10.32.0.1` para TODO MUNDO — medido batendo em
+  cada nó pelo NodePort e lendo o log do controller, com o IP público conferido do lado de fora. O
+  Service dele é `externalTrafficPolicy: Cluster` e o kube-proxy faz SNAT ANTES de o pacote chegar ao
+  controller, então o IP do cliente já morreu quando o `X-Forwarded-For` é escrito. Com isso todo
+  limite "por IP" virou um balde único dividido por todos os jogadores do mundo: provado com 400
+  requisições a `/api/ranking`, **342 levaram 429** vindas de uma máquina só. E o pior caso não é esse
+  — é `guest` (30/h por shard = **90 contas novas por hora no site inteiro**): num portal com tráfego,
+  o 91º jogador da hora não consegue entrar, e nada no log diz que foi isso.
+  ⚠️ O conserto de raiz é de INFRA e não está feito (ver Arestas). O que está feito é o código parar de
+  transformar cegueira em teto: com `trustClientIp` falso (o padrão), o router escala os limites de IP
+  por `IP_CEGO_K`, porque um balde coletivo tem que ser dimensionado pelo SHARD e não por uma pessoa.
+  `scope:'token'` fica de fora — a chave dele já é a pessoa.
+  ⚠️ Ligue `TRUST_CLIENT_IP=1` **só depois** que o IP real chegar de verdade, senão uma máquina só
+  volta a caber no limite de uma pessoa. O teste de `persist.test.js` cobre as duas metades.
+
 ## Convenções
 
 - Estilo denso: uma instrução por linha separada por `;`, comentários de seção `// ── SEÇÃO ──`, comentários e UI em pt-BR. `// @ts-check` + JSDoc em `shared/`.
@@ -2305,6 +2353,19 @@ do zero, use só com o banco vazio). Secret `warspace-db` criado via `./scripts/
   tudo é `sudo kubectl --kubeconfig /etc/kubernetes/admin.conf …`. Senha nenhuma mora neste repositório.
   ⚠️ O mesmo bloco resolveria os outros domínios presos do cluster; aqui entraram só os dois do warspace.
 
+- ⚠️ **O IP DO JOGADOR NÃO CHEGA — e o conserto é no ingress, que é do cluster inteiro** (medido em
+  2026-09-03). `ingress-nginx-controller` é um Service **NodePort com `externalTrafficPolicy: Cluster`**
+  (portas 30021/31066) e o controller é um Deployment de UMA réplica, hoje no `kube-worker-2`; o
+  tráfego público entra pelo `kube-master`, então o kube-proxy faz SNAT para levá-lo até o pod e o IP
+  de origem se perde ali. Prova: batendo em cada nó pelo NodePort, o log do controller registra
+  `10.32.0.1`, `10.46.0.0` e `10.40.0.0` (a bridge de pods do nó de entrada), nunca o endereço real.
+  ⚠️ **Trocar só o `externalTrafficPolicy` para `Local` DERRUBA o site**: com `Local`, um nó só atende
+  se tiver um pod do controller, e o nó de entrada não tem. O caminho correto é o controller virar
+  **DaemonSet** (um pod por nó) **e então** `Local` — nessa ordem, com janela, porque o ingress serve
+  os outros domínios do cluster (j4call, itm). Enquanto isso não acontece, `TRUST_CLIENT_IP` fica
+  falso e os limites por IP são dimensionados por shard (ver o bloco em Arquitetura).
+  ⚠️ Isso também significa que **nenhum log deste cluster tem IP de cliente** — o do jogo, o do ingress
+  e a auditoria do /admin inclusive. Investigar abuso hoje é impossível por esse caminho.
 - Sem "esqueci a senha" (reset via SQL). O merge de contas existe SÓ no caminho do Google, por duas portas: um
   guest com Bearer é promovido em vez de virar conta nova, e um e-mail verificado que já pertence a alguém leva
   a identidade para aquela conta. Nos outros caminhos continua sem.
