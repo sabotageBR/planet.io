@@ -427,6 +427,7 @@ export const BLACKHOLE={COUNT:0,CORE_R:38,INFLUENCE:10,G:5.5e7,A_MAX:2200,SWIRL:
 export const STAR={COUNT:19,R:46,BURN:.30,RAM_REWARD:false,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2400,4200],OLD_TICKS:480,RESPAWN_TICKS:600,HALO:2.2,
   SHATTER_MIN_R:24,SHATTER_N:[3,6],SHATTER_DIST:342,SHATTER_CD_TICKS:45,BURN_STUCK:.55,PUSH_TOUCH_DIST:160,PASS_R:40,LAYOUT:'0',
   NOVA_R:8,NOVA_SHATTER:.45,NOVA_PARTICLES:24,NOVA_FOOD:16,NOVA_FOOD_R:.3,NOVA_SPEED:[380,820],NOVA_PART_MASS:3,NOVA_LIFE_TICKS:900,AST_KICK:1500,PUSH_DIST:342,SAFE_SPAWN:700,MIN_SEP:1400,
+  NOVA_SPOT_TICKS:900,NOVA_SPOT_R:420,NOVA_SPOT_KEEP:8,
   DRAG:1.4,HIT_PUSH:280,EJECT_PUSH:70,HITS_TO_SPLIT:3,HIT_CD_TICKS:30,SPLIT_N:3,SPLIT_R:.62,SPLIT_SPEED:520,SPLIT_BLAST:5,SPLIT_LIFE_TICKS:[900,1500]};
 // LAYOUT: qual das CINCO artes de estrela está em uso (0 clássica · 1 anã manchada · 2 azul com jatos ·
 // 3 binária · 4 pulsar). É `opt` porque é ESCOLHA entre coisas fechadas, não um número numa faixa, e é
@@ -470,6 +471,20 @@ export const STAR={COUNT:19,R:46,BURN:.30,RAM_REWARD:false,SWELL:1.75,ARM_K:.5,G
 // raio blast·NOVA_FOOD_R (a estrela morta vira um berçário: ponto de interesse fixo no mapa),
 // asteroides a AST_KICK e peças a PUSH; dentro de r·NOVA_R·NOVA_SHATTER
 // (o miolo) é como encostar na estrela: o escudo cai inteiro e salva, sem escudo a peça estilhaça.
+// NOVA_SPOT_*: o berçário virou DESTINO DE NASCIMENTO no Livre (World.novas + _spawnPiece). Quem entra na
+// sala — ou renasce — cai perto de uma estrela que acabou de explodir, ou seja num lugar com comida farta,
+// em vez de num ponto uniforme do mapa. O que muda é a AMOSTRAGEM e não o filtro: o mesmo _farSpot é
+// chamado com o disco da cratera como `zc` (o argumento que a zona do BR já usava), então STAR.SAFE_SPAWN,
+// ASTEROID.SAFE_SPAWN e PLAYER_SAFE continuam valendo linha por linha. É o PLAYER_SAFE (1500) que resolve
+// sozinho o medo óbvio de "nascer onde todo mundo quer estar": cratera ocupada reprova nas 40 tentativas e
+// o laço passa para a próxima — e é por isso também que dois humanos não caem na mesma.
+// NOVA_SPOT_R 420: todo o espólio cabe em ~300 px (o cacho de comida tem blast·NOVA_FOOD_R = 110..193 px e
+// os fragmentos alcançam v/DRAG = 103..222 px), então 420 dá folga ao sorteio e ainda deixa o prêmio dentro
+// da AOI — ele nasce VENDO o que ganhou. `blast` (368..644) é o raio do SUSTO, não o do prêmio.
+// NOVA_SPOT_TICKS 900 = NOVA_LIFE_TICKS, porque o prêmio que EXPIRA são os fragmentos; passado isso sobra só
+// o berçário, que a essa altura provavelmente já foi colhido. Supernova de trombada não entra na lista:
+// com RAM_REWARD false ela não larga nem cacho nem fragmento, e mandar o novato para uma cratera vazia —
+// onde ainda por cima alguém acabou de passar — é o oposto do que isto existe para fazer.
 /** As cinco artes de estrela, na ordem do `paintNovaV`. O `label` é o que o admin lê no `<select>`. */
 export const STAR_LAYOUTS=[{v:'0',label:'Clássica (coroa de plasma)'},{v:'1',label:'Anã manchada'},
   {v:'2',label:'Azul com jatos'},{v:'3',label:'Binária'},{v:'4',label:'Pulsar'}];
@@ -1152,13 +1167,19 @@ export const NOTICE={MAX_CHARS:200,TTL_MS:12000,LEVELS:['info','warn']};
 export const FEED={KEEP:16,ROWS:8,TTL_MS:22000,HIT_TTL_TICKS:300,QUEUE_MAX:32,MAX_PER_FLUSH:4,
   LEAD_HOLD_TICKS:180,LEAD_MARGIN:.05,LEAD_CD_TICKS:1200,CRUNCH_AT_S:[600,300,60],STREAK_AT:[3,5,10],
   JOIN_QUIET_MS:20000};
-// JOIN_QUIET_MS: a janela em que a MESMA pessoa voltando NÃO vira "saiu"/"entrou" no log. Ela existe
-// porque no Livre **renascer é `leave` + `join` num socket novo** — o botão DE NOVO fecha a conexão, abre
-// outra e entra de novo —, então sem a guarda cada morte de cada jogador produzia duas linhas. A chave é
-// a de `_rosterKey` (a mesma que já resolve "a mesma pessoa entre vidas"), e a guarda mora DENTRO de
-// `join`/`leave`, nunca nos chamadores: há três caminhos até lá (o quit, o re-join que troca de sala e o
-// roubo de sessão pelo `resume`). ⚠️ Queda de rede não é saída — ela cai em `Room.detach`, que segura a
-// sessão por `NET.RESUME_MS`, e só o `housekeeping` a converte em `leave` 10 s depois.
+// JOIN_QUIET_MS: a janela em que a MESMA pessoa voltando NÃO vira "saiu"/"entrou" no log. A chave é a de
+// `_rosterKey` (a mesma que já resolve "a mesma pessoa entre vidas"), e a guarda mora DENTRO de
+// `join`/`leave`, nunca nos chamadores.
+// ⚠️ ELA NASCEU PARA O RESPAWN, E ESSE MOTIVO ACABOU. No Livre, renascer ERA `leave`+`join` num socket
+// novo — o botão DE NOVO fechava a conexão e abria outra —, e sem a guarda cada morte produzia duas
+// linhas. Hoje renascer é `{t:"respawn"}` na MESMA sessão (`Room.respawn`/`Sim.revive`): o jogador morto
+// nunca saiu da sala, e a única forma honesta de não mentir no feed era parar de fazê-lo sair. Os 20 s
+// também não bastavam — quem ficava lendo a tela de morte passava disso e as duas linhas saíam.
+// O que sobrou para ela cobrir são os DOIS caminhos em que a pessoa sai de verdade e volta logo: trocar
+// de sala com o jogo aberto (o re-join do `wsServer`) e o roubo de sessão pelo `resume`. Nos dois não há
+// tela de morte para ficar lendo, então 20 s serve.
+// ⚠️ Queda de rede não é saída — ela cai em `Room.detach`, que segura a sessão por `NET.RESUME_MS`, e só
+// o `housekeeping` a converte em `leave` 10 s depois.
 // KEEP/ROWS/TTL_MS: buffer do cliente, linhas na tela e quanto tempo cada uma dura. TTL era 9 s, e a linha
 // sumia inteira e de uma vez — quem estava olhando o jogo perdia o abate. Hoje dura 22 s e a lista morre em
 // DEGRADÊ (client/src/styles/ui.css, `#kill-feed .kf-row:nth-child`): a mais nova em cima, opaca, e as de

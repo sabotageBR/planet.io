@@ -328,6 +328,15 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(onDead)onDead({by:m.by,bySlot:m.bySlot>=0?m.bySlot:-1,bySkin:alg?alg.skinId|0:0,byLevel:alg?alg.level|0:0,
         mySkin:eu?eu.skinId|0:0,myLevel:eu?eu.level|0:0,myName:eu?eu.name:"",
         byHole:!!m.byHole,byZone:!!m.byZone,score:m.score,maxMass:m.maxMass,kills:m.kills,durationS:m.durationS,placement:m.placement||0,players:m.players||0});}
+    // RENASCI, na mesma sessão e na mesma sala (Livre). ⚠️ NÃO repetir o tratamento de `m.t==="room"`: ele
+    // zera `chatLog`/`feedLog` e toca o som de entrada — e apagar a conversa de quem estava falando na tela
+    // de morte seria uma regressão do jeito mais visível possível. Aqui não houve entrada nenhuma.
+    // ⚠️ O `sessionId` precisa ser atualizado: um `resume` depois disto mandaria o da vida MORTA e cairia
+    // em ROOM_EXPIRED.
+    else if(m.t==="alive"){dead=false;specSlot=-1;spec=null;mapOn="";minimap.setView("",-1);minimap.show(false);
+      if(m.sessionId&&conn&&conn.session)conn.session.sessionId=m.sessionId;
+      buffer.clear();predictor.reset();view.reset();input.reset();input.setHold(false);cam.reset();
+      aplicaRadar();pushHud(performance.now());}
     else if(m.t==="spectate"){specSlot=m.slot>=0?m.slot:-1;spec={slot:specSlot,name:m.name||null,vivos:m.vivos|0};if(mapOn)minimap.setView(mapOn,specSlot);pushHud(performance.now());}   // morto: de quem é a cena que continua rodando atrás da tela de KABOOM
     else if(m.t==="rewards"){if(onRewards)onRewards(m);}}
   function onBinary(m){const now=performance.now();
@@ -477,6 +486,13 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
      * a câmera olharia para um pedaço de espaço que o servidor não está mandando.
      */
     spectate({slot=-1,dir=0}={}){if(!conn||!joined||!dead)return;conn.sendJson({t:"spectate",slot,dir});},
+    /**
+     * Renascer SEM reconectar (Livre). Devolve `false` quando não dá para nem tentar — e aí o chamador cai
+     * no `play({room})` de sempre, que continua sendo o caminho inteiro e a rede de segurança. O servidor
+     * também pode recusar em silêncio (sala acabou, BR): aí o `{t:'alive'}` não chega e o jogador continua
+     * na tela de morte, com o botão ainda ali.
+     */
+    respawn(){if(!conn||!conn.isOpen||!joined||!dead)return false;conn.sendJson({t:"respawn"});return true;},
     zoomReset(){zoomReset();},   // o chip do HUD (e a tecla 0, e o botão do meio) devolvem a câmera ao automático
     /** Silencia (ou devolve a voz a) um jogador. Local, por sala — ver o comentário de `mudos`. */
     mute(slot,on=true){const sl=slot|0;if(sl<0||sl===view.mySlot)return;

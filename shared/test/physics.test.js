@@ -734,6 +734,43 @@ test("supernova: além das partículas, semeia um cacho de comida permanente ond
   for(let t=0;t<900;t++)w.step();
   assert.equal(w.food.filter(f=>!f.dead).length,STAR.NOVA_FOOD,"comida não expira: o berçário fica");});
 
+// 31b. o berçário é DESTINO DE NASCIMENTO: quem entra no Livre cai onde a estrela acabou de morrer
+test("nascimento: o humano nasce no berçário da supernova recente; bot não, e a janela expira",()=>{
+  // explode uma estrela num ponto conhecido e mede onde o próximo humano nasce
+  const boom=(seed,x,y)=>{const w=empty(seed);const st=w.spawnStar(true);st.x=x;st.y=y;st.life=w.tick+1;
+    for(let t=0;t<STAR.OLD_TICKS+10&&!w.novas.length;t++)w.step();
+    assert.equal(w.novas.length,1,"a cratera foi registrada");return w;};
+  const perto=(pc,x,y)=>Math.hypot(pc.x-x,pc.y-y)<=STAR.NOVA_SPOT_R;
+
+  const w=boom(201,4000,4000);
+  const pc=w.addPlayer(1,{isBot:false});
+  assert.ok(perto(pc,4000,4000),"o humano nasce dentro do disco da cratera");
+
+  // bot NÃO é atraído: ele limparia o cacho antes de o humano chegar
+  const w2=boom(202,4000,4000);
+  let fora=0;for(let s=1;s<=12;s++){const b=w2.addPlayer(s,{isBot:true});if(!perto(b,4000,4000))fora++;}
+  assert.ok(fora>=10,`bot ignora o berçário (${fora}/12 nasceram fora)`);
+
+  // janela vencida → volta ao sorteio uniforme do mapa inteiro
+  const w3=boom(203,4000,4000);
+  w3.tick+=STAR.NOVA_SPOT_TICKS+1;
+  let longe=0;for(let s=1;s<=12;s++){if(!perto(w3.addPlayer(s,{isBot:false}),4000,4000))longe++;}
+  assert.ok(longe>=10,`passada a janela, ninguém é atraído (${longe}/12 fora)`);
+
+  // cratera OCUPADA é recusada: o PLAYER_SAFE do _farSpot continua sendo cobrado
+  const w4=boom(204,4000,4000);
+  const dono=w4.addPlayer(1,{isBot:false,x:4000,y:4000,r:300});
+  assert.ok(dono,"plantou um gordo em cima da cratera");
+  const pc4=w4.addPlayer(2,{isBot:false});
+  assert.ok(Math.hypot(pc4.x-dono.x,pc4.y-dono.y)>=STAR.NOVA_SPOT_R,"o recém-chegado não nasce em cima dele");
+
+  // supernova de TROMBADA não registra: sem prêmio, a cratera está vazia
+  const w5=empty(205);const s5=w5.spawnStar(true);s5.x=3000;s5.y=3000;
+  const p5=w5.addPlayer(1,{isBot:false,x:3000-s5.r-40,y:3000,r:120});p5.vx=900;
+  for(let t=0;t<120&&!s5.dead;t++)w5.step();
+  assert.ok(s5.dead,"a estrela morreu na trombada");
+  assert.equal(w5.novas.length,0,"e não virou destino de nascimento");});
+
 // ── 32. meteoro × estrela: os dois se partem em pedaços menores arremessados ──
 test("meteoro×estrela: a estrela EXPLODE e morre, a rocha morre junto — nada se multiplica; pedrisco só ricocheteia",()=>{
   const w=empty(120),st=w.spawnStar(true);st.x=3000;st.y=3000;

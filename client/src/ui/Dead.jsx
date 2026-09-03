@@ -23,7 +23,7 @@ import { skinById, MODE } from "@warspace/shared";
 import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
-import { play, leaveGame } from "../state/actions.js";
+import { play, leaveGame, respawnAqui } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
 import { fmt, fmtTime, ord } from "./format.js";
@@ -120,18 +120,23 @@ export default function Dead({ on }) {
      MAPA é o radar ampliado — um instrumento, para escolher quem assistir (clicar num blip troca a
      câmera, o mesmo `spectate` das setas). TEMPO REAL é a SALA: ocupa o espaço todo, o blip vira o
      planeta na cor da skin, com nome e massa, e a posição é interpolada entre as amostras. */
-  /* ⚠️ NO BATTLE ROYALE O "DE NOVO" NÃO PODE APONTAR PARA A MESMA SALA, e era ele que roubava do jogador
-     a tela final inteira. `play({room})` chama `game.join()`, que abre com `game.leave(true)` — manda
-     `{t:"quit"}` e FECHA o socket, ou seja a sessão sai da sala —, e o join seguinte esbarra em
-     `acceptsJoin()`, que no BR em `live` NUNCA aceita: volta `error FULL`, o cliente cai no lobby com um
-     toast, e quando o `endRound` difunde o pódio essa sessão já não está em `room.sessions`. Como este é
-     o único botão grande da tela, o fim do Battle Royale simplesmente não existia para quem clicasse.
-     Aqui ele vira "outra partida" (sala nova, `play({})`), e a dica diz que ficar rende o pódio. */
+  /* ⚠️ OS DOIS BOTÕES SÃO CAMINHOS DIFERENTES, e a diferença é o que separa "renasci" de "entrei de novo".
+     No LIVRE o jogador morto NUNCA saiu da sala: o socket está aberto, o slot é dele e o chat funciona.
+     Renascer é `respawnAqui()` → `{t:"respawn"}` na mesma conexão. Antes era `play({room})`, que chama
+     `game.join()` → `game.leave(true)` → `{t:"quit"}` e FECHA o socket: daí saíam um "Fulano saiu" e um
+     "Fulano entrou" no feed para quem só tinha clicado aqui, e — pior — uma janela de até 3 s em que o
+     nick dele voltava para o bolo e um preenchimento podia tomá-lo, devolvendo-lhe `NICK_IN_ROOM` na
+     própria sala em que ele estava. Recusado, `respawnAqui` cai sozinho no `play` de antes.
+     No BATTLE ROYALE não há renascer — é o que "sem respawn" quer dizer —, e apontar para a MESMA sala
+     roubava do jogador a tela final inteira: o `quit` tirava a sessão da sala, o join seguinte esbarrava
+     em `acceptsJoin()` (que ali nunca aceita) e, quando o `endRound` difundia o pódio, aquela sessão já
+     não estava em `room.sessions`. Por isso lá o botão é "outra partida" (sala nova) e a dica diz que
+     ficar rende o pódio. */
   const semRespawn = h.mode === MODE.BR;
   const rodape = <>
     <div className="dead-actions">
       <button className="btn-primary" data-go="play"
-        onClick={() => play(semRespawn ? {} : { room: m.room })}>{semRespawn ? LB.newMatch : LB.respawn}</button>
+        onClick={() => (semRespawn ? play({}) : respawnAqui(m.room))}>{semRespawn ? LB.newMatch : LB.respawn}</button>
       <button className="btn-secondary" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.toLobby}</button>
     </div>
     <div className="dead-views">

@@ -5,7 +5,7 @@
 // e `ui.css` é escrito à mão, nunca sobrescrito por `node client/src/theme/port.js`.
 // As cores continuam vindo dos tokens do tema, então a tela segue mudando com o relógio.
 import React, { useEffect, useState } from "react";
-import { skinById, RARITY_COLORS } from "@warspace/shared";
+import { skinById, RARITY_COLORS, MODE } from "@warspace/shared";
 import { skinName, rarityLabel } from "../i18n/catalog.js";
 import { keysOf } from "../game/input/Keyboard.js";
 import { useStore } from "../state/store.js";
@@ -58,18 +58,24 @@ function Body() {
   // ⚠️ E RETOMA o que a guarda segurou: quem chegou por um link de convite (`?sala=`) ou clicou em
   // renascer sem nunca ter nomeado o planeta foi trazido para cá com o pedido guardado em `pendingPlay`
   // — mandá-lo para a tela de Modos aqui faria o link do amigo terminar numa sala qualquer.
-  // ⚠️ SÓ NA CRAZYGAMES O BOTÃO ENTRA NA PARTIDA, e não na tela de Modos: são dois cliques e uma tela a
-  // menos até o primeiro frame, que é o que ELA exige do Full Launch ("land directly in gameplay") — e
-  // é a mesma exigência que dispensa o nome, ver ENTRA_DIRETO em portal/flags.js. A tela de Modos
-  // continua a um clique de distância, na grade de baixo — quem quer battle royale ou esquadrão a
-  // encontra; quem só quer ver o jogo não passa por ela. Nos outros portais (Poki incluída) e no site
-  // nada muda: a escolha do modo ANTES de entrar, com o planeta nomeado, é o que a tela inicial sempre
-  // ofereceu — generalizar para `PORTAL` deixava todo portal entrando sem nome e sem passar por Modos.
+  // ⚠️ O BOTÃO ENTRA NA PARTIDA, não na tela de Modos. Ele levava a Modos, e o caminho até o primeiro
+  // frame era: nomear o planeta · JOGAR · escolher o modo · JOGAR de novo. Duas telas e dois cliques para
+  // uma decisão que a esmagadora maioria não toma — o Livre É o jogo, e quem quer battle royale ou
+  // esquadrão continua a UM clique, no botão "Modos" da grade logo abaixo. O que NÃO muda é a exigência
+  // do nome: nomear o planeta é a única coisa que se pede antes de entrar, e ela continua aqui.
+  // ⚠️ `pendingPlay` continua sendo o PRIMEIRO ramo: quem chegou por um link de convite (`?sala=`) ou
+  // clicou em renascer sem nunca ter nomeado o planeta foi trazido para cá com o pedido guardado, e
+  // mandá-lo para uma sala qualquer do Livre faria o link do amigo terminar no lugar errado.
+  // ⚠️ O ramo da CrazyGames fica: lá o `gameMode` é o que sobrou da última visita a Modos e o Full Launch
+  // dela exige "land directly in gameplay" — é comportamento certificado, não se mexe de passagem.
+  // ⚠️ Efeito colateral conhecido: o funil do GA perde o passo `/tela/modes` no caminho principal (o
+  // `page_view` virtual só sai quando a tela troca). Não é regressão — é a tela deixando de existir no
+  // meio do caminho. Não "consertar" essa queda depois.
   const jogar = async () => { if (!ENTRA_DIRETO && !nick.trim()) { toast(LB.nickAsk, 3500); focaNome(); return; } if (nick.trim() && !await commit()) return;
     const pp = app.get().pendingPlay;
     if (pp) play(pp);
     else if (ENTRA_DIRETO) play({ mode: app.get().gameMode | 0, teamSize: 1, party: null });
-    else go("modes"); };
+    else play({ mode: MODE.FREE, teamSize: 1, party: null }); };
   // ⚠️ OPÇÕES SAIU DAQUI e virou o ícone do topo do cartão. O número de colunas desta grade responde à
   // largura do CARTÃO, e no celular em pé cabem cinco: o 6º alvo caía sozinho numa segunda fileira, ou
   // seja uma linha inteira do cartão para o atalho menos usado. Lá em cima ele é um ícone no canto,
@@ -106,7 +112,9 @@ function Body() {
           <div className="skinmeta"><b id="m-skin">{skinName(sk)}</b><i id="m-rar" style={{ color: RC[sk.rarity] || "#999" }}>{rarityLabel(sk.rarity)}</i></div>
         </div>
       </div>
-      <button className="btn-primary" data-go="modes" onClick={jogar}>{LB.play}</button>
+      {/* `data-go` descreve o DESTINO (é o que `theme/preview.js` e a sonda de responsividade leem); daqui
+          se vai para o jogo, não para Modos. O botão "Modos" da grade abaixo mantém o `data-go="modes"`. */}
+      <button className="btn-primary" data-go="game" onClick={jogar}>{LB.play}</button>
       <div className="entry-links">{links.map(([s, l]) =>
         <button key={s} className="btn-secondary" data-go={s} onClick={() => go(s)}><NavIcon k={s} /><span>{l}</span></button>)}</div>
       <div className="guest-note" data-kind={guest ? "guest" : "registered"}>

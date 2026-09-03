@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { skinById } from "@warspace/shared";
+import { skinById, MODE } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { play, loadRooms, loadTop5, toast } from "../state/actions.js";
@@ -7,6 +7,7 @@ import { useLabels } from "../hooks/useTheme.js";
 import { preenche } from "../i18n/index.js";
 import { useInterval } from "../hooks/useInterval.js";
 import { ScreenHeader, MiniRank, Screen } from "./bits.jsx";
+import { fmtTime } from "./format.js";
 import SkinPreview from "./SkinPreview.jsx";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -41,14 +42,31 @@ function Body() {
       {/* ⚠️ A coluna de BOTS saiu. Ela dizia, em números, que os adversários daquela sala não são gente — e
           numa sala de 1 humano + 15 preenchimentos ela era o dado mais visível da linha. O que ficou é o que
           ajuda a escolher: código, shard, quão cheia está, ping. */}
-      <div className="room-row head"><span className="code">{LB.roomCode}</span><span className="shard">{LB.shard}</span><span className="pl">{LB.youLabel}s</span><span className="ping">{LB.ping}</span><span className="act"></span></div>
-      {rooms.map(r => { const full = r.players >= r.max, dentro = Math.min(r.players + (r.bots || 0), r.max); return <div className={"room-row" + (full ? " full" : "")} data-code={r.code} key={r.code}>
-        <b className="code">{r.code}</b><span className="shard">{r.shard}</span>
+      <div className="room-row head"><span className="code">{LB.roomCode}</span><span className="mode">{LB.roomModeCol}</span><span className="shard">{LB.shard}</span><span className="pl">{LB.youLabel}s</span><span className="tempo">{LB.roomTimeCol}</span><span className="act"></span></div>
+      {rooms.map(r => {
+        // ⚠️ Quem decide se dá para entrar é o SERVIDOR (`acceptsJoin` → `open`), não a contagem: uma sala de
+        // Battle Royale em andamento tem vaga de sobra e mesmo assim está trancada. `open` ausente é shard
+        // irmão em build antiga (a lista agrega os peers) — aí vale a conta velha.
+        const fechada = r.open === undefined ? r.players >= r.max : r.open === false;
+        const motivo = r.closed || (fechada ? (r.mode === MODE.BR && r.phase !== "lobby" ? "started" : "full") : null);
+        const dentro = Math.min(r.players + (r.bots || 0), r.max);
+        // `round` é o que sobra da rodada em segundos: null = sala sem fim (é opção do dono no Livre), e no
+        // lobby do BR o relógio ainda não começou a correr.
+        const tempo = r.phase === "lobby" ? LB.roomWaiting : r.round == null ? LB.roomEndless : fmtTime(r.round);
+        return <div className={"room-row" + (fechada ? " full" : "") + (motivo === "started" ? " locked" : "")} data-code={r.code} key={r.code}>
+        <b className="code">{r.code}</b>
+        <span className="mode" data-mode={r.mode === MODE.BR ? "br" : "free"}>{r.mode === MODE.BR ? LB.roomBr : LB.roomFree}</span>
+        <span className="shard">{r.shard}</span>
         {/* quantos estão DENTRO, humanos e preenchimento no mesmo número — sem os bots, uma sala movimentada
-            aparecia como "1/30" e parecia deserta. ⚠️ Quem decide se ainda cabe alguém continua sendo o
-            `full`, que olha só os humanos: é a mesma conta que o servidor faz em `acceptsJoin`. */}
-        <span className="pl"><i className="bar" style={{ "--p": r.max ? dentro / r.max : 0 }}></i>{dentro}/{r.max}</span><span className="ping">{r.ping != null ? r.ping : "—"}</span>
-        <span className="act"><button className="btn-mini" data-go="play" data-room={r.code} disabled={full} onClick={() => play({ room: r.code })}>{LB.enter}</button></span></div>; })}
+            aparecia como "1/30" e parecia deserta. */}
+        <span className="pl"><i className="bar" style={{ "--p": r.max ? dentro / r.max : 0 }}></i>{dentro}/{r.max}</span>
+        <span className="tempo">{tempo}</span>
+        {/* Trancada MOSTRA o cadeado em vez de sumir com a linha: some, o jogador não entende por que a sala
+            que ele viu há 5 s não está mais lá. E o clique leva o modo DA SALA junto — na lista se escolhe
+            uma sala, não um modo, e sem isso um servidor antigo ainda recusaria por divergência. */}
+        <span className="act">{fechada
+          ? <span className="lock" title={motivo === "started" ? LB.roomLocked : LB.roomFullTag}>🔒</span>
+          : <button className="btn-mini" data-go="play" data-room={r.code} onClick={() => play({ room: r.code, mode: r.mode, teamSize: r.teamSize || 1 })}>{LB.enter}</button>}</span></div>; })}
       {!rooms.length ? <div className="room-row empty dim" style={{ display: "block" }}><span className="hint">{LB.noRooms}</span></div> : null}
     </div>
     <aside className="card lobby-side"><div className="ph">{LB.top5}</div><MiniRank id="lobby-top5" rows={top5} n={5} /></aside>

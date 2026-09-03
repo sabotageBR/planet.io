@@ -7,4 +7,8 @@ export const NOOP_HOOKS=Object.freeze({
   onStat(){},onKill(){},onSample(){},
   onMatchEnd:async()=>null,
   onShutdown:async()=>{},
+  // Uma vida nova para quem já está na sala (renascer no Livre). Sem banco não há sessão a abrir, e
+  // `null` é a resposta certa: `Room.respawn` a trata como "esta vida não é gravada", que é o que o modo
+  // unsaved já significa em todo o resto.
+  openSession:()=>null,
 });

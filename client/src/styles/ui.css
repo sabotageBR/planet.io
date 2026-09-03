@@ -1907,14 +1907,37 @@ body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-round .round-side{
    simplesmente pousa por cima do conteúdo: os três números do rodapé sumiam debaixo deles. */
 #s-round .dead-actions{position:static}
 
-/* ── A LISTA DE SALAS PERDEU A COLUNA DE BOTS ──
-   Ela dizia em números que os adversários daquela sala não são gente. O grid dos temas e do base.css tem
-   SEIS colunas (código · shard · jogadores · bots · ping · ação) e a linha agora tem cinco filhos — sem
-   redefinir o template, o botão "Entrar" cairia na coluna do ping e a última sobraria vazia.
-   (1,1,0) e (0,2,0) para passar por cima do `:where` dos temas e do base.css. */
-body #room-list .room-row{grid-template-columns:70px 60px 1fr 60px 90px}
-/* No RETRATO o base.css já esconde `.shard` (e escondia `.bots`), então lá são quatro colunas para quatro
-   filhos visíveis — a regra de lá continua valendo sozinha. */
+/* ── A LISTA DE SALAS: MODO E TEMPO NO LUGAR DE BOTS E PING ──
+   A coluna de BOTS saiu porque dizia em números que os adversários daquela sala não são gente; a de PING
+   saiu porque o servidor NUNCA a preencheu (`Room.info()` não tem o campo) e ela mostrou "—" a vida toda.
+   No lugar entraram as duas coisas que ajudam a escolher uma sala e que o servidor já mandava sem ninguém
+   ler: o MODO e o TEMPO que resta da rodada.
+   São seis filhos (código · modo · shard · jogadores · tempo · ação), e o template tem que ser redefinido
+   porque o dos temas e o do base.css ainda descrevem a lista antiga — sem isto o botão "Entrar" cai na
+   coluna errada e a última sobra vazia. (1,1,1) para passar por cima do `:where` dos temas e do base.css. */
+body #room-list .room-row{grid-template-columns:70px 54px 56px 1fr 64px 90px}
+/* ⚠️ O RETRATO PRECISA DA REGRA AQUI, e isto já estava errado antes desta mudança: o comentário antigo
+   dizia que "a regra do base.css continua valendo sozinha", mas `body[data-mode="portrait"] .room-row` é
+   (0,2,1) e perde para o `#room-list` acima, que é (1,1,1) — o ID ganha. Ou seja o retrato vinha usando o
+   template do desktop e sobrava uma coluna vazia no fim. Some `.shard` (dado de operação, o único que
+   ninguém usa para escolher) e ficam cinco. */
+body[data-mode="portrait"] #room-list .room-row{grid-template-columns:64px 48px 1fr 58px 76px}
+body[data-mode="portrait"] #room-list .room-row .shard{display:none}
+/* ⚠️ E NA GAVETA TAMBÉM, que é desktop mas tem a largura de um celular. Medido: com a partida viva atrás,
+   `--drawer-w` dá ~435 px de linha, e as seis colunas empurravam o botão "Entrar" 55 px PARA FORA — a
+   `.lobby-wrap` ganhava rolagem horizontal (é o critério 6 de `responsive-check.mjs`, e o documento não
+   transborda, então só a varredura de contêiner rolável acusa). Some o `.shard` aqui pelo mesmo motivo do
+   retrato: entre "de que shard é" e "quanto falta", quem ajuda a ESCOLHER uma sala é o tempo. */
+body[data-shell="rail"] #room-list .room-row{grid-template-columns:64px 48px 1fr 58px 76px}
+body[data-shell="rail"] #room-list .room-row .shard{display:none}
+/* O modo é uma etiqueta, não um número: o BR ganha o destaque porque é o que muda o que vai acontecer ali. */
+#room-list .room-row .mode{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;opacity:.8}
+#room-list .room-row .mode[data-mode="br"]{color:var(--accent,#ffc857);opacity:1}
+#room-list .room-row .tempo{font-variant-numeric:tabular-nums;text-align:right;opacity:.85}
+/* Trancada: a linha continua na lista (some, e o jogador não entende para onde foi a sala que ele viu há
+   5 s), mas o botão vira cadeado — o alvo de clique desaparece junto com a promessa. */
+#room-list .room-row.locked .code{opacity:.65}
+#room-list .room-row .lock{display:inline-block;text-align:center;width:100%;opacity:.55;cursor:not-allowed;font-size:15px}
 
 /* ── LINK DA POLÍTICA DE PRIVACIDADE (só no site; ver Prefs.jsx) ──
    Fica ABAIXO da barra de botões de Opções, discreto: é obrigação legal e dos portais, não um destaque

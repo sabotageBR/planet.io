@@ -242,14 +242,15 @@ export class Sim{
     // `byHow` é a arma de quem AMOLECEU: sem ela, a linha com assistência desenhava o mesmo ícone duas
     // vezes ("🍴🍴"), porque `how` continua sendo 'eat' — quem finalizou foi uma boca.
     this._feed({k:e.bySlot>=0?'kill':'hazard',a:by?by.slot:-1,b:e.slot,how,by:assist<0?null:assist,byHow:assist<0?null:byHow});
-    if(by&&by.streak&&FEED.STREAK_AT.includes(by.streak))this._feed({k:'sys',a:by.slot,b:-1,how:'streak',by:null,n:by.streak});}
+    if(by&&by.streak&&FEED.STREAK_AT.includes(by.streak))this._feed({k:'sys',a:by.slot,b:-1,how:'streak',by:null,n:by.streak});
+    return how;}   // o `how` já era resolvido aqui e morria na função: quem o quer é a coluna `matches.how` (ver _died)
   _died(e){
     const gp=this.players.get(e.slot);if(!gp||gp.dead)return;const w=this.world,h=this._hit.get(e.slot),by=e.bySlot>=0?this.players.get(e.bySlot):null;
     const ps=w.players.get(e.slot);if(ps)gp.score=ps.score;
     this._ev(EVENT.DEATH,h?h.x:0,h?h.y:0,h?h.r:0,e.slot,by?by.slot:NO_SLOT,gp.score);
     gp.streak=0;gp.deaths++;this.playersDirty=true;this._talk(e.slot,e.cause==='zone'?'zona':'morte',by?by.name:null);
     this._memo(e.slot,'morte',e.bySlot);
-    this._feedMorte(e,gp,by);
+    const how=this._feedMorte(e,gp,by);
     // ⚠️ O feed sai ACIMA do respawn de bot: no modo Livre o bot renasce e o `return` abaixo engoliria a
     // linha — e abate de bot é a MAIORIA dos abates da sala.
     // Sem respawn (Battle Royale): o bot morre de vez, como todo mundo. É a ÚNICA linha que ressuscitava alguém.
@@ -261,9 +262,45 @@ export class Sim{
       placement:this.mode.lastAlive?this.players.size-this._elim+1:0,players:this.mode.lastAlive?this.players.size:0};
     gp.deathInfo=info;this._emit('death',info);
     const sessionId=gp.sessionId,done=r=>this._emit('rewards',{slot:e.slot,sessionId,rewards:r||null});
+    // ⚠️ `killerKind` é o que separa "morreu para um bot" de "morreu para o cenário": `killed_by_user_id`
+    // é NULL nos dois casos, e sem distinguir os dois a pergunta mais importante da retenção ("quem mata o
+    // novato?") não tem resposta. `killerMass` é o par dela — a razão com `max_mass` é o que acusa (ou
+    // inocenta) os dois gigantes que a sala semeia. Os dois são null quando a morte não teve algoz.
+    const killerKind=by?(by.isBot?'bot':'human'):null,killerMass=by?Math.round(w.massOf(by.slot)):null;
     Promise.resolve().then(()=>this.hooks.onMatchEnd({sessionId,cause:e.cause==='zone'?'zone':byHole?'blackhole':this.mode.lastAlive?'eliminated':'eaten',
-      killedBySessionId:by&&!by.isBot?by.sessionId:null,score:gp.score,maxMass,durationMs,mode:this.modeId,team:gp.team,placement:this._elim?this.players.size-this._elim+1:0,players:this.players.size}))
+      killedBySessionId:by&&!by.isBot?by.sessionId:null,score:gp.score,maxMass,durationMs,mode:this.modeId,team:gp.team,placement:this._elim?this.players.size-this._elim+1:0,players:this.players.size,
+      killerKind,killerMass,how}))
       .then(done,err=>{if(this.log)this.log.warn(`onMatchEnd (${gp.name}) falhou:`,err&&err.message);done(null);});}
+  /**
+   * RENASCER NA MESMA SESSÃO (só o Livre; quem chama e valida é `Room.respawn`).
+   *
+   * Antes, renascer era `leave` + `join` com um socket NOVO: o cliente fechava a conexão e abria outra. Isso
+   * produzia um "Fulano saiu / Fulano entrou" no feed para quem só tinha clicado em DE NOVO — e a guarda de
+   * `FEED.JOIN_QUIET_MS` (20 s) não cobria quem ficou lendo a tela de morte, que é o caso normal. Mas o
+   * feed era o sintoma menos grave: entre o `quit` e a re-entrada há até 3 s (o `await hooks.onPlayerJoin`,
+   * `JOIN_TIMEOUT_MS`), e nesse intervalo o nick sai de `usedNicks` e um preenchimento pode TOMÁ-LO — o
+   * jogador clicava em renascer e levava `NICK_IN_ROOM` na própria sala em que estava. Some a isso uma
+   * linha nova no roster a cada vida e o handshake inteiro pago à toa.
+   *
+   * ⚠️ ESTA FUNÇÃO É A DONA DA LISTA DO QUE UMA VIDA NOVA ZERA, e essa lista é o risco todo da mudança.
+   * No caminho antigo "vida nova" era um `GamePlayer` novo saído de `_mk`, então tudo nascia zerado de
+   * graça. Aqui é preciso zerar à mão, e DEPOIS do `_rosterFold` que a morte já fez:
+   *   · esquecer `rosterFolded=false` faz a 2ª vida nunca entrar no pódio;
+   *   · esquecer `kills`/`deaths`/`food`/`score` faz o `_rosterFold` da morte seguinte contar tudo DUAS vezes.
+   * Se um campo novo entrar em `_mk` e for por vida, ele entra aqui também.
+   * ⚠️ `this._elim` NÃO é decrementado: no BR não há revive (é o modo em que ele conta), e mexer nele aqui
+   * só poderia estragar o `placement` de outra pessoa.
+   */
+  revive(slot){
+    const gp=this.players.get(slot);if(!gp||!gp.dead||gp.isBot)return false;
+    const w=this.world;
+    gp.dead=false;gp.deathTick=-1;gp.deathInfo=null;gp.placement=0;gp.rosterFolded=false;
+    gp.score=0;gp.kills=0;gp.botKills=0;gp.deaths=0;gp.food=0;gp.streak=0;gp.maxMass=0;gp.top1Ticks=0;
+    gp.quadrants=new Set();gp.joinedTick=w.tick;gp.gotInput=false;gp.lastInput={seq:0,tx:0,ty:0,flags:0};
+    this._hit.delete(slot);this._lastHit.delete(slot);this._statTick.delete(slot);
+    w.respawnPlayer(slot);
+    this.playersDirty=true;
+    return true;}
   /**
    * Fim de rodada (o mundo explodiu): fecha a partida de todo humano vivo pelo mesmo caminho de persistência da morte
    * (`cause:'round'`, sem mandar `dead` — quem manda o placar é a Room) e devolve o placar final: vivos por massa

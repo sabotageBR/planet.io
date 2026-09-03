@@ -21,6 +21,7 @@ import {mountAvatar} from './avatar.js';
 import {mountAdmin} from './admin.js';
 import {createSettings} from '../repos/settings.js';
 import {createAudit} from '../repos/audit.js';
+import {createAnalytics} from '../repos/analytics.js';
 import {createTunables} from '../tunables.js';
 // rotas desta camada; /api/rooms|auto|config e /healthz ficam com o servidor do jogo
 // ⚠️ ESTE REGEX É O GATE. Uma rota montada no router e ausente daqui simplesmente NÃO CHEGA ao handler:
@@ -34,7 +35,7 @@ export const healthFields=({db,persist}={})=>({db:db&&db.health.down?'down':'ok'
  */
 export function createApi({db,log,config,persist=null,limiter=createRateLimiter(),google:googleImpl=null}){
   const tokens=createTokens(db,log),users=createUsers(db),ledger=createLedger(db),skins=createSkins(db),matches=createMatches(db),achievements=createAchievements(db),ranking=createRanking(db),avatars=createAvatars(db),identities=createIdentities(db);
-  const settings=createSettings(db),audit=createAudit(db,log),tunables=createTunables({settings,log});
+  const settings=createSettings(db),audit=createAudit(db,log),tunables=createTunables({settings,log}),analytics=createAnalytics(db);
   const optionalUser=async ctx=>ctx.token?await tokens.resolve(ctx.token):null;
   const requireUser=async ctx=>{if(!ctx.token)throw err(401,'unauthorized','faça login (Bearer)');const u=await tokens.resolve(ctx.token);if(!u)throw err(401,'unauthorized','token inválido ou expirado');return u;};
   const router=createRouter({log,limiter,prefixes:PREFIXES,trustClientIp:!!(config&&config.trustClientIp)});
@@ -42,7 +43,7 @@ export function createApi({db,log,config,persist=null,limiter=createRateLimiter(
   // do Google (a validação real é uma ida ao `tokeninfo`). Em produção ninguém passa nada e nada muda.
   const google=googleImpl||createGoogle({config,log});
   const crazygames=createCrazyGames({config,log});
-  const deps={db,log,config,users,tokens,ledger,skins,matches,achievements,ranking,avatars,identities,settings,audit,tunables,google,crazygames,limiter,requireUser,optionalUser};
+  const deps={db,log,config,users,tokens,ledger,skins,matches,achievements,ranking,avatars,identities,settings,audit,tunables,analytics,google,crazygames,limiter,requireUser,optionalUser};
   mountAuth(router,deps);mountMe(router,deps);mountSkins(router,deps);mountRanking(router,deps);mountAvatar(router,deps);mountAdmin(router,deps);
   // Parâmetros salvos entram ANTES da primeira sala existir; depois o poll reconcilia. E o `ADMIN_EMAILS`
   // é reconciliado no boot — SÓ PROMOVE: rebaixar por ConfigMap tranca o admin para fora por um typo.

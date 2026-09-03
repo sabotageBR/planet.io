@@ -321,7 +321,20 @@ export class Room{
     // matchmaking existe para fazer.
     if(this.phase==='lobby')return this.sessions.size<this.max;
     return !this.isFull()&&!this.mode.lobby;}
-  info(){return{code:this.code,shard:this.shard,mode:this.modeId,teamSize:this.teamSize,phase:this.phase,open:this.acceptsJoin(),
+  /**
+   * O MOTIVO da recusa, para quem precisa dizê-lo: `null` (pode entrar), `'full'` (não tem vaga) ou
+   * `'started'` (a partida já começou — Battle Royale). `acceptsJoin()` continua sendo a porta única e o
+   * booleano; isto é só o irmão que sabe explicar, e os dois têm que concordar por construção.
+   * ⚠️ Sala TERMINADA não aparece aqui de propósito: `RoomManager.getRoom` já devolve null para `over`, e
+   * o matchmaking a substitui por uma nova antes de qualquer recusa chegar ao jogador.
+   * "Cheia" e "já começou" são coisas diferentes e mandam o jogador fazer coisas diferentes — esperar uma
+   * vaga numa sala do mesmo tamanho, ou procurar uma partida nova. É a mesma cirurgia que quebrou o código
+   * `ROOM`, que valia por cinco coisas, e pelo mesmo motivo.
+   */
+  joinRefusal(){
+    if(this.acceptsJoin())return null;
+    return this.phase!=='lobby'&&this.mode.lobby?'started':'full';}
+  info(){return{code:this.code,shard:this.shard,mode:this.modeId,teamSize:this.teamSize,phase:this.phase,open:this.acceptsJoin(),closed:this.joinRefusal(),
     players:this.sessions.size,max:this.max,bots:this.sim.botCount(),round:this.roundLeft(),
     // ⚠️ o campo fica AQUI, mas o filtro é na LISTAGEM (RoomManager.listRooms): `adminInfo()` é construído em
     // cima deste objeto, e o painel tem que continuar vendo a sala privada.
@@ -359,6 +372,9 @@ export class Room{
     const slot=this.freeSlot(),team=this._teamFor(party);
     this.usedNicks.add(String(name||'').toLowerCase());           // o preenchimento não pode repetir o nick de quem está na sala
     this.sim.addHuman(slot,{name,registered,skinId,sessionId,userId,team,level,spawn:!lobby});
+    // O sorteio do nascimento achou lugar, ou desistiu e devolveu a última tentativa? (World._spawnPiece)
+    // No lobby não há peça, então não há o que medir.
+    if(!lobby&&this.metrics&&this.metrics.spawn){const ps=this.sim.world.players.get(slot);if(ps)this.metrics.spawn(ps.spawnSafe!==false);}
     const gp=this.sim.players.get(slot);if(gp){gp.country=country||null;this.flagsDirty=true;}
     if(lobby&&!this.lobbyUntil){this.lobbyStart=this.sim.tick;this.lobbyUntil=this.sim.tick+this.lobbyTicks;}   // a janela começa no PRIMEIRO humano
     const pc=this.sim.world.piecesOf(slot)[0];if(pc){session.cx=pc.x;session.cy=pc.y;}
@@ -371,9 +387,14 @@ export class Room{
     // e é ele que mantém o `anonBots` do BR intacto sem uma linha a mais.
     if(gp){
       this._rosterVolta(gp);
-      if(!this._voltouAgora(gp)){
-        this._pushFeed({k:'sys',a:slot,b:-1,how:'joined',by:null,name:gp.name||null});
-        this._avisaAdmins(session,gp);}}
+      // ⚠️ `!lobby` no FEED, para casar com o `leave`, que já suprimia a linha de saída na fase de espera.
+      // A assimetria era antiga e silenciosa: o lobby anunciava quem chegava e não quem desistia, e como o
+      // `BrLobby` não desenha o feed, aquilo era ruído que ninguém via ocupando o teto do dreno.
+      // O AVISO AO ADMIN não entra nessa guarda: "entrou gente de verdade" vale igual no lobby — é
+      // justamente lá que ele quer saber que a partida vai encher.
+      const voltou=this._voltouAgora(gp);
+      if(!lobby&&!voltou)this._pushFeed({k:'sys',a:slot,b:-1,how:'joined',by:null,name:gp.name||null});
+      if(!voltou)this._avisaAdmins(session,gp);}
     return slot;}
   /**
    * A MESMA pessoa acabou de sair desta sala? No Livre renascer é `leave`+`join` (o botão DE NOVO fecha o
@@ -385,6 +406,41 @@ export class Room{
     if(t==null)return false;
     this._saiuEm.delete(k);
     return Date.now()-t<FEED.JOIN_QUIET_MS;}
+  /**
+   * RENASCER SEM SAIR DA SALA (o botão DE NOVO do Livre).
+   *
+   * O jogador morto continua na sala — socket aberto, slot ocupado, chat funcionando. Ele não saiu, e o
+   * feed não pode dizer que saiu. Antes disto, renascer era `leave`+`join` com um socket novo, e o preço
+   * não era só a linha errada no feed: entre os dois havia até 3 s em que o nick saía de `usedNicks` e um
+   * preenchimento podia tomá-lo, devolvendo `NICK_IN_ROOM` ao jogador na própria sala em que ele estava.
+   *
+   * ⚠️ O QUE ESTA FUNÇÃO **NÃO** FAZ É A DEMANDA INTEIRA: nada de `_pushFeed`, `_rosterLeft`,
+   * `_rosterVolta`, `usedNicks.delete` ou `sessions.delete`. Ninguém saiu.
+   *
+   * Devolve `false` quando não dá — e aí o cliente cai no caminho antigo (`play({room})`), que continua
+   * inteiro e é a rede de segurança.
+   */
+  respawn(session){
+    const slot=session.slot;
+    if(this.over||this.phase!=='live')return false;
+    if(this.mode.lastAlive)return false;                      // Battle Royale: "sem respawn" é o modo
+    if(this.sessions.get(slot)!==session)return false;
+    const gp=this.sim.players.get(slot);
+    if(!gp||!gp.dead)return false;
+    if(!this.sim.revive(slot))return false;
+    // Vida nova = sessão de persistência nova. A da vida anterior já foi fechada pelo `onMatchEnd` da morte
+    // (e `MatchSession.end` é idempotente), então não há nada a desfazer aqui — só começar a contar.
+    // Sem banco, `openSession` devolve null e a vida corre sem ser gravada, como todo o resto do unsaved.
+    const hooks=this.sim.hooks;   // pode ser null (sala montada à mão nos testes) e no-op sem banco
+    const sid=hooks&&hooks.openSession?hooks.openSession({userId:session.userId??null,nick:gp.name,
+      kind:gp.registered?'registered':'guest',skinId:gp.skinId|0,roomCode:this.code}):null;
+    gp.sessionId=sid;session.sessionId=sid||session.sessionId;
+    // A AOI volta a seguir as peças próprias sozinha (`net/snapshot.js` só olha `specSlot` quando não há
+    // peça viva), mas o cliente precisa saber que parou de assistir alguém.
+    session.specSlot=-1;
+    const pc=this.sim.world.piecesOf(slot)[0];if(pc){session.cx=pc.x;session.cy=pc.y;}
+    session.sendJson({t:'alive',slot,sessionId:gp.sessionId,tick:this.sim.tick});
+    return true;}
   /**
    * Sai de vez: onMatchEnd(cause) se ainda vivo, remove do mundo.
    * ⚠️ No LOBBY não há partida para encerrar — o jogador está na sala, não no mapa, e o `gp` existe e não

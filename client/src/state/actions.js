@@ -456,6 +456,28 @@ export async function play({ room, mode, teamSize, party } = {}) {
   partidaIniciada({ mode: md, teamSize: ts, party: pt });
   if (PORTAL) portal.jogoComecou();
 }
+/**
+ * Renascer NA MESMA SALA e na mesma conexão (Livre). O jogador morto nunca saiu da sala — o socket está
+ * aberto e o chat funciona —, então mandá-lo por `play()` fechava o socket para abrir outro, o que produzia
+ * um "saiu/entrou" no feed e, pior, abria uma janela em que um preenchimento podia tomar o nick dele.
+ *
+ * ⚠️ ELE PRECISA REFAZER O QUE `play()` FAZ E QUE NÃO É ENTRAR NA SALA. O anúncio de portal e o
+ * `match_start` do GA moram lá dentro porque `play()` era a porta única; saindo por aqui, o midroll do
+ * RENASCIMENTO — que é a maioria deles numa sessão — sumiria da receita em silêncio.
+ * ⚠️ Recusado (socket caído, sala acabada, Battle Royale), cai no `play({room})` de sempre: o caminho
+ * antigo continua inteiro e é a rede.
+ */
+export async function respawnAqui(room) {
+  const g = getGame();
+  if (!g || !g.respawn || !g.respawn()) return play(room ? { room } : {});
+  if (PORTAL) await portal.anuncio("midroll");
+  levelUpFila = null;
+  const st = app.get();
+  app.update(s => ({ ...s, screen: "game", rewards: null, rewardsPending: false,
+    overlays: { ...s.overlays, account: false, pause: false } }));
+  partidaIniciada({ mode: st.gameMode | 0, teamSize: st.teamSize || 1, party: st.party ? st.party.code : null });
+  if (PORTAL) portal.jogoComecou();
+}
 // ── modos e lobby de equipe ────────────────────────────────────────────────
 export function setMode(mode, teamSize = 1) { app.update({ gameMode: mode | 0, teamSize: teamSize | 0 || 1 }); }
 const meNick = () => (app.get().session.user || {}).nick || "Viajante";

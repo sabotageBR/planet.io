@@ -6,17 +6,53 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { api, getToken, setToken, setOnAuthFail } from "./api.js";
+import { ordenar, proxOrdem } from "./ordenar.js";
 import "./admin.css";
 
-const TELAS = [["usuarios", "Usuários"], ["salas", "Salas"], ["aviso", "Aviso global"], ["parametros", "Parâmetros"], ["auditoria", "Auditoria"]];
+const TELAS = [["usuarios", "Usuários"], ["salas", "Salas"], ["retencao", "Retenção"], ["aviso", "Aviso global"], ["parametros", "Parâmetros"], ["auditoria", "Auditoria"]];
 const rota = () => (location.pathname.replace(/^\/admin\/?/, "").split("/")[0] || "usuarios");
 const vaPara = t => { history.pushState({}, "", "/admin/" + t); dispatchEvent(new PopStateEvent("popstate")); };
 const dt = s => (s ? new Date(s).toLocaleString("pt-BR") : "—");
 const num = n => Number(n || 0).toLocaleString("pt-BR");
+/** Segundos → "m:ss" (ou "1h02"). Duração de partida em segundos crus não se lê. */
+const tempo = s => { s = Math.max(0, Math.round(+s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+  return h ? `${h}h${String(m).padStart(2, "0")}` : `${m}:${String(s % 60).padStart(2, "0")}`; };
 
 function Erro({ e, onClose }) {
   if (!e) return null;
   return <div className="ad-erro" role="alert"><span>{e}</span><button className="x" onClick={onClose}>✕</button></div>;
+}
+
+/**
+ * Cabeçalho ordenável. UM componente para as cinco tabelas — ele só emite `(by,dir)` e deixa o pai
+ * decidir se aquilo significa "buscar de novo no servidor" ou "reordenar em memória". Sem `col`, o `<th>`
+ * sai cru: é o que mantém a coluna de tags e a de "Remover" sem a mão e sem a seta.
+ * ⚠️ `aria-sort` vai no `th` e no máximo um por tabela tem valor diferente de "none" — daí o componente
+ * receber o `ord` inteiro, e não um booleano. A seta é `aria-hidden` porque, sem isso, o leitor de tela
+ * anuncia "moedas, triângulo para baixo" E "ordenado decrescente": a mesma informação duas vezes, uma
+ * delas destroçada.
+ */
+function Th({ col, ord, set, padrao = "desc", n = false, children }) {
+  if (!col) return <th className={n ? "n" : undefined}>{children}</th>;
+  const ativa = ord.by === col, dir = ativa ? ord.dir : null;
+  return <th className={n ? "n" : undefined} aria-sort={ativa ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+    <button type="button" className="ad-ord" onClick={() => set(proxOrdem(ord, col, padrao))}>
+      {children}<i aria-hidden="true">{dir === "asc" ? "▲" : "▼"}</i></button></th>;
+}
+
+/**
+ * O rodapé que torna "ordenado" honesto. Ordenar no servidor faz o rótulo ser verdade; DIZER que há corte
+ * é o que o mantém verdade — sem esta linha, um admin rola até o fim de uma lista ordenada por "visto" e
+ * conclui "ninguém está inativo há mais de X" tendo visto 50 de 5000, sem nada na tela contra o que
+ * conferir a conclusão.
+ */
+function Paginacao({ n, more, carregando, onMais }) {
+  if (!n) return null;
+  return <div className="ad-pag">
+    <span>mostrando {num(n)}{more ? " · há mais" : ""}</span>
+    <span className="cresce" />
+    {more ? <button onClick={onMais} disabled={carregando}>{carregando ? "carregando…" : "Carregar mais"}</button> : null}
+  </div>;
 }
 
 function Login({ onOk }) {
@@ -38,13 +74,29 @@ function Login({ onOk }) {
 function Usuarios({ erro }) {
   const [q, setQ] = useState(""), [kind, setKind] = useState(""), [banned, setBanned] = useState("");
   const [rows, setRows] = useState([]), [sel, setSel] = useState(null), [carregando, setCarregando] = useState(false);
-  const buscar = async () => {
+  const [ord, setOrd] = useState({ by: "id", dir: "desc" }), [pag, setPag] = useState({ more: false, next: null });
+  /**
+   * ⚠️ TROCAR A ORDENAÇÃO ZERA O CURSOR (`cursor=null` sempre que não é "carregar mais"). Com um cursor
+   * velho no bolso, a primeira página da ordem NOVA começaria no meio do conjunto — pulando um pedaço em
+   * silêncio, que é o pior jeito de errar paginação.
+   * ⚠️ E o servidor pode ter ordenado por OUTRA coisa (pod em build antiga durante um rollout): quem
+   * manda no indicador é o `by`/`dir` que VOLTOU, nunca o que foi pedido.
+   */
+  const buscar = async (cursor = null) => {
     setCarregando(true);
     try { const p = new URLSearchParams(); if (q) p.set("q", q); if (kind) p.set("kind", kind); if (banned) p.set("banned", banned);
-      const r = await api.users("?" + p); setRows(r.users); }
+      p.set("by", ord.by); p.set("dir", ord.dir);
+      if (cursor && cursor.before != null) p.set("before", cursor.before);
+      if (cursor && cursor.offset != null) p.set("offset", cursor.offset);
+      const r = await api.users("?" + p);
+      setRows(cursor ? rs => rs.concat(r.users) : r.users);
+      if (r.by) setOrd({ by: r.by, dir: r.dir });
+      setPag({ more: !!r.more, next: r.next || null }); }
     catch (e) { erro(e.message); } finally { setCarregando(false); }
   };
-  useEffect(() => { buscar(); }, []);
+  // A ordenação é do SERVIDOR, então trocá-la é buscar de novo — e é isso que faz o topo da lista ser o
+  // topo da BASE, e não o topo das 50 linhas que já estavam na tela.
+  useEffect(() => { buscar(); }, [ord.by, ord.dir]);
   const abrir = async id => { try { setSel(await api.user(id)); } catch (e) { erro(e.message); } };
   const acao = async (fn, msg) => { try { await fn(); if (sel) setSel(await api.user(sel.user.id)); buscar(); if (msg) erro(msg, "ok"); } catch (e) { erro(e.message); } };
   return <div className="ad-split">
@@ -56,7 +108,16 @@ function Usuarios({ erro }) {
         <button onClick={buscar}>Buscar</button>
       </div>
       <div className="ad-rolo"><table className="ad-tab click">
-        <thead><tr><th>#</th><th>nick</th><th>tipo</th><th className="n">xp</th><th className="n">moedas</th><th>visto</th><th /></tr></thead>
+        {/* A 7ª coluna (as tags admin/banido) NÃO é ordenável: são duas flags sem relação entre si, e o
+            filtro "banidos" da barra acima já responde a pergunta. Sem `col`, ela não ganha a mão. */}
+        <thead><tr>
+          <Th col="id" ord={ord} set={setOrd}>#</Th>
+          <Th col="nick" ord={ord} set={setOrd} padrao="asc">nick</Th>
+          <Th col="kind" ord={ord} set={setOrd} padrao="asc">tipo</Th>
+          <Th col="xp" ord={ord} set={setOrd} n>xp</Th>
+          <Th col="coins" ord={ord} set={setOrd} n>moedas</Th>
+          <Th col="seen" ord={ord} set={setOrd}>visto</Th>
+          <Th /></tr></thead>
         <tbody>{rows.map(u => <tr key={u.id} className={sel && sel.user.id === u.id ? "on" : ""} onClick={() => abrir(u.id)}>
           <td>{u.id}</td>
           <td>{u.nick}{u.name && u.name !== u.nick ? <em> {u.name}</em> : null}</td>
@@ -67,6 +128,7 @@ function Usuarios({ erro }) {
         </tr>)}
         {!rows.length && !carregando ? <tr><td colSpan={7} className="vazio">nada encontrado</td></tr> : null}</tbody>
       </table></div>
+      <Paginacao n={rows.length} more={pag.more} carregando={carregando} onMais={() => buscar(pag.next)} />
     </div>
     {sel ? <Detalhe d={sel} acao={acao} fechar={() => setSel(null)} /> : <div className="ad-detalhe vazio">selecione uma conta</div>}
   </div>;
@@ -102,22 +164,61 @@ function Detalhe({ d, acao, fechar }) {
       <button onClick={() => acao(() => api.revoke(u.id), "sessões derrubadas")}>Derrubar sessões</button>
       <button className={u.isAdmin ? "per" : ""} onClick={() => acao(() => api.setAdmin(u.id, !u.isAdmin))}>{u.isAdmin ? "Tirar admin" : "Tornar admin"}</button>
     </div>
-    <h3>Partidas recentes</h3>
-    <table className="ad-tab mini"><tbody>{d.matches.map(m => <tr key={m.id}>
-      <td>{dt(m.ended_at)}</td><td>{m.room_code}</td><td className="n">{num(m.score)}</td><td className="n">{num(m.max_mass)}</td><td>{m.cause}</td></tr>)}
-      {!d.matches.length ? <tr><td colSpan={5} className="vazio">nenhuma</td></tr> : null}</tbody></table>
-    <h3>Sessões</h3>
-    <table className="ad-tab mini"><tbody>{d.tokens.map(t => <tr key={t.id}>
-      <td>{t.kind}</td><td>{dt(t.created_at)}</td><td>{t.revoked_at ? "revogado" : dt(t.expires_at)}</td>
-      <td className="ua">{t.user_agent || "—"}</td></tr>)}</tbody></table>
+    {/* ⚠️ Estas duas ordenam NO CLIENTE, e é honesto porque o conjunto é fechado no servidor (LIMIT 10 e
+        LIMIT 20): não existe página 2, então ordenar o que está na tela ordena o recorte inteiro. A
+        condição para isso não virar mentira é o título DIZER o recorte — daí o "(10 últimas)".
+        Elas também não tinham `<thead>` nenhum: duas colunas numéricas sem rótulo, e ninguém sabia qual
+        era o score e qual era a massa. E `kills`/`duration_s` já vinham no fio e eram jogados fora. */}
+    <h3>Partidas recentes <small className="ad-dim">(10 últimas)</small></h3>
+    <MiniTab linhas={d.matches} vazio="nenhuma" pad={{ by: "ended_at", dir: "desc" }}
+      cols={[["ended_at", "quando", m => m.ended_at, m => dt(m.ended_at)],
+             ["room_code", "sala", m => m.room_code, m => m.room_code],
+             ["score", "score", m => m.score, m => num(m.score), true],
+             ["max_mass", "massa", m => m.max_mass, m => num(m.max_mass), true],
+             ["kills", "abates", m => m.kills, m => num(m.kills), true],
+             ["duration_s", "tempo", m => m.duration_s, m => tempo(m.duration_s), true],
+             ["cause", "fim", m => m.cause, m => m.cause]]} />
+    <h3>Sessões <small className="ad-dim">(20 últimas)</small></h3>
+    <MiniTab linhas={d.tokens} vazio="nenhuma" pad={{ by: "created_at", dir: "desc" }}
+      cols={[["kind", "tipo", t => t.kind, t => t.kind],
+             ["created_at", "criada", t => t.created_at, t => dt(t.created_at)],
+             ["expires_at", "expira", t => t.revoked_at || t.expires_at, t => (t.revoked_at ? "revogado" : dt(t.expires_at))],
+             ["user_agent", "navegador", t => t.user_agent, t => t.user_agent || "—", false, "ua"]]} />
   </div>;
+}
+
+/**
+ * Tabela pequena de conjunto FECHADO: ordena em memória (`ordenar.js`) e não pagina, porque não há o que
+ * paginar. `cols` = [chave, rótulo, valorCru, desenha, numérica?, classe].
+ * ⚠️ Ordena o valor CRU, nunca o desenhado: `num()` devolve "1.234", e "1.234" < "999" em qualquer
+ * comparação de texto — a coluna sairia ao contrário sem nada denunciando.
+ * ⚠️ As linhas vêm CRUAS do Postgres (`ended_at`, `max_mass`), enquanto a lista de contas vem camelCase
+ * pelo `toAdmin`: as chaves aqui são as do payload, não as do resto do painel.
+ */
+function MiniTab({ linhas, cols, vazio, pad }) {
+  const [ord, setOrd] = useState(pad);
+  const campos = Object.fromEntries(cols.map(([k, , cru]) => [k, cru]));
+  const rows = ordenar(linhas || [], campos, ord.by, ord.dir);
+  return <div className="ad-rolo"><table className="ad-tab mini">
+    <thead><tr>{cols.map(([k, rot, , , n]) => <Th key={k} col={k} ord={ord} set={setOrd} n={!!n}>{rot}</Th>)}</tr></thead>
+    <tbody>{rows.map((r, i) => <tr key={r.id != null ? r.id : i}>
+      {cols.map(([k, , , desenha, n, cls]) => <td key={k} className={[n ? "n" : "", cls || ""].filter(Boolean).join(" ") || undefined}>{desenha(r)}</td>)}</tr>)}
+      {!rows.length ? <tr><td colSpan={cols.length} className="vazio">{vazio}</td></tr> : null}</tbody>
+  </table></div>;
 }
 
 function Salas({ erro }) {
   const [d, setD] = useState(null), [sel, setSel] = useState(null);
-  const carregar = async () => { try { setD(await api.rooms()); } catch (e) { erro(e.message); } };
-  useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); }, []);
-  const abrir = async code => { try { setSel((await api.room(code)).room); } catch (e) { erro(e.message); } };
+  const [ord, setOrd] = useState({ by: "humans", dir: "desc" }), [ordP, setOrdP] = useState({ by: "slot", dir: "asc" });
+  const carregar = async () => { try { setD(await api.rooms(`?by=${ord.by}&dir=${ord.dir}`)); } catch (e) { erro(e.message); } };
+  /**
+   * ⚠️ `[ord.by,ord.dir]` NAS DEPENDÊNCIAS, e não `[]`. Com a lista vazia, o `carregar` do intervalo fecha
+   * sobre a ordenação INICIAL para sempre: a tela reordenaria no clique e voltaria sozinha ao padrão 5
+   * segundos depois, sem erro em lugar nenhum. Recriar o intervalo ainda dá de graça o refetch imediato.
+   */
+  useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); }, [ord.by, ord.dir]);
+  const abrir = async (code, o = ordP) => { try { setSel((await api.room(code, `?by=${o.by}&dir=${o.dir}`)).room); } catch (e) { erro(e.message); } };
+  const ordenarJogadores = o => { setOrdP(o); if (sel) abrir(sel.code, o); };
   const remover = async (code, p) => {
     if (!confirm(`Remover ${p.name} da sala ${code}?`)) return;
     try { await api.kick(code, p.slot, p.sessionId, ""); setSel((await api.room(code)).room); } catch (e) { erro(e.message); }
@@ -131,7 +232,13 @@ function Salas({ erro }) {
     <div className="ad-lista">
       {d.shards ? <div className="ad-shards">{d.shards.map((s, i) => <span key={i} className={"tag " + (s.ok ? "ok" : "off")}>shard {s.shard != null ? s.shard : "?"} {s.ok ? "ok" : "sem resposta"}</span>)}</div> : null}
       <div className="ad-rolo"><table className="ad-tab click">
-        <thead><tr><th>código</th><th>shard</th><th>modo</th><th>fase</th><th>humanos</th><th>bots</th></tr></thead>
+        <thead><tr>
+          <Th col="code" ord={ord} set={setOrd} padrao="asc">código</Th>
+          <Th col="shard" ord={ord} set={setOrd} padrao="asc">shard</Th>
+          <Th col="mode" ord={ord} set={setOrd} padrao="asc">modo</Th>
+          <Th col="phase" ord={ord} set={setOrd} padrao="asc">fase</Th>
+          <Th col="humans" ord={ord} set={setOrd} n>humanos</Th>
+          <Th col="bots" ord={ord} set={setOrd} n>bots</Th></tr></thead>
         <tbody>{d.rooms.map(r => <tr key={r.code + r.shard} className={sel && sel.code === r.code ? "on" : ""} onClick={() => abrir(r.code)}>
           <td><b>{r.code}</b></td><td>{r.shard}</td><td>{r.mode === 1 ? "BR" : "livre"}</td><td>{r.phase}</td>
           <td className="n">{r.humans}</td><td className="n">{r.bots}</td></tr>)}
@@ -142,7 +249,16 @@ function Salas({ erro }) {
       <div className="ad-cab"><h2>Sala {sel.code}</h2>
         <div><button className="per" onClick={() => fechar(sel.code)}>Fechar sala</button><button className="x" onClick={() => setSel(null)}>✕</button></div></div>
       <div className="ad-rolo"><table className="ad-tab">
-        <thead><tr><th>slot</th><th>nome</th><th className="n">nível</th><th className="n">massa</th><th>estado</th><th>ip</th><th /></tr></thead>
+        {/* "estado" ordena por vivo+conectado — critério COMPOSTO, declarado no servidor (`ORDEM_JOGADORES`),
+            porque um cabeçalho que ordena por algo que a coluna não mostra é a mesma mentira, em miniatura. */}
+        <thead><tr>
+          <Th col="slot" ord={ordP} set={ordenarJogadores} padrao="asc">slot</Th>
+          <Th col="name" ord={ordP} set={ordenarJogadores} padrao="asc">nome</Th>
+          <Th col="level" ord={ordP} set={ordenarJogadores} n>nível</Th>
+          <Th col="mass" ord={ordP} set={ordenarJogadores} n>massa</Th>
+          <Th col="state" ord={ordP} set={ordenarJogadores}>estado</Th>
+          <Th col="ip" ord={ordP} set={ordenarJogadores} padrao="asc">ip</Th>
+          <Th /></tr></thead>
         <tbody>{(sel.players || []).map(p => <tr key={p.slot}>
           <td>{p.slot}</td><td>{p.name}{p.country ? <em> {p.country}</em> : null}</td>
           <td className="n">{p.level || "—"}</td><td className="n">{num(p.mass)}</td>
@@ -152,6 +268,80 @@ function Salas({ erro }) {
           {!(sel.players || []).length ? <tr><td colSpan={7} className="vazio">só preenchimento</td></tr> : null}</tbody>
       </table></div>
     </div> : <div className="ad-detalhe vazio">selecione uma sala</div>}
+  </div>;
+}
+
+/**
+ * RETENÇÃO. A tela existe para responder UMA pergunta — "o jogador fica 3 minutos?" — e o painel que a
+ * responde é o da VISITA, não o da vida: `matches` guarda uma linha por VIDA, e no Livre morrer e
+ * renascer abre outra. A visita é reconstruída no SQL agrupando as partidas por intervalo.
+ * ⚠️ Só leitura, e nada aqui audita (o mesmo contrato de todo GET do painel).
+ */
+function Retencao({ erro }) {
+  const [d, setD] = useState(null), [days, setDays] = useState(14), [carregando, setCarregando] = useState(false);
+  useEffect(() => { let vivo = true; setCarregando(true);
+    api.retencao(days).then(r => { if (vivo) setD(r); }).catch(e => erro(e.message)).finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; }; }, [days]);
+  if (!d) return <div className="vazio">{carregando ? "carregando…" : "sem dados"}</div>;
+  const v = d.visita, p = d.primeira;
+  const pc = (a, b) => (b ? Math.round(100 * a / b) + "%" : "—");
+  // O histograma vem em baldes de 30 s (width_bucket de 0..600 em 20). Barra por largura relativa — nada
+  // de biblioteca de gráfico para cinco números.
+  const maxH = Math.max(1, ...d.histograma.map(h => h.n));
+  return <div className="ad-form larga">
+    <div className="ad-cab"><h2>Retenção</h2>
+      <select value={days} onChange={e => setDays(+e.target.value)}>
+        {[7, 14, 30, 90].map(n => <option key={n} value={n}>{n} dias</option>)}</select></div>
+
+    <h3>A visita <small className="ad-dim">a resposta à pergunta dos 3 minutos — vidas agrupadas por sessão</small></h3>
+    {v && v.visitas ? <div className="ad-kpis">
+      <div className="kpi"><b>{v.pct_3min}%</b><span>passam de 3 min</span></div>
+      <div className="kpi"><b>{tempo(v.mediana_s)}</b><span>mediana da visita</span></div>
+      <div className="kpi"><b>{num(v.visitas)}</b><span>visitas</span></div>
+      <div className="kpi"><b>{v.vidas_por_visita}</b><span>vidas por visita</span></div>
+    </div> : <div className="vazio">nenhuma visita no período</div>}
+
+    <h3>A primeira vida <small className="ad-dim">de quem criou conta no período</small></h3>
+    {p && p.n ? <>
+      <div className="ad-kpis">
+        <div className="kpi"><b>{tempo(p.mediana_s)}</b><span>mediana</span></div>
+        <div className="kpi"><b>{tempo(p.p90_s)}</b><span>p90</span></div>
+        <div className="kpi"><b>{pc(p.acima_3min, p.n)}</b><span>acima de 3 min</span></div>
+        <div className="kpi"><b>{num(p.massa_media)}</b><span>massa média</span></div>
+      </div>
+      <div className="ad-barras">{d.histograma.map(h => <div key={h.balde} className="bar" title={`${h.n} vidas`}>
+        <i style={{ width: (100 * h.n / maxH) + "%" }} /><span>{h.balde > 20 ? "10min+" : `${(h.balde - 1) * 30}s`}</span><b>{h.n}</b></div>)}</div>
+    </> : <div className="vazio">nenhuma conta nova jogou no período</div>}
+
+    <h3>Quem mata o novato <small className="ad-dim">razão = massa do algoz ÷ massa da vítima</small></h3>
+    <div className="ad-rolo"><table className="ad-tab">
+      <thead><tr><th>fim</th><th>algoz</th><th>via</th><th className="n">n</th><th className="n">tempo médio</th>
+        <th className="n">massa algoz</th><th className="n">massa vítima</th><th className="n">razão</th></tr></thead>
+      <tbody>{d.algoz.map((a, i) => <tr key={i}>
+        <td>{a.cause}</td><td>{a.algoz}</td><td>{a.via}</td><td className="n">{num(a.n)}</td>
+        <td className="n">{tempo(a.s_medio)}</td><td className="n">{a.massa_algoz == null ? "—" : num(a.massa_algoz)}</td>
+        <td className="n">{num(a.massa_vitima)}</td><td className="n">{a.razao == null ? "—" : a.razao + "×"}</td></tr>)}
+        {!d.algoz.length ? <tr><td colSpan={8} className="vazio">nada ainda</td></tr> : null}</tbody></table></div>
+
+    <h3>Funil por dia <small className="ad-dim">contas criadas → jogaram → passaram de 3 min</small></h3>
+    <div className="ad-rolo"><table className="ad-tab">
+      <thead><tr><th>dia</th><th>origem</th><th className="n">contas</th><th className="n">jogaram</th>
+        <th className="n">3 min+</th><th className="n">2+ vidas</th><th className="n">tempo médio</th></tr></thead>
+      <tbody>{d.funil.map((f, i) => <tr key={i}>
+        <td>{dt(f.dia).split(",")[0]}</td><td>{f.origem}</td><td className="n">{num(f.contas)}</td>
+        <td className="n">{num(f.jogaram)} <em>{pc(f.jogaram, f.contas)}</em></td>
+        <td className="n">{num(f.tres_min)} <em>{pc(f.tres_min, f.contas)}</em></td>
+        <td className="n">{num(f.duas_vidas)}</td><td className="n">{tempo(f.s_medio)}</td></tr>)}
+        {!d.funil.length ? <tr><td colSpan={7} className="vazio">nenhuma conta criada no período</td></tr> : null}</tbody></table></div>
+
+    <h3>Coortes <small className="ad-dim">quantos voltaram no dia seguinte, na semana e no mês</small></h3>
+    <div className="ad-rolo"><table className="ad-tab">
+      <thead><tr><th>dia</th><th className="n">coorte</th><th className="n">D1</th><th className="n">D7</th><th className="n">D30</th><th className="n">voltou</th></tr></thead>
+      <tbody>{d.coortes.map((c, i) => <tr key={i}>
+        <td>{dt(c.dia).split(",")[0]}</td><td className="n">{num(c.coorte)}</td>
+        <td className="n">{num(c.d1)}</td><td className="n">{num(c.d7)}</td><td className="n">{num(c.d30)}</td>
+        <td className="n">{num(c.voltou)} <em>{pc(c.voltou, c.coorte)}</em></td></tr>)}
+        {!d.coortes.length ? <tr><td colSpan={6} className="vazio">sem coortes no período</td></tr> : null}</tbody></table></div>
   </div>;
 }
 
@@ -312,14 +502,35 @@ function Parametros({ erro }) {
 }
 
 function Auditoria({ erro }) {
-  const [rows, setRows] = useState([]);
-  useEffect(() => { api.audit().then(r => setRows(r.rows)).catch(e => erro(e.message)); }, []);
+  const [rows, setRows] = useState([]), [carregando, setCarregando] = useState(false);
+  const [ord, setOrd] = useState({ by: "id", dir: "desc" }), [pag, setPag] = useState({ more: false, next: null });
+  // `detail` é jsonb e não entra na lista branca do servidor: ordenar jsonb ordena pela representação
+  // interna, que não é nada que um humano tenha pedido. Por isso a última coluna sai sem `col`.
+  const carregar = async (cursor = null) => {
+    setCarregando(true);
+    try { const p = new URLSearchParams({ by: ord.by, dir: ord.dir });
+      if (cursor && cursor.before != null) p.set("before", cursor.before);
+      if (cursor && cursor.offset != null) p.set("offset", cursor.offset);
+      const r = await api.audit("?" + p);
+      setRows(cursor ? rs => rs.concat(r.rows) : r.rows);
+      if (r.by) setOrd({ by: r.by, dir: r.dir });
+      setPag({ more: !!r.more, next: r.next || null }); }
+    catch (e) { erro(e.message); } finally { setCarregando(false); }
+  };
+  useEffect(() => { carregar(); }, [ord.by, ord.dir]);
   return <div className="ad-form larga">
     <div className="ad-cab"><h2>Auditoria</h2></div>
-    <div className="ad-rolo"><table className="ad-tab"><thead><tr><th>quando</th><th>quem</th><th>ação</th><th>alvo</th><th>detalhe</th></tr></thead>
+    <div className="ad-rolo"><table className="ad-tab"><thead><tr>
+      <Th col="at" ord={ord} set={setOrd}>quando</Th>
+      <Th col="admin" ord={ord} set={setOrd} padrao="asc">quem</Th>
+      <Th col="action" ord={ord} set={setOrd} padrao="asc">ação</Th>
+      <Th col="target" ord={ord} set={setOrd} padrao="asc">alvo</Th>
+      <Th>detalhe</Th></tr></thead>
       <tbody>{rows.map(r => <tr key={r.id}><td>{dt(r.at)}</td><td>{r.adminNick || "#" + r.adminId}</td>
         <td><b>{r.action}</b></td><td>{r.target || "—"}</td><td className="ua ad-mono">{JSON.stringify(r.detail)}</td></tr>)}
-        {!rows.length ? <tr><td colSpan={5} className="vazio">nada ainda</td></tr> : null}</tbody></table></div></div>;
+        {!rows.length && !carregando ? <tr><td colSpan={5} className="vazio">nada ainda</td></tr> : null}</tbody></table></div>
+    <Paginacao n={rows.length} more={pag.more} carregando={carregando} onMais={() => carregar(pag.next)} />
+  </div>;
 }
 
 function App() {
@@ -335,7 +546,7 @@ function App() {
   // estiver pintando no body naquela hora.
   if (!pronto) return <div className="ad vazio">…</div>;
   if (!admin) return <Login onOk={setAdmin} />;
-  const T = { usuarios: Usuarios, salas: Salas, aviso: Aviso, parametros: Parametros, auditoria: Auditoria }[tela] || Usuarios;
+  const T = { usuarios: Usuarios, salas: Salas, retencao: Retencao, aviso: Aviso, parametros: Parametros, auditoria: Auditoria }[tela] || Usuarios;
   return <div className="ad">
     <header className="ad-topo">
       <b>warspace.io <span>admin</span></b>

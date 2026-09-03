@@ -16,8 +16,12 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
   // POST /api/auth/guest {nick?} → 201 {token,user}
   router.add('POST',/^\/api\/auth\/guest$/,async ctx=>{
     const nick=ctx.body.nick!=null&&ctx.body.nick!==''?nickOf(ctx.body.nick):randomGuestNick();
+    // De onde a conta nasceu (0010). É o mesmo cabeçalho que `http/cors.js` casa, mas aqui ele é só
+    // DIMENSÃO: sem isto não há como saber se a retenção do site é diferente da de um portal, e é a
+    // primeira pergunta que se faz quando o número vem ruim. Ausente = site (mesma origem, sem Origin).
+    const origem=String(ctx.req.headers.origin||'').slice(0,64)||null;
     const out=await db.tx(async c=>{
-      const u=await users.insertGuest(c,nick);
+      const u=await users.insertGuest(c,nick,origem);
       await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
       if(config.signupCoins>0){const {coins}=await ledger.apply(c,{userId:u.id,delta:config.signupCoins,reason:'signup'});u.coins=coins;}
       const token=await tokens.issue(u.id,'device',ctx.userAgent,c);

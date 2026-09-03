@@ -13,6 +13,32 @@ export const toPublic=u=>u&&({id:Number(u.id),nick:u.nick,name:u.display_name||n
   // autorização de nada: quem decide quem RECEBE o aviso é o servidor, e agir continua exigindo o token
   // de `kind:'admin'`.
   ...(u.is_admin?{isAdmin:true}:{})});
+
+// ── ORDENAÇÃO DA LISTA DO /admin ──────────────────────────────────────────────
+// Segundo lugar do servidor a interpolar SQL, e ele copia o primeiro (`repos/ranking.js`): lista BRANCA
+// literal, nada vindo de `ctx.query` chega à string. A rota valida contra ela e responde 400 antes de
+// chamar aqui — nunca há fallback silencioso, porque um cabeçalho dizendo "moedas ▼" sobre uma lista
+// ordenada por id é exatamente o defeito que esta funcionalidade existe para não criar.
+// ⚠️ É um `Map`, não um objeto literal: com objeto, `?by=constructor` é truthy, `.col` sai indefinido e a
+// rota devolve 500 em vez de 400 — um 500 alcançável pela URL.
+export const ORDEM_USERS=new Map([
+  ['id',    {expr:'u.id'}],
+  ['nick',  {expr:'lower(u.nick)'}],
+  ['kind',  {expr:'u.kind'}],
+  ['xp',    {expr:'COALESCE(st.xp,0)'}],
+  ['coins', {expr:'u.coins'}],
+  // Anuláveis levam NULLS LAST EXPLÍCITO: o padrão do Postgres joga os nulos para o topo em DESC, e o
+  // admin vê meia tela de "—" e conclui que a ordenação quebrou.
+  ['seen',  {expr:'u.last_seen_at',nulls:true}],
+  ['created',{expr:'u.created_at'}],
+]);
+const DIR=new Map([['asc','ASC'],['desc','DESC']]);
+/** `by`/`dir` já validados pela rota. O desempate por id não é enfeite: sem ele, empates (todo mundo com
+ *  0 moedas) dão páginas instáveis — a mesma linha em duas páginas e outra em nenhuma. */
+export function orderUsers(by,dir){
+  const o=ORDEM_USERS.get(by)||ORDEM_USERS.get('id'),d=DIR.get(dir)||'DESC';
+  return `${o.expr} ${d}${o.nulls?' NULLS LAST':''}${by==='id'?'':', u.id DESC'}`;}
+
 export function createUsers(db){
   const byId=(id,c=db)=>c.query(`SELECT * FROM users WHERE id=$1`,[id]).then(r=>r.rows[0]||null);
   /**
@@ -32,7 +58,9 @@ export function createUsers(db){
    *  identidade com uma conta que JÁ tem esse e-mail em vez de esbarrar no UNIQUE `users_email_uq`. */
   const byEmail=email=>db.query(`SELECT * FROM users WHERE lower(email)=lower($1) LIMIT 1`,[email]).then(r=>r.rows[0]||null);
   /** cria guest (dentro de transação): users + user_skins(0) — moedas de boas-vindas ficam com o ledger */
-  const insertGuest=(c,nick)=>c.query(`INSERT INTO users(kind,nick) VALUES('guest',$1) RETURNING *`,[nick]).then(r=>r.rows[0]);
+  // `origin` é o cabeçalho Origin do POST /api/auth/guest (0010): DIMENSÃO para fatiar o funil por portal,
+  // nunca autorização — quem decide origem permitida é `http/cors.js`. Aparado no chamador.
+  const insertGuest=(c,nick,origin=null)=>c.query(`INSERT INTO users(kind,nick,origin) VALUES('guest',$1,$2) RETURNING *`,[nick,origin||null]).then(r=>r.rows[0]);
   const setNick=(id,nick,c=db)=>c.query(`UPDATE users SET nick=$2 WHERE id=$1 RETURNING *`,[id,nick]).then(r=>r.rows[0]||null);
   /** reivindicar: é AQUI que o `login` nasce e congela (o nick segue livre depois disso) */
   const claim=(id,{passwordHash,email,login},c=db)=>c.query(`UPDATE users SET kind='registered',password_hash=$2,email=$3,login=$4 WHERE id=$1 AND kind='guest' RETURNING *`,[id,passwordHash,email||null,login]).then(r=>r.rows[0]||null);
@@ -46,9 +74,18 @@ export function createUsers(db){
   const setCountry=(id,country,c=db)=>c.query(`UPDATE users SET country=$2 WHERE id=$1 RETURNING *`,[id,country||null]).then(r=>r.rows[0]||null);
   /** Ponteiro do avatar em `users` (os BYTES moram em user_avatars — ver a migração 0005). */
   const setAvatarHash=(id,hash,c=db)=>c.query(`UPDATE users SET avatar_hash=$2 WHERE id=$1`,[id,hash||null]);
-  /** guests órfãos: sem token válido e sem atividade há 30 dias (cascata apaga matches/ledger) */
-  const purgeOrphanGuests=(c=db)=>c.query(`DELETE FROM users u WHERE u.kind='guest' AND u.last_seen_at<now()-interval '30 days'
-    AND NOT EXISTS(SELECT 1 FROM auth_tokens t WHERE t.user_id=u.id AND t.revoked_at IS NULL AND t.expires_at>now())`).then(r=>r.rowCount);
+  /**
+   * Guests órfãos: sem token válido, sem atividade há 180 dias e QUE NUNCA JOGARAM.
+   * ⚠️ As duas mudanças são de RETENÇÃO, e a segunda é a que importa: apagar quem jogou apaga exatamente a
+   * coorte que responde "entrou, jogou uma vez e não voltou" — a mais informativa que existe, e a que a
+   * tela de retenção precisa para D1/D7/D30. Quem jogou vira histórico permanente; quem só carregou a
+   * página e sumiu continua sendo recolhido, agora com uma janela larga o bastante para caber um
+   * antes/depois inteiro. (O horizonte real nunca foi 30 dias de qualquer forma: o token de device dura
+   * 365 e desliza a cada resolução, então o `NOT EXISTS` já segurava quase todo mundo por ~um ano.)
+   */
+  const purgeOrphanGuests=(c=db)=>c.query(`DELETE FROM users u WHERE u.kind='guest' AND u.last_seen_at<now()-interval '180 days'
+    AND NOT EXISTS(SELECT 1 FROM auth_tokens t WHERE t.user_id=u.id AND t.revoked_at IS NULL AND t.expires_at>now())
+    AND NOT EXISTS(SELECT 1 FROM matches m WHERE m.user_id=u.id)`).then(r=>r.rowCount);
   // ── PAINEL /admin ────────────────────────────────────────────────────────
   /**
    * ⚠️ ALLOWLIST EXPLÍCITA de colunas — nunca `...u`. É por um spread distraído aqui que `password_hash`
@@ -64,8 +101,19 @@ export function createUsers(db){
    * Busca paginada por KEYSET (`id < before`), não OFFSET: a tabela cresce e o offset degrada a cada
    * página. `q` casa nick, LOGIN, nome e e-mail; id exato tem atalho. O login entra porque quem pede
    * ajuda diz "não consigo entrar com Messi123" — e o nick dele já pode ser outro.
+   *
+   * ⚠️ A REGRA DO KEYSET VALE SÓ NA ORDEM PADRÃO. `before` é `u.id<$n`, e isso só é uma POSIÇÃO no
+   * conjunto se o conjunto estiver ordenado por id. Ordenando por outra coluna, a paginação vira OFFSET
+   * (ver o chamador) — e o custo é pequeno justamente aí: quando o ORDER BY não segue índice, o Postgres
+   * já precisa ordenar o conjunto para responder a PRIMEIRA página, então a sétima só paga o descarte.
+   * Manter keyset composto exigiria cursor com valor+id, direções mistas e NULLS codificado dentro dele:
+   * três famílias de bug num painel de duas pessoas.
+   *
+   * ⚠️ `more` existe porque "ordenado" sem "há mais" é uma mentira fina: a tela fica CERTA e mesmo assim
+   * leva à conclusão errada ("ninguém está inativo há mais de X" olhando 50 de 5000). Ele sai de pedir
+   * `limit+1` ao banco — um registro a mais, nenhuma segunda consulta.
    */
-  async function search({q=null,kind=null,banned=null,limit=50,before=null}={}){
+  async function search({q=null,kind=null,banned=null,limit=50,before=null,by='id',dir='desc',offset=0}={}){
     const w=[],p=[];
     if(q){const n=String(q).trim();
       if(/^\d+$/.test(n)){p.push(Number(n));w.push(`u.id=$${p.length}`);}
@@ -74,12 +122,16 @@ export function createUsers(db){
     if(banned===true)w.push(`u.banned_until IS NOT NULL AND u.banned_until>now()`);
     else if(banned===false)w.push(`(u.banned_until IS NULL OR u.banned_until<=now())`);
     if(before){p.push(Number(before));w.push(`u.id<$${p.length}`);}
-    p.push(Math.max(1,Math.min(100,limit|0)));
+    const n=Math.max(1,Math.min(100,limit|0));
+    p.push(n+1);                                     // +1 só para saber que HÁ mais; ele não vai para a resposta
+    const lim=`LIMIT $${p.length}`;
+    let off='';if(offset>0){p.push(Math.max(0,offset|0));off=` OFFSET $${p.length}`;}
     const where=w.length?`WHERE ${w.join(' AND ')}`:'';
     const {rows}=await db.query(`SELECT u.*,COALESCE(st.xp,0) AS xp,COALESCE(st.games,0) AS games,
         COALESCE(st.kills,0) AS kills,COALESCE(st.deaths,0) AS deaths
-      FROM users u LEFT JOIN user_stats st ON st.user_id=u.id ${where} ORDER BY u.id DESC LIMIT $${p.length}`,p);
-    return rows.map(toAdmin);}
+      FROM users u LEFT JOIN user_stats st ON st.user_id=u.id ${where} ORDER BY ${orderUsers(by,dir)} ${lim}${off}`,p);
+    const more=rows.length>n;
+    return{rows:rows.slice(0,n).map(toAdmin),more};}
   /** Uma conta com tudo o que o painel mostra no detalhe. */
   const adminById=id=>db.query(`SELECT u.*,COALESCE(st.xp,0) AS xp,COALESCE(st.games,0) AS games,
       COALESCE(st.kills,0) AS kills,COALESCE(st.deaths,0) AS deaths

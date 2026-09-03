@@ -18,11 +18,13 @@ const JOIN_TIMEOUT_MS=3000,DRAIN_MS=10000,CLEAN_LOCK=727002,HOUR=3600e3,DAY=24*H
 const UNSAVED=(nick)=>({ok:true,userId:null,nick,registered:false,skinId:eggSkinFor(nick)||0,level:0,avatar:null,prefs:{},unsaved:true});
 const NO_REWARDS=()=>({saved:false,coinsEarned:0,coins:null,achievements:[],skinsUnlocked:[],rank:null});
 const withTimeout=(p,ms)=>new Promise((res,rej)=>{const t=setTimeout(()=>rej(Object.assign(new Error('timeout'),{code:'ETIMEDOUT'})),ms);p.then(v=>{clearTimeout(t);res(v);},e=>{clearTimeout(t);rej(e);});});
+/** `metrics` é opcional: os testes montam a persistência sozinha, e um contador que falta não pode derrubar o fim de partida. */
+const SEM_METRICS={vida(){},spawn(){}};
 /**
- * @param {{db:any,log:any,config:any}} o
+ * @param {{db:any,log:any,config:any,metrics?:any}} o
  * @returns {{hooks:any,health:()=>{queue:number,sessions:number,db:'ok'|'down'},sessions:Map<string,MatchSession>,finishMatch:Function,shutdown:()=>Promise<void>}}
  */
-export function createPersistence({db,log,config}){
+export function createPersistence({db,log,config,metrics=SEM_METRICS}){
   const tokens=createTokens(db,log),users=createUsers(db),ledger=createLedger(db),skins=createSkins(db),matches=createMatches(db),achievements=createAchievements(db),ranking=createRanking(db);
   const queue=createQueue({log});
   /** @type {Map<string,MatchSession>} */
@@ -56,8 +58,18 @@ export function createPersistence({db,log,config}){
     return{ok:true,userId:s.userId,nick:s.nick,registered:s.registered,skinId:s.skinId,isAdmin:!!u.is_admin,
       level:levelFromXp(Number(u.xp||0)),avatar:u.avatar_hash||null,country:u.country||null,prefs,sessionId:s.sessionId,unsaved:false};
   }
-  /** sessão "sem banco" para quem entrou em modo unsaved e quer mesmo assim um sessionId/rewards {saved:false} */
-  function openUnsavedSession({nick,roomCode=null}={}){const s=new MatchSession({userId:null,nick:nick||'Viajante',kind:'guest',roomCode,shard:config.shard});sessions.set(s.sessionId,s);return s.sessionId;}
+  /**
+   * Abre uma VIDA nova para quem já está na sala. Duas usam isto:
+   *  · `openUnsavedSession` — quem entrou em modo unsaved e mesmo assim quer sessionId e rewards {saved:false};
+   *  · `Room.respawn` — renascer no Livre, que deixou de ser `leave`+`join` (ver `Sim.revive`). A sessão da
+   *    vida anterior já foi fechada por `onMatchEnd` na morte (e `MatchSession.end` é idempotente), então
+   *    aqui não há nada a desfazer: é só começar a contar de novo.
+   * `userId` null é o caminho sem banco — `onMatchEnd` devolve NO_REWARDS e nada é gravado, como sempre.
+   */
+  function openSession({userId=null,nick='Viajante',kind='guest',skinId=0,roomCode=null}={}){
+    const s=new MatchSession({userId,nick:nick||'Viajante',kind,skinId,roomCode,shard:config.shard});
+    sessions.set(s.sessionId,s);return s.sessionId;}
+  const openUnsavedSession=({nick,roomCode=null}={})=>openSession({nick,roomCode});
   // ── contadores (fire-and-forget) ──
   const onStat=({sessionId,key})=>{const s=sessions.get(sessionId);if(s)s.stat(key);};
   const onKill=({killerSessionId,sessionId,victimIsBot})=>{const s=sessions.get(killerSessionId||sessionId);if(s)s.kill({victimIsBot:!!victimIsBot});};
@@ -93,10 +105,14 @@ export function createPersistence({db,log,config}){
         pais=r?{rank:r.rank,country:u.country}:null;}}catch{}
     return{...rewards,rank:{day,country:pais}};
   }
-  async function onMatchEnd({sessionId,cause='left',killedBySessionId=null,score=0,maxMass=0,durationMs=null,mode=0,team=null,placement=0,players=0,teamSize=1}={}){
+  async function onMatchEnd({sessionId,cause='left',killedBySessionId=null,score=0,maxMass=0,durationMs=null,mode=0,team=null,placement=0,players=0,teamSize=1,killerKind=null,killerMass=null,how=null}={}){
     const s=sessions.get(sessionId);if(!s)return null;
     forget(s);
-    const m=s.end({cause,score,maxMass,durationMs,killedByUserId:userOf(killedBySessionId),mode,team,placement,players,teamSize});
+    const m=s.end({cause,score,maxMass,durationMs,killedByUserId:userOf(killedBySessionId),mode,team,placement,players,teamSize,killerKind,killerMass,how});
+    // ⚠️ O contador de produto vem ANTES do `if(!m.userId)`: ele é a única medida que enxerga a vida que o
+    // BANCO não grava (banco fora, sessão `unsaved`, convidado sem persistência). Sem isto, um incidente de
+    // banco apareceria na tela de retenção como queda de jogadores.
+    metrics.vida(m);
     if(!m.userId)return NO_REWARDS();
     try{return await queue.push(`match ${m.sessionId.slice(0,8)} (#${m.userId})`,()=>finishMatch(m));}
     catch(e){log.warn(`match #${m.userId} não salvo: ${e.message}`);return NO_REWARDS();}
@@ -128,6 +144,8 @@ export function createPersistence({db,log,config}){
   if(config.shard===0&&!config.noCleanup){cleanTimer=setInterval(cleanup,HOUR);cleanTimer.unref();setTimeout(cleanup,60e3).unref();}
   const health=()=>({queue:queue.size,sessions:sessions.size,db:db.health.down?'down':'ok',...queue.stats()});
   async function shutdown(){if(cleanTimer)clearInterval(cleanTimer);await onShutdown();}
-  const hooks={onPlayerJoin,onStat,onKill,onSample,onMatchEnd,onShutdown};
-  return{hooks,health,sessions,finishMatch,openUnsavedSession,cleanup,queue,shutdown};
+  // `openSession` vai no objeto HOOKS (e não só no retorno) porque quem precisa dele é a `Room`, e ela só
+  // enxerga `sim.hooks` — o `persistApi` fica do lado do HTTP.
+  const hooks={onPlayerJoin,onStat,onKill,onSample,onMatchEnd,onShutdown,openSession};
+  return{hooks,health,sessions,finishMatch,openUnsavedSession,openSession,cleanup,queue,shutdown};
 }

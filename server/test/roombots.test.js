@@ -256,3 +256,71 @@ test('na sala do dono ninguém chega GIGANTE', () => {
         assert.ok(pc.r<=PLAYER.BOT_R[1]+1e-6,`entrou com raio ${pc.r}, acima da faixa de quem acaba de chegar`);}}
   assert.ok(novos>0,'alguém chegou');
 });
+
+// ── RENASCER SEM SAIR DA SALA ────────────────────────────────────────────────
+// O jogador morto continua na sala (socket aberto, chat funcionando), e o botão DE NOVO não pode dizer ao
+// resto da sala que ele saiu. Antes isto era `leave`+`join` com socket novo — ver `Sim.revive`.
+const mata=(r,slot)=>r.sim.kill(slot,{cause:'eaten'});
+
+test('renascer no Livre não produz "saiu"/"entrou" no feed, e o nick não é solto', () => {
+  const r=sala(2); r.start();
+  const s=sessaoFalsa(9,'tok-viva'); r.join(s,{name:'Fenix',registered:true,userId:9});
+  const gp=r.sim.players.get(s.slot);
+  gp.score=4200; gp.kills=3; gp.food=50;
+  r.sim.feed.length=0;                                   // descarta a linha de "entrou"
+  mata(r,s.slot);
+  assert.equal(r.sim.players.get(s.slot).dead,true,'morreu');
+  const sys=()=>r.sim.feed.filter(f=>f.k==='sys'&&(f.how==='left'||f.how==='joined'));
+  assert.equal(sys().length,0,'morrer sozinho já não dizia nada — a linha vem do respawn');
+  assert.equal(r.respawn(s),true,'renasceu');
+  assert.equal(sys().length,0,'e NENHUMA linha de saiu/entrou foi para o feed');
+  assert.equal(r.sim.players.get(s.slot).dead,false,'está vivo de novo');
+  assert.equal(r.sessions.get(s.slot),s,'continua na MESMA sessão e no MESMO slot');
+  assert.ok(r.usedNicks.has('fenix'),'o nick nunca voltou para o bolo (era a janela do NICK_IN_ROOM)');
+  assert.ok(r.sim.world.piecesOf(s.slot).length,'tem peça nova no mundo');
+  const alive=s.json.filter(m=>m.t==='alive');
+  assert.equal(alive.length,1,'o cliente foi avisado com {t:"alive"}');
+  assert.equal(alive[0].slot,s.slot);
+});
+
+test('a vida nova zera os contadores — senão o roster conta tudo duas vezes', () => {
+  const r=sala(2); r.start();
+  const s=sessaoFalsa(9,'tok-zera'); r.join(s,{name:'Zera',registered:true,userId:9});
+  const gp=r.sim.players.get(s.slot);
+  gp.score=9000; gp.kills=4; gp.botKills=2; gp.food=77; gp.maxMass=5000; gp.streak=4;
+  mata(r,s.slot);
+  r.respawn(s);
+  const g2=r.sim.players.get(s.slot);
+  for(const k of ['score','kills','botKills','deaths','food','maxMass','streak'])
+    assert.equal(g2[k],0,`${k} tem que zerar na vida nova`);
+  assert.equal(g2.rosterFolded,false,'sem isto a 2ª vida NUNCA entraria no pódio');
+  assert.equal(g2.placement,0);assert.equal(g2.deathInfo,null);
+  // o que a vida anterior fez já foi dobrado no roster pela morte, e não pode ser contado de novo
+  // `_rosterFold` soma kills+botKills numa coluna só (4+2), e a morte já dobrou a vida anterior: o que se
+  // prova aqui é que renascer NÃO dobra de novo — era o risco de esquecer o `rosterFolded=false`/zeragem.
+  const linha=[...r.roster.values()].find(x=>x.name==='Zera');
+  assert.equal(linha.lives,1,'uma vida dobrada, não duas');
+  assert.equal(linha.kills,6,'os abates da 1ª vida entraram uma vez só');
+  assert.equal(linha.food,77);
+});
+
+test('renascer é recusado no Battle Royale e depois do fim da rodada', () => {
+  const br=sala(2,{mode:MODE.BR}); br.start();
+  const sb=sessaoFalsa(1,'tok-br'); br.join(sb,{name:'BrGuy',registered:true,userId:1});
+  br.phase='live'; br.sim.world.peace=false;
+  const pcs=br.sim.world.piecesOf(sb.slot);
+  if(pcs.length){mata(br,sb.slot);assert.equal(br.respawn(sb),false,'"sem respawn" é o modo');}
+  const r=sala(2); r.start();
+  const s=sessaoFalsa(9,'tok-fim'); r.join(s,{name:'Fim',registered:true,userId:9});
+  mata(r,s.slot);
+  r.over=true;
+  assert.equal(r.respawn(s),false,'sala terminada não renasce ninguém');
+});
+
+test('renascer é recusado para quem está VIVO ou não é da sala', () => {
+  const r=sala(2); r.start();
+  const s=sessaoFalsa(9,'tok-vivo'); r.join(s,{name:'Vivo',registered:true,userId:9});
+  assert.equal(r.respawn(s),false,'quem está vivo não renasce');
+  const estranha=sessaoFalsa(10,'tok-nao'); estranha.slot=s.slot;
+  assert.equal(r.respawn(estranha),false,'sessão que não é a dona do slot não renasce');
+});

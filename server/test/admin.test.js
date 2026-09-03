@@ -134,3 +134,94 @@ test('admin: toda ação mutante deixa rastro na auditoria',async t=>{
   for(const esperada of ['login','ban','unban','setting','setting_reset','broadcast'])
     assert.ok(acoes.has(esperada),`falta a linha de auditoria de "${esperada}" (tem: ${[...acoes].join(',')})`);
 });
+
+// ── ordenação e paginação ─────────────────────────────────────────────────────
+// O teste que importa é o primeiro: ele prova que a ordenação é do CONJUNTO e não da página. Ordenar as
+// 50 linhas que já vieram e chamar isso de "por moedas" mostraria o mais rico entre as 50 contas mais
+// RECENTES — e a tela ficaria certa dizendo uma coisa falsa.
+test('admin: a ordenação é do CONJUNTO, não da página que já veio',async t=>{
+  if(pula())return t.skip('sem banco');
+  // três contas novas (logo, as mais recentes por id) com moedas em ordem inversa à de criação
+  const ricos=[];
+  for(const moedas of [11,22,33]){
+    const g=await J('POST','/api/auth/guest',{});
+    await J('POST',`/api/admin/users/${g.j.user.id}/coins`,{delta:moedas,reason:'teste-ordem'},painel);
+    ricos.push({id:g.j.user.id,moedas});}
+  const r=await J('GET','/api/admin/users?by=coins&dir=desc&limit=2',null,painel);
+  assert.equal(r.s,200);
+  assert.equal(r.j.by,'coins');assert.equal(r.j.dir,'desc');   // o ECO: é dele que a tela desenha o indicador
+  assert.equal(r.j.users.length,2,'a página tem o tamanho pedido, não o limit+1 da sonda de `more`');
+  const c=r.j.users.map(u=>u.coins);
+  assert.deepEqual(c,[...c].sort((a,b)=>b-a),'veio ordenado');
+  assert.ok(c[0]>=33,`o topo é o mais RICO da base (veio ${c[0]}), não o mais recente`);
+  const asc=await J('GET','/api/admin/users?by=coins&dir=asc&limit=2',null,painel);
+  assert.ok(asc.j.users[0].coins<=c[0],'e a direção inverte de verdade');
+});
+
+test('admin: `by` inválido é 400 — e `by=constructor` também é 400, nunca 500',async t=>{
+  if(pula())return t.skip('sem banco');
+  // ⚠️ Este é o teste que trava a lista branca em `Map`: num objeto literal, `BY['constructor']` é truthy,
+  // `.expr` sai indefinido e a rota estoura em 500 — um 500 alcançável por qualquer URL.
+  for(const by of ['xpto','constructor','__proto__','u.id; DROP TABLE users']){
+    const r=await J('GET',`/api/admin/users?by=${encodeURIComponent(by)}`,null,painel);
+    assert.equal(r.s,400,`by=${by} tem que ser 400 (veio ${r.s})`);
+    assert.equal(r.j.error,'bad_by');}
+  const d=await J('GET','/api/admin/users?dir=meio-termo',null,painel);
+  assert.equal(d.s,400);assert.equal(d.j.error,'bad_dir');
+  const a=await J('GET','/api/admin/audit?by=detail',null,painel);
+  assert.equal(a.s,400,'jsonb não é ordenável e não está na lista branca');
+});
+
+test('admin: o cursor keyset e a ordenação não se misturam em silêncio',async t=>{
+  if(pula())return t.skip('sem banco');
+  // `before` é `id<$n`: só é uma POSIÇÃO quando a ordem é por id. Ignorá-lo em silêncio pularia um pedaço
+  // do conjunto sem ninguém perceber, então é 400.
+  const x=await J('GET','/api/admin/users?by=coins&before=99999',null,painel);
+  assert.equal(x.s,400);assert.equal(x.j.error,'cursor_conflict');
+  const o=await J('GET','/api/admin/users?by=coins&offset=99999999',null,painel);
+  assert.equal(o.s,400);assert.equal(o.j.error,'offset_max');
+  // na ordem padrão o keyset continua valendo, byte a byte como antes
+  const p1=await J('GET','/api/admin/users?limit=2',null,painel);
+  assert.equal(p1.s,200);assert.equal(p1.j.more,true,'há mais de 2 contas no banco de dev');
+  assert.ok(p1.j.next&&p1.j.next.before,'o cursor da ordem padrão é keyset');
+  const p2=await J('GET',`/api/admin/users?limit=2&before=${p1.j.next.before}`,null,painel);
+  assert.ok(p2.j.users.every(u=>u.id<p1.j.next.before),'a página seguinte não repete a anterior');
+  // e com ordenação o regime vira offset, sem o cliente precisar saber
+  const q1=await J('GET','/api/admin/users?by=coins&dir=desc&limit=2',null,painel);
+  assert.ok(q1.j.next&&q1.j.next.offset===2,'o cursor da ordenação é offset');
+});
+
+test('admin: `more`/`next` dizem a VERDADE na última página',async t=>{
+  if(pula())return t.skip('sem banco');
+  // Era aqui que o `next` mentia: ele vinha preenchido mesmo sem próxima página, e um botão "carregar
+  // mais" ficaria eterno trazendo nada. `more` sai de pedir limit+1 — sem segunda consulta.
+  const r=await J('GET','/api/admin/users?q=nao-existe-esse-nick-zzz&limit=10',null,painel);
+  assert.equal(r.s,200);
+  assert.equal(r.j.users.length,0);
+  assert.equal(r.j.more,false);
+  assert.equal(r.j.next,null,'sem próxima página, não há cursor');
+});
+
+test('admin: LEITURA não audita — ordenar não pode afogar o log de ban/kick',async t=>{
+  if(pula())return t.skip('sem banco');
+  // `admin_audit` não tem retenção automática por decisão (migração 0008): é log de baixo volume, e uma
+  // linha por clique de cabeçalho enterraria as linhas que são a razão de a tabela existir.
+  const antes=(await J('GET',`/api/admin/audit?limit=200&adminId=${conta.id}`,null,painel)).j.rows.length;
+  for(const u of ['?by=coins&dir=asc','?by=nick','?by=seen&dir=desc','?by=id','?by=xp'])
+    assert.equal((await J('GET','/api/admin/users'+u,null,painel)).s,200);
+  const depois=(await J('GET',`/api/admin/audit?limit=200&adminId=${conta.id}`,null,painel)).j.rows.length;
+  assert.equal(depois,antes,'nenhuma linha de auditoria nasceu de uma leitura');
+});
+
+test('admin: as rotas em MEMÓRIA ordenam e ecoam o que valeu',async t=>{
+  if(pula())return t.skip('sem banco');
+  const r=await J('GET','/api/admin/rooms?by=code&dir=asc',null,painel);
+  assert.equal(r.s,200);
+  assert.equal(r.j.by,'code');assert.equal(r.j.dir,'asc');
+  const cs=r.j.rooms.map(x=>x.code);
+  assert.deepEqual(cs,[...cs].sort(),'a lista sai ordenada pelo código');
+  // ⚠️ `by` fora da lista NÃO é 400 aqui (esta rota não passa pelo router de erros do api/): ele cai no
+  // padrão E O ECO DIZ ISSO, que é o que impede a tela de anunciar uma ordenação que não aconteceu.
+  const x=await J('GET','/api/admin/rooms?by=constructor',null,painel);
+  assert.equal(x.s,200);assert.equal(x.j.by,'humans','caiu no padrão, e o eco não mente');
+});

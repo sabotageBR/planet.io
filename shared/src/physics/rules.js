@@ -533,6 +533,9 @@ export function supernova(w,st,rammed=false,bySlot=-1){
     for(let k=0;k<8;k++){const f=pool[rng.int(0,pool.length-1)];if(!f||f.dead)continue;
       const fx=f.x-st.x,fy=f.y-st.y;if(fx*fx+fy*fy<longe2)continue;w.killFood(f);break;}
     w.spawnFood({x:st.x,y:st.y,spread:blast*STAR.NOVA_FOOD_R});}
+  // A cratera vira ponto de nascimento (World._novaSpot). Só com `premio`: sem cacho e sem fragmento não há
+  // nada ali para o novato achar, e a trombada ainda deixa por perto quem acabou de atropelar a estrela.
+  if(premio){w.novas.push({x:st.x,y:st.y,at:w.tick});if(w.novas.length>STAR.NOVA_SPOT_KEEP)w.novas.shift();}
   w.events.push({type:"SUPERNOVA",starId:st.id,x:st.x,y:st.y,r:blast,rammed,bySlot});
   st.dead=true;w.queueStar(STAR.RESPAWN_TICKS);}
 

@@ -200,15 +200,25 @@ test('Battle Royale: partida em andamento NÃO aceita mais ninguém (é o que "s
   const room=roomOf(r.code);room.lobbyUntil=room.sim.tick+60;room.lobbyStart=room.sim.tick;
   await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'live');
   assert.equal(room.acceptsJoin(),false);
+  // ⚠️ ROOM_STARTED e não FULL: a sala tem vaga de sobra, o que acabou foi a JANELA. Dizer "cheia" mandava
+  // o jogador esperar por uma vaga que não ia adiantar, quando o certo é procurar outra partida.
+  assert.equal(room.joinRefusal(),'started');
+  assert.equal(room.info().closed,'started');
   const c2=new C(wsUrl);await c2.open();
-  await assert.rejects(()=>c2.join({nick:'Atrasado',mode:MODE.BR,teamSize:1,room:r.code}),/FULL/);
+  await assert.rejects(()=>c2.join({nick:'Atrasado',mode:MODE.BR,teamSize:1,room:r.code}),/ROOM_STARTED/);
   c2.close();c.close();
 });
-test('Battle Royale: entrar por código pedindo o modo errado é recusado, não silenciosamente trocado',async()=>{
+// Era o oposto: entrar por código pedindo outro modo levava um erro `MODE`. Na tela de Salas o jogador
+// clica numa SALA, não num modo — o modo escolhido antes é a preferência do "JOGAR (AUTO)", e usá-lo para
+// trancar a porta recusava justamente quem tinha acabado de escolher a sala com o dedo. Quem manda no modo
+// de um código sempre foi o servidor, e ele o ECOA no `room`.
+test('entrar por código com outro modo selecionado ENTRA, e o `room` ecoa o modo da sala',async()=>{
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'A',mode:MODE.BR,teamSize:1,room:newRoom()});
   const c2=new C(wsUrl);await c2.open();
-  await assert.rejects(()=>c2.join({nick:'B',mode:MODE.FREE,room:r.code}),/MODE/);
+  const r2=await c2.join({nick:'B',mode:MODE.FREE,room:r.code});
+  assert.equal(r2.code,r.code,'entrou na sala pedida');
+  assert.equal(r2.mode,MODE.BR,'e o modo que vale é o da SALA, não o que o cliente pediu');
   c2.close();c.close();
 });
 
@@ -924,5 +934,56 @@ test('míssil de HUMANO faz o bot reclamar; de bot, não',async()=>{
   assert.equal(sim.botTalk.filter(g=>g.kind==='escudo').length,1);
   solta({type:'SHIELD_HIT',slot:bots[0].slot,bySlot:eu.slot,x:0,y:0,r:20,weapon:0,nx:1,ny:0,level:1});
   assert.equal(sim.botTalk.filter(g=>g.kind==='escudo').length,0,'o escudo aguentou: "perdi o escudo" seria mentira');
+  c.close();
+});
+
+// ── RENASCER SEM RECONECTAR (Livre) ──────────────────────────────────────────
+// Este é o teste de PROTOCOLO do que `roombots.test.js` cobre no nível da Room: o cliente manda
+// `{t:"respawn"}` na conexão que já tem, e o servidor devolve `{t:"alive"}` sem que ninguém saia da sala.
+// Antes, o botão DE NOVO fechava o socket e abria outro — daí um "saiu"/"entrou" no feed para quem só
+// tinha renascido, e uma janela em que o nick dele voltava para o bolo.
+test('Livre: renascer é {t:"respawn"} na MESMA conexão — sem saiu/entrou e sem largar o nick',async()=>{
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Renasce',room:newRoom()});
+  const sala=roomOf(r.code);
+  const sess=[...sala.sessions.values()].find(s=>s.slot===r.slot);
+  const sidVelho=sess.sessionId;
+  // ⚠️ o nick NUNCA vem do cliente: sai da conta (token de teste sem conta ganha um "Viajante-NNNN")
+  const nick=sala.sim.players.get(r.slot).name.toLowerCase();
+  await c.until(()=>c.snaps.length>=2,4000,'snapshots');
+  sala.sim.kill(r.slot,{cause:'eaten'});
+  await c.until(()=>c.of('dead'),4000,'tela de morte');
+  // marco DEPOIS da morte: a linha de "entrou" do começo do teste é legítima, o que não pode existir é
+  // qualquer sys de saída/entrada a partir daqui
+  const nFeed=c.json.length;
+  // ⚠️ o socket continua aberto e o slot é dele: morrer nunca foi sair
+  assert.equal(sala.sessions.get(r.slot),sess,'continua na sala depois de morrer');
+
+  c.send({t:'respawn'});
+  const alive=await c.until(()=>c.of('alive'),4000,'{t:"alive"}');
+  assert.equal(alive.slot,r.slot,'mesmo slot');
+  assert.ok(alive.sessionId&&alive.sessionId!==sidVelho,'sessão de persistência NOVA (vida nova, partida nova)');
+  assert.equal(sala.sim.players.get(r.slot).dead,false,'vivo de novo');
+  assert.equal(sala.sessions.get(r.slot),sess,'e é a MESMA sessão de rede');
+  assert.ok(sala.usedNicks.has(nick),'o nick nunca foi solto — era a janela do NICK_IN_ROOM');
+
+  // nenhuma linha de sistema de saída/entrada foi difundida do momento da morte em diante
+  const sys=c.json.slice(nFeed).filter(j=>j.t==='feed').flatMap(f=>f.v||[])
+    .filter(l=>l.k==='sys'&&(l.how==='left'||l.how==='joined'));
+  assert.equal(sys.length,0,`o feed não pode dizer que ele saiu (veio: ${JSON.stringify(sys)})`);
+  c.close();
+});
+
+test('Battle Royale: {t:"respawn"} é ignorado — "sem respawn" é o modo',async()=>{
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'SemVolta',mode:MODE.BR,teamSize:1,room:newRoom()});
+  const sala=roomOf(r.code);sala.lobbyUntil=sala.sim.tick+60;sala.lobbyStart=sala.sim.tick;
+  await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'live');
+  sala.sim.kill(r.slot,{cause:'eliminated'});
+  await c.until(()=>c.of('dead'),4000,'morreu');
+  c.send({t:'respawn'});
+  await new Promise(r2=>setTimeout(r2,400));
+  assert.ok(!c.of('alive'),'nada de alive');
+  assert.equal(sala.sim.players.get(r.slot).dead,true,'continua morto, assistindo');
   c.close();
 });

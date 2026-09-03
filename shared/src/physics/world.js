@@ -91,6 +91,11 @@ export class World{
     /** @type {any[]} */this.events=[];/** @type {Map<number,Body>} */this.entityById=new Map();
     /** @type {{cx:number,cy:number,rad:number,w:number}[]} */this.belts=[];/** @type {{belt:number,at:number}[]} */this.astQueue=[];
     /** @type {{at:number}[]} */this.starQueue=[];
+    // Onde estrelas explodiram há pouco, o mais novo no FIM. É o que faz o jogador do Livre nascer no
+    // berçário (ver _spawnPiece e o bloco NOVA_SPOT_* de constants). Não há poda por tick: a janela é
+    // conferida na LEITURA e o teto do anel segura a memória — com 19 estrelas e o ciclo delas, sai uma
+    // supernova a cada ~4 s, então NOVA_SPOT_KEEP cobre a janela inteira com folga.
+    /** @type {{x:number,y:number,at:number}[]} */this.novas=[];
     // Zona do modo Battle Royale (null = sem zona, que é o modo Livre inteiro). `peace` é o aquecimento:
     // enquanto true TODO MUNDO é aliado, então a espera não precisa de regra própria — reusa sameTeam.
     /** @type {{x0:number,y0:number,r0:number,x1:number,y1:number,r1:number,t0:number,t1:number}|null} */this.zone=null;
@@ -311,17 +316,42 @@ export class World{
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true}={}){
     let ps=this.players.get(slot);
     if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),weaponPin:false,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,autoDefN:0,autoFireAt:0,zoomUntil:0,feastUntil:0,aimLockId:-1,aimLockKind:0,aimLockUntil:0,
-      ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false};this.players.set(slot,ps);}
+      ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false,spawnSafe:true};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.ammo=newAmmo(missiles);ps.team=team;ps.weapon=weapon;ps.weaponPin=false;}
     // `spawn:false` = entrou na SALA mas ainda não no MAPA. É o lobby do battle royale: o jogador existe
     // (ocupa vaga, aparece no PLAYERS, escolhe equipe) e só ganha corpo na largada, via respawnPlayer.
     // Sem isso a única forma de "esperar" seria estar no mundo, comendo — que é outro jogo.
     if(!spawn){ps.alive=false;return null;}
     return this._spawnPiece(ps,x,y,r);}
+  /**
+   * O berçário como destino de nascimento: um ponto dentro do disco de uma supernova recente, ou `null`
+   * para cair no sorteio de sempre. Quem chega numa sala do Livre nasce com 900 de massa num mapa de
+   * 144 M px² e leva minutos para achar comida em quantidade; a estrela que acabou de morrer deixou
+   * NOVA_FOOD grãos e NOVA_PARTICLES fragmentos gordos num raio de ~300 px, e é para lá que ele vai.
+   * ⚠️ Só a AMOSTRAGEM muda: o `zc` é o mesmo argumento que a zona do BR usa, e os três `farFrom`
+   * continuam sendo cobrados — inclusive o PLAYER_SAFE, que é o que impede dois nascerem na mesma
+   * cratera (e o que faz uma cratera já ocupada ser recusada e o laço seguir para a próxima).
+   * ⚠️ Bot NÃO é atraído: com o preenchimento renascendo sem parar no Livre, eles limpariam o cacho
+   * antes de o humano chegar — o berçário existe para ser ENCONTRADO, não para virar ração.
+   * ⚠️ Nem o BR: lá a largada põe todo mundo no anel com x/y explícitos e nem passa por aqui, mas a
+   * guarda existe para ninguém um dia trocar o `zc` da zona por este sem perceber.
+   */
+  _novaSpot(ps){
+    if(ps.isBot||this.zoneNow())return null;
+    const arr=this.novas,lim=this.tick-STAR.NOVA_SPOT_TICKS;
+    for(let i=arr.length-1;i>=0;i--){const n=arr[i];if(n.at<lim)break;   // o anel é cronológico: daqui para trás só há mais velho
+      const s=this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE,null,{x:n.x,y:n.y,r:STAR.NOVA_SPOT_R});
+      if(s.ok)return s;}
+    return null;}
   _spawnPiece(ps,x,y,r){
     // nasce longe de ESTRELA (era do buraco negro, que saiu de cena): com 12 estrelas e a queimadura de STAR.BURN,
     // cair colado numa delas custaria 30% da massa antes de encostar no primeiro grão.
-    if(Number.isNaN(x)){const s=this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE);x=s.x;y=s.y;}
+    // ⚠️ `s.ok` false = as 40 tentativas falharam e este é o ÚLTIMO sorteio, não um lugar seguro: o jogador
+    // pode estar nascendo colado num gigante. O nascimento sempre ignorou isso em silêncio; agora ao menos
+    // ele DIZ (`ps.spawnSafe`, que a Room conta em `metrics.spawn`). Medir antes de consertar: se o número
+    // for ~0 o problema é teórico, e se for alto vira o primeiro suspeito da retenção.
+    if(Number.isNaN(x)){const s=this._novaSpot(ps)||this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE);x=s.x;y=s.y;ps.spawnSafe=s.ok;}
+    else ps.spawnSafe=true;   // posição DADA (largada do BR, respawn com x/y): não houve sorteio a falhar
     ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.ejectRamp=0;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
     ps.autoDefN=0;ps.autoFireAt=0;ps.zoomUntil=0;ps.feastUntil=0;ps.aimLockId=-1;ps.aimLockUntil=0;ps.weaponPin=false;   // vida nova, powerups zerados — mesmo caminho do fireCdUntil, e é ele que cobre addPlayer, respawnPlayer e a largada do BR de uma vez
     const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;return pc;}

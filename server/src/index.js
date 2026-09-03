@@ -30,7 +30,7 @@ export async function startServer(overrides={}){
   if(cfg.databaseUrl){
     db=createDb(cfg,log);
     if(cfg.migrateOnStart){try{await migrate(db,log);}catch(e){log.error('migração falhou (seguindo sem banco):',e&&e.message);}}
-    persist=createPersistence({db,log,config:cfg});hooks=persist.hooks;
+    persist=createPersistence({db,log,config:cfg,metrics});hooks=persist.hooks;
     if(cfg.role!=='game')persistApi=createApi({db,log,config:cfg,persist});
   }else log.warn('DATABASE_URL vazio: jogo sem persistência (rewards saved:false)');
   // ── A DURAÇÃO DA SALA DO LIVRE: o env semeia, o painel manda ──

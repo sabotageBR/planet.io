@@ -95,9 +95,19 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         const opts={mode:mode.id,teamSize};
         let room=null;
         if(msg.room){room=rooms.getRoom(msg.room,opts);
-          // `acceptsJoin` é a porta única: cobre cheia, terminada E partida já em andamento (Battle Royale)
-          if(room&&!room.acceptsJoin()){if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});return s.error('FULL',`sala ${room.code} indisponível`);}
-          if(room&&room.modeId!==mode.id){if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});return s.error('MODE',`a sala ${room.code} é de outro modo`);}}
+          // `acceptsJoin` é a porta única; `joinRefusal` é quem sabe DIZER por quê. "Cheia" e "já começou"
+          // mandam o jogador fazer coisas diferentes, e dizer FULL para as duas mandava metade deles esperar
+          // por uma vaga que nunca ia servir.
+          const nao=room&&room.joinRefusal();
+          if(nao){if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});
+            return nao==='started'?s.error('ROOM_STARTED',`a partida da sala ${room.code} já começou`)
+                                  :s.error('FULL',`sala ${room.code} indisponível`);}
+          // ⚠️ NÃO se recusa mais por MODO. Na tela de Salas o jogador clica numa SALA, não num modo — o
+          // modo que ele escolheu antes é preferência do "JOGAR (AUTO)", não um filtro que tranca a porta.
+          // Quem manda no modo de um código sempre foi o servidor: o `room` ecoa o modo da SALA e é dele
+          // que o HUD e a tela de morte tiram a verdade (`game/index.js`, `modeId=m.mode|0`). O `opts`
+          // continua sendo usado logo abaixo — mas só quando a sala precisa ser CRIADA.
+        }
         const nick=res.nick||fallbackNick;
         // Sair da sala ANTES de escolher a próxima: se ele já está numa sala, o próprio nick dele está em
         // `usedNicks` e o matchmaking descartaria a sala em que ele acabou de jogar.
@@ -169,6 +179,9 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
           if(msg.act==='kick'||msg.act==='ban')r.hostKick(msg.pid|0,{ban:msg.act==='ban'});
           r.sendHost(s);break;}
         case 'quit':if(s.room&&s.slot>=0)s.room.leave(s,'left');break;
+        // Renascer na MESMA sessão (Livre). A Room valida tudo e responde `{t:'alive'}`; recusando, ela não
+        // manda nada e o cliente cai sozinho no caminho antigo de `leave`+`join`, que continua inteiro.
+        case 'respawn':if(s.room&&s.slot>=0)s.room.respawn(s);break;
         // trocar de câmera só faz sentido para quem já morreu: quem está vivo tem as próprias peças
         case 'spectate':{if(!s.room||s.slot<0)break;const gp=s.room.sim.players.get(s.slot);
           if(gp&&gp.dead)s.room.spectatePick(s,{slot:msg.slot|0||-1,dir:msg.dir|0});break;}}}

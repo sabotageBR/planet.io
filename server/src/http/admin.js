@@ -18,6 +18,37 @@ import {NOTICE} from '@warspace/shared/constants.js';
 /** Mesmo saneamento do chat da sala (Room.chat), feito UMA vez na rota e não uma vez por sala. */
 const limpa=t=>String(t||'').normalize('NFKC').replace(/\p{C}/gu,'').replace(/\s+/g,' ').trim().slice(0,NOTICE.MAX_CHARS);
 
+// ── ORDENAÇÃO DAS DUAS ROTAS EM MEMÓRIA ───────────────────────────────────────
+// Elas não têm SQL: a lista é a memória viva dos pods, agregada entre shards. Então a ordenação é um
+// comparador no processo, aplicado no ponto de SAÍDA (ver os dois usos abaixo). Nenhuma paginação — o
+// conjunto vem inteiro, e ordená-lo ordena tudo; não há fronteira a declarar. A única incompletude
+// possível é um shard mudo, e a faixa `.ad-shards` do painel já diz qual.
+// ⚠️ Lista branca aqui também, pelo mesmo motivo de sempre: `by` desconhecido é recusado, nunca cai
+// calado numa coluna que a tela não está anunciando.
+const ORDEM_SALAS=new Map([['code',r=>r.code],['shard',r=>r.shard|0],['mode',r=>r.mode|0],
+  ['phase',r=>String(r.phase||'')],['humans',r=>r.humans|0],['bots',r=>r.bots|0],['round',r=>r.round==null?-1:r.round|0]]);
+// `state` é COMPOSTO e por isso é declarado: vivo e conectado primeiro. Um cabeçalho que ordena por um
+// critério que a coluna não mostra é a mesma mentira que a lista branca existe para evitar, em miniatura.
+const ORDEM_JOGADORES=new Map([['slot',p=>p.slot|0],['name',p=>String(p.name||'').toLowerCase()],
+  ['level',p=>p.level|0],['mass',p=>p.mass|0],['state',p=>(p.alive?2:0)+(p.connected?1:0)],['ip',p=>String(p.ip||'')]]);
+/** `by`/`dir` da query, com padrão por rota. Valor fora da lista cai no padrão — aqui NÃO se recusa com
+ *  400 porque estas rotas não têm o router de erros do `api/`, e a resposta ecoa o `by` que VALEU. */
+function ordemQuery(req,lista,padBy,padDir){
+  const q=new URL(req.url||'/','http://x').searchParams;
+  const by=q.get('by'),dir=q.get('dir');
+  return{by:by&&lista.has(by)?by:padBy,dir:dir==='asc'||dir==='desc'?dir:padDir};}
+/** Desempate por `code`/`slot` para a lista não dançar debaixo do cursor no polling de 5 s do painel. */
+function ordena(arr,lista,by,dir,desempate){
+  const f=lista.get(by),k=dir==='asc'?1:-1;
+  return arr.slice().sort((a,b)=>{const x=f(a),y=f(b);
+    if(x<y)return -k;if(x>y)return k;
+    const dx=desempate(a),dy=desempate(b);return dx<dy?-1:dx>dy?1:0;});}
+const ordenaSalas=(req,arr)=>{const {by,dir}=ordemQuery(req,ORDEM_SALAS,'humans','desc');
+  return{lista:ordena(arr,ORDEM_SALAS,by,dir,r=>String(r.code||'')),by,dir};};
+const ordenaJogadores=(req,arr)=>{if(!Array.isArray(arr))return arr;
+  const {by,dir}=ordemQuery(req,ORDEM_JOGADORES,'slot','asc');
+  return ordena(arr,ORDEM_JOGADORES,by,dir,p=>p.slot|0);};
+
 /**
  * @param {{rooms:any,config:any,log:any,persistApi:any}} o
  * @returns {(req:any,res:any,p:string,sendJson:Function,readJson:Function)=>Promise<boolean>}
@@ -55,10 +86,18 @@ export function createAdminHttp({rooms,config,log,persistApi}){
     if(p==='/api/admin/rooms'||p==='/internal/admin/rooms'){
       if(req.method!=='GET'){sendJson(res,405,{error:'method_not_allowed',message:'método não permitido'});return true;}
       const minhas=[...rooms.rooms.values()].map(r=>r.adminInfo());
-      if(interno||!config.peers.length){sendJson(res,200,{shard:config.shard,rooms:minhas});return true;}
-      const rs=await tellPeers(config.peers,{path:'/internal/admin/rooms',method:'GET',auth,log});
+      // ⚠️ O FRAGMENTO INTERNO SAI CRU. Ordená-lo seria trabalho jogado fora (quem agrega reordena tudo) e,
+      // pior, sugeriria uma garantia que ele não dá — a ordem final é do agregador.
+      if(interno){sendJson(res,200,{shard:config.shard,rooms:minhas});return true;}
+      const rs=config.peers.length?await tellPeers(config.peers,{path:'/internal/admin/rooms',method:'GET',auth,log}):[];
       const outras=rs.filter(r=>r.body&&Array.isArray(r.body.rooms)).flatMap(r=>r.body.rooms);
-      sendJson(res,200,{rooms:minhas.concat(outras),
+      // ⚠️ A ordenação é DEPOIS do concat e no ponto de SAÍDA — nunca em `Room.adminInfo`. É isso que a
+      // torna imune a rollout com versões mistas: quem ordena é sempre o pod que recebeu o pedido, e um
+      // irmão em build antiga continua devolvendo o fragmento dele do mesmo jeito.
+      // ⚠️ E o caminho de shard único (dev, sem peers) passa por AQUI, junto com o agregado: separá-los
+      // fazia o dev sair numa ordem e a produção em outra.
+      const ord=ordenaSalas(req,minhas.concat(outras));
+      sendJson(res,200,{rooms:ord.lista,by:ord.by,dir:ord.dir,
         shards:[{shard:config.shard,ok:true},...rs.map(r=>({shard:r.body&&r.body.shard,peer:r.peer,ok:!r.error&&r.status===200}))]});
       return true;}
 
@@ -72,10 +111,15 @@ export function createAdminHttp({rooms,config,log,persistApi}){
       if(!interno&&dono!==config.shard&&dono<config.shards&&config.peers.length){
         const r=await askPeers(config.peers,{path:`/internal/admin/rooms/${code}${act?'/'+act:''}`,method:req.method,body,auth,log});
         if(!r){sendJson(res,503,{error:'peer_unreachable',message:'o shard dessa sala não respondeu'});return true;}
+        // Também aqui a ordem é aplicada no ponto de SAÍDA, depois do askPeers: ordenando no shard DONO,
+        // uma sala cujo código pertence a um pod em build antiga voltaria sem ordem e sem sinal — e com 12
+        // shards você acertaria 1 em 12 ao testar, que é a pior taxa possível para um bug ser notado.
+        if(!act&&r.body&&r.body.room)r.body.room.players=ordenaJogadores(req,r.body.room.players);
         sendJson(res,r.status,r.body);return true;}
       const room=salaLocal(code);
       if(!room){sendJson(res,404,{error:'not_found',message:'sala não encontrada'});return true;}
-      if(!act){sendJson(res,200,{room:room.adminInfo({players:true})});return true;}
+      if(!act){const info=room.adminInfo({players:true});info.players=ordenaJogadores(req,info.players);
+        sendJson(res,200,{room:info});return true;}
       if(act==='kick'){
         const slot=body.slot|0,s=room.sessions.get(slot);
         // O slot RECICLA entre a listagem e o clique: sem conferir o sessionId, o admin removeria quem

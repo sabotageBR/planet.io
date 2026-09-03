@@ -195,6 +195,53 @@ html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:no
 .ad-tab.click tbody tr.on:hover{background:var(--sel)}
 .ad-tab td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .ad-tab th.n{text-align:right}
+
+/* CABEÇALHO ORDENÁVEL (`.ad-ord`).
+   ⚠️ É um `<button>` DENTRO do `th`, nunca um `th` clicável. Um `th` não é focável, não entra na ordem de
+   tabulação e não responde a Enter/Espaço; e pôr `role="button"` nele DESTRÓI a semântica de tabela — a
+   célula deixa de ser `columnheader` para a tecnologia assistiva, ou seja perde-se justamente o
+   `aria-sort` que se queria dar. O padrão nativo é `th[aria-sort] > button`, e de brinde ele herda o
+   `:focus-visible` que a folha já dá a todo botão do painel.
+   ⚠️ `cursor:pointer` mora AQUI e nunca em `.ad-tab th`: é a mesma lição do bloco acima — cabeçalho que
+   não ordena (as tags de conta, a coluna de "Remover") não pode exibir a mão.
+   O botão do painel é um controle de 34 px com borda; desfazer isso é o mesmo idioma de `.ad-topo nav
+   button` e `.pm-aba`. `font:inherit` basta: `text-transform` e `letter-spacing` do `th` são herdados. */
+.ad-tab th .ad-ord{background:none;border:0;padding:0;height:auto;font:inherit;color:inherit;
+  cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px}
+.ad-tab th .ad-ord:hover{color:var(--txt)}
+/* ⚠️ `th.n{text-align:right}` PARA DE FUNCIONAR quando o conteúdo vira `inline-flex` — o alinhamento
+   passa a ser do flex, não do texto. Sem esta linha a coluna de números fica com o cabeçalho encostado
+   à esquerda e os valores à direita. */
+.ad-tab th.n .ad-ord{width:100%;justify-content:flex-end}
+/* A seta OCUPA LUGAR sempre (invisível quando a coluna não é a ordenada): assim o cabeçalho não pula um
+   caractere a cada clique, empurrando a coluna inteira. E aparecer no hover é a affordance de que dá
+   para clicar ali, sem custo de layout. */
+.ad-tab th .ad-ord i{font-style:normal;font-size:9px;opacity:0;transition:opacity .12s}
+.ad-tab th .ad-ord:hover i,.ad-tab th .ad-ord:focus-visible i{opacity:.45}
+.ad-tab th[aria-sort]:not([aria-sort="none"]) .ad-ord{color:var(--txt)}
+.ad-tab th[aria-sort]:not([aria-sort="none"]) .ad-ord i{opacity:1}
+
+/* Rodapé de paginação: sem ele, "ordenado" é uma mentira fina — a tela fica CERTA (o ORDER BY roda sobre
+   o conjunto inteiro) e mesmo assim leva à conclusão errada, porque nada distingue "estas são as 50
+   contas com mais moedas" de "estas são as contas com mais moedas". */
+/* O recorte declarado ao lado do título ("10 últimas"): é ele que faz a ordenação em memória daquelas
+   tabelas ser verdade em vez de mentira. */
+.ad-dim{color:var(--dim);font-weight:400;font-size:var(--fs-xs)}
+
+/* TELA DE RETENÇÃO: quatro números grandes e um histograma de barras. Nenhuma biblioteca de gráfico —
+   são `<div>` com `width` em porcentagem, e é tudo o que cinco números pedem. */
+.ad-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:var(--s3);margin:var(--s3) 0}
+.ad-kpis .kpi{background:var(--surf2);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:var(--s3)}
+.ad-kpis .kpi b{display:block;font-size:var(--fs-xl);line-height:1.1;font-variant-numeric:tabular-nums}
+.ad-kpis .kpi span{color:var(--dim);font-size:var(--fs-xs)}
+.ad-barras{display:flex;flex-direction:column;gap:2px;margin:var(--s3) 0}
+.ad-barras .bar{display:grid;grid-template-columns:64px 1fr auto;align-items:center;gap:var(--s2);font-size:var(--fs-xs)}
+.ad-barras .bar span{color:var(--dim);order:-1;text-align:right;font-variant-numeric:tabular-nums}
+.ad-barras .bar i{height:14px;background:var(--ok);border-radius:2px;min-width:1px}
+.ad-barras .bar b{color:var(--dim);font-variant-numeric:tabular-nums}
+.ad-pag{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0 0;color:var(--dim);font-size:var(--fs-xs)}
+.ad-pag button{height:28px;padding:0 var(--s3)}
+.ad-pag .cresce{flex:1}
 .ad-tab td em,.ad-tab td small{color:var(--dim);font-style:normal;display:block;font-size:var(--fs-xs)}
 .ad-tab td.ua{color:var(--dim);font-size:var(--fs-xs);max-width:280px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}

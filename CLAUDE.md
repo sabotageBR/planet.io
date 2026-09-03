@@ -449,6 +449,25 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   entrar ATRÁS da estrela. Ele não cabe lá dentro — tem que TAPÁ-LA, e a cena precisa dizer isso. O teste
   é o MESMO da física, e é por isso que `STAR.PASS_R` virou tunable de escopo `wire`: com `server`, mudar
   o parâmetro faria o planeta ser tapado numa faixa e atravessar em outra.
+- **O JOGADOR NASCE NO BERÇÁRIO DA SUPERNOVA** (`World.novas`, `_novaSpot`, `STAR.NOVA_SPOT_*`): quem
+  entra numa sala do Livre nasce com 900 de massa num mapa de 144 M px² e leva minutos até achar comida em
+  quantidade. A estrela que acabou de morrer deixou `NOVA_FOOD` grãos permanentes e `NOVA_PARTICLES`
+  fragmentos gordos num raio de ~300 px — e ninguém era mandado para lá porque **não existia registro de
+  supernova**: `starQueue` guarda só `{at}` e o evento é efêmero.
+  ⚠️ **Só a AMOSTRAGEM muda, nunca o filtro**: o `zc` do `_farSpot` (o argumento que a zona do BR já
+  usava) vira o disco da cratera, e `STAR.SAFE_SPAWN`, `ASTEROID.SAFE_SPAWN` e `PLAYER_SAFE` continuam
+  sendo cobrados linha por linha. É o `PLAYER_SAFE` (1500) que resolve sozinho o medo óbvio de "nascer
+  onde todo mundo quer estar": cratera ocupada reprova nas 40 tentativas e o laço passa para a próxima —
+  e é por isso também que dois humanos não caem na mesma.
+  ⚠️ **Bot não é atraído**: no Livre eles renascem sem parar e limpariam o cacho antes de o humano chegar.
+  O berçário existe para ser ENCONTRADO, não para virar ração. E não vale no BR (guarda `!zoneNow()`),
+  onde a largada põe todo mundo no anel com x/y explícitos.
+  ⚠️ **Supernova de trombada não entra na lista**: com `RAM_REWARD` false ela não larga nem cacho nem
+  fragmento, e mandar o novato para uma cratera vazia — onde ainda por cima alguém acabou de passar — é o
+  oposto do que isto existe para fazer. A janela é `NOVA_LIFE_TICKS`, porque o prêmio que EXPIRA são os
+  fragmentos; `NOVA_SPOT_R` 420 deixa o cacho dentro da AOI, então ele nasce VENDO o que ganhou.
+  ⚠️ Nada de protocolo e nada em `predict.js` (que não conhece spawn nem estrela): `world.novas` nunca sai
+  do servidor, e o `?local=1` herda o comportamento de graça porque roda o `World` inteiro na página.
 - **COLHER DENTRO DO GÁS VALE METADE** (`ZONE.GAS_GAIN`, `rules.gasGain`): acampar na beirada era RENDA
   LÍQUIDA, e o laço se fechava sozinho — `zoneBurn` arranca `pc.shed` e cospe pelotas para FORA, e passada
   a imunidade `pieceEject` devolvia 100% (`EAT.EJECT_GAIN`=1). Quem ficava no gás queimava e recolhia a
@@ -664,6 +683,60 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ O ceifador não recolhe a sala do dono enquanto `ROOM.HOST_HOLD_MS` não vencer (ela existe para
   esperar os amigos), e o filtro de PRIVADA mora em `RoomManager.listRooms` — não em `Room.info()`, que é
   a base do `adminInfo`.
+- **AS TABELAS DO /admin ORDENAM NO SERVIDOR, E O RODAPÉ É PARTE DA MESMA ENTREGA** (`?by=&dir=`, o
+  componente `Th` de `mount.jsx`, `ORDEM_USERS`/`ORDEM_AUDIT` nos repos): nenhuma tabela ordenava, e as
+  duas rotas com paginação keyset pronta (`/users`, `/audit`) tinham `limit`/`before`/`next` que o cliente
+  nunca usou. O contrato copia `repos/ranking.js`, que já era o ÚNICO lugar do servidor a interpolar SQL.
+  ⚠️ **Lista branca em `Map`, nunca objeto literal**: com objeto, `?by=constructor` é truthy, `.expr` sai
+  indefinido e a rota devolve **500** em vez de 400 — um 500 alcançável por qualquer URL. Há teste.
+  ⚠️ **Nunca fallback silencioso**: `by` desconhecido é 400. Um cabeçalho dizendo "moedas ▼" sobre uma
+  lista ordenada por id é exatamente o defeito que isto existe para não criar. E a resposta **ECOA**
+  `{by,dir}` — a tela desenha o indicador a partir do que o servidor FEZ, o que também é a defesa de
+  rollout (pod velho não ecoa, o indicador não aparece, ninguém vê ordenação falsa).
+  ⚠️ **Ordenar sem mostrar a fronteira é trocar uma mentira por outra, PIOR**: o `ORDER BY` roda sobre o
+  conjunto inteiro, então a tela fica CERTA — e mesmo assim um admin que rola até o fim de uma lista
+  ordenada por "visto" conclui "ninguém está inativo há mais de X" tendo visto 50 de 5000, sem nada contra
+  o que conferir. Por isso o rodapé (`mostrando N · há mais · Carregar mais`) entra na MESMA entrega.
+  "Há mais" sai de pedir `limit+1` e devolver `limit` — nenhuma segunda consulta, e conserta de quebra o
+  `next` que vinha preenchido na ÚLTIMA página.
+  ⚠️ **Keyset e ordenação não se misturam**: `before` é `id<$n`, que só é posição quando a ordem é por id.
+  `by=id` mantém o SQL de antes; qualquer outra ordem vira OFFSET com teto (400 `offset_max`), e `before`
+  junto de outro `by` é **400 `cursor_conflict`**, nunca ignorado. O OFFSET é barato justamente aí: sem
+  índice o Postgres já ordena para responder a página 1, então a sétima só paga o descarte.
+  ⚠️ **As duas rotas em MEMÓRIA** (`/rooms`, `/rooms/:code`) ordenam no ponto de SAÍDA, depois do
+  `concat`/`askPeers` — nunca em `Room.adminInfo`. É isso que as torna imunes a versão mista: quem ordena
+  é sempre o pod que recebeu. O fragmento `/internal` sai CRU, e `/rooms` tem DOIS pontos de saída
+  externos (shard único/dev e agregado) — ordenar só um faz o dev divergir da produção.
+  ⚠️ **Leitura não audita**, e não é só coerência: `admin_audit` não tem retenção por decisão, e uma linha
+  por clique de cabeçalho afogaria as de `ban`/`kick`, que são a razão da tabela existir.
+  ⚠️ **`<button>` dentro do `th`, nunca `th` clicável**: `role="button"` num `th` destrói a semântica de
+  tabela e mata o próprio `aria-sort`. `cursor:pointer` mora em `.ad-ord` (a lição de `admin.css:178`), e
+  ⚠️ **`th.n{text-align:right}` PARA de funcionar** com conteúdo `inline-flex` — daí `.ad-tab th.n
+  .ad-ord{width:100%;justify-content:flex-end}`, senão a coluna de números fica com o cabeçalho à esquerda.
+  ⚠️ **O polling de Salas era uma armadilha**: `useEffect(…,[])` fecha sobre a ordenação INICIAL, então a
+  tela reordenava no clique e voltava sozinha ao padrão 5 s depois, sem erro. `[by,dir]` nas dependências.
+  ⚠️ As duas tabelas do detalhe (Partidas, Sessões) ordenam **no cliente** (`admin/ordenar.js`, puro e
+  testável sem jsdom) porque o conjunto é FECHADO por `LIMIT 10/20` — e só é honesto porque o `h3` declara
+  o recorte ("10 últimas"). Elas também não tinham `<thead>`: duas colunas numéricas sem rótulo.
+- **A TELA DE RETENÇÃO** (`repos/analytics.js`, `GET /api/admin/retencao`, migração 0010): "o jogador fica
+  3 minutos?" era pergunta sem resposta — não por falta de dado, mas por falta de quem perguntasse.
+  ⚠️ **A resposta é a VISITA, não a vida**: `matches` guarda uma linha por VIDA, e no Livre morrer e
+  renascer abre outra. A visita é reconstruída agrupando as partidas por intervalo (>30 min = visita nova)
+  com `lag()` + soma cumulativa — sem coluna nova e sem evento novo.
+  ⚠️ O que a 0010 acrescentou é só o que faltava: `killer_kind` (o que separa "morreu para um bot" de
+  "morreu para o cenário" — `killed_by_user_id` é NULL nos dois), `killer_mass` (a razão com `max_mass` é
+  o número que acusa ou inocenta os dois gigantes que a sala semeia), `how` (já resolvido em
+  `Sim._feedMorte` para o kill feed e **jogado fora**) e `users.origin` (fatiar o funil por portal).
+  ⚠️ `ADD COLUMN` sem DEFAULT, zero backfill, zero CHECK: no PG 9.6 isso é metadado, e o ALTER roda no
+  BOOT do pod — passando de 3 s os joins caem em `unsaved` e a partida deixa de ser gravada EM SILÊNCIO.
+  ⚠️ **`purgeOrphanGuests` apagava a coorte da pergunta**: agora quem JOGOU nunca é apagado (o horizonte
+  real nunca foi 30 dias — o token de device dura 365 e desliza).
+  ⚠️ O pool é **o mesmo do jogo**: `days` limitado a 90, `statement_timeout` local e memo de 60 s. Um
+  `days=365` curioso é um incidente.
+  ⚠️ Os contadores de `metrics.js` (`vida`, `spawn`) existem porque enxergam o que o BANCO não grava
+  (banco fora, `unsaved`) — mas são por POD e zeram no restart: sanidade, não medição.
+  ⚠️ `_spawnPiece` ignora o `s.ok` do `_farSpot` há sempre; em vez de consertar às cegas, `metrics.spawn`
+  MEDE. Baseline tirada com o spawn quebrado mede o bug, não o jogo.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade
@@ -875,6 +948,35 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   pelo `resume`). Queda de rede **não** é saída: ela cai em `detach` e só vira `leave` no `housekeeping`.
   ⚠️ `drenaFeed` descarta `sys` primeiro (teto `MAX_PER_FLUSH`): num fecho de gás com 4 abates é o
   "entrou/saiu" que some. É o comportamento certo.
+  ⚠️ **A frase "no Livre RENASCER É `leave`+`join`" DEIXOU DE SER VERDADE** — ver o bloco abaixo. O
+  `JOIN_QUIET_MS` continua, mas cobrindo só trocar de sala e o roubo de sessão pelo `resume`; e o
+  `joined` passou a ser suprimido no LOBBY também, que é o simétrico do `left` (o `_avisaAdmins` fica
+  FORA dessa guarda: "entrou gente" vale igual na fase de espera).
+- **RENASCER NÃO É ENTRAR DE NOVO** (`{t:"respawn"}` → `Room.respawn` → `Sim.revive` → `{t:"alive"}`):
+  o botão DE NOVO do Livre fechava o socket e abria outro, e o feed dizia "Fulano saiu / Fulano entrou"
+  para quem não tinha saído de lugar nenhum — o jogador morto CONTINUA na sala, com o socket aberto e o
+  chat funcionando. O `FEED.JOIN_QUIET_MS` (20 s) era um curativo que não cobria quem ficava lendo a
+  tela de morte, que é o caso normal.
+  ⚠️ **O feed era o sintoma MENOS grave.** Entre o `quit` e a re-entrada há até 3 s (o
+  `await hooks.onPlayerJoin`, `JOIN_TIMEOUT_MS`), e nesse intervalo o nick sai de `usedNicks`: um
+  preenchimento podia tomá-lo e o jogador levava `NICK_IN_ROOM` **na própria sala em que estava**. Some
+  a isso uma linha nova no roster por vida e o handshake inteiro pago à toa.
+  ⚠️ **`Sim.revive` é a dona da lista do que uma vida nova zera, e essa lista é o risco todo**: antes,
+  "vida nova" era um `GamePlayer` saído de `_mk`, então tudo nascia zerado de graça. Esquecer
+  `rosterFolded=false` faz a 2ª vida nunca entrar no pódio; esquecer `kills/deaths/food/score` faz o
+  `_rosterFold` da morte seguinte contar tudo DUAS vezes. Campo novo em `_mk` que seja por vida entra lá.
+  ⚠️ **Sessão de persistência NOVA** (`hooks.openSession`, a generalização do `openUnsavedSession`):
+  `matches` guarda uma linha por VIDA. A da vida anterior já foi fechada pelo `onMatchEnd` da morte e
+  `MatchSession.end` é idempotente, então não há nada a desfazer. O cliente TEM que atualizar o
+  `sessionId` no `{t:"alive"}`, senão um `resume` posterior manda o da vida morta e cai em `ROOM_EXPIRED`.
+  ⚠️ **`respawnAqui()` refaz o que `play()` fazia e não é entrar na sala**: o anúncio de portal e o
+  `match_start` do GA moram lá dentro porque `play()` era a porta única. Sem isso o midroll do
+  RENASCIMENTO — a maioria deles numa sessão — sumiria da receita em silêncio.
+  ⚠️ Recusado (BR, sala acabada, socket caído), o cliente **cai no `play({room})` de antes**: o caminho
+  velho continua inteiro e é a rede. E `{t:"alive"}` **não é um `room` disfarçado** — repetir o
+  tratamento dele apagaria `chatLog`/`feedLog`, ou seja a conversa de quem estava falando na tela de morte.
+  ⚠️ JSON de controle não sobe `PROTOCOL_VERSION` (o precedente é o `{t:"talk"}`): cliente antigo nunca
+  manda `respawn` e ignora `alive` no `else if`, e continua renascendo pelo caminho velho.
 - **ENTROU GENTE DE VERDADE, E SÓ O ADMIN É AVISADO** (`Room._avisaAdmins`, `{t:'adm'}`): faixa `#notice` +
   som + linha de chat, mais a **notificação do sistema** quando a permissão já foi concedida. O alcance é o
   SHARD (`RoomManager` passa o `Map rooms` para cada sala); o cluster inteiro exigiria `tellPeers` e uma
@@ -1706,6 +1808,37 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   formas. Foi ele que aposentou o array `places` do pódio, e com isso o dicionário ficou sem nenhum array.
   Quem impede a tradução de apodrecer é `client/test/i18n.test.js`: paridade exata de chaves, moldes `{n}`
   que precisam sobreviver, o ouro dos temas e o do catálogo.
+- **O JOGAR ENTRA NA PARTIDA, NÃO NA TELA DE MODOS** (`ui/Entry.jsx`): o caminho até o primeiro frame era
+  nomear o planeta · JOGAR · escolher o modo · JOGAR de novo — duas telas e dois cliques para uma decisão
+  que a esmagadora maioria não toma. O Livre É o jogo; quem quer battle royale ou esquadrão continua a UM
+  clique, no botão "Modos" da grade logo abaixo. **A exigência do NOME fica** (é a decisão de a549880).
+  ⚠️ `pendingPlay` continua sendo o PRIMEIRO ramo: quem chegou por link de convite (`?sala=`) ou clicou em
+  renascer sem ter nomeado o planeta foi trazido para cá com o pedido guardado, e mandá-lo para uma sala
+  qualquer do Livre faria o link do amigo terminar no lugar errado. O ramo `ENTRA_DIRETO` (CrazyGames)
+  também fica: é comportamento certificado, não se mexe de passagem.
+  ⚠️ O `data-go` virou `"game"` — ele descreve o DESTINO (é o que `theme/preview.js` e a sonda de
+  responsividade leem), e daqui já não se vai para Modos. O botão da grade mantém o `"modes"`.
+  ⚠️ Efeito colateral declarado: o funil do GA perde o passo `/tela/modes` no caminho principal. Não é
+  regressão, é a tela deixando de existir no meio do caminho — não "consertar" essa queda depois.
+- **A LISTA DE SALAS MOSTRA MODO E TEMPO, E A TRANCADA APARECE TRANCADA** (`ui/Lobby.jsx`): `Room.info()`
+  já mandava `mode`, `phase`, `open` e `round` (segundos restantes; `null` = sem fim) e o cliente ignorava
+  os quatro, desenhando no lugar uma coluna `ping` que o servidor **nunca preencheu** — "—" a vida toda.
+  ⚠️ Quem decide se dá para entrar é o SERVIDOR (`open`), não a contagem de jogadores: uma sala de BR em
+  andamento tem vaga de sobra e mesmo assim está trancada. `open === undefined` é shard irmão em build
+  antiga (a lista agrega os peers) e cai na conta velha.
+  ⚠️ **Trancada MOSTRA cadeado, não some da lista**: sumir faz o jogador procurar a sala que ele viu 5 s
+  atrás. E o clique leva o `mode` DA SALA junto — na lista se escolhe uma sala, não um modo.
+  ⚠️ **A recusa por MODO saiu do `wsServer`**: era um erro `MODE` para quem entrasse por código com outro
+  modo selecionado, ou seja recusava justamente quem tinha acabado de escolher a sala com o dedo. O `opts`
+  continua sendo usado — mas só quando a sala precisa ser CRIADA (botão "Criar sala", link de convite).
+  ⚠️ **O grid tem TRÊS casos, e o do meio faltava**: desktop, retrato e a GAVETA, que é desktop com largura
+  de celular (~435 px). Com seis colunas o botão "Entrar" saía 55 px para FORA e a `.lobby-wrap` ganhava
+  rolagem horizontal — o critério 6 de `responsive-check.mjs`, que o documento não acusa porque quem
+  transborda é o contêiner. Some o `.shard` na gaveta e no retrato: entre "de que shard é" e "quanto
+  falta", quem ajuda a ESCOLHER é o tempo.
+  ⚠️ E o comentário que dizia "no retrato a regra do base.css vale sozinha" **estava errado desde antes**:
+  `body #room-list .room-row` é (1,1,1) e `body[data-mode="portrait"] .room-row` é (0,2,1) — o ID ganha, e
+  o retrato vinha usando o template do desktop com uma coluna sobrando.
 - **A PORTA DE ENTRADA NÃO ANUNCIA SALA VAZIA** (`ui/Entry.jsx`): a lista de SALAS ATIVAS saiu da tela
   inicial. Num jogo que está começando ela só sabia dizer duas coisas, e as duas afastam quem chega:
   "nenhuma sala ativa" — ninguém está jogando — e, quando havia sala, `{n} bots`, ou seja, que os

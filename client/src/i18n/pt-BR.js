@@ -70,6 +70,10 @@ export default {
   // o próprio rótulo num botão que já é o maior da tela.
   respawn: "DE NOVO!", newMatch: "OUTRA PARTIDA", brWatchHint: "Fique para ver o pódio no fim.", toLobby: "Lobby", timeWord: "tempo", rankWord: "ranking diário", coinsEarned: "moedas ganhas",
   lobbyTitle: "SALAS", roomCode: "CÓDIGO", enter: "Entrar", create: "➕ Criar sala", autoNote: "Entra na sala mais cheia com vaga", shard: "shard", botsWord: "bots",
+  // A lista de salas: modo e tempo restante. Curtos de propósito — a coluna tem 60 px, e por isso não dá
+  // para reusar `modeFree`/`modeSolo`, que são os títulos em caixa alta dos cartões grandes da tela de Modos.
+  roomModeCol: "MODO", roomTimeCol: "TEMPO", roomFree: "Livre", roomBr: "BR",
+  roomEndless: "∞", roomWaiting: "no lobby", roomLocked: "em andamento", roomFullTag: "cheia",
   rankTitle: "RANKING", scopeGlobal: "Global", scopeCountry: "Meu país", noCountry: "escolha seu país no perfil",
   muteHint: "Mudo (M)",
   zoomHint: "Zoom manual — 0 ou o botão do meio volta ao automático",
@@ -228,6 +232,7 @@ export default {
     started: "A equipe já entrou em partida.", slot_changed: "A equipe mudou; confira antes de começar.",
     // WebSocket (códigos MAIÚSCULOS de net/wsServer.js + os dois que o próprio cliente inventa)
     AUTH: "Não foi possível entrar.", FULL: "Sala cheia.", MODE: "Essa sala é de outro modo.",
+    ROOM_STARTED: "Essa partida já começou — entre em outra.",
     NICK_IN_ROOM: "Já há alguém chamado \"{nick}\" nessa sala.", NICK_RESERVED: "Esse nick é de um jogador registrado.",
     RATE: "Muitas mensagens; a conexão foi encerrada.", VERSION: "Versão do jogo desatualizada — recarregando.",
     OUTDATED: "Sua versão do jogo está desatualizada.", UPDATING: "O servidor está atualizando; um instante.",

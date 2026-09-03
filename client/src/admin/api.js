@@ -32,8 +32,8 @@ export const api={
   coins:(id,delta,reason)=>req("POST",`/users/${id}/coins`,{delta,reason}),
   revoke:id=>req("POST",`/users/${id}/tokens/revoke`),
   setAdmin:(id,on)=>req("POST",`/users/${id}/admin`,{on}),
-  rooms:()=>req("GET","/rooms"),
-  room:code=>req("GET","/rooms/"+code),
+  rooms:q=>req("GET","/rooms"+(q||"")),
+  room:(code,q)=>req("GET","/rooms/"+code+(q||"")),
   kick:(code,slot,sessionId,reason)=>req("POST",`/rooms/${code}/kick`,{slot,sessionId,reason}),
   closeRoom:code=>req("POST",`/rooms/${code}/close`),
   broadcast:(text,level,ttlMs)=>req("POST","/broadcast",{text,level,ttlMs}),
@@ -41,4 +41,5 @@ export const api={
   setSetting:(key,value)=>req("PUT","/settings/"+key,{value}),
   resetSetting:key=>req("DELETE","/settings/"+key),
   audit:q=>req("GET","/audit"+(q||"")),
+  retencao:d=>req("GET","/retencao?days="+(d|0)),
 };

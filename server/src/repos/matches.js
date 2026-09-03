@@ -26,10 +26,12 @@ export const statsToPublic=s=>{
 export function createMatches(db){
   /** idempotente por session_id; devolve {id,inserted} */
   async function insert(c,m){
-    const r=await c.query(`INSERT INTO matches(session_id,user_id,room_code,shard,started_at,ended_at,duration_s,score,max_mass,kills,bot_kills,splits,ejects,food_eaten,best_streak,top1_ticks,cause,killed_by_user_id,coins_earned,skin_id,mode,team_size,team,placement,players,xp)
-      VALUES($1,$2,$3,$4,$5,now(),$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,0,$18,$19,$20,$21,$22,$23,$24) ON CONFLICT (session_id) DO NOTHING RETURNING id`,
+    // ⚠️ A lista é POSICIONAL e já nasceu fora de ordem: os três da 0010 (retenção) entram no FIM, $25..$27.
+    const r=await c.query(`INSERT INTO matches(session_id,user_id,room_code,shard,started_at,ended_at,duration_s,score,max_mass,kills,bot_kills,splits,ejects,food_eaten,best_streak,top1_ticks,cause,killed_by_user_id,coins_earned,skin_id,mode,team_size,team,placement,players,xp,killer_kind,killer_mass,how)
+      VALUES($1,$2,$3,$4,$5,now(),$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,0,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27) ON CONFLICT (session_id) DO NOTHING RETURNING id`,
       [m.sessionId,m.userId,m.roomCode||null,m.shard||0,new Date(m.startedAt),m.durationS,m.score,m.maxMass,m.kills,m.botKills,m.splits,m.ejects,m.food,m.bestStreak,m.top1Ticks,m.cause,m.killedByUserId||null,m.skinId||0,
-       m.mode|0,m.teamSize||1,m.team==null?null:m.team|0,m.placement?m.placement|0:null,m.players?m.players|0:null,m.xp|0]);
+       m.mode|0,m.teamSize||1,m.team==null?null:m.team|0,m.placement?m.placement|0:null,m.players?m.players|0:null,m.xp|0,
+       m.killerKind||null,m.killerMass==null?null:m.killerMass|0,m.how||null]);
     if(r.rows[0])return{id:Number(r.rows[0].id),inserted:true};
     const old=await c.query(`SELECT id,coins_earned FROM matches WHERE session_id=$1`,[m.sessionId]);
     return{id:Number(old.rows[0].id),inserted:false,coinsEarned:old.rows[0].coins_earned};

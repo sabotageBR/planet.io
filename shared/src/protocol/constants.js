@@ -56,7 +56,13 @@ export const EVENT={EAT:0,POP:1,MERGE:2,SPLIT:3,BH_SUCK:4,DEATH:5,CHIP:6,BOUNCE:
 // EXIT (9) e STAR_SPLIT (19) continuam sem emissor e NÃO são reciclados, para não versionar o fio à toa.
 export const BH_PHASE={GROW:0,ACTIVE:1,FADE:2};
 export const STAR_PHASE={GROW:0,ACTIVE:1,OLD:2};   // OLD = inchando para a supernova
-export const ERROR_CODE={VERSION:4400,FULL:4402,AUTH:4401,NICK_RESERVED:4409,NICK_IN_ROOM:4410,RATE:4429,ROOM:4404,MODE:4405};
+export const ERROR_CODE={VERSION:4400,FULL:4402,AUTH:4401,NICK_RESERVED:4409,NICK_IN_ROOM:4410,RATE:4429,ROOM:4404,MODE:4405,ROOM_STARTED:4423};
+// ROOM_STARTED: a sala existe, tem vaga e mesmo assim recusa — o Battle Royale dela já começou. Antes isto
+// saía como FULL, e "Sala cheia" é FALSO: manda o jogador esperar uma vaga que não vai adiantar, quando o
+// que ele tem que fazer é procurar OUTRA partida. `FULL` voltou a significar só "não tem vaga". O 4423 segue
+// o padrão dos 44xx daqui, que ecoam o HTTP: 423 é `Locked`, que é literalmente o que a sala está.
+// ⚠️ Cliente antigo cai no paraquedas de `i18n/errors.js` (código desconhecido → o `message` do servidor),
+// então a frase em pt-BR que o wsServer manda junto TEM que ser legível — ela é a UI de quem não atualizou.
 // NICK_RESERVED: DORMENTE desde a migração 0009 — o nick deixou de ser único no mundo (qualquer um pode
 // ser o Messi). Fica no enum, como `BLACKHOLE.COUNT=0`: durante um rollout um pod velho ainda o emite, e
 // o cliente novo precisa saber traduzir o 4409 em vez de mostrar o texto cru do servidor.

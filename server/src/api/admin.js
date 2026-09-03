@@ -14,11 +14,36 @@ import {normalizeNick,normalizeLogin,loginTaken} from '../auth/nick.js';
 import {cleanCountry} from '@warspace/shared/countries.js';
 import {listTunables,applyTunable,resetTunable,TUNABLE_BY_KEY,GRUPOS} from '@warspace/shared/tunables.js';
 import {LIMITS} from '../auth/ratelimit.js';
+import {ORDEM_USERS} from '../repos/users.js';
+import {ORDEM_AUDIT} from '../repos/audit.js';
 
 const RD={scope:'token',lim:{n:120,win:60e3}};    // leitura
 const WR={scope:'token',lim:{n:20,win:60e3}};     // mutação
+const OFFSET_MAX=5000;
 
-export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,audit,tunables,requireUser}){
+/**
+ * Lê `by`/`dir`/`offset`/`before` da query e VALIDA contra a lista branca do repo. Recusar é obrigatório:
+ * um `by` desconhecido caindo silenciosamente em "id" faz a tela dizer "moedas ▼" sobre uma lista
+ * ordenada por outra coisa — a mentira que esta funcionalidade existe para não contar.
+ * ⚠️ `before` (keyset, `id<$n`) só é uma POSIÇÃO no conjunto quando a ordem é por id. Junto de outro `by`
+ * ele é 400, nunca ignorado: ignorá-lo em silêncio pularia um pedaço do conjunto sem ninguém perceber.
+ * ⚠️ O teto do offset existe porque `?offset=99999999` é um pedido, por URL autenticada, para o banco
+ * ordenar tudo e descartar tudo.
+ */
+function ordem(ctx,lista){
+  const by=ctx.query.get('by')||'id',dir=ctx.query.get('dir')||'desc';
+  if(!lista.has(by))throw err(400,'bad_by',`ordenação inválida: ${by}`);
+  if(dir!=='asc'&&dir!=='desc')throw err(400,'bad_dir',`direção inválida: ${dir}`);
+  const before=ctx.query.get('before');
+  if(before&&by!=='id')throw err(400,'cursor_conflict','o cursor `before` só vale na ordem padrão (by=id)');
+  const offset=Math.max(0,+(ctx.query.get('offset')||0)||0);
+  if(offset>OFFSET_MAX)throw err(400,'offset_max',`offset acima de ${OFFSET_MAX}`);
+  return{by,dir,offset,before};}
+/** O cursor da página seguinte, no regime em uso — o cliente só o devolve, sem saber qual dos dois é. */
+const proxima=(more,by,offset,rows)=>!more?null
+  :by==='id'&&!offset?{before:rows.length?rows[rows.length-1].id:null}:{offset:offset+rows.length};
+
+export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,audit,tunables,analytics,requireUser}){
   /** As DUAS condições. Um 403 genérico de propósito: não distingue "não é admin" de "token de jogo". */
   const requireAdmin=async ctx=>{const u=await requireUser(ctx);
     if(!u.is_admin||u.token_kind!=='admin')throw err(403,'forbidden','acesso restrito');return u;};
@@ -45,10 +70,13 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
   // ── contas ──
   router.add('GET',/^\/api\/admin\/users$/,async ctx=>{await requireAdmin(ctx);
     const q=ctx.query.get('q'),kind=ctx.query.get('kind'),b=ctx.query.get('banned');
-    const rows=await users.search({q,kind,banned:b==='1'?true:b==='0'?false:null,
-      limit:+(ctx.query.get('limit')||50),before:ctx.query.get('before')});
+    const {by,dir,offset,before}=ordem(ctx,ORDEM_USERS);
+    const {rows,more}=await users.search({q,kind,banned:b==='1'?true:b==='0'?false:null,
+      limit:+(ctx.query.get('limit')||50),before,by,dir,offset});
     // e-mail é do DETALHE, não da lista: uma tela de busca não precisa despejar a base de e-mails
-    return{users:rows.map(({email,...r})=>r),next:rows.length?rows[rows.length-1].id:null};},{rate:RD});
+    // ⚠️ `next` só existe quando HÁ próxima: antes ele saía preenchido também na última página, e o botão
+    // "carregar mais" ficaria eterno trazendo nada.
+    return{users:rows.map(({email,...r})=>r),by,dir,more,next:proxima(more,by,offset,rows)};},{rate:RD});
 
   router.add('GET',/^\/api\/admin\/users\/(?<id>\d+)$/,async ctx=>{await requireAdmin(ctx);
     const id=Number(ctx.params.id),u=await users.adminById(id);
@@ -147,10 +175,22 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
     reg('setting_reset',adm,ctx,{target:key});
     return{key,value:v,applied:await espalha(ctx)};},{rate:WR});
 
+  // ── retenção ──
+  // ⚠️ `days` é limitado a 90 e não por gosto: as consultas varrem `matches` no MESMO pool das partidas, e
+  // um `days=365` curioso é um incidente. O repo ainda põe `statement_timeout` e um memo de 60 s.
+  // Leitura NÃO audita (nenhum GET daqui audita): `admin_audit` não tem retenção por decisão, e encher o
+  // log de aberturas de tela afogaria as linhas de ban/kick, que são a razão da tabela existir.
+  router.add('GET',/^\/api\/admin\/retencao$/,async ctx=>{await requireAdmin(ctx);
+    if(!analytics)return{days:0,funil:[],primeira:null,histograma:[],algoz:[],coortes:[],visita:null};
+    const d=Math.min(90,Math.max(1,+(ctx.query.get('days')||14)||14));
+    return await analytics.tudo(d);},{rate:RD});
+
   // ── auditoria ──
   router.add('GET',/^\/api\/admin\/audit$/,async ctx=>{await requireAdmin(ctx);
-    if(!audit)return{rows:[]};
-    return{rows:await audit.list({limit:+(ctx.query.get('limit')||100),before:ctx.query.get('before'),adminId:ctx.query.get('adminId')})};},{rate:RD});
+    if(!audit)return{rows:[],by:'id',dir:'desc',more:false,next:null};
+    const {by,dir,offset,before}=ordem(ctx,ORDEM_AUDIT);
+    const {rows,more}=await audit.list({limit:+(ctx.query.get('limit')||100),before,adminId:ctx.query.get('adminId'),by,dir,offset});
+    return{rows,by,dir,more,next:proxima(more,by,offset,rows)};},{rate:RD});
 
   /**
    * Pede aos irmãos que releiam o banco. O corpo NÃO carrega valor: quem manda é `admin_settings`, e o
