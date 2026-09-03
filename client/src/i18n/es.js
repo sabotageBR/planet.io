@@ -18,6 +18,7 @@ export default {
   brCancel: "Cancelar",
   aliveLeft: "QUEDAN", placementWord: "puesto", zoneOut: "⚠ EN EL GAS", zoneShrinking: "EL GAS ESTÁ AVANZANDO",
   admJoin: "🟢 {n} entró al juego", admJoinTitle: "warspace.io",
+  rosterTitle: "EN LA SALA",
   chatTitle: "CHAT", chatHint: "T para hablar", chatHintTouch: "Toca para hablar", chatTeam: "equipo", chatPlaceholder: "Mensaje…",
   chatAll: "todos", chatScopeHint: "con quién hablas", chatDeadTag: "☠ ",
   playerActions: "qué hacer con este jugador", mutePlayer: "🔇 Silenciar", reportPlayer: "⚠ Denunciar",

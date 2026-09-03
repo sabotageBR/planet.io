@@ -2078,6 +2078,25 @@ body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:non
    piso e QUEBRAM em duas fileiras, que é o certo — o `.team-sizes` já é `flex-wrap`. */
 body[data-pointer="coarse"] #s-modes .team-sizes .chip-btn{min-width:44px}
 
+/* ── O PAINEL DO TAB (ui/Roster.jsx) ─────────────────────────────────────────────────────────────
+   Segurar TAB mostra quem está na sala, e o JOGO CONTINUA VIVO por baixo — é por isso que aqui NÃO há
+   `backdrop-filter` (o `.overlay` dos temas tem um blur de 2 px, e borrar uma partida em andamento para
+   ler uma lista é o oposto do que este painel existe para fazer) e o overlay é `pointer-events:none`:
+   ele não pode capturar o ponteiro, senão o alvo do jogador congela — o mesmo motivo pelo qual o `#hud`
+   inteiro é `pointer-events:none`. Ninguém clica nele: abre com a tecla, fecha soltando. */
+#s-roster{background:rgba(0,0,0,.35);backdrop-filter:none;pointer-events:none}
+#s-roster .roster{pointer-events:none;width:min(420px,92vw);max-height:min(70vh,560px);
+  display:flex;flex-direction:column;gap:6px;padding:14px 16px}
+#s-roster .rs-sala{margin-left:8px;font-style:normal;opacity:.6;font-size:.8em;letter-spacing:.06em}
+#s-roster .rs-conta{opacity:.65;font-size:.85em;margin-top:-4px}
+#s-roster .rs-lista{overflow:hidden auto;display:flex;flex-direction:column;gap:1px;min-height:0}
+#s-roster .rs-row{display:flex;align-items:center;gap:8px;padding:3px 4px;border-radius:6px;min-width:0}
+#s-roster .rs-row.me{background:color-mix(in srgb,var(--accent) 16%,transparent)}
+#s-roster .rs-row.morto{opacity:.45}
+#s-roster .rs-pos{flex:none;min-width:1.6em;text-align:right;opacity:.6;font-variant-numeric:tabular-nums}
+#s-roster .rs-row .kf-who{flex:1;min-width:0}
+#s-roster .rs-massa{flex:none;font-style:normal;font-variant-numeric:tabular-nums;opacity:.85}
+
 /* ── A EQUIPE CAMPEÃ INTEIRA (ui/Round.jsx) ──────────────────────────────────────────────────────
    Vitória de esquadrão anunciava um vencedor só: `champTeam` chegava null porque a linha do placar
    perdia o `team` no merge do servidor, e mesmo com ele o bloco desenhava um planeta. Agora entram

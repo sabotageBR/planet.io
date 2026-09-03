@@ -556,6 +556,26 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   **`skin.face`** e não `rarity==="secret"` — as skins 45–48 também são secretas e são `pattern:"plain"`,
   e pela raridade quatro skins sem rosto nenhum perderiam o nome de graça. A skin Retrato (a FOTO do
   jogador) mantém o nome, por decisão.
+- **O TAB MOSTRA QUEM ESTÁ NA SALA, COM O JOGO VIVO POR BAIXO** (`ui/Roster.jsx`, `overlays.tab`):
+  segurar abre, soltar fecha, e o planeta continua seguindo o mouse o tempo todo. É o ponto inteiro do
+  painel, e é por isso que ele **NUNCA** passa por `setPause`: quem congela o planeta é `game.setPaused`,
+  que faz o `enviarInput` mandar o alvo em cima do próprio centróide.
+  ⚠️ **Não custa um byte de protocolo**: o `MSG.PLAYERS` já traz a sala INTEIRA fora da AOI (slot, nome,
+  skin, nível, país, equipe, morto) e o `MSG.LEADERBOARD` traz a massa de todos os vivos a 2 Hz — o mesmo
+  par que o placar do HUD já cruza. O que faltava era juntar os MORTOS, e eles estão em `view.players`.
+  ⚠️ **O roster só é montado com o painel ABERTO** (`game.setRoster`): `pushHud` roda a 8 Hz, e 50 objetos
+  por tick de HUD para uma tela quase sempre fechada é trabalho jogado fora.
+  ⚠️ **A tecla mora em `App.jsx`, ao lado do KeyM**, e não no teclado do jogo: é atalho de UI, não ação —
+  não passa por `canAct`, não entra no INPUT e vale com o jogador morto. `preventDefault` é obrigatório
+  (sem ele o navegador tabula pelos botões do HUD e o `keyup` chega em outro elemento, deixando o painel
+  grudado), e há um `blur` da janela porque Alt+Tab nunca entrega o `keyup`.
+  ⚠️ O overlay é **`pointer-events:none`** e **sem `backdrop-filter`**: capturar o ponteiro congelaria o
+  alvo do jogador (o mesmo motivo do `#hud` inteiro), e borrar uma partida em andamento para ler uma lista
+  é o oposto do que o painel existe para fazer.
+  ⚠️ `anonBots` sai de graça: no BR o servidor não manda `PLAYER_FLAG.BOT`, então `isBot` já chega falso.
+  Não inventar uma segunda fonte.
+  ⚠️ O Esc fecha o TAB ANTES de abrir a pausa (`escape()` em `state/actions.js`), senão o menu subiria por
+  cima do painel.
 - **MENU DE PAUSA NO ESC** (`ui/Pause.jsx`, `overlays.pause`): é OVERLAY, não tela — navegar para `prefs`
   durante a partida faz `GameHost.jsx` chamar `game.leave()` (a conexão CAI) e o `Hud` esconder o `#hud`
   inteiro. As prefs saem da MESMA tabela de Opções (`PREFS` + `PrefRow`, extraído de `Prefs.jsx`), num

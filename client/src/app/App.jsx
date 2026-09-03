@@ -2,7 +2,7 @@
 import React, { useEffect } from "react";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { boot, escape, toggleMute } from "../state/actions.js";
+import { boot, escape, toggleMute, setRoster } from "../state/actions.js";
 import { useViewportMode } from "../hooks/useViewportMode.js";
 import GameHost from "../ui/GameHost.jsx";
 import Scene from "../ui/Scene.jsx";
@@ -24,6 +24,7 @@ import Offline from "../ui/Offline.jsx";
 import PortalLogin from "../ui/PortalLogin.jsx";
 import Toast from "../ui/Toast.jsx";
 import LevelUp from "../ui/LevelUp.jsx";
+import Roster from "../ui/Roster.jsx";
 import { sfx } from "../audio/index.js";
 
 let booted = false; // StrictMode monta o efeito duas vezes em dev
@@ -60,8 +61,17 @@ export default function App() {
       if (e.code === "KeyM" && !e.ctrlKey && !e.metaKey && !e.altKey && !digitando(e)) {
         e.preventDefault(); toggleMute();
       }
+      // ⚠️ O TAB mora AQUI e não no teclado do jogo, pelo mesmo motivo do KeyM ao lado: é atalho de UI, não
+      // ação de jogo — não passa por `canAct`, não entra no INPUT e vale com o jogador morto. E o
+      // `preventDefault` não é opcional: sem ele o navegador tabula pelos botões do HUD e o `keyup` pode
+      // chegar em outro elemento, deixando o painel grudado.
+      if (e.code === "Tab" && !digitando(e) && app.get().screen === "game") { e.preventDefault(); setRoster(true); }
     };
-    addEventListener("keydown", onKey); return () => removeEventListener("keydown", onKey);
+    const onUp = e => { if (e.code === "Tab") setRoster(false); };
+    // ⚠️ O `blur` fecha o painel: Alt+Tab com ele aberto nunca entrega o `keyup`, e ele ficaria para sempre.
+    const onBlur = () => setRoster(false);
+    addEventListener("keydown", onKey); addEventListener("keyup", onUp); addEventListener("blur", onBlur);
+    return () => { removeEventListener("keydown", onKey); removeEventListener("keyup", onUp); removeEventListener("blur", onBlur); };
   }, []);
   // Som das telas por DELEGAÇÃO: um listener só, em vez de espalhar `sfx()` por dez componentes. O canvas do
   // jogo (#game) fica de fora — lá quem manda é o som da partida, e um clique de UI no meio do tiroteio confunde.
@@ -96,6 +106,7 @@ export default function App() {
     <Offline />
     <PortalLogin />
     <Toast />
+    <Roster on={overlays.tab} />
     <LevelUp />
   </>;
 }

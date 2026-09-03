@@ -13,6 +13,7 @@ export default function GameHost() {
   const ref = useRef(null), joined = useRef(false);
   const screen = useStore(app, s => s.screen), pending = useStore(app, s => s.pendingJoin), prefs = useStore(app, s => s.session.prefs);
   const pause = useStore(app, s => s.overlays.pause);
+  const tab = useStore(app, s => s.overlays.tab);
   const theme = useTheme();
 
   useEffect(() => {
@@ -38,6 +39,9 @@ export default function GameHost() {
   // Com o menu de pausa aberto o motor larga o CONTROLE (o alvo passa a ser o próprio centróide e as ações
   // são recusadas). A partida continua rodando no servidor — ver o cabeçalho de ui/Pause.jsx.
   useEffect(() => { const game = getGame(); if (game) game.setPaused(pause); }, [pause]);
+  // ⚠️ O painel do TAB é o OPOSTO da pausa: ele só liga a montagem do roster no `pushHud` (que a 8 Hz não
+  // vale a pena com o painel fechado) e NÃO toca no controle. O jogo continua vivo por baixo dele.
+  useEffect(() => { const game = getGame(); if (game && game.setRoster) game.setRoster(tab); }, [tab]);
   useEffect(() => { const game = getGame(); if (game) game.setTheme(theme); }, [theme]);
 
   return <div id="game" ref={ref} />;

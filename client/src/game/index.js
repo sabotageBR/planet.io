@@ -512,6 +512,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
+    /** O painel do TAB abriu/fechou. ⚠️ NÃO mexe em `pausado`: o jogo continua vivo por baixo, e é o
+     *  `enviarInput` da pausa (alvo em cima do centróide) que congelaria o planeta. */
+    setRoster(on){const v=!!on;if(v===rosterOn)return;rosterOn=v;pushHud(performance.now());},
     resize(){if(!renderer)return;renderer.resize();agendaView();},
     destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();game.leave(true);audio.suspend();for(const ev of ["pointerdown","keydown","click","touchend"])removeEventListener(ev,wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();actions.destroy();clearTimeout(viewT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("warspace:pause",onPortalPause);removeEventListener("warspace:theme",onThemeEvent);if(themeGuard)removeEventListener("warspace:theme",themeGuard);
@@ -732,7 +735,23 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         waitMs:lobby.waitMs?Math.max(0,lobby.waitMs-(now-lobby.at)):0,
         roster:[...view.players.values()].map(p=>({slot:p.slot,name:p.name,skinId:p.skinId,me:p.slot===view.mySlot}))}:null,
       alive:s?s.alive:0,weapon:s?s.weapon|0:0,owned:s?s.owned|1:1,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
+      // O ROSTER DO TAB não custa um byte de protocolo: o PLAYERS já traz a sala INTEIRA fora da AOI (slot,
+      // nome, skin, nível, equipe, bot, morto) e o `view.lb` já cruza isso com o placar de 2 Hz, que tem a
+      // massa de todos os vivos. O que falta ali são os MORTOS, e eles estão em `view.players` com a flag.
+      // Só é montado com o painel ABERTO: `pushHud` roda a 8 Hz, e 50 objetos por tick de HUD para uma
+      // tela que quase sempre está fechada é trabalho jogado fora.
+      roster:rosterOn?montaRoster():null,
       talk:mic.state,chat:chatLog,feed:feedLog,notice:hudStore.get().notice,spec});}
+  /** Todo mundo da sala, vivo ou morto, com a massa de quem está no placar. Ordem: massa, depois nome. */
+  function montaRoster(){
+    const massa=new Map();for(const l of view.lb)massa.set(l.slot,l.mass);
+    const out=[];
+    for(const p of view.players.values())
+      out.push({slot:p.slot,name:p.name,skinId:p.skinId|0,level:p.level|0,country:p.country||null,
+        isBot:!!p.isBot,ally:!!p.ally,dead:!!p.dead,registered:!!p.registered,
+        me:p.slot===view.mySlot,mass:massa.get(p.slot)||0});
+    out.sort((a,b)=>b.mass-a.mass||String(a.name||"").localeCompare(String(b.name||"")));
+    return out;}
   function statsText(){const c=renderer.counts(),st=predictor.stats;
     const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
     return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · estrelas ${c.stars} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}
@@ -744,6 +763,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // partida: mora aqui, não na store, e `leave()`/`join()` o zeram junto do `cam.reset()`.
   let zoomF=1,zoomAt=0;
   let souDono=false,salaPrivada=false,painel=null;   // sala com dono: o painel só existe para quem é o dono
+  let rosterOn=false;   // o painel do TAB está aberto? (só então o roster é montado — ver montaRoster)
 
   // ── laço ──
   /**

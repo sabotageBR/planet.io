@@ -83,7 +83,9 @@ export const initialState = {
   // GameHost chamar `game.leave()` (a conexão cai) e o Hud esconder o #hud inteiro. Três lugares escrevem
   // este objeto — aqui, o `go()` e o `play()` —, e os dois últimos o zeram: um overlay novo que não entre
   // na conta deles some sozinho na primeira navegação.
-  overlays: { account: false, reconn: false, pause: false },
+  // `tab` é o painel de QUEM ESTÁ NA SALA, aberto enquanto o TAB está pressionado. Ele NÃO é uma pausa:
+  // o planeta continua seguindo o mouse por baixo (ver `escape` e a nota em Roster.jsx).
+  overlays: { account: false, reconn: false, pause: false, tab: false },
   // ⚠️ FORA de `overlays`, de propósito, e é o parágrafo acima que explica por quê: `go()` e `play()`
   // reescrevem aquele objeto inteiro. Este aviso precisa do contrário — ele tem que GRUDAR até o
   // servidor voltar, porque sem servidor não há o que jogar.

@@ -31,6 +31,12 @@ export function go(screen) {
 // delas abre — "claim" | "login", as duas truthy, que é o que `App.jsx` lê para montar o overlay.
 export const openAccount = (tab) => app.update(s => ({ ...s, overlays: { ...s.overlays, account: tab === "claim" ? "claim" : "login" } }));
 export const setPause = on => app.update(s => ({ ...s, overlays: { ...s.overlays, pause: !!on } }));
+/**
+ * O painel do TAB. ⚠️ Ele NUNCA pode passar por `setPause`: é `game.setPaused` que manda o alvo em cima do
+ * próprio centróide (game/index.js), e é isso que congela o planeta — exatamente o oposto do que se quer
+ * aqui. Overlay puro de leitura, com o jogo vivo por baixo.
+ */
+export const setRoster = on => app.update(s => (!!s.overlays.tab === !!on ? s : { ...s, overlays: { ...s.overlays, tab: !!on } }));
 export const togglePause = () => { const s = app.get(); if (s.screen !== "game" && !s.overlays.pause) return; setPause(!s.overlays.pause); };
 // ── O QUE ACONTECE ENQUANTO UM ANÚNCIO DE PORTAL RODA ──
 // Cala o som (sem tocar em `prefs.muted` — ver `silenciaAnuncio` em audio/index.js) e, na volta, se o
@@ -71,6 +77,8 @@ export function escape() {
   if (s.overlays.account) { closeAccount(); return true; }
   const a = document.activeElement;
   if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) { a.blur(); return true; }
+  // o TAB vem ANTES da pausa: com o painel aberto, o Esc tem que fechá-lo, e não abrir o menu por cima
+  if (s.overlays.tab) { setRoster(false); return true; }
   if (s.overlays.pause) { setPause(false); return true; }
   if (s.screen === "game") { setPause(true); return true; }
   if (s.screen === "party") { leaveParty(); return true; }   // sair sem avisar deixa o lobby órfão até o TTL, com os amigos olhando uma equipe que não existe

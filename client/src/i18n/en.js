@@ -18,6 +18,7 @@ export default {
   brCancel: "Cancel",
   aliveLeft: "LEFT", placementWord: "placement", zoneOut: "⚠ IN THE GAS", zoneShrinking: "THE GAS IS CLOSING IN",
   admJoin: "🟢 {n} joined the game", admJoinTitle: "warspace.io",
+  rosterTitle: "IN THE ROOM",
   chatTitle: "CHAT", chatHint: "T to talk", chatHintTouch: "Tap to talk", chatTeam: "squad", chatPlaceholder: "Message…",
   chatAll: "everyone", chatScopeHint: "who you're talking to", chatDeadTag: "☠ ",
   playerActions: "what to do about this player", mutePlayer: "🔇 Mute", reportPlayer: "⚠ Report",
