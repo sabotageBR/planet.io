@@ -30,7 +30,11 @@ metadata:
   labels: {app: warspace-server}
 spec:
   scaleTargetRef: {apiVersion: apps/v1, kind: StatefulSet, name: warspace-server}
-  minReplicas: 12
+  # ⚠️ PISO 3, e ele não derruba nada sozinho: `scaleDown: Disabled` logo abaixo continua valendo, então
+  # baixar este número NÃO recolhe os pods que já estão de pé — ele só diz até onde o HPA pode deixar a
+  # frota chegar. Reduzir de verdade é escalar o StatefulSet À MÃO, e isso MATA as partidas que estão na
+  # memória dos pods removidos (sala é estado local do processo): manutenção em janela, nunca reação.
+  minReplicas: 3
   # ⚠️ 24 é o teto porque é até onde `k8s/10-server.yaml` e `k8s/30-ingress.yaml` têm Service e rota.
   # ⚠️ E há um efeito de USABILIDADE a partir daqui: o 1º caractere do código da sala é o shard em
   # base36 (`rooms/codes.js`), então o shard 18 abre salas começando com "I" e o 24 abriria com "O" —
