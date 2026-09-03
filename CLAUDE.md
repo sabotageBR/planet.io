@@ -1843,6 +1843,17 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ficou: `Room.leave` remove do mundo, e no Livre **morrer e renascer é `leave` + `join` num slot NOVO**.
   Chave estável: `u<userId>` → `r<resumeToken>` → `n<nick>` → `b<slot>`; **nunca `sessionId`**, que é por VIDA
   e agruparia errado justamente no respawn. `_rosterFold` é idempotente por vida (`gp.rosterFolded`) e ACUMULA.
+  ⚠️ **`left` PRECISA DO SIMÉTRICO** (`Room._rosterVolta`, chamado no `join`): ele era escrito no `leave` e
+  nunca desescrito — e no Livre morrer É `leave`+`join`, então UMA morte grudava a marca na pessoa até o
+  fim da rodada. Em `_mergeBoard` isso vale exatamente `vivo=false`: a linha ia para o `resto` com massa
+  ZERO, atrás de TODOS os vivos, e o BIG CRUNCH coroava o maior preenchimento enquanto quem tinha o maior
+  planeta da sala não aparecia nem entre os cinco maiores. O que tornava o defeito ilegível é que ele
+  ainda levava os QUATRO destaques, que saem do roster e não da massa — a mesma tela dizia, ao mesmo
+  tempo, que o jogador foi o melhor em tudo e que não estava no placar. Visto em produção com 50 abates.
+  ⚠️ O `slot` volta junto: a linha guarda o da última vida DOBRADA, e a nova só é dobrada na morte
+  seguinte ou no `endRound` — até lá `porSlot.get(r.slot)` leria um slot já reciclado por outra pessoa.
+  ⚠️ Quem prova é `server/test/roombots.test.js` pelo caminho REAL (join/leave/join/endRound): os dois
+  testes de `_mergeBoard` montam o roster À MÃO, e com roster fabricado este defeito é invisível.
 - **A TELA DE FIM DE RODADA TEM ABERTURA, CAMPEÃO GRANDE E TRÊS MODELOS** (`ui/Round.jsx` +
   `ui/RoundIntro.jsx`, o bloco "FIM DE RODADA v2" de `styles/ui.css`, prefs `roundStyle`/`roundIntro`):
   trinta minutos de sala terminavam num corte seco — o placar já estava lá no primeiro frame — e o
