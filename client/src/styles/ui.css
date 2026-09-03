@@ -1200,7 +1200,12 @@ body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(sa
   max-width:80vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;animation:ri-fade .4s ease-out 1.6s both}
 .ri-massa{font-style:normal;font-size:clamp(13px,2.6vmin,20px);color:var(--accent,#ffc22e);
   font-variant-numeric:tabular-nums;animation:ri-fade .4s ease-out 1.72s both}
-@keyframes ri-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+/* ⚠️ `translate`, a propriedade — nunca `transform`: o `.ri-skip` logo abaixo se POSICIONA com
+   `translateX(-50%)`, e um keyframe terminando em `transform:none` com fill-mode `both` o apagava,
+   deixando o "toque para pular" fora do eixo (o mesmo mecanismo que jogou a tela de morte meia
+   janela para fora — ver `dd-bate`). Translações COMUTAM, então aqui não há nem o desvio
+   geométrico que o `scale` de lá tem: a matriz final é a mesma em qualquer ordem. */
+@keyframes ri-fade{from{opacity:0;translate:0 6px}to{opacity:1;translate:none}}
 .ri-skip{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
   font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted,#8fa0d8);opacity:0;
   animation:ri-fade .5s ease-out .7s both}
@@ -2025,9 +2030,21 @@ body[data-mode="portrait"] .portal-login{font-size:12px;padding:6px 12px}
 /* ── A ENTRADA TEM IMPACTO, mas não segura o jogador ──
    Morrer é frequente: uma abertura como a do fim de rodada seria um pedágio a cada morte. Aqui o
    conteúdo já está pronto no primeiro frame e só CHEGA batendo (450 ms), com o 💥 estourando junto.
-   `[data-reduce="1"]` desliga tudo, como no resto do projeto. */
+   `[data-reduce="1"]` desliga tudo, como no resto do projeto.
+   ⚠️ A BATIDA ANIMA `scale`, A PROPRIEDADE — e NUNCA `transform`. Foi ela que jogou METADE da tela
+   de morte para fora do celular: o cartão é POSICIONADO por transform (em retrato os três temas o
+   colam como folha de rodapé com `left:50%;transform:translateX(-50%)`, e o bloco "TODA TELA NO
+   MESMO LUGAR" faz o mesmo no centro), e um keyframe que termina em `transform:none` com fill-mode
+   `both` MANTÉM esse valor depois do fim — valor animado ganha da cascata. O translate sumia para
+   sempre e o cartão passava a começar na metade da janela: medido, `left:195px` com 390 px de
+   largura numa tela de 390, ou seja 195 px fora pela direita, nos três temas. `scale` é propriedade
+   independente (COMPÕE com o `transform` em vez de substituí-lo), e onde ela não existir a batida
+   simplesmente não acontece — degradar é perder o pulo, nunca perder o cartão.
+   ⚠️ Vale para toda animação nova daqui: `transform` em keyframe só em elemento cujo LUGAR não
+   dependa de transform (é o caso do `.dead-icon` logo abaixo, que os temas só dimensionam), ou então
+   repetindo o translate em CADA keyframe — que é o que `noticeIn` e `ws-flutua-logo` já fazem. */
 #s-dead .dead-card{animation:dd-bate .45s cubic-bezier(.2,1.4,.4,1) both}
-@keyframes dd-bate{from{opacity:0;transform:scale(.94)}60%{opacity:1}to{opacity:1;transform:none}}
+@keyframes dd-bate{from{opacity:0;scale:.94}60%{opacity:1}to{opacity:1;scale:1}}
 #s-dead .dead-icon{animation:dd-estoura .5s cubic-bezier(.2,1.8,.4,1) both}
 @keyframes dd-estoura{from{transform:scale(0) rotate(-25deg)}to{transform:none}}
 body[data-reduce="1"] #s-dead .dead-card,body[data-reduce="1"] #s-dead .dead-icon,

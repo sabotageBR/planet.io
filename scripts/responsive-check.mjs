@@ -4,7 +4,7 @@
 //   2. nenhum alvo tocável abaixo de 44 px, onde o ponteiro é o dedo
 //   3. nenhum par de blocos do HUD se sobrepondo
 //   4. nada saindo da viewport (aproximação de área segura)
-//   5. a caixa da tela cabe na janela quando não há como rolar até ela
+//   5. a caixa da tela cabe na janela: no rodapé quando não há como rolar até ela, e SEMPRE na largura
 //   6. nenhum CONTÊINER rolando na horizontal (o critério 1 mede o DOCUMENTO e não pega a caixa das telas)
 // As TELAS são DOM (React) e renderizam bem em headless; só o canvas do Pixi não roda aqui — por isso a
 // matriz mede layout e HUD, e o jogo em si continua sendo aprovado de olho, em Chrome de verdade.
@@ -118,6 +118,17 @@ const SONDA=`(()=>{
     const nav=caixa.querySelector(':scope>nav.nav');
     if(nav&&vis(nav)){const n=nav.getBoundingClientRect();
       if(n.bottom>innerHeight+1)estoura.push('a barra sai '+Math.round(n.bottom-innerHeight)+'px da janela');}}
+  // ...E CABE NA LARGURA, havendo rolagem vertical ou não: podeRolar e todo o bloco acima são do eixo
+  // Y, e foi por isso que a matriz deixou passar a tela de morte saindo MEIA JANELA para a direita no
+  // celular. Ela ficava em left:50% sem o translateX(-50%) que a posiciona (a animacao de entrada
+  // apagava o transform), e nenhum dos seis criterios olhava a lateral DA CAIXA: o documento nao
+  // transbordava, porque o .screen e overflow:hidden (criterio 1); a varredura de "clipado" para no
+  // primeiro ancestral rolavel, que e o proprio cartao (criterio 4); e o 6 cobra quem ROLA de lado,
+  // nao quem esta fora do lugar. Rolar na horizontal nenhuma tela do jogo faz, entao aqui nao ha o
+  // equivalente do podeRolar: sobra lateral e sempre defeito.
+  if(caixa&&vis(caixa)){const r=caixa.getBoundingClientRect();
+    if(r.right>innerWidth+1)estoura.push('caixa sai '+Math.round(r.right-innerWidth)+'px pela direita');
+    if(r.left<-1)estoura.push('caixa comeca '+Math.round(-r.left)+'px antes da esquerda');}
   // NENHUM CONTÊINER ROLA DE LADO. O critério 1 mede o DOCUMENTO, e por isso deixou passar um defeito que
   // o jogador sente na mão: a caixa das telas é overflow:auto, e bastou a barra de navegação passar 2 px do
   // padding para ela ganhar um eixo horizontal próprio — o documento não transbordava, mas o painel andava

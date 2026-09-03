@@ -2010,6 +2010,29 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **O disco tem teto de 74% da coluna, não 100%**: o canvas é absoluto e mede 132% do bloco (ver o
   fim de rodada), então um disco com a largura inteira do `.dd-alvo` — que no duelo é um terço da
   caixa — empurra 16% para cada lado, e o cartão ganhava barra de rolagem horizontal na gaveta.
+- **ANIMAÇÃO DE ENTRADA NÃO ESCREVE `transform` EM QUEM SE POSICIONA COM `transform`** (`dd-bate` e
+  `ri-fade` em `ui.css`): a tela de morte saía **METADE PARA FORA** do celular — medido, `left:195px`
+  com o cartão de 390 px numa tela de 390, nos três temas — e a causa não estava em nenhuma regra de
+  layout. O cartão é POSICIONADO por transform (em retrato os três temas o colam como folha de rodapé
+  com `left:50%;transform:translateX(-50%)`, e o bloco "TODA TELA NO MESMO LUGAR" faz o mesmo no
+  centro), e a batida de 450 ms terminava em `transform:none` com fill-mode **`both`** — que MANTÉM o
+  valor final depois do fim. Valor animado ganha da cascata, então o translate sumia para sempre.
+  Hoje a batida anima **`scale`**, a propriedade individual, que COMPÕE com o `transform` em vez de
+  substituí-lo; onde ela não existir, perde-se o pulo e nunca o cartão.
+  ⚠️ **O irmão era o `.ri-skip`** ("toque para pular", da abertura do BIG CRUNCH): mesma `ri-fade`
+  terminando em `transform:none` sobre um `translateX(-50%)`, com o texto parando fora do eixo. Ela
+  passou a animar **`translate`**, e aí não há nem o desvio geométrico do `scale` — translações
+  comutam, então `translate:0 6px` e `transform:translateX(-50%)` dão a mesma matriz em qualquer
+  ordem. As irmãs que usam `transform` em keyframe continuam válidas porque nenhuma delas se
+  posiciona assim (`dd-estoura`, `rd-sobe`, `ds-cresce`, `lvup-pop`, o resto do `ri-*`) — e quando o
+  elemento se posiciona assim, o outro remédio é repetir o translate em CADA keyframe, que é o que
+  `noticeIn` e `ws-flutua-logo` sempre fizeram.
+  ⚠️ **A matriz não pegava isso, e agora pega** (o critério 5 de `scripts/responsive-check.mjs` ganhou
+  a LARGURA): o documento não transbordava, porque o `.screen` é `overflow:hidden` (critério 1); a
+  varredura de "clipado" para no primeiro ancestral rolável, que é o próprio cartão (critério 4); e o
+  6 cobra quem ROLA de lado, não quem está fora do lugar. O critério 5 media só topo e rodapé. A
+  cobrança lateral não tem o `podeRolar` do eixo vertical: nenhuma tela do jogo rola na horizontal,
+  então sobra lateral é sempre defeito.
 - **OS DOIS CARTÕES DA TELA DE MODOS TÊM O MESMO DESENHO** (`ui/Modes.jsx`, `ui.css`): planeta pequeno no
   alto à direita, texto ao lado dele e um JOGAR da largura do cartão embaixo. O do Livre era o ÚNICO da
   tela sem botão nenhum — o clique era no cartão inteiro —, e ao lado de um vizinho com um JOGAR grande e
