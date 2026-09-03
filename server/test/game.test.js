@@ -194,6 +194,27 @@ test('/healthz: tick p99, overruns, db, protocol',async()=>{
   assert.equal((await (await fetch(base+'/api/auto')).json()).code,roomCode);
   assert.equal((await fetch(base+'/nada')).status,404);
 });
+test('mundo por parâmetro: o boot fixa WORLD, a sala nasce com ele e o cliente é AVISADO',async()=>{
+  // ⚠️ `WORLD` é estado GLOBAL do processo (o codec o lê a cada chamada), então este teste restaura os três
+  // campos no `finally` — sem isso ele contaminaria toda a suíte que roda depois.
+  const w0=WORLD.w,h0=WORLD.h,l0=WORLD.LADO;
+  const LADO=8000;
+  const s2=await startServer({port:0,databaseUrl:'',logLevel:LOG,worldSide:LADO,roomBots:0});
+  try{
+    assert.equal(WORLD.w,LADO,'o boot fixou o mundo ANTES de a porta abrir');
+    assert.equal(WORLD.h,LADO);
+    const X=new Client(`ws://127.0.0.1:${s2.port}/ws/0`);await X.open();
+    const r=await X.join('Medidor','0WLD',{w:1280,h:720},'pt_qualquer');
+    // o campo `world` existia desde sempre e era decorativo: é ele que o cliente passou a obedecer
+    assert.deepEqual(r.world,{w:LADO,h:LADO},'a sala anuncia o mundo dela no JSON `room`');
+    const sala=s2.rooms.rooms.get(r.code);
+    assert.equal(sala.sim.world.w,LADO,'e a simulação foi criada com ele');
+    // a peça nasce DENTRO do mundo novo — se o spawn ainda usasse o mundo do build, cairia fora
+    const pc=sala.sim.world.piecesOf(X.slot)[0];
+    assert.ok(pc.x>0&&pc.x<LADO&&pc.y>0&&pc.y<LADO,`spawn dentro do mundo novo (${pc.x|0},${pc.y|0})`);
+    X.close();
+  }finally{await s2.close();WORLD.w=w0;WORLD.h=h0;WORLD.LADO=l0;}
+});
 test('sem banco: join unsaved, rewards saved:false, FULL, VERSION, sala por código',async()=>{
   const s2=await startServer({port:0,databaseUrl:'',logLevel:LOG,roomMax:1,roomBots:3});const url=`ws://127.0.0.1:${s2.port}/ws/0`;
   try{

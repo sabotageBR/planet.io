@@ -357,6 +357,30 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ Custo medido do tick (arena de `physics.test.js`): média 0,97 → 1,32 ms, p99 3,31 → 3,74. O `GRID_CELL`
   maior é o que segura o custo FIXO (`cellStart.fill(0)` em dois grids por tick, mais o `forEachPair` sobre
   `cols×rows`, que rodam mesmo com o mapa vazio).
+- **O TAMANHO DO MUNDO É PARÂMETRO DO /admin, E É O ÚNICO QUE NÃO VALE NA HORA** (`WORLD.LADO`, grupo
+  "Salas"; env `WORLD_SIDE` semeia). `LADO` é o lado DESEJADO — o que o painel grava — e `WORLD.w/h` é o
+  mundo de AGORA; quem copia um no outro é o BOOT (`startServer`, depois de `tunablesReady` e **antes** de
+  a porta abrir, ou seja antes de existir a primeira sala). Trocar o mundo com salas rodando não tem
+  conserto: a zona já foi sorteada, os cinturões já nasceram e os clientes daquelas salas já quantizaram
+  posições na escala velha.
+  ⚠️ **`protocol/codec.js` passou a ler `WORLD.w` a CADA chamada**, em vez de capturá-lo na carga do módulo.
+  Sem isso, um pod com o mundo mudado e um bundle antigo quantizariam em escalas diferentes e TODA posição
+  do fio sairia deslocada, com fator de erro constante e nada na tela dizendo por quê.
+  ⚠️ **O cliente obedece o `world:{w,h}` da sala** (`game/index.js`, no `m.t==="room"`). O campo existia
+  desde sempre e era decorativo — `wsServer` já o mandava e o cliente lia a própria constante. Ele chega
+  ANTES de qualquer snapshot, que é o que faz a quantização bater. Câmera, radar, grade, analógico e
+  predição já liam a constante por chamada; quem GUARDA o tamanho são a grade (o TilingSprite e a borda
+  assada) e o fundo (as faixas de parallax) — daí `renderer.worldResized()`.
+  ⚠️ **Mexer nele não reescala nada em volta**: comida, cinturões, estrelas e os tempos da zona continuam
+  nos números do build. Mundo maior com a mesma população = mapa mais vazio. É ferramenta de teste, não um
+  botão de "mundo maior" pronto — o mundo maior de verdade é a tabela de escalas do bloco acima.
+- **CLIENTE DE BUILD ANTIGA NÃO ENTRA EM OUTRO LOBBY: ELE RECARREGA.** Um processo de servidor roda UMA
+  física só, e um cliente velho tem outras regras (o esconderijo da estrela, o ganho no gás, a trava de
+  arma) além de outro `WORLD` — num "lobby de build antiga" ele dessincronizaria do mesmo jeito, porque
+  quem simula é o servidor novo. Quem separa é o `PROTOCOL_VERSION`: `wsServer` recusa o join com
+  `error VERSION` e `net/Connection.js` fecha e dá `location.reload()` em 1 s. Por isso mudança que toca o
+  fio SOBE a versão (esta entrega vai para a 15), e por isso os 3 shards e o cliente têm que subir na
+  MESMA imagem.
 - **O PEQUENO ATRAVESSA A ESTRELA E SE ESCONDE LÁ DENTRO** (`STAR.PASS_R`, `rules.starPass`): abaixo de
   40 px de raio a peça não é empurrada, não queima, não estilhaça e — o que faz o esconderijo existir —
   **não detona a estrela**. `pieceStar` chamava `supernova(...,rammed)` de forma INCONDICIONAL, então o

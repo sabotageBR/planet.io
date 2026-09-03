@@ -25,7 +25,12 @@ import {createReader} from "./reader.js";
 /** @typedef {import("./dto.js").VoiceUp} VoiceUp */
 /** @typedef {ArrayBuffer|ArrayBufferView} Bytes */
 
-const W=WORLD.w,H=WORLD.h;
+// ⚠️ LIDOS A CADA CHAMADA, e não capturados na carga do módulo. O tamanho do mundo virou parâmetro do
+// /admin (`WORLD.LADO`, aplicado no BOOT do servidor) e o cliente passa a obedecer o `world:{w,h}` que a
+// sala manda no JSON `room` — que chega ANTES de qualquer snapshot. Com a captura de antes, o cliente
+// quantizava na escala velha e TODA posição do fio saía deslocada, com fator de erro constante e nenhum
+// erro em lugar nenhum. Duas leituras de propriedade por posição é o preço, e ele não aparece no perfil.
+const wx=()=>WORLD.w,wy=()=>WORLD.h;
 const u8c=v=>v>0?(v>255?255:Math.round(v)):0,u16c=v=>v>0?(v>65535?65535:Math.round(v)):0,u32c=v=>v>0?(v>4294967295?4294967295:Math.round(v)):0;
 /** @type {never[]} */const EMPTY=[];
 /** @type {SelfState} */const SELF0={flags:0,missiles:0,powerBits:0,magnetT:0,shieldLv:0,score:0,splitCd:0,ejectCd:0,fireCd:0,rank:0,mass:0,threat:0,threatDir:0,weapon:0,alive:0,owned:1,autoDefN:0,zoomT:0,feastT:0};
@@ -35,17 +40,17 @@ const expect=(rd,type)=>{const t=rd.u8();if(t!==type)throw new Error(`tipo de me
 // ── INPUT (0x01, 10 bytes) ───────────────────────────────────────────────────
 /** @param {Input} inp @param {Uint8Array} [out] @returns {Uint8Array} */
 export function encodeInput(inp,out=new Uint8Array(INPUT_BYTES)){
-  const seq=inp.seq&0xFFFF,tx=qPos(inp.tx,W),ty=qPos(inp.ty,H),ct=inp.clientTick&0xFFFF;
+  const seq=inp.seq&0xFFFF,tx=qPos(inp.tx,wx()),ty=qPos(inp.ty,wy()),ct=inp.clientTick&0xFFFF;
   out[0]=MSG.INPUT;out[1]=seq&255;out[2]=seq>>8;out[3]=tx&255;out[4]=tx>>8;out[5]=ty&255;out[6]=ty>>8;out[7]=inp.flags&255;out[8]=ct&255;out[9]=ct>>8;
   return out;}
 /** @param {Reader} rd @returns {Input} */
-function readInput(rd){expect(rd,MSG.INPUT);return{seq:rd.u16(),tx:dqPos(rd.u16(),W),ty:dqPos(rd.u16(),H),flags:rd.u8(),clientTick:rd.u16()};}
+function readInput(rd){expect(rd,MSG.INPUT);return{seq:rd.u16(),tx:dqPos(rd.u16(),wx()),ty:dqPos(rd.u16(),wy()),flags:rd.u8(),clientTick:rd.u16()};}
 /** @param {Bytes} view */
 export const decodeInput=view=>readInput(createReader(view));
 
 // ── SNAPSHOT (0x10) ──────────────────────────────────────────────────────────
 /** @param {Writer} w @param {EntityCreate} e */
-function writeCreate(w,e){w.u8(e.kind).u32(e.id>>>0).u16(qPos(e.x,W)).u16(qPos(e.y,H)).u16(qR(e.r));
+function writeCreate(w,e){w.u8(e.kind).u32(e.id>>>0).u16(qPos(e.x,wx())).u16(qPos(e.y,wy())).u16(qR(e.r));
   switch(e.kind){
     case KIND.PIECE:w.u16(e.owner|0).i16(qV(e.vx)).i16(qV(e.vy)).u8(e.flags|0);break;
     case KIND.FOOD:w.u8(e.type|0).u8(e.hue|0);break;
@@ -55,7 +60,7 @@ function writeCreate(w,e){w.u8(e.kind).u32(e.id>>>0).u16(qPos(e.x,W)).u16(qPos(e
     case KIND.MISSILE:w.u16(e.owner|0).u16(e.target|0).i16(qV(e.vx)).i16(qV(e.vy)).u8(e.weapon|0);break;
     default:throw new Error(`kind desconhecido: ${e.kind}`);}}
 /** @param {Reader} rd @returns {EntityCreate} */
-function readCreate(rd){const kind=rd.u8(),id=rd.u32(),x=dqPos(rd.u16(),W),y=dqPos(rd.u16(),H),r=dqR(rd.u16());
+function readCreate(rd){const kind=rd.u8(),id=rd.u32(),x=dqPos(rd.u16(),wx()),y=dqPos(rd.u16(),wy()),r=dqR(rd.u16());
   switch(kind){
     case KIND.PIECE:return{kind,id,x,y,r,owner:rd.u16(),vx:dqV(rd.i16()),vy:dqV(rd.i16()),flags:rd.u8()};
     case KIND.FOOD:return{kind,id,x,y,r,type:rd.u8(),hue:rd.u8()};
@@ -66,14 +71,14 @@ function readCreate(rd){const kind=rd.u8(),id=rd.u32(),x=dqPos(rd.u16(),W),y=dqP
     default:throw new Error(`kind desconhecido: ${kind}`);}}
 /** @param {Writer} w @param {EntityUpdate} u */
 function writeUpdate(w,u){const m=u.mask|0;w.u32(u.id>>>0).u8(m);
-  if(m&UPD.X_Y)w.u16(qPos(u.x,W)).u16(qPos(u.y,H));
+  if(m&UPD.X_Y)w.u16(qPos(u.x,wx())).u16(qPos(u.y,wy()));
   if(m&UPD.R)w.u16(qR(u.r));
   if(m&UPD.V)w.i16(qV(u.vx)).i16(qV(u.vy));
   if(m&UPD.FLAGS)w.u8(u.flags|0);
   if(m&UPD.EXTRA)w.u8(u.phase|0).u16(u16c(u.influenceR));}
 /** @param {Reader} rd @returns {EntityUpdate} */
 function readUpdate(rd){const id=rd.u32(),mask=rd.u8();/** @type {EntityUpdate} */const u={id,mask};
-  if(mask&UPD.X_Y){u.x=dqPos(rd.u16(),W);u.y=dqPos(rd.u16(),H);}
+  if(mask&UPD.X_Y){u.x=dqPos(rd.u16(),wx());u.y=dqPos(rd.u16(),wy());}
   if(mask&UPD.R)u.r=dqR(rd.u16());
   if(mask&UPD.V){u.vx=dqV(rd.i16());u.vy=dqV(rd.i16());}
   if(mask&UPD.FLAGS)u.flags=rd.u8();
@@ -129,20 +134,20 @@ export const decodePlayers=view=>readPlayers(createReader(view));
 /** @param {Writer} w @param {LeaderboardRow[]} rows @returns {Uint8Array} */
 export function encodeLeaderboard(w,rows){if(rows.length>255)throw new RangeError("leaderboard: mais de 255 linhas");
   w.reset().u8(MSG.LEADERBOARD).u8(rows.length);
-  for(let i=0;i<rows.length;i++){const r=rows[i];w.u16(r.slot|0).u32(u32c(r.mass)).u16(qPos(r.x||0,W)).u16(qPos(r.y||0,H));}
+  for(let i=0;i<rows.length;i++){const r=rows[i];w.u16(r.slot|0).u32(u32c(r.mass)).u16(qPos(r.x||0,wx())).u16(qPos(r.y||0,wy()));}
   return w.toBuffer();}
 /** @param {Reader} rd @returns {LeaderboardRow[]} */
 function readLeaderboard(rd){expect(rd,MSG.LEADERBOARD);const n=rd.u8(),rows=new Array(n);
-  for(let i=0;i<n;i++)rows[i]={slot:rd.u16(),mass:rd.u32(),x:dqPos(rd.u16(),W),y:dqPos(rd.u16(),H)};return rows;}
+  for(let i=0;i<n;i++)rows[i]={slot:rd.u16(),mass:rd.u32(),x:dqPos(rd.u16(),wx()),y:dqPos(rd.u16(),wy())};return rows;}
 /** @param {Bytes} view */
 export const decodeLeaderboard=view=>readLeaderboard(createReader(view));
 
 // ── EVENT (0x13) ─────────────────────────────────────────────────────────────
 /** @param {Writer} w @param {GameEvent} e @returns {Uint8Array} */
 export function encodeEvent(w,e){
-  return w.reset().u8(MSG.EVENT).u8(e.kind|0).u16(qPos(e.x,W)).u16(qPos(e.y,H)).u16(qR(e.r)).u16(e.slotA|0).u16(e.slotB|0).u32(e.extra>>>0).toBuffer();}
+  return w.reset().u8(MSG.EVENT).u8(e.kind|0).u16(qPos(e.x,wx())).u16(qPos(e.y,wy())).u16(qR(e.r)).u16(e.slotA|0).u16(e.slotB|0).u32(e.extra>>>0).toBuffer();}
 /** @param {Reader} rd @returns {GameEvent} */
-function readEvent(rd){expect(rd,MSG.EVENT);return{kind:rd.u8(),x:dqPos(rd.u16(),W),y:dqPos(rd.u16(),H),r:dqR(rd.u16()),slotA:rd.u16(),slotB:rd.u16(),extra:rd.u32()};}
+function readEvent(rd){expect(rd,MSG.EVENT);return{kind:rd.u8(),x:dqPos(rd.u16(),wx()),y:dqPos(rd.u16(),wy()),r:dqR(rd.u16()),slotA:rd.u16(),slotB:rd.u16(),extra:rd.u32()};}
 /** @param {Bytes} view */
 export const decodeEvent=view=>readEvent(createReader(view));
 
@@ -160,13 +165,13 @@ export const decodePong=view=>readPong(createReader(view));
 // que é do servidor. Parada = origem e destino iguais. `t1` infinito (fim de tudo) vai como 0xffffffff.
 /** @param {Writer} w @param {ZoneWire} z @returns {Uint8Array} */
 export function encodeZone(w,z){
-  return w.reset().u8(MSG.ZONE).u16(qPos(z.x0,W)).u16(qPos(z.y0,H)).u16(qR(z.r0))
-    .u16(qPos(z.x1,W)).u16(qPos(z.y1,H)).u16(qR(z.r1))
+  return w.reset().u8(MSG.ZONE).u16(qPos(z.x0,wx())).u16(qPos(z.y0,wy())).u16(qR(z.r0))
+    .u16(qPos(z.x1,wx())).u16(qPos(z.y1,wy())).u16(qR(z.r1))
     .u32(z.t0>>>0).u32(Number.isFinite(z.t1)?z.t1>>>0:0xffffffff).toBuffer();}
 /** @param {Reader} rd @returns {ZoneWire} */
 function readZone(rd){expect(rd,MSG.ZONE);
-  const x0=dqPos(rd.u16(),W),y0=dqPos(rd.u16(),H),r0=dqR(rd.u16());
-  const x1=dqPos(rd.u16(),W),y1=dqPos(rd.u16(),H),r1=dqR(rd.u16());
+  const x0=dqPos(rd.u16(),wx()),y0=dqPos(rd.u16(),wy()),r0=dqR(rd.u16());
+  const x1=dqPos(rd.u16(),wx()),y1=dqPos(rd.u16(),wy()),r1=dqR(rd.u16());
   const t0=rd.u32(),t1=rd.u32();
   return{x0,y0,r0,x1,y1,r1,t0,t1:t1===0xffffffff?Infinity:t1};}
 /** @param {Bytes} view */
@@ -187,10 +192,10 @@ export const decodeVoiceUp=view=>readVoiceUp(createReader(view));
 /** @param {Writer} w @param {VoiceClip} v @returns {Uint8Array} */
 export function encodeVoice(w,v){
   return w.reset().u8(MSG.VOICE).u16(v.slot|0).u8(v.codec|0).u16(u16c(v.durMs))
-    .u16(qPos(v.x||0,W)).u16(qPos(v.y||0,H)).u16(v.data.length).bytes(v.data).toBuffer();}
+    .u16(qPos(v.x||0,wx())).u16(qPos(v.y||0,wy())).u16(v.data.length).bytes(v.data).toBuffer();}
 /** @param {Reader} rd @returns {VoiceClip} */
 function readVoice(rd){expect(rd,MSG.VOICE);
-  const slot=rd.u16(),codec=rd.u8(),durMs=rd.u16(),x=dqPos(rd.u16(),W),y=dqPos(rd.u16(),H),n=rd.u16();
+  const slot=rd.u16(),codec=rd.u8(),durMs=rd.u16(),x=dqPos(rd.u16(),wx()),y=dqPos(rd.u16(),wy()),n=rd.u16();
   return{slot,codec,durMs,x,y,data:rd.bytes(n)};}
 /** @param {Bytes} view */
 export const decodeVoice=view=>readVoice(createReader(view));

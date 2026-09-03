@@ -12,6 +12,10 @@ data:
   ROOM_MAX: "30"
   ROOM_BOTS: "15"
   ROUND_TICKS: "108000"   # rodada de 30 min a 60 Hz = 2 dias do relógio do espaço (fim do mundo + sala nova)
+  # 0 = usa o mundo do build (12000 px de lado). Este env é só a SEMENTE: quem manda de verdade é o
+  # parâmetro WORLD.LADO do /admin, e ele vale no próximo boot do pod — trocar o mundo com salas rodando
+  # não tem conserto (a zona já foi sorteada e os clientes já quantizaram posições na escala velha).
+  WORLD_SIDE: "0"
   PORT: "3000"
   DB_POOL_MAX: "5"
   MIGRATE_ON_START: "1"

@@ -30,6 +30,9 @@ export const config=Object.freeze({
   roomMax:num('ROOM_MAX',30),
   roomBots:num('ROOM_BOTS',15),
   roundTicks:Math.max(60,num('ROUND_TICKS',ROUND.TICKS)),   // duração da rodada em ticks (os testes usam rodadas curtas)
+  // 0 = usa o mundo do build. Semeia `WORLD.LADO`, que o BOOT copia para `WORLD.w/h` antes de a porta abrir
+  // (ver server/src/index.js). Trocar o mundo com salas rodando não tem conserto, por isso não é live.
+  worldSide:num('WORLD_SIDE',0),
   lobbyTicks:Math.max(60,num('LOBBY_TICKS',BR.LOBBY_TICKS)),   // janela do lobby do Battle Royale (mesmo motivo do ROUND_TICKS: testar sem esperar 30 s)
   logLevel:str('LOG_LEVEL','info'),
   // fala dos bots por LLM (Ollama). Sem OLLAMA_URL fica desligada e o chat usa o repertório fixo de sempre —

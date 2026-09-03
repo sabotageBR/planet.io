@@ -25,7 +25,7 @@
 // rodada. Parametrizar por sala exigiria carregar um objeto de tunables por Room→Sim→World→rules, tocando
 // toda assinatura da física e o predict — não vale por um punhado de números.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
@@ -123,6 +123,15 @@ export const TUNABLES=[
   // o céu tem que virar um número inteiro de vezes por sala, senão a última troca fica pela metade.
   num('sala','ROUND.TICKS','Duração da sala no modo Livre','minutos','server',5,120,5,ROUND,'TICKS',
     {para:m=>Math.round(m*60*TICK_HZ),de:t=>Math.round(t/(60*TICK_HZ))}),
+  // O TAMANHO DO MUNDO, e ele é o único tunable que NÃO vale na hora: escreve em `WORLD.LADO` e só o BOOT
+  // copia para `WORLD.w/h`. Mudar com salas rodando não tem conserto — a zona já foi sorteada, os cinturões
+  // já nasceram e os clientes já quantizaram na escala velha —, então a gravação é imediata e a aplicação
+  // espera o pod subir. O rótulo diz isso, porque um parâmetro que "não faz nada" sem explicação é pior que
+  // parâmetro nenhum.
+  // ⚠️ Mexer nele NÃO reescala nada em volta: a comida, os cinturões, as estrelas e os tempos da zona
+  // continuam nos números do build. Mundo maior com a mesma população = mapa mais vazio, e mundo menor =
+  // mais apertado. É ferramenta de teste, não um botão de "mundo maior" pronto.
+  num('sala','WORLD.LADO','Lado do mundo (vale no próximo boot do servidor)','px','server',4000,24000,500,WORLD,'LADO'),
   // ── CHAT ──
   // Quanto da linha de uma PESSOA é mascarado. O padrão é `livre` por decisão de produto (xingar faz parte
   // de um .io); os portais continuam atendidos por silenciar/denunciar/kick, que valem em qualquer nível.

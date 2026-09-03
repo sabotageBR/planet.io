@@ -7,7 +7,15 @@
 // 9600 → 12000 (+25% de lado, +56% de área). O que é FRAÇÃO acompanha sozinho (zona, anel de largada do
 // BR, piso da câmera, quantização, grade, radar, fundo); o que é CONTAGEM ou DISTÂNCIA teve que ser
 // escalado à mão logo abaixo — cada um com o expoente certo, s² para população e s para alcance.
-export const WORLD={w:12000,h:12000};
+export const WORLD={w:12000,h:12000,LADO:12000};
+// LADO é o lado do mundo para a PRÓXIMA vez que o processo subir, e é ele que o /admin edita — `w`/`h` são
+// o mundo de AGORA. Os dois existem separados porque mudar o tamanho com salas rodando não tem conserto:
+// a zona já foi sorteada, os cinturões já nasceram, e os clientes já quantizaram na escala velha. O boot
+// (`startServer`) copia LADO para w/h antes de a primeira sala existir, e daí em diante ninguém mais mexe.
+// ⚠️ O CLIENTE obedece o `world:{w,h}` que a sala manda no JSON `room` (`wsServer` já o mandava e ele era
+// campo decorativo), e é por isso que `protocol/codec.js` passou a ler `WORLD.w` a cada chamada em vez de
+// capturá-lo na carga do módulo: sem isso um pod com o mundo mudado e um bundle antigo deslocariam TODA
+// posição do fio, com fator de erro constante e nada na tela dizendo por quê.
 export const TICK_HZ=60,DT=1/60,SNAPSHOT_EVERY=3,LEADERBOARD_EVERY=30,SAMPLE_EVERY=30;
 export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600,
   HOST_HOLD_MS:120000,HOST_GRACE_MS:30000,

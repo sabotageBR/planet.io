@@ -25,7 +25,7 @@ import {apiUrl,wsUrl} from "../api/base.js";
 import {PORTAL} from "../portal/flags.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,ZOOM,CAM,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,ZOOM,CAM,WORLD,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
 // direto do módulo: `tunables.js` não entra no barril de `shared` (ele é a lista BRANCA do painel, não
 // vocabulário de jogo), e o cliente só precisa do aplicador — a validação vem junto de graça.
 import {aplicaWire} from "@warspace/shared/tunables.js";
@@ -258,6 +258,15 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // sem comida. `aplicaWire` escreve nos objetos de constants.js, que não são congelados: é o mesmo
     // aliasing que a física do servidor já usa, e vale para todo leitor no frame seguinte.
     if(m.t==="room"||m.t==="phase")aplicaWire(m.tun,RAIZES_WIRE);
+    // ⚠️ O TAMANHO DO MUNDO VEM DA SALA, e este campo existia sem consumidor desde sempre (`wsServer` já o
+    // mandava e o cliente lia a própria constante). Ele passou a ser parâmetro do /admin aplicado no BOOT
+    // do servidor, então um pod com o mundo mudado e um bundle antigo quantizariam em escalas diferentes —
+    // TODA posição do fio sairia deslocada, com fator de erro constante e nada na tela dizendo por quê.
+    // Chega ANTES de qualquer snapshot, e `protocol/codec.js` lê `WORLD.w` a cada chamada justamente para
+    // que isto valha. Câmera, radar, grade, analógico e predição já liam a constante por chamada.
+    if(m.t==="room"&&m.world&&m.world.w>0&&(m.world.w!==WORLD.w||m.world.h!==WORLD.h)){
+      WORLD.w=m.world.w;WORLD.h=m.world.h;
+      if(renderer)renderer.worldResized();}   // a grade e o fundo guardam o tamanho: sem isto ficam do tamanho velho
     if(m.t==="room"){view.mySlot=m.slot;predictor.setSlot(m.slot);view.room=m.code;view.rebuildLb();warmSkins();
       round=m.round||null;roundOver=false;lastCount=-1;warmedSky=null;lastAmmo=0;lastMagnet=false;
       modeId=m.mode|0;teamSize=m.teamSize||1;myTeam=m.team==null?-1:m.team;roomCap=m.cap||0;

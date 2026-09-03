@@ -5,7 +5,7 @@
 import http from 'node:http';
 import {pathToFileURL} from 'node:url';
 import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
-import {ROUND} from '@warspace/shared/constants.js';
+import {ROUND,WORLD} from '@warspace/shared/constants.js';
 import {config as baseConfig} from './config.js';
 import {createLogger} from './log.js';
 import {createDb} from './db/pool.js';
@@ -38,6 +38,14 @@ export async function startServer(overrides={}){
   // os pods SOBEM; `Room.js` lê a constante viva, e `admin_settings` a sobrescreve 30 s depois. Sem esta
   // linha o env seria ignorado (regressão silenciosa nos testes, que encurtam a rodada por aqui).
   ROUND.TICKS=cfg.roundTicks;
+  // ── O TAMANHO DO MUNDO: o env semeia, o painel manda, e QUEM APLICA É O BOOT ──
+  // Mesmo contrato do `ROUND.TICKS` acima, com uma diferença que é a razão de ele existir em dois campos:
+  // `WORLD.LADO` é o lado DESEJADO (o que o /admin grava) e `WORLD.w/h` é o mundo de AGORA. Trocar o mundo
+  // com salas rodando não tem conserto — a zona já foi sorteada, os cinturões já nasceram, e os clientes
+  // daquelas salas já quantizaram posições na escala velha —, então a aplicação espera o processo subir.
+  // O `await` da linha abaixo é o que garante "antes da primeira sala": `tunablesReady` é uma consulta ao
+  // banco, resolve em milissegundos, e o listener só abre depois.
+  if(cfg.worldSide)WORLD.LADO=cfg.worldSide;
   // ── fala dos bots pela LLM (opcional) ──
   // O aquecimento NÃO é esperado: carregar o modelo leva ~27 s e o servidor não pode ficar de portas
   // fechadas por causa disso. Até ele terminar, as salas usam o repertório fixo — que é o mesmo caminho
@@ -80,6 +88,14 @@ export async function startServer(overrides={}){
   const server=http.createServer(createHttpHandler({config:cfg,rooms,persistApi,health,log}));
   server.keepAliveTimeout=65000;
   const ws=game?createWsServer({server,config:cfg,rooms,hooks,log,metrics}):null;
+  // ⚠️ O MUNDO É FIXADO AQUI, antes de a porta abrir — ou seja, antes de existir a primeira sala. Esperar
+  // os tunables é o que faz o número do painel valer: `WORLD.LADO` já foi semeado pelo env acima e o
+  // `admin_settings` o sobrescreve nesta promessa (uma consulta, milissegundos). Depois desta linha
+  // ninguém mais mexe em `WORLD.w/h` no processo, e é isso que mantém `protocol/codec.js` — que agora lê a
+  // constante a cada chamada — de acordo com o mundo de cada sala.
+  await Promise.resolve(persistApi&&persistApi.tunablesReady).catch(()=>{});
+  if(WORLD.LADO>0&&WORLD.LADO!==WORLD.w){log.info(`mundo: ${WORLD.w} → ${WORLD.LADO} px de lado`);WORLD.w=WORLD.h=WORLD.LADO;}
+  else WORLD.LADO=WORLD.w;
   await new Promise((res,rej)=>{server.once('error',rej);server.listen(cfg.port,()=>{server.off('error',rej);res(undefined);});});
   const addr=server.address(),port=typeof addr==='object'&&addr?addr.port:cfg.port;
   log.info(`warspace.io v2 | shard ${cfg.shard}/${cfg.shards} | porta ${port} | role ${cfg.role} | db ${db?(db.health.down?'down':'ok'):'nenhum'}`+

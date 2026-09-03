@@ -91,6 +91,14 @@ export async function createRenderer({container,theme,prefs}){
     setResolution(r){r=Math.max(.5,Math.min(2,r));if(app.renderer.resolution===r)return;app.renderer.resolution=r;R.res=r;app.resize();bg.setRes();},
     /** `texCap`: no nível mínimo o planetão para de assar 512² (1,34 MB) para uma tela que está em res .6. */
     setEcon(lv){R.econ=lv>0;R.econLevel=lv|0;R.texCap=lv>1?256:512;fx.setBudget(lv?(lv>1?.25:.5):1);},
+    /**
+     * O mundo mudou de tamanho (o servidor mandou o `world:{w,h}` da sala, ver game/index.js). Quase tudo
+     * lê `WORLD.w` por chamada e acompanha sozinho; quem GUARDA o tamanho são duas camadas: a grade (o
+     * TilingSprite tem largura própria e a borda é assada) e o fundo (as faixas de parallax são montadas
+     * a partir das dimensões). Sem esta chamada elas ficariam do tamanho velho — a borda tracejada da
+     * arena passaria por dentro do mapa, e ninguém entenderia por quê.
+     */
+    worldResized(){grid.setTheme();bg.setTheme();},
     /** Aquece as texturas de planeta das skins presentes (tiers 128/256; a própria também em 512 e na variante isMe). */
     warmPlanets(skins,meSkin,th=R.theme){const TX=th.textures,cap=R.texCap;
       for(const sk of skins)for(const size of [128,256])if(size<=cap)R.cache.warm(TX.key("planet",{skin:sk,isMe:false},size),size,(c,s)=>TX.planet(c,s,{skin:sk,isMe:false}));
