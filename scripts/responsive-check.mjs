@@ -4,6 +4,8 @@
 //   2. nenhum alvo tocável abaixo de 44 px, onde o ponteiro é o dedo
 //   3. nenhum par de blocos do HUD se sobrepondo
 //   4. nada saindo da viewport (aproximação de área segura)
+//   5. a caixa da tela cabe na janela quando não há como rolar até ela
+//   6. nenhum CONTÊINER rolando na horizontal (o critério 1 mede o DOCUMENTO e não pega a caixa das telas)
 // As TELAS são DOM (React) e renderizam bem em headless; só o canvas do Pixi não roda aqui — por isso a
 // matriz mede layout e HUD, e o jogo em si continua sendo aprovado de olho, em Chrome de verdade.
 // uso:  node scripts/responsive-check.mjs [url]        (padrão: http://127.0.0.1:5173)
@@ -116,8 +118,20 @@ const SONDA=`(()=>{
     const nav=caixa.querySelector(':scope>nav.nav');
     if(nav&&vis(nav)){const n=nav.getBoundingClientRect();
       if(n.bottom>innerHeight+1)estoura.push('a barra sai '+Math.round(n.bottom-innerHeight)+'px da janela');}}
+  // NENHUM CONTÊINER ROLA DE LADO. O critério 1 mede o DOCUMENTO, e por isso deixou passar um defeito que
+  // o jogador sente na mão: a caixa das telas é overflow:auto, e bastou a barra de navegação passar 2 px do
+  // padding para ela ganhar um eixo horizontal próprio — o documento não transbordava, mas o painel andava
+  // de lado no dedo e a rolagem vertical saía torta. Nenhuma tela do jogo tem conteúdo horizontal, então
+  // qualquer sobra aqui é defeito. Só auto/scroll: hidden e clip CORTAM (é o caso do #cena, que planta
+  // sprites fora da tela de propósito) e quem cobra corte é o critério "clipado".
+  // (Sem crase aqui: a sonda inteira é um template literal — já custou uma rodada da matriz.)
+  const lados=[];
+  for(const el of document.querySelectorAll('#app *')){
+    const s2=getComputedStyle(el);if(s2.display==='none')continue;
+    if((s2.overflowX==='auto'||s2.overflowX==='scroll')&&el.scrollWidth-el.clientWidth>1)
+      lados.push(nome(el)+' '+el.scrollWidth+'>'+el.clientWidth);}
   return{modo:document.body.dataset.mode,ponteiro:document.body.dataset.pointer,over,pequenos,cx,
-         fora:fora.slice(0,6),estoura,tela:tela?tela.id:'game'};
+         fora:fora.slice(0,6),estoura,lados:[...new Set(lados)].slice(0,4),tela:tela?tela.id:'game'};
 })()`;
 
 let falhas=0;const linhas=[];
@@ -162,7 +176,7 @@ for(const [nome,w,h,toque,modo] of APARELHOS){
     await new Promise(r=>setTimeout(r,80));
     const r=await ev(SONDA);if(!r)continue;
     await ev(`(()=>{const h=document.getElementById('hud');if(h&&!document.querySelector('.screen.on'))return;if(h)h.classList.add('hidden');})()`);
-    const ruim=r.over>0||r.cx.length||r.pequenos.length||r.fora.length||(r.estoura&&r.estoura.length);
+    const ruim=r.over>0||r.cx.length||r.pequenos.length||r.fora.length||(r.estoura&&r.estoura.length)||(r.lados&&r.lados.length);
     if(ruim)falhas++;
     linhas.push({nome,w,h,t,tema,...r,ruim});
   }
@@ -179,6 +193,7 @@ for(const l of linhas){
   if(l.pequenos.length)p.push("alvo<44: "+l.pequenos.slice(0,4).join(", ")+(l.pequenos.length>4?` (+${l.pequenos.length-4})`:""));
   if(l.fora.length)p.push("clipado: "+l.fora.join(", "));
   if(l.estoura&&l.estoura.length)p.push("fora da janela: "+l.estoura.join(", "));
+  if(l.lados&&l.lados.length)p.push("rola de lado: "+l.lados.join(", "));
   console.log((l.nome+" "+l.w+"x"+l.h).padEnd(28)+l.t.padEnd(10)+String(l.tema).padEnd(10)+String(l.modo).padEnd(10)+String(l.ponteiro).padEnd(10)+p.join("  ·  "));
 }
 console.log(`\n${linhas.length} combinações · ${falhas} com problema · ${linhas.length-falhas} limpas`);

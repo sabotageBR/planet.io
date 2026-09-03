@@ -1,6 +1,7 @@
 // Escolha do modo: o funil que estava faltando entre a Entrada e o `play()`.
-// DOIS cartões grandes, com os mascotes do jogo: LIVRE (Marte à esquerda, a Lua à direita e o JOGAR entre
-// os dois) e BATTLE ROYALE, que absorveu o cartão de EQUIPE — Solo virou o primeiro dos quatro chips
+// DOIS cartões grandes, com os mascotes do jogo e o MESMO desenho: o planeta no alto à direita, o texto
+// ao lado dele e um JOGAR da largura do cartão embaixo. LIVRE e BATTLE ROYALE, que absorveu o cartão de
+// EQUIPE — Solo virou o primeiro dos quatro chips
 // (1·Solo, 2·Dupla, 3·Trio, 4·Quarteto), porque
 // "solo" e "em dupla" nunca foram dois MODOS, eram o mesmo battle royale com outro tamanho de esquadrão, e
 // tê-los como cartões irmãos fazia a tela ter quatro escolhas onde há duas. Solo cai direto no lobby de
@@ -61,17 +62,10 @@ function Body() {
           cartões, no mesmo ponto da tela — antes o Livre era o único cartão sem botão nenhum, e quem
           chegava procurava o JOGAR que só o vizinho tinha. */}
       <div className="mode-card grande" data-mode="free">
+        <img className="mode-mascote" src={marte} alt="" aria-hidden="true" width="619" height="640" decoding="async" />
         <b>{LB.modeFree}</b>
         <span>{LB.modeFreeSub}</span>
-        {/* Os dois mascotes ENTRARAM NA FILEIRA do botão, em vez de ficarem no absoluto: com dois deles
-            no mesmo cartão o de baixo passava por cima do JOGAR em tela estreita, e o `overflow:hidden`
-            esconde o excesso mas não impede a colisão. Marte à esquerda, a Lua à direita, o botão entre
-            os dois — e a Lua saiu do botão de "Sala sua", senão ela aparecia duas vezes na mesma tela. */}
-        <div className="free-row">
-          <img className="mode-mascote" src={marte} alt="" aria-hidden="true" width="619" height="640" decoding="async" />
-          <button className="btn-primary" data-go="play" onClick={entrarLivre}>{LB.play}</button>
-          <img className="mode-mascote" src={lua} alt="" aria-hidden="true" width="486" height="609" decoding="async" />
-        </div>
+        <button className="btn-primary" data-go="play" onClick={entrarLivre}>{LB.play}</button>
       </div>
       {/* ⚠️ BATTLE ROYALE deixou de ser <button> porque passou a ter controles dentro: botão dentro de botão
           é HTML inválido e prende o foco — é a mesma razão de "Em equipe" e "Sala sua" já serem <div>. */}
@@ -98,7 +92,10 @@ function Body() {
         dele à direita. E o botão continua VISÍVEL para quem não tem conta, desabilitado e com o porquê ao
         lado — some o botão, some a explicação, e o jogador não descobre por que não pode abrir sala. */}
     <button className={"btn-secondary own-toggle" + (abrirSala ? " on" : "")} aria-expanded={abrirSala} aria-controls="own-card"
-      onClick={() => setAbrirSala(v => !v)}>{abrirSala ? LB.ownClose : LB.ownOpen}</button>
+      onClick={() => setAbrirSala(v => !v)}>
+      <img className="own-mascote" src={lua} alt="" aria-hidden="true" width="486" height="609" decoding="async" />
+      {abrirSala ? LB.ownClose : LB.ownOpen}
+    </button>
     {abrirSala ? <SalaPropria offline={offline} registrada={user.kind === "registered"} LB={LB} /> : null}
     {offline ? <div className="hint">{LB.offlineNote}</div> : null}
     {/* ⚠️ A LEGENDA DOS POWERUPS morava aqui e foi para a AJUDA, em Opções (ui/Prefs.jsx). Esta é a tela

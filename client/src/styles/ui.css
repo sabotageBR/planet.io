@@ -1053,8 +1053,17 @@ body[data-mode="landscape"]{--tbtn:60px}
    scrollport vai até a borda, a barra encosta, e os `bottom:74px` dos temas (que são a ALTURA dela)
    passam a valer exatos. O respiro do rodapé passa a ser o padding da própria barra. */
 body:not([data-mode="portrait"]) .screen .wrap:has(>nav.nav){padding-bottom:0}
+/* ⚠️ O SANGRAMENTO DA BARRA É O PADDING DA CAIXA, E EM RETRATO ELE NÃO É 18. Os três temas dão
+   `padding:0 16px` ao `.wrap` no celular em pé (screens.css, `body[data-mode="portrait"] .screen .wrap`)
+   e 18 px no resto. Com o `-18px` cravado, a barra passava 2 px de cada lado do padding box — e como a
+   caixa é `overflow:auto`, esses 2 px viravam ROLAGEM LATERAL: no dedo é o bastante para o painel andar
+   de lado e o scroll vertical sair torto. Medido em 360×740: scrollWidth 352 contra clientWidth 350, em
+   TODA tela com barra (Modos, Salas, Ranking, Perfil, Loja, Opções). Os dois lados da conta ficam na
+   mesma variável de propósito: separados foi exatamente como divergiram. */
+#app .wrap{--wrap-pad:18px}
+body[data-mode="portrait"] #app .wrap{--wrap-pad:16px}
 #app .wrap>nav.nav{flex:0 0 auto;align-self:stretch;z-index:3;
-  margin:auto -18px 0;
+  margin:auto calc(-1 * var(--wrap-pad,18px)) 0;
   padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));min-height:var(--nav-h);
   border-radius:0 0 calc(var(--radius-lg,20px) - 5px) calc(var(--radius-lg,20px) - 5px);
   display:flex;align-items:center;justify-content:space-around;gap:4px;flex-wrap:nowrap}
@@ -1062,6 +1071,22 @@ body:not([data-mode="portrait"]) .screen .wrap:has(>nav.nav){padding-bottom:0}
    alvo — a matriz mede isso e reprova abaixo de 44. Não dá para estreitar a gaveta nem tirar um botão, então
    quem cede é o espaço ENTRE eles: 5 px de folga lateral e 2 px de vão devolvem 46 px por botão. */
 body[data-pointer="coarse"][data-mode="landscape"] #app .wrap>nav.nav{padding-left:5px;padding-right:5px;gap:2px}
+/* ⚠️ E EM PÉ ELA ROLAVA A CAIXA DE LADO, por 2 px. A barra é filha de um `.wrap` que em retrato é GRID de
+   `1fr`, e item de grid nasce com `min-width:auto`: ela não encolhe abaixo do próprio conteúdo, então a
+   TRILHA cresce para caber. Num Galaxy S8 (360 px) os sete botões pedem 352 (308 de botão + 24 de vão + 20
+   de padding) contra 350 de caixa — a trilha ia a 320, a barra a 352, e a caixa ganhava `scrollWidth` maior
+   que `clientWidth`. No dedo, 2 px de eixo horizontal bastam para o painel andar de lado e a rolagem
+   vertical sair torta. `min-width:0` corta a propagação (é a mesma regra que já vale para `.kf-row .nk` e
+   para o `minmax(0,1fr)` do painel), e o aperto lateral faz a barra CABER de verdade em vez de só deixar de
+   empurrar. Medido depois: trilha 318, barra 350, `scrollWidth == clientWidth`. */
+#app .wrap>nav.nav{min-width:0}
+body[data-mode="portrait"] #app .wrap>nav.nav{padding-left:6px;padding-right:6px;gap:2px}
+/* ⚠️ E vale para os OUTROS TRÊS que sangram para o padding pelo mesmo motivo: `.lobby-hero`,
+   `.prefs-foot` e `.rank-me` são `position:sticky;bottom:74px` com margem negativa nos temas, ou seja a
+   mesma geometria da barra — item de grid com `min-width:auto` que não encolhe, empurra a trilha e
+   arrasta todo mundo que sangra junto com ela. Medido em Opções a 360 px: trilha 320, rodapé e barra a
+   352 numa caixa de 350. */
+#app .wrap>.prefs-foot,#app .wrap>.lobby-hero,#app .wrap>.rank-me{min-width:0}
 /* ── A CAIXA TEM ALTURA DETERMINADA ──
    `top` E `bottom` fixos, em vez de `height:auto` + `max-height`. Parece detalhe e é a peça central: com a
    altura vindo do CONTEÚDO, "Salas" (curta) e "Perfil" (longa) tinham caixas de tamanhos diferentes, e tudo
@@ -1190,7 +1215,14 @@ body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(sa
    fonte só), `--champ-d` é o que o `.cp` de fato lê. A equipe campeã redefine o segundo em função do
    primeiro — `--champ-d:calc(var(--champ-d)*.62)` seria ciclo e a declaração inteira cairia. */
 #s-round{--champ-d:var(--champ-d0)}
-#s-round .champ{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;margin:2px 0 6px}
+/* ⚠️ `overflow-x:clip` (e NÃO `hidden`): a glória é `inset:-18%`, ou seja ela mede 136% do `.cp`, e no
+   celular em pé isso passava da largura da tela — `#s-round` é `overflow:auto`, então a sobra virava
+   ROLAGEM LATERAL (medido: glória de 381 px num iPhone SE de 375). Cortar na horizontal resolve sem
+   mexer no tamanho do campeão, e é `clip` porque `hidden` no eixo x forçaria o y a virar scrollport e
+   comeria a COROA, que sai por cima (`.cp-coroa{top:-2%}`) — `clip` é a única forma de cortar um eixo
+   deixando o outro `visible`. O que se perde são as pontas de um enfeite a 35% de opacidade. */
+#s-round .champ{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;margin:2px 0 6px;
+  overflow-x:clip}
 /* o canvas transborda o bloco em 132%, ou seja 16% para cada lado: sem esta folga o disco pousa em cima
    do próprio nome, que é a linha que a tela existe para mostrar */
 #s-round .cp{margin-bottom:calc(var(--champ-d,300px) * .1)}
@@ -1770,12 +1802,10 @@ body[data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]) #s
 #cena .missil-2{right:15vw;bottom:12vh;width:min(110px,11vw);animation:ws-flutua-m2 9s ease-in-out infinite}
 /* ⚠️ NA TELA DE MODOS OS PLANETAS DO FUNDO SOMEM: eles são os MESMOS mascotes que agora moram dentro dos
    cartões, e ver o Marte duas vezes na mesma tela — um no cartão e outro flutuando atrás dele — lê como
-   erro de montagem. ⚠️ A LUA ENTROU NA LISTA quando virou o mascote da direita do cartão do Livre: antes
-   ela ficava, porque a do botão de "Sala sua" tinha 30 px e vivia colada ao rótulo. Os mísseis ficam —
-   esses não se repetem. O `body.dataset.screen` já é escrito por App.jsx, então não custou nada. */
+   erro de montagem. A lua e os mísseis ficam: eles não se repetem ali (a lua do botão tem 30 px e vive
+   colada ao rótulo). O `body.dataset.screen` já é escrito por App.jsx, então não custou nada. */
 body[data-screen="modes"] #cena .planeta-l,
-body[data-screen="modes"] #cena .planeta-r,
-body[data-screen="modes"] #cena .lua{display:none}
+body[data-screen="modes"] #cena .planeta-r{display:none}
 
 /* Prefixo `ws-` obrigatório: base.css já usa `spin`, `kfin`, `chatin`, `zonepulse`, `pwlow`, `lvup-*`,
    e um nome repetido é sobrescrito em silêncio. */
@@ -2042,38 +2072,31 @@ body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:non
    subtítulo passa por baixo do planeta e fica ilegível justo no cartão em que se clica */
 #s-modes .mode-card.grande{position:relative;overflow:hidden;min-height:180px}
 #s-modes .mode-mascote{pointer-events:none;user-select:none;filter:drop-shadow(0 6px 14px rgba(0,0,0,.4))}
-/* ⚠️ O mascote fica em lugares DIFERENTES nos dois cartões, e a razão é o conteúdo. O do Battle Royale
-   tem quatro chips, um botão e um campo de código: ali embaixo o planeta passaria POR CIMA do campo,
-   então a Terra vai para o alto, pequena, ao lado do título, no ABSOLUTO. `padding-right` só onde ela
-   realmente disputa espaço com o texto. */
+/* ⚠️ OS DOIS CARTÕES TÊM O MESMO DESENHO, e é isso que faz a tela ler como um par: planeta pequeno no
+   alto à direita, texto ao lado dele e a chamada à ação embaixo, da largura do cartão. Quem impõe a
+   posição do mascote é o cartão do Battle Royale — lá o planeta NÃO pode descer, porque abaixo há
+   quatro chips, um botão e um campo de código, e ele passaria por cima do campo. O do Livre segue o
+   mesmo lugar por SIMETRIA: um mascote grande no rodapé de um cartão e outro pequeno no topo do
+   vizinho lia como dois componentes diferentes lado a lado. */
+#s-modes .mode-card[data-mode="free"] .mode-mascote,
 #s-modes .mode-card[data-mode="br"] .mode-mascote{position:absolute;right:2px;top:6px;
   width:clamp(52px,20%,72px);height:auto}
-/* ── O CARTÃO DO LIVRE: MARTE · JOGAR · LUA, os três na mesma fileira ──
-   O Marte morava no absoluto porque era UM mascote num cartão que só tinha duas linhas de texto: o vazio
-   embaixo era dele. Com o botão JOGAR ali e um SEGUNDO mascote, o absoluto deixa de servir — dois
-   sprites e um alvo de 44 px disputando o mesmo canto colidem em tela estreita, e o `overflow:hidden`
-   esconde o excesso mas NÃO impede a colisão (é o mesmo defeito que o kill feed teve em retrato).
-   ⚠️ Altura igual nos dois e `width:auto`: as artes têm proporções diferentes (448×463 e 256×321), então
-   casar a LARGURA faria a Lua sair mais alta que o Marte. Quem é `flex:0 0 auto` são os mascotes; quem
-   estica é o botão, que é a única coisa clicável da fileira.
-   `margin-block:auto` centra a fileira na sobra: a grade estica os dois cartões à mesma altura e o do
-   Livre tem duas linhas de texto contra os seis blocos do vizinho, então sem isso o JOGAR ficava colado
-   ou no topo (com um palmo de vazio embaixo) ou no fundo. */
-#s-modes .free-row{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
-  margin-block:auto;padding-top:6px}
-/* ⚠️ O TETO É 74 px e não 96: os mascotes são DOIS, e no 96 eles somavam mais largura que o botão — a
-   chamada à ação do cartão virava o menor dos três blocos da fileira. */
-#s-modes .free-row .mode-mascote{flex:0 0 auto;height:clamp(44px,13vw,74px);width:auto}
-#s-modes .free-row .btn-primary{flex:1 1 auto;min-width:0}
-/* só o CABEÇALHO divide espaço com a Terra; os controles usam a largura inteira do cartão. Reservar a
+/* só o CABEÇALHO divide espaço com o planeta; os controles usam a largura inteira do cartão. Reservar a
    faixa no cartão (com `padding-right`) e depois devolvê-la com margem negativa nos filhos funcionava,
    mas é o tipo de acrobacia que a próxima pessoa desfaz sem saber por que existia. */
+#s-modes .mode-card[data-mode="free"]>b,
+#s-modes .mode-card[data-mode="free"]>span,
 #s-modes .mode-card[data-mode="br"]>b,
 #s-modes .mode-card[data-mode="br"]>span{padding-right:78px}
-/* o botão que revela "Sala sua": o cartão nasce logo abaixo dele. ⚠️ A LUA SAIU DAQUI — ela passou a ser
-   o mascote da direita do cartão do Livre, e o mesmo sprite duas vezes na mesma tela lê como erro de
-   montagem (é o argumento que já esconde os planetas do #cena nesta tela). */
+/* ⚠️ O JOGAR DO LIVRE OCUPA O MESMO ESPAÇO QUE O DO VIZINHO: a largura sai de graça (`.btn-primary` é
+   `width:100%` no base.css, e é por isso que ele tem que ser filho DIRETO do cartão), e o
+   `margin-block:auto` resolve a altura — a grade estica os dois cartões ao mesmo tamanho e o do Livre
+   tem duas linhas de texto contra os seis blocos do outro, então sem isso o botão ficava colado no topo,
+   com um palmo de vazio embaixo. Centrado na sobra, ele pousa na mesma faixa do JOGAR do Battle Royale. */
+#s-modes .mode-card[data-mode="free"]>.btn-primary{margin-block:auto}
+/* o botão que revela "Sala sua": a lua ao lado do rótulo, e o cartão nasce logo abaixo */
 #s-modes .own-toggle{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:2px}
+#s-modes .own-mascote{width:30px;height:auto;pointer-events:none}
 #s-modes .mode-card.own{margin:0}
 /* Os cartões ENCOLHEM no que é folga (não em informação): a caixa começa depois do logo
    (`--screen-top` é a ALTURA DELE) e termina acima da barra de navegação. */
