@@ -8,6 +8,7 @@
 //
 // uso:  node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|gamepix|all
 //       WARSPACE_API_BASE=https://staging.exemplo node scripts/portal-pack.mjs gd
+//       WARSPACE_BUILD_VERSION=1.1 node scripts/portal-pack.mjs all   # sai warspace-<portal>-1.1.zip
 //
 // ⚠️ O VALOR DESTE SCRIPT SÃO AS GUARDAS. Cada uma delas corresponde a um jeito conhecido de subir um
 //    zip que parece certo e está errado — e todos falham em SILÊNCIO no portal, onde não há console
@@ -21,6 +22,13 @@ import { PORTAL } from "@warspace/shared";
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SAIDA = path.join(RAIZ, "portal");
 const API = (process.env.WARSPACE_API_BASE || "https://warspace.io").replace(/\/+$/, "");
+// ⚠️ VERSÃO DO PACOTE, não do código. O `package.json` da raiz está em 2.0.0 (o monorepo v2), mas o que
+// vai para os portais é a versão do PRODUTO publicado, e nas lojas ela começa em 1.0 — os dois números
+// não têm por que andar juntos, e derivar um do outro faria a primeira submissão sair como "2.0.0".
+// Ela entra só no NOME do arquivo (`warspace-<portal>-<versão>.zip`): nenhum portal lê versão de dentro
+// do zip, quem versiona lá é o painel deles. Serve para você não subir o pacote errado quando houver
+// três gerações na mesma pasta. `WARSPACE_BUILD_VERSION=1.1 node scripts/portal-pack.mjs all` troca.
+const VERSAO = process.env.WARSPACE_BUILD_VERSION || "1.0";
 
 // `strict` liga o interruptor da regra 7 (sem conta, sem Google, sem foto). Hoje todos em false: a
 // decisão foi manter o cadastro e assumir o risco. Reprovou? Vira true e o pacote seguinte já sai limpo.
@@ -194,7 +202,7 @@ function empacota(id) {
   // ── zip ────────────────────────────────────────────────────────────────────
   // ⚠️ O CONTEÚDO da pasta, nunca a pasta: um zip com `dist/index.html` dentro é a rejeição nº 1 em
   // upload de portal, porque eles procuram o index.html na RAIZ.
-  const zip = path.join(SAIDA, `warspace-${id}.zip`);
+  const zip = path.join(SAIDA, `warspace-${id}-${VERSAO}.zip`);
   fs.rmSync(zip, { force: true });
   let z = spawnSync("zip", ["-r", "-X", "-9", "-q", zip, "."], { cwd: dist });
   if (z.status !== 0) {
