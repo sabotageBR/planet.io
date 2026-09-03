@@ -504,15 +504,45 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── qualidade / modo econômico (0 = cheio, 1 = econômico, 2 = mínimo) ──
   // O custo de frame é dominado pelas camadas que cobrem a tela toda (grade e fundo) — por isso cada nível
   // corta resolução E camadas: 1 desliga grade, parallax e trilhas (res .8); 2 ainda tira props (res .6).
-  const ECON_RES=[0,.8,.6];
-  // `auto` no DEDO começa em 1, não em 0: sem isto todo celular renderizava a res=min(2,DPR)=2 por pelo menos
-  // 1 s (o tempo de o econCheck reagir) — a pior tela justamente na entrada. O econCheck sobe sozinho para 0
-  // depois de 2 s acima de 55 fps, então quem tem aparelho bom não perde nitidez, só demora 2 s a ganhá-la.
+  // ⚠️ ERA `[0,.8,.6]` ABSOLUTO, E ERA ISSO QUE DEIXAVA O NOME DOS PLANETAS ILEGÍVEL. `.8` não é "80% da
+  // nitidez": é 0,8 pixel de framebuffer por pixel de CSS, enquanto o canvas continua esticado a 100% pelo
+  // `#game canvas{width:100%;height:100%}`. A perda é a razão dpr/res — num celular dpr 3 isso é 3,75× de
+  // ampliação no nível 1 e 5,0× no nível 2. Aplicado ao nome: o piso `NAME_MIN_PX` é medido em px de CSS,
+  // então no pior caso permitido o "em" tem 6 px de DEVICE, o contorno (`strokeWidth` = 11% do em) fica
+  // SUB-PIXEL e o miolo é translúcido de propósito (`nameFill` .68, para a arte aparecer por dentro) —
+  // contorno que some + miolo transparente + ampliação linear = a mancha borrada.
+  // Agora é FATOR do dpr com piso em 1: nunca menos de um texel por pixel de CSS, que é o que a letra
+  // precisa para ter forma. O corte de custo que se quer é "menos pixels que o dpr cheio", e não "menos
+  // pixels que a tela".
+  const ECON_K=[1,.7,.5],RES_PISO=1;
+  const resDe=lv=>{const dpr=Math.min(2,devicePixelRatio||1);
+    return Math.max(Math.min(dpr,RES_PISO),Math.min(2,dpr*ECON_K[lv]||dpr));};
   const noDedo=()=>typeof matchMedia!=="undefined"&&matchMedia("(pointer: coarse)").matches;
+  /**
+   * O nível de BOOT. "Alta é prioridade": nasce em 0 e só cai com EVIDÊNCIA DURA, medida — não com palpite.
+   * As duas que valem já estão prontas no `createRenderer` e nenhuma delas alimentava a decisão antes:
+   * `kind !== "webgl"` (o Pixi caiu para canvas 2D, e ali o jogo é lento de verdade) e `!R.mesh` (sem o pipe
+   * de malha o blob nem existe). `hardwareConcurrency`/`deviceMemory` são palpite e por isso só chegam ao
+   * nível 1, nunca ao 2.
+   * ⚠️ O DEDO deixou de ser motivo. Ele começava em 1 para poupar ~1 s de frame pesado na entrada, e o
+   * preço era a partida INTEIRA borrada em todo celular — 1 s de gagueira contra 100% do tempo ilegível.
+   * Com o `ECON_K` acima o nível 1 também parou de ser ilegível, então o argumento perdeu as duas pontas.
+   */
+  function nivelDeBoot(){
+    if(!renderer)return 0;
+    if(renderer.kind!=="webgl"||!renderer.R.mesh)return 2;
+    const nav=typeof navigator!=="undefined"?navigator:null;
+    if(nav&&((nav.hardwareConcurrency>0&&nav.hardwareConcurrency<=2)||(nav.deviceMemory>0&&nav.deviceMemory<=2)))return 1;
+    return 0;}
   function applyQuality(){if(!renderer)return;const q=curPrefs.quality||"auto";
-    if(q==="low")setEcon(2);else if(q==="high")setEcon(0);else if(!econLevel)setEcon(noDedo()?1:0);}
+    if(q==="low")setEcon(2);else if(q==="high")setEcon(0);
+    // ⚠️ `auto` REASSENTA, e antes não reassentava nada: o ramo era `if(!econLevel)`, ou seja quem estava em
+    // "Baixa" e voltava para "Automática" ficava preso no nível 2 até a política descer dois degraus — e
+    // descer exige 2 s de frames rápidos MAIS o backoff, que começa em 30 s e dobra. O jogador clicava em
+    // "Automática" e não acontecia nada por meio minuto.
+    else{setEcon(nivelDeBoot());qSt=qualidadeZero();}}
   function setEcon(lv){econLevel=lv;econAlvo=lv;econ=lv>0;if(!renderer)return;renderer.setEcon(lv);
-    renderer.setResolution(lv?ECON_RES[lv]:Math.min(2,devicePixelRatio||1));}
+    renderer.setResolution(resDe(lv));}
   // A decisão mora em `quality.js`, pura e conferida em tabela (client/test/quality.test.js). Aqui só entram
   // o gatilho e a aplicação — que são coisas separadas DE PROPÓSITO, e é essa separação que tira a piscada:
   // `econCheck` roda no FIM do frame (é onde o tempo do frame fica pronto) e apenas MARCA o nível desejado;

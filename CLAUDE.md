@@ -2046,6 +2046,28 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   só metade dos consumidores.
   ⚠️ `__warspace.loseContext()` existe para conferir isso sem ter de estourar a memória de verdade. É a
   parte que faltava: o defeito durou porque não havia como reproduzi-lo.
+- **QUALIDADE NASCE EM ALTA, E A BAIXA DEIXOU DE SER ILEGÍVEL** (`ECON_K`/`resDe`/`nivelDeBoot` em
+  `game/index.js`, `NAME_MIN_PX` em `layers/Planets.js`). O nível econômico trocava
+  `app.renderer.resolution` por **.8 ou .6 ABSOLUTOS** enquanto o CSS mantinha o canvas esticado a 100% —
+  ou seja, não era "80% da nitidez", era 0,8 pixel de framebuffer por pixel de CSS. A perda é a razão
+  `dpr/res`: num celular dpr 3 dá **3,75× de ampliação** no nível 1 e **5,0×** no nível 2. Aplicado ao nome
+  do planeta, o piso `NAME_MIN_PX` era medido em px de CSS, então no pior caso permitido o "em" tinha 6 px
+  de DEVICE, o contorno (11% do em) ficava SUB-PIXEL e o miolo é translúcido de propósito (`nameFill` .68,
+  para a arte aparecer por dentro) — contorno que some + miolo transparente + ampliação linear = a mancha.
+  Três consertos: a resolução virou FATOR do dpr com piso em 1 (`ECON_K=[1,.7,.5]`), o piso do nome passou
+  a ser medido em px de DEVICE (`fs*cam.scale*R.res`), e o BOOT nasce no nível 0.
+  ⚠️ **O dedo deixou de ser motivo para começar no 1.** Ele existia para poupar ~1 s de frame pesado na
+  entrada, e o preço era a partida INTEIRA borrada em todo celular — 1 s de gagueira contra 100% do tempo
+  ilegível. Com o fator relativo o nível 1 também parou de ser ilegível, então o argumento perdeu as duas
+  pontas. O que faz cair agora é EVIDÊNCIA DURA já medida no `createRenderer` e que não alimentava decisão
+  nenhuma: `renderer.kind!=="webgl"` (o Pixi caiu para canvas 2D) ou `!R.mesh` (sem o pipe de malha).
+  `hardwareConcurrency`/`deviceMemory` são palpite e por isso só chegam ao nível 1.
+  ⚠️ **Voltar para "Automática" REASSENTA.** O ramo era `if(!econLevel)`, ou seja quem estava em "Baixa" e
+  voltava para "Automática" ficava preso no nível 2 até a política descer dois degraus — e descer exige 2 s
+  de frames rápidos MAIS o backoff, que começa em 30 s e dobra. Clicava e não acontecia nada por meio minuto.
+  ⚠️ Nada disso mora em `quality.js`: a política continua PURA e conferida em tabela, e toda detecção de
+  capacidade fica no chamador. O chip **"-18%"** da tela é o `#h-zoom` (o zoom manual da roda) e nunca teve
+  relação com qualidade; o HUD, o placar e o radar são DOM/canvas próprio e não são tocados por `R.res`.
 - **O ORÇAMENTO DE TEXTURA MEDIA A COISA ERRADA** (`cache.setExternal`, `IDADES` em `TextureCache.js`,
   `Background.bytes()`): a meta escrita é "texturas ≤ 48 MB" e ela era falsa por dois motivos ao mesmo
   tempo. Os **céus não passam pelo TextureCache** (são assados e destruídos à mão, e até TRÊS coexistem —

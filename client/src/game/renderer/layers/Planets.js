@@ -33,7 +33,7 @@ const TALK_TEX=96,TALK_PX=26,TALK_GAP=.34;
 // contorno opaco deixa a arte aparecer por dentro dela —, então o nome voltou ao meio e a tarja saiu
 // (`bandAlpha:0` nos três temas; BAND_TEX fica, para quem quiser a legenda de volta um dia).
 // As outras duas correções daquela passagem CONTINUAM, e são independentes de onde o nome fica:
-//  · NAME_MIN_PX: piso em PIXELS DE TELA. O único piso era de raio de MUNDO (labels.minR=13) e, com a câmera
+//  · NAME_MIN_PX: piso em PIXELS DE DEVICE (px de CSS × R.res). O único piso era de raio de MUNDO (labels.minR=13) e, com a câmera
 //    afastada, o nome saía com 4-6 px — sujeira ilegível em cima da arte, e pior ainda com 16 lascas na tela;
 //  · nameFitK: o texto passa a CABER no disco. `size` dava 0,34·r, e um nick de 10 letras já pedia ~1,87·r —
 //    por isso o nome encostava nas duas bordas. ⚠️ O fator é FROUXO (.92, quase o diâmetro inteiro) por um
@@ -149,7 +149,12 @@ export function createPlanets(R){
         // nenhum perderiam o nome de graça. Nem é `pl.avatar`: a skin Retrato é a foto do PRÓPRIO jogador e
         // fica com o nome, por decisão.
         const fs=L.size(e.rr);
-        const lab=e.rr>L.minR&&showNames&&fs*cam.scale>=NAME_MIN_PX&&!fc;v.name.visible=lab;
+        // ⚠️ O piso é medido em px de DEVICE (`* R.res`), não de CSS. O nome é rasterizado no framebuffer
+        // e depois AMPLIADO pelo compositor até o tamanho físico da tela — no modo econômico essa
+        // ampliação chega a 2×, e um "em" de 10 px de CSS vira 5 px de verdade, com o contorno (11% do em)
+        // em meio pixel. Medindo na unidade certa, o nome SOME quando não caberia legível em vez de virar
+        // mancha em cima da arte, que é literalmente o que este piso existe para evitar.
+        const lab=e.rr>L.minR&&showNames&&fs*cam.scale*R.res>=NAME_MIN_PX&&!fc;v.name.visible=lab;
         if(lab){const nm=pl.name;
           // A largura é medida UMA vez por nome, com a escala forçada a 1. ⚠️ Medir sem zerar a escala lê a
           // largura já escalada do frame anterior, e aí o texto encolhe a cada quadro até sumir — em silêncio.
