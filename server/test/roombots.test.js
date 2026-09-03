@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 process.env.LOG_LEVEL='silent';
 const {Room}=await import('../src/rooms/Room.js');
 const {ROOM,MODE,TICK_HZ,PLAYER}=await import('@warspace/shared/constants.js');
+const {setR}=await import('@warspace/shared/physics/body.js');
 
 const mudo={info(){},warn(){},error(){},debug(){}};
 const sala=(bots=15)=>new Room({code:'TST0',shard:0,seed:7,hooks:null,log:mudo,
@@ -149,4 +150,36 @@ test('destaques: sem ninguém pontuando, o cartão fica vazio em vez de mentir',
     lives:1,kills:0,deaths:0,food:0,score:0,mass:0,slot:1,left:false});
   const {destaques}=r._mergeBoard([{slot:1,mass:900,score:0}]);
   assert.equal(destaques.pontuador,null);
+});
+
+// ── O CAMPEÃO É QUEM ESTÁ MAIOR, E MORRER UMA VEZ NÃO PODE APAGAR ALGUÉM DO PLACAR ──────────────────
+// Visto em produção, no Livre: a tela de BIG CRUNCH coroou um preenchimento com 92 mil enquanto o humano
+// vivo, com muito mais massa, não aparecia nem entre os cinco maiores — e ainda levava os QUATRO
+// destaques, que saem do roster. A causa era `left`: o `leave` o escrevia e ninguém o desescrevia, e no
+// Livre morrer é `leave`+`join`. Uma morte grudava a marca até o fim da rodada, e `_mergeBoard` a lê como
+// "não está mais aqui": a linha ia para o resto, com massa ZERO, atrás de todos os vivos.
+// O teste tem que passar pelo caminho REAL (join/leave/join/endRound) — com o roster montado à mão, como
+// nos dois testes acima, este defeito é invisível por construção.
+const sessaoFalsa=(userId,tok)=>({room:null,slot:-1,pid:0,known:new Set(),rect:null,specSlot:-1,avatar:null,
+  userId,resumeToken:tok,isAdmin:false,sessionId:null,json:[],sendJson(m){this.json.push(m);},send(){return true;}});
+
+test('quem morreu e voltou continua no placar — e é o campeão se estiver maior', () => {
+  const r=sala(2); r.start();
+  const s1=sessaoFalsa(9,'tok-snoop');
+  r.join(s1,{name:'SnoopDog',registered:true,userId:9});
+  r.sim.players.get(s1.slot).score=100000;
+  r.leave(s1,'left');                                    // o botão DE NOVO: fecha o socket e abre outro
+  const s2=sessaoFalsa(9,'tok-snoop');
+  const slot=r.join(s2,{name:'SnoopDog',registered:true,userId:9});
+  const pc=r.sim.world.piecesOf(slot)[0];setR(pc,900);   // e nesta vida ele vira o maior da sala
+  anda(r,5);
+  const vivos=r.sim.leaderboard();
+  assert.equal(vivos[0].slot,slot,'o maior planeta vivo da sala é ele (premissa do teste)');
+  r.endRound('time');
+  const fim=s2.json.filter(m=>m.t==='roundEnd').pop();
+  assert.ok(fim,'a sala mandou o roundEnd');
+  assert.equal(fim.champion.name,'SnoopDog','campeão = maior massa viva, mesmo tendo morrido antes');
+  assert.equal(fim.board[0].name,'SnoopDog','e ele é o 1º do placar');
+  assert.ok(fim.board[0].mass>0,'com a massa de verdade, não zerada como quem saiu');
+  assert.equal(fim.board[0].left,false,'a linha não pode ficar marcada como "saiu da sala"');
 });

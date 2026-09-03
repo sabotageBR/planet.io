@@ -348,9 +348,11 @@ export class Room{
     // ── QUEM CHEGOU ── uma linha no feed e, para quem é admin, um aviso. Bots NÃO passam por aqui (nascem
     // em `_nasceBot`), então "gente de verdade" sai por construção — o mesmo mecanismo do roster do dono,
     // e é ele que mantém o `anonBots` do BR intacto sem uma linha a mais.
-    if(gp&&!this._voltouAgora(gp)){
-      this._pushFeed({k:'sys',a:slot,b:-1,how:'joined',by:null,name:gp.name||null});
-      this._avisaAdmins(session,gp);}
+    if(gp){
+      this._rosterVolta(gp);
+      if(!this._voltouAgora(gp)){
+        this._pushFeed({k:'sys',a:slot,b:-1,how:'joined',by:null,name:gp.name||null});
+        this._avisaAdmins(session,gp);}}
     return slot;}
   /**
    * A MESMA pessoa acabou de sair desta sala? No Livre renascer é `leave`+`join` (o botão DE NOVO fecha o
@@ -1259,6 +1261,21 @@ export class Room{
     return r;}
   /** Marca no roster que a pessoa não está mais na sala (a linha continua no placar, esmaecida). */
   _rosterLeft(gp){const r=this.roster.get(this._rosterKey(gp));if(r)r.left=true;}
+  /**
+   * VOLTOU: desfaz a marca de saída e reaponta a linha para a vida de AGORA. É o simétrico de
+   * `_rosterLeft`, e a ausência dele deu o pior defeito que a tela de fim de rodada já teve.
+   * ⚠️ `left` era escrito no `leave` e NUNCA desescrito — e no Livre MORRER É `leave`+`join` (o botão DE
+   * NOVO fecha o socket e abre outro). Bastava então UMA morte para a marca grudar na pessoa até o fim da
+   * rodada, e em `_mergeBoard` ela vale exatamente `vivo=false`: o jogador ia para o `resto` com massa
+   * ZERO, atrás de TODOS os vivos. O BIG CRUNCH coroava o maior bot enquanto quem tinha o maior planeta da
+   * sala nem aparecia no placar — e, o que tornava o defeito ilegível, ele ainda levava os quatro
+   * destaques, que saem do roster e não da massa ("mais pontos · mais partículas · mais abates · melhor
+   * K/D" para alguém que a mesma tela dizia não estar entre os cinco maiores).
+   * ⚠️ O `slot` vem junto porque a linha guarda o da ÚLTIMA vida DOBRADA, e a nova só é dobrada na morte
+   * seguinte ou no `endRound`: até lá `porSlot.get(r.slot)` leria o slot velho, que já pode ter sido
+   * reciclado por outra pessoa (ou por um preenchimento) — e aí a linha viria com a massa de um estranho.
+   */
+  _rosterVolta(gp){const r=this.roster.get(this._rosterKey(gp));if(r){r.left=false;r.slot=gp.slot;}}
   /**
    * Junta o placar do MUNDO (vivos por massa, o 1º é o campeão) com o roster da SALA, e tira os quatro
    * destaques. Vivos primeiro — "o campeão é o maior planeta vivo no BIG CRUNCH" é a semântica de sempre.
