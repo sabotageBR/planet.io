@@ -201,14 +201,14 @@ test("fusão: não há atração entre peças próprias (elas se juntam pelo pon
 // 11. escudo por níveis
 test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nível, dividir derruba, escudado quica",()=>{
   const w=empty(30),pc=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);
-  const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=1000;f.y=1000;w.foodDirty=true;w.step();
+  const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=1000;f.y=1000;w.moveFood(f);w.step();
   assert.equal(pc.shieldLv,1);assert.ok(w.events.some(e=>e.type==="SHIELD_UP"&&e.level===1&&e.up===true));
   w.step();assert.ok(pc.flags&PIECE_FLAG.SHIELD);assert.equal((pc.flags>>PIECE_FLAG.SHIELD_LV_SHIFT)&3,1);
   let ups=0;for(let t=0;t<POWERUP.SHIELD_EVOLVE_TICKS*2+5;t++){w.step();for(const e of w.events)if(e.type==="SHIELD_UP"){assert.equal(e.up,true,"a evolução por TEMPO sempre sobe");ups++;}}
   assert.equal(pc.shieldLv,POWERUP.SHIELD_MAX_LEVEL);assert.equal(ups,2);
   for(let t=0;t<3000;t++)w.step();assert.equal(pc.shieldLv,POWERUP.SHIELD_MAX_LEVEL,"não expira nem passa do teto");
   assert.equal((pc.flags>>PIECE_FLAG.SHIELD_LV_SHIFT)&3,3);
-  const f2=w.spawnFood();f2.type=FOOD_TYPE.SHIELD;f2.x=pc.x;f2.y=pc.y;w.foodDirty=true;w.step();assert.equal(pc.shieldLv,3,"outro 🛡️ no teto: continua 3");
+  const f2=w.spawnFood();f2.type=FOOD_TYPE.SHIELD;f2.x=pc.x;f2.y=pc.y;w.moveFood(f2);w.step();assert.equal(pc.shieldLv,3,"outro 🛡️ no teto: continua 3");
   // ⚠️ o EVENTO continua saindo (é ele que toca o som e desenha o anel, e comer no teto reinicia o timer),
   // mas marcado `up:false` — é o que faz o cliente calar o texto "ESCUDO 3", que ali não diz mais nada
   const noTeto=w.events.filter(e=>e.type==="SHIELD_UP");
@@ -291,7 +291,7 @@ test("carência de tiro: ninguém nasce atirando — MISSILE.SPAWN_CD_TICKS a ca
   w2.setTarget(0,1000,1000);w2.addPlayer(1,{x:3000,y:1000,r:40});ps2.fireCdUntil=0;
   w2.requestFire(0);w2.step();assert.equal(w2.missiles.length,1,"planeta recém-nascido de r=30 atira, passada a carência");
   // e o escudo também não tem piso de tamanho
-  const p3=w2.piecesOf(0)[0],f=w2.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=p3.x;f.y=p3.y;w2.foodDirty=true;w2.step();
+  const p3=w2.piecesOf(0)[0],f=w2.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=p3.x;f.y=p3.y;w2.moveFood(f);w2.step();
   assert.equal(p3.shieldLv,1,"qualquer tamanho pega escudo");assert.ok(f.dead);});
 
 // 12. míssil × míssil
@@ -343,7 +343,7 @@ test("míssil×asteroide: desvia o errante (DEFLECT) e tira o de cinturão da ó
 // 14. ímã
 test("ímã: comida no alcance é sugada (MOVED, acelerando) e ejetados de terceiros são atraídos; sem ímã nada se move",()=>{
   const w=empty(60),me=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);
-  const f=w.spawnFood();f.type=FOOD_TYPE.DUST;f.x=1200;f.y=1000;w.foodDirty=true;
+  const f=w.spawnFood();f.type=FOOD_TYPE.DUST;f.x=1200;f.y=1000;w.moveFood(f);
   w.addPlayer(1,{x:3000,y:3000,r:40});const e=w.addEjected(1000,1200,0,0,EJECT.R_MIN,EJECT.R_MIN*EJECT.R_MIN,1,0,EJECT.LIFE_TICKS);
   w.step();assert.equal(f.x,1200,"sem ímã a comida fica");assert.equal(e.vy,0);assert.equal(f.flags&FOOD_FLAG.MOVED,0);
   me.magnetUntil=1e9;w.step();
@@ -418,8 +418,8 @@ test("estrela: GROW→ACTIVE→OLD incha e vira supernova (partículas, asteroid
 // 17. ímã mais fraco: comida pesada e a estrela vêm devagar
 test("ímã: cometa/estrela vêm a MAGNET_HEAVY da poeira e a estrela do mundo se arrasta a MAGNET_STAR",()=>{
   const w=empty(74),me=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);me.magnetUntil=1e9;
-  const d=w.spawnFood();d.type=FOOD_TYPE.DUST;d.x=1150;d.y=1000;
-  const c=w.spawnFood();c.type=FOOD_TYPE.COMET;c.x=1150;c.y=1100;w.foodDirty=true;w.step();
+  const d=w.spawnFood();d.type=FOOD_TYPE.DUST;d.x=1150;d.y=1000;w.moveFood(d);
+  const c=w.spawnFood();c.type=FOOD_TYPE.COMET;c.x=1150;c.y=1100;w.moveFood(c);w.step();
   const dd=1150-d.x,dc=1150-c.x;assert.ok(dd>0&&dc>0,"os dois são puxados");
   assert.ok(Math.abs(dc/dd-POWERUP.MAGNET_HEAVY)<.15,"o cometa vem a ~MAGNET_HEAVY da poeira");
   const st=w.spawnStar(true);st.x=1000+40*POWERUP.MAGNET_RANGE-30;st.y=1000;const x0=st.x;w.step();
@@ -469,12 +469,12 @@ test("powerup por peça: só a parte que pegou o 🛡️/🧲 se beneficia; ao f
   const w=empty(80),a=w.addPlayer(0,{x:1000,y:1000,r:60});w.setTarget(0,2000,1000);
   w.requestSplit(0);w.step();const b=w.piecesOf(0).find(p=>p!==a);assert.ok(b,"dividiu em duas");
   for(let t=0;t<25;t++)w.step();assert.ok(b.x-a.x>120,"as partes se afastaram");
-  const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=b.x;f.y=b.y;w.foodDirty=true;w.step();
+  const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=b.x;f.y=b.y;w.moveFood(f);w.step();
   assert.equal(b.shieldLv,1,"o escudo é de quem pegou");assert.equal(a.shieldLv,0,"a outra parte não ganha nada");
   w.step();assert.ok(b.flags&PIECE_FLAG.SHIELD,"a flag vai na peça certa");assert.equal(a.flags&PIECE_FLAG.SHIELD,0);
-  const g=w.spawnFood();g.type=FOOD_TYPE.MAGNET;g.x=b.x;g.y=b.y;w.foodDirty=true;w.step();
+  const g=w.spawnFood();g.type=FOOD_TYPE.MAGNET;g.x=b.x;g.y=b.y;w.moveFood(g);w.step();
   assert.ok(b.magnetUntil>w.tick&&a.magnetUntil<=w.tick,"o ímã também é só dela");
-  const dust=w.spawnFood();dust.type=FOOD_TYPE.DUST;dust.x=a.x-a.r*3;dust.y=a.y;w.foodDirty=true;const x0=dust.x;   // do lado de fora, longe do alcance de b
+  const dust=w.spawnFood();dust.type=FOOD_TYPE.DUST;dust.x=a.x-a.r*3;dust.y=a.y;w.moveFood(dust);const x0=dust.x;   // do lado de fora, longe do alcance de b
   w.step();assert.equal(dust.x,x0,"a parte sem ímã não puxa comida");
   // ao fundir, a peça que fica leva o melhor poder das duas
   a.shieldLv=1;a.shieldEvolveAt=b.shieldEvolveAt=1e9;const mag=b.magnetUntil;a.mergeAt=b.mergeAt=0;w.setTarget(0,(a.x+b.x)/2,1000);
@@ -922,7 +922,7 @@ test("velocidade: é SEMPRE a padrão do tamanho — vira na hora, não acelera,
 // 40. o ímã tem teto de tamanho: planetão não vira aspirador de tela
 test("ímã: acima de POWERUP.MAGNET_MAX_R a peça não pega nem usa o ímã",()=>{
   const pega=r=>{const w=empty(300+r),pc=w.addPlayer(0,{x:3000,y:3000,r});w.setTarget(0,3000,3000);
-    const f=w.spawnFood();f.type=FOOD_TYPE.MAGNET;f.x=3000;f.y=3000;w.foodDirty=true;const m0=pc.mass;w.step();w.step();   // 2 passos: o flag é escrito na integração do tick seguinte ao que comeu
+    const f=w.spawnFood();f.type=FOOD_TYPE.MAGNET;f.x=3000;f.y=3000;w.moveFood(f);const m0=pc.mass;w.step();w.step();   // 2 passos: o flag é escrito na integração do tick seguinte ao que comeu
     return{ativo:pc.magnetUntil>w.tick,flag:!!(pc.flags&PIECE_FLAG.MAGNET),ganhou:pc.mass-m0};};
   const pequeno=pega(POWERUP.MAGNET_MAX_R-40);
   assert.ok(pequeno.ativo&&pequeno.flag,"abaixo do teto o ímã liga normalmente");
@@ -935,7 +935,7 @@ test("ímã: acima de POWERUP.MAGNET_MAX_R a peça não pega nem usa o ímã",()
   pc.magnetUntil=w.tick+POWERUP.TICKS;
   // dentro do alcance EFETIVO, que tem teto absoluto (MAGNET_RANGE_MAX) além do r·MAGNET_RANGE
   const alcance=Math.min(pc.r*POWERUP.MAGNET_RANGE,POWERUP.MAGNET_RANGE_MAX);
-  const longe=w.spawnFood({x:3000+alcance*.8,y:3000});longe.type=FOOD_TYPE.DUST;w.foodDirty=true;
+  const longe=w.spawnFood({x:3000+alcance*.8,y:3000});longe.type=FOOD_TYPE.DUST;   // nasceu já na posição: a grade o inseriu no spawn
   const x0=longe.x;w.step();assert.ok(longe.x<x0,"no tamanho certo, o ímã puxa a comida");
   setR(pc,POWERUP.MAGNET_MAX_R+60);const x1=longe.x;
   for(let t=0;t<10;t++)w.step();
@@ -944,7 +944,7 @@ test("ímã: acima de POWERUP.MAGNET_MAX_R a peça não pega nem usa o ímã",()
   const w2=empty(298),p2=w2.addPlayer(0,{x:3000,y:3000,r:POWERUP.MAGNET_MAX_R-20});w2.setTarget(0,3000,3000);
   p2.magnetUntil=w2.tick+POWERUP.TICKS;
   assert.ok(p2.r*POWERUP.MAGNET_RANGE>POWERUP.MAGNET_RANGE_MAX,"neste raio o r·RANGE já passaria do teto");
-  const fora=w2.spawnFood({x:3000+POWERUP.MAGNET_RANGE_MAX+80,y:3000});fora.type=FOOD_TYPE.DUST;w2.foodDirty=true;
+  const fora=w2.spawnFood({x:3000+POWERUP.MAGNET_RANGE_MAX+80,y:3000});fora.type=FOOD_TYPE.DUST;
   const xf=fora.x;for(let t=0;t<10;t++)w2.step();
   assert.ok(Math.abs(fora.x-xf)<1e-9,"comida além de MAGNET_RANGE_MAX não é puxada, por maior que seja o planeta");});
 
@@ -1053,7 +1053,7 @@ test("incomingMissile: pega só o teleguiado inimigo que está MIRANDO em mim e 
 // ── OS QUATRO POWERUPS DE JOGADOR (FOOD_TYPE 11..14) ─────────────────────────
 test("powerups de jogador: auto-defesa, +1 munição, zoom e comida em dobro",()=>{
   // helper: põe uma comida do tipo pedido em cima da peça e roda um passo
-  const pega=(w,pc,type)=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;f.r=FOOD.SPECIAL_R;w.foodDirty=true;w.step();};
+  const pega=(w,pc,type)=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;f.r=FOOD.SPECIAL_R;w.moveFood(f);w.step();};
 
   // 1) AMMO_PLUS FURA o teto da arma — é a feature inteira, e é o que o separa da munição comum
   const w1=empty(60),p1=w1.addPlayer(0,{x:1000,y:1000,r:40,missiles:MISSILE.MAX_AMMO}),ps1=w1.players.get(0);
@@ -1066,7 +1066,7 @@ test("powerups de jogador: auto-defesa, +1 munição, zoom e comida em dobro",()
   // 2) FEAST dobra a COMIDA — e só ela: fragmento continua devolvendo o que saiu (conservação de massa)
   const w2=empty(61),p2=w2.addPlayer(0,{x:1000,y:1000,r:40}),ps2=w2.players.get(0);
   w2.setTarget(0,1000,1000);
-  const grao=()=>{const f=w2.spawnFood();f.type=FOOD_TYPE.DUST;f.r=10;f.mass=100;f.x=p2.x;f.y=p2.y;w2.foodDirty=true;
+  const grao=()=>{const f=w2.spawnFood();f.type=FOOD_TYPE.DUST;f.r=10;f.mass=100;f.x=p2.x;f.y=p2.y;w2.moveFood(f);
     const antes=p2.mass;w2.step();return p2.mass-antes;};
   const normal=grao();
   pega(w2,p2,FOOD_TYPE.FEAST);
@@ -1187,7 +1187,7 @@ test("asteroide com as 16 peças ocupadas: atravessar CUSTA, e a massa não volt
 test("+1 munição: EMPRESTA uma bala acima do teto, e só uma",()=>{
   const w=empty(703),pc=w.addPlayer(0,{x:3000,y:3000,r:40,missiles:0});w.setTarget(0,3000,3000);
   const ps=w.players.get(0);
-  const pega=type=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;f.r=FOOD.SPECIAL_R;w.foodDirty=true;w.step();};
+  const pega=type=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;f.r=FOOD.SPECIAL_R;w.moveFood(f);w.step();};
   for(let i=0;i<MISSILE.MAX_AMMO+3;i++)pega(FOOD_TYPE.AMMO);
   assert.equal(ps.ammo[0],MISSILE.MAX_AMMO,"a munição comum para no teto da arma");
   for(let i=0;i<6;i++)pega(FOOD_TYPE.AMMO_PLUS);

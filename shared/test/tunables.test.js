@@ -11,7 +11,7 @@ import {listTunables,applyTunable,resetTunable,readTunable,TUNABLE_BY_KEY,GRUPOS
 const empty=(seed=1)=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false});
 /** Uma peça de raio `r` come um ímã: ela ganha o poder? (2 passos — o flag sai na integração seguinte) */
 const pegaIma=r=>{const w=empty(400+Math.round(r)),pc=w.addPlayer(0,{x:3000,y:3000,r});w.setTarget(0,3000,3000);
-  const f=w.spawnFood();f.type=FOOD_TYPE.MAGNET;f.x=3000;f.y=3000;f.r=FOOD.SPECIAL_R;w.foodDirty=true;w.step();w.step();
+  const f=w.spawnFood();f.type=FOOD_TYPE.MAGNET;f.x=3000;f.y=3000;f.r=FOOD.SPECIAL_R;w.moveFood(f);w.step();w.step();
   return{ativo:pc.magnetUntil>w.tick,flag:!!(pc.flags&PIECE_FLAG.MAGNET)};};
 
 test("tunables: o teto do ímã é dito em MASSA e chega à física no tick seguinte",()=>{

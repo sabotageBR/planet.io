@@ -283,7 +283,7 @@ test("comida: o círculo tem RENDA, não torneira — repor na hora era fonte in
   for(let i=0;i<1200;i++)w.step();
   const alvo=w.foodTarget(),vivos=()=>w.food.filter(f=>!f.dead).length;
   assert.equal(vivos(),alvo,"partiu do círculo cheio");
-  for(const f of w.food)f.dead=true;w.foodDirty=true;   // um gigante que cobre o círculo varreu tudo neste tick
+  for(const f of w.food)w.killFood(f);   // um gigante que cobre o círculo varreu tudo neste tick
   w.step();
   const cota=Math.ceil(alvo*DT/ZONE.FOOD_FILL_S)||1;
   assert.ok(vivos()<=cota,`num tick só o círculo repõe a cota (${vivos()} de ${alvo}, cota ${cota})`);
@@ -294,7 +294,7 @@ test("comida: o círculo tem RENDA, não torneira — repor na hora era fonte in
   // últimos 30 s, e o líder saía de 355 mil para 1,02 milhão de massa em 15 s — o tapete engordava o
   // gigante, não o pequeno. O modo Livre não tem zona e continua repondo na hora.
   const livre=createWorld({seed:34,food:50,asteroids:false,holes:0,stars:0});
-  for(const f of livre.food)f.dead=true;livre.foodDirty=true;livre.step();
+  for(const f of livre.food)livre.killFood(f);livre.step();
   assert.equal(livre.food.filter(f=>!f.dead).length,50,"sem zona a reposição é instantânea, como sempre foi");});
 test("comida: nunca nasce em cima de estrela — grão dentro do disco é isca, não comida",()=>{
   const w=createWorld({seed:33,asteroids:false,holes:0,stars:STAR.COUNT});
@@ -373,7 +373,7 @@ test("cinto: a arma pega entra E vem na mão, sem jogar fora a que eu já tinha"
   const w=empty(11);w.addPlayer(0,{x:4000,y:4000,r:100,missiles:2});
   const ps=w.players.get(0),pc=w.piecesOf(0)[0];
   assert.equal(ps.weapon,WEAPON.MISSILE);assert.equal(ammoOf(ps),2);
-  const solta=type=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;w.foodDirty=true;w.step();};
+  const solta=type=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;w.moveFood(f);w.step();};
   solta(FOOD_TYPE.W_BURST);
   assert.equal(ps.weapon,WEAPON.BURST,"pegar uma arma já a coloca na mão (pegar e não ver nada acontecer é pior que não pegar)");
   assert.equal(ammoOf(ps),WEAPONS[WEAPON.BURST].ammo);
@@ -385,7 +385,7 @@ test("chavear: Q anda pelas armas com munição, e o míssil está sempre na rod
   const ps=w.players.get(0),pc=w.piecesOf(0)[0];
   w.requestSwap(0);w.step();
   assert.equal(ps.weapon,WEAPON.MISSILE,"só o míssil no cinto: trocar não muda nada");
-  const f=w.spawnFood();f.type=FOOD_TYPE.W_BURST;f.x=pc.x;f.y=pc.y;w.foodDirty=true;w.step();
+  const f=w.spawnFood();f.type=FOOD_TYPE.W_BURST;f.x=pc.x;f.y=pc.y;w.moveFood(f);w.step();
   assert.equal(ps.weapon,WEAPON.BURST);
   w.requestSwap(0);w.step();
   assert.equal(ps.weapon,WEAPON.MISSILE,"volta para o míssil mesmo com munição zero — é a arma base, não dá para ficar preso fora dela");
@@ -395,7 +395,7 @@ test("chavear: Q anda pelas armas com munição, e o míssil está sempre na rod
 test("trava: depois do Q, arma do chão só ABASTECE — nunca arranca da mão o que o jogador escolheu",()=>{
   const w=empty(43);w.addPlayer(0,{x:4000,y:4000,r:100,missiles:1});
   const ps=w.players.get(0),pc=w.piecesOf(0)[0];
-  const solta=type=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;w.foodDirty=true;w.step();};
+  const solta=type=>{const f=w.spawnFood();f.type=type;f.x=pc.x;f.y=pc.y;w.moveFood(f);w.step();};
   solta(FOOD_TYPE.W_BURST);
   assert.equal(ps.weapon,WEAPON.BURST,"o PRIMEIRO contato com armas continua equipando (não há escolha a respeitar ainda)");
   assert.equal(ps.weaponPin,false,"e não trava nada: quem escolheu foi o jogo, não o jogador");

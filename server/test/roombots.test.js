@@ -114,11 +114,15 @@ test('a mistura se esgota: quem chega depois da janela entra pequeno', () => {
   assert.ok(antes>ROOM.BOT_SEED,'a chegada gradual aconteceu durante a janela');
   // quem entrar DAQUI para a frente não pode mais nascer grande
   const conhecidos=new Set([...r.sim.players.values()].filter(p=>p.isBot).map(p=>p.slot));
-  anda(r,ROOM.BOT_JOIN_TICKS[1]+1);
-  const novos=[...r.sim.players.values()].filter(p=>p.isBot&&!conhecidos.has(p.slot));
+  // ⚠️ TICK A TICK, medindo o raio no INSTANTE em que o slot aparece. Andar o bloco inteiro e só então
+  // olhar mede o raio de quem já passou 14 s COMENDO — o teste passava por sorte e só denunciava a
+  // sorte quando a ordem do mundo mudava (foi assim que ele caiu com a grade de comida nova).
+  const novos=[];
+  for(let i=0;i<ROOM.BOT_JOIN_TICKS[1]+1;i++){r.step();
+    for(const gp of r.sim.players.values()){if(!gp.isBot||conhecidos.has(gp.slot))continue;
+      conhecidos.add(gp.slot);const pc=r.sim.world.piecesOf(gp.slot)[0];novos.push({nome:gp.name,r:pc?pc.r:0});}}
   assert.ok(novos.length,'alguém entrou depois da janela');
-  for(const gp of novos){const pc=r.sim.world.piecesOf(gp.slot)[0];
-    assert.ok(pc.r<=PLAYER.BOT_R[1],`${gp.name} entrou com r=${Math.round(pc.r)} fora da janela`);}
+  for(const b of novos)assert.ok(b.r<=PLAYER.BOT_R[1],`${b.nome} entrou com r=${Math.round(b.r)} fora da janela`);
 });
 
 test('a mesma semente dá a mesma sala', () => {

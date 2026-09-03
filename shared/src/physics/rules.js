@@ -201,7 +201,7 @@ export function eatPiece(w,killer,A,victim,B){
  * @param {World} w @param {PlayerState} ps @param {Body} pc @param {Body} f
  */
 export function eatFood(w,ps,pc,f,zc=null){
-  f.dead=true;w.foodDirty=true;const t=f.type,tick=w.tick;
+  w.killFood(f);const t=f.type,tick=w.tick;
   if(t===FOOD_TYPE.AMMO){const cap=weaponOf(ps.weapon).ammo;if(ammoOf(ps)<cap)addAmmo(ps,1);w.events.push({type:"AMMO",slot:ps.slot});}   // munição é da arma EQUIPADA (no míssil o teto é o MAX_AMMO de sempre)
   // ⚠️ `up` é o que separa a promoção 2→3 do 3→3, e sem ele o cliente não tinha COMO saber: o evento
   // chegava com `level:3` nos dois casos e o texto "ESCUDO 3" saía toda vez que se pisava num 🛡️ no teto.
@@ -531,7 +531,7 @@ export function supernova(w,st,rammed=false,bySlot=-1){
   const longe=blast*STAR.NOVA_FOOD_R*3,longe2=longe*longe,pool=w.food;
   if(premio)for(let i=0;i<STAR.NOVA_FOOD;i++){
     for(let k=0;k<8;k++){const f=pool[rng.int(0,pool.length-1)];if(!f||f.dead)continue;
-      const fx=f.x-st.x,fy=f.y-st.y;if(fx*fx+fy*fy<longe2)continue;f.dead=true;w.foodDirty=true;break;}
+      const fx=f.x-st.x,fy=f.y-st.y;if(fx*fx+fy*fy<longe2)continue;w.killFood(f);break;}
     w.spawnFood({x:st.x,y:st.y,spread:blast*STAR.NOVA_FOOD_R});}
   w.events.push({type:"SUPERNOVA",starId:st.id,x:st.x,y:st.y,r:blast,rammed,bySlot});
   st.dead=true;w.queueStar(STAR.RESPAWN_TICKS);}

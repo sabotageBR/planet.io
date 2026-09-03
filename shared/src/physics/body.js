@@ -46,7 +46,11 @@ import {PLAYER,BOOST} from "../constants.js";
 /** Cria um corpo com todos os campos (sempre a mesma forma). @returns {Body} */
 export function createBody(kind,id,x,y,r){
   return{kind,id,x,y,vx:0,vy:0,svx:0,svy:0,r,mass:r*r,owner:-1,mergeAt:0,flags:0,cdUntil:0,chipUntil:0,hits:0,magnetUntil:0,shieldLv:0,shieldEvolveAt:0,seed:0,type:0,hue:0,targetId:-1,srcSlot:-1,life:0,
-    ax:0,ay:0,ang:0,orbitR:0,k:0,shed:0,dead:false};}
+    ax:0,ay:0,ang:0,orbitR:0,k:0,shed:0,
+    // `fi` só é usado pela COMIDA: é o slot dela em `world.food`, e a grade de pontos guarda esse
+    // número. Nasce em -1 porque `world.killFood` e `moveFood` perguntam por ele antes de mexer na
+    // grade — corpo que não é comida simplesmente nunca entra lá.
+    fi:-1,dead:false};}
 /** Define a massa e recalcula o raio (r=√m). @param {Body} b */
 export function setMass(b,m){b.mass=m;b.r=Math.sqrt(m);}
 /** Define o raio e recalcula a massa (m=r²). @param {Body} b */

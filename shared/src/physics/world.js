@@ -8,7 +8,7 @@ import {KIND,PIECE_FLAG,FOOD_FLAG,BH_PHASE,STAR_PHASE,FRAG_KIND} from "../protoc
 import {createRng} from "../rng.js";
 import {clamp} from "../util.js";
 import {createBody,liveCount,decayPiece} from "./body.js";
-import {createGrid,GRID_CELL} from "./spatial-hash.js";
+import {createGrid,createPointGrid,GRID_CELL} from "./spatial-hash.js";
 import {integratePiece,integrateFree} from "./integrate.js";
 import {resolveBounce,separateOwn,tryMergeOwn} from "./collide.js";
 import * as R from "./rules.js";
@@ -96,7 +96,13 @@ export class World{
     /** @type {{x0:number,y0:number,r0:number,x1:number,y1:number,r1:number,t0:number,t1:number}|null} */this.zone=null;
     this.peace=false;this._zc={x:0,y:0,r:0};this._foodScan=0;
     this.decay=o.decay!==false;this.weapons=!!o.weapons;this.foodCount=o.food;this.holeCount=o.holes;this.starCount=o.stars;this.astBase=o.asteroids?ASTEROID.BELTS*ASTEROID.PER_BELT+ASTEROID.WANDERERS:0;this.astCap=this.astBase+ASTEROID.MAX_EXTRA;
-    this.grid=createGrid(w,h,GRID_CELL);this.foodGrid=createGrid(w,h,GRID_CELL);this.foodDirty=true;
+    this.grid=createGrid(w,h,GRID_CELL);
+    // A comida tem grade PRÓPRIA e de outro tipo (ver createPointGrid): ela é a única população que
+    // muda todo tick, e refazer 3900 índices por causa de um grão comido era o maior item do perfil.
+    // O preço é o índice ter que ser estável — daí `foodFree` e o `_compact` não tocar em `this.food`.
+    this.foodGrid=createPointGrid(w,h,GRID_CELL,FOOD.R_MAX);
+    /** @type {number[]} slots de `food` vagos (a comida não compacta: morrer abre um buraco, nascer o reusa) */this.foodFree=[];
+    this.foodAlive=0;
     /** @type {Body[]} */this.dyn=[];this._pairs=new Int32Array(4096*3);/** @type {number[]} */this._q=[];this._spot={x:0,y:0,ok:false};this._starScan=0;
     for(let i=0;i<o.food;i++)this.spawnFood();
     if(o.asteroids){const rng=this.rng;
@@ -155,7 +161,18 @@ export class World{
       // anel recusado deixava um cometa graúdo caído em lugar nenhum
       if(anel&&type<=FOOD_TYPE.ROCK){type=rng.chance(.5)?FOOD_TYPE.COMET:FOOD_TYPE.ROCK;r=rng.range((FOOD.R_MIN+FOOD.R_MAX)/2,FOOD.R_MAX);}}
     const f=createBody(KIND.FOOD,this.newId(),x,y,r);
-    f.type=type;f.hue=rng.int(0,FOOD.HUES-1);f.seed=rng.next();this.food.push(f);this.foodDirty=true;return this._register(f);}
+    f.type=type;f.hue=rng.int(0,FOOD.HUES-1);f.seed=rng.next();
+    // slot vago primeiro (LIFO, determinístico); só cresce o array quando não há buraco
+    const fi=this.foodFree.length?this.foodFree.pop():this.food.length;
+    f.fi=fi;this.food[fi]=f;this.foodAlive++;this.foodGrid.insert(fi,f.x,f.y);
+    return this._register(f);}
+  /**
+   * A ÚNICA porta de saída de um grão. Marcar `dead` na mão deixa o índice na grade e o slot fora da
+   * free list: o grão vira um fantasma que a consulta devolve para sempre e um buraco que ninguém reusa.
+   * @param {Body} f
+   */
+  killFood(f){if(!f||f.dead)return;f.dead=true;this.foodAlive--;
+    if(f.fi>=0){this.foodGrid.remove(f.fi);this.foodFree.push(f.fi);}}
   _hspot={x:0,y:0};/** @type {Body[]} */_haz=[];
   /** Ponto num anel NEAR_HAZARD_R em volta de uma estrela ou buraco negro vivo (null se o mundo não tem nenhum). */
   _hazardSpot(){const rng=this.rng,list=this._haz;list.length=0;
@@ -200,7 +217,7 @@ export class World{
   _cullFoodOutOfZone(zc){const food=this.food,n=food.length;if(!n)return;
     let i=this._foodScan|0;if(i>=n)i=0;
     const fim=Math.min(n,i+ZONE.FOOD_SCAN);
-    for(;i<fim;i++){const f=food[i];if(!f.dead&&!inZone(f.x,f.y,zc)){f.dead=true;this.foodDirty=true;}}
+    for(;i<fim;i++){const f=food[i];if(f&&!f.dead&&!inZone(f.x,f.y,zc))this.killFood(f);}
     this._foodScan=i>=n?0:i;}
   /**
    * Asteroide: `beltIx ≥ 0` orbita o cinturão (ângulo `ang` ou aleatório, raio com jitter); `-1` é errante
@@ -256,8 +273,8 @@ export class World{
    * @param {Body} st
    */
   _varreComida(st){const food=this.food,m=st.r+FOOD.STAR_CLEAR,m2=m*m;
-    for(let i=0;i<food.length;i++){const f=food[i];if(f.dead)continue;
-      const dx=f.x-st.x,dy=f.y-st.y;if(dx*dx+dy*dy<m2){f.dead=true;this.foodDirty=true;}}}
+    for(let i=0;i<food.length;i++){const f=food[i];if(!f||f.dead)continue;
+      const dx=f.x-st.x,dy=f.y-st.y;if(dx*dx+dy*dy<m2)this.killFood(f);}}
   /** Agenda o nascimento de uma estrela nova daqui a `delay` ticks (depois de uma supernova). */
   queueStar(delay){this.starQueue.push({at:this.tick+delay});}
   /** (x,y) está a ≥ BELT_SAFE do ANEL de todo cinturão? (o teste é sobre o anel, não sobre o centro). */
@@ -329,8 +346,12 @@ export class World{
    * apontam para `this.food`, então quem consulta fora do passo — a AOI do snapshot — precisa chamar isto
    * antes: depois da compactação os índices antigos não valem mais.
    */
-  ensureFoodGrid(){if(!this.foodDirty)return;const fg=this.foodGrid,food=this.food;
-    fg.clear();for(let i=0;i<food.length;i++){const f=food[i];fg.insert(i,f.x,f.y,f.r);}fg.build();this.foodDirty=false;}
+  /** A grade da comida é mantida em O(1) por `spawnFood`/`killFood`/`moveFood`: não há o que refazer.
+   *  Fica como no-op porque três chamadores a pediam antes de consultar, e um deles é o `shared` que vai
+   *  para o bundle do `?local=1` — tirar a função obrigaria a subir cliente e servidor no mesmo minuto. */
+  ensureFoodGrid(){}
+  /** Grão que ANDOU (ímã, buraco negro). Só custa alguma coisa quando ele troca de célula. @param {Body} f */
+  moveFood(f){if(f&&f.fi>=0&&!f.dead)this.foodGrid.move(f.fi,f.x,f.y);}
   /** Liga/desliga a zona (o servidor manda o círculo já pronto; a máquina de fases é do Room, ver shared/zone.js). */
   setZone(z){this.zone=z||null;}
   /** Círculo da zona no tick atual (null sem zona). Reusa um objeto só: isto roda por peça, todo tick. */
@@ -409,9 +430,9 @@ export class World{
     for(let i=0;i<holes.length;i++){const h=holes[i];if(h.dead)continue;const ri=h.r*BLACKHOLE.INFLUENCE*h.k,rc=h.r*h.k;if(ri<R.LOCAL.HOLE_MIN_RI)continue;
       const n=fg.query(h.x,h.y,ri,q);let moved=false;
       for(let k=0;k<n;k++){const f=food[q[k]];if(f.dead)continue;const dx=h.x-f.x,dy=h.y-f.y;if(dx*dx+dy*dy>ri*ri)continue;moved=true;
-        if(R.pullFood(h,f,rc,ri)){f.dead=true;this.spawnFood();   // engolida: some aqui e a reposição normal a devolve em outro canto (FOOD.COUNT nunca cai)
-          ev.push({type:"FOOD_CRUSH",holeId:h.id,x:h.x,y:h.y});}}
-      if(moved)this.foodDirty=true;}
+        if(R.pullFood(h,f,rc,ri)){this.killFood(f);this.spawnFood();   // engolida: some aqui e a reposição normal a devolve em outro canto (FOOD.COUNT nunca cai)
+          ev.push({type:"FOOD_CRUSH",holeId:h.id,x:h.x,y:h.y});}
+        else this.moveFood(f);}}
     // ── 7. comida (ímã, comer) e ejetados (ímã, absorver, alimentar asteroide) ──
     // ímã (POR PEÇA — só a que pegou o powerup atrai): comida a d<range anda a MAGNET_PULL·(1+(MAGNET_NEAR−1)·(1−d/range)) px/s (acelera perto = sucção) e fica
     // marcada MOVED (o snapshot manda UPDATE); cometa/estrela (comida pesada) andam a MAGNET_HEAVY disso; ejetados
@@ -424,7 +445,7 @@ export class World{
       for(let k=0;k<n;k++){const f=food[q[k]];if(f.dead)continue;let dx=pc.x-f.x,dy=pc.y-f.y,d2=dx*dx+dy*dy;
         if(magnet&&d2<range*range&&d2>1e-6){const d=Math.sqrt(d2),hv=(f.type===FOOD_TYPE.COMET||f.type===FOOD_TYPE.STAR)?PW.MAGNET_HEAVY:1;
           let s=PW.MAGNET_PULL*hv*(1+(PW.MAGNET_NEAR-1)*(1-d/range))*DT;if(s>d)s=d;
-          f.x+=dx/d*s;f.y+=dy/d*s;f.flags|=FOOD_FLAG.MOVED;this.foodDirty=true;dx=pc.x-f.x;dy=pc.y-f.y;d2=dx*dx+dy*dy;}
+          f.x+=dx/d*s;f.y+=dy/d*s;f.flags|=FOOD_FLAG.MOVED;this.moveFood(f);dx=pc.x-f.x;dy=pc.y-f.y;d2=dx*dx+dy*dy;}
         // `zc` é o círculo da zona já calculado no topo do step: quem colhe EXPOSTO ao gás recebe menos
         const lim=pc.r+f.r*ov;if(d2<lim*lim)R.eatFood(this,ps,pc,f,zc);}
       if(magnet){const m=grid.query(pc.x,pc.y,range,q);
@@ -461,7 +482,7 @@ export class World{
     // seguinte. Sem zona (modo Livre) segue instantâneo, como sempre foi.
     if(zc)this._cullFoodOutOfZone(zc);
     const alvo=this.foodTarget();
-    let vivos=0;for(let i=0;i<food.length;i++)if(!food[i].dead)vivos++;
+    let vivos=this.foodAlive;   // contador, não varredura: `food` tem os buracos da free list
     let cota=zc?Math.ceil(alvo*DT/ZONE.FOOD_FILL_S)||1:Infinity;
     for(;vivos<alvo&&cota>0;vivos++,cota--)this.spawnFood();
     const aq=this.astQueue;if(aq.length){let k=0;for(let i=0;i<aq.length;i++){const e=aq[i];if(e.at<=tick){const a=this.spawnAsteroid(e.belt);ev.push({type:"ASTEROID_RESPAWN",asteroidId:a.id,x:a.x,y:a.y,r:a.r});}else aq[k++]=e;}aq.length=k;}
@@ -481,9 +502,14 @@ export class World{
     // prêmio a ninguém e um susto em quem está do outro lado do mapa.
     if(zc)this._cullStarsOutOfZone(zc);
     this.tick=tick+1;}
-  _compact(){const byId=this.entityById;let foodGone=false;
+  _compact(){const byId=this.entityById;
     const cp=arr=>{let k=0;for(let i=0;i<arr.length;i++){const b=arr[i];if(b.dead)byId.delete(b.id);else arr[k++]=b;}const gone=k!==arr.length;arr.length=k;return gone;};
-    cp(this.pieces);foodGone=cp(this.food);cp(this.ejected);cp(this.asteroids);cp(this.holes);cp(this.missiles);cp(this.stars);if(foodGone)this.foodDirty=true;
+    // ⚠️ `this.food` NÃO entra aqui: compactar reordena o array e os índices que a grade de pontos
+    // guarda deixariam de valer — que é exatamente o custo que ela existe para eliminar. O grão morto
+    // fica no lugar como buraco (`killFood` devolveu o slot a `foodFree`), e o `byId` dele é apagado
+    // à mão logo abaixo, porque era o `cp` quem fazia isso.
+    cp(this.pieces);cp(this.ejected);cp(this.asteroids);cp(this.holes);cp(this.missiles);cp(this.stars);
+    const gone=this.foodFree;for(let i=0;i<gone.length;i++){const f=this.food[gone[i]];if(f&&f.dead)byId.delete(f.id);}
     for(const ps of this.players.values()){const arr=ps.pieces;let k=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)arr[k++]=arr[i];arr.length=k;}}
 }
 

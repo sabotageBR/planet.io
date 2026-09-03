@@ -2281,10 +2281,30 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   reinseridos ~1× por tick, 120 µs cada, 36% a 61% do laço da sala**. A causa é `foodDirty`: basta UM
   grão ser comido (e sempre é, todo tick, com 30 jogadores na sala) para a grade inteira ser refeita,
   porque ela guarda ÍNDICES em `this.food` e o `_compact` do fim do tick reordena o array.
-  Medido com o rebuild desligado à força: **0,339 → 0,131 ms por tick, 2,6× mais sala por core** — é o
-  TETO do ganho, não uma implementação. O caminho que o realiza sem mexer na ordem de visita (que é o
-  que mudaria a física de uma semente) é a comida deixar de compactar: free list de slots, índice
-  estável, e a grade atualizada só para o grão que mudou.
+  **CONSERTADO** com `createPointGrid` (`physics/spatial-hash.js`): a comida ganhou grade PRÓPRIA em que
+  o grão mora numa célula só (a do centro) e entra, sai e se muda em O(1) — comer é um `remove`, repor é
+  um `insert`, e o ímã só paga quando o grão atravessa a fronteira de uma célula. Não há `build()`, e
+  também não há carimbo de deduplicação (um item numa célula só não pode voltar duas vezes na mesma
+  varredura). Medido: **0,339 → 0,162 ms por tick (−52 %, 2,1× mais sala por core)**, e o processo
+  inteiro com 50 jogadores caiu de **18–20 % para 13–14 %** de um core — menos que o tick porque a outra
+  metade do trabalho é rede, que não mudou. O teto teórico era 0,131; a diferença é o custo novo de
+  `remove`/`move` e da consulta expandida.
+  ⚠️ **O índice do grão tem que ser ESTÁVEL**, e é por isso que a comida deixou de compactar: `_compact`
+  não toca mais em `this.food` (morrer abre um buraco que `foodFree` reusa) e quem apaga o `entityById`
+  do grão morto é um laço próprio, porque era o `cp()` quem fazia isso.
+  ⚠️ **`world.food` deixou de ser "os grãos vivos"**: ele tem os buracos da free list. Quem quer a
+  população usa `world.foodAlive` (contador), e o laço de reposição parou de varrer 3900 posições por
+  tick só para contar — era um segundo O(n) escondido ao lado do rebuild.
+  ⚠️ **Quem mexe em comida à mão TEM que avisar**: `killFood(f)` é a única porta de saída (marcar `dead`
+  na mão deixa um fantasma na grade e um slot que ninguém reusa) e `moveFood(f)` é obrigatório depois de
+  escrever `f.x/f.y`. Foi exatamente isso que quebrou 18 pontos dos testes de `shared`, e é o preço
+  honesto da estrutura: a grade não adivinha mais.
+  ⚠️ **A ordem de visita mudou**, então a mesma semente NÃO dá mais a mesma sala de antes. Não quebra
+  fio nem cliente (comida não é predita), mas quebrou um teste que media o raio do bot recém-chegado
+  DEPOIS de 14 s — ele passava por sorte, e agora mede no tick do nascimento.
+  ⚠️ `ensureFoodGrid()` ficou como **no-op** de propósito: os três chamadores a pediam antes de
+  consultar e um deles é `shared/bot.js`, que vai para o bundle do `?local=1` — removê-la obrigaria a
+  subir cliente e servidor no mesmo minuto.
   ⚠️ Depois dela vem o snapshot (`visitFood`/`visit` em `net/snapshot.js`, ~19%), que é custo POR SESSÃO
   e legítimo. `world.step`, `spatial-hash` e `_compact` fecham a conta; `Sim._consume` é 0,5%.
 - **"POR IP" NÃO É POR PESSOA NESTE CLUSTER, E ISSO ERA UM TETO GLOBAL** (`auth/ratelimit.js`,
