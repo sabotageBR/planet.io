@@ -14,7 +14,7 @@ import { go, setNick, loadTop5, toast, focaNome, play } from "../state/actions.j
 import GoogleButton from "./GoogleButton.jsx";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { useInterval } from "../hooks/useInterval.js";
-import { PORTAL } from "../portal/flags.js";
+import { ENTRA_DIRETO } from "../portal/flags.js";
 import { Field, MiniRank, Screen } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
 import Logo from "./Logo.jsx";
@@ -58,15 +58,17 @@ function Body() {
   // ⚠️ E RETOMA o que a guarda segurou: quem chegou por um link de convite (`?sala=`) ou clicou em
   // renascer sem nunca ter nomeado o planeta foi trazido para cá com o pedido guardado em `pendingPlay`
   // — mandá-lo para a tela de Modos aqui faria o link do amigo terminar numa sala qualquer.
-  // ⚠️ NO PORTAL O BOTÃO ENTRA NA PARTIDA, e não na tela de Modos: são dois cliques e uma tela a menos
-  // até o primeiro frame, que é o que a CrazyGames exige do Full Launch ("land directly in gameplay").
-  // A tela de Modos continua a um clique de distância, na grade de baixo — quem quer battle royale ou
-  // esquadrão a encontra; quem só quer ver o jogo não passa por ela. Fora do portal nada muda: no site a
-  // escolha do modo ANTES de entrar é o que a tela inicial sempre ofereceu.
-  const jogar = async () => { if (!PORTAL && !nick.trim()) { toast(LB.nickAsk, 3500); focaNome(); return; } if (nick.trim() && !await commit()) return;
+  // ⚠️ SÓ NA CRAZYGAMES O BOTÃO ENTRA NA PARTIDA, e não na tela de Modos: são dois cliques e uma tela a
+  // menos até o primeiro frame, que é o que ELA exige do Full Launch ("land directly in gameplay") — e
+  // é a mesma exigência que dispensa o nome, ver ENTRA_DIRETO em portal/flags.js. A tela de Modos
+  // continua a um clique de distância, na grade de baixo — quem quer battle royale ou esquadrão a
+  // encontra; quem só quer ver o jogo não passa por ela. Nos outros portais (Poki incluída) e no site
+  // nada muda: a escolha do modo ANTES de entrar, com o planeta nomeado, é o que a tela inicial sempre
+  // ofereceu — generalizar para `PORTAL` deixava todo portal entrando sem nome e sem passar por Modos.
+  const jogar = async () => { if (!ENTRA_DIRETO && !nick.trim()) { toast(LB.nickAsk, 3500); focaNome(); return; } if (nick.trim() && !await commit()) return;
     const pp = app.get().pendingPlay;
     if (pp) play(pp);
-    else if (PORTAL) play({ mode: app.get().gameMode | 0, teamSize: 1, party: null });
+    else if (ENTRA_DIRETO) play({ mode: app.get().gameMode | 0, teamSize: 1, party: null });
     else go("modes"); };
   // ⚠️ OPÇÕES SAIU DAQUI e virou o ícone do topo do cartão. O número de colunas desta grade responde à
   // largura do CARTÃO, e no celular em pé cabem cinco: o 6º alvo caía sozinho numa segunda fileira, ou

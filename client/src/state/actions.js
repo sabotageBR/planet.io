@@ -10,7 +10,7 @@ import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
 import { portal } from "../portal/index.js";
-import { PORTAL } from "../portal/flags.js";
+import { PORTAL, ENTRA_DIRETO } from "../portal/flags.js";
 import { silenciaAnuncio } from "../audio/index.js";
 
 const Q = new URLSearchParams(location.search);
@@ -414,12 +414,15 @@ export const focaNome = () => setTimeout(() => { const el = document.getElementB
  * trocar de tela sem derrubá-la deixaria um socket de jogo pendurado atrás do menu.
  */
 export function semNome(pedido = null) {
-  // ⚠️ NO PACOTE DE PORTAL A GUARDA NÃO VALE, e não é descuido: eles exigem, por escrito, que o jogador
-  // novo caia direto no jogo ("new users should land in gameplay immediately", no máximo 1 clique). Aqui
-  // o primeiro clique em JOGAR não fazia NADA além de um toast pedindo um nome — o revisor da CrazyGames
-  // travava na tela inicial. A placa sorteada vira o nome de estreia (é o que todo .io faz) e o campo
-  // continua ali, na mesma tela, para quem quiser trocar antes ou depois de jogar.
-  if (PORTAL) return false;
+  // ⚠️ SÓ NA CRAZYGAMES A GUARDA NÃO VALE, e não é descuido: só ela exige, por escrito, que o jogador
+  // novo caia direto no jogo ("new users should land in gameplay immediately", no máximo 1 clique). Ali
+  // o primeiro clique em JOGAR não fazia NADA além de um toast pedindo um nome — o revisor deles travava
+  // na tela inicial. A placa sorteada vira o nome de estreia (é o que todo .io faz) e o campo continua
+  // ali, na mesma tela, para quem quiser trocar antes ou depois de jogar.
+  // ⚠️ Isto já foi `if (PORTAL)`, generalizando a exigência da CrazyGames para TODOS os portais — e
+  // ninguém mais tem essa exigência escrita (ver ENTRA_DIRETO em portal/flags.js). Era isso que deixava
+  // qualquer portal (a Poki incluída) entrar direto com `Viajante-NNNN` sem nunca pedir um nome.
+  if (ENTRA_DIRETO) return false;
   const st = app.get(), u = st.session.user || {};
   if (st.nomeado || !nickSorteado(u.nick)) return false;
   app.update({ pendingPlay: pedido });
