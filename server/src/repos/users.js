@@ -6,7 +6,13 @@
 // `login` vai no fio porque o jogador PRECISA vê-lo: ele troca o nick num onBlur da tela inicial e, sem
 // isso, volta dias depois sem saber com que nome entra.
 export const toPublic=u=>u&&({id:Number(u.id),nick:u.nick,name:u.display_name||null,kind:u.kind,coins:u.coins,equippedSkin:u.equipped_skin_id,
-  country:u.country||null,avatar:u.avatar_hash||null,createdAt:u.created_at,...(u.login?{login:u.login}:{}),...(u.email?{email:u.email}:{})});
+  country:u.country||null,avatar:u.avatar_hash||null,createdAt:u.created_at,...(u.login?{login:u.login}:{}),...(u.email?{email:u.email}:{}),
+  // ⚠️ `isAdmin` só aparece quando é VERDADE (a allowlist acima é explícita de propósito), e serve para UMA
+  // coisa: mostrar em Opções o botão que pede permissão de notificação do navegador — sem ele o aviso de
+  // "entrou gente" nunca sai do sistema, porque `requestPermission()` exige gesto do usuário. Não é
+  // autorização de nada: quem decide quem RECEBE o aviso é o servidor, e agir continua exigindo o token
+  // de `kind:'admin'`.
+  ...(u.is_admin?{isAdmin:true}:{})});
 export function createUsers(db){
   const byId=(id,c=db)=>c.query(`SELECT * FROM users WHERE id=$1`,[id]).then(r=>r.rows[0]||null);
   /**

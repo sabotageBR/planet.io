@@ -18,6 +18,9 @@ export class Session{
   constructor({ws,metrics,log=null,remoteAddr=null,userAgent=null}){
     this.ws=ws;this.metrics=metrics;this.log=log;this.remoteAddr=remoteAddr;this.userAgent=userAgent;
     this.slot=-1;this.pid=0;this.room=null;this.sessionId=null;this.userId=null;this.key=null;this.name='';this.unsaved=true;
+    // `isAdmin`: só para RECEBER o aviso de "entrou gente" (Room._avisaAdmins). Agir continua exigindo o
+    // token de outro `kind` — roubar a aba do jogo de um administrador não pode abrir o painel.
+    this.isAdmin=false;
     // `pid`: handle OPACO por sala, para o painel do dono (ver Room.hostRoster). `key`: hash do token, o
     // mesmo `keyOf` do lobby de equipe — é o que permite banir quem não tem conta.
     this.resumeToken=randomBytes(16).toString('hex');

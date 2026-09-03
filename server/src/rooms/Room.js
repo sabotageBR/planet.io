@@ -31,17 +31,22 @@ const WRITER_SIZE=32768,BOT_SKINS=35;   // bots usam skins 0..34 (compráveis; n
 export class Room{
   /** @param {{code:string,shard:number,seed:number,hooks:any,log:any,metrics:any,config:{roomMax:number,roomBots:number},onRewards?:Function}} o */
   constructor({code,shard,seed,hooks,log,metrics,config,onRewards=null,mode=MODE.FREE,teamSize=1,botChat=null,
-    botNames=null,roundTicks=null,private:priv=false,hostUserId=null,hostNick=null}){
+    botNames=null,roundTicks=null,roomMax=null,roomBots=null,private:priv=false,hostUserId=null,hostNick=null}){
     this.code=code;this.shard=shard;this.seed=seed;this.rng=createRng(seed);this.log=log;this.metrics=metrics;
     this.mode=modeOf(mode);this.modeId=this.mode.id;
     this.teamSize=this.mode.teamSizes.includes(teamSize)?teamSize:this.mode.teamSizes[0];
     this.sim=new Sim({seed,hooks,log,rng:this.rng,mode:this.modeId});
     /** @type {Map<number,import('../net/Session.js').Session>} */this.sessions=new Map();
     this.createdAt=Date.now();this.lastHumanAt=Date.now();this.running=false;
-    // Livre: o env continua mandando (roomMax/roomBots), senão publicar este arquivo mudaria o balanço em produção.
     // Battle Royale: quem manda é o modo, e a capacidade fecha no tamanho de equipe (modeCap).
-    this.max=this.mode.lobby?modeCap(this.modeId,this.teamSize):config.roomMax;
-    this.botCount=this.mode.lobby?0:config.roomBots;
+    // ⚠️ No LIVRE quem manda é `ROOM.MAX`/`ROOM.BOTS`, a constante VIVA — nunca `config.roomMax`/`roomBots`.
+    // Os dois viraram parâmetro do painel e o env apenas os SEMEIA no boot (`startServer`), exatamente como
+    // `ROUND.TICKS` logo abaixo: lendo o config, o valor do ConfigMap venceria o painel em toda sala nova e
+    // o parâmetro não valeria nada — o /admin diria "salvo" a cada clique e o número nunca mudaria.
+    // ⚠️ O override explícito (`roomMax`/`roomBots` nas OPÇÕES da sala, não no config) existe para quem
+    // monta uma sala à mão — os testes — sem passar a depender de estado global de processo.
+    this.max=this.mode.lobby?modeCap(this.modeId,this.teamSize):(roomMax!=null?roomMax:ROOM.MAX);
+    this.botCount=this.mode.lobby?0:(roomBots!=null?roomBots:ROOM.BOTS);
     this._proxBot=Infinity;   // quem agenda a 1ª chegada é o `start()`; antes dele ninguém entra
     // ⚠️ `roundTicks!=null`, NUNCA `roundTicks||…`: **0 é o valor de SEM FIM**, e o `||` o transformaria em
     // silêncio na rodada padrão. É a mesma armadilha do `config.roundTicks||ROUND.TICKS` que morava aqui.
@@ -70,6 +75,8 @@ export class Room{
     // royale caem juntos; `startsAt` só é escrito quando a contagem regressiva começa (0 = ainda enchendo).
     this.phase=this.mode.lobby?'lobby':'live';this.lobbyStart=0;this.lobbyUntil=0;this.startsAt=0;this.nextBotAt=0;this.zone=null;
     this.usedNicks=new Set();this.lobbyAt=0;this.flagsDirty=false;this.digitaFila=[];
+    /** chave de `_rosterKey` → instante da saída, para o respawn não virar spam no log (ver FEED.JOIN_QUIET_MS) */
+    this._saiuEm=new Map();
     // ninguém tem peça no lobby, mas a paz fica ligada como cinto de segurança: se um dia alguém nascer
     // cedo por engano, não vira almoço antes de a partida existir
     this.sim.world.peace=this.phase==='lobby';
@@ -338,7 +345,23 @@ export class Room{
     if(session.avatar&&session.userId)this._setAvatar(slot,session.userId,session.avatar);
     if(lobby)this.broadcastLobby();
     if(this.hostUserId!=null){const h=this.hostSession();if(h)this.sendHost(h);this.holdUntil=Date.now()+ROOM.HOST_HOLD_MS;}
+    // ── QUEM CHEGOU ── uma linha no feed e, para quem é admin, um aviso. Bots NÃO passam por aqui (nascem
+    // em `_nasceBot`), então "gente de verdade" sai por construção — o mesmo mecanismo do roster do dono,
+    // e é ele que mantém o `anonBots` do BR intacto sem uma linha a mais.
+    if(gp&&!this._voltouAgora(gp)){
+      this._pushFeed({k:'sys',a:slot,b:-1,how:'joined',by:null,name:gp.name||null});
+      this._avisaAdmins(session,gp);}
     return slot;}
+  /**
+   * A MESMA pessoa acabou de sair desta sala? No Livre renascer é `leave`+`join` (o botão DE NOVO fecha o
+   * socket e abre outro), então sem esta guarda cada morte viraria "Fulano saiu" + "Fulano entrou".
+   * Consome a marca: quem volta uma vez fica quieto, quem volta de novo mais tarde é anunciado.
+   */
+  _voltouAgora(gp){
+    const k=this._rosterKey(gp),t=this._saiuEm.get(k);
+    if(t==null)return false;
+    this._saiuEm.delete(k);
+    return Date.now()-t<FEED.JOIN_QUIET_MS;}
   /**
    * Sai de vez: onMatchEnd(cause) se ainda vivo, remove do mundo.
    * ⚠️ No LOBBY não há partida para encerrar — o jogador está na sala, não no mapa, e o `gp` existe e não
@@ -351,7 +374,11 @@ export class Room{
     if(gp&&!gp.dead&&gp.sessionId&&this.phase!=='lobby'){const hooks=this.sim.hooks;
       Promise.resolve().then(()=>hooks.onMatchEnd({sessionId:gp.sessionId,cause,killedBySessionId:null,score:gp.score,maxMass:Math.round(gp.maxMass),durationMs:Math.round((this.sim.tick-gp.joinedTick)*1000/TICK_HZ)}))
         .catch(e=>this.log.warn(`onMatchEnd('${cause}') falhou:`,e&&e.message));}
-    if(gp){this._rosterFold(gp);this._rosterLeft(gp);}   // ⚠️ antes do remove: depois dele o GamePlayer não existe mais
+    if(gp){this._rosterFold(gp);this._rosterLeft(gp);
+      // ⚠️ ANTES do `sim.remove`: o nome sai daqui, e o cliente resolve nome por `view.playerOf` — o PLAYERS
+      // já sem o slot pode chegar antes do feed. Por isso a linha leva o `name` junto.
+      this._saiuEm.set(this._rosterKey(gp),Date.now());
+      if(this.phase!=='lobby')this._pushFeed({k:'sys',a:slot,b:-1,how:'left',by:null,name:gp.name||null});}
     if(gp&&gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());   // sem isto a sala vira lista negra e quem sai não volta com o próprio nome
     this.flagsDirty=true;
     if(this.avatars.has(slot))this._setAvatar(slot,null,null);
@@ -1340,6 +1367,23 @@ export class Room{
       if(lb.length){const gp=sim.players.get(lb[0].slot);if(gp)this.champion={slot:gp.slot,team:gp.team};}
       this.endRound('lastAlive');return;}
     this._flush(sim);}
+  /**
+   * ENTROU GENTE DE VERDADE — e só quem é ADMIN fica sabendo.
+   * ⚠️ "De verdade" é `Room.join`, e só: preenchimento nunca tem `Session` (nasce em `_nasceBot`), então
+   * não há filtro a escrever nem risco de vazar o `anonBots` do Battle Royale.
+   * ⚠️ NADA de `sessionId`, `userId` ou IP aqui: o `sessionId` é metade da credencial de `resume`, e o
+   * lugar de dado de identificação é o `adminInfo`, que só sai por HTTP autenticado. Vai o nome e a sala.
+   * ⚠️ `is_admin` no token do JOGO serve para RECEBER um aviso, nunca para AGIR: kick, ban e parâmetros
+   * continuam exigindo `token_kind==='admin'`, que é o que impede roubar a aba do jogo de um administrador.
+   * O alcance é o SHARD (RoomManager varre as salas do processo): o cluster inteiro exigiria `tellPeers` e
+   * uma rota interna, e um aviso não vale essa superfície.
+   */
+  _avisaAdmins(quem,gp){
+    const msg={t:'adm',kind:'join',name:gp.name||'',room:this.code,registered:!!gp.registered,at:Date.now()};
+    const salas=this.manager&&this.manager.rooms?this.manager.rooms.values():[this];
+    for(const sala of salas)
+      for(const s of sala.sessions.values())
+        if(s!==quem&&s.ws&&s.isAdmin)s.sendJson(msg);}
   /**
    * Apaga o "está falando" de quem estourou o prazo (morto incluído: ele fala, então a varredura não pode mais
    * apagar o 🎤 dele meio segundo depois de acender). A flag TALK é calculada ao vivo em `playersInfo`, mas o

@@ -25,6 +25,7 @@ export default {
   brHint: "O último planeta de pé leva tudo. A zona fecha, e não há como renascer.",
   brCancel: "Cancelar entrada",
   aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ NO GÁS", zoneShrinking: "O GÁS ESTÁ AVANÇANDO",
+  admJoin: "🟢 {n} entrou no jogo", admJoinTitle: "warspace.io",
   chatTitle: "CHAT", chatHint: "T para falar", chatHintTouch: "Toque para falar", chatTeam: "equipe", chatPlaceholder: "Mensagem…",
   chatAll: "todos", chatScopeHint: "para quem você fala", chatDeadTag: "☠ ",
   playerActions: "o que fazer com este jogador", mutePlayer: "🔇 Silenciar", reportPlayer: "⚠ Denunciar",
@@ -54,6 +55,9 @@ export default {
     // prefixo `sys_` porque `zone` é as DUAS coisas: o perigo que matou alguém e o marco "o gás virou"
     sys_start: "A partida começou", sys_lead: "{n} assumiu a liderança", sys_crunch: "BIG CRUNCH em {n}",
     sys_zone: "O gás está avançando", sys_few: "Restam {n}", sys_streak: "{n} abates seguidos",
+    // ⚠️ só de GENTE: preenchimento não passa por `Room.join`/`leave` (nasce em `_nasceBot`), então o log
+    // é de humano por construção — e o `anonBots` do Battle Royale continua intacto sem uma linha a mais.
+    sys_joined: "{n} entrou", sys_left: "{n} saiu",
   },
   // Texto desenhado DENTRO do mundo (renderer/layers/Fx.js → theme/*/index.js). Fica aqui, e não nos três
   // temas, porque a mesma string repetida em três arquivos diverge na primeira correção.
@@ -150,6 +154,8 @@ export default {
   // único que nenhuma tradução alcançaria. Agora a tabela guarda só chaves e tipos, e o texto sai daqui.
   // Rótulo de opção segue a convenção `<chave>_<valor>`, que é o que `PrefRow` procura.
   opt: {
+    g_admin: "Administração", adminNotify: "Avisar quando entrar gente", adminNotifyAsk: "Permitir",
+    adminNotifyOn: "permitido", adminNotifyBlocked: "bloqueado no navegador",
     g_controls: "Controles", g_graphics: "Gráficos", g_sound: "Som", g_ui: "Interface", g_a11y: "Acessibilidade", g_help: "Ajuda",
     joystick: "Joystick virtual (celular)", rightSplit: "Botão direito divide", holdEject: "Segurar a tecla ejeta contínuo",
     wheelZoom: "Roda do mouse dá zoom (0 volta ao normal)", keySplit: "Tecla de dividir", keyEject: "Tecla de ejetar",

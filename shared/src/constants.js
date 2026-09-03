@@ -209,7 +209,9 @@ export const MODES=[
   // ⚠️ `roundTicks` do Livre é GETTER, não cópia: ele virou parâmetro do painel (`ROUND.TICKS`, em minutos),
   // e um valor copiado aqui ficaria congelado no que valia quando o módulo carregou — o admin trocaria a
   // duração, as salas novas obedeceriam e este descritor seguiria anunciando a antiga, em silêncio.
-  {id:0,key:"free",label:"Livre",max:ROOM.MAX,bots:ROOM.BOTS,get roundTicks(){return ROUND.TICKS;},
+  // ⚠️ `max` e `bots` também são GETTERS, pelo mesmo motivo do `roundTicks`: os dois viraram parâmetro do
+  // painel, e uma cópia feita na carga do módulo faria este descritor anunciar para sempre o número antigo.
+  {id:0,key:"free",label:"Livre",get max(){return ROOM.MAX;},get bots(){return ROOM.BOTS;},get roundTicks(){return ROUND.TICKS;},
     lobby:false,respawnBots:true,lastAlive:false,zone:false,weapons:false,chat:"room",teamSizes:[1],anonBots:false,realNicks:true},
   {id:1,key:"br",label:"Battle Royale",max:BR.PLAYERS,bots:BR.PLAYERS,roundTicks:BR.ROUND_TICKS,
     lobby:true,respawnBots:false,lastAlive:true,zone:true,weapons:true,chat:"team",teamSizes:BR.TEAM_SIZES,anonBots:true,realNicks:true},
@@ -1115,7 +1117,15 @@ export const NOTICE={MAX_CHARS:200,TTL_MS:12000,LEVELS:['info','warn']};
 // Por isso `how` (com o quê) e `a` (quem colheu) são campos separados, e existe `by` (a assistência): a
 // linha honesta é "⭐ amoleceu · Fulano devorou", não "morreu na estrela".
 export const FEED={KEEP:16,ROWS:8,TTL_MS:22000,HIT_TTL_TICKS:300,QUEUE_MAX:32,MAX_PER_FLUSH:4,
-  LEAD_HOLD_TICKS:180,LEAD_MARGIN:.05,LEAD_CD_TICKS:1200,CRUNCH_AT_S:[600,300,60],STREAK_AT:[3,5,10]};
+  LEAD_HOLD_TICKS:180,LEAD_MARGIN:.05,LEAD_CD_TICKS:1200,CRUNCH_AT_S:[600,300,60],STREAK_AT:[3,5,10],
+  JOIN_QUIET_MS:20000};
+// JOIN_QUIET_MS: a janela em que a MESMA pessoa voltando NÃO vira "saiu"/"entrou" no log. Ela existe
+// porque no Livre **renascer é `leave` + `join` num socket novo** — o botão DE NOVO fecha a conexão, abre
+// outra e entra de novo —, então sem a guarda cada morte de cada jogador produzia duas linhas. A chave é
+// a de `_rosterKey` (a mesma que já resolve "a mesma pessoa entre vidas"), e a guarda mora DENTRO de
+// `join`/`leave`, nunca nos chamadores: há três caminhos até lá (o quit, o re-join que troca de sala e o
+// roubo de sessão pelo `resume`). ⚠️ Queda de rede não é saída — ela cai em `Room.detach`, que segura a
+// sessão por `NET.RESUME_MS`, e só o `housekeeping` a converte em `leave` 10 s depois.
 // KEEP/ROWS/TTL_MS: buffer do cliente, linhas na tela e quanto tempo cada uma dura. TTL era 9 s, e a linha
 // sumia inteira e de uma vez — quem estava olhando o jogo perdia o abate. Hoje dura 22 s e a lista morre em
 // DEGRADÊ (client/src/styles/ui.css, `#kill-feed .kf-row:nth-child`): a mais nova em cima, opaca, e as de

@@ -5,4 +5,4 @@ export const WEAPON_ICON=["🚀","✳️","💥","🌟"];   // mesma ordem de WE
 /** Como alguém morreu — ou, quando o abate foi por absorção, o que AMOLECEU antes (a assistência). */
 export const HOW_ICON={eat:"🍴",missile:"🚀",burst:"✳️",cluster:"💥",nova:"🌟",
   star:"⭐",asteroid:"☄️",zone:"☣️",hole:"🕳️",supernova:"💫"};
-export const SYS_ICON={start:"🚦",lead:"👑",crunch:"⏳",zone:"☣️",few:"💀",streak:"🔥"};
+export const SYS_ICON={start:"🚦",lead:"👑",crunch:"⏳",zone:"☣️",few:"💀",streak:"🔥",joined:"➕",left:"➖"};

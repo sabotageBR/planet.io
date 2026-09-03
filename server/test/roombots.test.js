@@ -12,7 +12,7 @@ const {ROOM,MODE,TICK_HZ,PLAYER}=await import('@warspace/shared/constants.js');
 
 const mudo={info(){},warn(){},error(){},debug(){}};
 const sala=(bots=15)=>new Room({code:'TST0',shard:0,seed:7,hooks:null,log:mudo,
-  metrics:{inc(){},add(){}},config:{roomMax:30,roomBots:bots},mode:MODE.FREE});
+  metrics:{inc(){},add(){}},config:{},roomMax:30,roomBots:bots,mode:MODE.FREE});
 const anda=(r,ticks)=>{for(let i=0;i<ticks;i++)r.step();};
 
 test('abre com o punhado inicial, não com a sala cheia', () => {
@@ -61,7 +61,7 @@ const teto=n=>1+Math.floor((n-1)/ROOM.PAIS_TETO_DIV);   // o teto é medido no N
 test('nenhuma bandeira toma a sala', () => {
   for(const seed of [1,7,42,99,1234,55555]){
     const r=new Room({code:'TST0',shard:0,seed,hooks:null,log:mudo,
-      metrics:{inc(){},add(){}},config:{roomMax:30,roomBots:15},mode:MODE.FREE});
+      metrics:{inc(){},add(){}},config:{},roomMax:30,roomBots:15,mode:MODE.FREE});
     r.start(); anda(r,60*TICK_HZ*5);
     const m=bandeiras(r),n=[...m.values()].reduce((a,b)=>a+b,0);
     assert.equal(n,15,`seed ${seed}: a sala não encheu`);
@@ -96,7 +96,7 @@ test('a sala abre EM ANDAMENTO: gigante, médio e pequeno na semente', () => {
 test('a cota não depende de sorte: toda sala abre em andamento', () => {
   for(const seed of [1,7,42,99,1234,55555]){
     const r=new Room({code:'TST0',shard:0,seed,hooks:null,log:mudo,
-      metrics:{inc(){},add(){}},config:{roomMax:30,roomBots:15},mode:MODE.FREE});
+      metrics:{inc(){},add(){}},config:{},roomMax:30,roomBots:15,mode:MODE.FREE});
     r.start();
     const rs=raios(r);
     assert.ok(rs.some(x=>x>=GIG[0]),`seed ${seed}: sala sem gigante (${rs.map(Math.round)})`);

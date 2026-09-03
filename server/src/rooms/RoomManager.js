@@ -18,6 +18,10 @@ export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=nu
   function create(code,{mode=MODE.FREE,teamSize=1,roundTicks=null,private:priv=false,hostUserId=null,hostNick=null}={}){
     const room=new Room({code,shard:config.shard,seed:randomInt(1,0x7fffffff),hooks,log,metrics,config,onRewards,mode,teamSize,botChat,
       botNames,roundTicks,private:priv,hostUserId,hostNick});
+    // A sala precisa alcançar as IRMÃS para um caso só: avisar os administradores que entrou gente
+    // (`_avisaAdmins`). O alcance é o SHARD — o cluster inteiro exigiria `tellPeers` e uma rota interna,
+    // e um aviso não vale essa superfície.
+    room.manager={rooms};
     rooms.set(code,room);start(room);
     log.info(`sala criada: ${code} ${modeOf(mode).key}${teamSize>1?`/${teamSize}`:''}${priv?' privada':''}${hostNick?` de ${hostNick}`:''} (${rooms.size} sala(s))`);return room;}
   /**

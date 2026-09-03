@@ -1,6 +1,6 @@
 // ── CONFIG (env → objeto único; defaults de dev) ──────────────────────────────
 // @ts-check
-import {ROUND,BR,BOT_LLM} from '@warspace/shared/constants.js';
+import {ROUND,BR,BOT_LLM,ROOM} from '@warspace/shared/constants.js';
 const env=process.env;
 const str=(k,d)=>env[k]!=null&&env[k]!==''?env[k]:d;
 const num=(k,d)=>{const v=Number(env[k]);return env[k]!=null&&env[k]!==''&&Number.isFinite(v)?v:d;};
@@ -27,8 +27,10 @@ export const config=Object.freeze({
   dbPoolMax:Math.max(1,num('DB_POOL_MAX',5)),
   migrateOnStart:bool('MIGRATE_ON_START',false),
   port,shard,shards,podName,peerHost,peerName,peers,
-  roomMax:num('ROOM_MAX',30),
-  roomBots:num('ROOM_BOTS',15),
+  // ⚠️ O padrão sai da CONSTANTE, não de um número copiado aqui: os dois viraram parâmetro do painel e o
+  // env os semeia no boot. Com `30`/`15` cravados, mudar `ROOM` em constants.js não mudaria nada em dev.
+  roomMax:num('ROOM_MAX',ROOM.MAX),
+  roomBots:num('ROOM_BOTS',ROOM.BOTS),
   roundTicks:Math.max(60,num('ROUND_TICKS',ROUND.TICKS)),   // duração da rodada em ticks (os testes usam rodadas curtas)
   // 0 = usa o mundo do build. Semeia `WORLD.LADO`, que o BOOT copia para `WORLD.w/h` antes de a porta abrir
   // (ver server/src/index.js). Trocar o mundo com salas rodando não tem conserto, por isso não é live.

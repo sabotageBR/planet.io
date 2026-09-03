@@ -49,7 +49,11 @@ export function createPersistence({db,log,config}){
     const egg=prefs.eggs===false?null:eggSkinFor(u.nick);
     const s=new MatchSession({userId:Number(u.id),nick:u.nick,kind:u.kind,skinId:egg!=null?egg:u.equipped_skin_id,roomCode,shard:config.shard});
     sessions.set(s.sessionId,s);
-    return{ok:true,userId:s.userId,nick:s.nick,registered:s.registered,skinId:s.skinId,
+    // ⚠️ `isAdmin` vem daqui e de mais nenhum lugar: o `RESOLVE_SQL` do token já faz `SELECT u.*`, mas este
+    // retorno é montado campo a campo e a coluna era DESCARTADA — a sessão de WS não sabia que era de um
+    // administrador. Ela serve só para RECEBER o aviso de "entrou gente" (`Room._avisaAdmins`); agir
+    // continua exigindo `token_kind==='admin'`, que é o que impede roubar a aba do jogo de um admin.
+    return{ok:true,userId:s.userId,nick:s.nick,registered:s.registered,skinId:s.skinId,isAdmin:!!u.is_admin,
       level:levelFromXp(Number(u.xp||0)),avatar:u.avatar_hash||null,country:u.country||null,prefs,sessionId:s.sessionId,unsaved:false};
   }
   /** sessão "sem banco" para quem entrou em modo unsaved e quer mesmo assim um sessionId/rewards {saved:false} */

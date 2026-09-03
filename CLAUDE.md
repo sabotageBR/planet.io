@@ -768,6 +768,45 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   controles de voz somem da tela de Opções junto (`prefsTable.js`): interruptor que não liga nada é pior
   que interruptor nenhum. ⚠️ O harness `portal/iframe.html` PEDIA microfone e por isso nunca reproduziu
   isso — ele tem que ser o `allow` mais POBRE que já se mediu num portal, não o mais generoso.
+- **O LOG DE QUEM ENTRA E QUEM SAI** (`Room.join`/`leave` → `{k:'sys',how:'joined'|'left'}` no feed): reusa
+  o kill feed, que já é JSON de controle sem AOI, já tem a linha de SISTEMA com ícone e molde de texto, e
+  já mora no canto direito. Nenhuma linha de `KillFeed.jsx` mudou.
+  ⚠️ **É de GENTE por construção**: preenchimento nunca passa por `join`/`leave` (nasce em `_nasceBot`), o
+  mesmo mecanismo que mantém o roster do dono limpo — e é isso que preserva o `anonBots` do BR sem um
+  filtro a escrever. **Não** instrumentar `trimBots`/`_nasceBot`.
+  ⚠️ **A linha de SAÍDA leva o `name` junto** (`it.name` ganha do `playerOf` em `pushFeed`): quem saiu já
+  não está em `view.players`, e o PLAYERS sem o slot pode chegar antes da leva do feed.
+  ⚠️ **`FEED.JOIN_QUIET_MS` existe porque no Livre RENASCER É `leave`+`join`** — o botão DE NOVO fecha o
+  socket e abre outro —, então sem a guarda cada morte de cada jogador produzia duas linhas. A chave é a de
+  `_rosterKey` (a mesma que resolve "a mesma pessoa entre vidas") e a guarda mora DENTRO de `join`/`leave`,
+  nunca nos chamadores: há três caminhos até lá (o quit, o re-join que troca de sala e o roubo de sessão
+  pelo `resume`). Queda de rede **não** é saída: ela cai em `detach` e só vira `leave` no `housekeeping`.
+  ⚠️ `drenaFeed` descarta `sys` primeiro (teto `MAX_PER_FLUSH`): num fecho de gás com 4 abates é o
+  "entrou/saiu" que some. É o comportamento certo.
+- **ENTROU GENTE DE VERDADE, E SÓ O ADMIN É AVISADO** (`Room._avisaAdmins`, `{t:'adm'}`): faixa `#notice` +
+  som + linha de chat, mais a **notificação do sistema** quando a permissão já foi concedida. O alcance é o
+  SHARD (`RoomManager` passa o `Map rooms` para cada sala); o cluster inteiro exigiria `tellPeers` e uma
+  rota interna, e um aviso não vale essa superfície.
+  ⚠️ **A sessão de WS não sabia que era de um admin**: o `RESOLVE_SQL` do token já faz `SELECT u.*`, mas
+  `persist/hooks.js` monta o retorno campo a campo e a coluna era descartada. Agora `isAdmin` viaja até
+  `Session` — e serve só para RECEBER: kick, ban e parâmetros continuam exigindo `token_kind==='admin'`,
+  que é o que impede roubar a aba do jogo de um administrador.
+  ⚠️ **Nada de `sessionId`/`userId`/IP na mensagem**: o `sessionId` é metade da credencial de `resume`, e o
+  lugar de dado de identificação é o `adminInfo`, que só sai por HTTP autenticado.
+  ⚠️ **A permissão do navegador é pedida por um BOTÃO** (Opções → Administração, visível só para admin, com
+  `isAdmin` acrescentado ao `toPublic`): `requestPermission()` exige gesto do usuário e no iframe de um
+  portal ela nem existe. O jogo nunca pede sozinho, e a faixa é sempre o chão.
+- **TAMANHO DA SALA E PREENCHIMENTOS SÃO PARÂMETROS** (`ROOM.MAX`/`ROOM.BOTS`, grupo "Salas"): mesmo
+  contrato do `ROUND.TICKS` — o env semeia no boot, `Room.js` lê a CONSTANTE VIVA e `admin_settings` a
+  sobrescreve em ≤30 s. Lendo `config.roomMax` o ConfigMap venceria o painel em toda sala nova.
+  ⚠️ `MODES[FREE].max`/`.bots` viraram **getters** pelo mesmo motivo do `roundTicks`: cópia feita na carga
+  do módulo anunciaria o número antigo para sempre.
+  ⚠️ `/api/config` passou a anunciar `ROOM.MAX`, não o env — senão a tela mostra a capacidade que a sala
+  não tem.
+  ⚠️ O override explícito vive nas OPÇÕES da sala (`new Room({roomMax,roomBots})`), não no `config`: quem
+  monta sala à mão (os testes) precisa de um número próprio sem depender de estado global de processo.
+  ⚠️ Vale para as salas CRIADAS daí em diante, e **baixar bots não expulsa ninguém** — `trimBots` só roda no
+  lobby do BR e no Livre o bot morto renasce.
 - **Chat e voz** (`CHAT`/`VOICE` em constants): chat de sala ou de equipe (o escopo é do servidor), painel na
   faixa esquerda do HUD. **Quem morreu continua falando** — texto e voz —, e o escopo é UMA função
   (`Room._escopoFala`), porque três caminhos precisam da mesma resposta: a linha, o ícone do 🎤 e o clipe.

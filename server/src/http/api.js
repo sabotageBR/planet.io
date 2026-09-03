@@ -3,7 +3,7 @@
 import {readFile,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
-import {modeOf,roundTicksOf} from '@warspace/shared/constants.js';
+import {modeOf,roundTicksOf,ROOM} from '@warspace/shared/constants.js';
 import {sendJson,readJson,bearer,clientIp} from '../api/router.js';
 import {sessionKey} from '../auth/tokens.js';
 import {createPartyManager} from '../rooms/Party.js';
@@ -62,7 +62,9 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
       if(p==='/internal/rooms')return sendJson(res,200,{shard:config.shard,rooms:rooms?rooms.listRooms():[]});
       // `googleClientId` vazio é o interruptor do login com Google: o cliente só desenha o botão quando ele
       // vem preenchido, então sem credencial nada aparece e a rota nem é procurada.
-      if(p==='/api/config')return sendJson(res,200,{shards:config.shards,shard:config.shard,roomMax:config.roomMax,
+      // ⚠️ `ROOM.MAX`, não `config.roomMax`: o tamanho da sala virou parâmetro do painel e o env só o
+      // semeia no boot. Anunciando o número do env, a tela mostraria a capacidade que a sala NÃO tem.
+      if(p==='/api/config')return sendJson(res,200,{shards:config.shards,shard:config.shard,roomMax:ROOM.MAX,
         protocol:PROTOCOL_VERSION,googleClientId:config.googleClientId||''});
       if(p==='/api/rooms'&&req.method!=='POST'){const all=(await allRooms()).sort(byPlayers),md=url.searchParams.get('mode');
         return sendJson(res,200,{rooms:md==null?all:all.filter(r=>(r.mode|0)===(+md|0))});}

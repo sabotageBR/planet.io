@@ -25,7 +25,7 @@
 // rodada. Parametrizar por sala exigiria carregar um objeto de tunables por Room→Sim→World→rules, tocando
 // toda assinatura da física e o predict — não vale por um punhado de números.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
@@ -132,6 +132,15 @@ export const TUNABLES=[
   // continuam nos números do build. Mundo maior com a mesma população = mapa mais vazio, e mundo menor =
   // mais apertado. É ferramenta de teste, não um botão de "mundo maior" pronto.
   num('sala','WORLD.LADO','Lado do mundo (vale no próximo boot do servidor)','px','server',4000,24000,500,WORLD,'LADO'),
+  // ⚠️ Só o LIVRE: no Battle Royale a capacidade sai do modo (`modeCap`, que fecha no tamanho de equipe) e
+  // quem preenche é o lobby, com a curva própria dele.
+  // ⚠️ Valem para as salas CRIADAS daí em diante — a que já roda fixou os dois no construtor. E BAIXAR o
+  // número de bots não expulsa ninguém: `trimBots` só é chamado no lobby do BR, e no Livre o bot morto
+  // renasce. O rótulo diz isso.
+  // ⚠️ `ROOM.BOT_SEED` (6) é quantos abrem a sala: com `ROOM.BOTS` abaixo disso a sala nasce com menos
+  // que a semente e o enchimento gradual não tem o que fazer.
+  num('sala','ROOM.MAX','Jogadores por sala no modo Livre (vale nas salas novas)','jogadores','server',2,60,1,ROOM,'MAX'),
+  num('sala','ROOM.BOTS','Preenchimentos por sala no modo Livre (vale nas salas novas)','bots','server',0,60,1,ROOM,'BOTS'),
   // ── CHAT ──
   // Quanto da linha de uma PESSOA é mascarado. O padrão é `livre` por decisão de produto (xingar faz parte
   // de um .io); os portais continuam atendidos por silenciar/denunciar/kick, que valem em qualquer nível.

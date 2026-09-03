@@ -5,7 +5,7 @@
 import http from 'node:http';
 import {pathToFileURL} from 'node:url';
 import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
-import {ROUND,WORLD} from '@warspace/shared/constants.js';
+import {ROUND,WORLD,ROOM} from '@warspace/shared/constants.js';
 import {config as baseConfig} from './config.js';
 import {createLogger} from './log.js';
 import {createDb} from './db/pool.js';
@@ -38,6 +38,11 @@ export async function startServer(overrides={}){
   // os pods SOBEM; `Room.js` lê a constante viva, e `admin_settings` a sobrescreve 30 s depois. Sem esta
   // linha o env seria ignorado (regressão silenciosa nos testes, que encurtam a rodada por aqui).
   ROUND.TICKS=cfg.roundTicks;
+  // Mesmo contrato para o TAMANHO DA SALA e a QUANTIDADE DE PREENCHIMENTOS do modo Livre: o env é a
+  // escolha do operador com que os pods sobem, `Room.js` lê a constante viva e `admin_settings` a
+  // sobrescreve ≤30 s depois. ⚠️ Vale para as salas CRIADAS daí em diante — a que já roda fixou os dois
+  // no construtor —, e baixar o número de bots não expulsa ninguém: `trimBots` só roda no lobby do BR.
+  ROOM.MAX=cfg.roomMax;ROOM.BOTS=cfg.roomBots;
   // ── O TAMANHO DO MUNDO: o env semeia, o painel manda, e QUEM APLICA É O BOOT ──
   // Mesmo contrato do `ROUND.TICKS` acima, com uma diferença que é a razão de ele existir em dois campos:
   // `WORLD.LADO` é o lado DESEJADO (o que o /admin grava) e `WORLD.w/h` é o mundo de AGORA. Trocar o mundo
