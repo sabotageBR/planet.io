@@ -83,9 +83,11 @@ export const TUNABLES=[
   num('armas','MISSILE.AIM_HOLD_TICKS','Duração da mira travada','ticks','server',0,900,30,MISSILE,'AIM_HOLD_TICKS'),
   // ── PERIGOS DO MAPA ──
   num('perigos','STAR.BURN','Massa que a estrela queima','fração','server',0,.9,.01,STAR,'BURN'),
-  // Quem cabe DENTRO da estrela atravessa e se esconde lá (ver o porquê do 40 em `STAR.PASS_R`). Só o
-  // servidor lê: a estrela não existe em `predict.js`.
-  num('perigos','STAR.PASS_R','Raio máximo para atravessar a estrela','px','server',0,80,2,STAR,'PASS_R'),
+  // Quem cabe DENTRO da estrela atravessa e se esconde lá (ver o porquê do 40 em `STAR.PASS_R`).
+  // ⚠️ `wire` e não `server`: a estrela não existe em `predict.js`, mas o CLIENTE lê este número para
+  // decidir de quem a cobertura da estrela sai da frente (`tapado` em layers/Hazards.js). Com `server`,
+  // mudar o parâmetro faria o planeta ser tapado numa faixa e atravessar em outra.
+  num('perigos','STAR.PASS_R','Raio máximo para atravessar a estrela','px','wire',0,80,2,STAR,'PASS_R'),
   // A ARTE da estrela — escopo `wire` porque quem desenha é o CLIENTE, e o servidor entrega o valor no
   // JSON da sala. Com `server` o painel diria "salvo" e a tela continuaria igual, para sempre.
   opt('perigos','STAR.LAYOUT','Arte da estrela','wire',STAR_LAYOUTS,STAR,'LAYOUT'),

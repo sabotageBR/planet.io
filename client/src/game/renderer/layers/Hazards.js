@@ -13,6 +13,22 @@ import {colorOf,seedAngle} from "../../util.js";
 /** Lista vazia compartilhada: o laço da cobertura não pode alocar um array por frame quando ela está off. */
 const VAZIO=[];
 
+/**
+ * Tem alguma peça GRANDE demais para caber nesta estrela em cima dela? Só quem cabe (`STAR.PASS_R`)
+ * submerge; o resto passa por cima, e a cobertura tem que sair da frente.
+ * ⚠️ O laço é sobre as estrelas da AOI (0 a 3 na tela) × as peças visíveis, com saída na primeira que
+ * tapa, e comparação de QUADRADOS (sem `Math.hypot`): isto roda por frame.
+ * @param {{rx:number,ry:number,rr:number}} st @param {any[]} pecas
+ */
+function tapado(st,pecas){
+  for(let i=0;i<pecas.length;i++){const p=pecas[i];
+    if(p.rr<STAR.PASS_R)continue;                       // esse cabe: é justamente quem deve submergir
+    const dx=p.rx-st.rx,dy=p.ry-st.ry,lim=p.rr+st.rr*ST_FRONT_K;
+    if(dx*dx+dy*dy<lim*lim)return true;}
+  return false;}
+/** O raio da cobertura (`effects.star.front.k`, igual nos três temas): só a ordem de grandeza importa aqui. */
+const ST_FRONT_K=1.15;
+
 export const BH_TEX=512;
 const BH_SIZE=BH_TEX,SPARK_MIN_PX=26;   // 512: as estriações do disco não sobrevivem a 256 (os 5 buracos dividem UMA textura por tema)
 
@@ -108,7 +124,13 @@ export function createHazards(R){
         // planetas viraria uma mancha em volta da estrela, e o que precisa cobrir é o disco onde se esconde
         const d=e.rr*ST.front.k*pul*(.35+.65*k);
         rec.sp.width=rec.sp.height=d*2;rec.sp.position.set(e.rx,e.ry);rec.sp.rotation=rec.a0+rt*ST.spin;
-        rec.sp.alpha=ST.front.alpha*Math.min(1,k*ST.alphaK)*e.alpha;}
+        // ⚠️ A COBERTURA SAI DE CIMA DE QUEM NÃO CABE NA ESTRELA. Ela existe para o pequeno ESCONDIDO
+        // parecer submerso (`STAR.PASS_R`), mas era aplicada a TODO planeta — e aí um planetão passando
+        // perto era pintado por baixo dela, ou seja, o grande parecia entrar ATRÁS da estrela. Ele não
+        // cabe lá dentro: tem que TAPÁ-LA, e a cena precisa dizer isso.
+        // O teste é o MESMO da física, e `STAR.PASS_R` é entregue pelo servidor (tunable de escopo `wire`)
+        // justamente para que o que a tela mostra e o que a regra faz não possam divergir.
+        rec.sp.alpha=tapado(e,view.pieces)?0:ST.front.alpha*Math.min(1,k*ST.alphaK)*e.alpha;}
       for(const [id,rec] of fById)if(rec.f!==frame){rec.sp.destroy();fById.delete(id);}},
     counts(){return{asteroids:aById.size,holes:hById.size,stars:sById.size};},
     destroy(){asteroids.destroy({children:true});holes.destroy({children:true});stars.destroy({children:true});starsFront.destroy({children:true});aById.clear();hById.clear();sById.clear();fById.clear();},

@@ -414,6 +414,11 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   planeta escondido aparecia inteiro POR CIMA dela e a mecânica não lia na tela. É a metade quente do
   MESMO sprite (nenhuma textura nova), repetida acima dos planetas com alfa baixo — o mesmo espírito da
   promessa `CRUSH_K == textures.scale.blackHole`.
+  ⚠️ **Mas ela SAI de cima de quem não cabe na estrela** (`tapado` em `layers/Hazards.js`). Ela nasceu
+  aplicada a TODO planeta, e aí um planetão passando perto era pintado por baixo dela: o grande parecia
+  entrar ATRÁS da estrela. Ele não cabe lá dentro — tem que TAPÁ-LA, e a cena precisa dizer isso. O teste
+  é o MESMO da física, e é por isso que `STAR.PASS_R` virou tunable de escopo `wire`: com `server`, mudar
+  o parâmetro faria o planeta ser tapado numa faixa e atravessar em outra.
 - **COLHER DENTRO DO GÁS VALE METADE** (`ZONE.GAS_GAIN`, `rules.gasGain`): acampar na beirada era RENDA
   LÍQUIDA, e o laço se fechava sozinho — `zoneBurn` arranca `pc.shed` e cospe pelotas para FORA, e passada
   a imunidade `pieceEject` devolvia 100% (`EAT.EJECT_GAIN`=1). Quem ficava no gás queimava e recolhia a
