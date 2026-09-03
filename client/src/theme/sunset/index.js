@@ -3,8 +3,8 @@
 // ameixa → magenta → laranja SEM sol, nuvens em silhueta com fio pêssego, cenário em
 // silhueta. Estrutura: gaveta pela direita no desktop/paisagem, folhas no retrato.
 // Placar dourado, radar quente, botões teal/ouro/coral. Contrato: ver ../dawn/index.js.
-import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow,fireworkPrims} from "../util.js";
-import {paintPattern,paintHole,paintNova} from "../patterns.js";
+import {sh,rgba,spikes,astPoly,rr,mulberry,tier,foodType,FOOD_ICON,FOOD_FIXED,paintGlow,fireworkPrims,supernovaPrims} from "../util.js";
+import {paintPattern,paintHole,paintNova,paintNovaV} from "../patterns.js";
 import {ensureFace,faceBitmap,faceFile} from "../faces.js";
 
 const INK="#241238",CREAM="#fff1d6",GOLD="#ffb547",CORAL="#ff5e6c",TEAL="#2ec4b6",PEACH="#ffcf9a",PLUM="#3b1f6b",MAG="#e0417f",ORA="#ff8a3d",SIL="#2a1550";
@@ -39,7 +39,9 @@ export const textures={
     case "asteroid":return`${id}:a${p.variant}:${size}`;
     case "prop":return`${id}:prop${p.i}`;
     case "star":return`${id}:star${p.variant?1:0}`;
-    case "nova":return`${id}:nova${p.old?"o":""}:${size}`;
+    // ⚠️ A VARIANTE ENTRA NA CHAVE. O TextureCache não tem `drop(key)`, então sem ela trocar o layout
+    // no /admin devolveria a textura do anterior — a mudança não apareceria, em silêncio.
+    case "nova":return`${id}:nova${p.variant|0}${p.old?"o":""}:${size}`;
     case "blackHole":return`${id}:bh:${size}`;
     default:return`${id}:${kind}`;}},
 
@@ -92,7 +94,9 @@ export const textures={
   blackHole(c,size){paintHole(c,size/2/BK,{ink:BH_INK,glow:CREAM,hot:GOLD,cold:BH_RED});},
 
   // estrela do mundo (perigo): coroa em camadas, núcleo quente e línguas de plasma; `old` = gigante vermelha rachada, a caminho da supernova
-  nova(c,size,{old=false}){paintNova(c,size/2/NK,old,{ink:INK,core:CREAM,edge:GOLD,deep:CORAL});},
+  // `variant` é o layout escolhido no /admin (STAR.LAYOUT, tunable de escopo `wire`): os cinco convivem
+  // e o painel troca ao vivo. Ver paintNovaV em theme/patterns.js.
+  nova(c,size,{old=false,variant=0}){paintNovaV(c,size/2/NK,{variant,old},{ink:INK,core:CREAM,edge:GOLD,deep:CORAL});},
 
   star(c,size,{variant=0}){const R=size/2,v=variant;c.lineJoin="round";spikes(c,R*.9,v?5:4,v?.5:.38,-1.5708);c.fillStyle=v?PEACH:CREAM;c.fill();c.strokeStyle=INK;c.lineWidth=2;c.stroke();},
 
@@ -233,10 +237,12 @@ export const effects={
         for(let i=0;i<5;i++){const a0=i*1.256+k*.6;P.push({type:"arc",x:f.x,y:f.y,r:s,a0,a1:a0+.72,color:GOLD,alpha:al,width:Math.max(2.5,f.r*.07)});}
         P.push({type:"burst",x:f.x,y:f.y,n:8,r0:f.r*(.9+k*1.6),r1:f.r*(1.3+k*2.6),color:CORAL,alpha:a,width:Math.max(2,f.r*.09)});
         P.push({type:"text",x:f.x,y:f.y-f.r*(1.25+k),text:"ARRANCOU!",size:Math.max(10,f.r*.5),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
-      case "supernova":{const s=f.r*(.25+k*.85),al=Math.min(1,a*1.6);   // onda de choque: anéis crescendo + clarão + texto
-        for(let i=0;i<3;i++){const kk=Math.max(0,k-i*.12);P.push({type:"ring",x:f.x,y:f.y,r:f.r*(.15+kk*1.05),color:i?CORAL:CREAM,alpha:a*(1-i*.25),width:Math.max(3,f.r*.03*(1-kk))});}
-        P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:16,inner:.45,phase:-k*.5,fill:GOLD,stroke:INK,width:Math.max(2,s*.02),alpha:al});
-        P.push({type:"burst",x:f.x,y:f.y,n:14,r0:f.r*(.2+k*.9),r1:f.r*(.35+k*1.15),color:CREAM,alpha:a,width:Math.max(2,f.r*.02)});
+      // ⚠️ A ONDA DE CHOQUE SAIU. Eram três `ring` concêntricos crescendo — o "anel branco de espessura
+      // constante expandindo" que `fireworkPrims` foi reescrito para eliminar, e o conserto nunca tinha
+      // sido propagado para cá. Hoje a explosão fala a MESMA língua: rastro, arrasto que satura, cor em
+      // três tempos e um clarão preso ao centro. Ver supernovaPrims em theme/util.js.
+      case "supernova":{const al=Math.min(1,a*1.6);
+        for(const p of supernovaPrims(k,f,{hot:CREAM,body:GOLD,ember:ORA,ink:INK}))P.push(p);
         // O texto vem do `f` (i18n/*.js, via game/index.js): a mesma estrela morre com dois NOMES —
         // supernova, ou "nebulosa planetária" quando quem a matou foi uma trombada de planeta. O corpo
         // da fonte cai com o comprimento, senão o nome longo sai mais largo que a própria onda.
@@ -256,7 +262,11 @@ export const effects={
     // raio FÍSICO da estrela — bem abaixo do `scale.nova`, porque o que precisa cobrir é o disco onde
     // se esconde, não a coroa de plasma. O alfa é baixo de propósito: quem passa por fora não deve
     // notar diferença nenhuma, e quem está dentro fica submerso.
-    front:{k:1.15,alpha:.5}},
+    front:{k:1.15,alpha:.5},
+    // O CÍRCULO DE MATERIAIS que fecha em volta da estrela na fase OLD (ver Hazards.js). Ele NASCE
+    // largo e devagar e vai encolhendo e acelerando até colar na borda — é a leitura de 'acretando',
+    // e é o oposto de um anel parado. `ryK` achata em perspectiva, como as faíscas do buraco negro.
+    nursery:{n:14,r0K:2.1,r1K:1.28,ryK:.42,speed:.9,size:.11,alpha:.85,color:CREAM}},
   aim:{color:CREAM,width:3,dash:[16,12],head:26,alpha:[.45,.85],pulse:.008},                          // reta pontilhada do tiro mirado
   threat:{color:CORAL,width:5,size:34,margin:54,alpha:[.35,1],pulse:.012},
   // ZONA do Battle Royale: o anel vermelho pulsa, o tracejado mostra o destino e `dim` tinge só o lado de FORA.

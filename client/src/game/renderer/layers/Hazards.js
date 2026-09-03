@@ -64,10 +64,11 @@ export function createHazards(R){
       for(const [id,rec] of hById)if(rec.f!==frame){rec.core.destroy();rec.ring.destroy();rec.ring2.destroy();rec.spark.destroy();hById.delete(id);}
       const SK=TX.scale.nova,ST=th.effects.star;
       for(const e of view.stars){let rec=sById.get(e.id);
-        if(!rec){const sp=new Sprite();sp.anchor.set(.5);const ring=new Graphics();stars.addChild(ring,sp);rec={sp,ring,lastRi:-1,f:0,a0:seedAngle(e.seed)};sById.set(e.id,rec);}
+        if(!rec){const sp=new Sprite();sp.anchor.set(.5);const ring=new Graphics();stars.addChild(ring,sp);rec={sp,ring,ninho:null,lastRi:-1,f:0,a0:seedAngle(e.seed)};sById.set(e.id,rec);}
         rec.f=frame;const old=e.phase===STAR_PHASE.OLD,halo=e.rr*STAR.HALO,k=Math.min(1,Math.max(0,e.influenceR/halo));
-        if(!rectHas(rect,e.rx,e.ry,halo)){rec.sp.visible=rec.ring.visible=false;continue;}rec.sp.visible=rec.ring.visible=true;
-        const size=Math.min(TX.tier(e.rr),R.texCap);rec.sp.texture=R.cache.get(TX.key("nova",{old},size),size,(c,s)=>TX.nova(c,s,{old}));
+        if(!rectHas(rect,e.rx,e.ry,halo)){rec.sp.visible=rec.ring.visible=false;if(rec.ninho)rec.ninho.visible=false;continue;}rec.sp.visible=rec.ring.visible=true;
+        const variant=STAR.LAYOUT|0;
+        const size=Math.min(TX.tier(e.rr),R.texCap);rec.sp.texture=R.cache.get(TX.key("nova",{old,variant},size),size,(c,s)=>TX.nova(c,s,{old,variant}));
         const pul=1+ST.pulse.amp*Math.sin(t*(old?ST.pulse.speedOld:ST.pulse.speed)),d=e.rr*SK*pul*(.35+.65*k);
         rec.sp.width=rec.sp.height=d*2;rec.sp.position.set(e.rx,e.ry);rec.sp.rotation=rec.a0+rt*ST.spin;rec.sp.alpha=Math.min(1,k*ST.alphaK)*e.alpha;
         const rg=ST.ring,ri=e.influenceR;
@@ -75,8 +76,25 @@ export function createHazards(R){
           if(ri>4){const on=rg.dash[0],off=rg.dash[1],circ=6.2832*ri;let a=0;while(a<circ){const a0=a/ri,a1=Math.min(circ,a+on)/ri;g.moveTo(Math.cos(a0)*ri,Math.sin(a0)*ri);g.arc(0,0,ri,a0,a1);a+=on+off;}
             g.stroke({width:rg.width,color:colorOf(rg.color).c,alpha:1,cap:"round"});}}
         rec.ring.position.set(e.rx,e.ry);rec.ring.rotation=rec.a0*2+rt*rg.spinK;rec.ring.tint=colorOf(old?rg.colorOld:rg.color).c;
-        rec.ring.alpha=(rg.alpha[0]+(rg.alpha[1]-rg.alpha[0])*(.5+.5*Math.sin(t*(old?rg.pulseOld:rg.pulse))))*e.alpha;}
-      for(const [id,rec] of sById)if(rec.f!==frame){rec.sp.destroy();rec.ring.destroy();sById.delete(id);}
+        rec.ring.alpha=(rg.alpha[0]+(rg.alpha[1]-rg.alpha[0])*(.5+.5*Math.sin(t*(old?rg.pulseOld:rg.pulse))))*e.alpha;
+        // ── O CÍRCULO DE MATERIAIS ──
+        // A transição ACTIVE→OLD era uma troca INSTANTÂNEA de textura: os 8 s mais dramáticos do ciclo
+        // eram "a bola fica vermelha de repente e incha devagar", sem nada dizendo que ela vai explodir.
+        // Agora o anel de matéria FECHA e ACELERA conforme ela incha — a leitura de "acretando".
+        // ⚠️ O progresso da fase OLD é DERIVADO do raio, sem um byte novo de protocolo: `r` cresce de
+        // STAR.R até STAR.R·SWELL e chega quantizado a 0,1 px, então `p` tem precisão ~0,003.
+        const NU=ST.nursery;
+        if(NU&&old&&!R.econ){
+          const p=Math.min(1,Math.max(0,(e.rr/STAR.R-1)/(STAR.SWELL-1)));
+          if(!rec.ninho){rec.ninho=new Graphics();stars.addChild(rec.ninho);}
+          const g2=rec.ninho;g2.clear();g2.visible=true;g2.position.set(e.rx,e.ry);
+          const raio=e.rr*(NU.r0K+(NU.r1K-NU.r0K)*p),gir=rec.a0*3+rt*NU.speed*(1+3*p),cor=colorOf(NU.color).c;
+          for(let i=0;i<NU.n;i++){const an=gir+i/NU.n*6.2832,cx=Math.cos(an)*raio,cy=Math.sin(an)*raio*NU.ryK;
+            // brilho por `cy`: o que está "na frente" (cy>0) aparece mais — é o mesmo truque das faíscas
+            // do buraco negro, e é ele que faz o anel ter plano em vez de virar um círculo chapado
+            g2.circle(cx,cy,e.rr*NU.size*(.7+.3*p)).fill({color:cor,alpha:NU.alpha*(.45+.55*(cy/(raio*NU.ryK+1e-6)+1)/2)*e.alpha});}
+        }else if(rec.ninho)rec.ninho.visible=false;}
+      for(const [id,rec] of sById)if(rec.f!==frame){rec.sp.destroy();rec.ring.destroy();if(rec.ninho)rec.ninho.destroy();sById.delete(id);}
       // A COBERTURA: um sprite por estrela, o mesmo do cache (nenhuma textura nova), acima dos planetas.
       // Sai inteira no modo econômico — é enfeite de leitura, não informação que falte em outro lugar.
       const cobre=ST.front&&!R.econ;

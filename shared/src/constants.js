@@ -400,9 +400,14 @@ export const BLACKHOLE={COUNT:0,CORE_R:38,INFLUENCE:10,G:5.5e7,A_MAX:2200,SWIRL:
 // buraco. Elas nascem em SPAGHETTI_R do raio de INFLUÊNCIA, ou seja logo FORA do alcance da sucção — dentro dele
 // o buraco as engoliria de volta em segundos e ninguém aproveitaria
 export const STAR={COUNT:19,R:46,BURN:.30,RAM_REWARD:false,SWELL:1.75,ARM_K:.5,GROW_TICKS:120,LIFE_TICKS:[2400,4200],OLD_TICKS:480,RESPAWN_TICKS:600,HALO:2.2,
-  SHATTER_MIN_R:24,SHATTER_N:[3,6],SHATTER_DIST:342,SHATTER_CD_TICKS:45,BURN_STUCK:.55,PUSH_TOUCH_DIST:160,PASS_R:40,
+  SHATTER_MIN_R:24,SHATTER_N:[3,6],SHATTER_DIST:342,SHATTER_CD_TICKS:45,BURN_STUCK:.55,PUSH_TOUCH_DIST:160,PASS_R:40,LAYOUT:'0',
   NOVA_R:8,NOVA_SHATTER:.45,NOVA_PARTICLES:24,NOVA_FOOD:16,NOVA_FOOD_R:.3,NOVA_SPEED:[380,820],NOVA_PART_MASS:3,NOVA_LIFE_TICKS:900,AST_KICK:1500,PUSH_DIST:342,SAFE_SPAWN:700,MIN_SEP:1400,
   DRAG:1.4,HIT_PUSH:280,EJECT_PUSH:70,HITS_TO_SPLIT:3,HIT_CD_TICKS:30,SPLIT_N:3,SPLIT_R:.62,SPLIT_SPEED:520,SPLIT_BLAST:5,SPLIT_LIFE_TICKS:[900,1500]};
+// LAYOUT: qual das CINCO artes de estrela está em uso (0 clássica · 1 anã manchada · 2 azul com jatos ·
+// 3 binária · 4 pulsar). É `opt` porque é ESCOLHA entre coisas fechadas, não um número numa faixa, e é
+// escopo `wire` porque quem desenha é o cliente e o servidor entrega o valor no JSON da sala.
+// ⚠️ Os ids são STRING porque `applyTunable` valida `opt` comparando `String(v)` com a lista — um id
+// numérico passaria a viajar como "0" e voltaria como 0, e a comparação falharia em silêncio.
 // PASS_R: A PEÇA PEQUENA ATRAVESSA A ESTRELA E SE ESCONDE LÁ DENTRO. Abaixo deste raio ela não é empurrada,
 // não queima, não estilhaça e — o que faz o esconderijo existir — NÃO detona a estrela. Sem essa última
 // parte a mecânica se autodestruiria no primeiro uso: `pieceStar` chamava `supernova(...,rammed)` de forma
@@ -440,6 +445,9 @@ export const STAR={COUNT:19,R:46,BURN:.30,RAM_REWARD:false,SWELL:1.75,ARM_K:.5,G
 // raio blast·NOVA_FOOD_R (a estrela morta vira um berçário: ponto de interesse fixo no mapa),
 // asteroides a AST_KICK e peças a PUSH; dentro de r·NOVA_R·NOVA_SHATTER
 // (o miolo) é como encostar na estrela: o escudo cai inteiro e salva, sem escudo a peça estilhaça.
+/** As cinco artes de estrela, na ordem do `paintNovaV`. O `label` é o que o admin lê no `<select>`. */
+export const STAR_LAYOUTS=[{v:'0',label:'Clássica (coroa de plasma)'},{v:'1',label:'Anã manchada'},
+  {v:'2',label:'Azul com jatos'},{v:'3',label:'Binária'},{v:'4',label:'Pulsar'}];
 export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:625,MAX_AMMO:3,AMMO_OVER:1,R:11,SPAWN_CD_TICKS:600,HIT_SHRINK:.9,STUCK_SHRINK:.82,HIT_DEBRIS:5,DEBRIS_DIST:560,DEBRIS_SPREAD:.9,SHATTER_N:[3,6],SHATTER_DIST:342,
   INTERCEPT_DIST:1100,ALERT_DIST:3250,AST_KICK:420,AIM_PICK:700,AIM_RANGE:2750,AIM_HOLD_TICKS:180};
 // DEBRIS_DIST/DEBRIS_SPREAD/STUCK_SHRINK: o impacto sem escudo era REEMBOLSO, não dano. Os HIT_DEBRIS cacos

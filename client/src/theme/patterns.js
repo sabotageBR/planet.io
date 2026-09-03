@@ -236,8 +236,96 @@ export function paintHole(c,r,{ink="#07040e",glow="#fff3d0",hot="#ff9126",cold="
     c.beginPath();c.ellipse(0,0,r*(.5+t*1.82),r*(.05+t*.27),0,0,Math.PI);c.stroke();}}
 
 /**
- * Estrela do mundo: coroa em 3 camadas, línguas de plasma curvas e núcleo quente. `old` = gigante vermelha
- * inchada, com manchas escuras e rachaduras brilhantes (telegrafa a supernova). `P` = {ink,core,edge,deep}.
+ * As CINCO estrelas. `paintNova` continua sendo a variante 0 (assinatura intacta, quatro chamadores), e
+ * `paintNovaV` despacha — quebrar a assinatura de uma função de tema custaria mais do que ela vale.
+ * ⚠️ A VARIANTE TEM QUE ENTRAR NA CHAVE DO CACHE (`theme/<id>/index.js`, `case "nova"`). O `TextureCache`
+ * não tem `drop(key)`: sem ela, trocar o layout no /admin devolveria a textura do anterior, em silêncio.
+ * ⚠️ Nada de animação aqui: isto é assado UMA vez por (variante, fase, tier, tema). O que se mexe por
+ * frame mora em `layers/Hazards.js`.
+ * ⚠️ E nada de `createConicGradient`, `filter`, `Path2D` ou `ImageData`: `client/test/textures.test.js`
+ * usa um contexto 2D falso via Proxy, onde qualquer método passa — o teste ficaria verde e o jogo
+ * quebraria. Só o vocabulário que já está em uso neste arquivo.
+ * @param {number} v 0..4
+ */
+export function paintNovaV(c,r,{variant=0,old=false},P={}){
+  const V=[paintNova,novaAnã,novaAzul,novaDupla,novaPulsar];
+  (V[((v=>v<0?0:v>4?4:v)(variant|0))]||paintNova)(c,r,old,P);}
+/**
+ * 1 — ANÃ MANCHADA: disco fosco de granulação grossa, sem coroa de plasma. É a estrela "sólida", a que
+ * menos se confunde com um planeta grande porque não tem aro nem brilho especular.
+ */
+function novaAnã(c,r,old,{ink="#141026",core="#fff5c2",edge="#ffc22e",deep="#ff6b4a"}={}){
+  const hot=old?deep:edge,mid=old?edge:core;
+  c.fillStyle=rgba(hot,.16);arc(c,0,0,r*1.5);
+  const g=c.createRadialGradient(-r*.18,-r*.2,r*.1,0,0,r);
+  g.addColorStop(0,mid);g.addColorStop(.7,hot);g.addColorStop(1,old?ink:deep);
+  c.fillStyle=g;arc(c,0,0,r);
+  c.save();c.beginPath();c.arc(0,0,r*.99,0,TAU);c.clip();
+  blobs(c,r,rgba(ink,old?.34:.2),9,5,.22);
+  blobs(c,r,rgba(core,old?.2:.34),7,9,.16);
+  if(old)cracks(c,r,rgba(core,.95),Math.max(1.5,r*.06),4,13,core);
+  c.restore();
+  c.strokeStyle=ink;c.lineWidth=Math.max(2,r*.09);c.beginPath();c.arc(0,0,r,0,TAU);c.stroke();}
+/**
+ * 2 — AZUL COM JATOS: dois jatos polares opostos e um disco fino em volta. É a mais "direcional" das
+ * cinco, e a que muda mais de silhueta ao inchar.
+ */
+function novaAzul(c,r,old,{ink="#141026",core="#fff5c2",edge="#ffc22e",deep="#ff6b4a"}={}){
+  const hot=old?deep:edge,mid=old?edge:core,jato=old?deep:core;
+  for(let i=3;i>0;i--){c.fillStyle=rgba(hot,.08*i);arc(c,0,0,r*(1+i*.3));}
+  c.strokeStyle=rgba(jato,.55);c.lineCap="round";
+  for(const s of [-1,1]){c.lineWidth=Math.max(2,r*.3);
+    c.beginPath();c.moveTo(0,s*r*.7);c.lineTo(0,s*r*(old?2.6:2.1));c.stroke();
+    c.lineWidth=Math.max(1.5,r*.12);c.strokeStyle=rgba(core,.85);
+    c.beginPath();c.moveTo(0,s*r*.7);c.lineTo(0,s*r*(old?2.4:1.95));c.stroke();
+    c.strokeStyle=rgba(jato,.55);}
+  c.strokeStyle=rgba(hot,.5);c.lineWidth=Math.max(2,r*.14);
+  c.beginPath();c.ellipse(0,0,r*1.55,r*.4,0,0,TAU);c.stroke();
+  const g=c.createRadialGradient(0,0,r*.05,0,0,r);
+  g.addColorStop(0,"#ffffff");g.addColorStop(.5,mid);g.addColorStop(1,hot);
+  c.fillStyle=g;arc(c,0,0,r);
+  c.strokeStyle=ink;c.lineWidth=Math.max(2,r*.09);c.beginPath();c.arc(0,0,r,0,TAU);c.stroke();
+  if(old){c.save();c.beginPath();c.arc(0,0,r*.98,0,TAU);c.clip();blobs(c,r,rgba(ink,.28),5,7,.28);c.restore();}}
+/**
+ * 3 — BINÁRIA: dois núcleos em volta do mesmo centro, ligados por uma ponte de matéria. Ao envelhecer os
+ * dois se encostam — a leitura de "vai acontecer alguma coisa" vem da geometria, não da cor.
+ */
+function novaDupla(c,r,old,{ink="#141026",core="#fff5c2",edge="#ffc22e",deep="#ff6b4a"}={}){
+  const hot=old?deep:edge,mid=old?edge:core,sep=old?r*.2:r*.42,rr=r*(old?.62:.5);
+  for(let i=3;i>0;i--){c.fillStyle=rgba(hot,.09*i);arc(c,0,0,r*(1+i*.24));}
+  c.strokeStyle=rgba(mid,.6);c.lineWidth=Math.max(2,r*(old?.5:.3));c.lineCap="round";
+  c.beginPath();c.moveTo(-sep,0);c.lineTo(sep,0);c.stroke();
+  for(const s of [-1,1]){
+    const g=c.createRadialGradient(s*sep-rr*.25,-rr*.25,rr*.08,s*sep,0,rr);
+    g.addColorStop(0,"#ffffff");g.addColorStop(.5,mid);g.addColorStop(1,hot);
+    c.fillStyle=g;arc(c,s*sep,0,rr);
+    c.strokeStyle=ink;c.lineWidth=Math.max(2,r*.08);c.beginPath();c.arc(s*sep,0,rr,0,TAU);c.stroke();}
+  if(old){c.strokeStyle=rgba(core,.9);c.lineWidth=Math.max(1.5,r*.05);
+    for(let i=0;i<6;i++){const a=i/6*TAU;c.beginPath();c.moveTo(Math.cos(a)*r*.9,Math.sin(a)*r*.9);
+      c.lineTo(Math.cos(a)*r*1.35,Math.sin(a)*r*1.35);c.stroke();}}}
+/**
+ * 4 — PULSAR: núcleo pequeno e denso dentro de anéis concêntricos que o envolvem. É a que menos ocupa
+ * área de disco — e por isso a que deixa o esconderijo (STAR.PASS_R) mais visível.
+ */
+function novaPulsar(c,r,old,{ink="#141026",core="#fff5c2",edge="#ffc22e",deep="#ff6b4a"}={}){
+  const hot=old?deep:edge,mid=old?edge:core;
+  c.fillStyle=rgba(hot,.14);arc(c,0,0,r*1.7);
+  c.lineCap="round";
+  for(let i=0;i<4;i++){const k=1-i*.2;
+    c.strokeStyle=rgba(i%2?mid:hot,old?.5+i*.1:.34+i*.1);c.lineWidth=Math.max(1.5,r*(.1-i*.015));
+    c.beginPath();c.ellipse(0,0,r*(1.55-i*.16),r*(1.55-i*.16)*(old?.85:.5),i*.5,0,TAU);c.stroke();
+    if(k<0)break;}
+  const g=c.createRadialGradient(0,0,r*.02,0,0,r*.66);
+  g.addColorStop(0,"#ffffff");g.addColorStop(.4,mid);g.addColorStop(1,hot);
+  c.fillStyle=g;arc(c,0,0,r*.66);
+  c.strokeStyle=ink;c.lineWidth=Math.max(2,r*.08);c.beginPath();c.arc(0,0,r*.66,0,TAU);c.stroke();
+  c.strokeStyle=rgba(core,old?.95:.7);c.lineWidth=Math.max(1.5,r*.07);
+  for(const s of [-1,1]){c.beginPath();c.moveTo(s*r*.7,0);c.lineTo(s*r*(old?1.9:1.5),0);c.stroke();}
+  if(old){c.save();c.beginPath();c.arc(0,0,r*.65,0,TAU);c.clip();cracks(c,r*.66,rgba(core,.9),Math.max(1.5,r*.05),3,17,core);c.restore();}}
+/**
+ * 0 — Estrela do mundo: coroa em 3 camadas, línguas de plasma curvas e núcleo quente. `old` = gigante
+ * vermelha inchada, com manchas escuras e rachaduras brilhantes (telegrafa a supernova).
+ * `P` = {ink,core,edge,deep}.
  */
 export function paintNova(c,r,old,{ink="#141026",core="#fff5c2",edge="#ffc22e",deep="#ff6b4a"}={}){
   c.lineJoin="round";c.lineCap="round";

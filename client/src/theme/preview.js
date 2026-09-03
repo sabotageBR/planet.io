@@ -291,7 +291,14 @@ $("#s-account").classList.toggle("on",screen==="account");$("#s-reconn").classLi
 document.body.dataset.screen=main;
 
 // ── cena parada no canvas: fundo assado + mundo (props/grade/borda) + objetos via textures + fx + radar ──
-const cv=$("#game"),W=cv.width=cv.offsetWidth,H=cv.height=cv.offsetHeight,ctx=cv.getContext("2d");
+// ⚠️ Na FOLHA DE TEXTURAS o canvas cresce com o conteúdo, não com a janela: ela virou uma mesa de
+// comparação (as cinco estrelas × jovem/velha, mais a supernova em quatro tempos) e passa de 2.000 px de
+// altura. Com `offsetHeight` tudo abaixo da dobra era desenhado FORA do canvas — em silêncio, que é o
+// mesmo jeito de falhar que a folha existe para evitar.
+const FOLHA=screen==="textures";
+const cv=$("#game"),W=cv.width=(FOLHA?Math.max(1280,cv.offsetWidth):cv.offsetWidth),
+  H=cv.height=(FOLHA?2200:cv.offsetHeight),ctx=cv.getContext("2d");
+if(FOLHA){cv.style.width=W+"px";cv.style.height=H+"px";cv.style.maxWidth="none";document.body.style.overflow="auto";}
 const _spr=new Map();
 function sprite(key,size,draw){let c=_spr.get(key);if(c)return c;c=document.createElement("canvas");c.width=c.height=size;const x=c.getContext("2d");x.translate(size/2,size/2);draw(x,size);_spr.set(key,c);return c;}
 const TX=TH.textures,SC=TX.scale;
@@ -304,6 +311,9 @@ const spr={
   star:v=>sprite(TX.key("star",{variant:v}),32,(c,s)=>TX.star(c,s,{variant:v})),
   prop:(p,i)=>sprite(TX.key("prop",{i}),256,(c,s)=>TX.prop(c,s,{prop:p,i})),
   missile:()=>sprite(TX.key("missile"),64,(c,s)=>TX.missile(c,s,{})),
+  // A estrela-PERIGO faltava aqui e na folha, e por isso não havia jeito de comparar as artes dela fora de
+  // partida — que é exatamente o que "escolher entre cinco layouts" pede.
+  nova:(variant,old)=>sprite(TX.key("nova",{variant,old},256),256,(c,s)=>TX.nova(c,s,{variant,old})),
 };
 const WW=3000,WH=3000,t=1000;
 const band=TX.bandLayers({WW,WH});
@@ -387,9 +397,16 @@ function drawSheet(c){c.setTransform(1,0,0,1,0,0);c.fillStyle=TH.tokens.surface;
   x=16;y+=122;["dust","comet","star","rock","missile_ammo","powerup_magnet","powerup_shield"].forEach((type,i)=>cell(spr.food({type,hue:i,color:`hsl(${i*30},80%,68%)`}),type,64));
   cell(spr.ejected(mySkin.color),"ejected",64);[0,1].forEach(v=>cell(spr.star(v),"star "+v,64));cell(spr.missile(),"missile",64);
   x=16;y+=90;[0,1,2].forEach(v=>cell(spr.asteroid(v,256),"asteroid "+v,128));cell(spr.blackHole(),"blackHole",128);
+  // AS CINCO ESTRELAS, nova e velha lado a lado: é a mesa de comparação do parâmetro STAR.LAYOUT.
+  x=16;y+=160;[0,1,2,3,4].forEach(v=>{cell(spr.nova(v,false),"nova "+v,110);cell(spr.nova(v,true),"nova "+v+" OLD",110);});
   band.props.slice(0,4).forEach((p,i)=>cell(spr.prop(p,i),"prop "+i+(p.ring?" ring":""),128));
   x=16;y+=160;c.font="bold 13px "+TH.hud.labels.font;c.fillStyle=TH.tokens.text;c.fillText("effects.fx (k=.35)",16,y);y+=20;
+  // ⚠️ Os efeitos de ESTRELA nunca apareceram aqui — supernova, starBurst, starHit, smash e stuck eram
+  // invisíveis fora de partida, que é como um `ORA` inexistente num `case` sobrevive a um import.
   ["bounce","pop","boom","eat","suck","split","chip","shoot","rock"].forEach((kind,i)=>{const fx=TH.effects.fx(kind,.35,{x:70+i*135,y:y+60,r:28,nx:.7,ny:.7,power:1});drawPrims(c,fx);c.font="11px "+TH.hud.labels.font;c.fillStyle=TH.tokens.muted;c.textAlign="center";c.fillText(kind,70+i*135,y+125);});
+  c.textAlign="left";y+=170;c.font="bold 13px "+TH.hud.labels.font;c.fillStyle=TH.tokens.text;c.fillText("efeitos de ESTRELA · supernova em 4 tempos",16,y);y+=20;
+  ["starBurst","starHit","smash","stuck"].forEach((kind,i)=>{const fx=TH.effects.fx(kind,.35,{x:70+i*135,y:y+60,r:28,nx:.7,ny:.7,power:1,n:2,level:2});drawPrims(c,fx);c.font="11px "+TH.hud.labels.font;c.fillStyle=TH.tokens.muted;c.textAlign="center";c.fillText(kind,70+i*135,y+125);});
+  [.08,.3,.6,.9].forEach((k,i)=>{const fx=TH.effects.fx("supernova",k,{x:70+(i+4)*135,y:y+60,r:44,text:"SUPERNOVA!",seed:3});drawPrims(c,fx);c.font="11px "+TH.hud.labels.font;c.fillStyle=TH.tokens.muted;c.textAlign="center";c.fillText("supernova k="+k,70+(i+4)*135,y+125);});
   c.textAlign="left";y+=150;c.font="bold 13px "+TH.hud.labels.font;c.fillStyle=TH.tokens.text;c.fillText("hud.radar / labels / trail",16,y);
   const S=scene();drawRadar(c,S);c.save();c.translate(120,y+80);c.scale(.8,.8);drawPlanet(c,Object.assign({},S.players[0],{x:0,y:0,trail:S.players[0].trail.map(q=>({x:q.x-1500,y:q.y-1500}))}));c.restore();}
 

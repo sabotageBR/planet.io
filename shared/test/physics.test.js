@@ -157,16 +157,16 @@ test("predição: com o W segurado a peça própria continua batendo com o servi
   assert.ok(own[0].r<100,`o planeta esvaziou de verdade durante o teste (r final ${own[0].r.toFixed(0)})`);});
 
 // 9. desempenho: sala cheia
-// ⚠️ O TETO SUBIU DE 1,5 PARA 2,0 ms COM O MAPA DE 12000, e não é afrouxamento: o custo do tick é
-// proporcional à POPULAÇÃO, e manter a densidade de comida num mapa 56% maior significa 3 900 grãos em vez
-// de 2 500. Medido nesta mesma bancada, isolando só a comida (mundo 12000 nos três):
-//     FOOD.COUNT 2500 → 1,13 ms · 3200 → 1,32 ms · 3900 → 1,51 ms
-// ou seja ~0,27 µs por grão, e a comida é ~90% das entidades. O que segurou o resto foi o `GRID_CELL`
-// (128 → 160): a contagem de células ficou igual (75×75), então o custo FIXO por tick — o `cellStart.fill(0)`
-// de DOIS grids mais o `forEachPair` sobre `cols×rows`, que rodam mesmo com o mapa vazio — não cresceu.
-// 2,0 ms de pior caso a 60 Hz ainda deixa ~8 salas nesse regime por shard, e o pior caso aqui é 30 jogadores
-// com 16 peças CADA, que uma sala de verdade não sustenta.
-test("desempenho: sala cheia (30×16 peças, mundo e população de produção, 120 ejetados) — média ≤ 2.0 ms/passo",t=>{
+// ⚠️ O TETO CONTINUA 1,5 ms COM O MAPA DE 12000, e isso foi MEDIDO, não presumido — mede com a máquina
+// QUIETA. Um servidor de dev e um Chrome headless rodando junto multiplicam o número por três e levam a
+// afrouxar um teto que não precisava ser afrouxado (aconteceu). Com a bancada limpa:
+//     mundo 9600 / 2500 grãos → 0,62 ms   ·   mundo 12000 / 3900 grãos → 0,75 ms
+// ou seja **+15% para +56% de área**, com o dobro de folga até o teto. Isolando só a comida no mundo de
+// 12000: 2500 → 0,65 · 3200 → 0,65 · 3900 → 0,75 — ela é ~90% das entidades e ainda assim custa pouco,
+// porque o que domina o tick é o custo FIXO. Foi ele que o `GRID_CELL` (128 → 160) segurou: a contagem de
+// células ficou igual (75×75), então o `cellStart.fill(0)` de DOIS grids e o `forEachPair` sobre
+// `cols×rows` — que rodam mesmo com o mapa vazio — não cresceram com o mundo.
+test("desempenho: sala cheia (30×16 peças, mundo e população de produção, 120 ejetados) — média ≤ 1.5 ms/passo",t=>{
   const w=createWorld({seed:2024}),script=createRng(5);
   for(let s=0;s<30;s++){w.addPlayer(s,{isBot:s>=5,r:280,missiles:1});w.setTarget(s,script.range(0,WORLD.w),script.range(0,WORLD.h));}
   for(let round=0;round<3;round++){for(let s=0;s<30;s++)w.requestSplit(s);for(let i=0;i<SPLIT.COOLDOWN_TICKS+1;i++)w.step();}
@@ -182,7 +182,7 @@ test("desempenho: sala cheia (30×16 peças, mundo e população de produção, 
   t.diagnostic(`passo: média ${avg.toFixed(3)} ms · p50 ${p50.toFixed(3)} · p99 ${p99.toFixed(3)} · máx ${max.toFixed(3)} · peças máx ${maxPieces} · comida ${w.food.length} · asteroides ${w.asteroids.length} · ejetados ${w.ejected.length}`);
   console.log(`[perf] média ${avg.toFixed(3)} ms · p50 ${p50.toFixed(3)} ms · p99 ${p99.toFixed(3)} ms · máx ${max.toFixed(3)} ms · peças máx ${maxPieces}`);
   assert.ok(maxPieces>=200,`sala deveria ter ≥200 peças (teve ${maxPieces})`);assert.equal(w.food.length,FOOD.COUNT);
-  assert.ok(avg<=2.0,`média ${avg.toFixed(3)} ms > 2.0 ms`);});
+  assert.ok(avg<=1.5,`média ${avg.toFixed(3)} ms > 1.5 ms (⚠️ mede com a máquina quieta: dev server e Chrome headless triplicam este número)`);});
 
 // 10. fusão por proximidade
 test("fusão: não há atração entre peças próprias (elas se juntam pelo ponteiro) e nenhuma ganha impulso ao fundir",()=>{

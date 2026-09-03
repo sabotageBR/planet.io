@@ -50,6 +50,42 @@ export const tier=r=>r<=44?128:r<=120?256:512;
  * @param {number} k 0..1 @param {{x:number,y:number,h:number,dx:number,n:number,seed:number,willow:boolean}} f
  * @param {{hot:string,body:string,ember:string,trail:string}} pal
  */
+/**
+ * A EXPLOSÃO DA SUPERNOVA, na mesma linguagem dos fogos.
+ * O efeito antigo eram TRÊS anéis concêntricos crescendo — literalmente o "anel branco de espessura
+ * constante expandindo" que `fireworkPrims` foi reescrito para eliminar, com o comentário explicando que
+ * ele é assinatura de desenho animado e chama mais atenção que as faíscas. O conserto tinha sido feito
+ * uma vez, num outro efeito, e nunca propagado.
+ * As quatro ideias que vêm de lá, e por que cada uma:
+ *   1. RASTRO — cada faísca é um traço do ponto anterior ao atual, nunca um ponto: é o que dá direção.
+ *   2. ARRASTO — `dist(u)=(1−e^{−λu})/λ` satura, ou seja abre rápido e freia. Expansão linear vira
+ *      pisca-pisca.
+ *   3. COR EM TRÊS TEMPOS — branco → corpo → brasa, para a explosão ter idade e não só tamanho.
+ *   4. CLARÃO SEM CÍRCULO — miolo denso mais uma coroa de raios CURTOS presos ao centro, em vez de um aro
+ *      que viaja.
+ * O que ela NÃO herda dos fogos é a gravidade e a chuva: aquilo é pirotecnia vista do chão, e isto é uma
+ * estrela morrendo no vácuo — não há "para baixo".
+ * @param {number} k 0..1 @param {{x,y,r,seed?,text?}} f @param {{hot,body,ember,ink}} pal
+ */
+export function supernovaPrims(k,f,pal){
+  const P=[],n=26,rnd=mulberry((f.seed|0)+7),LAM=2.6,R=f.r;
+  const dist=u=>(1-Math.exp(-LAM*u))/(1-Math.exp(-LAM));
+  const d1=dist(k),d0=dist(Math.max(0,k-.07));
+  for(let i=0;i<n;i++){
+    const an=i/n*6.2832+(rnd()-.5)*.22,v=.62+rnd()*.5,cin=rnd();
+    const r1=R*v*d1,r0=R*v*d0;
+    // a mesma escada de cor dos fogos: quente no começo, corpo no meio, brasa no fim
+    const cor=k<.16?pal.hot:k<.6?pal.body:pal.ember;
+    const cint=cin>.55?.55+.45*Math.sin(k*46+i*2.1):1;
+    P.push({type:"line",x1:f.x+Math.cos(an)*r0,y1:f.y+Math.sin(an)*r0,
+      x2:f.x+Math.cos(an)*r1,y2:f.y+Math.sin(an)*r1,
+      color:cor,alpha:(1-k)*cint,width:Math.max(1.5,R*.022*(1-k*.6))});}
+  // o clarão: preso ao centro, e some em 12% do efeito — nada que viaje para fora
+  const fl=k<.12?Math.pow(1-k/.12,1.6):0;
+  if(fl>0){
+    P.push({type:"burst",x:f.x,y:f.y,n:12,r0:R*.06,r1:R*(.16+.5*fl),color:pal.hot,alpha:fl,width:Math.max(2,R*.03)});
+    P.push({type:"star",x:f.x,y:f.y,r:R*.2*fl+R*.05,n:10,inner:.42,phase:0,fill:pal.hot,stroke:pal.ink,width:Math.max(1.5,R*.012),alpha:fl});}
+  return P;}
 export function fireworkPrims(k,f,pal){
   const P=[],RISE=.28,n=f.n||40,rnd=mulberry((f.seed|0)+1);
   // sorteio determinístico por faísca (mesma semente ⇒ mesmo desenho todo frame)
@@ -214,5 +250,8 @@ export function drawPrims(c,prims){
       case "ring":c.strokeStyle=p.color;c.lineWidth=p.width||2;if(p.dash)c.setLineDash(p.dash);c.beginPath();c.arc(p.x,p.y,p.r,0,6.283);c.stroke();break;
       case "line":c.strokeStyle=p.color;c.lineWidth=p.width||2;c.beginPath();c.moveTo(p.x1,p.y1);c.lineTo(p.x2,p.y2);c.stroke();break;
       case "burst":c.strokeStyle=p.color;c.lineWidth=p.width||2;for(let i=0;i<p.n;i++){const an=i/p.n*6.283+(p.phase||0);c.beginPath();
-        c.moveTo(p.x+Math.cos(an)*p.r0,p.y+Math.sin(an)*p.r0);c.lineTo(p.x+Math.cos(an)*p.r1,p.y+Math.sin(an)*p.r1);c.stroke();}break;}
+        c.moveTo(p.x+Math.cos(an)*p.r0,p.y+Math.sin(an)*p.r0);c.lineTo(p.x+Math.cos(an)*p.r1,p.y+Math.sin(an)*p.r1);c.stroke();}break;
+      // ⚠️ `arc` FALTAVA aqui, e este é o espelho em canvas do `Fx.drawPrim` do Pixi: o efeito `stuck` usa
+      // essa primitiva, então ele sumia da PRÉVIA em silêncio — e a prévia é onde se aprova arte nova.
+      case "arc":c.strokeStyle=p.color;c.lineWidth=p.width||2;c.beginPath();c.arc(p.x,p.y,p.r,p.a0,p.a1);c.stroke();break;}
     c.restore();}}

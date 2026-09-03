@@ -354,9 +354,15 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **O menor Battle Royale possível subiu de 10 para 20 min**: `roundTicksOf` recusa abaixo de
   `ZONE_TOTAL_TICKS`, que agora é 37 500. A tela de "Sala sua" já filtra por essa função, então o chip de
   10 min some sozinho — mas um teste que cravasse 10 quebra, e é isso que ele deve fazer.
-  ⚠️ Custo medido do tick (arena de `physics.test.js`): média 0,97 → 1,32 ms, p99 3,31 → 3,74. O `GRID_CELL`
-  maior é o que segura o custo FIXO (`cellStart.fill(0)` em dois grids por tick, mais o `forEachPair` sobre
-  `cols×rows`, que rodam mesmo com o mapa vazio).
+  ⚠️ Custo medido do tick (arena de `physics.test.js`, **com a máquina quieta**): média 0,62 → **0,75 ms**,
+  ou seja +15% para +56% de área, com o dobro de folga até o teto de 1,5 ms. O `GRID_CELL` maior é o que
+  segura o custo FIXO (`cellStart.fill(0)` em dois grids por tick, mais o `forEachPair` sobre `cols×rows`,
+  que rodam mesmo com o mapa vazio) — é ele que domina, não a população.
+  ⚠️ **Medir com a bancada limpa.** Um `npm run dev` e um Chrome headless rodando junto TRIPLICAM esse
+  número (1,5 → 2,1 ms) e levam a afrouxar um teto que não precisava ser afrouxado. Aconteceu nesta mesma
+  mudança: o teto chegou a subir para 2,0 ms com uma justificativa inteira escrita em cima de uma medição
+  contaminada, e voltou para 1,5 quando os processos foram fechados. O mesmo vale para o soak de
+  `server/test/game.test.js`, que nesta máquina já falha no commit ANTERIOR a qualquer alteração.
 - **O TAMANHO DO MUNDO É PARÂMETRO DO /admin, E É O ÚNICO QUE NÃO VALE NA HORA** (`WORLD.LADO`, grupo
   "Salas"; env `WORLD_SIDE` semeia). `LADO` é o lado DESEJADO — o que o painel grava — e `WORLD.w/h` é o
   mundo de AGORA; quem copia um no outro é o BOOT (`startServer`, depois de `tunablesReady` e **antes** de
@@ -2073,6 +2079,38 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
 - **Skins (75)**: `shared/src/skins.js` guarda `pattern`/`accent` e `client/src/theme/patterns.js` desenha a textura procedural
   dentro do disco (listras, crateras, continentes, lava, gelo, galáxia, xadrez, escamas, olho…) — nada de imagem, tudo assado uma vez
   por (skin, tier). O mesmo módulo desenha o buraco negro (`paintHole`) e a estrela (`paintNova`).
+- **CINCO ARTES DE ESTRELA, ESCOLHIDAS NO /admin** (`paintNovaV` em `theme/patterns.js`, `STAR.LAYOUT`):
+  a arte era uma função só com UM booleano (`old`), e as 12 estrelas do mapa dividiam duas texturas por
+  tema — idênticas entre si, distinguidas só pela rotação inicial. Agora são cinco identidades
+  (clássica · anã manchada · azul com jatos · binária · pulsar) e o painel troca ao vivo.
+  ⚠️ **A VARIANTE ENTRA NA CHAVE DO CACHE** (`case "nova"` nos três temas): o `TextureCache` não tem
+  `drop(key)`, então sem ela a troca no painel devolveria a textura anterior — em silêncio.
+  ⚠️ `paintNova` **manteve a assinatura** (quatro chamadores) e `paintNovaV` despacha: quebrar a assinatura
+  de uma função de tema custaria mais do que ela vale.
+  ⚠️ O escopo é `wire`, não `server`: quem desenha é o CLIENTE. Com `server` o painel diria "salvo" e a
+  tela continuaria igual, para sempre.
+  ⚠️ Nada de `createConicGradient`/`filter`/`Path2D`/`ImageData` nessas funções: `client/test/textures.test.js`
+  usa um contexto 2D falso via Proxy onde qualquer método passa — o teste ficaria verde e o jogo quebraria.
+- **O CÍRCULO DE MATERIAIS ANTES DA SUPERNOVA** (`effects.star.nursery`, `layers/Hazards.js`): a transição
+  ACTIVE→OLD era uma troca INSTANTÂNEA de textura — os 8 s mais dramáticos do ciclo eram "a bola fica
+  vermelha de repente e incha devagar", sem nada dizendo que ela vai explodir. Agora um anel de matéria
+  FECHA e ACELERA conforme ela incha, no molde exato das faíscas do buraco negro (achatado por `ryK`, com
+  brilho por `cy`, para ter plano em vez de virar um círculo chapado).
+  ⚠️ **O progresso da fase OLD é DERIVADO do raio**, sem um byte novo de protocolo: `r` cresce de `STAR.R`
+  até `STAR.R·SWELL` e chega quantizado a 0,1 px, então `p` tem precisão ~0,003.
+  ⚠️ Sai no modo econômico: é leitura, não informação que falte em outro lugar.
+- **A SUPERNOVA DEIXOU DE SER UM ANEL BRANCO** (`supernovaPrims` em `theme/util.js`): eram TRÊS `ring`
+  concêntricos crescendo — literalmente o "anel de espessura constante expandindo" que `fireworkPrims` foi
+  reescrito para eliminar, com o comentário de lá explicando que ele é assinatura de desenho animado e
+  chama mais atenção que as faíscas. O conserto tinha sido feito uma vez, noutro efeito, e nunca propagado.
+  Hoje a explosão fala a mesma língua: rastro (traço do ponto anterior ao atual), arrasto que satura
+  (`(1−e^{−λu})/λ`, abre rápido e freia), cor em três tempos e um clarão preso ao CENTRO.
+  ⚠️ Ela **não** herda a gravidade nem a chuva dos fogos: aquilo é pirotecnia vista do chão, e aqui é uma
+  estrela morrendo no vácuo — não há "para baixo".
+  ⚠️ Um `ORA` que não existia no tema `dusk` passou pelo import e só quebraria NA PARTIDA (identificador
+  dentro de um `case` só é avaliado quando o efeito acontece). Daí a folha de texturas ter ganhado os
+  efeitos de estrela e a supernova em quatro tempos: **é a única forma de ver esses efeitos fora de
+  partida**, e `drawPrims` também ganhou o `case "arc"` que faltava — sem ele o `stuck` sumia da prévia.
 - **Escudo e ímã: BORDA NEON, não anel girando** (`renderer/layers/Planets.js`): eram arcos TRACEJADOS
   girando em volta do planeta (`dashArc` + `pw.spin`) e, no nível 3, um SEGUNDO anel atrás do primeiro —
   dois círculos rodando em sentidos opostos em cima da arte da skin. Cada um era legível sozinho;

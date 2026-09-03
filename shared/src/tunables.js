@@ -25,7 +25,7 @@
 // rodada. Parametrizar por sala exigiria carregar um objeto de tunables por Room→Sim→World→rules, tocando
 // toda assinatura da física e o predict — não vale por um punhado de números.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
@@ -83,6 +83,12 @@ export const TUNABLES=[
   num('armas','MISSILE.AIM_HOLD_TICKS','Duração da mira travada','ticks','server',0,900,30,MISSILE,'AIM_HOLD_TICKS'),
   // ── PERIGOS DO MAPA ──
   num('perigos','STAR.BURN','Massa que a estrela queima','fração','server',0,.9,.01,STAR,'BURN'),
+  // Quem cabe DENTRO da estrela atravessa e se esconde lá (ver o porquê do 40 em `STAR.PASS_R`). Só o
+  // servidor lê: a estrela não existe em `predict.js`.
+  num('perigos','STAR.PASS_R','Raio máximo para atravessar a estrela','px','server',0,80,2,STAR,'PASS_R'),
+  // A ARTE da estrela — escopo `wire` porque quem desenha é o CLIENTE, e o servidor entrega o valor no
+  // JSON da sala. Com `server` o painel diria "salvo" e a tela continuaria igual, para sempre.
+  opt('perigos','STAR.LAYOUT','Arte da estrela','wire',STAR_LAYOUTS,STAR,'LAYOUT'),
   num('perigos','STAR.BURN_STUCK','Queimadura da estrela sem vaga de peça','fração','server',0,.95,.01,STAR,'BURN_STUCK'),
   num('perigos','ASTEROID.CHIP','Lasca do asteroide','fração','server',0,.5,.01,ASTEROID,'CHIP'),
   num('perigos','ASTEROID.CHIP_STUCK','Lasca do asteroide sem vaga de peça','fração','server',0,.6,.01,ASTEROID,'CHIP_STUCK'),
