@@ -321,7 +321,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       case MSG.EVENT:{const kind=FX_OF[m.kind];if(!kind||!renderer)break;const f={x:m.x,y:m.y,r:m.r||10};
         if(DIR_EVENTS.has(m.kind)){const d=unpackDir(m.extra);f.nx=d.nx;f.ny=d.ny;f.power=Math.min(1,d.vn/480);
           if(m.kind===EVENT.SHIELD_HIT)f.level=d.vn;else if(m.kind===EVENT.STAR_HIT)f.n=d.vn;}
-        else if(m.kind===EVENT.SHIELD_UP)f.level=m.extra;
+        // ⚠️ O nível vem no byte baixo e o "subiu de verdade" no bit 8 (protocolo 15). No teto o 🛡️ continua
+        // com anel e som — o que sai é só o TEXTO, que ali não diz mais nada. E ele passou a vir do i18n,
+        // como SUPERNOVA/NEBULOSA: estava cravado em português dentro dos TRÊS temas.
+        else if(m.kind===EVENT.SHIELD_UP){f.level=m.extra&0xff;f.up=!!(m.extra&0x100);
+          if(f.up)f.text=(getLabels().fx||{}).shield||"ESCUDO";}
         // A MESMA estrela morre com dois nomes. Quando quem a matou foi uma TROMBADA de planeta, ela não
         // larga prêmio (STAR.RAM_REWARD) e não é supernova de verdade: é uma nebulosa planetária — e o
         // servidor diz isso mandando o slot de quem trombou no `slotA`, que neste evento estava livre.

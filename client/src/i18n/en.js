@@ -43,7 +43,7 @@ export default {
     sys_start: "The match has started", sys_lead: "{n} took the lead", sys_crunch: "BIG CRUNCH in {n}",
     sys_zone: "The gas is closing in", sys_few: "{n} left", sys_streak: "{n} kills in a row",
   },
-  fx: { supernova: "SUPERNOVA!", nebula: "PLANETARY NEBULA!" },
+  fx: { supernova: "SUPERNOVA!", nebula: "PLANETARY NEBULA!", shield: "SHIELD" },
   respawn: "AGAIN!", newMatch: "NEW MATCH", brWatchHint: "Stay to see the podium at the end.", toLobby: "Lobby", timeWord: "time", rankWord: "daily ranking", coinsEarned: "coins earned",
   lobbyTitle: "ROOMS", roomCode: "CODE", enter: "Join", create: "➕ Create room", autoNote: "Joins the fullest room with a free slot", shard: "shard", botsWord: "bots",
   rankTitle: "RANKING", scopeGlobal: "Global", scopeCountry: "My country", noCountry: "pick your country in your profile",

@@ -363,7 +363,7 @@ export class World{
       integratePiece(pc,ps.tx,ps.ty,DT,W,H);if(this.decay)decayPiece(pc,DT);   // o gigante murcha se parar de comer (PLAYER.DECAY)
       if(zc&&R.zoneBurn(this,pc,zc,DT))continue;   // fora da zona: queima e, no piso, MORRE (é o que fecha a partida)
       if(pc.shieldLv>0&&pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL&&tick>=pc.shieldEvolveAt){   // escudo evolui por peça: só quem tem escudo E não apanha sobe de nível
-        pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;ev.push({type:"SHIELD_UP",slot:pc.owner,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
+        pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;ev.push({type:"SHIELD_UP",slot:pc.owner,level:pc.shieldLv,up:true,x:pc.x,y:pc.y,r:pc.r});}
       let f=pc.flags&~(PIECE_FLAG.SHIELD|PIECE_FLAG.MERGING|PIECE_FLAG.MAGNET|PIECE_FLAG.SHIELD_LV_MASK);
       if(pc.shieldLv>0)f|=PIECE_FLAG.SHIELD|(pc.shieldLv<<PIECE_FLAG.SHIELD_LV_SHIFT);if(pc.magnetUntil>tick&&pc.r<=POWERUP.MAGNET_MAX_R)f|=PIECE_FLAG.MAGNET;
       if(pc.mergeAt<=tick&&ps.pieces.length>1)f|=PIECE_FLAG.MERGING;pc.flags=f;}

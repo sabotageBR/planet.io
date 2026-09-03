@@ -123,7 +123,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
         case "SHOOT":e={kind:EVENT.SHOOT,x:ev.x,y:ev.y,r:36,slotA:0,slotB:0,extra:packDir(ev.nx,ev.ny,0)};break;
         case "SHIELD_BREAK":mark(ev.slot,ev.bySlot,ARMA[ev.weapon|0]||"missile");e={kind:EVENT.SHIELD_BREAK,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot<0?65535:ev.bySlot,extra:0};break;
         case "SHIELD_HIT":mark(ev.slot,ev.bySlot,ARMA[ev.weapon|0]||"missile");e={kind:EVENT.SHIELD_HIT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:ev.bySlot<0?65535:ev.bySlot,extra:packDir(ev.nx,ev.ny,ev.level)};break;
-        case "SHIELD_UP":e={kind:EVENT.SHIELD_UP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:65535,extra:ev.level};break;
+        case "SHIELD_UP":e={kind:EVENT.SHIELD_UP,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:65535,extra:(ev.level|0)|(ev.up?0x100:0)};break;
         case "CLASH":e={kind:EVENT.CLASH,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slotA,slotB:ev.slotB,extra:0};break;
         case "DEFLECT":e={kind:EVENT.DEFLECT,x:ev.x,y:ev.y,r:ev.r,slotA:ev.bySlot<0?65535:ev.bySlot,slotB:65535,extra:packDir(ev.nx,ev.ny,0)};break;
         case "STAR_BURST":mark(ev.slot,-1,"star");e={kind:EVENT.STAR_BURST,x:ev.x,y:ev.y,r:ev.r,slotA:ev.slot,slotB:65535,extra:ev.starId};break;

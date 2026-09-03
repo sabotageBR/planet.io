@@ -1,6 +1,7 @@
 // ── Enums do fio (ver docs/spec/protocol.md) ──────────────────────────────────
 // @ts-check
-export const PROTOCOL_VERSION=14;   // 14: EVENT.STUCK — o preço que não coube em PEÇAS (as 16 ocupadas) e virou massa: estrela, míssil e asteroide agora dizem isso na tela
+export const PROTOCOL_VERSION=15;   // 15: SHIELD_UP diz se o nível SUBIU (bit 8 do `extra`) — no teto o 🛡️ ainda dá efeito, som e anel, mas o texto "ESCUDO 3" parava de significar alguma coisa
+// 14: EVENT.STUCK — o preço que não coube em PEÇAS (as 16 ocupadas) e virou massa: estrela, míssil e asteroide agora dizem isso na tela
 // 13: a AUTO-DEFESA virou CARGA — o mesmo u16 do `self` deixou de ser tempo (autoDefT) e passou a contar usos (autoDefN)
 // 12: POWERUPS DE JOGADOR — o `self` ganhou autoDefT/zoomT/feastT (3×u16) e o POWER_BIT ganhou autodef/zoom/feast
 // 11: NÍVEL do jogador — PLAYERS ganhou `level` (u8), o badge ao lado do nick no placar, no chat e no kill feed

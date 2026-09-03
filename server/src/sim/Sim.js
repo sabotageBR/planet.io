@@ -200,7 +200,7 @@ export class Sim{
         this._ev(EVENT.SHIELD_BREAK,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,0);break;}
       case 'SHIELD_HIT':this._mark(e.slot,e.bySlot,armaKey(e.weapon));this._memo(e.slot,'tiro',e.bySlot);
         this._ev(EVENT.SHIELD_HIT,e.x,e.y,e.r,e.slot,e.bySlot<0?NO_SLOT:e.bySlot,packDir(e.nx,e.ny,e.level));break;
-      case 'SHIELD_UP':this._ev(EVENT.SHIELD_UP,e.x,e.y,e.r,e.slot,NO_SLOT,e.level);break;
+      case 'SHIELD_UP':this._ev(EVENT.SHIELD_UP,e.x,e.y,e.r,e.slot,NO_SLOT,(e.level|0)|(e.up?0x100:0));break;   // bit 8 = subiu de verdade (protocolo 15)
       case 'CLASH':this._ev(EVENT.CLASH,e.x,e.y,e.r,e.slotA,e.slotB,0);break;
       case 'DEFLECT':this._ev(EVENT.DEFLECT,e.x,e.y,e.r,e.bySlot<0?NO_SLOT:e.bySlot,NO_SLOT,packDir(e.nx,e.ny,0));break;
       case 'STAR_BURST':this._mark(e.slot,-1,'star');this._ev(EVENT.STAR_BURST,e.x,e.y,e.r,e.slot,NO_SLOT,e.starId);break;

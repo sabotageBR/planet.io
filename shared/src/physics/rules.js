@@ -203,8 +203,13 @@ export function eatPiece(w,killer,A,victim,B){
 export function eatFood(w,ps,pc,f,zc=null){
   f.dead=true;w.foodDirty=true;const t=f.type,tick=w.tick;
   if(t===FOOD_TYPE.AMMO){const cap=weaponOf(ps.weapon).ammo;if(ammoOf(ps)<cap)addAmmo(ps,1);w.events.push({type:"AMMO",slot:ps.slot});}   // munição é da arma EQUIPADA (no míssil o teto é o MAX_AMMO de sempre)
-  else if(t===FOOD_TYPE.SHIELD){if(pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL)pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
-    w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:pc.shieldLv,x:pc.x,y:pc.y,r:pc.r});}
+  // ⚠️ `up` é o que separa a promoção 2→3 do 3→3, e sem ele o cliente não tinha COMO saber: o evento
+  // chegava com `level:3` nos dois casos e o texto "ESCUDO 3" saía toda vez que se pisava num 🛡️ no teto.
+  // Não dá para simplesmente não emitir o evento — é ele que toca o som e desenha o anel, e comer o escudo
+  // no teto TEM efeito real (reinicia `shieldEvolveAt`): "comida consumida, evento emitido, som tocado e
+  // efeito nenhum é o pior jeito de um powerup falhar" (o mesmo argumento do ímã, logo abaixo).
+  else if(t===FOOD_TYPE.SHIELD){const antes=pc.shieldLv;if(pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL)pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;
+    w.events.push({type:"POWERUP",slot:ps.slot,kind:"shield"});w.events.push({type:"SHIELD_UP",slot:ps.slot,level:pc.shieldLv,up:pc.shieldLv>antes,x:pc.x,y:pc.y,r:pc.r});}
   // Acima de MAGNET_MAX_R o ímã não vale — mas o grão não podia SUMIR sem dar nada: comida consumida,
   // evento emitido, som tocado e efeito nenhum é o pior jeito de um powerup falhar. Grande demais, vira comida.
   else if(t===FOOD_TYPE.MAGNET){

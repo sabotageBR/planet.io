@@ -202,13 +202,18 @@ test("fusão: não há atração entre peças próprias (elas se juntam pelo pon
 test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nível, dividir derruba, escudado quica",()=>{
   const w=empty(30),pc=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);
   const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=1000;f.y=1000;w.foodDirty=true;w.step();
-  assert.equal(pc.shieldLv,1);assert.ok(w.events.some(e=>e.type==="SHIELD_UP"&&e.level===1));
+  assert.equal(pc.shieldLv,1);assert.ok(w.events.some(e=>e.type==="SHIELD_UP"&&e.level===1&&e.up===true));
   w.step();assert.ok(pc.flags&PIECE_FLAG.SHIELD);assert.equal((pc.flags>>PIECE_FLAG.SHIELD_LV_SHIFT)&3,1);
-  let ups=0;for(let t=0;t<POWERUP.SHIELD_EVOLVE_TICKS*2+5;t++){w.step();for(const e of w.events)if(e.type==="SHIELD_UP")ups++;}
+  let ups=0;for(let t=0;t<POWERUP.SHIELD_EVOLVE_TICKS*2+5;t++){w.step();for(const e of w.events)if(e.type==="SHIELD_UP"){assert.equal(e.up,true,"a evolução por TEMPO sempre sobe");ups++;}}
   assert.equal(pc.shieldLv,POWERUP.SHIELD_MAX_LEVEL);assert.equal(ups,2);
   for(let t=0;t<3000;t++)w.step();assert.equal(pc.shieldLv,POWERUP.SHIELD_MAX_LEVEL,"não expira nem passa do teto");
   assert.equal((pc.flags>>PIECE_FLAG.SHIELD_LV_SHIFT)&3,3);
   const f2=w.spawnFood();f2.type=FOOD_TYPE.SHIELD;f2.x=pc.x;f2.y=pc.y;w.foodDirty=true;w.step();assert.equal(pc.shieldLv,3,"outro 🛡️ no teto: continua 3");
+  // ⚠️ o EVENTO continua saindo (é ele que toca o som e desenha o anel, e comer no teto reinicia o timer),
+  // mas marcado `up:false` — é o que faz o cliente calar o texto "ESCUDO 3", que ali não diz mais nada
+  const noTeto=w.events.filter(e=>e.type==="SHIELD_UP");
+  assert.equal(noTeto.length,1,"o 🛡️ no teto continua emitindo o evento");
+  assert.equal(noTeto[0].up,false,"mas dizendo que NÃO subiu");
   // míssil inimigo tira um nível, sem tirar massa
   const w3=empty(31),p0=w3.addPlayer(0,{x:1000,y:1000,r:40});w3.setTarget(0,1000,1000);p0.shieldLv=2;p0.shieldEvolveAt=1e9;
   w3.addPlayer(1,{x:1400,y:1000,r:40,missiles:2});w3.setTarget(1,1400,1000);
