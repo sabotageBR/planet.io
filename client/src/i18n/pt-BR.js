@@ -2,7 +2,8 @@
 // Os primeiros vieram de mockups/v2/src/engine2.js. Este arquivo é o CHÃO da tradução: toda chave que
 // faltar em `en.js`/`es.js` cai aqui (i18n/index.js), então ele é o único que nunca pode ter buraco —
 // e é por isso que ele é o único carregado de forma estática, sem `import()`.
-// O grupo `themes` guarda o que cada tema diz de diferente (a tagline muda com a hora do dia) e o grupo
+// O grupo `themes` guarda o que cada tema diz de diferente (hoje só o NOME e o `deadSub`: a tagline era a
+// outra, e virou a mesma frase curta nos três) e o grupo
 // `prefs` guarda a tela de Opções: os dois já moraram fora daqui — dentro dos três temas e cravados na
 // `prefsTable` —, e enquanto moraram lá não havia como traduzi-los sem carregar 3 idiomas em cada tema.
 import { SKINS, RARITY_LABELS } from "@warspace/shared/skins.js";
@@ -11,9 +12,9 @@ import { TIERS, FAMILIES } from "@warspace/shared/achievements.js";
 export default {
   // ── modos, equipe, chat e voz ──
   modesTitle: "ESCOLHA O MODO", modesShort: "Modos", partyTitle: "SUA EQUIPE",
-  modeFree: "LIVRE", modeFreeSub: "Arena sem fim, com asteroides, estrelas que viram supernova e mísseis. Cresça, devore e reine até o BIG CRUNCH.",
-  modeSolo: "BATTLE ROYALE", modeSoloSub: "50 planetas numa arena que fecha. Sem renascer. O último de pé leva tudo.",
-  modeTeam: "EM EQUIPE", modeTeamSub: "O mesmo battle royale, com quem você chamar — vocês não se comem e dividem massa.",
+  modeFree: "LIVRE", modeFreeSub: "Arena sem fim. Cresça, devore e reine.",
+  modeSolo: "BATTLE ROYALE", modeSoloSub: "A arena fecha. Sem renascer. O último leva tudo.",
+  modeTeam: "EM EQUIPE",
   teamSizeLabel: "TAMANHO DA EQUIPE", duo: "DUPLA", trio: "TRIO", quad: "QUARTETO",
   soloWord: "Solo", teamWord: "Equipe", createParty: "➕ CRIAR EQUIPE", joinParty: "Entrar por código", partyCode: "Código",
   copyLink: "📋 Copiar convite", linkCopied: "Convite copiado!", fillBots: "Preencher com bots", botAlly: "bot aliado", leaveParty: "Sair da equipe",
@@ -24,7 +25,7 @@ export default {
   brHint: "O último planeta de pé leva tudo. A zona fecha, e não há como renascer.",
   brCancel: "Cancelar entrada",
   aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ NO GÁS", zoneShrinking: "O GÁS ESTÁ AVANÇANDO",
-  chatTitle: "CHAT", chatHint: "Enter para falar", chatHintTouch: "Toque para falar", chatTeam: "equipe", chatPlaceholder: "Mensagem…",
+  chatTitle: "CHAT", chatHint: "T para falar", chatHintTouch: "Toque para falar", chatTeam: "equipe", chatPlaceholder: "Mensagem…",
   chatAll: "todos", chatScopeHint: "para quem você fala", chatDeadTag: "☠ ",
   playerActions: "o que fazer com este jogador", mutePlayer: "🔇 Silenciar", reportPlayer: "⚠ Denunciar",
   reportSent: "denúncia enviada", unmuteAll: "devolver a voz a todos",
@@ -67,9 +68,9 @@ export default {
   muteHint: "Mudo (M)",
   zoomHint: "Zoom manual — 0 ou o botão do meio volta ao automático",
   pauseTitle: "PAUSA", pauseHint: "Menu (Esc)", resume: "Voltar ao jogo", exitMatch: "Sair da partida",
-  ownRoom: "SALA SUA", ownRoomSub: "Você escolhe o modo, o tempo e quem entra",
+  ownRoom: "SALA SUA", ownRoomSub: "Seu modo, seu tempo, sua gente", ownOpen: "CRIAR SUA SALA",
   ownTime: "Duração", ownPrivate: "Só por convite", ownCreate: "➕ ABRIR SALA",
-  ownNeedAccount: "Precisa de conta: quem abre a sala expulsa e bane, e isso pede uma identidade que dure.",
+  ownNeedAccount: "Precisa de conta: o dono expulsa e bane.",
   hostPanel: "SUA SALA", hostKick: "Expulsar", hostBan: "Banir", hostBanned: "Banidos", hostNobody: "Só você por aqui",
   hostInvite: "Convite copiado",
   countryLabel: "País", countryHint: "Escolha seu país para entrar no ranking regional.",
@@ -136,9 +137,9 @@ export default {
   // carregar os três idiomas. As 11 comuns subiram para a base aqui em cima (são o texto que o jogador
   // sempre viu, porque tema nenhum fica desligado) e aqui embaixo fica só o que muda com a hora do dia.
   themes: {
-    dawn:   { name: "Cartoon Amanhecer",  tagline: "Conquiste a galáxia antes do dia clarear!",   deadSub: "— você virou poeira de manhã cedo —" },
-    sunset: { name: "Cartoon Crepúsculo", tagline: "Conquiste a galáxia antes do sol se pôr!",    deadSub: "— você virou poeira no fim da tarde —" },
-    dusk:   { name: "Cartoon Anoitecer",  tagline: "Conquiste a galáxia antes que a noite caia!", deadSub: "— você virou poeira ao anoitecer —" },
+    dawn:   { name: "Cartoon Amanhecer",  tagline: "Conquiste a galáxia!",   deadSub: "— você virou poeira de manhã cedo —" },
+    sunset: { name: "Cartoon Crepúsculo", tagline: "Conquiste a galáxia!",    deadSub: "— você virou poeira no fim da tarde —" },
+    dusk:   { name: "Cartoon Anoitecer",  tagline: "Conquiste a galáxia!", deadSub: "— você virou poeira ao anoitecer —" },
   },
   // ── A TELA DE OPÇÕES ──
   // ⚠️ O grupo se chama `opt` e não `prefs` porque `prefs` JÁ É uma chave de topo — o rótulo "Opções" do
@@ -244,7 +245,7 @@ export default {
   // Unidades e moldes que apareciam cravados no meio do código (`${h}h ${m}m`, `${n} min`, `${s}s`).
   // O ORDINAL tem as quatro categorias de `Intl.PluralRules` (type:"ordinal"): em português as quatro
   // são iguais, em inglês são 1st/2nd/3rd/4th. Foi ele que aposentou o array `places` do pódio.
-  fmt: { hm: "{h}h {m}m", min: "{n} min", s: "{n}s", ms: "{n} ms", px: "máx. {n}px · {kb} KB", of: "de {n}", chars: "{n} caracteres" },
+  fmt: { hm: "{h}h {m}m", min: "{n} min", planets: "{n} planetas", s: "{n}s", ms: "{n} ms", px: "máx. {n}px · {kb} KB", of: "de {n}", chars: "{n} caracteres" },
   ord: { one: "{n}º", two: "{n}º", few: "{n}º", other: "{n}º" },
   pageTitle: "warspace.io — conquiste a galáxia",
   radar: "RADAR",

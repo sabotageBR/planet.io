@@ -1,5 +1,5 @@
 // Painel de chat, à ESQUERDA e por cima do canvas (dentro de #hud, então some sozinho fora da partida).
-// Enter abre o campo, Esc fecha. Enquanto o campo tem foco o teclado do jogo fica mudo — quem faz isso é o
+// T abre o campo (o Enter também), Esc fecha. Enquanto o campo tem foco o teclado do jogo fica mudo — quem faz isso é o
 // `inInput()` do game/input/Keyboard.js, de graça: digitar "espaço" não divide o planeta.
 // As linhas somem sozinhas depois de CHAT.FADE_MS: o chat não pode virar uma parede permanente em cima do jogo.
 // O escopo (sala ou equipe) é decidido no SERVIDOR pelo modo; aqui só se mostra qual é — MENOS para quem
@@ -26,12 +26,19 @@ export default function Chat({ h, persist = false }) {
   const [avisou, setAvisou] = useState(false);
   const inp = useRef(null);
   const linhas = h.chat || [], mudos = h.mudos || [];
-  // Enter abre; o listener é da janela porque o painel não tem foco enquanto se joga
+  // T abre (o Enter continua valendo, ver abaixo); o listener é da janela porque o painel não tem foco
+  // enquanto se joga.
+  // ⚠️ `KeyT` pode ser tecla FIXA pelo mesmo argumento do `KeyK` e do `Digit0`: ela não está em
+  // `ACTION_KEYS` (shared/constants.js), a lista que `keySplit`/`keyEject` podem escolher, então não há
+  // colisão possível com uma tecla configurável.
+  // ⚠️ O `Enter` FICA como atalho, sem aparecer na dica: ele não tem outra função global fora de um campo
+  // de texto (dentro do campo ele ENVIA, logo abaixo), e é memória muscular de todo .io. Tirá-lo custaria
+  // alguma coisa e não compraria nada.
   useEffect(() => {
     if (prefs.chat === false) return;
     const kd = e => {
       const alvo = document.activeElement, digitando = alvo && /INPUT|TEXTAREA/.test(alvo.tagName);
-      if (e.code === "Enter" && !digitando) { e.preventDefault(); setOpen(true); setTimeout(() => inp.current && inp.current.focus(), 0); }
+      if ((e.code === "KeyT" || e.code === "Enter") && !digitando) { e.preventDefault(); setOpen(true); setTimeout(() => inp.current && inp.current.focus(), 0); }
       // ⚠️ `preventDefault` não é enfeite: é o que diz ao Esc de App.jsx que este já foi gasto em sair do
       // chat. Sem ele o campo perdia o foco aqui e o `escape()` de lá, vendo o foco JÁ no body, abria o
       // menu de pausa — voltar do chat para o jogo custava dois Esc.
@@ -92,7 +99,7 @@ export default function Chat({ h, persist = false }) {
       : <button className="chat-open" onClick={() => { setOpen(true); setTimeout(() => inp.current && inp.current.focus(), 0); }}>{dedo() ? LB.chatHintTouch : LB.chatHint}</button>}
   </div>;
 }
-// "Enter para falar" num aparelho que não tem Enter. Legenda que mente é pior que legenda nenhuma — é a
+// "T para falar" num aparelho que não tem teclado. Legenda que mente é pior que legenda nenhuma — é a
 // mesma razão de `keysOf(prefs)` existir para o #hud-cd. `body[data-pointer]` é escrito pelo app (a medida
 // fina é decisão do CSS), então lê-se de lá em vez de duplicar um matchMedia aqui.
 const dedo = () => typeof document !== "undefined" && document.body.dataset.pointer === "coarse";

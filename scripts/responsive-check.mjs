@@ -29,7 +29,11 @@ const APARELHOS=[   // nome, largura, altura, dedo?, modo (o mesmo que modeFor d
 // `round:<estilo>` são os TRÊS modelos da tela de fim de rodada (ui/Round.jsx). Medir um só não serve:
 // eles têm larguras de caixa diferentes (`--screen-w`), o dossiê é de duas colunas e o cinema desenha o
 // planeta do campeão com 340 px — cada um cai de um jeito diferente numa tela baixa.
-const TELAS=["entry","entry@rail","modes","lobby","rank","profile","shop","shop@rail","prefs","game",
+// ⚠️ `modes@rail` entrou porque a tela de Modos NÃO era medida na gaveta — só `entry@rail` e `shop@rail`
+// existiam aqui —, e é lá que o cartão largo aperta: na gaveta o bloco "TODA TELA NO MESMO LUGAR" não se
+// aplica (`body:not([data-shell="rail"])`), quem manda é o CSS de gaveta do tema com `--drawer-w`, e o
+// `#s-modes{--screen-w:760px}` não vale.
+const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile","shop","shop@rail","prefs","game",
   "dead:duelo","dead:balanco","dead:sala","round:podio","round:cinema","round:dossie"];
 const TEMAS=(process.env.RESP_TEMAS||"dawn,sunset,dusk").split(",");   // o dusk é o mais fraco: tem menos regras de mobile que os outros dois
 

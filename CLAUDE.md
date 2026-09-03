@@ -1879,7 +1879,34 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **O disco tem teto de 74% da coluna, não 100%**: o canvas é absoluto e mede 132% do bloco (ver o
   fim de rodada), então um disco com a largura inteira do `.dd-alvo` — que no duelo é um terço da
   caixa — empurra 16% para cada lado, e o cartão ganhava barra de rolagem horizontal na gaveta.
-- **A TELA DE MODOS: DOIS POR DOIS, E A LEGENDA DOS POWERUPS FOI PARA A AJUDA** (`ui/Modes.jsx`,
+- **A TELA DE MODOS: DOIS CARTÕES COM MASCOTE** (`ui/Modes.jsx`, o bloco "TELA DE MODOS" de `ui.css`).
+  Eram QUATRO — Livre · Solo · Em equipe · Sala sua — e a tela passava dos 1.300 px de altura: o último
+  cartão ficava cortado ao meio pela borda da caixa e ninguém via que havia mais coisa abaixo. Duas fusões
+  resolveram: **"Em equipe" virou os chips do Battle Royale** (`1 · Solo`, `2 · Dupla`, `3 · Trio`,
+  `4 · Quarteto`), porque solo e dupla nunca foram dois MODOS — é o mesmo battle royale com outro tamanho
+  de esquadrão, e tê-los como cartões irmãos fazia a tela ter quatro escolhas onde há duas; e **"Sala sua"
+  virou um BOTÃO** que revela o cartão, por ser a escolha menos usada e ocupar um quarto da tela.
+  ⚠️ **`ts` mudou de semântica**: era `teamSize>1?teamSize:2` porque solo era outro cartão, e com aquela
+  linha o chip "Solo" nunca acenderia. Hoje 1 é válido, e o botão RAMIFICA — `createParty` para 2+ e
+  `play()` para solo. Isso não pode ser unificado: `createParty` **não passa por `play()`**, e é dentro
+  de `play()` que vivem o `semNome()` e o ANÚNCIO de portal. Mandar equipe por lá daria dois prerolls;
+  não mandar o solo por lá é reprova de certificação.
+  ⚠️ **O cartão do BR deixou de ser `<button>`**: ele passou a ter chips, botão e campo de código dentro,
+  e botão dentro de botão é HTML inválido e prende o foco — a mesma razão de "Em equipe" já ser `<div>`.
+  ⚠️ **Os mascotes já estavam no bundle** (`assets/scene/planeta-laranja|planeta-azul|lua.webp`, os mesmos
+  do cenário de fundo): importados por módulo, o Vite emite UM asset compartilhado — mesma URL, mesmo
+  cache, zero byte a mais no zip de portal. Os PNG do kit somam 1,86 MB e **não** podem ir para
+  `client/public/`: a `base:"./"` do build de portal não conserta referência absoluta a `public/`.
+  ⚠️ **Os planetas do FUNDO somem nesta tela** (`body[data-screen="modes"] #cena .planeta-l/-r`): são os
+  MESMOS mascotes, e ver o Marte duas vezes — um no cartão e outro flutuando atrás dele — lê como erro de
+  montagem. A lua e os mísseis ficam, porque não se repetem ali.
+  ⚠️ **A grade é `auto-fit`, não `1fr 1fr`**: ela tem que responder ao CONTÊINER. Na GAVETA o
+  `--screen-w:760px` não vale (quem manda é o `--drawer-w` do tema) e com duas colunas fixas o botão do
+  cartão do BR ficava com 41 px de largura no iPhone SE deitado — medido pela matriz, que ganhou
+  `modes@rail` justamente porque essa combinação **não era medida**.
+  ⚠️ A LEGENDA DOS POWERUPS continua na AJUDA, em Opções, pelo motivo de sempre: quem está escolhendo o
+  modo tem pressa, quem quer saber o que é o trevo tem tempo.
+- **(histórico) A TELA DE MODOS: DOIS POR DOIS, E A LEGENDA DOS POWERUPS FOI PARA A AJUDA** (`ui/Modes.jsx`,
   `ui/Prefs.jsx`): eram QUATRO cartões numa caixa de 520 px, empilhados em quatro fileiras, e a tela
   passava de 1.300 px de altura — "Em equipe" ficava cortado ao meio pela borda e ninguém via que
   havia mais coisa abaixo. Três mudanças, e nenhuma sozinha resolvia: a caixa ficou mais larga

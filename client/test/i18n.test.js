@@ -72,10 +72,14 @@ test("os três temas continuam dizendo o que sempre disseram", () => {
   const COMUM = { title: "WARSPACE.IO", play: "JOGAR", playAuto: "🚀 JOGAR (AUTO)", lbTitle: "PÓDIO",
     dead: "KABOOM!", respawn: "DE NOVO!", reconnTitle: "SINAL FRACO!",
     reconnSub: "Procurando o satélite… tentativa {n}/5", back: "◄", create: "➕ Criar sala", top5: "TOP 5 HOJE" };
+  // ⚠️ A TAGLINE deixou de divergir por tema: as três eram variações de "antes do sol se pôr" e o pedido foi
+  // encurtar para uma frase só. O `deadSub` continua sendo o que muda com a hora — e é ele, agora, a única
+  // razão de o grupo `themes` existir. O teste segue cravando as três porque o risco não mudou: é fácil
+  // "consolidar" e trocar uma frase sem ninguém notar, em cinco telas de uma vez.
   const POR_TEMA = {
-    dawn:   { tagline: "Conquiste a galáxia antes do dia clarear!",   deadSub: "— você virou poeira de manhã cedo —" },
-    sunset: { tagline: "Conquiste a galáxia antes do sol se pôr!",    deadSub: "— você virou poeira no fim da tarde —" },
-    dusk:   { tagline: "Conquiste a galáxia antes que a noite caia!", deadSub: "— você virou poeira ao anoitecer —" },
+    dawn:   { tagline: "Conquiste a galáxia!", deadSub: "— você virou poeira de manhã cedo —" },
+    sunset: { tagline: "Conquiste a galáxia!", deadSub: "— você virou poeira no fim da tarde —" },
+    dusk:   { tagline: "Conquiste a galáxia!", deadSub: "— você virou poeira ao anoitecer —" },
   };
   for (const [tema, esperado] of Object.entries(POR_TEMA)) {
     const L = getLabels(tema);

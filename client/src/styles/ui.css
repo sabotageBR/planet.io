@@ -1768,6 +1768,12 @@ body[data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]) #s
 #cena .lua{left:14vw;bottom:6vh;width:min(150px,14vw);animation:ws-flutua-c 5.2s ease-in-out infinite}
 #cena .missil{left:20vw;top:44vh;width:min(160px,14vw);animation:ws-flutua-m 8s ease-in-out infinite}
 #cena .missil-2{right:15vw;bottom:12vh;width:min(110px,11vw);animation:ws-flutua-m2 9s ease-in-out infinite}
+/* ⚠️ NA TELA DE MODOS OS PLANETAS DO FUNDO SOMEM: eles são os MESMOS mascotes que agora moram dentro dos
+   cartões, e ver o Marte duas vezes na mesma tela — um no cartão e outro flutuando atrás dele — lê como
+   erro de montagem. A lua e os mísseis ficam: eles não se repetem ali (a lua do botão tem 30 px e vive
+   colada ao rótulo). O `body.dataset.screen` já é escrito por App.jsx, então não custou nada. */
+body[data-screen="modes"] #cena .planeta-l,
+body[data-screen="modes"] #cena .planeta-r{display:none}
 
 /* Prefixo `ws-` obrigatório: base.css já usa `spin`, `kfin`, `chatin`, `zonepulse`, `pwlow`, `lvup-*`,
    e um nome repetido é sobrescrito em silêncio. */
@@ -2016,31 +2022,61 @@ body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:non
 .screen .wrap>.sh::after{content:"";position:absolute;left:0;right:0;bottom:100%;height:24px;
   background:inherit;pointer-events:none}
 
-/* ── O CARTÃO "EM EQUIPE" OCUPA A LINHA INTEIRA ──
-   A grade é `auto-fit minmax(240px,1fr)`, ou seja duas colunas na caixa de 520 px. Livre e Battle
-   Royale são cartões curtos e ficam lado a lado; "Em equipe" tem três chips, um botão e um campo de
-   código, então é duas vezes mais alto — e ao cair na coluna esquerda deixava um BURACO do tamanho
-   dele à direita. Ocupando a linha, os controles ganham a largura que precisam e o vazio some. */
-/* A CAIXA DE MODOS É MAIS LARGA que as outras telas (a variável é lida pelo bloco "TODA TELA NO MESMO
-   LUGAR", então basta redefini-la): são QUATRO cartões, dois deles com chips, botão e campo de código.
-   Em 520 px eles empilham em quatro fileiras e a tela passa de 1.300 px de altura — o dobro do que
-   cabe. Em 760 px são duas fileiras de dois, e a tela inteira cabe sem rolar. */
+/* ── TELA DE MODOS: DOIS CARTÕES, COM MASCOTE ────────────────────────────────────────────────────
+   Eram QUATRO (Livre · Solo · Em equipe · Sala sua) e a tela passava dos 1.300 px de altura: o último
+   cartão ficava cortado ao meio pela borda da caixa e ninguém via que havia mais coisa abaixo. Hoje
+   são DOIS — "Em equipe" virou os chips do Battle Royale (solo e dupla nunca foram dois modos) e
+   "Sala sua" virou um botão que revela o cartão. A caixa continua mais larga que as outras telas
+   (a variável é lida pelo bloco "TODA TELA NO MESMO LUGAR", então basta redefini-la): dois cartões
+   com mascote, quatro chips, botão e campo de código não cabem em 520 px. */
 #s-modes{--screen-w:min(760px,100%)}
-#s-modes .modes{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
-/* os dois cartões altos dividem a segunda fileira e ficam da mesma altura (o padrão `stretch` do grid) */
-#s-modes .modes .mode-card.own{margin:0}
-/* E os cartões ENCOLHEM. Com quatro deles a tela ainda passava do rodapé da caixa — que aqui começa
-   depois do logo (`--screen-top` é a ALTURA DELE) e termina acima da barra de navegação, sobrando
-   ~590 px numa janela de 950. O que sai é folga, não informação: ícone menor, padding e entrelinha
-   mais apertados, e os chips de duração numa fileira só. */
-#s-modes .modes .mode-card{padding:12px 14px;gap:4px}
-#s-modes .modes .mode-ico{font-size:26px}
-#s-modes .modes .mode-card b{font-size:1.15em}
-#s-modes .modes .mode-card span{font-size:.85em;line-height:1.25}
-#s-modes .modes .mode-card.team{gap:7px}
-#s-modes .modes .own-row{gap:5px;flex-wrap:wrap}
-#s-modes .modes .own-priv{margin:0}
-#s-modes .modes .chip-btn{padding:5px 9px}
+/* ⚠️ `auto-fit`, e não `1fr 1fr` fixo: a grade tem que responder ao CONTÊINER, não à viewport. Na GAVETA
+   (`data-shell="rail"`, depois da primeira partida) o `--screen-w:760px` não vale e quem manda é o
+   `--drawer-w` do tema — com duas colunas fixas ali, o botão do cartão do Battle Royale ficava com 41 px
+   de largura no iPhone SE deitado, medido pela matriz. É o mesmo argumento dos seis botões da tela
+   inicial: coluna FIXA foi exatamente o que produziu alvos de 37 px lá. */
+#s-modes .modes.duo{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+/* o mascote mora no canto de baixo do cartão e o texto reserva a faixa dele com padding — sem isso o
+   subtítulo passa por baixo do planeta e fica ilegível justo no cartão em que se clica */
+#s-modes .mode-card.grande{position:relative;overflow:hidden;min-height:180px}
+#s-modes .mode-mascote{position:absolute;pointer-events:none;user-select:none;height:auto;
+  filter:drop-shadow(0 6px 14px rgba(0,0,0,.4))}
+/* ⚠️ O mascote fica em lugares DIFERENTES nos dois cartões, e a razão é o conteúdo. O de LIVRE tem duas
+   linhas de texto e nada mais — o cartão fica vazio embaixo (a grade estica os dois à mesma altura), e é
+   esse vazio que o Marte preenche, grande. O do Battle Royale tem quatro chips, um botão e um campo de
+   código: ali embaixo o planeta passaria POR CIMA do campo, então a Terra vai para o alto, pequena, ao
+   lado do título. `padding-right` só onde ela realmente disputa espaço com o texto. */
+#s-modes .mode-card[data-mode="free"] .mode-mascote{right:-8px;bottom:-8px;width:clamp(96px,44%,190px)}
+#s-modes .mode-card[data-mode="br"] .mode-mascote{right:2px;top:6px;width:clamp(52px,20%,72px)}
+/* só o CABEÇALHO divide espaço com a Terra; os controles usam a largura inteira do cartão. Reservar a
+   faixa no cartão (com `padding-right`) e depois devolvê-la com margem negativa nos filhos funcionava,
+   mas é o tipo de acrobacia que a próxima pessoa desfaz sem saber por que existia. */
+#s-modes .mode-card[data-mode="br"]>b,
+#s-modes .mode-card[data-mode="br"]>span{padding-right:78px}
+/* o botão que revela "Sala sua": a lua ao lado do rótulo, e o cartão nasce logo abaixo */
+#s-modes .own-toggle{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:2px}
+#s-modes .own-mascote{width:30px;height:auto;pointer-events:none}
+#s-modes .mode-card.own{margin:0}
+/* Os cartões ENCOLHEM no que é folga (não em informação): a caixa começa depois do logo
+   (`--screen-top` é a ALTURA DELE) e termina acima da barra de navegação. */
+#s-modes .mode-card{padding:12px 14px;gap:4px}
+#s-modes .mode-card b{font-size:1.15em}
+#s-modes .mode-card span{font-size:.85em;line-height:1.25}
+#s-modes .mode-card.br{gap:7px}
+#s-modes .own-row{gap:5px;flex-wrap:wrap}
+#s-modes .own-priv{margin:0}
+#s-modes .chip-btn{padding:5px 9px}
+/* ⚠️ Quatro chips em vez de três: eles QUEBRAM em duas linhas no dedo (`min-width:44px` mais o
+   `flex-wrap` do `.team-sizes`), e é isso que faz o cartão crescer em retrato. `min-width:0` para o
+   texto do chip poder encolher em vez de esticar a fileira. */
+/* ⚠️ `flex:0 1 auto` (não cresce): com `1 1` o quarto chip, sozinho na segunda fileira, esticava para a
+   largura inteira do cartão e ficava do tamanho do botão JOGAR. Sem crescer, os quatro ficam do tamanho
+   do próprio texto e a quebra fica discreta. */
+#s-modes .team-sizes .chip-btn{min-width:0;flex:0 1 auto}
+/* ⚠️ Mas o alvo de 44 px do dedo continua valendo, e é ele que o `min-width:0` acima atropelava: medido na
+   matriz, os quatro chips ficavam com 41 px de largura na gaveta do iPhone SE deitado. Aqui eles voltam ao
+   piso e QUEBRAM em duas fileiras, que é o certo — o `.team-sizes` já é `flex-wrap`. */
+body[data-pointer="coarse"] #s-modes .team-sizes .chip-btn{min-width:44px}
 
 /* ── A EQUIPE CAMPEÃ INTEIRA (ui/Round.jsx) ──────────────────────────────────────────────────────
    Vitória de esquadrão anunciava um vencedor só: `champTeam` chegava null porque a linha do placar
