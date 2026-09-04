@@ -26,12 +26,30 @@ export function createColetor({config,rooms,bus,metrics,log}){
   /** @type {Set<any>} respostas HTTP com o stream aberto */const clientes=new Set();
   /** @type {Map<number,{seq:number,epoch:number}>} onde cada shard parou */const cursores=new Map();
   /** @type {Map<string,number>} peer → shard, aprendido na 1ª resposta dele */const shardDoPeer=new Map();
+  /**
+   * Quando cada peer que NUNCA respondeu deve ser sondado de novo.
+   * ⚠️ `config.peers` sai de `SHARDS` (24), mas quem decide quantos pods existem é o HPA — hoje 3. Ou seja,
+   * 21 dos 23 nomes simplesmente não resolvem no DNS, e sem isto o coletor os consultaria UMA VEZ POR
+   * SEGUNDO, para sempre, por admin conectado. Um peer desconhecido passa a ser sondado a cada
+   * `SONDA_MS`, o que mantém o custo proporcional aos pods que EXISTEM e ainda detecta em ≤15 s um pod
+   * novo que o HPA acabou de subir.
+   */
+  /** @type {Map<string,number>} */const sondarEm=new Map();
   /** @type {any[]} anel agregado, para a retomada de quem reconecta */let historico=[];
   /** @type {any[]} saúde de cada irmão na última coleta (o `24/24` do painel) */let saude=[];
-  let timer=null,timerKpi=null,timerPing=null,coletando=false,auth=null;
+  let timer=null,timerKpi=null,timerPing=null,auth=null;
+  /** @type {Promise<void>|null} a coleta em voo — ver o porquê de ela ser AGUARDÁVEL em `coleta()`. */
+  let emVoo=null;
   let seqSaida=0;   // numeração do STREAM, o que vira `id:` do SSE
 
   const cursor=s=>cursores.get(s)||{seq:0,epoch:0};
+  /** Os peers que vale a pena perguntar AGORA: os já conhecidos, mais os desconhecidos cuja sonda venceu. */
+  const aPerguntar=()=>{const agora=Date.now();
+    return config.peers.filter(p=>shardDoPeer.has(p)||(sondarEm.get(p)||0)<=agora);};
+  /** Registra o resultado de um peer, e agenda a próxima sonda de quem continua sem responder. */
+  const anota=(p,ok,shard)=>{
+    if(ok){shardDoPeer.set(p,shard);sondarEm.delete(p);}
+    else if(!shardDoPeer.has(p))sondarEm.set(p,Date.now()+ADMIN_BUS.SONDA_MS);};
 
   /** Escreve um frame SSE em todos os clientes; quem falhar sai da lista (socket morto). */
   function emite(evento,dados,id){
@@ -50,13 +68,21 @@ export function createColetor({config,rooms,bus,metrics,log}){
 
   /**
    * Uma volta do fan-in: o próprio pod + os 23 irmãos, cada um a partir do cursor DELE.
-   * ⚠️ Reentrância barrada por `coletando`: com peers lentos (o timeout é de 1200 ms) duas voltas se
-   * sobreporiam e o mesmo evento sairia duas vezes com `seq` do stream diferente — ou seja, duplicata que
-   * a deduplicação do cliente NÃO pega, porque ela é por `(shard,seq)` de origem.
+   * ⚠️ Reentrância barrada: com peers lentos (o timeout é de 1200 ms) duas voltas se sobreporiam e o mesmo
+   * evento sairia duas vezes com `seq` de stream diferente — duplicata que a deduplicação do cliente NÃO
+   * pega, porque ela é por `(shard,seq)` de ORIGEM.
+   * ⚠️ Mas a volta em voo é AGUARDADA, nunca pulada. Pulando, um `liga()` que caísse em cima de uma coleta
+   * lenta emitiria o primeiro KPI ANTES de qualquer peer ter sido descoberto — e a tela abriria anunciando
+   * "1/1 shards" para depois virar "2/2". Foi assim que o teste do KPI de abertura quebrou quando rodou
+   * junto dos outros e passou sozinho.
    */
-  async function coleta(){
-    if(coletando||!clientes.size)return;
-    coletando=true;
+  function coleta(){
+    if(!clientes.size)return Promise.resolve();
+    if(emVoo)return emVoo;
+    emVoo=volta().finally(()=>{emVoo=null;});
+    return emVoo;
+  }
+  async function volta(){
     try{
       /** @type {any[]} */const lote=[];
       const marca=(shard,r)=>{
@@ -73,17 +99,25 @@ export function createColetor({config,rooms,bus,metrics,log}){
       const meu=cursor(config.shard);
       marca(config.shard,bus.desde(meu.seq,meu.epoch||undefined));
 
-      if(config.peers.length){
-        const rs=await tellPeers(config.peers,{method:'GET',auth,log,
+      const alvos=aPerguntar();
+      if(alvos.length){
+        const rs=await tellPeers(alvos,{method:'GET',auth,log,
           // ⚠️ path por PEER: cada irmão é perguntado a partir do cursor dele (ver peers.js).
           path:p=>{const s=shardDoPeer.get(p);const c=s==null?{seq:0,epoch:0}:cursor(s);
             return `/internal/admin/live?since=${c.seq}&epoch=${c.epoch}`;}});
-        saude=rs.map(r=>({shard:r.body&&r.body.shard,peer:r.peer,ok:!r.error&&r.status===200}));
         for(const r of rs){
-          const b=r.body;
-          if(!b||typeof b.shard!=='number')continue;
-          shardDoPeer.set(r.peer,b.shard);
-          marca(b.shard,b);}}
+          const b=r.body,ok=!r.error&&r.status===200&&b&&typeof b.shard==='number';
+          anota(r.peer,ok,ok?b.shard:null);
+          if(ok)marca(b.shard,b);}
+        // ⚠️ A SAÚDE SÓ CONTA QUEM JÁ EXISTIU. Um índice acima do `replicas` do HPA não é um shard mudo —
+        // é um shard que nunca houve, e pô-lo no denominador faria o painel anunciar "3/24" em vermelho
+        // para sempre num cluster perfeitamente saudável. Quem some depois de ter respondido continua
+        // aparecendo, que é exatamente o alarme que interessa.
+        saude=config.peers.filter(p=>shardDoPeer.has(p)).map(p=>{
+          const r=rs.find(x=>x.peer===p);
+          return{shard:shardDoPeer.get(p),peer:p,ok:!!(r&&!r.error&&r.status===200)};});}
+      // `aPerguntar` SEMPRE inclui os conhecidos, então cair aqui significa que ainda não há nenhum: shard
+      // único (dev) ou todas as sondas pendentes. Nos dois casos a resposta honesta é lista vazia.
       else saude=[];
 
       if(!lote.length)return;
@@ -94,7 +128,6 @@ export function createColetor({config,rooms,bus,metrics,log}){
       guarda(lote);
       emite('ev',lote,String(++seqSaida));
     }catch(e){if(log)log.warn('coletor: falha na coleta:',e&&e.message);}
-    finally{coletando=false;}
   }
 
   /**
@@ -106,9 +139,10 @@ export function createColetor({config,rooms,bus,metrics,log}){
     if(!clientes.size)return;
     const meu=local();
     const fragmentos=[meu];
-    if(config.peers.length){
-      const rs=await tellPeers(config.peers,{path:'/internal/admin/kpis',method:'GET',auth,log});
-      saude=rs.map(r=>({shard:r.body&&r.body.shard,peer:r.peer,ok:!r.error&&r.status===200}));
+    // Só os peers que EXISTEM (ver `aPerguntar`): o KPI não sonda, quem sonda é a coleta de eventos.
+    const alvos=config.peers.filter(p=>shardDoPeer.has(p));
+    if(alvos.length){
+      const rs=await tellPeers(alvos,{path:'/internal/admin/kpis',method:'GET',auth,log});
       for(const r of rs)if(r.body&&typeof r.body.shard==='number')fragmentos.push(r.body);}
     emite('kpi',agrega(fragmentos));
   }
@@ -182,7 +216,10 @@ export function createColetor({config,rooms,bus,metrics,log}){
         // um teste que esqueça de fechar o stream não fica pendurado por causa do painel.
         for(const t of [timer,timerKpi,timerPing])if(t&&t.unref)t.unref();
       }
-      kpis().catch(()=>{});   // a primeira pintura não espera 3 s
+      // ⚠️ A PRIMEIRA COLETA VEM ANTES DO PRIMEIRO KPI, e não é ordem à toa: é ela que DESCOBRE quais
+      // peers existem (`shardDoPeer`), e o KPI só conta os conhecidos. Invertido, a primeira pintura
+      // anuncia "1/1" e um segundo depois vira "2/2" — um pisca no indicador mais visível da tela.
+      coleta().then(()=>kpis()).catch(()=>{});
     },
     /**
      * ⚠️ PARAR OS TIMERS NO ÚLTIMO CLIENTE é obrigatório: sem isso o pod segue batendo em 23 irmãos para

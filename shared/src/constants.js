@@ -1170,7 +1170,11 @@ export const NOTICE={MAX_CHARS:200,TTL_MS:12000,LEVELS:['info','warn']};
 // coletor novo contra 24 anéis cheios pediria 24 576 eventos numa resposta só (megabytes, na primeira
 // pintura da tela), e marcar isso como LACUNA diria "perdi 1024 eventos" a quem acabou de abrir o painel
 // e não tinha o que perder. Cursor zero é ESTREIA, nunca atraso.
-export const ADMIN_BUS={RING:1024,ESTREIA:40,AWAKE_MS:15000,FANIN_MS:1000,KPI_MS:3000,PING_MS:15000,
+// ⚠️ `SONDA_MS` existe porque `config.peers` sai de `SHARDS` (24 no ConfigMap) mas quem decide quantos
+// pods EXISTEM é o HPA — e ele vive em 3. Sem espaçar a sonda dos nomes que não resolvem, o coletor
+// bateria em 21 pods inexistentes uma vez por segundo, para sempre. E eles também não entram no
+// denominador do KPI de shards: "3/24 em vermelho" num cluster saudável é alarme falso permanente.
+export const ADMIN_BUS={RING:1024,ESTREIA:40,AWAKE_MS:15000,FANIN_MS:1000,KPI_MS:3000,PING_MS:15000,SONDA_MS:15000,
   AUTH_TTL_MS:10000,MAX_STREAMS:4,ABRE:{n:12,win:60000},
   // Cliente: janela das sparklines (60 amostras a 1 Hz = o último minuto), tamanho do anel da tela,
   // cadência de publicação do React e o cão de guarda que detecta stream morto sem evento nenhum.

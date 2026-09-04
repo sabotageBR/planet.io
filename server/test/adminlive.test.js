@@ -129,6 +129,27 @@ test('ao vivo: sem ninguém olhando o barramento DORME (o custo em produção é
     'a vigília tem que cobrir mais de uma coleta, senão o pod dorme entre duas e ninguém percebe');
 });
 
+test('ao vivo: shard que NUNCA existiu não entra no denominador (o "3/24" falso)',async t=>{
+  if(pula())return t.skip('sem banco');
+  // Em produção o ConfigMap diz SHARDS=24 e o HPA mantém 3 pods: 21 dos nomes de peer simplesmente não
+  // resolvem. Contá-los como "mudos" faria o painel gritar num cluster saudável — e sondá-los a cada
+  // segundo seria bater em 21 endereços inexistentes para sempre.
+  const C=await startServer({port:0,shard:5,shards:9,logLevel:'silent',migrateOnStart:false,
+    peers:[`127.0.0.1:${B.port}`,'127.0.0.1:9','127.0.0.1:9']});   // um vivo, dois que não existem
+  try{
+    const r=await fetch(`http://127.0.0.1:${C.port}/api/admin/live`,
+      {headers:{authorization:'Bearer '+painel,accept:'text/event-stream'}});
+    const rd=r.body.getReader(),dec=new TextDecoder();let acc='';
+    const t0=Date.now();
+    while(Date.now()-t0<2500){const {value,done}=await rd.read();if(done)break;acc+=dec.decode(value,{stream:true});}
+    try{await rd.cancel();}catch{}
+    const bloco=acc.split('\n\n').filter(b=>b.includes('event: kpi')).pop();
+    const kpi=JSON.parse(/^data: (.*)$/m.exec(bloco)[1]);
+    assert.equal(kpi.shardsTot,2,'o local mais o irmão que respondeu — os dois inexistentes ficam de fora');
+    assert.equal(kpi.shardsOk,2,'e nenhum deles aparece como "mudo"');
+  }finally{await C.close();}
+});
+
 test('ao vivo: o teto de streams responde 503 (capacidade), não 429 (espere)',async t=>{
   if(pula())return t.skip('sem banco');
   const abertos=[];
