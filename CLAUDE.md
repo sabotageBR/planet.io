@@ -2071,8 +2071,21 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   quando o React REUSA o componente. Sem a chave, um segundo `roundEnd` durante a abertura do primeiro
   herda os timers velhos e a animação nova é cortada no meio pelo `onDone` da anterior — foi medido
   assim, com dois `mostrarTela("round")` em sequência.
-  ⚠️ A contagem para a próxima sala parte de `prontoAt` (o instante em que o placar apareceu), não de
+  ⚠️ A contagem para a próxima sala parte de `pronto` (o instante em que o placar apareceu), não de
   `r.at`: senão a animação comeria 2 dos 15 segundos que o jogador tem para decidir.
+  ⚠️ **E ESSE INSTANTE TEM QUE CARREGAR A RODADA A QUE PERTENCE** (`{chave,at}`, `ui/roundClock.js`):
+  guardado como número solto, ele PULAVA a tela inteira na SEGUNDA virada de rodada da mesma carga da
+  página — o jogador via o mundo explodir e caía direto numa sala nova, sem placar, sem campeão e sem
+  contagem. O mecanismo é a ordem de execução do React: o `setPronto` do efeito que reinicia a tela só
+  vale no render SEGUINTE, então o efeito da CONTAGEM, no mesmo passo, ainda lia o `at` da rodada
+  ANTERIOR — um instante 15 s no passado — e o primeiro `tick()` chamava `play({})`. Medido em dev:
+  `roundEnd` às 113,1 s e o `quit` às 113,2 s, contra os ~17 s certos. E **o defeito ALTERNAVA** (1ª
+  virada boa, 2ª pulada, 3ª boa), porque o passo que disparava cedo ainda deixava o zero gravado para a
+  seguinte — o que explica por que ele sobreviveu desde `65431a0`: quem testa uma rodada nunca o vê.
+  ⚠️ O prazo virou **função pura** (`prazoDe`, no molde de `game/quality.js` e `admin/ordenar.js`)
+  porque o defeito é de PROVENIÊNCIA, não de aritmética, e não há jsdom no projeto para exercitar o
+  componente. Quem prova é `client/test/round-clock.test.js`, cujo teste central é literalmente "o
+  instante da rodada anterior nunca vence a contagem da atual".
   **OS TRÊS MODELOS** são três ARRANJOS das mesmas peças, e nenhum esconde o que outro mostra — só muda
   onde a tabela do resto começa (`CORTE`), porque o que a tela de cima já desenhou não se repete
   embaixo. `podio` é o pódio de sempre com o 1º em tamanho de campeão (e por isso a FAIXA saiu: o

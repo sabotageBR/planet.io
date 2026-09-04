@@ -29,6 +29,7 @@ import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
 import RoundIntro from "./RoundIntro.jsx";
 import { fmt, ord } from "./format.js";
+import { chaveDe, prazoDe } from "./roundClock.js";
 import { sfx } from "../audio/index.js";
 
 const ESTILOS = ["podio", "cinema", "dossie"];
@@ -129,29 +130,32 @@ export default function Round({ on }) {
   const r = useStore(app, s => s.roundResult), rew = useStore(app, s => s.rewards), pending = useStore(app, s => s.rewardsPending);
   const prefs = useStore(app, s => s.session.prefs);
   const estilo = estiloDe(prefs);
-  // A abertura é pulável, desligável (`roundIntro`) e obedece a "reduzir movimento". `prontoAt` é o
-  // instante em que o placar de fato apareceu: é dele que a contagem para a próxima sala parte, senão
-  // a animação comeria 2 dos 15 segundos que o jogador tem para decidir.
+  // A abertura é pulável, desligável (`roundIntro`) e obedece a "reduzir movimento". `pronto` é o
+  // instante em que o placar de fato apareceu — com a RODADA a que ele pertence: é dele que a contagem
+  // para a próxima sala parte, senão a animação comeria 2 dos 15 segundos que o jogador tem para decidir.
   const quer = prefs.roundIntro !== false && !prefs.reduceMotion;
-  const [intro, setIntro] = useState(false), [prontoAt, setProntoAt] = useState(0);
+  const [intro, setIntro] = useState(false), [pronto, setPronto] = useState({ chave: "", at: 0 });
   const [left, setLeft] = useState(0), fired = useRef(false);
-  const chave = r ? (r.code || "") + ":" + (r.at || 0) : "";
+  // ⚠️ O INSTANTE EM QUE O PLACAR FICOU PRONTO CARREGA A RODADA A QUE PERTENCE, e isso não é zelo: sem a
+  // chave, a SEGUNDA virada de rodada da mesma carga da página PULAVA a tela inteira. O porquê, o número
+  // medido e o motivo de o prazo ser função pura estão em `roundClock.js`.
+  const chave = chaveDe(r);
   // ⚠️ O ramo `!quer` TAMBÉM solta o cartão de recompensa, e isso não é simetria gratuita: a sonda de
   // responsividade (`scripts/responsive-check.mjs`) abre esta tela por `mostrarTela("round:<estilo>")`,
   // que DESLIGA a abertura e dispara um `onRewards` falso — se o portão só existisse no `onDone` do
   // RoundIntro, o cartão nunca sairia ali, e quem tem "reduzir movimento" ligado ficaria sem ele para
   // sempre.
   useEffect(() => { if (!on || !r) { setIntro(false); return; }
-    setIntro(quer); if (!quer) { setProntoAt(Date.now()); sfx("podium"); soltaLevelUp(); } else setProntoAt(0);
+    setIntro(quer); if (!quer) { setPronto({ chave, at: Date.now() }); sfx("podium"); soltaLevelUp(); } else setPronto({ chave, at: 0 });
   }, [on, chave]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!on || !r || intro) return;
     fired.current = false;
-    const end = (prontoAt || r.at || Date.now()) + (r.nextInMs || 15000);
+    const end = prazoDe(r, chave, pronto, Date.now());
     const tick = () => { const s = Math.max(0, Math.ceil((end - Date.now()) / 1000)); setLeft(s);
       if (s <= 0 && !fired.current) { fired.current = true; play({}); } };
     tick(); const t = setInterval(tick, 250); return () => clearInterval(t);
-  }, [on, r, intro, prontoAt]);
+  }, [on, r, intro, chave, pronto]);
   const board = useMemo(() => (r && r.board) || [], [r]);
   if (!on || !r) return <div className={"screen" + (on ? " on" : "")} id="s-round" />;
   const mine = r.mySlot, corte = CORTE[estilo];
@@ -192,7 +196,7 @@ export default function Round({ on }) {
   // o componente. Sem a chave, um segundo `roundEnd` chegando durante a abertura do primeiro herdaria os
   // timers velhos — a animação recomeçaria e seria cortada no meio pelo `onDone` da anterior.
   if (intro) return <div className="screen on" id="s-round" data-style={estilo}>
-    <RoundIntro key={chave} champ={champ} title={titulo} onDone={() => { setIntro(false); setProntoAt(Date.now()); soltaLevelUp(); }} />
+    <RoundIntro key={chave} champ={champ} title={titulo} onDone={() => { setIntro(false); setPronto({ chave, at: Date.now() }); soltaLevelUp(); }} />
   </div>;
   const d = r.destaques || null;
   const cabeca = <>
