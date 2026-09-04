@@ -345,6 +345,10 @@ export const EJECT_MASS=EJECT.R_MIN*EJECT.R_MIN*EJECT.MASS_FACTOR;
 export const fragR=m=>{const r=Math.sqrt(m);return r<FRAG.R_MIN?FRAG.R_MIN:r>FRAG.R_MAX?FRAG.R_MAX:r;};
 /** Fragmento gordo dura o dobro: o pedaço de um planetão sumiria antes de dar tempo de dar meia-volta. */
 export const fragLife=m=>m>=FRAG.RICH_MASS?FRAG.RICH_LIFE_TICKS:FRAG.LIFE_TICKS;
+/** Quit voluntário: cada peça viva estoura como supernova (rules.explodeQuit), massa inteira em N pelotas
+ * sem dono. NOVA_R é o mesmo papel de STAR.NOVA_R (raio de estouro = r·NOVA_R), mas 8× não escala para uma
+ * peça no PLAYER.MAX_R (1250) — daria um estouro maior que a distância de segurança de spawn — daí o teto. */
+export const QUIT={N:12,SPEED:600,NOVA_R:3,NOVA_R_MAX:900};
 // fragmento = massa ejetada com VALOR VARIÁVEL: r² ≠ mass (só o ejetado tem essa liberdade, ver body.js). O que sai
 // de um planeta grande (lasca, míssil, horizonte do buraco) carrega a massa real que ele perdeu, então vale mais
 // para QUEM PEGAR do que um fragmento qualquer; acima de RICH_MASS ele fica "gordo" (vida dobrada e o ímã o

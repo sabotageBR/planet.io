@@ -178,7 +178,9 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
           const r=s.room;
           if(msg.act==='kick'||msg.act==='ban')r.hostKick(msg.pid|0,{ban:msg.act==='ban'});
           r.sendHost(s);break;}
-        case 'quit':if(s.room&&s.slot>=0)s.room.leave(s,'left');break;
+        // `explode=true`: só o quit voluntário estoura o planeta (kick/ban e o timeout de detach continuam
+        // silenciosos); a causa gravada no banco continua 'left' — não confundir os dois parâmetros.
+        case 'quit':if(s.room&&s.slot>=0)s.room.leave(s,'left',true);break;
         // Renascer na MESMA sessão (Livre). A Room valida tudo e responde `{t:'alive'}`; recusando, ela não
         // manda nada e o cliente cai sozinho no caminho antigo de `leave`+`join`, que continua inteiro.
         case 'respawn':if(s.room&&s.slot>=0)s.room.respawn(s);break;

@@ -498,8 +498,12 @@ export class Room{
    * está morto, então a conta caía aqui do mesmo jeito: cancelar a entrada gravava uma partida de score 0
    * com a duração da sala de espera, e cinco desistências viravam cinco jogos no histórico de quem nunca
    * jogou. Isto vale para toda saída na fase de espera, inclusive a expiração por `housekeeping`.
+   * `explode`: SÓ o `{t:'quit'}` voluntário manda `true` — kick/ban e o timeout de `detach` continuam
+   * removendo em silêncio. Deliberadamente SEPARADO de `cause` (que grava `matches.cause` e cujo CHECK só
+   * conhece 'left' — ver o aviso em `hostKick`): misturar os dois faria um quit gravar uma causa nova no
+   * banco e quebrar em silêncio, ou faria kick/ban herdar a explosão de graça.
    */
-  leave(session,cause='left'){
+  leave(session,cause='left',explode=false){
     const slot=session.slot;if(this.sessions.get(slot)!==session)return;const gp=this.sim.players.get(slot);
     if(gp&&!gp.dead&&gp.sessionId&&this.phase!=='lobby'){const hooks=this.sim.hooks;
       Promise.resolve().then(()=>hooks.onMatchEnd({sessionId:gp.sessionId,cause,killedBySessionId:null,score:gp.score,maxMass:Math.round(gp.maxMass),durationMs:Math.round((this.sim.tick-gp.joinedTick)*1000/TICK_HZ)}))
@@ -517,7 +521,7 @@ export class Room{
     if(gp&&gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());   // sem isto a sala vira lista negra e quem sai não volta com o próprio nome
     this.flagsDirty=true;
     if(this.avatars.has(slot))this._setAvatar(slot,null,null);
-    this.sim.remove(slot);this.sessions.delete(slot);session.room=null;session.slot=-1;session.known.clear();session.specSlot=-1;this.lastHumanAt=Date.now();
+    this.sim.remove(slot,explode);this.sessions.delete(slot);session.room=null;session.slot=-1;session.known.clear();session.specSlot=-1;this.lastHumanAt=Date.now();
     if(this.hostUserId!=null){const h=this.hostSession();if(h)this.sendHost(h);}}
   /** Socket caiu: fica no mundo sem thrust (alvo = centróide) até resume ou expirar. */
   detach(session){if(this.sessions.get(session.slot)!==session)return;if(session.kicked)return this.leave(session,'left');session.detach();

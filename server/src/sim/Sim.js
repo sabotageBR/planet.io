@@ -14,7 +14,7 @@ import {kdOf} from '@warspace/shared/levels.js';
 import {packDir} from '@warspace/shared/util.js';
 import {NOOP_HOOKS} from './hooks.js';
 import {BotBrain} from '@warspace/shared/bot.js';
-import {incomingMissile,ammoOf,ownedMask,outOfZone} from '@warspace/shared/physics/rules.js';
+import {incomingMissile,ammoOf,ownedMask,outOfZone,explodeQuit} from '@warspace/shared/physics/rules.js';
 import {firstLive} from '@warspace/shared/physics/body.js';
 
 export const NO_SLOT=0xffff;
@@ -99,7 +99,12 @@ export class Sim{
     if(gp)gp.team=team;if(ps)ps.team=team;this.playersDirty=true;}
   /** Porta de entrada dos bots: o cérebro (shared/bot.js) só produz {tx,ty,flags} e cai no mesmo applyInput do humano. */
   _botInput=(slot,cmd)=>{this.applyInput(slot,cmd);};
-  remove(slot){const gp=this.players.get(slot);if(!gp)return;
+  /** `explode`: só o quit voluntário (ver `Room.leave`) — estoura cada peça viva como supernova ANTES de
+   * `removePlayer` apagar posição/massa; `addHuman`/`addBot` chamam `remove` sem isto ao reciclar um slot.
+   * `explodeQuit` não empurra `w.events` (chamado fora do passo de física — ver o aviso lá), então quem
+   * avisa o fio é aqui mesmo, por `_ev`/`wireEvents`, no molde do que `_consume` já faz para SUPERNOVA. */
+  remove(slot,explode=false){const gp=this.players.get(slot);if(!gp)return;
+    if(explode)for(const b of explodeQuit(this.world,this.world.piecesOf(slot)))this._ev(EVENT.SUPERNOVA,b.x,b.y,b.r,NO_SLOT,NO_SLOT,0);
     for(const pc of this.world.piecesOf(slot))if(!pc.dead)this.gone.set(pc.id,REMOVE.DESPAWN);
     this.world.removePlayer(slot);this.players.delete(slot);this._lastHit.delete(slot);this.playersDirty=true;}
   /**

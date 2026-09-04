@@ -9,10 +9,10 @@ import {createWorld,createGrid,createBody,setR,addBoost,boostLeft,velX,velY,tryM
 import {zoomFor,focusOf,aoiScaleFood,zoomSpan,clampZoom} from "../src/camera.js";
 import {vmaxFor} from "../src/physics/integrate.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,ejectR,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,isWeaponFood,EAT,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT,ZOOM} from "../src/constants.js";
+import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,ejectR,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,isWeaponFood,EAT,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT,ZOOM,QUIT} from "../src/constants.js";
 import {KIND,PIECE_FLAG,FOOD_FLAG,STAR_PHASE,INPUT_FLAG,FRAG_KIND} from "../src/protocol/constants.js";
 import {BotBrain} from "../src/bot.js";
-import {starShatter,STUCK_STAR,STUCK_ASTEROID} from "../src/physics/rules.js";
+import {starShatter,STUCK_STAR,STUCK_ASTEROID,explodeQuit} from "../src/physics/rules.js";
 
 const SRC=join(dirname(fileURLToPath(import.meta.url)),"..","src");
 const empty=(seed=1)=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false});   // laboratório: sem decaimento, que mexeria em toda asserção de massa exata (há teste próprio para ele)
@@ -128,6 +128,32 @@ test("buraco negro: quem cabe no núcleo é esmagado e vira pellets; quem é mai
   assert.ok(w.players.get(1).alive&&!big.dead,"maior que rc·CRUSH_K: atravessa o núcleo e nada acontece");
   assert.ok(Math.abs(big.mass-bm)<1e-6,"e não perde massa nenhuma");
   assert.ok(Math.hypot(big.vx,big.vy)>1,"mas a gravidade continua puxando o gigante");});
+
+// 7b. quit voluntário: explodeQuit (Sim.remove chama isto ANTES de removePlayer apagar as peças)
+test("quit: a peça viva estoura como supernova, e a massa dela vira pelotas sem dono que somam exatamente o que ela tinha",()=>{
+  const w=empty(21);const pc=w.addPlayer(0,{x:4000,y:4000,r:200});const m0=pc.mass;
+  const bursts=explodeQuit(w,w.piecesOf(0));
+  assert.equal(bursts.length,1,"uma peça viva → um estouro");
+  assert.equal(bursts[0].x,pc.x);assert.equal(bursts[0].y,pc.y,"o estouro nasce na posição da PEÇA");
+  assert.equal(bursts[0].r,Math.min(pc.r*QUIT.NOVA_R,QUIT.NOVA_R_MAX));
+  const pel=w.ejected.filter(e=>e.owner===-1);
+  assert.equal(pel.length,QUIT.N,"a massa virou QUIT.N pelotas");
+  assert.ok(pel.every(e=>e.type===FRAG_KIND.NOVA),"marcadas FRAG_KIND.NOVA, o mesmo brilho da supernova de estrela");
+  assert.ok(Math.abs(pel.reduce((a,e)=>a+e.mass,0)-m0)<1e-6,"e somam EXATAMENTE a massa da peça: nada evapora");
+  assert.equal(pc.dead,false,"explodeQuit só espalha a massa — quem apaga a peça é removePlayer, chamado depois");});
+
+// 7c. quit voluntário com peças divididas: cada peça estoura na PRÓPRIA posição, não num centróide comum
+test("quit: jogador dividido (split) estoura CADA peça na própria posição, e a massa total continua batendo",()=>{
+  const w=empty(22);w.addPlayer(0,{x:3000,y:3000,r:120});w.setTarget(0,3600,3200);w.requestSplit(0);w.step();
+  const pieces=w.piecesOf(0);assert.equal(pieces.length,2,"split de verdade: duas peças vivas");
+  const m0=pieces.reduce((a,p)=>a+p.mass,0);
+  const bursts=explodeQuit(w,pieces);
+  assert.equal(bursts.length,2,"um estouro por peça viva");
+  for(let i=0;i<pieces.length;i++){assert.equal(bursts[i].x,pieces[i].x);assert.equal(bursts[i].y,pieces[i].y);}
+  assert.notEqual(bursts[0].x,bursts[1].x,"as duas peças já se separaram: os estouros não coincidem");
+  const pel=w.ejected.filter(e=>e.owner===-1);
+  assert.equal(pel.length,QUIT.N*2,"QUIT.N pelotas por peça");
+  assert.ok(Math.abs(pel.reduce((a,e)=>a+e.mass,0)-m0)<1e-6,"soma das duas peças, sem perder nem duplicar massa");});
 
 // 8. predição usa as mesmas funções (peça própria isolada = servidor)
 test("predição: stepOwnPieces reproduz o servidor para um jogador isolado",()=>{

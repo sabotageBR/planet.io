@@ -8,7 +8,7 @@
 //    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire (tiro mirado trava no alvo do cone) ──
 // Todas recebem o mundo `w` (ids, rng, eventos, jogadores); toda aleatoriedade passa por w.rng.
 // @ts-check
-import {DT,WORLD,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,isWeaponFood,ASTEROID,BLACKHOLE,MISSILE,aimScore,POWERUP,STAR,ZONE,WEAPON,WEAPONS,weaponOf,weaponOfFood} from "../constants.js";
+import {DT,WORLD,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,isWeaponFood,ASTEROID,BLACKHOLE,MISSILE,aimScore,POWERUP,STAR,ZONE,WEAPON,WEAPONS,weaponOf,weaponOfFood,QUIT} from "../constants.js";
 import {KIND,BH_PHASE,FOOD_FLAG,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {clamp} from "../util.js";
 import {setR,setMass,addMass,addBoost,boostLeft,capBoost,velX,velY,liveCount,firstLive} from "./body.js";
@@ -599,6 +599,22 @@ export function crushPiece(w,ps,pc,h){
   const fromX=pc.x,fromY=pc.y;spillMass(w,h,pc.mass);
   w.events.push({type:"BH_SUCK",slot:ps.slot,pieceId:pc.id,fromX,fromY,r:pc.r,destroyed:true,holeX:h.x,holeY:h.y});
   w.killPiece(pc,"blackhole",-1);}
+/**
+ * Quit voluntário: cada peça viva estoura como a supernova de uma estrela, e a massa dela INTEIRA vira
+ * QUIT.N pelotas sem dono (FRAG_KIND.NOVA, mesmo espalhar em círculo cheio de zoneBurn) — livre para quem
+ * estiver por perto, em vez de simplesmente evaporar com o `removePlayer` de sempre.
+ * ⚠️ NÃO empurra `w.events`: chamado por `Sim.remove` FORA do passo de física (reação a um `{t:'quit'}`,
+ * não a um tick), e `world.step()` zera `events` no PRÓPRIO início — um evento empurrado aqui seria
+ * descartado antes de qualquer `_consume()` o ler (o mesmo motivo de `Sim.kill` não passar por lá). Por
+ * isso devolve o estouro de cada peça para o chamador avisar o fio direto por `Sim._ev`/`wireEvents`.
+ * @param {World} w @param {Body[]} pieces @returns {{x:number,y:number,r:number}[]}
+ */
+export function explodeQuit(w,pieces){
+  const bursts=[];
+  for(const pc of pieces){if(pc.dead)continue;
+    spillFrag(w,pc.x,pc.y,1,0,pc.mass,QUIT.N,QUIT.SPEED,6.2832,-1,0,FRAG_KIND.NOVA);
+    bursts.push({x:pc.x,y:pc.y,r:Math.min(pc.r*QUIT.NOVA_R,QUIT.NOVA_R_MAX)});}
+  return bursts;}
 
 // ── mísseis ──
 /**
