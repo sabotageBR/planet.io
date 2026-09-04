@@ -10,6 +10,7 @@ process.env.LOG_LEVEL='silent';
 const {Room}=await import('../src/rooms/Room.js');
 const {ROOM,MODE,TICK_HZ,PLAYER}=await import('@warspace/shared/constants.js');
 const {setR}=await import('@warspace/shared/physics/body.js');
+const {World}=await import('@warspace/shared/physics/world.js');
 
 const mudo={info(){},warn(){},error(){},debug(){}};
 const sala=(bots=15,extra={})=>new Room({code:'TST0',shard:0,seed:7,hooks:null,log:mudo,
@@ -242,19 +243,21 @@ test('sala do dono ABERTA enche mais devagar que a automática', () => {
     `a do dono tem menos gente (${dono.sim.botCount()} contra ${auto.sim.botCount()})`);
 });
 
-// ⚠️ O raio tem que ser medido NO TICK EM QUE O BOT NASCE. Dez minutos depois todos cresceram comendo,
-// e a asserção passaria a falar de outra coisa — foi assim que a primeira versão deste teste falhou com
-// um bot de raio 88 que tinha entrado com 40.
+// ⚠️ O raio tem que ser medido NA CRIAÇÃO DA PEÇA, dentro de `_spawnPiece` — não um tick depois. Todo
+// spawn agora nasce com 1 carga de ímã (ver world.js:_spawnPiece), e ela pode puxar/absorver comida ou
+// ejetados que JÁ estavam sobre o ponto sorteado ainda NO PRIMEIRO tick — isso fala do que sobrava no
+// mapa naquele canto, não do tier que `botSpawnR` escolheu. Medindo um tick depois (como antes), essa
+// sobreposição de sorte falsificava a asserção; dez minutos depois o mesmo aconteceria por comer normal
+// — foi assim que a primeira versão deste teste falhou com um bot de raio 88 que tinha entrado com 40.
 test('na sala do dono ninguém chega GIGANTE', () => {
-  const r=salaDono(false); r.start();
-  const vistos=new Set(); let novos=0;
-  for(let i=0;i<60*TICK_HZ*10;i++){ r.step();
-    for(const gp of r.sim.players.values()){
-      if(!gp.isBot||vistos.has(gp.slot))continue;
-      vistos.add(gp.slot); novos++;
-      for(const pc of r.sim.world.piecesOf(gp.slot)||[])
-        assert.ok(pc.r<=PLAYER.BOT_R[1]+1e-6,`entrou com raio ${pc.r}, acima da faixa de quem acaba de chegar`);}}
-  assert.ok(novos>0,'alguém chegou');
+  const orig=World.prototype._spawnPiece,raios=[];
+  World.prototype._spawnPiece=function(ps,x,y,r){const pc=orig.call(this,ps,x,y,r);if(ps.isBot)raios.push(pc.r);return pc;};
+  try{
+    const r=salaDono(false); r.start();
+    anda(r,60*TICK_HZ*10);
+    for(const raio of raios) assert.ok(raio<=PLAYER.BOT_R[1]+1e-6,`entrou com raio ${raio}, acima da faixa de quem acaba de chegar`);
+  }finally{World.prototype._spawnPiece=orig;}
+  assert.ok(raios.length>0,'alguém chegou');
 });
 
 // ── RENASCER SEM SAIR DA SALA ────────────────────────────────────────────────

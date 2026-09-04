@@ -384,7 +384,9 @@ export class World{
     else ps.spawnSafe=true;   // posição DADA (largada do BR, respawn com x/y): não houve sorteio a falhar
     ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.ejectRamp=0;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
     ps.autoDefN=0;ps.autoFireAt=0;ps.zoomUntil=0;ps.feastUntil=0;ps.aimLockId=-1;ps.aimLockUntil=0;ps.weaponPin=false;   // vida nova, powerups zerados — mesmo caminho do fireCdUntil, e é ele que cobre addPlayer, respawnPlayer e a largada do BR de uma vez
-    const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;return pc;}
+    const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;
+    if(r<=POWERUP.MAGNET_MAX_R)pc.magnetUntil=this.tick+POWERUP.TICKS;   // toda vida nova começa com 1 carga de ímã, de graça — ajuda a achar comida logo cedo
+    return pc;}
   _dropPieces(ps){for(let i=0;i<ps.pieces.length;i++){const pc=ps.pieces[i];pc.dead=true;this.entityById.delete(pc.id);}
     ps.pieces.length=0;const arr=this.pieces;let k=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)arr[k++]=arr[i];arr.length=k;}
   /** Remove o jogador e suas peças (imediato; mísseis já lançados continuam). */

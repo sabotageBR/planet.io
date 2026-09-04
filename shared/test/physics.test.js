@@ -342,7 +342,7 @@ test("míssil×asteroide: desvia o errante (DEFLECT) e tira o de cinturão da ó
 
 // 14. ímã
 test("ímã: comida no alcance é sugada (MOVED, acelerando) e ejetados de terceiros são atraídos; sem ímã nada se move",()=>{
-  const w=empty(60),me=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);
+  const w=empty(60),me=w.addPlayer(0,{x:1000,y:1000,r:40});me.magnetUntil=0;w.setTarget(0,1000,1000);   // desliga a carga de nascimento para isolar o "sem ímã"
   const f=w.spawnFood();f.type=FOOD_TYPE.DUST;f.x=1200;f.y=1000;w.moveFood(f);
   w.addPlayer(1,{x:3000,y:3000,r:40});const e=w.addEjected(1000,1200,0,0,EJECT.R_MIN,EJECT.R_MIN*EJECT.R_MIN,1,0,EJECT.LIFE_TICKS);
   w.step();assert.equal(f.x,1200,"sem ímã a comida fica");assert.equal(e.vy,0);assert.equal(f.flags&FOOD_FLAG.MOVED,0);
@@ -430,6 +430,7 @@ test("ímã: cometa/estrela vêm a MAGNET_HEAVY da poeira e a estrela do mundo s
 test("asteroide: o escudo paga pela VELOCIDADE da batida (1/2/3 níveis) e rápida demais estoura o planeta; tiro mirado sem nada no cone sai reto",()=>{
   // a rocha custa níveis conforme ASTEROID.SHIELD_VN, e enquanto o escudo aguenta não há lasca nem pop
   const bate=(vRocha,rPc=40,lv=3)=>{const w=empty(750+vRocha);const pc=w.addPlayer(0,{x:1000,y:1000,r:rPc});
+    pc.magnetUntil=0;   // a carga de nascimento puxaria a rocha e mudaria a velocidade de impacto
     pc.shieldLv=lv;pc.shieldEvolveAt=1e9;const a=w.spawnAsteroid(-1,1200,1000,60);a.vx=-vRocha;a.vy=0;
     w.setTarget(0,1000,1000);   // parado: a velocidade de aproximação é só a da rocha
     const ev=[];for(let t=0;t<40;t++){w.step();ev.push(...w.events.map(e=>e.type));}
@@ -444,18 +445,18 @@ test("asteroide: o escudo paga pela VELOCIDADE da batida (1/2/3 níveis) e rápi
   assert.equal(rapida.lv,0,"rápida demais: o escudo inteiro vai embora");
   assert.ok(rapida.ev.includes("POP")&&rapida.pecas>1,`e o planeta estoura assim mesmo (${rapida.pecas} peças)`);
   // com o escudo de pé a batida EMPURRA por pouco tempo e a velocidade volta ao padrão
-  const w0=empty(749),p0=w0.addPlayer(0,{x:1000,y:1000,r:40});p0.shieldLv=3;p0.shieldEvolveAt=1e9;
+  const w0=empty(749),p0=w0.addPlayer(0,{x:1000,y:1000,r:40});p0.magnetUntil=0;p0.shieldLv=3;p0.shieldEvolveAt=1e9;
   const a0=w0.spawnAsteroid(-1,1200,1000,60);a0.vx=-300;a0.vy=0;w0.setTarget(0,1000,1000);
   let pico=0,quando=-1;for(let t=0;t<200;t++){w0.step();const b=boostLeft(p0);if(b>pico){pico=b;quando=t;}}
   assert.ok(pico>0&&pico<=BOUNCE.DIST_MAX+1e-6,`o empurrão existe e tem teto: ${pico.toFixed(0)} px`);
   assert.equal(boostLeft(p0),0,"e some sozinho: a velocidade volta ao padrão do jogo");
-  const w=empty(75);const pc=w.addPlayer(0,{x:1000,y:1000,r:40});pc.shieldLv=2;pc.shieldEvolveAt=1e9;
+  const w=empty(75);const pc=w.addPlayer(0,{x:1000,y:1000,r:40});pc.magnetUntil=0;pc.shieldLv=2;pc.shieldEvolveAt=1e9;
   const a=w.spawnAsteroid(-1,1200,1000,60);a.vx=-300;a.vy=0;w.setTarget(0,1000,1000);
   let hit=null;for(let t=0;t<30&&!hit;t++){w.step();hit=w.events.find(e=>e.type==="SHIELD_HIT")||null;}
   assert.ok(hit,"batida emite SHIELD_HIT");assert.equal(pc.shieldLv,1);assert.equal(pc.r,40,"o escudo absorve: sem lasca");
   assert.ok(!w.events.some(e=>e.type==="CHIP"));
   // sem escudo, a mesma batida lasca como antes
-  const w2=empty(76);const p2=w2.addPlayer(0,{x:1000,y:1000,r:40});const a2=w2.spawnAsteroid(-1,1200,1000,60);
+  const w2=empty(76);const p2=w2.addPlayer(0,{x:1000,y:1000,r:40});p2.magnetUntil=0;const a2=w2.spawnAsteroid(-1,1200,1000,60);
   a2.vx=-900;a2.vy=0;w2.setTarget(0,1000,1000);let chip=null;for(let t=0;t<30&&!chip;t++){w2.step();chip=w2.events.find(e=>e.type==="CHIP")||null;}
   assert.ok(chip&&p2.r<40,"sem escudo lasca");
   // mira com o cone vazio: o míssil sai reto para o alvo do ponteiro
@@ -466,7 +467,7 @@ test("asteroide: o escudo paga pela VELOCIDADE da batida (1/2/3 níveis) e rápi
 
 // 19. powerups por peça
 test("powerup por peça: só a parte que pegou o 🛡️/🧲 se beneficia; ao fundir fica o melhor das duas",()=>{
-  const w=empty(80),a=w.addPlayer(0,{x:1000,y:1000,r:60});w.setTarget(0,2000,1000);
+  const w=empty(80),a=w.addPlayer(0,{x:1000,y:1000,r:60});a.magnetUntil=0;w.setTarget(0,2000,1000);   // sem a carga de nascimento, "a" fica de fato sem ímã até o teste dar um
   w.requestSplit(0);w.step();const b=w.piecesOf(0).find(p=>p!==a);assert.ok(b,"dividiu em duas");
   for(let t=0;t<25;t++)w.step();assert.ok(b.x-a.x>120,"as partes se afastaram");
   const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=b.x;f.y=b.y;w.moveFood(f);w.step();
@@ -690,7 +691,7 @@ test("asteroide: rocha de raspão ricocheteia no planeta grande; vindo para o mi
 // 29. ímã: puxa a rocha também
 test("ímã: asteroide é atraído (rocha pequena mais rápido que a grande); sem ímã não se move",()=>{
   const puxa=(r,magnet)=>{const w=empty(97),pc=w.addPlayer(0,{x:3000,y:3000,r:80});w.setTarget(0,3000,3000);
-    if(magnet)pc.magnetUntil=w.tick+POWERUP.TICKS;
+    pc.magnetUntil=magnet?w.tick+POWERUP.TICKS:0;
     const a=w.spawnAsteroid(-1,3000+pc.r*POWERUP.MAGNET_RANGE*.9,3000,r);a.vx=a.vy=0;   // longe, mas dentro do alcance: não encosta no planeta
     for(let t=0;t<40;t++)w.step();return -a.vx;};   // velocidade adquirida na direção do planeta
   assert.ok(Math.abs(puxa(30,false))<1e-6,"sem ímã a rocha fica parada");
