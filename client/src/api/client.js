@@ -162,10 +162,11 @@ export const api = {
     }
     return request("POST", `/api/skins/${id}/buy`);
   },
-  /** Resgata a recompensa de anúncio (1 por conta). Offline não tem autoridade pra conceder nada. */
-  async rewardAd(skinId) {
-    if (!api.online) throw offline("offline", "Essa recompensa precisa de conta.");
-    return request("POST", "/api/skins/reward-ad", { skinId });
+  /** Marca o anúncio DAQUELA mascote como assistido (não concede posse — só destrava `buy`). Offline
+   *  não tem autoridade pra registrar nada. */
+  async watchAd(id) {
+    if (!api.online) throw offline("offline", "Isso precisa de conta.");
+    return request("POST", `/api/skins/${id}/watch-ad`);
   },
   async equip(id) {
     if (!api.online) { const p = localProfile(); if (!p.skins.includes(id)) throw offline("not_owned", "Você não tem essa skin."); p.user.equippedSkin = id; saveLocal(p); return { equippedSkin: id }; }

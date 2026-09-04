@@ -12,7 +12,7 @@ import http from 'node:http';
 import {readFileSync,readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {SKINS} from '@warspace/shared/skins.js';
+import {SKINS,STARTER_SKINS,AD_REWARD_SKINS} from '@warspace/shared/skins.js';
 import crypto from 'node:crypto';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.env'),'utf8').split('\n')){const m=/^\s*([A-Z_]+)=(.*)$/.exec(l);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim();}}catch{}}
@@ -53,7 +53,10 @@ before(async()=>{
   const dir=path.join(ROOT,'server','src','db','migrations');
   assert.equal(applied.length,readdirSync(dir).filter(f=>/^\d+_.+\.sql$/.test(f)).length,'todas as migrações aplicadas do zero');
   persist=createPersistence({db,log,config:{...config,noCleanup:true}});
-  api=createApi({db,log,config,persist});
+  // `pickStarterSkin` fixo em 0: preserva o comportamento de sempre (`owned===[0]`) em toda conta nova
+  // desta suíte, sem precisar reescrever as asserções que já contam com isso. O sorteio de verdade tem
+  // teste próprio, mais abaixo, com uma SEGUNDA instância de `createApi`.
+  api=createApi({db,log,config,persist,pickStarterSkin:()=>0});
   server=http.createServer(async(req,res)=>{if(await api(req,res))return;res.writeHead(404);res.end();});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;
 });
@@ -140,16 +143,44 @@ test('skins: buy 200/409/402/403, equip 200/403, catálogo',async()=>{
   r=await call('GET','/api/skins');assert.deepEqual(r.body.owned,[0]);assert.equal(r.body.equipped,0);
   assert.equal(db.health.fails,0,'erros de aplicação não contam no circuit breaker');
 });
-test('recompensa de anúncio: 1 skin por CONTA, entre as 3 mascote — nunca por moeda',async()=>{
+test('skin inicial: sorteio entre as 10 (função pura + fiação de ponta a ponta)',async()=>{
+  const {randomStarterSkin}=await import('../src/repos/skins.js');
+  const vistos=new Set();
+  for(let i=0;i<200;i++){const id=randomStarterSkin();assert.ok(STARTER_SKINS.includes(id),`fora do pool: ${id}`);vistos.add(id);}
+  assert.ok(vistos.size>1,'200 sorteios caindo sempre no mesmo valor não é sorteio');
+  // Fiação: uma SEGUNDA instância de createApi, com o sorteio fixo em 5 (fora do 0 de sempre desta
+  // suíte), prova que quem GRANJEIA e EQUIPA usa de fato o que `pickStarterSkin` devolve — não só que a
+  // função sorteia direito. `persist` fica de fora: as rotas testadas aqui não o tocam.
+  const api2=createApi({db,log,config,pickStarterSkin:()=>5});
+  const server2=http.createServer(async(req,res)=>{if(await api2(req,res))return;res.writeHead(404);res.end();});
+  await new Promise(r=>server2.listen(0,'127.0.0.1',r));
+  const base2=`http://127.0.0.1:${server2.address().port}`;
+  try{
+    const g=await fetch(base2+'/api/auth/guest',{method:'POST',headers:{'content-type':'application/json','x-forwarded-for':'10.0.0.40'},body:JSON.stringify({nick:'SorteioFixo'})});
+    const gb=await g.json();
+    assert.equal(g.status,201,JSON.stringify(gb));
+    assert.equal(gb.user.equippedSkin,5,'a resposta da própria criação já tem que ecoar a skin sorteada');
+    const sk=await fetch(base2+'/api/skins',{headers:{authorization:`Bearer ${gb.token}`}}).then(x=>x.json());
+    assert.deepEqual(sk.owned,[0,5]);assert.equal(sk.equipped,5);
+  }finally{server2.close();}
+});
+test('mascote: exige o PRÓPRIO anúncio E moedas — assistir uma não libera as outras nem substitui o preço',async()=>{
   // Conta ISOLADA (novoGuest), nunca S.t3: testes mais adiante comparam a lista de skins dele por
-  // igualdade exata, e resgatar uma mascote ali quebraria aquele teste sem relação nenhuma com este.
+  // igualdade exata, e comprar uma mascote ali quebraria aquele teste sem relação nenhuma com este.
   const g=await novoGuest('TestadorAnuncio');
-  let r=await call('GET','/api/skins',{token:g.token});assert.equal(r.body.adReward,null);
-  r=await call('POST','/api/skins/reward-ad',{token:g.token,body:{skinId:6}});assert.equal(r.status,400);assert.equal(r.body.error,'bad_request');   // skin fora de AD_REWARD_SKINS
-  r=await call('POST','/api/skins/reward-ad',{token:g.token,body:{skinId:119}});assert.equal(r.status,200,JSON.stringify(r.body));assert.ok(r.body.owned.includes(119));
-  r=await call('GET','/api/skins',{token:g.token});assert.equal(r.body.adReward,119);
-  r=await call('POST','/api/skins/reward-ad',{token:g.token,body:{skinId:119}});assert.equal(r.status,409);assert.equal(r.body.error,'already_owned');
-  r=await call('POST','/api/skins/reward-ad',{token:g.token,body:{skinId:120}});assert.equal(r.status,409);assert.equal(r.body.error,'already_claimed');   // já resgatou a 119; não dá pra trocar de mascote
+  await call('POST',`/api/skins/${AD_REWARD_SKINS[2]}/watch-ad`,{token:g.token});   // ruído: outra mascote, não deve valer para a 1ª
+  let r=await call('GET','/api/skins',{token:g.token});assert.deepEqual(r.body.adWatched,[AD_REWARD_SKINS[2]]);
+  const alvo=AD_REWARD_SKINS[0];
+  r=await call('POST',`/api/skins/${alvo}/buy`,{token:g.token});assert.equal(r.status,403);assert.equal(r.body.error,'ad_required');   // moeda de sobra, mas sem anúncio
+  r=await call('POST','/api/skins/6/watch-ad',{token:g.token});assert.equal(r.status,400);assert.equal(r.body.error,'bad_request');   // skin fora de AD_REWARD_SKINS
+  r=await call('POST',`/api/skins/${alvo}/watch-ad`,{token:g.token});assert.equal(r.status,200,JSON.stringify(r.body));
+  assert.ok(r.body.adWatched.includes(alvo));assert.ok(r.body.adWatched.includes(AD_REWARD_SKINS[2]));
+  r=await call('GET','/api/skins',{token:g.token});assert.ok(r.body.adWatched.includes(alvo));   // GET reflete o watch-ad
+  r=await call('POST',`/api/skins/${alvo}/buy`,{token:g.token});assert.equal(r.status,402);assert.equal(r.body.error,'insufficient_coins');   // anúncio ok, moeda não
+  await db.query(`UPDATE users SET coins=$2 WHERE id=$1`,[g.userId,10000]);
+  r=await call('POST',`/api/skins/${alvo}/buy`,{token:g.token});assert.equal(r.status,200,JSON.stringify(r.body));assert.ok(r.body.owned.includes(alvo));
+  // a 3ª mascote nunca foi assistida: nem moeda de sobra libera
+  r=await call('POST',`/api/skins/${AD_REWARD_SKINS[1]}/buy`,{token:g.token});assert.equal(r.status,403);assert.equal(r.body.error,'ad_required');
   assert.equal(db.health.fails,0,'erros de aplicação não contam no circuit breaker');
 });
 test('prefs: whitelist e merge',async()=>{
@@ -384,7 +415,9 @@ test('easter egg: o nick escolhe a skin da VIDA, sem tocar na skin equipada',asy
   const r=await persist.hooks.onPlayerJoin({token:t.token,fallbackNick:'Bruxo'});
   assert.equal(r.skinId,eggSkinFor('Bruxo'),'entrou como Bruxo e não veio a caricatura');
   const u=await api.repos.users.byId(t.userId);
-  assert.equal(u.equipped_skin_id,0,'o easter egg NÃO pode escrever na skin equipada');
+  // igual a 0 nesta suíte porque `pickStarterSkin` está fixo em 0 (ver `before`); o que importa aqui é
+  // que o valor continua sendo a skin inicial da CONTA, e não a caricatura do egg.
+  assert.ok(STARTER_SKINS.includes(u.equipped_skin_id),'o easter egg NÃO pode escrever na skin equipada');
   // prefs.eggs:false desliga
   await req('PATCH','/api/me/prefs',{eggs:false},t.token);
   assert.equal((await persist.hooks.onPlayerJoin({token:t.token,fallbackNick:'Bruxo'})).skinId,0);

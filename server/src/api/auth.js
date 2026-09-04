@@ -6,9 +6,23 @@ import {normalizeNick,normalizeLogin,randomGuestNick,suggestNick,loginTaken,NICK
 import {hashPassword,verifyPassword,validPassword,dummyHash,PASSWORD_MIN} from '../auth/password.js';
 import {toPublic} from '../repos/users.js';
 const EMAIL_RE=/^[^\s@]{1,64}@[^\s@]{1,255}$/;
-export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities,google,crazygames,limiter,requireUser,optionalUser,log}){
+export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities,google,crazygames,limiter,requireUser,optionalUser,log,pickStarterSkin}){
   // O NICK é livre desde a 0009 (só não repete DENTRO de uma sala): aqui sobrou o formato.
   const nickOf=raw=>{const nick=normalizeNick(raw);if(!nick)throw err(400,'invalid_nick','nick deve ter de 2 a 16 caracteres');return nick;};
+  /** Sorteia a skin inicial (`pickStarterSkin`, injetável — o teste fixa o resultado), concede e equipa,
+   *  e atualiza `u.equipped_skin_id` em MEMÓRIA (o mesmo idioma de `u.coins=coins` logo abaixo): a linha
+   *  volta de `insertGuest`/`INSERT` com o `DEFAULT 0` da coluna, e sem isto a resposta desta própria
+   *  chamada (`toPublic(u)`) diria "skin 0" mesmo já tendo equipado outra no banco. A grátis (id 0)
+   *  continua SEMPRE concedida — é o piso que `/equip` pode pedir de volta a qualquer momento —, e só
+   *  ganha uma 2ª linha em `user_skins` quando a sorteada é outra. Chamado nos três caminhos de conta
+   *  NOVA (guest, Google, CrazyGames); guest promovido não passa por aqui de novo. */
+  const nasceCom=async(c,u)=>{
+    const starter=pickStarterSkin();
+    await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
+    if(starter!==0)await skins.grant(c,{userId:u.id,skinId:starter,source:'default'});
+    await users.setEquipped(u.id,starter,c);
+    u.equipped_skin_id=starter;
+  };
   /** O LOGIN é o que virou único. Ocupado → 409 com sugestão; o guarda de verdade é o 23505 lá embaixo. */
   const loginOf=async(raw,userId)=>{const login=normalizeLogin(raw);
     if(!login)throw err(400,'invalid_login','usuário deve ter de 2 a 16 caracteres, sem @');
@@ -22,7 +36,7 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
     const origem=String(ctx.req.headers.origin||'').slice(0,64)||null;
     const out=await db.tx(async c=>{
       const u=await users.insertGuest(c,nick,origem);
-      await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
+      await nasceCom(c,u);
       if(config.signupCoins>0){const {coins}=await ledger.apply(c,{userId:u.id,delta:config.signupCoins,reason:'signup'});u.coins=coins;}
       const token=await tokens.issue(u.id,'device',ctx.userAgent,c);
       return{token,user:toPublic(u)};
@@ -133,7 +147,7 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
         else{
           const nick=pedido?nickOf(pedido):nickDoGoogle(id.name);
           u=(await c.query(`INSERT INTO users(kind,nick,email,display_name) VALUES('registered',$1,$2,$3) RETURNING *`,[nick,id.email,nome])).rows[0];
-          await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
+          await nasceCom(c,u);
           if(config.signupCoins>0){const {coins}=await ledger.apply(c,{userId:u.id,delta:config.signupCoins,reason:'signup'});u.coins=coins;}}
         await identities.link(c,{userId:u.id,provider:'google',subject:id.subject,email:id.email});
         const token=await tokens.issue(u.id,'session',ctx.userAgent,c);
@@ -187,7 +201,7 @@ export function mountAuth(router,{db,config,users,tokens,ledger,skins,identities
       else{
         const nick=pedido?nickOf(pedido):nickDoGoogle(id.name);
         u=(await c.query(`INSERT INTO users(kind,nick,display_name) VALUES('registered',$1,$2) RETURNING *`,[nick,nome])).rows[0];
-        await skins.grant(c,{userId:u.id,skinId:0,source:'default'});
+        await nasceCom(c,u);
         if(config.signupCoins>0){const {coins}=await ledger.apply(c,{userId:u.id,delta:config.signupCoins,reason:'signup'});u.coins=coins;}}
       await identities.link(c,{userId:u.id,provider:'crazygames',subject:id.subject,email:null});
       const token=await tokens.issue(u.id,'session',ctx.userAgent,c);

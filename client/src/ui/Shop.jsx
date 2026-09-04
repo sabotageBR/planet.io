@@ -10,7 +10,7 @@ import { skinName, skinDesc, rarityLabel } from "../i18n/catalog.js";
 import { currentLang } from "../i18n/index.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { buySkin, equipSkin, claimAdSkin, loadSkins, toast } from "../state/actions.js";
+import { buySkin, equipSkin, watchMascotAd, loadSkins, toast } from "../state/actions.js";
 import { sfx } from "../audio/index.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { ScreenHeader, Screen } from "./bits.jsx";
@@ -36,10 +36,11 @@ function Body() {
   const stateOf = s => { const own = owned.includes(s.id);
     return s.id === eqId ? "eq" : own ? "owned" : s.rarity === "secret" ? "secret" : s.unlockKey ? "locked"
       : (s.levelReq || 0) > nivel ? "lowlevel" : s.price > coins ? "poor" : "buyable"; };
-  // Assistir um anúncio é uma ALTERNATIVA à compra, nunca o único caminho (regra da própria Poki) — por
-  // isso não é um ramo de `stateOf` (que decide UMA ação), e sim uma condição à parte que soma um botão
-  // extra no modal. Só para as skins mascote, só com adaptador de anúncio vivo, só quem ainda não resgatou.
-  const canWatchAd = (s, st) => AD_REWARD_SKINS.includes(s.id) && portal.ativo && session.adSkin == null && st !== "eq" && st !== "owned";
+  // Mascote exige os DOIS: o anúncio DESTRAVA a compra, e comprar continua cobrando moeda normalmente —
+  // por isso não é um ramo de `stateOf` (que decide UMA ação), e sim uma condição à parte que soma um
+  // botão extra no modal. Cada mascote pede o PRÓPRIO anúncio (`session.adWatched` é uma lista de ids,
+  // não mais um id só por conta), então assistir a uma não esconde o botão das outras duas.
+  const canWatchAd = (s, st) => AD_REWARD_SKINS.includes(s.id) && portal.ativo && !(session.adWatched && session.adWatched.includes(s.id)) && st !== "eq" && st !== "owned";
   const list = useMemo(() => {
     const nq = norm(q);
     // ⚠️ `SEM_CONTA` também tira a Retrato da grade: sem foto ela é uma lendária de 25 000 moedas que
@@ -101,12 +102,18 @@ function SkinModal({ id, stateOf, onClose }) {
   const LB = useLabels(), theme = useTheme(), RC = (theme && theme.rarityColor) || RARITY_COLORS;
   const session = useStore(app, s => s.session), nivel = (session.stats && session.stats.level) | 0 || 1;
   const cur = skinById(id), st = stateOf(cur);
-  // Mesma regra do cartão da grade — ver o comentário de `canWatchAd` em `Body()`.
-  const podeAnuncio = AD_REWARD_SKINS.includes(cur.id) && portal.ativo && session.adSkin == null && st !== "eq" && st !== "owned";
+  const assistido = !!(session.adWatched && session.adWatched.includes(cur.id));
+  // `precisaAnuncio` vale mesmo sem `portal.ativo` — é ela quem TRAVA a compra (o servidor exige o mesmo,
+  // `ad_required`); `podeAnuncio` só decide se o BOTÃO de assistir aparece (sem SDK de anúncio não há o
+  // que assistir, e mostrar um botão morto seria pior que escondê-lo).
+  const precisaAnuncio = AD_REWARD_SKINS.includes(cur.id) && !assistido && st !== "eq" && st !== "owned";
+  const podeAnuncio = precisaAnuncio && portal.ativo;
   useEffect(() => { const kd = e => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
     addEventListener("keydown", kd); return () => removeEventListener("keydown", kd); }, [onClose]);
-  const assistir = () => { sfx("buy"); claimAdSkin(cur.id); onClose(); };
+  const assistir = () => { sfx("buy"); watchMascotAd(cur.id); };
   const act = () => {
+    // `precisaAnuncio` desabilita o botão (abaixo), então este ramo nunca é alcançado por ele — o mesmo
+    // já valia para `st==="eq"`, que também não tem ramo aqui.
     if (st === "owned") { sfx("equip"); equipSkin(cur.id); return onClose(); }
     if (st === "buyable") { sfx("buy"); buySkin(cur.id); return onClose(); }
     sfx("error");   // sem moeda / secreta / travada: o "não pode" tem que soar diferente do "pode"
@@ -117,7 +124,7 @@ function SkinModal({ id, stateOf, onClose }) {
   };
   const actLabel = st === "eq" ? LB.equipped : st === "owned" ? LB.equip : st === "secret" ? "???" : st === "locked" ? LB.locked
     : st === "lowlevel" ? `🔒 ${LB.levelReq.replace("{n}", cur.levelReq)}` : `${LB.coinIcon} ${fmt(cur.price)}`;
-  const pergunta = st === "owned" ? LB.skinConfirmEquip : st === "buyable" ? LB.skinConfirmBuy : "";
+  const pergunta = st === "owned" ? LB.skinConfirmEquip : st === "buyable" && !precisaAnuncio ? LB.skinConfirmBuy : "";
   // ⚠️ PORTAL, e não é preciosismo: o `.overlay` é `position:absolute` e o bloco contentor dele seria o
   // `.wrap` da loja, que é absoluto, ROLA e ainda tem `transform:translateX(-50%)`. Daí os dois defeitos:
   // o `top:50%` do modal centrava no meio da CAIXA (não da tela) e o modal descia junto com a rolagem da
@@ -129,17 +136,21 @@ function SkinModal({ id, stateOf, onClose }) {
       <SkinPreview skin={cur} r={48} className="" secret={st === "secret"} />
       <div className="sm-info"><b>{st === "secret" ? LB.secret : cur.name}</b>
         <i>{rarityLabel(cur.rarity)}</i><span>{skinDesc(cur)}</span>
-        {pergunta ? <em className="sm-ask">{pergunta}</em> : null}</div>
+        {pergunta ? <em className="sm-ask">{pergunta}</em> : null}
+        {/* explica por que o botão de moeda está desabilitado — sem isto "trancado sem aviso" parece bug */}
+        {precisaAnuncio ? <em className="sm-ask ad">{podeAnuncio ? LB.adRequiredHint : LB.adUnavailable}</em> : null}</div>
       {/* a foto vem AQUI, não escondida no fim da tela: quem acabou de equipar a Retrato está olhando
           exatamente para este cartão, e é este o momento em que a foto faz sentido */}
       {cur.pattern === "avatar" && (st === "eq" || st === "owned") ? <AvatarPicker /> : null}
       <div className="sm-actions">
         <button className="btn-secondary" onClick={onClose}>{LB.cancel}</button>
-        {/* SEMPRE ao lado da compra, nunca no lugar dela (regra da própria Poki: "rewarded videos are an
-            optional extra, never a gate") — e mesma classe `btn-primary` do botão pago, então nunca fica
-            menor que ele. O 🎬 no rótulo é o único sinal de identidade permitido (nunca botão verde). */}
+        {/* o anúncio agora é PRÉ-REQUISITO da compra, não alternativa a ela: enquanto não assistido, o
+            botão de moeda abaixo fica desabilitado (`precisaAnuncio`) e este é o único caminho. Some
+            assim que o servidor confirma o `watch-ad` (`assistido` vira true), e o botão de moeda libera
+            — mesma classe `btn-primary`, então nunca fica menor que ele. O modal continua ABERTO depois
+            de assistir, para a compra acontecer sem reabrir nada. */}
         {podeAnuncio ? <button className="btn-primary act ad" onClick={assistir}>{LB.watchAd}</button> : null}
-        <button className="btn-primary act" disabled={st === "eq"} onClick={act}>{actLabel}</button>
+        <button className="btn-primary act" disabled={st === "eq" || precisaAnuncio} onClick={act}>{actLabel}</button>
       </div>
     </div>
   </div>, document.getElementById("app"));

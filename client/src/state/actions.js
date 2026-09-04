@@ -283,7 +283,7 @@ export async function loadRooms() {
 }
 export async function loadSkins() {
   try { const r = await api.skins(); if (!r) return;
-    app.update(s => ({ ...s, session: { ...s.session, skins: r.owned && r.owned.length ? r.owned : s.session.skins, adSkin: r.adReward !== undefined ? r.adReward : s.session.adSkin,
+    app.update(s => ({ ...s, session: { ...s.session, skins: r.owned && r.owned.length ? r.owned : s.session.skins, adWatched: r.adWatched !== undefined ? r.adWatched : s.session.adWatched,
       user: s.session.user && r.equipped != null ? { ...s.session.user, equippedSkin: r.equipped } : s.session.user } })); }
   catch { /* opcional */ }
 }
@@ -401,24 +401,24 @@ export async function buySkin(id) {
   }
 }
 /**
- * Assiste um anúncio recompensado (Poki `rewardedBreak`) para ganhar UMA das skins mascote — 1
- * recompensa por CONTA, e é o servidor quem garante isso (`already_claimed`), não o cliente.
+ * Assiste um anúncio recompensado (Poki `rewardedBreak`) para DESTRAVAR a compra de uma skin mascote —
+ * cada mascote pede o PRÓPRIO anúncio, e assistir não dá mais a skin de graça: `buySkin` continua sendo
+ * quem cobra as moedas e concede a posse, depois disto.
  * ⚠️ Só existe com `portal.ativo`: sem adaptador de anúncio não há o que assistir, e o `SkinModal`
  * já não oferece este estado fora dele — esta função é o braço, `Shop.jsx` decide quando mostrar o botão.
  */
-export async function claimAdSkin(id) {
+export async function watchMascotAd(id) {
   const s = app.get().session; if (!s.user) return;
   if (s.skins.includes(id)) return equipSkin(id);
-  if (s.adSkin != null) { toast(getLabels().adRewardDone); return; }
+  if (s.adWatched && s.adWatched.includes(id)) return;
   if (!portal.ativo) { toast(getLabels().adUnavailable); return; }
   let assistiu = false;
   try { assistiu = await portal.recompensa(); } catch { assistiu = false; }
   if (!assistiu) { toast(getLabels().adSkipped); return; }
   try {
-    const r = await api.rewardAd(id);
-    app.update(st => ({ ...st, session: { ...st.session, skins: r && r.owned ? r.owned : [...st.session.skins, id], adSkin: id } }));
-    toast(getLabels().adRewardGranted);
-    try { await api.equip(id); } catch { /* opcional: quem quiser troca depois na loja */ }
+    const r = await api.watchAd(id);
+    app.update(st => ({ ...st, session: { ...st.session, adWatched: (r && r.adWatched) || [...(st.session.adWatched || []), id] } }));
+    toast(getLabels().adWatchedOk);
   } catch (e) { toast(errText(e), 2500); }
 }
 

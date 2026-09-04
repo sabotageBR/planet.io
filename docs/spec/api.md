@@ -27,9 +27,9 @@ no handshake, e origem AUSENTE é sempre aceita.
 | PATCH | `/api/me` 🔒 | `{nick}` | `{user}` · 400 `invalid_nick` — o nick é LIVRE, não há 409 |
 | PATCH | `/api/me/prefs` 🔒 | `{…}` (whitelist: quality, showNames, showMass, showGrid, showMinimap, showFps, sound, music, ambience, volume, musicVolume, chat, voice, voiceVolume, joystick, holdEject, rightSplit, keySplit/keyEject (`KeyboardEvent.code` de `ACTION_KEYS`), theme('auto'|'dawn'|'sunset'|'dusk'), lang('auto'|'pt-BR'|'en'|'es'), reduceMotion, bigText, colorblind, lbSize) | `{prefs}` |
 | GET | `/api/me/history?limit=20&before=<id>` 🔒 | — | `{matches:[{id,endedAt,score,maxMass,kills,durationS,cause,coinsEarned,roomCode,by}]}` |
-| GET | `/api/skins` (🔒 opcional) | — | `{skins:[catálogo], owned:[ids], equipped, adReward}` — `adReward` é a skin resgatada por anúncio, ou `null` |
-| POST | `/api/skins/:id/buy` 🔒 | — | `{coins, owned}` · 402 `insufficient_coins` · 409 `already_owned` · 403 `not_purchasable` |
-| POST | `/api/skins/reward-ad` 🔒 | `{skinId}` (uma de `AD_REWARD_SKINS`, hoje as 3 mascote) | `{owned}` · 400 `bad_request` (skin fora da lista) · 409 `already_owned` · 409 `already_claimed` — 1 recompensa por CONTA, o cliente já assistiu o `rewardedBreak` do portal antes de chamar |
+| GET | `/api/skins` (🔒 opcional) | — | `{skins:[catálogo], owned:[ids], equipped, adWatched:[ids]}` — `adWatched` são as mascote cujo anúncio a conta já assistiu (não implica posse) |
+| POST | `/api/skins/:id/buy` 🔒 | — | `{coins, owned}` · 402 `insufficient_coins` · 409 `already_owned` · 403 `not_purchasable` · 403 `ad_required` (mascote sem o próprio anúncio assistido) |
+| POST | `/api/skins/:id/watch-ad` 🔒 | — | `{adWatched:[ids]}` · 400 `bad_request` (skin fora de `AD_REWARD_SKINS`) — marca o anúncio DAQUELA skin como assistido (idempotente); não concede posse, só destrava `/buy` para ela — cada mascote pede o PRÓPRIO anúncio, e comprar continua cobrando moedas |
 | POST | `/api/skins/:id/equip` 🔒 | — | `{equippedSkin}` · 403 `not_owned` |
 | GET | `/api/ranking?period=all\|week\|day&by=score\|mass\|kills\|total\|food\|xp\|kd&limit=50&country=BR` (🔒 opcional) | — | `{period,by,rows:[{rank,userId,nick,name,registered,country,level,xp,kills,deaths,foodEaten,value}], me:{rank,value}\|null}` — `name` é o nome da CONTA (o do Google); o cliente ordena sempre por `xp` |
 | GET | `/api/config` | — | `{shards, shard, roomMax, protocol, googleClientId}` |

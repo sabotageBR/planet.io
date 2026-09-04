@@ -5,7 +5,7 @@ import {createRateLimiter} from '../auth/ratelimit.js';
 import {createTokens} from '../auth/tokens.js';
 import {createUsers} from '../repos/users.js';
 import {createLedger} from '../repos/ledger.js';
-import {createSkins} from '../repos/skins.js';
+import {createSkins,randomStarterSkin} from '../repos/skins.js';
 import {createMatches} from '../repos/matches.js';
 import {createAchievements} from '../repos/achievements.js';
 import {createRanking} from '../repos/ranking.js';
@@ -30,10 +30,10 @@ const PREFIXES=/^\/api\/(auth\/|me(\/|$)|skins(\/|$)|ranking$|avatar\/|admin(\/|
 /** campos para o /healthz do servidor do jogo */
 export const healthFields=({db,persist}={})=>({db:db&&db.health.down?'down':'ok',queue:persist&&persist.health?persist.health().queue:0});
 /**
- * @param {{db:any,log:any,config:any,persist?:any,limiter?:any,google?:any}} o
+ * @param {{db:any,log:any,config:any,persist?:any,limiter?:any,google?:any,pickStarterSkin?:()=>number}} o
  * @returns {((req:any,res:any)=>Promise<boolean>) & {healthFields:()=>{db:string,queue:number},limiter:any,repos:any}}
  */
-export function createApi({db,log,config,persist=null,limiter=createRateLimiter(),google:googleImpl=null}){
+export function createApi({db,log,config,persist=null,limiter=createRateLimiter(),google:googleImpl=null,pickStarterSkin=randomStarterSkin}){
   const tokens=createTokens(db,log),users=createUsers(db),ledger=createLedger(db),skins=createSkins(db),matches=createMatches(db),achievements=createAchievements(db),ranking=createRanking(db),avatars=createAvatars(db),identities=createIdentities(db);
   const settings=createSettings(db),audit=createAudit(db,log),tunables=createTunables({settings,log}),analytics=createAnalytics(db);
   const optionalUser=async ctx=>ctx.token?await tokens.resolve(ctx.token):null;
@@ -43,7 +43,7 @@ export function createApi({db,log,config,persist=null,limiter=createRateLimiter(
   // do Google (a validação real é uma ida ao `tokeninfo`). Em produção ninguém passa nada e nada muda.
   const google=googleImpl||createGoogle({config,log});
   const crazygames=createCrazyGames({config,log});
-  const deps={db,log,config,users,tokens,ledger,skins,matches,achievements,ranking,avatars,identities,settings,audit,tunables,analytics,google,crazygames,limiter,requireUser,optionalUser};
+  const deps={db,log,config,users,tokens,ledger,skins,matches,achievements,ranking,avatars,identities,settings,audit,tunables,analytics,google,crazygames,limiter,requireUser,optionalUser,pickStarterSkin};
   mountAuth(router,deps);mountMe(router,deps);mountSkins(router,deps);mountRanking(router,deps);mountAvatar(router,deps);mountAdmin(router,deps);
   // Parâmetros salvos entram ANTES da primeira sala existir; depois o poll reconcilia. E o `ADMIN_EMAILS`
   // é reconciliado no boot — SÓ PROMOVE: rebaixar por ConfigMap tranca o admin para fora por um typo.

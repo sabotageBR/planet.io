@@ -147,5 +147,9 @@ export const levelReqOf=s=>(s&&s.levelReq)|0;
 /** As skins resgatáveis assistindo um anúncio recompensado (hoje: as 3 mascote). Derivado do catálogo,
  *  não uma lista cravada em dois lugares — um mascote novo entra aqui sozinho. */
 export const AD_REWARD_SKINS=SKINS.filter(s=>s.mascot).map(s=>s.id);
+/** A conta nova sorteia UMA destas para nascer equipada (grátis + as 9 comuns, ids 0..9 — o mesmo
+ *  conjunto que a loja mostra como "grátis"/"comum"). Derivado do catálogo pelo mesmo motivo de
+ *  AD_REWARD_SKINS: uma skin nova nessa faixa entra sozinha, sem precisar editar dois lugares. */
+export const STARTER_SKINS=SKINS.filter(s=>s.rarity==="free"||s.rarity==="common").map(s=>s.id);
 /** Skin que o jogador nunca vê na loja (easter egg ou conquista secreta): não entra na conta de progresso. */
 export const isHiddenSkin=s=>s.rarity==="secret";

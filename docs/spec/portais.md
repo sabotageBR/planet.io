@@ -313,7 +313,8 @@ abandona — sem depender de outro Player Fit Test pago. `recompensa()` repassa 
 (distinto de `commercialBreak`): a Promise resolve o booleano "assistiu até o fim?", sem
 `MIN_AD_MS` — a doc deles pede explicitamente para NÃO impor cooldown próprio ("we manage ad
 frequency"). Usado hoje para as 3 skins mascote (`server/src/api/skins.js`, rota
-`POST /api/skins/reward-ad`): 1 recompensa por CONTA, nunca substitui a compra com moedas.
+`POST /api/skins/:id/watch-ad`): cada mascote pede o PRÓPRIO anúncio, e assistir NÃO substitui a compra
+com moedas — só destrava o botão de comprar daquela skin, que continua cobrando o preço normal.
 
 ## Y8 (`developer.y8.com`)
 

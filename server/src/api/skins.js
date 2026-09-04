@@ -14,8 +14,8 @@ export function mountSkins(router,{db,users,skins,ledger,matches,requireUser,opt
     // RESOLVE_SQL do token — não há ida extra ao banco.
     return{skins:CATALOG,owned:me?await skins.ownedIds(me.id):[0],equipped:me?me.equipped_skin_id:0,
       level:me?levelFromXp(Number(me.xp||0)):0,
-      // null = ainda não resgatou a recompensa de anúncio; senão a skin que escolheu (já vem em `owned` também).
-      adReward:me?await skins.adRewardClaimed(me.id):null};
+      // ids de mascote cujo anúncio a conta já assistiu — não implica posse, só destrava a COMPRA em /buy.
+      adWatched:me?await skins.adWatchedIds(me.id):[]};
   });
   // POST /api/skins/:id/buy 🔒 → {coins,owned}
   router.add('POST',/^\/api\/skins\/(?<id>\d+)\/buy$/,async ctx=>{
@@ -28,6 +28,10 @@ export function mountSkins(router,{db,users,skins,ledger,matches,requireUser,opt
     if(skin.level_req>0){
       const lvl=levelFromXp(Number(me.xp||0));
       if(lvl<skin.level_req)throw err(403,'level_required',`precisa de nível ${skin.level_req} (você tem ${lvl})`,{levelReq:skin.level_req,level:lvl});}
+    // Mascote pede os DOIS: o anúncio destrava a compra, mas quem compra ainda paga o preço normal
+    // (abaixo). Mesmo espírito do gate de nível — fora da transação, é leitura pura.
+    if(AD_REWARD_SKINS.includes(id)&&!(await skins.hasWatchedAd(me.id,id)))
+      throw err(403,'ad_required','assista o anúncio antes de comprar essa skin');
     const out=await db.tx(async c=>{
       if(await skins.has(me.id,id,c))throw err(409,'already_owned','você já tem essa skin');
       let r;try{r=await ledger.apply(c,{userId:me.id,delta:-skin.price,reason:'skin_purchase',refType:'skin',refId:id});}
@@ -38,21 +42,17 @@ export function mountSkins(router,{db,users,skins,ledger,matches,requireUser,opt
     log.info(`compra: #${me.id} skin ${id} por ${skin.price}`);
     return out;
   });
-  // POST /api/skins/reward-ad {skinId} 🔒 → {owned} — 1 recompensa por CONTA, escolhendo entre as
-  // mascote. O SDK do portal (rewardedBreak) já decidiu do lado do cliente que o anúncio foi assistido
-  // até o fim; aqui só cabe garantir que ninguém resgata duas vezes — é a única defesa real, porque o
-  // servidor nunca confirma criptograficamente que o vídeo rodou.
-  router.add('POST',/^\/api\/skins\/reward-ad$/,async ctx=>{
-    const me=await requireUser(ctx);const id=Number(ctx.body&&ctx.body.skinId);
+  // POST /api/skins/:id/watch-ad 🔒 → {adWatched} — marca o anúncio DAQUELA skin como assistido; não
+  // concede posse nenhuma (quem concede é /buy, que agora exige isto para as mascote). O SDK do portal
+  // (rewardedBreak) já decidiu do lado do cliente que o anúncio foi assistido até o fim; aqui só cabe
+  // registrar — é idempotente (assistir de novo não é erro), porque o servidor nunca confirma
+  // criptograficamente que o vídeo rodou, então não há o que punir numa segunda chamada.
+  router.add('POST',/^\/api\/skins\/(?<id>\d+)\/watch-ad$/,async ctx=>{
+    const me=await requireUser(ctx);const id=Number(ctx.params.id);
     if(!AD_REWARD_SKINS.includes(id))throw err(400,'bad_request','skin inválida para esta recompensa');
-    const out=await db.tx(async c=>{
-      if(await skins.has(me.id,id,c))throw err(409,'already_owned','você já tem essa skin');
-      if(!(await skins.claimAdReward(c,{userId:me.id,skinId:id})))throw err(409,'already_claimed','você já resgatou sua recompensa de anúncio');
-      await skins.grant(c,{userId:me.id,skinId:id,source:'grant'});
-      return{owned:await skins.ownedIds(me.id,c)};
-    });
-    log.info(`recompensa de anúncio: #${me.id} skin ${id}`);
-    return out;
+    await skins.markAdWatched(db,{userId:me.id,skinId:id});
+    log.info(`anúncio assistido: #${me.id} skin ${id}`);
+    return{adWatched:await skins.adWatchedIds(me.id)};
   },{rate:{scope:'token',lim:LIMITS.tokenWrite}});
   // POST /api/skins/:id/equip 🔒 → {equippedSkin}
   router.add('POST',/^\/api\/skins\/(?<id>\d+)\/equip$/,async ctx=>{

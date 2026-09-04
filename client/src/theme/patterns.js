@@ -7,6 +7,7 @@
 //   paintNova(c,r,old,P)       estrela: coroa em camadas, núcleo quente e línguas de plasma
 // skin.pattern escolhe o desenho; skin.accent é a 2ª cor (quando o padrão usa).
 import {sh,rgba,spikes,mulberry} from "./util.js";
+import {STARTER_SKINS} from "@warspace/shared";
 
 const TAU=6.2832;
 const arc=(c,x,y,rad)=>{c.beginPath();c.arc(x,y,rad,0,TAU);c.fill();};
@@ -24,12 +25,18 @@ function spiral(c,r,color,width,arms=2,turns=1.15,fade=1){
       i?c.lineTo(Math.cos(an)*rad,Math.sin(an)*rad):c.moveTo(Math.cos(an)*rad,Math.sin(an)*rad);}
     c.stroke();}
   c.globalAlpha=1;}
-/** Crateras determinísticas por seed. */
-function craters(c,r,col,ink,n=6,seed=7){const g=mulberry(seed*97+3);
-  for(let i=0;i<n;i++){const a=g()*TAU,d=g()*r*.72,cr=r*(.09+g()*.17),x=Math.cos(a)*d,y=Math.sin(a)*d;
+/** Crateras determinísticas por seed. `acc` (opcional) tinge o rebordo de uma cratera em cada três e
+ *  espalha uma poeira leve na cor dela por cima do disco; `sizeK` encolhe/aumenta o raio das crateras
+ *  (o Asteroide usa < 1 para ficar mais "picado" que a Lua). Sem os dois, Marte/Mercúrio/Lua/Asteroide
+ *  reaproveitam o MESMO desenho e só diferem pela cor de base — `acc` já existe em cada skin
+ *  (shared/src/skins.js) e simplesmente nunca era lido aqui. */
+function craters(c,r,col,ink,n=6,seed=7,acc=null,sizeK=1){const g=mulberry(seed*97+3);
+  for(let i=0;i<n;i++){const a=g()*TAU,d=g()*r*.72,cr=r*(.09+g()*.17)*sizeK,x=Math.cos(a)*d,y=Math.sin(a)*d;
     c.fillStyle=sh(col,-.22);arc(c,x,y,cr);
     c.fillStyle=sh(col,.12);arc(c,x-cr*.18,y-cr*.18,cr*.72);
-    c.strokeStyle=rgba(ink,.35);c.lineWidth=Math.max(1,r*.02);c.beginPath();c.arc(x,y,cr,0,TAU);c.stroke();}}
+    c.strokeStyle=rgba(i%3&&acc?ink:acc||ink,.35);c.lineWidth=Math.max(1,r*.02);c.beginPath();c.arc(x,y,cr,0,TAU);c.stroke();}
+  if(acc){const gg=mulberry(seed*97+3+n*7);c.fillStyle=rgba(acc,.16);
+    for(let i=0;i<8;i++){const a=gg()*TAU,d=gg()*r*.85,sp=r*(.018+gg()*.03);arc(c,Math.cos(a)*d,Math.sin(a)*d,sp);}}}
 /** Manchas irregulares (continentes, nebulosa, veneno). */
 function blobs(c,r,color,n,seed,scale=.34,alpha=1){const g=mulberry(seed*131+11);c.globalAlpha=alpha;c.fillStyle=color;
   for(let i=0;i<n;i++){const a=g()*TAU,d=g()*r*.62,br=r*scale*(.5+g()*.8),x=Math.cos(a)*d,y=Math.sin(a)*d;
@@ -60,13 +67,17 @@ export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2",avatar=null,f
   c.save();c.lineJoin="round";
   switch(p){
     case "stripes":stripes(c,r,col,sk.accent||null,5);break;
-    case "clouds":stripes(c,r,col,null,7);blobs(c,r,rgba(light,.22),4,seed,.3);break;
+    // a 2ª passada de `blobs` tinge parte da neblina com o accent da skin (`acc`) — sem ela Planeta
+    // Padrão e Vênus, os dois "clouds", eram idênticos fora da cor de base.
+    case "clouds":stripes(c,r,col,null,7);blobs(c,r,rgba(light,.16),4,seed,.3);blobs(c,r,rgba(acc,.2),3,seed+5,.22);break;
     case "storm":spiral(c,r,rgba(light,.5),r*.14,2,1.3);c.fillStyle=acc;c.beginPath();c.ellipse(r*.1,-r*.05,r*.3,r*.22,.4,0,TAU);c.fill();break;
     case "swirl":spiral(c,r,rgba(light,.45),r*.12,3,1.1);break;
     case "galaxy":{spiral(c,r,rgba(acc,.75),r*.1,2,1.4);spiral(c,r,rgba(light,.5),r*.06,2,1.4,.7);
       c.fillStyle=light;const g=mulberry(seed*7);for(let i=0;i<14;i++){const a=g()*TAU,d=r*(.15+g()*.8);arc(c,Math.cos(a)*d,Math.sin(a)*d,r*.035);}
       c.fillStyle=rgba(light,.85);arc(c,0,0,r*.16);break;}
-    case "craters":craters(c,r,col,ink,6,seed);break;
+    // Asteroide (id 9) ganha mais crateras e menores — mais "picado" que a Lua/Mercúrio/Marte, que
+    // seguem com o desenho de sempre. `acc` (ver `craters()`) já diferencia os quatro entre si.
+    case "craters":{const asteroide=sk.id===9;craters(c,r,col,ink,asteroide?11:6,seed,acc,asteroide?.62:1);break;}
     case "continents":{blobs(c,r,acc,4,seed,.4);c.fillStyle=rgba(light,.75);
       c.beginPath();c.ellipse(0,-r*.86,r*.5,r*.2,0,0,TAU);c.fill();c.beginPath();c.ellipse(0,r*.86,r*.44,r*.17,0,0,TAU);c.fill();break;}
     case "lava":{c.fillStyle=sh(col,-.55);arc(c,0,0,r);blobs(c,r,sh(col,-.35),5,seed,.42);
@@ -178,6 +189,12 @@ export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2",avatar=null,f
         c.beginPath();c.ellipse(0,r*.55,r*.5,r*.34,0,Math.PI,TAU);c.fill();}
       break;}
     default:c.restore();return false;}
+  // Acabamento suave só nas 10 skins iniciais (grátis + comuns, `STARTER_SKINS`): um brilho especular
+  // baixo dá um ar mais "polido" na primeira impressão do jogo, sem se aproximar do vocabulário das
+  // lendárias (que são emblemas, não planetas) — mesmo idioma visual do destaque que `paintNova` já usa
+  // na estrela jovem.
+  if(STARTER_SKINS.includes(sk.id)){c.fillStyle=rgba(light,.22);
+    c.beginPath();c.ellipse(-r*.32,-r*.36,r*.34,r*.2,-.6,0,TAU);c.fill();}
   c.restore();return true;}
 
 
