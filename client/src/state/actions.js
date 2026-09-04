@@ -457,7 +457,7 @@ export async function play({ room, mode, teamSize, party } = {}) {
   if (semNome({ room, mode, teamSize, party })) return;
   // Game Events da Poki: fecha a etapa "menu" e abre "connect" — ver o `start` em ui/Entry.jsx e o
   // `complete` de "connect" em `onConnection`, mais abaixo.
-  if (PORTAL) { portal.medir("menu", "entry", "complete"); portal.medir("connect", "match", "start"); }
+  if (PORTAL) { portal.medir("menu", "entry", "complete"); portal.medir("connect", "match", "start"); matchResolvido = false; }
   // ── ANÚNCIO DE PORTAL ──
   // Ponto ÚNICO, e de propósito: `play()` é a porta por onde passam Modos, Salas (auto, código e lista),
   // o convite, a largada de equipe, o respawn da tela de morte e a entrada automática depois do BIG
@@ -583,6 +583,11 @@ export function leaveGame(screen = "lobby") {
   app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
 let rewardsT = null, levelUpN = 0, levelUpFila = null;
+// Game Event da Poki: se `connect/match` já foi fechado (complete OU fail) nesta tentativa. Sem isto, uma
+// queda de WS que nunca chega a conectar cai em "Left" (indistinguível de desinteresse) e uma
+// RECONEXÃO depois de já ter conectado reabriria/fecharia o mesmo Progress Event de novo — reset em
+// `play()`, junto do "start"; marcado em `onConnection` na primeira resolução (`complete` ou `fail`).
+let matchResolvido = false;
 /** Callback do jogo: fim da rodada — {code, champion, board, nextInMs, tick}. Mostra o placar da sala. */
 export function onRoundEnd(r) {
   clearTimeout(rewardsT);
@@ -689,13 +694,17 @@ export function onConnection(ev) {
     if (PORTAL && ev.room) portal.sala(ev.room, true);
     // Game Events: "connect" fecha aqui (WS confirmou), e as 3 etapas de "survival" abrem juntas — o
     // desfecho (complete acima do limiar, fail abaixo) sai em `onDead`, com o `durationS` que já existia.
-    if (PORTAL) { portal.medir("connect", "match", "complete");
+    if (PORTAL) { matchResolvido = true; portal.medir("connect", "match", "complete");
       portal.medir("survival", "60s", "start"); portal.medir("survival", "120s", "start"); portal.medir("survival", "180s", "start"); } }
   else if (st === "connecting") app.update(s => ({ ...s, conn: "connecting", room: ev.room || s.room }));
   else if (st === "reconnecting") app.update(s => ({ ...s, conn: "reconnecting", reconnAttempt: ev.attempt || 1, overlays: { ...s.overlays, reconn: true } }));
   else if (st === "closed" || st === "error") {
     const s = app.get();
     app.update({ conn: "closed", overlays: { ...s.overlays, reconn: false } });
+    // Game Event da Poki: a partida nunca chegou a conectar (nada de "complete" ainda) — sem isto essa
+    // sessão cairia em "Left", indistinguível de quem só perdeu o interesse. Só a PRIMEIRA vez: uma queda
+    // depois de já ter conectado é `reconnecting`/fim de partida normal, não falha de conexão.
+    if (PORTAL && !matchResolvido) { matchResolvido = true; portal.medir("connect", "match", "fail"); }
     // NICK_IN_ROOM não é "deu erro": é "troque o nome". Desde que o nick ficou livre (dois "Messi" são
     // legais no mundo) isso deixou de ser raro — e cai bem no caminho de EQUIPE, onde todos entram pelo
     // mesmo código. Mandar para a tela de Salas era um beco: a frase não diz onde se troca o nome.
