@@ -345,6 +345,14 @@ export class Room{
     // dois amigos que procuram com 10 s de diferença cairiam em salas separadas — o oposto do que o
     // matchmaking existe para fazer.
     if(this.phase==='lobby')return this.sessions.size<this.max;
+    // JANELA DE ENTRADA TARDIA (Battle Royale): a largada não é mais o fim das inscrições. Enquanto a zona
+    // ainda está na etapa 0 e PARADA (antes do primeiro fechamento do gás, ~ZONE.HOLD_TICKS[0] depois de
+    // `begin()`), a sala continua aceitando gente — o círculo ainda cobre quase o mapa inteiro, então não
+    // há desvantagem geométrica em chegar agora. `_spawnPiece` (shared/physics/world.js) já sorteia dentro
+    // do círculo da zona quando ela existe, então o recém-chegado nasce em lugar seguro sem código extra
+    // aqui. No primeiro `stepZone` que começa a fechar (`shrinking:true` ou etapa > 0), a porta fecha
+    // exatamente como sempre fechou.
+    if(this.mode.lobby){const z=this.zone;if(z&&z.stage===0&&!z.shrinking)return !this.isFull();}
     return !this.isFull()&&!this.mode.lobby;}
   /**
    * O MOTIVO da recusa, para quem precisa dizê-lo: `null` (pode entrar), `'full'` (não tem vaga) ou
@@ -360,10 +368,22 @@ export class Room{
     if(this.acceptsJoin())return null;
     return this.phase!=='lobby'&&this.mode.lobby?'started':'full';}
   info(){return{code:this.code,shard:this.shard,mode:this.modeId,teamSize:this.teamSize,phase:this.phase,open:this.acceptsJoin(),closed:this.joinRefusal(),
-    players:this.sessions.size,max:this.max,bots:this.sim.botCount(),round:this.roundLeft(),
+    players:this.sessions.size,max:this.max,bots:this.sim.botCount(),round:this.roundLeft(),lockInMs:this._lockInMs(),
     // ⚠️ o campo fica AQUI, mas o filtro é na LISTAGEM (RoomManager.listRooms): `adminInfo()` é construído em
     // cima deste objeto, e o painel tem que continuar vendo a sala privada.
     private:this.private,host:this.hostNick||null};}
+  /**
+   * Quanto falta, em ms, até a sala TRANCAR — para a lista de Salas mostrar a contagem antes de acontecer,
+   * não só o cadeado depois. Duas janelas, a mesma ideia: o LOBBY fecha em `lobbyUntil` (a mesma conta de
+   * `broadcastLobby`) e a entrada tardia do Battle Royale fecha no `t1` da zona (o tick em que o 1º
+   * fechamento do gás COMEÇA — `zone.js:stepZone`). Fora das duas, `null`: nada reusa estado novo, os dois
+   * relógios já existiam.
+   */
+  _lockInMs(){
+    if(!this.mode.lobby||!this.acceptsJoin())return null;
+    if(this.phase==='lobby')return this.lobbyUntil?Math.max(0,Math.round((this.lobbyUntil-this.sim.tick)*1000/TICK_HZ)):null;
+    const z=this.zone;
+    return z&&z.stage===0&&!z.shrinking?Math.max(0,Math.round((z.t1-this.sim.tick)*1000/TICK_HZ)):null;}
   /** Bloco `round` do JSON `room`: tick de início, duração e hora do relógio do espaço no início. */
   roundInfo(){return{start:this.roundStart,ticks:this.roundTicks,dayStart:ROUND.DAY_START_H,breakMs:ROUND.BREAK_MS,
     // `days` vem do SERVIDOR de propósito. Os ticks da rodada saem do env (ROUND_TICKS) e os dias eram uma

@@ -51,8 +51,12 @@ function Body() {
         const motivo = r.closed || (fechada ? (r.mode === MODE.BR && r.phase !== "lobby" ? "started" : "full") : null);
         const dentro = Math.min(r.players + (r.bots || 0), r.max);
         // `round` é o que sobra da rodada em segundos: null = sala sem fim (é opção do dono no Livre), e no
-        // lobby do BR o relógio ainda não começou a correr.
-        const tempo = r.phase === "lobby" ? LB.roomWaiting : r.round == null ? LB.roomEndless : fmtTime(r.round);
+        // lobby do BR o relógio ainda não começou a correr. `lockInMs` é o contrário: quanto falta para
+        // TRANCAR — vale no lobby (a janela de espera) e na janela de entrada tardia do BR (antes do 1º
+        // fechamento do gás), e por isso vem ANTES do `round` de sempre: só uma sala já trancada exibe o
+        // relógio da rodada, porque aí não há mais contagem de entrada para mostrar.
+        const tempo = r.lockInMs != null ? preenche(LB.roomLockIn, { n: Math.ceil(r.lockInMs / 1000) })
+          : r.phase === "lobby" ? LB.roomWaiting : r.round == null ? LB.roomEndless : fmtTime(r.round);
         return <div className={"room-row" + (fechada ? " full" : "") + (motivo === "started" ? " locked" : "")} data-code={r.code} key={r.code}>
         <b className="code">{r.code}</b>
         <span className="mode" data-mode={r.mode === MODE.BR ? "br" : "free"}>{r.mode === MODE.BR ? LB.roomBr : LB.roomFree}</span>

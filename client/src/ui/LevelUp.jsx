@@ -18,13 +18,19 @@ import { sfx } from "../audio/index.js";
 import { fmt } from "./format.js";
 
 const DURACAO = 6500;   // sai sozinho: ninguém deve ter que fechar uma notícia boa
+// A variante RÁPIDA (`lv.rapido`, toda morte no Livre que não subiu de nível nem destravou conquista) tem
+// que ser curta — "tem que ser rápido, antes do respawn" — senão ela compete com a contagem de respawn
+// automático (ver Dead.jsx) e o jogador fica olhando duas animações ao mesmo tempo.
+const DURACAO_RAPIDA = 2200;
 
 export default function LevelUp() {
   const lv = useStore(app, s => s.levelUp);
   useEffect(() => {
     if (!lv) return;
-    sfx(lv.subiu ? "levelUp" : "achievement");
-    const t = setTimeout(closeLevelUp, DURACAO);
+    // som de MOEDA na variante rápida (o `buy` já é isso — ver client/src/audio/kit.js), nível/conquista
+    // continuam com a fanfarra de sempre.
+    sfx(lv.subiu ? "levelUp" : lv.achievements.length ? "achievement" : "buy");
+    const t = setTimeout(closeLevelUp, lv.rapido ? DURACAO_RAPIDA : DURACAO);
     return () => clearTimeout(t);
   }, [lv && lv.n]);
   if (!lv) return null;
@@ -33,13 +39,15 @@ export default function LevelUp() {
 
 function Card({ lv }) {
   const LB = useLabels();
-  return <div className={"card lvup" + (lv.subiu ? " up" : " ach-only")}>
-    {lv.subiu ? <>
+  const mostraBarra = lv.subiu || lv.rapido;   // rápido = progresso puro, sem ter subido de nível
+  return <div className={"card lvup" + (lv.subiu ? " up" : lv.rapido ? " tick" : " ach-only")}>
+    {mostraBarra ? <>
       <div className="lvup-badge"><b>{lv.level}</b></div>
-      <div className="lvup-title">{LB.levelUp}</div>
+      <div className="lvup-title">{lv.subiu ? LB.levelUp : LB.xpGained}</div>
       <div className="lvup-sub">{LB.levelWord} {lv.level}{lv.gained ? ` · +${fmt(lv.gained)} ${LB.xpWord}` : ""}</div>
       <span className="lv-bar"><i style={{ "--p": Math.max(0, Math.min(1, lv.pct || 0)) }} /></span>
       <span className="lvup-next">{fmt(lv.into)} / {fmt(lv.need)} {LB.xpWord}</span>
+      {lv.proximaSkin ? <div className="lvup-preview"><i>{LB.nextUnlock}</i><b>{lv.proximaSkin.emoji} {lv.proximaSkin.name}</b></div> : null}
     </> : null}
     {lv.achievements.length ? <div className="lvup-achs">
       {!lv.subiu ? <div className="lvup-title sm">{LB.achievements}</div> : null}

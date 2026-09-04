@@ -194,19 +194,34 @@ test('Battle Royale: a janela fecha com a sala CHEIA (o contador não pula na la
   assert.equal(room.sim.players.size,room.max,`a contagem só começa com a sala cheia (${room.sim.players.size}/${room.max})`);
   c.close();
 });
-test('Battle Royale: partida em andamento NÃO aceita mais ninguém (é o que "sem respawn" quer dizer)',async()=>{
+test('Battle Royale: aceita entrar até o 1º fechamento do gás, e trava depois disso',async()=>{
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Dono',mode:MODE.BR,teamSize:1,room:newRoom()});
   const room=roomOf(r.code);room.lobbyUntil=room.sim.tick+60;room.lobbyStart=room.sim.tick;
   await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'live');
+  // ⚠️ A JANELA DE ENTRADA TARDIA: a largada não fecha mais a porta sozinha. Enquanto a zona ainda está
+  // na etapa 0 e PARADA (antes de o gás começar a fechar pela 1ª vez), a sala continua aceitando gente.
+  assert.ok(room.zone&&room.zone.stage===0&&!room.zone.shrinking,'a zona nasce parada na etapa 0');
+  assert.equal(room.acceptsJoin(),true,'ainda dá para entrar: o 1º gás não começou');
+  assert.equal(room.info().open,true);
+  assert.ok(room.info().lockInMs>0,'a lista de salas tem o que contar: falta o círculo começar a fechar');
+  const c2=new C(wsUrl);await c2.open();
+  const r2=await c2.join({nick:'Atrasado',mode:MODE.BR,teamSize:1,room:r.code});
+  assert.equal(r2.code,r.code,'entrou na MESMA sala, já em partida');
+  c2.close();
+  // Força o 1º fechamento a começar (o teste não quer esperar ZONE.HOLD_TICKS[0] de verdade): o próximo
+  // `stepZone` vira `shrinking` assim que o tick alcança `t1` — é a MESMA máquina de shared/src/zone.js.
+  room.zone.t1=room.sim.tick;
+  await c.until(()=>room.zone.shrinking===true,4000,'zona começou a fechar');
   assert.equal(room.acceptsJoin(),false);
   // ⚠️ ROOM_STARTED e não FULL: a sala tem vaga de sobra, o que acabou foi a JANELA. Dizer "cheia" mandava
   // o jogador esperar por uma vaga que não ia adiantar, quando o certo é procurar outra partida.
   assert.equal(room.joinRefusal(),'started');
   assert.equal(room.info().closed,'started');
-  const c2=new C(wsUrl);await c2.open();
-  await assert.rejects(()=>c2.join({nick:'Atrasado',mode:MODE.BR,teamSize:1,room:r.code}),/ROOM_STARTED/);
-  c2.close();c.close();
+  assert.equal(room.info().lockInMs,null,'trancada não conta mais nada — o cadeado já diz tudo');
+  const c3=new C(wsUrl);await c3.open();
+  await assert.rejects(()=>c3.join({nick:'MuitoAtrasado',mode:MODE.BR,teamSize:1,room:r.code}),/ROOM_STARTED/);
+  c3.close();c.close();
 });
 // Era o oposto: entrar por código pedindo outro modo levava um erro `MODE`. Na tela de Salas o jogador
 // clica numa SALA, não num modo — o modo escolhido antes é a preferência do "JOGAR (AUTO)", e usá-lo para

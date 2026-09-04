@@ -82,7 +82,13 @@ export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS
 // HOST_GRACE_MS: o dono pode cair e voltar. Passado esse tempo fora, a coroa vai para o humano mais antigo
 // que estiver na sala — sem isso uma sala privada com 20 pessoas fica sem quem possa expulsar um invasor.
 export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,FADE_MS:600,BOARD_MAX:60,AWARD_MIN_KILLS:3,
-  DAY_TICKS:54000,CHOICES_MIN:[10,20,30,60,0]};
+  DAY_TICKS:54000,CHOICES_MIN:[10,20,30,60,0],RESPAWN_TICKS:300};
+// RESPAWN_TICKS: quanto tempo a tela de morte espera antes de renascer SOZINHA no Livre (300 = 5 s a
+// 60 Hz). ⚠️ Quem decide QUANDO renascer é o CLIENTE, não o servidor: `respawn` já aceitava o pedido a
+// qualquer momento (era só o botão "DE NOVO" que faltava apertar), então isto só automatiza o clique —
+// não é autoridade de jogo, é temporização de tela, e por isso é `wire` em tunables.js (chega pelo JSON
+// `room`, no molde de `CAM.K`) em vez de `server`. O jogador continua podendo clicar "DE NOVO" a
+// qualquer momento para pular a espera.
 // DAY_TICKS: o dia do relógio do espaço em ticks (15 min), que até aqui só existia dividido — `TICKS/DAYS`.
 // Ele precisou de nome próprio por causa da sala SEM FIM: lá não há `TICKS` de onde derivar, e sem um dia
 // declarado o céu simplesmente PARARIA de girar justo na sala que dura mais.

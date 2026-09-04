@@ -49,10 +49,16 @@ export function joyTarget(cx,cy,dx,dy,k,spread=0,out=T,w=WORLD.w,h=WORLD.h){
 // exigia encostar o dedo EXATAMENTE na borda física de 52 px — qualquer folga de alguns pixels (o normal de
 // um polegar, que não é um ponteiro) já cortava a velocidade, e como o corte é LINEAR em k, cortava a
 // velocidade NA MESMA proporção: 90% do raio = 90% da velocidade máxima. Era "empurro até o talo e o
-// planeta anda devagar assim mesmo". PLATO satura em k=1 a partir de 75% do curso: sobra 25% de raio como
-// MARGEM DE ERRO do dedo antes de perder velocidade máxima, e o trecho MORTO..PLATO continua proporcional
-// (analógico de verdade), só que comprimido — não muda o tamanho da base na tela, só facilita CHEGAR a 100%.
-const RAIO=52,MORTO=.14,PLATO=.75;
+// planeta anda devagar assim mesmo". PLATO satura em k=1 a partir de 50% do curso: sobra METADE do raio
+// como MARGEM DE ERRO do dedo antes de perder velocidade máxima, e o trecho MORTO..PLATO continua
+// proporcional (analógico de verdade), só que comprimido — não muda o tamanho da base na tela, só facilita
+// CHEGAR a 100%.
+// ⚠️ A ORIGEM É DINÂMICA (nasce onde o dedo toca, `down()` acima), então TODO novo toque começa em k=0 —
+// soltar e tocar de novo é sempre um recomeço, e antes o platô só saturava a 75% do raio (~39 px): um
+// retoque rápido, com o polegar arrastando pouco, ficava preso na faixa baixa da rampa e "sentia" lento.
+// Baixar o platô para 50% (~26 px) e a zona morta de .14 para .10 encurta essa distância sem mudar o
+// tamanho FÍSICO da base (RAIO continua 52) nem o comportamento com peça dividida (JOY.SPREAD_K, acima).
+const RAIO=52,MORTO=.10,PLATO=.5;
 const T={x:0,y:0};   // saída reusada: isto roda a NET.INPUT_HZ, não é lugar de alocar objeto por chamada
 
 export function createJoystick(alvo,hud){

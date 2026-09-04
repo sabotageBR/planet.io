@@ -46,6 +46,7 @@ export const GRUPOS=[
   ['jogador','Jogador'],
   ['camera','Câmera e área de interesse'],
   ['sala','Salas'],
+  ['morte','Morte e respawn'],
   ['chat','Chat'],
   ['bots','Fala dos bots'],
   ['modos','Tela de Modos'],
@@ -157,6 +158,12 @@ export const TUNABLES=[
   // que a semente e o enchimento gradual não tem o que fazer.
   num('sala','ROOM.MAX','Jogadores por sala no modo Livre (vale nas salas novas)','jogadores','server',2,60,1,ROOM,'MAX'),
   num('sala','ROOM.BOTS','Preenchimentos por sala no modo Livre (vale nas salas novas)','bots','server',0,60,1,ROOM,'BOTS'),
+  // ── MORTE E RESPAWN ──
+  // Quanto a tela de morte espera antes de renascer SOZINHA no Livre, em SEGUNDOS. `wire`, não `server`:
+  // quem decide QUANDO renascer é o cliente (o pedido `{t:"respawn"}` já era aceito a qualquer momento),
+  // então o valor só precisa chegar até a tela — pelo mesmo canal que `CAM.K` já usa (JSON `room`).
+  num('morte','ROUND.RESPAWN_S','Tempo até o respawn automático no Livre','segundos','wire',1,30,1,ROUND,'RESPAWN_TICKS',
+    {para:s=>Math.round(s*TICK_HZ),de:t=>Math.round(t/TICK_HZ)}),
   // ── CHAT ──
   // Quanto da linha de uma PESSOA é mascarado. O padrão é `livre` por decisão de produto (xingar faz parte
   // de um .io); os portais continuam atendidos por silenciar/denunciar/kick, que valem em qualquer nível.

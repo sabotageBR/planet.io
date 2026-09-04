@@ -68,6 +68,10 @@ body #s-shop .shop-grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr)
 /* o selo de "sua foto" na grade: a Retrato pede um passo a mais e a grade não dizia isso em lugar nenhum */
 .skin-card .badge.av{background:var(--accent2,#ff6b4a);color:var(--line,#141026);
   top:auto;bottom:6px;right:6px;left:auto;font-size:8.5px;letter-spacing:.04em}
+/* mesmo selo, mesmo motivo: as skins mascote têm um caminho a mais (assistir anúncio) que a grade não
+   dizia. Nunca aparece com `.av` no mesmo cartão (Retrato não é mascote), então a posição pode repetir. */
+.skin-card .badge.ad{background:var(--accent2,#ff6b4a);color:var(--line,#141026);
+  top:auto;bottom:6px;right:6px;left:auto;font-size:8.5px;letter-spacing:.04em}
 
 .shop-detail{display:flex;gap:12px;align-items:center;margin-top:8px}
 .shop-detail canvas{width:84px;height:84px;flex:0 0 auto}
@@ -567,10 +571,12 @@ body[data-mode="portrait"] #hud.spec #chat,body[data-mode="landscape"] #hud.spec
 body[data-mode="portrait"] #hud.spec.map #chat,body[data-mode="landscape"] #hud.spec.map #chat{display:none}
 body[data-mode="portrait"] #s-dead .dead-card,body[data-mode="landscape"] #s-dead .dead-card{max-height:min(64%,64dvh)}
 
-/* mobile: o chat vira uma faixa curta no alto e o painel de modo encolhe */
-/* o chat empilha ACIMA do bloco de arma/powerups: em 96px ele cobria o #hud-status nos três celulares
-   testados (96×52 px de sobreposição). 150px passa da altura do status e ainda deixa o placar livre. */
-body[data-mode="portrait"] #hud #chat,body[data-mode="landscape"] #hud #chat{left:8px;top:auto;bottom:150px;width:min(220px,44vw);max-height:18vh}
+/* mobile: o chat mora no topo-esquerda, logo abaixo do radar — a MESMA ancoragem do desktop
+   (`--radar-top`/`--radar-h`, publicadas por Minimap.layout() em QUALQUER data-mode), então nunca cobre o
+   radar em tamanho de tela nenhum. Ele saiu do canto inferior esquerdo (onde disputava altura com o bloco
+   de arma/powerups, que cresce com os powerups ativos) porque lá embaixo é o dedo que precisa da tela livre
+   para os botões de toque; a faixa de cima, abaixo do radar, é sobra. */
+body[data-mode="portrait"] #hud #chat,body[data-mode="landscape"] #hud #chat{left:8px;top:calc(var(--radar-top,12px) + var(--radar-h,92px) + 8px);bottom:auto;width:min(220px,44vw);max-height:18vh}
 /* landscape: altura é o recurso escasso — o feed encolhe, a coluna sobe e para acima dos botões de toque */
 /* Celular DEITADO é o caso mais apertado do jogo: 375 px de altura para topo, feed, massa, placar e ainda
    os botões de toque. Aqui a coluna mostra o essencial — duas linhas de feed e três do placar. */
@@ -805,16 +811,19 @@ body[data-mode="portrait"] .brl-count b{font-size:2.2em}
 #hud button,#hud input,#hud select,#hud a,#hud #touch,#hud #chat,#hud #br-lobby,#hud [role="button"]{pointer-events:auto}
 
 /* COLUNA ESQUERDA DO HUD (chat · arma/powerups · massa). No desktop o wrapper não existe para o layout
-   (`display:contents`), então cada bloco continua exatamente onde o tema o põe. No dedo ele vira uma PILHA:
-   é a única forma de o chat nunca cobrir o bloco de arma, que muda de altura conforme os powerups ativos —
-   com offset fixo a colisão voltava sozinha assim que um ímã entrava. */
+   (`display:contents`), então cada bloco continua exatamente onde o tema o põe. No dedo o bloco de ARMA
+   vira uma PILHA presa ao canto inferior esquerdo — só ele, porque cresce com os powerups ativos e com
+   offset fixo a colisão com os botões de toque voltava sozinha assim que um ímã entrava.
+   ⚠️ O CHAT SAI DESSA PILHA: ele mora em cima, logo abaixo do radar (ver a regra de `#hud #chat` no topo
+   deste arquivo, e a de portrait/landscape mais abaixo) — os dois já usavam o MESMO ponto de ancoragem no
+   desktop, e forçá-lo a `position:static` aqui era o que impedia essa regra de valer no dedo. */
 #hud-left{display:contents}
 /* `display:contents` some com a CAIXA, mas o seletor `#hud>*` de base.css deixa de casar com os netos —
    sem esta linha os três blocos viram estáticos e desabam no canto superior esquerdo. */
 #hud>#hud-left>*{position:absolute;z-index:5}
 body[data-pointer="coarse"] #hud-left{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;
   gap:8px;left:12px;right:auto;top:auto;bottom:12px;max-width:min(62vw,280px);pointer-events:none}
-body[data-pointer="coarse"] #hud>#hud-left>*{position:static;left:auto;right:auto;top:auto;bottom:auto;transform:none;pointer-events:auto}
+body[data-pointer="coarse"] #hud>#hud-left>#hud-status{position:static;left:auto;right:auto;top:auto;bottom:auto;transform:none;pointer-events:auto}
 
 /* A lista de salas da tela inicial (`.mr-row` com `role="button"`, Entry.jsx) é CLICÁVEL e tinha 22 px de
    altura — metade do alvo mínimo no dedo. O defeito é antigo; só apareceu quando a matriz passou a rodar
@@ -1441,6 +1450,11 @@ body[data-mode="portrait"] #rk-table .c-food,body[data-mode="portrait"] #rk-tabl
 .lvup .lv-bar{width:100%;height:7px;border-radius:99px;background:var(--line,#0006);overflow:hidden}
 .lvup .lv-bar>i{display:block;height:100%;width:calc(var(--p,0) * 100%);background:var(--accent,#ffc22e);border-radius:99px}
 .lvup-next{font-size:10px;letter-spacing:.05em;color:var(--muted,#8fa0d8)}
+/* prévia de recompensa (skin com levelReq no PRÓXIMO nível) — só aparece quando existe uma, então é uma
+   linha curta e discreta, não um segundo cartão */
+.lvup-preview{display:flex;align-items:center;gap:6px;font-size:11px;margin-top:2px}
+.lvup-preview i{font-style:normal;color:var(--muted,#8fa0d8)}
+.lvup-preview b{font-size:12px;color:var(--text,#fff5c2)}
 /* as conquistas entram na MESMA notícia: uma partida que rende nível costuma render medalha junto, e
    dois avisos brigando pela mesma fila era como uma das duas sumia */
 .lvup-achs{display:flex;flex-direction:column;gap:6px;width:100%;margin-top:4px}

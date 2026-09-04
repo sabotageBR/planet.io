@@ -30,7 +30,7 @@ import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,P
 // vocabulário de jogo), e o cliente só precisa do aplicador — a validação vem junto de graça.
 import {aplicaWire} from "@warspace/shared/tunables.js";
 /** As raízes que um tunable 'wire' pode escrever. A chave do descritor É o caminho (`CAM.K`). */
-const RAIZES_WIRE={CAM,ZOOM,STAR};
+const RAIZES_WIRE={CAM,ZOOM,STAR,ROUND};
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
@@ -44,6 +44,7 @@ import {createRenderer} from "./renderer/Renderer.js";
 import {createCamera} from "./renderer/Camera.js";
 import {createPointer} from "./input/Pointer.js";
 import {createJoystick} from "./input/Joystick.js";
+import {createPinch} from "./input/Pinch.js";
 import {createKeyboard} from "./input/Keyboard.js";
 import {createWheel} from "./input/Wheel.js";
 import {createTouchButtons} from "./input/Touch.js";
@@ -101,7 +102,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
 
   // ── estado de rede/simulação ──
   const buffer=createSnapshotBuffer();
-  const alvo={x:0,y:0};let inputTimer=0,joy=null;
+  const alvo={x:0,y:0};let inputTimer=0,joy=null,pinch=null;
   // o analógico só vale onde o ponteiro é o DEDO: no mouse o próprio ponteiro já é o controle
   const aplicaJoystick=()=>{if(joy)joy.setEnabled(curPrefs.joystick!==false&&typeof matchMedia!=="undefined"&&matchMedia("(pointer: coarse)").matches);};   // alvo reusado; inputTimer: o envio de input não depende do rAF (ver enviarInput)
   // "" = fechado · "map" = o RADAR ampliado · "live" = a visão em TEMPO REAL da sala (o mesmo radar, ocupando
@@ -169,6 +170,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   function zoomAplica(){const f=clampZoom(zoomF,focusOf(own0.map(p=>({x:p.rx,y:p.ry,r:p.rr}))).sumR);
     if(f===zoomF)return f;zoomF=f;return f;}
   function zoomReset(){if(zoomF===1)return;zoomF=1;zoomAt=performance.now();agendaView();}
+  /** Zoom por PINÇA (Pinch.js): `fator` é a razão de distância entre os dedos desde a última leitura —
+      contínuo, não em degraus como a roda. Mesmo pipeline de sempre (clampa pela massa, agenda o {t:"view"}). */
+  function zoomPinch(fator){if(!canAct()||!own0.length||!Number.isFinite(fator))return;
+    zoomF*=fator;zoomAplica();zoomAt=performance.now();agendaView();}
   const wheel=createWheel({onStep:n=>{zoomStep(n);zoomAt=performance.now();agendaView();},enabled:()=>joined&&!dead&&!isBench(),prefs:curPrefs});
   const keyboard=createKeyboard({onAction:act,enabled:()=>joined&&!pausado,prefs:curPrefs});
   const touch=createTouchButtons(hud,{onAction:act});
@@ -196,7 +201,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── renderer (assíncrono: Pixi init) ──
   let destroyed=false;   // StrictMode destrói a 1ª instância com o init do Pixi ainda pendente: não pode sobrar um canvas zumbi
   createRenderer({container,theme:curTheme,prefs:{fx:!curPrefs.reduceMotion}}).then(r=>{if(destroyed){r.destroy();return;}renderer=r;ready=true;
-    pointer=createPointer(r.canvas,{onButton:button});joy=createJoystick(r.canvas,hud);aplicaJoystick();applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();warmSkins();
+    pointer=createPointer(r.canvas,{onButton:button});joy=createJoystick(r.canvas,hud);pinch=createPinch(r.canvas,{onZoom:zoomPinch});aplicaJoystick();applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();warmSkins();
     if(!raf)raf=requestAnimationFrame(frame);
     if(!inputTimer)inputTimer=setInterval(()=>enviarInput(performance.now()),Math.max(8,Math.round(1000/NET.INPUT_HZ)));}).catch(e=>{console.error("[game] renderer",e&&e.stack||e);container.innerHTML=`<div style="padding:20px;color:#fff">${getLabels().err.noWebGL}: ${e.message}</div>`;});
   // DEBOUNCE obrigatório: o observer dispara a cada frame enquanto a borda da janela é arrastada, e
@@ -553,7 +558,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
      *  `enviarInput` da pausa (alvo em cima do centróide) que congelaria o planeta. */
     setRoster(on){const v=!!on;if(v===rosterOn)return;rosterOn=v;pushHud(performance.now());},
     resize(){if(!renderer)return;renderer.resize();agendaView();},
-    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();game.leave(true);audio.suspend();for(const ev of ["pointerdown","keydown","click","touchend"])removeEventListener(ev,wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();actions.destroy();clearTimeout(viewT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
+    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();if(pinch)pinch.destroy();game.leave(true);audio.suspend();for(const ev of ["pointerdown","keydown","click","touchend"])removeEventListener(ev,wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();actions.destroy();clearTimeout(viewT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("warspace:pause",onPortalPause);removeEventListener("warspace:theme",onThemeEvent);if(themeGuard)removeEventListener("warspace:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,

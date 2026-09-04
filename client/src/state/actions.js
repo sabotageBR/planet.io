@@ -5,7 +5,7 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { getLabels, setLang, currentLangPref, preenche } from "../i18n/index.js";
 import { errText } from "../i18n/errors.js";
-import { skinById, PROTOCOL_VERSION } from "@warspace/shared";
+import { skinById, PROTOCOL_VERSION, SKINS, LEVEL } from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
@@ -283,7 +283,8 @@ export async function loadRooms() {
 }
 export async function loadSkins() {
   try { const r = await api.skins(); if (!r) return;
-    app.update(s => ({ ...s, session: { ...s.session, skins: r.owned && r.owned.length ? r.owned : s.session.skins, user: s.session.user && r.equipped != null ? { ...s.session.user, equippedSkin: r.equipped } : s.session.user } })); }
+    app.update(s => ({ ...s, session: { ...s.session, skins: r.owned && r.owned.length ? r.owned : s.session.skins, adSkin: r.adReward !== undefined ? r.adReward : s.session.adSkin,
+      user: s.session.user && r.equipped != null ? { ...s.session.user, equippedSkin: r.equipped } : s.session.user } })); }
   catch { /* opcional */ }
 }
 export async function loadHistory(limit = 20) {
@@ -399,6 +400,27 @@ export async function buySkin(id) {
     toast(errText(e), 2500);
   }
 }
+/**
+ * Assiste um anúncio recompensado (Poki `rewardedBreak`) para ganhar UMA das skins mascote — 1
+ * recompensa por CONTA, e é o servidor quem garante isso (`already_claimed`), não o cliente.
+ * ⚠️ Só existe com `portal.ativo`: sem adaptador de anúncio não há o que assistir, e o `SkinModal`
+ * já não oferece este estado fora dele — esta função é o braço, `Shop.jsx` decide quando mostrar o botão.
+ */
+export async function claimAdSkin(id) {
+  const s = app.get().session; if (!s.user) return;
+  if (s.skins.includes(id)) return equipSkin(id);
+  if (s.adSkin != null) { toast(getLabels().adRewardDone); return; }
+  if (!portal.ativo) { toast(getLabels().adUnavailable); return; }
+  let assistiu = false;
+  try { assistiu = await portal.recompensa(); } catch { assistiu = false; }
+  if (!assistiu) { toast(getLabels().adSkipped); return; }
+  try {
+    const r = await api.rewardAd(id);
+    app.update(st => ({ ...st, session: { ...st.session, skins: r && r.owned ? r.owned : [...st.session.skins, id], adSkin: id } }));
+    toast(getLabels().adRewardGranted);
+    try { await api.equip(id); } catch { /* opcional: quem quiser troca depois na loja */ }
+  } catch (e) { toast(errText(e), 2500); }
+}
 
 // ── partida ──────────────────────────────────────────────────────────────────
 /** Devolve o cursor ao campo da tela inicial. Os 60 ms esperam o React montar a Entrada. */
@@ -433,6 +455,9 @@ export function semNome(pedido = null) {
 /** Entra numa sala: `room` explícito, senão GET /api/auto (offline → sala local do stub). */
 export async function play({ room, mode, teamSize, party } = {}) {
   if (semNome({ room, mode, teamSize, party })) return;
+  // Game Events da Poki: fecha a etapa "menu" e abre "connect" — ver o `start` em ui/Entry.jsx e o
+  // `complete` de "connect" em `onConnection`, mais abaixo.
+  if (PORTAL) { portal.medir("menu", "entry", "complete"); portal.medir("connect", "match", "start"); }
   // ── ANÚNCIO DE PORTAL ──
   // Ponto ÚNICO, e de propósito: `play()` é a porta por onde passam Modos, Salas (auto, código e lista),
   // o convite, a largada de equipe, o respawn da tela de morte e a entrada automática depois do BIG
@@ -473,7 +498,7 @@ export async function respawnAqui(room) {
   if (PORTAL) await portal.anuncio("midroll");
   levelUpFila = null;
   const st = app.get();
-  app.update(s => ({ ...s, screen: "game", rewards: null, rewardsPending: false,
+  app.update(s => ({ ...s, screen: "game", rewards: null, rewardsPending: false, levelUp: null,
     overlays: { ...s.overlays, account: false, pause: false } }));
   partidaIniciada({ mode: st.gameMode | 0, teamSize: st.teamSize || 1, party: st.party ? st.party.code : null });
   if (PORTAL) portal.jogoComecou();
@@ -593,6 +618,10 @@ export function onDead(info) {
     session: { ...a.session, stats: { ...st, bestMass: Math.max(recMass, +info.maxMass || 0), bestScore: Math.max(recScore, +info.score || 0) } },
     rewards: null, rewardsPending: true, screen: "dead" }));
   clearTimeout(rewardsT); rewardsT = setTimeout(() => { if (app.get().rewardsPending) app.update({ rewardsPending: false }); }, 5000);
+  // Game Events: desfecho das 3 etapas de "survival" abertas em `onConnection` — acima do limiar é
+  // `complete`, abaixo é `fail`. `durationS` já existia aqui; só nunca tinha saído do cliente.
+  if (PORTAL) { const d = +info.durationS || 0;
+    for (const [k, limiar] of [["60s", 60], ["120s", 120], ["180s", 180]]) portal.medir("survival", k, d >= limiar ? "complete" : "fail"); }
 }
 /** Callback do jogo: {saved, coinsEarned, coins, achievements:[{key,title}], skinsUnlocked:[id], rank:{day}} */
 export function onRewards(r) {
@@ -620,11 +649,22 @@ export function onRewards(r) {
   if (r) {
     const novas = (r.achievements || []).map(a => (a && a.key) || a).filter(Boolean);
     const subiu = !!(r.xp && r.xp.leveledUp);
-    if (subiu || novas.length) {
-      const cartao = { subiu,
+    const st0 = app.get();
+    // ⚠️ NA TELA DE MORTE, O CARTÃO SEMPRE APARECE — não só quando sobe de nível ou destrava conquista.
+    // É a barra de progresso rápida que o jogador vê a cada vida, com som de moeda; fora da morte (fim de
+    // rodada) o comportamento de sempre continua (só nas duas ocasiões que merecem os 6,5 s inteiros, para
+    // não competir com a abertura do pódio). `rapido` marca a variante curta (LevelUp.jsx lê a duração e o
+    // som a partir dela).
+    const naMorte = st0.screen === "dead";
+    if (subiu || novas.length || (naMorte && r.xp)) {
+      // Prévia de recompensa: alguma skin com `levelReq` bate com o PRÓXIMO nível? (shared/src/skins.js —
+      // só 9 níveis têm skin associada, então a linha só aparece quando fizer sentido.)
+      const proxNivel = r.xp ? r.xp.level + 1 : 0;
+      const proximaSkin = proxNivel > 0 && proxNivel <= LEVEL.MAX ? SKINS.find(s => s.levelReq === proxNivel) || null : null;
+      const cartao = { subiu, rapido: naMorte && !subiu && !novas.length,
         level: r.xp ? r.xp.level : 0, gained: r.xp ? r.xp.gained : 0,
         into: r.xp ? r.xp.into : 0, need: r.xp ? r.xp.need : 1, pct: r.xp ? r.xp.pct : 0,
-        achievements: novas, n: ++levelUpN };
+        achievements: novas, proximaSkin, n: ++levelUpN };
       // ⚠️ NA TELA DE FIM DE RODADA ELE ESPERA. A ordem `roundEnd` → `rewards` é ESTRUTURAL, não corrida:
       // o primeiro sai dentro do `step()` do servidor e o segundo passa por fila + transação no Postgres.
       // São ~200-800 ms, ou seja o cartão nascia no meio dos 2 s de abertura e ainda comia o clique de
@@ -646,7 +686,11 @@ export function onConnection(ev) {
   if (st === "connected") { app.update(s => ({ ...s, conn: "connected", room: ev.room || s.room, overlays: { ...s.overlays, reconn: false }, reconnAttempt: 0 }));
     // o portal precisa saber em que sala o jogador está para oferecer "entrar com o amigo" (o Full da
     // CrazyGames). O código da nossa sala já é único no jogo inteiro, que é o que eles pedem do roomId.
-    if (PORTAL && ev.room) portal.sala(ev.room, true); }
+    if (PORTAL && ev.room) portal.sala(ev.room, true);
+    // Game Events: "connect" fecha aqui (WS confirmou), e as 3 etapas de "survival" abrem juntas — o
+    // desfecho (complete acima do limiar, fail abaixo) sai em `onDead`, com o `durationS` que já existia.
+    if (PORTAL) { portal.medir("connect", "match", "complete");
+      portal.medir("survival", "60s", "start"); portal.medir("survival", "120s", "start"); portal.medir("survival", "180s", "start"); } }
   else if (st === "connecting") app.update(s => ({ ...s, conn: "connecting", room: ev.room || s.room }));
   else if (st === "reconnecting") app.update(s => ({ ...s, conn: "reconnecting", reconnAttempt: ev.attempt || 1, overlays: { ...s.overlays, reconn: true } }));
   else if (st === "closed" || st === "error") {

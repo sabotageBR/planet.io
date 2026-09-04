@@ -57,6 +57,11 @@ const K=KIND,PP=K.PIECE<<3|K.PIECE,PE=K.PIECE<<3|K.EJECT,PA=K.PIECE<<3|K.ASTEROI
   AM=K.ASTEROID<<3|K.MISSILE,MM=K.MISSILE<<3|K.MISSILE,MH=K.MISSILE<<3|K.BLACKHOLE,ES=K.EJECT<<3|K.STAR,MS=K.MISSILE<<3|K.STAR,AS=K.ASTEROID<<3|K.STAR;
 // constantes locais de spawn (margens do mockup; não existem em constants.js)
 const PLAYER_MARGIN=300,PLAYER_SAFE=1500,AST_MARGIN=200,BELT_MARGIN=ASTEROID.BELT_RADIUS[1]+200,BELT_RAD_JITTER=40,SPAWN_TRIES=40,STAR_MARGIN=400;
+// PLAYER_SPAWN: nascer perto de OUTRO JOGADOR (ver _playerSpot). NEAR_MAX_R é o maior raio de peça que
+// ainda conta como "gente nova" — acima disso nascer perto seria nascer morto, o oposto do que a
+// mecânica social quer (PLAYER.START_R*5, ainda bem longe de qualquer coisa que engole em um bocado).
+// NEAR_R é o disco de amostragem em volta da peça escolhida, no mesmo espírito do STAR.NOVA_SPOT_R.
+const PLAYER_SPAWN_NEAR_MAX_R=PLAYER.START_R*5,PLAYER_SPAWN_NEAR_R=360;
 // Powerups: tabela CUMULATIVA de pesos dentro de FOOD.POWER_P (POWERUP.DROP), exatamente como a das armas.
 // Eram dois tipos com peso igual; hoje são seis, e dois deles são RAROS — peso igual faria "raro" ser só
 // uma palavra no comentário. ⚠️ Um sorteio ponderado tem que gastar UM `rng.next()`, como o rollWeapon:
@@ -343,6 +348,28 @@ export class World{
       const s=this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE,null,{x:n.x,y:n.y,r:STAR.NOVA_SPOT_R});
       if(s.ok)return s;}
     return null;}
+  /**
+   * Nascer perto de OUTRO JOGADOR: sem berçário disponível, o segundo degrau antes do sorteio cego de
+   * sempre. Sozinho num mapa de 144 M px² o começo é uma caça a comida sem ninguém por perto — um humano
+   * de porte parecido ali perto dá o primeiro encontro sem esperar minutos.
+   * ⚠️ Só GENTE (bot já está em toda sala, não é isso que falta) e só de porte PEQUENO
+   * (`PLAYER_SPAWN_NEAR_MAX_R`): nascer colado num gigante é nascer morto, o oposto do que isto existe
+   * para fazer — e como só peça pequena qualifica, um jogador estabelecido nunca vira alvo, o que também
+   * fecha de graça o risco de virar "spawn camping" (o candidato tem que estar ele mesmo começando).
+   * ⚠️ Mesmas guardas de `_novaSpot`: bot não é atraído, e BR nem passa por aqui (x/y explícitos no anel).
+   */
+  _playerSpot(ps){
+    if(ps.isBot||this.zoneNow())return null;
+    const cand=[];
+    for(const pc of this.pieces){
+      if(pc.dead||pc.owner===ps.slot||pc.r>PLAYER_SPAWN_NEAR_MAX_R)continue;
+      const o=this.players.get(pc.owner);
+      if(!o||o.isBot||!o.alive)continue;
+      cand.push(pc);}
+    if(!cand.length)return null;
+    const pc=cand[Math.floor(this.rng.next()*cand.length)];
+    const s=this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE,null,{x:pc.x,y:pc.y,r:PLAYER_SPAWN_NEAR_R});
+    return s.ok?s:null;}
   _spawnPiece(ps,x,y,r){
     // nasce longe de ESTRELA (era do buraco negro, que saiu de cena): com 12 estrelas e a queimadura de STAR.BURN,
     // cair colado numa delas custaria 30% da massa antes de encostar no primeiro grão.
@@ -350,7 +377,10 @@ export class World{
     // pode estar nascendo colado num gigante. O nascimento sempre ignorou isso em silêncio; agora ao menos
     // ele DIZ (`ps.spawnSafe`, que a Room conta em `metrics.spawn`). Medir antes de consertar: se o número
     // for ~0 o problema é teórico, e se for alto vira o primeiro suspeito da retenção.
-    if(Number.isNaN(x)){const s=this._novaSpot(ps)||this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE);x=s.x;y=s.y;ps.spawnSafe=s.ok;}
+    // ⚠️ `zc` (a zona atual) entra no sorteio cego SÓ quando existe (BR ao vivo): sem ele, um jogador
+    // entrando durante a janela de entrada tardia (ver Room.acceptsJoin) podia sortear um ponto fora do
+    // círculo seguro — o sorteio é uniforme no MAPA QUADRADO, e o círculo da 1ª etapa não cobre os cantos.
+    if(Number.isNaN(x)){const zc=this.zoneNow();const s=this._novaSpot(ps)||this._playerSpot(ps)||this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE,null,zc);x=s.x;y=s.y;ps.spawnSafe=s.ok;}
     else ps.spawnSafe=true;   // posição DADA (largada do BR, respawn com x/y): não houve sorteio a falhar
     ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.ejectRamp=0;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
     ps.autoDefN=0;ps.autoFireAt=0;ps.zoomUntil=0;ps.feastUntil=0;ps.aimLockId=-1;ps.aimLockUntil=0;ps.weaponPin=false;   // vida nova, powerups zerados — mesmo caminho do fireCdUntil, e é ele que cobre addPlayer, respawnPlayer e a largada do BR de uma vez

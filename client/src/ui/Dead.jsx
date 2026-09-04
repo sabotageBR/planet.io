@@ -18,8 +18,8 @@
 // parava no `Room.js`) e o planeta do algoz é desenhado com a skin de verdade. E o `score` da
 // partida chegava em `lastMatch` desde sempre sem NENHUM componente lê-lo — o mesmo defeito que o
 // `score` do `roundEnd` tinha.
-import React, { useEffect, useMemo, useSyncExternalStore } from "react";
-import { skinById, MODE } from "@warspace/shared";
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { skinById, MODE, ROUND, TICK_HZ } from "@warspace/shared";
 import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
@@ -67,6 +67,23 @@ export default function Dead({ on }) {
   }, [on, game]);
   useEffect(() => { if (!on && game && game.showMap) game.showMap(""); }, [on, game]);   // saiu da tela, fecha o mapa
   useEffect(() => { if (on) sfx("deadScreen"); }, [on]);   // a tela de KABOOM tem som próprio (o `death` é o do mundo, lá atrás)
+  // ── RESPAWN AUTOMÁTICO (Livre) ──────────────────────────────────────────────────────────────────
+  // A tela já abre a contagem no instante em que morre — não é preciso clicar "DE NOVO" para renascer.
+  // `ROUND.RESPAWN_TICKS` chega pelo canal `wire` (mesmo mecanismo de `CAM.K`), então o admin muda o
+  // tempo sem deploy. O clique continua funcionando a qualquer momento (respawn imediato, a tela
+  // desmonta e o efeito é limpo sozinho). BR nunca conta: lá não existe respawn.
+  const [restante, setRestante] = useState(0);
+  useEffect(() => {
+    if (!on || !m || h.mode === MODE.BR) { setRestante(0); return; }
+    let left = Math.max(1, Math.round((ROUND.RESPAWN_TICKS || 300) / TICK_HZ));
+    setRestante(left);
+    const iv = setInterval(() => {
+      left -= 1;
+      if (left <= 0) { clearInterval(iv); respawnAqui(m && m.room); }
+      else setRestante(left);
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [on, m && m.at, h.mode]);
   if (!on || !m) return <div className={"screen" + (on ? " on" : "")} id="s-dead" />;
 
   const linhas = h.lb || [];
@@ -136,7 +153,7 @@ export default function Dead({ on }) {
   const rodape = <>
     <div className="dead-actions">
       <button className="btn-primary" data-go="play"
-        onClick={() => (semRespawn ? play({}) : respawnAqui(m.room))}>{semRespawn ? LB.newMatch : LB.respawn}</button>
+        onClick={() => (semRespawn ? play({}) : respawnAqui(m.room))}>{semRespawn ? LB.newMatch : (restante > 0 ? `${LB.respawn} · ${preenche(LB.fmt.s, { n: restante })}` : LB.respawn)}</button>
       <button className="btn-secondary" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.toLobby}</button>
     </div>
     <div className="dead-views">
