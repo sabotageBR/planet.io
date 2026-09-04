@@ -9,20 +9,22 @@ import {ROOM,ROUND,MODE,modeOf} from '@warspace/shared/constants.js';
 import {Room} from './Room.js';
 import {newCode,normalizeCode,shardOf} from './codes.js';
 import {fetchPeerRooms} from '../http/peers.js';
+import {BUS_MUDO} from '../admin/bus.js';
 /** @param {{config:any,hooks:any,log:any,metrics:any,scheduler:any}} o */
-export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=null,botNames=null}){
+export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=null,botNames=null,bus=BUS_MUDO}){
   /** @type {Map<string,Room>} */const rooms=new Map();
   const onRewards=(sessionId,rewards)=>{const s=findSession(sessionId);if(s)s.deliverRewards(rewards);};
   function start(room){if(room.running)return;room.start();scheduler.add(room);}
   function stop(room){room.stop();scheduler.remove(room);}
   function create(code,{mode=MODE.FREE,teamSize=1,roundTicks=null,private:priv=false,hostUserId=null,hostNick=null}={}){
     const room=new Room({code,shard:config.shard,seed:randomInt(1,0x7fffffff),hooks,log,metrics,config,onRewards,mode,teamSize,botChat,
-      botNames,roundTicks,private:priv,hostUserId,hostNick});
+      botNames,roundTicks,private:priv,hostUserId,hostNick,bus});
     // A sala precisa alcançar as IRMÃS para um caso só: avisar os administradores que entrou gente
     // (`_avisaAdmins`). O alcance é o SHARD — o cluster inteiro exigiria `tellPeers` e uma rota interna,
     // e um aviso não vale essa superfície.
     room.manager={rooms};
     rooms.set(code,room);start(room);
+    bus.publica('sala+',{sala:code,modo:mode,privada:!!priv,dono:hostNick||null});
     log.info(`sala criada: ${code} ${modeOf(mode).key}${teamSize>1?`/${teamSize}`:''}${priv?' privada':''}${hostNick?` de ${hostNick}`:''} (${rooms.size} sala(s))`);return room;}
   /**
    * A sala mais cheia que ainda ACEITA gente (`acceptsJoin`: sem vaga, terminada ou já em partida ficam de fora),
@@ -58,13 +60,13 @@ export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=nu
   // ── ceifador (1 s): expira sessões em graça; para/remove salas vazias ──
   const timer=setInterval(()=>{const now=Date.now();
     for(const r of rooms.values()){r.housekeeping(now);
-      if(r.over&&now-r.endedAt>ROUND.BREAK_MS+5000){for(const s of [...r.sessions.values()])r.leave(s,'left');stop(r);rooms.delete(r.code);log.info(`sala ${r.code} encerrada (rodada terminada)`);continue;}
+      if(r.over&&now-r.endedAt>ROUND.BREAK_MS+5000){for(const s of [...r.sessions.values()])r.leave(s,'left');stop(r);rooms.delete(r.code);bus.publica('sala-',{sala:r.code,por:'rodada'});log.info(`sala ${r.code} encerrada (rodada terminada)`);continue;}
       if(r.humanCount>0)continue;const idle=now-r.lastHumanAt;
       if(r.running&&idle>=ROOM.STOP_AFTER_MS){stop(r);log.info(`sala ${r.code} parada (sem humanos há ${Math.round(idle/1000)} s)`);}
       // ⚠️ só o REMOVE é adiado numa sala com dono. Parar continua valendo (e `getRoom` religa), o que de
       // quebra congela o relógio da rodada enquanto ninguém está lá; o que não pode é a sala privada ser
       // APAGADA em 35 s — ela existe justamente para esperar os amigos chegarem pelo link.
-      if(!r.running&&idle>=ROOM.REMOVE_AFTER_MS&&now>=r.holdUntil){rooms.delete(r.code);log.info(`sala ${r.code} removida`);}}},1000);timer.unref();
+      if(!r.running&&idle>=ROOM.REMOVE_AFTER_MS&&now>=r.holdUntil){rooms.delete(r.code);bus.publica('sala-',{sala:r.code,por:'vazia'});log.info(`sala ${r.code} removida`);}}},1000);timer.unref();
   function close(){clearInterval(timer);for(const r of rooms.values())stop(r);}
   return{rooms,create,findOrCreateRoom,getRoom,listRooms,allRooms,findSession,playerCount,start,stop,close};
 }

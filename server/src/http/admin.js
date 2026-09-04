@@ -13,7 +13,9 @@
 // @ts-check
 import {shardOf} from '../rooms/codes.js';
 import {askPeers,tellPeers} from './peers.js';
-import {NOTICE} from '@warspace/shared/constants.js';
+import {createColetor,leCursor} from '../admin/coletor.js';
+import {hashToken} from '../auth/tokens.js';
+import {NOTICE,ADMIN_BUS} from '@warspace/shared/constants.js';
 
 /** Mesmo saneamento do chat da sala (Room.chat), feito UMA vez na rota e não uma vez por sala. */
 const limpa=t=>String(t||'').normalize('NFKC').replace(/\p{C}/gu,'').replace(/\s+/g,' ').trim().slice(0,NOTICE.MAX_CHARS);
@@ -53,28 +55,99 @@ const ordenaJogadores=(req,arr)=>{if(!Array.isArray(arr))return arr;
  * @param {{rooms:any,config:any,log:any,persistApi:any}} o
  * @returns {(req:any,res:any,p:string,sendJson:Function,readJson:Function)=>Promise<boolean>}
  */
-export function createAdminHttp({rooms,config,log,persistApi}){
+export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=null}){
+  const coletor=bus?createColetor({config,rooms,bus,metrics,log}):null;
+  /**
+   * MEMO DA RESOLUÇÃO DO BEARER — só para a porta `/internal`.
+   * ⚠️ Ele existe por causa do fluxo ao vivo: `/internal/*` revalida o Bearer no destino (invariante do
+   * cabeçalho deste arquivo, e não se mexe nela), e `tokens.resolve` é um SELECT. Com 2 admins olhando o
+   * painel são ~46 requisições internas por segundo — ou seja 46 SELECTs/s de puro overhead num pool de
+   * 5 conexões, disputando com a persistência de partida.
+   * ⚠️ O TTL é exatamente o atraso entre revogar um token e a porta interna perceber. 10 s é menor que os
+   * 30 s que o poll de tunables já aceita. A porta EXTERNA nunca lê este memo.
+   */
+  /** @type {Map<string,{u:any,ate:number}>} */const memo=new Map();
   /** Só entra quem tem `is_admin` E um token do PAINEL (kind 'admin'). Ver server/src/api/admin.js. */
-  async function admin(req){
+  async function admin(req,cache=false){
     const t=/^Bearer\s+(\S+)$/i.exec(req.headers.authorization||'');
     if(!t||!persistApi||!persistApi.repos||!persistApi.repos.tokens)return null;
+    const k=cache?hashToken(t[1]):null,agora=Date.now();
+    if(k){const c=memo.get(k);if(c&&c.ate>agora)return c.u;}
     const u=await persistApi.repos.tokens.resolve(t[1]).catch(()=>null);
-    return u&&u.is_admin&&u.token_kind==='admin'?u:null;}
+    const ok=u&&u.is_admin&&u.token_kind==='admin'?u:null;
+    if(k){memo.set(k,{u:ok,ate:agora+ADMIN_BUS.AUTH_TTL_MS});
+      if(memo.size>64)for(const [kk,vv] of memo)if(vv.ate<=agora)memo.delete(kk);}
+    return ok;}
   /** ⚠️ `rooms.getRoom` CRIA a sala se o código for deste shard: um código errado no painel materializaria
    *  uma sala fantasma com 15 bots. Aqui é sempre leitura do Map. */
   const salaLocal=code=>rooms.rooms.get(String(code||'').toUpperCase());
   const audita=(o)=>{const a=persistApi&&persistApi.repos&&persistApi.repos.audit;if(a)a.log(o);};
 
+  /**
+   * Abre o SSE do painel. Quatro headers e duas linhas que parecem enfeite e não são:
+   * ⚠️ `X-Accel-Buffering: no` — o nginx bufferiza resposta proxeada por padrão, e sem este header os
+   *    eventos chegam em blocos de 4 KB. O sintoma no painel é "nada por três minutos e aí 200 linhas de
+   *    uma vez". Não dá para trocar por annotation: `proxy-buffering: off` valeria para o `/api` inteiro,
+   *    e este Ingress divide o controller com dezenas de domínios.
+   * ⚠️ `no-transform` — impede compressão no proxy. O `gzip-types` padrão do v0.47 não inclui
+   *    `text/event-stream`, mas depender de um default que qualquer um muda num ConfigMap é a receita de
+   *    "parou de funcionar e ninguém sabe por quê".
+   * ⚠️ `flushHeaders()` — sem ele o Node segura o cabeçalho até o primeiro corpo, e o nginx nem abre a
+   *    resposta para o navegador.
+   * ⚠️ `setTimeout(0)` nos dois — o `server.requestTimeout` do Node mata requisição em 300 s por padrão.
+   *    Funciona perfeito por quatro minutos em dev e morre em produção, sem erro nenhum.
+   */
+  function abreStream(req,res,auth){
+    res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8',
+      'Cache-Control':'no-cache, no-store, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
+    if(res.flushHeaders)res.flushHeaders();
+    req.setTimeout(0);res.setTimeout(0);
+    if(res.socket&&res.socket.setNoDelay)res.socket.setNoDelay(true);
+    const since=leCursor(new URL(req.url||'/','http://x').searchParams.get('since'));
+    res.write(`retry: ${ADMIN_BUS.ESPERA_MS[0]}\n\n`);
+    coletor.liga(res,{since,authorization:auth});
+    const fim=()=>coletor.desliga(res);
+    req.on('close',fim);req.on('error',fim);res.on('error',fim);}
+
   // Só as rotas de SALA são daqui. As de conta, parâmetro e auditoria vivem no router de persistência
   // (server/src/api/admin.js) — devolver `false` é o que as deixa seguir para lá.
-  const MINHAS=/^\/(api|internal)\/admin\/(rooms(\/|$)|broadcast$|tunables$)/;
+  // ⚠️ `live`/`kpis` TÊM que entrar aqui. Ausentes, a requisição escorre para o router de persistência,
+  // `PREFIXES` casa `/api/admin/`, nenhuma rota casa, e sai um 404 de JSON — o painel mostra "erro 404" e
+  // NÃO há uma linha de log em lugar nenhum. É a mesma armadilha que docs/spec/admin.md:36-38 documenta
+  // para o `PREFIXES`, vista do outro lado, e é por isso que o teste espera 403 e nunca 404.
+  const MINHAS=/^\/(api|internal)\/admin\/(rooms(\/|$)|broadcast$|tunables$|live$|kpis$)/;
   return async function handleAdmin(req,res,p,sendJson,readJson){
     if(!MINHAS.test(p))return false;
     const interno=p.startsWith('/internal/');
     if(!persistApi){sendJson(res,503,{error:'admin_disabled',message:'servidor sem banco: painel indisponível'});return true;}
-    const adm=await admin(req);
+    const adm=await admin(req,interno);
     if(!adm){sendJson(res,403,{error:'forbidden',message:'acesso restrito'});return true;}
     const auth=req.headers.authorization||null;
+
+    // ── FLUXO AO VIVO ────────────────────────────────────────────────────────
+    // O fragmento interno é o anel DESTE pod, cru. Quem agrega, ordena e vira SSE é o coletor do pod que
+    // recebeu o `/api/admin/live` — o mesmo desenho de `/internal/admin/rooms` logo abaixo.
+    if(p==='/internal/admin/live'){
+      if(req.method!=='GET'){sendJson(res,405,{error:'method_not_allowed',message:'método não permitido'});return true;}
+      if(!bus){sendJson(res,200,{shard:config.shard,epoch:0,seq:0,perdidos:0,ev:[]});return true;}
+      const q=new URL(req.url||'/','http://x').searchParams;
+      sendJson(res,200,bus.desde(+q.get('since')||0,+q.get('epoch')||undefined));return true;}
+    if(p==='/internal/admin/kpis'||p==='/api/admin/kpis'){
+      if(req.method!=='GET'){sendJson(res,405,{error:'method_not_allowed',message:'método não permitido'});return true;}
+      if(!coletor){sendJson(res,503,{error:'no_game',message:'este pod não tem salas'});return true;}
+      sendJson(res,200,coletor.fragmento());return true;}
+    if(p==='/api/admin/live'){
+      if(req.method!=='GET'){sendJson(res,405,{error:'method_not_allowed',message:'método não permitido'});return true;}
+      if(!coletor){sendJson(res,503,{error:'no_game',message:'este pod não tem salas'});return true;}
+      // ⚠️ TETO POR POD com 503, e não 429: isto é uma afirmação de capacidade DESTE pod, e o painel
+      // simplesmente reconecta e cai noutro (o `/api` é balanceado). Um 429 diria "espere", que é a
+      // orientação errada. O rate limit de ABERTURA, esse sim, é por token.
+      if(coletor.clientes.size>=ADMIN_BUS.MAX_STREAMS){
+        sendJson(res,503,{error:'too_many_streams',message:'muitos painéis neste shard; tente de novo'});return true;}
+      const lim=persistApi.limiter,tk=/^Bearer\s+(\S+)$/i.exec(auth||'');
+      if(lim&&tk&&!lim.take('adm:live:'+hashToken(tk[1]).slice(0,24),ADMIN_BUS.ABRE)){
+        sendJson(res,429,{error:'rate_limited',message:'muitas reconexões; espere um pouco'});return true;}
+      abreStream(req,res,auth);return true;}
 
     // ── parâmetros: o irmão só é AVISADO; o valor vem do banco (ver server/src/tunables.js) ──
     if(interno&&p==='/internal/admin/tunables'&&req.method==='POST'){

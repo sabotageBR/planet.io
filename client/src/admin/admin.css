@@ -38,6 +38,9 @@
      construção. Antes havia um `47px` cravado no sticky de Parâmetros que nem batia com a altura real
      (10+34+10+1 ≈ 55) — e que a quebra de linha do header em tela estreita desalinharia de vez. */
   --top-h:55px;--wrap:1320px;
+  /* AO VIVO. Só duas medidas, e NENHUMA cor nova: `--ok/--warn/--per/--acc/--dim` já cobrem os quatro
+     grupos de evento e os três limiares, e inventar cor aqui desfaria o trabalho da escala de estado. */
+  --lv-feed-h:58vh;--lv-spark-h:20px;
   color:var(--txt);font:var(--fs)/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 
 /* O `index.html` é o mesmo do jogo e carrega os três temas, que pintam `body` e `#app` conforme o relógio.
@@ -234,6 +237,19 @@ html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:no
 .ad-kpis .kpi{background:var(--surf2);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:var(--s3)}
 .ad-kpis .kpi b{display:block;font-size:var(--fs-xl);line-height:1.1;font-variant-numeric:tabular-nums}
 .ad-kpis .kpi span{color:var(--dim);font-size:var(--fs-xs)}
+/* A faixa de KPI da tela AO VIVO: o mesmo cartão da Retenção mais a tendência do último minuto. Fica na
+   camada de COMPONENTES (e não na de telas) porque "número grande + sparkline" é reusável — a Retenção
+   pode herdá-la sem copiar nada.
+   ⚠️ `tabular-nums` não é enfeite: estes números trocam 1×/s e, com dígitos de largura variável, a faixa
+   inteira TREME a cada segundo. */
+.lv-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:var(--s3);margin:var(--s3) 0}
+.lv-kpi{background:var(--surf2);border:1px solid var(--line-2);border-radius:var(--r-sm);
+  padding:var(--s3);display:flex;flex-direction:column;gap:2px;min-width:0}
+.lv-kpi b{font-size:var(--fs-lg);line-height:1.1;font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lv-kpi span{color:var(--dim);font-size:var(--fs-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lv-kpi span em{font-style:normal;color:var(--dim-2)}
+.lv-spark{display:block;width:100%;height:var(--lv-spark-h);margin-top:2px;opacity:.85}
 .ad-barras{display:flex;flex-direction:column;gap:2px;margin:var(--s3) 0}
 .ad-barras .bar{display:grid;grid-template-columns:64px 1fr auto;align-items:center;gap:var(--s2);font-size:var(--fs-xs)}
 .ad-barras .bar span{color:var(--dim);order:-1;text-align:right;font-variant-numeric:tabular-nums}
@@ -377,6 +393,65 @@ html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:no
 .pm-acoes em{color:var(--dim);font-style:normal;font-size:var(--fs-xs)}
 .pm-acoes button{padding:0 10px;height:29px;font-size:var(--fs-sm)}
 
+/* ── TELA AO VIVO: a torre de controle ──────────────────────────────────────
+   ⚠️ O PREFIXO É `lv-`, NUNCA `live-`. `.live`, `.live-*` e `.livestream` aparecem em listas cosméticas
+   de bloqueador de anúncio (widgets de "ao vivo" de aposta e cassino), e este painel já perdeu a TELA
+   INTEIRA exatamente assim uma vez — ver o comentário do `ad-wrap` lá em cima: DOM montado, console
+   limpo, `getComputedStyle` dizendo `display:none` e nenhuma regra correspondente em
+   `document.styleSheets`, porque o bloqueador injeta fora do documento. Pelo mesmo motivo, nada de
+   `feed-`, `ev-` ou `event-`. O precedente de prefixo por tela é o `pm-` logo acima. */
+.lv-topo{display:flex;align-items:center;gap:var(--s3);font-size:var(--fs-xs)}
+.lv-estado{display:inline-flex;align-items:center;gap:var(--s1);color:var(--dim)}
+.lv-estado.ligado{color:var(--ok)}
+.lv-estado.reconectando{color:var(--warn)}
+.lv-estado.negado{color:var(--per)}
+
+/* ⚠️ `minmax(0,…)` e JAMAIS `1fr`: item de grid nasce com `min-width:auto`, e a tabela de salas do meio
+   empurraria a largura da PÁGINA em vez de encolher. É a mesma lição da grade de parâmetros. */
+.lv-torre{display:grid;grid-template-columns:180px minmax(0,1.5fr) minmax(0,1.3fr);
+  gap:var(--s4);align-items:start}
+.lv-col{background:var(--surf);border:1px solid var(--line);border-radius:var(--r);
+  padding:var(--s4);min-width:0;display:flex;flex-direction:column;gap:var(--s3)}
+.lv-col>h3{margin:0;font-size:var(--fs-sm);color:var(--dim-2);font-weight:600}
+.lv-col>h3 small{margin-left:var(--s2);font-weight:400}
+.lv-salas .ad-tab td{cursor:pointer}
+.lv-salas .ad-tab tr.on td{background:var(--sel)}
+
+/* ⚠️ A BARRA DE FILTROS É IRMÃ DO FEED, NUNCA FILHA. `.lv-feed` é um scrollport de verdade (altura
+   própria + overflow), e `position:sticky` DENTRO de um scrollport que rola morre em silêncio — o mesmo
+   mecanismo que obrigou o `#app{overflow:visible}` da camada 1. */
+.lv-barra{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+.lv-barra input{height:28px;flex:1 1 90px;min-width:0;font-size:var(--fs-sm)}
+.lv-barra button{height:28px;padding:0 var(--s3);font-size:var(--fs-xs);white-space:nowrap}
+.lv-chips{display:flex;gap:var(--s1);min-width:0}
+.lv-chips button{background:var(--surf3);color:var(--dim-2);border-color:transparent}
+.lv-chips button.on{background:var(--sel);color:var(--txt);border-color:var(--acc)}
+
+.lv-feed{max-height:var(--lv-feed-h);overflow:auto;display:flex;flex-direction:column;gap:1px;
+  font-size:var(--fs-sm);min-width:0}
+/* ⚠️ `minmax(0,1fr)` na coluna do texto E `overflow:hidden` nela: sem os dois, uma linha de chat comprida
+   empurra a coluna e a TORRE INTEIRA faz reflow a cada mensagem que alguém digita. */
+.lv-linha{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;align-items:baseline;
+  gap:var(--s2);padding:3px var(--s2);border-radius:var(--r-sm)}
+.lv-linha:hover{background:var(--surf2)}
+.lv-h{font-style:normal;color:var(--dim);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
+.lv-ic{font-style:normal;width:1.1em;text-align:center}
+.lv-txt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lv-x{color:var(--dim-2);font-size:var(--fs-xs);margin-left:var(--s1)}
+.lv-sala{background:none;border:0;padding:0 2px;height:auto;color:var(--dim);
+  font-size:var(--fs-xs);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.lv-sala:hover{color:var(--acc);background:none}
+.lv-sala.vazia{cursor:default;opacity:.4}
+/* A COR É REFORÇO, NUNCA A INFORMAÇÃO: cada linha carrega ícone e texto próprios. Medido com o validador
+   de paleta, o verde e o âmbar do painel ficam a ΔE 6,7 em protanopia — quem enxerga assim lê a linha
+   pelo ícone e pela frase, e não perde nada. */
+.lv-linha.g-entra .lv-ic{color:var(--ok)}
+.lv-linha.g-abate .lv-ic{color:var(--per)}
+.lv-linha.g-chat .lv-ic{color:var(--acc)}
+.lv-linha.g-sis .lv-ic{color:var(--dim-2)}
+.lv-linha.aviso{background:var(--per-bg);color:var(--per-txt)}
+.lv-novos{align-self:center;height:26px;padding:0 var(--s3);font-size:var(--fs-xs)}
+
 /* ══ 5. RESPONSIVO ══════════════════════════════════════════════════════════
    A folha inteira tinha UMA media query. As tabelas não tinham contêiner de scroll e `th` é `nowrap`,
    então sete colunas empurravam a largura da PÁGINA — quem rolava para o lado levava o cabeçalho junto.
@@ -390,6 +465,13 @@ html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:no
   .pm-abas{position:static;flex-direction:row;overflow:auto hidden;gap:var(--s2);padding-bottom:var(--s2)}
   .pm-aba{width:auto;flex:0 0 auto}
   .pm-aba.on{box-shadow:inset 0 -2px 0 var(--acc)}
+  /* ⚠️ A coluna de SHARDS vira FAIXA no topo, e não desce para o fim: empilhar na ordem do DOM poria a
+     lista menos urgente por cima do que interessa, e resolver com `order` esconde a ordem real de quem
+     lê o CSS. É o mesmo movimento que `.pm-abas` faz nesta mesma quebra — e 24 pílulas numa coluna
+     vertical é espaço desperdiçado, enquanto em faixa elas cabem. */
+  .lv-torre{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .lv-shards{grid-column:1/-1}
+  .lv-shards .ad-shards{margin-bottom:0;overflow:auto hidden}
 }
 @media (max-width:700px){
   .ad,.ad-login{--s5:12px;--s6:16px}
@@ -398,10 +480,25 @@ html[data-admin] .screen,html[data-admin] #game,html[data-admin] #hud{display:no
   .ad main{padding:var(--s4)}
   .pm-grupo>h3{position:static}   /* com o header quebrado em duas linhas, `--top-h` deixa de valer */
   .pm-busca{width:100%}
+  .lv-torre{grid-template-columns:1fr}
+  .lv-kpis{grid-template-columns:repeat(auto-fit,minmax(96px,1fr))}
+  /* ⚠️ O FEED PERDE A ALTURA PRÓPRIA e passa a rolar com a PÁGINA. Um scrollport aninhado dentro de uma
+     página rolável, no dedo, é a coisa mais frustrante que existe — o toque nunca acerta o que se quer
+     rolar. É a mesma família de decisão que desliga o sticky do `h3` nesta quebra.
+     E vale dizer o que a tela É aqui: no celular, AO VIVO é para OLHAR. Kick e fechar sala continuam só
+     na tela de Salas, e isso é escolha, não densidade que faltou. */
+  .lv-feed{max-height:none}
 }
 @media (max-width:480px){
   .ad-topo .quem{margin-left:auto}
   .ad-acoes{align-items:stretch;flex-direction:column}
   .ad-acoes input,.ad-acoes button{width:100%}
   .ad-acoes input.mini,.ad-acoes input.medio{width:100%;text-align:left}
+  .lv-barra{align-items:stretch;flex-direction:column}
+  .lv-barra input,.lv-barra>button{width:100%}
+  .lv-chips{overflow:auto hidden}
+  .lv-chips button{flex:0 0 auto}
+  /* a sala desce para a segunda linha: em 320 px, mantê-la na fileira deixa ~12 caracteres para a frase */
+  .lv-linha{grid-template-columns:auto auto minmax(0,1fr)}
+  .lv-linha .lv-sala{grid-column:3;justify-self:start}
 }

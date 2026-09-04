@@ -21,6 +21,28 @@ async function req(method,path,body){
   if(!r.ok)throw Object.assign(new Error((j&&j.message)||`erro ${r.status}`),{code:j&&j.error,status:r.status});
   return j;
 }
+/**
+ * Abre um STREAM (SSE) com o mesmo Bearer e o mesmo contrato de 401/403 do `req()`.
+ * ⚠️ Existe porque `req()` faz `await r.json()`, e num corpo que nunca termina isso NÃO REJEITA: fica
+ * pendurado para sempre, a tela diz "carregando…" e o console fica limpo. Aqui o corpo é do chamador.
+ * ⚠️ E não dá para usar `EventSource`: ele não manda header `Authorization`. Token na query string está
+ * fora de questão — é credencial de 12 h com poder de kick e ban, e iria para o access log do nginx, para
+ * o histórico do navegador e para o `Referer`. Cookie desfaria a decisão de guardar tudo em localStorage
+ * (e abriria superfície de CSRF em rotas que hoje são imunes por construção).
+ * O preço: reconexão e `Last-Event-ID` deixam de ser de graça e viram código nosso — o que aqui é ganho,
+ * porque a retomada é pelo cursor `{shard,seq,epoch}` e não pelo palpite de um id só.
+ */
+export async function abreStream(path,{signal,lastId}={}){
+  const h={accept:"text/event-stream"},tk=getToken();
+  if(tk)h.authorization="Bearer "+tk;
+  if(lastId)h["last-event-id"]=lastId;
+  const r=await fetch(apiUrl("/api/admin"+path),{method:"GET",headers:h,signal,cache:"no-store"});
+  // O MESMO branch do `req()`, e é por isso que ele mora aqui: `onAuthFail` é `let` de módulo e não é
+  // exportado. Duplicá-lo no hook criaria dois lugares que sabem o que é falha de autenticação.
+  if(r.status===401||r.status===403){setToken("");if(onAuthFail)onAuthFail();}
+  return r;
+}
+
 export const api={
   login:(login,password)=>req("POST","/login",{login,password}),
   logout:()=>req("POST","/logout"),
@@ -42,4 +64,5 @@ export const api={
   resetSetting:key=>req("DELETE","/settings/"+key),
   audit:q=>req("GET","/audit"+(q||"")),
   retencao:d=>req("GET","/retencao?days="+(d|0)),
+  kpis:()=>req("GET","/kpis"),
 };

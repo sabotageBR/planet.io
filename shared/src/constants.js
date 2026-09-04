@@ -1152,6 +1152,31 @@ export const CHAT={MAX_CHARS:140,RATE_MS:1500,BURST:3,FADE_MS:9000,KEEP:40,REPOR
 // MAX_CHARS é maior que o do chat porque quem escreve é um administrador, não um jogador em partida.
 export const NOTICE={MAX_CHARS:200,TTL_MS:12000,LEVELS:['info','warn']};
 
+// ── FLUXO AO VIVO DO /admin ─────────────────────────────────────────────────
+// O painel tinha UMA atualização automática (a tela de Salas, a cada 5 s) e nenhum evento: quem entrou,
+// quem matou quem, quem falou e quem denunciou morriam dentro do pod. Isto é o barramento que os leva ao
+// navegador de um administrador — anel por POD, lido por um shard COLETOR que agrega os irmãos e reemite
+// como SSE numa conexão só (server/src/admin/bus.js e coletor.js).
+//
+// ⚠️ NADA DISTO É TUNABLE. O painel não pode ajustar o próprio transporte: um número errado aqui tranca o
+// administrador para fora da tela que ele usaria para consertar o número. É o mesmo argumento que faz
+// `ADMIN_EMAILS` só PROMOVER.
+// ⚠️ `AWAKE_MS` tem que ser bem MAIOR que `FANIN_MS`: é a janela de vigília do anel, renovada por cada
+// coleta. Se o pod dormir entre duas coletas, ele para de publicar e o painel perde eventos sem que nada
+// acuse — 15 s contra 1 s cobre até um coletor travado por uma coleta inteira.
+// ⚠️ `RING` é o quanto se pode ficar para trás. 24 salas × ~8 eventos/s de pico ≈ 200/s, então 1024 são
+// ~5 s de folga contra uma coleta de 1 s. Passar disso é LACUNA declarada, nunca silêncio.
+// ⚠️ `ESTREIA` é o lote de quem chega com cursor ZERO, e ele existe por DUAS razões que se somam: um
+// coletor novo contra 24 anéis cheios pediria 24 576 eventos numa resposta só (megabytes, na primeira
+// pintura da tela), e marcar isso como LACUNA diria "perdi 1024 eventos" a quem acabou de abrir o painel
+// e não tinha o que perder. Cursor zero é ESTREIA, nunca atraso.
+export const ADMIN_BUS={RING:1024,ESTREIA:40,AWAKE_MS:15000,FANIN_MS:1000,KPI_MS:3000,PING_MS:15000,
+  AUTH_TTL_MS:10000,MAX_STREAMS:4,ABRE:{n:12,win:60000},
+  // Cliente: janela das sparklines (60 amostras a 1 Hz = o último minuto), tamanho do anel da tela,
+  // cadência de publicação do React e o cão de guarda que detecta stream morto sem evento nenhum.
+  SERIE:60,CLIENTE_RING:500,FLUSH_MS:250,COALESCE_MS:4000,TETO_S:20,
+  CAO_MS:30000,ESPERA_MS:[500,1000,2000,4000,8000,15000]};
+
 // ── KILL FEED (estilo Counter-Strike) ────────────────────────────────────────
 // "Quem matou quem" no canto superior direito. Vai em JSON de controle (`{t:"feed",v:[...]}`), NÃO no fio
 // binário: o EVENT tem 13 bytes fixos com o `extra` já ocupado pelo score da vítima (não cabe a arma), marco

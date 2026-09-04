@@ -7,9 +7,13 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { api, getToken, setToken, setOnAuthFail } from "./api.js";
 import { ordenar, proxOrdem } from "./ordenar.js";
+import { AoVivo } from "./AoVivo.jsx";
 import "./admin.css";
 
-const TELAS = [["usuarios", "Usuários"], ["salas", "Salas"], ["retencao", "Retenção"], ["aviso", "Aviso global"], ["parametros", "Parâmetros"], ["auditoria", "Auditoria"]];
+// ⚠️ AO VIVO é a PRIMEIRA aba, mas NÃO é o destino do path vazio (ver `rota()` logo abaixo, que continua
+// caindo em "usuarios"). São coisas diferentes: primeira da lista é onde o olho vai; padrão de `/admin`
+// abriria uma conexão SSE em TODO login, inclusive o de quem só ia ajustar um parâmetro.
+const TELAS = [["vivo", "Ao vivo"], ["usuarios", "Usuários"], ["salas", "Salas"], ["retencao", "Retenção"], ["aviso", "Aviso global"], ["parametros", "Parâmetros"], ["auditoria", "Auditoria"]];
 const rota = () => (location.pathname.replace(/^\/admin\/?/, "").split("/")[0] || "usuarios");
 const vaPara = t => { history.pushState({}, "", "/admin/" + t); dispatchEvent(new PopStateEvent("popstate")); };
 const dt = s => (s ? new Date(s).toLocaleString("pt-BR") : "—");
@@ -546,7 +550,7 @@ function App() {
   // estiver pintando no body naquela hora.
   if (!pronto) return <div className="ad vazio">…</div>;
   if (!admin) return <Login onOk={setAdmin} />;
-  const T = { usuarios: Usuarios, salas: Salas, retencao: Retencao, aviso: Aviso, parametros: Parametros, auditoria: Auditoria }[tela] || Usuarios;
+  const T = { vivo: AoVivo, usuarios: Usuarios, salas: Salas, retencao: Retencao, aviso: Aviso, parametros: Parametros, auditoria: Auditoria }[tela] || Usuarios;
   return <div className="ad">
     <header className="ad-topo">
       <b>warspace.io <span>admin</span></b>

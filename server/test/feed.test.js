@@ -59,3 +59,29 @@ test('marcos: cada limiar do BIG CRUNCH avisa uma vez só', () => {
   assert.ok(v&&v.how==='crunch'&&v.n===primeiro);
   assert.equal(f.crunchStep(primeiro),null,'o índice só anda para frente');
 });
+
+// ── O PAINEL NÃO HERDA O TETO DO KILL FEED ───────────────────────────────────
+// `drenaFeed` corta em MAX_PER_FLUSH e DESCARTA o resto, de propósito: uma supernova que mata oito no
+// mesmo tick viraria uma parede no canto da tela do jogo. Mas o /admin quer justamente as linhas
+// descartadas — num fecho de gás são elas que contam a história. Por isso o fluxo ao vivo escuta
+// `Sim._feed` (o funil ÚNICO, antes do teto) e nunca `Room.broadcastFeed`.
+test('ao vivo: o espelho do /admin vê TUDO, inclusive o que o dreno joga fora', () => {
+  const vistos=[];
+  // O papel de `Sim._feed`: chama o espelho ANTES de qualquer corte. Se alguém inverter a ordem ou mover
+  // a publicação para o broadcast, o painel passa a mentir calado — e nada mais neste repositório pega.
+  const _feed=(fila,o)=>{vistos.push(o);if(fila.length<FEED.QUEUE_MAX)fila.push(o);};
+  const fila=[],n=FEED.MAX_PER_FLUSH+4;
+  for(let i=0;i<n;i++)_feed(fila,kill(i));
+  const v=drenaFeed(fila);
+  assert.equal(v.length,FEED.MAX_PER_FLUSH,'o JOGO continua com o teto — isto não pode mudar');
+  assert.equal(vistos.length,n,'e o PAINEL recebeu as oito, não as quatro que sobreviveram ao dreno');
+});
+
+test('ao vivo: o espelho também vê o que o teto da FILA descartaria', () => {
+  const vistos=[];
+  const _feed=(fila,o)=>{vistos.push(o);if(fila.length<FEED.QUEUE_MAX)fila.push(o);};
+  const fila=[],n=FEED.QUEUE_MAX+10;
+  for(let i=0;i<n;i++)_feed(fila,kill(i));
+  assert.equal(fila.length,FEED.QUEUE_MAX,'a fila do jogo satura');
+  assert.equal(vistos.length,n,'o espelho não — ele é chamado antes do `if` do teto');
+});

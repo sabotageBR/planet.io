@@ -27,12 +27,15 @@ import {mascara} from '../palavrao.js';
 // `aberta` é função PURA (classifica a mensagem), então vem por import e não pelo objeto injetado: só a
 // LLM é dependência de verdade, e um `botChat` falso de teste não deveria precisar reimplementá-la.
 import {aberta,citou,escolheAssunto} from './botChat.js';
+import {BUS_MUDO} from '../admin/bus.js';
 const WRITER_SIZE=32768,BOT_SKINS=35;   // bots usam skins 0..34 (compráveis; nada de "earned"/secretas)
 export class Room{
   /** @param {{code:string,shard:number,seed:number,hooks:any,log:any,metrics:any,config:{roomMax:number,roomBots:number},onRewards?:Function}} o */
   constructor({code,shard,seed,hooks,log,metrics,config,onRewards=null,mode=MODE.FREE,teamSize=1,botChat=null,
-    botNames=null,roundTicks=null,roomMax=null,roomBots=null,private:priv=false,hostUserId=null,hostNick=null}){
+    botNames=null,roundTicks=null,roomMax=null,roomBots=null,private:priv=false,hostUserId=null,hostNick=null,
+    bus=BUS_MUDO}){
     this.code=code;this.shard=shard;this.seed=seed;this.rng=createRng(seed);this.log=log;this.metrics=metrics;
+    this.bus=bus;
     this.mode=modeOf(mode);this.modeId=this.mode.id;
     this.teamSize=this.mode.teamSizes.includes(teamSize)?teamSize:this.mode.teamSizes[0];
     this.sim=new Sim({seed,hooks,log,rng:this.rng,mode:this.modeId});
@@ -159,10 +162,32 @@ export class Room{
      */
     this.roster=new Map();
     this.writer=createWriter(WRITER_SIZE);this.snapshotter=createSnapshotter(this);this._botName=this.rng.int(0,BOT_NAMES.length-1);this.onRewards=onRewards;
+    /**
+     * ⚠️ O FLUXO AO VIVO DO PAINEL ESCUTA `Sim._feed`, NUNCA `Room.broadcastFeed`. Aquele passa por
+     * `drenaFeed`, que tem teto `FEED.MAX_PER_FLUSH` (4) e DESCARTA o resto: uma supernova que mata oito no
+     * mesmo tick entrega quatro linhas ao jogo e joga quatro fora — e são exatamente as que o administrador
+     * quer ver. O teto é de UI do jogo (não virar parede no canto da tela) e tem que continuar sendo.
+     * ⚠️ O callback mora AQUI e não dentro do Sim porque `_nomeDe` é a autoridade de nome e o Sim não
+     * conhece o código da sala. E o guard `bus.on` é leitura de campo, uma por linha de feed.
+     */
+    this.sim.onFeed=o=>{
+      if(!this.bus.on)return;
+      // ⚠️ `joined`/`left` NÃO passam por aqui: o painel já tem `entrou`/`saiu` próprios, publicados em
+      // `join`/`leave`, e eles sabem MAIS (se é conta, quanto durou, quantos abates, e a causa — que
+      // distingue um kick de uma desistência). Deixando os dois, cada entrada e cada saída viravam DUAS
+      // linhas iguais na coluna, uma delas mais pobre. Visto na primeira medição com jogadores de verdade.
+      if(o.k==='sys'&&(o.how==='joined'||o.how==='left'))return;
+      this.bus.publica(o.k==='sys'?'marco':o.k,{sala:this.code,how:o.how,
+        a:this._nomeDe(o.a),b:this._nomeDe(o.b),by:this._nomeDe(o.by),n:o.n});};
     this.sim.on('death',info=>{
       // ANTES de qualquer coisa: a vida acabou, e é agora que ela entra no placar da sala. Sem isto, quem
       // morre e renasce no Livre perderia tudo o que fez na vida anterior.
       const gpm=this.sim.players.get(info.slot);if(gpm)this._rosterFold(gpm);
+      // A vida de um HUMANO acabou, com os números dela (`_died` já filtra bot). Duas linhas por morte no
+      // painel — o `kill` do feed, que tem nome, e esta, que tem placar — porque fundi-las exigiria
+      // correlacionar dentro do tick, e agrupar é trabalho barato do lado da tela.
+      if(gpm)this.bus.publica('morte',{sala:this.code,quem:gpm.name,por:info.by||null,
+        score:info.score,massa:info.maxMass,abates:info.kills,durouS:info.durationS,pos:info.placement});
       const s=this.sessions.get(info.slot);if(!s)return;
       s.sendJson({t:'dead',by:info.by,bySlot:info.bySlot,byHole:info.byHole,byZone:info.byZone,score:info.score,maxMass:info.maxMass,kills:info.kills,durationS:info.durationS,placement:info.placement,players:info.players});
       // Livre: a câmera fica PARADA onde o jogador morreu (`slot:-1` → a AOI congela na última posição) —
@@ -394,7 +419,13 @@ export class Room{
       // justamente lá que ele quer saber que a partida vai encher.
       const voltou=this._voltouAgora(gp);
       if(!lobby&&!voltou)this._pushFeed({k:'sys',a:slot,b:-1,how:'joined',by:null,name:gp.name||null});
-      if(!voltou)this._avisaAdmins(session,gp);}
+      if(!voltou)this._avisaAdmins(session,gp);
+      // ⚠️ NO PAINEL A GUARDA `voltou` NÃO VALE. No feed ela existe para o respawn não virar "saiu/entrou"
+      // duas vezes; aqui o administrador QUER ver o re-join — alguém entrando e saindo em laço é
+      // exatamente o padrão que ele está procurando, e escondê-lo seria esconder o sintoma. Vai a marca
+      // `voltou` e a tela decide se colapsa.
+      this.bus.publica('entrou',{sala:this.code,quem:gp.name||'',conta:!!gp.registered,
+        nivel:gp.level|0,pais:gp.country||null,voltou,lobby:!!lobby});}
     return slot;}
   /**
    * A MESMA pessoa acabou de sair desta sala? No Livre renascer é `leave`+`join` (o botão DE NOVO fecha o
@@ -457,7 +488,12 @@ export class Room{
       // ⚠️ ANTES do `sim.remove`: o nome sai daqui, e o cliente resolve nome por `view.playerOf` — o PLAYERS
       // já sem o slot pode chegar antes do feed. Por isso a linha leva o `name` junto.
       this._saiuEm.set(this._rosterKey(gp),Date.now());
-      if(this.phase!=='lobby')this._pushFeed({k:'sys',a:slot,b:-1,how:'left',by:null,name:gp.name||null});}
+      if(this.phase!=='lobby')this._pushFeed({k:'sys',a:slot,b:-1,how:'left',by:null,name:gp.name||null});
+      // ⚠️ AQUI DENTRO, antes do `sim.remove(slot)` lá embaixo: depois dele o `gp.name` já não existe.
+      // ⚠️ E leva o `cause`: `leave` também é a saída do KICK do painel e a da expiração do housekeeping —
+      // três coisas muito diferentes que o administrador precisa distinguir na tela.
+      this.bus.publica('saiu',{sala:this.code,quem:gp.name||'',por:cause,
+        durouS:Math.round((this.sim.tick-gp.joinedTick)/TICK_HZ),abates:gp.kills|0});}
     if(gp&&gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());   // sem isto a sala vira lista negra e quem sai não volta com o próprio nome
     this.flagsDirty=true;
     if(this.avatars.has(slot))this._setAvatar(slot,null,null);
@@ -465,6 +501,11 @@ export class Room{
     if(this.hostUserId!=null){const h=this.hostSession();if(h)this.sendHost(h);}}
   /** Socket caiu: fica no mundo sem thrust (alvo = centróide) até resume ou expirar. */
   detach(session){if(this.sessions.get(session.slot)!==session)return;if(session.kicked)return this.leave(session,'left');session.detach();
+    // ⚠️ QUEDA DE REDE NÃO É SAÍDA, e o painel precisa da diferença: aqui o jogador continua NO MUNDO por
+    // `NET.RESUME_MS`. Sem esta linha, uma queda aparece como "saiu" só dez segundos depois, quando o
+    // housekeeping a converte — e o administrador que estava olhando não vê relação nenhuma entre as duas.
+    {const gp=this.sim.players.get(session.slot);
+      if(gp)this.bus.publica('caiu',{sala:this.code,quem:gp.name||''});}
     const w=this.sim.world,ps=w.players.get(session.slot);if(!ps||!ps.alive)return;
     let sx=0,sy=0,n=0;for(const pc of ps.pieces){if(pc.dead)continue;sx+=pc.x;sy+=pc.y;n++;}if(n)w.setTarget(session.slot,sx/n,sy/n);w.setEjectHold(session.slot,false);}
   /** Religa um socket novo numa sessão em graça (o wsServer manda `room` + PLAYERS em seguida). */
@@ -752,6 +793,11 @@ export class Room{
     if(scope==='team'||scope==='all')session.chatScope=scope;
     const escopo=this._escopoFala(gp,session.chatScope);
     this._pushChat(gp,msg,escopo);
+    // ⚠️ A PUBLICAÇÃO É AQUI E NÃO EM `_pushChat`: aquele é o caminho COMUM do humano e do preenchimento, e
+    // a coluna do painel viraria papo de LLM. `Room.chat` é a porta que exige uma `session` — ou seja,
+    // gente. Depois do `mascara` e do rate limit, para o administrador ver o que a SALA viu.
+    // `userId` vai porque o servidor é o único que sabe quem está atrás do slot.
+    this.bus.publica('chat',{sala:this.code,quem:gp.name||'',txt:msg,escopo,userId:session.userId||null});
     // escopo `dead` não fala com bot: o respondedor é sempre um bot VIVO (ver `_botResponde`), e ele
     // devolveria, na frente da sala inteira, uma resposta a uma linha que nenhum vivo leu.
     if(escopo!=='dead')this._botResponde(gp,msg);
@@ -780,6 +826,10 @@ export class Room{
     this.log.warn(`denúncia na sala ${this.code}: ${gp.name} → ${alvo.name}`,
       JSON.stringify({sala:this.code,de:{nick:gp.name,userId:session.userId||null},
         alvo:{nick:alvo.name,bot:!!alvo.isBot,userId:alvo.userId||null},falas}));
+    // ⚠️ O `log.warn` acima FICA. O barramento é efêmero — uma denúncia às três da manhã, sem ninguém no
+    // painel, evapora —, e o log é o registro durável enquanto não houver tabela própria. Botá-la em
+    // `admin_audit` seria errado: aquela tabela é de AÇÃO DE ADMINISTRADOR e exige um `adminId`.
+    this.bus.publica('report',{sala:this.code,de:gp.name||'',alvo:alvo.name||'',bot:!!alvo.isBot,falas});
     return true;}
   /** Sessões que recebem uma fala no escopo dado. Uma lista só, usada pelo texto e pela voz. */
   _destinos(gp,escopo){
@@ -1430,6 +1480,11 @@ export class Room{
         champTeam:null,board:[],destaques:null,total:0,nextInMs:ROUND.BREAK_MS,tick:this.sim.tick};
     }
     const board=msg.board;
+    // ⚠️ SÓ O CAMPEÃO E O TOTAL vão para o painel, nunca o `board`: são até ROUND.BOARD_MAX linhas por
+    // rodada × N salas × 24 shards, e isso afogaria o anel justamente no minuto mais movimentado da sala.
+    // Quem quiser o placar inteiro abre a sala na tela de Salas.
+    this.bus.publica('fim',{sala:this.code,por:reason,
+      campeao:msg.champion?msg.champion.name:null,massa:msg.champion?msg.champion.mass:0,total:msg.total|0});
     // O board é cortado em ROUND.BOARD_MAX (com respawn, 30 min rendem mais de 100 participantes), mas
     // ninguém pode ficar de fora do PRÓPRIO placar: quem não coube vai anexado na mensagem da sessão dele.
     const noBoard=new Set(board.map(b=>b.key));

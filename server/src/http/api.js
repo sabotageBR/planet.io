@@ -18,9 +18,9 @@ const byPlayers=(a,b)=>b.players-a.players;
  * @param {{config:any,rooms:any,persistApi:any,health:()=>any,log:any}} o
  * @returns {(req:any,res:any)=>Promise<void>}
  */
-export function createHttpHandler({config,rooms,persistApi,health,log,parties=null}){
+export function createHttpHandler({config,rooms,persistApi,health,log,parties=null,bus=null,metrics=null}){
   // O painel /admin é o único consumidor de `/internal/admin/*`, que NÃO é publicado no Ingress.
-  const adminHttp=createAdminHttp({rooms,config,log,persistApi});
+  const adminHttp=createAdminHttp({rooms,config,log,persistApi,bus,metrics});
   // CORS: o cliente pode estar hospedado por um portal, em outro domínio. Fica AQUI, no topo do
   // handler, porque `setHeader` antes do roteamento é mesclado por todo `writeHead` de baixo — um
   // ponto só cobre o sendJson, o avatar (headers próprios E o 304), o 503 sem banco e os estáticos.

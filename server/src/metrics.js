@@ -35,16 +35,19 @@ export function createMetrics(){
   /** @type {Map<string,number>} */const vidaComo=new Map();
   let vidas=0,vidas3min=0,spawnOk=0,spawnRuim=0;
   const startedAt=Date.now();
-  // janela de WIN s em baldes por segundo (bytes de saída, mensagens de entrada)
-  const secs=new Float64Array(WIN).fill(-1),bo=new Float64Array(WIN),mi=new Float64Array(WIN);
-  const bucket=()=>{const s=Math.floor(Date.now()/1000),k=s%WIN;if(secs[k]!==s){secs[k]=s;bo[k]=0;mi[k]=0;}return k;};
+  // janela de WIN s em baldes por segundo (bytes de saída, mensagens de entrada, e as ENTRADAS de jogador)
+  // ⚠️ `jo` existe porque `joins.total` é CUMULATIVO desde o boot, e derivar a taxa no painel diferenciando
+  // duas amostras dá NEGATIVO quando o pod reinicia e mente quando o HPA escala. O balde por segundo já
+  // estava aqui; entrar nele é a única forma honesta de dizer "entradas por minuto".
+  const secs=new Float64Array(WIN).fill(-1),bo=new Float64Array(WIN),mi=new Float64Array(WIN),jo=new Float64Array(WIN);
+  const bucket=()=>{const s=Math.floor(Date.now()/1000),k=s%WIN;if(secs[k]!==s){secs[k]=s;bo[k]=0;mi[k]=0;jo[k]=0;}return k;};
   const rate=arr=>{const s=Math.floor(Date.now()/1000);let sum=0;for(let k=0;k<WIN;k++)if(secs[k]>s-WIN)sum+=arr[k];
     const span=Math.min(WIN,Math.max(1,(Date.now()-startedAt)/1000));return sum/span;};
   return{
     tick:ms=>tick.push(ms),lag:ms=>lag.push(ms),overrun:()=>{overruns++;},
     bytesOut:n=>{bo[bucket()]+=n;bytesOutTotal+=n;},msgIn:()=>{mi[bucket()]++;msgsInTotal++;},rateLimitHit:()=>{rateLimitHits++;},
     /** @param {number|null} v versão declarada no join (null = o cliente não declarou) */
-    join:v=>{joins++;const k=v==null?'n/d':String(v);proto.set(k,(proto.get(k)||0)+1);},
+    join:v=>{joins++;jo[bucket()]++;const k=v==null?'n/d':String(v);proto.set(k,(proto.get(k)||0)+1);},
     versionRefused:()=>{versionRefused++;},
     /** @param {'ask'|'ok'|'veto'|'fail'|'stale'|'drop'|'teto'|'fallback'|'conv'|'puxa'} ev */
     llm:(ev,ms)=>{if(llmN[ev]!=null)llmN[ev]++;if(ms>=0&&(ev==='ok'||ev==='fail'))llmMs.push(ms);},
@@ -64,7 +67,7 @@ export function createMetrics(){
       return{tick:{p50:r3(t.p50),p99:r3(t.p99),max:r3(t.max),overruns},loopLagMs:{p50:r3(l.p50),p99:r3(l.p99)},
         net:{outKBps:r3(rate(bo)/1024),inMsgps:r3(rate(mi)),rateLimitHits},
         llm:{...llmN,p50:r3(m.p50),p99:r3(m.p99),inflight:llmInflight()|0,breaker:!!llmBreaker()},
-        joins:{total:joins,refused:versionRefused,proto:Object.fromEntries(proto)},
+        joins:{total:joins,refused:versionRefused,perMin:r3(rate(jo)*60),proto:Object.fromEntries(proto)},
         // ⚠️ POR POD e zerado no restart — sanidade, não medição (ver o bloco de produto lá em cima).
         vida:{total:vidas,acima3min:vidas3min,pct3min:vidas?r3(vidas3min/vidas):0,
           baldes:Object.fromEntries(VIDA_BALDES.map((b,i)=>[`<${b}s`,vidaN[i]]).concat([[`>=${VIDA_BALDES[VIDA_BALDES.length-1]}s`,vidaN[VIDA_BALDES.length]]])),

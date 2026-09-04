@@ -43,13 +43,19 @@ export async function askPeers(peers,{path,method='GET',body=null,auth=null,time
  * poder dizer ao administrador que o shard 2 não recebeu.
  *
  * Nunca lança: um irmão fora do ar vira `{peer,error}`, não uma exceção no meio de uma rota.
+ *
+ * ⚠️ `path` PODE SER UMA FUNÇÃO `(peer)=>string`, e isso não é açúcar: o fluxo ao vivo do painel guarda um
+ * CURSOR POR SHARD, então cada irmão precisa ser perguntado a partir de um ponto diferente. A alternativa
+ * era mandar o mapa inteiro dos 24 cursores para cada um dos 23 peers, 23 vezes por segundo, para que cada
+ * um lesse uma linha dele. A forma string continua sendo a de todos os outros chamadores.
  * @param {string[]} peers host:porta
+ * @param {{path:string|((peer:string)=>string),method?:string,body?:any,auth?:string|null,timeoutMs?:number,log?:any}} o
  * @returns {Promise<Array<{peer:string,status:number,body:any}|{peer:string,error:string}>>}
  */
 export async function tellPeers(peers,{path,method='POST',body=null,auth=null,timeoutMs=TIMEOUT_MS,log=null}={}){
   const headers={accept:'application/json'};if(auth)headers.authorization=auth;if(body!=null)headers['content-type']='application/json';
   return Promise.all(peers.map(async p=>{
-    try{const r=await fetch(`http://${p}${path}`,{method,headers,body:body==null?undefined:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
+    try{const r=await fetch(`http://${p}${typeof path==='function'?path(p):path}`,{method,headers,body:body==null?undefined:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
       return{peer:p,status:r.status,body:await r.json().catch(()=>null)};}
     catch(e){if(log)log.debug(`peer ${p} indisponível: ${e&&e.message}`);return{peer:p,error:String(e&&e.message||e)};}}));
 }

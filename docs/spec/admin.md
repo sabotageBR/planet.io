@@ -29,7 +29,12 @@ cai. Só vale para conta **registrada** (com senha), porque o painel entra pelo 
 | Camada | Rotas | Por quê |
 |---|---|---|
 | `server/src/api/admin.js` (router de persistência) | login/logout/me · contas · ban · moedas · tokens · promover · parâmetros · auditoria | tudo é linha de banco |
-| `server/src/http/admin.js` (servidor de JOGO) | `rooms`, `rooms/:code[/kick\|close]`, `broadcast` | tudo é memória de sala |
+| `server/src/http/admin.js` (servidor de JOGO) | `rooms`, `rooms/:code[/kick\|close]`, `broadcast`, `live`, `kpis` | tudo é memória de sala |
+
+⚠️ **`live` e `kpis` não poderiam morar no router de persistência nem se quisessem**: `createRouter`
+responde UMA vez e sai (`sendJson(res,200,out)`), sem caminho de streaming a não ser o `RAW` do avatar — e
+usá-lo seria reimplementar SSE dentro de um router feito para não streamar, com o rate limit por
+requisição pesando numa conexão de uma hora.
 
 É o mesmo corte que já separa `/api/me` de `/api/rooms`/`/api/party`.
 
@@ -62,6 +67,8 @@ ausente dele não chega ao handler: cai em 404 (ou no `staticDir`, em dev), sem 
 | POST | `/api/admin/rooms/:code/kick` 🛡 | `{slot,sessionId,reason?}` | `{ok,name}` · 409 `slot_changed` |
 | POST | `/api/admin/rooms/:code/close` 🛡 | — | `{ok,kicked}` |
 | POST | `/api/admin/broadcast` 🛡 | `{text,level,ttlMs?}` | `{delivered,rooms,shards:[…]}` |
+| GET | `/api/admin/live?since=` 🛡 | — | **SSE** (`text/event-stream`) · 503 `too_many_streams` · 429 |
+| GET | `/api/admin/kpis` 🛡 | — | o fragmento de KPI DESTE pod (para `curl` e para a 1ª pintura) |
 
 Rate limit: leitura 120/min/token, mutação 20/min/token, login com o mesmo balde de `/api/auth/login`.
 
@@ -82,6 +89,80 @@ shard 2 não recebeu, em vez de deixá-lo achar que mandou.
 Invariantes herdadas do lobby de equipe: `/internal/*` **nunca reencaminha**, não é publicado no Ingress, e
 o Bearer é **revalidado no destino** (defesa em profundidade: um erro futuro de rota no Ingress não pode
 virar um endpoint de kick aberto).
+
+## A tela AO VIVO (o fluxo de eventos)
+
+O painel tinha UMA atualização automática — a tela de Salas, a cada 5 s — e nenhum evento: quem entrou,
+quem matou quem, quem falou e quem denunciou morriam dentro do pod. A tela AO VIVO é a torre de controle:
+KPIs no topo, e embaixo shards · salas · o fluxo.
+
+```
+navegador ──SSE──> shard qualquer (COLETOR; /api é balanceado)
+                        └── tellPeers ──> GET /internal/admin/live?since=&epoch=   (1 Hz)
+```
+
+- **`server/src/admin/bus.js`** — anel de `ADMIN_BUS.RING` por pod, `seq` monotônico e `epoch` do boot.
+- **`server/src/admin/coletor.js`** — o fan-in, o anel agregado da retomada e o SSE.
+
+**O que faz o custo ser zero em produção sem ninguém olhando:** o barramento nasce **dormindo**, e
+`bus.on` é um **CAMPO, não uma função**. `bus.publica('kill',{a,b})` aloca o objeto literal ANTES de entrar
+na função, então um guard interno não salvaria nada no caminho de 60 Hz. A regra:
+
+```js
+if(bus.on){bus.publica(...)}   // caminho quente (Sim._feed): leitura de campo, o literal nem nasce
+bus.publica(...)               // caminho frio (join/leave/chat/report): o guard interno basta
+```
+
+A própria coleta é o sinal de "tem alguém no painel" (`desde()` chama `acorda()`); 15 s sem leitura e um
+relógio próprio rebaixa `on`. Consequência declarada: **a primeira coleta depois do silêncio volta quase
+vazia**, porque o anel estava dormindo.
+
+⚠️ **O painel escuta `Sim._feed`, NUNCA `Room.broadcastFeed`.** Aquele passa por `drenaFeed`, que corta em
+`FEED.MAX_PER_FLUSH` (4) e **descarta o resto** — uma supernova que mata oito no mesmo tick entrega quatro
+linhas ao jogo e joga quatro fora, e são exatamente as que o administrador quer ver. O teto é de UI do jogo
+e continua sendo. `server/test/feed.test.js` trava isso.
+
+⚠️ **`joined`/`left` do feed NÃO são publicados**: o painel tem `entrou`/`saiu` próprios, que sabem mais
+(se é conta, quanto durou, quantos abates, e a causa — que distingue kick de desistência). Publicar os dois
+fazia cada entrada virar duas linhas, uma delas mais pobre. Visto na primeira medição com jogadores reais.
+
+⚠️ **A guarda `_voltouAgora` não vale aqui.** No feed ela impede que o respawn vire "saiu/entrou"; no painel
+o administrador QUER ver o re-join — alguém entrando e saindo em laço é o padrão que ele procura.
+
+⚠️ **O cursor leva `epoch`, e ele NÃO cabe em 32 bits.** É um `Date.now()`: `epoch|0` o trunca, o cursor
+nunca mais bate e o painel recebe `lacuna:-1` ("este shard reiniciou") **uma vez por segundo**, num pod que
+não reiniciou. Foi medido em dev antes de ir ao ar; há teste no `adminbus.test.js`.
+
+⚠️ **Cursor ZERO é ESTREIA, não atraso**: entrega os últimos `ADMIN_BUS.ESTREIA` e não marca lacuna. Sem
+essa distinção, abrir o painel pediria 24 anéis cheios de uma vez e ainda anunciaria "perdi 1024 eventos" a
+quem não tinha o que perder.
+
+⚠️ **A ordem entre shards é arbitrária dentro da janela de 1 s** — total só DENTRO de um shard. Ordenar por
+`at` faria o fluxo andar para trás: os relógios dos 24 pods não são sincronizados o bastante.
+
+⚠️ **`X-Accel-Buffering: no`** na resposta, senão o nginx bufferiza e os eventos chegam em blocos de 4 KB
+("nada por três minutos e aí 200 linhas"). Não dá para trocar por annotation: `proxy-buffering: off` valeria
+para o `/api` inteiro, e este Ingress divide o controller com dezenas de domínios. Junto vão
+`no-transform`, `flushHeaders()` e **`req/res.setTimeout(0)`** — o `requestTimeout` do Node mata a conexão
+em 300 s por padrão, o que funciona quatro minutos em dev e morre em produção sem erro nenhum.
+
+⚠️ **Autenticação por `fetch` + `ReadableStream`, não `EventSource`**: ele não manda header
+`Authorization`, e token na query string iria para o access log do nginx, para o histórico e para o
+`Referer` — é credencial de 12 h com poder de kick e ban. O preço é escrever a reconexão à mão, o que aqui
+é ganho: a retomada é pelo cursor `{shard,seq,epoch}`, não pelo palpite de um `Last-Event-ID`.
+
+⚠️ **Memo de 10 s na resolução do Bearer, SÓ no `/internal`.** Com 2 admins são ~46 requisições internas por
+segundo, e `/internal` revalida o token no destino — 46 SELECTs/s num pool de 5 conexões, disputando com a
+persistência de partida. O TTL é o atraso entre revogar um token e a porta interna perceber, e é menor que
+os 30 s que o poll de tunables já aceita. A porta externa nunca lê o memo.
+
+**Limites:** teto de `ADMIN_BUS.MAX_STREAMS` por pod respondendo **503** (`too_many_streams`) e não 429 —
+é afirmação de capacidade daquele pod, e o painel reconecta e cai noutro, já que o `/api` é balanceado; um
+429 diria "espere", que é o conselho errado. A abertura tem rate limit por token. E a defesa principal é
+estrutural: **o laço de fan-in é por POD, não por stream**, então dez abas de F5 custam O(1).
+
+⚠️ Nada de `ADMIN_BUS` é tunable: um painel que ajusta o próprio transporte é um jeito de se trancar para
+fora do painel — o mesmo argumento que faz `ADMIN_EMAILS` só promover.
 
 ⚠️ O painel **nunca** usa `RoomManager.getRoom`, que CRIA a sala se o código for deste shard — um código
 digitado errado materializaria uma sala fantasma com 15 bots. Sempre `rooms.rooms.get(code)`.

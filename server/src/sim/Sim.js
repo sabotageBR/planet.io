@@ -60,6 +60,7 @@ export class Sim{
     /** @type {{slot:number,kind:string,quem:string|null}[]} fila de gatilhos de fala dos preenchimentos (a sala drena) */this.botTalk=[];
     this.playersDirty=true;
     /** @type {{k:string,a:number,b:number,how:string,by:number|null,n?:number}[]} fila do KILL FEED (a sala drena e difunde) */this.feed=[];
+    /** @type {((o:any)=>void)|null} espelho SEM TETO da fila acima, para o fluxo ao vivo do /admin (ver `_feed`) */this.onFeed=null;
     /** @type {Map<number,{by:number,how:string,tick:number}>} último dano levado por slot: quem AMOLECEU antes de alguém colher */this._lastHit=new Map();
     this._listeners=new Map();this._lb=[];this._lbTick=-1;this._hit=new Map();this._statTick=new Map();this._deaths=[];this._elim=0;}
   get tick(){return this.world.tick;}
@@ -137,8 +138,13 @@ export class Sim{
    * KILL FEED. Fila de linhas já resolvidas; quem difunde é a Room (JSON de controle, não o fio binário).
    * Só SLOTS vão daqui — o cliente resolve o nome por `view.playerOf`, e é isso que faz o feed respeitar
    * `anonBots` do Battle Royale sem uma linha a mais.
+   *
+   * ⚠️ `onFeed` (o fluxo ao vivo do /admin) é chamado ANTES do teto `QUEUE_MAX` e antes de `drenaFeed`,
+   * que cortam de propósito para o canto da tela do JOGO não virar parede. O painel não pode herdar esses
+   * cortes: num fecho de gás as linhas descartadas são justamente as que o administrador quer ver. Quem
+   * instala o callback é a Room, que é quem sabe o código da sala e o nome por trás de um slot.
    */
-  _feed(o){if(this.feed.length<FEED.QUEUE_MAX)this.feed.push(o);}
+  _feed(o){if(this.onFeed)this.onFeed(o);if(this.feed.length<FEED.QUEUE_MAX)this.feed.push(o);}
   /**
    * Carimba o ÚLTIMO dano levado por `slot`. Chamado de dentro do `switch` que o `_consume` já percorre —
    * uma escrita em Map por evento que já estava sendo traduzido, sem laço novo e sem varredura.

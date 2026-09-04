@@ -17,7 +17,11 @@ npm run build                # client/dist (vite build)
 ./scripts/db-secret.sh       # cria o Secret warspace-db (DATABASE_URL do .env) no cluster
 # PAINEL /admin: rota da MESMA SPA (client/src/admin/, chunk sob demanda). O 1º administrador nasce do env
 # ADMIN_EMAILS (k8s/05-config) no boot — SÓ PROMOVE — ou de um UPDATE users SET is_admin=true. docs/spec/admin.md
+# A aba AO VIVO é o fluxo de eventos do cluster inteiro (SSE agregado). Ver de fora, sem navegador:
+#   curl -N -H "authorization: Bearer <token do painel>" https://warspace.io/api/admin/live
 node scripts/loadtest.mjs --n 150 --dur 90    # N clientes DE VERDADE (guest → WS → join → INPUT 20 Hz) contra produção
+# ⚠️ o alvo é --host (não --url), e --tokens aponta o cache de contas: contra um servidor LOCAL, use um
+#   cache próprio, senão ele reusa os tokens de PRODUÇÃO e todo join volta 4401.
 node scripts/prof-room.mjs --bots 15 --humanos 10   # onde vai o tempo de UMA sala (cérebro · World.step · _consume)
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
 node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|gamepix|all  # o .zip do cliente para os portais (docs/spec/portais.md)
@@ -746,6 +750,53 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ E há DOIS padrões de fan-out que não podem ser trocados: sala **roteia pelo dono** (`askPeers`),
   aviso e parâmetro **difundem** (`tellPeers`, que devolve o que CADA irmão respondeu, com as falhas — um
   broadcast feito com `askPeers` entregaria a um shard e diria "ok").
+- **O PAINEL AO VIVO** (`server/src/admin/{bus,coletor}.js`, `client/src/admin/{AoVivo.jsx,vivo.js}`,
+  `ADMIN_BUS` em constants; a spec inteira em `docs/spec/admin.md`): o `/admin` tinha UMA atualização
+  automática — a tela de Salas, `setInterval(…,5000)` — e nenhum EVENTO. Quem entrou, quem matou quem, quem
+  falou e quem denunciou já existiam e morriam dentro do pod, e o `metrics.snapshot()` (tick p99, KB/s,
+  joins por versão, curva de vida) só saía pelo `/healthz`, por pod, sem ninguém consultar. A tela nova é
+  uma torre de controle: KPIs em cima, e embaixo shards · salas · o fluxo. UM SSE (`/api/admin/live`) num
+  shard qualquer, que vira COLETOR e pergunta aos 23 irmãos a cada segundo por `tellPeers`.
+  ⚠️ **`bus.on` É UM CAMPO, NÃO UMA FUNÇÃO, e essa distinção é o desenho inteiro.**
+  `bus.publica('kill',{a,b})` ALOCA o literal no ponto de chamada ANTES de entrar na função, então um guard
+  interno não salva nada no caminho de 60 Hz. No quente é `if(bus.on){bus.publica(...)}` — leitura de campo,
+  o objeto nem nasce; no frio (join/leave/chat/report) o guard interno basta. O barramento nasce DORMINDO, a
+  própria coleta é o sinal de "tem alguém olhando", e um relógio de 1 Hz o rebaixa depois de `AWAKE_MS`.
+  Sem ninguém no painel, o custo em produção é uma comparação por linha de feed.
+  ⚠️ **Ele escuta `Sim._feed`, NUNCA `Room.broadcastFeed`.** Aquele passa por `drenaFeed`, que corta em
+  `FEED.MAX_PER_FLUSH`=4 e DESCARTA o resto — num fecho de gás as linhas descartadas são justamente as que
+  o administrador quer ver. O teto é de UI do JOGO (não virar parede no canto da tela) e continua sendo;
+  o painel não pode herdá-lo. `server/test/feed.test.js` trava a ordem "espelho antes do corte".
+  ⚠️ **`joined`/`left` do feed não são publicados**: o painel tem `entrou`/`saiu` próprios, que sabem mais
+  (conta, duração, abates, e a CAUSA — que distingue kick de desistência). Com os dois, cada entrada virava
+  duas linhas, uma mais pobre. E a guarda `_voltouAgora` não vale aqui: o re-join em laço é exatamente o
+  padrão que o administrador procura.
+  ⚠️ **`epoch|0` NÃO CABE**: o epoch é um `Date.now()` e passa de 2³¹, então truncá-lo faz o cursor nunca
+  mais bater e o painel anuncia `lacuna:-1` ("este shard reiniciou") UMA VEZ POR SEGUNDO, num pod que não
+  reiniciou. Medido em dev antes de ir ao ar. Pelo mesmo espírito, cursor ZERO é ESTREIA e não atraso —
+  senão abrir o painel pediria 24 anéis cheios e ainda diria "perdi 1024 eventos" a quem chegou agora.
+  ⚠️ **A ordem entre shards é arbitrária dentro da janela de 1 s**, total só DENTRO de um shard: ordenar
+  por `at` faria o fluxo ANDAR PARA TRÁS, porque os relógios dos 24 pods não são sincronizados o bastante.
+  ⚠️ **`X-Accel-Buffering: no`** (senão o nginx entrega em blocos de 4 KB: "nada por três minutos e aí 200
+  linhas") e **`req/res.setTimeout(0)`** (o `requestTimeout` do Node mata em 300 s — funciona quatro
+  minutos em dev e morre em produção sem erro). E **`fetch`+`ReadableStream`, nunca `EventSource`**: ele
+  não manda `Authorization`, e token de 12 h com poder de kick na query string vai parar no access log.
+  ⚠️ **O laço de fan-in é por POD, não por stream** — é isso que faz dez abas de F5 custarem O(1); o teto
+  de streams responde 503 (capacidade: reconecte noutro shard) e não 429 ("espere"), porque o `/api` é
+  balanceado. Nada de `ADMIN_BUS` é tunable: um painel que ajusta o próprio transporte é um jeito de se
+  trancar para fora do painel.
+  ⚠️ **NENHUM ESTADO VAI SÓ NA COR** (`client/src/admin/vivo.js`, o bloco `ICONE`). Medido com o validador
+  de paleta: o verde `#3ddc5f` e o âmbar `#ffb020` dos tokens ficam com ΔE **6,7** em protanopia — quem
+  enxerga assim não distingue os dois. Então o número ou a palavra sempre dizem (`24/24`, `ok`/`com
+  falha`), e cada linha tem ícone E frase. ⚠️ E os ícones são **glifos de TEXTO**: `⚔`, `☠`, `💬`, `⚠` e
+  `🏆` têm apresentação EMOJI, e a fonte de emoji desenha em cores PRÓPRIAS — ela IGNORA o `color` do CSS,
+  e a codificação por grupo simplesmente deixa de existir, sem nada acusar (além de o `⚔` virar um "x"
+  borrado a 13 px). ⚠️ O prefixo CSS é **`lv-`, nunca `live-`**: `.live`/`.live-*` estão nas mesmas listas
+  cosméticas de bloqueador que já apagaram a tela inteira uma vez pelo `ad-wrap`.
+  ⚠️ O flush é de 4 Hz sobre um anel em `useRef` — o stream NUNCA chama `setState` —, e a aba escondida
+  para de RENDERIZAR, nunca de receber. E há um **cão de guarda**: um SSE morre sem evento nenhum (proxy
+  ocioso, aba congelada, wifi trocando) e sem ele a torre congela numa foto que o operador ACREDITA, que é
+  pior que a tela em branco. O heartbeat `:` conta como toque, senão uma noite calma derruba a conexão.
 - **A FOLHA DO PAINEL É UM SISTEMA, EM CINCO CAMADAS** (`client/src/admin/admin.css`: tokens → primitivos
   → componentes → telas → responsivo; a ORDEM é o mecanismo, e por isso nada ali precisa de `!important`).
   Ela cresceu uma tela por vez, e o resultado era que cada tela tinha inventado o próprio vocabulário para
