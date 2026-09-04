@@ -140,6 +140,18 @@ test('skins: buy 200/409/402/403, equip 200/403, catálogo',async()=>{
   r=await call('GET','/api/skins');assert.deepEqual(r.body.owned,[0]);assert.equal(r.body.equipped,0);
   assert.equal(db.health.fails,0,'erros de aplicação não contam no circuit breaker');
 });
+test('recompensa de anúncio: 1 skin por CONTA, entre as 3 mascote — nunca por moeda',async()=>{
+  // Conta ISOLADA (novoGuest), nunca S.t3: testes mais adiante comparam a lista de skins dele por
+  // igualdade exata, e resgatar uma mascote ali quebraria aquele teste sem relação nenhuma com este.
+  const g=await novoGuest('TestadorAnuncio');
+  let r=await call('GET','/api/skins',{token:g.token});assert.equal(r.body.adReward,null);
+  r=await call('POST','/api/skins/reward-ad',{token:g.token,body:{skinId:6}});assert.equal(r.status,400);assert.equal(r.body.error,'bad_request');   // skin fora de AD_REWARD_SKINS
+  r=await call('POST','/api/skins/reward-ad',{token:g.token,body:{skinId:119}});assert.equal(r.status,200,JSON.stringify(r.body));assert.ok(r.body.owned.includes(119));
+  r=await call('GET','/api/skins',{token:g.token});assert.equal(r.body.adReward,119);
+  r=await call('POST','/api/skins/reward-ad',{token:g.token,body:{skinId:119}});assert.equal(r.status,409);assert.equal(r.body.error,'already_owned');
+  r=await call('POST','/api/skins/reward-ad',{token:g.token,body:{skinId:120}});assert.equal(r.status,409);assert.equal(r.body.error,'already_claimed');   // já resgatou a 119; não dá pra trocar de mascote
+  assert.equal(db.health.fails,0,'erros de aplicação não contam no circuit breaker');
+});
 test('prefs: whitelist e merge',async()=>{
   let r=await call('PATCH','/api/me/prefs',{token:S.t3,body:{theme:'dusk',volume:50,showFps:true,hack:1,lbSize:99,quality:'low'}});
   assert.equal(r.status,200);assert.deepEqual(r.body.prefs,{theme:'dusk',volume:50,showFps:true,quality:'low'});   // 0..100, a unidade do cliente

@@ -28,5 +28,21 @@ export async function criar({ pausou, retomou }) {
       // O `commercialBreak` recebe o callback de "vai começar" e resolve no fim — com ou sem anúncio.
       return Promise.resolve(g.commercialBreak(pausou)).catch(() => {}).finally(retomou);
     },
+    // Anúncio RECOMPENSADO (`rewardedBreak`, distinto do `commercialBreak`): a Promise resolve o
+    // booleano "assistiu até o fim?" — é o ÚNICO sinal de sucesso, não há onReward/onError separados.
+    // Quem decide se isso vale uma recompensa é a fachada (`portal/index.js`), que também cuida da
+    // pausa/retomada; aqui só se repassa a chamada.
+    recompensa() {
+      const g = sdk();
+      if (!g || !g.rewardedBreak) return Promise.resolve(false);
+      return Promise.resolve(g.rewardedBreak()).catch(() => false);
+    },
+    // Game Events da Poki: `measure(categoria, oQue, acao)` — `start`/`complete`/`fail` = Progress,
+    // `visible`/`interact` = Interaction, qualquer outro valor = Other. Nunca usar "/" ou "^" nos três
+    // argumentos (reservados pela Poki). Ver docs/spec/portais.md.
+    medir(categoria, oQue, acao) {
+      const g = sdk();
+      if (g && g.measure) try { g.measure(categoria, oQue, acao); } catch { /* nunca derruba o jogo */ }
+    },
   };
 }

@@ -1,9 +1,10 @@
 // ── /api/skins, /api/skins/:id/buy, /api/skins/:id/equip ───────────────────────
 // @ts-check
 import {err} from './router.js';
-import {SKINS} from '@warspace/shared/skins.js';
+import {SKINS,AD_REWARD_SKINS} from '@warspace/shared/skins.js';
 import {InsufficientCoins} from '../repos/ledger.js';
 import {levelFromXp} from '@warspace/shared/levels.js';
+import {LIMITS} from '../auth/ratelimit.js';
 const CATALOG=SKINS.map(s=>({id:s.id,name:s.name,emoji:s.emoji,rarity:s.rarity,price:s.price,color:s.color,ring:s.ring,glow:s.glow,desc:s.desc,...(s.levelReq?{levelReq:s.levelReq}:{}),...(s.unlockKey?{unlockKey:s.unlockKey}:{})}));
 export function mountSkins(router,{db,users,skins,ledger,matches,requireUser,optionalUser,log}){
   // GET /api/skins (🔒 opcional)
@@ -12,7 +13,9 @@ export function mountSkins(router,{db,users,skins,ledger,matches,requireUser,opt
     // O NÍVEL vem junto para a loja poder mostrar "🔒 Nv 20" sem uma segunda chamada. `u.xp` já veio do
     // RESOLVE_SQL do token — não há ida extra ao banco.
     return{skins:CATALOG,owned:me?await skins.ownedIds(me.id):[0],equipped:me?me.equipped_skin_id:0,
-      level:me?levelFromXp(Number(me.xp||0)):0};
+      level:me?levelFromXp(Number(me.xp||0)):0,
+      // null = ainda não resgatou a recompensa de anúncio; senão a skin que escolheu (já vem em `owned` também).
+      adReward:me?await skins.adRewardClaimed(me.id):null};
   });
   // POST /api/skins/:id/buy 🔒 → {coins,owned}
   router.add('POST',/^\/api\/skins\/(?<id>\d+)\/buy$/,async ctx=>{
@@ -35,6 +38,22 @@ export function mountSkins(router,{db,users,skins,ledger,matches,requireUser,opt
     log.info(`compra: #${me.id} skin ${id} por ${skin.price}`);
     return out;
   });
+  // POST /api/skins/reward-ad {skinId} 🔒 → {owned} — 1 recompensa por CONTA, escolhendo entre as
+  // mascote. O SDK do portal (rewardedBreak) já decidiu do lado do cliente que o anúncio foi assistido
+  // até o fim; aqui só cabe garantir que ninguém resgata duas vezes — é a única defesa real, porque o
+  // servidor nunca confirma criptograficamente que o vídeo rodou.
+  router.add('POST',/^\/api\/skins\/reward-ad$/,async ctx=>{
+    const me=await requireUser(ctx);const id=Number(ctx.body&&ctx.body.skinId);
+    if(!AD_REWARD_SKINS.includes(id))throw err(400,'bad_request','skin inválida para esta recompensa');
+    const out=await db.tx(async c=>{
+      if(await skins.has(me.id,id,c))throw err(409,'already_owned','você já tem essa skin');
+      if(!(await skins.claimAdReward(c,{userId:me.id,skinId:id})))throw err(409,'already_claimed','você já resgatou sua recompensa de anúncio');
+      await skins.grant(c,{userId:me.id,skinId:id,source:'grant'});
+      return{owned:await skins.ownedIds(me.id,c)};
+    });
+    log.info(`recompensa de anúncio: #${me.id} skin ${id}`);
+    return out;
+  },{rate:{scope:'token',lim:LIMITS.tokenWrite}});
   // POST /api/skins/:id/equip 🔒 → {equippedSkin}
   router.add('POST',/^\/api\/skins\/(?<id>\d+)\/equip$/,async ctx=>{
     const me=await requireUser(ctx);const id=Number(ctx.params.id);

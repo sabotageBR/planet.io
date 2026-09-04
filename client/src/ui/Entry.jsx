@@ -14,7 +14,8 @@ import { go, setNick, loadTop5, toast, focaNome, play } from "../state/actions.j
 import GoogleButton from "./GoogleButton.jsx";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { useInterval } from "../hooks/useInterval.js";
-import { ENTRA_DIRETO } from "../portal/flags.js";
+import { ENTRA_DIRETO, PORTAL } from "../portal/flags.js";
+import { portal } from "../portal/index.js";
 import { Field, MiniRank, Screen } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
 import Logo from "./Logo.jsx";
@@ -48,6 +49,9 @@ function Body() {
   const [nick, setNickLocal] = useState(nickDoUsuario);
   useEffect(() => { setNickLocal(nickDoUsuario); }, [nickDoUsuario]);
   useInterval(loadTop5, 5000, true);   // só o TOP 5: pedir a lista de salas para não desenhá-la é o mesmo erro que a coluna escondida dos temas já foi
+  // Game Event da Poki: 1ª etapa do funil "onde exatamente o jogador some". `complete` sai em `play()`
+  // (state/actions.js), no mesmo instante em que a guarda do nome libera o clique em JOGAR.
+  useEffect(() => { if (PORTAL) portal.medir("menu", "entry", "start"); }, []);
   // ⚠️ Campo VAZIO é "ainda não escolhi", não erro: sem esta guarda o `setNick("")` recusaria com o
   // toast de nick curto e o `if(!r.ok)` devolveria o `Viajante-NNNN` para dentro do campo — ou seja,
   // sair do campo (ou clicar em JOGAR) desfaria exatamente o que o placeholder existe para pedir.

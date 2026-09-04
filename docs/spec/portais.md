@@ -304,6 +304,17 @@ gamepad; screen-wake-lock`…), então o push-to-talk funcionaria tecnicamente. 
 (`SEM_VOZ`) pela outra razão, que não mudou: sem moderação nem retenção de áudio não há como responder
 a um relatório de abuso.
 
+**Game Events e anúncio recompensado** (`client/src/portal/poki.js`): `medir(categoria,oQue,acao)`
+repassa `PokiSDK.measure(...)` — `start`/`complete`/`fail` viram Progress Event, `visible`/`interact`
+viram Interaction Event, qualquer outro valor é Other/Custom; nunca `/` nem `^` nos três argumentos
+(reservados pela Poki). O funil instrumentado hoje (`menu/entry`, `connect/match`,
+`survival/60s|120s|180s`) existe para responder, pelo próprio painel deles, ONDE exatamente uma sessão
+abandona — sem depender de outro Player Fit Test pago. `recompensa()` repassa `rewardedBreak()`
+(distinto de `commercialBreak`): a Promise resolve o booleano "assistiu até o fim?", sem
+`MIN_AD_MS` — a doc deles pede explicitamente para NÃO impor cooldown próprio ("we manage ad
+frequency"). Usado hoje para as 3 skins mascote (`server/src/api/skins.js`, rota
+`POST /api/skins/reward-ad`): 1 recompensa por CONTA, nunca substitui a compra com moedas.
+
 ## Y8 (`developer.y8.com`)
 
 Painel próprio (BETA), separado do `y8.com/upload` antigo: **Basic Info · SDK Initialization · Builds ·

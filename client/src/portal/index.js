@@ -116,6 +116,35 @@ export const portal = {
       if (voltar) await portal.jogoComecou();
     }
   },
+  /**
+   * Anúncio RECOMPENSADO: devolve `true` só se o jogador assistiu até o fim (aí sim vale conceder o
+   * prêmio), `false` em qualquer outro caso — sem SDK, sem preenchimento, cancelado, ou o `AD_MS`
+   * estourou. ⚠️ SEM `MIN_AD_MS`: a Poki é explícita ("don't add internal cooldowns — we manage ad
+   * frequency"), e o gatilho aqui é um CLIQUE do jogador pedindo a recompensa, não um preroll/midroll
+   * automático — o mesmo motivo pelo qual isto nunca deve virar um `setInterval`/cooldown nosso.
+   */
+  async recompensa() {
+    await pronto;
+    if (!sdk || !sdk.recompensa) return false;
+    const voltar = emJogo; if (voltar) await portal.jogoParou();
+    avisa(aoPausar);
+    let assistiu = false;
+    try { assistiu = await prazo(sdk.recompensa(), P.AD_MS, false); }
+    catch { /* o adaptador pode lançar antes de devolver a promessa */ }
+    finally {
+      avisa(aoRetomar);
+      if (sdk.reaplica) try { sdk.reaplica(); } catch { /**/ }
+      if (voltar) await portal.jogoComecou();
+    }
+    return !!assistiu;
+  },
+  /**
+   * Evento customizado do portal (hoje: Game Events da Poki). Nunca bloqueia quem chama — dispara
+   * assim que o SDK ficar pronto, e vira no-op nos portais sem suporte. ⚠️ Isto significa que um
+   * evento chamado ANTES do SDK carregar (ex.: o mount da tela de Entrada) pode chegar à Poki alguns
+   * segundos depois do instante real — limitação do próprio SDK deles, que não aceita timestamp.
+   */
+  medir(categoria, oQue, acao) { pronto.then(() => { if (sdk && sdk.medir) try { sdk.medir(categoria, oQue, acao); } catch { /**/ } }); },
   /** Começou/parou de jogar de fato (o SDK usa isso para escolher a hora do anúncio e medir sessão). */
   async jogoComecou() { await pronto; if (emJogo) return; emJogo = true;
     if (sdk && sdk.jogoComecou) try { sdk.jogoComecou(); } catch { /**/ } },

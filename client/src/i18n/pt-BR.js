@@ -73,7 +73,7 @@ export default {
   // A lista de salas: modo e tempo restante. Curtos de propósito — a coluna tem 60 px, e por isso não dá
   // para reusar `modeFree`/`modeSolo`, que são os títulos em caixa alta dos cartões grandes da tela de Modos.
   roomModeCol: "MODO", roomTimeCol: "TEMPO", roomFree: "Livre", roomBr: "BR",
-  roomEndless: "∞", roomWaiting: "no lobby", roomLocked: "em andamento", roomFullTag: "cheia",
+  roomEndless: "∞", roomWaiting: "no lobby", roomLocked: "em andamento", roomFullTag: "cheia", roomLockIn: "tranca em {n}s",
   rankTitle: "RANKING", scopeGlobal: "Global", scopeCountry: "Meu país", noCountry: "escolha seu país no perfil",
   muteHint: "Mudo (M)",
   zoomHint: "Zoom manual — 0 ou o botão do meio volta ao automático",
@@ -87,7 +87,7 @@ export default {
   hostPanel: "SUA SALA", hostKick: "Expulsar", hostBan: "Banir", hostBanned: "Banidos", hostNobody: "Só você por aqui",
   hostInvite: "Convite copiado",
   countryLabel: "País", countryHint: "Escolha seu país para entrar no ranking regional.",
-  levelWord: "nível", xpWord: "XP", levelUp: "SUBIU DE NÍVEL!", levelReq: "Nível {n}",
+  levelWord: "nível", xpWord: "XP", levelUp: "SUBIU DE NÍVEL!", levelReq: "Nível {n}", xpGained: "XP GANHO", nextUnlock: "no próximo nível:",
   lowlevelToast: "essa skin pede nível {n} — você tem {v}",
   avatarTitle: "Sua foto", avatarPick: "Escolher imagem", avatarRemove: "Remover", avatarHint: "Aparece dentro do seu planeta. Quadrada, até 256 px.",
   awards: { score: "Mais pontos", food: "Mais partículas", kills: "Mais abates", kd: "Maior K/D" }, leftTag: "saiu", periods: { all: "Geral", week: "Semanal", day: "Diário" }, metrics: { score: "Pontos", mass: "Massa", kills: "Abates", xp: "Nível", food: "Partículas", kd: "K/D" }, you: "Você", rankPos: "posição",
@@ -98,7 +98,7 @@ export default {
   shopTitle: "LOJA DE SKINS", shopNote: "Moedas se ganham jogando. Skins de conquista desbloqueiam sozinhas.", filterAll: "Todas", unlocked: "desbloqueadas",
   shopSearch: "Buscar skin…", onlyMine: "Adquiridas", noSkins: "Nenhuma skin com esse filtro",
   skinConfirmBuy: "Comprar esta skin?", skinConfirmEquip: "Equipar esta skin?",
-  avatarBadge: "sua foto",
+  avatarBadge: "sua foto", adBadge: "🎬 grátis", watchAd: "🎬 Assistir anúncio",
   sortBy: { rarity: "Por raridade", price: "Por preço", name: "Por nome" },
   prefsTitle: "PREFERÊNCIAS", save: "Salvar", reset: "Restaurar padrão", saved: "Preferências salvas",
   accountTitle: "CONTA", claimTab: "Criar conta", loginTab: "Entrar", nick: "Nick", password: "Senha", password2: "Confirmar senha", email: "E-mail",
@@ -145,6 +145,7 @@ export default {
   noRooms: "Nenhuma sala ativa — jogue para criar uma", noHistory: "Nenhuma partida ainda", useSuggestion: "Usar sugestão",
   claimed: "Conta criada", loggedIn: "Bem-vindo de volta", loggedOut: "Você saiu da conta", nickSaved: "Nick salvo",
   bought: "Skin comprada", equippedToast: "Skin equipada", poorToast: "Moedas insuficientes", lockedToast: "Desbloqueie pela conquista", secretToast: "Segredo oculto…",
+  adRewardGranted: "Skin liberada!", adRewardDone: "Você já resgatou sua recompensa de anúncio", adUnavailable: "Anúncio indisponível aqui", adSkipped: "Anúncio não concluído — nada foi cobrado",
   passShort: "Senha com pelo menos 6 caracteres", passMismatch: "As senhas não conferem", nickShort: "Nick com 2 a 16 caracteres",
   loginShort: "Usuário com 2 a 16 caracteres",
   connLost: "Conexão perdida", roomFull: "Sala cheia", kicked: "Desconectado do servidor",
@@ -221,6 +222,7 @@ export default {
     skin_not_found: "Essa skin não existe.", not_purchasable: "Essa skin não está à venda.",
     not_owned: "Você não tem essa skin.", already_owned: "Você já tem essa skin.",
     insufficient_coins: "Moedas insuficientes.", level_required: "Precisa de nível {n} — você tem {v}.",
+    already_claimed: "Você já resgatou sua recompensa de anúncio.",
     // avatar
     empty: "Nenhuma imagem recebida.", not_square: "A imagem tem que ser quadrada.",
     bad_size: "O lado tem que ficar entre {min} e {max} px.", too_big: "A imagem tem que caber em {kb} KB.",

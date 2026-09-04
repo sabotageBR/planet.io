@@ -5,18 +5,19 @@
 // cartão nunca gasta moeda, só abre a pergunta.
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { SKINS, skinById, RARITY_ORDER, RARITY_COLORS } from "@warspace/shared";
+import { SKINS, skinById, RARITY_ORDER, RARITY_COLORS, AD_REWARD_SKINS } from "@warspace/shared";
 import { skinName, skinDesc, rarityLabel } from "../i18n/catalog.js";
 import { currentLang } from "../i18n/index.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { buySkin, equipSkin, loadSkins, toast } from "../state/actions.js";
+import { buySkin, equipSkin, claimAdSkin, loadSkins, toast } from "../state/actions.js";
 import { sfx } from "../audio/index.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { ScreenHeader, Screen } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
 import AvatarPicker from "./AvatarPicker.jsx";
 import { SEM_CONTA } from "../portal/flags.js";
+import { portal } from "../portal/index.js";
 import { fmt } from "./format.js";
 
 const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");   // busca sem acento
@@ -35,6 +36,10 @@ function Body() {
   const stateOf = s => { const own = owned.includes(s.id);
     return s.id === eqId ? "eq" : own ? "owned" : s.rarity === "secret" ? "secret" : s.unlockKey ? "locked"
       : (s.levelReq || 0) > nivel ? "lowlevel" : s.price > coins ? "poor" : "buyable"; };
+  // Assistir um anúncio é uma ALTERNATIVA à compra, nunca o único caminho (regra da própria Poki) — por
+  // isso não é um ramo de `stateOf` (que decide UMA ação), e sim uma condição à parte que soma um botão
+  // extra no modal. Só para as skins mascote, só com adaptador de anúncio vivo, só quem ainda não resgatou.
+  const canWatchAd = (s, st) => AD_REWARD_SKINS.includes(s.id) && portal.ativo && session.adSkin == null && st !== "eq" && st !== "owned";
   const list = useMemo(() => {
     const nq = norm(q);
     // ⚠️ `SEM_CONTA` também tira a Retrato da grade: sem foto ela é uma lendária de 25 000 moedas que
@@ -81,6 +86,7 @@ function Body() {
         {/* a Retrato é a única skin que precisa de algo além da compra — a foto. Sem esta marca nada na
             grade dizia isso, e o jogador pagava 25 mil moedas sem saber que ainda havia um passo. */}
         {s.pattern === "avatar" ? <span className="badge av">{LB.avatarBadge}</span> : null}
+        {canWatchAd(s, st) ? <span className="badge ad">{LB.adBadge}</span> : null}
         <SkinPreview skin={s} r={36} className="" secret={sec} />
         <b>{sec ? LB.secret : skinName(s)}</b><i>{rarityLabel(s.rarity)}</i>
         <em>{rotulo(s, st)}</em></div>; })}
@@ -95,8 +101,11 @@ function SkinModal({ id, stateOf, onClose }) {
   const LB = useLabels(), theme = useTheme(), RC = (theme && theme.rarityColor) || RARITY_COLORS;
   const session = useStore(app, s => s.session), nivel = (session.stats && session.stats.level) | 0 || 1;
   const cur = skinById(id), st = stateOf(cur);
+  // Mesma regra do cartão da grade — ver o comentário de `canWatchAd` em `Body()`.
+  const podeAnuncio = AD_REWARD_SKINS.includes(cur.id) && portal.ativo && session.adSkin == null && st !== "eq" && st !== "owned";
   useEffect(() => { const kd = e => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
     addEventListener("keydown", kd); return () => removeEventListener("keydown", kd); }, [onClose]);
+  const assistir = () => { sfx("buy"); claimAdSkin(cur.id); onClose(); };
   const act = () => {
     if (st === "owned") { sfx("equip"); equipSkin(cur.id); return onClose(); }
     if (st === "buyable") { sfx("buy"); buySkin(cur.id); return onClose(); }
@@ -126,6 +135,10 @@ function SkinModal({ id, stateOf, onClose }) {
       {cur.pattern === "avatar" && (st === "eq" || st === "owned") ? <AvatarPicker /> : null}
       <div className="sm-actions">
         <button className="btn-secondary" onClick={onClose}>{LB.cancel}</button>
+        {/* SEMPRE ao lado da compra, nunca no lugar dela (regra da própria Poki: "rewarded videos are an
+            optional extra, never a gate") — e mesma classe `btn-primary` do botão pago, então nunca fica
+            menor que ele. O 🎬 no rótulo é o único sinal de identidade permitido (nunca botão verde). */}
+        {podeAnuncio ? <button className="btn-primary act ad" onClick={assistir}>{LB.watchAd}</button> : null}
         <button className="btn-primary act" disabled={st === "eq"} onClick={act}>{actLabel}</button>
       </div>
     </div>

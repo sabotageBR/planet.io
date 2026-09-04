@@ -73,7 +73,7 @@ export function normalizeStats(s) {
 
 export const initialState = {
   booted: false, bootError: null,
-  session: { user: null, skins: [0], prefs: { ...PREF_DEFAULTS }, stats: EMPTY_STATS, achievements: [], online: null, server: null, dayRank: null },
+  session: { user: null, skins: [0], adSkin: null, prefs: { ...PREF_DEFAULTS }, stats: EMPTY_STATS, achievements: [], online: null, server: null, dayRank: null },
   screen: "entry",
   prevScreen: "entry",   // de onde se chegou à tela atual: Opções é alcançável da entrada E da <Nav>,
                          // então "salvar e voltar" tem que voltar para quem abriu, não para um lugar fixo
