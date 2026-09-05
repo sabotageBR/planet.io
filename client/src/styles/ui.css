@@ -386,12 +386,20 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
    muda por tema e por data-mode, e repetir 150/120/92/84 aqui à mão sairia do ar na primeira mudança.
    (Havia um hack por tema: o `dusk` empurrava o chat para `bottom:136px` porque placar e massa trocavam de
    canto conforme o RELÓGIO. Com as colunas fixas ele perdeu a razão de ser e saiu.) */
+/* ⚠️ O TETO É DA CONVERSA, NUNCA DA CAIXA. Ele vivia no `#chat`, e a caixa tem custo FIXO por dentro:
+   cabeçalho (12 px) + dois vãos (8) + o botão "toque para falar", que NO DEDO é alvo tátil e vale 44 px
+   (a regra dos 44 lá embaixo) — 64 px que saíam do orçamento das LINHAS, porque quem encolhe num flex em
+   coluna é justamente `.chat-lines`, o único filho que pode. Em pé sobra; DEITADO, 18vh de 390 px são 70,
+   e a conversa ficava com SEIS PIXELS: a marquinha preta que aparecia no lugar do chat, com o cabeçalho
+   e o botão intactos em volta. Medido em headless, iPhone 14 deitado: `.chat-lines` 220x6.
+   Com o teto na LISTA, a caixa passa a ser cabeçalho + conversa + botão, e `18vh` volta a significar o que
+   sempre prometeu — a fatia da TELA que a conversa pode tomar, igual em pé e deitado. */
 #hud #chat{position:absolute;left:12px;top:calc(var(--radar-top,12px) + var(--radar-h,166px) + 10px);bottom:auto;
-  right:auto;width:min(280px,26vw);max-height:26vh;
+  right:auto;width:min(280px,26vw);
   display:flex;flex-direction:column;justify-content:flex-end;gap:4px;z-index:6;pointer-events:none}
 #chat .chat-head{display:flex;align-items:baseline;gap:6px;font-size:.7em;letter-spacing:.14em;opacity:.55}
 #chat .chat-scope{font-style:normal;padding:1px 6px;border-radius:99px;background:var(--ok,#3ddc5f);color:var(--line,#141026);letter-spacing:.06em}
-#chat .chat-lines{display:flex;flex-direction:column;gap:3px;overflow:hidden;justify-content:flex-end}
+#chat .chat-lines{display:flex;flex-direction:column;gap:3px;overflow:hidden;justify-content:flex-end;max-height:26vh}
 #chat .chat-line{padding:3px 8px;border-radius:var(--radius,10px);background:color-mix(in srgb,var(--surface,#2226) 78%,transparent);
   border:1px solid var(--line,#0004);font-size:.84em;line-height:1.25;word-break:break-word;animation:chatin .18s ease}
 #chat .chat-line b{color:var(--accent,#ffc22e);margin-right:5px}
@@ -427,8 +435,7 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
    painel de decisão que se apaga sozinho debaixo do dedo é a pior coisa que se pode fazer aqui. */
 #chat.quiet .chat-alvo{opacity:1}
 #chat.quiet .chat-lines{opacity:0;transition:opacity .5s ease}
-#chat.open{max-height:34vh}
-#chat.open .chat-lines{opacity:1}
+#chat.open .chat-lines{max-height:34vh;opacity:1}
 
 /* ── HUD DO ESPECTADOR (#hud.spec): quem MORREU continua na sala ────────────────────────────────
    Ficar mudo depois de morrer nunca foi regra — era esta linha: o `#hud` inteiro levava `.hidden` fora da
@@ -452,8 +459,8 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
 /* O morto FALA (a voz foi liberada junto com o texto), então o anel do push-to-talk fica — e no dedo, onde
    não há Ctrl, o único botão de toque que sobrevive é o do microfone. Dividir e atirar, esses sim, acabaram. */
 #hud.spec #touch > *:not(#t-talk){display:none}
-#hud.spec #chat{top:12px;max-height:46vh}            /* sem o radar em cima, o chat sobe e cresce */
-#hud.spec #chat .chat-lines{opacity:1}               /* e NÃO desbota: atrás da tela de morte não há jogo a proteger */
+#hud.spec #chat{top:12px}                            /* sem o radar em cima, o chat sobe e cresce */
+#hud.spec #chat .chat-lines{opacity:1;max-height:46vh} /* e NÃO desbota: atrás da tela de morte não há jogo a proteger */
 #hud.spec #chat .chat-open{opacity:.75}
 
 /* o seletor de destino do morto (arquibancada ↔ esquadrão) é o mesmo chip que já dizia "equipe" */
@@ -466,7 +473,7 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
 
 /* o mapa grande fica por baixo do chat (z-index 5 do #radar contra 6 do #chat): conversar é o que continua
    acontecendo, o mapa é consulta */
-#hud.spec.map #chat{max-height:30vh}
+#hud.spec.map #chat .chat-lines{max-height:30vh}
 /* os dois botões de vista, lado a lado: MAPA (radar ampliado) e TEMPO REAL (a sala) */
 /* ── AS FAIXAS DE AVISO ──
    No TOPO e no meio, acima de tudo: são os únicos elementos do HUD que interrompem de propósito. Não recebem
@@ -605,7 +612,8 @@ body[data-mode="portrait"] #hud .pw .pw-ico{font-size:18px}
    então encolher não esconde nada: o botão RENASCER continua alcançável. Com o mapa aberto não cabem os
    dois na mesma faixa, e quem sai é o chat — o mapa foi pedido explicitamente, e fecha num toque. */
 body[data-pointer="coarse"] #hud.spec #hud-left{top:8px;bottom:auto;justify-content:flex-start}
-body[data-mode="portrait"] #hud.spec #chat,body[data-mode="landscape"] #hud.spec #chat{top:8px;bottom:auto;max-height:30vh;width:min(260px,54vw)}
+body[data-mode="portrait"] #hud.spec #chat,body[data-mode="landscape"] #hud.spec #chat{top:8px;bottom:auto;width:min(260px,54vw)}
+body[data-mode="portrait"] #hud.spec #chat .chat-lines,body[data-mode="landscape"] #hud.spec #chat .chat-lines{max-height:30vh}
 body[data-mode="portrait"] #hud.spec.map #chat,body[data-mode="landscape"] #hud.spec.map #chat{display:none}
 body[data-mode="portrait"] #s-dead .dead-card,body[data-mode="landscape"] #s-dead .dead-card{max-height:min(64%,64dvh)}
 
@@ -614,7 +622,20 @@ body[data-mode="portrait"] #s-dead .dead-card,body[data-mode="landscape"] #s-dea
    radar em tamanho de tela nenhum. Ele saiu do canto inferior esquerdo (onde disputava altura com o bloco
    de arma/powerups, que cresce com os powerups ativos) porque lá embaixo é o dedo que precisa da tela livre
    para os botões de toque; a faixa de cima, abaixo do radar, é sobra. */
-body[data-mode="portrait"] #hud #chat,body[data-mode="landscape"] #hud #chat{left:8px;top:calc(var(--radar-top,12px) + var(--radar-h,92px) + 8px);bottom:auto;width:min(220px,44vw);max-height:18vh}
+body[data-mode="portrait"] #hud #chat,body[data-mode="landscape"] #hud #chat{left:8px;top:calc(var(--radar-top,12px) + var(--radar-h,92px) + 8px);bottom:auto;width:min(220px,44vw)}
+/* ⚠️ O teto é da LISTA (ver o bloco do #chat lá em cima) e vale ABERTO também: `#chat.open` é (1,2,0) e
+   perde para esta regra, então digitar não afrouxa o teto — o campo de texto entra no lugar do botão,
+   com os mesmos 44 px, e sem o conserto a conversa sumia igual enquanto se escrevia.
+   ⚠️ E o teto tem DOIS termos, porque a fatia da tela não sabe o que há EMBAIXO: no dedo a coluna
+   esquerda termina na pilha de arma/powerups (`#hud-left`, presa em `bottom:12px` e que cresce com cada
+   powerup ativo), e no deitado sobram ~220 px entre ela e o radar. O 2º termo é esse espaço livre —
+   `dvh` menos o topo do chat (que já acompanha `--radar-h`), menos 8 do vão, 64 do custo fixo da caixa,
+   107 da pilha no pior caso (duas fileiras de powerup mais o `bottom`) e 8 de folga. Ele só MORDE
+   quando o radar está grande e a tela é baixa; no celular deitado de verdade (radar 92) dá 84 px contra
+   os 67 de `18vh`, ou seja não muda nada — e foi a matriz de responsividade que cobrou isto
+   (`colide: hud-status×chat 197×7px`, iPhone SE deitado). */
+body[data-mode="portrait"] #hud #chat .chat-lines,body[data-mode="landscape"] #hud #chat .chat-lines{
+  max-height:min(18vh,calc(100dvh - var(--radar-top,12px) - var(--radar-h,92px) - 187px))}
 /* landscape: altura é o recurso escasso — o feed encolhe, a coluna sobe e para acima dos botões de toque */
 /* Celular DEITADO é o caso mais apertado do jogo: 375 px de altura para topo, feed, massa, placar e ainda
    os botões de toque. Aqui a coluna mostra o essencial — duas linhas de feed e três do placar. */
