@@ -260,6 +260,19 @@ export const modeCap=(id,teamSize=1)=>{const m=modeOf(id),t=teamSize>0?teamSize|
 // ORDER é a posição relativa dos dois cartões QUANDO OS DOIS APARECEM: 'free_br' (padrão — Livre
 // à esquerda, Battle Royale à direita) ou 'br_free' (invertido). Com um só visível, não tem efeito.
 export const ENTRY_PANELS={FREE:true,BR:true,OWN:true,ORDER:'free_br'};
+// ── TELA INICIAL ─────────────────────────────────────────────────────────────
+// NICK_AUTO: a tela inicial sorteia um nick e já entrega o campo preenchido, em vez de deixá-lo vazio
+// pedindo um nome. É de EXIBIÇÃO como o ENTRY_PANELS acima, e o interruptor existe porque a decisão é
+// de produto e se toma OLHANDO a tela: pedir o nome converte pior num portal (é um formulário antes do
+// primeiro frame) e converte melhor no site, onde o jogador chegou de propósito.
+// ⚠️ Ele NÃO é ecoado por `/api/config`, e essa é a diferença para o ENTRY_PANELS. O consumidor aqui é
+// `GET /api/nick`, que o cliente já chama no boot e que responde no instante EXATO em que a decisão é
+// tomada; echoar o mesmo booleano no config criaria uma segunda verdade — e uma que CORRE, porque
+// `loadConfig()` é disparado sem `await` (client/src/state/actions.js) e o campo já teria sido
+// preenchido quando a resposta chegasse.
+// ⚠️ Desligado, o comportamento é o de sempre: campo vazio, o placeholder pedindo o nome e a guarda
+// `semNome()` segurando quem tentar entrar sem nomear o planeta.
+export const ENTRY={NICK_AUTO:true};
 /**
  * Minutos escolhidos pelo dono da sala → ticks de rodada. UM lugar, porque a rota, a tela e os testes têm
  * que concordar — e porque "nada de `if (modo === …)` espalhado" é regra escrita de docs/design/modos.md.
@@ -805,6 +818,58 @@ export function botNick(rng,usados){
       :base.toUpperCase();
     if(!usados.has(n.toLowerCase())){usados.add(n.toLowerCase());return n.slice(0,16);}}
   return("j"+rng.int(1000,999999)).slice(0,16);}
+// ── NICK SORTEADO PARA O JOGADOR (o chão, quando a LLM não responde) ─────────
+// A tela inicial entrega o campo já preenchido (ver ENTRY.NICK_AUTO). A primeira escolha é a LLM
+// (server/src/auth/nickPool.js); esta lista é o que vale sem ela — e ela é o único caminho no
+// `?local=1` e com o servidor fora, que não têm com quem falar.
+//
+// ⚠️ NENHUM NOME DE PESSOA, e é o ponto da lista. `BOT_NICKS` é metade nome de gente de propósito
+// (o preenchimento tem que passar por gente); aqui é o contrário — o jogador não pediu para se
+// chamar Lucas, então o que se sorteia para ele é COISA: astronomia de um lado, apelido de jogo do
+// outro. As duas famílias no mesmo sorteio, senão metade da sala nasce com cara de gerador.
+//
+// ⚠️ E ela é DISJUNTA de `BOT_NICKS`/`BOT_NAMES`, o que não é elegância: nick igual ao de um
+// preenchimento na mesma sala faz `Room.nickTaken` RECUSAR a entrada do jogador (erro NICK_IN_ROOM).
+// ⚠️ Nenhuma base pode casar com `eggSkinFor` — senão o jogador ganha a caricatura de uma
+// celebridade sem ter pedido — nem com `COMUNS` (raiz que é palavra comum faz o bot responder a quem
+// não o chamou) nem com `nickProibido`. `shared/test/nicks.test.js` varre as quatro.
+// ⚠️ ASCII sem acento: o nick atravessa `normalizeNick`, a peneira de `recusa()` e o fio, e um "ó"
+// aqui viraria uma diferença de normalização em algum desses três.
+export const PLAYER_NICKS=[
+  // ── astronomia e espaço ──
+  "Quasar","Pulsar","Nebulosa","Cometa","Orbita","Meteoro","Cratera","Eclipse","Zenite","Vortex",
+  "Aurora","Perihelio","Galaxia","Asteroide","Satelite","Plasma","Fotao","Cosmos","Nadir","Apogeu",
+  "Perigeu","Umbra","Penumbra","Corona","Ecliptica","Zodiaco","Parsec","Supernova","Heliosfera","Exoplaneta",
+  "Estelar","Sideral","Astral","Lunar","Solar","Boreal","Austral","Celeste","Etereo","Orion",
+  "Pegaso","Hidra","Lira","Cisne","Fornax","Carina","Cetus","Lupus","Pyxis","Volans",
+  "Andromeda","Perseu","Centauro","Bootes","Aquario","Canopus","Achernar","Bellatrix","Arcturus","Polaris",
+  "Sirio","Vesper","Crateras","Magnetos","Ionosfera","Estratos","Albedo","Afelio","Sizigia","Libracao",
+  // ── apelido de jogo: máquina, comida e bicho ──
+  "Nitro","Laser","Radar","Reator","Turbina","Foguete","Blaster","Torpedo","Impacto","Colisao",
+  "Bunker","Arsenal","Overdrive","Vetor","Nucleo","Reboot","Overflow","Payload","Firewall","Sandbox",
+  "Cluster","Daemon","Quantum","Binario","Fractal","Entropia","Singular","Bitwise","Latencia","Pacote",
+  "Empada","Pudim","Quindim","Moqueca","Bolinho","Pamonha","Rapadura","Cocada","Beiju","Canjica",
+  "Bauru","Guarana","Cajuina","Pequi","Umbu","Jabuticaba","Mandioca","Chimarrao","Vatapa","Sarapatel",
+  "Tatu","Preguica","Bugio","Sagui","Ariranha","Boto","Seriema","Anta","Cutia","Irara",
+  "Jaguatirica","Muriqui","Guariba","Tambaqui","Traira","Lambari","Sucuri","Cangaco","Curiango","Gralha"];
+/**
+ * Nick sorteado para o JOGADOR. Gêmeo de `botNick` de propósito — mesmos quatro formatos, mesmo teto de
+ * tentativas, mesmo registro em `usados` por dentro —, e o que muda é só a LISTA: aqui não entra nome de
+ * pessoa. Duas listas, uma função: manter dois geradores divergentes seria inventar um segundo jeito de
+ * fazer a mesma coisa.
+ * ⚠️ `usados` são os nicks EM USO naquele momento (a união dos `usedNicks` das salas do shard, montada
+ * pela rota `GET /api/nick`). Sem ele o sorteio entrega um nome que a sala vai recusar na entrada.
+ * @param {{next:()=>number,int:(a:number,b:number)=>number}} rng @param {Set<string>} usados
+ */
+export function playerNick(rng,usados){
+  for(let t=0;t<40;t++){
+    const base=PLAYER_NICKS[rng.int(0,PLAYER_NICKS.length-1)],r=rng.next();
+    const n=r<.38?base
+      :r<.70?base+rng.int(2,99)
+      :r<.88?base+"_"+rng.int(10,999)
+      :base.toUpperCase();
+    if(!usados.has(n.toLowerCase())){usados.add(n.toLowerCase());return n.slice(0,16);}}
+  return("orbe"+rng.int(1000,999999)).slice(0,16);}
 /**
  * TAMANHO de um preenchimento que ENTRA na sala (ver ROOM.SEED_R). O do respawn continua sendo
  * `PLAYER.BOT_R` puro: quem morre recomeça pequeno, como todo mundo.

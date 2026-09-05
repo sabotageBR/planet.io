@@ -42,10 +42,17 @@ function Body() {
   const carregou = useStore(app, s => s.top5At) > 0;
   const temLado = !carregou || top5.length > 0;
   const user = session.user || {}, sk = skinById(user.equippedSkin ?? 0), guest = user.kind !== "registered";
-  // O `Viajante-NNNN` do cadastro de convidado NÃO é uma escolha: pré-preenchê-lo faz o campo parecer
-  // já respondido, e o jogador entra com uma placa sorteada sem perceber que podia se nomear. Vazio, o
-  // placeholder PEDE o nome — e quem já tem um nick escolhido continua vendo o dele.
-  const nickDoUsuario = nickSorteado(user.nick) ? "" : user.nick;
+  // ⚠️ ESTE CAMPO JÁ NASCEU VAZIO DE PROPÓSITO, e a decisão foi revertida. O argumento de então era que
+  // pré-preencher faz o campo parecer já respondido e o jogador entra com uma placa sorteada sem perceber
+  // que podia se nomear — verdade quando o que se pré-preenchia era o `Viajante-NNNN`, que é placa de
+  // cadastro e não nome de nada. O que mudou é o QUE se oferece: um nick de verdade (da LLM, ou da lista
+  // de `playerNick`), que a pessoa troca em cima se quiser. O preço do campo vazio era alto e pago por
+  // todo mundo — um formulário entre o jogador e o primeiro frame, num gênero em que ninguém preenche
+  // formulário. Quem quiser o comportamento antigo desliga `ENTRY.NICK_AUTO` no /admin.
+  // A placa continua reconhecida (`nickSorteado`): quem já escolheu um nick vê o dele, e só quem está
+  // com a placa recebe a sugestão.
+  const sugerido = useStore(app, s => s.nickSugerido);
+  const nickDoUsuario = nickSorteado(user.nick) ? sugerido : user.nick;
   const [nick, setNickLocal] = useState(nickDoUsuario);
   useEffect(() => { setNickLocal(nickDoUsuario); }, [nickDoUsuario]);
   useInterval(loadTop5, 5000, true);   // só o TOP 5: pedir a lista de salas para não desenhá-la é o mesmo erro que a coluna escondida dos temas já foi
@@ -118,7 +125,7 @@ function Body() {
       </div>
       {/* `data-go` descreve o DESTINO (é o que `theme/preview.js` e a sonda de responsividade leem); daqui
           se vai para o jogo, não para Modos. O botão "Modos" da grade abaixo mantém o `data-go="modes"`. */}
-      <button className="btn-primary" data-go="game" onClick={jogar}>{LB.play}</button>
+      <button className="btn-primary" data-go="game" onClick={jogar}>{LB.playNow}</button>
       <div className="entry-links">{links.map(([s, l]) =>
         <button key={s} className="btn-secondary" data-go={s} onClick={() => go(s)}><NavIcon k={s} /><span>{l}</span></button>)}</div>
       <div className="guest-note" data-kind={guest ? "guest" : "registered"}>

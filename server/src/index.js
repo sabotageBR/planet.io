@@ -20,6 +20,7 @@ import {createWsServer} from './net/wsServer.js';
 import {createOllama,seedModelo} from './llm/ollama.js';
 import {createBotChat} from './rooms/botChat.js';
 import {createBotNames} from './rooms/botNames.js';
+import {createNickPool} from './auth/nickPool.js';
 import {createHttpHandler} from './http/api.js';
 import {createAdminBus} from './admin/bus.js';
 /** @param {Partial<typeof baseConfig>} [overrides] */
@@ -57,7 +58,7 @@ export async function startServer(overrides={}){
   // fechadas por causa disso. Até ele terminar, as salas usam o repertório fixo — que é o mesmo caminho
   // de quando o Ollama não existe, então não há um segundo comportamento para manter.
   const game=cfg.role!=='api';
-  let botChat=null,botNames=null;
+  let botChat=null,botNames=null,nickPool=null;
   if(game&&cfg.botChatLlm&&cfg.ollamaUrl){
     // ── O ENV É A SEMENTE; DEPOIS QUEM MANDA É O PAINEL ──
     // `OLLAMA_MODEL` continua sendo a escolha do OPERADOR no boot, mas o modelo virou tunable
@@ -77,6 +78,11 @@ export async function startServer(overrides={}){
     // não usa `force`: se `ok()` recusar porque a fala está ocupando o teto, ele tenta no próximo
     // intervalo — a fala é do INSTANTE e tem preferência, um apelido pode esperar 20 s.
     botNames=createBotNames({llm,log,metrics});botNames.start();
+    // O balde de nicks do JOGADOR (a tela inicial entrega o campo preenchido) divide a MESMA instância
+    // de `llm` com a fala e com os apelidos dos bots — mesmo disjuntor, mesmo teto de gerações em voo,
+    // mesmas métricas. Ele é um lote a cada `NICK_FILL_MS` e não tem prazo: quem chega e o encontra
+    // vazio usa a lista fixa de `playerNick`, que é o chão e não uma degradação.
+    nickPool=createNickPool({llm,log,metrics});nickPool.start();
     // ⚠️ AQUECER DEPOIS DOS TUNABLES, senão aquece o modelo ERRADO: o do env, enquanto o painel já escolheu
     // outro no banco. Medido em produção — "ollama pronto: gpt-oss" com `BOT_LLM.MODELO = qwen` aplicado 40 ms
     // antes, e aí a primeira fala paga os ~27 s de load que este aquecimento existe para pagar sozinho.
@@ -96,7 +102,7 @@ export async function startServer(overrides={}){
   const health=()=>({ok:true,shard:cfg.shard,role:cfg.role,rooms:rooms?rooms.rooms.size:0,players:rooms?rooms.playerCount():0,...metrics.snapshot(),
     ...(db?healthFields({db,persist}):{db:'none',queue:0}),protocol:PROTOCOL_VERSION});
   // ── http + ws ──
-  const server=http.createServer(createHttpHandler({config:cfg,rooms,persistApi,health,log,bus,metrics}));
+  const server=http.createServer(createHttpHandler({config:cfg,rooms,persistApi,health,log,bus,metrics,nickPool}));
   server.keepAliveTimeout=65000;
   const ws=game?createWsServer({server,config:cfg,rooms,hooks,log,metrics}):null;
   // ⚠️ O MUNDO É FIXADO AQUI, antes de a porta abrir — ou seja, antes de existir a primeira sala. Esperar

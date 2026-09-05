@@ -41,7 +41,10 @@ export default {
   mapOpen: "🗺 MAPA", mapClose: "🗺 FECHAR", liveOpen: "📡 TEMPO REAL", liveClose: "📡 FECHAR",
   title: "WARSPACE.IO", tagline: "CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   coinIcon: "🪙", coinWord: "moedas", nameLabel: "Nome do seu planeta", namePlaceholder: "Informe o nome do seu planeta", nickAsk: "Dê um nome ao seu planeta para jogar", swap: "Trocar",
-  play: "JOGAR", playAuto: "🚀 JOGAR (AUTO)", rooms: "Salas", ranking: "Ranking", profile: "Perfil", shop: "Loja", prefs: "Opções", home: "Início",
+  // ⚠️ `playNow` é o botão da TELA INICIAL e não se traduz: é marca, e o valor é o mesmo nos três
+  // dicionários de propósito. Quem continua traduzido é `play`, dos dois botões da tela de Modos —
+  // lá o modo já foi escolhido e o "agora" não acrescenta nada.
+  play: "JOGAR", playNow: "PLAY NOW", playAuto: "🚀 JOGAR (AUTO)", rooms: "Salas", ranking: "Ranking", profile: "Perfil", shop: "Loja", prefs: "Opções", home: "Início",
   guestNote: "Jogando como convidado", claim: "Criar conta", login: "Entrar", logout: "Sair", guest: "convidado", registered: "conta protegida",
   // {s}/{e}: as teclas de dividir e ejetar são configuráveis (prefs keySplit/keyEject), então a dica é um MOLDE.
   hint: "mouse = mover · {s} = dividir · {e} = ejetar · F/clique = míssil (segure para mirar, {s} cancela) · botão direito = dividir",

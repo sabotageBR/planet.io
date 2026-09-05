@@ -3,7 +3,8 @@
 import {readFile,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
-import {modeOf,roundTicksOf,ROOM,ENTRY_PANELS} from '@warspace/shared/constants.js';
+import {modeOf,roundTicksOf,ROOM,ENTRY_PANELS,ENTRY,playerNick} from '@warspace/shared/constants.js';
+import {createRng} from '@warspace/shared/rng.js';
 import {sendJson,readJson,bearer,clientIp} from '../api/router.js';
 import {sessionKey} from '../auth/tokens.js';
 import {createPartyManager} from '../rooms/Party.js';
@@ -18,7 +19,7 @@ const byPlayers=(a,b)=>b.players-a.players;
  * @param {{config:any,rooms:any,persistApi:any,health:()=>any,log:any}} o
  * @returns {(req:any,res:any)=>Promise<void>}
  */
-export function createHttpHandler({config,rooms,persistApi,health,log,parties=null,bus=null,metrics=null}){
+export function createHttpHandler({config,rooms,persistApi,health,log,parties=null,bus=null,metrics=null,nickPool=null}){
   // O painel /admin é o único consumidor de `/internal/admin/*`, que NÃO é publicado no Ingress.
   const adminHttp=createAdminHttp({rooms,config,log,persistApi,bus,metrics});
   // CORS: o cliente pode estar hospedado por um portal, em outro domínio. Fica AQUI, no topo do
@@ -70,6 +71,29 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
       if(p==='/api/config')return sendJson(res,200,{shards:config.shards,shard:config.shard,roomMax:ROOM.MAX,
         protocol:PROTOCOL_VERSION,googleClientId:config.googleClientId||'',
         entryPanels:{free:ENTRY_PANELS.FREE,br:ENTRY_PANELS.BR,own:ENTRY_PANELS.OWN,order:ENTRY_PANELS.ORDER}});
+      // ── NICK SORTEADO PARA A TELA INICIAL ────────────────────────────────────────────────────
+      // Mora aqui, e não em `server/src/api/`, por três razões que se somam: esta é a única camada
+      // que tem o `rooms` — e é ele que responde "está em uso NAQUELE MOMENTO"; o `cors()` do topo do
+      // handler já cobre `/api/*`, então a rota vale nos pacotes de portal sem uma linha a mais; e o
+      // `createHttpHandler` é construído DEPOIS do balde no boot (`server/src/index.js`), enquanto o
+      // `createApi` vem antes e obrigaria a reordenar o composition root.
+      // ⚠️ Ela não entra no `PREFIXES` de `server/src/api/index.js` — aquele gate só vale para o que
+      // o `createApi` monta, e uma rota daqui listada lá seria roteada para o router errado.
+      if(p==='/api/nick'){
+        // ⚠️ `null` é uma RESPOSTA, não uma falha: é assim que o interruptor do /admin chega ao
+        // cliente. Ele distingue os dois casos — `{nick:null}` deixa o campo vazio (o comportamento
+        // de sempre), a requisição FALHAR é que o manda para a lista fixa local.
+        if(!ENTRY.NICK_AUTO)return sendJson(res,200,{nick:null});
+        // Os nicks vivos deste shard: humanos e preenchimentos, que é o que `Room.nickTaken` consulta
+        // na entrada. Sem esta união, o sorteio entrega um nome que a sala vai recusar.
+        const usados=new Set();
+        if(rooms)for(const r of rooms.rooms.values())for(const n of r.usedNicks)usados.add(n);
+        // O balde primeiro; `null` dele é a resposta NORMAL (sem LLM, disjuntor aberto ou balde vazio).
+        // ⚠️ Semente do relógio, e não do rng de uma sala: aqui não há determinismo a preservar —
+        // isto não é estado de partida, e duas pessoas entrando no mesmo tick não podem sair com o
+        // mesmo nome.
+        const nick=(nickPool&&nickPool.take(usados))||playerNick(createRng((Date.now()^(Math.random()*1e9))|0),usados);
+        return sendJson(res,200,{nick});}
       if(p==='/api/rooms'&&req.method!=='POST'){const all=(await allRooms()).sort(byPlayers),md=url.searchParams.get('mode');
         return sendJson(res,200,{rooms:md==null?all:all.filter(r=>(r.mode|0)===(+md|0))});}
       // ── SALA COM DONO ────────────────────────────────────────────────────────────────────────

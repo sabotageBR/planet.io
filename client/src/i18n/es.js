@@ -33,7 +33,7 @@ export default {
   mapOpen: "🗺 MAPA", mapClose: "🗺 CERRAR", liveOpen: "📡 EN VIVO", liveClose: "📡 CERRAR",
   title: "WARSPACE.IO", tagline: "CONQUISTA LA GALAXIA · DIVIDE · EXPULSA · DEVORA",
   coinIcon: "🪙", coinWord: "monedas", nameLabel: "Nombre de tu planeta", namePlaceholder: "Escribe el nombre de tu planeta", nickAsk: "Ponle nombre a tu planeta para jugar", swap: "Cambiar",
-  play: "JUGAR", playAuto: "🚀 JUGAR (AUTO)", rooms: "Salas", ranking: "Clasificación", profile: "Perfil", shop: "Tienda", prefs: "Opciones", home: "Inicio",
+  play: "JUGAR", playNow: "PLAY NOW", playAuto: "🚀 JUGAR (AUTO)", rooms: "Salas", ranking: "Clasificación", profile: "Perfil", shop: "Tienda", prefs: "Opciones", home: "Inicio",
   guestNote: "Jugando como invitado", claim: "Crear cuenta", login: "Entrar", logout: "Salir", guest: "invitado", registered: "cuenta protegida",
   hint: "ratón = mover · {s} = dividir · {e} = expulsar · F/clic = misil (mantén para apuntar, {s} cancela) · clic derecho = dividir",
   back: "◄", equipped: "EQUIPADA", equip: "Equipar", buy: "Comprar", locked: "Bloqueada", secret: "???",

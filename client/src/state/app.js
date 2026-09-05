@@ -105,6 +105,12 @@ export const initialState = {
   // ficaria preso num laço sem explicação. Este sinal é a prova de que a pessoa DIGITOU um nome nesta
   // carga da página; não persiste de propósito (é evidência do gesto, não um dado do perfil).
   nomeado: false,
+  // O nick que a tela inicial põe no campo quando a conta ainda está com a placa `Viajante-NNNN`
+  // (ver ENTRY.NICK_AUTO). É SUGESTÃO: não persiste, não é o nick da conta, e só vira nick de verdade
+  // quando o jogador entra numa partida (`garanteNick` em actions.js) ou sai do campo com ele.
+  // ⚠️ VAZIO tem significado: ou o parâmetro do /admin está desligado, ou a resposta ainda não chegou.
+  // Nos dois casos o campo nasce vazio e a guarda `semNome()` volta a valer — que é o de sempre.
+  nickSugerido: "",
   gameMode: 0,           // MODE.* escolhido na tela de modos (NÃO confundir com `mode`, que é a orientação da tela)
   teamSize: 1,           // 1 = solo; 2..4 = equipe
   party: null,           // {code,shard,teamSize,members,...} do lobby de equipe (GET /api/party/:code)

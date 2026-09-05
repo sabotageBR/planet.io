@@ -140,6 +140,21 @@ export const api = {
     if (!api.online) { const p = localProfile(); p.user.nick = nick; saveLocal(p); return { user: p.user }; }
     return request("PATCH", "/api/me", { nick });
   },
+  /**
+   * O nick que a tela inicial põe no campo. Vem do servidor porque só ele tem a LLM e só ele sabe quais
+   * nomes estão EM USO agora (a união dos `usedNicks` das salas do shard).
+   * ⚠️ TRÊS respostas, não duas, e é o que faz o interruptor do /admin existir:
+   *   • `"Quasar42"` → a sugestão;
+   *   • `null` do SERVIDOR → o parâmetro está DESLIGADO, e o campo fica vazio (o comportamento de sempre);
+   *   • `undefined` → a chamada falhou (offline, `?local=1`, servidor fora), e só aí vale a lista local.
+   * Devolver `null` nos dois casos faria o desligado cair no chão local, ou seja o interruptor não
+   * desligaria nada.
+   */
+  async nickSugerido() {
+    if (!api.online) return undefined;
+    try { const r = await request("GET", "/api/nick", undefined, { auth: false }); return r && r.nick ? r.nick : null; }
+    catch { return undefined; }
+  },
   async setPrefs(prefs) {
     if (!api.online) { const p = localProfile(); p.prefs = { ...p.prefs, ...prefs }; saveLocal(p); return { prefs: p.prefs }; }
     return request("PATCH", "/api/me/prefs", prefs);

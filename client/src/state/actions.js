@@ -5,7 +5,7 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { getLabels, setLang, currentLangPref, preenche } from "../i18n/index.js";
 import { errText } from "../i18n/errors.js";
-import { skinById, PROTOCOL_VERSION, SKINS, LEVEL } from "@warspace/shared";
+import { skinById, PROTOCOL_VERSION, SKINS, LEVEL, playerNick, createRng } from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
@@ -150,6 +150,34 @@ function checaVersao(cfg) {
   location.reload();
 }
 
+/**
+ * O nick que a tela inicial põe no campo. Só faz sentido para quem ainda está com a placa sorteada
+ * pelo servidor (`Viajante-NNNN`): quem já escolheu um nome vê o dele.
+ * ⚠️ A distinção entre `null` e `undefined` vem de `api.nickSugerido()` e é o interruptor do /admin:
+ * `null` é "o parâmetro está desligado" e tem que deixar o campo VAZIO; `undefined` é a chamada que
+ * falhou, e só ela cai na lista local — que é também o único caminho do `?local=1` e do modo offline.
+ */
+async function resolveNickSugerido(user) {
+  if (!nickSorteado(user && user.nick)) return "";
+  const s = await api.nickSugerido();
+  if (s === null) return "";                                        // desligado no painel
+  if (s) return s;
+  return playerNick(createRng((Date.now() ^ (Math.random() * 1e9)) | 0), new Set());   // chão local
+}
+/**
+ * Grava a sugestão ANTES de a guarda de nome ser consultada. Sem isto, quem fosse a Modos ou às Salas
+ * sem tocar no campo levaria um repique de volta à tela inicial — com o campo já preenchido, ou seja
+ * pedindo um nome que já está lá.
+ * ⚠️ TEM que ser esperado: o nick que entra na sala é o da CONTA no instante do join (o `fallbackNick`
+ * do WS só vale sem banco), então um PATCH em voo perde a corrida e o jogador entra como `Viajante-NNNN`.
+ * ⚠️ Silencioso de propósito — o toast de "nick salvo" aqui é barulho a cada primeira partida, porque
+ * ninguém pediu para salvar nada.
+ */
+async function garanteNick() {
+  const st = app.get(), u = st.session.user || {};
+  if (st.nomeado || !st.nickSugerido || !nickSorteado(u.nick)) return;
+  await setNick(st.nickSugerido, { silencioso: true });
+}
 export async function boot() {
   try { applySession(await api.bootstrap()); }
   // ⚠️ O idioma sobrevive ao boot que falhou. Este ramo reaplica os PADRÕES, e `lang` é a única pref que
@@ -166,6 +194,11 @@ export async function boot() {
   else if (api.server === false) toast(getLabels().offlineNote, 3200);
   else if (api.online === false) toast(getLabels().noDbNote, 3200);
   loadConfig(); loadTop5(); loadRooms();
+  // A sugestão de nick é ESPERADA, ao contrário do `loadConfig()` logo acima: ela precisa estar no
+  // estado antes de a tela inicial montar, senão o campo nasce vazio e o texto entra por baixo do
+  // jogador um instante depois. É uma rota que não toca no banco, e o `bootstrap()` acima já fez de
+  // duas a três idas ao servidor — ela nunca é o gargalo.
+  app.update({ nickSugerido: await resolveNickSugerido(app.get().session.user) });
   const conv = Q.get("party");
   if (conv) { history.replaceState(null, "", location.pathname); joinParty(conv); return; }   // link de convite: cai direto no lobby da equipe do amigo
   // Convite para a SALA de alguém. ⚠️ Consulta o modo ANTES de entrar: sem isso o convidado entraria com o
@@ -292,13 +325,18 @@ export async function loadHistory(limit = 20) {
 }
 
 // ── nick / conta ─────────────────────────────────────────────────────────────
-/** PATCH /api/me {nick}. Devolve {ok, suggestion?}. */
-export async function setNick(nick) {
+/**
+ * PATCH /api/me {nick}. Devolve {ok, suggestion?}.
+ * ⚠️ `silencioso` existe para o nick SORTEADO (`garanteNick`): ali ninguém pediu para salvar nada, e o
+ * "nick salvo" apareceria a cada primeira partida de cada convidado. O erro continua sendo dito nos dois
+ * casos — falhar em silêncio é outra coisa.
+ */
+export async function setNick(nick, { silencioso = false } = {}) {
   nick = String(nick || "").replace(/\s+/g, " ").trim();
   const cur = (app.get().session.user || {}).nick;
   if (nick === cur) return { ok: true };
   if (!NICK_RE.test(nick)) { toast(getLabels().nickShort); return { ok: false }; }
-  try { const r = await api.setNick(nick); patchUser(r && r.user ? r.user : { nick }); app.update({ nomeado: true }); toast(getLabels().nickSaved); return { ok: true }; }
+  try { const r = await api.setNick(nick); patchUser(r && r.user ? r.user : { nick }); app.update({ nomeado: true }); if (!silencioso) toast(getLabels().nickSaved); return { ok: true }; }
   catch (e) { toast(errText(e, "nick") + (e.suggestion ? ` · ${e.suggestion}` : ""), 3000); return { ok: false, suggestion: e.suggestion, error: e }; }
 }
 /**
@@ -454,6 +492,10 @@ export function semNome(pedido = null) {
 }
 /** Entra numa sala: `room` explícito, senão GET /api/auto (offline → sala local do stub). */
 export async function play({ room, mode, teamSize, party } = {}) {
+  // ANTES da guarda, e é o que a torna inerte quando há sugestão: com o campo já preenchido, mandar o
+  // jogador de volta à tela inicial para pedir um nome que está lá é repique puro. Com a sugestão vazia
+  // (parâmetro desligado no /admin, ou a conta já nomeada) isto é um no-op e `semNome` segue mandando.
+  await garanteNick();
   if (semNome({ room, mode, teamSize, party })) return;
   // Game Events da Poki: fecha a etapa "menu" e abre "connect" — ver o `start` em ui/Entry.jsx e o
   // `complete` de "connect" em `onConnection`, mais abaixo.

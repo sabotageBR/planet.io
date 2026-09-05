@@ -32,7 +32,7 @@ const fmtDate=ms=>{const d=new Date(ms);return d.toLocaleDateString("pt-BR",{day
 const LABELS={
   title:"WARSPACE.IO",tagline:"CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   coinIcon:"🪙",coinWord:"moedas",nameLabel:"Nome do seu planeta",swap:"Trocar",
-  modesShort:"Modos",play:"JOGAR",playAuto:"🚀 Jogar (auto)",rooms:"Salas",ranking:"Ranking",profile:"Perfil",shop:"Loja",prefs:"Opções",home:"Início",
+  modesShort:"Modos",play:"JOGAR",playNow:"PLAY NOW",playAuto:"🚀 Jogar (auto)",rooms:"Salas",ranking:"Ranking",profile:"Perfil",shop:"Loja",prefs:"Opções",home:"Início",
   guestNote:"Jogando como convidado",claim:"Criar conta",login:"Entrar",logout:"Sair",guest:"convidado",registered:"conta protegida",
   hint:"mouse = mover · ESPAÇO = dividir · W = ejetar · F/clique = míssil · botão direito = dividir",
   back:"◄ Voltar",equipped:"EQUIPADA",equip:"Equipar",buy:"Comprar",locked:"Bloqueada",secret:"???",
@@ -126,7 +126,7 @@ app.innerHTML=`
           <div class="skinmeta"><b id="m-skin"></b><i id="m-rar"></i></div>
         </div>
       </div>
-      <button class="btn-primary" data-go="game">${LB.play}</button>
+      <button class="btn-primary" data-go="game">${LB.playNow}</button>
       <div class="entry-links">
         ${["modes","lobby","rank","profile","shop"].map((k,i)=>
           `<button class="btn-secondary" data-go="${k}">${navIconSvg(k)}<span>${[LB.modesShort,LB.rooms,LB.ranking,LB.profile,LB.shop][i]}</span></button>`).join("")}

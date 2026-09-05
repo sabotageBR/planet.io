@@ -33,7 +33,7 @@ export default {
   mapOpen: "🗺 MAP", mapClose: "🗺 CLOSE", liveOpen: "📡 LIVE", liveClose: "📡 CLOSE",
   title: "WARSPACE.IO", tagline: "CONQUER THE GALAXY · SPLIT · EJECT · DEVOUR",
   coinIcon: "🪙", coinWord: "coins", nameLabel: "Your planet's name", namePlaceholder: "Enter your planet's name", nickAsk: "Name your planet to play", swap: "Change",
-  play: "PLAY", playAuto: "🚀 PLAY (AUTO)", rooms: "Rooms", ranking: "Ranking", profile: "Profile", shop: "Shop", prefs: "Settings", home: "Home",
+  play: "PLAY", playNow: "PLAY NOW", playAuto: "🚀 PLAY (AUTO)", rooms: "Rooms", ranking: "Ranking", profile: "Profile", shop: "Shop", prefs: "Settings", home: "Home",
   guestNote: "Playing as a guest", claim: "Sign up", login: "Sign in", logout: "Sign out", guest: "guest", registered: "protected account",
   hint: "mouse = move · {s} = split · {e} = eject · F/click = missile (hold to aim, {s} cancels) · right click = split",
   back: "◄", equipped: "EQUIPPED", equip: "Equip", buy: "Buy", locked: "Locked", secret: "???",

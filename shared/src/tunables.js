@@ -27,7 +27,7 @@
 // ⚠️ `ENTRY_PANELS` é 'server' pelo mesmo motivo de `ROOM.MAX`: o servidor decide, e `/api/config` ecoa
 // o valor só para a tela poder desenhar antes de existir sala — não é física, não precisa de `wire`.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,ENTRY_PANELS} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,ENTRY_PANELS,ENTRY} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt'|'bool',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
@@ -49,6 +49,7 @@ export const GRUPOS=[
   ['morte','Morte e respawn'],
   ['chat','Chat'],
   ['bots','Fala dos bots'],
+  ['entrada','Tela inicial'],
   ['modos','Tela de Modos'],
 ];
 
@@ -217,6 +218,14 @@ export const TUNABLES=[
     [{v:'free_br',label:'Livre à esquerda · Battle Royale à direita'},
      {v:'br_free',label:'Battle Royale à esquerda · Livre à direita'}],
     ENTRY_PANELS,'ORDER'),
+  // ── TELA INICIAL ──
+  // Ver o comentário de `ENTRY` em constants.js. Desligado, o campo de nome volta a nascer VAZIO e a
+  // guarda `semNome()` volta a segurar quem tentar entrar sem nomear o planeta — ou seja, o
+  // comportamento de sempre, inteiro, num clique.
+  // ⚠️ Quem lê este valor é a rota `GET /api/nick`, e NÃO o `/api/config` como os painéis acima: o
+  // config é disparado sem `await` no boot do cliente, e o campo já estaria preenchido quando a
+  // resposta chegasse.
+  bool('entrada','ENTRY.NICK_AUTO','Sortear um nick por padrão na tela inicial','server',ENTRY,'NICK_AUTO'),
 ];
 export const TUNABLE_BY_KEY=new Map(TUNABLES.map(t=>[t.key,t]));
 /**
