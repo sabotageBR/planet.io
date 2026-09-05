@@ -10,13 +10,24 @@ import {WebSocketServer} from 'ws';
 import {NET,WORLD,MODE,modeOf,VOICE} from '@warspace/shared/constants.js';
 import {wireValues} from '@warspace/shared/tunables.js';
 import {eggSkinFor} from '@warspace/shared/eggs.js';
-import {PROTOCOL_VERSION,PROTOCOL_MIN,MSG,VOICE_UP_HEADER_BYTES} from '@warspace/shared/protocol/constants.js';
+import {PROTOCOL_VERSION,PROTOCOL_MIN,MSG,VOICE_UP_HEADER_BYTES,INPUT_FLAG} from '@warspace/shared/protocol/constants.js';
 import {decodeInput,decodeVoiceUp,encodePong,createWriter} from '@warspace/shared/protocol/index.js';
 import {Session} from './Session.js';
 import {clientIp} from '../api/router.js';
 import {sessionKey} from '../auth/tokens.js';
 import {suggestNick} from '../auth/nick.js';
 import {createOriginMatcher} from '../http/cors.js';
+// ── O QUE CONTA COMO GESTO DE GENTE ─────────────────────────────────────────
+// ⚠️ `ping` e `view` estão FORA, e cada um por um motivo próprio: o ping sai sozinho a 1 Hz do Connection —
+// contá-lo desligaria a expulsão por inatividade inteira, em silêncio — e o `view` é reenviado pelo
+// ResizeObserver, que dispara sozinho quando a barra de endereço do celular recolhe, sem ninguém tocar em
+// nada. `chat` e `spectate` estão DENTRO porque são o espectador ATENTO: quem morreu e continua conversando
+// ou trocando de câmera está tão presente quanto quem está jogando.
+const ATIVIDADE=new Set(['awake','chat','talk','respawn','spectate','report','room','quit']);
+// As flags ONE-SHOT (valem uma vez por seq). ⚠️ EJECT_HOLD e AIM ficam de fora: são de NÍVEL, repetidas em
+// TODO pacote enquanto a tecla está segurada — uma tecla presa embaixo de um objeto valeria por presença
+// eterna, que é exatamente o jogador que isto existe para encontrar.
+const ACAO_HUMANA=INPUT_FLAG.SPLIT|INPUT_FLAG.EJECT|INPUT_FLAG.FIRE|INPUT_FLAG.SWAP;
 // MAX_PAYLOAD tem que caber o maior clipe de voz (VOICE.MAX_BYTES + cabeçalho): com os 4 KB de antes o `ws`
 // derrubava o frame — e a conexão junto — antes de o servidor poder recusá-lo. A folga é pequena de propósito:
 // o INPUT tem 10 bytes e o JSON de controle é minúsculo, então este teto existe só para a voz.
@@ -154,6 +165,8 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
     function onJson(data){
       if(!s.json.take())return rate();metrics.msgIn();
       let msg;try{msg=JSON.parse(data.toString('utf8'));}catch{return;}if(!msg||typeof msg!=='object')return;
+      // FORA do switch de propósito: assim um `case` novo não pode ESQUECER de dizer que tem gente aqui.
+      if(ATIVIDADE.has(msg.t))s.marcaAtivo();
       switch(msg.t){
         case 'join':join(msg);break;
         case 'resume':resume(msg);break;
@@ -186,7 +199,16 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         case 'respawn':if(s.room&&s.slot>=0)s.room.respawn(s);break;
         // trocar de câmera só faz sentido para quem já morreu: quem está vivo tem as próprias peças
         case 'spectate':{if(!s.room||s.slot<0)break;const gp=s.room.sim.players.get(s.slot);
-          if(gp&&gp.dead)s.room.spectatePick(s,{slot:msg.slot|0||-1,dir:msg.dir|0});break;}}}
+          if(gp&&gp.dead)s.room.spectatePick(s,{slot:msg.slot|0||-1,dir:msg.dir|0});break;}
+        // "ainda estou aqui". O carimbo já saiu no ATIVIDADE lá em cima; este case existe para o pedido não
+        // cair no `default` silencioso e para o arquivo dizer que a mensagem é conhecida. Ela existe porque
+        // o INPUT sozinho não basta: quem está MORTO não manda input nenhum (o `enviarInput` do cliente
+        // devolve cedo com `dead`), e mesmo vivo o alvo pode andar sozinho enquanto a pessoa não está.
+        // ⚠️ E a PRIMEIRA delas declara uma CAPACIDADE: a partir daqui esta sessão sabe dizer sozinha quando
+        // há gesto, então o piso grosseiro do INPUT (acima) sai de cena e o silêncio passa a ser silêncio de
+        // verdade. É negociação pelo COMPORTAMENTO, no espírito do PROTOCOL_MIN: build antiga nunca manda
+        // isto, continua medida pelo alvo e nunca é removida por engano.
+        case 'awake':s.falaAwake=true;break;}}
     /**
      * Binário: despacha pelo PRIMEIRO BYTE. Antes só havia INPUT, então bastava compará-lo; agora o cliente
      * também sobe clipes de voz (VOICE_UP), que são bytes opacos — o servidor valida e reenvia sem decodificar.
@@ -194,7 +216,23 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
     function onInput(data){
       if(!s.inputs.take())return rate();metrics.msgIn();
       if(!s.room||s.slot<0||data.length<1)return;
-      if(data[0]===MSG.INPUT){let inp;try{inp=decodeInput(data);}catch{return;}s.room.sim.applyInput(s.slot,inp);return;}
+      if(data[0]===MSG.INPUT){let inp;try{inp=decodeInput(data);}catch{return;}
+        // ⚠️ ESTE CAMINHO É O DE COMPATIBILIDADE, e só vale para quem NÃO sabe mandar `{t:"awake"}` (ver
+        // `falaAwake`). Ele é um piso grosseiro: MEDIDO no navegador, o planeta com o mouse largado fora do
+        // centro NUNCA alcança o cursor — a câmera persegue o planeta, então o ponto de MUNDO sob o mesmo
+        // pixel foge junto —, e o alvo muda para sempre. Um jogador ausente engordou de 926 para 11.076 em
+        // 38 s sem tocar em nada e sem nunca parecer inativo. Quem sabe a verdade é o CLIENTE; isto aqui só
+        // impede que uma build antiga, que não tem como contá-la, seja removida no meio da partida.
+        // ⚠️ ANTES do applyInput: é ele que sobrescreve `gp.lastInput`, e a comparação é justamente contra o
+        // alvo anterior. Depois, o alvo velho já não existe e o carimbo nunca dispararia.
+        // ⚠️ E aqui, não dentro do Sim: os BOTS caem no mesmo `applyInput` (Sim._botInput, com seq null) e
+        // lá seria preciso um filtro que a primeira refatoração derruba em silêncio — daí o servidor passaria
+        // a expulsar os próprios preenchimentos. Neste ponto só passa humano com socket, por construção.
+        const gp=s.room.sim.players.get(s.slot);
+        if(gp&&!gp.dead&&!s.falaAwake){const li=gp.lastInput;
+          if(!gp.gotInput||(inp.flags&ACAO_HUMANA)
+            ||Math.abs(inp.tx-li.tx)>NET.IDLE_MOVE_PX||Math.abs(inp.ty-li.ty)>NET.IDLE_MOVE_PX)s.marcaAtivo();}
+        s.room.sim.applyInput(s.slot,inp);return;}
       if(data[0]===MSG.VOICE_UP){let v;try{v=decodeVoiceUp(data);}catch{return;}s.room.voice(s,v);}}
     ws.on('message',(data,isBinary)=>{s.lastPong=Date.now();if(isBinary)onInput(data);else onJson(data);});
     ws.on('pong',()=>{s.lastPong=Date.now();});

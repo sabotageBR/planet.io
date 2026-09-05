@@ -159,6 +159,23 @@ export const TUNABLES=[
   // que a semente e o enchimento gradual não tem o que fazer.
   num('sala','ROOM.MAX','Jogadores por sala no modo Livre (vale nas salas novas)','jogadores','server',2,60,1,ROOM,'MAX'),
   num('sala','ROOM.BOTS','Preenchimentos por sala no modo Livre (vale nas salas novas)','bots','server',0,60,1,ROOM,'BOTS'),
+  // ── INATIVIDADE ──
+  // Quem deixa a aba aberta ocupa vaga, vira comida de graça e polui o placar e o kill feed de toda sala por
+  // onde passa — e, antes disto, renascia SOZINHO a cada 5 s, para sempre. Os três relógios da sessão estão
+  // explicados no bloco de NET em constants.js; o que interessa aqui é que este mede PESSOA, não socket.
+  // ⚠️ O interruptor vem primeiro de propósito: isto EXPULSA gente, e o dia em que expulsar quem não devia
+  // o conserto tem que ser um clique, não um deploy. Desligado, o carimbo de atividade continua sendo feito
+  // (é barato) e ninguém é removido.
+  bool('sala','NET.IDLE_KICK','Expulsar quem fica sem jogar','server',NET,'IDLE_KICK'),
+  // ⚠️ Em MINUTOS, como o ímã é dito em massa: o admin pensa "três minutos", a constante guarda 180000.
+  // Não vale para o morto no Battle Royale (lá ficar assistindo o pódio é o jogo) nem para o dono da sala
+  // (a sala dele existe para esperar os amigos chegarem pelo link) — ver `Room._idleTick`.
+  num('sala','NET.IDLE_MIN','Tempo sem ação até ser removido da sala','minutos','server',1,30,1,NET,'IDLE_MS',
+    {para:m=>Math.round(m*60000),de:ms=>Math.round(ms/60000)}),
+  // Quanto antes a faixa de aviso aparece. Ninguém pode ser removido sem ter tido a chance de reagir — e o
+  // aviso some no primeiro gesto, então o preço de errar para mais é zero.
+  num('sala','NET.IDLE_WARN_S','Aviso antes de remover por inatividade','segundos','server',5,60,5,NET,'IDLE_WARN_MS',
+    {para:s=>Math.round(s*1000),de:ms=>Math.round(ms/1000)}),
   // ── MORTE E RESPAWN ──
   // Quanto a tela de morte espera antes de renascer SOZINHA no Livre, em SEGUNDOS. `wire`, não `server`:
   // quem decide QUANDO renascer é o cliente (o pedido `{t:"respawn"}` já era aceito a qualquer momento),

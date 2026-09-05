@@ -18,12 +18,13 @@
 // parava no `Room.js`) e o planeta do algoz é desenhado com a skin de verdade. E o `score` da
 // partida chegava em `lastMatch` desde sempre sem NENHUM componente lê-lo — o mesmo defeito que o
 // `score` do `roundEnd` tinha.
-import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { skinById, MODE, ROUND, TICK_HZ } from "@warspace/shared";
 import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
 import { play, leaveGame, respawnAqui } from "../state/actions.js";
+import { prazoDe } from "./deadClock.js";
 import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
 import { fmt, fmtTime, ord } from "./format.js";
@@ -67,23 +68,33 @@ export default function Dead({ on }) {
   }, [on, game]);
   useEffect(() => { if (!on && game && game.showMap) game.showMap(""); }, [on, game]);   // saiu da tela, fecha o mapa
   useEffect(() => { if (on) sfx("deadScreen"); }, [on]);   // a tela de KABOOM tem som próprio (o `death` é o do mundo, lá atrás)
-  // ── RESPAWN AUTOMÁTICO (Livre) ──────────────────────────────────────────────────────────────────
-  // A tela já abre a contagem no instante em que morre — não é preciso clicar "DE NOVO" para renascer.
-  // `ROUND.RESPAWN_TICKS` chega pelo canal `wire` (mesmo mecanismo de `CAM.K`), então o admin muda o
-  // tempo sem deploy. O clique continua funcionando a qualquer momento (respawn imediato, a tela
-  // desmonta e o efeito é limpo sozinho). BR nunca conta: lá não existe respawn.
-  const [restante, setRestante] = useState(0);
+  // ── RESPAWN AUTOMÁTICO (Livre), MAS SÓ DEPOIS DE UM SINAL DE VIDA ───────────────────────────────
+  // A contagem já foi incondicional: abria no instante da morte e renascia sozinha 5 s depois, sem que
+  // ninguém clicasse em nada — o botão era o espelho dela, não a causa. Uma aba esquecida aberta virava um
+  // jogador que morre, renasce, morre e renasce para sempre, ocupando vaga, servindo de comida de graça e
+  // poluindo o placar e o kill feed de todas as salas por onde passasse.
+  // Hoje quem arma é o primeiro GESTO depois da morte (game/input/Activity.js → `morte` no motor →
+  // `deadAt`/`armAt` no HUD). Sem gesto, `prazoDe` devolve 0 e a tela simplesmente espera.
+  // ⚠️ `performance.now()`, NUNCA `Date.now()`: `armAt` nasce do relógio monotônico do motor. Round.jsx usa
+  // `Date.now()` porque o `at` de lá vem de lá — misturar os dois dá um prazo com décadas de erro.
+  // ⚠️ `-1` é "esperando gesto" e `0` é "venceu, o respawn está saindo": com um valor só para os dois o
+  // botão pisca o rótulo curto no frame do disparo.
+  // ⚠️ As deps são `armAt`, que é um LATCH (muda uma vez por morte). Depender de "última atividade" — um
+  // número que anda a 8 Hz — reiniciaria a contagem a cada movimento do mouse e ela nunca venceria.
+  // O tempo continua vindo de `ROUND.RESPAWN_TICKS` pelo canal `wire`, e o clique continua renascendo na
+  // hora, armado ou não. BR nunca conta: lá não existe respawn.
+  const [restante, setRestante] = useState(-1);
+  const fired = useRef(false);
   useEffect(() => {
-    if (!on || !m || h.mode === MODE.BR) { setRestante(0); return; }
-    let left = Math.max(1, Math.round((ROUND.RESPAWN_TICKS || 300) / TICK_HZ));
-    setRestante(left);
-    const iv = setInterval(() => {
-      left -= 1;
-      if (left <= 0) { clearInterval(iv); respawnAqui(m && m.room); }
-      else setRestante(left);
-    }, 1000);
-    return () => clearInterval(iv);
-  }, [on, m && m.at, h.mode]);
+    if (!on || !m || h.mode === MODE.BR) { setRestante(-1); return; }
+    const end = prazoDe({ deadAt: h.deadAt || 0, armAt: h.armAt || 0 },
+      Math.max(1000, Math.round((ROUND.RESPAWN_TICKS || 300) / TICK_HZ) * 1000));
+    if (!end) { setRestante(-1); return; }
+    fired.current = false;
+    const tick = () => { const s = Math.max(0, Math.ceil((end - performance.now()) / 1000)); setRestante(s);
+      if (s <= 0 && !fired.current) { fired.current = true; respawnAqui(m && m.room); } };
+    tick(); const t = setInterval(tick, 250); return () => clearInterval(t);
+  }, [on, h.deadAt, h.armAt, h.mode]);
   if (!on || !m) return <div className={"screen" + (on ? " on" : "")} id="s-dead" />;
 
   const linhas = h.lb || [];
@@ -160,7 +171,11 @@ export default function Dead({ on }) {
       <button className={"btn-secondary dead-map" + (mapa === "map" ? " on" : "")} onClick={() => verMapa("map")}>{mapa === "map" ? LB.mapClose : LB.mapOpen}</button>
       <button className={"btn-secondary dead-live" + (mapa === "live" ? " on" : "")} onClick={() => verMapa("live")}>{mapa === "live" ? LB.liveClose : LB.liveOpen}</button>
     </div>
-    {semRespawn ? <div className="hint dead-hint">{LB.brWatchHint}</div> : null}
+    {/* Desarmado, a dica diz o que fazer — e o botão continua clicável, renascendo na hora (o clique é um
+        `pointerdown`, então ele mesmo arma). Quem não mexer em nada não renasce mais sozinho, que é o
+        ponto. No BR a dica é outra: lá o certo é FICAR. */}
+    {semRespawn ? <div className="hint dead-hint">{LB.brWatchHint}</div>
+      : restante < 0 ? <div className="hint dead-hint">{LB.respawnArm}</div> : null}
   </>;
   /** Uma linha do balanço: número grande, e a barra só quando existe um recorde para comparar. */
   const linha = (k, valor, atual, rec, novo) => <div className={"dd-linha" + (novo ? " novo" : "")} key={k}>

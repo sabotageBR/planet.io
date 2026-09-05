@@ -132,6 +132,33 @@ test('eject e split: entidade EJECT aparece; depois 2 peças próprias',async()=
   await A.until(()=>A.mine().length===2,3000,'2 peças');
   assert.ok(A.events.some(e=>e.slotA===A.slot),'evento (SPLIT) do próprio slot recebido');
 });
+// ── QUEM DIZ QUE TEM GENTE AQUI ────────────────────────────────────────────────
+// Estes dois travam o furo mais fácil de reintroduzir. `lastPong` é renovado por QUALQUER mensagem, então
+// "simplificar" o carimbo de atividade para junto dele desligaria a remoção por inatividade em silêncio:
+// ninguém mais seria removido, jamais, e nenhum teste acusaria. E o INPUT não serve de sinal fino porque o
+// planeta persegue o cursor para sempre — medido no navegador, um jogador ausente engordou 12× em 38 s sem
+// tocar em nada —, então o cliente que sabe falar `awake` passa a ser a ÚNICA fonte.
+// ⚠️ O `finally` não é zelo: um `lastActiveAt` no ano de 1970 esquecido aqui faz o ceifador (que roda de
+// verdade, 1×/s, no RoomManager) remover esta sessão no meio dos testes SEGUINTES — que então falham a
+// respeito de outra coisa. Foi o que aconteceu na primeira escrita.
+test('awake carimba atividade; ping NÃO',async()=>{
+  const sess=[...roomOf(roomCode).sessions.values()].find(x=>x.slot===A.slot);assert.ok(sess);
+  try{
+    sess.lastActiveAt=1;A.send({t:'ping',c:7});await A.until(()=>A.pongs.length>0,2000,'PONG');
+    assert.equal(sess.lastActiveAt,1,'o ping sai sozinho a 1 Hz: contá-lo desligaria a funcionalidade inteira');
+    A.send({t:'awake'});await A.until(()=>sess.lastActiveAt>1,2000,'carimbo');
+  }finally{sess.marcaAtivo();}
+});
+test('o primeiro awake declara a capacidade e o INPUT deixa de valer como presença',async()=>{
+  const sess=[...roomOf(roomCode).sessions.values()].find(x=>x.slot===A.slot);
+  assert.ok(sess.falaAwake,'o cliente declara isto no join');
+  const p=A.mine()[0];
+  try{
+    sess.lastActiveAt=1;
+    for(let i=0;i<6;i++){A.input(p.x+i*900,p.y);await sleep(20);}   // alvo andando MUITO, como o do planeta à deriva
+    assert.equal(sess.lastActiveAt,1,'com o cliente novo, só o gesto conta — o alvo anda sozinho e não é sinal');
+  }finally{sess.marcaAtivo();}
+});
 test('ping → PONG com clientTime e serverTick',async()=>{
   A.send({t:'ping',c:4242});const p=await A.until(()=>A.pongs.find(x=>x.clientTime===4242),2000,'PONG');assert.ok(p.serverTick>0);
 });

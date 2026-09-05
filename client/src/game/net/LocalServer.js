@@ -69,6 +69,14 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
       if(!s)return;
       if(m.t==="view"){s.view={w:m.w,h:m.h,zoom:+m.z>0?+m.z:1};}   // o `z` é o zoom manual: clampado pela MASSA abaixo, igual ao servidor
       else if(m.t==="ping"){sendBin(sock,encodePong(writer,{clientTime:m.c>>>0,serverTick:w.tick}));}
+      // ⚠️ RENASCER, e isto faltava desde que o respawn deixou de ser `leave`+`join`: o cliente vê o socket
+      // ABERTO (é o stub daqui), então `game.respawn()` devolve true, a tela vira "game" e o `{t:"alive"}`
+      // nunca chegava — o jogador ficava MORTO para sempre no `?local=1`, sem erro em lugar nenhum. É o
+      // único caminho para exercitar a tela de morte sem subir servidor.
+      else if(m.t==="respawn"){if(s.dead){spawn(s);sendJson(sock,{t:"alive",slot:s.slot,sessionId:"local-"+s.slot,tick:w.tick});}}
+      // "ainda estou aqui": aqui não há ninguém para expulsar ninguém, então é no-op — mas conhecido, para
+      // não parecer que o stub ignorou algo que devia tratar.
+      else if(m.t==="awake"){}
       return;}
     if(!s||s.slot<0)return;let inp=null;try{inp=decodeInput(d);}catch{return;}
     if(!seqNewer(inp.seq,s.lastSeq))return;s.lastSeq=inp.seq;s.ackSeq=inp.seq;

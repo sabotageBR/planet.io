@@ -56,7 +56,11 @@ export const EVENT={EAT:0,POP:1,MERGE:2,SPLIT:3,BH_SUCK:4,DEATH:5,CHIP:6,BOUNCE:
 // EXIT (9) e STAR_SPLIT (19) continuam sem emissor e NÃO são reciclados, para não versionar o fio à toa.
 export const BH_PHASE={GROW:0,ACTIVE:1,FADE:2};
 export const STAR_PHASE={GROW:0,ACTIVE:1,OLD:2};   // OLD = inchando para a supernova
-export const ERROR_CODE={VERSION:4400,FULL:4402,AUTH:4401,NICK_RESERVED:4409,NICK_IN_ROOM:4410,RATE:4429,ROOM:4404,MODE:4405,ROOM_STARTED:4423};
+export const ERROR_CODE={VERSION:4400,FULL:4402,AUTH:4401,NICK_RESERVED:4409,NICK_IN_ROOM:4410,RATE:4429,ROOM:4404,MODE:4405,ROOM_STARTED:4423,ROOM_IDLE:4408};
+// ROOM_IDLE: o socket estava vivo e a pessoa não — três minutos sem um gesto humano (NET.IDLE_MS). 4408 é o
+// `Request Timeout` do HTTP, que é literalmente o que aconteceu. Não era obrigatório entrar aqui
+// (ROOM_KICKED e ROOM_BANNED caem no fallback 4400 de `Session.error`), mas é neste mapa que o close code
+// deixa de mentir — e um kick por inatividade é a última coisa que deve parecer queda de conexão.
 // ROOM_STARTED: a sala existe, tem vaga e mesmo assim recusa — o Battle Royale dela já começou. Antes isto
 // saía como FULL, e "Sala cheia" é FALSO: manda o jogador esperar uma vaga que não vai adiantar, quando o
 // que ele tem que fazer é procurar OUTRA partida. `FULL` voltou a significar só "não tem vaga". O 4423 segue

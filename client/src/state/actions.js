@@ -760,7 +760,16 @@ export function onConnection(ev) {
     // ou é um portal (o zip é deles) ou o servidor está à frente por algum outro motivo.
     else if (ev.code === "OUTDATED") { leaveGame("entry"); app.update({ desatualizado: true }); }
     else if (PORTAL && (ev.code === "UNREACHABLE" || ev.code === "LOST")) { leaveGame("entry"); app.update({ servidorFora: true }); }
-    else if (s.screen === "game") { toast(errText(ev), 3000); leaveGame("lobby"); }
+    // REMOVIDO POR INATIVIDADE: tela que FICA, não toast. Quem foi removido por estar ausente é, por
+    // definição, quem não está olhando — um toast de 3 s some antes de a pessoa voltar ao teclado, e ela
+    // volta achando que o jogo caiu. O `min` vem no corpo do `{t:'error'}` (o mesmo caminho do `nick` do
+    // NICK_IN_ROOM) porque um número torna a explicação verificável em vez de desculpa.
+    else if (ev.code === "ROOM_IDLE") { leaveGame("lobby"); app.update({ expulsoInativo: +ev.min || 3 }); }
+    // ⚠️ `dead` e `round` entram junto com `game`, e isto era um defeito ANTES desta funcionalidade: atrás
+    // da tela de morte e do pódio a conexão continua viva, então uma expulsão dali (o kick e o ban do dono
+    // já faziam isso) caía no toast lá embaixo e deixava a tela no ar com o socket fechado — o botão DE
+    // NOVO tentando renascer numa conexão que não existe mais.
+    else if (s.screen === "game" || s.screen === "dead" || s.screen === "round") { toast(errText(ev), 3000); leaveGame("lobby"); }
     else if (ev.code || ev.message) toast(errText(ev), 3000);
   }
 }

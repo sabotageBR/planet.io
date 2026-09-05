@@ -442,7 +442,11 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
 /* ⚠️ `:not(#chat)` é obrigatório desde que o chat virou IRMÃO de #hud-left (Hud.jsx): antes ele sobrevivia
    "de carona" por estar aninhado em #hud-left, que já está na lista; como filho direto de #hud, sem esta
    exceção ele cairia neste bloqueio e ficaria invisível na tela de espectador/morto. */
-#hud.spec > *:not(#hud-left):not(#hud-right):not(#radar):not(#talk):not(#touch):not(#chat){display:none}
+/* ⚠️ `:not(#idle-warn)` é obrigatório: `.spec` entra quando a tela é a de MORTE, e é exatamente ali que o
+   aviso de inatividade mais precisa aparecer — quem está morto e ausente é o caso que a remoção existe para
+   resolver. Sem esta exceção a faixa fica `display:none` justo no caso principal, sem erro no console e sem
+   nada na tela acusando. (#hud não cria contexto de empilhamento, então o z-index dela ganha do .screen.) */
+#hud.spec > *:not(#hud-left):not(#hud-right):not(#radar):not(#talk):not(#touch):not(#chat):not(#idle-warn){display:none}
 #hud.spec #hud-right > *:not(#kill-feed){display:none}   /* a massa e o placar são de quem está vivo */
 #hud.spec #hud-status{display:none}                  /* arma e powerups não existem para quem morreu */
 /* O morto FALA (a voz foi liberada junto com o texto), então o anel do push-to-talk fica — e no dedo, onde
@@ -464,20 +468,23 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
    acontecendo, o mapa é consulta */
 #hud.spec.map #chat{max-height:30vh}
 /* os dois botões de vista, lado a lado: MAPA (radar ampliado) e TEMPO REAL (a sala) */
-/* ── A FAIXA DO AVISO GLOBAL ──
-   No TOPO e no meio, acima de tudo: é o único elemento do HUD que interrompe de propósito. Não recebe
-   ponteiro — ela avisa, não pede clique — e some sozinha pelo TTL que veio do servidor. */
-#hud #notice{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 62px);transform:translateX(-50%);
+/* ── AS FAIXAS DE AVISO ──
+   No TOPO e no meio, acima de tudo: são os únicos elementos do HUD que interrompem de propósito. Não recebem
+   ponteiro — avisam, não pedem clique. `#notice` é o aviso que o /admin difunde e some pelo TTL que veio do
+   servidor; `#idle-warn` é o "você vai sair da sala" e some no primeiro gesto do jogador. Mesma forma, dois
+   ciclos de vida — e por isso são dois elementos, nunca um campo compartilhado. */
+#hud #notice,#hud #idle-warn{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 62px);transform:translateX(-50%);
   z-index:14;display:flex;align-items:center;gap:8px;max-width:min(620px,86vw);
   padding:10px 16px;border-radius:999px;border:3px solid var(--line,#0006);
   background:color-mix(in srgb,var(--surface,#1a2350) 94%,transparent);box-shadow:0 8px 26px rgba(0,0,0,.45);
   font-size:14px;font-weight:700;color:var(--text,#fff);pointer-events:none;
   animation:noticeIn .22s ease-out}
-#hud #notice.warn{border-color:var(--danger,#ff3d5a);background:color-mix(in srgb,var(--danger,#ff3d5a) 26%,var(--surface,#1a2350))}
-#hud #notice i{font-style:normal;font-size:17px;flex:none}
-#hud #notice span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#hud #notice + #idle-warn{top:calc(env(safe-area-inset-top,0px) + 116px)}   /* com os dois no ar, um desce */
+#hud #notice.warn,#hud #idle-warn{border-color:var(--danger,#ff3d5a);background:color-mix(in srgb,var(--danger,#ff3d5a) 26%,var(--surface,#1a2350))}
+#hud #notice i,#hud #idle-warn i{font-style:normal;font-size:17px;flex:none}
+#hud #notice span,#hud #idle-warn span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @keyframes noticeIn{from{opacity:0;transform:translateX(-50%) translateY(-8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
-body[data-mode="portrait"] #hud #notice{font-size:12.5px;padding:8px 12px;max-width:92vw}
+body[data-mode="portrait"] #hud #notice,body[data-mode="portrait"] #hud #idle-warn{font-size:12.5px;padding:8px 12px;max-width:92vw}
 /* ── CONVITE DE BATTLE ROYALE ── card pequeno e não-bloqueante: o jogador está no MEIO de uma partida do
    Livre, então nada de modal de tela cheia. Mesmo canto do #notice (topo), mas com CORPO e dois botões —
    por isso recebe ponteiro (o #notice ao lado não recebe, ele só avisa). */

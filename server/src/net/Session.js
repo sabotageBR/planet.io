@@ -32,7 +32,22 @@ export class Session{
     /** @type {Map<number,number>} id → kind | (carimbo da passada << 3) */this.known=new Map();this.stamp=0;this.resync=false;
     this.view={w:1280,h:720,zoom:1};this.zoomHold=1;this.zoomHoldAt=0;   // marca d'água do zoom manual na AOI (ver net/snapshot.js)this.cx=WORLD.w/2;this.cy=WORLD.h/2;this.scale=1;this.rect=null;this.specSlot=-1;   // morto: slot que ele está assistindo (a AOI segue esse jogador)
     this.inputs=new Bucket(NET.RATE_INPUTS,NET.RATE_BURST);this.json=new Bucket(NET.RATE_JSON,NET.RATE_JSON*2);
-    /** @type {number[]} */this.violations=[];this.lastPong=Date.now();this.disconnectedAt=0;this.pendingRewards=null;this.joining=false;this.kicked=false;this.connectedAt=Date.now();}
+    /** @type {number[]} */this.violations=[];this.lastPong=Date.now();this.disconnectedAt=0;this.pendingRewards=null;this.joining=false;this.kicked=false;this.connectedAt=Date.now();
+    // ⚠️ `lastActiveAt` NÃO é `lastPong`, e a semelhança dos nomes é a armadilha inteira: aquele é renovado
+    // por QUALQUER mensagem (ver o `ws.on('message')` do wsServer), inclusive o keepalive de 10 Hz que o
+    // cliente manda com o mouse PARADO e o ping de 1 Hz — ele mede SOCKET VIVO. Este mede PESSOA PRESENTE, e
+    // só quem escreve nele é `marcaAtivo`, chamado pelo que é gesto de gente. Consolidar os dois desliga a
+    // expulsão por inatividade sem quebrar nada e sem log nenhum: ninguém mais seria removido, jamais.
+    // `falaAwake`: esta sessão já mandou um `{t:"awake"}`, ou seja o cliente dela sabe dizer sozinho quando
+    // houve gesto de gente. Enquanto for falso, o servidor se vira com o alvo do INPUT — que é um piso ruim
+    // (o planeta persegue o cursor para sempre e o alvo nunca para de mudar), mas é o único sinal que uma
+    // build antiga oferece. Não é campo de protocolo: é a capacidade lida do comportamento.
+    this.lastActiveAt=Date.now();this.idleWarnedAt=0;this.falaAwake=false;}
+  /**
+   * "Tem gente aqui." Zerar o aviso mora DENTRO do método de propósito: "voltou a se mexer" e "a faixa
+   * some" são o mesmo fato, e em dois lugares eles divergem no primeiro caminho novo que alguém escrever.
+   */
+  marcaAtivo(now=Date.now()){this.lastActiveAt=now;this.idleWarnedAt=0;}
   get connected(){return !!this.ws&&this.ws.readyState===1;}
   /**
    * Tamanho da tela e o ZOOM MANUAL pedido pelo jogador (a roda). O `z` aqui leva só o saneamento
@@ -56,7 +71,10 @@ export class Session{
     return v.length>=VIOLATIONS&&now-v[0]<=VIOLATION_WINDOW_MS;}
   deliverRewards(r){const msg={t:'rewards',...(r||NO_REWARDS)};if(this.connected)this.sendJson(msg);else this.pendingRewards=msg;}
   detach(){this.ws=null;this.disconnectedAt=Date.now();}
-  attach(ws){this.ws=ws;this.disconnectedAt=0;this.known.clear();this.rect=null;this.lastPong=Date.now();this.violations.length=0;
+  // ⚠️ `marcaAtivo` aqui não é zelo: retomar a sessão É ação de gente, e sem isto quem cai a rede por 9 s e
+  // volta pelo `resume` herda o cronômetro parado de antes — ou seja, a inatividade passaria a expulsar
+  // exatamente quem acabou de se reconectar.
+  attach(ws){this.ws=ws;this.disconnectedAt=0;this.known.clear();this.rect=null;this.lastPong=Date.now();this.violations.length=0;this.marcaAtivo();
     this.inputs=new Bucket(NET.RATE_INPUTS,NET.RATE_BURST);this.json=new Bucket(NET.RATE_JSON,NET.RATE_JSON*2);
     if(this.pendingRewards){const m=this.pendingRewards;this.pendingRewards=null;this.sendJson(m);}}
 }

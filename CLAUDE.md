@@ -1072,6 +1072,44 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   tratamento dele apagaria `chatLog`/`feedLog`, ou seja a conversa de quem estava falando na tela de morte.
   ⚠️ JSON de controle não sobe `PROTOCOL_VERSION` (o precedente é o `{t:"talk"}`): cliente antigo nunca
   manda `respawn` e ignora `alive` no `else if`, e continua renascendo pelo caminho velho.
+- **...E O RESPAWN SÓ CONTA DEPOIS DE UM SINAL DE VIDA** (`ui/deadClock.js`, `game/input/Activity.js`,
+  `Room._idleTick`, `{t:"awake"}`/`{t:"idle"}`, `NET.IDLE_*`): a tela de morte renascia SOZINHA — o efeito
+  armava a contagem no instante da morte e chamava `respawnAqui()` cinco segundos depois, sem que ninguém
+  clicasse em nada; o botão "DE NOVO! · 5s" era o espelho dela, não a causa. Uma aba esquecida aberta virava
+  um jogador que morre, renasce, morre e renasce **para sempre**, ocupando vaga, virando comida de graça e
+  poluindo o placar e o kill feed de toda sala por onde passava. Hoje quem arma é o primeiro GESTO depois da
+  morte, e o servidor remove quem não age há `NET.IDLE_MS`, avisando `NET.IDLE_WARN_MS` antes.
+  ⚠️ **SÃO TRÊS RELÓGIOS DE SESSÃO E ELES NÃO MEDEM A MESMA COISA**: `NET.DEAD_MS` (15 s) é o SOCKET morto,
+  `NET.RESUME_MS` (10 s) é a sessão SEM socket esperando o `resume`, e `NET.IDLE_MS` (3 min) é o socket vivo
+  com a PESSOA ausente. `lastPong` serve aos dois primeiros e a nenhum do terceiro — ele é renovado por
+  QUALQUER mensagem, inclusive o keepalive de 10 Hz que o cliente manda com o mouse parado. Consolidá-lo com
+  `lastActiveAt` desliga a remoção por inatividade em silêncio: ninguém mais é removido, e nada acusa.
+  ⚠️ **O LATCH é o miolo do lado do cliente** (`passoMorte`): `armAt` é escrito UMA vez por morte. Se
+  andasse a cada gesto, quem ficasse mexendo o mouse na tela de morte nunca renasceria — e o par
+  `{deadAt,armAt}` viaja no MESMO objeto justamente para ser impossível o armamento de uma morte disparar o
+  respawn da seguinte (é o defeito que `roundClock.js` documenta, nesta tela).
+  ⚠️ **O ALVO DO INPUT NÃO É SINAL DE PRESENÇA, e isto foi MEDIDO no navegador**: o planeta com o mouse
+  largado fora do centro NUNCA alcança o cursor — a câmera persegue o planeta, então o ponto de MUNDO sob o
+  mesmo pixel foge junto — e um jogador ausente engordou de 926 para 11.076 em 38 s sem tocar em nada,
+  parecendo ativo o tempo todo. Por isso existe o `{t:"awake"}`, que o cliente manda no primeiro gesto (e uma
+  vez após o `room`): o PRIMEIRO deles declara uma capacidade, e a partir dele o servidor ignora o alvo e
+  confia só no gesto. Build antiga não manda, continua medida pelo alvo e não é removida por engano.
+  ⚠️ **DUAS ISENÇÕES, e nenhuma é preguiça**: o morto do BATTLE ROYALE fica (o jogo promete isso por escrito
+  na própria tela dele, `LB.brWatchHint`, e ele já não ocupa vaga — a sala não aceita mais ninguém), e o DONO
+  da sala fica (ela existe para esperar os amigos chegarem pelo link; removê-lo entrega a coroa a um estranho
+  pelo `_hostTick` justo enquanto os convidados não chegaram). No LIVRE o morto parado É removido — é o caso
+  do pedido, e ele é quase autoevidente: com o armamento, "3 min morto" quer dizer "nunca houve gesto".
+  ⚠️ **Bot nenhum passa pelo ceifador**, e é estrutural: `this.sessions` só tem humanos. Não "consertar"
+  iterando `sim.players` — o servidor passaria a expulsar os próprios preenchimentos.
+  ⚠️ A remoção usa o par canônico de `hostKick` (`session.error` + `leave(...,'left')`) pelas mesmas duas
+  razões escritas lá; o 4º parâmetro `motivo` existe só para o fluxo AO VIVO do /admin poder distinguir
+  "saiu", "expulso pelo dono" e "ficou inativo" — o `cause` não serve porque vai para o banco, onde o CHECK
+  de `matches.cause` não conhece palavra nova.
+  ⚠️ **`#hud.spec` esconde `#notice`**, e `.spec` é exatamente a tela de MORTE: sem o `:not(#idle-warn)` em
+  `ui.css` a faixa do aviso ficaria `display:none` justo no caso principal, sem erro no console.
+  ⚠️ E `actions.js` só tratava desconexão com erro em `screen==="game"` — na tela de morte (`"dead"`) a
+  expulsão caía num toast de 3 s e deixava a tela pendurada com o socket fechado. Já valia para o kick e o
+  ban do dono; passou a incluir `dead` e `round`.
 - **ENTROU GENTE DE VERDADE, E SÓ O ADMIN É AVISADO** (`Room._avisaAdmins`, `{t:'adm'}`): faixa `#notice` +
   som + linha de chat, mais a **notificação do sistema** quando a permissão já foi concedida. O alcance é o
   SHARD (`RoomManager` passa o `Map rooms` para cada sala); o cluster inteiro exigiria `tellPeers` e uma

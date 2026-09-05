@@ -18,12 +18,13 @@ import BrLobby from "./BrLobby.jsx";
 import Notice from "./Notice.jsx";
 import BrInvite from "./BrInvite.jsx";
 import { ZoneWarnBanner, ZoneAlarmFlash } from "./ZoneAlert.jsx";
+import IdleWarn from "./IdleWarn.jsx";
 import { MODE, weaponOf, POWERUP, TICK_HZ, flagOf } from "@warspace/shared";
 import { keysOf } from "../game/input/Keyboard.js";   // a legenda tem que dizer a tecla que está DE FATO ligada (inclusive a do desempate de colisão)
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0, autodef: 0, zoom: 0, feast: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: "", clock: null, notice: null,
   mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, zoneIn: null, zoneShrinking: false, talk: null, chat: [], feed: [], lobby: null,
-  brInvite: null, zoneWarn: null, zoneAlarmAt: 0 };
+  brInvite: null, zoneWarn: null, zoneAlarmAt: 0, idle: null };
 const TALK_MSG = { cd: "micCooldown", denied: "micDenied", unsupported: "micUnsupported", audio: "micFail", fail: "micFail" };   // motivo → chave da label
 /**
  * Anel de tempo: o arco encolhe com o que resta. Serve ao push-to-talk e aos powerups temporizados — é o
@@ -206,6 +207,7 @@ export default function Hud() {
     <ZoneWarnBanner w={h.zoneWarn} />
     <BrLobby lobby={h.lobby} />
     <Notice n={h.notice} />
+    <IdleWarn n={h.idle} />
     <BrInvite b={h.brInvite} />
     <ZoneAlarmFlash at={h.zoneAlarmAt} />
     {falando ? <div id="talk"><Ring resta={1 - h.talk.k} /><span>{LB.talkOn}</span></div>

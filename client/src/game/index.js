@@ -53,11 +53,13 @@ import {createActions} from "./input/actions.js";
 import {createMinimap} from "./hud/Minimap.js";
 import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./bench.js";
 import {passoQualidade,qualidadeZero} from "./quality.js";
+import {createActivity} from "./input/Activity.js";
+import {morteZero,passoMorte} from "../ui/deadClock.js";
 import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0,autodef:0,zoom:0,feast:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
   mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:"",notice:null,zoom:null,host:null,
-  brInvite:null,zoneWarn:null,zoneAlarmAt:0});
+  brInvite:null,zoneWarn:null,zoneAlarmAt:0,deadAt:0,armAt:0,idle:null});
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
   keySplit:"Space",keyEject:"KeyW",
   sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
@@ -120,6 +122,13 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   let mapOn="";
   let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,portalPausado=false,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,econAlvo=0,statsOv=null;
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
+  // ── TEM GENTE AQUI ──
+  // `morte` é o par {deadAt,armAt} de ui/deadClock.js: a contagem do respawn só ARMA no primeiro gesto
+  // depois da morte, senão a aba esquecida renasce sozinha para sempre. `awakeAt` é o throttle do
+  // `{t:"awake"}`, a mensagem que conta ao servidor que a pessoa está presente — ela existe porque o INPUT
+  // não conta: quem está MORTO não manda input nenhum (ver a guarda `dead` em `enviarInput`), e mesmo vivo o
+  // alvo pode andar sozinho enquanto ninguém toca em nada.
+  let morte=morteZero(),awakeAt=0;
   // ── modo, equipe, zona, chat e voz ──
   let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0,lobby=null,spec=null;   // `lobby` = o estado da tela de espera (JSON `lobby`, em ms)
   let zone=null,zoneShown={x:0,y:0,r:0},lastShrink=0,lastHurt=false,lobbyBeep=false,zoneWarnIdx=0;   // `zone` = o par de círculos do fio; `zoneShown` é o interpolado do frame
@@ -186,6 +195,21 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       contínuo, não em degraus como a roda. Mesmo pipeline de sempre (clampa pela massa, agenda o {t:"view"}). */
   function zoomPinch(fator){if(!canAct()||!own0.length||!Number.isFinite(fator))return;
     zoomF*=fator;zoomAplica();zoomAt=performance.now();agendaView();}
+  /**
+   * Gesto de gente. ⚠️ SEM `enabled`, ao contrário dos irmãos: ele tem que valer com o jogador MORTO (é o
+   * caso principal), pausado e no fim de rodada — desligá-lo em qualquer um desses estados é justamente
+   * apagar o sinal que se quer medir.
+   */
+  function marcaAtivo(now){
+    morte=passoMorte(morte,{tipo:"atividade",now});
+    // A faixa some no gesto E o `awake` sai no MESMO instante, furando o throttle. Amarrar as duas coisas dá
+    // a invariante que torna o aviso honesto: faixa na tela ⟺ o servidor ainda não me ouviu. É por isso que
+    // não existe mensagem de cancelamento vinda de lá — dois caminhos para o mesmo fato divergem.
+    const urgente=!!hudStore.get().idle;
+    if(urgente)hudStore.update(h=>({...h,idle:null}));
+    if(conn&&conn.isOpen&&joined&&(urgente||now-awakeAt>NET.AWAKE_MS)){awakeAt=now;
+      try{conn.sendJson({t:"awake"});}catch{}}}
+  const activity=createActivity({onAtivo:marcaAtivo,hud});
   const wheel=createWheel({onStep:n=>{zoomStep(n);zoomAt=performance.now();agendaView();},enabled:()=>joined&&!dead&&!isBench(),prefs:curPrefs});
   const keyboard=createKeyboard({onAction:act,enabled:()=>joined&&!pausado,prefs:curPrefs});
   const touch=createTouchButtons(hud,{onAction:act});
@@ -235,7 +259,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ele que a pausa manda o alvo em cima do próprio centróide — parar os dois faria o planeta seguir
   // andando na última direção, que é o oposto de pausar. O jogo é multijogador e autoritativo no servidor:
   // o mundo continua lá, como continua para qualquer .io.
-  const onPortalPause=e=>{portalPausado=!!(e&&e.detail&&e.detail.on);lastT=performance.now();frames=0;fpsT=lastT;};
+  // ⚠️ Voltar de um anúncio (ou do menu do portal) É gesto de gente: o jogador clicou em algo fora do nosso
+  // iframe e o SDK nos avisou. Sem esta linha, um intersticial longo conta como silêncio.
+  const onPortalPause=e=>{portalPausado=!!(e&&e.detail&&e.detail.on);lastT=performance.now();frames=0;fpsT=lastT;
+    if(!portalPausado)marcaAtivo(lastT);};
   addEventListener("warspace:pause",onPortalPause);
 
   // ── sumiço de entidades (Interpolator, no tempo de render): planeta comido explode, comida/pellet faísca ──
@@ -295,6 +322,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       WORLD.w=m.world.w;WORLD.h=m.world.h;
       if(renderer)renderer.worldResized();}   // a grade e o fundo guardam o tamanho: sem isto ficam do tamanho velho
     if(m.t==="room"){view.mySlot=m.slot;predictor.setSlot(m.slot);view.room=m.code;view.rebuildLb();warmSkins();
+      // ⚠️ UM `awake` NA ENTRADA, e ele não é redundante: é a DECLARAÇÃO de que este cliente sabe dizer
+      // sozinho quando houve gesto. Sem ela o servidor se vira com o alvo do INPUT, que é um piso ruim —
+      // medido, o planeta com o mouse largado fora do centro nunca alcança o cursor (a câmera o persegue) e
+      // o alvo muda para sempre, então o jogador ausente parecia ativo a partida inteira. Recebendo isto, o
+      // servidor passa a confiar só no gesto. Uma mensagem por partida.
+      try{conn.sendJson({t:"awake"});awakeAt=performance.now();}catch{}
       round=m.round||null;roundOver=false;lastCount=-1;warmedSky=null;lastAmmo=0;lastMagnet=false;
       modeId=m.mode|0;teamSize=m.teamSize||1;myTeam=m.team==null?-1:m.team;roomCap=m.cap||0;
       phase=(m.round&&m.round.phase)||"live";startsAt=(m.round&&m.round.startsAt)||0;
@@ -330,6 +363,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     else if(m.t==="notice"){chatSys(m.text);
       hudStore.update(h=>({...h,notice:{text:m.text,level:m.level||"info",at:performance.now(),ttlMs:m.ttlMs|0||12000}}));
       audio.play("toast",{mine:true});}
+    // ── "VOCÊ VAI SAIR DA SALA" ──
+    // O servidor avisa uma vez, quando falta `NET.IDLE_WARN_MS`, e NUNCA manda um cancelamento: quem apaga a
+    // faixa é o próprio gesto, em `marcaAtivo`, no mesmo instante em que o `{t:"awake"}` sai. Slot PRÓPRIO e
+    // não o `notice`: aquele é o aviso do /admin, que só expira — compartilhá-los faria um aviso de
+    // manutenção apagar este, e vice-versa. O prazo vem em `inMs` pronto (o laço do servidor é de 1 Hz, mas
+    // o número é calculado exato), então o cliente só precisa contar para baixo.
+    else if(m.t==="idle"){hudStore.update(h=>({...h,idle:{at:performance.now(),inMs:Math.max(1000,m.inMs|0)}}));
+      audio.play("toast",{mine:true});}
     // ENTROU GENTE, e só quem é admin recebe (o servidor decide: nenhuma sessão comum vê esta mensagem).
     // Reusa a faixa `#notice`, que já expira sozinha e já é `aria-live`, e tenta a notificação do SISTEMA
     // por cima — ela só sai com permissão já concedida, e a permissão é pedida por um botão em Opções.
@@ -348,7 +389,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(venci)celebrate();                                   // ganhei: o planeta comemora
       if(!venci||m.reason!=="lastAlive")endOfWorld();          // o mundo só explode quando acabou o TEMPO (ou quando não fui eu)
       pushHud(performance.now());if(onRoundEnd)onRoundEnd({...m,mySlot:view.mySlot});}
-    else if(m.t==="dead"){dead=true;input.setHold(false);mic.cancel();aplicaRadar();pushHud(performance.now());
+    else if(m.t==="dead"){dead=true;input.setHold(false);mic.cancel();aplicaRadar();
+      // A contagem do respawn nasce DESARMADA: quem morreu e não deu sinal de vida não renasce mais sozinho.
+      morte=passoMorte(morte,{tipo:"morte",now:performance.now()});
+      pushHud(performance.now());
       // QUEM ME MATOU, com planeta. O `bySlot` já existia no `info` do servidor e parava no `Room.js`; com
       // ele o cliente resolve skin e nível pelo PLAYERS (que traz a sala inteira, não só a AOI) e a tela de
       // morte deixa de dizer só um nome. A skin do MORTO também vai daqui e não de `session.user`: a skin da
@@ -363,7 +407,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // ⚠️ O `sessionId` precisa ser atualizado: um `resume` depois disto mandaria o da vida MORTA e cairia
     // em ROOM_EXPIRED.
     else if(m.t==="alive"){dead=false;specSlot=-1;spec=null;mapOn="";minimap.setView("",-1);minimap.show(false);
-      if(joy)joy.reset();   // o rumo travado é da vida ANTERIOR: sem isto o planeta nasce correndo
+      morte=passoMorte(morte,{tipo:"vida",now:performance.now()});if(joy)joy.reset();   // o rumo travado é da vida ANTERIOR: sem isto o planeta nasce correndo
       if(m.sessionId&&conn&&conn.session)conn.session.sessionId=m.sessionId;
       buffer.clear();predictor.reset();view.reset();input.reset();input.setHold(false);cam.reset();
       aplicaRadar();pushHud(performance.now());}
@@ -846,7 +890,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // Só é montado com o painel ABERTO: `pushHud` roda a 8 Hz, e 50 objetos por tick de HUD para uma
       // tela que quase sempre está fechada é trabalho jogado fora.
       roster:rosterOn?montaRoster():null,
-      talk:mic.state,chat:chatLog,feed:feedLog,notice:hudStore.get().notice,spec});}
+      // ⚠️ `idle` é RELIDO do store, como o `notice` ao lado e pelo mesmo motivo: este `set` troca o objeto
+      // inteiro, e escrever `idle:null` aqui apagaria o aviso que o handler acabou de guardar.
+      talk:mic.state,chat:chatLog,feed:feedLog,notice:hudStore.get().notice,idle:hudStore.get().idle,
+      deadAt:morte.deadAt,armAt:morte.armAt,spec});}
   /** Todo mundo da sala, vivo ou morto, com a massa de quem está no placar. Ordem: massa, depois nome. */
   function montaRoster(){
     const massa=new Map();for(const l of view.lb)massa.set(l.slot,l.mass);

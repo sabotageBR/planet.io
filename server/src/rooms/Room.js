@@ -503,7 +503,7 @@ export class Room{
    * conhece 'left' — ver o aviso em `hostKick`): misturar os dois faria um quit gravar uma causa nova no
    * banco e quebrar em silêncio, ou faria kick/ban herdar a explosão de graça.
    */
-  leave(session,cause='left',explode=false){
+  leave(session,cause='left',explode=false,motivo=cause){
     const slot=session.slot;if(this.sessions.get(slot)!==session)return;const gp=this.sim.players.get(slot);
     if(gp&&!gp.dead&&gp.sessionId&&this.phase!=='lobby'){const hooks=this.sim.hooks;
       Promise.resolve().then(()=>hooks.onMatchEnd({sessionId:gp.sessionId,cause,killedBySessionId:null,score:gp.score,maxMass:Math.round(gp.maxMass),durationMs:Math.round((this.sim.tick-gp.joinedTick)*1000/TICK_HZ)}))
@@ -514,9 +514,13 @@ export class Room{
       this._saiuEm.set(this._rosterKey(gp),Date.now());
       if(this.phase!=='lobby')this._pushFeed({k:'sys',a:slot,b:-1,how:'left',by:null,name:gp.name||null});
       // ⚠️ AQUI DENTRO, antes do `sim.remove(slot)` lá embaixo: depois dele o `gp.name` já não existe.
-      // ⚠️ E leva o `cause`: `leave` também é a saída do KICK do painel e a da expiração do housekeeping —
-      // três coisas muito diferentes que o administrador precisa distinguir na tela.
-      this.bus.publica('saiu',{sala:this.code,quem:gp.name||'',por:cause,
+      // ⚠️ E leva o `motivo`, que NÃO é o `cause`: `leave` também é a saída do KICK do painel, a da expiração
+      // do housekeeping e a da remoção por INATIVIDADE — coisas muito diferentes que o administrador precisa
+      // distinguir na tela. O `cause` não serve para isso porque ele vai para o BANCO, e o CHECK de
+      // `matches.cause` (migração 0003) só conhece um punhado de palavras: inventar uma ali quebraria o
+      // insert com 23514 dentro de um catch, em silêncio. Por isso são dois parâmetros, pelo mesmo motivo
+      // que `explode` já é separado de `cause`.
+      this.bus.publica('saiu',{sala:this.code,quem:gp.name||'',por:motivo,
         durouS:Math.round((this.sim.tick-gp.joinedTick)/TICK_HZ),abates:gp.kills|0});}
     if(gp&&gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());   // sem isto a sala vira lista negra e quem sai não volta com o próprio nome
     this.flagsDirty=true;
@@ -569,9 +573,62 @@ export class Room{
   /** JSON `dead` da vida atual (null se vivo). */
   deadMsg(slot){const gp=this.sim.players.get(slot);if(!gp||!gp.dead||!gp.deathInfo)return null;const i=gp.deathInfo;
     return{t:'dead',by:i.by,bySlot:i.bySlot,byHole:i.byHole,byZone:i.byZone,score:i.score,maxMass:i.maxMass,kills:i.kills,durationS:i.durationS,placement:i.placement,players:i.players};}
-  /** Expira sessões sem socket há mais de NET.RESUME_MS (chamado a cada 1 s pelo RoomManager). */
-  housekeeping(now){for(const s of this.sessions.values())if(!s.ws&&now-s.disconnectedAt>NET.RESUME_MS){this.leave(s,'left');this.log.info(`${s.name} saiu da sala ${this.code} (sessão expirada)`);}
+  /**
+   * Expira sessões sem socket há mais de NET.RESUME_MS e remove quem está com o socket VIVO e a pessoa não
+   * (NET.IDLE_MS). Chamado a cada 1 s pelo RoomManager.
+   * ⚠️ Itera uma CÓPIA: agora há dois caminhos que chamam `leave` (e portanto `sessions.delete`) dentro do
+   * mesmo laço, e mutar o Map durante a iteração pula sessões sem avisar.
+   */
+  housekeeping(now){
+    for(const s of [...this.sessions.values()]){
+      if(!s.ws){if(now-s.disconnectedAt>NET.RESUME_MS){this.leave(s,'left');this.log.info(`${s.name} saiu da sala ${this.code} (sessão expirada)`);}continue;}
+      this._idleTick(s,now);}
     this._hostTick(now);}
+  /**
+   * ── QUEM DEIXOU A ABA ABERTA ────────────────────────────────────────────────
+   * O jogador ausente não some sozinho: ele ocupa vaga, vira comida de graça e — no Livre, onde a tela de
+   * morte renascia SOZINHA a cada 5 s — entrava em sala após sala, para sempre. Quem mede não é `lastPong`
+   * (esse é socket vivo; ver o aviso em Session.js), é `lastActiveAt`, escrito só pelo que é gesto de gente.
+   *
+   * A remoção usa o par canônico de `hostKick`, e pelas mesmas duas razões escritas lá: a causa gravada TEM
+   * que ser 'left' (o CHECK de `matches.cause` da migração 0003 não conhece outra palavra, e o insert
+   * falharia com 23514 dentro de um catch, em silêncio) e `session.error` marca `kicked=true`, que é o que
+   * faz `detach` tratar o close como saída — sem ele o removido voltaria pelo `resume` em 10 s e a remoção
+   * não removeria nada.
+   *
+   * ⚠️ BOT NENHUM PASSA POR AQUI, e isso é estrutural: `this.sessions` só tem humanos (o preenchimento nasce
+   * em `_nasceBot`, sem sessão). Não "consertar" iterando `sim.players` — o servidor passaria a expulsar os
+   * próprios preenchimentos.
+   */
+  _idleTick(session,now){
+    if(!NET.IDLE_KICK)return;
+    // No LOBBY o jogador está na SALA e não no mapa: sem peça, sem input, nada que ele POSSA fazer — e a
+    // largada tem contagem própria. Com a rodada acabada, o que está na tela é o pódio do BIG CRUNCH, e
+    // assistir a ele não é inatividade.
+    if(this.over||this.phase==='lobby')return;
+    const gp=this.sim.players.get(session.slot);if(!gp)return;
+    // ⚠️ NO BATTLE ROYALE O MORTO FICA, e o jogo promete isso POR ESCRITO: a tela de morte dele diz "Fique
+    // para ver o pódio no fim" (LB.brWatchHint). Removê-lo seria o jogo quebrar a própria promessa — e ele
+    // não ocupa vaga de ninguém, porque a sala já começou e não aceita mais entradas. No LIVRE é o
+    // contrário, e é o caso que isto existe para resolver: lá qualquer gesto arma a contagem e o renascimento
+    // sai em segundos, então "três minutos morto" quer dizer, literalmente, que não houve gesto nenhum.
+    if(gp.dead&&this.mode.lastAlive)return;
+    // ⚠️ O DONO NÃO É REMOVIDO da sala dele. Ela existe para ESPERAR OS AMIGOS chegarem pelo link (é por isso
+    // que o preenchimento dela é lento e que `HOST_HOLD_MS` a segura de pé), e removê-lo entregaria a coroa a
+    // um estranho pelo `_hostTick` justamente enquanto os convidados ainda não chegaram.
+    if(this.isHost(session))return;
+    const parado=now-session.lastActiveAt;
+    if(parado>=NET.IDLE_MS){
+      session.error('ROOM_IDLE','você ficou muito tempo sem jogar',{min:Math.round(NET.IDLE_MS/60000)});
+      this.leave(session,'left',false,'idle');
+      this.log.info(`sala ${this.code}: ${session.name} removido por inatividade (${Math.round(parado/1000)} s)`);
+      return;}
+    // O aviso sai UMA vez por período de silêncio (`idleWarnedAt`), senão seriam 15 faixas, uma por segundo.
+    // ⚠️ `inMs` é calculado EXATO mesmo com o laço amostrando a 1 Hz — é o mesmo motivo de `broadcastLobby`
+    // mandar `startsInMs` em vez de deixar o cliente adivinhar: a faixa mostra o número certo.
+    if(parado>=NET.IDLE_MS-NET.IDLE_WARN_MS&&!session.idleWarnedAt){
+      session.idleWarnedAt=now;
+      session.sendJson({t:'idle',inMs:NET.IDLE_MS-parado});}}
   // ── SALA COM DONO: quem manda, quem entra e quem sai ───────────────────────────────────────
   /** É o dono? Compara a CONTA. ⚠️ O `!=null` não é firula: sem ele todo convidado (userId null) viraria dono. */
   isHost(session){return this.hostUserId!=null&&!!session&&session.userId===this.hostUserId;}

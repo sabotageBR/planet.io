@@ -74,7 +74,7 @@ export default {
   fx: { supernova: "SUPERNOVA!", nebula: "NEBULOSA PLANETÁRIA!", shield: "ESCUDO", combo: "COMBO {n}x" },
   // ⚠️ Sem emoji: o ícone vinha do TEXTO (não há <i> nos botões da tela de morte) e o 🔄 competia com
   // o próprio rótulo num botão que já é o maior da tela.
-  respawn: "DE NOVO!", newMatch: "OUTRA PARTIDA", brWatchHint: "Fique para ver o pódio no fim.", toLobby: "Lobby", timeWord: "tempo", rankWord: "ranking diário", coinsEarned: "moedas ganhas",
+  respawn: "DE NOVO!", newMatch: "OUTRA PARTIDA", brWatchHint: "Fique para ver o pódio no fim.", respawnArm: "Mexa o mouse ou toque na tela para renascer", toLobby: "Lobby", timeWord: "tempo", rankWord: "ranking diário", coinsEarned: "moedas ganhas",
   lobbyTitle: "SALAS", roomCode: "CÓDIGO", enter: "Entrar", create: "➕ Criar sala", autoNote: "Entra na sala mais cheia com vaga", shard: "shard", botsWord: "bots",
   // A lista de salas: modo e tempo restante. Curtos de propósito — a coluna tem 60 px, e por isso não dá
   // para reusar `modeFree`/`modeSolo`, que são os títulos em caixa alta dos cartões grandes da tela de Modos.
@@ -121,6 +121,13 @@ export default {
   // cópia hospedada por eles, então recarregar traz o mesmo arquivo — quem atualiza é o portal.
   outdatedTitle: "ESTA VERSÃO FICOU PARA TRÁS", outdatedSub: "O jogo foi atualizado. Recarregue a página para pegar a versão nova.",
   outdatedSubPortal: "O jogo foi atualizado, e esta página é uma cópia mais antiga. Volte a abri-lo pelo portal daqui a pouco.", reload: "Recarregar",
+  // Removido da sala por ficar sem jogar. O texto NÃO acusa ninguém de nada — a vaga é o assunto — e diz o
+  // número de minutos porque uma explicação com número é verificável e uma sem número parece desculpa.
+  // ⚠️ "min", não "minutos": o valor mais comum é 1, e o molde escreveria "1 minutos". A abreviação é
+  // invariável nos três idiomas, então uma chave só serve ao singular e ao plural sem um `Intl.PluralRules`
+  // para o que é, no fim, um rótulo de unidade.
+  idleTitle: "VOCÊ SAIU DA SALA", idleSub: "Ficou {n} min sem jogar, então abrimos sua vaga para outra pessoa.",
+  idleWarn: "Você sai da sala em {n} s — mexa o mouse para ficar",
   split: "DIVIDIR", eject: "EJETAR", fire: "MÍSSIL", exit: "Sair", keySplit: "ESPAÇO", keyEject: "W", keyFire: "F",
   ammo: "mísseis",
   fireCd: "carregando", powerups: { magnet: "Ímã", shield: "Escudo", merge: "Fusão", autodef: "Auto-defesa", zoom: "Visão", feast: "Banquete" }, shieldLevel: "Nv",
@@ -245,7 +252,7 @@ export default {
     RATE: "Muitas mensagens; a conexão foi encerrada.", VERSION: "Versão do jogo desatualizada — recarregando.",
     OUTDATED: "Sua versão do jogo está desatualizada.", UPDATING: "O servidor está atualizando; um instante.",
     ROOM: "Não foi possível entrar na sala.", ROOM_BANNED: "Você foi banido dessa sala.",
-    ROOM_KICKED: "O dono removeu você da sala.",
+    ROOM_KICKED: "O dono removeu você da sala.", ROOM_IDLE: "Você saiu da sala por ficar sem jogar.",
     ROOM_RESTART: "O servidor está reiniciando; tente de novo em instantes.", ROOM_EXPIRED: "Sua sessão expirou; entre de novo.",
     UNREACHABLE: "Não foi possível conectar ao servidor.", LOST: "Conexão perdida.",
   },

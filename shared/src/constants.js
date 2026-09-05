@@ -1202,7 +1202,28 @@ export const ZOOM={MIN:.10,K:.40,STEP:1.12,WHEEL_PX:100,PINCH_PX:25,ACC_MS:200,M
 // ⚠️ NÃO entra em tunables.js: chave de escopo `both` responde 501, e é exatamente o caso — o cliente tem a
 // própria cópia do bundle, então mudar isto só no servidor faria a câmera e a AOI divergirem em silêncio.
 export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:150,EXTRAP_MAX_MS:100,SNAP_DIST:120,AOI_PAD:.3,AOI_PAD_OUT:.45,AOI_FOOD_MAX:300,
-  RATE_INPUTS:40,RATE_BURST:60,RATE_JSON:5,HEARTBEAT_MS:5000,DEAD_MS:15000,RESUME_MS:10000};
+  RATE_INPUTS:40,RATE_BURST:60,RATE_JSON:5,HEARTBEAT_MS:5000,DEAD_MS:15000,RESUME_MS:10000,
+  IDLE_KICK:true,IDLE_MS:180000,IDLE_WARN_MS:15000,IDLE_MOVE_PX:24,AWAKE_MS:20000};
+// ── OS TRÊS RELÓGIOS DA SESSÃO, e eles NÃO medem a mesma coisa ───────────────
+//   DEAD_MS   (15 s)  o SOCKET morreu: nada chegou, nem um pong. Quem mata é o heartbeat do wsServer.
+//   RESUME_MS (10 s)  a sessão está SEM socket e ninguém veio buscá-la pelo `resume`. Quem mata é o
+//                     housekeeping da Room, e é o prazo em que a pessoa pode cair a rede e voltar.
+//   IDLE_MS   (3 min) o socket está VIVO e a pessoa não está: nenhum gesto humano há três minutos.
+// ⚠️ `lastPong` NÃO serve para o terceiro, e a semelhança dos nomes é a armadilha: ele é renovado por
+// QUALQUER mensagem (wsServer: `ws.on('message')`), inclusive o keepalive de 10 Hz que o InputSender manda
+// com o mouse PARADO e o ping de 1 Hz do Connection. Ele mede socket vivo; quem mede pessoa presente é
+// `Session.lastActiveAt`, escrito só pelo que é gesto (ver `marcaAtivo`). Juntar os dois desliga a
+// expulsão por inatividade em silêncio — nada quebra, ninguém é expulso nunca mais.
+// IDLE_KICK: o interruptor. Uma funcionalidade que EXPULSA gente tem que poder ser desligada num clique no
+// /admin, sem deploy, no dia em que o primeiro falso positivo aparecer — o mesmo espírito de BLACKHOLE.COUNT=0.
+// IDLE_MOVE_PX: quanto o ALVO (tx,ty, em px de MUNDO) precisa andar para valer como gesto. O cliente já só
+// reenvia com >2 px, e 24 px filtra o tremor que a suavização da câmera (CAM.TAU_POS) imprime no alvo sem
+// deixar passar movimento de verdade. ⚠️ É um piso honesto, não o sinal fino: com o mouse largado FORA do
+// centro o planeta anda, a câmera vai junto e o ponto de MUNDO sob o mesmo pixel muda sozinho até bater na
+// parede. Quem fecha esse buraco (e o do jogador MORTO, que não manda input nenhum) é o `{t:"awake"}`.
+// AWAKE_MS: throttle do `{t:"awake"}` no cliente, em borda de ATAQUE (o primeiro gesto sai na hora, o resto
+// é engolido). O balde de JSON é RATE_JSON=5/s e três rejeições em 10 s ENCERRAM a conexão — o mesmo balde
+// que arrastar a janela já estourou uma vez; 0,05/s cabe com folga ao lado do `view` e do `ping`.
 // AOI_FOOD_MAX: TETO de grãos que uma sessão conhece ao mesmo tempo. `aoiScaleFood` já limita a ÁREA, mas
 // área não é contagem: com a câmera afastada de um planeta grande cabiam ~500 grãos na tela de uma vez, e a
 // comida é 90 % das entidades. Medido numa sala de Battle Royale: pico de 510 entidades, 443 delas comida,

@@ -93,6 +93,11 @@ export const initialState = {
   // Mesmo argumento, outro motivo: a build DESTE cliente ficou para trás do servidor. Também gruda, e por
   // uma razão a mais — num portal recarregar não conserta (o zip é deles), então o aviso é tudo o que há.
   desatualizado: false,
+  // Removido da sala por inatividade — guarda os MINUTOS que o servidor cobrou, para o texto poder dizer o
+  // número em vez de uma vaguidade. Campo de topo pelo mesmo motivo dos dois acima: `leaveGame` reescreve
+  // `overlays` inteiro, e este aviso precisa sobreviver justamente à saída da sala que o causou. `0` = não
+  // aconteceu (nunca é um número de minutos válido).
+  expulsoInativo: 0,
   reconnAttempt: 0,
   room: null,            // código da sala atual (do evento `room` do jogo)
   pendingJoin: null,     // {room, mode, teamSize, party, n} — GameHost faz o join quando muda
