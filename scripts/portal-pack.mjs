@@ -161,6 +161,21 @@ function empacota(id) {
   // das poucas que reprovam sozinhas
   if (rastro.length) morre(`Google Analytics no pacote (${rastro.map(f => path.basename(f)).join(", ")})`);
 
+  // ⚠️ FERRAMENTA DE DEV NO PACOTE — "Remove development tools, debug code, and testing artifacts" é
+  // requisito escrito da Poki, e as quatro guardas do cliente (`bench.js`, `game/index.js`, `actions.js`,
+  // `main.jsx`) são `!PORTAL` sobre um literal de `define`, ou seja o Rollup PODA o corpo. Quando a poda
+  // funciona, o chunk da mesa de som nem é emitido e a string não sobra em lugar nenhum. Se alguém
+  // acrescentar um atalho novo sem a guarda, ou trocar o `define` por leitura defensiva (que é o que já
+  // aconteceu uma vez com as flags de portal), a poda para e ISTO é o que avisa — porque o sintoma do
+  // outro lado é um revisor abrindo `?sfx` e vendo uma bancada de áudio no lugar do jogo.
+  const bancada = todos.filter(f => /audition|hudDemo/.test(path.basename(f)));
+  if (bancada.length) morre(`ferramenta de dev no pacote (${bancada.map(f => path.basename(f)).join(", ")}): a poda de !PORTAL não pegou`);
+  // ⚠️ A ATRIBUIÇÃO, não a menção: o `destroy()` do motor faz `delete window.__warspace` para limpar o
+  // que ele possa ter posto, e essa linha sobrevive à poda de propósito — é uma limpeza, não uma porta.
+  // Procurar o nome cru reprovava um pacote correto.
+  const atalhos = texto.filter(f => /has\("sfx"\)|window\.__(warspace|hudDemo|tela)\s*=/.test(fs.readFileSync(f, "utf8")));
+  if (atalhos.length) morre(`atalho de desenvolvimento vivo no pacote (${atalhos.map(f => path.basename(f)).join(", ")})`);
+
   const abs = [];
   for (const f of texto.filter(f => /\.(html|css)$/.test(f))) {
     const t = fs.readFileSync(f, "utf8");

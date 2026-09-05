@@ -819,6 +819,34 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `catch`), e essas eram piores: a sessão ficava no Map até o `onShutdown` gravá-la com a duração do
   PROCESSO INTEIRO. Hoje há uma variável `aberta` no escopo do join e um descarte único no `finally`,
   zerada no `room.join` — as sete saídas ficam cobertas por construção, e não por lembrança.
+- **O QUE MATAVA O NOVATO ERA A PRÓPRIA SALA** (`ROOM.SEED_R`/`SEED_MIX`, `BOT.SPAWN_GRACE_TICKS`,
+  `recemChegado` em `physics/rules.js`, `bonusHumano` em `bot.js`): a Poki mandou testadores e o
+  relatório dizia que eles saíam em segundos. A primeira suspeita foi de medição — e havia mesmo um
+  defeito de medição, grande, consertado no bloco acima —, mas as GRAVAÇÕES de tela deles (jogadores
+  reais, build já corrigido) mostravam 17 s, 31 s, 36 s, 38 s, 1 min 15, 2 min 19. O abandono era real,
+  e o painel de Errors deles inocentava a técnica: `webglcontextlost` em 4 gameplays e `Failed to fetch`
+  em 13, ambos com impacto estimado <1%.
+  ⚠️ **Quem acusou foi o nosso próprio `algoz`** (a consulta que `docs/spec/admin.md` descreve como "o
+  número que acusa ou inocenta os dois gigantes que a sala semeia"). Em 14 dias, 4.256 contas novas:
+  mediana da PRIMEIRA vida **31 s**, 49% dela abaixo de 30 s, 75% sem passar do primeiro minuto. E o
+  algoz mais comum, com 1.428 mortes, é um PREENCHIMENTO de **41.447 de massa contra 6.766** — razão
+  6,1×, aos 46 s. Aqueles 41 mil são exatamente `SEED_R[0]`: r 200–250 é massa 40.000–62.500.
+  ⚠️ **Três causas somadas, e nenhuma sozinha explicava**: a sala semeava DOIS gigantes desse tamanho
+  para parecer "em andamento"; `HUMAN_BONUS` (1,5) fazia todo bot, inclusive esse, PREFERIR a presa
+  humana; e a graça de spawn era de 7 s e só impedia o bot de ESCOLHER o novato — nunca impediu a
+  colisão, então o recém-nascido que andasse para cima do gigante morria igual.
+  ⚠️ O conserto foi nas três: `SEED_R[0]` caiu para r 140–180 (~metade da massa) e `SEED_MIX` de 2 para
+  1 gigante; `bonusHumano(r)` só dá o bônus abaixo de `BOT.HUNT.BONUS_MAX_R`, então o grande escolhe
+  pelo que está perto e gordo como qualquer um; e `SPAWN_GRACE_TICKS` foi a 15 s **e passou a valer na
+  FÍSICA** — `recemChegado` em `piecePair` impede um bot de engolir humano sob graça, e o grande
+  ATRAVESSA (sem quique: chutar pelo mapa alguém que não pode revidar é o mesmo defeito de outro jeito).
+  ⚠️ **Só BOT × HUMANO, e nesse sentido.** Entre pessoas nada muda — proteger disso seria inventar
+  invulnerabilidade num .io —, e quem está sob a graça continua podendo comer. `shared/test/novato.test.js`
+  trava os quatro sentidos, e o teste é sensível: tirar a linha de `piecePair` o deixa vermelho.
+  ⚠️ **Nada disso é espelhado em `predict.js`**: ele prevê as peças PRÓPRIAS e não decide quem come quem.
+  ⚠️ E o que NÃO é o problema: pela origem Poki, das 2.512 contas que jogaram num dia, 685 (27%) passaram
+  de 3 min somando vidas e 1.377 voltaram para uma segunda. O jogo prende quem sobrevive ao primeiro
+  minuto — o funil quebra ANTES disso, e é por isso que a alavanca é o primeiro encontro, não o resto.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade

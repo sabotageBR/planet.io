@@ -28,7 +28,14 @@ import {createRng} from "./rng.js";
 import {vmaxFor} from "./physics/integrate.js";
 import {incomingMissile,sameTeam,outOfZone,ammoOf} from "./physics/rules.js";
 
-const HUMAN_BONUS=1.5;   // entre duas presas iguais, a humana vale mais (bot que caça bot é chato de ver)
+// Entre duas presas iguais, a humana vale mais: bot que caça bot é chato de ver.
+// ⚠️ MAS SÓ ENQUANTO O BOT É PEQUENO. Este 1,5 valia para todo preenchimento, inclusive o gigante que a
+// sala semeia — e aí ele deixava de ser ambientação para virar um caçador que PREFERE a pessoa. Medido:
+// 1.428 primeiras vidas comidas por bot, algoz 6,1× mais pesado, aos 46 s. Acima de `HUNT.BONUS_MAX_R` o
+// bônus some e o grande passa a escolher pelo que está mais perto e mais gordo, como qualquer um.
+const HUMAN_BONUS=1.5;
+/** O bônus de caçar gente, para um bot deste tamanho. */
+const bonusHumano=r=>r<=BOT.HUNT.BONUS_MAX_R?HUMAN_BONUS:1;
 const TAU=6.28318,PI=Math.PI;
 const SPLIT_R=Math.SQRT2*EAT.RATIO;   // raio mínimo para engolir a presa DEPOIS do salto (r/√2 ≥ 1,15·rb)
 const SKILL_W=BOT.SKILLS.reduce((a,x)=>a+x.w,0);
@@ -241,11 +248,11 @@ export class BotBrain{
         // ── BOCADO: o pedaço solto de um gigante, se estiver LIMPO do guarda ──
         if(q&&q.bid>=0){const bd=Math.hypot(q.bx-c.x,q.by-c.y);
           if(bd<BOT.HUNT_DIST&&(q.gd===Infinity||Math.hypot(q.bx-q.gx,q.by-q.gy)>BOT.HUNT.BITE_CLEAR)){
-            const v=(q.br*(o.isBot?1:HUMAN_BONUS)-bd*.1)*BOT.HUNT.BITE_PENALTY;
+            const v=(q.br*(o.isBot?1:bonusHumano(c.big))-bd*.1)*BOT.HUNT.BITE_PENALTY;
             if(v>pv){pv=v;prey=o.slot;preyBig=q.br;preyX=q.bx;preyY=q.by;preyPiece=q.bid;}}}}
       else if(c.big>=oc.big*huntRatio&&d<BOT.HUNT_DIST){
         if(!o.isBot&&tick-o.spawnTick<BOT.SPAWN_GRACE_TICKS)continue;   // acabou de cair no mapa: deixa o humano respirar
-        const v=oc.big*(o.isBot?1:HUMAN_BONUS)-d*.1;
+        const v=oc.big*(o.isBot?1:bonusHumano(c.big))-d*.1;
         if(v>pv){pv=v;prey=o.slot;preyBig=oc.big;preyX=oc.x;preyY=oc.y;preyPiece=-1;}}}
     this.press=press;this.alive=alive;this.mate=mate;this.ed=ed;
     if(threat>=0){this.thx=thx;this.thy=thy;}   // de onde se foge: a PEÇA que engole, não o centro do sujeito

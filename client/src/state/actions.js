@@ -209,6 +209,10 @@ export async function boot() {
 }
 /** ?screen=<id> (entry|account|lobby|rank|profile|shop|prefs|game|dead|round|reconn) — atalho de desenvolvimento. */
 function devQuery() {
+  // ⚠️ ATALHO DE DESENVOLVIMENTO, e por isso ele não existe no pacote: `?screen=reconn` põe o overlay de
+  // "reconectando" por cima de um jogo saudável, e `?screen=shop` abre a loja antes de o jogador ter
+  // jogado. Um revisor que esbarre nisso vê um jogo quebrado.
+  if (PORTAL) return;
   const s = Q.get("screen"); if (s) mostrarTela(s);
   // A matriz de responsividade (scripts/responsive-check.mjs) precisa passar por `dead` e `round`, que não
   // têm botão de navegação nenhum — e recarregar a página com ?screen= a cada uma das ~400 combinações

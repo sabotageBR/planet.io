@@ -32,7 +32,10 @@ const tiraBoot = () => { const b = document.getElementById("boot"); if (b) b.rem
 // é péssimo, e sem o `import()` o chunk do /admin nem chega a ser emitido no zip.
 if (!PORTAL && (location.pathname === "/admin" || location.pathname.startsWith("/admin/"))) {
   import("./admin/mount.jsx").then(m => { tiraBoot(); m.mountAdmin(); });
-} else if (new URLSearchParams(location.search).has("sfx")) {
+// ⚠️ `!PORTAL` como no /admin logo acima, e pelo mesmo motivo: `?sfx` substitui o jogo INTEIRO por uma
+// mesa de som de tela cheia, em português, com um botão por efeito e sliders de pitch. Era a única das
+// três entradas sem a guarda — e sem ela o chunk ainda era emitido dentro do zip.
+} else if (!PORTAL && new URLSearchParams(location.search).has("sfx")) {
   import("./audio/audition.js").then(m => { tiraBoot(); m.mountAudition(); });
 } else {
   // O idioma tem que estar DECIDIDO antes do primeiro render: as prefs do jogador só chegam com o

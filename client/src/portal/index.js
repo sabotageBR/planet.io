@@ -191,6 +191,13 @@ export const portal = {
     if (sdk && sdk.jogoComecou) try { sdk.jogoComecou(); } catch { /**/ } },
   async jogoParou() { await pronto; if (!emJogo) return; emJogo = false;
     if (sdk && sdk.jogoParou) try { sdk.jogoParou(); } catch { /**/ } },
+  /**
+   * Abrir uma página EXTERNA (hoje só a política de privacidade). Devolve `true` se o portal cuidou
+   * disso; `false` quer dizer "abra você mesmo", que é o caso do site e de quem não tem SDK.
+   * ⚠️ Nunca `window.open` direto num portal: tirar o jogador do iframe é reprova, e vários SDKs
+   * bloqueiam pop-up de dentro do jogo de qualquer forma.
+   */
+  linkExterno(url) { try { return !!(sdk && sdk.linkExterno && sdk.linkExterno(url)); } catch { return false; } },
   /** O anúncio começou / acabou. Quem liga o áudio e a tela de pausa é `state/actions.js`. */
   aoPausar(cb) { aoPausar.push(cb || nada); },
   aoRetomar(cb) { aoRetomar.push(cb || nada); },

@@ -8,7 +8,7 @@
 //    choque míssil×míssil varrido, desvio de asteroide), split/eject/fire (tiro mirado trava no alvo do cone) ──
 // Todas recebem o mundo `w` (ids, rng, eventos, jogadores); toda aleatoriedade passa por w.rng.
 // @ts-check
-import {DT,WORLD,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,isWeaponFood,ASTEROID,BLACKHOLE,MISSILE,aimScore,POWERUP,STAR,ZONE,WEAPON,WEAPONS,weaponOf,weaponOfFood,QUIT} from "../constants.js";
+import {DT,WORLD,PLAYER,SPLIT,shieldTierFor,EJECT,ejectR,EJECT_MASS,FRAG,fragR,fragLife,mergeTicks,EAT,BOUNCE,FOOD_TYPE,isWeaponFood,ASTEROID,BLACKHOLE,MISSILE,aimScore,POWERUP,STAR,ZONE,WEAPON,WEAPONS,weaponOf,weaponOfFood,QUIT,BOT} from "../constants.js";
 import {KIND,BH_PHASE,FOOD_FLAG,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {clamp} from "../util.js";
 import {setR,setMass,addMass,addBoost,boostLeft,capBoost,velX,velY,liveCount,firstLive} from "./body.js";
@@ -167,6 +167,23 @@ function bouncePiece(A,B,e,aPiece,bPiece){
            if(bPiece)capBoost(B,b1>BOUNCE.DIST_MAX?b1:BOUNCE.DIST_MAX);}
   return vn;}
 
+/**
+ * O maior é um PREENCHIMENTO e o menor é uma pessoa que acabou de nascer?
+ *
+ * ⚠️ `BOT.SPAWN_GRACE_TICKS` já existia e cobria METADE do problema: em `bot.js` ela só faz o cérebro
+ * não ESCOLHER o recém-chegado como presa. Ela nunca impediu a colisão — o novato que andasse para cima
+ * de um bot grande era engolido do mesmo jeito, e o bot grande parado no caminho dele também. Medido em
+ * produção: 1.428 primeiras vidas terminaram comidas por bot, com o algoz 6,1× mais pesado, aos 46 s.
+ * ⚠️ Vale só para BOT × HUMANO, e nesse sentido. Entre pessoas a regra não muda: um jogador de verdade
+ * comendo outro é o jogo, e proteger contra isso seria inventar invulnerabilidade num .io.
+ * ⚠️ Protegido, o grande ATRAVESSA — sem quique. Dar quique aqui faria o novato ser chutado pelo mapa
+ * por algo que ele nem pode enfrentar, e é o mesmo tratamento que `STAR.PASS_R` dá a quem cabe na estrela.
+ * ⚠️ E não há espelho em `predict.js`: ele prevê as peças PRÓPRIAS e não decide quem come quem.
+ * @param {World} w @param {any} big @param {any} small
+ */
+function recemChegado(w,big,small){
+  return !!(big&&small&&big.isBot&&!small.isBot&&w.tick-small.spawnTick<BOT.SPAWN_GRACE_TICKS);}
+
 // ── peça × peça (donos diferentes) ──
 /**
  * Engolir (ra ≥ rb·RATIO e centro do menor a d < ra − rb·CENTER; enquanto só encosta, o maior atravessa) ou
@@ -183,6 +200,7 @@ export function piecePair(w,A,B){
   const aBig=ra>=rb*EAT.RATIO,bBig=!aBig&&rb>=ra*EAT.RATIO;
   if(aBig||bBig){
     const big=aBig?A:B,small=aBig?B:A,psBig=aBig?psA:psB,psSmall=aBig?psB:psA;
+    if(recemChegado(w,psBig,psSmall))return;                                                       // preenchimento não come quem acabou de nascer: atravessa
     const lim=big.r-small.r*EAT.CENTER;if(lim>0&&d2<lim*lim)eatPiece(w,psBig,big,psSmall,small);   // o escudo NÃO impede de ser comido: ele defende só de míssil e asteroide
     return;}
   if(d2<sum*sum){const vn=bouncePiece(A,B,BOUNCE.E,true,true);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}}

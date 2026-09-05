@@ -297,6 +297,26 @@ depois é um segundo ciclo de revisão de graça. A resposta que temos é `serve
 inteira), mais silenciar por sala no cliente e denunciar com as últimas falas em log. E a VOZ não
 existe no pacote (`SEM_VOZ`), o que também é resposta a eles.
 
+⚠️ **FERRAMENTA DE DEV NÃO VIAJA NO ZIP** ("Remove development tools, debug code, and testing
+artifacts"). `?sfx` (a mesa de som, que substitui o jogo INTEIRO por uma bancada de áudio), `?stats` e
+`?bench` (o overlay de engenharia, mais `window.__warspace` no console — que também é superfície de
+trapaça), `?local=1` (partida só de bots, sem servidor: um revisor concluiria que não há multiplayer) e
+`?screen=` (que abre a loja ou o overlay de "reconectando" por cima de um jogo saudável) ficaram anos
+sem guarda nenhuma. Hoje as quatro são `!PORTAL` sobre um literal de `define` — o Rollup PODA o corpo, e
+o chunk da mesa de som nem é emitido. Quem confere é `scripts/portal-pack.mjs`, no mesmo espírito das
+guardas de sourcemap e de Google Analytics. ⚠️ Ela procura a ATRIBUIÇÃO (`window.__warspace=`), não o
+nome cru: o `destroy()` do motor faz `delete window.__warspace` para limpar, e essa linha sobrevive à
+poda de propósito.
+
+⚠️ **A POLÍTICA DE PRIVACIDADE PRECISA SER ALCANÇÁVEL DE DENTRO DO JOGO**, e ela não era. O raciocínio
+antigo — "link que tira o jogador do iframe é o que eles proíbem, então a URL vai no formulário deles" —
+estava certo pela metade: a mesma página de requisitos exige a política acessível de dentro e define a
+saída, que é `PokiSDK.openExternalLink`. Quem decide o que fazer com o clique (nova aba, modal, pausar)
+passa a ser o portal. O item de Opções agora aparece SEMPRE; no pacote o `onClick` chama
+`portal.linkExterno()` e só cai no `href` quando o SDK não cuida (site, dev, SDK bloqueado). A URL ali é
+absoluta de propósito: `privacy.html` continua podado do zip, e dentro do iframe deles o caminho
+relativo não existe.
+
 ⚠️ Dois itens do checklist que são código nosso e **já passam**: `Space` chama `preventDefault`
 (`client/src/game/input/Keyboard.js`) — sem isso a barra de espaço, que é o DIVIDIR, rolaria a página
 do iframe —, e todo acesso a `localStorage` está embrulhado em `try/catch` (`api/client.js`,

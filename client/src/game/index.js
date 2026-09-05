@@ -625,7 +625,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // com gente, e cair calado num single-player é a falha mais enganosa possível — parece que
       // funcionou. Quem avisa é a tela de `servidorFora` (state/actions.js). O `?local=1` e o `?bench`
       // continuam funcionando: o que sai é só o automático.
-      const isLocal=useLocal||qflag("local")||isBench()||(api.server===false&&!PORTAL);
+      // ⚠️ `qflag("local")` também sob `!PORTAL`: com ele, um revisor da Poki abrindo `?local=1` jogaria
+      // uma partida SÓ DE BOTS, sem servidor, e concluiria que o multiplayer não existe.
+      const isLocal=useLocal||(!PORTAL&&qflag("local"))||isBench()||(api.server===false&&!PORTAL);
       if(isLocal){const rs=+(Q.get("round")||0);   // ?round=<segundos> encurta a rodada local (dev)
         local=createLocalServer(isBench()?benchOptions():{lag:+(Q.get("lag")||0),seed:+(Q.get("seed")||7),...(rs>0?{roundTicks:Math.round(rs*TICK_HZ)}:{})});connectWith(()=>local.connect());return;}
       staleTries=0;conectaAoServidor();},

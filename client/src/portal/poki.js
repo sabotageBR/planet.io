@@ -46,6 +46,15 @@ export async function criar({ pausou, retomou }) {
     // Game Events da Poki: `measure(categoria, oQue, acao)` — `start`/`complete`/`fail` = Progress,
     // `visible`/`interact` = Interaction, qualquer outro valor = Other. Nunca usar "/" ou "^" nos três
     // argumentos (reservados pela Poki). Ver docs/spec/portais.md.
+    // ⚠️ LINK EXTERNO PASSA PELO SDK, sempre. A regra deles tem duas metades que parecem se contradizer:
+    // a política de privacidade tem que ser alcançável DE DENTRO do jogo, e link que tira o jogador do
+    // iframe é proibido. `openExternalLink` é a saída que eles próprios definem — quem decide o que
+    // fazer (nova aba, modal, pausar o jogo) é o portal, não nós.
+    linkExterno(url) {
+      const g = sdk();
+      if (g && g.openExternalLink) { try { g.openExternalLink(url); return true; } catch { /* nunca derruba */ } }
+      return false;
+    },
     medir(categoria, oQue, acao) {
       const g = sdk();
       if (g && g.measure) try { g.measure(categoria, oQue, acao); } catch { /* nunca derruba o jogo */ }

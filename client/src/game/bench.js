@@ -1,8 +1,14 @@
 // ── ?bench (pior caso no LocalServer) e ?stats (overlay em partidas reais) ─────────────────
 // Overlay = <pre> dentro de #hud (DOM, não canvas). O index alimenta o texto a 4 Hz.
 import {Q,qflag} from "./util.js";
+import {PORTAL} from "../portal/flags.js";
 
-export const isBench=()=>qflag("bench"),isStats=()=>qflag("stats")||qflag("bench");
+// ⚠️ NADA DISTO EXISTE NO PACOTE DE PORTAL. "Remove development tools, debug code, and testing artifacts"
+// é requisito escrito da Poki, e estas duas query strings davam a um revisor um overlay de engenharia
+// por cima do jogo (fps, draw calls, MB de textura, erro de predição) mais `window.__warspace` no
+// console — que além de feio é superfície de trapaça. `PORTAL` é literal de `define`, então no zip o
+// Rollup poda o corpo inteiro; no site e em dev tudo continua como sempre.
+export const isBench=()=>!PORTAL&&qflag("bench"),isStats=()=>!PORTAL&&(qflag("stats")||qflag("bench"));
 /** Opções do LocalServer para o pior caso: 8 peças próprias, ~400 comidas visíveis, 40 asteroides, 3 buracos, 12 rastros. */
 export function benchOptions(){return{bench:true,lag:+(Q.get("lag")||0),bots:Math.max(15,+(Q.get("bots")||15)),seed:+(Q.get("seed")||7)};}
 export function createOverlay(hud){

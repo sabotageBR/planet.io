@@ -6,7 +6,11 @@ import { useLabels } from "../hooks/useTheme.js";
 import { ScreenHeader, Screen } from "./bits.jsx";
 import { PREFS } from "./prefsTable.js";
 import { LANG_NAMES } from "../i18n/index.js";
+import { portal } from "../portal/index.js";
 import { PORTAL } from "../portal/flags.js";
+
+/** No site é caminho relativo; no pacote tem que ser absoluto — lá `privacy.html` não viaja no zip. */
+const PRIVACIDADE = PORTAL ? "https://warspace.io/privacy.html" : "/privacy.html";
 
 export default function Prefs({ on }) {
   return <Screen id="prefs" on={on} className="prefs-wrap">{on ? <Body /> : null}</Screen>;
@@ -98,8 +102,17 @@ function Body() {
     </div>
     <div className="prefs-foot"><button className="btn-secondary" id="pf-reset" onClick={resetPrefs}>{LB.reset}</button><button className="btn-primary" id="pf-save" onClick={savePrefs}>{LB.save}</button></div>
     {/* A política de privacidade é uma página ESTÁTICA (client/public/privacy.html), fora do bundle: ela
-        tem que abrir mesmo com o jogo fora do ar. ⚠️ E não aparece no pacote de portal — link que tira o
-        jogador do iframe é justamente o que eles proíbem; lá a URL vai no formulário deles. */}
-    {!PORTAL ? <div className="prefs-legal"><a href="/privacy.html" target="_blank" rel="noopener">{LB.privacy}</a></div> : null}
+        tem que abrir mesmo com o jogo fora do ar.
+        ⚠️ ELA APARECE NO PACOTE TAMBÉM, e antes não aparecia. O raciocínio de então ("link que tira o
+        jogador do iframe é o que eles proíbem") estava certo pela metade: a Poki proíbe o link SOLTO e
+        exige, na mesma página de requisitos, que a política seja alcançável de DENTRO do jogo — a saída
+        que eles definem é `openExternalLink`, que devolve a decisão ao portal. Daí o `onClick`: no
+        portal quem abre é o SDK, e só quando ele não cuida (site, dev, SDK bloqueado) é que o href vale.
+        ⚠️ `privacy.html` continua PODADO do zip (o comentário em portal-pack.mjs explica), então a URL
+        aqui é absoluta de propósito: dentro do iframe deles o caminho relativo não existe. */}
+    <div className="prefs-legal">
+      <a href={PRIVACIDADE} target="_blank" rel="noopener"
+         onClick={e => { if (PORTAL && portal.linkExterno(PRIVACIDADE)) e.preventDefault(); }}>{LB.privacy}</a>
+    </div>
   </>;
 }

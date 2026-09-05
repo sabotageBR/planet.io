@@ -91,7 +91,14 @@ export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS
   // não servia — a sala enche em ~93 s e a janela é de 120 s, então o decaimento nunca chegava a zero e
   // toda chegada vinha com chance de gigante; e ele ainda ficava amarrado ao env `ROOM_BOTS` e ao
   // `BOT_JOIN_TICKS` em silêncio. O enchimento se normaliza sozinho: cheia é cheia em qualquer ritmo.
-  SEED_R:[[200,250],[80,150]],SEED_MIX:[2,3],SEED_WINDOW_TICKS:7200,
+  // ⚠️ O GIGANTE DA SEMENTE ERA O QUE MATAVA O NOVATO. Medido em produção (14 dias, 4.256 contas novas):
+  // a PRIMEIRA vida tem mediana de 31 s, 49% dela morre em menos de 30 s, e o algoz mais comum é um
+  // PREENCHIMENTO com 41.447 de massa contra 6.766 da vítima — razão 6,1×, em 46 s. Aqueles 41 mil são
+  // exatamente esta faixa: r 200–250 é massa 40.000–62.500. Ou seja, a sala punha dois predadores
+  // imbatíveis na frente de quem entra com 900 para parecer "já em andamento", e eles cobravam a conta
+  // no primeiro minuto. O tier caiu para r 140–180 (19.600–32.400, ~metade) e a cota de gigantes de 2
+  // para 1: a sala continua tendo planeta de todo tamanho — que é o ponto — sem ter dois deles.
+  SEED_R:[[140,180],[80,150]],SEED_MIX:[1,3],SEED_WINDOW_TICKS:7200,
   BOT_SEED:6,BOT_JOIN_TICKS:[360,840],
   // ── A SALA DO DONO NÃO É A SALA AUTOMÁTICA ──
   // Ela não nasce "em andamento": quem abre uma sala sua entra SOZINHO e vê os preenchimentos chegarem.
@@ -684,7 +691,7 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:316.2278,MAGNET_RANGE:5.5,MAGNET_RA
 // escudo: não expira; nível 1..SHIELD_MAX_LEVEL (N mísseis para destruir), sobe 1 nível a cada SHIELD_EVOLVE_TICKS sem ser atingido; −1 nível ao disparar e ao dividir
 // ímã e escudo valem POR PEÇA: só a parte que pegou o powerup se beneficia; ao fundir, os poderes das duas se juntam (escudo soma até o teto, ímã soma o tempo restante)
 export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1.3,HUNT_DIST:900,FOOD_DIST:520,MAX_PIECES:8,
-  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:420,AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
+  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:900,   /* 15 s — era 7 s, e ver `rules.piecePair`: agora ela também IMPEDE de ser comido */AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
   STICK:1.28,HAZ_TTL:6,DANG_N:6,FIRE_CD:[50,130],FEED_CD:40,MISSILE_MIN_D:1100,
   // Quanto dura o ARREMESSO do salto: o tick em que |v| do canal de impulso cai abaixo de BOOST.STOP.
   // DERIVADO, nunca cravado — o filho é dirigível o voo inteiro (integratePiece soma o ponteiro por cima
@@ -692,7 +699,7 @@ export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1
   JUMP_TICKS:Math.ceil(Math.log(SPLIT.DIST*BOOST.K/BOOST.STOP)/BOOST.K*TICK_HZ),
   COMMIT:{hunt:90,flee:45,food:60,zone:0,hold:150,intercept:30,wander:40},
   HAND:{DIST:620,JITTER_STEP:.05,JITTER_MAX:.28,FLICK:[8,15],STOP_R:26,LEAD_MAX:1.15,IDLE_TURN:.06},
-  HUNT:{ARC_DIRS:8,ARC_STEP:560,OPEN:.62,FLANK:.7,SPLIT_MARGIN:1.08,THIRD_R:900,TEAM_SIDE:.85,DODGE:1.05,
+  HUNT:{BONUS_MAX_R:150,ARC_DIRS:8,ARC_STEP:560,OPEN:.62,FLANK:.7,SPLIT_MARGIN:1.08,THIRD_R:900,TEAM_SIDE:.85,DODGE:1.05,
     SPLIT_GAIN:.04,SPLIT_GAIN_SHIELD:.09,SPLIT_GAIN_N:.6,SPLIT_OPEN:.62,SPLIT_CONE:.45,BITE_CLEAR:520,BITE_PENALTY:.6},
   GAS:{RING:.7,EDGE:.86,LOOT_R:.5,LOOT_MIN_R:120,LOOT_TICKS:150,LATE_ALIVE:8,LATE_PULL:1.5},
   PERSONAS:[{id:"cacador",hunt:1.15,flee:.85,food:.7,fire:1.4,edge:.5},{id:"fazendeiro",hunt:.8,flee:1.25,food:1.45,fire:.7,edge:.15},{id:"oportunista",hunt:1,flee:1,food:1,fire:1,edge:.32}],
