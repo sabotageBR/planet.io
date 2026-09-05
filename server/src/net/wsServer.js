@@ -92,12 +92,19 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
       if(pv!=null&&(pv<PROTOCOL_MIN||pv>PROTOCOL_VERSION)){metrics.versionRefused();return s.error('VERSION',`protocolo ${pv} incompatível (este servidor fala ${PROTOCOL_MIN}..${PROTOCOL_VERSION})`);}
       s.protocol=pv;
       s.joining=true;
+      // ⚠️ A SESSÃO DE PERSISTÊNCIA NASCE ANTES DE HAVER SALA, e todo caminho que NÃO chega ao
+      // `room.join` tem que jogá-la fora. `onPlayerJoin` abre um `MatchSession` sem saber se o jogador
+      // vai conseguir entrar; enquanto ela ficar no Map, o `onShutdown` do pod a grava como partida —
+      // `cause:'shutdown'`, com a duração do PROCESSO INTEIRO. Isto vive fora do `try` porque o `catch`
+      // lá embaixo precisa enxergá-lo, e é zerado no instante em que a sessão passa a ser da sala.
+      let aberta=null;
       try{
         if(msg.view)s.setView(msg.view.w,msg.view.h,msg.view.z);
         const fallbackNick=cleanNick(msg.fallbackNick);let res;
         try{res=await withTimeout(hooks.onPlayerJoin({token:msg.token,fallbackNick,remoteAddr:s.remoteAddr,userAgent:s.userAgent,roomCode:msg.room||null}),JOIN_TIMEOUT_MS);}
         catch(e){log.warn(`join sem persistência (${s.remoteAddr}): ${e&&e.message}`);res=unsaved(fallbackNick);}
         if(!res)res=unsaved(fallbackNick);
+        aberta=res.sessionId||null;
         if(s.ws!==ws||ws.readyState!==1)return;                       // fechou enquanto esperava
         if(!res.ok)return s.error(res.code||'AUTH',res.message||'não autorizado',res.suggestion?{suggestion:res.suggestion}:undefined);
         // modo e tamanho de equipe: id desconhecido cai no Livre (modeOf), tamanho inválido cai no 1º válido do modo
@@ -110,7 +117,13 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
           // mandam o jogador fazer coisas diferentes, e dizer FULL para as duas mandava metade deles esperar
           // por uma vaga que nunca ia servir.
           const nao=room&&room.joinRefusal();
-          if(nao){if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});
+          // ⚠️ DESCARTAR, e não `onMatchEnd`. Os três becos daqui (sala recusada, nick em uso, banido)
+          // fechavam com `onMatchEnd({durationMs:0})`, e cada recusa gravava uma linha REAL em `matches`
+          // com `duration_s=0` — que ainda passava por `upsertStats` e SOMAVA 1 no `games` do perfil.
+          // Como `repos/analytics.js` toma a linha de menor `id` por usuário como "a primeira vida", a
+          // fantasma virava a estreia do novato: "saiu em 0 segundos" de quem nunca chegou a entrar.
+          // Ninguém jogou, então não há partida a gravar — quem joga fora é o `finally` lá embaixo.
+          if(nao){
             return nao==='started'?s.error('ROOM_STARTED',`a partida da sala ${room.code} já começou`)
                                   :s.error('FULL',`sala ${room.code} indisponível`);}
           // ⚠️ NÃO se recusa mais por MODO. Na tela de Salas o jogador clica numa SALA, não num modo — o
@@ -131,23 +144,25 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         // caminho de EQUIPE é exatamente esse, porque `Party.start` manda todo mundo para o mesmo código.
         // Daí a `suggestion`: sem ela o cliente só tinha um toast e nenhuma saída.
         if(room.nickTaken(nick)){
-          if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});
           return s.error('NICK_IN_ROOM',`já há alguém chamado "${nick}" nessa sala`,{nick,suggestion:suggestNick(nick)});}
         // BANIDO pelo dono da sala. Fica AQUI, ao lado do nick, e não em `acceptsJoin()`: aquele é chamado
         // pelo matchmaking e refletido em `info().open`, onde ainda não há jogador nenhum para identificar.
         if(room.banned({userId:res.userId??null,key:sessionKey(msg.token)})){
-          if(res.sessionId)hooks.onMatchEnd({sessionId:res.sessionId,cause:'left',score:0,maxMass:0,durationMs:0});
           return s.error('ROOM_BANNED','você foi banido dessa sala');}
         s.sessionId=res.sessionId||randomUUID();s.userId=res.userId??null;s.key=sessionKey(msg.token);s.name=nick;s.unsaved=!!res.unsaved;s.isAdmin=!!res.isAdmin;
         s.level=res.level|0;s.avatar=res.avatar||null;s.country=res.country||null;
         room.join(s,{name:s.name,registered:!!res.registered,skinId:res.skinId|0,sessionId:s.sessionId,userId:s.userId,level:s.level,country:s.country,party});
+        aberta=null;                       // a partir daqui ela é da SALA: quem a fecha é `Room.leave`/a morte
         s.sendJson(roomMsg(room));room.sendPlayers(s);room.sendHost(s);
         if(room.avatars&&room.avatars.size)room.broadcastAvatars();   // quem entra precisa saber quem já tem foto
         room.broadcastFlags();                                        // e quem já está na sala precisa ver a bandeira do novato
         metrics.join(pv);   // a distribuição de versões é a ÚNICA medida de quanta gente ainda está em build antiga
         log.info(`${s.name} entrou na sala ${room.code} (slot ${s.slot}, ${room.humanCount}/${room.max}, protocolo ${pv??'n/d'}${s.unsaved?', sem persistência':''})`);
       }catch(e){log.error('join:',e);s.error('ROOM','falha ao entrar na sala');}
-      finally{s.joining=false;}}
+      // ⚠️ NO `finally`, e não em cada saída: são SETE (três recusas, o socket que caiu esperando, o
+      // `!res.ok`, o `catch` e o caminho feliz), e as duas últimas não tinham descarte nenhum — a sessão
+      // ficava pendurada até o pod morrer. Com `aberta` zerada no `room.join`, isto é no-op quando deu certo.
+      finally{s.joining=false;if(aberta)hooks.dropSession(aberta);}}
     function resume(msg){
       const old=rooms.findSession(msg.sessionId);
       if(!old||!old.room||old.resumeToken!==msg.resumeToken||(!old.ws&&Date.now()-old.disconnectedAt>NET.RESUME_MS))return s.error('ROOM_EXPIRED','sessão expirada; entre de novo');

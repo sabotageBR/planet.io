@@ -6,6 +6,7 @@ import { bootLang } from "./i18n/index.js";
 import { iniciaAnalytics } from "./app/analytics.js";
 import { PORTAL } from "./portal/flags.js";
 import { portal } from "./portal/index.js";
+import { iniciaSessaoPortal } from "./portal/sessao.js";
 
 // coletor de erros para os screenshots headless (--dump-dom lê window.__errors)
 if (import.meta.env.DEV) {
@@ -52,5 +53,10 @@ if (!PORTAL && (location.pathname === "/admin" || location.pathname.startsWith("
     // `gameLoadingFinished` dela sai por aqui. A fachada é no-op quando não há adaptador vivo, então no
     // site normal isto continua não fazendo nada — e o SDK só desce se um embutidor conhecido pediu.
     portal.carregou();
+    // ⚠️ E o CICLO DE VIDA: quem diz ao portal "comecei/parei de jogar" e quanto tempo a pessoa está
+    // aqui é `portal/sessao.js`, assinando o store — não os chamadores. Sem esta linha o pacote volta
+    // a mandar `gameplayStart` sem nunca fechar na morte, e o funil da sessão simplesmente não existe.
+    // Sem `if (PORTAL)` pelo mesmo motivo do `carregou()` logo acima: a fachada é no-op sem adaptador.
+    iniciaSessaoPortal();
   });
 }

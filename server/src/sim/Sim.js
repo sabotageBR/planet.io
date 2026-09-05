@@ -40,7 +40,8 @@ const armaKey=w=>w===-2?'asteroid':(ARMA[w|0]||'missile');
  * @property {number} kills
  * @property {number} botKills
  * @property {number} streak
- * @property {number} joinedTick
+ * @property {number} joinedTick   quando esta VIDA começou (zera a cada respawn) — é o `matches.duration_s`
+ * @property {number} entrouTick   quando esta PESSOA entrou na sala (o respawn NÃO zera) — ver Room.leave
  * @property {number} maxMass
  * @property {number} top1Ticks
  * @property {Set<number>} quadrants
@@ -71,7 +72,7 @@ export class Sim{
   // ── jogadores ──
   _mk(slot,o){return{slot,sessionId:o.sessionId||null,userId:o.userId??null,name:String(o.name||'Viajante'),registered:!!o.registered,skinId:o.skinId|0,isBot:!!o.isBot,
     team:o.team==null?-1:o.team|0,deathTick:-1,placement:0,talkUntil:0,level:o.level|0,
-    dead:false,score:0,kills:0,botKills:0,deaths:0,food:0,streak:0,joinedTick:this.world.tick,maxMass:0,top1Ticks:0,quadrants:new Set(),lastInput:{seq:0,tx:0,ty:0,flags:0},gotInput:false,brain:null,deathInfo:null,
+    dead:false,score:0,kills:0,botKills:0,deaths:0,food:0,streak:0,joinedTick:this.world.tick,entrouTick:this.world.tick,maxMass:0,top1Ticks:0,quadrants:new Set(),lastInput:{seq:0,tx:0,ty:0,flags:0},gotInput:false,brain:null,deathInfo:null,
     // ── fala (a Room é quem gasta; aqui só existem para o objeto ter FORMA estável) ──
     // Eram criados no primeiro uso lá na Room, o que deixava o GamePlayer polimórfico e não dava lugar
     // nenhum para documentar o que cada um significa.
@@ -307,6 +308,10 @@ export class Sim{
    * Se um campo novo entrar em `_mk` e for por vida, ele entra aqui também.
    * ⚠️ `this._elim` NÃO é decrementado: no BR não há revive (é o modo em que ele conta), e mexer nele aqui
    * só poderia estragar o `placement` de outra pessoa.
+   * ⚠️ E `entrouTick` NÃO ENTRA NESTA LISTA, ao contrário de tudo o que está escrito acima: ele é a hora
+   * em que a PESSOA chegou na sala, não a hora em que esta vida começou. Zerá-lo aqui é exatamente o
+   * defeito que ele existe para consertar — o painel AO VIVO dizia "saiu · 40s" de quem tinha ficado
+   * vinte minutos, porque a única medida que havia era `joinedTick`, e o respawn a reiniciava.
    */
   revive(slot){
     const gp=this.players.get(slot);if(!gp||!gp.dead||gp.isBot)return false;

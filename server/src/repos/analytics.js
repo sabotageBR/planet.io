@@ -24,6 +24,23 @@ const TIMEOUT='10s';
  */
 const GAP='30 minutes';
 
+/**
+ * O join RECUSADO não é uma vida.
+ *
+ * ⚠️ `net/wsServer.js` abre a sessão de persistência em `onPlayerJoin`, ANTES de saber se o jogador vai
+ * conseguir entrar, e por muito tempo os três becos de lá (sala cheia/já começou, nick em uso, banido)
+ * fechavam com `onMatchEnd({durationMs:0})` — cada recusa gravava uma linha REAL em `matches` com
+ * `duration_s=0` e `cause='left'`. Como as consultas abaixo tomam a linha de MENOR `id` por usuário
+ * como "a primeira vida", a fantasma virava a estreia do novato: mediana e histograma da primeira vida
+ * puxados para zero, e um "quem mata o novato" cheio de `left · n/d` com 0 s. Hoje o caminho novo
+ * descarta a sessão (`dropSession`), mas o histórico gravado continua no banco — e um `DELETE` seria
+ * destrutivo por uma linha que basta não ler. Daí o filtro, aplicado ANTES do `row_number`: aplicado
+ * depois, a fantasma ainda seria a n=1 e o novato sumiria do relatório inteiro.
+ * ⚠️ Ele pega junto a saída legítima que durou menos de meio segundo. É indistinguível por construção,
+ * é rara, e chamá-la de "primeira vida" seria tão errado quanto.
+ */
+const VIDA_REAL="NOT (m.duration_s=0 AND m.cause='left')";
+
 export function createAnalytics(db){
   /** @type {Map<string,{at:number,v:any}>} */
   const memo=new Map();
@@ -46,7 +63,7 @@ export function createAnalytics(db){
       SELECT c.dia, c.origem, c.id,
              count(m.id)                   AS vidas,
              COALESCE(sum(m.duration_s),0) AS s_total
-        FROM coorte c LEFT JOIN matches m ON m.user_id=c.id
+        FROM coorte c LEFT JOIN matches m ON m.user_id=c.id AND ${VIDA_REAL}
        GROUP BY 1,2,3)
     SELECT dia, origem,
            count(*)::int                             AS contas,
@@ -60,7 +77,7 @@ export function createAnalytics(db){
   const primeira=d=>ler(`
     WITH novos AS (SELECT id FROM users WHERE created_at >= now()-($1||' days')::interval),
     p AS (SELECT m.*, row_number() OVER (PARTITION BY m.user_id ORDER BY m.id) AS n
-            FROM matches m JOIN novos u ON u.id=m.user_id)
+            FROM matches m JOIN novos u ON u.id=m.user_id WHERE ${VIDA_REAL})
     SELECT count(*)::int                                                       AS n,
            round(percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_s))::int AS mediana_s,
            round(percentile_cont(0.9) WITHIN GROUP (ORDER BY duration_s))::int AS p90_s,
@@ -75,7 +92,7 @@ export function createAnalytics(db){
   const histograma=d=>ler(`
     WITH novos AS (SELECT id FROM users WHERE created_at >= now()-($1||' days')::interval),
     p AS (SELECT m.duration_s, row_number() OVER (PARTITION BY m.user_id ORDER BY m.id) AS n
-            FROM matches m JOIN novos u ON u.id=m.user_id)
+            FROM matches m JOIN novos u ON u.id=m.user_id WHERE ${VIDA_REAL})
     SELECT width_bucket(duration_s,0,600,20) AS balde, count(*)::int AS n
       FROM p WHERE n=1 GROUP BY 1 ORDER BY 1`,[d]);
 
@@ -85,7 +102,7 @@ export function createAnalytics(db){
   const algoz=d=>ler(`
     WITH novos AS (SELECT id FROM users WHERE created_at >= now()-($1||' days')::interval),
     p AS (SELECT m.*, row_number() OVER (PARTITION BY m.user_id ORDER BY m.id) AS n
-            FROM matches m JOIN novos u ON u.id=m.user_id)
+            FROM matches m JOIN novos u ON u.id=m.user_id WHERE ${VIDA_REAL})
     SELECT cause,
            COALESCE(killer_kind, CASE WHEN killed_by_user_id IS NOT NULL THEN 'human' END, 'n/d') AS algoz,
            COALESCE(how,'n/d')                               AS via,
@@ -111,21 +128,44 @@ export function createAnalytics(db){
       FROM d GROUP BY 1 ORDER BY 1 DESC`,[d]);
 
   // 6. A VISITA — a resposta literal aos 3 minutos (ver o comentário do GAP lá em cima).
+  //
+  // ⚠️ A VISITA É RELÓGIO DE PAREDE, e ela já foi `sum(duration_s)` — soma de VIDAS. Isso respondia à
+  // pergunta errada com uma precisão convincente: quem morre aos 30 s, assiste 4 min pela tela de morte
+  // e morre de novo aos 30 s aparecia como uma visita de UM MINUTO. O tempo entre as vidas era usado
+  // para AGRUPAR e nunca somado, ou seja o painel descontava exatamente a parte da sessão em que a
+  // pessoa está lá, olhando o jogo. As duas medidas continuam: `s_visita` é quanto ela ficou,
+  // `s_jogo` é quanto ela jogou, e a diferença é a tela de morte, o pódio e o anúncio.
+  //
+  // ⚠️ E o fim de uma vida é `started_at + duration_s`, NUNCA `ended_at`: aquele é o `now()` do INSERT,
+  // e o INSERT passa por uma fila com backoff de até ~5 min (`persist/queue.js`). Um `ended_at` inflado
+  // encolhe o intervalo percebido até a vida seguinte e gruda visitas que eram separadas — e infla a
+  // duração da que sobrou. `started_at` é o `Date.now()` da abertura da sessão e `duration_s` é medido
+  // em TICKS do Sim: os dois são do instante certo.
   const visita=d=>ler(`
-    WITH m AS (SELECT user_id,started_at,ended_at,duration_s FROM matches
+    WITH m AS (SELECT user_id,started_at,duration_s,
+                      started_at + (duration_s||' seconds')::interval AS fim
+                 FROM matches
                 WHERE ended_at >= now()-($1||' days')::interval),
-    v AS (SELECT *, CASE WHEN lag(ended_at) OVER w IS NULL
-                           OR started_at - lag(ended_at) OVER w > interval '${GAP}'
+    v AS (SELECT *, CASE WHEN lag(fim) OVER w IS NULL
+                           OR started_at - lag(fim) OVER w > interval '${GAP}'
                          THEN 1 ELSE 0 END AS nova
             FROM m WINDOW w AS (PARTITION BY user_id ORDER BY started_at)),
     g AS (SELECT *, sum(nova) OVER (PARTITION BY user_id ORDER BY started_at
                                     ROWS UNBOUNDED PRECEDING) AS visita FROM v),
-    s AS (SELECT user_id,visita,count(*) AS vidas,sum(duration_s) AS s_jogo FROM g GROUP BY 1,2)
-    SELECT count(*)::int                                                   AS visitas,
-           round(percentile_cont(0.5) WITHIN GROUP (ORDER BY s_jogo))::int AS mediana_s,
-           count(*) FILTER (WHERE s_jogo>=180)::int                        AS acima_3min,
-           round(100.0*count(*) FILTER (WHERE s_jogo>=180)/NULLIF(count(*),0),1) AS pct_3min,
-           round(avg(vidas),2)                                             AS vidas_por_visita
+    s AS (SELECT user_id,visita,count(*) AS vidas,sum(duration_s) AS s_jogo,
+                 -- O GREATEST nao e paranoia: duas abas da MESMA conta jogam ao mesmo tempo, as vidas
+                 -- se sobrepoem e o tempo somado passa do intervalo medido. Sem ele a tela mostraria
+                 -- "visita mais curta que o tempo em partida", que ninguem consegue explicar.
+                 -- (sem crase e sem acento aqui dentro: isto vive num template literal)
+                 GREATEST(EXTRACT(EPOCH FROM (max(fim)-min(started_at)))::int,
+                          sum(duration_s))::int AS s_visita
+            FROM g GROUP BY 1,2)
+    SELECT count(*)::int                                                     AS visitas,
+           round(percentile_cont(0.5) WITHIN GROUP (ORDER BY s_visita))::int AS mediana_s,
+           round(percentile_cont(0.5) WITHIN GROUP (ORDER BY s_jogo))::int   AS mediana_jogo_s,
+           count(*) FILTER (WHERE s_visita>=180)::int                        AS acima_3min,
+           round(100.0*count(*) FILTER (WHERE s_visita>=180)/NULLIF(count(*),0),1) AS pct_3min,
+           round(avg(vidas),2)                                               AS vidas_por_visita
       FROM s`,[d]);
 
   /** Os seis painéis num payload só: a tela é de leitura e seis round-trips seria pior. */

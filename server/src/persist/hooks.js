@@ -70,6 +70,20 @@ export function createPersistence({db,log,config,metrics=SEM_METRICS}){
     const s=new MatchSession({userId,nick:nick||'Viajante',kind,skinId,roomCode,shard:config.shard});
     sessions.set(s.sessionId,s);return s.sessionId;}
   const openUnsavedSession=({nick,roomCode=null}={})=>openSession({nick,roomCode});
+  /**
+   * DESCARTA uma sessão sem gravar nada — o join foi RECUSADO e não houve partida.
+   *
+   * ⚠️ Isto existe porque `onPlayerJoin` abre a sessão ANTES de saber em que sala o jogador vai entrar
+   * (e antes de qualquer recusa), e os três becos de `net/wsServer.js` — sala cheia/já começou, nick em
+   * uso e banido — fechavam com `onMatchEnd({durationMs:0})`. Cada recusa gravava uma linha REAL em
+   * `matches` com `duration_s=0` e `cause='left'`, e `repos/analytics.js` toma a linha de menor `id`
+   * por usuário como "a primeira vida": a fantasma virava a estreia do novato, ou seja literalmente
+   * "saiu em 0 segundos" de alguém que nunca entrou.
+   * ⚠️ Não se inventa causa nova para marcá-la de outro jeito: o CHECK de `matches.cause` (migração
+   * 0003) só conhece um punhado de palavras, e um valor fora dele quebra o INSERT com 23514 dentro de
+   * um catch, em silêncio. O certo é não ter partida nenhuma para gravar.
+   */
+  const dropSession=sessionId=>{const s=sessionId&&sessions.get(sessionId);if(s)sessions.delete(sessionId);return !!s;};
   // ── contadores (fire-and-forget) ──
   const onStat=({sessionId,key})=>{const s=sessions.get(sessionId);if(s)s.stat(key);};
   const onKill=({killerSessionId,sessionId,victimIsBot})=>{const s=sessions.get(killerSessionId||sessionId);if(s)s.kill({victimIsBot:!!victimIsBot});};
@@ -146,6 +160,6 @@ export function createPersistence({db,log,config,metrics=SEM_METRICS}){
   async function shutdown(){if(cleanTimer)clearInterval(cleanTimer);await onShutdown();}
   // `openSession` vai no objeto HOOKS (e não só no retorno) porque quem precisa dele é a `Room`, e ela só
   // enxerga `sim.hooks` — o `persistApi` fica do lado do HTTP.
-  const hooks={onPlayerJoin,onStat,onKill,onSample,onMatchEnd,onShutdown,openSession};
-  return{hooks,health,sessions,finishMatch,openUnsavedSession,openSession,cleanup,queue,shutdown};
+  const hooks={onPlayerJoin,onStat,onKill,onSample,onMatchEnd,onShutdown,openSession,dropSession};
+  return{hooks,health,sessions,finishMatch,openUnsavedSession,openSession,dropSession,cleanup,queue,shutdown};
 }

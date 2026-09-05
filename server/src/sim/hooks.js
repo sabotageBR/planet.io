@@ -11,4 +11,7 @@ export const NOOP_HOOKS=Object.freeze({
   // `null` é a resposta certa: `Room.respawn` a trata como "esta vida não é gravada", que é o que o modo
   // unsaved já significa em todo o resto.
   openSession:()=>null,
+  // O join foi RECUSADO: joga fora a sessão aberta em `onPlayerJoin`, sem gravar partida nenhuma. Sem
+  // banco não há o que jogar fora, e `false` é a resposta honesta ("não havia sessão").
+  dropSession:()=>false,
 });

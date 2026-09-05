@@ -281,6 +281,13 @@ lado do SDK está inteiro (`SDK initialized`, `Game loading finished`, `Measure 
 e os dois itens vermelhos de *SDK Basics* (`gameplayStart()` / `gameplayStop()`) são CONSEQUÊNCIA do
 bloqueio: sem servidor não há partida para começar, então o QA inteiro fica parado atrás da CSP.
 
+⚠️ **Essa explicação era METADE da verdade, e a outra metade custou um relatório errado.** O
+`gameplayStop()` de fato nunca saía na morte — nem com a CSP liberada —, porque o único fechamento era
+`leaveGame()`. O item vermelho tinha DUAS causas e só uma foi investigada na época. Ao reverificar com
+o servidor alcançável, o critério é a SEQUÊNCIA inteira e não o par existir: entrar → morrer → renascer
+(com anúncio) → fim de rodada → sair tem que alternar `start`/`stop` sem repetir, com `Game loading
+start` ANTES do `finished`, e nada saindo entre o começo e o fim de um `commercialBreak`.
+
 ⚠️ **O CHAT precisa ser liberado À PARTE, e vale pedir junto.** A política de recursos externos deles
 lista *"in-game chat systems"* entre as categorias barradas por padrão, e o checklist do Inspector
 pergunta *"If your game has been **cleared** to have in-game chat, is it protected with a strong
@@ -307,9 +314,36 @@ a um relatório de abuso.
 **Game Events e anúncio recompensado** (`client/src/portal/poki.js`): `medir(categoria,oQue,acao)`
 repassa `PokiSDK.measure(...)` — `start`/`complete`/`fail` viram Progress Event, `visible`/`interact`
 viram Interaction Event, qualquer outro valor é Other/Custom; nunca `/` nem `^` nos três argumentos
-(reservados pela Poki). O funil instrumentado hoje (`menu/entry`, `connect/match`,
-`survival/60s|120s|180s`) existe para responder, pelo próprio painel deles, ONDE exatamente uma sessão
-abandona — sem depender de outro Player Fit Test pago. `recompensa()` repassa `rewardedBreak()`
+(reservados pela Poki). O funil instrumentado hoje é `menu/entry`, `connect/match` e
+`session/60s|180s|300s`, e existe para responder, pelo próprio painel deles, ONDE exatamente uma
+sessão abandona — sem depender de outro Player Fit Test pago.
+
+⚠️ **O FUNIL JÁ MEDIU A VIDA E O PAINEL DELES MENTIU POR ISSO.** Ele era `survival/60s|120s|180s`,
+aberto em `onConnection` e fechado em `onDead` com o `durationS` da VIDA. Duas coisas quebravam juntas:
+o `durationS` é de uma vida (num agar, 15–40 s é o normal, não é abandono) e o `start` só saía por
+CONEXÃO — e desde que renascer virou `{t:"respawn"}` na mesma conexão (`Room.respawn`), ele nunca mais
+reabria. Um QA da Poki que ficava 12 minutos e morria 14 vezes mandava **3 aberturas e 42 fechamentos,
+quase todos `fail`**. O relatório deles dizia que os testadores saíam em poucos segundos enquanto o
+`/admin` mostrava a mesma gente na sala. Hoje quem mede é `client/src/portal/sessao.js`: o relógio é da
+CARGA DA PÁGINA, corre enquanto o jogador está RETIDO (`screen` em `game`/`dead`/`round` — tela de morte
+e pódio contam, ele está na sala), e só há `complete`. Nada de `fail`: num funil de progressão quem não
+completou É a evasão, e o `fail` explícito era o que enchia o painel de abandono que não existiu.
+
+⚠️ **`gameplayStop()` TEM QUE SAIR NA MORTE, e não saía.** A doc deles é literal ("gameplayStop() must
+fire on any gameplay interruption (pause, menu open, level end, cutscene)") e dá a sequência canônica
+`gameplayStop()` → `commercialBreak()` → `gameplayStart()`. Aqui o único fechamento era `leaveGame()`,
+então a tela de morte, o pódio e o menu de pausa contavam como gameplay ATIVO — o playtime saía inflado
+no mesmo painel em que o funil dizia que o jogador abandonou em segundos. Quem resolve é
+`portal/sessao.js`, derivando os dois eventos do STORE (`screen==="game" && !overlays.pause`), no molde
+que `portal/bb.js` já usava e que valia só para o site. Os chamadores (`play`, `respawnAqui`,
+`leaveGame`) **não chamam mais nada de ciclo**: uma segunda verdade sobre "estou jogando" é exatamente
+o que deixou a morte de fora. Na fachada, `emJogo` é o trinco do escritor único (nunca sai start-após-
+start nem stop-após-stop) e `emAnuncio` é o portão do commercial break — um start que chegue durante o
+anúncio é ADIADO até o `finally`, nunca descartado.
+
+⚠️ **`gameLoadingStart()`** sai do `criar()` do adaptador, logo depois do `init()` — o par estava pela
+metade (só o `Finished`), e sem o começo não há de onde medir a carga. Não vale expor na fachada: o SDK
+deles não aceita timestamp, então uma chamada mais cedo chegaria no mesmo instante. `recompensa()` repassa `rewardedBreak()`
 (distinto de `commercialBreak`): a Promise resolve o booleano "assistiu até o fim?", sem
 `MIN_AD_MS` — a doc deles pede explicitamente para NÃO impor cooldown próprio ("we manage ad
 frequency"). Usado hoje para as 3 skins mascote (`server/src/api/skins.js`, rota

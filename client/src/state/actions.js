@@ -521,7 +521,10 @@ export async function play({ room, mode, teamSize, party } = {}) {
     pendingPlay: null,
     pendingJoin: { room: code, mode: md, teamSize: ts, party: pt, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
   partidaIniciada({ mode: md, teamSize: ts, party: pt });
-  if (PORTAL) portal.jogoComecou();
+  // ⚠️ NADA DE `portal.jogoComecou()` AQUI. O gameplay do SDK é derivado do STORE (portal/sessao.js), e
+  // é o `screen:"game"` escrito logo acima que o abre — sozinho, uma vez, e depois do anúncio. Chamá-lo
+  // à mão também aqui não quebra (a fachada é idempotente), mas cria uma segunda verdade sobre "estou
+  // jogando" que diverge no primeiro caminho novo — foi exatamente assim que a MORTE ficou sem `stop`.
 }
 /**
  * Renascer NA MESMA SALA e na mesma conexão (Livre). O jogador morto nunca saiu da sala — o socket está
@@ -543,7 +546,6 @@ export async function respawnAqui(room) {
   app.update(s => ({ ...s, screen: "game", rewards: null, rewardsPending: false, levelUp: null,
     overlays: { ...s.overlays, account: false, pause: false } }));
   partidaIniciada({ mode: st.gameMode | 0, teamSize: st.teamSize || 1, party: st.party ? st.party.code : null });
-  if (PORTAL) portal.jogoComecou();
 }
 // ── modos e lobby de equipe ────────────────────────────────────────────────
 export function setMode(mode, teamSize = 1) { app.update({ gameMode: mode | 0, teamSize: teamSize | 0 || 1 }); }
@@ -620,7 +622,10 @@ export async function startParty() {
   play({ room: code, mode: 1, teamSize: p.teamSize, party: p.code });
 }
 export function leaveGame(screen = "lobby") {
-  if (PORTAL) { portal.jogoParou(); portal.saiuDaSala(); }
+  // `saiuDaSala` é do "Full" da CrazyGames (deixei a sala, não convidem mais ninguém para ela) e não
+  // tem nada a ver com gameplay; o `jogoParou()` que morava aqui saiu porque o `screen` escrito logo
+  // abaixo já fecha o gameplay por `portal/sessao.js` — e cobria só ESTE caminho, nunca a morte.
+  if (PORTAL) portal.saiuDaSala();
   levelUpFila = null;
   app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
@@ -665,10 +670,12 @@ export function onDead(info) {
     session: { ...a.session, stats: { ...st, bestMass: Math.max(recMass, +info.maxMass || 0), bestScore: Math.max(recScore, +info.score || 0) } },
     rewards: null, rewardsPending: true, screen: "dead" }));
   clearTimeout(rewardsT); rewardsT = setTimeout(() => { if (app.get().rewardsPending) app.update({ rewardsPending: false }); }, 5000);
-  // Game Events: desfecho das 3 etapas de "survival" abertas em `onConnection` — acima do limiar é
-  // `complete`, abaixo é `fail`. `durationS` já existia aqui; só nunca tinha saído do cliente.
-  if (PORTAL) { const d = +info.durationS || 0;
-    for (const [k, limiar] of [["60s", 60], ["120s", 120], ["180s", 180]]) portal.medir("survival", k, d >= limiar ? "complete" : "fail"); }
+  // ⚠️ AQUI HAVIA O FUNIL QUE MENTIA PARA A POKI, e o motivo de ele ter saído está em portal/sessao.js:
+  // ele fechava `survival/60s|120s|180s` com o `durationS` da VIDA, e o `start` correspondente só saía
+  // em `onConnection` — que desde o respawn na mesma conexão NUNCA MAIS reabre. Quem fica 12 min e
+  // morre 14 vezes mandava 3 aberturas e 42 fechamentos, quase todos `fail` com 15–40 s: o painel deles
+  // dizia "saiu em segundos" sobre gente que estava na sala. Vida não é sessão, e a sessão agora é
+  // medida onde ela existe — no store, por `portal/sessao.js`.
 }
 /** Callback do jogo: {saved, coinsEarned, coins, achievements:[{key,title}], skinsUnlocked:[id], rank:{day}} */
 export function onRewards(r) {
@@ -734,10 +741,9 @@ export function onConnection(ev) {
     // o portal precisa saber em que sala o jogador está para oferecer "entrar com o amigo" (o Full da
     // CrazyGames). O código da nossa sala já é único no jogo inteiro, que é o que eles pedem do roomId.
     if (PORTAL && ev.room) portal.sala(ev.room, true);
-    // Game Events: "connect" fecha aqui (WS confirmou), e as 3 etapas de "survival" abrem juntas — o
-    // desfecho (complete acima do limiar, fail abaixo) sai em `onDead`, com o `durationS` que já existia.
-    if (PORTAL) { matchResolvido = true; portal.medir("connect", "match", "complete");
-      portal.medir("survival", "60s", "start"); portal.medir("survival", "120s", "start"); portal.medir("survival", "180s", "start"); } }
+    // Game Event: "connect" fecha aqui (o WS confirmou). O funil de SESSÃO não abre por conexão — ele
+    // é da carga da página e mora em `portal/sessao.js`; abri-lo aqui era o que o amarrava a uma vida.
+    if (PORTAL) { matchResolvido = true; portal.medir("connect", "match", "complete"); } }
   else if (st === "connecting") app.update(s => ({ ...s, conn: "connecting", room: ev.room || s.room }));
   else if (st === "reconnecting") app.update(s => ({ ...s, conn: "reconnecting", reconnAttempt: ev.attempt || 1, overlays: { ...s.overlays, reconn: true } }));
   else if (st === "closed" || st === "error") {

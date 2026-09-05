@@ -18,6 +18,12 @@ export async function criar({ pausou, retomou }) {
   if (!(await carregaScript(SRC, "poki-sdk"))) return null;
   const s = sdk(); if (!s) return null;
   try { if (s.init) await s.init(); } catch { return null; }
+  // ⚠️ O PAR DA CARGA ESTAVA PELA METADE: só o `gameLoadingFinished` saía (de `main.jsx`, pela fachada),
+  // e sem o começo a Poki não tem de onde medir quanto o jogo demorou a abrir — que é metade do que o
+  // painel deles mostra ("time in game, loading, and ads"). Sai daqui, e não da fachada, porque este é
+  // o instante mais cedo que existe de qualquer jeito: `medir()` já documenta que o SDK deles não
+  // aceita timestamp, então antecipar a chamada na fachada não anteciparia a MEDIDA.
+  try { if (s.gameLoadingStart) s.gameLoadingStart(); } catch { /* nunca derruba o jogo */ }
   return {
     carregou() { const g = sdk(); if (g && g.gameLoadingFinished) g.gameLoadingFinished(); },
     jogoComecou() { const g = sdk(); if (g && g.gameplayStart) g.gameplayStart(); },

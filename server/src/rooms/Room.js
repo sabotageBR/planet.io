@@ -565,8 +565,12 @@ export class Room{
       // `matches.cause` (migração 0003) só conhece um punhado de palavras: inventar uma ali quebraria o
       // insert com 23514 dentro de um catch, em silêncio. Por isso são dois parâmetros, pelo mesmo motivo
       // que `explode` já é separado de `cause`.
+      // ⚠️ `entrouTick`, NUNCA `joinedTick`: aquele é da VIDA e `Sim.revive` o zera a cada respawn, então
+      // o painel anunciava "saiu · 40s" de quem tinha passado vinte minutos na sala em quinze vidas —
+      // e era essa a medida que se usava para conferir o relatório do portal. O que o administrador
+      // pergunta aqui é há quanto tempo a PESSOA estava aqui; `matches.duration_s` é que é por vida.
       this.bus.publica('saiu',{sala:this.code,quem:gp.name||'',por:motivo,
-        durouS:Math.round((this.sim.tick-gp.joinedTick)/TICK_HZ),abates:gp.kills|0});}
+        durouS:Math.round((this.sim.tick-gp.entrouTick)/TICK_HZ),abates:gp.kills|0});}
     if(gp&&gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());   // sem isto a sala vira lista negra e quem sai não volta com o próprio nome
     this.flagsDirty=true;
     if(this.avatars.has(slot))this._setAvatar(slot,null,null);
@@ -771,6 +775,8 @@ export class Room{
       arr.forEach((gp,j)=>{const off=j*90,a2=an+Math.PI/2;
         w.respawnPlayer(gp.slot,{x:gx+Math.cos(a2)*off,y:gy+Math.sin(a2)*off,r:PLAYER.START_R,score:0});
         const ps=w.players.get(gp.slot);if(ps)ps.ammo[WEAPON.MISSILE]=BR.START_AMMO;   // ⚠️ era `ps.missiles`, campo que não existe desde que a munição virou `ps.ammo[]` por arma: ninguém largava o BR com a bala inicial
+        // ⚠️ SÓ `joinedTick`: a VIDA começa na largada, mas a pessoa está na sala desde o lobby — e é
+        // `entrouTick` que o painel usa para dizer há quanto tempo ela está aqui.
         gp.score=0;gp.maxMass=0;gp.joinedTick=w.tick;});}
     // 3. a partida começa: relógio, zona e fim da paz
     this.roundStart=w.tick;this.zone=createZone(w.tick);w.setZone(this.zone);w.peace=false;this.phase='live';this.startsAt=0;

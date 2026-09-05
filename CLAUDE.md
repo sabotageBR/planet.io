@@ -46,7 +46,8 @@ server/src/    index.js (composition root + startServer) · loop.js (scheduler 6
                sim/ (Sim, hooks) · rooms/ (codes, Room, RoomManager, Party) · net/ (Session, wsServer, snapshot) · http/ (api, peers)
                config.js · log.js · tunables.js (parâmetros do painel) · db/ (pool, migrate, migrations/) · auth/ (tokens, password, nick, ratelimit)
                repos/ (+ settings, audit) · api/ (router + rotas, incl. admin.js) · http/admin.js (salas/kick/aviso) · persist/ (session, rewards, queue, hooks)
-client/src/    api/base.js (a ÚNICA fonte de "onde mora o servidor") · portal/ (flags + fachada de anúncio + 1 adaptador por portal)
+client/src/    api/base.js (a ÚNICA fonte de "onde mora o servidor") · portal/ (flags + fachada de anúncio + 1 adaptador por portal
+               + sessao.js, o ciclo gameplayStart/Stop e o funil de sessão derivados do store)
                main.jsx (3 entradas: jogo · /admin · ?sfx) · app/ (App, theme bridge) · admin/ (o painel: mount/api/admin.css)
                i18n/ (index.js o motor · pt-BR|en|es.js os dicionários · errors.js código→texto · catalog.js skins/conquistas/países)
                assets/scene/ (a arte do cenário do menu: logo + 5 sprites + 3 fundos, WebP)
@@ -785,6 +786,39 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (banco fora, `unsaved`) — mas são por POD e zeram no restart: sanidade, não medição.
   ⚠️ `_spawnPiece` ignora o `s.ok` do `_farSpot` há sempre; em vez de consertar às cegas, `metrics.spawn`
   MEDE. Baseline tirada com o spawn quebrado mede o bug, não o jogo.
+- **VIDA, SESSÃO E VISITA SÃO TRÊS COISAS, E O JOGO MEDIA A VIDA NAS TRÊS** (`portal/sessao.js`,
+  `gp.entrouTick`, o CTE da `visita` em `repos/analytics.js`): a Poki mandou testadores, o `/admin` AO
+  VIVO mostrava todos retidos jogando, e o relatório DELES dizia que saíram em poucos segundos. Não era
+  a tela de morte informando errado — era a MORTE, tratada como fim de sessão em TRÊS lugares
+  independentes, e nos três a causa é a mesma: `matches` guarda uma linha por VIDA, e num agar a vida
+  dura 15–40 s.
+  ⚠️ **(1) O funil da Poki.** `survival/60s|120s|180s` abria em `onConnection` e fechava em `onDead` com
+  o `durationS` da vida. Como renascer virou `{t:"respawn"}` na MESMA conexão, o `start` nunca mais
+  reabria: 3 aberturas para N×3 fechamentos, quase todos `fail`. Hoje é `session/60s|180s|300s`, o
+  relógio é da CARGA DA PÁGINA, corre enquanto o jogador está RETIDO (`game`/`dead`/`round` — tela de
+  morte e pódio contam, ele está na sala) e só existe `complete`: num funil de progressão quem não
+  completou É a evasão, e era o `fail` explícito que enchia o painel de abandono que não existiu.
+  ⚠️ **(2) O `durouS` do painel AO VIVO** saía de `gp.joinedTick`, que `Sim.revive` zera — "saiu · 40s"
+  de quem ficou vinte minutos em quinze vidas. Nasceu `gp.entrouTick`, escrito no nascimento e nunca
+  mais: `joinedTick` continua sendo a VIDA (é o `matches.duration_s`, e os quatro consumidores dele não
+  mudaram) e `entrouTick` é a VISITA. ⚠️ O aviso em cima de `Sim.revive` manda zerar todo campo de `_mk`
+  que seja por vida — `entrouTick` é o CONTRAEXEMPLO, está escrito lá, e `server/test/visita.test.js`
+  existe porque quem seguir a instrução ao pé da letra refaz o bug sem nada ficar vermelho.
+  ⚠️ **(3) A visita da tela de Retenção** era `sum(duration_s)`: quem morria aos 30 s, assistia 4 min e
+  morria aos 30 s aparecia como UM MINUTO — o tempo entre as vidas era usado para AGRUPAR e nunca
+  somado, ou seja a tela descontava justamente a parte da sessão em que a pessoa está lá olhando. Agora
+  há dois relógios lado a lado (`s_visita` de parede e `s_jogo`), e a distância entre eles é a tela de
+  morte, o pódio e o anúncio. ⚠️ O fim de uma vida é `started_at + duration_s`, **nunca `ended_at`**:
+  aquele é o `now()` do INSERT e a fila tem backoff de até ~5 min, o que encolhia o intervalo percebido
+  e grudava visitas separadas. ⚠️ E `GREATEST(..., sum(duration_s))` porque duas abas da mesma conta
+  jogam ao mesmo tempo — sem ele a tela mostra visita mais curta que o tempo jogado, e ninguém explica.
+  ⚠️ **O join RECUSADO não é uma vida** (`hooks.dropSession`): a sessão nasce em `onPlayerJoin`, antes de
+  se saber a sala, e os becos do `wsServer` fechavam com `onMatchEnd({durationMs:0})` — linha real em
+  `matches` que ainda somava 1 no `games` do perfil, e que virava "a primeira vida" do novato porque as
+  consultas tomam a de menor `id`. Duas saídas de lá não fechavam NADA (o socket que cai esperando e o
+  `catch`), e essas eram piores: a sessão ficava no Map até o `onShutdown` gravá-la com a duração do
+  PROCESSO INTEIRO. Hoje há uma variável `aberta` no escopo do join e um descarte único no `finally`,
+  zerada no `room.join` — as sete saídas ficam cobertas por construção, e não por lembrança.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade
@@ -1217,9 +1251,19 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   todos, ou seja o revisor deles levava anúncio antes de ver um frame. Quem declara é o ADAPTADOR
   (`semPreroll` em `crazy.js`), não uma flag de build: a regra é do SDK e mora junto dele. E o par
   start/stop estava quebrado onde ninguém olha — só `leaveGame()` chamava `jogoParou()`, então respawn e
-  fim de rodada passavam por `play()` e o SDK recebia N × start para 1 × stop numa sessão normal. O
-  estado (`emJogo`) é da FACHADA e o `anuncio()` fecha e reabre o gameplay em volta do anúncio, então
-  nenhum chamador precisa lembrar disso.
+  fim de rodada passavam por `play()` e o SDK recebia N × start para 1 × stop numa sessão normal.
+  ⚠️ **O CONSERTO DE ENTÃO ERA MEIO CONSERTO, e o texto que ficou aqui ("o `anuncio()` fecha e REABRE o
+  gameplay em volta do anúncio, então nenhum chamador precisa lembrar disso") descrevia exatamente o
+  buraco que sobrou.** Fechar em volta do anúncio conserta o anúncio; a MORTE, a PAUSA e o fim de rodada
+  continuavam sem `gameplayStop` nenhum, ou seja a tela de morte inteira contava como jogo ATIVO. Hoje o
+  ciclo é derivado do STORE (`portal/sessao.js`, o molde que `bb.js` já usava para a Bounty Board e que
+  valia só no site), e `play`/`respawnAqui`/`leaveGame` **não chamam mais nada de ciclo** — uma segunda
+  verdade sobre "estou jogando" foi o que deixou a morte de fora. Na fachada sobrou o que é do anúncio:
+  `emJogo` virou o trinco do ESCRITOR ÚNICO (é ele que garante que o SDK nunca vê start-após-start nem
+  stop-após-stop, item que os dois portais cobram por escrito) e `emAnuncio` é o portão do commercial
+  break — um start que chegue no meio dele é ADIADO até o `finally`, nunca descartado, senão o jogo
+  seguiria com o gameplay fechado para sempre. Quem reabre é a tela virar `game`, que acontece DEPOIS
+  do `await` do anúncio: reabrir na fachada devolvia o `gameplayStart` com a tela de morte no ar.
   ⚠️ **O MUDO DO SITE DELES SÓ DURAVA ATÉ O PRIMEIRO ANÚNCIO.** `crazy.js` re-mutava dentro do próprio
   callback de fim (`if(mudo)silenciaAnuncio(true)`) e o `finally` da fachada chamava `avisa(aoRetomar)`
   DEPOIS, desmutando por cima — quem tinha desligado o som na página da CrazyGames voltava a ouvir o

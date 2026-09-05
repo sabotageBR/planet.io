@@ -297,10 +297,16 @@ function Retencao({ erro }) {
       <select value={days} onChange={e => setDays(+e.target.value)}>
         {[7, 14, 30, 90].map(n => <option key={n} value={n}>{n} dias</option>)}</select></div>
 
-    <h3>A visita <small className="ad-dim">a resposta à pergunta dos 3 minutos — vidas agrupadas por sessão</small></h3>
+    {/* ⚠️ A visita é RELÓGIO DE PAREDE, e o subtítulo diz isso porque já não foi: ela era `sum(duration_s)`,
+        soma de VIDAS, e descontava justamente o tempo em que a pessoa está na tela de morte olhando o jogo
+        — quem morria aos 30 s, assistia 4 min e morria aos 30 s aparecia aqui como um minuto. As duas
+        medidas ficam lado a lado de propósito: a distância entre elas é a tela de morte, o pódio e o
+        anúncio, e é ela que diz se o problema é a partida ou o que vem depois dela. */}
+    <h3>A visita <small className="ad-dim">a resposta à pergunta dos 3 minutos — quanto a pessoa FICA, não quanto ela joga</small></h3>
     {v && v.visitas ? <div className="ad-kpis">
       <div className="kpi"><b>{v.pct_3min}%</b><span>passam de 3 min</span></div>
       <div className="kpi"><b>{tempo(v.mediana_s)}</b><span>mediana da visita</span></div>
+      <div className="kpi"><b>{tempo(v.mediana_jogo_s)}</b><span>disso, em partida</span></div>
       <div className="kpi"><b>{num(v.visitas)}</b><span>visitas</span></div>
       <div className="kpi"><b>{v.vidas_por_visita}</b><span>vidas por visita</span></div>
     </div> : <div className="vazio">nenhuma visita no período</div>}

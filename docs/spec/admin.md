@@ -126,6 +126,14 @@ e continua sendo. `server/test/feed.test.js` trava isso.
 (se é conta, quanto durou, quantos abates, e a causa — que distingue kick de desistência). Publicar os dois
 fazia cada entrada virar duas linhas, uma delas mais pobre. Visto na primeira medição com jogadores reais.
 
+⚠️ **O `durouS` do `saiu` é a VISITA; o do `morte` é a VIDA.** São dois relógios e a diferença é o
+respawn: `Sim.revive` reinicia `gp.joinedTick` (que é o `matches.duration_s`, uma linha por vida), então
+enquanto o painel media por ele a linha dizia "Fulano saiu · 40s" de quem tinha passado vinte minutos na
+sala em quinze vidas — e era esse o número que se usava para conferir o relatório de um portal. Quem
+responde "há quanto tempo esta PESSOA está aqui" é `gp.entrouTick`, escrito no nascimento e nunca mais.
+No Battle Royale ele inclui a espera do lobby, de propósito: o jogador está na sala desde lá.
+`server/test/visita.test.js` trava os dois sentidos.
+
 ⚠️ **A guarda `_voltouAgora` não vale aqui.** No feed ela impede que o respawn vire "saiu/entrou"; no painel
 o administrador QUER ver o re-join — alguém entrando e saindo em laço é o padrão que ele procura.
 

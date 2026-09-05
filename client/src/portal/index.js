@@ -42,7 +42,12 @@ const carrega = () => {
   return null;   // itch.io e qualquer id desconhecido: o jogo roda igual, sem anúncio
 };
 
-let sdk = null, ultimoAd = 0, emJogo = false, pediuCarregou = false;
+// `emJogo` é o TRINCO DO ESCRITOR ÚNICO — "a última coisa que o SDK ouviu foi um start" —, e é ele que
+// garante, por construção, que nunca sai start-após-start nem stop-após-stop (item que a Poki cobra por
+// escrito). `emAnuncio` é o portão do commercial break: "It should not be possible to fire any SDK events
+// during midrolls", também na letra deles. Ver `jogoComecou` lá embaixo para o que acontece com um start
+// que chega no meio de um anúncio — ele é ADIADO, nunca descartado.
+let sdk = null, ultimoAd = 0, emJogo = false, emAnuncio = false, comecouNoAd = false, pediuCarregou = false;
 const aoPausar = [], aoRetomar = [];
 const avisa = lista => { for (const cb of lista) { try { cb(); } catch { /* um ouvinte quebrado não derruba os outros */ } } };
 
@@ -96,12 +101,18 @@ export const portal = {
     const agora = Date.now();
     if (tipo !== "preroll" && agora - ultimoAd < P.MIN_AD_MS) return;
     ultimoAd = agora;
-    // ⚠️ O gameplay TEM que fechar antes de pedir anúncio, e reabrir depois. `gameplayStart` sem
-    // `gameplayStop` é item de QA da CrazyGames, e o pareamento estava quebrado onde ninguém olha: só
-    // `leaveGame()` chamava `jogoParou()`, então respawn e fim de rodada passavam direto por `play()` e o
-    // SDK recebia N × start para 1 × stop numa sessão normal. Resolver aqui, e não em cada chamador,
-    // porque `play()` é uma porta só e o estado é DESTA fachada.
-    const voltar = emJogo; if (voltar) await portal.jogoParou();
+    // ⚠️ O gameplay TEM que fechar antes de pedir anúncio. `gameplayStart` sem `gameplayStop` é item de
+    // QA da CrazyGames e requisito escrito da Poki, e o pareamento ficou quebrado por muito tempo: só
+    // `leaveGame()` chamava `jogoParou()`, então a MORTE, a pausa e o fim de rodada nunca fechavam nada —
+    // a tela de morte inteira contava como jogo ativo no painel deles. Isto aqui fechava metade do
+    // buraco (o anúncio) e escondia a outra metade; quem a fechou foi `portal/sessao.js`, derivando os
+    // dois eventos do STORE. Aqui sobrou o que é mesmo do anúncio: fechar antes e não deixar nada sair
+    // durante — reabrir é do store, porque é ele que sabe se já há tela de jogo de volta.
+    // ⚠️ INCONDICIONAL, e sem guardar `voltar`. Quem REABRE o gameplay deixou de ser esta função e passou
+    // a ser `portal/sessao.js`, pela escrita de `screen:"game"` que `play()`/`respawnAqui()` fazem DEPOIS
+    // do `await` daqui — reabrir aqui devolveria o `gameplayStart` com a tela de morte ainda no ar.
+    emAnuncio = true; comecouNoAd = false;
+    await portal.jogoParou();
     avisa(aoPausar);
     try { await prazo(sdk.anuncio(tipo), P.AD_MS, null); }
     catch { /* sem preenchimento, bloqueado, o que for: joga do mesmo jeito */ }
@@ -113,7 +124,8 @@ export const portal = {
       // página deles voltava a ouvir o jogo, para sempre, depois do primeiro anúncio. Quem reaplica
       // estado de portal é o portal, e por último.
       if (sdk.reaplica) try { sdk.reaplica(); } catch { /**/ }
-      if (voltar) await portal.jogoComecou();
+      emAnuncio = false;
+      if (comecouNoAd) { comecouNoAd = false; await portal.jogoComecou(); }
     }
   },
   /**
@@ -126,7 +138,8 @@ export const portal = {
   async recompensa() {
     await pronto;
     if (!sdk || !sdk.recompensa) return false;
-    const voltar = emJogo; if (voltar) await portal.jogoParou();
+    emAnuncio = true; comecouNoAd = false;
+    await portal.jogoParou();
     avisa(aoPausar);
     let assistiu = false;
     try { assistiu = await prazo(sdk.recompensa(), P.AD_MS, false); }
@@ -134,7 +147,8 @@ export const portal = {
     finally {
       avisa(aoRetomar);
       if (sdk.reaplica) try { sdk.reaplica(); } catch { /**/ }
-      if (voltar) await portal.jogoComecou();
+      emAnuncio = false;
+      if (comecouNoAd) { comecouNoAd = false; await portal.jogoComecou(); }
     }
     return !!assistiu;
   },
@@ -145,8 +159,20 @@ export const portal = {
    * segundos depois do instante real — limitação do próprio SDK deles, que não aceita timestamp.
    */
   medir(categoria, oQue, acao) { pronto.then(() => { if (sdk && sdk.medir) try { sdk.medir(categoria, oQue, acao); } catch { /**/ } }); },
-  /** Começou/parou de jogar de fato (o SDK usa isso para escolher a hora do anúncio e medir sessão). */
-  async jogoComecou() { await pronto; if (emJogo) return; emJogo = true;
+  /**
+   * Começou/parou de jogar de fato. Quem decide isto é `portal/sessao.js`, olhando o store — e não os
+   * chamadores, que é o que deixava a MORTE sem `gameplayStop` (o único fechamento era `leaveGame`).
+   *
+   * ⚠️ ADIA, NUNCA DESCARTA. Um start que chega durante o commercial break não pode ir ao SDK ("it should
+   *    not be possible to fire any SDK events during midrolls"), mas descartá-lo deixaria o jogo rodando
+   *    com o gameplay fechado para sempre. `comecouNoAd` guarda o pedido e o `finally` do anúncio o solta.
+   *    Hoje isso é cinto de segurança — a tela só vira `game` DEPOIS do `await` do anúncio —, e é
+   *    justamente por isso que ele tem que existir: a garantia era de ORDEM, e ordem não é invariante.
+   * ⚠️ E as guardas ficam DEPOIS do `await pronto`. Movê-las para antes parece otimização e perde
+   *    transições: com duas trocas rápidas antes de o SDK existir, é a fila de microtasks que preserva a
+   *    ordem, e checar cedo faz a segunda decidir com o estado da primeira ainda por aplicar.
+   */
+  async jogoComecou() { await pronto; if (emAnuncio) { comecouNoAd = true; return; } if (emJogo) return; emJogo = true;
     if (sdk && sdk.jogoComecou) try { sdk.jogoComecou(); } catch { /**/ } },
   async jogoParou() { await pronto; if (!emJogo) return; emJogo = false;
     if (sdk && sdk.jogoParou) try { sdk.jogoParou(); } catch { /**/ } },
