@@ -46,9 +46,9 @@ function arena({seed=1,n=40,ticks=7200,zone=true,team=0,weapons=true,respawn=fal
       x:w.w/2+Math.cos(a)*ring,y:w.h/2+Math.sin(a)*ring});
     brains.push(new BotBrain(w,s,rng,emit));}
   const z=zone?createZone(0):null;if(z)w.setZone(z);
-  // escudo perdido: a QUEM atribuir. applyFire cobra um nível por puxão de gatilho e applySplit derruba o
-  // escudo inteiro de cada peça que divide — os dois com bySlot −1, então o evento não distingue. Quem
-  // distingue é a flag que o bot pediu NESTE tick.
+  // escudo perdido: a QUEM atribuir. applyFire cobra um nível por puxão de gatilho e applySplit cobra um
+  // nível de cada peça que divide — os dois com bySlot −1, então o evento não distingue. Quem distingue é
+  // a flag que o bot pediu NESTE tick. Conta a DIFERENÇA de níveis, então vale para os dois preços.
   const esc={split:0,fire:0,outro:0},shAntes=new Array(n).fill(0),ultima=new Map();
   const shield=s=>{const ps=w.players.get(s);if(!ps)return 0;let t=0;for(const p of ps.pieces)if(!p.dead)t+=p.shieldLv;return t;};
   const morte=[],gas=new Map(),vivo=new Map();
@@ -224,15 +224,21 @@ test("bocado: o pedaço solto de um gigante é presa — e o gigante inteiro nã
 test("arena Livre: o salto virou ataque de verdade, e o escudo não vaza mais no gatilho", ()=>{
   // ⚠️ A arena nasceu Battle Royale (weapons+zone) e o modo Livre — o que o pedido citou — nunca era medido.
   // Aqui vai o Livre de verdade: sem zona, sem armas especiais e COM respawn de bot, como Sim._died faz.
-  const rs=[11,12,13].map(seed=>arena({seed,n:ROOM.BOTS,zone:false,weapons:false,respawn:true}));
+  // ⚠️ DOZE sementes, não três, e o motivo é medição: o salto é um evento RARO (média 6,8 por sala de 24
+  // bots) e o total de UMA sala vai de **1 a 15** — com três, este assert é uma loteria que reprova código
+  // correto. Foi o que aconteceu quando o split passou a cobrar UM nível de escudo em vez do escudo
+  // inteiro: as três sementes caíram de 21 para 14 e acusaram uma regressão que não existe — nas doze, os
+  // dois lados dão exatamente **81 saltos**, e o tempo em modo hunt nem se mexe (1351 contra 1357). Doze
+  // arenas custam 8,4 s.
+  const rs=[11,12,13,14,15,16,17,18,19,20,21,22].map(seed=>arena({seed,n:ROOM.BOTS,zone:false,weapons:false,respawn:true}));
   const soma=f=>rs.reduce((a,r)=>a+f(r),0);
   const split=soma(r=>r.uso.split),fire=soma(r=>r.uso.fire);
   // piso do denominador ANTES de qualquer razão: razão sobre amostra minúscula é o que derrubou o assert
-  // removido lá em cima. Meio salto por bot é ~0,25 % das decisões de uma partida.
-  // O piso fica ENTRE os dois cérebros, não colado no medido: nesta configuração o cérebro anterior dava ~5
-  // saltos e este dá 34. Um quarto de salto por bot é 3,6× o de lá e 1,9× abaixo daqui — larga o bastante
-  // para o ruído da arena e apertado o bastante para acusar a volta de um veto no salto.
-  assert.ok(split>=rs.length*ROOM.BOTS*.25,`só ${split} saltos em ${rs.length} salas de ${ROOM.BOTS}: o bot voltou a não atacar dividindo`);
+  // removido lá em cima.
+  // O piso fica ENTRE os dois cérebros, não colado no medido: o cérebro anterior dava ~1,7 saltos por sala
+  // (~20 aqui) e este dá 81. .15 por bot é 2,2× o de lá e 1,9× abaixo daqui — larga o bastante para o
+  // ruído da arena, que é grande, e apertada o bastante para acusar a volta de um veto no salto.
+  assert.ok(split>=rs.length*ROOM.BOTS*.15,`só ${split} saltos em ${rs.length} salas de ${ROOM.BOTS}: o bot voltou a não atacar dividindo`);
   assert.ok(soma(r=>r.splitEat)>0,"nenhum abate depois de um salto: está saltando à toa");
   assert.ok(fire/split<12,`${(fire/split).toFixed(1)} mísseis por salto — o míssil voltou a ser a única coisa que o bot faz`);
   // ESTRUTURAL, não calibrado: applyFire só cobra escudo quando o tiro NÃO é interceptação, ou seja todo

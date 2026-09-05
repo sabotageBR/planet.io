@@ -118,6 +118,9 @@ export const TUNABLES=[
   // ⚠️ Afastar custa ao QUADRADO: peça, asteroide, estrela e míssil vêm pela visão INTEIRA do snapshot, sem
   // teto de contagem (só a comida tem os dois tetos). Mexer com o `?stats` aberto numa sala cheia.
   num('camera','CAM.K','Afastamento global da câmera (1 = padrão)','×','wire',.5,2,.05,CAM,'K'),
+  // Só entra quando a tela é mais alta que larga (celular em pé) — ver o comentário de CAM.PORTRAIT_K em
+  // constants.js. 'wire' pelo mesmo motivo de CAM.K: quem desenha é o cliente.
+  num('camera','CAM.PORTRAIT_K','Afastamento extra da câmera no celular em pé (1 = sem extra)','×','wire',1,1.5,.02,CAM,'PORTRAIT_K'),
   // Estas seis são o ORÇAMENTO da AOI, não o enquadramento: só o servidor as lê, então são 'server' puro.
   num('camera','CAM.AOI_FOOD_VIEW','Fatia do mundo que a AOI da comida cobre','fração','server',.15,1,.01,CAM,'AOI_FOOD_VIEW'),
   num('camera','NET.AOI_FOOD_MAX','Teto de grãos de comida por sessão','grãos','server',50,900,25,NET,'AOI_FOOD_MAX'),

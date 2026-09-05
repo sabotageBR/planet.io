@@ -640,7 +640,7 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:316.2278,MAGNET_RANGE:5.5,MAGNET_RA
 // cometa/estrela (comida pesada) andam a MAGNET_HEAVY disso; a estrela do mundo se arrasta a MAGNET_STAR (é um perigo enorme vindo até você)
 // asteroides ganham MAGNET_AST px/s² escalados por R_MIN/r (rocha pequena vem voando, rocha grande se arrasta): o ímã
 // puxa a recompensa E o perigo — ligar o ímã perto de um cinturão é escolha, não acidente
-// escudo: não expira; nível 1..SHIELD_MAX_LEVEL (N mísseis para destruir), sobe 1 nível a cada SHIELD_EVOLVE_TICKS sem ser atingido; cai ao disparar/dividir
+// escudo: não expira; nível 1..SHIELD_MAX_LEVEL (N mísseis para destruir), sobe 1 nível a cada SHIELD_EVOLVE_TICKS sem ser atingido; −1 nível ao disparar e ao dividir
 // ímã e escudo valem POR PEÇA: só a parte que pegou o powerup se beneficia; ao fundir, os poderes das duas se juntam (escudo soma até o teto, ímã soma o tempo restante)
 export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1.3,HUNT_DIST:900,FOOD_DIST:520,MAX_PIECES:8,
   HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:420,AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
@@ -693,18 +693,27 @@ export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1
 // medido numa varredura de .16/.12/.09 em 24 arenas (137 → 176 → 246 saltos, com a massa média parada).
 // Exige `rb ≥ 0,30·ra`, ou seja o salto blindado só sai por uma presa que vale ≥ 9 % da minha massa — é o
 // "só de forma estratégica" do pedido, e não um veto.
-// ⚠️ O preço NÃO escala com o nível do escudo, embora `breakShield` leve o escudo inteiro e um nível 3
-// "valha" 47 % contra 19 % do nível 1. Foi tentado e é PIOR (246 → 113 saltos): com só ~0,5 míssil chegando
-// na janela, o 2º e o 3º nível quase nunca chegam a ser usados, então o valor ESPERADO é praticamente o
-// mesmo dos três — e cobrar pelo nível fecha o portão justo nos bots que sobreviveram o bastante para
-// chegar ao nível 3, que são exatamente os que têm tamanho para saltar.
+// ⚠️ O preço NÃO escala com o nível do escudo. Foi tentado e é PIOR (246 → 113 saltos): com só ~0,5 míssil
+// chegando na janela, o 2º e o 3º nível quase nunca chegam a ser usados, então o valor ESPERADO é
+// praticamente o mesmo dos três — e cobrar pelo nível fecha o portão justo nos bots que sobreviveram o
+// bastante para chegar ao nível 3, que são exatamente os que têm tamanho para saltar.
+// ⚠️ E O NÚMERO NÃO MUDOU QUANDO O SALTO PASSOU A LEVAR UM NÍVEL em vez do escudo inteiro (`applySplit`
+// chama `hitShield`). Em teoria devia: .09 é o valor esperado de PERDER A BLINDAGEM, e quem salta com
+// nível 2 ou 3 sai do salto ainda protegido — pelo mesmo Poisson(0,49) de cima o valor marginal do 2º
+// nível é ~1,7 % e o do 3º ~0,25 %, os dois ABAIXO do piso .04, que já cobre sozinho os 30 s dividido.
+// Cobrar só quando o salto ZERA o escudo (lv===1) foi ESCRITO e MEDIDO em 12 sementes da arena Livre:
+// **81 saltos com a correção e 81 sem ela** — zero. A oportunidade também não muda (1351 contra 1357
+// amostras em modo hunt), então o que decide o salto ali não é este número. Ficou o predicado simples.
+// ⚠️ E foi essa medição que mostrou que **3 sementes não medem nada** neste eixo: por semente o total vai
+// de 1 a 15 saltos, com média 6,8. Ver o piso de `bot.test.js`, que era loteria.
 // ⚠️ E ele só ficou calibrável depois de tapar o vazamento do gatilho (ver o tiro em bot.js): enquanto o bot
 // destruía o próprio escudo atirando, ele vivia desblindado e este número quase não era consultado.
 // SPLIT_GAIN_N (.6) encarece cada salto seguinte (já dividido, o segundo renova o relógio de fusão e me
 // expõe a predadores de 0,813·r).
 // ⚠️ Quem NÃO relaxou foi o veto do TIRO: `applyFire` cobra um nível por puxão de gatilho, e o bot destrói o
-// próprio escudo 92× no gatilho contra 1× no salto (medido). Os dois usos precisam de leituras DIFERENTES —
-// o tiro cobra da PRIMEIRA peça viva, o salto quebra o escudo de TODA peça com r ≥ SPLIT.MIN_R.
+// próprio escudo 92× no gatilho contra 1× no salto (medido quando o salto ainda levava os 3 níveis; com o
+// salto a 1 nível a razão em NÍVEIS é ainda maior). Os dois usos precisam de leituras DIFERENTES — o tiro
+// cobra da PRIMEIRA peça viva, o salto cobra um nível de TODA peça com r ≥ SPLIT.MIN_R.
 // SPLIT_OPEN (.62) substitui um `.35` cravado no código. `open` mede parede+gás+estrelas, e no Livre não há
 // zona num mapa de 9600²: o valor medido é 0,933, então aquele fator era 0,35 PERMANENTE. 0,62 preserva o
 // bônus de arco fechado (0,62→1,0 quando open→0), que continua valendo no Battle Royale.
@@ -1142,7 +1151,13 @@ export function botTypo(rng,txt){
   if(txt.length<3)return txt;
   const i=rng.int(0,txt.length-2);
   return rng.next()<.5?txt.slice(0,i)+txt[i]+txt.slice(i):txt.slice(0,i)+txt[i+1]+txt[i]+txt.slice(i+2);}
-export const CAM={BASE:64,EXP:.4,K:1,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,AOI_FOOD_VIEW:.44};
+export const CAM={BASE:64,EXP:.4,K:1,PORTRAIT_K:1.12,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,AOI_FOOD_VIEW:.44};
+// PORTRAIT_K: no celular EM PÉ a largura manda no `max(H/REF_H,W/REF_W)` só de raspão — a tela é estreita
+// e a proporção agar (mesma ÁREA de mundo em qualquer tela) mostra pouco mundo na HORIZONTAL, mesmo com
+// K=1. É um segundo divisor, só ativo quando W<H (retrato: celular em pé, nunca desktop nem paisagem), que
+// afasta um POUCO a câmera nesse caso — 1.12 é ~11% a menos de escala, deliberadamente pequeno (o pedido
+// era "diminuir só um pouco"). Some no MESMO lugar de CAM.K (antes do piso do mundo), pelo mesmo motivo:
+// enquadramento de jogo não pode mostrar além do mapa.
 // K é o ÚNICO botão de zoom do /admin, e é multiplicador global: >1 afasta a câmera de todo mundo, <1
 // aproxima. Um botão e não seis porque os outros candidatos são armadilhas — REF_W/REF_H carregam a regra
 // anti-widescreen do agar ("a mesma área de mundo em qualquer tela", travada em teste) e ZOOM.MIN/ZOOM.K

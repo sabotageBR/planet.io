@@ -148,7 +148,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   míssil desvia asteroide = DEFLECT); ímã (com teto de tamanho `POWERUP.MAGNET_MAX_R`: o alcance é r·MAGNET_RANGE e num planetão sugava a tela inteira) suga comida e ejetados
   (comida movida recebe UPDATE; cometa/estrela mais devagar; **asteroides também**, escalados por R_MIN/r; a estrela-perigo se arrasta até você); escudo por níveis 1–3 (o texto que sobe ao pegar diz **"ESCUDO 1/2/3"** e só sai quando o nível SUBIU DE VERDADE — comer um 🛡️ no teto continua com anel e som, porque ele reinicia o timer de evolução, mas "ESCUDO 3" ali não dizia mais nada; quem carrega isso é o bit 8 do `extra` do `SHIELD_UP`, protocolo 15 — e o texto mora no i18n (`fx.shield`), não cravado nos três temas; não "NÍVEL": com o nível do JOGADOR
   existindo e tendo badge próprio, "NÍVEL 2!" lia como se ele tivesse subido de nível; não expira,
-  evolui sem ser atingido, míssil/tiro/batida forte de asteroide tiram um nível, dividir derruba inteiro; contra quem pode engolir só
+  evolui sem ser atingido, míssil/tiro/batida forte de asteroide/**dividir** tiram um nível cada; contra quem pode engolir só
   segura a 1ª batida — ela derruba o escudo inteiro e quica, depois o maior come); fusão por par (atração só perto, sem puxão ao centróide).
   Regras novas = `rules.js` + `predict.js` (peças próprias) + tradução de eventos em `Sim._consume` E `LocalServer.step`.
 - **Movimento = o do agar.io: DOIS canais, e o jogador não tem velocidade** (`physics/integrate.js`).
@@ -1718,7 +1718,7 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   saltar). ⚠️ Dois defeitos mudos saíram junto: `SPLIT.MIN_R` **nunca era checado** (a flag saía, queimava
   `splitCdUntil` e não nascia peça) e `c.n<MAX_PIECES` era o guarda errado, porque `applySplit` DOBRA as peças
   elegíveis. ⚠️ E a leitura de escudo virou UMA passada com TRÊS respostas, porque as regras são diferentes:
-  `applyFire` cobra um nível da PRIMEIRA peça viva, `applySplit` derruba o escudo INTEIRO de cada peça com
+  `applyFire` cobra um nível da PRIMEIRA peça viva, `applySplit` cobra um nível de cada peça com
   `r ≥ SPLIT.MIN_R`. ⚠️ **Testado e descartado** (medido, os dois PIORAM): segurar o ponteiro na presa durante
   os `BOT.JUMP_TICKS` do arremesso — `_approach` JÁ devolve a antecipação dentro do alcance do salto — e só
   apertar com a mira dentro de `SPLIT_CONE`, que raramente fecha antes de o `_plan` seguinte desarmar o

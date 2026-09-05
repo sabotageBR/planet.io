@@ -297,8 +297,13 @@ export class BotBrain{
     this.wantSplit=false;
     // ⚠️ UMA passada, TRÊS respostas — as duas decisões que dependem de escudo têm regras DIFERENTES, e ler
     // um booleano só para as duas estava errado nas duas pontas: `applyFire` cobra um nível da PRIMEIRA peça
-    // viva, enquanto `applySplit` quebra o escudo INTEIRO de CADA peça com r ≥ SPLIT.MIN_R (a peça pequena
-    // demais para dividir mantém o dela). `nSplit` é quantas peças de fato nascem.
+    // viva, enquanto `applySplit` cobra um nível de CADA peça com r ≥ SPLIT.MIN_R (a peça pequena demais
+    // para dividir não paga nada). `nSplit` é quantas peças de fato nascem.
+    // ⚠️ `lvSplit` guarda o MAIOR nível, mas o preço abaixo só olha se HÁ escudo. Desde que o split cobra um
+    // nível em vez do escudo inteiro isso SOBRECOBRA quem salta com 2 ou 3 (ele sai do salto ainda
+    // protegido), e a correção óbvia — cobrar só quando o salto ZERA (lv===1) — foi tentada e MEDIDA em 12
+    // sementes da arena Livre: 81 saltos com ela e 81 sem, ou seja nada. Ver A ECONOMIA DO SALTO em
+    // constants.js. Ficou o predicado simples; mexer nele pede uma medição que mostre diferença.
     let shieldFire=false,lvSplit=0,nSplit=0,primeira=true,sx=c.x,sy=c.y;
     for(let i=0;i<ps.pieces.length;i++){const q=ps.pieces[i];if(q.dead)continue;
       if(primeira){shieldFire=q.shieldLv>0;sx=q.x;sy=q.y;primeira=false;}
@@ -318,7 +323,8 @@ export class BotBrain{
         &&Math.hypot(oc.x-c.x,oc.y-c.y)<c.big+oc.big+SPLIT.DIST*1.4
         &&!this._thirdParty(oc.x,oc.y,c.big)
         &&rng.chance(sk.split*(BOT.HUNT.SPLIT_OPEN+(1-BOT.HUNT.SPLIT_OPEN)*(1-this.open))))this.wantSplit=true;}
-    // ⚠️ o veto do TIRO continua inteiro: é ele que segura o gasto de escudo no gatilho, que é 92× o do salto.
+    // ⚠️ o veto do TIRO continua inteiro: é ele que segura o gasto de escudo no gatilho, 92× o do salto (medido
+    // quando o salto ainda levava o escudo inteiro; hoje ele leva UM nível, então a distância só aumentou).
     if(!tudo||tick<this.fireAt||(shieldFire&&this.mode!=="flee")){this.wantWeapon=-1;this.wantFire=false;return;}
     // ── arma da situação (só quem tem mão para isso troca) ──
     if(rng.chance(sk.weapon)){const q=this._bestWeapon(ps,c);

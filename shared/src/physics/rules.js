@@ -1,6 +1,6 @@
 // ── REGRAS DO JOGO: engolir/quicar (o maior sempre acaba comendo; o escudo só segura a PRIMEIRA batida), comida e powerups POR PEÇA
 //    (ímã e escudo valem só para a parte que pegou o powerup; fundir junta os poderes — ver tryMergeOwn. Escudo por níveis:
-//    não expira, sobe de nível sem ser atingido, perde 1 nível por tiro/míssil/batida forte de asteroide e cai inteiro ao dividir),
+//    não expira, sobe de nível sem ser atingido, perde 1 nível por tiro/míssil/batida forte de asteroide e 1 nível ao dividir),
 //    estrelas (estilhaçam quem encosta — o escudo cai inteiro e segura —, apanham de míssil/partícula até rachar em várias,
 //    explodem na hora se levarem um tiro já inchando e terminam em supernova que estilhaça quem está no miolo),
 //    ejetados, asteroides (pop/lasca/alimentar/atirar),
@@ -716,11 +716,12 @@ export function asteroidMissile(w,a,m){
   a.vx+=ux*k;a.vy+=uy*k;m.dead=true;
   if(a.type>=0&&w.asteroids.length<w.astCap){w.queueAsteroid(a.type,ASTEROID.RESPAWN_TICKS);a.type=-1;}
   w.events.push({type:"DEFLECT",x:m.x,y:m.y,r:a.r,nx:ux,ny:uy,bySlot:m.owner});return true;}
-/** Escudo DESTA peça cai por completo: ela dividiu (bySlot −1) ou levou a batida de quem pode engoli-la. @param {World} w @param {Body} pc */
+/** Escudo DESTA peça cai por completo. Sobrou UM chamador: a rocha rápida demais (ASTEROID.SHIELD_VN), que atravessa como se não houvesse escudo — dividir e atirar cobram UM nível, por `hitShield`. @param {World} w @param {Body} pc */
 export function breakShield(w,pc,bySlot=-1,weapon=-1){pc.shieldLv=0;w.events.push({type:"SHIELD_BREAK",slot:pc.owner,x:pc.x,y:pc.y,r:pc.r,bySlot,weapon});}
 /**
- * O escudo DESTA peça perde UM nível e o timer de evolução dela reinicia: míssil inimigo, batida forte de asteroide ou
- * tiro do próprio dono (bySlot −1). Emite SHIELD_HIT enquanto sobra nível, SHIELD_BREAK quando zera. @param {World} w @param {Body} pc
+ * O escudo DESTA peça perde UM nível e o timer de evolução dela reinicia: míssil inimigo, batida forte de asteroide,
+ * tiro do próprio dono ou SALTO (os dois últimos com bySlot −1). Emite SHIELD_HIT enquanto sobra nível, SHIELD_BREAK
+ * quando zera. @param {World} w @param {Body} pc
  */
 export function hitShield(w,pc,bySlot=-1,nx=0,ny=0,weapon=-1){
   pc.shieldLv--;pc.shieldEvolveAt=w.tick+POWERUP.SHIELD_EVOLVE_TICKS;
@@ -731,8 +732,9 @@ export function hitShield(w,pc,bySlot=-1,nx=0,ny=0,weapon=-1){
 /**
  * Split: cada peça r ≥ SPLIT.MIN_R vira duas de massa/2 (r/√2, como no agar); o filho recebe um BOOST de
  * SPLIT.DIST px na direção do ponteiro, sem recuo no pai. A distância é ABSOLUTA e o boost sempre freia,
- * então o vão final é o mesmo do planeta inteiro à peça já dividida três vezes. O filho nasce **sem powerup** e a peça que dividiu perde o
- * escudo inteiro (o ímã ela mantém). Retorna quantas dividiu.
+ * então o vão final é o mesmo do planeta inteiro à peça já dividida três vezes. O filho nasce **sem powerup** e a peça que dividiu paga UM
+ * nível de escudo (o ímã ela mantém) — derrubar o escudo INTEIRO fazia do split um botão que o blindado nunca apertava, e o salto
+ * é o único fechador em campo aberto. O preço continua sendo por APERTO, e a metade arremessada sai descoberta. Retorna quantas dividiu.
  * @param {World} w @param {PlayerState} ps
  */
 export function applySplit(w,ps){
@@ -743,7 +745,7 @@ export function applySplit(w,ps){
     const q=w.newPiece(ps.slot,pc.x+ux*nr*SPLIT.OFFSET,pc.y+uy*nr*SPLIT.OFFSET,nr);
     q.vx=pc.vx;q.vy=pc.vy;addBoost(q,ux,uy,SPLIT.DIST);q.mergeAt=pc.mergeAt;count++;did++;
     w.events.push({type:"SPLIT",slot:ps.slot,pieceId:pc.id,childId:q.id,x:pc.x,y:pc.y,r:nr});
-    if(pc.shieldLv>0)breakShield(w,pc);}
+    if(pc.shieldLv>0)hitShield(w,pc,-1,ux,uy);}   // o salto custa UM nível, não o escudo inteiro: o rombo sai na direção do arremesso
   return did;}
 /**
  * Auto-split do agar.io: peça acima de PLAYER.MAX_R se reparte sozinha em n=⌊mass/MAX_R²⌋ filhos (em leque, cada um

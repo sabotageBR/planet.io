@@ -225,7 +225,7 @@ test("fusão: não há atração entre peças próprias (elas se juntam pelo pon
   assert.ok(Math.hypot(a3.x-b3.x,a3.y-b3.y)>40,"sem cooldown vencido continuam separadas");});
 
 // 11. escudo por níveis
-test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nível, dividir derruba, escudado quica",()=>{
+test("escudo: não expira, evolui sem ser atingido, míssil, tiro e salto tiram um nível, escudado quica",()=>{
   const w=empty(30),pc=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);
   const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=1000;f.y=1000;w.moveFood(f);w.step();
   assert.equal(pc.shieldLv,1);assert.ok(w.events.some(e=>e.type==="SHIELD_UP"&&e.level===1&&e.up===true));
@@ -248,13 +248,19 @@ test("escudo: não expira, evolui sem ser atingido, míssil e tiro tiram um nív
   assert.ok(p0.shieldEvolveAt<1e9,"timer de evolução reiniciado");assert.ok(!w3.events.some(e=>e.type==="BOOM"));
   w3.requestFire(1);let brk=null;for(let t=0;t<60&&!brk;t++){w3.step();brk=w3.events.find(e=>e.type==="SHIELD_BREAK")||null;}
   assert.ok(brk&&brk.slot===0&&brk.bySlot===1,"segundo míssil destrói");assert.equal(p0.shieldLv,0);assert.equal(p0.r,40);
-  // cada tiro do dono custa UM nível (sem munição não custa nada); dividir derruba o escudo inteiro
+  // cada tiro do dono custa UM nível (sem munição não custa nada); dividir também: derrubar o escudo INTEIRO fazia do split um botão que o blindado nunca apertava
   const w4=empty(32),q=w4.addPlayer(0,{x:1000,y:1000,r:90,missiles:0}),ps4=w4.players.get(0);w4.setTarget(0,1500,1000);q.shieldLv=2;q.shieldEvolveAt=1e9;
   arma(w4);w4.requestFire(0);w4.step();assert.equal(q.shieldLv,2,"sem munição não custa escudo");
   ps4.ammo[0]=2;w4.requestFire(0);w4.step();assert.equal(q.shieldLv,1,"1º tiro: −1 nível");assert.ok(w4.events.some(e=>e.type==="SHIELD_HIT"&&e.bySlot===-1));
   w4.requestFire(0);w4.step();assert.equal(q.shieldLv,0,"2º tiro: zera");assert.ok(w4.events.some(e=>e.type==="SHIELD_BREAK"&&e.bySlot===-1));
-  q.shieldLv=3;q.shieldEvolveAt=1e9;w4.requestSplit(0);w4.step();assert.equal(q.shieldLv,0,"dividir derruba o escudo da peça inteiro");
+  q.shieldLv=3;q.shieldEvolveAt=1e9;w4.requestSplit(0);w4.step();assert.equal(q.shieldLv,2,"dividir custa UM nível, não o escudo inteiro");
+  const hs=w4.events.find(e=>e.type==="SHIELD_HIT"&&e.bySlot===-1&&e.level===2);
+  assert.ok(hs,"sai como SHIELD_HIT enquanto sobra nível");assert.ok(Math.hypot(hs.nx,hs.ny)>.9,"com o rombo na direção do arremesso, não no centro da peça");
+  assert.ok(q.shieldEvolveAt<1e9,"e o relógio de evolução reinicia, como em toda perda de nível");
   assert.equal(w4.piecesOf(0).length,2);assert.equal(w4.piecesOf(0)[1].shieldLv,0,"a filha nasce sem powerup");
+  for(let t=0;t<SPLIT.COOLDOWN_TICKS;t++)w4.step();   // splitReq é consumido TODO tick (world.js): pedir de novo só depois do cooldown
+  q.shieldLv=1;w4.requestSplit(0);w4.step();
+  assert.equal(q.shieldLv,0,"o último nível zera");assert.ok(w4.events.some(e=>e.type==="SHIELD_BREAK"&&e.bySlot===-1),"e aí sim SHIELD_BREAK");
   // ── TIRO DEFENSIVO: sob mira, o gatilho NÃO cobra escudo ──
   // O custo era cobrado antes de o jogo saber que tiro ia sair, então quem estava sob mira pagava duas
   // vezes pelo mesmo míssil: perdia o escudo justo para poder se defender dele.
@@ -909,7 +915,11 @@ test("câmera: zoom = min(64/ΣR,1)^0.4 × resolução — soma dos raios, potê
   const area=(w,h)=>{const s=zoomFor(300,w,h);return[w/s,h/s];};
   const [aw,ah]=area(1920,1080),[bw,bh]=area(1280,720),[cw,ch]=area(1080,1920);
   assert.ok(Math.abs(aw-bw)<1e-6&&Math.abs(ah-bh)<1e-6,"tela menor mostra o mesmo mundo");
-  assert.ok(Math.abs(ch-ah)<1e-6,"retrato: a MAIOR dimensão da tela mostra o mesmo que a maior da paisagem");
+  // Sem CAM.PORTRAIT_K a regra seria "a MAIOR dimensão da tela mostra o mesmo que a maior da paisagem"
+  // (ch===ah). Ele existe justamente para QUEBRAR essa simetria um pouco: no celular EM PÉ (W<H) a largura
+  // é o eixo apertado e a fórmula mostrava pouco mundo demais mesmo com CAM.K=1 — daí o divisor extra, só
+  // ativo em retrato, que multiplica a área visível por CAM.PORTRAIT_K.
+  assert.ok(Math.abs(ch-ah*CAM.PORTRAIT_K)<1e-6,"retrato mostra CAM.PORTRAIT_K× mais mundo na maior dimensão que a paisagem");
   assert.ok(cw<aw,"e a menor mostra menos — ninguém ganha visão por esticar a janela");
   // a CÂMERA é livre (piso = mostrar o mundo inteiro): o gigante precisa afastar para ver as próprias peças
   const zf=zoomFor(1e6,W,H);

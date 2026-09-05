@@ -36,8 +36,8 @@ http/peers.js   fetchPeerRooms (lista de salas) e askPeers (o lobby de equipe do
 flags one-shot: `SPLIT`/`EJECT`/`FIRE` executadas uma vez por seq nova (o cliente repete a flag até o ack — o servidor
 ignora repetições porque só processa seq > lastSeq); `EJECT_HOLD` liga/desliga repetição (a cada EJECT.HOLD_TICKS).
 Cooldowns só no servidor (`World.requestSplit/Eject/Fire` já checam). Rate limit: NET.RATE_INPUTS/s, burst NET.RATE_BURST.
-`FIRE` custa **um nível** do escudo da peça que atira (a 1ª viva; SHIELD_HIT, 0 → SHIELD_BREAK) e `SPLIT` derruba o escudo inteiro
-**da peça que dividiu**. Com `AIM` (o jogador segurou o botão) o míssil **trava na bolinha mais próxima do PONTEIRO** —
+`FIRE` custa **um nível** do escudo da peça que atira (a 1ª viva; SHIELD_HIT, 0 → SHIELD_BREAK) e `SPLIT` custa **um nível**
+**de cada peça que dividiu** (mesmo caminho, `hitShield`, com o rombo na direção do arremesso; a filha nasce sem powerup). Com `AIM` (o jogador segurou o botão) o míssil **trava na bolinha mais próxima do PONTEIRO** —
 peso `aimScore` = distância do cursor à BORDA dela (bola grande é mais fácil de agarrar), entre as que estão a até AIM_RANGE de
 quem atira e a menos de AIM_PICK do cursor: peça de outro dono (`type 0`, alvo = slot), míssil inimigo, asteroide ou estrela
 (`type 1`, alvo = id) — e só sai reto com o cursor no vazio. Era um CONE de ±AIM_CONE em volta da flecha escolhendo o mais próximo
@@ -56,7 +56,9 @@ este slot a < MISSILE.INTERCEPT_DIST e se aproximando (interceptação, `type 1`
   nível a cada SHIELD_EVOLVE_TICKS sem a peça ser atingida (SHIELD_UP). Míssil inimigo explode no escudo sem tirar massa e tira 1 nível (SHIELD_HIT;
   0 → SHIELD_BREAK) — é contra míssil que o escudo serve. **A regra do maior comer o menor prevalece**: a primeira batida de quem
   pode engolir derruba o escudo inteiro (qualquer nível) e quica com E_SHIELD (chance de fuga); da batida seguinte em diante come
-  normalmente. Disparar tira um nível e dividir derruba o escudo daquela peça. Bots com escudo (o da peça que atira) não atiram nem dividem.
+  normalmente. Disparar e dividir tiram **um nível** cada — derrubar o escudo inteiro no split fazia dele um botão que o jogador
+  blindado nunca apertava, e o salto é o único fechador em campo aberto. Bot com escudo na peça que atira não atira; o salto é
+  PREÇO e não veto (ver A ECONOMIA DO SALTO em constants.js).
 - **Fusão**: por par de peças do mesmo dono — separação enquanto uma não pode fundir; quando ambas podem, atração só a
   separação SÓ posicional (sem atração entre peças próprias); merge pareado a d < max(r)·MERGE.DIST. A peça que fica herda o
   melhor powerup das duas (ver acima).

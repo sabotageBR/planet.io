@@ -20,7 +20,12 @@ export function zoomFor(sumR,W,H,mult=1,manual=1){
   // CAM.K é o botão do /admin (tunable 'wire'): 1 = a câmera de sempre, >1 afasta, <1 aproxima. Ele entra
   // ANTES do piso, junto do powerup, porque é enquadramento de JOGO e não pode mostrar além do mapa — a
   // roda, que é escolha do jogador, continua vindo depois.
-  const z=Math.pow(k,CAM.EXP)*Math.max(H/CAM.REF_H,W/CAM.REF_W)/((mult>1?mult:1)*(CAM.K>0?CAM.K:1));
+  // CAM.PORTRAIT_K é o MESMO botão, mas só quando a tela é mais alta que larga (celular em pé): ali a
+  // largura é o eixo apertado e a fórmula mostra menos mundo do que em qualquer outra proporção. `W<H` é
+  // aritmética pura, sem depender do `data-mode` da UI — servidor e cliente recebem o mesmo par (W,H) no
+  // `{t:"view"}`, então os dois lados concordam sem precisar de um flag novo no fio.
+  const pk=(W<H&&CAM.PORTRAIT_K>0)?CAM.PORTRAIT_K:1;
+  const z=Math.pow(k,CAM.EXP)*Math.max(H/CAM.REF_H,W/CAM.REF_W)/((mult>1?mult:1)*(CAM.K>0?CAM.K:1)*pk);
   const zmin=Math.max(W/WORLD.w,H/WORLD.h);   // piso: mostrar o mundo inteiro. O teto de custo é da AOI (aoiScaleFood), não da câmera
   const zp=z<zmin?zmin:z;
   if(!(manual>0)||manual===1)return zp;
