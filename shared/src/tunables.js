@@ -171,9 +171,11 @@ export const TUNABLES=[
   // ⚠️ Teto de ENTRADA, nunca de permanência: baixá-los não tira ninguém de sala nenhuma, só muda para
   // onde vai o PRÓXIMO. E `ROOM.SOFT` acima de `ROOM.MAX` é inerte (o teto duro morde primeiro).
   num('sala','ROOM.SOFT','Jogadores por sala antes de o automático abrir outra','jogadores','server',2,60,1,ROOM,'SOFT'),
-  // Em PLANETAS (humanos + preenchimentos) porque é isso que o laço de 60 Hz paga: contar só humanos
-  // deixaria o lobby de Battle Royale com 2 pessoas e 48 bots parecer uma sala vazia.
-  num('sala','ROOM.SHARD_SOFT','Planetas por shard antes de o automático mandar para outro','planetas','server',10,200,5,ROOM,'SHARD_SOFT'),
+  // Na unidade "um jogador humano": a conta soma a sessão (1), o preenchimento (`ROOM.CUSTO_BOT`) e a
+  // sala em si (`ROOM.CUSTO_SALA`), que são as três coisas que custam — e não custam igual (a medição
+  // está em constants.js). Contar só humanos deixaria o lobby de BR com 2 pessoas e 48 bots parecer uma
+  // sala vazia; contar bot como planeta inteiro faria o pod recusar gente que ele aguenta.
+  num('sala','ROOM.SHARD_SOFT','Carga por shard antes de o automático mandar para outro','jogadores','server',10,200,5,ROOM,'SHARD_SOFT'),
   // ── INATIVIDADE ──
   // Quem deixa a aba aberta ocupa vaga, vira comida de graça e polui o placar e o kill feed de toda sala por
   // onde passa — e, antes disto, renascia SOZINHO a cada 5 s, para sempre. Os três relógios da sessão estão

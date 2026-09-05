@@ -17,13 +17,15 @@
 import {ROOM} from '@warspace/shared/constants.js';
 
 /**
- * Planetas por shard, somando TODAS as salas dele: o custo é do PROCESSO, não da sala — e são os
- * PREENCHIMENTOS junto, porque o laço de 60 Hz não distingue quem está atrás do planeta. Contar só
- * humanos deixaria passar o pior caso: o lobby de Battle Royale com 2 pessoas e 48 preenchimentos, que
- * custa uma sala cheia e apareceria como 2.
+ * A carga de cada shard, na unidade "um jogador humano" (ver `ROOM.CUSTO_*` em constants, com a medição
+ * de onde os pesos saíram). Somam-se as TRÊS coisas que custam, porque elas não custam igual: a SESSÃO
+ * (que paga o snapshot por AOI), o PREENCHIMENTO (cérebro e física, sem rede) e a SALA em si (a grade da
+ * comida e o resto do `World.step`, que rodam mesmo com ela vazia).
+ * ⚠️ É do PROCESSO, não da sala: o laço de 60 Hz percorre todas as salas do pod, e é o pod que satura.
  */
 export function cargaPorShard(salas){const m=new Map();
-  for(const r of salas||[]){const s=r.shard|0;m.set(s,(m.get(s)||0)+(r.players|0)+(r.bots|0));}return m;}
+  for(const r of salas||[]){const s=r.shard|0;
+    m.set(s,(m.get(s)||0)+(r.players|0)+(r.bots|0)*ROOM.CUSTO_BOT+ROOM.CUSTO_SALA);}return m;}
 
 /**
  * @param {any[]} salas lista agregada (local + irmãos)

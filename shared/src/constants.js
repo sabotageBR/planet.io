@@ -34,16 +34,25 @@ export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS
   // SOFT: quantos HUMANOS uma sala aceita pelo automático. Acima disso ela sai do pool e o jogador vai
   // para a próxima — ou para uma sala NOVA. Não fecha a porta: convite, código e equipe continuam
   // entrando até `MAX`, que é o que faz o amigo cair na sala do amigo mesmo cheia.
-  // SHARD_SOFT: quantos PLANETAS um shard aceita pelo automático, somando as salas dele — humanos MAIS
-  // preenchimentos. É o teto que mede o PROCESSO, e sem ele o SOFT sozinho não resolve nada: três salas
-  // de 20 no mesmo pod custam o mesmo que uma de 60. Conta os bots porque o `World.step` não distingue
-  // quem está atrás do planeta — e ignorá-los deixaria passar o caso que mais dói, o do Battle Royale
-  // parado no lobby com 2 humanos e 48 preenchimentos, que pesa como uma sala cheia e aparecia como 2.
-  // O número sai da medição de capacidade (~50 por shard é onde o RTT começa a subir; ver "QUANTA GENTE
-  // CABE" no CLAUDE.md), com a folga que o preenchimento mais barato que uma sessão permite.
+  // SHARD_SOFT: quanta CARGA um shard aceita pelo automático, somando as salas dele. É o teto que mede o
+  // PROCESSO, e sem ele o SOFT sozinho não resolve nada: três salas de 20 no mesmo pod custam o mesmo que
+  // uma de 60. A unidade é "um jogador humano" — 40 é a frota de sessões que cabe num core.
+  // ⚠️ AS TRÊS COISAS QUE CUSTAM NÃO CUSTAM IGUAL, e tratá-las como planeta genérico erra nos dois
+  // sentidos. Medido em produção em 2026-09-05, com a carga já distribuída pelos três shards:
+  //   shard 0 · 38 humanos,  0 bots, 2 salas → 943m      shard 1 · 9 humanos, 26 bots, 4 salas → 537m
+  //   shard 2 · 16 humanos, 93 bots, 6 salas → 953m
+  // Resolvendo o sistema: SESSÃO ≈ 21m, BOT ≈ 2m e SALA ≈ 76m de custo FIXO. Daí os pesos abaixo,
+  // normalizados na sessão — e eles confirmam o profiling que já estava escrito neste arquivo: o caro é
+  // o SNAPSHOT (por sessão) e a GRADE DA COMIDA (por sala, e ela roda com a sala vazia); o cérebro do
+  // preenchimento é 1,2% do tick. Ou seja UMA SALA custa quase quatro jogadores, e é por isso que a
+  // conta cobra por sala — seis salas quase vazias no mesmo pod (o que havia no shard 2) pesam mais que
+  // vinte pessoas jogando.
+  // ⚠️ Contar bot como planeta inteiro faria o pod recusar gente que ele aguenta; ignorá-lo deixaria
+  // passar o pior caso, o lobby de Battle Royale com 2 humanos e 48 preenchimentos.
   // ⚠️ Os dois são TETO DE ENTRADA, nunca de permanência: ninguém é removido de uma sala por ela passar
-  // do SOFT — quem já está jogando fica.
-  SOFT:20,SHARD_SOFT:60,
+  // do SOFT — quem já está jogando fica. E não são recusa: sem nenhum shard abaixo do teto, o jogador
+  // entra do mesmo jeito (na sala MENOS cheia), porque fila de espera num .io é o jogador indo embora.
+  SOFT:20,SHARD_SOFT:40,CUSTO_BOT:.1,CUSTO_SALA:3.5,
   // ── PREENCHIMENTO É O QUE FALTA PARA A SALA PARECER VIVA, NÃO UMA COTA FIXA ──
   // `BOTS` era o alvo ABSOLUTO: uma sala com 50 humanos carregava os 15 preenchimentos do mesmo jeito —
   // 15 cérebros, 15 planetas e 15 linhas de placar que ninguém pediu, no pod que já estava saturado. O

@@ -32,12 +32,17 @@ test('o shard saturado sai do pool, mesmo com sala vazia dentro dele', ()=>{
   assert.equal(auto([lotado,carga,outra],{shard:1}).code,'1AAA');
 });
 
-test('os PREENCHIMENTOS contam na carga do shard (o lobby de BR com 2 humanos e 48 bots)', ()=>{
-  const c=cargaPorShard([sala({shard:2,players:2,bots:48})]);
-  assert.equal(c.get(2),50);
-  // e por isso um shard assim não recebe sala nova: o `null` viraria mais uma sala no pod que já está no teto
-  const br=sala({code:'2AAA',shard:2,players:2,bots:ROOM.SHARD_SOFT});
-  assert.notEqual(auto([br],{shard:2}),null);
+test('a carga do shard soma as TRÊS coisas que custam, com o peso de cada uma', ()=>{
+  // os pesos saem da medição de 2026-09-05 (ver ROOM.CUSTO_* em constants): sessão 1, bot ~.1, sala ~3.5
+  const c=cargaPorShard([sala({shard:2,players:2,bots:48}),sala({shard:2,players:5,bots:0})]);
+  assert.equal(Math.round(c.get(2)*10)/10,Math.round((7+48*ROOM.CUSTO_BOT+2*ROOM.CUSTO_SALA)*10)/10);
+  assert.ok(c.get(2)>7,'o lobby de BR parado com 48 preenchimentos não pode aparecer como 2 pessoas');
+  assert.ok(c.get(2)<55,'nem como 50: bot não custa uma sessão');
+});
+
+test('a SALA pesa mesmo vazia — seis delas num pod custam mais que vinte pessoas jogando', ()=>{
+  const vazias=[];for(let i=0;i<12;i++)vazias.push(sala({code:`0V${i}`,shard:0,players:0,bots:0}));
+  assert.ok(cargaPorShard(vazias).get(0)>=ROOM.SHARD_SOFT,'um pod cheio de salas vazias está cheio');
 });
 
 test('cluster inteiro no teto: vai para a MENOS cheia (o contrário da regra velha)', ()=>{

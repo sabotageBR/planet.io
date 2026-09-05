@@ -2691,10 +2691,13 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   shards, ociosos a 159m e 377m** — o jogo travando com dois terços da frota parada, e quem entrava caindo
   justamente na sala pior. Agora são dois tetos: `SOFT` (jogadores por sala) e `SHARD_SOFT` (planetas por
   shard); abaixo deles agrupa-se na mais cheia, acima abre-se outra sala.
-  ⚠️ **`SHARD_SOFT` conta os PREENCHIMENTOS junto**, e é isso que faz o teto medir o processo: o laço de
-  60 Hz não distingue quem está atrás do planeta, e contar só humanos deixaria passar o pior caso — o
-  lobby de Battle Royale com 2 pessoas e 48 bots, que custa uma sala cheia e aparecia como 2. Havia
-  QUATRO desses no mesmo pod.
+  ⚠️ **`SHARD_SOFT` é CARGA PONDERADA, não contagem de planeta**, e a unidade é "um jogador humano".
+  Medido em produção com a carga já distribuída (38h/0b/2 salas → 943m · 9h/26b/4 → 537m · 16h/93b/6 →
+  953m), o sistema resolve em **sessão ≈ 21m, preenchimento ≈ 2m e SALA ≈ 76m de custo fixo** — ou seja
+  uma sala vazia custa quase QUATRO jogadores, e isso confirma o profiling que já estava escrito aqui (o
+  caro é o snapshot por sessão e a grade da comida por sala; o cérebro do bot é 1,2% do tick). Contar bot
+  como planeta inteiro faria o pod recusar gente que ele aguenta; ignorá-lo deixaria passar o pior caso —
+  o lobby de Battle Royale com 2 pessoas e 48 bots. Havia QUATRO desses no mesmo pod.
   ⚠️ **É teto de ENTRADA, nunca de permanência**: ninguém é removido de uma sala por ela passar do SOFT, e
   a sala continua ABERTA (`acceptsJoin` não mudou) — código, convite e equipe entram até `ROOM.MAX`, que é
   o que faz o amigo cair na sala do amigo mesmo cheia. O que muda é só para onde vai o PRÓXIMO que clicar
