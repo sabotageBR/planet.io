@@ -490,8 +490,24 @@ export function semNome(pedido = null) {
   if (st.screen === "game") leaveGame("entry"); else go("entry");
   focaNome(); return true;
 }
-/** Entra numa sala: `room` explícito, senão GET /api/auto (offline → sala local do stub). */
-export async function play({ room, mode, teamSize, party } = {}) {
+/**
+ * ⚠️ `play()` NÃO É REENTRANTE, e a prova disso veio do Inspector da Poki. Entre o `Commercial break` e
+ * o `Gameplay start` apareceram SEIS `Measure` de `menu/entry` e `connect/match` — porque durante o
+ * anúncio a tela por baixo continua viva: o botão que abriu o anúncio segue com o FOCO, e uma barra de
+ * espaço (ou um Enter, ou um segundo clique) o reativa. Cada reativação rodava `play()` inteiro por trás
+ * do comercial. Isso quebra duas regras escritas deles de uma vez — nenhum evento de SDK durante um
+ * midroll, e nada de eventos repetidos —, e ainda enfileirava conexões de WebSocket que ninguém pediu.
+ * A fila de `portal.medir` (portal/index.js) cala o sintoma; o guard aqui remove a causa.
+ * ⚠️ `finally`, sempre: um `entrando` que vaze deixa o botão JOGAR morto para o resto da sessão, que é
+ * um defeito muito pior que o que ele conserta.
+ */
+let entrando = false;
+export async function play(pedido = {}) {
+  if (entrando) return;
+  entrando = true;
+  try { return await entraNaSala(pedido); } finally { entrando = false; }
+}
+async function entraNaSala({ room, mode, teamSize, party } = {}) {
   // ANTES da guarda, e é o que a torna inerte quando há sugestão: com o campo já preenchido, mandar o
   // jogador de volta à tela inicial para pedir um nome que está lá é repique puro. Com a sugestão vazia
   // (parâmetro desligado no /admin, ou a conta já nomeada) isto é um no-op e `semNome` segue mandando.

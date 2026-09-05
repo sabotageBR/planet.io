@@ -48,6 +48,8 @@ const carrega = () => {
 // during midrolls", também na letra deles. Ver `jogoComecou` lá embaixo para o que acontece com um start
 // que chega no meio de um anúncio — ele é ADIADO, nunca descartado.
 let sdk = null, ultimoAd = 0, emJogo = false, emAnuncio = false, comecouNoAd = false, pediuCarregou = false;
+/** Game Events que chegaram no meio de um anúncio e esperam o fim dele. Ver `medir`. */
+const filaMedir = [];
 const aoPausar = [], aoRetomar = [];
 const avisa = lista => { for (const cb of lista) { try { cb(); } catch { /* um ouvinte quebrado não derruba os outros */ } } };
 
@@ -125,6 +127,8 @@ export const portal = {
       // estado de portal é o portal, e por último.
       if (sdk.reaplica) try { sdk.reaplica(); } catch { /**/ }
       emAnuncio = false;
+      // primeiro o que estava represado, depois o gameplay: a ordem no Event Log deles fica a real
+      while (filaMedir.length) { const m = filaMedir.shift(); portal.medir(m[0], m[1], m[2]); }
       if (comecouNoAd) { comecouNoAd = false; await portal.jogoComecou(); }
     }
   },
@@ -148,6 +152,8 @@ export const portal = {
       avisa(aoRetomar);
       if (sdk.reaplica) try { sdk.reaplica(); } catch { /**/ }
       emAnuncio = false;
+      // primeiro o que estava represado, depois o gameplay: a ordem no Event Log deles fica a real
+      while (filaMedir.length) { const m = filaMedir.shift(); portal.medir(m[0], m[1], m[2]); }
       if (comecouNoAd) { comecouNoAd = false; await portal.jogoComecou(); }
     }
     return !!assistiu;
@@ -158,7 +164,16 @@ export const portal = {
    * evento chamado ANTES do SDK carregar (ex.: o mount da tela de Entrada) pode chegar à Poki alguns
    * segundos depois do instante real — limitação do próprio SDK deles, que não aceita timestamp.
    */
-  medir(categoria, oQue, acao) { pronto.then(() => { if (sdk && sdk.medir) try { sdk.medir(categoria, oQue, acao); } catch { /**/ } }); },
+  medir(categoria, oQue, acao) {
+    // ⚠️ ENFILEIRA DURANTE O ANÚNCIO. "It should not be possible to fire any SDK events during midrolls
+    // or rewarded videos" é requisito escrito da Poki, e isto foi MEDIDO falhando no Inspector deles: um
+    // marco de sessão que vence no meio do comercial, ou um `play()` disparado por trás dele, cuspia
+    // `Measure` entre o `Commercial break` e o `Gameplay start`. Enfileirar (e não descartar) porque o
+    // evento continua verdadeiro — o que muda é a hora em que ele pode sair, e o SDK deles não aceita
+    // timestamp de qualquer forma, o que este arquivo já documenta.
+    if (emAnuncio) { filaMedir.push([categoria, oQue, acao]); return; }
+    pronto.then(() => { if (sdk && sdk.medir) try { sdk.medir(categoria, oQue, acao); } catch { /**/ } });
+  },
   /**
    * Começou/parou de jogar de fato. Quem decide isto é `portal/sessao.js`, olhando o store — e não os
    * chamadores, que é o que deixava a MORTE sem `gameplayStop` (o único fechamento era `leaveGame`).
