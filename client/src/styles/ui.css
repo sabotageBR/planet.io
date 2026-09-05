@@ -899,16 +899,14 @@ body[data-pointer="coarse"] #hud button{touch-action:manipulation}
 /* o gesto de puxar-para-atualizar do navegador não pode disparar durante a partida */
 html,body{overscroll-behavior:none}
 
-/* ── ANALÓGICO VIRTUAL (#joy) ───────────────────────────────────────────────────────────────────
-   A base nasce onde o polegar encosta (por isso left/top vêm do JS) e o miolo segue o dedo até o raio.
-   Fica DENTRO do #hud para herdar a área segura e o pointer-events:none — quem escuta o toque é o canvas,
-   em fase de captura, então este desenho é só desenho. */
-#joy{position:absolute;width:112px;height:112px;margin:-56px 0 0 -56px;border-radius:50%;z-index:4;
-  border:3px solid var(--line,#0006);background:color-mix(in srgb,var(--surface,#fff) 26%,transparent);
-  pointer-events:none;opacity:.55;transition:opacity .12s}
-#joy>i{position:absolute;left:50%;top:50%;width:52px;height:52px;border-radius:50%;
-  border:3px solid var(--line,#0006);background:var(--accent,#ffc22e);opacity:.85}
-body[data-reduce="1"] #joy>i{transition:none}
+/* ── O DIRECIONAL DE TOQUE NÃO DESENHA NADA (o antigo #joy saiu daqui) ──────────────────────────
+   Havia uma base+manopla em DOM nascendo sob o polegar, na metade esquerda da tela. Ela saiu inteira com
+   o controle novo (game/input/Joystick.js): o toque vale em qualquer parte da tela, o rumo fica travado
+   depois que a mão sai, e quem confirma o comando é a seta colada ao PLANETA (renderer/layers/Heading.js)
+   — o indicador passou a morar onde o jogador está olhando, e não onde a mão dele está tapando.
+   De quebra isso apagou um defeito que ninguém via: #joy era posicionado dentro do #hud, que tem
+   padding:env(safe-area-inset-*), com coordenadas vindas do retângulo do CANVAS — num aparelho com notch a
+   base aparecia deslocada do ponto em que o dedo tinha encostado. */
 
 /* ── VOZ: por que o Ctrl não fez nada (cooldown, permissão negada, navegador sem captura) ──
    O mic guardava esse motivo desde sempre e ninguém o lia: segurar a tecla nos 3 s seguintes a uma fala

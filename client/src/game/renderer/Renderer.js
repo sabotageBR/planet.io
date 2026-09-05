@@ -1,7 +1,7 @@
 // ── RENDERER: Pixi Application (webgl; canvas como reserva) + camadas ───────────────────────
 // stage: bg (tela: fundo assado + parallax) › world (transformação da câmera: props, grade, borda,
-// buracos, estrelas, comida, ejetados, asteroides, mísseis, trilhas, planetas, mira, fx). Culling manual por
-// retângulo da câmera em cada camada; sem filtros; texturas só via TextureCache/tema.
+// buracos, estrelas, comida, ejetados, asteroides, mísseis, trilhas, planetas, rumo, mira, fx).
+// Culling manual por retângulo da câmera em cada camada; sem filtros; texturas só via TextureCache/tema.
 import {Application,Container} from "pixi.js";
 import {createTextureCache} from "./TextureCache.js";
 import {createBackground} from "./layers/Background.js";
@@ -13,6 +13,7 @@ import {createPlanets} from "./layers/Planets.js";
 import {createMissiles} from "./layers/Missiles.js";
 import {createAim} from "./layers/Aim.js";
 import {createThreat} from "./layers/Threat.js";
+import {createHeading} from "./layers/Heading.js";
 import {createZone} from "./layers/Zone.js";
 import {createFx} from "./layers/Fx.js";
 
@@ -40,14 +41,15 @@ export async function createRenderer({container,theme,prefs}){
   container.appendChild(canvas);
   const upload=tex=>{const r=app.renderer;if(r.prepare&&r.prepare.upload)r.prepare.upload(tex);else if(r.texture&&r.texture.initSource)r.texture.initSource(tex.source);};
   const R={app,canvas,kind,cache:createTextureCache({budgetMB:48,upload}),theme,prefs:{fx:true,...prefs},W:app.screen.width,H:app.screen.height,res:dpr,econ:false,econLevel:0,texCap:512,lost:false,mesh:temMesh,ambient:null};
-  const bg=createBackground(R),grid=createGrid(R),food=createFood(R),ejected=createEjected(R),hazards=createHazards(R),planets=createPlanets(R),missiles=createMissiles(R),aim=createAim(R),zone=createZone(R),threat=createThreat(R),fx=createFx(R);
+  const bg=createBackground(R),grid=createGrid(R),food=createFood(R),ejected=createEjected(R),hazards=createHazards(R),planets=createPlanets(R),missiles=createMissiles(R),aim=createAim(R),zone=createZone(R),threat=createThreat(R),heading=createHeading(R),fx=createFx(R);
   R.ambient=(kind,f)=>fx.ambient(kind,f);   // camadas pedem efeitos contínuos (ímã) sem conhecer a camada de fx
   const world=new Container();
-  const layers=[bg,grid,food,ejected,hazards,planets,missiles,aim,zone,threat,fx];
+  const layers=[bg,grid,food,ejected,hazards,planets,missiles,aim,zone,threat,heading,fx];
   function mount(){world.removeChildren();world.addChild(bg.props,grid.root,hazards.holes,hazards.stars,
     food.glow,ejected.glow,   // os halos vão POR BAIXO dos corpos: o brilho vaza para fora do disco, não por cima dele
     food.root,ejected.root,hazards.asteroids,missiles.root,planets.trails,planets.root,
     hazards.starsFront,   // a estrela por CIMA dos planetas: quem cabe nela (STAR.PASS_R) se esconde lá dentro
+    heading.root,   // a seta de rumo acima do próprio planeta (e de quem se escondeu na estrela): é instrumento, não corpo
     aim.root,zone.root,threat.root,fx.root);}
   // A troca de tema NÃO invalida o cache: as chaves de textura já são prefixadas com o id do tema, então os
   // temas convivem, voltar a um céu já visto é acerto de cache e nada é reassado dentro do frame da virada.
@@ -114,7 +116,7 @@ export async function createRenderer({container,theme,prefs}){
     /** Buraco negro: uma textura 512 por tema, mas é o desenho mais caro do jogo — sem aquecer, ela é assada
      *  sincronamente no primeiro frame em que um buraco entra na tela, e isso é um engasgo visível. */
     warmHazards(th=R.theme){const TX=th.textures;R.cache.warm(TX.key("blackHole",{},BH_TEX),BH_TEX,(c,s)=>TX.blackHole(c,s,{}));},
-    /** f: {view,cam,now,dt,t,rt,rect,aim,threat,parallax,showGrid,showNames,showTrails,idle} */
+    /** f: {view,cam,now,dt,t,rt,rect,aim,threat,heading,zone,glow,parallax,wobble,showGrid,showNames,showTrails,idle} */
     /** `idle`: canvas vivo, sem partida (o menu está na frente) — some a moldura da arena, fica o céu. */
     render(f){if(R.lost)return;   // sem contexto não há o que desenhar, e insistir a 60 Hz é trabalho puro
       R.cache.setExternal(bg.bytes());R.cache.tick();const cam=f.cam;world.position.set(R.W/2-cam.x*cam.scale,R.H/2-cam.y*cam.scale);world.scale.set(cam.scale);
@@ -122,7 +124,7 @@ export async function createRenderer({container,theme,prefs}){
     counts(){const h=hazards.counts();return{planets:planets.count(),food:food.count(),ejected:ejected.count(),asteroids:h.asteroids,holes:h.holes,stars:h.stars,missiles:missiles.count(),fx:fx.count(),textures:R.cache.size,texMB:((R.cache.bytes+bg.bytes())/1048576).toFixed(1)};},
     /** estimativa de draw calls: cada camada com textura própria = 1 batch; planetas quebram por tier/skin.
      * Os dois containers de halo (comida e fragmentos) somam 2 batches — não um por partícula. */
-    drawCallsEstimate(){const c=rd.counts();return 1+(R.econ?0:1)+1+1+2+Math.min(c.holes,3)*2+Math.min(c.stars,3)*2+1+1+Math.min(c.asteroids,3)+Math.min(c.missiles,2)+1+Math.min(c.planets,8)*2+Math.min(c.fx,4);},
+    drawCallsEstimate(){const c=rd.counts();return 1+(R.econ?0:1)+1+1+1+2+Math.min(c.holes,3)*2+Math.min(c.stars,3)*2+1+1+Math.min(c.asteroids,3)+Math.min(c.missiles,2)+1+Math.min(c.planets,8)*2+Math.min(c.fx,4);},
     /** Força a perda do contexto — é como se verifica a recuperação sem ter de estourar a memória de fato. */
     loseContext(){const ext=loseExt();if(ext)ext.loseContext();else console.warn("[render] sem WEBGL_lose_context");},
     destroy(){canvas.removeEventListener("webglcontextlost",onLost);canvas.removeEventListener("webglcontextrestored",onRestored);

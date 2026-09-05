@@ -127,7 +127,7 @@ export default {
     g_admin: "Administración", adminNotify: "Avisarme cuando entre gente", adminNotifyAsk: "Permitir",
     adminNotifyOn: "permitido", adminNotifyBlocked: "bloqueado en el navegador",
     g_controls: "Controles", g_graphics: "Gráficos", g_sound: "Sonido", g_ui: "Interfaz", g_a11y: "Accesibilidad", g_help: "Ayuda",
-    joystick: "Joystick virtual (móvil)", rightSplit: "El clic derecho divide", holdEject: "Mantener la tecla expulsa en continuo",
+    joystick: "Dirección táctil (móvil)", rightSplit: "El clic derecho divide", holdEject: "Mantener la tecla expulsa en continuo",
     wheelZoom: "La rueda del ratón hace zoom (0 lo reinicia)", keySplit: "Tecla de dividir", keyEject: "Tecla de expulsar",
     theme: "Tema", theme_auto: "Automático (hora local)", theme_dawn: "Amanecer", theme_sunset: "Atardecer", theme_dusk: "Anochecer",
     quality: "Calidad", quality_auto: "Automática", quality_low: "Baja", quality_high: "Alta",

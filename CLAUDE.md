@@ -236,14 +236,58 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   eixo a eixo, e por eixo o corte TORCE a direção: medido, centróide em (9000,4800) com o polegar a 25,8° e o
   alvo a 2372 px vira **59,9°** — 34 graus de erro, o jogador empurra para a direita e anda na diagonal. Não
   aparecia antes porque o alvo nunca saía do mundo: ficava a 32 px do jogador.
-  ⚠️ **Soltar o analógico com as peças dispersas as faz CONVERGIR, e é o certo**: não existe alvo único que
-  pare peças espalhadas (o motor só freia dentro de `RAMP` de cada uma), e convergir é o gesto de reagrupar.
+  ⚠️ **"Soltar o analógico faz as peças CONVERGIREM" DEIXOU DE SER VERDADE** — soltar não produz mais alvo
+  nenhum, porque o rumo fica travado (bloco abaixo). O que continua verdade é o motivo: não existe alvo único
+  que PARE peças espalhadas, já que o motor só freia dentro de `RAMP` de cada uma.
   ⚠️ Um efeito de borda que NÃO é regressão: o tiro MIRADO (segurar 160 ms) usa `ps.tx/ty` como cursor
-  (`aimTarget`, `AIM_PICK`=700 px do ponto), e no dedo esse "cursor" é o alvo de MOVIMENTO — a mira da metade
-  direita do analógico só move a retícula local, nunca chegou ao servidor. Dividido, ele deixa de travar no
+  (`aimTarget`, `AIM_PICK`=700 px do ponto), e no dedo esse "cursor" é o alvo de MOVIMENTO — a mira do dedo
+  só move a retícula local, nunca chegou ao servidor. Dividido, ele deixa de travar no
   que está colado em mim e passa a travar à frente, na direção da marcha. Não se perde nada: o CLIQUE RÁPIDO
   é teleguiado e escolhe o inimigo mais próximo de quem atira sozinho, sem olhar o alvo — antes o mirado era
   redundante com ele, agora os dois fazem coisas diferentes. Com uma peça, `d ≤ 32` e nada disso muda.
+- **NO DEDO, SOLTAR NÃO PARA: O RUMO FICA TRAVADO** (`createRumo`/`cursoK` em `game/input/Joystick.js`,
+  `renderer/layers/Heading.js`, `theme.hud.heading`): o analógico virou o DIRECIONAL do agar.io mobile.
+  O que havia era um analógico com base e manopla desenhadas em DOM sob o polegar, valendo só na metade
+  esquerda da tela, e o planeta andava enquanto o dedo estivesse encostado — soltar PARAVA, porque o `up`
+  zerava o curso e `enviarInput` passava a mandar o alvo em cima do próprio centróide. O preço era o jogo
+  inteiro: a mão tinha de morar em cima da tela, tapando exatamente a bola que o jogador precisa ver.
+  Quatro regras: **(1)** qualquer parte da tela dirige — não há base, nem lado certo de encostar; **(2)**
+  NADA é desenhado sob o dedo, e quem confirma o comando é uma seta colada ao PLANETA, ou seja o indicador
+  passou a morar onde o jogador está OLHANDO; **(3)** o rumo SOBREVIVE ao dedo, e segue até ser substituído;
+  **(4)** travado vai sempre a `k=1` — enquanto o dedo está no chão o curso ainda gradua a velocidade, mas um
+  rumo travado a meia força seria um planeta lento sem nada na tela explicando por quê.
+  ⚠️ **NÃO EXISTE GESTO DE PARADA**, e isso é decisão, não esquecimento: quem quer parar aponta para outro
+  lado, como no agar.io. As únicas coisas que param o planeta continuam sendo a pausa, o fim de rodada e a
+  morte (todas mandando o alvo em cima do centróide, em `enviarInput`) — mais o NASCIMENTO, que começa sem
+  rumo nenhum. Daí os dois `joy.reset()` obrigatórios: `join()` e `{t:"alive"}`. Sem eles o planeta nasce
+  correndo na direção da vida anterior, e no BR isso é a largada inteira jogada fora.
+  ⚠️ **A condição do `enviarInput` é `tem` (HÁ RUMO), não `on` (há dedo no chão)** — trocar as duas devolve
+  o comportamento antigo em silêncio, sem erro nenhum.
+  ⚠️ **`down` NÃO pode zerar o rumo e `move` respeita a ZONA MORTA**: zerar no toque faria o planeta dar um
+  solavanco de parada toda vez que a mão encostasse, e sem a zona morta o tremor do dedo pousando apagaria
+  o rumo travado. As duas coisas são o mesmo defeito visto de dois lados.
+  ⚠️ **O 2º dedo mira, mas a regra é de PAPÉIS, não de ordem de chegada** (uma vaga de volante, uma de
+  mira): com o rumo travado o estado normal é NENHUM dedo no canvas, então o dedo que ia mirar seria lido
+  como *primeiro* e viraria o planeta para o alvo. Por isso `joy.setAiming(on)`, alimentado pelo MESMO
+  `onAim` que arma a reta de mira — enquanto o jogador mira, o próximo dedo é o da mira, e o seguinte volta
+  a ser o volante.
+  ⚠️ **A pinça precisou avisar que começou** (`onPinch` → `joy.release()`): enquanto o direcional valia só
+  na metade esquerda, uma pinça do lado direito não mexia no rumo; agora que qualquer dedo dirige, o
+  primeiro dedo dela é o volante e dar zoom viraria o planeta junto. `release()` larga o DEDO mantendo o
+  rumo — é também o que a pausa usa, porque com o modal na frente o `pointerup` pode nunca chegar.
+  ⚠️ **A seta é do RUMO COMANDADO, não da velocidade real**, é UMA só (a maior peça: com 16 pedaços, 16
+  setas viram confete, o mesmo argumento do ícone de push-to-talk) e é exclusiva do DEDO — no mouse o
+  cursor já é o indicador. Ela **não** sai no modo econômico nem com `reduceMotion`: é informação de
+  CONTROLE, e o celular fraco é justamente o aparelho que acabou de perder a base+manopla. A geometria é
+  assada UMA vez em `setTheme`, num espaço onde 1 = 1 px de TELA, e por frame só se escreve
+  `position`/`rotation`/`scale(1/cam.scale)`/`alpha` — e o afastamento SOMA `r` de MUNDO com a folga de
+  TELA; fração do raio poria a seta a 176 px de um planeta de r=587, lendo como outro corpo em órbita.
+  ⚠️ **Nada disto toca no servidor, no protocolo ou na física**: o INPUT segue com os mesmos 10 bytes e o
+  `PROTOCOL_VERSION` não sobe — mudou só COMO o cliente escolhe o `(tx,ty)` que já mandava. Por isso pode
+  subir sozinho, sem sincronizar shards e cliente.
+  ⚠️ A pref continua sendo `joystick` (mesma chave, mesma whitelist); o que mudou foi o RÓTULO nos três
+  dicionários, porque "Joystick virtual" deixou de descrever o que existe. Desligada, o jogador cai no
+  arrastar-direto do `Pointer.js`, que continua parando ao soltar — é a alternativa "controle direto".
 - **Modos de jogo** (`MODE`/`MODES` em constants, `docs/design/modos.md`): **Livre** é o jogo de sempre e não mudou.
   **Battle Royale** é sala de 50, **sem respawn**, com **zona que encolhe** (`shared/src/zone.js`; fora dela a peça
   queima `zoneBurnRate(r)` da massa/s e MORRE no piso — a única coisa que mata sozinha) e vitória do último vivo.

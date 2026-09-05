@@ -177,7 +177,7 @@ export default {
     g_admin: "Administração", adminNotify: "Avisar quando entrar gente", adminNotifyAsk: "Permitir",
     adminNotifyOn: "permitido", adminNotifyBlocked: "bloqueado no navegador",
     g_controls: "Controles", g_graphics: "Gráficos", g_sound: "Som", g_ui: "Interface", g_a11y: "Acessibilidade", g_help: "Ajuda",
-    joystick: "Joystick virtual (celular)", rightSplit: "Botão direito divide", holdEject: "Segurar a tecla ejeta contínuo",
+    joystick: "Direcional por toque (celular)", rightSplit: "Botão direito divide", holdEject: "Segurar a tecla ejeta contínuo",
     wheelZoom: "Roda do mouse dá zoom (0 volta ao normal)", keySplit: "Tecla de dividir", keyEject: "Tecla de ejetar",
     theme: "Tema", theme_auto: "Automático (hora local)", theme_dawn: "Amanhecer", theme_sunset: "Crepúsculo", theme_dusk: "Anoitecer",
     quality: "Qualidade", quality_auto: "Automática", quality_low: "Baixa", quality_high: "Alta",

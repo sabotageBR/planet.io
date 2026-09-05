@@ -127,7 +127,7 @@ export default {
     g_admin: "Admin", adminNotify: "Notify me when someone joins", adminNotifyAsk: "Allow",
     adminNotifyOn: "allowed", adminNotifyBlocked: "blocked in the browser",
     g_controls: "Controls", g_graphics: "Graphics", g_sound: "Sound", g_ui: "Interface", g_a11y: "Accessibility", g_help: "Help",
-    joystick: "Virtual joystick (mobile)", rightSplit: "Right click splits", holdEject: "Holding the key ejects continuously",
+    joystick: "Touch steering (mobile)", rightSplit: "Right click splits", holdEject: "Holding the key ejects continuously",
     wheelZoom: "Mouse wheel zooms (0 resets)", keySplit: "Split key", keyEject: "Eject key",
     theme: "Theme", theme_auto: "Automatic (local time)", theme_dawn: "Dawn", theme_sunset: "Sunset", theme_dusk: "Dusk",
     quality: "Quality", quality_auto: "Automatic", quality_low: "Low", quality_high: "High",

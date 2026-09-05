@@ -109,9 +109,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
 
   // ── estado de rede/simulação ──
   const buffer=createSnapshotBuffer();
-  const alvo={x:0,y:0};let inputTimer=0,joy=null,pinch=null;
-  // o analógico só vale onde o ponteiro é o DEDO: no mouse o próprio ponteiro já é o controle
-  const aplicaJoystick=()=>{if(joy)joy.setEnabled(curPrefs.joystick!==false&&typeof matchMedia!=="undefined"&&matchMedia("(pointer: coarse)").matches);};   // alvo reusado; inputTimer: o envio de input não depende do rAF (ver enviarInput)
+  const alvo={x:0,y:0};let inputTimer=0,joy=null,pinch=null,dedo=false;
+  const rumoFx={x:0,y:0,r:0,dx:0,dy:0,k:0};   // a seta de rumo entregue ao render; literal reusado, como o `alvo`
+  // o direcional de toque só vale onde o ponteiro é o DEDO: no mouse o próprio ponteiro já é o controle
+  const aplicaJoystick=()=>{dedo=typeof matchMedia!=="undefined"&&matchMedia("(pointer: coarse)").matches;
+    if(joy)joy.setEnabled(curPrefs.joystick!==false&&dedo);};   // alvo reusado; inputTimer: o envio de input não depende do rAF (ver enviarInput)
   // "" = fechado · "map" = o RADAR ampliado · "live" = a visão em TEMPO REAL da sala (o mesmo radar, ocupando
   // o espaço todo, com o blip na cor da skin, nome e massa, e a posição INTERPOLADA entre as amostras de 2 Hz).
   // Só faz sentido MORTO: com o jogador vivo, ver a sala inteira seria vantagem tática.
@@ -140,7 +142,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   let travado=-1,travadoAte=0;   // o alvo do último tiro mirado e até quando o anel continua na tela (MISSILE.AIM_HOLD_TICKS)
   let comboN=0,comboT=0;   // acertos SEGUIDOS do meu tiro — só cosmético (fx/som), nunca entra na física
   const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self&&!view.self.fireCd?view.self.missiles:0),canAct,
-    onAim:on=>{aiming=on;if(!on){aim=null;lastLock=-1;audio.stopLoop("aimCharge");}else audio.startLoop("aimCharge",{k:0});},
+    onAim:on=>{aiming=on;if(joy)joy.setAiming(on);   // com o rumo travado o normal é NENHUM dedo no canvas: sem isto, o dedo que vai mirar seria lido como volante
+      if(!on){aim=null;lastLock=-1;audio.stopLoop("aimCharge");}else audio.startLoop("aimCharge",{k:0});},
     onCancel:()=>audio.play("cancel",{mine:true}),
     onNoAmmo:()=>audio.play("error",{mine:true})});
   /** Envelope das ações: repassa tudo e, de quebra, marca o hold do W para o som da cusparada. */
@@ -210,7 +213,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── renderer (assíncrono: Pixi init) ──
   let destroyed=false;   // StrictMode destrói a 1ª instância com o init do Pixi ainda pendente: não pode sobrar um canvas zumbi
   createRenderer({container,theme:curTheme,prefs:{fx:!curPrefs.reduceMotion}}).then(r=>{if(destroyed){r.destroy();return;}renderer=r;ready=true;
-    pointer=createPointer(r.canvas,{onButton:button});joy=createJoystick(r.canvas,hud);pinch=createPinch(r.canvas,{onZoom:zoomPinch});aplicaJoystick();applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();warmSkins();
+    pointer=createPointer(r.canvas,{onButton:button});joy=createJoystick(r.canvas);
+    // a pinça avisa quando começa: agora que QUALQUER dedo dirige, o primeiro dedo dela é o volante — e dar zoom viraria o planeta junto
+    pinch=createPinch(r.canvas,{onZoom:zoomPinch,onPinch:()=>{if(joy)joy.release();}});aplicaJoystick();applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();warmSkins();
     if(!raf)raf=requestAnimationFrame(frame);
     if(!inputTimer)inputTimer=setInterval(()=>enviarInput(performance.now()),Math.max(8,Math.round(1000/NET.INPUT_HZ)));}).catch(e=>{console.error("[game] renderer",e&&e.stack||e);container.innerHTML=`<div style="padding:20px;color:#fff">${getLabels().err.noWebGL}: ${e.message}</div>`;});
   // DEBOUNCE obrigatório: o observer dispara a cada frame enquanto a borda da janela é arrastada, e
@@ -358,6 +363,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // ⚠️ O `sessionId` precisa ser atualizado: um `resume` depois disto mandaria o da vida MORTA e cairia
     // em ROOM_EXPIRED.
     else if(m.t==="alive"){dead=false;specSlot=-1;spec=null;mapOn="";minimap.setView("",-1);minimap.show(false);
+      if(joy)joy.reset();   // o rumo travado é da vida ANTERIOR: sem isto o planeta nasce correndo
       if(m.sessionId&&conn&&conn.session)conn.session.sessionId=m.sessionId;
       buffer.clear();predictor.reset();view.reset();input.reset();input.setHold(false);cam.reset();
       aplicaRadar();pushHud(performance.now());}
@@ -552,7 +558,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     hostAct(act,pid){if(!conn||!conn.isOpen||!souDono)return;conn.sendJson({t:"room",act,pid:pid|0});},
     /** Menu do Esc: larga o controle sem sair da sala. Solta o que estiver segurado, senão o W fica preso. */
     setPaused(on){const v=!!on;if(v===pausado)return;pausado=v;
-      if(v){ejHold=false;input.setHold(false);actions.reset();if(pointer)pointer.state.down=false;audio.stopLoop("aimCharge");}},
+      // ⚠️ `release`, não `reset`: com o modal na frente o `pointerup` pode nunca chegar, e o dedo ficaria
+      // eternamente "no chão". O RUMO fica de pé — o jogador abriu o menu, não parou de jogar.
+      if(v){ejHold=false;input.setHold(false);actions.reset();if(joy)joy.release();if(pointer)pointer.state.down=false;audio.stopLoop("aimCharge");}},
     /**
      * Mapa grande: o radar ampliado, com nome em cada planeta e clique para trocar de câmera. Só com o
      * jogador MORTO — ver o mapa inteiro jogando seria vantagem tática, e não é o que se pediu.
@@ -568,6 +576,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         mode:mode|0,teamSize:ts||1,party:party||null};
       buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();zoomF=1;hudStore.set({...initialHud(),room:room||null});mapOn="";minimap.setView("",-1);aplicaRadar();
       if(pointer&&renderer)pointer.center(renderer.W,renderer.H);
+      if(joy)joy.reset();   // o rumo NÃO atravessa salas: quem entra nasce parado, esperando o primeiro toque
       // ⚠️ No pacote de portal, servidor fora NÃO vira partida local: o jogador entrou num .io para jogar
       // com gente, e cair calado num single-player é a falha mais enganosa possível — parece que
       // funcionou. Quem avisa é a tela de `servidorFora` (state/actions.js). O `?local=1` e o `?bench`
@@ -591,7 +600,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     /** "Agora não" no convite de Battle Royale: só fecha o card, não sai da sala do Livre. */
     dismissBrInvite(){hudStore.update(h=>({...h,brInvite:null}));},
     resize(){if(!renderer)return;renderer.resize();agendaView();},
-    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();if(pinch)pinch.destroy();game.leave(true);audio.suspend();for(const ev of ["pointerdown","keydown","click","touchend"])removeEventListener(ev,wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();actions.destroy();clearTimeout(viewT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
+    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();if(pinch)pinch.destroy();game.leave(true);audio.suspend();for(const ev of ["pointerdown","keydown","click","touchend"])removeEventListener(ev,wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();activity.destroy();actions.destroy();clearTimeout(viewT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("warspace:pause",onPortalPause);removeEventListener("warspace:theme",onThemeEvent);if(themeGuard)removeEventListener("warspace:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,
@@ -885,15 +894,19 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(own0.length){w=alvo;w.x=cx;w.y=cy;input.setTarget(cx,cy);predictor.setTarget(cx,cy);}
       if(conn.isOpen)input.update(now);
       return;}
-    if(joy&&joy.enabled&&joy.state.on&&own0.length){
+    // ── O RUMO SOBREVIVE AO DEDO (modelo agar.io; ver input/Joystick.js) ──
+    // A condição é `tem` (HÁ RUMO), não `on` (há dedo no chão): soltar o dedo travou a direção, e é ela
+    // que continua produzindo alvo. Antes, soltar caía no ramo de baixo e mandava o alvo em cima do
+    // próprio centróide — o planeta parava, e o polegar tinha de morar em cima da tela para andar.
+    if(joy&&joy.enabled&&joy.state.tem&&own0.length){
       // ESPALHAMENTO (o `spread` do focusOf, à mão): o alvo do analógico tem que ficar longe o bastante para
       // DOMINÁ-LO, senão ele cai dentro do próprio cacho e as peças se anulam — 8% da velocidade dividido, e
       // ZERO com o eixo do split alinhado ao rumo (ver joyTarget). `focusOf` espera {x,y,r} e own0 tem
       // {rx,ry,rr}, então reusá-lo custaria um .map() por envio, 30×/s, para devolver dois números que aqui
       // não servem; e comparar d² deixa UMA raiz no fim, como faz o integrate.js.
       let s2=0;if(own0.length>1)for(const p of own0){const dx=p.rx-cx,dy=p.ry-cy,d2=dx*dx+dy*dy;if(d2>s2)s2=d2;}
-      w=joy.target(cx,cy,s2>0?Math.sqrt(s2):0,alvo);}   // analógico: direção do polegar, distância = velocidade (+ espalhamento)
-    else if(joy&&joy.enabled)   { if(own0.length){w=alvo;w.x=cx;w.y=cy;} }                                // solto = alvo no centróide: peça única PARA; dividido, as peças CONVERGEM (reagrupar) — não existe alvo único que pare peças dispersas, ver joyTarget
+      w=joy.target(cx,cy,s2>0?Math.sqrt(s2):0,alvo);}   // direcional: direção do rumo, distância = velocidade (+ espalhamento)
+    else if(joy&&joy.enabled)   { if(own0.length){w=alvo;w.x=cx;w.y=cy;} }                                // ainda SEM RUMO (acabou de nascer): alvo no centróide, ou seja parado, esperando o primeiro toque
     else if(pointer&&pointer.state.active)w=cam.toWorld(pointer.state.sx,pointer.state.sy);
     else if(own0.length){w=alvo;w.x=cx;w.y=cy;}   // sem ponteiro ainda: fica parado
     if(w){input.setTarget(w.x,w.y);predictor.setTarget(w.x,w.y);}   // o alvo é marcado mesmo com o socket caído (a predição local continua)
@@ -911,6 +924,17 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     enviarInput(now);
     predictor.update(dt);interp.update(now);view.build();roundTick(now);
     const own=[];predictor.forEach(pc=>own.push(pc));own0=own;cam.W=renderer.W;cam.H=renderer.H;
+    // ── A SETA DE RUMO (renderer/layers/Heading.js) ──
+    // Quem decide SE existe seta é aqui, não a camada: no MOUSE o cursor já é o indicador de rumo e uma
+    // segunda seta seria redundância, então ela é exclusiva do dedo. E ela é UMA — na maior peça própria,
+    // como o ícone de push-to-talk: com 16 pedaços, 16 setas viram confete. `own` vem do predictor e NÃO
+    // vem ordenado por raio (ao contrário de `view.pieces`), daí o laço — são ≤16 itens.
+    // Nada de `R.econ` nem de `reduceMotion`: isto é informação de CONTROLE, e o celular fraco é
+    // justamente o aparelho que acabou de perder a base+manopla desenhada sob o dedo.
+    let heading=null;
+    if(dedo&&joy&&joy.enabled&&joy.state.tem&&joined&&!dead&&!roundOver&&!pausado&&own.length){
+      let big=own[0];for(const p of own)if(p.rr>big.rr)big=p;
+      rumoFx.x=big.rx;rumoFx.y=big.ry;rumoFx.r=big.rr;rumoFx.dx=joy.state.dx;rumoFx.dy=joy.state.dy;rumoFx.k=joy.state.k;heading=rumoFx;}
     let camPieces=own;   // morto: a câmera acompanha quem o servidor mandou assistir (mesmo slot que a AOI segue), senão congela
     if(!own.length&&specSlot>=0){const sp=view.pieces.filter(p=>p.owner===specSlot);if(sp.length)camPieces=sp;}
     // O powerup de ZOOM afasta a câmera — e o servidor amplia a AOI pelo mesmo fator (net/snapshot.js),
@@ -948,7 +972,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const zoneDraw=zc?{x:zc.x,y:zc.y,r:zc.r,tx:zone.x1,ty:zone.y1,tr:zone.r1}:null;
     // Fora de partida some a GRADE e a borda do mundo: elas são a moldura da arena, e com o menu na frente
     // viram um traço solto no meio da tela. O céu (que é assado por resolução e não custa nada) fica.
-    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,zone:zoneDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
+    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,heading,zone:zoneDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
       showNames:curPrefs.showNames!==false,showTrails:!curPrefs.reduceMotion&&!econ});
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU
     if(joined){minimap.update(now,zoneDraw);if(now-lastHud>=125){lastHud=now;pushHud(now);}

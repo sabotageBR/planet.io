@@ -295,6 +295,17 @@ export const hud={
     meDot:{fill:CREAM,stroke:INK,width:1.5,r:{desktop:4,tablet:4,portrait:3,landscape:3}},
     label:{text:"RADAR",font:"bold 9px "+FONT,color:GOLD,desktopOnly:true,dy:-10}},
   trail:{style:"dashed",color:(skin,isMe)=>rgba(PEACH,isMe?.7:.42),width:r=>Math.max(2,r*.22),dash:r=>[r*.35,r*.35]},
+  // ── SETA DE RUMO (o controle no dedo, modelo agar.io) ──
+  // Triangulozinho colado na borda da MAIOR peça própria, apontando para onde o jogador MANDOU ir. Ele é o
+  // único retorno visual do comando desde que a base+manopla do analógico saiu da tela (input/Joystick.js),
+  // e por isso mora perto do planeta — onde o jogador está olhando —, e não sob o dedo, que fica tapando o
+  // que ele precisa ver. DISCRETO de propósito: quem tem que aparecer é o planeta; a seta só confirma.
+  // `alpha` é [curso mínimo, a todo vapor] e é interpolado pelo acelerador — NÃO é pulso: piscar não é
+  // discreto e ainda teria de ser desligado em "menos movimento".
+  // ⚠️ `w`/`h`/`gap`/`width` são px de TELA e NUNCA fração do raio (o afastamento soma `r` de MUNDO com a
+  // folga de TELA): com múltiplo do raio a seta ficaria a 176 px de um planeta de r=587 e leria como outro
+  // corpo em órbita — o mesmo erro documentado em `cell.powerups.ringR`.
+  heading:{fill:PEACH,ink:INK,w:15,h:13,gap:5,width:2,alpha:[.26,.55],minK:.06},
   // O nome fica no CENTRO do disco (`nameY:()=>0`). Ele já esteve no rodapé, com uma tarja escura por trás
   // (`bandAlpha`), para não cair em cima do nariz das caricaturas — e ficou pior: um planeta com o nome
   // pendurado embaixo lê como legenda de foto, não como planeta chamado assim. O que resolve o rosto não é
