@@ -327,3 +327,53 @@ test('renascer é recusado para quem está VIVO ou não é da sala', () => {
   const estranha=sessaoFalsa(10,'tok-nao'); estranha.slot=s.slot;
   assert.equal(r.respawn(estranha),false,'sessão que não é a dona do slot não renasce');
 });
+
+// ── O PREENCHIMENTO É O QUE FALTA, NÃO UMA COTA FIXA ─────────────────────────
+// Medido em produção em 2026-09-05: uma sala com 50 humanos carregava os 15 preenchimentos do mesmo
+// jeito — 15 cérebros e 15 planetas a mais no pod que já estava saturado. O alvo passou a ser
+// `BOTS − humanos`, e a queda acontece sem ninguém ver um planeta sumir: por atrito (o bot que morre não
+// volta) e, quando o atrito não dá conta, um a cada ROOM.BOT_TRIM_TICKS.
+/** Um humano na sala, sem rede: `humanCount` é `sessions.size`, e o corpo existe para o trim medir distância. */
+const humano=(r,i)=>{r.sessions.set(100+i,{slot:100+i});r.sim.addHuman(100+i,{name:`h${i}`,sessionId:`s${i}`});};
+// ⚠️ Sala com HUMANO precisa de hooks: `Sim._consume` chama `hooks.onStat` no primeiro grão comido, e as
+// outras salas deste arquivo passam `hooks:null` porque só têm preenchimento (bot não tem sessão).
+const nada=new Proxy({},{get:()=>()=>{}});
+const salaG=(bots=15)=>sala(bots,{hooks:nada});
+
+test('o alvo de preenchimento é o que FALTA: cada humano ocupa o lugar de um bot', () => {
+  const r=salaG(15); r.start();
+  assert.equal(r.botAlvo(),15,'sala vazia quer a lotação inteira');
+  for(let i=0;i<10;i++)humano(r,i);
+  assert.equal(r.botAlvo(),5);
+  for(let i=10;i<20;i++)humano(r,i);
+  assert.equal(r.botAlvo(),0,'sala cheia de gente não quer preenchimento nenhum');
+});
+
+test('o excedente sai aos poucos, nunca de uma vez', () => {
+  const r=salaG(15); r.start(); anda(r,60*TICK_HZ*5);
+  assert.equal(r.sim.botCount(),15,'a sala encheu antes de a gente chegar');
+  for(let i=0;i<10;i++)humano(r,i);
+  anda(r,ROOM.BOT_TRIM_TICKS);
+  assert.equal(r.sim.botCount(),14,'passou UM intervalo, saiu UM');
+  anda(r,ROOM.BOT_TRIM_TICKS*20);
+  assert.equal(r.sim.botCount(),5,'e para no alvo (15 − 10 humanos)');
+  anda(r,ROOM.BOT_TRIM_TICKS*5);
+  assert.equal(r.sim.botCount(),5,'sem passar dele: quem remove só age acima do alvo');
+});
+
+test('a saída do preenchimento devolve o nick e a bandeira ao sorteio', () => {
+  const r=salaG(15); r.start(); anda(r,60*TICK_HZ*5);
+  const nicks=new Set([...r.sim.players.values()].filter(p=>p.isBot).map(p=>String(p.name).toLowerCase()));
+  for(let i=0;i<10;i++)humano(r,i);
+  anda(r,ROOM.BOT_TRIM_TICKS*12);
+  const vivos=new Set([...r.sim.players.values()].filter(p=>p.isBot).map(p=>String(p.name).toLowerCase()));
+  for(const n of nicks)if(!vivos.has(n))
+    assert.ok(!r.usedNicks.has(n),`"${n}" saiu da sala e o nome dele ficou preso em usedNicks`);
+  assert.equal([...r.paisesBot.values()].reduce((a,b)=>a+b,0),r.sim.botCount(),'a contagem de bandeiras acompanha quem ficou');
+});
+
+test('o lobby do Battle Royale não segue este alvo: lá o preenchimento é o adversário', () => {
+  const r=new Room({code:'TST1',shard:0,seed:7,hooks:nada,log:mudo,metrics:{inc(){},add(){}},config:{},mode:MODE.BR,teamSize:1});
+  for(let i=0;i<10;i++)humano(r,i);
+  assert.equal(r.botAlvo(),r.botCount,'o alvo do BR é o do modo, não o que falta');
+});

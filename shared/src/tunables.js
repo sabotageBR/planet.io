@@ -155,13 +155,25 @@ export const TUNABLES=[
   num('sala','WORLD.LADO','Lado do mundo (vale no próximo boot do servidor)','px','server',4000,24000,500,WORLD,'LADO'),
   // ⚠️ Só o LIVRE: no Battle Royale a capacidade sai do modo (`modeCap`, que fecha no tamanho de equipe) e
   // quem preenche é o lobby, com a curva própria dele.
-  // ⚠️ Valem para as salas CRIADAS daí em diante — a que já roda fixou os dois no construtor. E BAIXAR o
-  // número de bots não expulsa ninguém: `trimBots` só é chamado no lobby do BR, e no Livre o bot morto
-  // renasce. O rótulo diz isso.
+  // ⚠️ Valem para as salas CRIADAS daí em diante — a que já roda fixou os dois no construtor. BAIXAR o
+  // número de bots não expulsa GENTE: o que sai é o excedente de preenchimento, aos poucos (um a cada
+  // `ROOM.BOT_TRIM_TICKS`, o mais longe de qualquer humano) e antes disso por atrito, morrendo sem voltar.
+  // ⚠️ `ROOM.BOTS` é a lotação de preenchimento, não a população: o alvo de agora é o que FALTA para a
+  // sala parecer viva (`Room.botAlvo` = BOTS − humanos), então uma sala cheia de gente fica sem nenhum.
   // ⚠️ `ROOM.BOT_SEED` (6) é quantos abrem a sala: com `ROOM.BOTS` abaixo disso a sala nasce com menos
   // que a semente e o enchimento gradual não tem o que fazer.
   num('sala','ROOM.MAX','Jogadores por sala no modo Livre (vale nas salas novas)','jogadores','server',2,60,1,ROOM,'MAX'),
   num('sala','ROOM.BOTS','Preenchimentos por sala no modo Livre (vale nas salas novas)','bots','server',0,60,1,ROOM,'BOTS'),
+  // ── OS DOIS TETOS DO "JOGAR (AUTO)" ──
+  // Estes valem NA HORA (não são copiados por sala nenhuma): quem os lê são `matchmaking.escolheSala` e
+  // `RoomManager.findOrCreateRoom`, a cada entrada. São o freio do agrupamento — sem eles a sala mais
+  // cheia do cluster é um atrator e todo mundo cai no mesmo pod, que foi o travamento de 2026-09-05.
+  // ⚠️ Teto de ENTRADA, nunca de permanência: baixá-los não tira ninguém de sala nenhuma, só muda para
+  // onde vai o PRÓXIMO. E `ROOM.SOFT` acima de `ROOM.MAX` é inerte (o teto duro morde primeiro).
+  num('sala','ROOM.SOFT','Jogadores por sala antes de o automático abrir outra','jogadores','server',2,60,1,ROOM,'SOFT'),
+  // Em PLANETAS (humanos + preenchimentos) porque é isso que o laço de 60 Hz paga: contar só humanos
+  // deixaria o lobby de Battle Royale com 2 pessoas e 48 bots parecer uma sala vazia.
+  num('sala','ROOM.SHARD_SOFT','Planetas por shard antes de o automático mandar para outro','planetas','server',10,200,5,ROOM,'SHARD_SOFT'),
   // ── INATIVIDADE ──
   // Quem deixa a aba aberta ocupa vaga, vira comida de graça e polui o placar e o kill feed de toda sala por
   // onde passa — e, antes disto, renascia SOZINHO a cada 5 s, para sempre. Os três relógios da sessão estão

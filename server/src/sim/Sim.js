@@ -61,6 +61,7 @@ export class Sim{
     this.playersDirty=true;
     /** @type {{k:string,a:number,b:number,how:string,by:number|null,n?:number}[]} fila do KILL FEED (a sala drena e difunde) */this.feed=[];
     /** @type {((o:any)=>void)|null} espelho SEM TETO da fila acima, para o fluxo ao vivo do /admin (ver `_feed`) */this.onFeed=null;
+    /** @type {((gp:GamePlayer)=>boolean)|null} o preenchimento que morreu deve VOLTAR? (a sala responde com `botAlvo`; sem ela, sempre) */this.botGate=null;
     /** @type {Map<number,{by:number,how:string,tick:number}>} último dano levado por slot: quem AMOLECEU antes de alguém colher */this._lastHit=new Map();
     this._listeners=new Map();this._lb=[];this._lbTick=-1;this._hit=new Map();this._statTick=new Map();this._deaths=[];this._elim=0;}
   get tick(){return this.world.tick;}
@@ -265,7 +266,12 @@ export class Sim{
     // ⚠️ O feed sai ACIMA do respawn de bot: no modo Livre o bot renasce e o `return` abaixo engoliria a
     // linha — e abate de bot é a MAIORIA dos abates da sala.
     // Sem respawn (Battle Royale): o bot morre de vez, como todo mundo. É a ÚNICA linha que ressuscitava alguém.
-    if(gp.isBot&&this.mode.respawnBots){w.respawnPlayer(e.slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),score:Math.floor(gp.score*BOT.RESPAWN_SCORE)});gp.score=Math.floor(gp.score*BOT.RESPAWN_SCORE);if(gp.brain)gp.brain.reset();return;}
+    // ⚠️ E ele só volta se AINDA FALTAR preenchimento (`botGate`, que a Room liga com `botAlvo()`): o alvo
+    // encolhe conforme a sala enche de gente, e é morrendo que o excedente vai embora — por ATRITO, sem
+    // ninguém ver um planeta sumir do nada. Sem o portão aqui, `trimBots` teria que arrancar todos vivos.
+    if(gp.isBot&&this.mode.respawnBots){
+      if(this.botGate&&!this.botGate()){this.remove(e.slot);return;}
+      w.respawnPlayer(e.slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),score:Math.floor(gp.score*BOT.RESPAWN_SCORE)});gp.score=Math.floor(gp.score*BOT.RESPAWN_SCORE);if(gp.brain)gp.brain.reset();return;}
     gp.dead=true;gp.deathTick=w.tick;gp.placement=0;this._elim++;
     if(gp.isBot)return;   // bot eliminado não tem sessão, hooks nem tela de morte: o caminho abaixo é só de humano
     const byHole=e.cause==='blackhole',durationMs=Math.round((w.tick-gp.joinedTick)*1000/TICK_HZ),maxMass=Math.round(gp.maxMass);

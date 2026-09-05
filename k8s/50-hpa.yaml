@@ -27,6 +27,12 @@
 # valendo — o segundo core é folga para o resto do processo (libuv, GC, TLS/zlib), não uma promessa
 # de o laço principal usar mais que um núcleo. `minReplicas`/`maxReplicas` caíram para 3–9 na mesma
 # decisão: a frota roda mais enxuta, e a autoescala continua livre para variar dentro dessa faixa.
+# ⚠️ E ELE NÃO SUBSTITUI O MATCHMAKING — aprendido no travamento de 2026-09-05. A métrica é a CPU MÉDIA
+# da frota, então 1198m + 377m + 159m dá 578m e o HPA vê "está tudo bem" com um pod saturado e dois
+# ociosos: a média é justamente o que ESCONDE o desbalanceamento. E subir não resolveria, porque um shard
+# novo só recebe QUEM ENTRAR DEPOIS — com o `/api/auto` mandando todo mundo para a sala mais cheia do
+# cluster, ele nasceria vazio e ficaria vazio (o shard 0 daquele dia tinha UM jogador). Quem distribui é
+# `server/src/rooms/matchmaking.js`; a autoescala só vale alguma coisa depois que a carga se espalha.
 apiVersion: autoscaling/v2beta2   # o cluster é k8s 1.21: `autoscaling/v2` só existe a partir do 1.23
 kind: HorizontalPodAutoscaler
 metadata:

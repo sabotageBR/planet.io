@@ -8,6 +8,7 @@ import {createRng} from '@warspace/shared/rng.js';
 import {sendJson,readJson,bearer,clientIp} from '../api/router.js';
 import {sessionKey} from '../auth/tokens.js';
 import {createPartyManager} from '../rooms/Party.js';
+import {escolheSala} from '../rooms/matchmaking.js';
 import {shardOf,newCode} from '../rooms/codes.js';
 import {fetchPeerRooms,askPeers} from './peers.js';
 import {createAdminHttp} from './admin.js';
@@ -135,11 +136,16 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
         return sendJson(res,r.status,r.body);}
       if(p==='/api/auto'){
         // ?mode= e ?teamSize=: o Battle Royale tem pool próprio por tamanho de equipe, senão o jogador cairia
-        // numa sala de outro formato. O filtro é `open` (= Room.acceptsJoin), não `players<max`: no Battle Royale
-        // uma sala com vaga mas já EM PARTIDA não recebe mais ninguém, e o peer só nos conta o que o info() diz.
+        // numa sala de outro formato. Quem escolhe é `escolheSala` (rooms/matchmaking.js, pura e testada):
+        // ela agrupa até `ROOM.SOFT` por sala e `ROOM.SHARD_SOFT` por shard, e daí em diante ESPALHA.
+        // ⚠️ Isto aqui era `a sala mais cheia do CLUSTER`, e essa linha só é inofensiva com um shard: com
+        // vários ela é um atrator que empilha o cluster inteiro num pod — ver o cabeçalho do módulo.
+        // `null` = "crie uma neste shard", e é `findOrCreateRoom` (que aplica o MESMO teto de agrupamento)
+        // quem decide entre reusar uma sala local com folga e abrir outra.
         const mode=+(url.searchParams.get('mode')||0)|0,teamSize=+(url.searchParams.get('teamSize')||1)|0;
-        const open=(await allRooms()).filter(r=>(r.open!==undefined?r.open:r.players<r.max)&&(r.mode|0)===mode&&(mode===0||(r.teamSize|0)===teamSize)).sort(byPlayers);
-        if(open[0])return sendJson(res,200,open[0]);if(rooms)return sendJson(res,200,rooms.findOrCreateRoom({mode,teamSize}).info());
+        const sala=escolheSala(await allRooms(),{mode,teamSize,shard:config.shard});
+        if(sala)return sendJson(res,200,sala);
+        if(rooms)return sendJson(res,200,rooms.findOrCreateRoom({mode,teamSize}).info());
         return sendJson(res,503,{error:'no_game',message:'nenhum shard de jogo disponível'});}
       // ── lobby de equipe (código de convite) ──
       if(p==='/api/party'&&req.method==='POST'){const b=await readJson(req),key=keyOf(req);

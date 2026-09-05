@@ -2681,6 +2681,54 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ondulação sutil na beirada (peso r⁴, ~2% do raio) + squash na direção do movimento, sem girar a arte. Cada malha é um draw call,
   então só as maiores da tela viram blob (`WOB_MAX`, `WOB_MIN_PX`) e nada disso acontece no modo econômico ou com "menos movimento".
 
+- **O "JOGAR (AUTO)" AGRUPA ATÉ O TETO E DEPOIS ESPALHA** (`server/src/rooms/matchmaking.js`,
+  `ROOM.SOFT`/`ROOM.SHARD_SOFT`, `RoomManager.findOrCreateRoom`): a regra era `abertas.sort(byPlayers)[0]`
+  — **a sala mais cheia do CLUSTER INTEIRO** —, e essa linha só é inofensiva com um shard. Com vários ela
+  é um ATRATOR: quem entra vai para a mais cheia, o que a deixa mais cheia; quando ela lota, a segunda
+  mais cheia é vizinha dela no MESMO pod (nasceu quando aquele pod atendeu), e o shard inteiro é
+  escolhido de novo. Medido em produção em 2026-09-05: **55 humanos e 4 salas no shard 2, a 1198m de
+  CPU** (uma delas com 50 humanos + 15 preenchimentos), contra **1 humano em cada um dos outros dois
+  shards, ociosos a 159m e 377m** — o jogo travando com dois terços da frota parada, e quem entrava caindo
+  justamente na sala pior. Agora são dois tetos: `SOFT` (jogadores por sala) e `SHARD_SOFT` (planetas por
+  shard); abaixo deles agrupa-se na mais cheia, acima abre-se outra sala.
+  ⚠️ **`SHARD_SOFT` conta os PREENCHIMENTOS junto**, e é isso que faz o teto medir o processo: o laço de
+  60 Hz não distingue quem está atrás do planeta, e contar só humanos deixaria passar o pior caso — o
+  lobby de Battle Royale com 2 pessoas e 48 bots, que custa uma sala cheia e aparecia como 2. Havia
+  QUATRO desses no mesmo pod.
+  ⚠️ **É teto de ENTRADA, nunca de permanência**: ninguém é removido de uma sala por ela passar do SOFT, e
+  a sala continua ABERTA (`acceptsJoin` não mudou) — código, convite e equipe entram até `ROOM.MAX`, que é
+  o que faz o amigo cair na sala do amigo mesmo cheia. O que muda é só para onde vai o PRÓXIMO que clicar
+  em JOGAR.
+  ⚠️ **Os dois caminhos precisam concordar**: `/api/auto` (a porta de toda entrada do cliente, via
+  `play()`) e o `findOrCreateRoom` do `wsServer` (join sem código). Consertar só o primeiro deixaria o
+  segundo empilhando em silêncio.
+  ⚠️ **O HPA NÃO CONSERTA ISTO, e é o contrário: ele fica cego.** Ele escala por CPU MÉDIA
+  (`AverageValue: 700m`), e 1198+377+159 dá média 578m — abaixo do alvo, ou seja "está tudo bem" com um pod
+  saturado. E mesmo subindo não adiantaria: **um shard novo só recebe quem entrar DEPOIS**, e com o auto
+  mandando todo mundo para a sala mais cheia ele nasceria vazio e ficaria vazio (é o que o shard 0, com um
+  jogador, provava). Autoescala não é substituta de distribuição — ela só passa a valer alguma coisa
+  depois que a carga se espalha.
+  ⚠️ `escolheSala` é PURA e devolve `null` para "crie uma NESTE shard" — quem cria é o pod que atendeu, e
+  como o Ingress balanceia `/api` entre os pods, a escolha do shard novo já sai sorteada de graça. Não há
+  rota para criar sala num irmão, e não precisa haver.
+- **O PREENCHIMENTO É O QUE FALTA, NÃO UMA COTA FIXA** (`Room.botAlvo`, `Sim.botGate`, `Room._trimTick`,
+  `ROOM.BOT_TRIM_TICKS`): `ROOM.BOTS` era o alvo ABSOLUTO, então a sala com **50 humanos carregava os 15
+  preenchimentos do mesmo jeito** — 15 cérebros, 15 planetas e 15 linhas de placar que ninguém pediu, no
+  pod que já estava saturado. O alvo passou a ser `BOTS − humanos`: sala vazia continua abrindo com a
+  semente de sempre (`ROOM.BOT_SEED`, que é o que impede uma sala sem nada para perseguir) e sala com
+  gente vai ficando só com gente.
+  ⚠️ **A queda é por ATRITO primeiro**: o bot que morre não volta se estiver acima do alvo (`botGate`, no
+  `_died`), e só o excedente que sobra é REMOVIDO — um a cada `BOT_TRIM_TICKS`, o mais LONGE de qualquer
+  humano. Arrancar quinze planetas de uma vez, dentro da tela de quem está jogando, seria trocar um
+  defeito de custo por um defeito de tela.
+  ⚠️ **Toda saída de bot tem que devolver o nick e a bandeira** (`Room._esqueceBot`), e é por isso que ela
+  virou função própria: são DUAS saídas agora (o trim e o portão da morte), e a que esquecesse a limpeza
+  faria a sala virar lista negra de nomes e de países — em silêncio.
+  ⚠️ **Só o LIVRE.** No Battle Royale quem preenche é o LOBBY (`fillTo`), com curva própria: lá o
+  preenchimento não é ambientação, é o adversário da partida.
+  ⚠️ `have` em `topUpBots` DEIXOU de ser monotônico (era a premissa escrita ali). O cinto de segurança
+  continua sendo o `f`, que decai com o tick da sala e zera em `SEED_WINDOW_TICKS` — ninguém vê um gigante
+  nascer no minuto 25 porque a sala esvaziou.
 - **QUANTA GENTE CABE: ~50 POR SHARD, E O TETO É UM CORE** (`scripts/loadtest.mjs`, medido em produção
   em 2026-09-03 com o cluster limpo). O gerador abre N sessões completas — guest pela API, WS no shard,
   `join`, INPUT a 20 Hz, ping a 1 Hz — e mede do lado de fora: RTT, bytes, snapshots, quedas. Escada:

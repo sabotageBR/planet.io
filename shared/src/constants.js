@@ -22,6 +22,38 @@ export const WORLD={w:12000,h:12000,LADO:12000};
 export const TICK_HZ=60,DT=1/60,SNAPSHOT_EVERY=3,LEADERBOARD_EVERY=30,SAMPLE_EVERY=30;
 export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600,
   HOST_HOLD_MS:120000,HOST_GRACE_MS:30000,
+  // ── O AUTOMÁTICO AGRUPA ATÉ AQUI, E DAÍ EM DIANTE ESPALHA ──
+  // `MAX` é o teto DURO de uma sala (quem entra por código ou convite vai até ele). Estes dois são os
+  // tetos do JOGAR (AUTO), e existem porque agrupar sem freio derruba o servidor: `findOrCreateRoom`
+  // manda o jogador para a sala MAIS CHEIA com vaga e `/api/auto` fazia o mesmo sobre o CLUSTER INTEIRO
+  // — então a sala mais cheia do mundo era um ATRATOR, e o shard dela também. Medido em produção em
+  // 2026-09-05 com `MAX` em 50: 55 humanos e 4 salas no shard 2 (1198m de CPU, o laço de 60 Hz
+  // estourando o tick para todo mundo) contra UM humano em cada um dos outros dois shards, ociosos a
+  // 159m e 377m. O jogo travava com o cluster a um terço da capacidade, e quem entrava caía justamente
+  // na sala pior.
+  // SOFT: quantos HUMANOS uma sala aceita pelo automático. Acima disso ela sai do pool e o jogador vai
+  // para a próxima — ou para uma sala NOVA. Não fecha a porta: convite, código e equipe continuam
+  // entrando até `MAX`, que é o que faz o amigo cair na sala do amigo mesmo cheia.
+  // SHARD_SOFT: quantos PLANETAS um shard aceita pelo automático, somando as salas dele — humanos MAIS
+  // preenchimentos. É o teto que mede o PROCESSO, e sem ele o SOFT sozinho não resolve nada: três salas
+  // de 20 no mesmo pod custam o mesmo que uma de 60. Conta os bots porque o `World.step` não distingue
+  // quem está atrás do planeta — e ignorá-los deixaria passar o caso que mais dói, o do Battle Royale
+  // parado no lobby com 2 humanos e 48 preenchimentos, que pesa como uma sala cheia e aparecia como 2.
+  // O número sai da medição de capacidade (~50 por shard é onde o RTT começa a subir; ver "QUANTA GENTE
+  // CABE" no CLAUDE.md), com a folga que o preenchimento mais barato que uma sessão permite.
+  // ⚠️ Os dois são TETO DE ENTRADA, nunca de permanência: ninguém é removido de uma sala por ela passar
+  // do SOFT — quem já está jogando fica.
+  SOFT:20,SHARD_SOFT:60,
+  // ── PREENCHIMENTO É O QUE FALTA PARA A SALA PARECER VIVA, NÃO UMA COTA FIXA ──
+  // `BOTS` era o alvo ABSOLUTO: uma sala com 50 humanos carregava os 15 preenchimentos do mesmo jeito —
+  // 15 cérebros, 15 planetas e 15 linhas de placar que ninguém pediu, no pod que já estava saturado. O
+  // alvo passa a ser o que FALTA (`BOTS - humanos`, ver `Room.botAlvo`): sala vazia continua abrindo com
+  // a semente de sempre e sala com gente vai ficando só com gente.
+  // ⚠️ A queda é por ATRITO, e é de propósito: o bot que morre não volta acima do alvo (o gate em
+  // `Sim._died`), e só o excedente que sobra é removido — um por `BOT_TRIM_TICKS`, o mais LONGE de
+  // qualquer humano. Tirar 15 planetas de uma vez, na frente de quem está jogando, seria trocar um
+  // defeito de custo por um defeito de tela.
+  BOT_TRIM_TICKS:120,
   // ── A SALA NÃO NASCE CHEIA ──
   // Ela nascia com os 15 preenchimentos no MESMO tick, e isso é a coisa mais fácil de notar num jogo .io:
   // quinze planetas surgindo juntos, do nada, no instante em que você entra. Gente de verdade chega aos

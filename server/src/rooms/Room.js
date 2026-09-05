@@ -51,6 +51,11 @@ export class Room{
     this.max=this.mode.lobby?modeCap(this.modeId,this.teamSize):(roomMax!=null?roomMax:ROOM.MAX);
     this.botCount=this.mode.lobby?0:(roomBots!=null?roomBots:ROOM.BOTS);
     this._proxBot=Infinity;   // quem agenda a 1ª chegada é o `start()`; antes dele ninguém entra
+    this._proxTrim=0;
+    // O PREENCHIMENTO SÓ VOLTA SE AINDA FALTAR (ver `botAlvo`). O portão é chamado por `Sim._died` no
+    // instante da morte, com o bot ainda na lista — daí o `<=`. Ele também LIMPA o nick e a bandeira, que
+    // é a metade da saída que o Sim não tem como saber que existe.
+    this.sim.botGate=gp=>{if(this.sim.botCount()<=this.botAlvo())return true;this._esqueceBot(gp);return false;};
     // ⚠️ `roundTicks!=null`, NUNCA `roundTicks||…`: **0 é o valor de SEM FIM**, e o `||` o transformaria em
     // silêncio na rodada padrão. É a mesma armadilha do `config.roundTicks||ROUND.TICKS` que morava aqui.
     // ⚠️ E o padrão do Livre sai de `ROUND.TICKS`, não de `config.roundTicks`: a duração virou parâmetro do
@@ -214,35 +219,56 @@ export class Room{
    * humanos) congela o tick, e ao religar ela volta a ser "nova" para quem chega — que é o certo.
    * ⚠️ E é zero fora do Livre: no Battle Royale quem preenche é o LOBBY (`fillTo`), que chama `_nasceBot`
    * sem `r` e continua com a faixa de sempre.
-   * ⚠️ `have` só serve de índice porque `botCount()` NUNCA cai no Livre: `trimBots` é só do lobby
-   * (`join`), o painel do dono não enxerga preenchimento e o bot morto RENASCE no mesmo slot. Se algum
-   * dos três mudar, `have` volta a ficar abaixo de `BOT_SEED` e nasceria um gigante no minuto 25 — mas o
-   * `f` do enchimento já estaria em zero a essa altura, e é ele o cinto de segurança.
+   * ⚠️ `have` é índice de COTA (`botSpawnR`), e ele DEIXOU de ser monotônico: com o alvo dinâmico o bot
+   * morto acima da conta não volta (`Sim.botGate`) e o excedente é removido (`_trimTick`), então `have`
+   * cai. O cinto de segurança é o `f`: ele decai com o tick da sala e chega a zero em `SEED_WINDOW_TICKS`
+   * (2 min), e daí em diante `botSpawnR` devolve a faixa pequena de sempre pelos dois ramos — ou seja
+   * ninguém vê um gigante nascer no minuto 25 por causa de uma sala que esvaziou.
    */
-  topUpBots(team=-1,max=Infinity){let have=this.sim.botCount(),n=0;
+  topUpBots(team=-1,max=Infinity){let have=this.sim.botCount(),n=0;const alvo=this.botAlvo();
     // ⚠️ `abreEmAndamento` zera a janela na sala do DONO, e isso não é detalhe: `botSpawnR` com `f<=0` cai
     // no [24,58] de sempre pelos DOIS ramos, ou seja é ele que impede um gigante de aparecer do nada na
     // frente de quem abriu a sala — a mesma razão do `botSeed` zerado, um passo adiante.
     const janela=this.mode.respawnBots&&this.abreEmAndamento?1-this.sim.tick/ROOM.SEED_WINDOW_TICKS:0;
-    const vagas=this.botCount-this.botSeed;
-    for(;have<this.botCount&&n<max;have++,n++){
+    const vagas=alvo-this.botSeed;
+    for(;have<alvo&&n<max;have++,n++){
       // a SEMENTE é a abertura por definição (só o relógio a limita); da sétima em diante manda o MENOR
       // entre o relógio e o quanto ainda falta encher — sala cheia é sala cheia em qualquer ritmo.
-      const enche=vagas>0?(this.botCount-have)/vagas:0;
+      const enche=vagas>0?(alvo-have)/vagas:0;
       const f=have<this.botSeed?janela:(janela<enche?janela:enche);
       this._nasceBot({name:this._botNome(),team,r:botSpawnR(this.rng,have,f)});}
     return n;}
   _agendaBot(){const j=this.abreEmAndamento?ROOM.BOT_JOIN_TICKS:ROOM.HOST_BOT_JOIN_TICKS;
     this._proxBot=this.sim.tick+this.rng.int(j[0],j[1]);}
   /**
-   * UM preenchimento entrando, de tempos em tempos, até o alvo. Roda dentro do `step` e é O(1) enquanto a
-   * sala está cheia — `botCount()` é um contador, não uma varredura.
-   * ⚠️ No Livre o bot RENASCE quando morre (`mode.respawnBots`), então a população não cai e isto se
-   * esgota sozinho depois que a sala enche: não é um relógio que fica acordando para sempre.
+   * UM preenchimento entrando, de tempos em tempos, até o alvo — que agora é `botAlvo()` e ENCOLHE quando
+   * entra gente. Roda dentro do `step` e não custa nada enquanto o relógio não vence.
+   * ⚠️ Ele e o `_trimTick` são os dois sentidos da MESMA conta, e por isso não brigam: aqui só se nasce
+   * abaixo do alvo, lá só se remove acima dele. Com a população parada no alvo, nenhum dos dois faz nada.
    */
   _chegadaBots(){
-    if(this.sim.tick<this._proxBot||this.sim.botCount()>=this.botCount)return;
+    if(this.sim.tick<this._proxBot||this.sim.botCount()>=this.botAlvo())return;
     this.topUpBots(-1,1);this._agendaBot();}
+  /**
+   * QUANTOS PREENCHIMENTOS ESTA SALA QUER AGORA. `botCount` é a lotação de preenchimento da sala; o alvo é
+   * o que FALTA para ela parecer viva — cada humano que entra ocupa o lugar de um bot. Com a sala cheia de
+   * gente o alvo é ZERO: 15 cérebros, 15 planetas e 15 linhas de placar que ninguém pediu, no pod que já
+   * estava saturado (medido em produção: 50 humanos e 15 preenchimentos na mesma sala).
+   * ⚠️ Só o LIVRE. No Battle Royale quem preenche é o LOBBY (`fillTo`), que tem curva própria e uma razão
+   * própria para completar até `max` — lá o preenchimento não é ambientação, é o adversário da partida.
+   * ⚠️ Ele NÃO expulsa ninguém e não fecha a sala: é alvo de POPULAÇÃO de bot, e quem cai é bot.
+   */
+  botAlvo(){if(this.mode.lobby||this.semBots)return this.botCount;
+    const falta=this.botCount-this.humanCount;return falta>0?falta:0;}
+  /**
+   * O excedente vai embora por ATRITO (o bot que morre não volta, ver `Sim.botGate`) e, quando o atrito não
+   * dá conta — uma leva de gente entrando de uma vez —, sai UM a cada `ROOM.BOT_TRIM_TICKS`: o mais LONGE
+   * de qualquer humano, que é o único que ninguém vê sumir. Arrancar quinze planetas de uma vez, na frente
+   * de quem está jogando, seria trocar um defeito de custo por um defeito de tela.
+   */
+  _trimTick(){if(this.mode.lobby||this.sim.tick<this._proxTrim)return;
+    this._proxTrim=this.sim.tick+ROOM.BOT_TRIM_TICKS;
+    const sobra=this.sim.botCount()-this.botAlvo();if(sobra>0)this.trimBots(1,{longe:true});}
   /**
    * O nome de um preenchimento. `realNicks` (os dois modos) usa o gerador de APELIDOS — "trovao_137",
    * "xXzecaXx", "Bia" —, que é o que faz a sala parecer cheia de gente. Os 60 nomes temáticos de BOT_NAMES
@@ -322,15 +348,34 @@ export class Room{
   _nivelBot(r){if(!this.mode.realNicks)return 0;
     if(!r)return this.rng.int(1,35);
     return r>=ROOM.SEED_R[1][0]?this.rng.int(12,35):this.rng.int(1,20);}
-  /** Par que faltava do topUpBots: tira bots (o Battle Royale abre vaga para humano até o último segundo). */
-  trimBots(n){let k=n;
-    for(const gp of [...this.sim.players.values()])
-      if(k>0&&gp.isBot){if(gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());
-        // a bandeira volta ao sorteio junto com a vaga: sem isto a sala vira lista negra de países
-        if(gp.country){const n=(this.paisesBot.get(gp.country)||0)-1;
-          if(n>0)this.paisesBot.set(gp.country,n);else this.paisesBot.delete(gp.country);}
-        this.sim.remove(gp.slot);k--;this.flagsDirty=true;}   // Sim.remove marca as peças com REMOVE.DESPAWN, que o snapshot já traduz
+  /**
+   * O nick e a bandeira de um preenchimento voltam ao sorteio. É o par obrigatório de toda saída de bot —
+   * sem ele a sala vira lista negra de nomes e de países —, e mora fora do `trimBots` porque a outra saída
+   * (o bot que morre acima do alvo, em `Sim.botGate`) precisa exatamente da mesma limpeza.
+   */
+  _esqueceBot(gp){if(!gp)return;
+    if(gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());
+    if(gp.country){const n=(this.paisesBot.get(gp.country)||0)-1;
+      if(n>0)this.paisesBot.set(gp.country,n);else this.paisesBot.delete(gp.country);}}
+  /**
+   * Par que faltava do topUpBots: tira bots (o Battle Royale abre vaga para humano até o último segundo).
+   * `longe`: escolhe o mais distante de qualquer humano em vez do primeiro da lista — no Livre isto roda
+   * com a partida no ar, e um planeta sumindo dentro da tela de alguém é pior que o custo que se poupa.
+   */
+  trimBots(n,{longe=false}={}){let k=n;
+    let bots=[...this.sim.players.values()].filter(gp=>gp.isBot);
+    if(longe&&bots.length>1){const hs=[];
+      for(const gp of this.sim.players.values())if(!gp.isBot){const p=this._pos(gp.slot);if(p)hs.push(p);}
+      if(hs.length){const d=gp=>{const p=this._pos(gp.slot);if(!p)return Infinity;let m=Infinity;
+          for(const h of hs){const dx=h.x-p.x,dy=h.y-p.y,q=dx*dx+dy*dy;if(q<m)m=q;}return m;};
+        bots=bots.map(gp=>({gp,d:d(gp)})).sort((a,b)=>b.d-a.d).map(o=>o.gp);}}
+    for(const gp of bots){if(k<=0)break;
+      this._esqueceBot(gp);
+      this.sim.remove(gp.slot);k--;this.flagsDirty=true;}   // Sim.remove marca as peças com REMOVE.DESPAWN, que o snapshot já traduz
     return n-k;}
+  /** Onde está um jogador, pela primeira peça viva: basta para "está longe de todo mundo". */
+  _pos(slot){const ps=this.sim.world.players.get(slot);if(!ps||!ps.alive)return null;
+    for(const pc of ps.pieces)if(!pc.dead)return pc;return null;}
   freeSlot(){let s=0;while(this.sim.players.has(s))s++;return s;}
   get humanCount(){return this.sessions.size;}
   isFull(){return this.sessions.size>=this.max;}
@@ -1615,7 +1660,7 @@ export class Room{
     // tick, e a sala do dono acabaria antes de existir. O fim continua alcançável por `lastAlive` e pelo
     // `close` do painel.
     if(this.roundTicks&&sim.tick-this.roundStart>=this.roundTicks){this.endRound('time');return;}
-    this._chegadaBots();
+    this._chegadaBots();this._trimTick();
     sim.step();
     if(sim.botTalk.length)this.botChatTick();
     if(this.falaFila.length)this._filaTick();

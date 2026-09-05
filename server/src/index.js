@@ -43,7 +43,8 @@ export async function startServer(overrides={}){
   // Mesmo contrato para o TAMANHO DA SALA e a QUANTIDADE DE PREENCHIMENTOS do modo Livre: o env é a
   // escolha do operador com que os pods sobem, `Room.js` lê a constante viva e `admin_settings` a
   // sobrescreve ≤30 s depois. ⚠️ Vale para as salas CRIADAS daí em diante — a que já roda fixou os dois
-  // no construtor —, e baixar o número de bots não expulsa ninguém: `trimBots` só roda no lobby do BR.
+  // no construtor —, e baixar o número de bots tira o excedente aos poucos (`Room._trimTick`, um a cada
+  // ROOM.BOT_TRIM_TICKS, o mais longe de qualquer humano), nunca de uma vez na frente de quem joga.
   ROOM.MAX=cfg.roomMax;ROOM.BOTS=cfg.roomBots;
   // ── O TAMANHO DO MUNDO: o env semeia, o painel manda, e QUEM APLICA É O BOOT ──
   // Mesmo contrato do `ROUND.TICKS` acima, com uma diferença que é a razão de ele existir em dois campos:

@@ -43,8 +43,13 @@ export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=nu
    * dentro do mesmo modo e tamanho de equipe — agrupa em vez de espalhar, que é o que faz a espera do
    * Battle Royale encher rápido. Nenhuma dá: cria uma.
    * `nick` (opcional) exclui as salas onde esse nome já está em uso: nick é único POR SALA.
+   * ⚠️ O agrupamento PARA em `ROOM.SOFT` humanos, e é ele que impede a sala mais cheia deste shard de
+   * virar o destino de todo mundo até bater no teto duro. Acima do SOFT a sala continua ABERTA (código,
+   * convite e equipe entram até `max`) — o que muda é que o automático deixa de mandar gente para lá e
+   * abre outra. É o mesmo teto de `matchmaking.escolheSala`, e os dois têm que concordar: este é o
+   * caminho do WS sem código, aquele é o do `/api/auto`.
    */
-  function findOrCreateRoom({mode=MODE.FREE,teamSize=1,nick=null,userId=null,key=null}={}){
+  function findOrCreateRoom({mode=MODE.FREE,teamSize=1,nick=null,userId=null,key=null,soft=ROOM.SOFT}={}){
     const quem={userId,key};
     let best=null;
     for(const r of rooms.values()){if(r.modeId!==mode||(mode!==MODE.FREE&&r.teamSize!==teamSize))continue;
@@ -56,6 +61,7 @@ export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=nu
       // regra proíbe, e o JOGAR (AUTO) é justamente quem não escolheu a sala — barrá-lo aqui seria fechar a
       // porta por uma coincidência que o próprio matchmaking pode evitar mandando-o para a sala do lado.
       if(nick&&r.nickTaken(nick))continue;
+      if(r.humanCount>=soft)continue;
       if(r.acceptsJoin()&&(!best||r.humanCount>best.humanCount))best=r;}
     if(best){start(best);return best;}
     let code=newCode(config.shard);while(rooms.has(code))code=newCode(config.shard);return create(code,{mode,teamSize});}
