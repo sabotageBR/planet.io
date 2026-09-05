@@ -117,7 +117,8 @@ export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,F
 export const MODE={FREE:0,BR:1};
 export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
   LOBBY_TICKS:1800,COUNTDOWN_TICKS:300,FILL_EXP:1.7,ARRIVE_JITTER:.55,
-  SPAWN_RING:.44,START_AMMO:1,ROUND_TICKS:45000,WEAPON_P:.05,JOIN_GRACE_TICKS:120};
+  SPAWN_RING:.44,START_AMMO:1,ROUND_TICKS:45000,WEAPON_P:.05,JOIN_GRACE_TICKS:120,
+  INVITE_TTL_MS:20000};   // quanto o convite "Battle Royale começando" fica na tela de quem está no Livre
 // PLAYERS é o total (humanos + bots): a sala livre já roda 30 humanos + 15 bots = 45, então 50 é o MESMO
 // regime de tick, não um salto de escala. Capacidade efetiva = PLAYERS − PLAYERS%teamSize (50/50/48/48):
 // equipe incompleta contra equipes cheias não é dificuldade, é sorteio.
@@ -145,6 +146,10 @@ export const ZONE={STAGES:6,R:[.62,.45,.32,.225,.16,.113,.08],
  * (Mora aqui, e não em zone.js, porque `roundTicksOf` precisa dele e constants.js é a raiz — não importa nada.)
  */
 export const ZONE_TOTAL_TICKS=ZONE.HOLD_TICKS.reduce((a,b)=>a+b,0)+ZONE.SHRINK_TICKS.reduce((a,b)=>a+b,0);
+// LIMIARES (em segundos) do aviso reforçado antes do PRÓXIMO fechamento começar. 3s é o WARN_TICKS que já
+// existia (documentado, nunca consumido); 10s é novo — dá tempo de REAGIR, não só de reflexo. Mora aqui, e
+// não em zone.js, pelo mesmo motivo de ZONE_TOTAL_TICKS: TICK_HZ é da raiz.
+export const ZONE_WARN_AT_S=[10,ZONE.WARN_TICKS/TICK_HZ];
 // GAS_GAIN: ACAMPAR NO GÁS ERA RENDA LÍQUIDA. O laço se fechava sozinho — `zoneBurn` arranca `pc.shed` e
 // cospe pelotas para FORA, e passada a imunidade `pieceEject` devolvia 100% (EAT.EJECT_GAIN=1). Quem ficava
 // na beirada queimava e recolhia a própria queimadura, indefinidamente, enquanto o círculo apertava em cima

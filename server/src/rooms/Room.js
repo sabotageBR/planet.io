@@ -771,7 +771,15 @@ export class Room{
       // a virada da zona é o gatilho natural de comentário (e, no fim, de "quantos faltam")
       const vivos=this.sim.aliveCount(),poucos=vivos<=BOT.GAS.LATE_ALIVE;
       this._talkAlgum(poucos?'poucos':'zona');
-      this._pushFeed(poucos?{k:'sys',a:-1,b:-1,how:'few',by:null,n:vivos}:{k:'sys',a:-1,b:-1,how:'zone',by:null});}}
+      this._pushFeed(poucos?{k:'sys',a:-1,b:-1,how:'few',by:null,n:vivos}:{k:'sys',a:-1,b:-1,how:'zone',by:null});
+      // ⚠️ O EVENT.ZONE_SHRINK acima é filtrado por AOI (flushEvents): só chega perto do círculo NOVO. O
+      // fechamento é justamente o instante em que TODOS precisam saber que o relógio virou — perto ou
+      // longe. JSON de controle, sala INTEIRA, sem AOI (mesmo molde de `notice`/`feed`).
+      this._broadcastZoneMove();}}
+  /** Room-wide, sem AOI: "o gás começou a fechar agora". Ver comentário em tickZone(). */
+  _broadcastZoneMove(){
+    const msg={t:'zoneMove',at:Date.now()};
+    for(const s of this.sessions.values())if(s.ws)s.sendJson(msg);}
   /** Enfileira um gatilho de fala num preenchimento vivo qualquer (o orçamento decide se sai algo). */
   _talkAlgum(kind){const vivos=[];
     for(const gp of this.sim.players.values())if(gp.isBot&&!gp.dead)vivos.push(gp.slot);
@@ -1347,6 +1355,17 @@ export class Room{
     for(const s of this.sessions.values())if(s.ws){s.sendJson(msg);n++;}
     return n;}
   /**
+   * Convite de Battle Royale — só faz sentido em sala do Livre (quem já está num BR não precisa ser
+   * convidado a outro). Interativo (Sim/Não): ao contrário de `notice()`, o cliente decide, não expira
+   * como aviso passivo — fica pendurado no HUD até a resposta ou o TTL vencer.
+   * Devolve quantas sessões receberam (0 se a sala não é do modo Livre).
+   */
+  brInvite(room,{ttlMs=BR.INVITE_TTL_MS}={}){
+    if(this.modeId!==MODE.FREE)return 0;
+    const msg={t:'brStart',room,at:Date.now(),ttlMs};let n=0;
+    for(const s of this.sessions.values())if(s.ws){s.sendJson(msg);n++;}
+    return n;}
+  /**
    * O que o painel /admin mostra de uma sala. ⚠️ NUNCA junte isto ao `info()`: aquele alimenta o
    * `/api/rooms` PÚBLICO, e a lista de jogadores (com sessionId e IP) não pode sair por lá.
    */
@@ -1558,15 +1577,17 @@ export class Room{
    * lugar de dado de identificação é o `adminInfo`, que só sai por HTTP autenticado. Vai o nome e a sala.
    * ⚠️ `is_admin` no token do JOGO serve para RECEBER um aviso, nunca para AGIR: kick, ban e parâmetros
    * continuam exigindo `token_kind==='admin'`, que é o que impede roubar a aba do jogo de um administrador.
-   * O alcance é o SHARD (RoomManager varre as salas do processo): o cluster inteiro exigiria `tellPeers` e
-   * uma rota interna, e um aviso não vale essa superfície.
+   * O ALCANCE É A PRÓPRIA SALA — versão anterior varria o SHARD inteiro (`RoomManager` passando o `Map`
+   * de salas para cada uma), e isso fazia o aviso (chat + faixa + som + notificação do sistema) aparecer
+   * para um admin jogando numa sala sempre que ALGUÉM entrasse em QUALQUER outra sala do shard,
+   * incomodando quem estava no meio de uma partida. A visão cross-shard de "quem entrou onde" continua
+   * existindo — é o painel /admin (aba Ao Vivo), alimentado por `bus.publica('entrou',...)` logo abaixo em
+   * `join()`, que é o caminho certo para monitorar o cluster inteiro.
    */
   _avisaAdmins(quem,gp){
     const msg={t:'adm',kind:'join',name:gp.name||'',room:this.code,registered:!!gp.registered,at:Date.now()};
-    const salas=this.manager&&this.manager.rooms?this.manager.rooms.values():[this];
-    for(const sala of salas)
-      for(const s of sala.sessions.values())
-        if(s!==quem&&s.ws&&s.isAdmin)s.sendJson(msg);}
+    for(const s of this.sessions.values())
+      if(s!==quem&&s.ws&&s.isAdmin)s.sendJson(msg);}
   /**
    * Apaga o "está falando" de quem estourou o prazo (morto incluído: ele fala, então a varredura não pode mais
    * apagar o 🎤 dele meio segundo depois de acender). A flag TALK é calculada ao vivo em `playersInfo`, mas o

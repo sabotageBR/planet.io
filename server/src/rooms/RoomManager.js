@@ -8,7 +8,7 @@ import {randomInt} from 'node:crypto';
 import {ROOM,ROUND,MODE,modeOf} from '@warspace/shared/constants.js';
 import {Room} from './Room.js';
 import {newCode,normalizeCode,shardOf} from './codes.js';
-import {fetchPeerRooms} from '../http/peers.js';
+import {fetchPeerRooms,tellPeers} from '../http/peers.js';
 import {BUS_MUDO} from '../admin/bus.js';
 /** @param {{config:any,hooks:any,log:any,metrics:any,scheduler:any}} o */
 export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=null,botNames=null,bus=BUS_MUDO}){
@@ -16,16 +16,28 @@ export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=nu
   const onRewards=(sessionId,rewards)=>{const s=findSession(sessionId);if(s)s.deliverRewards(rewards);};
   function start(room){if(room.running)return;room.start();scheduler.add(room);}
   function stop(room){room.stop();scheduler.remove(room);}
+  /** Convite de BR só NESTE shard — usado pela criação local e pela rota /internal/br-start (que nunca reencaminha). */
+  function broadcastBrStart(code){let delivered=0,salas=0;
+    for(const r of rooms.values()){const n=r.brInvite(code);if(n){delivered+=n;salas++;}}
+    return{delivered,rooms:salas};}
+  /** Cluster inteiro: local + tellPeers. Nunca aguardado por `create()` — dispara e sai. */
+  function announceBrStartCluster(code){
+    broadcastBrStart(code);
+    if(!config.peers.length)return;
+    tellPeers(config.peers,{path:'/internal/br-start',body:{room:code},log})
+      .then(rs=>{const falhas=rs.filter(r=>r.error||r.status!==200).length;
+        if(falhas)log.debug(`convite de BR ${code}: ${falhas} irmão(s) não confirmaram`);});}
   function create(code,{mode=MODE.FREE,teamSize=1,roundTicks=null,private:priv=false,hostUserId=null,hostNick=null}={}){
     const room=new Room({code,shard:config.shard,seed:randomInt(1,0x7fffffff),hooks,log,metrics,config,onRewards,mode,teamSize,botChat,
       botNames,roundTicks,private:priv,hostUserId,hostNick,bus});
-    // A sala precisa alcançar as IRMÃS para um caso só: avisar os administradores que entrou gente
-    // (`_avisaAdmins`). O alcance é o SHARD — o cluster inteiro exigiria `tellPeers` e uma rota interna,
-    // e um aviso não vale essa superfície.
-    room.manager={rooms};
     rooms.set(code,room);start(room);
     bus.publica('sala+',{sala:code,modo:mode,privada:!!priv,dono:hostNick||null});
-    log.info(`sala criada: ${code} ${modeOf(mode).key}${teamSize>1?`/${teamSize}`:''}${priv?' privada':''}${hostNick?` de ${hostNick}`:''} (${rooms.size} sala(s))`);return room;}
+    log.info(`sala criada: ${code} ${modeOf(mode).key}${teamSize>1?`/${teamSize}`:''}${priv?' privada':''}${hostNick?` de ${hostNick}`:''} (${rooms.size} sala(s))`);
+    // Battle Royale SEM DONO avisa o Livre inteiro (cluster) que uma partida está se formando — solo
+    // (findOrCreateRoom) OU equipe (getRoom via Party, que também chega aqui sem hostUserId/private).
+    // Sala com dono (/api/rooms) é fechada por natureza e não convida estranhos.
+    if(mode===MODE.BR&&!priv&&!hostUserId)announceBrStartCluster(code);
+    return room;}
   /**
    * A sala mais cheia que ainda ACEITA gente (`acceptsJoin`: sem vaga, terminada ou já em partida ficam de fora),
    * dentro do mesmo modo e tamanho de equipe — agrupa em vez de espalhar, que é o que faz a espera do
@@ -68,5 +80,5 @@ export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=nu
       // APAGADA em 35 s — ela existe justamente para esperar os amigos chegarem pelo link.
       if(!r.running&&idle>=ROOM.REMOVE_AFTER_MS&&now>=r.holdUntil){rooms.delete(r.code);bus.publica('sala-',{sala:r.code,por:'vazia'});log.info(`sala ${r.code} removida`);}}},1000);timer.unref();
   function close(){clearInterval(timer);for(const r of rooms.values())stop(r);}
-  return{rooms,create,findOrCreateRoom,getRoom,listRooms,allRooms,findSession,playerCount,start,stop,close};
+  return{rooms,create,findOrCreateRoom,getRoom,listRooms,allRooms,findSession,playerCount,start,stop,close,broadcastBrStart};
 }

@@ -16,11 +16,14 @@ import { Nick } from "./bits.jsx";
 import { WEAPON_ICON } from "./icons.js";
 import BrLobby from "./BrLobby.jsx";
 import Notice from "./Notice.jsx";
+import BrInvite from "./BrInvite.jsx";
+import { ZoneWarnBanner, ZoneAlarmFlash } from "./ZoneAlert.jsx";
 import { MODE, weaponOf, POWERUP, TICK_HZ, flagOf } from "@warspace/shared";
 import { keysOf } from "../game/input/Keyboard.js";   // a legenda tem que dizer a tecla que está DE FATO ligada (inclusive a do desempate de colisão)
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0, autodef: 0, zoom: 0, feast: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: "", clock: null, notice: null,
-  mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, zoneIn: null, zoneShrinking: false, talk: null, chat: [], feed: [], lobby: null };
+  mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, zoneIn: null, zoneShrinking: false, talk: null, chat: [], feed: [], lobby: null,
+  brInvite: null, zoneWarn: null, zoneAlarmAt: 0 };
 const TALK_MSG = { cd: "micCooldown", denied: "micDenied", unsupported: "micUnsupported", audio: "micFail", fail: "micFail" };   // motivo → chave da label
 /**
  * Anel de tempo: o arco encolhe com o que resta. Serve ao push-to-talk e aos powerups temporizados — é o
@@ -153,11 +156,17 @@ export default function Hud() {
         trazia de volta. No fim da pilha ele ocupa a sobra e nada acima dele se mexe. */}
     <KillFeed h={h} />
     </div>
+    {/* O chat é IRMÃO de #hud-left, não filho: em ponteiro grosso #hud-left vira `display:flex` e continua
+        `position:absolute` (herdado de `#hud>*`, ver ui.css), então um `#chat` aninhado nele resolveria o
+        próprio `top:calc(...)` contra a caixa de #hud-left (ancorada embaixo à esquerda) em vez de contra
+        #hud — o chat saía fora da tela em vez de ficar no canto superior esquerdo, sob o radar. Como
+        irmão, ele é sempre filho direto de #hud e a regra `#hud #chat` (ui.css) resolve certo em
+        qualquer data-mode/data-pointer. */}
+    <Chat h={h} persist={espectando} />
     {/* Coluna esquerda: no DESKTOP este div é `display:contents` e some da conta (cada bloco fica exatamente
         onde o tema o coloca). No DEDO ele vira uma pilha flex — porque #hud-status CRESCE com os powerups
         ativos, e qualquer `bottom` fixo para o chat voltava a colidir assim que um ímã entrava. */}
     <div id="hud-left">
-    <Chat h={h} persist={espectando} />
     <div id="hud-status">
       <button className={"chip belt" + (armed ? "" : " empty") + (podeTrocar ? " swap" : "")} id="hud-ammo"
         title={podeTrocar ? `${LB.swapWeapon} (${LB.keySwap})` : undefined} {...press("swap")}>
@@ -194,8 +203,11 @@ export default function Hud() {
         <i>⏳</i> <b>{fmtTime(h.zoneIn)}</b> <span>{h.zoneShrinking ? LB.zoneShrinking : LB.zoneCloses}</span></span> : null}
       {h.zoneHurt ? <span className="chip zone-out">{LB.zoneOut}</span> : null}
     </div> : null}
+    <ZoneWarnBanner w={h.zoneWarn} />
     <BrLobby lobby={h.lobby} />
     <Notice n={h.notice} />
+    <BrInvite b={h.brInvite} />
+    <ZoneAlarmFlash at={h.zoneAlarmAt} />
     {falando ? <div id="talk"><Ring resta={1 - h.talk.k} /><span>{LB.talkOn}</span></div>
       : talkAviso ? <div id="talk" className="hint"><span>{LB[TALK_MSG[talkAviso]] || LB.talkHint}</span></div> : null}
     <div id="hud-cd">

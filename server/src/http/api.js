@@ -61,6 +61,16 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
       if(cors(req,res,p))return;   // era preflight: já respondeu 204. Senão, só marcou os headers e segue
       if(p==='/healthz')return sendJson(res,200,health());
       if(p==='/internal/rooms')return sendJson(res,200,{shard:config.shard,rooms:rooms?rooms.listRooms():[]});
+      // BR começando: o shard que criou a sala avisa os irmãos para acordarem o Livre LOCAL deles. Nunca
+      // reencaminha (como /internal/rooms) e não é publicado no Ingress — só RoomManager.create() chama
+      // isto, nunca um cliente. Por isso não exige Bearer: não é ação de admin, é eco de um evento do
+      // próprio cluster.
+      if(p==='/internal/br-start'){
+        if(req.method!=='POST')return sendJson(res,405,{error:'method_not_allowed',message:'método não permitido'});
+        const b=await readJson(req),room=String(b&&b.room||'').toUpperCase();
+        if(!room)return sendJson(res,400,{error:'bad_room',message:'código da sala não veio'});
+        const r=rooms?rooms.broadcastBrStart(room):{delivered:0,rooms:0};
+        return sendJson(res,200,{shard:config.shard,...r});}
       // `googleClientId` vazio é o interruptor do login com Google: o cliente só desenha o botão quando ele
       // vem preenchido, então sem credencial nada aparece e a rota nem é procurada.
       // ⚠️ `ROOM.MAX`, não `config.roomMax`: o tamanho da sala virou parâmetro do painel e o env só o

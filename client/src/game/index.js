@@ -20,12 +20,13 @@ import {applyTheme,currentTheme,THEMES,resolveThemeId} from "../theme/index.js";
 import {warmFaces} from "../theme/faces.js";
 import {getLabels,preenche} from "../i18n/index.js";   // o texto desenhado DENTRO do mundo (fx) também é texto de UI
 import {createAudio} from "../audio/index.js";
+import {ESCADA} from "../audio/kit.js";
 import {api} from "../api/client.js";
 import {apiUrl,wsUrl} from "../api/base.js";
 import {PORTAL} from "../portal/flags.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,ZOOM,CAM,WORLD,PROTOCOL_VERSION,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,ZOOM,CAM,WORLD,PROTOCOL_VERSION,ZONE_WARN_AT_S,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
 // direto do módulo: `tunables.js` não entra no barril de `shared` (ele é a lista BRANCA do painel, não
 // vocabulário de jogo), e o cliente só precisa do aplicador — a validação vem junto de graça.
 import {aplicaWire} from "@warspace/shared/tunables.js";
@@ -55,7 +56,8 @@ import {passoQualidade,qualidadeZero} from "./quality.js";
 import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0,autodef:0,zoom:0,feast:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
-  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:"",notice:null,zoom:null,host:null});
+  mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:"",notice:null,zoom:null,host:null,
+  brInvite:null,zoneWarn:null,zoneAlarmAt:0});
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
   keySplit:"Space",keyEject:"KeyW",
   sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
@@ -71,6 +73,11 @@ const AIM_R2=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE;
 const MASS_STEP=1.6;   // de quanto em quanto a massa toca o carrilhão de "cresci" (marcos geométricos: sempre a mesma sensação de avanço)
 const AMB_MS=200;      // a ambiência é reajustada 5×/s: ela responde a estado, não a evento
 const DIR_EVENTS=new Set([EVENT.BOUNCE,EVENT.CHIP,EVENT.SHOOT,EVENT.DEFLECT,EVENT.SHIELD_HIT,EVENT.STAR_HIT,EVENT.SMASH]);
+// combo: acerto = eu fui o ATACANTE (slotB) num BOOM/SHIELD_HIT/SHIELD_BREAK — nunca quando sou vítima.
+// CLASH/DEFLECT com meu slot são "miss" explícito e zeram na hora; o míssil que expira no vácuo não avisa
+// ninguém, e por isso o combo também esfria sozinho depois de COMBO_RESET_MS sem um acerto novo.
+const COMBO_HIT=new Set([EVENT.BOOM,EVENT.SHIELD_HIT,EVENT.SHIELD_BREAK]);
+const COMBO_RESET_MS=3000;
 const shardOf=code=>{const n=parseInt(String(code||"")[0],36);return Number.isFinite(n)?n:0;};
 
 // Quantos shards sortear quando o pod que atendeu está ATRÁS deste cliente (rollout em curso) antes de
@@ -113,7 +120,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
   // ── modo, equipe, zona, chat e voz ──
   let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0,lobby=null,spec=null;   // `lobby` = o estado da tela de espera (JSON `lobby`, em ms)
-  let zone=null,zoneShown={x:0,y:0,r:0},lastShrink=0,lastHurt=false,lobbyBeep=false;   // `zone` = o par de círculos do fio; `zoneShown` é o interpolado do frame
+  let zone=null,zoneShown={x:0,y:0,r:0},lastShrink=0,lastHurt=false,lobbyBeep=false,zoneWarnIdx=0;   // `zone` = o par de círculos do fio; `zoneShown` é o interpolado do frame
   /** @type {{slot:number,name:string,team:number|null,text:string,at:number}[]} */let chatLog=[];
   /** @type {{id:number,at:number,k:string,how:string,n:number,a:object|null,b:object|null,assist:object|null,mine:boolean}[]} */
   let feedLog=[],feedSeq=0;
@@ -131,9 +138,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const canAct=()=>joined&&!dead&&!roundOver&&!pausado&&conn&&conn.isOpen;
   let aiming=false,aim=null;const pendingEat=new Map();   // id da peça comida → id de quem comeu (destino da sucção no frame do sumiço)
   let travado=-1,travadoAte=0;   // o alvo do último tiro mirado e até quando o anel continua na tela (MISSILE.AIM_HOLD_TICKS)
+  let comboN=0,comboT=0;   // acertos SEGUIDOS do meu tiro — só cosmético (fx/som), nunca entra na física
   const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self&&!view.self.fireCd?view.self.missiles:0),canAct,
     onAim:on=>{aiming=on;if(!on){aim=null;lastLock=-1;audio.stopLoop("aimCharge");}else audio.startLoop("aimCharge",{k:0});},
-    onCancel:()=>audio.play("cancel",{mine:true})});
+    onCancel:()=>audio.play("cancel",{mine:true}),
+    onNoAmmo:()=>audio.play("error",{mine:true})});
   /** Envelope das ações: repassa tudo e, de quebra, marca o hold do W para o som da cusparada. */
   const somEject=()=>{const m=view.self?view.self.mass:0;
     if(m<EJECT.MIN_R*EJECT.MIN_R)return;   // pequeno demais para cuspir (applyEject recusa): não pode sair som de uma cusparada que não houve
@@ -148,13 +157,13 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(a==="zoomReset"){if(ph==="down")zoomReset();return;}
     if(a==="swap"&&ph==="down")audio.play("weapon",{mine:true});
     actions.act(a,ph);};
-  /** Botão do ponteiro: sem munição (ou na carência) o esquerdo cospe em vez de atirar — e isso também soa. */
+  /** Botão do ponteiro: mira/tiro (esquerdo) e split (direito) são inteiramente do createActions — sem
+   *  munição o esquerdo só avisa por som (onNoAmmo), nunca ejeta. */
   const button=(btn,ph,type)=>{
     // O BOTÃO DO MEIO desfaz o que a roda fez. Ele já era interceptado (Pointer.js dá preventDefault nele
     // para não abrir o scroll do meio) e não fazia nada: "o botão da roda desfaz a roda" é a associação mais
     // direta que existe, e não disputa com o esquerdo, que é o tiro com carga de mira.
     if(btn===1&&ph==="down"){zoomReset();return;}
-    if(btn===0&&ph==="down"&&canAct()&&!(view.self&&!view.self.fireCd&&view.self.missiles>0))somEject();
     actions.button(btn,ph,type);};
   /**
    * Um entalhe de roda. ⚠️ O DETENT: um passo que CRUZARIA o zoom automático para exatamente nele. É a única
@@ -300,6 +309,16 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     else if(m.t==="chat"){pushChat(m);}
     else if(m.t==="talk"){view.setTalking(m.slot,!!m.on);}   // push-to-talk de outro: acende/apaga o ícone no planeta dele
     else if(m.t==="feed"){pushFeed(m);}
+    // CONVITE DE BATTLE ROYALE: só chega em sala do modo Livre (Room.brInvite filtra no servidor).
+    // Interativo — fica no hudStore até responder ou o TTL vencer, ao contrário do `notice` passivo.
+    else if(m.t==="brStart"){
+      hudStore.update(h=>({...h,brInvite:{room:m.room,at:performance.now(),ttlMs:m.ttlMs|0||20000}}));
+      audio.play("toast",{mine:true});}
+    // O GÁS COMEÇOU A FECHAR, para a sala inteira (não só quem está perto do círculo novo — o
+    // EVENT.ZONE_SHRINK é filtrado por AOI). Reusa o MESMO som `zoneShrink`; o GAP.zoneShrink dedupe
+    // quem também recebe o EVENT posicional por estar perto.
+    else if(m.t==="zoneMove"){audio.play("zoneShrink",{mine:true});
+      hudStore.update(h=>({...h,zoneAlarmAt:performance.now()}));}
     // AVISO GLOBAL do painel /admin: a faixa por cima do jogo E uma linha de sistema no chat. As duas de
     // uma fonte só — quem estava olhando o chat lê ali, quem estava olhando o jogo lê na faixa, e nenhuma
     // delas depende de o jogador ter olhado no instante certo.
@@ -348,7 +367,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     switch(m.type){
       case MSG.SNAPSHOT:if(m.self.flags&SELF_FLAG.RESYNC)buffer.clear();buffer.apply(m,now);predictor.onSnapshot(m,conn.rttAvg);view.self=m.self;selfTick=m.tick;if(m.self.flags&SELF_FLAG.DEAD)dead=true;break;
       case MSG.PLAYERS:view.setPlayers(m.players);warmSkins();break;
-      case MSG.ZONE:zone=m.zone;predictor.setZone(zone);break;
+      case MSG.ZONE:{const shrinking=!!(m.zone.x0!==m.zone.x1||m.zone.y0!==m.zone.y1||m.zone.r0!==m.zone.r1);
+        if(!shrinking)zoneWarnIdx=0;   // nova espera começou: os limiares de aviso valem de novo
+        zone=m.zone;predictor.setZone(zone);break;}
       case MSG.VOICE:onVoice(m);break;
       case MSG.LEADERBOARD:view.setLeaderboard(m.rows);break;
       case MSG.EVENT:{const kind=FX_OF[m.kind];if(!kind||!renderer)break;const f={x:m.x,y:m.y,r:m.r||10};
@@ -374,6 +395,16 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         const pitch=mine?pitchOf(view.self?view.self.mass:0):1;   // o que é MEU soa mais grave quanto maior eu estou
         const som=()=>audio.play(kind,{x:f.x,y:f.y,r:f.r,mine,cam,pitch});
         if(delay)setTimeout(som,delay);else som();   // o som acompanha o efeito (terceiros esperam o atraso de interpolação)
+        // ── COMBO (cosmético): acerto meu soma, miss explícito ou espera longa demais zera ──
+        if(COMBO_HIT.has(m.kind)&&m.slotB===view.mySlot){
+          if(now-comboT>COMBO_RESET_MS)comboN=0;
+          comboN++;comboT=now;
+          if(comboN>=2){
+            const L=getLabels().fx||{};
+            renderer.fx.add("combo",{x:m.x,y:m.y,r:m.r||10,n:comboN,text:preenche(L.combo||"COMBO {n}x",{n:comboN})},0);
+            audio.play("combo",{mine:true,pitch:ESCADA[Math.min(comboN-2,ESCADA.length-1)]});}
+        }else if((m.kind===EVENT.CLASH&&(m.slotA===view.mySlot||m.slotB===view.mySlot))||(m.kind===EVENT.DEFLECT&&m.slotA===view.mySlot)){
+          comboN=0;}   // miss explícito: não espera o timeout
         break;}}}
   // ── chat ──
   /**
@@ -550,13 +581,15 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa
     // por aqui (ela é do Connection, e volta pelo `resume`), então nada disso atrapalha quem só caiu.
     leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);
+      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
     /** O painel do TAB abriu/fechou. ⚠️ NÃO mexe em `pausado`: o jogo continua vivo por baixo, e é o
      *  `enviarInput` da pausa (alvo em cima do centróide) que congelaria o planeta. */
     setRoster(on){const v=!!on;if(v===rosterOn)return;rosterOn=v;pushHud(performance.now());},
+    /** "Agora não" no convite de Battle Royale: só fecha o card, não sai da sala do Livre. */
+    dismissBrInvite(){hudStore.update(h=>({...h,brInvite:null}));},
     resize(){if(!renderer)return;renderer.resize();agendaView();},
     destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();if(pinch)pinch.destroy();game.leave(true);audio.suspend();for(const ev of ["pointerdown","keydown","click","touchend"])removeEventListener(ev,wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();actions.destroy();clearTimeout(viewT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("warspace:pause",onPortalPause);removeEventListener("warspace:theme",onThemeEvent);if(themeGuard)removeEventListener("warspace:theme",themeGuard);
@@ -715,7 +748,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(fora&&!lastHurt)audio.startLoop("alert",{k:.55});
     else if(!fora&&lastHurt&&!threat)audio.stopLoop("alert");
     lastHurt=fora;
-    if(dead&&!lastDead){audio.stopLoop("alert");audio.stopLoop("magnet");threat=null;lastHurt=false;}
+    if(dead&&!lastDead){audio.stopLoop("alert");audio.stopLoop("magnet");threat=null;lastHurt=false;comboN=0;}
     else if(!dead&&lastDead)audio.play("respawn",{mine:true});
     lastDead=dead;lastAmmo=sf.missiles;lastMagnet=mag;lastFireCd=sf.fireCd;lastMass=sf.mass;
     ameaca(sf);
@@ -762,6 +795,16 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── HUD (8 Hz) ──
   function pushHud(now){const s=view.self,tk=buffer.tickAt(now),el=Math.max(0,tk-selfTick);
     const cd=(v,max)=>s?Math.min(1,Math.max(0,(v-el)/max)):0,sec=v=>s?Math.max(0,(v-el)/TICK_HZ):0;
+    // AVISO REFORÇADO DO GÁS: `zoneIn` já é global (não passa por AOI), então os limiares (10s/3s antes do
+    // PRÓXIMO fechamento) são checados aqui mesmo, sem protocolo novo — cada um dispara uma vez por espera
+    // (zoneWarnIdx reseta no MSG.ZONE quando uma nova espera começa, ver onBinary).
+    const zoneIn0=zone&&Number.isFinite(zone.t1)?Math.max(0,(zone.t1-tk)/TICK_HZ):null;
+    const zoneShrinking0=!!(zone&&(zone.x0!==zone.x1||zone.y0!==zone.y1||zone.r0!==zone.r1));
+    let zoneWarn=hudStore.get().zoneWarn;
+    if(zoneIn0!=null&&!zoneShrinking0){
+      while(zoneWarnIdx<ZONE_WARN_AT_S.length&&zoneIn0<=ZONE_WARN_AT_S[zoneWarnIdx]){
+        zoneWarn={sec:ZONE_WARN_AT_S[zoneWarnIdx],at:now};zoneWarnIdx++;
+        audio.play("zoneWarn",{mine:true});}}
     hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
       powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:s?s.autoDefN|0:0,zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,map:mapOn,clock:roundClock,
@@ -783,8 +826,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // `t1` chega `Infinity` quando a zona já fechou tudo (`done`) — aí não há mais o que contar.
       // "Parada = origem e destino iguais" (mesmo comentário do codec): é isso que distingue mostrar
       // "fecha em" (contando para o PRÓXIMO fechamento começar) de "O GÁS ESTÁ AVANÇANDO" (já em curso).
-      zoneIn:zone&&Number.isFinite(zone.t1)?Math.max(0,(zone.t1-tk)/TICK_HZ):null,
-      zoneShrinking:!!(zone&&(zone.x0!==zone.x1||zone.y0!==zone.y1||zone.r0!==zone.r1)),
+      zoneIn:zoneIn0,zoneShrinking:zoneShrinking0,zoneWarn,
+      // brInvite/zoneAlarmAt são escritos por outros handlers via hudStore.update — como este `set` troca
+      // o objeto INTEIRO (ver client/src/state/store.js), sem reler o valor atual eles seriam apagados no
+      // próximo pushHud (8 Hz), no mesmo molde do `notice` logo abaixo.
+      brInvite:hudStore.get().brInvite,zoneAlarmAt:hudStore.get().zoneAlarmAt,
       // O ROSTER DO TAB não custa um byte de protocolo: o PLAYERS já traz a sala INTEIRA fora da AOI (slot,
       // nome, skin, nível, equipe, bot, morto) e o `view.lb` já cruza isso com o placar de 2 Hz, que tem a
       // massa de todos os vivos. O que falta ali são os MORTOS, e eles estão em `view.players` com a flag.

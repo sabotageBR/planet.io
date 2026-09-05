@@ -220,6 +220,11 @@ export const effects={
       // continua com anel e som, mas o texto "ESCUDO 3" ali não dizia mais nada. E o texto vem do
       // i18n (`f.text`), como SUPERNOVA/NEBULOSA — estava cravado em português nos três temas.
       if(f.up!==false)P.push({type:"text",x:f.x,y:f.y-f.r*(1.2+k*.8),text:`${f.text||"ESCUDO"} ${f.level||1}`,size:Math.max(10,f.r*.5),fill:col,stroke:INK,font:FONT,alpha:a});break;}
+      // COMBO: acerto seguido do jogador (cosmético, não altera a física). Sobe mais alto e some um pouco
+      // depois que boom/shieldBreak (TTL 26 vs 24), para não colidir com o texto deles no mesmo (x,y).
+      case "combo":{const al=Math.min(1,a*1.6),rise=k*f.r*.9,n=f.n||2;
+        P.push({type:"star",x:f.x,y:f.y-f.r*1.6-rise,r:Math.max(8,f.r*.22)*(1+k*.3),n:6,inner:.5,phase:k,fill:GOLD,stroke:INK,width:2,alpha:al*.8});
+        P.push({type:"text",x:f.x,y:f.y-f.r*1.9-rise,text:f.text||`COMBO ${n}x`,size:Math.max(12,f.r*.32+Math.min(n,8)*1.4),fill:GOLD,stroke:INK,font:FONT,alpha:al});break;}
       case "clash":{const s=f.r*(2+k*3),al=Math.min(1,a*1.4);   // míssil × míssil
         P.push({type:"star",x:f.x,y:f.y,r:s,n:9,inner:.5,phase:k*.7,fill:CORAL,stroke:INK,width:Math.max(2,s*.06),alpha:al});
         P.push({type:"star",x:f.x,y:f.y,r:s*.5,n:9,inner:.5,phase:-k*.7,fill:"#fff",alpha:al});

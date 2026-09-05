@@ -26,7 +26,10 @@ export default {
   brHint: "O último planeta de pé leva tudo. A zona fecha, e não há como renascer.",
   brCancel: "Cancelar entrada",
   aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ NO GÁS", zoneShrinking: "O GÁS ESTÁ AVANÇANDO", zoneCloses: "gás fecha em",
+  zoneWarnAt: "⚠ O GÁS FECHA EM {n}s!",
   admJoin: "🟢 {n} entrou no jogo", admJoinTitle: "warspace.io",
+  brInviteTitle: "🚀 Battle Royale começando!", brInviteBody: "Uma nova partida está se formando. Quer entrar?",
+  brInviteYes: "Entrar", brInviteNo: "Agora não",
   rosterTitle: "NA SALA",
   chatTitle: "CHAT", chatHint: "T para falar", chatHintTouch: "Toque para falar", chatTeam: "equipe", chatPlaceholder: "Mensagem…",
   chatAll: "todos", chatScopeHint: "para quem você fala", chatDeadTag: "☠ ",
@@ -68,7 +71,7 @@ export default {
   // temas, porque a mesma string repetida em três arquivos diverge na primeira correção.
   // "Nebulosa planetária" é o nome certo do que sobra de uma estrela que morre SEM supernova de verdade —
   // e é exatamente o caso do atropelamento, o único que não larga prêmio (STAR.RAM_REWARD).
-  fx: { supernova: "SUPERNOVA!", nebula: "NEBULOSA PLANETÁRIA!", shield: "ESCUDO" },
+  fx: { supernova: "SUPERNOVA!", nebula: "NEBULOSA PLANETÁRIA!", shield: "ESCUDO", combo: "COMBO {n}x" },
   // ⚠️ Sem emoji: o ícone vinha do TEXTO (não há <i> nos botões da tela de morte) e o 🔄 competia com
   // o próprio rótulo num botão que já é o maior da tela.
   respawn: "DE NOVO!", newMatch: "OUTRA PARTIDA", brWatchHint: "Fique para ver o pódio no fim.", toLobby: "Lobby", timeWord: "tempo", rankWord: "ranking diário", coinsEarned: "moedas ganhas",
