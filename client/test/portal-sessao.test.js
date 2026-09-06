@@ -167,3 +167,33 @@ test("o funil abre UMA vez por carga, na primeira vez que ele entra na sala", ()
   off();
   assert.deepEqual(m, ["session/60s/start", "session/180s/start", "session/300s/start"]);
 });
+
+// ── ASSISTIR NÃO É GAMEPLAY ───────────────────────────────────────────────────
+// `spec` (assistir a uma sala em andamento) entrou no RETIDO — quem assiste está aqui, e deixá-lo de fora
+// faria o funil contar como evasão quem foi ver uma partida. Mas ele NÃO pode entrar no ATIVO: um
+// `gameplayStart()` sem partida é justamente o que os dois portais cobram por escrito ("a gameplayStart()
+// cannot follow another gameplayStart()", e o par tem que descrever jogo de verdade). Este teste existe
+// porque a distinção mora numa linha só, e trocá-la não quebra nada visível.
+test("assistir não emite gameplay: é RETIDO, não é ATIVO", () => {
+  assert.deepEqual(roteiro([{ screen: "spec" }, { screen: "spec" }, { screen: "lobby" }]), []);
+});
+
+test("sair de assistir para jogar abre o gameplay UMA vez", () => {
+  assert.deepEqual(roteiro([
+    { screen: "spec" },     // estava assistindo
+    { screen: "lobby" },    // saiu
+    { screen: "game" },     // agora entrou de verdade
+    { screen: "dead" },
+  ]), ["start", "stop"]);
+});
+
+test("a espera de ROUND.DEAD_DELAY_MS não produz evento nenhum a mais", () => {
+  // Durante a espera entre a morte e a tela, `screen` continua "game" — o jogador está vendo o próprio
+  // planeta estourar. O `stop` sai UMA vez, quando a tela finalmente entra.
+  assert.deepEqual(roteiro([
+    { screen: "game" },     // jogando
+    { screen: "game" },     // morreu, mas a tela ainda não subiu (a espera)
+    { screen: "dead" },     // a tela entrou
+    { screen: "lobby" },
+  ]), ["start", "stop"]);
+});
