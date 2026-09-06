@@ -29,6 +29,7 @@ export const ORDEM_USERS=new Map([
   ['coins', {expr:'u.coins'}],
   // Anuláveis levam NULLS LAST EXPLÍCITO: o padrão do Postgres joga os nulos para o topo em DESC, e o
   // admin vê meia tela de "—" e conclui que a ordenação quebrou.
+  ['origem',{expr:'lower(u.origin)',nulls:true}],
   ['seen',  {expr:'u.last_seen_at',nulls:true}],
   ['created',{expr:'u.created_at'}],
 ]);
@@ -92,7 +93,10 @@ export function createUsers(db){
    * vaza. O e-mail entra (o admin precisa dele para achar a conta), mas a lista de usuários NÃO o
    * devolve: `search` seleciona só o que esta função sabe ler.
    */
-  const toAdmin=u=>u&&({id:Number(u.id),nick:u.nick,login:u.login||null,name:u.display_name||null,kind:u.kind,email:u.email||null,
+  // ⚠️ `origin` é o cabeçalho Origin do POST /api/auth/guest (0010) — o Origin CRU (`https://*.poki.com`),
+  // não um id de portal: quem traduz para "Poki" é o painel (`client/src/admin/portais.js`), porque um
+  // portal novo aparece na lista antes de qualquer código conhecer o nome dele. Ausente = site.
+  const toAdmin=u=>u&&({id:Number(u.id),nick:u.nick,login:u.login||null,name:u.display_name||null,kind:u.kind,email:u.email||null,origin:u.origin||null,
     coins:u.coins,country:u.country||null,avatar:u.avatar_hash||null,isAdmin:!!u.is_admin,
     bannedUntil:u.banned_until||null,banReason:u.ban_reason||null,
     createdAt:u.created_at,lastSeenAt:u.last_seen_at,
@@ -117,7 +121,10 @@ export function createUsers(db){
     const w=[],p=[];
     if(q){const n=String(q).trim();
       if(/^\d+$/.test(n)){p.push(Number(n));w.push(`u.id=$${p.length}`);}
-      else{p.push(`%${n.toLowerCase()}%`);w.push(`(lower(u.nick) LIKE $${p.length} OR lower(u.login) LIKE $${p.length} OR lower(u.display_name) LIKE $${p.length} OR lower(u.email) LIKE $${p.length})`);}}
+      // A ORIGEM entra na busca livre e é isso que dispensa um filtro próprio: digitar "poki" acha quem
+      // veio de lá, porque o valor guardado é o domínio. Um `<select>` exigiria a lista de origens vivas
+      // (consulta nova) e envelheceria no portal seguinte.
+      else{p.push(`%${n.toLowerCase()}%`);w.push(`(lower(u.nick) LIKE $${p.length} OR lower(u.login) LIKE $${p.length} OR lower(u.display_name) LIKE $${p.length} OR lower(u.email) LIKE $${p.length} OR lower(u.origin) LIKE $${p.length})`);}}
     if(kind==='guest'||kind==='registered'){p.push(kind);w.push(`u.kind=$${p.length}`);}
     if(banned===true)w.push(`u.banned_until IS NOT NULL AND u.banned_until>now()`);
     else if(banned===false)w.push(`(u.banned_until IS NULL OR u.banned_until<=now())`);

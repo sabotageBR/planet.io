@@ -63,6 +63,10 @@ export const api={
   setSetting:(key,value)=>req("PUT","/settings/"+key,{value}),
   resetSetting:key=>req("DELETE","/settings/"+key),
   audit:q=>req("GET","/audit"+(q||"")),
-  retencao:d=>req("GET","/retencao?days="+(d|0)),
+  // ⚠️ `janela`, não mais `days`: "dia atual" não é um número de dias, e o `d|0` de antes truncava
+  // qualquer coisa que não fosse inteiro. A lista de janelas é do SERVIDOR (`/retencao/janelas`) —
+  // duplicá-la aqui a faria divergir na primeira janela nova.
+  retencao:j=>req("GET","/retencao?janela="+encodeURIComponent(j||"")),
+  retencaoJanelas:()=>req("GET","/retencao/janelas"),
   kpis:()=>req("GET","/kpis"),
 };

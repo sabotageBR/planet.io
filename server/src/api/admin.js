@@ -16,6 +16,7 @@ import {listTunables,applyTunable,resetTunable,TUNABLE_BY_KEY,GRUPOS} from '@war
 import {LIMITS} from '../auth/ratelimit.js';
 import {ORDEM_USERS} from '../repos/users.js';
 import {ORDEM_AUDIT} from '../repos/audit.js';
+import {JANELAS,JANELA_PADRAO,janelaDeDias} from '../repos/analytics.js';
 
 const RD={scope:'token',lim:{n:120,win:60e3}};    // leitura
 const WR={scope:'token',lim:{n:20,win:60e3}};     // mutação
@@ -176,14 +177,25 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
     return{key,value:v,applied:await espalha(ctx)};},{rate:WR});
 
   // ── retenção ──
-  // ⚠️ `days` é limitado a 90 e não por gosto: as consultas varrem `matches` no MESMO pool das partidas, e
-  // um `days=365` curioso é um incidente. O repo ainda põe `statement_timeout` e um memo de 60 s.
+  // ⚠️ A JANELA É UMA LISTA BRANCA (`JANELAS`, em repos/analytics.js), e o teto de 90 dias que o `days`
+  // impunha continua valendo por construção: não há entrada maior. Ele não era gosto — as consultas varrem
+  // `matches` no MESMO pool das partidas, e um `days=365` curioso é um incidente. O repo ainda põe
+  // `statement_timeout` e um memo de 60 s.
+  // ⚠️ Valor fora da lista é **400**, nunca fallback silencioso: uma tela dizendo "1 hora" sobre números de
+  // 14 dias é exatamente o defeito que a lista branca existe para não criar (o mesmo argumento de `ordem`).
+  // ⚠️ `?days=N` continua aceito e é traduzido — durante um rollout, um painel antigo fala com um pod novo.
   // Leitura NÃO audita (nenhum GET daqui audita): `admin_audit` não tem retenção por decisão, e encher o
   // log de aberturas de tela afogaria as linhas de ban/kick, que são a razão da tabela existir.
   router.add('GET',/^\/api\/admin\/retencao$/,async ctx=>{await requireAdmin(ctx);
-    if(!analytics)return{days:0,funil:[],primeira:null,histograma:[],algoz:[],coortes:[],visita:null};
-    const d=Math.min(90,Math.max(1,+(ctx.query.get('days')||14)||14));
-    return await analytics.tudo(d);},{rate:RD});
+    const j=ctx.query.get('janela'),d=ctx.query.get('days');
+    if(j&&!JANELAS.has(j))throw err(400,'bad_janela','janela desconhecida');
+    const id=j||(d?janelaDeDias(d):JANELA_PADRAO);
+    if(!analytics)return{janela:id,modo:JANELAS.get(id).modo,rotulo:JANELAS.get(id).rotulo,days:JANELAS.get(id).dias,
+      funil:[],primeira:null,histograma:[],algoz:[],coortes:[],visita:null};
+    return await analytics.tudo(id);},{rate:RD});
+  /** As janelas que a tela pode oferecer — a lista branca, dita uma vez, para o `<select>` não a duplicar. */
+  router.add('GET',/^\/api\/admin\/retencao\/janelas$/,async ctx=>{await requireAdmin(ctx);
+    return{janelas:[...JANELAS].map(([id,x])=>({id,rotulo:x.rotulo,modo:x.modo})),padrao:JANELA_PADRAO};},{rate:RD});
 
   // ── auditoria ──
   router.add('GET',/^\/api\/admin\/audit$/,async ctx=>{await requireAdmin(ctx);

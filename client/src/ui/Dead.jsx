@@ -85,10 +85,21 @@ export default function Dead({ on }) {
   // hora, armado ou não. BR nunca conta: lá não existe respawn.
   const [restante, setRestante] = useState(-1);
   const fired = useRef(false);
+  // ⚠️ QUANDO A TELA APARECEU — e é isso que vira o PISO de `prazoDe`. O par `{deadAt,armAt}` chega aqui
+  // pelo store com THROTTLE (200 ms), enquanto `screen:"dead"` vem do store `app`, sem throttle: no
+  // primeiro render o par lido é o de ANTES desta morte. Quando ele era um armamento de outra vida (o que
+  // acontecia depois de toda re-entrada por `play()`), o `tick()` síncrono da montagem via um prazo já
+  // vencido e chamava `respawnAqui` no primeiro frame — a tela de morte não chegava a aparecer. O piso
+  // torna isso impossível, seja qual for o par que chegar. Escrito UMA vez por exibição, no molde do latch
+  // de `deadClock.js`: andando a cada render, ele empurraria o respawn para sempre.
+  const telaAt = useRef(0);
   useEffect(() => {
+    if (!on) telaAt.current = 0;   // saiu da tela: a próxima exibição carimba de novo
     if (!on || !m || h.mode === MODE.BR) { setRestante(-1); return; }
+    if (!telaAt.current) telaAt.current = performance.now();
     const end = prazoDe({ deadAt: h.deadAt || 0, armAt: h.armAt || 0 },
-      Math.max(1000, Math.round((ROUND.RESPAWN_TICKS || 300) / TICK_HZ) * 1000));
+      Math.max(1000, Math.round((ROUND.RESPAWN_TICKS || 300) / TICK_HZ) * 1000),
+      telaAt.current, ROUND.DEAD_MIN_MS || 0);
     if (!end) { setRestante(-1); return; }
     fired.current = false;
     const tick = () => { const s = Math.max(0, Math.ceil((end - performance.now()) / 1000)); setRestante(s);

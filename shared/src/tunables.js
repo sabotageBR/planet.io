@@ -199,6 +199,14 @@ export const TUNABLES=[
   // então o valor só precisa chegar até a tela — pelo mesmo canal que `CAM.K` já usa (JSON `room`).
   num('morte','ROUND.RESPAWN_S','Tempo até o respawn automático no Livre','segundos','wire',1,30,1,ROUND,'RESPAWN_TICKS',
     {para:s=>Math.round(s*TICK_HZ),de:t=>Math.round(t/TICK_HZ)}),
+  // A ESPERA ANTES DA TELA. Zero devolve o comportamento antigo (o modal no mesmo tick da morte), e é por
+  // isso que o mínimo é 0 e não 1: quem quiser o de antes tem como pedir. `wire` pelo mesmo motivo do
+  // vizinho — é temporização de TELA, não autoridade de jogo.
+  num('morte','ROUND.DEAD_DELAY_MS','Espera entre morrer e a tela de morte','ms','wire',0,4000,100,ROUND,'DEAD_DELAY_MS'),
+  // ⚠️ O PISO NÃO É CONFORTO: é ele que impede o respawn automático de disparar no primeiro frame com um
+  // par `{deadAt,armAt}` de uma vida anterior. Baixá-lo a zero devolve o defeito de "às vezes a tela de
+  // morte não aparece" — que é o que ele existe para fechar. Ver client/src/ui/deadClock.js.
+  num('morte','ROUND.DEAD_MIN_MS','Piso de tempo com a tela de morte na frente','ms','wire',0,8000,100,ROUND,'DEAD_MIN_MS'),
   // ── CHAT ──
   // Quanto da linha de uma PESSOA é mascarado. O padrão é `livre` por decisão de produto (xingar faz parte
   // de um .io); os portais continuam atendidos por silenciar/denunciar/kick, que valem em qualquer nível.

@@ -99,7 +99,10 @@ export default function Hud() {
   // Três estados, não dois. `spec` é o HUD de quem MORREU (e do pódio do fim de rodada): some tudo menos o
   // chat e o mapa — quem morreu continua na sala, lê, escreve e fala. Antes o `hidden` levava o #hud inteiro,
   // e era essa única linha que deixava o morto mudo (o servidor sempre aceitou a fala dele).
-  const espectando = screen === "dead" || screen === "round";
+  // ⚠️ `spec` (assistir a uma sala em andamento) entra aqui e não ganha um quarto estado: o que ele precisa
+  // esconder e o que precisa manter são exatamente os do morto — fora arma, powerups, cooldowns e placar;
+  // dentro o chat e o mapa. Um estado novo seria uma segunda lista para manter em dia com esta.
+  const espectando = screen === "dead" || screen === "round" || screen === "spec";
   return <div id="hud" className={screen === "game" ? "" : espectando ? "spec" + (h.map ? " map" : "") : "hidden"}>
     <div id="hud-top">
       <span className="chip" id="h-room"><i>{LB.room}</i> <b id="v-room">{h.room || room || "—"}</b></span>

@@ -24,7 +24,10 @@ import { PORTAL } from "../portal/flags.js";
 import { portal } from "../portal/index.js";
 
 // as chaves que valem em partida, na ordem em que se procura por elas
-const RAPIDAS = ["muted", "volume", "music", "musicVolume", "quality", "reduceMotion", "showNames", "showMinimap"];
+// ⚠️ `brInvite` entra aqui porque a pergunta "como faço isto parar?" nasce EM PARTIDA, com o card na
+// tela — e o Esc é o único menu que se abre sem sair da sala. O card também tem o "Nunca" próprio; são
+// dois caminhos para a MESMA chave, não duas verdades.
+const RAPIDAS = ["muted", "volume", "music", "musicVolume", "quality", "reduceMotion", "showNames", "showMinimap", "brInvite"];
 const ITENS = RAPIDAS.map(k => PREFS.flatMap(g => g.items).find(it => it.key === k)).filter(Boolean);
 
 const EMPTY = {}, EMPTY_STORE = { subscribe: () => () => {}, get: () => EMPTY };

@@ -86,5 +86,12 @@ export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=nu
       // APAGADA em 35 s — ela existe justamente para esperar os amigos chegarem pelo link.
       if(!r.running&&idle>=ROOM.REMOVE_AFTER_MS&&now>=r.holdUntil){rooms.delete(r.code);bus.publica('sala-',{sala:r.code,por:'vazia'});log.info(`sala ${r.code} removida`);}}},1000);timer.unref();
   function close(){clearInterval(timer);for(const r of rooms.values())stop(r);}
-  return{rooms,create,findOrCreateRoom,getRoom,listRooms,allRooms,findSession,playerCount,start,stop,close,broadcastBrStart};
+  /**
+   * A sala QUE EXISTE, sem criar nada. ⚠️ `getRoom` MATERIALIZA uma sala nova quando o código é deste
+   * shard — o que é certo para quem vai jogar (é assim que um link de convite abre a sala) e errado para
+   * quem só quer assistir: um código digitado errado viraria uma sala fantasma com preenchimento dentro,
+   * sem ninguém nela. É a mesma regra que o painel /admin segue por escrito.
+   */
+  function salaViva(code){const c=normalizeCode(code);if(!c)return null;const r=rooms.get(c);return r&&!r.over?r:null;}
+  return{rooms,create,findOrCreateRoom,getRoom,salaViva,listRooms,allRooms,findSession,playerCount,start,stop,close,broadcastBrStart};
 }

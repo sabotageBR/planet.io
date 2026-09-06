@@ -51,6 +51,11 @@ export const PREF_DEFAULTS = Object.freeze({
   // valer ANTES de o servidor responder — daí o atalho em localStorage que `bootLang()` lê no main.jsx.
   lang: "auto",
   chat: true, voice: true, voiceVolume: 85,   // chat e voz: desligáveis, como todo o resto do som
+  // O CONVITE DE BATTLE ROYALE (`{t:"brStart"}` → ui/BrInvite.jsx). Toda sala de BR pública criada no
+  // cluster manda um card para quem está no Livre, e não havia como dizer "chega": `dismissBrInvite` só
+  // apagava o card da vez. Nasce LIGADO — ele é como se descobre o outro modo —, e desligar é uma escolha
+  // que viaja com a conta, feita no próprio card ou nas Opções.
+  brInvite: true,
 });
 export const PREF_KEYS = Object.keys(PREF_DEFAULTS);
 // volume: 0..100 no cliente. Perfis antigos guardavam 0..1 (o servidor só aceitava essa faixa e o slider nunca

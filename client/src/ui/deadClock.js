@@ -35,5 +35,26 @@ export function passoMorte(st,{tipo,now}){
  * Quando o respawn automático vence. **0 = não armado** — e é esse valor que faz a tela nunca renascer
  * sozinha. Zero nunca é um instante válido de `performance.now()` num jogo em andamento, então não há
  * ambiguidade com "venceu agora".
+ *
+ * ⚠️ `telaAt` É O PISO, E ELE FECHA UM DEFEITO DE PROVENIÊNCIA — não é conforto de UI. O par
+ * `{deadAt,armAt}` viaja no mesmo objeto DENTRO do motor, mas chega à tela por um store COM THROTTLE
+ * (`throttleStore(hudStore,200)` em `ui/Dead.jsx`), cujo `get()` devolve o último snapshot PUBLICADO —
+ * enquanto `screen:"dead"` é escrito no store `app`, sem throttle. Ou seja: no PRIMEIRO render da tela de
+ * morte, o par que ela lê é o de ANTES da morte. Some a isso que `game/index.js` nunca zerava `morte` em
+ * `join`/`leave` (só o `{t:"alive"}` zerava), e o par de antes podia ser um armamento de outra vida, já
+ * vencido — o efeito rodava `tick()` síncrono na montagem, `end` já estava no passado e o respawn saía no
+ * primeiro frame. A tela de morte não chegava a aparecer, e o jogador reentrava no ato. "Só às vezes"
+ * porque exigia que a vida anterior tivesse terminado por um caminho `play()` em vez de `{t:"alive"}`.
+ * O piso corta isso pela raiz: nada vence antes de a tela ter estado `minMs` na frente, seja qual for o
+ * par que chegou. E `telaAt` 0 é "a tela ainda não apareceu" — aí não há prazo nenhum.
+ *
+ * @param {{deadAt:number,armAt:number}} st
+ * @param {number} respawnMs
+ * @param {number} [telaAt] instante em que a tela de morte apareceu (0 = ainda não)
+ * @param {number} [minMs] piso de tempo com a tela na frente
+ * @returns {number} instante do respawn automático, ou 0
  */
-export function prazoDe(st,respawnMs){return st&&st.armAt?st.armAt+respawnMs:0;}
+export function prazoDe(st,respawnMs,telaAt=0,minMs=0){
+  if(!st||!st.armAt)return 0;
+  if(minMs>0&&!telaAt)return 0;
+  return Math.max(st.armAt+respawnMs,telaAt+minMs);}

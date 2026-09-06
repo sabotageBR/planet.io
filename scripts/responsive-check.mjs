@@ -36,8 +36,15 @@ const APARELHOS=[   // nome, largura, altura, dedo?, modo (o mesmo que modeFor d
 // aplica (`body:not([data-shell="rail"])`), quem manda é o CSS de gaveta do tema com `--drawer-w`, e o
 // `#s-modes{--screen-w:760px}` não vale.
 const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile","shop","shop@rail","prefs","game",
-  "dead:duelo","dead:balanco","dead:sala","round:podio","round:cinema","round:dossie"];
+  "dead:duelo","dead:balanco","dead:sala","round:podio","round:cinema","round:dossie",
+  // `spec` é a barra de quem assiste a uma sala em andamento: `position:fixed`, variante própria em
+  // retrato e três alvos de toque — a forma de elemento que esta matriz existe para cobrar.
+  "spec"];
 const TEMAS=(process.env.RESP_TEMAS||"dawn,sunset,dusk").split(",");   // o dusk é o mais fraco: tem menos regras de mobile que os outros dois
+// `RESP_TELAS` recorta a matriz, no molde do `RESP_TEMAS`: a rodada inteira são ~600 combinações e vários
+// minutos, e quem acabou de mexer em UMA tela quer o retorno dela em segundos. A rodada completa continua
+// sendo o padrão — este atalho é para o ciclo de edição, não para aprovar uma mudança.
+const TELAS_ALVO=process.env.RESP_TELAS?process.env.RESP_TELAS.split(","):null;
 
 const ch=spawn(CHROME,["--headless=new",`--remote-debugging-port=${PORT}`,"--no-sandbox","--disable-dev-shm-usage",
   "--use-gl=swiftshader","--enable-unsafe-swiftshader","--window-size=1920,1080",BASE+"/?local=1"],{stdio:"ignore"});
@@ -63,7 +70,12 @@ await new Promise(r=>setTimeout(r,3500));
 const IR=t=>`(()=>{if(window.__tela){window.__tela(${JSON.stringify(t)});return 1;}
   const b=document.querySelector('[data-go="${t}"]');if(b){b.click();return 1;}return 0;})()`;
 const SONDA=`(()=>{
-  const hud=document.getElementById('hud'),tela=document.querySelector('.screen.on');
+  // ⚠️ A BARRA DO ESPECTADOR NÃO É UMA \`.screen\`, e não deve ser: ela é uma barra de rodapé sobre a
+  // partida, e virar \`.screen\` a jogaria dentro da caixa centralizada das telas — o oposto do que ela
+  // existe para fazer. Sem esta linha ela ainda era MEDIDA (cai no caminho do HUD, e foi assim que a
+  // matriz pegou as setas de 34 px), mas o diagnóstico "tela pedida → tela medida" dizia \`spec → game\` e
+  // parecia um resíduo de navegação — que é exatamente o que aquele relatório existe para denunciar.
+  const hud=document.getElementById('hud'),tela=document.querySelector('.screen.on')||document.getElementById('s-spec');
   const jogo=!tela; if(jogo&&hud)hud.classList.remove('hidden');
   const vis=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);
     return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'&&+s.opacity>0.01;};
@@ -162,7 +174,7 @@ for(const [nome,w,h,toque,modo] of APARELHOS){
  for(const tema of TEMAS){
   await ev(`document.documentElement.dataset.theme=${JSON.stringify(tema)}`);
   await new Promise(r=>setTimeout(r,120));
-  for(const t of TELAS){
+  for(const t of (TELAS_ALVO||TELAS)){
     if(t==="game"){await ev(`(()=>{const b=document.querySelector('[data-go="entry"]');if(b)b.click();})()`);
           await new Promise(r=>setTimeout(r,200));
           // `__hudDemo` põe a tela em "game" DE VERDADE e enche o hudStore com dados sintéticos. Só remover

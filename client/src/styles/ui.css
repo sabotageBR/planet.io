@@ -502,7 +502,15 @@ body[data-mode="portrait"] #hud #notice,body[data-mode="portrait"] #hud #idle-wa
   color:var(--text,#fff);pointer-events:auto;animation:noticeIn .22s ease-out}
 #hud #br-invite b{font-size:14.5px}
 #hud #br-invite span{font-size:12.5px;opacity:.85;line-height:1.35}
-#hud #br-invite .bi-actions{display:flex;gap:8px;justify-content:flex-end}
+#hud #br-invite .bi-actions{display:flex;gap:8px;justify-content:flex-end;align-items:center}
+/* "Nunca" é a TERCEIRA ação e não pode pesar como as outras duas: ela é a saída de quem não quer mais o
+   card, não uma escolha da partida. Vai à esquerda, sem superfície, e empurra as outras para a direita —
+   três botões do mesmo peso lado a lado fazem o jogador ler os três antes de decidir. Alvo de 44 px no
+   dedo continua valendo (o padding vertical o dá; a área de toque é a linha inteira do texto). */
+#hud #br-invite .bi-nunca{margin-right:auto;background:none;border:0;box-shadow:none;padding:6px 2px;
+  font-size:11.5px;opacity:.62;color:inherit;text-decoration:underline;cursor:pointer}
+#hud #br-invite .bi-nunca:hover,#hud #br-invite .bi-nunca:focus-visible{opacity:1}
+body[data-pointer="coarse"] #hud #br-invite .bi-nunca{padding:12px 4px;font-size:12.5px}
 body[data-mode="portrait"] #hud #br-invite{font-size:12.5px;max-width:92vw}
 /* ── AVISO REFORÇADO DO GÁS ──
    Banner de contagem (10s/3s antes do fechamento) — texto grande, chama mais atenção que o chip
@@ -823,13 +831,35 @@ body[data-mode="portrait"] .brl-count b{font-size:2.2em}
 #hud:has(#br-lobby) > #hud-left > *{opacity:0;pointer-events:none}
 
 /* trocar de câmera depois de morrer: o servidor escolhe o primeiro alvo, e daqui se anda pela lista de vivos */
-.dead-spec{display:flex;align-items:center;justify-content:center;gap:10px;margin:6px 0 2px}
-.dead-spec .spec-arrow{width:34px;height:34px;border-radius:99px;border:2px solid var(--line,#0006);
+/* ── A BARRA DE QUEM ASSISTE (ui/Spectate.jsx) ──
+   Assistir a uma sala em andamento é ver a SALA, então isto é uma barra no rodapé e não um cartão: um
+   painel no meio da tela taparia justamente o que se veio olhar. Ela fica FORA do `#hud` (é uma tela, como
+   `#s-dead`), acima dele no empilhamento, e recebe ponteiro — o `#hud` inteiro é `pointer-events:none`.
+   ⚠️ `bottom` desconta a área segura: no iPhone a barra caía por baixo do indicador de home. */
+#s-spec{position:fixed;left:50%;transform:translateX(-50%);z-index:20;
+  bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;
+  max-width:min(680px,94vw);padding:10px 14px;border-radius:14px;
+  border:3px solid var(--line,#0006);background:color-mix(in srgb,var(--surface,#1a2350) 94%,transparent);
+  box-shadow:0 8px 26px rgba(0,0,0,.45);color:var(--text,#fff);pointer-events:auto}
+#s-spec .sb-quem{display:flex;align-items:center;gap:10px}
+#s-spec .sb-acoes{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* Em pé a barra vira duas linhas coladas nas bordas: com 360 px, "quem" + três botões não cabem numa só,
+   e encolher a fonte deixaria os alvos abaixo dos 44 px que o dedo pede. */
+body[data-mode="portrait"] #s-spec{left:8px;right:8px;transform:none;max-width:none;
+  flex-direction:column;align-items:stretch;gap:8px}
+body[data-mode="portrait"] #s-spec .sb-quem,body[data-mode="portrait"] #s-spec .sb-acoes{justify-content:center}
+body[data-mode="portrait"] #s-spec .sb-acoes>*{flex:1 1 0;min-width:0}
+/* As três peças de "de quem é a câmera" são as MESMAS da tela de morte — uma gramática só para os dois
+   lugares em que se assiste. Por isso o seletor virou lista em vez de ganhar uma cópia. */
+.dead-spec,#s-spec .sb-quem{display:flex;align-items:center;justify-content:center;gap:10px}
+.dead-spec{margin:6px 0 2px}
+.dead-spec .spec-arrow,#s-spec .spec-arrow{width:34px;height:34px;border-radius:99px;border:2px solid var(--line,#0006);
   background:var(--surface,#2226);color:inherit;font-size:1.3em;line-height:1;padding:0}
-.dead-spec .spec-arrow:hover{background:var(--accent,#ffc22e);color:var(--line,#141026)}
-.dead-spec .spec-who{display:flex;flex-direction:column;align-items:center;min-width:140px}
-.dead-spec .spec-who i{font-style:normal;font-size:.72em;opacity:.6;letter-spacing:.1em}
-.dead-spec .spec-who b{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dead-spec .spec-arrow:hover,#s-spec .spec-arrow:hover{background:var(--accent,#ffc22e);color:var(--line,#141026)}
+.dead-spec .spec-who,#s-spec .spec-who{display:flex;flex-direction:column;align-items:center;min-width:140px}
+.dead-spec .spec-who i,#s-spec .spec-who i{font-style:normal;font-size:.72em;opacity:.6;letter-spacing:.1em}
+.dead-spec .spec-who b,#s-spec .spec-who b{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* cinto de armas: o chip da arma vira botão de troca quando há mais de uma (tecla Q faz o mesmo) */
 #hud-ammo.belt{cursor:pointer;position:relative;border:0;font:inherit;color:inherit}
@@ -909,6 +939,12 @@ body[data-pointer="coarse"] select,
 body[data-pointer="coarse"] .tab{min-height:44px}
 body[data-pointer="coarse"] .btn-mini.back,
 body[data-pointer="coarse"] .dead-spec .spec-arrow,
+/* ⚠️ A barra do ESPECTADOR (`#s-spec`) tem que estar NOMEADA aqui. As setas dela são as mesmas da tela de
+   morte e herdam os `34x34` do bloco lá em cima; a regra genérica de `button` só dá `min-height`, então no
+   dedo elas saíam 34 px de LARGURA — abaixo do alvo, e num controle que É a funcionalidade (trocar de quem
+   é a câmera). Quem pegou isso foi `scripts/responsive-check.mjs`, e é o motivo de `spec` ter entrado na
+   matriz: alvo tátil tem DUAS dimensões, e a altura vinha de graça pelo flex. */
+body[data-pointer="coarse"] #s-spec .spec-arrow,
 body[data-pointer="coarse"] #chat .chat-open{min-width:44px;min-height:44px}
 /* o toggle é um trilho, não um botão: o alvo cresce por padding, senão vira uma barra gorda */
 body[data-pointer="coarse"] .pref-row{min-height:44px}
@@ -1869,7 +1905,11 @@ html[data-theme="dawn"]   #cena{background-image:linear-gradient(180deg,rgba(12,
 html[data-theme="sunset"] #cena{background-image:linear-gradient(180deg,rgba(12,4,28,.10),rgba(12,4,28,.34)),url(../assets/scene/bg-sunset.webp)}
 html[data-theme="dusk"]   #cena{background-image:linear-gradient(180deg,rgba(12,4,28,.14),rgba(12,4,28,.42)),url(../assets/scene/bg-dusk.webp)}
 #cena{display:none}
-body[data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]) #cena{display:block}
+/* ⚠️ `spec` (assistir a uma sala em andamento) entra na exclusão pelo mesmo motivo de `game` e `dead`: há
+   uma PARTIDA VIVA atrás, e o fundo estrelado do menu a taparia inteira. Ele não cai no `rail` porque
+   `played` continua falso (assistir não é ter jogado — ver `assistir()` em state/actions.js), então sem
+   esta linha a casca ficaria "center" e o cenário voltaria por cima do jogo. */
+body[data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]):not([data-screen="spec"]) #cena{display:block}
 /* sem o véu do tema por cima: ele foi escrito para escurecer o céu do Pixi, e sobre a arte nova
    escureceria duas vezes (o degradê acima já é o véu). (0,3,1) e (1,3,1) para ganhar do tema. */
 body[data-shell="center"]:not([data-screen="game"]):not([data-screen="dead"]) .screen,

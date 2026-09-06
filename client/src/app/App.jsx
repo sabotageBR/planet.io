@@ -17,6 +17,7 @@ import Shop from "../ui/Shop.jsx";
 import Prefs from "../ui/Prefs.jsx";
 import Dead from "../ui/Dead.jsx";
 import Round from "../ui/Round.jsx";
+import Spectate from "../ui/Spectate.jsx";
 import AccountModal from "../ui/AccountModal.jsx";
 import Pause from "../ui/Pause.jsx";
 import ReconnOverlay from "../ui/ReconnOverlay.jsx";
@@ -97,6 +98,7 @@ export default function App() {
     <Prefs on={screen === "prefs"} />
     <Dead on={screen === "dead"} />
     <Round on={screen === "round"} />
+    <Spectate on={screen === "spec"} />
     {/* A BARRA DE NAVEGAÇÃO É UMA SÓ, e mora dentro da CAIXA da tela (ver `Screen` em ui/bits.jsx): é uma
         barra do painel, não da janela. No desktop ela fica no rodapé do cartão central; no celular em pé a
         caixa É a folha de rodapé, então a barra continua colada embaixo, que é o certo nos dois casos. */}

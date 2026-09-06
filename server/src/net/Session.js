@@ -30,9 +30,30 @@ export class Session{
     // mesmo `keyOf` do lobby de equipe — é o que permite banir quem não tem conta.
     this.resumeToken=randomBytes(16).toString('hex');
     /** @type {Map<number,number>} id → kind | (carimbo da passada << 3) */this.known=new Map();this.stamp=0;this.resync=false;
-    this.view={w:1280,h:720,zoom:1};this.zoomHold=1;this.zoomHoldAt=0;   // marca d'água do zoom manual na AOI (ver net/snapshot.js)this.cx=WORLD.w/2;this.cy=WORLD.h/2;this.scale=1;this.rect=null;this.specSlot=-1;   // morto: slot que ele está assistindo (a AOI segue esse jogador)
+    this.view={w:1280,h:720,zoom:1};this.zoomHold=1;this.zoomHoldAt=0;   // marca d'água do zoom manual na AOI (ver net/snapshot.js)
+    // ⚠️ ESTES CINCO CAMPOS VIVIAM DENTRO DO COMENTÁRIO DA LINHA ACIMA — um `//` que não fechava engolia
+    // `cx`, `cy`, `scale`, `rect` e `specSlot`, e nenhum deles era inicializado no construtor. É a mesma
+    // armadilha que `holdEject`/`rightSplit` já tiveram no `PREF_DEFAULTS` do cliente, e ela ficava
+    // mascarada porque `Room.join` escreve `rect`/`specSlot` e tira `cx/cy` da primeira PEÇA. Sem peça —
+    // o lobby do Battle Royale e, agora, o espectador — `viewRect(undefined,…)` devolve um retângulo
+    // `NaN`, `rectHas` é sempre falso e o snapshot sai VAZIO, sem erro em lugar nenhum. `scale` nunca era
+    // inicializado por caminho nenhum, e `specSlot` de uma sessão que ainda não entrou em sala ficava
+    // `undefined`, com `undefined>=0` falso: o ramo do espectador em `net/snapshot.js` não era alcançado.
+    this.cx=WORLD.w/2;this.cy=WORLD.h/2;this.scale=1;this.rect=null;
+    /** Slot que esta sessão está ASSISTINDO (a AOI segue esse jogador). -1 = ninguém. */
+    this.specSlot=-1;
     this.inputs=new Bucket(NET.RATE_INPUTS,NET.RATE_BURST);this.json=new Bucket(NET.RATE_JSON,NET.RATE_JSON*2);
     /** @type {number[]} */this.violations=[];this.lastPong=Date.now();this.disconnectedAt=0;this.pendingRewards=null;this.joining=false;this.kicked=false;this.connectedAt=Date.now();
+    /** Último convite de Battle Royale entregue a ESTA sessão (`BR.INVITE_CD_MS`). Ver `Room.brInvite`. */
+    this.brInviteAt=0;
+    /**
+     * Esta sessão está só ASSISTINDO (`Room.joinSpec`). Ela tem slot e sessão como qualquer outra — é o
+     * que faz snapshot, câmera e chat funcionarem sem código novo —, mas não conta em `humanCount`, não
+     * ocupa vaga e não vira uma linha em `matches`. A marca mora aqui, e não só no `GamePlayer`, porque
+     * `Room.humanCount`/`isFull` iteram SESSÕES e são chamados por caminhos (matchmaking, `info()`) que
+     * não têm o `Sim` à mão.
+     */
+    this.espectador=false;
     // ⚠️ `lastActiveAt` NÃO é `lastPong`, e a semelhança dos nomes é a armadilha inteira: aquele é renovado
     // por QUALQUER mensagem (ver o `ws.on('message')` do wsServer), inclusive o keepalive de 10 Hz que o
     // cliente manda com o mouse PARADO e o ping de 1 Hz — ele mede SOCKET VIVO. Este mede PESSOA PRESENTE, e

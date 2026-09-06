@@ -43,7 +43,8 @@ export const PREFS = [
     // Os três modelos da tela de fim de rodada e a abertura dela (ver PREF_DEFAULTS em state/app.js).
     { key: "deadStyle", type: "select", opts: ["duelo", "balanco", "sala"] },
     { key: "roundStyle", type: "select", opts: ["podio", "cinema", "dossie"] },
-    { key: "roundIntro", type: "toggle" } ] },
+    { key: "roundIntro", type: "toggle" },
+    { key: "brInvite", type: "toggle" } ] },
   { id: "a11y", items: [
     { key: "colorblind", type: "select", opts: ["off", "deutan", "protan", "tritan"] },
     { key: "reduceMotion", type: "toggle" },

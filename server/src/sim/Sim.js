@@ -71,7 +71,7 @@ export class Sim{
   _emit(ev,arg){const l=this._listeners.get(ev);if(!l)return;for(const fn of l){try{fn(arg);}catch(e){if(this.log)this.log.error(`listener ${ev}:`,e);}}}
   // ── jogadores ──
   _mk(slot,o){return{slot,sessionId:o.sessionId||null,userId:o.userId??null,name:String(o.name||'Viajante'),registered:!!o.registered,skinId:o.skinId|0,isBot:!!o.isBot,
-    team:o.team==null?-1:o.team|0,deathTick:-1,placement:0,talkUntil:0,level:o.level|0,
+    team:o.team==null?-1:o.team|0,deathTick:-1,placement:0,talkUntil:0,level:o.level|0,spectator:!!o.spectator,
     dead:false,score:0,kills:0,botKills:0,deaths:0,food:0,streak:0,joinedTick:this.world.tick,entrouTick:this.world.tick,maxMass:0,top1Ticks:0,quadrants:new Set(),lastInput:{seq:0,tx:0,ty:0,flags:0},gotInput:false,brain:null,deathInfo:null,
     // ── fala (a Room é quem gasta; aqui só existem para o objeto ter FORMA estável) ──
     // Eram criados no primeiro uso lá na Room, o que deixava o GamePlayer polimórfico e não dava lugar
@@ -79,11 +79,18 @@ export class Sim{
     persona:null,mem:null,rosterFolded:false,
     talked:0,talkedAt:-1e9,mencaoAt:-1e9,mencoes:0};}
   /** Humano: peça START_R longe de perigos. Devolve o GamePlayer (peça inicial em world.piecesOf(slot)[0]). */
-  addHuman(slot,{name='Viajante',registered=false,skinId=0,sessionId=null,userId=null,team=-1,level=0,spawn=true}={}){
+  addHuman(slot,{name='Viajante',registered=false,skinId=0,sessionId=null,userId=null,team=-1,level=0,spawn=true,spectator=false}={}){
     if(this.players.has(slot))this.remove(slot);
     this._lastHit.delete(slot);
     this.world.addPlayer(slot,{r:PLAYER.START_R,isBot:false,missiles:0,team,spawn});
-    const gp=this._mk(slot,{name,registered,skinId,sessionId,userId,isBot:false,team,level});this.players.set(slot,gp);this.playersDirty=true;return gp;}
+    const gp=this._mk(slot,{name,registered,skinId,sessionId,userId,isBot:false,team,level,spectator});this.players.set(slot,gp);
+    // ⚠️ ESPECTADOR NASCE MORTO, e não é gambiarra — é o que faz o resto sair de graça. `gp.dead` já é o
+    // estado de quem assiste: `wsServer` aceita `{t:"spectate"}` dele, `Room._escopoFala` o põe na
+    // arquibancada do BR, `Sim.endRound` o pula (`if(gp.isBot||gp.dead)continue`) e o ceifador de
+    // inatividade tem a isenção do morto. Um terceiro estado ("nem vivo nem morto") exigiria tocar nos
+    // quatro, e cada um deles é um lugar em que esquecer uma linha falha em silêncio.
+    if(spectator)gp.dead=true;
+    this.playersDirty=true;return gp;}
   /**
    * Preenchimento. `r` é OPCIONAL e existe para a sala poder abrir em andamento (Room.topUpBots →
    * `botSpawnR`): sem ele vale a faixa de sempre, que é o que mantém o Sim construível nos testes e no
@@ -407,11 +414,17 @@ export class Sim{
    * sabendo (kills × botKills, economia, conquistas) — quem não sabe é a TELA.
    */
   playersInfo(){const out=[],t=this.world.tick,anon=this.mode.anonBots;
-    for(const gp of this.players.values())
+    for(const gp of this.players.values()){
+      // ⚠️ O ESPECTADOR NÃO É UM JOGADOR DA SALA. Sem esta linha ele apareceria no placar de todo mundo
+      // como um planeta morto de massa zero, e no roster do TAB — um participante que ninguém pode comer,
+      // que não pontua e que não estava lá. Ele não entra no fio, ponto: é a mesma decisão do `anonBots`.
+      if(gp.spectator)continue;
       out.push({slot:gp.slot,flags:((gp.isBot&&!anon)?PLAYER_FLAG.BOT:0)|(gp.dead?PLAYER_FLAG.DEAD:0)|(gp.registered?PLAYER_FLAG.REG:0)|(gp.talkUntil>t?PLAYER_FLAG.TALK:0),
-        skinId:gp.skinId&255,team:gp.team<0?NO_TEAM:gp.team&255,level:gp.level&255,name:gp.name,score:gp.score});
+        skinId:gp.skinId&255,team:gp.team<0?NO_TEAM:gp.team&255,level:gp.level&255,name:gp.name,score:gp.score});}
     return out;}
-  humanCount(){let n=0;for(const gp of this.players.values())if(!gp.isBot)n++;return n;}
+  // ⚠️ ESPECTADOR NÃO É HUMANO AQUI. Esta contagem decide o lobby do Battle Royale (`BR.MIN_HUMANS`, a
+  // largada, o log) — com ele dentro, uma sala com um espectador e nenhum jogador começaria uma partida.
+  humanCount(){let n=0;for(const gp of this.players.values())if(!gp.isBot&&!gp.spectator)n++;return n;}
   botCount(){let n=0;for(const gp of this.players.values())if(gp.isBot)n++;return n;}
   /** Quantos jogadores ainda estão vivos (é o "restam N" do HUD, e vai no `self`). */
   aliveCount(){return this.leaderboard().length;}

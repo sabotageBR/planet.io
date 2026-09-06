@@ -58,7 +58,13 @@ export function passoSessao(est, retido, agora) {
 }
 
 const ATIVO = st => st.screen === "game" && !st.overlays.pause;
-const RETIDO = st => st.screen === "game" || st.screen === "dead" || st.screen === "round";
+// ⚠️ `spec` (assistir a uma sala em andamento) conta como RETIDO pelo mesmo motivo que `dead` e `round`
+// contam: o relógio é da CARGA DA PÁGINA e mede quem está AQUI, não quem está jogando — quem assiste está
+// na sala, olhando o jogo. Fora daqui, quem entrasse para ver uma partida apareceria como evasão no funil,
+// que é exatamente o defeito de medição que este arquivo existe para ter consertado.
+// ⚠️ Em `ATIVO` ele NÃO entra: assistir não é gameplay, e chamar `gameplayStart` sem partida é o tipo de
+// coisa que os portais cobram por escrito.
+const RETIDO = st => st.screen === "game" || st.screen === "dead" || st.screen === "round" || st.screen === "spec";
 
 /** O destino padrão: a fachada. Injetável só para o teste poder LER a sequência que chega ao SDK. */
 const FACHADA = { comecou: () => portal.jogoComecou(), parou: () => portal.jogoParou(),

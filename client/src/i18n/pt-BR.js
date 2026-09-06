@@ -29,7 +29,7 @@ export default {
   zoneWarnAt: "⚠ O GÁS FECHA EM {n}s!",
   admJoin: "🟢 {n} entrou no jogo", admJoinTitle: "warspace.io",
   brInviteTitle: "🚀 Battle Royale começando!", brInviteBody: "Uma nova partida está se formando. Quer entrar?",
-  brInviteYes: "Entrar", brInviteNo: "Agora não",
+  brInviteYes: "Entrar", brInviteNo: "Agora não", brInviteNever: "Nunca", brInviteNeverTip: "Não mostrar mais este aviso (Opções → Interface)",
   rosterTitle: "NA SALA",
   chatTitle: "CHAT", chatHint: "T para falar", chatHintTouch: "Toque para falar", chatTeam: "equipe", chatPlaceholder: "Mensagem…",
   chatAll: "todos", chatScopeHint: "para quem você fala", chatDeadTag: "☠ ",
@@ -79,6 +79,7 @@ export default {
   // A lista de salas: modo e tempo restante. Curtos de propósito — a coluna tem 60 px, e por isso não dá
   // para reusar `modeFree`/`modeSolo`, que são os títulos em caixa alta dos cartões grandes da tela de Modos.
   roomModeCol: "MODO", roomTimeCol: "TEMPO", roomFree: "Livre", roomBr: "BR",
+  watch: "Assistir", watchTitle: "Assistindo", watchLeave: "Sair",
   roomEndless: "∞", roomWaiting: "no lobby", roomLocked: "em andamento", roomFullTag: "cheia", roomLockIn: "tranca em {n}s",
   rankTitle: "RANKING", scopeGlobal: "Global", scopeCountry: "Meu país", noCountry: "escolha seu país no perfil",
   muteHint: "Mudo (M)",
@@ -198,6 +199,7 @@ export default {
     deadStyle: "Tela de morte", deadStyle_duelo: "Duelo", deadStyle_balanco: "Balanço", deadStyle_sala: "Sala",
     roundStyle: "Placar final", roundStyle_podio: "Pódio", roundStyle_cinema: "Cinema", roundStyle_dossie: "Dossiê",
     roundIntro: "Abertura do fim de rodada",
+    brInvite: "Avisar quando começar um Battle Royale",
   },
   // ── ERROS ──
   // O servidor manda `{error:<código>, message:<pt-BR>}` e o cliente mostrava o MESSAGE cru — o que

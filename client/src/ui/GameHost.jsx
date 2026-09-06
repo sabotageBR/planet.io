@@ -31,10 +31,12 @@ export default function GameHost() {
   useEffect(() => {
     const game = getGame(); if (!game || !pending) return;
     const user = app.get().session.user || {};
-    game.join({ token: api.token, fallbackNick: user.nick || "Viajante", room: pending.room || null, mode: pending.mode | 0, teamSize: pending.teamSize || 1, party: pending.party || null }); joined.current = true;
+    game.join({ token: api.token, fallbackNick: user.nick || "Viajante", room: pending.room || null, mode: pending.mode | 0, teamSize: pending.teamSize || 1, party: pending.party || null, spec: !!pending.spec }); joined.current = true;
   }, [pending]);
 
-  useEffect(() => { const game = getGame(); if (game && joined.current && screen !== "game" && screen !== "dead" && screen !== "round") { joined.current = false; game.leave(); } }, [screen]);
+  // ⚠️ `spec` entra na lista: sair dela chama `game.leave()`, e quem está assistindo tem uma conexão viva
+  // exatamente como quem joga. Sem a linha, o espectador seria desconectado no primeiro render.
+  useEffect(() => { const game = getGame(); if (game && joined.current && screen !== "game" && screen !== "dead" && screen !== "round" && screen !== "spec") { joined.current = false; game.leave(); } }, [screen]);
   useEffect(() => { const game = getGame(); if (game) game.setPrefs(prefs); }, [prefs]);
   // Com o menu de pausa aberto o motor larga o CONTROLE (o alvo passa a ser o próprio centróide e as ações
   // são recusadas). A partida continua rodando no servidor — ver o cabeçalho de ui/Pause.jsx.

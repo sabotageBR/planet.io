@@ -767,6 +767,49 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ As duas tabelas do detalhe (Partidas, Sessões) ordenam **no cliente** (`admin/ordenar.js`, puro e
   testável sem jsdom) porque o conjunto é FECHADO por `LIMIT 10/20` — e só é honesto porque o `h3` declara
   o recorte ("10 últimas"). Elas também não tinham `<thead>`: duas colunas numéricas sem rótulo.
+- **A JANELA DA RETENÇÃO TROCA A PERGUNTA, E POR ISSO TROCA OS TÍTULOS** (`JANELAS` em
+  `repos/analytics.js`, `?janela=`, `GET /api/admin/retencao/janelas`): o filtro era `?days=` costurado como
+  `now()-($1||' days')::interval` nas SEIS consultas, e "dia atual" simplesmente não cabe nesse molde — é
+  `>= date_trunc('day',now())`, um instante, não um intervalo. Daí a lista branca em `Map` (com objeto
+  literal, `?janela=constructor` é truthy e a rota devolve 500 — o mesmo argumento de `ORDEM_USERS`).
+  ⚠️ **Abaixo de um dia a BASE muda**: cinco dos seis painéis filtravam por `users.created_at`, e numa hora
+  isso é o conjunto vazio POR CONSTRUÇÃO, não por falta de jogadores. No modo `atividade` a base é quem
+  JOGOU na janela (`matches.ended_at`), o `funil` agrupa por hora e perde a coluna "jogaram" (seria 100%: a
+  base É quem jogou), `primeira`/`histograma`/`algoz` medem as VIDAS da janela em vez do `n=1` de cada
+  conta, e `coortes` SOME — ele compara `dia+interval '1 day'`, é diário por definição, e três colunas de
+  zero se leem como "ninguém volta". `visita` é o único que não muda: ele sempre mediu atividade.
+  ⚠️ **Os títulos saem do `modo` que a resposta ECOA**, nunca do que o cliente pediu — mesmo contrato do eco
+  de `by`/`dir` das tabelas, e a mesma defesa de rollout: pod antigo não ecoa e a tela não anuncia um modo
+  que não valeu. ⚠️ E a chave do memo virou a JANELA: com `'r'+days`, `1h` e `1 dia` colidiriam e por 60 s a
+  tela mostraria o número do período errado, sem erro nenhum.
+- **A FAIXA DE SHARDS DA TELA DE SALAS SÓ CONTA QUEM EXISTE** (`shardDoPeer`/`aPerguntar` em
+  `http/admin.js`): `config.peers` sai de `SHARDS` (24 no ConfigMap) e quem decide quantos pods há é o HPA
+  (`minReplicas: 3`). `/api/admin/rooms` perguntava a 23 irmãos a cada 5 s — 21 deles nomes que nem resolvem
+  no DNS — e REPORTAVA cada falha como um chip: 21 shards "sem resposta" num cluster saudável, enquanto o
+  KPI da aba AO VIVO, que já filtrava, mostrava `3/3`. O par vem do `coletor.js`, onde o motivo já estava
+  escrito. ⚠️ **No aviso global a ENTREGA continua indo a TODOS os peers** — um pod que o HPA acabou de
+  subir tem que receber; a sonda decide só o que se REPORTA. Filtrar a entrega trocaria um chip errado por
+  uma sala que não foi avisada.
+- **O PAINEL MOSTRA HÁ QUANTO TEMPO CADA JOGADOR ESTÁ NA SALA, E SÃO DOIS RELÓGIOS** (`desdeS`/`vidaS` em
+  `Room.adminInfo`, `ORDEM_JOGADORES`): `desdeS` é a VISITA (`gp.entrouTick`, que o respawn não zera) e
+  `vidaS` é a VIDA (`gp.joinedTick`, o `matches.duration_s`). ⚠️ É o mesmo erro que o `durouS` do `saiu` já
+  cometeu: medindo pela vida, o painel dizia "40 s" de quem estava na sala havia vinte minutos em quinze
+  vidas. `server/test/visita.test.js` trava os dois sentidos.
+- **DE ONDE A CONTA VEIO, na lista de contas** (`users.origin`, `client/src/admin/portais.js`): a coluna
+  existia no banco desde a 0010 e só o funil da retenção a lia. Agora ela ordena, entra no detalhe e **casa
+  na busca livre** — digitar "poki" filtra por origem, o que dispensa um `<select>` que envelheceria no
+  portal seguinte. ⚠️ **Quem traduz o domínio em "Poki" é o PAINEL, não o servidor**: o valor guardado é o
+  `Origin` CRU, e um portal novo aparece no banco antes de qualquer código nosso conhecer o nome dele — o
+  desconhecido sai pelo próprio host, que ainda diz de onde veio. Casamento por host exato ou sufixo, nunca
+  `includes` (a lição do `cors.js`), e **isto não é um portão**: quem decide quem fala com a API continua
+  sendo o `ALLOWED_ORIGINS`.
+- **OS FILTROS DE `/admin/usuarios` NÃO FUNCIONAVAM, E ERAM DUAS LINHAS DE FRONT** (`mount.jsx`): (a)
+  `onClick={buscar}` passava o EVENTO do clique como primeiro argumento de `buscar(cursor=null)`; o evento é
+  truthy, então o botão caía no ramo de "carregar mais" e **emendava** a lista em vez de trocá-la — o
+  sintoma é indistinguível de "o filtro não funciona" (escolher `banidos`, clicar, e ver as linhas antigas
+  continuarem no topo). Pelo Enter sempre funcionou, e era isso que fazia o defeito parecer intermitente.
+  (b) O `useEffect` dependia só de `[ord.by,ord.dir]`, então trocar `kind`/`banned` no `<select>` mudava o
+  state e não refazia a busca. O servidor estava certo o tempo todo, e com teste.
 - **A TELA DE RETENÇÃO** (`repos/analytics.js`, `GET /api/admin/retencao`, migração 0010): "o jogador fica
   3 minutos?" era pergunta sem resposta — não por falta de dado, mas por falta de quem perguntasse.
   ⚠️ **A resposta é a VISITA, não a vida**: `matches` guarda uma linha por VIDA, e no Livre morrer e
@@ -1109,6 +1152,60 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `JOIN_QUIET_MS` continua, mas cobrindo só trocar de sala e o roubo de sessão pelo `resume`; e o
   `joined` passou a ser suprimido no LOBBY também, que é o simétrico do `left` (o `_avisaAdmins` fica
   FORA dessa guarda: "entrou gente" vale igual na fase de espera).
+- **ASSISTIR A UMA SALA EM ANDAMENTO** (`Room.acceptsSpectator`/`joinSpec`, `{t:"join",spec:true}`,
+  `ui/Spectate.jsx`; `docs/design/modos.md`): morrer virava câmera desde sempre; ENTRAR só para olhar, não —
+  e a sala de Battle Royale é justamente a que recusa entrada depois da largada, ou seja a partida mais
+  interessante de acompanhar era a única que não dava para ver. O espectador é uma sessão **com slot e sem
+  corpo** (o mesmo `addPlayer({spawn:false})` do lobby do BR) e **nasce `dead`** — não é gambiarra: `gp.dead`
+  já É o estado de quem assiste, e é ele que dá de graça as QUATRO coisas que fariam falta (a troca de
+  câmera do `wsServer`, a arquibancada do `_escopoFala`, o `if(gp.isBot||gp.dead)continue` do `endRound` e a
+  isenção do ceifador). Um terceiro estado exigiria tocar nos quatro, e cada um falha em silêncio.
+  ⚠️ **A PORTA É OUTRA, nunca `acceptsJoin()`**: se fossem a mesma, abrir uma abriria a outra e o BR voltaria
+  a aceitar JOGADORES no meio da rodada. ⚠️ Não ocupa vaga (`humanCount`/`isFull` contam sessões
+  não-espectadoras — contá-lo faria uma sala de 25+5 parecer cheia E encolheria o preenchimento, porque
+  `botAlvo` é `botCount-humanCount`), não entra no `PLAYERS` nem no placar, **não reserva o nick** (senão
+  quem assistiu uma partida não conseguiria ENTRAR na seguinte com o próprio nome) e **a sessão de
+  persistência é DESCARTADA** pelo caminho dos becos de recusa: assistir não é uma vida e não pode virar
+  linha em `matches`. ⚠️ Teto por sala (`ROOM.SPEC_MAX`) porque ele custa um snapshot por tick, o item mais
+  caro POR SESSÃO do laço — sem número, uma sala que virou assunto acumularia olheiros até o tick estourar e
+  quem pagaria é quem está jogando; no teto a resposta é recusa, nunca fila. Ele é ISENTO do ceifador de
+  inatividade (fica parado de propósito — é o que veio fazer), e quem segura o custo é o teto.
+  ⚠️ **`salaViva`, nunca `getRoom`**: aquele MATERIALIZA a sala quando o código é deste shard, e um código
+  errado viraria uma sala fantasma com preenchimento dentro para alguém que só queria olhar (é a mesma regra
+  que o painel /admin segue por escrito). ⚠️ **Ele nunca vira jogador sozinho** — nem na vaga que abre, nem
+  no fim da rodada: sair é decisão dele, e é isso que dispensa promover uma sessão sem corpo no meio da
+  partida. ⚠️ JSON de controle, então o `PROTOCOL_VERSION` **não sobe**: servidor antigo ignora `spec` e
+  devolve o `ROOM_STARTED` de sempre.
+  ⚠️ **Pré-requisito, e ele era um defeito de verdade**: `net/Session.js` tinha um `//` que engolia
+  `this.cx`, `this.cy`, `this.scale`, `this.rect` e `this.specSlot` — cinco campos NUNCA inicializados no
+  construtor (a mesma armadilha de `holdEject`/`rightSplit` no `PREF_DEFAULTS`). Ficava mascarado porque
+  `Room.join` escreve `rect`/`specSlot` e tira `cx/cy` da primeira PEÇA; **sem peça** (o lobby do BR, e agora
+  o espectador) `viewRect` recebe `undefined`, devolve `NaN` e o snapshot sai VAZIO, em silêncio.
+- **A TELA DE MORTE ESPERA PARA APARECER, E DEIXOU DE SUMIR** (`ROUND.DEAD_DELAY_MS`/`DEAD_MIN_MS`,
+  `ui/deadClock.js`, `actions.onDead`): dois pedidos, UM relógio. (a) Ela subia no MESMO tick da mensagem,
+  cobrindo exatamente o quadro em que o planeta estoura; agora `onDead` grava `lastMatch` na hora e AGENDA o
+  `screen:"dead"`, com a câmera já no alvo que o servidor escolheu — e o timer é CANCELADO no fim de rodada,
+  na queda/kick, ao sair da sala e ao entrar noutra, senão a morte sobe por cima de um pódio.
+  (b) **Às vezes ela não aparecia e o jogador reentrava no ato**, e a causa é de PROVENIÊNCIA: `game/index.js`
+  nunca zerava `morte` em `join`/`leave` (só o `{t:"alive"}` zerava), então toda re-entrada por `play()` — o
+  fallback de `respawnAqui`, o "OUTRA PARTIDA" do BR, a sala nova do BIG CRUNCH — carregava um `{deadAt,armAt}`
+  VENCIDO para a vida seguinte. E o par chega à tela por um store COM THROTTLE (200 ms) enquanto
+  `screen:"dead"` vem do store `app`, SEM throttle: no primeiro render o par lido é o de ANTES da morte. O
+  efeito roda `tick()` síncrono na montagem, o prazo já estava no passado e o respawn saía no primeiro frame.
+  ⚠️ O conserto é em TRÊS camadas e nenhuma basta sozinha: `morte=morteZero()` no `join`/`leave` (a origem),
+  o PISO de `prazoDe(st,ms,telaAt,minMs)` (nada vence antes de a tela ter estado `minMs` na frente, seja qual
+  for o par que chegou) e o carimbo `telaAt` da exibição. `client/test/dead-clock.test.js` fica vermelho se o
+  piso sair — foi conferido por mutação.
+- **O CONVITE DE BATTLE ROYALE PODE SER DESLIGADO, E TEM TETO** (pref `brInvite`, `BR.INVITE_CD_MS`,
+  `ui/BrInvite.jsx`): toda sala de BR pública criada em QUALQUER shard manda um card para TODA sessão do
+  Livre (`RoomManager.announceBrStartCluster`), e a sala de BR fecha na largada — cada onda cria salas novas.
+  Com `LOBBY_TICKS` de 30 s, quem jogava o Livre levava um card por minuto, sem cooldown, sem dedupe e sem
+  memória de recusa (`dismissBrInvite` só apagava o da vez). Entraram DUAS coisas ortogonais: um teto **por
+  sessão** no servidor (`Session.brInviteAt`, "com que frequência no máximo") e a pref de conta (o que o
+  jogador quer), com o "Nunca" no próprio card — quem quer desligar está olhando para ele, no meio de uma
+  partida, e não vai abrir um menu para procurar. ⚠️ A pref é lida no CLIENTE, e é isso que a faz valer para
+  o card que JÁ está na tela. ⚠️ E **saiu o `autoFocus`** do botão Entrar: ele roubava o teclado no meio de
+  uma partida do Livre, e a partir dali um Espaço (dividir) virava "ir para outra sala".
 - **RENASCER NÃO É ENTRAR DE NOVO** (`{t:"respawn"}` → `Room.respawn` → `Sim.revive` → `{t:"alive"}`):
   o botão DE NOVO do Livre fechava o socket e abria outro, e o feed dizia "Fulano saiu / Fulano entrou"
   para quem não tinha saído de lugar nenhum — o jogador morto CONTINUA na sala, com o socket aberto e o

@@ -51,7 +51,7 @@ ausente dele não chega ao handler: cai em 404 (ou no `staticDir`, em dev), sem 
 | POST | `/api/admin/login` | `{login,password}` | `{token,admin}` · 401 `invalid_credentials` · 429 |
 | POST | `/api/admin/logout` 🛡 | — | 204 |
 | GET | `/api/admin/me` 🛡 | — | `{admin}` · 403 `forbidden` |
-| GET | `/api/admin/users?q=&kind=&banned=&limit=&before=` 🛡 | — | `{users:[…],next}` — **sem e-mail** (é do detalhe) |
+| GET | `/api/admin/users?q=&kind=&banned=&limit=&before=` 🛡 | — | `{users:[…],next}` — **sem e-mail** (é do detalhe), **com `origin`** |
 | GET | `/api/admin/users/:id` 🛡 | — | `{user,tokens,ledger,matches}` · 404 |
 | PATCH | `/api/admin/users/:id` 🛡 | `{nick?,login?,country?}` | `{user}` · 400 `bad_nick`/`bad_login` · 409 `login_taken` |
 | POST | `/api/admin/users/:id/ban` 🛡 | `{days,reason}` — `days:0` desbane | `{user}` · 409 `self_ban` |
@@ -62,13 +62,43 @@ ausente dele não chega ao handler: cai em 404 (ou no `staticDir`, em dev), sem 
 | PUT | `/api/admin/settings/:key` 🛡 | `{value}` | `{key,value,applied}` · 400 `unknown_key`/`out_of_range` · 501 `client_side` |
 | DELETE | `/api/admin/settings/:key` 🛡 | — | `{key,value,applied}` |
 | GET | `/api/admin/audit?limit=&before=&adminId=` 🛡 | — | `{rows:[…]}` |
-| GET | `/api/admin/rooms` 🛡 | — | `{rooms:[…],shards:[{shard,ok}]}` — agregado dos 3 pods |
+| GET | `/api/admin/rooms` 🛡 | — | `{rooms:[…],shards:[{shard,ok}]}` — agregado dos pods que EXISTEM |
 | GET | `/api/admin/rooms/:code` 🛡 | — | `{room:{…,players:[…]}}` · 404 · 503 `peer_unreachable` |
 | POST | `/api/admin/rooms/:code/kick` 🛡 | `{slot,sessionId,reason?}` | `{ok,name}` · 409 `slot_changed` |
 | POST | `/api/admin/rooms/:code/close` 🛡 | — | `{ok,kicked}` |
 | POST | `/api/admin/broadcast` 🛡 | `{text,level,ttlMs?}` | `{delivered,rooms,shards:[…]}` |
 | GET | `/api/admin/live?since=` 🛡 | — | **SSE** (`text/event-stream`) · 503 `too_many_streams` · 429 |
 | GET | `/api/admin/kpis` 🛡 | — | o fragmento de KPI DESTE pod (para `curl` e para a 1ª pintura) |
+| GET | `/api/admin/retencao?janela=` 🛡 | — | os 6 painéis + o eco `{janela,modo,rotulo}` · 400 `bad_janela` |
+| GET | `/api/admin/retencao/janelas` 🛡 | — | `{janelas:[{id,rotulo,modo}],padrao}` — a lista branca |
+
+### A faixa de shards só conta quem EXISTE
+
+`config.peers` sai de `SHARDS` (24 no ConfigMap) e quem decide quantos pods há é o HPA (`minReplicas: 3`).
+Sem filtro, `/api/admin/rooms` perguntava a 23 irmãos a cada 5 s — 21 deles nomes que nem resolvem no DNS —
+e **reportava cada falha como um chip**: a tela de Salas anunciava 21 shards "sem resposta" num cluster
+saudável, enquanto o KPI da aba AO VIVO, que já filtrava, mostrava `3/3`.
+
+Ela passou a usar o mesmo par `shardDoPeer`/`aPerguntar` do coletor (`server/src/admin/coletor.js`), agora
+também em `createAdminHttp`: um peer só entra na faixa **depois de responder uma vez**, e um desconhecido é
+re-sondado a cada `ADMIN_BUS.SONDA_MS`. É isso que devolve sentido ao chip vermelho — ele passa a significar
+"um shard que existia e ficou mudo", que é a única coisa que o administrador precisa ver ali.
+
+⚠️ **No aviso global a ENTREGA continua indo a todos os peers.** Um pod que o HPA acabou de subir e com quem
+ninguém falou ainda tem que receber o aviso; filtrar a entrega pela sonda seria trocar um chip errado na tela
+por uma sala que não foi avisada. O que a sonda decide lá é só o que se **reporta**.
+
+### Os dois relógios de um jogador na sala
+
+`Room.adminInfo({players:true})` leva `desdeS` (a VISITA — `gp.entrouTick`, que o respawn **não** zera) e
+`vidaS` (a VIDA — `gp.joinedTick`, que é o `matches.duration_s`). Os dois estão na tabela e os dois ordenam
+(`ORDEM_JOGADORES`, chaves `desde` e `vida`).
+
+⚠️ **`entrouTick`, NUNCA `joinedTick`**, e é o mesmo erro que o `durouS` do `saiu` já cometeu: medindo pela
+vida, o painel dizia "40 s" de quem estava na sala havia vinte minutos em quinze vidas.
+`server/test/visita.test.js` trava os dois sentidos.
+
+A linha também leva `spectator`, e a coluna "estado" diz **assiste** para quem entrou só para ver.
 
 Rate limit: leitura 120/min/token, mutação 20/min/token, login com o mesmo balde de `/api/auth/login`.
 
@@ -283,6 +313,67 @@ isso. Duas correções entraram junto com a queixa ("aumentei para 140 e continu
   fala longa saía cortada (`done_reason:'length'`) para ser recusada em seguida. Agora é derivado de
   `MAX_CHARS`. Medido pelo caminho real do jogo: média da linha 41 → 60 chars, maior 55 → 88, aceitação
   7/8 → 8/8.
+
+## A tela de RETENÇÃO: a janela troca a PERGUNTA
+
+O filtro era `?days=` costurado como `now() - ($1||' days')::interval` nas seis consultas. Ele respondia bem
+"o novato de ontem ficou 3 minutos?" e não respondia nada sobre AGORA — e **"dia atual" não cabe naquele
+molde**: é `>= date_trunc('day',now())`, um instante, não um intervalo. É isso que obrigou a trocar o
+parâmetro por um fragmento de **lista branca em `Map`** (`JANELAS`, em `repos/analytics.js`) — com objeto
+literal, `?janela=constructor` é truthy e a rota devolveria 500, o mesmo argumento de `ORDEM_USERS`.
+
+| janela | corte | modo |
+|---|---|---|
+| `1h` · `3h` | `now()-interval '1 hour'` · `'3 hours'` | atividade |
+| `hoje` | `date_trunc('day',now())` | atividade |
+| `7d` · `14d` · `30d` · `90d` | `now()-interval 'N days'` | coorte |
+
+⚠️ **Abaixo de um dia, a BASE deixa de ser a coorte de contas novas.** Cinco dos seis painéis filtravam por
+`users.created_at`, e numa hora isso é quase sempre o conjunto vazio — por construção, não por falta de
+jogadores. No modo `atividade` a base passa a ser **quem jogou na janela** (`matches.ended_at`):
+
+- `funil` agrupa por **hora**, e a coluna "jogaram" some (seria 100% por construção: a base É quem jogou);
+- `primeira`/`histograma`/`algoz` medem **as vidas da janela**, não o `n=1` de cada conta — e os títulos da
+  tela mudam junto, senão a mesma frase passaria a cobrir dois recortes diferentes;
+- `coortes` **some**: ele compara `dia + interval '1 day'`, ou seja é diário por definição. Numa hora daria
+  uma linha com D1/D7/D30 zerados — três colunas de zero que se leem como "ninguém volta";
+- `visita` não muda: ele sempre filtrou por atividade, e é por isso que é o único que continua dizendo algo
+  numa janela de uma hora.
+
+⚠️ **A resposta ECOA `{janela,modo,rotulo}` e a tela desenha os títulos a partir do que o servidor FEZ.** É
+o mesmo contrato do eco de `by`/`dir` das tabelas ordenáveis, e a mesma defesa de rollout: um pod antigo não
+ecoa, e o painel não anuncia um modo que não valeu.
+
+⚠️ **A chave do memo é a JANELA.** Com o `'r'+days` de antes, `1h` e `1 dia` colidiriam — e por 60 s a tela
+mostraria, sem erro nenhum, o número do período errado.
+
+⚠️ `?days=N` continua aceito e é traduzido para a menor janela que o cobre: durante um rollout, um painel
+antigo fala com um pod novo. O teto de 90 dias que ele impunha continua valendo por construção — não há
+entrada maior na lista.
+
+⚠️ **Fuso:** `now()` e `date_trunc` são do relógio do POSTGRES e a tela formata em pt-BR. "Dia atual" pode
+não ser o dia do operador, e o rótulo diz isso.
+
+## De onde a conta veio
+
+`users.origin` (migração 0010) é o cabeçalho `Origin` do `POST /api/auth/guest` — o domínio CRU
+(`https://html5.gamemonetize.co`), não um id de portal. Ele existia desde a 0010 e só era lido pelo funil da
+retenção; agora é coluna ordenável na lista de contas, entra no detalhe e **casa na busca livre** (digitar
+"poki" filtra por origem, o que dispensa um `<select>` que envelheceria no portal seguinte).
+
+⚠️ **Quem traduz para "Poki" é o PAINEL** (`client/src/admin/portais.js`, puro e testável sem jsdom), não o
+servidor: um portal novo aparece no banco antes de qualquer código nosso conhecer o nome dele, e o
+desconhecido sai pelo próprio host — que ainda diz de onde veio. O casamento é por host exato ou sufixo de
+domínio, nunca por `includes`, pela mesma razão do `cors.js`. E isto **não é um portão**: quem decide quem
+fala com a API continua sendo o `ALLOWED_ORIGINS` do ConfigMap.
+
+## Assistir a uma sala pelo painel
+
+O botão **Assistir** do detalhe de uma sala abre `/?sala=<code>&assistir=1` numa aba nova. Ele DELEGA: o
+painel é um chunk da mesma SPA, mas nunca monta o Pixi nem abre WebSocket de sala, e embutir uma partida
+aqui significaria carregar o jogo inteiro no painel — o oposto do motivo de ele ser carregado sob demanda.
+O administrador entra como espectador comum (ver `docs/spec/protocol.md`): sem corpo, sem vaga, sem aparecer
+no placar de ninguém e sem virar linha em `matches`.
 
 ## Segurança
 

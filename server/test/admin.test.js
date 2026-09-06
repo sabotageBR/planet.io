@@ -225,3 +225,47 @@ test('admin: as rotas em MEMÓRIA ordenam e ecoam o que valeu',async t=>{
   const x=await J('GET','/api/admin/rooms?by=constructor',null,painel);
   assert.equal(x.s,200);assert.equal(x.j.by,'humans','caiu no padrão, e o eco não mente');
 });
+
+// ── A JANELA DA RETENÇÃO ──────────────────────────────────────────────────────
+// O filtro era `?days=` costurado como `now()-($1||' days')::interval` nas seis consultas, e "dia atual"
+// não cabe nesse molde (é `>= date_trunc('day',now())`, um instante). A troca por lista branca traz junto
+// as duas invariantes que o painel inteiro segue: valor fora da lista é 400 (nunca fallback silencioso, que
+// deixaria a tela dizendo "1 hora" sobre números de duas semanas) e a resposta ECOA o que o servidor FEZ.
+test('admin: a janela da retenção é lista branca — fora dela é 400, nunca fallback',async t=>{
+  if(pula())return t.skip('sem banco');
+  const r=await J('GET','/api/admin/retencao?janela=constructor',null,painel);
+  assert.equal(r.s,400,'com objeto literal isto seria 500 alcançável pela URL — daí o Map');
+  assert.equal(r.j.error,'bad_janela');
+  const r2=await J('GET','/api/admin/retencao?janela=365d',null,painel);
+  assert.equal(r2.s,400,'não há entrada maior que 90d: o teto de antes vale por construção');
+});
+
+test('admin: a resposta ECOA a janela e o MODO — a tela desenha o que o servidor fez',async t=>{
+  if(pula())return t.skip('sem banco');
+  const curta=await J('GET','/api/admin/retencao?janela=1h',null,painel);
+  assert.equal(curta.s,200);
+  assert.equal(curta.j.janela,'1h');
+  assert.equal(curta.j.modo,'atividade','abaixo de um dia a base é quem JOGOU, não quem criou conta');
+  assert.deepEqual(curta.j.coortes,[],'D1/D7/D30 é diário por definição — some na janela curta');
+  const longa=await J('GET','/api/admin/retencao?janela=30d',null,painel);
+  assert.equal(longa.j.janela,'30d');
+  assert.equal(longa.j.modo,'coorte');
+});
+
+test('admin: `?days=` continua aceito — painel antigo contra pod novo',async t=>{
+  if(pula())return t.skip('sem banco');
+  const r=await J('GET','/api/admin/retencao?days=14',null,painel);
+  assert.equal(r.s,200);
+  assert.equal(r.j.janela,'14d');
+  const r2=await J('GET','/api/admin/retencao?days=999',null,painel);
+  assert.equal(r2.j.janela,'90d','o teto de 90 dias existe porque as consultas varrem `matches` no pool do jogo');
+});
+
+test('admin: a lista de janelas vem do SERVIDOR — o <select> não a duplica',async t=>{
+  if(pula())return t.skip('sem banco');
+  const r=await J('GET','/api/admin/retencao/janelas',null,painel);
+  assert.equal(r.s,200);
+  assert.ok(r.j.janelas.some(j=>j.id==='hoje'),'duplicando a lista no cliente, ela divergiria na primeira janela nova');
+  assert.ok(r.j.janelas.some(j=>j.id==='1h'&&j.modo==='atividade'));
+  assert.equal(r.j.padrao,'14d');
+});

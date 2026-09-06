@@ -377,8 +377,23 @@ export class Room{
   _pos(slot){const ps=this.sim.world.players.get(slot);if(!ps||!ps.alive)return null;
     for(const pc of ps.pieces)if(!pc.dead)return pc;return null;}
   freeSlot(){let s=0;while(this.sim.players.has(s))s++;return s;}
-  get humanCount(){return this.sessions.size;}
-  isFull(){return this.sessions.size>=this.max;}
+  // ⚠️ ESPECTADOR NÃO CONTA COMO JOGADOR em nenhuma das duas. Ele tem slot e sessão (é o que faz a AOI, a
+  // troca de câmera e o chat funcionarem de graça), mas não ocupa vaga: contá-lo aqui faria uma sala com
+  // 25 jogadores e 5 espectadores parecer cheia, e ainda encolheria o preenchimento (`botAlvo` é
+  // `botCount - humanCount`) por causa de gente que não está jogando.
+  get humanCount(){let n=0;for(const s of this.sessions.values())if(!s.espectador)n++;return n;}
+  /** Quantos estão só assistindo agora (teto em `ROOM.SPEC_MAX`). */
+  get specCount(){let n=0;for(const s of this.sessions.values())if(s.espectador)n++;return n;}
+  isFull(){return this.humanCount>=this.max;}
+  /**
+   * A PORTA DO ESPECTADOR — irmã de `acceptsJoin()`, nunca a mesma, e a distinção é o desenho inteiro:
+   * aquela é a porta de quem vai JOGAR, e é ela que recusa o Battle Royale em andamento com `'started'`.
+   * Assistir uma partida que já começou é exatamente o caso de uso; se as duas fossem a mesma função,
+   * abrir uma abriria a outra e o BR voltaria a aceitar jogadores no meio da rodada.
+   * ⚠️ Sala TERMINADA (`over`) não aceita nem espectador: não há o que ver, e `RoomManager.getRoom` já a
+   * devolve como null de qualquer forma.
+   */
+  acceptsSpectator(){return !this.over&&this.running&&this.specCount<ROOM.SPEC_MAX;}
   /**
    * Porta ÚNICA de entrada da sala (o RoomManager e o wsServer perguntam só isto). No Livre é o `isFull` de
    * sempre; no Battle Royale ela fecha quando a partida começa — quem morreu não volta para a mesma sala,
@@ -412,8 +427,11 @@ export class Room{
   joinRefusal(){
     if(this.acceptsJoin())return null;
     return this.phase!=='lobby'&&this.mode.lobby?'started':'full';}
+  // ⚠️ `humanCount`, e não `sessions.size`: espectador não é jogador, e contá-lo aqui inflaria o "12/30" da
+  // tela de Salas com gente que não está no mapa — e, pior, a conta velha de `fechada` do cliente antigo
+  // (`players>=max`) passaria a trancar uma sala que tem vaga.
   info(){return{code:this.code,shard:this.shard,mode:this.modeId,teamSize:this.teamSize,phase:this.phase,open:this.acceptsJoin(),closed:this.joinRefusal(),
-    players:this.sessions.size,max:this.max,bots:this.sim.botCount(),round:this.roundLeft(),lockInMs:this._lockInMs(),
+    players:this.humanCount,max:this.max,bots:this.sim.botCount(),round:this.roundLeft(),lockInMs:this._lockInMs(),
     // ⚠️ o campo fica AQUI, mas o filtro é na LISTAGEM (RoomManager.listRooms): `adminInfo()` é construído em
     // cima deste objeto, e o painel tem que continuar vendo a sala privada.
     private:this.private,host:this.hostNick||null};}
@@ -468,7 +486,7 @@ export class Room{
     const gp=this.sim.players.get(slot);if(gp){gp.country=country||null;this.flagsDirty=true;}
     if(lobby&&!this.lobbyUntil){this.lobbyStart=this.sim.tick;this.lobbyUntil=this.sim.tick+this.lobbyTicks;}   // a janela começa no PRIMEIRO humano
     const pc=this.sim.world.piecesOf(slot)[0];if(pc){session.cx=pc.x;session.cy=pc.y;}
-    session.room=this;session.slot=slot;session.pid=++this._pid;session.known.clear();session.rect=null;session.specSlot=-1;this.sessions.set(slot,session);this.lastHumanAt=Date.now();
+    session.room=this;session.slot=slot;session.pid=++this._pid;session.known.clear();session.rect=null;session.specSlot=-1;session.espectador=false;this.sessions.set(slot,session);this.lastHumanAt=Date.now();
     if(session.avatar&&session.userId)this._setAvatar(slot,session.userId,session.avatar);
     if(lobby)this.broadcastLobby();
     if(this.hostUserId!=null){const h=this.hostSession();if(h)this.sendHost(h);this.holdUntil=Date.now()+ROOM.HOST_HOLD_MS;}
@@ -491,6 +509,37 @@ export class Room{
       // `voltou` e a tela decide se colapsa.
       this.bus.publica('entrou',{sala:this.code,quem:gp.name||'',conta:!!gp.registered,
         nivel:gp.level|0,pais:gp.country||null,voltou,lobby:!!lobby});}
+    return slot;}
+  /**
+   * ENTRA SÓ PARA ASSISTIR. O espectador é uma sessão COM slot e SEM corpo — o mesmo `spawn:false` que o
+   * lobby do Battle Royale já usava —, e é isso que faz a máquina existente servi-lo sem uma linha nova:
+   * `net/snapshot.js` deriva a janela de `s.cx/cy/scale` (nunca do corpo) e já tem o ramo que segue
+   * `s.specSlot`; `Room.spectateTargetFor`/`spectatePick` escolhem e trocam o alvo; e `gp.dead` o põe na
+   * arquibancada do chat sem tocar em `_escopoFala`.
+   *
+   * O que ele NÃO faz é o que separa assistir de jogar, e cada omissão aqui tem um dono:
+   * · `usedNicks` — assistir não reserva nome. Reservando, quem assistiu uma partida não conseguiria
+   *   ENTRAR na seguinte com o próprio nick, e a sala viraria lista negra por causa de quem só olhava.
+   * · feed e `_avisaAdmins` — "entrou gente" é sobre quem vai jogar; um espectador virando linha do kill
+   *   feed gastaria o teto de `drenaFeed` com o que ninguém quer ler.
+   * · `_rosterVolta`/roster — ele não disputa o placar nem o pódio, então não entra na tabela de quem
+   *   disputou. `Sim.endRound` já o pula pelo `gp.dead`.
+   * · persistência — quem descarta a sessão é o `wsServer` (`hooks.dropSession`), pelo mesmo caminho que
+   *   os becos de recusa usam: assistir não é uma VIDA e não pode virar linha em `matches`.
+   * @returns {number} o slot
+   */
+  joinSpec(session,{name,skinId=0,sessionId=null,userId=null,level=0,country=null}={}){
+    const slot=this.freeSlot();
+    this.sim.addHuman(slot,{name,registered:false,skinId,sessionId,userId,team:-1,level,spawn:false,spectator:true});
+    const gp=this.sim.players.get(slot);if(gp)gp.country=country||null;
+    session.room=this;session.slot=slot;session.pid=++this._pid;session.known.clear();session.rect=null;session.specSlot=-1;session.espectador=true;
+    this.sessions.set(slot,session);
+    // ⚠️ `lastHumanAt` NÃO é tocado: ele é o que segura a sala de pé para o ceifador (`STOP_AFTER_MS` /
+    // `REMOVE_AFTER_MS`), e uma sala vazia com um espectador esquecido não pode viver para sempre. Quem
+    // assiste acompanha a sala; não a mantém acesa.
+    this.bus.publica('assiste',{sala:this.code,quem:gp?gp.name||'':''});
+    // A câmera nasce apontada para alguém: sem isto o espectador entra olhando o meio do mapa vazio.
+    this.spectateTargetFor(session);
     return slot;}
   /**
    * A MESMA pessoa acabou de sair desta sala? No Livre renascer é `leave`+`join` (o botão DE NOVO fecha o
@@ -550,10 +599,16 @@ export class Room{
    */
   leave(session,cause='left',explode=false,motivo=cause){
     const slot=session.slot;if(this.sessions.get(slot)!==session)return;const gp=this.sim.players.get(slot);
+    // (o espectador nasce `dead`, então ele nunca cai neste ramo — não há partida a fechar)
     if(gp&&!gp.dead&&gp.sessionId&&this.phase!=='lobby'){const hooks=this.sim.hooks;
       Promise.resolve().then(()=>hooks.onMatchEnd({sessionId:gp.sessionId,cause,killedBySessionId:null,score:gp.score,maxMass:Math.round(gp.maxMass),durationMs:Math.round((this.sim.tick-gp.joinedTick)*1000/TICK_HZ)}))
         .catch(e=>this.log.warn(`onMatchEnd('${cause}') falhou:`,e&&e.message));}
-    if(gp){this._rosterFold(gp);this._rosterLeft(gp);
+    // ⚠️ O ESPECTADOR SAI CALADO. Nada aqui vale para ele: não há roster (não disputou), não há linha de
+    // feed ("saiu" de quem nunca entrou na partida), não há `usedNicks` a devolver (ele nunca reservou) e
+    // o `saiu` do painel mediria uma visita que não é uma visita. Ele tem o `assiste`/`parou` próprios.
+    if(gp&&gp.spectator){this.bus.publica('parou',{sala:this.code,quem:gp.name||'',
+      durouS:Math.round((this.sim.tick-gp.entrouTick)/TICK_HZ)});}
+    else if(gp){this._rosterFold(gp);this._rosterLeft(gp);
       // ⚠️ ANTES do `sim.remove`: o nome sai daqui, e o cliente resolve nome por `view.playerOf` — o PLAYERS
       // já sem o slot pode chegar antes do feed. Por isso a linha leva o `name` junto.
       this._saiuEm.set(this._rosterKey(gp),Date.now());
@@ -571,10 +626,12 @@ export class Room{
       // pergunta aqui é há quanto tempo a PESSOA estava aqui; `matches.duration_s` é que é por vida.
       this.bus.publica('saiu',{sala:this.code,quem:gp.name||'',por:motivo,
         durouS:Math.round((this.sim.tick-gp.entrouTick)/TICK_HZ),abates:gp.kills|0});}
-    if(gp&&gp.name)this.usedNicks.delete(String(gp.name).toLowerCase());   // sem isto a sala vira lista negra e quem sai não volta com o próprio nome
+    // ⚠️ Só quem RESERVOU devolve: `joinSpec` não escreve em `usedNicks`, e apagar aqui o nick de um
+    // espectador tiraria da lista o nick de um JOGADOR homônimo que estava na sala.
+    if(gp&&gp.name&&!gp.spectator)this.usedNicks.delete(String(gp.name).toLowerCase());
     this.flagsDirty=true;
     if(this.avatars.has(slot))this._setAvatar(slot,null,null);
-    this.sim.remove(slot,explode);this.sessions.delete(slot);session.room=null;session.slot=-1;session.known.clear();session.specSlot=-1;this.lastHumanAt=Date.now();
+    this.sim.remove(slot,explode);this.sessions.delete(slot);session.room=null;session.slot=-1;session.known.clear();session.specSlot=-1;session.espectador=false;this.lastHumanAt=Date.now();
     if(this.hostUserId!=null){const h=this.hostSession();if(h)this.sendHost(h);}}
   /** Socket caiu: fica no mundo sem thrust (alvo = centróide) até resume ou expirar. */
   detach(session){if(this.sessions.get(session.slot)!==session)return;if(session.kicked)return this.leave(session,'left');session.detach();
@@ -662,6 +719,10 @@ export class Room{
     // contrário, e é o caso que isto existe para resolver: lá qualquer gesto arma a contagem e o renascimento
     // sai em segundos, então "três minutos morto" quer dizer, literalmente, que não houve gesto nenhum.
     if(gp.dead&&this.mode.lastAlive)return;
+    // ⚠️ ESPECTADOR É ISENTO, e o que segura o custo dele é o TETO (`ROOM.SPEC_MAX`), não o relógio: quem
+    // assiste fica parado de propósito — é literalmente o que ele veio fazer —, então medi-lo por gesto
+    // expulsaria justamente quem está usando a funcionalidade como ela foi desenhada.
+    if(gp.spectator)return;
     // ⚠️ O DONO NÃO É REMOVIDO da sala dele. Ela existe para ESPERAR OS AMIGOS chegarem pelo link (é por isso
     // que o preenchimento dela é lento e que `HOST_HOLD_MS` a segura de pé), e removê-lo entregaria a coroa a
     // um estranho pelo `_hostTick` justamente enquanto os convidados ainda não chegaram.
@@ -693,7 +754,9 @@ export class Room{
     if(this.hostSession()){this.hostLeftAt=0;this.holdUntil=now+ROOM.HOST_HOLD_MS;return;}
     if(!this.hostLeftAt){this.hostLeftAt=now;return;}
     if(now-this.hostLeftAt<ROOM.HOST_GRACE_MS)return;
-    let novo=null;for(const s of this.sessions.values())if(s.userId!=null&&(!novo||s.connectedAt<novo.connectedAt))novo=s;
+    // ⚠️ `!s.espectador`: a coroa vai para quem está JOGANDO. Sem isto, uma sala cujo dono saiu entregaria o
+    // poder de expulsar e banir a alguém que entrou só para olhar — e que nem aparece no roster do dono.
+    let novo=null;for(const s of this.sessions.values())if(s.userId!=null&&!s.espectador&&(!novo||s.connectedAt<novo.connectedAt))novo=s;
     this.hostLeftAt=0;
     if(!novo){this.hostUserId=null;this.hostNick=null;return;}   // ninguém a coroar: a sala volta a ser de todos
     this.hostUserId=novo.userId;this.hostNick=novo.name||null;this.holdUntil=now+ROOM.HOST_HOLD_MS;
@@ -707,6 +770,7 @@ export class Room{
    */
   hostRoster(){const out=[];
     for(const s of this.sessions.values()){const gp=this.sim.players.get(s.slot);
+      if(s.espectador)continue;   // quem só assiste não é participante da sala — e não há o que expulsar
       out.push({pid:s.pid,name:s.name,level:s.level|0,country:s.country||null,
         alive:!!(gp&&!gp.dead),connected:s.connected,host:this.isHost(s)});}
     return out;}
@@ -1470,8 +1534,18 @@ export class Room{
    */
   brInvite(room,{ttlMs=BR.INVITE_TTL_MS}={}){
     if(this.modeId!==MODE.FREE)return 0;
-    const msg={t:'brStart',room,at:Date.now(),ttlMs};let n=0;
-    for(const s of this.sessions.values())if(s.ws){s.sendJson(msg);n++;}
+    // ⚠️ TETO POR SESSÃO (`BR.INVITE_CD_MS`), e é aqui que ele tem que morar: quem convida é a SALA, uma
+    // vez por sala de BR criada em qualquer um dos shards — pôr o teto no chamador (`broadcastBrStart`)
+    // limitaria o número de AVISOS, não o número de vezes que a mesma pessoa é interrompida, que é o que
+    // incomoda. A pref do jogador (`brInvite`) é decidida no CLIENTE e não entra nesta conta: ela é
+    // "não quero", este número é "no máximo isto", e quem não quer nada não deve mudar o que os outros
+    // recebem. Um convite não entregue não gasta o relógio de ninguém.
+    const agora=Date.now();
+    const msg={t:'brStart',room,at:agora,ttlMs};let n=0;
+    for(const s of this.sessions.values()){
+      if(!s.ws)continue;
+      if(agora-(s.brInviteAt||0)<BR.INVITE_CD_MS)continue;
+      s.brInviteAt=agora;s.sendJson(msg);n++;}
     return n;}
   /**
    * O que o painel /admin mostra de uma sala. ⚠️ NUNCA junte isto ao `info()`: aquele alimenta o
@@ -1479,13 +1553,21 @@ export class Room{
    */
   adminInfo({players=false}={}){
     const base={...this.info(),shard:this.shard,phase:this.phase,humans:this.humanCount,
-      bots:this.sim.botCount(),tick:this.sim.tick,over:!!this.over};
+      specs:this.specCount,bots:this.sim.botCount(),tick:this.sim.tick,over:!!this.over};
     if(!players)return base;
     const lista=[];
     for(const [slot,s] of this.sessions){const gp=this.sim.players.get(slot);
       lista.push({slot,sessionId:s.sessionId||null,userId:s.userId??null,name:s.name||'',
         registered:!!(gp&&gp.registered),level:s.level|0,country:gp?gp.country||null:null,
         mass:gp?Math.round(this.sim.world.massOf(slot)):0,alive:!!(gp&&!gp.dead),
+        // ⚠️ `desdeS` é a VISITA e sai de `entrouTick`, NUNCA de `joinedTick`: aquele é escrito no
+        // nascimento e `Sim.revive` não o zera (é o contraexemplo declarado lá), enquanto este é a VIDA e
+        // vira `matches.duration_s`. Medindo pelo segundo, o painel diria "40s" de quem está na sala há
+        // vinte minutos em quinze vidas — é o mesmo defeito que o `durouS` do `saiu` já teve. No Battle
+        // Royale ele inclui a espera do lobby, de propósito: o jogador está na sala desde lá.
+        spectator:!!(gp&&gp.spectator),
+        desdeS:gp?Math.round((this.sim.tick-gp.entrouTick)/TICK_HZ):null,
+        vidaS:gp?Math.round((this.sim.tick-gp.joinedTick)/TICK_HZ):null,
         connected:!!s.ws,ip:s.remoteAddr||null});}
     return{...base,players:lista};}
   /**

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { skinById, MODE } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { play, loadRooms, loadTop5, toast } from "../state/actions.js";
+import { play, loadRooms, loadTop5, toast, assistir } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { preenche } from "../i18n/index.js";
 import { useInterval } from "../hooks/useInterval.js";
@@ -68,8 +68,16 @@ function Body() {
         {/* Trancada MOSTRA o cadeado em vez de sumir com a linha: some, o jogador não entende por que a sala
             que ele viu há 5 s não está mais lá. E o clique leva o modo DA SALA junto — na lista se escolhe
             uma sala, não um modo, e sem isso um servidor antigo ainda recusaria por divergência. */}
+        {/* ⚠️ TRANCADA POR "JÁ COMEÇOU" VIRA "ASSISTIR", e a distinção com "cheia" é o ponto: uma sala de
+            Battle Royale em andamento tem vaga de sobra e mesmo assim recusa jogador — mas há o que VER
+            nela, que é justamente o que o cadeado escondia. Cheia continua com o cadeado: ali não há vaga
+            nem partida decidida para acompanhar, e um espectador a mais não muda isso.
+            O botão chama `assistir()`, nunca `play()`: aquele manda `spec:true` no join e cai em
+            `Room.joinSpec`, que é uma porta diferente da de quem vai jogar. */}
         <span className="act">{fechada
-          ? <span className="lock" title={motivo === "started" ? LB.roomLocked : LB.roomFullTag}>🔒</span>
+          ? motivo === "started"
+            ? <button className="btn-mini spec" data-go="spec" data-room={r.code} title={LB.roomLocked} onClick={() => assistir({ room: r.code })}>{LB.watch}</button>
+            : <span className="lock" title={LB.roomFullTag}>🔒</span>
           : <button className="btn-mini" data-go="play" data-room={r.code} onClick={() => play({ room: r.code, mode: r.mode, teamSize: r.teamSize || 1 })}>{LB.enter}</button>}</span></div>; })}
       {!rooms.length ? <div className="room-row empty dim" style={{ display: "block" }}><span className="hint">{LB.noRooms}</span></div> : null}
     </div>

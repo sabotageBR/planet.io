@@ -32,7 +32,9 @@ const ORDEM_SALAS=new Map([['code',r=>r.code],['shard',r=>r.shard|0],['mode',r=>
 // `state` é COMPOSTO e por isso é declarado: vivo e conectado primeiro. Um cabeçalho que ordena por um
 // critério que a coluna não mostra é a mesma mentira que a lista branca existe para evitar, em miniatura.
 const ORDEM_JOGADORES=new Map([['slot',p=>p.slot|0],['name',p=>String(p.name||'').toLowerCase()],
-  ['level',p=>p.level|0],['mass',p=>p.mass|0],['state',p=>(p.alive?2:0)+(p.connected?1:0)],['ip',p=>String(p.ip||'')]]);
+  ['level',p=>p.level|0],['mass',p=>p.mass|0],['state',p=>(p.alive?2:0)+(p.connected?1:0)],['ip',p=>String(p.ip||'')],
+  // Os dois relógios de `Room.adminInfo`: `desde` é a VISITA (o respawn não a zera) e `vida` é a vida atual.
+  ['desde',p=>p.desdeS|0],['vida',p=>p.vidaS|0]]);
 /** `by`/`dir` da query, com padrão por rota. Valor fora da lista cai no padrão — aqui NÃO se recusa com
  *  400 porque estas rotas não têm o router de erros do `api/`, e a resposta ecoa o `by` que VALEU. */
 function ordemQuery(req,lista,padBy,padDir){
@@ -67,6 +69,37 @@ export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=nu
    * 30 s que o poll de tunables já aceita. A porta EXTERNA nunca lê este memo.
    */
   /** @type {Map<string,{u:any,ate:number}>} */const memo=new Map();
+  /**
+   * QUAIS IRMÃOS EXISTEM — o mesmo par `shardDoPeer`/`aPerguntar` do coletor (`server/src/admin/coletor.js`),
+   * e pelo mesmo motivo, escrito lá: `config.peers` sai de `SHARDS` (24 no ConfigMap) e quem decide quantos
+   * pods existem é o HPA (hoje 3). Sem isto, `/api/admin/rooms` perguntava a 23 irmãos a cada 5 s — 21 deles
+   * nomes que nem resolvem no DNS — e REPORTAVA cada falha como um chip: a tela de Salas anunciava 21 shards
+   * "sem resposta" num cluster saudável, enquanto o KPI da aba AO VIVO, que já filtrava, mostrava 3/3.
+   * ⚠️ O peer só entra em `shardDoPeer` DEPOIS de responder uma vez. É isso que devolve sentido ao chip
+   * vermelho: ele passa a significar "um shard que existia e ficou mudo", que é a única coisa que o
+   * administrador precisa ver ali. Um pod novo do HPA aparece em ≤ `SONDA_MS`.
+   * @type {Map<string,number>} peer → shard, aprendido na 1ª resposta dele
+   */
+  const shardDoPeer=new Map();
+  /** @type {Map<string,number>} peer que nunca respondeu → quando sondar de novo */const sondarEm=new Map();
+  /** Os peers que vale a pena perguntar AGORA: os conhecidos, mais os desconhecidos cuja sonda venceu. */
+  const aPerguntar=()=>{const agora=Date.now();
+    return config.peers.filter(p=>shardDoPeer.has(p)||(sondarEm.get(p)||0)<=agora);};
+  /** Registra o resultado de um peer e agenda a próxima sonda de quem continua sem responder. */
+  const anotaPeer=(p,ok,shard)=>{
+    if(ok){if(shard!=null)shardDoPeer.set(p,shard);sondarEm.delete(p);}
+    else if(!shardDoPeer.has(p))sondarEm.set(p,Date.now()+ADMIN_BUS.SONDA_MS);};
+  /**
+   * A faixa de shards da tela de Salas: este pod, mais os irmãos que EXISTEM. Recebe o que `tellPeers`
+   * devolveu (que pode ser um subconjunto de `config.peers`, por causa da sonda).
+   * ⚠️ Um irmão conhecido que não foi PERGUNTADO nesta rodada não vira chip vermelho — ele não falhou,
+   * ninguém falou com ele. Só entra quem respondeu, ou quem já existiu e falhou agora.
+   */
+  const faixaShards=rs=>{const porPeer=new Map(rs.map(r=>[r.peer,r]));
+    return[{shard:config.shard,ok:true},
+      ...config.peers.filter(p=>shardDoPeer.has(p)||porPeer.has(p)).map(p=>{const r=porPeer.get(p);
+        return{shard:(r&&r.body&&r.body.shard)??shardDoPeer.get(p)??null,peer:p,
+          ok:!!(r&&!r.error&&r.status===200)};})];};
   /** Só entra quem tem `is_admin` E um token do PAINEL (kind 'admin'). Ver server/src/api/admin.js. */
   async function admin(req,cache=false){
     const t=/^Bearer\s+(\S+)$/i.exec(req.headers.authorization||'');
@@ -162,7 +195,9 @@ export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=nu
       // ⚠️ O FRAGMENTO INTERNO SAI CRU. Ordená-lo seria trabalho jogado fora (quem agrega reordena tudo) e,
       // pior, sugeriria uma garantia que ele não dá — a ordem final é do agregador.
       if(interno){sendJson(res,200,{shard:config.shard,rooms:minhas});return true;}
-      const rs=config.peers.length?await tellPeers(config.peers,{path:'/internal/admin/rooms',method:'GET',auth,log}):[];
+      const alvos=aPerguntar();
+      const rs=alvos.length?await tellPeers(alvos,{path:'/internal/admin/rooms',method:'GET',auth,log}):[];
+      for(const r of rs)anotaPeer(r.peer,!r.error&&r.status===200,r.body&&r.body.shard);
       const outras=rs.filter(r=>r.body&&Array.isArray(r.body.rooms)).flatMap(r=>r.body.rooms);
       // ⚠️ A ordenação é DEPOIS do concat e no ponto de SAÍDA — nunca em `Room.adminInfo`. É isso que a
       // torna imune a rollout com versões mistas: quem ordena é sempre o pod que recebeu o pedido, e um
@@ -170,8 +205,7 @@ export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=nu
       // ⚠️ E o caminho de shard único (dev, sem peers) passa por AQUI, junto com o agregado: separá-los
       // fazia o dev sair numa ordem e a produção em outra.
       const ord=ordenaSalas(req,minhas.concat(outras));
-      sendJson(res,200,{rooms:ord.lista,by:ord.by,dir:ord.dir,
-        shards:[{shard:config.shard,ok:true},...rs.map(r=>({shard:r.body&&r.body.shard,peer:r.peer,ok:!r.error&&r.status===200}))]});
+      sendJson(res,200,{rooms:ord.lista,by:ord.by,dir:ord.dir,shards:faixaShards(rs)});
       return true;}
 
     // ── uma sala: detalhe, kick, fechar. SEMPRE pelo dono do código. ──
@@ -234,11 +268,17 @@ export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=nu
       if(!interno){log.warn(`admin #${adm.id} mandou aviso global: ${JSON.stringify(text)}`);
         audita({adminId:adm.id,action:'broadcast',detail:{text,level},ip:null});}
       if(interno||!config.peers.length){sendJson(res,200,{shard:config.shard,delivered:entregues,rooms:salas});return true;}
+      // ⚠️ A ENTREGA VAI A TODOS OS PEERS, sempre — aqui NÃO se usa a sonda de `/rooms`. Um pod que o HPA
+      // acabou de subir e com quem ninguém falou ainda tem que receber o aviso; filtrar a entrega pela
+      // sonda seria trocar um chip errado na tela por uma sala que não foi avisada. O que a sonda decide
+      // é só o que se REPORTA: irmão que nunca existiu não vira linha de falha.
       const rs=await tellPeers(config.peers,{path:'/internal/admin/broadcast',method:'POST',body:{text,level,ttlMs},auth,log});
+      for(const r of rs)anotaPeer(r.peer,!r.error&&r.status===200,r.body&&r.body.shard);
+      const porPeer=new Map(rs.map(r=>[r.peer,r]));
       sendJson(res,200,{delivered:entregues+rs.reduce((t,r)=>t+(((r.body&&r.body.delivered)|0)),0),
         rooms:salas+rs.reduce((t,r)=>t+(((r.body&&r.body.rooms)|0)),0),
-        shards:[{shard:config.shard,delivered:entregues,ok:true},
-          ...rs.map(r=>({shard:r.body&&r.body.shard,peer:r.peer,delivered:(r.body&&r.body.delivered)|0,ok:!r.error&&r.status===200}))]});
+        shards:faixaShards(rs).map(x=>x.peer==null?{...x,delivered:entregues}
+          :{...x,delivered:((porPeer.get(x.peer)||{}).body||{}).delivered|0})});
       return true;}
 
     sendJson(res,404,{error:'not_found',message:'rota administrativa desconhecida'});return true;

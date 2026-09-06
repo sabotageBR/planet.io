@@ -111,6 +111,34 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         const mode=modeOf(msg.mode|0),teamSize=mode.teamSizes.includes(msg.teamSize|0)?msg.teamSize|0:mode.teamSizes[0];
         const party=typeof msg.party==='string'&&msg.party?msg.party.toUpperCase().slice(0,8):null;
         const opts={mode:mode.id,teamSize};
+        // ── SÓ ASSISTIR ──────────────────────────────────────────────────────────────────────────
+        // Caminho PRÓPRIO, e curto de propósito: ele não passa por `acceptsJoin` (é ela que recusa o BR em
+        // andamento, que é justamente o caso de uso), não passa por `nickTaken` (assistir não reserva
+        // nome) e não abre partida nenhuma. O BAN continua valendo — quem foi expulso de uma sala não
+        // volta a ela nem pela arquibancada.
+        // ⚠️ `aberta` NÃO é zerada aqui: o `finally` lá embaixo descarta a sessão de persistência pelo
+        // mesmo caminho dos becos de recusa. Assistir não é uma VIDA e não pode virar linha em `matches`.
+        if(msg.spec){
+          // ⚠️ `salaViva`, NUNCA `getRoom`: aquele CRIA a sala quando o código é deste shard, e um código
+          // errado viraria uma sala fantasma com preenchimento dentro para alguém que só queria olhar.
+          const alvo=msg.room?rooms.salaViva(msg.room):null;
+          if(!alvo)return s.error('ROOM','essa sala não existe mais');
+          if(!alvo.acceptsSpectator())return s.error('FULL',`a sala ${alvo.code} não aceita mais espectadores`);
+          if(alvo.banned({userId:res.userId??null,key:sessionKey(msg.token)}))return s.error('ROOM_BANNED','você foi banido dessa sala');
+          const nickEsp=res.nick||fallbackNick;
+          if(s.room)s.room.leave(s,'left');
+          // ⚠️ UUID NOVO, nunca o `res.sessionId`: aquele é a sessão de PERSISTÊNCIA que o `finally` vai
+          // descartar logo abaixo, e guardá-lo aqui deixaria um id morto circulando por um caminho que
+          // ainda o aceita (o `resume`). O da Session existe só para o `resume` do espectador funcionar.
+          s.sessionId=randomUUID();s.userId=res.userId??null;s.key=sessionKey(msg.token);s.name=nickEsp;s.unsaved=!!res.unsaved;s.isAdmin=!!res.isAdmin;
+          s.level=res.level|0;s.avatar=res.avatar||null;s.country=res.country||null;
+          // ⚠️ E o `GamePlayer` nasce com `sessionId:null`. Ele é a chave que `onMatchEnd` usaria; com ela
+          // nula, nenhum caminho de persistência consegue sequer tentar gravar uma partida que não houve.
+          alvo.joinSpec(s,{name:s.name,skinId:res.skinId|0,sessionId:null,userId:s.userId,level:s.level,country:s.country});
+          s.sendJson({...roomMsg(alvo),spec:true});alvo.sendPlayers(s);
+          metrics.join(pv);
+          log.info(`${s.name} assiste a sala ${alvo.code} (slot ${s.slot}, ${alvo.specCount} espectador(es))`);
+          return;}
         let room=null;
         if(msg.room){room=rooms.getRoom(msg.room,opts);
           // `acceptsJoin` é a porta única; `joinRefusal` é quem sabe DIZER por quê. "Cheia" e "já começou"
@@ -213,6 +241,10 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         // manda nada e o cliente cai sozinho no caminho antigo de `leave`+`join`, que continua inteiro.
         case 'respawn':if(s.room&&s.slot>=0)s.room.respawn(s);break;
         // trocar de câmera só faz sentido para quem já morreu: quem está vivo tem as próprias peças
+        // ⚠️ `gp.dead` cobre o ESPECTADOR de graça: `Room.joinSpec` o cria já morto, justamente para que as
+        // quatro coisas que dependem de "não tenho corpo" (esta, o chat de arquibancada, o `endRound` e a
+        // isenção do ceifador) não precisem cada uma de um predicado próprio. Vivo continua não trocando
+        // de câmera — ele tem as próprias peças.
         case 'spectate':{if(!s.room||s.slot<0)break;const gp=s.room.sim.players.get(s.slot);
           if(gp&&gp.dead)s.room.spectatePick(s,{slot:msg.slot|0||-1,dir:msg.dir|0});break;}
         // "ainda estou aqui". O carimbo já saiu no ATIVIDADE lá em cima; este case existe para o pedido não

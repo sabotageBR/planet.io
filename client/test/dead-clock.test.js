@@ -73,3 +73,38 @@ test('o tempo do respawn é o do /admin, não um número cravado', () => {
   assert.equal(prazoDe(st, 5000), T + 5000);
   assert.equal(prazoDe(st, 30000), T + 30000);
 });
+
+// ── O PISO DA TELA: o defeito de PROVENIÊNCIA que fazia a tela de morte não aparecer ──────────────
+// Ele não é conforto de UI. O par `{deadAt,armAt}` chega à tela por um store COM THROTTLE (200 ms),
+// enquanto `screen:"dead"` vem do store `app`, sem throttle — então no PRIMEIRO render o par lido é o de
+// ANTES desta morte. Junte a isso que `game/index.js` não zerava `morte` em `join`/`leave` (só o
+// `{t:"alive"}` zerava) e o par de antes podia ser um armamento de OUTRA VIDA, já vencido: o efeito rodava
+// `tick()` síncrono na montagem, o prazo já estava no passado e o respawn saía no primeiro frame.
+test('sem piso, um armamento vencido de outra vida dispara o respawn na hora', () => {
+  // exatamente o que a tela lia: o par velho (armado há 40 s) no primeiro render da morte NOVA
+  const velho = { deadAt: T, armAt: T + 1000 };
+  const agora = T + 40000;
+  assert.ok(prazoDe(velho, RESP) < agora, 'este é o estado que produzia o sumiço da tela');
+  // com o piso, nada vence antes de a tela ter estado `minMs` na frente
+  assert.equal(prazoDe(velho, RESP, agora, 1500), agora + 1500);
+});
+
+test('o piso não atrasa o caso normal — quem manda continua sendo o armamento', () => {
+  let st = passoMorte(morteZero(), { tipo: 'morte', now: T });
+  st = passoMorte(st, { tipo: 'atividade', now: T });
+  // tela apareceu 1,2 s depois da morte; 1200+1500 < 5000, então o prazo continua sendo armAt+RESP
+  assert.equal(prazoDe(st, RESP, T + 1200, 1500), T + RESP);
+});
+
+test('tela que ainda não apareceu não tem prazo nenhum', () => {
+  let st = passoMorte(morteZero(), { tipo: 'morte', now: T });
+  st = passoMorte(st, { tipo: 'atividade', now: T });
+  assert.equal(prazoDe(st, RESP, 0, 1500), 0, '`telaAt` 0 = a espera de ROUND.DEAD_DELAY_MS ainda corre');
+  // e sem piso configurado (o admin zerou) o comportamento antigo volta inteiro
+  assert.equal(prazoDe(st, RESP, 0, 0), T + RESP);
+});
+
+test('desarmado continua sem prazo, com ou sem piso', () => {
+  const so_morto = passoMorte(morteZero(), { tipo: 'morte', now: T });
+  assert.equal(prazoDe(so_morto, RESP, T + 1200, 1500), 0, 'sem gesto, ninguém renasce sozinho');
+});

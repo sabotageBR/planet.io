@@ -378,6 +378,48 @@ por massa — a mesma do placar, então "próximo" na tela é "próximo" aqui �
 para alguém. Quem decide continua sendo o SERVIDOR: alvo morto ou inexistente cai na escolha automática, em vez
 de deixar a câmera olhando para um fantasma. Jogador vivo não vira espectador — ele tem as próprias peças.
 
+## Assistir a uma sala em andamento
+
+Morrer virava câmera desde sempre; ENTRAR só para olhar, não. E a sala de Battle Royale é justamente a que
+recusa entrada depois da largada (`acceptsJoin()` → `'started'`), ou seja a partida mais interessante de
+acompanhar era a única que não dava para ver.
+
+O espectador é uma sessão **com slot e sem corpo** — o mesmo `addPlayer({spawn:false})` que o lobby do BR já
+usava —, e ele nasce `dead`. Não é gambiarra: `gp.dead` já É o estado de quem assiste, e é ele que dá de
+graça as quatro coisas que fariam falta (a troca de câmera do `wsServer`, a arquibancada do `_escopoFala`, o
+`if(gp.isBot||gp.dead)continue` do `endRound` e a isenção do ceifador de inatividade). Um terceiro estado —
+"nem vivo nem morto" — exigiria tocar nos quatro, e cada um deles falha em silêncio quando esquecido.
+
+- **A porta é OUTRA** (`Room.acceptsSpectator`/`joinSpec`), nunca `acceptsJoin()`: se fossem a mesma, abrir
+  uma abriria a outra e o Battle Royale voltaria a aceitar JOGADORES no meio da rodada.
+- **Não ocupa vaga**: `humanCount` e `isFull` contam sessões não-espectadoras. Contá-lo faria uma sala com
+  25 jogadores e 5 olheiros parecer cheia — e ainda encolheria o preenchimento, porque `botAlvo` é
+  `botCount - humanCount`.
+- **Não aparece para ninguém**: fora do `PLAYERS`, fora do placar (sem corpo, `leaderboard()` já o pula),
+  fora do roster e do pódio. É a mesma decisão do `anonBots`, pelo mesmo motivo.
+- **Não reserva o nick**: reservando, quem assistiu uma partida não conseguiria ENTRAR na seguinte com o
+  próprio nome, e a sala viraria lista negra por causa de quem só olhava.
+- **Não é uma vida**: o `wsServer` descarta a sessão de persistência pelo mesmo caminho dos becos de recusa.
+  Uma linha em `matches` com `duration_s=0` viraria "a primeira vida" de um novato no relatório de retenção.
+- **Teto por sala** (`ROOM.SPEC_MAX`): ele custa um snapshot por tick, que é o item mais caro POR SESSÃO do
+  laço. Sem número, uma sala que virou assunto acumularia olheiros até o tick estourar, e quem pagaria é
+  quem está jogando. No teto a resposta é recusa, nunca fila. Sala PARADA ou terminada também não aceita —
+  não há o que ver.
+- **Ele é isento do ceifador de inatividade**, e tem que ser: quem assiste fica parado de propósito. Quem
+  segura o custo é o teto, não o relógio.
+
+Entra-se por dois lugares, e nenhum deles é o automático: a linha trancada por "já começou" da tela de
+**Salas** (o 🔒 vira "Assistir"; "cheia" continua com o cadeado, porque ali não há partida decidida a
+acompanhar) e o botão do painel **/admin**, que abre `/?sala=<code>&assistir=1`.
+
+⚠️ **O espectador NUNCA vira jogador sozinho** — nem quando abre vaga, nem no fim da rodada. Sair é decisão
+dele, e é isso que dispensa promover uma sessão sem corpo a jogador no meio da partida, com a corrida pela
+vaga que viria junto. Quem quer jogar clica em SAIR e entra pela porta de sempre.
+
+⚠️ A tela dele é uma **barra no rodapé** (`ui/Spectate.jsx`), não um cartão: o ponto de assistir é ver a
+sala, e um painel no meio taparia o que se veio olhar. As setas ‹ ›, o mapa grande e o teclado são as MESMAS
+peças da tela de morte — uma gramática só para os dois lugares em que se assiste.
+
 ## Sala com dono
 
 As três escolhas da tela de modos põem o jogador numa sala que o SERVIDOR escolhe. A quarta cria a sala

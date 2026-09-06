@@ -7,6 +7,7 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { api, getToken, setToken, setOnAuthFail } from "./api.js";
 import { ordenar, proxOrdem } from "./ordenar.js";
+import { portalDe } from "./portais.js";
 import { AoVivo } from "./AoVivo.jsx";
 import "./admin.css";
 
@@ -100,16 +101,25 @@ function Usuarios({ erro }) {
   };
   // A ordenação é do SERVIDOR, então trocá-la é buscar de novo — e é isso que faz o topo da lista ser o
   // topo da BASE, e não o topo das 50 linhas que já estavam na tela.
-  useEffect(() => { buscar(); }, [ord.by, ord.dir]);
+  // ⚠️ `kind` e `banned` entram nas MESMAS dependências: eles são decisão discreta (um clique no select), e
+  // sem isso trocar o filtro só mudava o state — a lista na tela continuava a anterior até alguém apertar
+  // Enter no campo de texto. `q` fica de fora de propósito: quem digita não quer uma consulta por letra, e o
+  // Enter/botão já são o gatilho dele.
+  useEffect(() => { buscar(); }, [ord.by, ord.dir, kind, banned]);
   const abrir = async id => { try { setSel(await api.user(id)); } catch (e) { erro(e.message); } };
   const acao = async (fn, msg) => { try { await fn(); if (sel) setSel(await api.user(sel.user.id)); buscar(); if (msg) erro(msg, "ok"); } catch (e) { erro(e.message); } };
   return <div className="ad-split">
     <div className="ad-lista">
       <div className="ad-filtros">
-        <input placeholder="nick, usuário, nome, e-mail ou id" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && buscar()} />
+        <input placeholder="nick, usuário, nome, e-mail, origem ou id" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && buscar()} />
         <select value={kind} onChange={e => setKind(e.target.value)}><option value="">todos</option><option value="registered">registrados</option><option value="guest">convidados</option></select>
         <select value={banned} onChange={e => setBanned(e.target.value)}><option value="">todos</option><option value="1">banidos</option><option value="0">livres</option></select>
-        <button onClick={buscar}>Buscar</button>
+        {/* ⚠️ `onClick={buscar}` passava o EVENTO do clique como primeiro argumento, e `buscar(cursor)` só
+            testa se ele é truthy: o botão caía no ramo de "carregar mais" e EMENDAVA a lista em vez de
+            trocá-la. O sintoma era indistinguível de "o filtro não funciona" — escolher `banidos`, clicar, e
+            ver as linhas antigas continuarem no topo. Pelo Enter sempre funcionou (lá é `buscar()` sem
+            argumento), e era isso que fazia o defeito parecer intermitente. Mesmo padrão do `Paginacao`. */}
+        <button onClick={() => buscar()}>Buscar</button>
       </div>
       <div className="ad-rolo"><table className="ad-tab click">
         {/* A 7ª coluna (as tags admin/banido) NÃO é ordenável: são duas flags sem relação entre si, e o
@@ -118,6 +128,10 @@ function Usuarios({ erro }) {
           <Th col="id" ord={ord} set={setOrd}>#</Th>
           <Th col="nick" ord={ord} set={setOrd} padrao="asc">nick</Th>
           <Th col="kind" ord={ord} set={setOrd} padrao="asc">tipo</Th>
+          {/* DE ONDE A CONTA VEIO (`users.origin`, 0010). O valor guardado é o domínio; quem o traduz é
+              `portais.js`, e o domínio cru fica no `title` — quando o portal é desconhecido, ele É o
+              rótulo. A busca livre também casa a origem, então digitar "poki" filtra por ela. */}
+          <Th col="origem" ord={ord} set={setOrd} padrao="asc">origem</Th>
           <Th col="xp" ord={ord} set={setOrd} n>xp</Th>
           <Th col="coins" ord={ord} set={setOrd} n>moedas</Th>
           <Th col="seen" ord={ord} set={setOrd}>visto</Th>
@@ -126,11 +140,12 @@ function Usuarios({ erro }) {
           <td>{u.id}</td>
           <td>{u.nick}{u.name && u.name !== u.nick ? <em> {u.name}</em> : null}</td>
           <td>{u.kind === "registered" ? "conta" : "convidado"}</td>
+          <td title={u.origin || "mesma origem (site)"}>{portalDe(u.origin)}</td>
           <td className="n">{num(u.xp)}</td><td className="n">{num(u.coins)}</td>
           <td>{dt(u.lastSeenAt)}</td>
           <td>{u.isAdmin ? <b className="tag adm">admin</b> : null}{u.bannedUntil && new Date(u.bannedUntil) > new Date() ? <b className="tag ban">banido</b> : null}</td>
         </tr>)}
-        {!rows.length && !carregando ? <tr><td colSpan={7} className="vazio">nada encontrado</td></tr> : null}</tbody>
+        {!rows.length && !carregando ? <tr><td colSpan={8} className="vazio">nada encontrado</td></tr> : null}</tbody>
       </table></div>
       <Paginacao n={rows.length} more={pag.more} carregando={carregando} onMais={() => buscar(pag.next)} />
     </div>
@@ -150,6 +165,9 @@ function Detalhe({ d, acao, fechar }) {
       <dt>e-mail</dt><dd>{u.email || "—"}</dd>
       <dt>tipo</dt><dd>{u.kind}{u.isAdmin ? " · administrador" : ""}</dd>
       <dt>país</dt><dd>{u.country || "—"}</dd>
+      {/* De onde a conta NASCEU, não de onde ela joga hoje: `users.origin` é escrito uma vez, no
+          `POST /api/auth/guest`. O domínio cru vai junto porque é ele que responde "qual build?". */}
+      <dt>origem</dt><dd>{portalDe(u.origin)}{u.origin ? <em> {u.origin}</em> : null}</dd>
       <dt>moedas</dt><dd>{num(u.coins)}</dd>
       <dt>XP · partidas · abates · mortes</dt><dd>{num(u.xp)} · {num(u.games)} · {num(u.kills)} · {num(u.deaths)}</dd>
       <dt>criada · vista</dt><dd>{dt(u.createdAt)} · {dt(u.lastSeenAt)}</dd>
@@ -225,7 +243,9 @@ function Salas({ erro }) {
   const ordenarJogadores = o => { setOrdP(o); if (sel) abrir(sel.code, o); };
   const remover = async (code, p) => {
     if (!confirm(`Remover ${p.name} da sala ${code}?`)) return;
-    try { await api.kick(code, p.slot, p.sessionId, ""); setSel((await api.room(code)).room); } catch (e) { erro(e.message); }
+    // ⚠️ `abrir(code)`, e nao `api.room(code)` cru: aquele leva o `?by=&dir=` da tabela junto. Sem ele o
+    // refetch de depois do kick voltava na ordem PADRAO e a tabela pulava debaixo do cursor do admin.
+    try { await api.kick(code, p.slot, p.sessionId, ""); await abrir(code); } catch (e) { erro(e.message); }
   };
   const fechar = async code => {
     if (!confirm(`FECHAR a sala ${code}? Todo mundo é desconectado.`)) return;
@@ -250,8 +270,15 @@ function Salas({ erro }) {
       </table></div>
     </div>
     {sel ? <div className="ad-detalhe">
-      <div className="ad-cab"><h2>Sala {sel.code}</h2>
-        <div><button className="per" onClick={() => fechar(sel.code)}>Fechar sala</button><button className="x" onClick={() => setSel(null)}>✕</button></div></div>
+      <div className="ad-cab"><h2>Sala {sel.code} {sel.specs ? <small>· {sel.specs} assistindo</small> : null}</h2>
+        {/* ⚠️ O PAINEL NÃO TEM MOTOR DE JOGO — ele é um chunk à parte da MESMA SPA, mas nunca monta o Pixi
+            nem abre WebSocket de sala. Então "Assistir" DELEGA: abre o jogo numa aba nova com
+            `?sala=<code>&assistir=1`, que `actions.js` lê no boot e manda para `assistir()`. Embutir uma
+            partida aqui dentro significaria carregar o jogo inteiro no painel — o oposto do motivo de ele
+            ser um chunk sob demanda. O administrador entra como espectador comum: sem corpo, sem vaga e
+            sem aparecer no placar de ninguém. */}
+        <div><a className="btn" href={`/?sala=${sel.code}&assistir=1`} target="_blank" rel="noopener">Assistir</a>
+          <button className="per" onClick={() => fechar(sel.code)}>Fechar sala</button><button className="x" onClick={() => setSel(null)}>✕</button></div></div>
       <div className="ad-rolo"><table className="ad-tab">
         {/* "estado" ordena por vivo+conectado — critério COMPOSTO, declarado no servidor (`ORDEM_JOGADORES`),
             porque um cabeçalho que ordena por algo que a coluna não mostra é a mesma mentira, em miniatura. */}
@@ -260,16 +287,24 @@ function Salas({ erro }) {
           <Th col="name" ord={ordP} set={ordenarJogadores} padrao="asc">nome</Th>
           <Th col="level" ord={ordP} set={ordenarJogadores} n>nível</Th>
           <Th col="mass" ord={ordP} set={ordenarJogadores} n>massa</Th>
+          {/* ⚠️ "na sala" é a VISITA (`gp.entrouTick`, que o respawn não zera) e "vida" é a VIDA
+              (`gp.joinedTick`, o `matches.duration_s`). São dois relógios, e a diferença entre eles é o
+              respawn — foi medindo pelo segundo que o painel já disse "saiu · 40s" de quem tinha passado
+              vinte minutos na sala em quinze vidas. Ver server/test/visita.test.js. */}
+          <Th col="desde" ord={ordP} set={ordenarJogadores} n>na sala</Th>
+          <Th col="vida" ord={ordP} set={ordenarJogadores} n>vida</Th>
           <Th col="state" ord={ordP} set={ordenarJogadores}>estado</Th>
           <Th col="ip" ord={ordP} set={ordenarJogadores} padrao="asc">ip</Th>
           <Th /></tr></thead>
         <tbody>{(sel.players || []).map(p => <tr key={p.slot}>
           <td>{p.slot}</td><td>{p.name}{p.country ? <em> {p.country}</em> : null}</td>
           <td className="n">{p.level || "—"}</td><td className="n">{num(p.mass)}</td>
-          <td>{p.alive ? "vivo" : "morto"}{p.connected ? "" : " · caiu"}</td>
+          <td className="n">{p.desdeS == null ? "—" : tempo(p.desdeS)}</td>
+          <td className="n">{p.vidaS == null || !p.alive ? "—" : tempo(p.vidaS)}</td>
+          <td>{p.spectator ? "assiste" : p.alive ? "vivo" : "morto"}{p.connected ? "" : " · caiu"}</td>
           <td className="ua">{p.ip || "—"}</td>
           <td><button className="per" onClick={() => remover(sel.code, p)}>Remover</button></td></tr>)}
-          {!(sel.players || []).length ? <tr><td colSpan={7} className="vazio">só preenchimento</td></tr> : null}</tbody>
+          {!(sel.players || []).length ? <tr><td colSpan={9} className="vazio">só preenchimento</td></tr> : null}</tbody>
       </table></div>
     </div> : <div className="ad-detalhe vazio">selecione uma sala</div>}
   </div>;
@@ -282,27 +317,47 @@ function Salas({ erro }) {
  * ⚠️ Só leitura, e nada aqui audita (o mesmo contrato de todo GET do painel).
  */
 function Retencao({ erro }) {
-  const [d, setD] = useState(null), [days, setDays] = useState(14), [carregando, setCarregando] = useState(false);
+  const [d, setD] = useState(null), [janela, setJanela] = useState("14d"), [carregando, setCarregando] = useState(false);
+  // A lista de janelas é do SERVIDOR (lista branca em `repos/analytics.js`). Duplicá-la aqui a faria
+  // divergir na primeira janela nova — e o `<select>` ofereceria um valor que a rota recusa com 400.
+  const [janelas, setJanelas] = useState([]);
+  useEffect(() => { let vivo = true;
+    api.retencaoJanelas().then(r => { if (vivo) setJanelas(r.janelas || []); }).catch(() => {});
+    return () => { vivo = false; }; }, []);
   useEffect(() => { let vivo = true; setCarregando(true);
-    api.retencao(days).then(r => { if (vivo) setD(r); }).catch(e => erro(e.message)).finally(() => { if (vivo) setCarregando(false); });
-    return () => { vivo = false; }; }, [days]);
+    api.retencao(janela).then(r => { if (vivo) setD(r); }).catch(e => erro(e.message)).finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; }; }, [janela]);
   if (!d) return <div className="vazio">{carregando ? "carregando…" : "sem dados"}</div>;
   const v = d.visita, p = d.primeira;
+  /**
+   * ⚠️ O MODO SAI DA RESPOSTA, NUNCA DO `janela` DO ESTADO. Abaixo de um dia a base deixa de ser a coorte
+   * de contas novas e passa a ser quem JOGOU na janela — os painéis medem outra coisa, e por isso os
+   * títulos mudam junto. Lendo o pedido em vez do que voltou, um pod em build antiga (que ignora `janela`
+   * e responde 14 dias) faria a tela anunciar "1 hora" sobre números de duas semanas. Mesmo contrato do
+   * eco de `by`/`dir` das tabelas ordenáveis.
+   */
+  const atividade = d.modo === "atividade";
   const pc = (a, b) => (b ? Math.round(100 * a / b) + "%" : "—");
   // O histograma vem em baldes de 30 s (width_bucket de 0..600 em 20). Barra por largura relativa — nada
   // de biblioteca de gráfico para cinco números.
   const maxH = Math.max(1, ...d.histograma.map(h => h.n));
   return <div className="ad-form larga">
     <div className="ad-cab"><h2>Retenção</h2>
-      <select value={days} onChange={e => setDays(+e.target.value)}>
-        {[7, 14, 30, 90].map(n => <option key={n} value={n}>{n} dias</option>)}</select></div>
+      <select value={janela} onChange={e => setJanela(e.target.value)}>
+        {(janelas.length ? janelas : [{ id: "14d", rotulo: "14 dias" }]).map(j =>
+          <option key={j.id} value={j.id}>{j.rotulo}</option>)}</select></div>
+    {/* A janela curta troca a PERGUNTA, e a tela tem que dizer isso — senão o mesmo título passa a cobrir
+        dois recortes diferentes. "dia atual" é do relógio do banco, que pode não ser o do operador. */}
+    {atividade ? <p className="ad-dim">Janela curta: os painéis medem <b>quem jogou</b> na janela, não quem
+      criou conta nela. O corte é o relógio do servidor.</p> : null}
 
     {/* ⚠️ A visita é RELÓGIO DE PAREDE, e o subtítulo diz isso porque já não foi: ela era `sum(duration_s)`,
         soma de VIDAS, e descontava justamente o tempo em que a pessoa está na tela de morte olhando o jogo
         — quem morria aos 30 s, assistia 4 min e morria aos 30 s aparecia aqui como um minuto. As duas
         medidas ficam lado a lado de propósito: a distância entre elas é a tela de morte, o pódio e o
         anúncio, e é ela que diz se o problema é a partida ou o que vem depois dela. */}
-    <h3>A visita <small className="ad-dim">a resposta à pergunta dos 3 minutos — quanto a pessoa FICA, não quanto ela joga</small></h3>
+    <h3>A visita <small className="ad-dim">a resposta à pergunta dos 3 minutos — quanto a pessoa FICA, não
+      quanto ela joga. É o único painel que não muda com a janela: ele sempre mediu atividade</small></h3>
     {v && v.visitas ? <div className="ad-kpis">
       <div className="kpi"><b>{v.pct_3min}%</b><span>passam de 3 min</span></div>
       <div className="kpi"><b>{tempo(v.mediana_s)}</b><span>mediana da visita</span></div>
@@ -311,7 +366,8 @@ function Retencao({ erro }) {
       <div className="kpi"><b>{v.vidas_por_visita}</b><span>vidas por visita</span></div>
     </div> : <div className="vazio">nenhuma visita no período</div>}
 
-    <h3>A primeira vida <small className="ad-dim">de quem criou conta no período</small></h3>
+    <h3>{atividade ? "As vidas da janela" : "A primeira vida"} <small className="ad-dim">{atividade
+      ? "toda vida encerrada na janela" : "de quem criou conta no período"}</small></h3>
     {p && p.n ? <>
       <div className="ad-kpis">
         <div className="kpi"><b>{tempo(p.mediana_s)}</b><span>mediana</span></div>
@@ -323,7 +379,7 @@ function Retencao({ erro }) {
         <i style={{ width: (100 * h.n / maxH) + "%" }} /><span>{h.balde > 20 ? "10min+" : `${(h.balde - 1) * 30}s`}</span><b>{h.n}</b></div>)}</div>
     </> : <div className="vazio">nenhuma conta nova jogou no período</div>}
 
-    <h3>Quem mata o novato <small className="ad-dim">razão = massa do algoz ÷ massa da vítima</small></h3>
+    <h3>{atividade ? "Quem mata" : "Quem mata o novato"} <small className="ad-dim">razão = massa do algoz ÷ massa da vítima</small></h3>
     <div className="ad-rolo"><table className="ad-tab">
       <thead><tr><th>fim</th><th>algoz</th><th>via</th><th className="n">n</th><th className="n">tempo médio</th>
         <th className="n">massa algoz</th><th className="n">massa vítima</th><th className="n">razão</th></tr></thead>
@@ -333,17 +389,27 @@ function Retencao({ erro }) {
         <td className="n">{num(a.massa_vitima)}</td><td className="n">{a.razao == null ? "—" : a.razao + "×"}</td></tr>)}
         {!d.algoz.length ? <tr><td colSpan={8} className="vazio">nada ainda</td></tr> : null}</tbody></table></div>
 
-    <h3>Funil por dia <small className="ad-dim">contas criadas → jogaram → passaram de 3 min</small></h3>
+    <h3>{atividade ? "Funil por hora" : "Funil por dia"} <small className="ad-dim">{atividade
+      ? "contas ativas → passaram de 3 min" : "contas criadas → jogaram → passaram de 3 min"}</small></h3>
     <div className="ad-rolo"><table className="ad-tab">
-      <thead><tr><th>dia</th><th>origem</th><th className="n">contas</th><th className="n">jogaram</th>
+      <thead><tr><th>{atividade ? "hora" : "dia"}</th><th>origem</th><th className="n">contas</th>
+        {/* "jogaram" seria 100% por construção no modo atividade — a base É quem jogou. Coluna cravada
+            num valor não informa nada, só ocupa a linha. */}
+        {atividade ? null : <th className="n">jogaram</th>}
         <th className="n">3 min+</th><th className="n">2+ vidas</th><th className="n">tempo médio</th></tr></thead>
       <tbody>{d.funil.map((f, i) => <tr key={i}>
-        <td>{dt(f.dia).split(",")[0]}</td><td>{f.origem}</td><td className="n">{num(f.contas)}</td>
-        <td className="n">{num(f.jogaram)} <em>{pc(f.jogaram, f.contas)}</em></td>
+        <td>{dt(f.dia).split(",")[0]}</td><td title={f.origem}>{portalDe(f.origem)}</td><td className="n">{num(f.contas)}</td>
+        {atividade ? null : <td className="n">{num(f.jogaram)} <em>{pc(f.jogaram, f.contas)}</em></td>}
         <td className="n">{num(f.tres_min)} <em>{pc(f.tres_min, f.contas)}</em></td>
         <td className="n">{num(f.duas_vidas)}</td><td className="n">{tempo(f.s_medio)}</td></tr>)}
-        {!d.funil.length ? <tr><td colSpan={7} className="vazio">nenhuma conta criada no período</td></tr> : null}</tbody></table></div>
+        {!d.funil.length ? <tr><td colSpan={atividade ? 6 : 7} className="vazio">{atividade
+          ? "ninguém jogou na janela" : "nenhuma conta criada no período"}</td></tr> : null}</tbody></table></div>
 
+    {/* ⚠️ COORTES SÓ EM JANELA DE DIAS, e o servidor devolve lista vazia nas curtas: o painel compara
+        `dia + interval '1 day'`, ou seja é DIÁRIO por definição. Numa hora ele daria uma linha com
+        D1/D7/D30 zerados — três colunas de zero que se leem como "ninguém volta". */}
+    {atividade ? <><h3>Coortes <small className="ad-dim">só em janela de dias — D1/D7/D30 é medida
+      diária</small></h3><div className="vazio">escolha 7 dias ou mais</div></> : <>
     <h3>Coortes <small className="ad-dim">quantos voltaram no dia seguinte, na semana e no mês</small></h3>
     <div className="ad-rolo"><table className="ad-tab">
       <thead><tr><th>dia</th><th className="n">coorte</th><th className="n">D1</th><th className="n">D7</th><th className="n">D30</th><th className="n">voltou</th></tr></thead>
@@ -351,7 +417,7 @@ function Retencao({ erro }) {
         <td>{dt(c.dia).split(",")[0]}</td><td className="n">{num(c.coorte)}</td>
         <td className="n">{num(c.d1)}</td><td className="n">{num(c.d7)}</td><td className="n">{num(c.d30)}</td>
         <td className="n">{num(c.voltou)} <em>{pc(c.voltou, c.coorte)}</em></td></tr>)}
-        {!d.coortes.length ? <tr><td colSpan={6} className="vazio">sem coortes no período</td></tr> : null}</tbody></table></div>
+        {!d.coortes.length ? <tr><td colSpan={6} className="vazio">sem coortes no período</td></tr> : null}</tbody></table></div></>}
   </div>;
 }
 

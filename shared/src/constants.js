@@ -20,7 +20,13 @@ export const WORLD={w:12000,h:12000,LADO:12000};
 // capturá-lo na carga do módulo: sem isso um pod com o mundo mudado e um bundle antigo deslocariam TODA
 // posição do fio, com fator de erro constante e nada na tela dizendo por quê.
 export const TICK_HZ=60,DT=1/60,SNAPSHOT_EVERY=3,LEADERBOARD_EVERY=30,SAMPLE_EVERY=30;
-export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600,
+// SPEC_MAX: quantos ESPECTADORES uma sala aceita ao mesmo tempo, além dos jogadores. Espectador é uma
+// sessão com slot e SEM corpo (o mesmo `spawn:false` do lobby do Battle Royale): ele não entra em
+// `humanCount`, não conta para `isFull` e não tira vaga de ninguém — mas custa um snapshot por tick, que é
+// o item mais caro POR SESSÃO do laço (ver o profiling em CLAUDE.md). Por isso ele tem teto próprio: sem
+// número, uma sala que virou assunto acumularia espectadores até o tick estourar, e quem paga seria quem
+// está jogando. Quando o teto enche, a resposta é `ROOM_FULL` — nunca uma fila.
+export const ROOM={SPEC_MAX:10,MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600,
   HOST_HOLD_MS:120000,HOST_GRACE_MS:30000,
   // ── O AUTOMÁTICO AGRUPA ATÉ AQUI, E DAÍ EM DIANTE ESPALHA ──
   // `MAX` é o teto DURO de uma sala (quem entra por código ou convite vai até ele). Estes dois são os
@@ -130,7 +136,15 @@ export const ROOM={MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS
 // HOST_GRACE_MS: o dono pode cair e voltar. Passado esse tempo fora, a coroa vai para o humano mais antigo
 // que estiver na sala — sem isso uma sala privada com 20 pessoas fica sem quem possa expulsar um invasor.
 export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,FADE_MS:600,BOARD_MAX:60,AWARD_MIN_KILLS:3,
-  DAY_TICKS:54000,CHOICES_MIN:[10,20,30,60,0],RESPAWN_TICKS:300};
+  DAY_TICKS:54000,CHOICES_MIN:[10,20,30,60,0],RESPAWN_TICKS:300,DEAD_DELAY_MS:1200,DEAD_MIN_MS:1500};
+// DEAD_DELAY_MS: quanto o jogo espera entre a MORTE e a tela de morte. Era zero — `onDead` escrevia
+// `screen:"dead"` no mesmo tick da mensagem —, então o modal cobria exatamente o quadro em que o planeta
+// estoura, que é a única coisa que a pessoa quer ver ali. A câmera já foi para o alvo que o servidor
+// escolheu (`Room.spectateTargetFor`, chamado junto do `dead`), então a espera mostra a sala de verdade.
+// DEAD_MIN_MS: o PISO de tempo com a tela na frente, contado de quando ela apareceu. Ele não é conforto:
+// é o que impede o respawn automático de disparar no primeiro frame quando o par `{deadAt,armAt}` que
+// chega à tela ainda é o de uma vida ANTERIOR (ver client/src/ui/deadClock.js). Sem ele existia uma morte
+// em que a tela simplesmente não aparecia e o jogador reentrava no ato.
 // RESPAWN_TICKS: quanto tempo a tela de morte espera antes de renascer SOZINHA no Livre (300 = 5 s a
 // 60 Hz). ⚠️ Quem decide QUANDO renascer é o CLIENTE, não o servidor: `respawn` já aceitava o pedido a
 // qualquer momento (era só o botão "DE NOVO" que faltava apertar), então isto só automatiza o clique —
@@ -166,7 +180,17 @@ export const MODE={FREE:0,BR:1};
 export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
   LOBBY_TICKS:1800,COUNTDOWN_TICKS:300,FILL_EXP:1.7,ARRIVE_JITTER:.55,
   SPAWN_RING:.44,START_AMMO:1,ROUND_TICKS:45000,WEAPON_P:.05,JOIN_GRACE_TICKS:120,
-  INVITE_TTL_MS:20000};   // quanto o convite "Battle Royale começando" fica na tela de quem está no Livre
+  INVITE_TTL_MS:20000,   // quanto o convite "Battle Royale começando" fica na tela de quem está no Livre
+  // QUANTO TEMPO SEM CONVIDAR A MESMA PESSOA DE NOVO. Não havia nada: toda sala de BR pública criada em
+  // QUALQUER shard do cluster manda um card para TODA sessão do Livre (`RoomManager.announceBrStartCluster`
+  // → `Room.brInvite`), e a sala de BR fecha na largada — ou seja, cada onda de partidas cria salas novas.
+  // Com `LOBBY_TICKS` de 30 s, quem joga o Livre podia levar um card por minuto, sempre. O teto é por
+  // SESSÃO e vive na `Session` (memória, como o resto do estado de sala): não é acumulável, não vai ao
+  // banco e nasce zerado a cada conexão — o primeiro convite de quem acabou de entrar sai na hora.
+  // ⚠️ Isto é ORTOGONAL à pref `brInvite` do jogador. Este número diz "com que frequência no máximo"; a
+  // pref diz "eu não quero". Uma não substitui a outra: sem o teto, desligar vira a única saída para quem
+  // só queria menos; sem a pref, quem não quer nada continua levando um card a cada 3 minutos.
+  INVITE_CD_MS:180000};
 // PLAYERS é o total (humanos + bots): a sala livre já roda 30 humanos + 15 bots = 45, então 50 é o MESMO
 // regime de tick, não um salto de escala. Capacidade efetiva = PLAYERS − PLAYERS%teamSize (50/50/48/48):
 // equipe incompleta contra equipes cheias não é dificuldade, é sorteio.

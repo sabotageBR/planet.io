@@ -120,7 +120,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // o espaço todo, com o blip na cor da skin, nome e massa, e a posição INTERPOLADA entre as amostras de 2 Hz).
   // Só faz sentido MORTO: com o jogador vivo, ver a sala inteira seria vantagem tática.
   let mapOn="";
-  let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,specSlot=-1,visible=true,portalPausado=false,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,econAlvo=0,statsOv=null;
+  let conn=null,local=null,renderer=null,ready=false,joined=false,joinOpts=null,dead=false,espectador=false,specSlot=-1,visible=true,portalPausado=false,raf=0,lastT=0,selfTick=0,lastHud=0,frames=0,fpsT=0,fps=0,econ=false,econLevel=0,econAlvo=0,statsOv=null;
   let round=null,roundOver=false,roundClock=null,lastCount=-1,warmedSky=null;   // rodada: {start,ticks,dayStart,breakMs} do JSON `room`
   // ── TEM GENTE AQUI ──
   // `morte` é o par {deadAt,armAt} de ui/deadClock.js: a contagem do respawn só ARMA no primeiro gesto
@@ -230,7 +230,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
    * Quem manda no radar: vivo, a preferência do jogador; MORTO, o mapa grande — na tela de morte o radar
    * pequeno não tem para onde apontar (não há peça própria), e é o mapa aberto que ocupa o lugar dele.
    */
-  function aplicaRadar(){minimap.show(!!joined&&(dead?!!mapOn:curPrefs.showMinimap!==false));}
+  function aplicaRadar(){minimap.show(!!joined&&((dead||espectador)?!!mapOn:curPrefs.showMinimap!==false));}
   minimap.show(false);
   if(isStats())statsOv=createOverlay(hud);
 
@@ -304,7 +304,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // esta versão no `room` — é ela que faz um cliente de outra safra parar de se achar desatualizado.
   function onOpenSend(c){if(c.session){buffer.clear();predictor.reset();c.sendJson({t:"resume",sessionId:c.session.sessionId,resumeToken:c.session.resumeToken,view:viewSize(),protocol:PROTOCOL_VERSION});input.resend();}
     else c.sendJson({t:"join",token:joinOpts.token||null,room:joinOpts.room||null,view:viewSize(),fallbackNick:joinOpts.fallbackNick||"Viajante",skinId:joinOpts.skinId|0,
-      mode:joinOpts.mode|0,teamSize:joinOpts.teamSize|0,party:joinOpts.party||null,protocol:PROTOCOL_VERSION});}
+      mode:joinOpts.mode|0,teamSize:joinOpts.teamSize|0,party:joinOpts.party||null,
+      // ⚠️ CAMPO NOVO EM JSON DE CONTROLE, então o `PROTOCOL_VERSION` não sobe (o precedente é o `talk` e o
+      // `respawn`): servidor antigo ignora `spec` e trata isto como um join normal — que numa sala de BR em
+      // andamento devolve `ROOM_STARTED`, ou seja o erro que o jogador já levava antes desta funcionalidade.
+      spec:joinOpts.spec?true:undefined,protocol:PROTOCOL_VERSION});}
   function onJson(m){
     // ⚠️ ANTES de qualquer `cam.update`: `tun` traz os parâmetros do /admin que o CLIENTE lê (a câmera e a
     // arte da estrela). Sem isto o painel mudaria o número só no servidor e o jogo enquadraria diferente
@@ -333,6 +337,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       phase=(m.round&&m.round.phase)||"live";startsAt=(m.round&&m.round.startsAt)||0;
       view.setMyTeam(myTeam);chatLog=[];feedLog=[];lobby=null;spec=null;
       souDono=!!m.host;salaPrivada=!!m.private;painel=null;
+      // O servidor ECOA se este join virou espectador. Quem manda é ele, não o pedido: numa build antiga o
+      // campo não volta, `espectador` cai para falso e o cliente se comporta como sempre se comportou.
+      espectador=!!m.spec;
       audio.resume();audio.play("join",{mine:true});}
     // O painel do DONO da sala (quem está aqui, quem está banido). Só o dono recebe — o servidor decide, e a
     // lista traz `pid` opaco em vez de slot/sessionId: slot recicla e sessionId é metade da credencial de resume.
@@ -571,7 +578,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
      * `slot` pula direto para alguém. Quem decide é o SERVIDOR — a AOI da sessão segue o mesmo alvo, senão
      * a câmera olharia para um pedaço de espaço que o servidor não está mandando.
      */
-    spectate({slot=-1,dir=0}={}){if(!conn||!joined||!dead)return;conn.sendJson({t:"spectate",slot,dir});},
+    spectate({slot=-1,dir=0}={}){if(!conn||!joined||!(dead||espectador))return;conn.sendJson({t:"spectate",slot,dir});},
     /**
      * Renascer SEM reconectar (Livre). Devolve `false` quando não dá para nem tentar — e aí o chamador cai
      * no `play({room})` de sempre, que continua sendo o caminho inteiro e a rede de segurança. O servidor
@@ -610,14 +617,23 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
      * jogador MORTO — ver o mapa inteiro jogando seria vantagem tática, e não é o que se pediu.
      */
     /** `modo`: "" fecha · "map" o radar ampliado · "live" a visão em tempo real. `true` = "map" (compatível). */
-    showMap(modo){const m=modo===true?"map":(modo||"");const v=joined&&dead?m:"";if(v===mapOn)return;
+    // ⚠️ `dead||espectador`: o mapa grande é a ferramenta de quem ASSISTE (é por ele que se escolhe o
+    // próximo alvo), e em partida ele continua sendo vantagem tática que ninguém tem. As duas leituras da
+    // mesma condição andam juntas — esta e a de `aplicaRadar` logo acima.
+    showMap(modo){const m=modo===true?"map":(modo||"");const v=joined&&(dead||espectador)?m:"";if(v===mapOn)return;
       mapOn=v;minimap.setView(mapOn,specSlot);aplicaRadar();pushHud(performance.now());},
     toggleMap(modo){const m=modo===true||modo===undefined?"map":(modo||"");game.showMap(mapOn===m?"":m);},
-    join({token,fallbackNick,room,local:useLocal,skinId,mode,teamSize:ts,party}={}){
-      game.leave(true);joined=true;dead=false;specSlot=-1;selfTick=0;
+    join({token,fallbackNick,room,local:useLocal,skinId,mode,teamSize:ts,party,spec=false}={}){
+      // ⚠️ `morte` ZERA AQUI, ao lado do `dead`. Ela não zerava em `join`/`leave` — só o `{t:"alive"}` do
+      // respawn na mesma conexão fazia isso —, então toda re-entrada por `play()` (o fallback de
+      // `respawnAqui`, o "OUTRA PARTIDA" do BR, a sala nova do BIG CRUNCH) carregava para a vida seguinte
+      // um `{deadAt,armAt}` VENCIDO. Ele chegava à tela de morte pelo store com throttle antes do par novo
+      // e disparava o respawn no primeiro frame: a tela não aparecia e o jogador reentrava no ato. Ver
+      // `ui/deadClock.js`, que fecha o mesmo buraco do outro lado com o piso.
+      game.leave(true);joined=true;dead=false;morte=morteZero();specSlot=-1;selfTick=0;espectador=!!spec;
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
-        mode:mode|0,teamSize:ts||1,party:party||null};
+        mode:mode|0,teamSize:ts||1,party:party||null,spec:!!spec};
       buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();zoomF=1;hudStore.set({...initialHud(),room:room||null});mapOn="";minimap.setView("",-1);aplicaRadar();
       if(pointer&&renderer)pointer.center(renderer.W,renderer.H);
       if(joy)joy.reset();   // o rumo NÃO atravessa salas: quem entra nasce parado, esperando o primeiro toque
@@ -636,7 +652,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa
     // por aqui (ela é do Connection, e volta pelo `resume`), então nada disso atrapalha quem só caiu.
     leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
+      const was=joined;joined=false;dead=false;morte=morteZero();espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -895,7 +911,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // ⚠️ `idle` é RELIDO do store, como o `notice` ao lado e pelo mesmo motivo: este `set` troca o objeto
       // inteiro, e escrever `idle:null` aqui apagaria o aviso que o handler acabou de guardar.
       talk:mic.state,chat:chatLog,feed:feedLog,notice:hudStore.get().notice,idle:hudStore.get().idle,
-      deadAt:morte.deadAt,armAt:morte.armAt,spec});}
+      deadAt:morte.deadAt,armAt:morte.armAt,spec,espectador});}
   /** Todo mundo da sala, vivo ou morto, com a massa de quem está no placar. Ordem: massa, depois nome. */
   function montaRoster(){
     const massa=new Map();for(const l of view.lb)massa.set(l.slot,l.mass);

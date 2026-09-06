@@ -5,7 +5,7 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { getLabels, setLang, currentLangPref, preenche } from "../i18n/index.js";
 import { errText } from "../i18n/errors.js";
-import { skinById, PROTOCOL_VERSION, SKINS, LEVEL, playerNick, createRng } from "@warspace/shared";
+import { skinById, PROTOCOL_VERSION, SKINS, LEVEL, ROUND, playerNick, createRng } from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
@@ -204,6 +204,10 @@ export async function boot() {
   // Convite para a SALA de alguém. ⚠️ Consulta o modo ANTES de entrar: sem isso o convidado entraria com o
   // modo do estado dele, e o servidor recusaria com `MODE` — um link que não funciona sem dizer por quê.
   const sala = Q.get("sala");
+  // `?assistir=1` entra como ESPECTADOR em vez de jogador. Quem produz esse link hoje é o painel /admin
+  // (ele não tem motor de jogo, então delega para a SPA); um jogador chega por aqui pelo botão "Assistir"
+  // da tela de Salas, que chama `assistir()` direto e nem passa pela URL.
+  if (sala && Q.get("assistir")) { history.replaceState(null, "", location.pathname); assistir({ room: sala }); return; }
   if (sala) { history.replaceState(null, "", location.pathname); entrarPorConvite(sala); return; }
   devQuery();
 }
@@ -303,6 +307,17 @@ function mostrarTela(s) {
           { slot: 3, name: "xXcapitaoXx", text: "fui eu, desculpa aí", at: t, mine: false, dead: true },
           { slot: -1, name: null, text: "🎤 Meteora", at: t, mine: false }] })); }
     setTimeout(() => onRewards({ saved: true, coinsEarned: 54, coins: (app.get().session.user || {}).coins + 54 || 54, achievements: [], skinsUnlocked: [], rank: { day: 35 } }), 1200);
+  }
+  // ⚠️ A BARRA DE QUEM ASSISTE (`ui/Spectate.jsx`) precisa entrar na matriz como `dead` e `round` entraram:
+  // ela é `position:fixed`, tem variante própria em retrato e três alvos de toque — exatamente a forma de
+  // elemento que a sonda existe para cobrar. Sem semear o `spec` no hudStore o nome fica "—", a caixa
+  // encolhe e a medida seria de uma barra que ninguém vê.
+  else if (s === "spec") {
+    if (!import.meta.env.DEV) return;
+    app.update(st => ({ ...st, room: "1ABC", conn: "connected", screen: "spec" }));
+    const g = gameRef.get().game;
+    if (g && g.hudStore) g.hudStore.update(h => ({ ...h, dead: false, map: false, room: "1ABC",
+      spec: { slot: 1, name: "xXcapitaoXx", vivos: 12 }, alive: 12 }));
   }
   else go(s);
 }
@@ -512,6 +527,7 @@ export async function play(pedido = {}) {
   try { return await entraNaSala(pedido); } finally { entrando = false; }
 }
 async function entraNaSala({ room, mode, teamSize, party } = {}) {
+  cancelaTelaMorte();   // entrar noutra sala durante a espera: a tela de morte seria da sala que ficou
   // ANTES da guarda, e é o que a torna inerte quando há sugestão: com o campo já preenchido, mandar o
   // jogador de volta à tela inicial para pedir um nome que está lá é repique puro. Com a sugestão vazia
   // (parâmetro desligado no /admin, ou a conta já nomeada) isto é um no-op e `semNome` segue mandando.
@@ -547,6 +563,26 @@ async function entraNaSala({ room, mode, teamSize, party } = {}) {
   // jogando" que diverge no primeiro caminho novo — foi exatamente assim que a MORTE ficou sem `stop`.
 }
 /**
+ * ASSISTIR a uma sala em andamento. É o irmão de `play()`, e o que o separa dele é o que assistir NÃO é:
+ * · **não passa por `semNome()`** — quem só olha não precisa nomear um planeta que não vai existir;
+ * · **não chama `partidaIniciada()` nem anúncio de portal** — não há partida, e um preroll antes de
+ *   assistir seria cobrar pedágio por uma tela que não é gameplay (a CrazyGames proíbe isso por escrito);
+ * · **não escreve `played`** — a casca da tela (`body[data-shell]`) usa `played && conn` para virar gaveta,
+ *   e assistir ocupa a tela inteira, que é o ponto;
+ * · **não mexe em `gameMode`/`teamSize`** — a preferência do JOGAR do jogador não muda porque ele foi ver
+ *   uma partida alheia.
+ * O `spec:true` viaja no `pendingJoin` → `GameHost` → `game.join({spec})` → `{t:"join",spec:true}`.
+ */
+export function assistir({ room } = {}) {
+  const code = room ? String(room).toUpperCase() : null;
+  if (!code) return;
+  levelUpFila = null; cancelaTelaMorte();
+  app.update(s => ({ ...s, screen: "spec", rewards: null, rewardsPending: false, roundPronto: false,
+    overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
+    pendingPlay: null,
+    pendingJoin: { room: code, spec: true, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
+}
+/**
  * Renascer NA MESMA SALA e na mesma conexão (Livre). O jogador morto nunca saiu da sala — o socket está
  * aberto e o chat funciona —, então mandá-lo por `play()` fechava o socket para abrir outro, o que produzia
  * um "saiu/entrou" no feed e, pior, abria uma janela em que um preenchimento podia tomar o nick dele.
@@ -558,6 +594,7 @@ async function entraNaSala({ room, mode, teamSize, party } = {}) {
  * antigo continua inteiro e é a rede.
  */
 export async function respawnAqui(room) {
+  cancelaTelaMorte();   // clicou em DE NOVO durante a espera: a tela de morte não tem mais para que subir
   const g = getGame();
   if (!g || !g.respawn || !g.respawn()) return play(room ? { room } : {});
   if (PORTAL) await portal.anuncio("midroll");
@@ -646,10 +683,22 @@ export function leaveGame(screen = "lobby") {
   // tem nada a ver com gameplay; o `jogoParou()` que morava aqui saiu porque o `screen` escrito logo
   // abaixo já fecha o gameplay por `portal/sessao.js` — e cobria só ESTE caminho, nunca a morte.
   if (PORTAL) portal.saiuDaSala();
-  levelUpFila = null;
+  levelUpFila = null; cancelaTelaMorte();
   app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
 let rewardsT = null, levelUpN = 0, levelUpFila = null;
+/**
+ * A ESPERA ENTRE MORRER E A TELA DE MORTE (`ROUND.DEAD_DELAY_MS`). Ela era zero: `onDead` escrevia
+ * `screen:"dead"` no mesmo tick da mensagem, e o modal cobria justamente o quadro em que o planeta
+ * estoura. Durante a espera o jogador segue em `screen:"game"` — sem peças, com a câmera já no alvo que o
+ * servidor escolheu (`Room.spectateTargetFor`, chamado junto do `dead`) —, ou seja ele vê a sala de
+ * verdade, que é o ponto.
+ * ⚠️ ELE PRECISA SER CANCELADO em todo caminho que troca de tela, senão a morte sobe por cima de um pódio
+ * ou de uma sala nova: fim de rodada, queda/kick, sair da sala e entrar em outra. `lastMatch` é escrito na
+ * HORA — o dado é dele, e quem espera é só a tela.
+ */
+let deadT = null;
+const cancelaTelaMorte = () => { if (deadT) { clearTimeout(deadT); deadT = null; } };
 // Game Event da Poki: se `connect/match` já foi fechado (complete OU fail) nesta tentativa. Sem isto, uma
 // queda de WS que nunca chega a conectar cai em "Left" (indistinguível de desinteresse) e uma
 // RECONEXÃO depois de já ter conectado reabriria/fecharia o mesmo Progress Event de novo — reset em
@@ -657,7 +706,7 @@ let rewardsT = null, levelUpN = 0, levelUpFila = null;
 let matchResolvido = false;
 /** Callback do jogo: fim da rodada — {code, champion, board, nextInMs, tick}. Mostra o placar da sala. */
 export function onRoundEnd(r) {
-  clearTimeout(rewardsT);
+  clearTimeout(rewardsT); cancelaTelaMorte();
   // ⚠️ NO BATTLE ROYALE A RECOMPENSA JÁ CHEGOU, e zerá-la aqui deixava a tela final mentindo. `Sim.endRound`
   // só chama `onMatchEnd` para quem ainda está VIVO (`if(gp.isBot||gp.dead)continue`), e no BR quem está
   // vendo o pódio quase sempre morreu minutos antes — ou seja, nenhum `{t:"rewards"}` novo vem. Com o
@@ -688,8 +737,16 @@ export function onDead(info) {
   const st = s.session.stats || {}, recMass = +st.bestMass || 0, recScore = +st.bestScore || 0;
   app.update(a => ({ ...a, lastMatch: { ...info, room: a.room, at: Date.now(), recMass, recScore },
     session: { ...a.session, stats: { ...st, bestMass: Math.max(recMass, +info.maxMass || 0), bestScore: Math.max(recScore, +info.score || 0) } },
-    rewards: null, rewardsPending: true, screen: "dead" }));
+    rewards: null, rewardsPending: true }));
   clearTimeout(rewardsT); rewardsT = setTimeout(() => { if (app.get().rewardsPending) app.update({ rewardsPending: false }); }, 5000);
+  // A TELA espera; o DADO não. ⚠️ A guarda do disparo relê o estado: entre o agendamento e o estouro pode
+  // ter chegado um fim de rodada, uma queda ou uma sala nova, e aí a tela de morte não tem mais o que
+  // fazer ali. `cancelaTelaMorte` cobre os caminhos conhecidos; esta guarda cobre os que sobrarem.
+  cancelaTelaMorte();
+  const mostra = () => { deadT = null; const a = app.get();
+    if (a.lastMatch && a.screen === "game") app.update({ screen: "dead" }); };
+  const espera = Math.max(0, ROUND.DEAD_DELAY_MS | 0);
+  if (espera) deadT = setTimeout(mostra, espera); else mostra();
   // ⚠️ AQUI HAVIA O FUNIL QUE MENTIA PARA A POKI, e o motivo de ele ter saído está em portal/sessao.js:
   // ele fechava `survival/60s|120s|180s` com o `durationS` da VIDA, e o `start` correspondente só saía
   // em `onConnection` — que desde o respawn na mesma conexão NUNCA MAIS reabre. Quem fica 12 min e
@@ -768,6 +825,7 @@ export function onConnection(ev) {
   else if (st === "reconnecting") app.update(s => ({ ...s, conn: "reconnecting", reconnAttempt: ev.attempt || 1, overlays: { ...s.overlays, reconn: true } }));
   else if (st === "closed" || st === "error") {
     const s = app.get();
+    cancelaTelaMorte();   // caiu/foi expulso durante a espera: quem manda na tela agora é o erro
     app.update({ conn: "closed", overlays: { ...s.overlays, reconn: false } });
     // Game Event da Poki: a partida nunca chegou a conectar (nada de "complete" ainda) — sem isto essa
     // sessão cairia em "Left", indistinguível de quem só perdeu o interesse. Só a PRIMEIRA vez: uma queda

@@ -35,6 +35,7 @@ export const PREFS={
   roundStyle:v=>ROUND_STYLES.includes(v)?v:undefined,
   deadStyle:v=>DEAD_STYLES.includes(v)?v:undefined,
   roundIntro:bool,
+  brInvite:bool,          // receber o card "Battle Royale começando" enquanto joga o Livre
   lbShow:bool,lbShowPortrait:bool,   // placar aberto/recolhido; DUAS chaves porque os padrões e as telas são opostos (ver PREF_DEFAULTS)
   // teclas de dividir/ejetar: `KeyboardEvent.code` da lista compartilhada. Validar contra a lista (e não
   // com uma regex) é o que impede guardar um code que o cliente nunca vai casar — a ação ficaria sem
