@@ -16,6 +16,7 @@ import {askPeers,tellPeers} from './peers.js';
 import {createColetor,leCursor} from '../admin/coletor.js';
 import {hashToken} from '../auth/tokens.js';
 import {NOTICE,ADMIN_BUS} from '@warspace/shared/constants.js';
+import {criaSonda} from '../admin/sonda.js';
 
 /** Mesmo saneamento do chat da sala (Room.chat), feito UMA vez na rota e não uma vez por sala. */
 const limpa=t=>String(t||'').normalize('NFKC').replace(/\p{C}/gu,'').replace(/\s+/g,' ').trim().slice(0,NOTICE.MAX_CHARS);
@@ -34,7 +35,10 @@ const ORDEM_SALAS=new Map([['code',r=>r.code],['shard',r=>r.shard|0],['mode',r=>
 const ORDEM_JOGADORES=new Map([['slot',p=>p.slot|0],['name',p=>String(p.name||'').toLowerCase()],
   ['level',p=>p.level|0],['mass',p=>p.mass|0],['state',p=>(p.alive?2:0)+(p.connected?1:0)],['ip',p=>String(p.ip||'')],
   // Os dois relógios de `Room.adminInfo`: `desde` é a VISITA (o respawn não a zera) e `vida` é a vida atual.
-  ['desde',p=>p.desdeS|0],['vida',p=>p.vidaS|0]]);
+  ['desde',p=>p.desdeS|0],['vida',p=>p.vidaS|0],
+  // Estes dois NÃO vêm da memória da sala: são do banco, colados em `fichaJogadores`. Por isso a
+  // ordenação continua sendo a última coisa a acontecer — ordenar antes de colar ordenaria por `undefined`.
+  ['total',p=>p.totalS|0],['origem',p=>String(p.origem||'')]]);
 /** `by`/`dir` da query, com padrão por rota. Valor fora da lista cai no padrão — aqui NÃO se recusa com
  *  400 porque estas rotas não têm o router de erros do `api/`, e a resposta ecoa o `by` que VALEU. */
 function ordemQuery(req,lista,padBy,padDir){
@@ -70,36 +74,35 @@ export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=nu
    */
   /** @type {Map<string,{u:any,ate:number}>} */const memo=new Map();
   /**
-   * QUAIS IRMÃOS EXISTEM — o mesmo par `shardDoPeer`/`aPerguntar` do coletor (`server/src/admin/coletor.js`),
-   * e pelo mesmo motivo, escrito lá: `config.peers` sai de `SHARDS` (24 no ConfigMap) e quem decide quantos
-   * pods existem é o HPA (hoje 3). Sem isto, `/api/admin/rooms` perguntava a 23 irmãos a cada 5 s — 21 deles
-   * nomes que nem resolvem no DNS — e REPORTAVA cada falha como um chip: a tela de Salas anunciava 21 shards
-   * "sem resposta" num cluster saudável, enquanto o KPI da aba AO VIVO, que já filtrava, mostrava 3/3.
-   * ⚠️ O peer só entra em `shardDoPeer` DEPOIS de responder uma vez. É isso que devolve sentido ao chip
-   * vermelho: ele passa a significar "um shard que existia e ficou mudo", que é a única coisa que o
-   * administrador precisa ver ali. Um pod novo do HPA aparece em ≤ `SONDA_MS`.
-   * @type {Map<string,number>} peer → shard, aprendido na 1ª resposta dele
+   * QUAIS IRMÃOS EXISTEM — a lógica mora em `server/src/admin/sonda.js`, pura e com teste próprio.
+   * ⚠️ Ela virou arquivo à parte porque a primeira versão nasceu errada aqui dentro e ninguém viu: o
+   * filtro deixava passar quem tinha sido SONDADO na rodada, e como a sonda revisita os desconhecidos a
+   * cada `SONDA_MS`, os nomes que não existem voltavam como chip vermelho no painel a cada 15 s.
    */
-  const shardDoPeer=new Map();
-  /** @type {Map<string,number>} peer que nunca respondeu → quando sondar de novo */const sondarEm=new Map();
-  /** Os peers que vale a pena perguntar AGORA: os conhecidos, mais os desconhecidos cuja sonda venceu. */
-  const aPerguntar=()=>{const agora=Date.now();
-    return config.peers.filter(p=>shardDoPeer.has(p)||(sondarEm.get(p)||0)<=agora);};
-  /** Registra o resultado de um peer e agenda a próxima sonda de quem continua sem responder. */
-  const anotaPeer=(p,ok,shard)=>{
-    if(ok){if(shard!=null)shardDoPeer.set(p,shard);sondarEm.delete(p);}
-    else if(!shardDoPeer.has(p))sondarEm.set(p,Date.now()+ADMIN_BUS.SONDA_MS);};
+  const sonda=criaSonda({peers:config.peers});
   /**
-   * A faixa de shards da tela de Salas: este pod, mais os irmãos que EXISTEM. Recebe o que `tellPeers`
-   * devolveu (que pode ser um subconjunto de `config.peers`, por causa da sonda).
-   * ⚠️ Um irmão conhecido que não foi PERGUNTADO nesta rodada não vira chip vermelho — ele não falhou,
-   * ninguém falou com ele. Só entra quem respondeu, ou quem já existiu e falhou agora.
+   * A LINHA DE CADA JOGADOR DO DETALHE DE UMA SALA: a memória do shard (nome, massa, os dois relógios) mais
+   * o que só o BANCO sabe — de onde a conta veio e quanto ela já jogou no total.
+   * ⚠️ Roda no ponto de SAÍDA, DEPOIS do `askPeers`, e não no shard dono. É o mesmo argumento que já vale
+   * para a ordenação três linhas acima: feito no dono, uma sala cujo código pertence a um pod em build
+   * antiga voltaria sem as colunas e sem sinal nenhum — e com 24 shards você acertaria 1 em 24 ao testar.
+   * ⚠️ E é ordenar DEPOIS de colar, nunca antes: `by=total` e `by=origem` leem campos que não existem até
+   * esta função rodar.
+   * ⚠️ `interno` PULA o banco, e não é otimização de enfeite: sem ele o pod DONO consulta e o pod de
+   * ENTRADA consulta de novo, dobrando a leitura a cada 5 s de polling só para jogar a primeira fora.
+   * ⚠️ Falha do banco não derruba o detalhe: as duas colunas saem vazias ("—" na tela) e o resto da sala
+   * continua respondendo. O painel de salas é ferramenta de operação — ele tem que abrir quando o banco
+   * está ruim, que é justamente quando se quer olhar.
    */
-  const faixaShards=rs=>{const porPeer=new Map(rs.map(r=>[r.peer,r]));
-    return[{shard:config.shard,ok:true},
-      ...config.peers.filter(p=>shardDoPeer.has(p)||porPeer.has(p)).map(p=>{const r=porPeer.get(p);
-        return{shard:(r&&r.body&&r.body.shard)??shardDoPeer.get(p)??null,peer:p,
-          ok:!!(r&&!r.error&&r.status===200)};})];};
+  const fichaJogadores=async(req,lista,interno=false)=>{
+    if(!Array.isArray(lista))return lista;
+    const rep=persistApi&&persistApi.repos&&persistApi.repos.users;
+    if(!interno&&rep&&rep.adminBrief&&lista.length){
+      const ficha=await rep.adminBrief(lista.map(p=>p.userId)).catch(e=>{log.warn(`ficha de jogadores falhou: ${e&&e.message}`);return null;});
+      if(ficha)for(const p of lista){const f=p.userId==null?null:ficha.get(Number(p.userId));
+        p.origem=f?f.origin:null;p.totalS=f?f.playTimeS:null;}}
+    return ordenaJogadores(req,lista);};
+
   /** Só entra quem tem `is_admin` E um token do PAINEL (kind 'admin'). Ver server/src/api/admin.js. */
   async function admin(req,cache=false){
     const t=/^Bearer\s+(\S+)$/i.exec(req.headers.authorization||'');
@@ -195,9 +198,9 @@ export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=nu
       // ⚠️ O FRAGMENTO INTERNO SAI CRU. Ordená-lo seria trabalho jogado fora (quem agrega reordena tudo) e,
       // pior, sugeriria uma garantia que ele não dá — a ordem final é do agregador.
       if(interno){sendJson(res,200,{shard:config.shard,rooms:minhas});return true;}
-      const alvos=aPerguntar();
+      const alvos=sonda.aPerguntar();
       const rs=alvos.length?await tellPeers(alvos,{path:'/internal/admin/rooms',method:'GET',auth,log}):[];
-      for(const r of rs)anotaPeer(r.peer,!r.error&&r.status===200,r.body&&r.body.shard);
+      for(const r of rs)sonda.anota(r.peer,!r.error&&r.status===200,r.body&&r.body.shard);
       const outras=rs.filter(r=>r.body&&Array.isArray(r.body.rooms)).flatMap(r=>r.body.rooms);
       // ⚠️ A ordenação é DEPOIS do concat e no ponto de SAÍDA — nunca em `Room.adminInfo`. É isso que a
       // torna imune a rollout com versões mistas: quem ordena é sempre o pod que recebeu o pedido, e um
@@ -205,7 +208,7 @@ export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=nu
       // ⚠️ E o caminho de shard único (dev, sem peers) passa por AQUI, junto com o agregado: separá-los
       // fazia o dev sair numa ordem e a produção em outra.
       const ord=ordenaSalas(req,minhas.concat(outras));
-      sendJson(res,200,{rooms:ord.lista,by:ord.by,dir:ord.dir,shards:faixaShards(rs)});
+      sendJson(res,200,{rooms:ord.lista,by:ord.by,dir:ord.dir,shards:sonda.faixa(config.shard,rs)});
       return true;}
 
     // ── uma sala: detalhe, kick, fechar. SEMPRE pelo dono do código. ──
@@ -221,11 +224,11 @@ export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=nu
         // Também aqui a ordem é aplicada no ponto de SAÍDA, depois do askPeers: ordenando no shard DONO,
         // uma sala cujo código pertence a um pod em build antiga voltaria sem ordem e sem sinal — e com 12
         // shards você acertaria 1 em 12 ao testar, que é a pior taxa possível para um bug ser notado.
-        if(!act&&r.body&&r.body.room)r.body.room.players=ordenaJogadores(req,r.body.room.players);
+        if(!act&&r.body&&r.body.room)r.body.room.players=await fichaJogadores(req,r.body.room.players);
         sendJson(res,r.status,r.body);return true;}
       const room=salaLocal(code);
       if(!room){sendJson(res,404,{error:'not_found',message:'sala não encontrada'});return true;}
-      if(!act){const info=room.adminInfo({players:true});info.players=ordenaJogadores(req,info.players);
+      if(!act){const info=room.adminInfo({players:true});info.players=await fichaJogadores(req,info.players,interno);
         sendJson(res,200,{room:info});return true;}
       if(act==='kick'){
         const slot=body.slot|0,s=room.sessions.get(slot);
@@ -273,11 +276,11 @@ export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=nu
       // sonda seria trocar um chip errado na tela por uma sala que não foi avisada. O que a sonda decide
       // é só o que se REPORTA: irmão que nunca existiu não vira linha de falha.
       const rs=await tellPeers(config.peers,{path:'/internal/admin/broadcast',method:'POST',body:{text,level,ttlMs},auth,log});
-      for(const r of rs)anotaPeer(r.peer,!r.error&&r.status===200,r.body&&r.body.shard);
+      for(const r of rs)sonda.anota(r.peer,!r.error&&r.status===200,r.body&&r.body.shard);
       const porPeer=new Map(rs.map(r=>[r.peer,r]));
       sendJson(res,200,{delivered:entregues+rs.reduce((t,r)=>t+(((r.body&&r.body.delivered)|0)),0),
         rooms:salas+rs.reduce((t,r)=>t+(((r.body&&r.body.rooms)|0)),0),
-        shards:faixaShards(rs).map(x=>x.peer==null?{...x,delivered:entregues}
+        shards:sonda.faixa(config.shard,rs).map(x=>x.peer==null?{...x,delivered:entregues}
           :{...x,delivered:((porPeer.get(x.peer)||{}).body||{}).delivered|0})});
       return true;}
 

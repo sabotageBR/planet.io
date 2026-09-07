@@ -3,7 +3,7 @@
 // ser conferida numa tabela. node --test client/test/viewport.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { modeFor, pointerFor } from "../src/hooks/useViewportMode.js";
+import { modeFor, pointerFor, ehCelular } from "../src/hooks/useViewportMode.js";
 
 // aparelho, largura, altura, toque, modo esperado
 const TABELA = [
@@ -56,4 +56,22 @@ test("a entrada é independente do tamanho", () => {
   // o mesmo tamanho com e sem toque dá formas diferentes, e é essa a intenção
   assert.equal(modeFor(1180, 820, true), "tablet");
   assert.equal(modeFor(1180, 820, false), "desktop");
+});
+
+// ── É CELULAR? ───────────────────────────────────────────────────────────────
+// Quem some no telefone pergunta a `ehCelular`, e não a um matchMedia próprio. O caso que importa é o
+// TABLET: `data-pointer="coarse"` casaria com ele, e um iPad tem 1180 px de largura — espaço de sobra
+// para um painel de chat no canto. O que atrapalha a gameplay é a tela pequena, não o dedo.
+test("celular é o telefone nas duas formas, e o tablet não é celular", () => {
+  assert.equal(ehCelular("portrait"), true, "telefone em pé");
+  assert.equal(ehCelular("landscape"), true, "telefone deitado");
+  assert.equal(ehCelular("tablet"), false, "iPad tem largura para o chat");
+  assert.equal(ehCelular("desktop"), false);
+  // o store nasce sem modo até o primeiro `apply()` do hook: ausência não pode virar "é celular"
+  assert.equal(ehCelular(null), false);
+  assert.equal(ehCelular(undefined), false);
+  // e casa com o que `modeFor` produz de verdade, para as duas não se separarem
+  assert.equal(ehCelular(modeFor(390, 844, true)), true, "iPhone em pé");
+  assert.equal(ehCelular(modeFor(844, 390, true)), true, "iPhone deitado");
+  assert.equal(ehCelular(modeFor(1180, 820, true)), false, "iPad deitado");
 });

@@ -239,7 +239,33 @@ function Salas({ erro }) {
    * segundos depois, sem erro em lugar nenhum. Recriar o intervalo ainda dá de graça o refetch imediato.
    */
   useEffect(() => { carregar(); const t = setInterval(carregar, 5000); return () => clearInterval(t); }, [ord.by, ord.dir]);
-  const abrir = async (code, o = ordP) => { try { setSel((await api.room(code, `?by=${o.by}&dir=${o.dir}`)).room); } catch (e) { erro(e.message); } };
+  /**
+   * `silencioso` = veio do relógio, não de um clique. Duas coisas mudam: o erro NÃO vira toast (uma falha
+   * de rede a cada 5 s encheria a tela de avisos iguais, e o administrador não pediu nada) e o 404 FECHA o
+   * detalhe — a sala acabou enquanto ele olhava, e insistir num painel de uma sala que não existe mais é
+   * pior que fechá-lo.
+   */
+  const abrir = async (code, o = ordP, silencioso = false) => {
+    try { setSel((await api.room(code, `?by=${o.by}&dir=${o.dir}`)).room); }
+    catch (e) { if (!silencioso) erro(e.message); else if (e.status === 404) setSel(null); }
+  };
+  /**
+   * ⚠️ O DETALHE TAMBÉM SE ATUALIZA SOZINHO, no mesmo relógio da lista. Ele era o único painel da tela que
+   * só mudava por clique — e é justamente ele que tem os números vivos (massa, os três relógios, quem caiu):
+   * ficava parado na foto do instante em que a sala foi aberta, e o administrador tinha que reclicar para
+   * saber o que estava acontecendo AGORA.
+   * ⚠️ A dependência é `sel.code`, NUNCA `sel`: o objeto é trocado a cada resposta, então com ele o efeito
+   * se desmontaria e remontaria a cada volta, reiniciando o intervalo para sempre. É a mesma armadilha do
+   * `[ord.by,ord.dir]` logo acima, de outro jeito.
+   * ⚠️ Sem chamada imediata aqui: quem abre já buscou (o clique, ou o `ordenarJogadores`), e uma chamada
+   * na montagem do efeito seria um segundo fetch em cima do primeiro a cada troca de ordenação.
+   */
+  const codeSel = sel ? sel.code : null;
+  useEffect(() => {
+    if (!codeSel) return;
+    const t = setInterval(() => abrir(codeSel, ordP, true), 5000);
+    return () => clearInterval(t);
+  }, [codeSel, ordP.by, ordP.dir]);
   const ordenarJogadores = o => { setOrdP(o); if (sel) abrir(sel.code, o); };
   const remover = async (code, p) => {
     if (!confirm(`Remover ${p.name} da sala ${code}?`)) return;
@@ -293,6 +319,11 @@ function Salas({ erro }) {
               vinte minutos na sala em quinze vidas. Ver server/test/visita.test.js. */}
           <Th col="desde" ord={ordP} set={ordenarJogadores} n>na sala</Th>
           <Th col="vida" ord={ordP} set={ordenarJogadores} n>vida</Th>
+          {/* TERCEIRO relógio, e o único que não é desta sessão: `user_stats.play_time_s`, o acumulado da
+              CONTA. Ele responde "é gente nova ou é veterano?" — que é a pergunta que muda o que se faz
+              com o resto da linha. Vem do banco (`users.adminBrief`), não da memória do shard. */}
+          <Th col="total" ord={ordP} set={ordenarJogadores} n>total</Th>
+          <Th col="origem" ord={ordP} set={ordenarJogadores} padrao="asc">origem</Th>
           <Th col="state" ord={ordP} set={ordenarJogadores}>estado</Th>
           <Th col="ip" ord={ordP} set={ordenarJogadores} padrao="asc">ip</Th>
           <Th /></tr></thead>
@@ -301,10 +332,12 @@ function Salas({ erro }) {
           <td className="n">{p.level || "—"}</td><td className="n">{num(p.mass)}</td>
           <td className="n">{p.desdeS == null ? "—" : tempo(p.desdeS)}</td>
           <td className="n">{p.vidaS == null || !p.alive ? "—" : tempo(p.vidaS)}</td>
+          <td className="n">{p.totalS == null ? "—" : tempo(p.totalS)}</td>
+          <td>{p.userId == null ? "—" : portalDe(p.origem)}</td>
           <td>{p.spectator ? "assiste" : p.alive ? "vivo" : "morto"}{p.connected ? "" : " · caiu"}</td>
           <td className="ua">{p.ip || "—"}</td>
           <td><button className="per" onClick={() => remover(sel.code, p)}>Remover</button></td></tr>)}
-          {!(sel.players || []).length ? <tr><td colSpan={9} className="vazio">só preenchimento</td></tr> : null}</tbody>
+          {!(sel.players || []).length ? <tr><td colSpan={11} className="vazio">só preenchimento</td></tr> : null}</tbody>
       </table></div>
     </div> : <div className="ad-detalhe vazio">selecione uma sala</div>}
   </div>;

@@ -88,17 +88,48 @@ re-sondado a cada `ADMIN_BUS.SONDA_MS`. É isso que devolve sentido ao chip verm
 ninguém falou ainda tem que receber o aviso; filtrar a entrega pela sonda seria trocar um chip errado na tela
 por uma sala que não foi avisada. O que a sonda decide lá é só o que se **reporta**.
 
-### Os dois relógios de um jogador na sala
+### Os TRÊS relógios de um jogador na sala
 
 `Room.adminInfo({players:true})` leva `desdeS` (a VISITA — `gp.entrouTick`, que o respawn **não** zera) e
-`vidaS` (a VIDA — `gp.joinedTick`, que é o `matches.duration_s`). Os dois estão na tabela e os dois ordenam
-(`ORDEM_JOGADORES`, chaves `desde` e `vida`).
+`vidaS` (a VIDA — `gp.joinedTick`, que é o `matches.duration_s`). O terceiro, `totalS`, não é da sala: é o
+acumulado da CONTA (`user_stats.play_time_s`), e vem do banco. Os três estão na tabela e os três ordenam
+(`ORDEM_JOGADORES`, chaves `desde`, `vida` e `total`).
+
+Cada um responde a outra pergunta: **na sala** é esta visita, **vida** é esta vida e **total** é "é gente
+nova ou é veterano?" — que é o que muda o que se faz com o resto da linha.
 
 ⚠️ **`entrouTick`, NUNCA `joinedTick`**, e é o mesmo erro que o `durouS` do `saiu` já cometeu: medindo pela
 vida, o painel dizia "40 s" de quem estava na sala havia vinte minutos em quinze vidas.
 `server/test/visita.test.js` trava os dois sentidos.
 
 A linha também leva `spectator`, e a coluna "estado" diz **assiste** para quem entrou só para ver.
+
+### As duas metades da tela se atualizam sozinhas
+
+A lista de salas e o detalhe do selecionado batem no servidor a cada 5 s. O detalhe usa `sel.code` como
+dependência do efeito (nunca o objeto `sel`, que é trocado a cada resposta e reiniciaria o intervalo para
+sempre), não busca na montagem (quem abriu já buscou) e é **silencioso**: erro não vira toast, e um 404
+fecha o painel — a sala acabou enquanto o administrador olhava.
+
+### Origem e tempo total: o que só o banco sabe
+
+`totalS` e `origem` são coladas por `fichaJogadores` (`http/admin.js`) a partir de `users.adminBrief(ids)`
+— **uma** consulta para a sala inteira (`= ANY`), nunca uma por linha: são até 30 jogadores e o painel
+repete o fetch do detalhe a cada 5 s. `origem` é o `users.origin` cru, e quem o traduz em "Poki" é o
+painel (`client/src/admin/portais.js`), pelo mesmo motivo da lista de contas: um portal novo aparece no
+banco antes de qualquer código nosso conhecer o nome dele.
+
+⚠️ A colagem roda no ponto de **SAÍDA**, depois do `askPeers`, e não no shard dono — mesmo argumento da
+ordenação: feito no dono, uma sala cujo código pertencesse a um pod em build antiga voltaria sem as
+colunas e sem sinal nenhum. E ordenar vem **depois** de colar, senão `by=total` e `by=origem` ordenariam
+por um campo que ainda não existe.
+
+⚠️ O salto interno (`/internal/admin/rooms/<code>`) **pula** a consulta: sem isso o pod dono consulta e o
+pod de entrada consulta de novo, dobrando a leitura a cada 5 s de polling só para jogar a primeira fora.
+
+⚠️ Falha do banco não derruba o detalhe: as duas colunas saem "—" e o resto da sala continua respondendo.
+O painel de salas é ferramenta de operação — ele tem que abrir quando o banco está ruim, que é justamente
+quando se quer olhar.
 
 Rate limit: leitura 120/min/token, mutação 20/min/token, login com o mesmo balde de `/api/auth/login`.
 

@@ -795,6 +795,33 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `vidaS` é a VIDA (`gp.joinedTick`, o `matches.duration_s`). ⚠️ É o mesmo erro que o `durouS` do `saiu` já
   cometeu: medindo pela vida, o painel dizia "40 s" de quem estava na sala havia vinte minutos em quinze
   vidas. `server/test/visita.test.js` trava os dois sentidos.
+- **O DETALHE DA SALA SE ATUALIZA SOZINHO** (o 2º `useEffect` de `Salas`, em `client/src/admin/mount.jsx`):
+  a LISTA já tinha o `setInterval` de 5 s; o DETALHE era o único painel da tela que só mudava por clique — e
+  é justamente ele que tem os números vivos (massa, os três relógios, quem caiu, quem está assistindo).
+  Ficava parado na foto do instante em que a sala foi aberta.
+  ⚠️ **A dependência é `sel.code`, NUNCA `sel`**: o objeto é trocado a cada resposta, então com ele o efeito
+  se desmontaria e remontaria a cada volta, reiniciando o intervalo para sempre. É a mesma armadilha do
+  `[ord.by,ord.dir]` da lista, de outro jeito.
+  ⚠️ **Sem chamada imediata na montagem**: quem abre já buscou (o clique, ou o `ordenarJogadores`), e uma
+  chamada ali seria um segundo fetch em cima do primeiro a cada troca de ordenação.
+  ⚠️ O refetch do relógio é **silencioso**: erro não vira toast (uma falha de rede a cada 5 s encheria a
+  tela de avisos iguais para quem não pediu nada) e **404 FECHA o detalhe** — a sala acabou enquanto o
+  administrador olhava, e insistir num painel de uma sala que não existe mais é pior que fechá-lo.
+- **...E O DETALHE DA SALA TAMBÉM MOSTRA O TERCEIRO** (`users.adminBrief`, `fichaJogadores` em
+  `http/admin.js`): a linha de cada jogador ganhou `total` (o acumulado da CONTA, `user_stats.play_time_s`)
+  e `origem` (de onde ela veio, traduzida pelo mesmo `portais.js` da lista de contas). São TRÊS relógios
+  lado a lado e cada um responde a outra pergunta: `na sala` é esta visita, `vida` é esta vida e `total` é
+  "é gente nova ou veterano?" — que é o que muda o que se faz com o resto da linha.
+  ⚠️ **Vêm do BANCO, não da memória do shard**, e são coladas no ponto de SAÍDA — depois do `askPeers`,
+  nunca no shard dono. É o mesmo argumento que já valia para a ordenação: feito no dono, uma sala cujo
+  código pertencesse a um pod em build antiga voltaria sem as colunas e sem sinal nenhum, e com 24 shards
+  você acertaria 1 em 24 ao testar. ⚠️ E é ordenar DEPOIS de colar: `by=total` e `by=origem` leem campos
+  que não existem antes disso. ⚠️ O salto interno PULA a consulta (`fichaJogadores(...,interno)`): sem
+  isso o pod dono consulta e o de entrada consulta de novo, dobrando a leitura a cada 5 s de polling só
+  para jogar a primeira fora. ⚠️ UMA consulta para a sala inteira (`= ANY`), nunca uma por linha: são até
+  30 jogadores e o painel repete o fetch a cada 5 s. ⚠️ Falha do banco não derruba o detalhe — as duas
+  colunas saem "—" e o resto responde; o painel de salas é ferramenta de operação e tem que abrir
+  justamente quando o banco está ruim.
 - **DE ONDE A CONTA VEIO, na lista de contas** (`users.origin`, `client/src/admin/portais.js`): a coluna
   existia no banco desde a 0010 e só o funil da retenção a lia. Agora ela ordena, entra no detalhe e **casa
   na busca livre** — digitar "poki" filtra por origem, o que dispensa um `<select>` que envelheceria no
@@ -1162,6 +1189,16 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   controles de voz somem da tela de Opções junto (`prefsTable.js`): interruptor que não liga nada é pior
   que interruptor nenhum. ⚠️ O harness `portal/iframe.html` PEDIA microfone e por isso nunca reproduziu
   isso — ele tem que ser o `allow` mais POBRE que já se mediu num portal, não o mais generoso.
+- **...E ELE SÓ APARECE PARA O ADMINISTRADOR** (`ENTRA_SAI` em `client/src/ui/KillFeed.jsx`): para quem
+  joga, "entrou/saiu" nunca respondeu a uma pergunta — numa sala do Livre o vaivém é constante e essas
+  linhas empurram para fora justamente o que interessa, porque `drenaFeed` corta em `FEED.MAX_PER_FLUSH`
+  e a coluna tem quatro linhas de altura. ⚠️ Quem modera continua vendo por DOIS caminhos independentes:
+  a aba AO VIVO do painel tem `entrou`/`saiu` próprios (que sabem mais — conta, duração, abates e a
+  causa) e o administrador que está DENTRO da partida continua com a linha no canto da tela, que é onde
+  ele está olhando. ⚠️ O corte é no CLIENTE e não em `Room._pushFeed`: no servidor o feed é um só,
+  difundido à sala inteira, e filtrar por sessão custaria uma fila por jogador para poupar ~60 bytes por
+  entrada — e o administrador jogando se perderia junto. ⚠️ Os outros `sys` (`start`, `few`, `zone`,
+  `crunch`, `lead`) continuam valendo para todo mundo: o filtro nomeia `joined`/`left`, nunca `k==='sys'`.
 - **O LOG DE QUEM ENTRA E QUEM SAI** (`Room.join`/`leave` → `{k:'sys',how:'joined'|'left'}` no feed): reusa
   o kill feed, que já é JSON de controle sem AOI, já tem a linha de SISTEMA com ícone e molde de texto, e
   já mora no canto direito. Nenhuma linha de `KillFeed.jsx` mudou.
@@ -1181,6 +1218,25 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `JOIN_QUIET_MS` continua, mas cobrindo só trocar de sala e o roubo de sessão pelo `resume`; e o
   `joined` passou a ser suprimido no LOBBY também, que é o simétrico do `left` (o `_avisaAdmins` fica
   FORA dessa guarda: "entrou gente" vale igual na fase de espera).
+- **A ARQUIBANCADA PREFERE GENTE** (`Room.humanosVivos`, lido por `spectateTargetFor` e `spectatePick`):
+  a câmera andava pelo PLACAR, que conta o preenchimento — e no Livre ele é a maioria esmagadora da sala,
+  então as setas ‹ › gastavam quase todas as paradas num robô. Assistir a um bot é assistir a ninguém: o
+  nome não diz nada a quem olha e não há o que aprender.
+  ⚠️ **Mas há RECUO, e ele não é preguiça**: sem NENHUM humano vivo, a lista volta a ser o placar inteiro.
+  No Battle Royale a sala é de 50 e o `anonBots` tira o `PLAYER_FLAG.BOT` do fio de propósito — depois que
+  o último humano morre a partida CONTINUA e ainda há o que ver, indistinguível de gente para quem está
+  olhando; sem o recuo, quem entrou pelo botão "Assistir" ficaria diante de uma câmera parada até o fim da
+  rodada, que é pior que assistir a um bot. "Somente humanos" vale sempre que houver um humano — nunca ao
+  preço de uma tela parada. Foi isto que `server/test/br.test.js` cobrou, e é decisão de produto.
+  ⚠️ `alive` de `spectateTargetFor` deixou de ser "tem peça viva" e passou a ser "está na lista": as duas
+  já eram equivalentes (`leaderboard` só traz quem tem peça viva) e assim o filtro vale nos TRÊS caminhos
+  de uma vez — o `prefer` (quem me matou), o companheiro de equipe e a busca automática. É o que faz quem
+  morreu para um preenchimento não ficar olhando o preenchimento.
+  ⚠️ Espectador não entra na própria lista: ele nasce sem peça (`spawn:false`) e `leaderboard` pula quem
+  não tem peça viva — uma arquibancada de dez não vira dez alvos de câmera.
+  ⚠️ `Sim.leaderboard` é MEMOIZADO por tick: no mesmo tick de um join a lista ainda é a de antes dele.
+  Vale para o teste (que precisa de um `step()`) e não para a produção, onde o join e a troca de câmera
+  caem em ticks diferentes.
 - **ASSISTIR A UMA SALA EM ANDAMENTO** (`Room.acceptsSpectator`/`joinSpec`, `{t:"join",spec:true}`,
   `ui/Spectate.jsx`; `docs/design/modos.md`): morrer virava câmera desde sempre; ENTRAR só para olhar, não —
   e a sala de Battle Royale é justamente a que recusa entrada depois da largada, ou seja a partida mais
@@ -1229,12 +1285,27 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `ui/BrInvite.jsx`): toda sala de BR pública criada em QUALQUER shard manda um card para TODA sessão do
   Livre (`RoomManager.announceBrStartCluster`), e a sala de BR fecha na largada — cada onda cria salas novas.
   Com `LOBBY_TICKS` de 30 s, quem jogava o Livre levava um card por minuto, sem cooldown, sem dedupe e sem
-  memória de recusa (`dismissBrInvite` só apagava o da vez). Entraram DUAS coisas ortogonais: um teto **por
-  sessão** no servidor (`Session.brInviteAt`, "com que frequência no máximo") e a pref de conta (o que o
-  jogador quer), com o "Nunca" no próprio card — quem quer desligar está olhando para ele, no meio de uma
-  partida, e não vai abrir um menu para procurar. ⚠️ A pref é lida no CLIENTE, e é isso que a faz valer para
-  o card que JÁ está na tela. ⚠️ E **saiu o `autoFocus`** do botão Entrar: ele roubava o teclado no meio de
-  uma partida do Livre, e a partir dali um Espaço (dividir) virava "ir para outra sala".
+  memória de recusa (`dismissBrInvite` só apagava o da vez). Entraram TRÊS coisas ortogonais, e a diferença
+  entre elas é o ALCANCE: um teto **por sessão** no servidor (`Session.brInviteAt`, "com que frequência no
+  máximo"), o **silêncio desta sala** (`Session.brMudo`, via `{t:"brMute"}` — o botão do card) e a **pref de
+  conta** `brInvite` ("nunca mais, em lugar nenhum", nas Opções e no menu do Esc).
+  ⚠️ **O botão do card já foi a pref, e isso era grande demais.** Quem só queria sossego AGORA desligava o
+  aviso para sempre, com um card na frente no meio de uma partida, e só descobriria como voltar atrás
+  procurando em Opções. Hoje ele vale enquanto o jogador estiver NESTA sala; na próxima do Livre ele é
+  avisado de novo e pode calar de novo lá. Quem quer o "nunca mais" continua tendo — só não o toma sem
+  querer. O rótulo mudou junto nos três dicionários (`brInviteNever` → `brInviteMute`): uma chave chamada
+  "Nunca" guardando "não nesta sala" é exatamente a mentira que este arquivo existe para não deixar passar.
+  ⚠️ **A SESSÃO É O ALCANCE, e é isso que dispensa relógio e memória**: ela nasce com o socket e morre com
+  ele (o `wsServer` cria uma `new Session` por conexão), então trocar de sala zera o silêncio por
+  construção. Um `resume` reata a MESMA sessão, então cair a rede não desfaz o silêncio da sala em que ele
+  está. E `Room.brInvite` pula o mudo ANTES de gastar o cooldown: quem não recebe não tem relógio a queimar.
+  ⚠️ **Só LIGA, nunca desliga**: desfazer é trocar de sala. Um `{t:"brMute",on:false}` seria uma segunda
+  verdade sobre um estado que o jogador não vê em lugar nenhum.
+  ⚠️ O cliente guarda uma CÓPIA local (`brMudo` em `game/index.js`, zerada no `join`/`leave` ao lado do
+  `morte`) só para o `brStart` que já estava EM VOO quando o jogador clicou não reabrir o card. Quem corta
+  de verdade é o servidor. ⚠️ A pref continua sendo lida no CLIENTE, e é isso que a faz valer para o card
+  que JÁ está na tela. ⚠️ E **saiu o `autoFocus`** do botão Entrar: ele roubava o teclado no meio de uma
+  partida do Livre, e a partir dali um Espaço (dividir) virava "ir para outra sala".
 - **RENASCER NÃO É ENTRAR DE NOVO** (`{t:"respawn"}` → `Room.respawn` → `Sim.revive` → `{t:"alive"}`):
   o botão DE NOVO do Livre fechava o socket e abria outro, e o feed dizia "Fulano saiu / Fulano entrou"
   para quem não tinha saído de lugar nenhum — o jogador morto CONTINUA na sala, com o socket aberto e o
@@ -1322,6 +1393,22 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   monta sala à mão (os testes) precisa de um número próprio sem depender de estado global de processo.
   ⚠️ Vale para as salas CRIADAS daí em diante, e **baixar bots não expulsa ninguém** — `trimBots` só roda no
   lobby do BR e no Livre o bot morto renasce.
+- **O CHAT NÃO EXISTE NO TELEFONE ENQUANTO SE JOGA** (`ehCelular` em `hooks/useViewportMode.js`, o
+  `escondido` de `ui/Chat.jsx`): no celular o painel mora POR CIMA da área de jogo (é `position:absolute`
+  dentro de `#hud`) e a área de jogo do celular é a tela inteira — cada linha que chega tapa o canto onde
+  o planeta está, e o campo de texto ainda abre o teclado virtual do sistema, que come metade da tela no
+  meio de uma partida. No desktop nada disso acontece: lá o chat ocupa uma sobra.
+  ⚠️ **`persist` MANTÉM o chat** (morto, pódio ou assistindo), de propósito: o que atrapalha é a
+  GAMEPLAY, e atrás da tela de morte não há gameplay para atrapalhar — é justamente o momento em que se
+  lê e se responde. É a mesma fronteira que o `persist` já usava para não desbotar as linhas.
+  ⚠️ **O ADMINISTRADOR continua vendo**, no telefone e jogando: quem modera precisa ler a sala de onde
+  estiver, e o chat é o único caminho de moderação DENTRO da partida (silenciar e denunciar saem do
+  clique no nome, ali dentro). `isAdmin` só chega ao cliente quando é verdade (`repos/users.js`).
+  ⚠️ **`ehCelular` é o `mode`, nunca `data-pointer`**: `coarse` responde "é dedo?" e casaria com um iPad,
+  que tem 1180 px de largura e espaço de sobra para um painel no canto. O que atrapalha é a tela PEQUENA,
+  e `modeFor` já separou as duas coisas — `tablet` fica de fora por isso.
+  ⚠️ Uma variável só (`escondido`) para as DUAS portas — o listener de teclado e o render —, senão o T
+  continuaria abrindo um painel que não está na tela.
 - **Chat e voz** (`CHAT`/`VOICE` em constants): chat de sala ou de equipe (o escopo é do servidor), painel na
   faixa esquerda do HUD. **Quem morreu continua falando** — texto e voz —, e o escopo é UMA função
   (`Room._escopoFala`), porque três caminhos precisam da mesma resposta: a linha, o ícone do 🎤 e o clipe.

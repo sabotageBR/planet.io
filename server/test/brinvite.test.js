@@ -15,7 +15,7 @@ const mudo={info(){},warn(){},error(){},debug(){}};
 const sala=(mode=MODE.FREE)=>new Room({code:'TST0',shard:0,seed:7,hooks:null,log:mudo,
   metrics:{inc(){},add(){}},config:{},roomMax:30,roomBots:0,mode});
 /** Uma sessão só com o que `brInvite` toca: o socket e o carimbo do último convite. */
-const sessao=(ws=true)=>({ws:ws?{}:null,brInviteAt:0,recebidos:[],sendJson(m){this.recebidos.push(m);}});
+const sessao=(ws=true)=>({ws:ws?{}:null,brInviteAt:0,brMudo:false,recebidos:[],sendJson(m){this.recebidos.push(m);}});
 const povoa=(r,ns)=>{ns.forEach((s,i)=>r.sessions.set(i,s));return ns;};
 
 test('o primeiro convite sai para todo mundo que tem socket', () => {
@@ -66,4 +66,39 @@ test('o TTL continua vindo no pacote — é ele que faz o card sumir sozinho', (
   const r2=sala(), [b]=povoa(r2,[sessao()]);
   r2.brInvite('ABCD',{ttlMs:5000});
   assert.equal(b.recebidos[0].ttlMs,5000);
+});
+
+// ── SILENCIAR: É DESTA SALA, E ACABA COM A SESSÃO ────────────────────────────
+// `Session.brMudo` é escrito pelo `{t:"brMute"}` do card. O alcance não precisa de relógio nem de memória
+// porque a SESSÃO é o alcance: ela nasce com o socket e morre com ele, então entrar em outra sala do Livre
+// é uma sessão nova e o jogador volta a ser avisado. Não confundir com a pref `brInvite` da CONTA, que é
+// "nunca mais, em lugar nenhum", vive no banco e é decidida no cliente.
+test('quem silenciou não recebe mais convite nesta sala', () => {
+  const r=sala(), [a,b]=povoa(r,[sessao(),sessao()]);
+  a.brMudo=true;
+  assert.equal(r.brInvite('ABCD'),1,'só o outro é interrompido');
+  assert.equal(a.recebidos.length,0);
+  assert.equal(b.recebidos.length,1);
+});
+
+test('silenciar não gasta o cooldown de quem calou', () => {
+  const r=sala(), [a]=povoa(r,[sessao()]);
+  a.brMudo=true; r.brInvite('ABCD');
+  assert.equal(a.brInviteAt,0,'quem não recebe não tem relógio a queimar');
+});
+
+test('o silêncio é da SESSÃO: entrar noutra sala volta a avisar', () => {
+  const r=sala(), [a]=povoa(r,[sessao()]);
+  a.brMudo=true;
+  assert.equal(r.brInvite('ABCD'),0);
+  // outra sala do Livre = outro socket = outra Session (wsServer cria uma por conexão)
+  const r2=sala(), [nova]=povoa(r2,[sessao()]);
+  assert.equal(r2.brInvite('EFGH'),1,'a marca não viaja: ninguém a carrega de uma sala para a outra');
+  assert.equal(nova.recebidos.length,1);
+});
+
+test('silenciar um não cala a sala', () => {
+  const r=sala(), ns=povoa(r,[sessao(),sessao(),sessao()]);
+  ns[1].brMudo=true;
+  assert.equal(r.brInvite('ABCD'),2);
 });

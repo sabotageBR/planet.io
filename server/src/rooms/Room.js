@@ -645,13 +645,38 @@ export class Room{
   /** Religa um socket novo numa sessão em graça (o wsServer manda `room` + PLAYERS em seguida). */
   resume(session,ws){session.attach(ws);}
   /**
-   * Alvo de espectador de uma sessão morta: quem a matou (se ainda vivo) ou o líder da sala. Só manda o JSON
-   * `spectate` quando o alvo muda — o cliente move a câmera para esse slot e a AOI (net/snapshot.js) o acompanha,
-   * então o que aparece atrás da tela de morte é a sala de verdade, e não um pedaço parado de espaço.
+   * QUEM PODE SER ASSISTIDO: a ARQUIBANCADA PREFERE GENTE. Devolve os humanos vivos ordenados por massa
+   * e, **só quando não há uma pessoa viva na sala**, o placar inteiro.
+   * ⚠️ O preenchimento sai por decisão de produto, não por economia: assistir a um bot é assistir a
+   * ninguém — o nome não diz nada a quem olha, não há o que aprender, e numa sala do Livre eles são a
+   * maioria esmagadora da lista, então as setas ‹ › gastavam quase todas as paradas num robô. O filtro é
+   * `gp.isBot`, a mesma verdade que põe o selo no placar (Hud.jsx) e que `Sim.endRound` já usa.
+   * ⚠️ **E O RECUO NÃO É PREGUIÇA**: no Battle Royale a sala é de 50 e o `anonBots` tira o
+   * `PLAYER_FLAG.BOT` do fio de propósito — depois que o último humano morre a partida CONTINUA e ainda
+   * há o que ver, indistinguível de gente para quem está olhando. Sem o recuo, quem entrou pelo botão
+   * "Assistir" ficaria diante de uma câmera parada até o fim da rodada, que é pior que assistir a um bot.
+   * Ou seja: "somente humanos" vale sempre que houver um humano — nunca ao preço de uma tela parada.
+   * ⚠️ Espectador não entra: ele nasce sem peça (`spawn:false`), e `leaderboard` pula quem não tem peça
+   * viva. Uma arquibancada de dez não vira dez alvos de câmera.
+   * ⚠️ Vazia só numa sala sem NINGUÉM vivo — aí quem chama para a câmera, que é o certo.
+   */
+  humanosVivos(){const sim=this.sim,lb=sim.leaderboard(),gente=[];
+    for(const r of lb){const gp=sim.players.get(r.slot);if(gp&&!gp.isBot)gente.push(r);}
+    return gente.length?gente:lb;}
+  /**
+   * Alvo de espectador de uma sessão morta: quem a matou (se ainda vivo E elegível) ou o líder da
+   * arquibancada. Só manda o JSON `spectate` quando o alvo muda — o cliente move a câmera para esse slot e
+   * a AOI (net/snapshot.js) o acompanha, então o que aparece atrás da tela de morte é a sala de verdade, e
+   * não um pedaço parado de espaço.
+   * ⚠️ `alive` DEIXOU de ser "tem peça viva" e passou a ser "está na lista de `humanosVivos`" — as duas
+   * coisas já eram equivalentes (`leaderboard` só traz quem tem peça viva), e assim o filtro de bot vale
+   * nos TRÊS caminhos de uma vez: o `prefer`, o companheiro de equipe e a busca automática. É o que faz
+   * quem morreu para um preenchimento não ficar olhando o preenchimento — degrada sozinho para a busca.
    */
   spectateTargetFor(session,prefer=-1){
-    const sim=this.sim,w=sim.world;
-    const alive=sl=>{const ps=w.players.get(sl);return !!(ps&&ps.alive&&ps.pieces.some(p=>!p.dead));};
+    const sim=this.sim;
+    const lb=this.humanosVivos(),elegivel=new Set(lb.map(r=>r.slot));
+    const alive=sl=>elegivel.has(sl);
     let slot=prefer>=0&&alive(prefer)?prefer:-1;
     // prefer === -2: "não escolha ninguém" (câmera parada onde estava). Diferente de -1, que quer dizer
     // "não tenho preferência" e cai na busca automática logo abaixo.
@@ -660,17 +685,20 @@ export class Room{
       return -1;}
     if(slot<0&&this.teamCount>0){const mim=sim.players.get(session.slot);   // em equipe, morrer é virar câmera do companheiro (não de quem me comeu)
       if(mim&&mim.team>=0)for(const gp of sim.players.values())if(gp.team===mim.team&&gp.slot!==session.slot&&alive(gp.slot)){slot=gp.slot;break;}}
-    if(slot<0){const lb=sim.top(1);if(lb.length&&alive(lb[0].slot))slot=lb[0].slot;}
+    if(slot<0&&lb.length)slot=lb[0].slot;
     if(slot!==session.specSlot){session.specSlot=slot;const gp=slot>=0?sim.players.get(slot):null;
       session.sendJson({t:'spectate',slot,name:gp?gp.name:null,vivos:sim.aliveCount()});}
     return slot;}
   /**
-   * O morto escolhe quem assistir. `slot` explícito (clicou no placar) ou `dir` ±1 para andar na lista de
-   * VIVOS ordenada por massa — a mesma do placar, então "próximo" na tela é "próximo" aqui. Alvo inválido
-   * ou morto cai na escolha automática de sempre, em vez de deixar a câmera parada num fantasma.
+   * O morto escolhe quem assistir. `slot` explícito (clicou no placar) ou `dir` ±1 para andar na lista da
+   * ARQUIBANCADA (`humanosVivos`) ordenada por massa. Alvo inválido, morto ou preenchimento com gente viva
+   * na sala cai na escolha automática de sempre, em vez de deixar a câmera parada num fantasma.
+   * ⚠️ A lista de `dir` é a MESMA que a busca automática usa, então "próximo" na seta é o próximo da mesma
+   * ordem — e um `slot` explícito de bot só passa quando não há uma pessoa viva, porque quem o recusa é o
+   * `alive` de `spectateTargetFor`, que lê a mesma lista.
    */
   spectatePick(session,{slot=-1,dir=0}={}){
-    const sim=this.sim,lb=sim.leaderboard();
+    const lb=this.humanosVivos();
     if(!lb.length)return this.spectateTargetFor(session,-1);
     if(dir){const i=lb.findIndex(r=>r.slot===session.specSlot);
       const n=lb.length,j=((i<0?0:i+dir)%n+n)%n;
@@ -1544,6 +1572,12 @@ export class Room{
     const msg={t:'brStart',room,at:agora,ttlMs};let n=0;
     for(const s of this.sessions.values()){
       if(!s.ws)continue;
+      // ⚠️ O SILÊNCIO É POR SESSÃO, e por isso ele acaba sozinho: a sessão nasce com o socket, então quem
+      // calou aqui volta a ser avisado na PRÓXIMA sala do Livre em que entrar — e pode calar de novo lá.
+      // É o alcance certo para um pedido feito no meio de uma partida ("agora não"), e é diferente da
+      // pref `brInvite` da conta, que é "nunca mais" e vive nas Opções. Antes de gastar o cooldown: quem
+      // não recebe não tem relógio a queimar.
+      if(s.brMudo)continue;
       if(agora-(s.brInviteAt||0)<BR.INVITE_CD_MS)continue;
       s.brInviteAt=agora;s.sendJson(msg);n++;}
     return n;}

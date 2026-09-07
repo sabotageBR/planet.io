@@ -29,7 +29,7 @@ export default {
   zoneWarnAt: "⚠ O GÁS FECHA EM {n}s!",
   admJoin: "🟢 {n} entrou no jogo", admJoinTitle: "warspace.io",
   brInviteTitle: "🚀 Battle Royale começando!", brInviteBody: "Uma nova partida está se formando. Quer entrar?",
-  brInviteYes: "Entrar", brInviteNo: "Agora não", brInviteNever: "Nunca", brInviteNeverTip: "Não mostrar mais este aviso (Opções → Interface)",
+  brInviteYes: "Entrar", brInviteNo: "Agora não", brInviteMute: "Silenciar", brInviteMuteTip: "Não avisar mais nesta sala (para desligar de vez: Opções → Interface)",
   rosterTitle: "NA SALA",
   chatTitle: "CHAT", chatHint: "T para falar", chatHintTouch: "Toque para falar", chatTeam: "equipe", chatPlaceholder: "Mensagem…",
   chatAll: "todos", chatScopeHint: "para quem você fala", chatDeadTag: "☠ ",

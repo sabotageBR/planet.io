@@ -133,3 +133,73 @@ test('a contagem PÚBLICA da sala não conta quem assiste', () => {
   assert.equal(r.info().players,1,'senão o "12/30" da tela de Salas contaria gente fora do mapa');
   assert.equal(r.adminInfo().specs,1,'mas o painel vê quantos são');
 });
+
+// ── A CÂMERA SÓ PARA EM GENTE ────────────────────────────────────────────────
+// `spectateTargetFor`/`spectatePick` andavam pelo placar (`Sim.leaderboard`), que conta o preenchimento —
+// e no Livre ele é a maioria esmagadora da sala. Assistir a um bot é assistir a ninguém: o nome não diz
+// nada a quem olha, não há o que aprender, e as setas ‹ › gastavam quase todas as paradas num robô.
+// Tirar o filtro de `Room.humanosVivos` deixa os três testes abaixo vermelhos.
+const bot=(r,slot,raio)=>r.sim.addBot(slot,{name:'bot'+slot,r:raio});
+
+test('humanosVivos ignora o preenchimento, por maior que ele seja', () => {
+  const r=sala();
+  const j=entra(r,'jogador');
+  bot(r,50,200); bot(r,51,180);
+  const lb=r.humanosVivos();
+  assert.equal(lb.length,1,'três planetas vivos, uma pessoa');
+  assert.equal(lb[0].slot,j.slot);
+  assert.ok(r.sim.leaderboard().length>=3,'o PLACAR continua contando todo mundo');
+});
+
+test('a escolha automática nunca cai num bot, mesmo com ele em primeiro', () => {
+  const r=sala();
+  const j=entra(r,'jogador');
+  bot(r,50,220);                                   // massa 48400 contra 900 da pessoa: é o líder da sala
+  assert.equal(r.sim.top(1)[0].slot,50,'o líder É o preenchimento — é esse o caso que interessa');
+  const s=assiste(r,'olheiro');
+  assert.equal(r.spectateTargetFor(s),j.slot,'a câmera para na pessoa, não no líder');
+});
+
+test('morrer para um preenchimento não prende a câmera nele', () => {
+  const r=sala();
+  const j=entra(r,'jogador');
+  bot(r,50,220);
+  const s=assiste(r,'olheiro');
+  // `prefer` é o `bySlot` do `dead`: quem me matou. Sendo bot, tem que degradar para a busca automática.
+  assert.equal(r.spectateTargetFor(s,50),j.slot);
+});
+
+test('as setas ‹ › andam só entre pessoas', () => {
+  const r=sala(MODE.FREE,{roomMax:8});
+  const a=entra(r,'ana'), b=entra(r,'bruno');
+  bot(r,50,220); bot(r,51,210); bot(r,52,205);
+  const s=assiste(r,'olheiro');
+  const humanos=new Set([a.slot,b.slot]);
+  let visto=r.spectateTargetFor(s);
+  for(let i=0;i<6;i++){visto=r.spectatePick(s,{dir:1});
+    assert.ok(humanos.has(visto),`volta ${i}: parou no slot ${visto}, que não é gente`);}
+});
+
+test('sem NINGUÉM vivo, a arquibancada recua para o preenchimento', () => {
+  // "Somente humanos" vale sempre que houver um humano — nunca ao preço de uma tela parada. No Battle
+  // Royale a sala é de 50 e o `anonBots` esconde quem é bot: depois que o último humano morre a partida
+  // continua, e quem entrou pelo botão "Assistir" tem que continuar vendo alguma coisa.
+  const r=sala();
+  bot(r,50,220); bot(r,51,180);
+  const s=assiste(r,'olheiro');
+  const alvo=r.spectateTargetFor(s);
+  assert.equal(alvo,50,'o maior da sala, porque não há gente para preferir');
+  assert.equal(r.spectatePick(s,{dir:1}),51,'e as setas andam entre eles');
+});
+
+test('basta UMA pessoa viva para o preenchimento sair da lista', () => {
+  const r=sala();
+  bot(r,50,220);
+  const s=assiste(r,'olheiro');
+  assert.equal(r.spectateTargetFor(s),50,'sala só de bots: recua');
+  const j=entra(r,'jogador');                      // chegou gente
+  // ⚠️ `Sim.leaderboard` é MEMOIZADO por tick: no mesmo tick do join a lista ainda é a de antes dele.
+  // Um passo do mundo é o que a sala faz sozinha 60× por segundo — aqui ele só torna o teste honesto.
+  r.step();
+  assert.equal(r.spectateTargetFor(s),j.slot,'e a câmera troca para ela, mesmo sendo a menor da sala');
+});

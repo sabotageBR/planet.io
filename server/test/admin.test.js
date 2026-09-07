@@ -122,6 +122,35 @@ test('admin: salas, kick de slot reciclado e aviso global',async t=>{
   assert.equal((await J('POST','/api/admin/broadcast',{text:'   '},painel)).s,400,'mensagem vazia não sai');
 });
 
+// ── O DETALHE DE UMA SALA TRAZ O QUE SÓ O BANCO SABE ─────────────────────────
+// A linha de cada jogador é memória do shard (nome, massa, os dois relógios) MAIS duas colunas que vêm de
+// `users`/`user_stats`: de onde a conta veio e quanto ela já jogou no total. Elas são coladas no ponto de
+// SAÍDA (`fichaJogadores`), depois do `askPeers` — feito no shard dono, uma sala cujo código pertencesse a
+// um pod em build antiga voltaria sem as colunas e sem sinal nenhum.
+// ⚠️ E a ORDENAÇÃO é depois da colagem: `by=total` e `by=origem` leem campos que não existem antes dela.
+test('admin: o detalhe da sala traz origem e tempo total de cada jogador',async t=>{
+  if(pula())return t.skip('sem banco');
+  const sala=srv.rooms.findOrCreateRoom({});
+  // Sessão no molde de espectador.test.js: o painel só lê `Room.adminInfo`, não abre socket.
+  const sessao={ws:{},sendJson(){},send(){return true;},known:new Map(),detach(){},
+    name:'admin-teste',userId:conta.id,key:null,level:0,avatar:null,country:null,sessionId:null,unsaved:true,
+    isAdmin:false,slot:-1,room:null,pid:0,rect:null,specSlot:-1,espectador:false,lastActiveAt:Date.now()};
+  sala.join(sessao,{name:'admin-teste',userId:conta.id});
+  try{
+    const d=await J('GET',`/api/admin/rooms/${sala.code}`,null,painel);
+    assert.equal(d.s,200);
+    const p=(d.j.room.players||[]).find(x=>x.slot===sessao.slot);
+    assert.ok(p,'o jogador tem que estar na lista');
+    assert.equal(typeof p.totalS,'number','o acumulado da CONTA (user_stats.play_time_s), não desta visita');
+    assert.ok('origem' in p,'origem é `null` para conta nascida no site — ausência é informação, não buraco');
+    // e os dois ordenam, senão o cabeçalho clicável mentiria
+    for(const by of ['total','origem']){
+      const o=await J('GET',`/api/admin/rooms/${sala.code}?by=${by}&dir=asc`,null,painel);
+      assert.equal(o.s,200,`ordenar por ${by}`);
+      assert.ok(Array.isArray(o.j.room.players));}
+  }finally{sala.leave(sessao,'left');}
+});
+
 test('admin: toda ação mutante deixa rastro na auditoria',async t=>{
   if(pula())return t.skip('sem banco');
   // filtrado por ESTE admin: o banco de dev guarda o rastro das execuções anteriores, e a auditoria não

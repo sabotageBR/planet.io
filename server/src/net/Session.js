@@ -47,6 +47,15 @@ export class Session{
     /** Último convite de Battle Royale entregue a ESTA sessão (`BR.INVITE_CD_MS`). Ver `Room.brInvite`. */
     this.brInviteAt=0;
     /**
+     * O jogador mandou CALAR o convite de Battle Royale (`{t:"brMute"}`). É por SESSÃO, e é a sessão que
+     * define o alcance: ela nasce com o socket e morre com ele, então calar vale nesta sala e acaba
+     * quando o jogador entra em outra — que é exatamente o que se pediu. Um `resume` reata a MESMA
+     * sessão, então cair a rede e voltar não desfaz o silêncio da sala em que ele está.
+     * ⚠️ Não confundir com a pref `brInvite` da conta: aquela é "nunca mais, em lugar nenhum", vive no
+     * banco e se desliga nas Opções. Esta é "agora não, aqui".
+     */
+    this.brMudo=false;
+    /**
      * Esta sessão está só ASSISTINDO (`Room.joinSpec`). Ela tem slot e sessão como qualquer outra — é o
      * que faz snapshot, câmera e chat funcionarem sem código novo —, mas não conta em `humanCount`, não
      * ocupa vaga e não vira uma linha em `matches`. A marca mora aqui, e não só no `GamePlayer`, porque

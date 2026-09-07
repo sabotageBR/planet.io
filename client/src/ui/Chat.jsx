@@ -10,11 +10,29 @@ import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
 import { useLabels } from "../hooks/useTheme.js";
+import { ehCelular } from "../hooks/useViewportMode.js";
 
 export default function Chat({ h, persist = false }) {
   const LB = useLabels();
   const prefs = useStore(app, s => s.session.prefs);
   const game = useStore(gameRef, s => s.game);
+  // ── O CHAT NÃO EXISTE NO TELEFONE ENQUANTO SE JOGA ──────────────────────────
+  // No celular o painel mora POR CIMA da área de jogo (é `position:absolute` dentro de #hud), e a área de
+  // jogo do celular é a tela inteira: cada linha que chega tapa o canto onde o planeta está. Pior, o campo
+  // de texto abre o teclado virtual do sistema, que come metade da tela no meio de uma partida. No desktop
+  // nada disso acontece — lá o chat ocupa uma sobra.
+  // ⚠️ `persist` (morto, pódio ou assistindo) MANTÉM o chat, de propósito: o que atrapalha é a GAMEPLAY, e
+  // atrás da tela de morte não há gameplay para atrapalhar — é justamente o momento em que se lê e se
+  // responde. É a mesma fronteira que o `persist` já usa para não desbotar as linhas.
+  // ⚠️ O ADMINISTRADOR CONTINUA VENDO, no telefone e jogando: quem modera precisa ler a sala de onde
+  // estiver, e é o único caminho de moderação que existe dentro da partida (silenciar/denunciar saem do
+  // clique no nome, aqui dentro). `isAdmin` só chega ao cliente quando é verdade (repos/users.js).
+  const celular = ehCelular(useStore(app, s => s.mode));
+  const admin = useStore(app, s => !!(s.session.user && s.session.user.isAdmin));
+  // Uma variável só para as DUAS portas (o listener de teclado e o render): eram duas condições separadas
+  // lendo `prefs.chat`, e a segunda razão de sumir tinha que entrar nas duas — senão o T continuaria
+  // abrindo um painel que não está na tela.
+  const escondido = prefs.chat === false || (celular && !admin && !persist);
   const [open, setOpen] = useState(false), [text, setText] = useState("");
   const [tick, setTick] = useState(0);
   const [paraEquipe, setParaEquipe] = useState(false);   // morto no BR: TODOS (padrão) ↔ EQUIPE
@@ -35,7 +53,7 @@ export default function Chat({ h, persist = false }) {
   // de texto (dentro do campo ele ENVIA, logo abaixo), e é memória muscular de todo .io. Tirá-lo custaria
   // alguma coisa e não compraria nada.
   useEffect(() => {
-    if (prefs.chat === false) return;
+    if (escondido) return;
     const kd = e => {
       const alvo = document.activeElement, digitando = alvo && /INPUT|TEXTAREA/.test(alvo.tagName);
       if ((e.code === "KeyT" || e.code === "Enter") && !digitando) { e.preventDefault(); setOpen(true); setTimeout(() => inp.current && inp.current.focus(), 0); }
@@ -45,10 +63,10 @@ export default function Chat({ h, persist = false }) {
       else if (e.code === "Escape" && digitando) { e.preventDefault(); setOpen(false); setText(""); alvo.blur(); }
     };
     addEventListener("keydown", kd); return () => removeEventListener("keydown", kd);
-  }, [prefs.chat]);
+  }, [escondido]);
   // relógio só para o fade: as linhas somem pela idade, e sem isto elas ficariam eternas até chegar outra
   useEffect(() => { if (!linhas.length) return; const t = setInterval(() => setTick(x => x + 1), 1000); return () => clearInterval(t); }, [linhas.length]);
-  if (prefs.chat === false) return null;
+  if (escondido) return null;
   const agora = Date.now();
   // `persist`: na tela de morte o chat NÃO desbota. O fade existe para o chat não virar parede em cima do
   // jogo — atrás da tela de morte não há jogo, e quem parou de jogar quer justamente ler a conversa.

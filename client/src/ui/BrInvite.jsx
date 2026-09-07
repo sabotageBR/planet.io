@@ -3,7 +3,7 @@
 // (AccountModal/Shop/Pause), aqui o jogador está NO MEIO de uma partida do Livre.
 // Expira sozinho pelo `at+ttlMs` do servidor, no mesmo padrão de Notice.jsx.
 import React, { useEffect, useState } from "react";
-import { play, setPref } from "../state/actions.js";
+import { play } from "../state/actions.js";
 import { getGame } from "../state/game.js";
 import { app } from "../state/app.js";
 import { useStore } from "../state/store.js";
@@ -27,14 +27,20 @@ export default function BrInvite({ b }) {
   if (!b || prefs.brInvite === false || performance.now() > b.at + b.ttlMs) return null;
   const fecha = () => { const g = getGame(); if (g) g.dismissBrInvite(); };
   const entra = () => { fecha(); play({ room: b.room, mode: MODE.BR, teamSize: 1, party: null }); };
-  // "Nunca" é a mesma pref das Opções, escrita daqui. É o lugar em que ela é óbvia: quem quer desligar o
-  // aviso está olhando para ele, no meio de uma partida, e não vai abrir um menu para procurá-la.
-  const nunca = () => { fecha(); setPref("brInvite", false); };
+  // SILENCIAR É DESTA SALA, e a escolha do alcance é o ponto. Este botão já foi a pref `brInvite` da conta
+  // — "nunca mais, em lugar nenhum" —, e isso é grande demais para uma decisão tomada no meio de uma
+  // partida, com um card na frente: quem só queria sossego AGORA desligava o aviso para sempre e só
+  // descobriria como voltar atrás procurando em Opções. Hoje ele vale enquanto o jogador estiver nesta
+  // sala; na próxima do Livre ele é avisado de novo e pode calar de novo lá. Quem quer o "nunca mais"
+  // continua tendo: é a pref, nas Opções e no menu do Esc.
+  // ⚠️ Quem corta é o SERVIDOR (`Session.brMudo`, via `{t:"brMute"}`), não esta tela — o alcance "esta
+  // sala" é a própria SESSÃO, que nasce com o socket e morre com ele. Nada a expirar, nada a lembrar.
+  const silencia = () => { const g = getGame(); if (g) g.muteBrInvite(); };
   return <div id="br-invite" className="card" role="dialog" aria-label={LB.brInviteTitle}>
     <b>{LB.brInviteTitle}</b>
     <span>{LB.brInviteBody}</span>
     <div className="bi-actions">
-      <button className="bi-nunca" onClick={nunca} title={LB.brInviteNeverTip}>{LB.brInviteNever}</button>
+      <button className="bi-mudo" onClick={silencia} title={LB.brInviteMuteTip}>{LB.brInviteMute}</button>
       <button className="btn-secondary" onClick={fecha}>{LB.brInviteNo}</button>
       {/* ⚠️ SEM `autoFocus`. Ele roubava o teclado no meio de uma partida do Livre: o card sobe sozinho, sem
           ninguém ter pedido, e a partir dali um Espaço (dividir) virava "clicar em Entrar" e mandava o

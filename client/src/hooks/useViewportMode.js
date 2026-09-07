@@ -42,6 +42,16 @@ export function modeFor(w, h, coarse, antes) {
 /** `coarse` = o ponteiro PRIMÁRIO é grosso (dedo). É o que decide affordance de toque, não o tamanho. */
 export const pointerFor = coarse => (coarse ? "coarse" : "fine");
 
+/**
+ * É CELULAR? — as duas formas de telefone, em pé e deitado. Quem some no telefone (hoje: o chat, ver
+ * ui/Chat.jsx) pergunta aqui, e não a um `matchMedia` próprio.
+ * ⚠️ `tablet` fica de FORA, e é o ponto inteiro de a constante existir: `data-pointer="coarse"` responde
+ * "é dedo?" e casaria com um iPad, que tem 1180 px de largura e espaço de sobra para um painel de chat no
+ * canto. O que atrapalha a gameplay é a tela PEQUENA, não o dedo — e `modeFor` já separou as duas coisas.
+ * @param {string|null|undefined} mode o `app.mode` (= `body[data-mode]`)
+ */
+export const ehCelular = mode => mode === "portrait" || mode === "landscape";
+
 const forced = () => {
   const m = new URLSearchParams(location.search).get("mode");   // relido a cada chamada: antes era lido uma vez, no load do módulo
   return MODES.includes(m) ? m : null;

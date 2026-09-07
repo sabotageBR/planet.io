@@ -149,6 +149,25 @@ export function createUsers(db){
           :`UPDATE users SET banned_until=NULL,ban_reason=NULL WHERE id=$1 RETURNING *`,
     days>0?[id,String(Math.min(3650,days|0)),String(reason||'').slice(0,300)||null]:[id]).then(r=>toAdmin(r.rows[0]));
   const setAdmin=(id,on,c=db)=>c.query(`UPDATE users SET is_admin=$2 WHERE id=$1 RETURNING *`,[id,!!on]).then(r=>toAdmin(r.rows[0]));
+  /**
+   * FICHA CURTA de um punhado de contas, para a tabela de jogadores de UMA sala no painel: de onde a conta
+   * veio e quanto ela já jogou no total.
+   * ⚠️ Uma consulta para a sala inteira (`= ANY`), nunca uma por linha: são até 30 jogadores e o painel
+   * repete o fetch do detalhe a cada 5 s — trinta SELECTs por segundo por administrador, no mesmo pool que
+   * a persistência de partida usa.
+   * ⚠️ `play_time_s` é o acumulado da CONTA (`user_stats`, somado a cada partida encerrada), e não tem
+   * nada a ver com os dois relógios que `Room.adminInfo` já manda: aqueles são desta visita e desta vida,
+   * e vivem só na memória do shard. São três perguntas diferentes na mesma linha da tabela.
+   * ⚠️ Devolve `Map` e não array: quem chama casa por `userId`, e a ordem da resposta do Postgres não é a
+   * dos slots. Um id sem linha (conta apagada) simplesmente não aparece — o painel mostra "—".
+   * @param {(number|string|null)[]} ids @returns {Promise<Map<number,{origin:string|null,playTimeS:number}>>}
+   */
+  const adminBrief=(ids,c=db)=>{
+    const l=[...new Set((ids||[]).filter(x=>x!=null).map(Number).filter(Number.isFinite))];
+    if(!l.length)return Promise.resolve(new Map());
+    return c.query(`SELECT u.id,u.origin,COALESCE(st.play_time_s,0) AS play_time_s
+      FROM users u LEFT JOIN user_stats st ON st.user_id=u.id WHERE u.id=ANY($1::bigint[])`,[l])
+      .then(r=>new Map(r.rows.map(x=>[Number(x.id),{origin:x.origin||null,playTimeS:x.play_time_s|0}])));};
   /** Quantos administradores existem — o painel usa para não deixar rebaixar o último. */
   const adminCount=(c=db)=>c.query(`SELECT count(*)::int AS n FROM users WHERE is_admin`).then(r=>r.rows[0].n);
   /** Promove por e-mail (env ADMIN_EMAILS, no boot). SÓ PROMOVE: rebaixar por ConfigMap tranca todo mundo para fora. */
@@ -156,5 +175,5 @@ export function createUsers(db){
     db.query(`UPDATE users SET is_admin=true WHERE kind='registered' AND is_admin=false AND lower(email)=ANY($1::text[])`,
       [emails.map(e=>String(e).trim().toLowerCase()).filter(Boolean)]).then(r=>r.rowCount);
   return{byId,byLogin,byEmail,insertGuest,setNick,setLogin,claim,mergePrefs,setEquipped,setCountry,setAvatarHash,touchSeen,purgeOrphanGuests,
-    toAdmin,search,adminById,setBan,setAdmin,adminCount,promoteByEmails};
+    toAdmin,search,adminById,adminBrief,setBan,setAdmin,adminCount,promoteByEmails};
 }

@@ -507,10 +507,10 @@ body[data-mode="portrait"] #hud #notice,body[data-mode="portrait"] #hud #idle-wa
    card, não uma escolha da partida. Vai à esquerda, sem superfície, e empurra as outras para a direita —
    três botões do mesmo peso lado a lado fazem o jogador ler os três antes de decidir. Alvo de 44 px no
    dedo continua valendo (o padding vertical o dá; a área de toque é a linha inteira do texto). */
-#hud #br-invite .bi-nunca{margin-right:auto;background:none;border:0;box-shadow:none;padding:6px 2px;
+#hud #br-invite .bi-mudo{margin-right:auto;background:none;border:0;box-shadow:none;padding:6px 2px;
   font-size:11.5px;opacity:.62;color:inherit;text-decoration:underline;cursor:pointer}
-#hud #br-invite .bi-nunca:hover,#hud #br-invite .bi-nunca:focus-visible{opacity:1}
-body[data-pointer="coarse"] #hud #br-invite .bi-nunca{padding:12px 4px;font-size:12.5px}
+#hud #br-invite .bi-mudo:hover,#hud #br-invite .bi-mudo:focus-visible{opacity:1}
+body[data-pointer="coarse"] #hud #br-invite .bi-mudo{padding:12px 4px;font-size:12.5px}
 body[data-mode="portrait"] #hud #br-invite{font-size:12.5px;max-width:92vw}
 /* ── AVISO REFORÇADO DO GÁS ──
    Banner de contagem (10s/3s antes do fechamento) — texto grande, chama mais atenção que o chip

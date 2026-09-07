@@ -23,7 +23,11 @@ import {createOriginMatcher} from '../http/cors.js';
 // ResizeObserver, que dispara sozinho quando a barra de endereço do celular recolhe, sem ninguém tocar em
 // nada. `chat` e `spectate` estão DENTRO porque são o espectador ATENTO: quem morreu e continua conversando
 // ou trocando de câmera está tão presente quanto quem está jogando.
-const ATIVIDADE=new Set(['awake','chat','talk','respawn','spectate','report','room','quit']);
+// ⚠️ `brMute` entra aqui pelo mesmo motivo de `report` e `room`: é um CLIQUE, ou seja prova que há gente
+// do outro lado. Redundante na prática (o `pointerdown` do card já dispara um `awake` pelo Activity do
+// cliente) e barato de manter — e uma ação humana fora desta lista é uma pessoa que o ceifador pode
+// remover justo depois de ela ter pedido alguma coisa.
+const ATIVIDADE=new Set(['awake','chat','talk','respawn','spectate','report','room','quit','brMute']);
 // As flags ONE-SHOT (valem uma vez por seq). ⚠️ EJECT_HOLD e AIM ficam de fora: são de NÍVEL, repetidas em
 // TODO pacote enquanto a tecla está segurada — uma tecla presa embaixo de um objeto valeria por presença
 // eterna, que é exatamente o jogador que isto existe para encontrar.
@@ -217,6 +221,11 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         case 'ping':s.sendCopy(encodePong(pongWriter,{clientTime:Number(msg.c)>>>0,serverTick:s.room?s.room.sim.tick:0}));break;
         case 'chat':if(s.room&&s.slot>=0)s.room.chat(s,msg.text,msg.scope);break;   // `scope` só é lido de quem já morreu (ver Room._escopoFala)
         case 'talk':if(s.room&&s.slot>=0)s.room.talkState(s,!!msg.on);break;   // push-to-talk abriu/fechou (o clipe vem depois, em binário)
+        // CALAR o convite de Battle Royale NESTA SALA. Sem `slot>=0`: não é ação de jogo, é o jogador
+        // dizendo que não quer ser interrompido — e vale igual para quem ainda está no lobby ou morto.
+        // Só liga, nunca desliga: desfazer é entrar noutra sala (a sessão morre com o socket), e um
+        // `{t:"brMute",on:false}` seria uma segunda verdade sobre um estado que o jogador não vê.
+        case 'brMute':s.brMudo=true;break;
         // DENÚNCIA de um jogador. Não é ação de dono nem de admin: qualquer um pode, contra qualquer um —
         // é o par do SILENCIAR, que é local (client/src/game/index.js). Aqui só se REGISTRA: ninguém é
         // expulso por denúncia, senão a denúncia vira arma. Ver `Room.report`.

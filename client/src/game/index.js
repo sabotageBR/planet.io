@@ -129,6 +129,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // não conta: quem está MORTO não manda input nenhum (ver a guarda `dead` em `enviarInput`), e mesmo vivo o
   // alvo pode andar sozinho enquanto ninguém toca em nada.
   let morte=morteZero(),awakeAt=0;
+  // ⚠️ O SILÊNCIO DO CONVITE DE BR É DESTA SALA, e por isso é uma variável do motor e não uma pref: ele é
+  // zerado no `join`/`leave` (logo abaixo, ao lado do `morte`), então entrar noutra sala do Livre volta a
+  // avisar — que é o alcance pedido. O servidor tem o par disto em `Session.brMudo`, e é ELE que corta o
+  // envio; esta cópia local existe só para o `brStart` que já estava em voo quando o jogador clicou não
+  // reabrir o card. Ver `Room.brInvite`.
+  let brMudo=false;
   // ── modo, equipe, zona, chat e voz ──
   let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0,lobby=null,spec=null;   // `lobby` = o estado da tela de espera (JSON `lobby`, em ms)
   let zone=null,zoneShown={x:0,y:0,r:0},lastShrink=0,lastHurt=false,lobbyBeep=false,zoneWarnIdx=0;   // `zone` = o par de círculos do fio; `zoneShown` é o interpolado do frame
@@ -357,8 +363,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // CONVITE DE BATTLE ROYALE: só chega em sala do modo Livre (Room.brInvite filtra no servidor).
     // Interativo — fica no hudStore até responder ou o TTL vencer, ao contrário do `notice` passivo.
     else if(m.t==="brStart"){
-      hudStore.update(h=>({...h,brInvite:{room:m.room,at:performance.now(),ttlMs:m.ttlMs|0||20000}}));
-      audio.play("toast",{mine:true});}
+      // Calado NESTA sala: o servidor já parou de mandar (`Session.brMudo`), e esta guarda pega só o que
+      // estava em voo quando o jogador clicou. ⚠️ `if(!brMudo){...}` e não um `return`: o que vem depois
+      // da cadeia de `else if` não é problema desta mensagem.
+      if(!brMudo){
+        hudStore.update(h=>({...h,brInvite:{room:m.room,at:performance.now(),ttlMs:m.ttlMs|0||20000}}));
+        audio.play("toast",{mine:true});}}
     // O GÁS COMEÇOU A FECHAR, para a sala inteira (não só quem está perto do círculo novo — o
     // EVENT.ZONE_SHRINK é filtrado por AOI). Reusa o MESMO som `zoneShrink`; o GAP.zoneShrink dedupe
     // quem também recebe o EVENT posicional por estar perto.
@@ -630,7 +640,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // um `{deadAt,armAt}` VENCIDO. Ele chegava à tela de morte pelo store com throttle antes do par novo
       // e disparava o respawn no primeiro frame: a tela não aparecia e o jogador reentrava no ato. Ver
       // `ui/deadClock.js`, que fecha o mesmo buraco do outro lado com o piso.
-      game.leave(true);joined=true;dead=false;morte=morteZero();specSlot=-1;selfTick=0;espectador=!!spec;
+      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;specSlot=-1;selfTick=0;espectador=!!spec;
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null,spec:!!spec};
@@ -652,7 +662,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa
     // por aqui (ela é do Connection, e volta pelo `resume`), então nada disso atrapalha quem só caiu.
     leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;morte=morteZero();espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
+      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -661,6 +671,16 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     setRoster(on){const v=!!on;if(v===rosterOn)return;rosterOn=v;pushHud(performance.now());},
     /** "Agora não" no convite de Battle Royale: só fecha o card, não sai da sala do Livre. */
     dismissBrInvite(){hudStore.update(h=>({...h,brInvite:null}));},
+    /**
+     * CALAR o convite de Battle Royale NESTA SALA. Fecha o card e avisa o servidor, que para de mandar
+     * para esta sessão (`Session.brMudo`). Vale até o jogador entrar em outra sala — lá ele volta a ser
+     * avisado, e pode calar de novo.
+     * ⚠️ Isto NÃO é a pref `brInvite` da conta, que é "nunca mais, em lugar nenhum" e mora nas Opções (e
+     * no menu do Esc). São duas decisões de tamanhos diferentes, e o card oferece a pequena — que é a
+     * que se quer tomar no meio de uma partida.
+     */
+    muteBrInvite(){brMudo=true;hudStore.update(h=>({...h,brInvite:null}));
+      if(conn&&conn.isOpen&&joined)conn.sendJson({t:"brMute"});},
     resize(){if(!renderer)return;renderer.resize();agendaView();},
     destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();if(pinch)pinch.destroy();game.leave(true);audio.suspend();for(const ev of ["pointerdown","keydown","click","touchend"])removeEventListener(ev,wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();activity.destroy();actions.destroy();clearTimeout(viewT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("warspace:pause",onPortalPause);removeEventListener("warspace:theme",onThemeEvent);if(themeGuard)removeEventListener("warspace:theme",themeGuard);

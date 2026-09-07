@@ -21,7 +21,7 @@ export default {
   zoneWarnAt: "⚠ THE GAS CLOSES IN {n}s!",
   admJoin: "🟢 {n} joined the game", admJoinTitle: "warspace.io",
   brInviteTitle: "🚀 Battle Royale starting!", brInviteBody: "A new match is filling up. Want to join?",
-  brInviteYes: "Join", brInviteNo: "Not now", brInviteNever: "Never", brInviteNeverTip: "Stop showing this (Options → Interface)",
+  brInviteYes: "Join", brInviteNo: "Not now", brInviteMute: "Mute", brInviteMuteTip: "Stop alerting me in this room (to turn it off for good: Options → Interface)",
   rosterTitle: "IN THE ROOM",
   chatTitle: "CHAT", chatHint: "T to talk", chatHintTouch: "Tap to talk", chatTeam: "squad", chatPlaceholder: "Message…",
   chatAll: "everyone", chatScopeHint: "who you're talking to", chatDeadTag: "☠ ",
