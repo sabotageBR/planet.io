@@ -176,13 +176,29 @@ function bouncePiece(A,B,e,aPiece,bPiece){
  * produção: 1.428 primeiras vidas terminaram comidas por bot, com o algoz 6,1× mais pesado, aos 46 s.
  * ⚠️ Vale só para BOT × HUMANO, e nesse sentido. Entre pessoas a regra não muda: um jogador de verdade
  * comendo outro é o jogo, e proteger contra isso seria inventar invulnerabilidade num .io.
+ * ⚠️ **A GRAÇA POR TEMPO ERA UM PENHASCO, e o dado mostrava o degrau.** Medido em 07/09/2026 nos
+ * jogadores do Fit Test da Poki: a primeira vida tem um PICO de 6× exatamente na faixa 15-19 s — 118
+ * mortes contra 19 na faixa anterior —, 88-93% delas comido. A proteção não ensinava nada, só adiava:
+ * a 448 px/s um novato cruza 6.700 px nos 15 s e chega ao fim da graça no meio da multidão. Por isso
+ * ela deixou de acabar só por TEMPO. Passada a janela, o que continua valendo é a RAZÃO DE MASSA —
+ * `NOVATO_RATIO` (4×) enquanto a pessoa estiver abaixo de `NOVATO_MASS` (6000, r≈77).
+ * ⚠️ **4× e não 2×**: `EAT.RATIO` (1,15 de raio) é 1,32 de massa, então entre 1,32× e 4× o bot CONTINUA
+ * comendo — a briga apertada segue existindo, que é o jogo. O que a regra mata é o ATROPELAMENTO: na
+ * mesma medição o algoz mediano tinha **8× a massa** da vítima e 45,8% deles passavam de 10×, contra
+ * uma vítima de 1.560 de massa. Ali não há decisão que o jogador pudesse ter tomado.
+ * ⚠️ A comparação é entre as PEÇAS que colidem, não entre os jogadores: é a colisão que está sendo
+ * julgada, e um bot gigante partido em 16 pedaços tem cada peça no tamanho de briga honesta.
  * ⚠️ Protegido, o grande ATRAVESSA — sem quique. Dar quique aqui faria o novato ser chutado pelo mapa
  * por algo que ele nem pode enfrentar, e é o mesmo tratamento que `STAR.PASS_R` dá a quem cabe na estrela.
  * ⚠️ E não há espelho em `predict.js`: ele prevê as peças PRÓPRIAS e não decide quem come quem.
- * @param {World} w @param {any} big @param {any} small
+ * @param {World} w @param {any} big @param {any} small @param {any} [bodyBig] @param {any} [bodySmall]
  */
-function recemChegado(w,big,small){
-  return !!(big&&small&&big.isBot&&!small.isBot&&w.tick-small.spawnTick<BOT.SPAWN_GRACE_TICKS);}
+function recemChegado(w,big,small,bodyBig,bodySmall){
+  if(!(big&&small&&big.isBot&&!small.isBot))return false;
+  if(w.tick-small.spawnTick<BOT.SPAWN_GRACE_TICKS)return true;              // a graça de sempre, por TEMPO
+  // ...e depois dela o ABISMO continua: enquanto a pessoa é pequena, o preenchimento MUITO maior atravessa.
+  if(!(bodyBig&&bodySmall))return false;
+  return bodySmall.mass<BOT.NOVATO_MASS&&bodyBig.mass>bodySmall.mass*BOT.NOVATO_RATIO;}
 
 // ── peça × peça (donos diferentes) ──
 /**
@@ -200,7 +216,7 @@ export function piecePair(w,A,B){
   const aBig=ra>=rb*EAT.RATIO,bBig=!aBig&&rb>=ra*EAT.RATIO;
   if(aBig||bBig){
     const big=aBig?A:B,small=aBig?B:A,psBig=aBig?psA:psB,psSmall=aBig?psB:psA;
-    if(recemChegado(w,psBig,psSmall))return;                                                       // preenchimento não come quem acabou de nascer: atravessa
+    if(recemChegado(w,psBig,psSmall,big,small))return;                                                       // preenchimento não come quem acabou de nascer: atravessa
     const lim=big.r-small.r*EAT.CENTER;if(lim>0&&d2<lim*lim)eatPiece(w,psBig,big,psSmall,small);   // o escudo NÃO impede de ser comido: ele defende só de míssil e asteroide
     return;}
   if(d2<sum*sum){const vn=bouncePiece(A,B,BOUNCE.E,true,true);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}}

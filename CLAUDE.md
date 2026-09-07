@@ -890,6 +890,35 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ E o que NÃO é o problema: pela origem Poki, das 2.512 contas que jogaram num dia, 685 (27%) passaram
   de 3 min somando vidas e 1.377 voltaram para uma segunda. O jogo prende quem sobrevive ao primeiro
   minuto — o funil quebra ANTES disso, e é por isso que a alavanca é o primeiro encontro, não o resto.
+- **O PRIMEIRO ENCONTRO TINHA DOIS DEFEITOS, E CONSERTAR UM REVELOU O OUTRO** (`BOT.NOVATO_MASS`/
+  `NOVATO_RATIO`, `rules.recemChegado`, `bot.js:novatoProtegido`; medido em 07/09/2026 nos jogadores dos
+  Fit Tests da Poki). O bloco acima trata do primeiro; este é o que apareceu depois dele.
+  ⚠️ **(1) O NOVATO NÃO ENCONTRAVA NINGUÉM.** Dos que jogam UMA vida só (45% de todos), **61,8% saíam
+  VIVOS** — `cause='left'`, aos 53 s, tendo crescido de 900 para 4.006 de massa —, com **81% sem um
+  abate e 79% sem nunca apertar dividir**. Não era dificuldade: era um mapa vazio. A conta: 12000×12000
+  com 32 planetas, e um celular em pé (390×844, ΣR=30, `CAM.PORTRAIT_K` 1.12) enxerga 0,47% do mapa →
+  **0,15 outros planetas na tela**, ou seja 87% do tempo sozinho. O agar.io (14142, ~200 planetas) dá
+  **0,67**. Por isso subir `ROOM.BOTS` de 24 para 32 não mediu nada: levou de 0,11 para 0,15, e os dois
+  são "ninguém". A densidade sobe por `ROOM.BOTS`, por `CAM.PORTRAIT_K` (área ∝ pk²) e por `WORLD.LADO`
+  — este último só no BOOT e ⚠️ sem reescalar comida, cinturões nem estrelas, então o perigo adensa junto.
+  ⚠️ **(2) RESOLVIDO O ENCONTRO, O NOVATO PASSOU A SER ATROPELADO.** Com 50 planetas e `PORTRAIT_K` 1.5,
+  o encontro subiu de 63% para 86% de primeiras vidas comidas e o largar-por-tédio caiu pela metade
+  (54,2% → 33,5%) — mas a mediana da 1ª vida caiu de 35 s para 25 s, os abates zerados SUBIRAM (91,1% →
+  95,8%) e o algoz mediano passou a ter **8× a massa** da vítima, com 45,8% acima de 10× e **79,6% deles
+  sendo preenchimento**, contra uma vítima de 1.560. Trocar "morre de tédio sozinho" por "é atropelado em
+  25 s" não é progresso.
+  ⚠️ **A GRAÇA POR TEMPO ERA UM PENHASCO, e o histograma mostrava o degrau**: pico de **6×** na faixa
+  15–19 s (118 mortes contra 19 na faixa anterior), 88–93% comido — exatamente `SPAWN_GRACE_TICKS` (900
+  = 15 s). Ela não ensinava nada, só adiava: a 448 px/s um novato cruza 6.700 px em 15 s e chega ao fim
+  dela no meio da multidão. Hoje ela deixou de acabar só por TEMPO — passada a janela, vale a RAZÃO DE
+  MASSA (`NOVATO_RATIO` 4×) enquanto a pessoa estiver abaixo de `NOVATO_MASS` (6000, r≈77).
+  ⚠️ **4× e não 2×**: `EAT.RATIO` é 1,15 de RAIO = 1,32 de massa, então entre 1,32× e 4× o bot continua
+  comendo — a briga apertada é o jogo, e o que a regra mata é só o atropelamento, onde não havia decisão
+  que o jogador pudesse ter tomado. E continua **só BOT × HUMANO**: entre pessoas nada muda.
+  ⚠️ **`bot.js` TEM QUE CONCORDAR** (`novatoProtegido` espelha `recemChegado`): divergindo, o gigante
+  persegue alguém que ele só vai ATRAVESSAR, e um planetão colado no novato sem nada acontecer lê pior
+  que ser comido. Lá a massa é `r²` por aproximação — é decisão de cérebro; quem mata usa a massa real.
+  ⚠️ Sem espelho em `predict.js`, que prevê as peças PRÓPRIAS e não decide quem come quem.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade

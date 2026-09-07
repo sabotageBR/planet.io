@@ -36,6 +36,16 @@ import {incomingMissile,sameTeam,outOfZone,ammoOf} from "./physics/rules.js";
 const HUMAN_BONUS=1.5;
 /** O bônus de caçar gente, para um bot deste tamanho. */
 const bonusHumano=r=>r<=BOT.HUNT.BONUS_MAX_R?HUMAN_BONUS:1;
+/**
+ * A pessoa está protegida deste preenchimento? ESPELHA `rules.recemChegado`, e as duas TÊM que
+ * concordar: lá é a física (quem come quem), aqui é a escolha de presa. Divergindo, o bot persegue
+ * alguém que ele vai apenas atravessar — o que na tela é pior que ser comido, porque o gigante fica
+ * colado no novato sem que nada aconteça e sem que ele entenda por quê.
+ * ⚠️ Massa por r² é aproximação (o ejetado pode ter `mass != r²`), e aqui basta: isto é a decisão do
+ * cérebro, não a regra que mata. Quem decide de verdade é a física, com a massa real.
+ */
+const novatoProtegido=(tick,o,meuR,oR)=>tick-o.spawnTick<BOT.SPAWN_GRACE_TICKS
+  ||(oR*oR<BOT.NOVATO_MASS&&meuR*meuR>oR*oR*BOT.NOVATO_RATIO);
 const TAU=6.28318,PI=Math.PI;
 const SPLIT_R=Math.SQRT2*EAT.RATIO;   // raio mínimo para engolir a presa DEPOIS do salto (r/√2 ≥ 1,15·rb)
 const SKILL_W=BOT.SKILLS.reduce((a,x)=>a+x.w,0);
@@ -251,7 +261,7 @@ export class BotBrain{
             const v=(q.br*(o.isBot?1:bonusHumano(c.big))-bd*.1)*BOT.HUNT.BITE_PENALTY;
             if(v>pv){pv=v;prey=o.slot;preyBig=q.br;preyX=q.bx;preyY=q.by;preyPiece=q.bid;}}}}
       else if(c.big>=oc.big*huntRatio&&d<BOT.HUNT_DIST){
-        if(!o.isBot&&tick-o.spawnTick<BOT.SPAWN_GRACE_TICKS)continue;   // acabou de cair no mapa: deixa o humano respirar
+        if(!o.isBot&&novatoProtegido(tick,o,c.big,oc.big))continue;   // acabou de cair no mapa, ou ainda é pequeno demais para mim
         const v=oc.big*(o.isBot?1:bonusHumano(c.big))-d*.1;
         if(v>pv){pv=v;prey=o.slot;preyBig=oc.big;preyX=oc.x;preyY=oc.y;preyPiece=-1;}}}
     this.press=press;this.alive=alive;this.mate=mate;this.ed=ed;
