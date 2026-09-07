@@ -27,6 +27,10 @@
 # valendo — o segundo core é folga para o resto do processo (libuv, GC, TLS/zlib), não uma promessa
 # de o laço principal usar mais que um núcleo. `minReplicas`/`maxReplicas` caíram para 3–9 na mesma
 # decisão: a frota roda mais enxuta, e a autoescala continua livre para variar dentro dessa faixa.
+# ⚠️ O TETO VOLTOU A 20 em 07/09/2026, com `minReplicas` intacto em 3: os Fit Tests da Poki despejam
+# ~500 jogadores numa janela de duas horas em cima de uma frota que fica ociosa o resto do dia (medido:
+# 0 a 2 contas por hora fora dos testes), e `ROOM.BOTS`=50 encareceu a sala. O piso continua 3 porque é
+# ele que paga o dia inteiro; o teto é a folga para a rajada.
 # ⚠️ E ELE NÃO SUBSTITUI O MATCHMAKING — aprendido no travamento de 2026-09-05. A métrica é a CPU MÉDIA
 # da frota, então 1198m + 377m + 159m dá 578m e o HPA vê "está tudo bem" com um pod saturado e dois
 # ociosos: a média é justamente o que ESCONDE o desbalanceamento. E subir não resolveria, porque um shard
@@ -46,12 +50,17 @@ spec:
   # frota chegar. Reduzir de verdade é escalar o StatefulSet À MÃO, e isso MATA as partidas que estão na
   # memória dos pods removidos (sala é estado local do processo): manutenção em janela, nunca reação.
   minReplicas: 3
-  # ⚠️ 9 é decisão operacional, bem abaixo do que `k8s/10-server.yaml`/`k8s/30-ingress.yaml` provêm
-  # (24 Services + rotas) — sobra headroom para subir de novo sem gerar manifesto novo. Se um dia
-  # `maxReplicas` precisar passar de 24, aí sim exige arrumar o `shardChar` primeiro: o 1º caractere
-  # do código da sala é o shard em base36 (`rooms/codes.js`), e o shard 24 abriria salas com "O" — a
-  # letra que `CODE_CHARS` exclui de propósito para ninguém confundir com 0 ao digitar um convite.
-  maxReplicas: 9
+  # ⚠️ 20 é decisão operacional (07/09/2026, era 9), ainda abaixo do que `k8s/10-server.yaml` e
+  # `k8s/30-ingress.yaml` provêm — CONFERIDO no cluster: 24 Services `warspace-server-N` e 24 rotas
+  # `/ws/N`, índices 0..23. É subir `maxReplicas` ACIMA do que os manifestos provêm que cria pod
+  # fantasma (sobe e fica inalcançável, sem erro em lugar nenhum), nunca o contrário.
+  # ⚠️ E lembrar que subir aqui é BARATO e descer NÃO EXISTE: `scaleDown: Disabled` vale sempre, então
+  # um pico que leve a frota a 20 a deixa em 20 até alguém escalar o StatefulSet à mão, numa janela.
+  # O teto protege o cluster, não a conta — 20 pods × 2 cores de limite é mais do que os 4 nós têm.
+  # Se um dia `maxReplicas` precisar passar de 24, aí sim exige arrumar o `shardChar` primeiro: o 1º
+  # caractere do código da sala é o shard em base36 (`rooms/codes.js`), e o shard 24 abriria salas com
+  # "O" — a letra que `CODE_CHARS` exclui de propósito para ninguém confundir com 0 num convite.
+  maxReplicas: 20
   metrics:
     # AverageValue, não Utilization: `Utilization` é uma porcentagem do REQUEST (200m), então um pod
     # em 750m — que é o normal com a sala cheia — apareceria como 375% e o HPA iria direto ao teto na
