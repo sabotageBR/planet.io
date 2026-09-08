@@ -204,6 +204,13 @@ function bouncePiece(A,B,e,aPiece,bPiece){
 function recemChegado(w,big,small){
   if(!(big&&small&&big.isBot&&!small.isBot))return false;
   if(w.tick-small.spawnTick<BOT.SPAWN_GRACE_TICKS)return true;              // a graça de sempre, por TEMPO
+  // ⚠️ **A RAZÃO DE MASSA É DO LIVRE, E SÓ DELE** (`zoneNow()` = há Battle Royale rolando). No BR não
+  // existe novato: todo mundo começa igual, no mesmo tick, não há respawn, e ficar pequeno é RESULTADO da
+  // partida — não a condição de quem acabou de chegar. Sem esta guarda, quem encolhe vira fantasma e
+  // atravessa a sala inteira, o que além de estranho na tela quebra o modo: dá para sobreviver até o fim
+  // sem poder ser comido, e o BR é decidido por sobrevivência. Visto em partida, e é o mesmo `zoneNow()`
+  // que já tira o berçário da supernova do BR (`world.js:345`).
+  if(w.zoneNow())return false;
   // ...e depois dela o ABISMO continua: enquanto a pessoa é pequena, o preenchimento MUITO maior atravessa.
   // ⚠️ `massOf` (que percorre as peças) vem DEPOIS das guardas baratas de propósito: isto roda no par de
   // colisão, e só chega aqui quando um preenchimento está prestes a engolir uma pessoa.

@@ -139,3 +139,30 @@ test("entre PESSOAS nada mudou — a razão de massa não protege ninguém", () 
   w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
   assert.equal(encosta(w, 0, 1), true, "gente come gente, com qualquer diferença de tamanho");
 });
+
+// ── ...MAS NADA DISSO VALE NO BATTLE ROYALE ──────────────────────────────────
+// Visto em partida (07/09/2026): um jogador pequeno atravessando os grandes sem ser comido. No BR não
+// existe novato — todo mundo começa igual, no mesmo tick, não há respawn, e ficar pequeno é RESULTADO da
+// partida. A proteção transformava quem encolheu em fantasma, e como o modo é decidido por sobrevivência
+// isso não é só estranho na tela: dá para chegar ao fim sem poder ser comido.
+test("no BATTLE ROYALE não há proteção por massa: encolher não deixa ninguém fantasma", () => {
+  const w = arena();
+  w.zone = { t0: 0, t1: 100000, x0: 6000, y0: 6000, r0: 6000, x1: 6000, y1: 6000, r1: 500 };
+  assert.ok(w.zoneNow(), "a arena está em modo Battle Royale");
+  w.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
+  w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+  const p = w.players.get(1).pieces[0];
+  assert.ok(p.mass < BOT.NOVATO_MASS, "seria protegido no Livre");
+  assert.ok(w.massOf(0) > p.mass * BOT.NOVATO_RATIO, "e o outro é MUITO maior");
+  w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
+  assert.equal(encosta(w, 0, 1), true, "no BR o grande come: pequeno é resultado, não novato");
+});
+
+test("e no LIVRE a mesma cena continua protegida — a guarda é do modo, não do tamanho", () => {
+  const w = arena();                       // sem `w.zone`: modo Livre
+  assert.equal(w.zoneNow(), null, "a arena está no Livre");
+  w.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
+  w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+  w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
+  assert.equal(encosta(w, 0, 1), false, "atravessa, como no bloco acima");
+});

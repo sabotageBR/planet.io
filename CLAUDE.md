@@ -942,6 +942,13 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **4× e não 2×**: `EAT.RATIO` é 1,15 de RAIO = 1,32 de massa, então entre 1,32× e 4× o bot continua
   comendo — a briga apertada é o jogo, e o que a regra mata é só o atropelamento, onde não havia decisão
   que o jogador pudesse ter tomado. E continua **só BOT × HUMANO**: entre pessoas nada muda.
+  ⚠️ **E A RAZÃO DE MASSA É DO LIVRE, SÓ DELE** (guarda `w.zoneNow()`, a mesma que tira o berçário da
+  supernova do BR em `world.js:345`). No Battle Royale **não existe novato**: todo mundo começa igual, no
+  mesmo tick, não há respawn, e ficar pequeno é RESULTADO da partida, não a condição de quem acabou de
+  chegar. Sem a guarda, quem encolhe vira FANTASMA e atravessa a sala inteira — visto em partida, e não é
+  só estranho na tela: o BR é decidido por sobrevivência, então dava para chegar ao fim sem poder ser
+  comido. A graça por TEMPO continua valendo nos dois modos (é pré-existente e, na largada do BR, todos
+  têm a mesma massa, então ela não decide nada).
   ⚠️ **A COMPARAÇÃO É ENTRE OS JOGADORES, NUNCA ENTRE AS PEÇAS — e isto já esteve errado aqui.** A
   primeira versão comparava as peças que colidem, com o argumento de que "um bot gigante partido em 16
   tem cada peça no tamanho de briga honesta". O dado desmentiu no mesmo dia: 21% das mortes abaixo de

@@ -47,6 +47,7 @@ const bonusHumano=r=>r<=BOT.HUNT.BONUS_MAX_R?HUMAN_BONUS:1;
  */
 const novatoProtegido=(w,tick,o,ps)=>{
   if(tick-o.spawnTick<BOT.SPAWN_GRACE_TICKS)return true;
+  if(w.zoneNow())return false;   // a razão de massa é do LIVRE — ver o bloco de `rules.recemChegado`
   const ms=w.massOf(o.slot);
   return ms<BOT.NOVATO_MASS&&w.massOf(ps.slot)>ms*BOT.NOVATO_RATIO;};
 const TAU=6.28318,PI=Math.PI;
