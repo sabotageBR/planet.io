@@ -252,11 +252,32 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   esquerda da tela, e o planeta andava enquanto o dedo estivesse encostado — soltar PARAVA, porque o `up`
   zerava o curso e `enviarInput` passava a mandar o alvo em cima do próprio centróide. O preço era o jogo
   inteiro: a mão tinha de morar em cima da tela, tapando exatamente a bola que o jogador precisa ver.
-  Quatro regras: **(1)** qualquer parte da tela dirige — não há base, nem lado certo de encostar; **(2)**
+  Cinco regras: **(1)** qualquer parte da tela dirige — não há base, nem lado certo de encostar; **(2)**
   NADA é desenhado sob o dedo, e quem confirma o comando é uma seta colada ao PLANETA, ou seja o indicador
   passou a morar onde o jogador está OLHANDO; **(3)** o rumo SOBREVIVE ao dedo, e segue até ser substituído;
   **(4)** travado vai sempre a `k=1` — enquanto o dedo está no chão o curso ainda gradua a velocidade, mas um
-  rumo travado a meia força seria um planeta lento sem nada na tela explicando por quê.
+  rumo travado a meia força seria um planeta lento sem nada na tela explicando por quê; **(5)** TOCAR SEM
+  ARRASTAR também dirige, apontando o rumo do planeta para o ponto tocado.
+  ⚠️ **A regra 5 conserta um buraco que as outras quatro abriram juntas.** `st.tem` (há rumo) só era escrito
+  DENTRO do `move`, e só depois de o dedo passar de `MORTO·RAIO` = 5,2 px; o `down` não cria rumo de
+  propósito (senão o toque dá solavanco de parada) e o `up` só agia `if(st.tem)`. Um toque limpo não era um
+  planeta lento — era **zero**, e como a regra 2 não desenha nada sob o dedo, a tela ficava inteiramente
+  inerte: nem movimento, nem retorno de que o jogo tinha visto o dedo. Visto em teste de leitura de tela
+  ("ficam clicando na tela e não anda"). Tocar onde se quer ir é o modelo mental de quem chega do celular, e
+  esse gesto estava LIVRE: no dedo o toque no canvas não atira (`actions.button` ignora `type==="touch"`) e o
+  `down` do volante já dá `stopPropagation`. O medidor do banco só pega quem nunca se moveu na vida inteira
+  (`food_eaten<=2` são 1,7% das primeiras vidas), então isto não aparecia como epidemia — o que ele não pega
+  é quem perde os primeiros 15–20 s tateando, com a mediana de primeira vida em ~50 s.
+  ⚠️ **A referência é o CENTRO DA CÂMERA, não o centróide**: `Renderer.js` desenha `cam.x,cam.y` em
+  `W/2,H/2`, então o centro do canvas É o planeta na tela — e é para onde o jogador está apontando, que é o
+  que importa num gesto. `TOQUE_MIN` (40 px de TELA) é o análogo da zona morta: tocar em cima do próprio
+  planeta não diz para onde ir, e ali a direção é imprecisão de polegar.
+  ⚠️ **`up()` SEM argumentos não converte, e isso é o contrato de `release()`**: a pinça e a pausa largam o
+  dedo sem que o jogador tenha pedido rumo nenhum. Pelo mesmo motivo `pointercancel` ganhou handler PRÓPRIO
+  — gesto que o navegador tomou não é toque deliberado.
+  ⚠️ É **só no dedo**, por duas guardas independentes que já existiam: `down` sai cedo em
+  `pointerType==="mouse"` e `game/index.js` só arma o direcional com `(pointer: coarse)` e `prefs.joystick`.
+  No mouse o cursor já É o controle.
   ⚠️ **NÃO EXISTE GESTO DE PARADA**, e isso é decisão, não esquecimento: quem quer parar aponta para outro
   lado, como no agar.io. As únicas coisas que param o planeta continuam sendo a pausa, o fim de rodada e a
   morte (todas mandando o alvo em cima do centróide, em `enviarInput`) — mais o NASCIMENTO, que começa sem

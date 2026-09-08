@@ -6,7 +6,7 @@
 // tinha de morar na tela, tapando exatamente a bola que o jogador precisa ver, a mão nunca descansava, e
 // metade da tela não dirigia.
 //
-// O modelo novo é o do agar.io mobile, e são QUATRO regras:
+// O modelo novo é o do agar.io mobile, e são CINCO regras:
 //   1. QUALQUER PARTE DA TELA dirige. Não há base, não há metade esquerda, não há lugar certo de encostar.
 //   2. NADA É DESENHADO SOB O DEDO. Quem informa o rumo é a seta colada ao planeta (renderer/layers/
 //      Heading.js) — o indicador fica onde o jogador está OLHANDO, não onde a mão dele está tapando.
@@ -17,6 +17,13 @@
 //   4. SOLTAR VAI A VELOCIDADE MÁXIMA (`k=1`). Enquanto o dedo está no chão o curso gradua a velocidade —
 //      analógico de verdade —, mas um rumo travado a meia força seria um planeta lento sem nada na tela
 //      explicando por quê. Travou, é a todo vapor.
+//   5. TOCAR SEM ARRASTAR TAMBÉM DIRIGE: o rumo aponta do planeta para o ponto tocado. Sem isto, um toque
+//      limpo não produzia NADA — `st.tem` só era escrito dentro do `move`, e só depois de o dedo andar
+//      mais de MORTO·RAIO (5,2 px). Não era um planeta lento: era zero, e como a regra 2 não desenha nada
+//      sob o dedo, a tela ficava inteiramente inerte. Visto em teste de leitura de tela: o jogador toca,
+//      toca de novo, e nada acontece nem se move nem responde. Tocar onde se quer ir é o modelo mental
+//      de quem chega do celular, e aqui esse gesto estava livre — no dedo o toque no canvas não atira
+//      (`actions.button` ignora `type==="touch"`) e o `down` do volante já dá `stopPropagation`.
 //
 // OS DOIS DEDOS. Só o primeiro dirige; o segundo move a MIRA (a retícula do tiro segurado, que game/
 // index.js injeta no `pointer.state`). ⚠️ Isso precisa de um complemento que não é óbvio: com o rumo
@@ -64,10 +71,24 @@ export function joyTarget(cx,cy,dx,dy,k,spread=0,out=T,w=WORLD.w,h=WORLD.h){
 // curso = 90% da velocidade. Com PLATO sobra METADE do raio como margem de erro, e o trecho MORTO..PLATO
 // continua proporcional.
 const RAIO=52,MORTO=.10,PLATO=.5;
+// TOQUE_MIN: distância, em px de TELA, entre o dedo e o CENTRO DA CÂMERA (onde o planeta é desenhado —
+// `Renderer.js` põe `cam.x,cam.y` em `W/2,H/2`) abaixo da qual um toque não vira rumo. Tocar em cima do
+// próprio planeta não diz para onde ir: ali a direção é imprecisão de polegar, e girar o planeta por
+// causa dela seria pior que ignorar. Acima disso vale a regra 4 e o rumo trava a todo vapor.
+const TOQUE_MIN=40;
 const T={x:0,y:0};   // saída reusada: isto roda a NET.INPUT_HZ, não é lugar de alocar objeto por chamada
 
 /** Curso cru do dedo (0..1 do RAIO) → acelerador 0..1: zona morta, rampa e platô. Pura, para poder ser testada. */
 export function cursoK(raw){return raw<MORTO?0:raw>=PLATO?1:(raw-MORTO)/(PLATO-MORTO);}
+
+/**
+ * Regra 5: direção unitária de um TOQUE, medida do planeta para o dedo. `null` = toque perto demais do
+ * planeta para dizer alguma coisa, e aí o rumo anterior fica de pé (é o mesmo princípio da zona morta do
+ * arrasto). Pura pelo motivo de sempre: `createJoystick` é DOM e não há jsdom no projeto.
+ * @param {number} dx @param {number} dy do centro da câmera até o ponto tocado, em px de TELA
+ */
+export function toqueDir(dx,dy){const d=Math.hypot(dx,dy);
+  return d>=TOQUE_MIN?{dx:dx/d,dy:dy/d}:null;}
 
 /**
  * A máquina do rumo, SEM DOM: recebe coordenadas de tela e mantém `{on,tem,dx,dy,k}`. Fica separada dos
@@ -76,18 +97,29 @@ export function cursoK(raw){return raw<MORTO?0:raw>=PLATO?1:(raw-MORTO)/(PLATO-M
  * `on` = há dedo no chão · `tem` = há rumo (com ou sem dedo) — é `tem` que o enviarInput consulta.
  */
 export function createRumo(st={on:false,tem:false,dx:0,dy:0,k:0}){
-  let ox=0,oy=0;
+  let ox=0,oy=0,ux=0,uy=0,arrastou=false;
   return{state:st,
     /** ⚠️ NÃO zera o rumo: zerar aqui faria o planeta dar um solavanco de parada no instante do toque. */
-    down(x,y){ox=x;oy=y;st.on=true;},
+    down(x,y){ox=ux=x;oy=uy=y;arrastou=false;st.on=true;},
     /** Abaixo da zona morta o rumo ANTERIOR fica de pé — senão o dedo pousando apagaria o rumo travado. */
-    move(x,y){const dx=x-ox,dy=y-oy,d=Math.hypot(dx,dy);if(d<=0)return;
+    move(x,y){ux=x;uy=y;const dx=x-ox,dy=y-oy,d=Math.hypot(dx,dy);if(d<=0)return;
       const raw=Math.min(1,d/RAIO);if(raw<MORTO)return;
-      st.dx=dx/d;st.dy=dy/d;st.k=cursoK(raw);st.tem=true;},
-    /** Solta o dedo e TRAVA o rumo, sempre a todo vapor (regra 4). */
-    up(){st.on=false;if(st.tem)st.k=1;},
+      st.dx=dx/d;st.dy=dy/d;st.k=cursoK(raw);st.tem=true;arrastou=true;},
+    /**
+     * Solta o dedo e TRAVA o rumo, sempre a todo vapor (regra 4).
+     * Recebendo o centro da câmera, um gesto que NUNCA passou da zona morta é lido como TOQUE e vira rumo
+     * (regra 5) — é o único caminho que cria rumo fora do `move`.
+     * ⚠️ Sem argumentos NÃO há conversão, e isso é o contrato de `release()`: a pinça e a pausa largam o
+     * dedo sem que o jogador tenha pedido rumo nenhum, e ali um toque convertido viraria o planeta sozinho.
+     * @param {number} [cx] @param {number} [cy] centro da câmera em px de TELA (= onde o planeta é desenhado)
+     */
+    up(cx,cy){st.on=false;
+      if(!arrastou&&cx!==undefined&&cy!==undefined){
+        const t=toqueDir(ux-cx,uy-cy);
+        if(t){st.dx=t.dx;st.dy=t.dy;st.tem=true;}}
+      if(st.tem)st.k=1;},
     /** A única coisa que devolve o planeta ao estado parado: nascer, renascer, desligar o controle. */
-    reset(){st.on=false;st.tem=false;st.dx=0;st.dy=0;st.k=0;}};}
+    reset(){st.on=false;st.tem=false;st.dx=0;st.dy=0;st.k=0;arrastou=false;}};}
 
 export function createJoystick(alvo){
   const st={on:false,tem:false,dx:0,dy:0,k:0,aim:false,aimX:NaN,aimY:NaN};
@@ -110,7 +142,17 @@ export function createJoystick(alvo){
     if(e.pointerId===aimPid){st.aimX=x;st.aimY=y;}};
   const up=e=>{
     if(!ligado)return;
-    if(e.pointerId===pid){pid=-1;rumo.up();e.stopPropagation();return;}   // o rumo FICA: soltar não para
+    // O centro do canvas É o planeta (`Renderer.js` desenha `cam.x,cam.y` em `W/2,H/2`), e é o que a regra 5
+    // precisa para transformar um toque em direção. Passar a CÂMERA e não o centróide é de propósito: o
+    // jogador aponta para o que ele VÊ, e a câmera é suavizada.
+    if(e.pointerId===pid){const r=alvo.getBoundingClientRect();
+      pid=-1;rumo.up(r.width/2,r.height/2);e.stopPropagation();return;}   // o rumo FICA: soltar não para
+    if(e.pointerId===aimPid){aimPid=-1;st.aim=false;}};
+  // ⚠️ `pointercancel` tem handler PRÓPRIO: gesto cancelado (o navegador assumiu o toque) não é um toque
+  // deliberado, e convertê-lo em rumo viraria o planeta por causa de algo que o jogador não pediu.
+  const cancel=e=>{
+    if(!ligado)return;
+    if(e.pointerId===pid){pid=-1;rumo.up();return;}
     if(e.pointerId===aimPid){aimPid=-1;st.aim=false;}};
   // captura: o canvas escuta na fase de bolha, então parar aqui tira o toque do Pointer sem tocar nele.
   // ⚠️ Agora isso vale em QUALQUER ponto do canvas (antes só na metade esquerda), então o Pointer deixa de
@@ -119,7 +161,7 @@ export function createJoystick(alvo){
   alvo.addEventListener("pointerdown",down,true);
   alvo.addEventListener("pointermove",move,true);
   alvo.addEventListener("pointerup",up,true);
-  alvo.addEventListener("pointercancel",up,true);
+  alvo.addEventListener("pointercancel",cancel,true);
   return{state:st,
     /** Liga/desliga: só faz sentido no dedo — no mouse o ponteiro já É o controle. */
     setEnabled(v){ligado=!!v;if(!ligado){pid=-1;aimPid=-1;st.aim=false;rumo.reset();}},
@@ -134,5 +176,5 @@ export function createJoystick(alvo){
     /** Alvo de MUNDO para o input: direção do rumo, distância = velocidade + o espalhamento das peças. */
     target(cx,cy,spread,out){return joyTarget(cx,cy,st.dx,st.dy,st.k,spread||0,out);},
     destroy(){alvo.removeEventListener("pointerdown",down,true);alvo.removeEventListener("pointermove",move,true);
-      alvo.removeEventListener("pointerup",up,true);alvo.removeEventListener("pointercancel",up,true);}};
+      alvo.removeEventListener("pointerup",up,true);alvo.removeEventListener("pointercancel",cancel,true);}};
 }
