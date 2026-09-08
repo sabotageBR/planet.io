@@ -966,6 +966,22 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ `massOf` percorre as peças, então nas duas as chamadas vêm DEPOIS das guardas baratas: o par de
   colisão só chega nelas quando um preenchimento está prestes a engolir uma pessoa.
   ⚠️ Sem espelho em `predict.js`, que prevê as peças PRÓPRIAS e não decide quem come quem.
+  ⚠️ **OS TRÊS NÚMEROS SÃO TUNABLES** (grupo "Proteção do novato": `BOT.SPAWN_GRACE_S`, `BOT.NOVATO_MASS`,
+  `BOT.NOVATO_RATIO`), e isso é decisão de PRODUTO, não conveniência: a regra apaga um atropelamento que o
+  jogador não tinha como evitar, e em troca põe na tela um gigante ATRAVESSANDO alguém — que num .io lê
+  como defeito. Os dois lados são reais, e nenhum número decide sozinho o segundo, então quem decide é o
+  dono do jogo com o painel de Retenção na frente (mediana da primeira vida, % que sai sem um abate, razão
+  de massa do algoz) — sem deploy e sem reiniciar sala nenhuma.
+  ⚠️ O interruptor é o MÍNIMO ZERO dos dois primeiros: `SPAWN_GRACE_S`=0 mata a graça por tempo
+  (`tick-spawnTick<0` é falso) e `NOVATO_MASS`=0 mata a razão de massa (`ms<0` é falso). `NOVATO_RATIO` não
+  desliga nada — ele é o QUANTO, e o sentido inverte fácil: número MAIOR é MENOS proteção. Piso 1,5 porque
+  `EAT.RATIO` (1,15 de raio = 1,32 de massa) já é o chão em que qualquer planeta engole.
+  ⚠️ **DESLIGAR PELA METADE É PIOR QUE NÃO DESLIGAR**: zerar só a razão devolve o PENHASCO de relógio —
+  intocável até os 15 s, comida no tick seguinte. São as duas ou nenhuma, e `shared/test/novato.test.js`
+  trava os dois sentidos (o interruptor devolve o atropelamento e religa; zerar só um devolve o degrau).
+  ⚠️ Escopo `server`, apesar de a regra morar em `physics/rules.js`: `predict.js` importa `DT, WORLD,
+  BLACKHOLE, EJECT, PLAYER` e nada mais. E `bot.js:novatoProtegido` lê o MESMO objeto `BOT`, então o cérebro
+  acompanha a troca no mesmo tick — sem isso o bot perseguiria alguém que ele só vai atravessar.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade

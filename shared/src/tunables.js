@@ -27,7 +27,7 @@
 // ⚠️ `ENTRY_PANELS` é 'server' pelo mesmo motivo de `ROOM.MAX`: o servidor decide, e `/api/config` ecoa
 // o valor só para a tela poder desenhar antes de existir sala — não é física, não precisa de `wire`.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,ENTRY_PANELS,ENTRY} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,ENTRY_PANELS,ENTRY} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt'|'bool',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
@@ -44,6 +44,7 @@ export const GRUPOS=[
   ['perigos','Perigos do mapa'],
   ['zona','Zona (Battle Royale)'],
   ['jogador','Jogador'],
+  ['novato','Proteção do novato'],
   ['camera','Câmera e área de interesse'],
   ['sala','Salas'],
   ['morte','Morte e respawn'],
@@ -112,6 +113,36 @@ export const TUNABLES=[
   // 'both' fica declarado para o dia em que houver entrega ao cliente — e a rota recusa até lá, em vez de
   // gravar um número que só metade do jogo enxerga.
   num('jogador','PLAYER.MAX_R','Raio máximo de uma peça','px','both',100,2000,10,PLAYER,'MAX_R'),
+  // ── PROTEÇÃO DO NOVATO ──
+  // Os três números de `rules.recemChegado` — a regra que impede um PREENCHIMENTO de engolir uma pessoa
+  // que acabou de chegar. Ela vale só no LIVRE (no Battle Royale `zoneNow()` a desliga) e só de bot para
+  // gente: entre pessoas nada muda, e continua valendo "passou por cima, morreu".
+  //
+  // ⚠️ ELES ESTÃO AQUI PARA PODEREM SER DESLIGADOS SEM DEPLOY, e o mínimo 0 dos dois primeiros é a
+  // chave: `SPAWN_GRACE_S`=0 mata a graça por tempo (`tick-spawnTick<0` é falso) e `NOVATO_MASS`=0 mata a
+  // razão de massa (`ms<0` é falso). Com os dois em zero a regra deixa de existir, e o preenchimento volta
+  // a atropelar como qualquer outro planeta. É uma decisão de PRODUTO — a regra apaga um atropelamento que
+  // o jogador não tinha como evitar, e em troca põe na tela um gigante ATRAVESSANDO alguém, que num .io
+  // lê como defeito. Quem decide é o dono do jogo, olhando o painel de Retenção (mediana da primeira
+  // vida, % que sai sem um abate, razão de massa do algoz), não o gosto de quem escreveu o código.
+  // ⚠️ **DESLIGAR PELA METADE É PIOR QUE NÃO DESLIGAR**: a graça por tempo sozinha é um PENHASCO — no
+  // instante em que ela vence, o novato passa de intocável a comida, e o dado mostrou o degrau (pico de
+  // 6× nas mortes na faixa 15-19 s, 118 contra 19 na faixa anterior). Zerar só a razão de massa devolve
+  // esse degrau em vez de devolver o jogo. As duas, ou nenhuma.
+  // ⚠️ Escopo 'server', e não 'both', apesar de a regra morar em `physics/rules.js`: `predict.js` importa
+  // `DT, WORLD, BLACKHOLE, EJECT, PLAYER` e nada mais — ele prevê as peças PRÓPRIAS e não decide quem come
+  // quem, então não há física de cliente para divergir.
+  // ⚠️ `bot.js:novatoProtegido` ESPELHA a regra e lê o MESMO objeto `BOT`, então o cérebro acompanha a
+  // troca no mesmo tick. É isso que impede o pior estado possível: o bot perseguindo alguém que ele só
+  // vai atravessar (um planetão colado no novato sem nada acontecer lê pior que ser comido).
+  num('novato','BOT.SPAWN_GRACE_S','Tempo em que o preenchimento não come quem nasceu (0 desliga)','segundos','server',0,60,1,BOT,'SPAWN_GRACE_TICKS',
+    {para:s=>Math.round(s*TICK_HZ),de:t=>Math.round(t/TICK_HZ)}),
+  num('novato','BOT.NOVATO_MASS','Até que massa a pessoa ainda conta como novato (0 desliga)','massa','server',0,60000,500,BOT,'NOVATO_MASS'),
+  // ⚠️ O SENTIDO É FÁCIL DE INVERTER: número MAIOR = MENOS proteção. Ele é o quanto o preenchimento precisa
+  // ser maior para a regra o considerar atropelamento e mandá-lo ATRAVESSAR; abaixo disso ele come normal.
+  // O piso útil é 1,33 e não 1: `EAT.RATIO` é 1,15 de RAIO, ou seja 1,32 de massa — abaixo disso nenhum
+  // planeta engole ninguém, e o número não faria nada. 4 foi escolhido para deixar a briga apertada viva.
+  num('novato','BOT.NOVATO_RATIO','Quantas vezes maior o preenchimento precisa ser para atravessar em vez de comer','× a massa da pessoa','server',1.5,20,.5,BOT,'NOVATO_RATIO'),
   // ── CÂMERA E ÁREA DE INTERESSE ──
   // O botão de zoom. 'wire' porque o CLIENTE também chama `zoomFor` — com 'server' a AOI viria por um zoom
   // e a tela desenharia por outro, o que se lê como uma borda larga e vazia.

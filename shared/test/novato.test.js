@@ -166,3 +166,49 @@ test("e no LIVRE a mesma cena continua protegida — a guarda é do modo, não d
   w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
   assert.equal(encosta(w, 0, 1), false, "atravessa, como no bloco acima");
 });
+
+// ── O INTERRUPTOR DO PAINEL ──────────────────────────────────────────────────
+// Os três números viraram tunables (`shared/src/tunables.js`, grupo "Proteção do novato") porque a regra
+// é decisão de PRODUTO: ela apaga um atropelamento que o jogador não tinha como evitar, e em troca põe na
+// tela um gigante ATRAVESSANDO alguém — que num .io lê como defeito. Zerar `SPAWN_GRACE_S` e `NOVATO_MASS`
+// tem que devolver o jogo de antes, INTEIRO, sem deploy e sem reiniciar sala nenhuma.
+// ⚠️ O teste restaura os valores no `finally`: `constants.js` é um objeto de PROCESSO e não é congelado
+// (é justamente o que faz o tunable custar zero no laço de 60 Hz), então deixar sujo contamina os testes
+// que rodarem depois neste mesmo processo — e o `node --test` roda o arquivo inteiro num só.
+test("zerar os dois pelo painel devolve o atropelamento — e religar o traz de volta", () => {
+  const grace = BOT.SPAWN_GRACE_TICKS, massa = BOT.NOVATO_MASS;
+  try {
+    const cena = () => {
+      const w = arena();
+      w.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
+      w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+      return w;   // no tick do nascimento: sob a graça de tempo E abaixo de NOVATO_MASS
+    };
+    assert.equal(encosta(cena(), 0, 1), false, "ligado: atravessa");
+    BOT.SPAWN_GRACE_TICKS = 0; BOT.NOVATO_MASS = 0;
+    assert.equal(encosta(cena(), 0, 1), true, "desligado: o gigante come no primeiro contato");
+    BOT.SPAWN_GRACE_TICKS = grace; BOT.NOVATO_MASS = massa;
+    assert.equal(encosta(cena(), 0, 1), false, "religado no mesmo processo, sem reiniciar nada");
+  } finally { BOT.SPAWN_GRACE_TICKS = grace; BOT.NOVATO_MASS = massa; }
+});
+
+// ⚠️ DESLIGAR PELA METADE É PIOR QUE NÃO DESLIGAR, e é isto que o número mostra: zerando só a razão de
+// massa, o novato continua intocável durante a graça e vira comida no instante em que ela vence. Era esse
+// PENHASCO que o dado acusou (pico de 6× nas mortes na faixa 15-19 s, 118 contra 19 na faixa anterior).
+test("zerar só NOVATO_MASS devolve o penhasco de relógio", () => {
+  const massa = BOT.NOVATO_MASS;
+  try {
+    BOT.NOVATO_MASS = 0;
+    const w = arena();
+    w.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
+    w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+    const nasceu = w.players.get(1).spawnTick;
+    w.tick = nasceu + BOT.SPAWN_GRACE_TICKS - 1;
+    assert.equal(encosta(w, 0, 1), false, "um tick ANTES: intocável");
+    const w2 = arena();
+    w2.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w2.players.get(0).pieces[0], 180);
+    w2.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w2.players.get(1).pieces[0], PLAYER.START_R);
+    w2.tick = w2.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS;
+    assert.equal(encosta(w2, 0, 1), true, "um tick DEPOIS: comida — é o degrau, e é por isso que são as duas ou nenhuma");
+  } finally { BOT.NOVATO_MASS = massa; }
+});
