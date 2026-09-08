@@ -203,3 +203,33 @@ test('basta UMA pessoa viva para o preenchimento sair da lista', () => {
   r.step();
   assert.equal(r.spectateTargetFor(s),j.slot,'e a câmera troca para ela, mesmo sendo a menor da sala');
 });
+
+// ── A INVARIANTE DE QUE O THROTTLE DO CLIENTE DEPENDE ────────────────────────
+// `{t:"spectate"}` divide com o `view` e o `ping` o balde de NET.RATE_JSON (5/s, burst 10), e três rejeições
+// em 10 s ENCERRAM a conexão. Era o único dos três sem trava: `ui/Dead.jsx` ouve `keydown` cru, o auto-repeat
+// do teclado dispara ~25×/s e SEGURAR a seta derrubava o jogador em menos de 1 s com "Too many messages".
+// A correção coalesce as setas na fonte (`agendaSpec` em client/src/game/index.js) em vez de descartar o
+// excedente, e ela só é honesta porque `dir` aqui é um PASSO INTEIRO QUALQUER — `((i+dir)%n+n)%n`.
+// Se algum dia `spectatePick` passar a tratar `dir` como sinal (±1), o cliente engoliria setas EM SILÊNCIO:
+// é este teste que fica vermelho antes de o jogador perceber que a arquibancada lhe deve passos.
+test('coalescer as setas é EXATO: um `dir:n` para onde n setas de 1 parariam', () => {
+  const r=sala(MODE.FREE,{roomMax:8});
+  for(const n of ['ana','bruno','clara','davi','elis'])entra(r,n);
+  r.step();                                    // `Sim.leaderboard` é memoizado por tick (ver o teste acima)
+  const passo=assiste(r,'passo'), salto=assiste(r,'salto');
+  r.spectateTargetFor(passo); r.spectateTargetFor(salto);
+  assert.equal(passo.specSlot,salto.specSlot,'os dois começam na mesma pessoa, senão não há o que comparar');
+  // 7 com 5 na lista: dá a volta, que é justamente onde um `dir` tratado como sinal se trairia
+  let umPorUm;for(let i=0;i<7;i++)umPorUm=r.spectatePick(passo,{dir:1});
+  assert.equal(r.spectatePick(salto,{dir:7}),umPorUm,'sete setas de 1 e um `dir:7` param no mesmo slot');
+});
+
+test('o `slot` explícito supera os passos pendentes — clicar num nome é "quero ESTE"', () => {
+  // O outro lado do coalescer: `agendaSpec` zera `dir` quando chega um slot, e é isto que dá sentido a isso.
+  const r=sala(MODE.FREE,{roomMax:8});
+  const alvos=['ana','bruno','clara'].map(n=>entra(r,n));
+  r.step();
+  const s=assiste(r,'olheiro');
+  r.spectateTargetFor(s);
+  assert.equal(r.spectatePick(s,{slot:alvos[2].slot,dir:0}),alvos[2].slot,'foi para quem se clicou, e não um passo adiante');
+});

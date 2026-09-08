@@ -55,7 +55,13 @@ export default function Dead({ on }) {
   const verMapa = modo => { if (game && game.toggleMap) game.toggleMap(modo); };
   useEffect(() => {   // as setas do teclado também trocam (o motor ignora tudo com foco num campo de texto)
     if (!on || !game || !game.spectate) return;
-    const kd = e => { const a = document.activeElement; if (a && /INPUT|TEXTAREA/.test(a.tagName)) return;
+    // ⚠️ `e.repeat` PRIMEIRO, e não é zelo: cada seta vira um `{t:"spectate"}`, que divide com o `view` e o
+    // `ping` o balde de NET.RATE_JSON (5/s, burst 10) — e três rejeições em 10 s ENCERRAM a conexão. O
+    // auto-repeat do teclado dispara ~25 vezes por segundo, então SEGURAR a seta derrubava o jogador em
+    // menos de 1 s com "Too many messages", no meio da partida. O molde é `game/input/Keyboard.js`, que
+    // filtra repeat desde sempre; estes handlers ouvem `keydown` cru e nasceram sem a guarda.
+    // Vale para o M/L/Esc pela mesma razão de sempre: repetição não é um segundo clique.
+    const kd = e => { if (e.repeat) return; const a = document.activeElement; if (a && /INPUT|TEXTAREA/.test(a.tagName)) return;
       if (e.key === "ArrowLeft") { e.preventDefault(); trocar(-1); }
       else if (e.key === "ArrowRight") { e.preventDefault(); trocar(1); }
       else if (e.key === "m" || e.key === "M") { e.preventDefault(); verMapa("map"); }

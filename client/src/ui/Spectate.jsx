@@ -29,11 +29,12 @@ export default function Spectate({ on }) {
   const spec = h.spec, mapa = h.map || "";
   const trocar = dir => { if (game && game.spectate) game.spectate({ dir }); };
   const verMapa = modo => { if (game && game.toggleMap) game.toggleMap(modo); };
-  // As setas do teclado valem aqui pelo mesmo motivo que valem na tela de morte, e com a mesma guarda de
-  // campo de texto: quem assiste continua com o chat aberto.
+  // As setas do teclado valem aqui pelo mesmo motivo que valem na tela de morte, e com as mesmas DUAS
+  // guardas: a de campo de texto (quem assiste continua com o chat aberto) e a de `e.repeat` — segurar a
+  // seta estourava o balde de JSON e encerrava a conexão. Ver o comentário em ui/Dead.jsx.
   useEffect(() => {
     if (!on || !game || !game.spectate) return;
-    const kd = e => { const a = document.activeElement; if (a && /INPUT|TEXTAREA/.test(a.tagName)) return;
+    const kd = e => { if (e.repeat) return; const a = document.activeElement; if (a && /INPUT|TEXTAREA/.test(a.tagName)) return;
       if (e.key === "ArrowLeft") { e.preventDefault(); trocar(-1); }
       else if (e.key === "ArrowRight") { e.preventDefault(); trocar(1); }
       else if (e.key === "m" || e.key === "M") { e.preventDefault(); verMapa("map"); }

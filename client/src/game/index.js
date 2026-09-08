@@ -304,6 +304,30 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   function agendaView(){viewSujo=true;const espera=ZOOM.VIEW_MS-(performance.now()-viewAt);
     if(espera<=0)return enviaView();
     if(!viewT)viewT=setTimeout(()=>{if(viewSujo)enviaView();else viewT=0;},espera);}
+  // ── AS SETAS DA ARQUIBANCADA, NO MESMO BALDE E PELO MESMO MOTIVO ────────────────────────────
+  // `{t:"spectate"}` divide com o `view` e o `ping` o balde de NET.RATE_JSON (5/s, burst 10), e três
+  // rejeições em 10 s ENCERRAM a conexão — a mesma sentença que fez o `view` ganhar o debounce acima. Este
+  // era o único dos três SEM trava nenhuma, e o estouro não é hipótese: `ui/Dead.jsx` e `ui/Spectate.jsx`
+  // ouvem `keydown` cru, então o auto-repeat mandava ~25 mensagens por segundo e derrubava o jogador em
+  // menos de 1 s. A guarda de `e.repeat` lá resolve o teclado; ESTE throttle é o que cobre o resto das
+  // portas — clicar num nome do placar da tela de morte e escolher um planeta no radar.
+  // ⚠️ COALESCER É EXATO AQUI, e é o que separa isto de DESCARTAR o excedente: `Room.spectatePick` faz
+  // `((i+dir)%n+n)%n`, ou seja `dir` é um passo inteiro QUALQUER — três setas viram `dir:3` e param
+  // exatamente onde as três parariam uma a uma (travado em server/test/espectador.test.js). Descartar
+  // engoliria setas e a arquibancada ficaria devendo passos ao jogador.
+  // ⚠️ E o `slot` SUPERA os passos pendentes: clicar num nome é dizer "quero ESTE", não "ande mais um".
+  // Borda de ATAQUE como no `view`: a primeira seta sai na hora — a câmera não pode esperar 350 ms.
+  let specT=0,specAt=0,specDir=0,specAlvo=-1,specSujo=false;
+  function enviaSpec(){specT=0;
+    if(!specSujo)return;
+    if(!conn||!conn.isOpen||!joined)return;   // socket caído: `sujo` fica de pé, como no `view`, e a seta volta a valer depois
+    const slot=specAlvo,dir=specDir;specAlvo=-1;specDir=0;specSujo=false;specAt=performance.now();
+    conn.sendJson({t:"spectate",slot,dir});}
+  function agendaSpec(slot,dir){
+    if(slot>=0){specAlvo=slot;specDir=0;}else specDir+=dir;
+    specSujo=true;const espera=NET.SPEC_MS-(performance.now()-specAt);
+    if(espera<=0)return enviaSpec();
+    if(!specT)specT=setTimeout(enviaSpec,espera);}
   // ⚠️ `protocol` nos DOIS: era o campo que o servidor conferia e que o cliente NUNCA mandou, então a
   // guarda de versão de lá (`wsServer.js`) era código morto e quem recusava era este cliente, sozinho,
   // DEPOIS de já ter slot na sala. Declarando, o servidor decide antes de alocar qualquer coisa e ECOA
@@ -588,7 +612,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
      * `slot` pula direto para alguém. Quem decide é o SERVIDOR — a AOI da sessão segue o mesmo alvo, senão
      * a câmera olharia para um pedaço de espaço que o servidor não está mandando.
      */
-    spectate({slot=-1,dir=0}={}){if(!conn||!joined||!(dead||espectador))return;conn.sendJson({t:"spectate",slot,dir});},
+    spectate({slot=-1,dir=0}={}){if(!conn||!joined||!(dead||espectador))return;agendaSpec(slot|0,dir|0);},
     /**
      * Renascer SEM reconectar (Livre). Devolve `false` quando não dá para nem tentar — e aí o chamador cai
      * no `play({room})` de sempre, que continua sendo o caminho inteiro e a rede de segurança. O servidor
@@ -682,7 +706,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     muteBrInvite(){brMudo=true;hudStore.update(h=>({...h,brInvite:null}));
       if(conn&&conn.isOpen&&joined)conn.sendJson({t:"brMute"});},
     resize(){if(!renderer)return;renderer.resize();agendaView();},
-    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();if(pinch)pinch.destroy();game.leave(true);audio.suspend();for(const ev of ["pointerdown","keydown","click","touchend"])removeEventListener(ev,wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();activity.destroy();actions.destroy();clearTimeout(viewT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
+    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();if(pinch)pinch.destroy();game.leave(true);audio.suspend();for(const ev of ["pointerdown","keydown","click","touchend"])removeEventListener(ev,wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();activity.destroy();actions.destroy();clearTimeout(viewT);clearTimeout(specT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("warspace:pause",onPortalPause);removeEventListener("warspace:theme",onThemeEvent);if(themeGuard)removeEventListener("warspace:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,
