@@ -186,19 +186,30 @@ function bouncePiece(A,B,e,aPiece,bPiece){
  * comendo — a briga apertada segue existindo, que é o jogo. O que a regra mata é o ATROPELAMENTO: na
  * mesma medição o algoz mediano tinha **8× a massa** da vítima e 45,8% deles passavam de 10×, contra
  * uma vítima de 1.560 de massa. Ali não há decisão que o jogador pudesse ter tomado.
- * ⚠️ A comparação é entre as PEÇAS que colidem, não entre os jogadores: é a colisão que está sendo
- * julgada, e um bot gigante partido em 16 pedaços tem cada peça no tamanho de briga honesta.
+ * ⚠️ **A COMPARAÇÃO É ENTRE OS JOGADORES, NUNCA ENTRE AS PEÇAS — e isto já esteve errado aqui.** A
+ * primeira versão comparava `bodyBig.mass` com `bodySmall.mass`, com o argumento de que "um bot gigante
+ * partido em 16 pedaços tem cada peça no tamanho de briga honesta". O dado desmentiu no mesmo dia: um bot
+ * de 30.000 partido em 16 tem peças de ~1.900, que contra um novato de 2.000 não chega a `NOVATO_RATIO` —
+ * então ele passava pela regra e comia usando exatamente a vantagem de tamanho que ela existe para tirar.
+ * Medido em 07/09/2026: **21% das mortes abaixo de `NOVATO_MASS` ainda eram algozes com mais de 4×**, com
+ * razão mediana 6,0. E era dedutível: `max_mass` é o PICO da vida, então um algoz registrado acima de 4×
+ * que escapou da regra SÓ pode ter estado dividido. Quem é gigante é o JOGADOR, inteiro ou em pedaços.
+ * ⚠️ O preço, aceito: o gigante dividido fica sem poder engolir o novato que estiver no meio das peças
+ * dele. É o mesmo atravessar de sempre, e a alternativa é deixar "dividir" ser o contorno da regra.
  * ⚠️ Protegido, o grande ATRAVESSA — sem quique. Dar quique aqui faria o novato ser chutado pelo mapa
  * por algo que ele nem pode enfrentar, e é o mesmo tratamento que `STAR.PASS_R` dá a quem cabe na estrela.
  * ⚠️ E não há espelho em `predict.js`: ele prevê as peças PRÓPRIAS e não decide quem come quem.
- * @param {World} w @param {any} big @param {any} small @param {any} [bodyBig] @param {any} [bodySmall]
+ * @param {World} w @param {any} big @param {any} small
  */
-function recemChegado(w,big,small,bodyBig,bodySmall){
+function recemChegado(w,big,small){
   if(!(big&&small&&big.isBot&&!small.isBot))return false;
   if(w.tick-small.spawnTick<BOT.SPAWN_GRACE_TICKS)return true;              // a graça de sempre, por TEMPO
   // ...e depois dela o ABISMO continua: enquanto a pessoa é pequena, o preenchimento MUITO maior atravessa.
-  if(!(bodyBig&&bodySmall))return false;
-  return bodySmall.mass<BOT.NOVATO_MASS&&bodyBig.mass>bodySmall.mass*BOT.NOVATO_RATIO;}
+  // ⚠️ `massOf` (que percorre as peças) vem DEPOIS das guardas baratas de propósito: isto roda no par de
+  // colisão, e só chega aqui quando um preenchimento está prestes a engolir uma pessoa.
+  const ms=w.massOf(small.slot);
+  if(!(ms<BOT.NOVATO_MASS))return false;
+  return w.massOf(big.slot)>ms*BOT.NOVATO_RATIO;}
 
 // ── peça × peça (donos diferentes) ──
 /**
@@ -216,7 +227,7 @@ export function piecePair(w,A,B){
   const aBig=ra>=rb*EAT.RATIO,bBig=!aBig&&rb>=ra*EAT.RATIO;
   if(aBig||bBig){
     const big=aBig?A:B,small=aBig?B:A,psBig=aBig?psA:psB,psSmall=aBig?psB:psA;
-    if(recemChegado(w,psBig,psSmall,big,small))return;                                                       // preenchimento não come quem acabou de nascer: atravessa
+    if(recemChegado(w,psBig,psSmall))return;                                                       // preenchimento não come quem acabou de nascer: atravessa
     const lim=big.r-small.r*EAT.CENTER;if(lim>0&&d2<lim*lim)eatPiece(w,psBig,big,psSmall,small);   // o escudo NÃO impede de ser comido: ele defende só de míssil e asteroide
     return;}
   if(d2<sum*sum){const vn=bouncePiece(A,B,BOUNCE.E,true,true);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}}

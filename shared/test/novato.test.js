@@ -110,6 +110,28 @@ test("quem já cresceu perde a proteção: acima de NOVATO_MASS o gigante come",
   assert.equal(encosta(w, 0, 1), true, "e volta a ser presa");
 });
 
+// ⚠️ O BURACO QUE A VERSÃO POR PEÇA DEIXAVA. Medido em 07/09/2026: 21% das mortes abaixo de
+// `NOVATO_MASS` ainda tinham algoz com mais de 4× (razão mediana 6,0), e só podia ser bot DIVIDIDO —
+// `max_mass` é o pico da vida, então um algoz registrado acima de 4× que escapou da regra estava em
+// pedaços. Um bot de 30.000 partido em 16 tem peças de ~1.900: contra um novato de 2.000 nenhuma peça
+// chega a 4×, e "dividir" virava o contorno da regra. Quem é gigante é o JOGADOR.
+test("o gigante DIVIDIDO não contorna a regra: quem conta é a massa do jogador", () => {
+  const w = arena();
+  w.addPlayer(0, { isBot: true, x: 5000, y: 5000 });
+  w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+  const gps = w.players.get(0), p = w.players.get(1).pieces[0];
+  // Um gigante partido em 16 pelo caminho real do World: massa TOTAL enorme, cada PEÇA no tamanho de
+  // uma briga honesta — que é exatamente a forma com que a versão por peça era contornada.
+  setR(gps.pieces[0], PLAYER.START_R * 1.6);
+  for (let i = 1; i < 16; i++) w._spawnPiece(gps, 5000 + i, 5000, PLAYER.START_R * 1.6);
+  const vivas = gps.pieces.filter(x => !x.dead);
+  assert.equal(vivas.length, 16, "o gigante está em 16 pedaços");
+  assert.ok(w.massOf(0) > p.mass * BOT.NOVATO_RATIO, "o JOGADOR é muito maior");
+  assert.ok(vivas[0].mass < p.mass * BOT.NOVATO_RATIO, "mas nenhuma PEÇA dele é");
+  w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
+  assert.equal(encosta(w, 0, 1), false, "atravessa: dividir não contorna a proteção");
+});
+
 test("entre PESSOAS nada mudou — a razão de massa não protege ninguém", () => {
   const w = arena();
   w.addPlayer(0, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);

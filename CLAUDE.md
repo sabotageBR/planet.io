@@ -942,9 +942,22 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **4× e não 2×**: `EAT.RATIO` é 1,15 de RAIO = 1,32 de massa, então entre 1,32× e 4× o bot continua
   comendo — a briga apertada é o jogo, e o que a regra mata é só o atropelamento, onde não havia decisão
   que o jogador pudesse ter tomado. E continua **só BOT × HUMANO**: entre pessoas nada muda.
+  ⚠️ **A COMPARAÇÃO É ENTRE OS JOGADORES, NUNCA ENTRE AS PEÇAS — e isto já esteve errado aqui.** A
+  primeira versão comparava as peças que colidem, com o argumento de que "um bot gigante partido em 16
+  tem cada peça no tamanho de briga honesta". O dado desmentiu no mesmo dia: 21% das mortes abaixo de
+  `NOVATO_MASS` continuavam com algoz acima de 4× (razão mediana 6,0) — e era DEDUTÍVEL, porque
+  `max_mass` é o pico da vida, então um algoz registrado acima de 4× que escapou da regra só pode ter
+  estado dividido. Um bot de 30.000 em 16 pedaços tem peças de ~1.900, e contra um novato de 2.000
+  nenhuma chega ao teto: "dividir" virava o contorno da regra. Quem é gigante é o JOGADOR.
+  ⚠️ O preço, aceito: o gigante dividido não engole o novato que estiver entre as peças dele — ele
+  atravessa, como já atravessava inteiro. A alternativa era deixar a técnica mais básica do agar servir
+  de contorno para a única proteção que o novato tem.
   ⚠️ **`bot.js` TEM QUE CONCORDAR** (`novatoProtegido` espelha `recemChegado`): divergindo, o gigante
   persegue alguém que ele só vai ATRAVESSAR, e um planetão colado no novato sem nada acontecer lê pior
-  que ser comido. Lá a massa é `r²` por aproximação — é decisão de cérebro; quem mata usa a massa real.
+  que ser comido. Ele usa `massOf` pelo mesmo motivo — com a aproximação por `r²` da maior peça, o bot
+  partido voltaria a escolher como presa justamente quem ele não pode comer.
+  ⚠️ `massOf` percorre as peças, então nas duas as chamadas vêm DEPOIS das guardas baratas: o par de
+  colisão só chega nelas quando um preenchimento está prestes a engolir uma pessoa.
   ⚠️ Sem espelho em `predict.js`, que prevê as peças PRÓPRIAS e não decide quem come quem.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
