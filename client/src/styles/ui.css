@@ -2367,3 +2367,15 @@ body[data-mode="portrait"] #hud .dica-split{bottom:150px;font-size:12px;padding:
   max-width:calc(100% - 24px);white-space:normal;text-align:center}
 body[data-mode="landscape"] #hud .dica-split{bottom:96px}
 @media (prefers-reduced-motion:reduce){#hud .dica-split{animation:none}}
+
+/* ── O BOTÃO DE DIVIDIR PULSANDO JUNTO COM A DICA ────────────────────────────
+   A pílula de texto diz o QUE fazer; o pulso diz ONDE. Uma frase sozinha, no meio de uma partida, exige
+   que o jogador PROCURE o botão — e quem não sabe que ele existe é justamente o público da dica.
+   ⚠️ Anima `box-shadow`/`filter` e NUNCA `transform`: `.tbtn` já é posicionado pelos temas, e um keyframe
+   terminando em `transform:none` o tiraria do lugar (é o defeito que jogou a tela de morte para fora do
+   celular). `outline` em vez de `border` porque a borda do botão vem do tema e mexer nela reflui o layout. */
+#hud #t-split.dica{animation:dica-pulsa 900ms ease-in-out infinite;outline:2px solid #8b5cff;outline-offset:2px}
+@keyframes dica-pulsa{
+  0%,100%{box-shadow:0 0 0 0 rgba(139,92,255,.55);filter:brightness(1)}
+  50%    {box-shadow:0 0 0 10px rgba(139,92,255,0);filter:brightness(1.25)}}
+@media (prefers-reduced-motion:reduce){#hud #t-split.dica{animation:none;outline-color:#8b5cff}}
