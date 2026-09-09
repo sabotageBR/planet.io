@@ -5,7 +5,7 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { getLabels, setLang, currentLangPref, preenche } from "../i18n/index.js";
 import { errText } from "../i18n/errors.js";
-import { skinById, PROTOCOL_VERSION, SKINS, LEVEL, ROUND, playerNick, createRng } from "@warspace/shared";
+import { skinById, PROTOCOL_VERSION, SKINS, LEVEL, ROUND, MODE, playerNick, createRng } from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
@@ -250,7 +250,12 @@ function hudDemo() {
     // os três FORMATOS de powerup, que é o que a matriz precisa medir: tempo (anel + segundos), nível
     // (o escudo) e CARGA (a auto-defesa, que não tem relógio nenhum e fica até ser usada)
     powerups: { magnet: 12, shield: 3, feast: 2, autodef: 1 }, lb, feed, room: "253A", ping: 49, fps: 60,
-    clock: { h: 16, m: 16, leftS: 2276 }, alive: 24 }));
+    clock: { h: 16, m: 16, leftS: 2276 }, alive: 24,
+    // ⚠️ SEM `mode` A MATRIZ NUNCA MEDIU O HUD DO BATTLE ROYALE. `Hud.jsx` só desenha aquele bloco com
+    // `h.mode === MODE.BR`, e este demo enchia `alive: 24` num HUD que ficava no modo Livre — as ~600
+    // combinações de `responsive-check.mjs` passavam por cima de um elemento que nem existia no DOM, com o
+    // id dele na lista de colisões desde sempre, como no-op. O `zoneIn` é o outro metade do bloco.
+    mode: MODE.BR, zoneIn: 42, zoneShrinking: false }));
 }
 function mostrarTela(s) {
   if (s === "account") { go("entry"); openAccount(); }

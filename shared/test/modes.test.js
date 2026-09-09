@@ -6,7 +6,7 @@ import {createWorld,stepOwnPieces} from "../src/physics/index.js";
 import {sameTeam,zoneBurn,outOfZone,zoneExposure,zoneMass,zoneBurnRate,applyFire,ammoOf,ownedMask} from "../src/physics/rules.js";
 import {createZone,stepZone,zoneAt,zoneR} from "../src/zone.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,ZONE,PLAYER,DT,EJECT,MISSILE,WEAPON,WEAPONS,FOOD,FOOD_TYPE,isWeaponFood,POWERUP,STAR,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood,BOT_NICKS} from "../src/constants.js";
+import {WORLD,ZONE,ZONE_TOTAL_TICKS,TICK_HZ,roundTicksOf,PLAYER,DT,EJECT,MISSILE,WEAPON,WEAPONS,FOOD,FOOD_TYPE,isWeaponFood,POWERUP,STAR,MODE,MODES,modeOf,modeCap,BR,BOT_NAMES,botNick,weaponOf,weaponOfFood,BOT_NICKS} from "../src/constants.js";
 import {KIND} from "../src/protocol/constants.js";
 
 const empty=(seed=1,o={})=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false,...o});
@@ -52,12 +52,14 @@ test("modeCap: a capacidade fecha no tamanho de equipe (equipe incompleta não e
   assert.equal(modeCap(MODE.BR,0),modeOf(MODE.BR).max,"teamSize 0 não divide por zero");});
 
 // ── 2. zona ─────────────────────────────────────────────────────────────────
-test("zona: a máquina fecha em 37 500 ticks e o círculo novo SEMPRE cabe dentro do anterior",()=>{
+test("zona: a máquina fecha em 33 000 ticks e o círculo novo SEMPRE cabe dentro do anterior",()=>{
   const total=ZONE.HOLD_TICKS.reduce((a,b)=>a+b,0)+ZONE.SHRINK_TICKS.reduce((a,b)=>a+b,0);
   // 10 min 25 s: os 8 min 20 s de sempre × 1,25, porque o mapa cresceu 25% de lado. O tempo tem que
   // acompanhar a TRAVESSIA, senão quem está na borda simplesmente não chega e o gás vira a assassina
   // principal — que é o que `bot.test.js` mede e recusa.
-  assert.equal(total,37500,"10 min 25 s: o fechamento inteiro");
+  // ⚠️ 33 000 e não 37 500: a PRIMEIRA parada caiu de 2 min 05 para 50 s, para o jogador entender cedo
+  // que o círculo fecha. As outras cinco etapas não mudaram.
+  assert.equal(total,33000,"9 min 10 s: o fechamento inteiro");
   assert.ok(total<BR.ROUND_TICKS,"a zona tem que fechar ANTES do teto da partida, senão o BR acaba sem decidir nada");
   assert.equal(ZONE.R.length,ZONE.STAGES+1,"um raio por etapa mais o final");
   for(let i=1;i<ZONE.R.length;i++)assert.ok(ZONE.R[i]<ZONE.R[i-1],`R[${i}] menor que o anterior`);
@@ -549,3 +551,86 @@ test("powerup: a tabela de pesos manda, e os dois raros são mesmo raros",()=>{
   const a=createWorld({seed:75,asteroids:false,holes:0,stars:0});
   const b=createWorld({seed:75,asteroids:false,holes:0,stars:0});
   assert.deepEqual(a.food.map(f=>f.type),b.food.map(f=>f.type),"o mundo continua determinístico pela semente");});
+
+// ── A GAIOLA DE LARGADA ──────────────────────────────────────────────────────
+// Ela reusa `w.peace` (que já fazia todo mundo virar aliado) e acrescenta o que faltava: as guardas da fase
+// 1 e da fase 7 do `World.step`. O que este bloco cobre é o CONTRATO do pedido — "eles se trombam, não tem
+// luta nesse octógono e nem powerup" —, item por item.
+const gaiola=(seed=1)=>{const w=empty(seed);w.cage={x:WORLD.w/2,y:WORLD.h/2,ap:BR.CAGE_AP*WORLD.w};w.peace=true;return w;};
+
+test("gaiola: ninguém come, atira, divide, cospe nem pega powerup",()=>{
+  const w=gaiola(21),cg=w.cage;
+  const grande=w.addPlayer(0,{x:cg.x,y:cg.y,r:200}),pequeno=w.addPlayer(1,{x:cg.x+150,y:cg.y,r:30});
+  arma(w);
+  w.setTarget(0,cg.x+150,cg.y);w.setTarget(1,cg.x,cg.y);
+  const ps0=w.players.get(0),ps1=w.players.get(1);
+  const m1=w.massOf(1),am0=ammoOf(ps0);
+  for(let t=0;t<120;t++){
+    w.requestSplit(0);w.requestEject(0);ps0.fireReq=true;w.step();}
+  assert.ok(w.players.has(1)&&pequeno&&!pequeno.dead,"o grande NÃO comeu o pequeno colado nele");
+  assert.equal(massa(w,1),Math.round(m1*1e6)/1e6,"e não tirou um grama dele");
+  assert.equal(w.piecesOf(0).length,1,"o split não sai");
+  assert.equal(w.ejected.length,0,"a cusparada não sai");
+  assert.equal(w.missiles.length,0,"o tiro não sai");
+  assert.equal(ammoOf(ps0),am0,"e a munição fica intacta — o pedido não foi só engolido, ele nem foi cobrado");
+  // POWERUP: a comida fica no chão, viva, esperando a gaiola abrir
+  const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=cg.x;f.y=cg.y;f.r=FOOD.SPECIAL_R;w.moveFood(f);
+  for(let t=0;t<20;t++)w.step();
+  assert.equal(grande.shieldLv,0,"o escudo não é pego");
+  assert.ok(!f.dead,"⚠️ e a comida CONTINUA VIVA: consumi-la sem efeito seria pior que não consumir");});
+
+test("gaiola: eles se TROMBAM — o quique existe, e é o de inimigo",()=>{
+  // Sob `peace` todo mundo é aliado, e aliado usa `separateOwn`: separação POSICIONAL, sem impulso, sem
+  // evento, ou seja sem som e sem faísca. O pedido é literalmente "eles se trombam", então dentro da gaiola
+  // o contato vira o quique de inimigo — e é essa diferença que este teste trava.
+  const bate=cage=>{const w=empty(31);w.peace=true;if(cage)w.cage={x:WORLD.w/2,y:WORLD.h/2,ap:BR.CAGE_AP*WORLD.w};
+    const cx=WORLD.w/2,cy=WORLD.h/2;
+    const a=w.addPlayer(0,{x:cx-90,y:cy,r:40}),b=w.addPlayer(1,{x:cx+90,y:cy,r:40});
+    w.setTarget(0,cx+4000,cy);w.setTarget(1,cx-4000,cy);
+    // o PICO, e não o valor final: o impulso do quique é um empurrão que sempre chega a zero (é o canal de
+    // boost, ver integrate.js), então medir só no fim mediria o decaimento, não a trombada.
+    let pico=0,eventos=0;
+    for(let t=0;t<60;t++){w.step();
+      pico=Math.max(pico,Math.hypot(a.vx,a.vy)+Math.hypot(b.vx,b.vy));
+      for(const e of w.events)if(e.type==="BOUNCE")eventos++;}
+    return{pico,eventos};};
+  const com=bate(true),sem=bate(false);
+  assert.ok(com.pico>1,`na gaiola a trombada empurra de verdade (pico ${com.pico.toFixed(2)})`);
+  assert.equal(sem.pico,0,"e fora dela o aquecimento continua mudo, como sempre foi");
+  assert.equal(sem.eventos,0,"`separateOwn` não emite evento nenhum — é o que a deixa sem som e sem faísca");});
+
+test("gaiola: o gás não age, porque a zona ainda NÃO EXISTE",()=>{
+  // Isto sai por AUSÊNCIA e não por `if`: `Room.begin` monta a gaiola e só `Room.largar` chama `createZone`.
+  // É a razão de a zona nascer no segundo tempo da largada, e não no primeiro.
+  const w=gaiola(44),cg=w.cage;
+  assert.equal(w.zoneNow(),null,"sem zona, `zoneBurn` nem é chamada no step");
+  const pc=w.addPlayer(0,{x:cg.x,y:cg.y}),m0=pc.mass;
+  for(let t=0;t<120;t++)w.step();
+  assert.ok(Math.abs(pc.mass-m0)<1e-9,"e ninguém queima dentro do octógono");});
+
+// ── A ZONA E O TETO DA PARTIDA ANDAM JUNTOS ──────────────────────────────────
+test("zona × rodada: o teto da partida cabe a zona INTEIRA mais a folga de decisão",()=>{
+  // Isto vivia só num comentário ("os dois andam JUNTOS"), e a primeira vez que alguém encurtou uma etapa
+  // da zona o piso de duração do BR se mexeu sozinho — abrindo a opção de 10 min com 50 s para o círculo
+  // final decidir a partida. Agora a folga é um número, e este teste é quem a segura.
+  assert.ok(BR.ROUND_TICKS>=ZONE_TOTAL_TICKS+BR.DECIDE_TICKS,
+    `${BR.ROUND_TICKS} < ${ZONE_TOTAL_TICKS}+${BR.DECIDE_TICKS}: a partida acabaria por tempo antes de o círculo decidir`);
+  assert.equal(roundTicksOf(MODE.BR,10),null,"10 min continua recusado no Battle Royale");
+  assert.ok(roundTicksOf(MODE.BR,20),"e 20 continua valendo — o jogador não vê diferença nenhuma");
+  // e a gaiola cabe folgada dentro da primeira parada, com tempo de explorar antes do primeiro aviso
+  assert.ok(ZONE.HOLD_TICKS[0]>=BR.CAGE_TICKS+TICK_HZ*20,
+    "a etapa 0 tem que sobreviver à gaiola e ainda dar tempo de andar antes do aviso do gás");});
+
+test("zona: NÃO há guarda de etapa — o gás da etapa 0 queima como qualquer outro",()=>{
+  // O pedido "o gás inicial também machuca" já era verdade no código, e o que estava errado era o
+  // COMENTÁRIO (escrito quando o mapa tinha 9 600 de lado, e onde o círculo inicial de fato o cobria).
+  // Com 12 000, sobram quatro orelhas de gás nos cantos desde o primeiro tick.
+  const r0=ZONE.R[0]*WORLD.w;
+  assert.ok(r0<Math.hypot(WORLD.w/2,WORLD.h/2),"o círculo da etapa 0 NÃO alcança os cantos do mapa");
+  const w=empty(77),pc=w.addPlayer(0,{x:200,y:200});   // canto do mapa, fora do círculo inicial
+  w.setZone({x0:WORLD.w/2,y0:WORLD.h/2,r0,x1:WORLD.w/2,y1:WORLD.h/2,r1:r0,t0:0,t1:Infinity});
+  const zc=w.zoneNow();
+  assert.ok(outOfZone(pc,zc),"e o canto FICA fora dele");
+  const m0=pc.mass;w.setTarget(0,200,200);
+  for(let t=0;t<60;t++)w.step();
+  assert.ok(pc.mass<m0,"queima já na etapa 0: não existe guarda de etapa em lugar nenhum");});

@@ -26,7 +26,7 @@ import {apiUrl,wsUrl} from "../api/base.js";
 import {PORTAL} from "../portal/flags.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,NET,POWERUP,ZOOM,CAM,WORLD,PROTOCOL_VERSION,ZONE_WARN_AT_S,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,BR,NET,POWERUP,ZOOM,CAM,WORLD,PROTOCOL_VERSION,ZONE_WARN_AT_S,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
 // direto do módulo: `tunables.js` não entra no barril de `shared` (ele é a lista BRANCA do painel, não
 // vocabulário de jogo), e o cliente só precisa do aplicador — a validação vem junto de graça.
 import {aplicaWire} from "@warspace/shared/tunables.js";
@@ -63,7 +63,7 @@ import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0,autodef:0,zoom:0,feast:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
   mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:"",notice:null,zoom:null,host:null,
-  brInvite:null,zoneWarn:null,zoneAlarmAt:0,deadAt:0,armAt:0,idle:null});
+  brInvite:null,zoneWarn:null,zoneAlarmAt:0,deadAt:0,armAt:0,idle:null,cage:null});   // `cage` = a contagem 3·2·1 da gaiola de largada; sem ele aqui, o primeiro render leria `undefined`
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
   keySplit:"Space",keyEject:"KeyW",
   sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
@@ -142,6 +142,17 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── modo, equipe, zona, chat e voz ──
   let modeId=MODE.FREE,teamSize=1,myTeam=-1,phase="live",startsAt=0,roomCap=0,lobby=null,spec=null;   // `lobby` = o estado da tela de espera (JSON `lobby`, em ms)
   let zone=null,zoneShown={x:0,y:0,r:0},lastShrink=0,lastHurt=false,lobbyBeep=false,zoneWarnIdx=0;   // `zone` = o par de círculos do fio; `zoneShown` é o interpolado do frame
+  // A GAIOLA DE LARGADA (o octógono do Battle Royale). Ela não custa um byte de protocolo: o QUE ela é sai
+  // da constante (`BR.CAGE_AP`, que os dois lados leem, como já fazem com `WORLD.w` e `ZONE.R`) e o QUANDO
+  // sai de `SELF_FLAG.LOBBY` — um bit que `Sim.self` escreve desde sempre a partir de `w.peace` e que
+  // NUNCA chegava aqui, porque no lobby o `Room.step` retorna antes do `_flush`. Com corpo no mapa ele
+  // passa a chegar 20×/s, de graça.
+  // ⚠️ O objeto é reusado (nada de alocar a 20 Hz) e o apótema é recalculado quando o `room` chega, porque
+  // o tamanho do mundo é parâmetro do /admin — o mesmo cuidado do `renderer.worldResized()`.
+  const CAGE_BOX={x:0,y:0,ap:0};
+  let cage=null,cageBeep=-1;
+  const ajustaCage=()=>{CAGE_BOX.x=WORLD.w/2;CAGE_BOX.y=WORLD.h/2;CAGE_BOX.ap=BR.CAGE_AP*WORLD.w;};
+  ajustaCage();
   /** @type {{slot:number,name:string,team:number|null,text:string,at:number}[]} */let chatLog=[];
   /** @type {{id:number,at:number,k:string,how:string,n:number,a:object|null,b:object|null,assist:object|null,mine:boolean}[]} */
   let feedLog=[],feedSeq=0;
@@ -359,6 +370,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // que isto valha. Câmera, radar, grade, analógico e predição já liam a constante por chamada.
     if(m.t==="room"&&m.world&&m.world.w>0&&(m.world.w!==WORLD.w||m.world.h!==WORLD.h)){
       WORLD.w=m.world.w;WORLD.h=m.world.h;
+      ajustaCage();   // a gaiola é uma FRAÇÃO do mundo: com o lado mudado no /admin, o octógono do cliente tem que acompanhar o do servidor
       if(renderer)renderer.worldResized();}   // a grade e o fundo guardam o tamanho: sem isto ficam do tamanho velho
     if(m.t==="room"){view.mySlot=m.slot;predictor.setSlot(m.slot);view.room=m.code;view.rebuildLb();warmSkins();
       // ⚠️ UM `awake` NA ENTRADA, e ele não é redundante: é a DECLARAÇÃO de que este cliente sabe dizer
@@ -383,7 +395,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       lobby={filled:m.filled,cap:m.cap,humans:m.humans,startsInMs:m.startsInMs,waitMs:m.waitMs,at:performance.now()};
       if(m.startsInMs&&!lobbyBeep){lobbyBeep=true;audio.play("countdown",{mine:true});}}
     else if(m.t==="phase"){   // largada: relógio, contagem e céu saem todos do bloco `round` novo
-      phase=m.phase;round=m.round||round;startsAt=(m.round&&m.round.startsAt)||0;lastCount=-1;lobby=null;lobbyBeep=false;
+      phase=m.phase;round=m.round||round;startsAt=(m.round&&m.round.startsAt)||0;lastCount=-1;lobby=null;lobbyBeep=false;cageBeep=-1;
       pushHud(performance.now());   // na hora: o HUD roda a 8 Hz e a tela do lobby ficaria até 125 ms por cima da partida já em curso
       if(phase==="live"){audio.play("matchStart",{mine:true});chatSys(getLabels().killFeed.sys_start);}}
     else if(m.t==="chat"){pushChat(m);}
@@ -462,7 +474,13 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     else if(m.t==="rewards"){if(onRewards)onRewards(m);}}
   function onBinary(m){const now=performance.now();
     switch(m.type){
-      case MSG.SNAPSHOT:if(m.self.flags&SELF_FLAG.RESYNC)buffer.clear();buffer.apply(m,now);predictor.onSnapshot(m,conn.rttAvg);view.self=m.self;selfTick=m.tick;if(m.self.flags&SELF_FLAG.DEAD)dead=true;break;
+      case MSG.SNAPSHOT:{if(m.self.flags&SELF_FLAG.RESYNC)buffer.clear();buffer.apply(m,now);
+        // ⚠️ A GAIOLA VEM DO `self`, e é isto que a torna de graça — ver o comentário de `CAGE_BOX`. No
+        // Livre `w.peace` nunca é true com corpo no mapa, mas o `modeId` fica na conta de propósito: um bit
+        // com dois significados possíveis é o tipo de coisa que volta a doer no modo seguinte.
+        cage=(modeId===MODE.BR&&(m.self.flags&SELF_FLAG.LOBBY))?CAGE_BOX:null;
+        predictor.setCage(cage);
+        predictor.onSnapshot(m,conn.rttAvg);view.self=m.self;selfTick=m.tick;if(m.self.flags&SELF_FLAG.DEAD)dead=true;break;}
       case MSG.PLAYERS:view.setPlayers(m.players);warmSkins();break;
       case MSG.ZONE:{const shrinking=!!(m.zone.x0!==m.zone.x1||m.zone.y0!==m.zone.y1||m.zone.r0!==m.zone.r1);
         if(!shrinking)zoneWarnIdx=0;   // nova espera começou: os limiares de aviso valem de novo
@@ -674,7 +692,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null,spec:!!spec};
-      buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();zoomF=1;hudStore.set({...initialHud(),room:room||null});mapOn="";minimap.setView("",-1);aplicaRadar();
+      buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();zoomF=1;cage=null;cageBeep=-1;hudStore.set({...initialHud(),room:room||null});mapOn="";minimap.setView("",-1);aplicaRadar();
       if(pointer&&renderer)pointer.center(renderer.W,renderer.H);
       if(joy)joy.reset();   // o rumo NÃO atravessa salas: quem entra nasce parado, esperando o primeiro toque
       // ⚠️ No pacote de portal, servidor fora NÃO vira partida local: o jogador entrou num .io para jogar
@@ -692,7 +710,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa
     // por aqui (ela é do Connection, e volta pelo `resume`), então nada disso atrapalha quem só caiu.
     leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
+      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -920,6 +938,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // PRÓXIMO fechamento) são checados aqui mesmo, sem protocolo novo — cada um dispara uma vez por espera
     // (zoneWarnIdx reseta no MSG.ZONE quando uma nova espera começa, ver onBinary).
     const zoneIn0=zone&&Number.isFinite(zone.t1)?Math.max(0,(zone.t1-tk)/TICK_HZ):null;
+    // GAIOLA: quanto falta para o octógono abrir. `startsAt` é o MESMO campo que a contagem do lobby usa —
+    // reusá-lo é o que fez a largada em dois tempos não custar protocolo nenhum.
+    const cageMs=(cage&&startsAt&&tk<startsAt)?Math.round((startsAt-tk)*1000/TICK_HZ):0;
+    // o bipe de cada segundo, no molde do `lobbyBeep`: `cageBeep` guarda o último inteiro já tocado
+    if(cageMs>0){const seg=Math.ceil(cageMs/1000);if(seg!==cageBeep){cageBeep=seg;audio.play("countdown",{mine:true});}}
+    else if(cageBeep>0){cageBeep=-1;audio.play("matchStart",{mine:true});}   // zero: a gaiola abriu
     const zoneShrinking0=!!(zone&&(zone.x0!==zone.x1||zone.y0!==zone.y1||zone.r0!==zone.r1));
     let zoneWarn=hudStore.get().zoneWarn;
     if(zoneIn0!=null&&!zoneShrinking0){
@@ -959,6 +983,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         roster:[...view.players.values()].map(p=>({slot:p.slot,name:p.name,skinId:p.skinId,me:p.slot===view.mySlot}))}:null,
       dica,
       alive:s?s.alive:0,weapon:s?s.weapon|0:0,owned:s?s.owned|1:1,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
+      // A CONTAGEM 3·2·1 DA GAIOLA. `startsAt` é TICK ABSOLUTO e já vinha no bloco `round` do `phase`; `tk`
+      // é o relógio do servidor que o `buffer` já sincroniza. Zero protocolo novo — e, porque é absoluto, a
+      // contagem NÃO deriva: no máximo ela começa meio snapshot tarde, e nunca termina fora de hora.
+      // ⚠️ Vai no literal deste `set`, e nunca por `hudStore.update` de um handler: este `set` troca o
+      // objeto INTEIRO a 8 Hz e apagaria o campo em ≤125 ms (é a armadilha do `brInvite` logo abaixo).
+      cage:cageMs?{ms:cageMs,at:now}:null,
       // CONTADOR DO FECHAMENTO DO GÁS: `zone.t1` já chega pelo fio (MSG.ZONE, ver protocol/codec.js) —
       // é o tick em que a FASE ATUAL (parada ou fechamento) termina, então `(t1-tk)/TICK_HZ` é quanto
       // falta em segundos sem precisar rodar a máquina de fases do servidor aqui (shared/zone.js é dele).
@@ -1107,9 +1137,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const t1=performance.now();
     const zc=zoneNow(interp.renderTick);
     const zoneDraw=zc?{x:zc.x,y:zc.y,r:zc.r,tx:zone.x1,ty:zone.y1,tr:zone.r1}:null;
+    const cageDraw=cage;   // o objeto é o MESMO que a predição recebe: um só lugar decide se a gaiola existe
     // Fora de partida some a GRADE e a borda do mundo: elas são a moldura da arena, e com o menu na frente
     // viram um traço solto no meio da tela. O céu (que é assado por resolução e não custa nada) fica.
-    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,heading,zone:zoneDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
+    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,heading,zone:zoneDraw,cage:cageDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
       showNames:curPrefs.showNames!==false,showTrails:!curPrefs.reduceMotion&&!econ});
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU
     if(joined){minimap.update(now,zoneDraw);if(now-lastHud>=125){lastHud=now;pushHud(now);}

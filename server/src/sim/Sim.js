@@ -82,7 +82,7 @@ export class Sim{
   addHuman(slot,{name='Viajante',registered=false,skinId=0,sessionId=null,userId=null,team=-1,level=0,spawn=true,spectator=false}={}){
     if(this.players.has(slot))this.remove(slot);
     this._lastHit.delete(slot);
-    this.world.addPlayer(slot,{r:PLAYER.START_R,isBot:false,missiles:0,team,spawn});
+    this.world.addPlayer(slot,{r:PLAYER.SPAWN_R,isBot:false,missiles:0,team,spawn});
     const gp=this._mk(slot,{name,registered,skinId,sessionId,userId,isBot:false,team,level,spectator});this.players.set(slot,gp);
     // ⚠️ ESPECTADOR NASCE MORTO, e não é gambiarra — é o que faz o resto sair de graça. `gp.dead` já é o
     // estado de quem assiste: `wsServer` aceita `{t:"spectate"}` dele, `Room._escopoFala` o põe na
@@ -98,7 +98,7 @@ export class Sim{
    */
   addBot(slot,{name,skinId=0,team=-1,level=0,spawn=true,r=0}={}){
     if(this.players.has(slot))this.remove(slot);
-    this.world.addPlayer(slot,{r:spawn?(r>0?r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1])):PLAYER.START_R,isBot:true,missiles:0,team,spawn});
+    this.world.addPlayer(slot,{r:spawn?(r>0?r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1])):PLAYER.SPAWN_R,isBot:true,missiles:0,team,spawn});   // o valor do ramo `spawn:false` é descartado (não nasce peça), mas dois números diferentes no mesmo `?:` é armadilha para o próximo leitor
     const gp=this._mk(slot,{name,skinId,isBot:true,team,level});gp.brain=new BotBrain(this.world,slot,this.rng,this._botInput);
     // Só bot ganha o anel de memória: são 6 objetos por bot, e 30 humanos não têm o que fazer com ele.
     gp.mem={i:0,n:0,buf:Array.from({length:BOT_LLM.MEM_N},()=>({k:'',slot:-1,at:0}))};

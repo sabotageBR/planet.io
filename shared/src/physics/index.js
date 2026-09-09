@@ -5,4 +5,5 @@ export * from "./integrate.js";
 export * from "./collide.js";
 export * from "./rules.js";
 export * from "./world.js";
+export * from "./cage.js";
 export * from "./predict.js";

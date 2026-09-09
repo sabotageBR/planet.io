@@ -137,8 +137,12 @@ export function sanitiza(txt,nome=''){
 // ("reply in Spanish") tira a decisão do modelo e a traz para cá, onde dá para testar.
 // Não é um detector geral de idioma: é um voto entre as três línguas que aparecem no jogo, com palavras
 // FUNCIONAIS (as que ninguém escreve por acaso) e o desempate na dúvida sendo NÃO nomear nada.
+// ⚠️ A chave é o NOME QUE VAI PARA O PROMPT, então ela é "Brazilian Portuguese" e não "Portuguese": o
+// mesmo prompt podia sair com `[write your line in Portuguese]` (daqui) e `use Brazilian Portuguese` (do
+// chão da LANGUAGE RULE), uma contradição pequena que o modelo tinha de resolver sozinho. Uma grafia por
+// idioma no servidor inteiro — e é ela que `IDIOMA_NOME` espelha.
 const MARCAS={
-  Portuguese:'nao não vc você voce ta tá pra pro muito mano cara kkk kkkk seu sua dele dela isso aqui entao então vou vai tem foi eu te comer corre gordo lixo caralho porra merda mesmo agora ja já so só'.split(' '),
+  'Brazilian Portuguese':'nao não vc você voce ta tá pra pro muito mano cara kkk kkkk seu sua dele dela isso aqui entao então vou vai tem foi eu te comer corre gordo lixo caralho porra merda mesmo agora ja já so só'.split(' '),
   Spanish:'eres muy pero porque donde dónde jaja jajaja hola amigo basura mierda bueno malo mucho estas estás vamos tio tío puta joder gilipollas nino niño esto eso alli allí'.split(' '),
   English:'the you your are is and this that what why how get got out off fuck shit bro dude man noob easy trash gonna dont don not going'.split(' '),
 };
@@ -151,6 +155,18 @@ export function detectaIdioma(texto){
     let n=0;for(const m of marcas)if(ws.has(normalizar(m)))n++;
     if(n>max){max=n;melhor=lang;empate=false;}else if(n===max&&n>0)empate=true;}
   return max>=1&&!empate?melhor:null;}
+/**
+ * O IDIOMA TRAVADO NO PAINEL (`BOT_LLM.IDIOMA`) → o nome EM INGLÊS que entra no prompt, que é a MESMA chave
+ * de `MARCAS` logo acima. Server-only, pelo mesmo motivo de `ESTILO_PROMPT`: `shared/` vai inteiro para o
+ * bundle do `?local=1` e instrução de LLM não tem o que fazer lá.
+ * ⚠️ Este objeto é a ponte entre as listas de idioma que sempre viveram com grafias diferentes: o `LANGS`
+ * do cliente ("pt-BR"), a pref de `api/me.js` e as chaves de `MARCAS`, que vão LITERALMENTE para dentro do
+ * prompt. Um id oferecido no painel sem par aqui é um `<select>` que grava e não faz nada — há teste.
+ */
+export const IDIOMA_NOME={'pt-BR':'Brazilian Portuguese',en:'English',es:'Spanish'};
+export {MARCAS};
+/** O nome inglês do idioma travado, ou `null` em `auto` (o comportamento de sempre: quem falou decide). */
+const idiomaFixo=()=>IDIOMA_NOME[BOT_LLM.IDIOMA]||null;
 
 // ── quem a mensagem chama ────────────────────────────────────────────────────
 // Um vocativo coletivo ("e aí galera, tudo bem?") ou uma provocação à sala ("eu vou matar todo mundo") é
@@ -224,9 +240,16 @@ function montaSystem(){
   'When a name obviously refers to something real, play with it — that is half the joke in this game.',
   'Never say anyone is a bot, an NPC, fake or a script: everyone here is a person.',
   'Never talk about politics, elections, parties, war or religion. Joke about the PERSON as a character, never about their opinions.',
-  'LANGUAGE RULE, follow it strictly: when a message is addressed to you, reply in THAT message\'s language,',
-  'even if the rest of the chat is in another one. Otherwise use the language of the recent chat.',
-  'With no chat at all, use Brazilian Portuguese.',
+  // ⚠️ EM `auto` ESTAS TRÊS LINHAS SÃO AS DE SEMPRE, palavra por palavra. O que estava CRAVADO ali era o
+  // chão da regra ("with no chat at all, use Brazilian Portuguese") — e era justamente esse chão que o
+  // pedido "trocar o idioma dos bots em tempo real" não tinha como alcançar. Travado, a regra inteira é
+  // SUBSTITUÍDA em vez de ganhar exceção: uma exceção faria o primeiro "hi bro" perdido virar a sala em
+  // inglês, ou seja um parâmetro que o primeiro estrangeiro desliga.
+  ...(idiomaFixo()
+    ?[`LANGUAGE RULE, follow it strictly: always write in ${idiomaFixo()}, whatever language anyone else uses.`]
+    :['LANGUAGE RULE, follow it strictly: when a message is addressed to you, reply in THAT message\'s language,',
+      'even if the rest of the chat is in another one. Otherwise use the language of the recent chat.',
+      'With no chat at all, use Brazilian Portuguese.']),
   'If someone is talking to you, answer them directly, and use their name if they used yours. Otherwise, react to what the chat is ACTUALLY talking about right now, or to what just happened in the match — never to a topic nobody raised.',
   'React to what is happening to you in the match: if someone is chasing or shooting you, say it TO THEM, by name.',
   'Stay in character. You are typing, not narrating.',
@@ -406,7 +429,11 @@ export function montaPrompt(c){
   // respondido em português — o modelo seguia a maioria das linhas, não quem estava falando com ele.
   // A mensagem dirigida vem com o idioma NOMEADO quando dá para reconhecê-lo; quando não dá, fica a
   // instrução genérica, que é o que o modelo já fazia bem sozinho.
-  const lang=c.texto?detectaIdioma(c.texto):detectaIdioma((c.historico||[]).slice(-3).map(l=>l.text).join(' '));
+  // ⚠️ E A ORDEM COLADA NA MENSAGEM TEM QUE ACOMPANHAR O PAINEL. Ela fica por ÚLTIMO de propósito (é a
+  // linha que mais pesa na resposta), e deixá-la em `[write your line in Spanish]` com o painel travado em
+  // português faria o parâmetro perder para a peça mais forte do prompt que ele existe para comandar.
+  // Travado, `detectaIdioma` é PULADO — não corrigido: em `auto` ele decide como sempre.
+  const lang=idiomaFixo()||(c.texto?detectaIdioma(c.texto):detectaIdioma((c.historico||[]).slice(-3).map(l=>l.text).join(' ')));
   const ordem=lang?`[write your line in ${lang}]`:'[answer in the SAME LANGUAGE as that message]';
   const alvo=dirigida&&c.texto
     ?`[${c.quem||'someone'} says to YOU: "${c.texto}"]\n${ordem}\n`

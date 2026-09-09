@@ -117,6 +117,12 @@ Binário (primeiro byte = tipo):
     - `autoDefT`/`zoomT`/`feastT`: ticks restantes dos powerups de JOGADOR (0 = desligado). `zoomT > 0` faz o cliente afastar a câmera em `POWERUP.ZOOM_K` — e o servidor amplia a AOI do snapshot pelo MESMO fator (`net/snapshot.js`, com uma graça de ~15 ticks na expiração), senão o jogador enxerga mais mundo do que está recebendo e a borda vem vazia.
     - `weapon`: a arma NA MÃO; `missiles` é a munição dela. `owned` é o bitmask das armas com munição (bit 0 = míssil, sempre ligado) — é o que o HUD acende para dizer o que dá para chavear com o SWAP. `alive`: quantos jogadores ainda estão vivos (o "restam N" do Battle Royale).
     - `flags` ganhou `LOBBY=4` (a partida não começou) e `ZONE_HURT=8` (estou fora da zona, queimando).
+      ⚠️ `LOBBY` é derivado de `w.peace` e por muito tempo **nunca chegou ao cliente**: na fase `lobby` o
+      `Room.step` retorna antes do `_flush`, e sem peça não há snapshot. Ele passou a chegar com a GAIOLA DE
+      LARGADA do Battle Royale (os 3 s presos no octógono), que é a primeira situação em que há corpo no
+      mapa com o jogo desarmado — e é dele que o cliente tira "estou na gaiola", sem um byte novo. Um
+      cliente antigo simplesmente não desenha o octógono e não prevê a contenção por 3 s: degrada, não
+      quebra, e por isso `PROTOCOL_VERSION` não subiu.
     - `threat`: 0 = nada vindo; 1..255 = quão perto está o míssil teleguiado que mira NESTE slot e está se aproximando (255 = colado), medido em `MISSILE.ALERT_DIST`. `threatDir`: ângulo peça→míssil em 1/256 de volta.
       Vem do servidor de propósito: a AOI de um jogador pequeno tem meia-largura ~1250 px e o míssil nasce muito além disso, então um alerta puramente client-side chegaria com menos de 2 s de sobra. Dentro da AOI o cliente prefere a direção do míssil de verdade (é exata) e só usa `threatDir` fora dela.
     `magnetT`/`shieldLv`/`powerupBits` são o **melhor** entre as peças próprias (resumo para o HUD) — quem tem o powerup de fato é cada peça, pelas flags dela. `missiles` é do jogador.

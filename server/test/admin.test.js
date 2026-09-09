@@ -290,6 +290,36 @@ test('admin: `?days=` continua aceito — painel antigo contra pod novo',async t
   assert.equal(r2.j.janela,'90d','o teto de 90 dias existe porque as consultas varrem `matches` no pool do jogo');
 });
 
+// ── O FILTRO DE PLATAFORMA ───────────────────────────────────────────────────
+// Duas defesas independentes, e nenhuma faz o trabalho da outra: a lista branca do que EXISTE no banco (um
+// `?origem=` inventado viraria seis varreduras de `matches` e uma entrada de memo por URL autenticada) e o
+// valor indo como `$1` lá no repo, que é a defesa de INJEÇÃO — `users.origin` é o cabeçalho `Origin` cru de
+// quem criou a conta, ou seja o "valor permitido" é escrito por quem manda a requisição.
+test('admin: a plataforma é lista branca do BANCO — inventada é 400, nunca "todas"',async t=>{
+  if(pula())return t.skip('sem banco');
+  const r=await J('GET','/api/admin/retencao?janela=14d&origem=nao.existe.com',null,painel);
+  assert.equal(r.s,400,'fallback silencioso aqui seria uma tela dizendo "Poki" sobre o jogo inteiro');
+  assert.equal(r.j.error,'bad_origem');
+  // e a tentativa de injeção morre nas duas camadas: 400 aqui, e `$1` se um dia passar daqui
+  const inj=await J('GET',"/api/admin/retencao?janela=14d&origem="+encodeURIComponent("' OR 1=1 --"),null,painel);
+  assert.equal(inj.s,400);
+});
+
+test('admin: a lista de plataformas existe e o filtro ECOA o recorte que valeu',async t=>{
+  if(pula())return t.skip('sem banco');
+  const l=await J('GET','/api/admin/retencao/origens',null,painel);
+  assert.equal(l.s,200);
+  // `site` é a conta nascida na própria origem (sem cabeçalho `Origin`) — o banco de teste só tem dessas
+  assert.ok(l.j.origens.some(x=>x.origem==='site'),'o COALESCE é o que faz a ausência de Origin ser uma plataforma');
+  const com=await J('GET','/api/admin/retencao?janela=14d&origem=site',null,painel);
+  assert.equal(com.s,200);
+  assert.equal(com.j.origem,'site','a tela desenha o subtítulo a partir do ECO, nunca do que pediu');
+  const sem=await J('GET','/api/admin/retencao?janela=14d',null,painel);
+  // ⚠️ A CHAVE DO MEMO TEM QUE LEVAR A ORIGEM: com `'r:'+janela` só, estas duas respostas seriam o MESMO
+  // objeto por 60 s e a tela mostraria o recorte errado sem erro nenhum.
+  assert.equal(sem.j.origem,null,'sem filtro o eco é null — e não o "site" que veio do cache');
+});
+
 test('admin: a lista de janelas vem do SERVIDOR — o <select> não a duplica',async t=>{
   if(pula())return t.skip('sem banco');
   const r=await J('GET','/api/admin/retencao/janelas',null,painel);

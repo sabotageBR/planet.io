@@ -76,15 +76,36 @@ export function janelaDeDias(n){const d=Math.max(1,Math.min(90,+n||0));
   for(const [id,j] of JANELAS)if(j.dias&&j.dias>=d)return id;
   return '90d';}
 
+/**
+ * O FILTRO DE PLATAFORMA. O valor é `users.origin` CRU — o domínio (`https://html5.gamemonetize.co`), não
+ * um id de portal —, e quem o traduz em "Poki" continua sendo o PAINEL (`client/src/admin/portais.js`):
+ * um portal novo aparece no banco antes de qualquer código nosso conhecer o nome dele.
+ * ⚠️ ELE NÃO É INTERPOLADO: sai daqui como `$1` (ver `ler`). O que este helper devolve é só o fragmento
+ * FIXO que decide se o parâmetro entra na consulta.
+ * ⚠️ `COALESCE(origin,'site')` é a MESMA expressão que o funil já usava: conta nascida na própria origem
+ * não manda `Origin`, e essa ausência É a plataforma "site". Sem o COALESCE, filtrar por 'site' devolveria
+ * zero e a tela ficaria vazia sem dizer por quê.
+ * ⚠️ E o JOIN com `users` só entra QUANDO HÁ FILTRO (ver os painéis): sem filtro o SQL sai byte a byte o
+ * de hoje, que é o que mantém os números da tela padrão imunes a esta entrega.
+ */
+const fOrig=(o,alias='u')=>o?` AND COALESCE(${alias}.origin,'site') = $1`:'';
+const pOrig=o=>o?[o]:undefined;
+
 export function createAnalytics(db){
   /** @type {Map<string,{at:number,v:any}>} */
   const memo=new Map();
 
-  /** Leitura com teto de tempo: o `SET LOCAL` só vale dentro da transação, então ele não vaza para o pool. */
-  async function ler(sql){
+  /**
+   * Leitura com teto de tempo: o `SET LOCAL` só vale dentro da transação, então ele não vaza para o pool.
+   * ⚠️ `params` existe por causa do FILTRO DE PLATAFORMA, e o corte é o desenho: os fragmentos SQL de
+   * `JANELAS` são NOSSOS e viram texto; o que vem do pedido do operador vai como `$1` e nunca é
+   * interpolado. Validar `users.origin` contra o próprio banco pareceria lista branca e seria "o atacante
+   * escreveu o valor aceito" — ele é o cabeçalho `Origin` cru de `POST /api/auth/guest`.
+   */
+  async function ler(sql,params){
     return db.tx(async c=>{
       await c.query(`SET LOCAL statement_timeout='${TIMEOUT}'`);
-      const r=await c.query(sql);
+      const r=await c.query(sql,params);
       return r.rows;
     });
   }
@@ -98,20 +119,21 @@ export function createAnalytics(db){
    * de `duration_s=0 AND cause='left'` que os becos antigos do `wsServer` gravaram. Aplicado depois, a
    * fantasma ainda seria a `n=1` e o novato sumiria do relatório inteiro.
    */
-  const baseVidas=j=>j.modo==='coorte'
-    ?{cte:`WITH novos AS (SELECT id FROM users WHERE created_at >= ${j.corte}),
+  const baseVidas=(j,o)=>j.modo==='coorte'
+    ?{cte:`WITH novos AS (SELECT id FROM users u WHERE u.created_at >= ${j.corte}${fOrig(o)}),
     p AS (SELECT m.*, row_number() OVER (PARTITION BY m.user_id ORDER BY m.id) AS n
             FROM matches m JOIN novos u ON u.id=m.user_id WHERE ${VIDA_REAL})`,onde:'WHERE n=1'}
-    :{cte:`WITH p AS (SELECT m.* FROM matches m WHERE m.ended_at >= ${j.corte} AND ${VIDA_REAL})`,onde:''};
+    :{cte:`WITH p AS (SELECT m.* FROM matches m${o?' JOIN users u ON u.id=m.user_id':''}
+            WHERE m.ended_at >= ${j.corte} AND ${VIDA_REAL}${fOrig(o)})`,onde:''};
 
   // 1. FUNIL. Em `coorte`, por dia: quantas contas nascem, quantas chegam a jogar, quantas passam de 3 min.
   //    Em `atividade`, por hora: quantas contas jogaram, e quanto elas ficaram. ⚠️ Lá "jogaram" é igual a
   //    "contas" por construção (a base É quem jogou), e por isso o cliente esconde a coluna nesse modo —
   //    uma coluna cravada em 100% não informa, só ocupa a linha.
-  const funil=j=>ler(j.modo==='coorte'?`
+  const funil=(j,o)=>ler(j.modo==='coorte'?`
     WITH coorte AS (
       SELECT u.id, COALESCE(u.origin,'site') AS origem, date_trunc('${j.grao}',u.created_at) AS dia
-        FROM users u WHERE u.created_at >= ${j.corte}
+        FROM users u WHERE u.created_at >= ${j.corte}${fOrig(o)}
     ), v AS (
       SELECT c.dia, c.origem, c.id,
              count(m.id)                   AS vidas,
@@ -131,17 +153,17 @@ export function createAnalytics(db){
         FROM matches m WHERE m.ended_at >= ${j.corte} AND ${VIDA_REAL} GROUP BY 1
     ), v AS (
       SELECT b.dia, COALESCE(u.origin,'site') AS origem, b.id, b.vidas, b.s_total
-        FROM b JOIN users u ON u.id=b.id)
+        FROM b JOIN users u ON u.id=b.id${fOrig(o)})
     SELECT dia, origem,
            count(*)::int                             AS contas,
            count(*)::int                             AS jogaram,
            count(*) FILTER (WHERE s_total>=180)::int AS tres_min,
            count(*) FILTER (WHERE vidas>=2)::int     AS duas_vidas,
            round(avg(s_total))::int                  AS s_medio
-      FROM v GROUP BY 1,2 ORDER BY 1 DESC,2`);
+      FROM v GROUP BY 1,2 ORDER BY 1 DESC,2`,pOrig(o));
 
   // 2. A VIDA — a primeira de cada novato (`coorte`) ou toda vida da janela (`atividade`).
-  const primeira=j=>{const b=baseVidas(j);return ler(`${b.cte}
+  const primeira=(j,o)=>{const b=baseVidas(j,o);return ler(`${b.cte}
     SELECT count(*)::int                                                       AS n,
            round(percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_s))::int AS mediana_s,
            round(percentile_cont(0.9) WITHIN GROUP (ORDER BY duration_s))::int AS p90_s,
@@ -150,17 +172,17 @@ export function createAnalytics(db){
            count(*) FILTER (WHERE duration_s>=60  AND duration_s<180)::int     AS ate_3min,
            count(*) FILTER (WHERE duration_s>=180)::int                        AS acima_3min,
            round(avg(max_mass))::int                                           AS massa_media
-      FROM p ${b.onde}`);};
+      FROM p ${b.onde}`,pOrig(o));};
 
   // 3. Histograma dessas mesmas vidas, em baldes de 30 s até 10 min (+1 para o estouro).
-  const histograma=j=>{const b=baseVidas(j);return ler(`${b.cte}
+  const histograma=(j,o)=>{const b=baseVidas(j,o);return ler(`${b.cte}
     SELECT width_bucket(duration_s,0,600,20) AS balde, count(*)::int AS n
-      FROM p ${b.onde} GROUP BY 1 ORDER BY 1`);};
+      FROM p ${b.onde} GROUP BY 1 ORDER BY 1`,pOrig(o));};
 
   // 4. QUEM MATA. `razao` é o número que acusa (ou inocenta) os dois gigantes que a sala semeia: massa do
   //    algoz sobre massa da vítima. `killer_kind` é o que separa bot de cenário — `killed_by_user_id` é
   //    NULL nos dois casos, e por isso a pergunta não tinha resposta antes da 0010.
-  const algoz=j=>{const b=baseVidas(j);return ler(`${b.cte}
+  const algoz=(j,o)=>{const b=baseVidas(j,o);return ler(`${b.cte}
     SELECT cause,
            COALESCE(killer_kind, CASE WHEN killed_by_user_id IS NOT NULL THEN 'human' END, 'n/d') AS algoz,
            COALESCE(how,'n/d')                               AS via,
@@ -169,15 +191,15 @@ export function createAnalytics(db){
            round(avg(killer_mass))::int                      AS massa_algoz,
            round(avg(max_mass))::int                         AS massa_vitima,
            round(avg(killer_mass)/NULLIF(avg(max_mass),0),1) AS razao
-      FROM p ${b.onde} GROUP BY 1,2,3 ORDER BY n DESC`);};
+      FROM p ${b.onde} GROUP BY 1,2,3 ORDER BY n DESC`,pOrig(o));};
 
   // 5. Coortes D1/D7/D30.
   // ⚠️ SÓ NO MODO COORTE, e não é preguiça: o painel compara `dia + interval '1 day'`, ou seja ele é
   // DIÁRIO por definição. Numa janela de uma hora ele devolveria uma linha só, com D1/D7/D30 zerados —
   // três colunas de zero que se leem como "ninguém volta". Some, e o cliente diz por quê.
-  const coortes=j=>j.modo!=='coorte'?Promise.resolve([]):ler(`
-    WITH coorte AS (SELECT id, date_trunc('day',created_at) AS dia FROM users
-                     WHERE created_at >= ${j.corte}),
+  const coortes=(j,o)=>j.modo!=='coorte'?Promise.resolve([]):ler(`
+    WITH coorte AS (SELECT u.id, date_trunc('day',u.created_at) AS dia FROM users u
+                     WHERE u.created_at >= ${j.corte}${fOrig(o)}),
     d AS (SELECT DISTINCT c.dia, c.id, date_trunc('day',m.ended_at) AS quando
             FROM coorte c JOIN matches m ON m.user_id=c.id)
     SELECT dia,
@@ -186,7 +208,7 @@ export function createAnalytics(db){
            count(DISTINCT id) FILTER (WHERE quando = dia+interval '7 days')::int AS d7,
            count(DISTINCT id) FILTER (WHERE quando = dia+interval '30 days')::int AS d30,
            count(DISTINCT id) FILTER (WHERE quando > dia)::int                   AS voltou
-      FROM d GROUP BY 1 ORDER BY 1 DESC`);
+      FROM d GROUP BY 1 ORDER BY 1 DESC`,pOrig(o));
 
   // 6. A VISITA — a resposta literal aos 3 minutos (ver o comentário do GAP lá em cima). ⚠️ É o ÚNICO
   //    painel que não muda com o modo: ele sempre filtrou por ATIVIDADE (`matches.ended_at`), e é por isso
@@ -204,11 +226,11 @@ export function createAnalytics(db){
   // encolhe o intervalo percebido até a vida seguinte e gruda visitas que eram separadas — e infla a
   // duração da que sobrou. `started_at` é o `Date.now()` da abertura da sessão e `duration_s` é medido
   // em TICKS do Sim: os dois são do instante certo.
-  const visita=j=>ler(`
-    WITH m AS (SELECT user_id,started_at,duration_s,
-                      started_at + (duration_s||' seconds')::interval AS fim
-                 FROM matches
-                WHERE ended_at >= ${j.corte}),
+  const visita=(j,o)=>ler(`
+    WITH m AS (SELECT m.user_id,m.started_at,m.duration_s,
+                      m.started_at + (m.duration_s||' seconds')::interval AS fim
+                 FROM matches m${o?' JOIN users u ON u.id=m.user_id':''}
+                WHERE m.ended_at >= ${j.corte}${fOrig(o)}),
     v AS (SELECT *, CASE WHEN lag(fim) OVER w IS NULL
                            OR started_at - lag(fim) OVER w > interval '${GAP}'
                          THEN 1 ELSE 0 END AS nova
@@ -229,7 +251,7 @@ export function createAnalytics(db){
            count(*) FILTER (WHERE s_visita>=180)::int                        AS acima_3min,
            round(100.0*count(*) FILTER (WHERE s_visita>=180)/NULLIF(count(*),0),1) AS pct_3min,
            round(avg(vidas),2)                                               AS vidas_por_visita
-      FROM s`);
+      FROM s`,pOrig(o));
 
   /**
    * Os seis painéis num payload só: a tela é de leitura e seis round-trips seria pior.
@@ -239,16 +261,37 @@ export function createAnalytics(db){
    * o cliente pediu. É o mesmo contrato do eco de `by`/`dir` das tabelas ordenáveis, e a mesma defesa de
    * rollout — pod antigo não ecoa, e aí o cliente não anuncia um modo que não valeu.
    */
-  async function tudo(janela){
-    const id=JANELAS.has(janela)?janela:JANELA_PADRAO,j=JANELAS.get(id);
-    const k='r:'+id,agora=Date.now(),c=memo.get(k);
+  async function tudo(janela,origem){
+    const id=JANELAS.has(janela)?janela:JANELA_PADRAO,j=JANELAS.get(id),o=origem||'';
+    // ⚠️ A CHAVE DO MEMO LEVA A ORIGEM. Com `'r:'+id` só, escolher "Poki" mostraria os números de TODAS por
+    // 60 s, sem erro nenhum — o mesmo defeito que o `'r'+days` de antes já produziu entre `1h` e `1 dia`.
+    // `'*'` no lugar do vazio para que `'r:1h|'` nunca colida com um formato de chave futuro.
+    const k='r:'+id+'|'+(o||'*'),agora=Date.now(),c=memo.get(k);
     if(c&&agora-c.at<MEMO_MS)return c.v;
-    const [f,pr,h,a,co,vi]=await Promise.all([funil(j),primeira(j),histograma(j),algoz(j),coortes(j),visita(j)]);
-    const v={janela:id,modo:j.modo,rotulo:j.rotulo,days:j.dias,at:agora,
+    const [f,pr,h,a,co,vi]=await Promise.all([funil(j,o),primeira(j,o),histograma(j,o),algoz(j,o),coortes(j,o),visita(j,o)]);
+    const v={janela:id,modo:j.modo,rotulo:j.rotulo,days:j.dias,origem:o||null,at:agora,
       funil:f,primeira:pr[0]||null,histograma:h,algoz:a,coortes:co,visita:vi[0]||null};
     memo.set(k,{at:agora,v});
     return v;
   }
 
-  return{tudo};
+  /**
+   * AS PLATAFORMAS QUE EXISTEM — a lista do `<select>` e a lista branca do `?origem=`.
+   * ⚠️ Vem do BANCO, não de uma constante nossa, pelo mesmo motivo de `portais.js` existir: um portal novo
+   * aparece aqui antes de qualquer código nosso conhecer o nome dele.
+   * ⚠️ E ela NÃO é a defesa de injeção — o valor vai como `$1` de qualquer jeito. Ela existe para um
+   * `?origem=` inventado não virar seis varreduras de `matches` e uma entrada de memo por URL autenticada,
+   * que é o mesmo argumento do teto de 90 dias lá em cima.
+   * ⚠️ SEM corte de janela: a lista é do que EXISTE, não do que apareceu no período. Um portal sem conta
+   * nova na última hora tem que continuar selecionável, senão o filtro some quando a janela encurta.
+   */
+  async function origens(){
+    const k='o:',agora=Date.now(),c=memo.get(k);
+    if(c&&agora-c.at<MEMO_MS)return c.v;
+    const rows=await ler(`SELECT COALESCE(origin,'site') AS origem, count(*)::int AS contas
+                            FROM users GROUP BY 1 ORDER BY 2 DESC, 1`);
+    const v={origens:rows,at:agora};memo.set(k,{at:agora,v});return v;
+  }
+
+  return{tudo,origens};
 }

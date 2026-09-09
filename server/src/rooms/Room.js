@@ -8,7 +8,7 @@
 // cada encode devolve uma vista reutilizada; se um socket ficou com bytes pendentes trocamos de
 // writer (o antigo fica com o socket até drenar) em vez de copiar a cada envio.
 // @ts-check
-import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,botCountry,botSpawnR,BOT_CHAT,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,PLAYER,MODE,modeOf,modeCap,BR,CHAT,NOTICE,VOICE,FEED,WEAPON} from '@warspace/shared/constants.js';
+import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,botCountry,botSpawnR,BOT_CHAT,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,POWERUP,MODE,modeOf,modeCap,BR,CHAT,NOTICE,VOICE,FEED,WEAPON} from '@warspace/shared/constants.js';
 import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent,encodeZone,encodeVoice} from '@warspace/shared/protocol/index.js';
 import {rectHas} from '@warspace/shared/camera.js';
 import {wireValues} from '@warspace/shared/tunables.js';
@@ -405,14 +405,11 @@ export class Room{
     // dois amigos que procuram com 10 s de diferença cairiam em salas separadas — o oposto do que o
     // matchmaking existe para fazer.
     if(this.phase==='lobby')return this.sessions.size<this.max;
-    // JANELA DE ENTRADA TARDIA (Battle Royale): a largada não é mais o fim das inscrições. Enquanto a zona
-    // ainda está na etapa 0 e PARADA (antes do primeiro fechamento do gás, ~ZONE.HOLD_TICKS[0] depois de
-    // `begin()`), a sala continua aceitando gente — o círculo ainda cobre quase o mapa inteiro, então não
-    // há desvantagem geométrica em chegar agora. `_spawnPiece` (shared/physics/world.js) já sorteia dentro
-    // do círculo da zona quando ela existe, então o recém-chegado nasce em lugar seguro sem código extra
-    // aqui. No primeiro `stepZone` que começa a fechar (`shrinking:true` ou etapa > 0), a porta fecha
-    // exatamente como sempre fechou.
-    if(this.mode.lobby){const z=this.zone;if(z&&z.stage===0&&!z.shrinking)return !this.isFull();}
+    // A LARGADA É O FIM DAS INSCRIÇÕES. Existiu aqui uma janela de entrada tardia (a sala continuava
+    // aceitando gente enquanto a zona estava na etapa 0 e parada, ~125 s), e ela saiu por decisão de
+    // produto: "acabou a contagem para entrar, já era". Quem chega depois vê a partida pela porta do
+    // ESPECTADOR (`acceptsSpectator`), que continua aberta — assistir uma partida em andamento é o caso de
+    // uso; entrar nela, não.
     return !this.isFull()&&!this.mode.lobby;}
   /**
    * O MOTIVO da recusa, para quem precisa dizê-lo: `null` (pode entrar), `'full'` (não tem vaga) ou
@@ -437,16 +434,12 @@ export class Room{
     private:this.private,host:this.hostNick||null};}
   /**
    * Quanto falta, em ms, até a sala TRANCAR — para a lista de Salas mostrar a contagem antes de acontecer,
-   * não só o cadeado depois. Duas janelas, a mesma ideia: o LOBBY fecha em `lobbyUntil` (a mesma conta de
-   * `broadcastLobby`) e a entrada tardia do Battle Royale fecha no `t1` da zona (o tick em que o 1º
-   * fechamento do gás COMEÇA — `zone.js:stepZone`). Fora das duas, `null`: nada reusa estado novo, os dois
-   * relógios já existiam.
+   * não só o cadeado depois. Uma janela só: o LOBBY fecha em `lobbyUntil` (a mesma conta de
+   * `broadcastLobby`). Fora dela, `null` — a largada tranca na hora, e não há contagem a mostrar.
    */
   _lockInMs(){
-    if(!this.mode.lobby||!this.acceptsJoin())return null;
-    if(this.phase==='lobby')return this.lobbyUntil?Math.max(0,Math.round((this.lobbyUntil-this.sim.tick)*1000/TICK_HZ)):null;
-    const z=this.zone;
-    return z&&z.stage===0&&!z.shrinking?Math.max(0,Math.round((z.t1-this.sim.tick)*1000/TICK_HZ)):null;}
+    if(!this.mode.lobby||this.phase!=='lobby'||!this.acceptsJoin())return null;
+    return this.lobbyUntil?Math.max(0,Math.round((this.lobbyUntil-this.sim.tick)*1000/TICK_HZ)):null;}
   /** Bloco `round` do JSON `room`: tick de início, duração e hora do relógio do espaço no início. */
   roundInfo(){return{start:this.roundStart,ticks:this.roundTicks,dayStart:ROUND.DAY_START_H,breakMs:ROUND.BREAK_MS,
     // `days` vem do SERVIDOR de propósito. Os ticks da rodada saem do env (ROUND_TICKS) e os dias eram uma
@@ -847,37 +840,85 @@ export class Room{
     return best;}
   _teamSize(t){let n=0;for(const gp of this.sim.players.values())if(!gp.isBot&&gp.team===t)n++;return n;}
   /**
-   * Começa a partida de verdade: completa com bots (fechando as equipes que ficaram curtas), reposiciona todo
-   * mundo num anel espaçado, arma a zona e SOLTA o `peace`. `roundStart` só é escrito aqui — no arquivo original
-   * ele nascia 0 e nunca mudava, e é justamente esse campo que o relógio, a contagem e o céu do cliente derivam.
+   * A LARGADA EM DOIS TEMPOS. `begin()` completa a sala, põe todo mundo dentro do OCTÓGONO e liga a contagem
+   * 3·2·1; `largar()` abre a gaiola e arma a zona. Entre os dois a sala é `live` DE VERDADE — há corpo, há
+   * snapshot, há placar e há radar. O que não há é JOGO: `w.peace` desliga comer, atirar, dividir, cuspir,
+   * powerup e comida (ver as guardas de `World.step`), e o gás simplesmente ainda não existe.
+   * ⚠️ `phase` continua indo de 'lobby' para 'live' num passo só, e isso é decisão: é `phase!=='lobby'` que
+   * faz o `step()` chegar ao `_flush` — e o SNAPSHOT é o que desenha a gaiola. Um terceiro valor obrigaria a
+   * revisitar `respawn`, `joinRefusal`, `info`, o placar, o feed e o `phase` do cliente, por nada.
+   * ⚠️ `startsAt` é o MESMO campo da contagem do lobby, reusado: ele já viaja no bloco `round` do `phase` e o
+   * cliente já o lê. A gaiola não custou um byte de protocolo.
    */
   begin(){
     if(this.phase!=='lobby')return;
     const sim=this.sim,w=sim.world;
     // 1. fecha o que faltou (a curva do lobby já deve ter enchido quase tudo; isto é a borda)
     this.fillTo(this.max);   // PLAYERS é o TOTAL: humanos já ocupam parte das vagas
-    // 2. todo mundo recomeça igual, num anel espaçado (companheiros lado a lado)
-    const cx=w.w/2,cy=w.h/2,rad=Math.min(w.w,w.h)*BR.SPAWN_RING;
-    const grupos=new Map();
-    for(const gp of sim.players.values()){const k=gp.team>=0?`t${gp.team}`:`s${gp.slot}`;
-      if(!grupos.has(k))grupos.set(k,[]);grupos.get(k).push(gp);}
-    const n=grupos.size;let i=0;
-    for(const arr of grupos.values()){const an=i/n*Math.PI*2+this.rng.next()*.05;i++;
-      const gx=cx+Math.cos(an)*rad,gy=cy+Math.sin(an)*rad;
-      arr.forEach((gp,j)=>{const off=j*90,a2=an+Math.PI/2;
-        w.respawnPlayer(gp.slot,{x:gx+Math.cos(a2)*off,y:gy+Math.sin(a2)*off,r:PLAYER.START_R,score:0});
-        const ps=w.players.get(gp.slot);if(ps)ps.ammo[WEAPON.MISSILE]=BR.START_AMMO;   // ⚠️ era `ps.missiles`, campo que não existe desde que a munição virou `ps.ammo[]` por arma: ninguém largava o BR com a bala inicial
-        // ⚠️ SÓ `joinedTick`: a VIDA começa na largada, mas a pessoa está na sala desde o lobby — e é
-        // `entrouTick` que o painel usa para dizer há quanto tempo ela está aqui.
-        gp.score=0;gp.maxMass=0;gp.joinedTick=w.tick;});}
-    // 3. a partida começa: relógio, zona e fim da paz
-    this.roundStart=w.tick;this.zone=createZone(w.tick);w.setZone(this.zone);w.peace=false;this.phase='live';this.startsAt=0;
+    // 2. a gaiola ANTES de posicionar — `_posicionaGaiola` a lê
+    w.cage={x:w.w/2,y:w.h/2,ap:BR.CAGE_AP*w.w};
+    this._posicionaGaiola();
+    // 3. o relógio da partida começa quando a gaiola ABRE. Escrito aqui e no FUTURO (não lá no `largar()`)
+    // para que este único `broadcastPhase` já leve o `round` definitivo: o céu, a contagem e o BIG CRUNCH
+    // saem todos dele, e um `roundStart` zero durante três segundos faria os três mentirem.
+    this.roundStart=w.tick+BR.CAGE_TICKS;this.startsAt=this.roundStart;
+    this.phase='live';
     this.feedLog.length=0;   // a fofoca é da RODADA: a sala é reaproveitada, e morte da partida passada não é assunto
     // ...e a conversa também, pelo mesmo motivo. Sem isto uma sala reaproveitada nasce com o orçamento
     // gasto e um `ate` no futuro, e os bots atravessam a rodada nova sem abrir um coro sequer.
     this.conversa={n:0,gastas:0,teto:0,ate:0,solta:false};
     this.iniciativaAt=-1e9;this.iniciativas=0;this.falaAt=sim.tick;
     sim.playersDirty=true;
+    this.broadcastPhase();
+    this.log.info(`sala ${this.code}: gaiola — largada em ${(BR.CAGE_TICKS/TICK_HZ).toFixed(0)} s`);}
+  /**
+   * Todo mundo dentro do octógono, em DOIS anéis concêntricos. Um anel só (como era o `SPAWN_RING`) põe 50
+   * grupos a 90 px de distância num raio que caiba na gaiola, ou seja SOBREPOSTOS — e a largada começaria
+   * com o octógono inteiro se desentalando. O anel de fora leva mais grupos porque tem mais circunferência.
+   * Companheiros de equipe ficam LADO A LADO, na tangente, como já ficavam.
+   */
+  _posicionaGaiola(){
+    const sim=this.sim,w=sim.world,cg=w.cage,ap=cg.ap;
+    const grupos=new Map();
+    for(const gp of sim.players.values()){const k=gp.team>=0?`t${gp.team}`:`s${gp.slot}`;
+      if(!grupos.has(k))grupos.set(k,[]);grupos.get(k).push(gp);}
+    const n=grupos.size,r0=ap*BR.CAGE_RING[0],r1=ap*BR.CAGE_RING[1];
+    const nOut=Math.max(1,Math.round(n*r1/(r0+r1))),nIn=Math.max(1,n-nOut);
+    let i=0;
+    for(const arr of grupos.values()){
+      const fora=i<nOut,k=fora?i:i-nOut,kn=fora?nOut:nIn,rad=fora?r1:r0;
+      // o anel de dentro sai meio passo defasado, para os dois não formarem raios alinhados; o jitter só
+      // quebra a simetria perfeita, que é o que denuncia posição gerada
+      const an=k/kn*Math.PI*2+(fora?0:Math.PI/kn)+this.rng.next()*.04;
+      i++;
+      const gx=cg.x+Math.cos(an)*rad,gy=cg.y+Math.sin(an)*rad,a2=an+Math.PI/2;
+      arr.forEach((gp,j)=>{const off=(j-(arr.length-1)/2)*BR.CAGE_GAP;   // centrado no grupo, não corrido para um lado
+        w.respawnPlayer(gp.slot,{x:gx+Math.cos(a2)*off,y:gy+Math.sin(a2)*off,r:BR.SPAWN_R,score:0});   // o BR tem massa inicial PRÓPRIA (parâmetro do /admin): os dois modos não são o mesmo jogo
+        const ps=w.players.get(gp.slot);
+        if(ps){ps.ammo[WEAPON.MISSILE]=BR.START_AMMO;   // ⚠️ era `ps.missiles`, campo que não existe desde que a munição virou `ps.ammo[]` por arma: ninguém largava o BR com a bala inicial
+          // A CÂMERA (e a AOI JUNTO) abre na gaiola pelo caminho que JÁ EXISTE: o powerup de zoom. Sem isto
+          // um recém-nascido enquadra 1920×1080 px de mundo e o octógono (1 559 px de vértice a vértice)
+          // sai da tela. Reusar `zoomUntil` é o que faz os DOIS lados abrirem juntos — o cliente lê
+          // `self.zoomT` e `net/snapshot.js` lê `ps.zoomUntil` —, e um caminho novo só para isto seria a
+          // assimetria clássica: câmera larga com AOI estreita, ou seja uma borda sem nada dentro.
+          ps.zoomUntil=w.tick+BR.CAGE_TICKS;}
+        // ⚠️ SÓ `joinedTick`: a VIDA começa na largada, mas a pessoa está na sala desde o lobby — e é
+        // `entrouTick` que o painel usa para dizer há quanto tempo ela está aqui.
+        gp.score=0;gp.maxMass=0;gp.joinedTick=w.tick;});}}
+  /**
+   * A GAIOLA ABRE: some o octógono, acaba a paz, nasce a zona. É o instante em que a partida começa de fato,
+   * e é por isso que o `_pushFeed` de largada e a conversa dos bots moram aqui e não no `begin()`.
+   */
+  largar(){
+    const sim=this.sim,w=sim.world;
+    w.cage=null;w.peace=false;
+    this.zone=createZone(w.tick);w.setZone(this.zone);
+    this.startsAt=0;
+    // O ÍMÃ DE NASCENÇA COMEÇA A VALER AGORA. `_spawnPiece` o deu três segundos atrás e ele dura
+    // POWERUP.TICKS: sem re-carimbar, boa parte dele seria gasta dentro de uma gaiola onde não há um grão
+    // de comida para atrair — um powerup que expira sem nunca ter podido fazer nada.
+    for(const ps of w.players.values())for(const pc of ps.pieces)
+      if(!pc.dead&&pc.r<=POWERUP.MAGNET_MAX_R)pc.magnetUntil=w.tick+POWERUP.TICKS;
     for(let i=0;i<3;i++)this._talkAlgum('start');   // largada: alguém diz alguma coisa, como em qualquer sala
     this._pushFeed({k:'sys',a:-1,b:-1,how:'start',by:null});
     this.broadcastPhase();this.broadcastZone();
@@ -1721,6 +1762,11 @@ export class Room{
   /** Fim do mundo: placar + campeão (maior planeta vivo), persistência de todos e sala aposentada. */
   endRound(reason='time'){
     if(this.over)return;this.over=true;this.endedAt=Date.now();this.endReason=reason;
+    // ⚠️ A gaiola SEMPRE some junto com a rodada. Na prática ela nunca sobrevive até aqui (o lobby de uma
+    // sala fechada espera até haver dois, então `aliveTeams()<=1` não dispara nos 3 s dela), mas deixar uma
+    // parede física em pé numa sala aposentada — que é reaproveitada — é o tipo de estado que só aparece
+    // muito depois e sem explicação.
+    this.sim.world.cage=null;
     // O campeão é fotografado ANTES do endRound: `leaderboard()` só lista VIVOS, então uma morte simultânea
     // (dois últimos se comendo no mesmo tick, ou a zona levando os dois) deixava `champion` nulo.
     const ultimo=this.champion||(this.sim.leaderboard().length?null:null);
@@ -1777,6 +1823,9 @@ export class Room{
       if(this.flagsDirty)this.broadcastFlags();
       this.lobbyTick();
       return;}
+    // A gaiola abre no tick EXATO que o cliente recebeu em `round.startsAt` e contou 3·2·1: o número é
+    // absoluto dos dois lados, então não há como a contagem e a abertura discordarem.
+    if(sim.world.cage&&sim.tick>=this.startsAt)this.largar();
     if(this.mode.zone&&this.zone)this.tickZone();
     // ⚠️ `this.roundTicks&&` não é redundante: com 0 (SEM FIM) a comparação `0>=0` é VERDADEIRA no primeiro
     // tick, e a sala do dono acabaria antes de existir. O fim continua alcançável por `lastAlive` e pelo

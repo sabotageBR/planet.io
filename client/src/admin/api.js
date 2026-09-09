@@ -7,6 +7,19 @@ const KEY="warspace_admin_token";
 export const getToken=()=>{try{return localStorage.getItem(KEY)||"";}catch{return "";}};
 export const setToken=t=>{try{t?localStorage.setItem(KEY,t):localStorage.removeItem(KEY);}catch{/* modo anônimo */}};
 
+// ── PREFERÊNCIAS DO PAINEL ───────────────────────────────────────────────────
+// A primeira do painel — até aqui o `localStorage` só guardava o token. Elas moram AO LADO dele, e não
+// espalhadas no JSX, pelo mesmo motivo do `getToken`: o try/catch do modo anônimo é obrigatório e repeti-lo
+// em cada tela é como se esquece um.
+// ⚠️ Prefixo `warspace_admin_pref_`, nunca uma chave curta: o painel e o jogo dividem a mesma origem e a
+// mesma SPA, e um `janela` solto colidiria com a primeira pref do JOGO que se chamasse igual.
+// ⚠️ Isto é CONVENIÊNCIA, nunca autoridade: o valor lido volta a passar pela lista branca do servidor, e a
+// tela reconcilia contra ela. Um `catch` mudo cobre a janela anônima (onde o acessor LANÇA, não devolve
+// null) — uma exceção aqui derrubaria o render inteiro do painel por causa de um filtro lembrado.
+const PREF="warspace_admin_pref_";
+export const getPref=(k,def=null)=>{try{const v=localStorage.getItem(PREF+k);return v==null?def:v;}catch{return def;}};
+export const setPref=(k,v)=>{try{v==null?localStorage.removeItem(PREF+k):localStorage.setItem(PREF+k,String(v));}catch{/* modo anônimo */}};
+
 let onAuthFail=null;
 export const setOnAuthFail=f=>{onAuthFail=f;};
 
@@ -66,7 +79,11 @@ export const api={
   // ⚠️ `janela`, não mais `days`: "dia atual" não é um número de dias, e o `d|0` de antes truncava
   // qualquer coisa que não fosse inteiro. A lista de janelas é do SERVIDOR (`/retencao/janelas`) —
   // duplicá-la aqui a faria divergir na primeira janela nova.
-  retencao:j=>req("GET","/retencao?janela="+encodeURIComponent(j||"")),
+  // ⚠️ `origem` é o valor CRU de `users.origin` (o domínio), não o nome bonito do portal: quem traduz é
+  // `portais.js`, no PAINEL. Mandar "Poki" daqui exigiria o servidor conhecer os domínios de cada portal —
+  // e o portal seguinte apareceria no banco antes disso.
+  retencao:(j,o)=>req("GET","/retencao?janela="+encodeURIComponent(j||"")+(o?"&origem="+encodeURIComponent(o):"")),
   retencaoJanelas:()=>req("GET","/retencao/janelas"),
+  retencaoOrigens:()=>req("GET","/retencao/origens"),
   kpis:()=>req("GET","/kpis"),
 };

@@ -5,11 +5,12 @@ import {readdirSync,readFileSync,statSync} from "node:fs";
 import {fileURLToPath} from "node:url";
 import {dirname,join} from "node:path";
 import {performance} from "node:perf_hooks";
-import {createWorld,createGrid,createBody,setR,addBoost,boostLeft,velX,velY,tryMergeOwn,applyEject,stepOwnPieces,incomingMissile} from "../src/physics/index.js";
+import {createWorld,createGrid,createBody,setR,addBoost,boostLeft,velX,velY,tryMergeOwn,applyEject,stepOwnPieces,incomingMissile,clampCage,clampCagePoint,cageVertexR,CAGE_N} from "../src/physics/index.js";
 import {zoomFor,focusOf,aoiScaleFood,zoomSpan,clampZoom} from "../src/camera.js";
 import {vmaxFor} from "../src/physics/integrate.js";
 import {createRng} from "../src/rng.js";
-import {WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,ejectR,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,isWeaponFood,EAT,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT,ZOOM,QUIT} from "../src/constants.js";
+import {applyTunable,resetTunable} from "../src/tunables.js";
+import {BR,WORLD,TICK_HZ,CAM,SPLIT,BOOST,BOUNCE,EJECT,ejectR,EJECT_MASS,FRAG,fragR,PLAYER,BLACKHOLE,ASTEROID,FOOD,FOOD_TYPE,isWeaponFood,EAT,SPEED,DT,POWERUP,MERGE,MISSILE,STAR,BOT,ZOOM,QUIT} from "../src/constants.js";
 import {KIND,PIECE_FLAG,FOOD_FLAG,STAR_PHASE,INPUT_FLAG,FRAG_KIND} from "../src/protocol/constants.js";
 import {BotBrain} from "../src/bot.js";
 import {starShatter,STUCK_STAR,STUCK_ASTEROID,explodeQuit} from "../src/physics/rules.js";
@@ -1271,3 +1272,82 @@ test("+1 munição: EMPRESTA uma bala acima do teto, e só uma",()=>{
   assert.equal(ps.ammo[0],MISSILE.MAX_AMMO,"gastou o empréstimo: o teto normal volta a valer");
   pega(FOOD_TYPE.AMMO);
   assert.equal(ps.ammo[0],MISSILE.MAX_AMMO,"e munição comum não recupera a quarta bala");});
+
+// ── NASCER MAIOR NÃO MOVE O PISO DO DECAIMENTO ───────────────────────────────
+// `PLAYER.SPAWN_R` (o parâmetro do /admin) e `PLAYER.START_R` (o piso de `decayPiece`) foram separados de
+// propósito, e este teste é o que impede que os juntem de novo: o piso é a ÚNICA das duas que `predict.js`
+// lê, então movê-lo com o painel faria a peça própria divergir do servidor em MASSA, em silêncio.
+test("massa inicial: nascer maior murcha até START_R e para lá — e a predição acompanha o caminho todo",()=>{
+  try{
+    applyTunable('PLAYER.SPAWN_R',3600);   // r=60, o dobro da régua
+    const w=createWorld({seed:77,food:0,asteroids:false,holes:0,stars:0,decay:true});
+    const pc=w.addPlayer(0);
+    assert.ok(Math.abs(pc.r-60)<1e-6,"nasce com o tamanho do parâmetro");
+    const own=[createBody(0,pc.x,pc.y,pc.r)],st={tx:pc.x,ty:pc.y};
+    w.setTarget(0,pc.x,pc.y);
+    // ~12 min de jogo parado: tempo de sobra para o decaimento levar 3 600 de massa de volta a 900
+    for(let t=0;t<60*60*13;t++){stepOwnPieces(own,st,w.tick);w.step();}
+    assert.ok(Math.abs(pc.r-PLAYER.START_R)<.5,`murchou até o piso (deu ${pc.r.toFixed(2)})`);
+    assert.ok(pc.r>=PLAYER.START_R-1e-6,"e NUNCA abaixo dele");
+    assert.ok(Math.abs(own[0].r-pc.r)<1e-6,"⚠️ e a predição chegou ao MESMO raio: o piso é o mesmo dos dois lados");
+  }finally{resetTunable('PLAYER.SPAWN_R');}});
+
+// ── O OCTÓGONO DE LARGADA (Battle Royale) ────────────────────────────────────
+// A gaiola muda a POSIÇÃO da peça própria, então ela é o caso mais grave de paridade do jogo: conter só no
+// servidor faria o cliente atravessar a parede e ser puxado de volta 20×/s acima de `NET.SNAP_DIST`, com a
+// CÂMERA junto (ela segue as peças próprias). Este arquivo cobre as duas metades: a geometria contém, e os
+// dois lados contêm IGUAL.
+/** Distância assinada do ponto ao semiplano k (as normais estão em múltiplos de 45°). */
+const semi=(b,cg,k)=>(b.x-cg.x)*Math.cos(k*Math.PI/4)+(b.y-cg.y)*Math.sin(k*Math.PI/4);
+
+test("gaiola: os oito semiplanos contêm a peça, mesmo mirando nos vértices",()=>{
+  const cg={x:6000,y:6000,ap:BR.CAGE_AP*WORLD.w};
+  // 16 direções: as 8 normais (o meio de cada lado) e as 8 diagonais entre elas — os VÉRTICES, que é onde
+  // uma passada só de correção deixa a peça escapar ~2 px. É por isso que `clampCage` faz duas.
+  for(let d=0;d<16;d++){
+    const a=d*Math.PI/8,w=empty(500+d),pc=w.addPlayer(0,{x:cg.x,y:cg.y});
+    w.cage=cg;
+    w.setTarget(0,cg.x+Math.cos(a)*20000,cg.y+Math.sin(a)*20000);   // mira MUITO fora, para ramar a parede
+    for(let t=0;t<300;t++)w.step();
+    for(let k=0;k<CAGE_N;k++)
+      assert.ok(semi(pc,cg,k)<=cg.ap-pc.r+1e-9,
+        `direção ${(a*180/Math.PI).toFixed(0)}°: escapou pelo semiplano ${k} (sobra ${(semi(pc,cg,k)-(cg.ap-pc.r)).toFixed(3)} px)`);
+    // e ela ANDOU: sem o clamp do ALVO ela ficaria colada na parede sem nunca chegar, mas o que se cobra
+    // aqui é o oposto — que a contenção não a tenha travado no centro.
+    assert.ok(Math.hypot(pc.x-cg.x,pc.y-cg.y)>100,"a peça se move dentro da gaiola");}});
+
+test("gaiola: o servidor e a predição contêm IGUAL, até no vértice",()=>{
+  const cg={x:6000,y:6000,ap:BR.CAGE_AP*WORLD.w};
+  // COM decaimento, como o teste de paridade vizinho: `stepOwnPieces` sempre chama `decayPiece`, e um
+  // mundo sem decaimento divergiria por esse motivo e não pela gaiola.
+  const w=createWorld({seed:613,food:0,asteroids:false,holes:0,stars:0});
+  const pc=w.addPlayer(0,{x:cg.x-200,y:cg.y+150});
+  w.cage=cg;
+  const own=w.piecesOf(0).map(p=>({...p})),st={tx:0,ty:0};
+  for(let t=0;t<600;t++){
+    // varre a mira em círculo, MUITO fora da gaiola: passa por todos os lados e por todos os vértices
+    const a=t*Math.PI/60;st.tx=cg.x+Math.cos(a)*9000;st.ty=cg.y+Math.sin(a)*9000;
+    w.setTarget(0,st.tx,st.ty);
+    stepOwnPieces(own,st,w.tick,undefined,undefined,undefined,null,null,null,cg);
+    w.step();}
+  assert.equal(own.length,1);
+  assert.ok(Math.abs(own[0].x-pc.x)<1e-9&&Math.abs(own[0].y-pc.y)<1e-9,
+    `posição divergiu: ${Math.hypot(own[0].x-pc.x,own[0].y-pc.y)} px (o snap do cliente é NET.SNAP_DIST=120)`);
+  assert.ok(Math.abs(own[0].vx-pc.vx)<1e-9&&Math.abs(own[0].vy-pc.vy)<1e-9,"e o impulso refletido também");});
+
+test("gaiola: o alvo é recortado pelo RAIO, e é a DIREÇÃO que tem que sobreviver",()=>{
+  const cg={x:6000,y:6000,ap:720};
+  // ⚠️ ESTE É O TESTE QUE PEGOU O DEFEITO. Com o recorte por SEMIPLANO (que é o certo para o CORPO), um
+  // alvo 4 000 px à esquerda de um ponto logo à direita do centro virava `cx−124` em vez de `cx−720` — a
+  // 214 px, ou seja DENTRO da rampa de frenagem —, e as peças atravessavam a gaiola a passo de tartaruga
+  // sem nunca se encostarem. É a mesma lição do recorte ao mundo: por eixo (ou por face) ele TORCE.
+  for(let d=0;d<16;d++){
+    const a=d*Math.PI/8,p=clampCagePoint(cg,cg.x+Math.cos(a)*9000,cg.y+Math.sin(a)*9000);
+    const ang=Math.atan2(p.y-cg.y,p.x-cg.x),err=Math.abs(Math.atan2(Math.sin(ang-a),Math.cos(ang-a)));
+    assert.ok(err<1e-9,`direção torceu ${(err*180/Math.PI).toFixed(1)}° em ${(a*180/Math.PI).toFixed(0)}°`);
+    assert.ok(Math.abs(Math.hypot(p.x-cg.x,p.y-cg.y)-cg.ap)<1e-9,"e ele para no círculo inscrito");
+    for(let k=0;k<CAGE_N;k++)assert.ok(semi(p,cg,k)<=cg.ap+1e-9,"que está sempre DENTRO do octógono");}
+  // idempotente: conter um ponto já contido é no-op, e é isso que permite escrever de volta em `ps.tx/ty`
+  const dentro=clampCagePoint(cg,cg.x+100,cg.y-50);
+  assert.ok(Math.abs(dentro.x-(cg.x+100))<1e-9&&Math.abs(dentro.y-(cg.y-50))<1e-9);
+  assert.ok(cageVertexR(cg.ap)>cg.ap,"o circunraio é maior que o apótema — é o que o DESENHO usa");});

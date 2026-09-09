@@ -179,7 +179,32 @@ export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,F
 export const MODE={FREE:0,BR:1};
 export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
   LOBBY_TICKS:1800,COUNTDOWN_TICKS:300,FILL_EXP:1.7,ARRIVE_JITTER:.55,
-  SPAWN_RING:.44,START_AMMO:1,ROUND_TICKS:45000,WEAPON_P:.05,JOIN_GRACE_TICKS:120,
+  START_AMMO:1,SPAWN_R:30,ROUND_TICKS:45000,WEAPON_P:.05,
+  // ── O OCTÓGONO DE LARGADA ────────────────────────────────────────────────────────────────────────────
+  // Os 50 largam PRESOS num octógono no centro do mapa por CAGE_TICKS (a contagem 3·2·1). Lá dentro eles se
+  // TROMBAM e nada mais: não há comer, atirar, dividir, cuspir, powerup, comida nem gás. Quando a gaiola
+  // abre, o mundo volta a ser o de sempre e a zona nasce — é o `largar()` da Room.
+  // Ele SUBSTITUI o anel de largada (`SPAWN_RING`, .44 = 5 280 px de raio): a mesma ideia — uma fração do
+  // mapa —, com a forma trocada. O anel espalhava os 50 tão longe uns dos outros que ninguém via ninguém
+  // largar, que é justamente o instante em que um battle royale se apresenta.
+  // ⚠️ CAGE_AP é o APÓTEMA (centro→LADO), não o circunraio: é ele que os oito semiplanos testam, e
+  // parametrizar pelo lado mais PERTO é o que impede um grupo posto na direção de um lado de nascer fora.
+  // Fração de WORLD.w, como ZONE.R e como o anel que ele substituiu — mapa maior, gaiola maior, de graça.
+  // ⚠️ 660 px de apótema = 1,44 M px² de área (8·tan(π/8)·ap²). Com 50 planetas de massa 900 a ocupação é
+  // 9,8 % — apertado o bastante para trombar, largo o bastante para andar. É ela que fixa o TETO de
+  // `BR.SPAWN_R` no /admin: em massa 3 600 a ocupação já vai a 39 %.
+  // ⚠️ E o teto de cima é a TELA, medido no navegador: com o afastamento de `POWERUP.ZOOM_K` que a largada
+  // liga (ver `Room._posicionaGaiola`), 1080p mostra 1 620 px de mundo na vertical e uma tela 2:1 mostra
+  // 1 405 — o octógono tem 2·ap de altura, então .06 (1 440 px) já saía pelo topo e pela base em telas
+  // largas e baixas. Uma arena que não cabe na tela deixa de ser lida como arena.
+  CAGE_TICKS:180,CAGE_AP:.055,CAGE_RING:[.50,.85],CAGE_GAP:80,
+  // A FOLGA ENTRE O CÍRCULO FECHAR E A SALA ACABAR POR TEMPO. Ela sempre existiu (45 000 − 37 500 = 7 500) e
+  // vivia só num comentário ("os dois andam JUNTOS"). Virou número porque o piso de duração do BR é DERIVADO
+  // da zona (`roundTicksOf`), e encurtar a primeira parada movia esse piso sozinho: com HOLD_TICKS[0] em
+  // 50 s a opção de 10 min passaria a caber, com 50 s para o último círculo decidir a partida — que é
+  // exatamente "o Battle Royale acabar sem ter decidido nada". 125 s é o que já valia na prática; se um dia
+  // o BR de 10 min for desejado, é ESTE número que desce, e não o piso que some.
+  DECIDE_TICKS:7500,
   INVITE_TTL_MS:20000,   // quanto o convite "Battle Royale começando" fica na tela de quem está no Livre
   // QUANTO TEMPO SEM CONVIDAR A MESMA PESSOA DE NOVO. Não havia nada: toda sala de BR pública criada em
   // QUALQUER shard do cluster manda um card para TODA sessão do Livre (`RoomManager.announceBrStartCluster`
@@ -203,12 +228,16 @@ export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
 // saírem em intervalos exatos. Quando lota (ou a janela fecha), COUNTDOWN_TICKS (5 s) de contagem e larga.
 // Vaga é sempre do humano: quem entra num lobby cheio DERRUBA um preenchimento (ver Room.join) — sem isso,
 // dois amigos procurando com 10 s de diferença cairiam em salas separadas.
-// ROUND_TICKS (10 min) é só a rede de segurança: a partida acaba por último-vivo bem antes, e a zona
-// inteira (ZONE) fecha em 30 000 ticks ≈ 8 min 20 s. ⚠️ Os dois andam JUNTOS: alongar a zona sem alongar
-// isto aqui faz a partida terminar por tempo antes de o círculo fechar, que é o único jeito de o Battle
-// Royale acabar sem ter decidido nada. Em produção quem manda é o env ROUND_TICKS (k8s/05-config).
+// ROUND_TICKS (45 000 = 12 min 30 s) é só a rede de segurança: a partida acaba por último-vivo bem antes, e
+// a zona inteira (ZONE) fecha em 33 000 ticks = 9 min 10 s. ⚠️ Os dois andam JUNTOS, e agora com um número:
+// `BR.DECIDE_TICKS` é a folga entre o círculo fechar e a sala acabar por tempo, e `roundTicksOf` recusa
+// qualquer duração abaixo de `ZONE_TOTAL_TICKS + DECIDE_TICKS`. Sem essa folga, encurtar uma etapa da zona
+// abriria sozinho a opção de 10 min — e uma partida que acaba por TEMPO no círculo final é o único jeito de
+// o Battle Royale terminar sem ter decidido nada.
+// ⚠️ O env ROUND_TICKS (k8s/05-config) NÃO alcança o BR: `Room.js` lê `MODES[BR].roundTicks`, que é a cópia
+// literal de `BR.ROUND_TICKS`. Ele manda no Livre, via `ROUND.TICKS`.
 export const ZONE={STAGES:6,R:[.62,.45,.32,.225,.16,.113,.08],
-  HOLD_TICKS:[7500,5625,4125,2250,1125,750],SHRINK_TICKS:[4500,3750,3000,2250,1500,1125],
+  HOLD_TICKS:[3000,5625,4125,2250,1125,750],SHRINK_TICKS:[4500,3750,3000,2250,1500,1125],
   DRIFT:.45,BURN:.10,BURN_K:2.2,GAS_GAIN:.5,EXPOSE_MIN:.02,WARN_TICKS:180,MIN_R:60,SHED_TICKS:24,SHED_DIST:180,SHED_SPREAD:.85,SHED_MIN:1,SHED_N_DEATH:7,
   FOOD_AREA:2400,FOOD_MIN:1875,FOOD_SCAN:96,FOOD_FILL_S:3,
   STAR_PAD:360,STAR_MIN_R:1200,STAR_SEP_K:.5,STAR_RETRY_TICKS:300,STAR_SCAN:2};
@@ -234,8 +263,17 @@ export const ZONE_WARN_AT_S=[10,ZONE.WARN_TICKS/TICK_HZ];
 // ⚠️ Quem paga é a exposição do COMEDOR, nunca a posição do fragmento: com peça de até MAX_R de raio e
 // círculo final de 768 px, um gigante com o centro fora engoliria caco de dentro — é o mesmo erro que fez
 // `zoneExposure` substituir o critério do centro.
-// zona = círculo. R é o RAIO como fração de WORLD.w: começa em .62 (5 952 px — cobre o mapa, cujo
-// centro→canto é 6 788) e fecha em .08 (768 px). As razões entre etapas são ~√.5, ou seja **cada etapa tira
+// zona = círculo. R é o RAIO como fração de WORLD.w: começa em .62 (7 440 px) e fecha em .08 (960 px).
+// ⚠️ A ETAPA 0 **NÃO COBRE O MAPA**, e o comentário que dizia isso era do mapa de 9 600. Com 12 000 de lado o
+// centro→canto é 8 485 px, então sobram 1 045 px de "orelha" em cada canto — 4,5 M px², 3,1 % da arena —
+// onde o gás QUEIMA desde o primeiro tick. Não há guarda de etapa em lugar nenhum (`world.js` chama
+// `zoneBurn` sempre que existe círculo; a única porta é `EXPOSE_MIN`): o gás inicial machuca de verdade. O
+// que ele não faz é ser ENCONTRADO — a largada acontece no octógono do centro, a 2 160 px da orelha mais
+// próxima, e ninguém tem razão para ir até lá antes do primeiro fechamento.
+// ⚠️ HOLD_TICKS[0] caiu de 7 500 para 3 000 (2 min 05 → 50 s) porque o jogador precisa ENTENDER que o
+// círculo vai fechar, e dois minutos parados no começo ensinam o contrário. As outras cinco etapas não
+// mudaram: o começo deixou de ser uma espera, o resto continua como estava.
+// As razões entre etapas são ~√.5, ou seja **cada etapa tira
 // metade da ÁREA**: a pressão é constante do começo ao fim, e o que muda é o tamanho de quem está dentro.
 // ⚠️ O fim era .015 (144 px) e não fechava partida nenhuma. Uma peça no teto (MAX_R 1000) tem 48× a ÁREA do
 // círculo inteiro — já na etapa 5, com 480 px, ela não cabia —, e como a queimadura olhava o CENTRO da peça,
@@ -363,9 +401,21 @@ export function roundTicksOf(modeId,min){
   const m=Math.round(+min||0);if(m<0)return null;
   if(!ROUND.CHOICES_MIN.includes(m))return null;
   const t=m*60*TICK_HZ;
-  if(modeOf(modeId).lastAlive){if(!m)return null;return t<ZONE_TOTAL_TICKS?null:t;}   // BR: sem fim não, e nunca menos que a zona
+  if(modeOf(modeId).lastAlive){if(!m)return null;return t<ZONE_TOTAL_TICKS+BR.DECIDE_TICKS?null:t;}   // BR: sem fim não, e nunca menos que a zona MAIS a folga de decisão
   return t;}
-export const PLAYER={START_R:30,MIN_PIECE_R:16,MAX_R:1250,MAX_PIECES:16,BOT_R:[24,58],DECAY:.002,OVER_N:6,OVER_DIST:420};
+export const PLAYER={START_R:30,SPAWN_R:30,MIN_PIECE_R:16,MAX_R:1250,MAX_PIECES:16,BOT_R:[24,58],DECAY:.002,OVER_N:6,OVER_DIST:420};
+// ⚠️ START_R e SPAWN_R SÃO COISAS DIFERENTES, e separá-las é o que torna a massa inicial ajustável:
+//   SPAWN_R  = o tamanho com que se NASCE no modo Livre (entrar e renascer). É parâmetro do /admin, dito em
+//              MASSA no painel. Quem o lê: os defaults de `World.addPlayer`/`respawnPlayer` e `Sim.addHuman`.
+//              O Battle Royale tem o dele (`BR.SPAWN_R`), porque os dois modos não são o mesmo jogo.
+//   START_R  = o PISO DO DECAIMENTO (`physics/body.js:decayPiece`) e a RÉGUA contra a qual SPLIT.MIN_R (60),
+//              STAR.PASS_R (40) e PLAYER_SPAWN_NEAR_MAX_R (×5) foram escolhidos. **NÃO é tunable e não pode
+//              ser**: `decayPiece` é chamada por `predict.js`, ou seja é física do CLIENTE, e um número
+//              desses só existiria em escopo 'both' — que a rota do painel recusa com 501.
+// ⚠️ E O PISO NÃO ACOMPANHA, de propósito. Quem nasce acima dele murcha de volta se não comer, como todo
+// mundo acima de 30 já murcha hoje — e a taxa é ridícula: de massa 3 600 até 900 são ln(4)/.002 = 693 s,
+// ou seja 11,5 MINUTOS sem encostar num grão, mais que uma partida inteira de BR. Fazer o piso seguir o
+// parâmetro compraria uma regra que ninguém sente e pagaria com o parâmetro inteiro.
 // OVER_N/OVER_DIST: o que fazer com a massa acima de MAX_R quando NÃO HÁ VAGA de peça para repartir. Era
 // `setR(pc,MAX_R)` e pronto — o único ponto do jogo, fora do DECAY, em que massa de JOGADOR simplesmente
 // evaporava, e em silêncio. Agora o excesso vira OVER_N fragmentos arremessados OVER_DIST px além da borda,
@@ -1092,6 +1142,26 @@ export const BOT_LLM={
     {v:'gpt-oss:20b',label:'gpt-oss:20b — padrão',think:'low',reserva:150},
     {v:'qwen3.6:35b-a3b',label:'qwen3.6:35b-a3b — maior, mais lento',think:false,reserva:0},
     {v:'gemma4:12b-it-q8_0',label:'gemma4:12b-it-q8_0 — menor, mais rápido',think:false,reserva:0},
+  ],
+  // ── EM QUE LÍNGUA O PREENCHIMENTO FALA (painel /admin, "Fala dos bots") ──
+  // ⚠️ `auto` É O PADRÃO E É O COMPORTAMENTO DE HOJE, palavra por palavra: o bot responde a quem falou com
+  // ele na língua DELE (`detectaIdioma` em rooms/botChat.js), senão segue o chat recente, e sem chat nenhum
+  // usa português. É a mesma disciplina de BOT_LLM.THINK — o padrão de um parâmetro novo tem que ser
+  // indistinguível do que já está no ar, senão a entrega muda o jogo de quem não pediu nada.
+  // ⚠️ TRAVADO É TRAVADO: escolhido um idioma, a regra de "responda no idioma da mensagem" SAI do prompt
+  // inteiro, em vez de virar exceção. Deixá-la de pé faria um "hi bro" perdido de um estrangeiro desligar a
+  // sala inteira — ou seja, um parâmetro que o primeiro turista cancela.
+  // ⚠️ SÓ OS TRÊS, e não é limitação do detector (travado ele nem roda): é que `sanitiza` peneira em pt/en/es
+  // (a lista ODIO barra a fala do bot em TODO nível de CHAT.FILTRO) e a UI só existe nesses três
+  // (client/src/i18n/index.js:LANGS). Um quarto idioma entregaria bot sem peneira, em silêncio.
+  // ⚠️ E o PAÍS do bot não entra nisto: `botNames.js` sorteia a bandeira e pede apelidos dela, e só. Ligar
+  // país→fala faria metade da sala responder em português independentemente do que a PESSOA escreveu.
+  IDIOMA:'auto',
+  IDIOMAS:[
+    {v:'auto', label:'Automático — cada bot responde na língua de quem falou'},
+    {v:'pt-BR',label:'Português (Brasil) — sempre, seja qual for a língua da sala'},
+    {v:'en',   label:'Inglês — sempre, seja qual for a língua da sala'},
+    {v:'es',   label:'Espanhol — sempre, seja qual for a língua da sala'},
   ],
   ESTILO:'misto',
   // O rótulo é pt-BR e sai direto no painel /admin, que é exceção declarada ao i18n (ver CLAUDE.md).

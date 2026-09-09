@@ -25,6 +25,8 @@ export default {
   brLobbyTitle: "BATTLE ROYALE", brWaiting: "procurando jogadores…", brStarting: "a partida começa em",
   brHint: "O último planeta de pé leva tudo. A zona fecha, e não há como renascer.",
   brCancel: "Cancelar entrada",
+  // A gaiola de largada: 3·2·1 dentro do octógono, sem luta e sem powerup até ele abrir.
+  brCageTitle: "PREPARE-SE", brCageHint: "sem luta e sem powerup até o octógono sumir",
   aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ NO GÁS", zoneShrinking: "O GÁS ESTÁ AVANÇANDO", zoneCloses: "gás fecha em",
   zoneWarnAt: "⚠ O GÁS FECHA EM {n}s!",
   // A DICA DO DIVIDIR: quem foge é sempre mais rápido, então o salto é o único jeito de alcançar.

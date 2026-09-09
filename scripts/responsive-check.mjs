@@ -87,7 +87,7 @@ const SONDA=`(()=>{
     if(r.width<44||r.height<44)pequenos.push(nome(el)+' '+Math.round(r.width)+'x'+Math.round(r.height));}
   // Só blocos com CAIXA própria: os wrappers (#hud-left é display:contents no desktop, #hud-right contém
   // os três da direita) colidiriam com os próprios filhos e dariam falso positivo o tempo todo.
-  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-mode','touch','chat','talk','radar','toast','kill-feed'];
+  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-br','touch','chat','talk','radar','toast','kill-feed'];
   const cai=ids.map(i=>document.getElementById(i)).filter(e=>e&&vis(e)),cx=[];
   for(let a=0;a<cai.length;a++)for(let b=a+1;b<cai.length;b++){
     const A=cai[a].getBoundingClientRect(),B=cai[b].getBoundingClientRect();

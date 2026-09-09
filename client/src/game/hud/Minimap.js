@@ -25,7 +25,12 @@ export function createMinimap({hud,theme,getScene,onPick}){
   // sem o teto de 720, porque ali o objetivo é ver os planetas e ler os nomes, não consultar um instrumento.
   function bigD(){const w=hud?hud.clientWidth:innerWidth,h=hud?hud.clientHeight:innerHeight;
     return live()?Math.max(240,Math.min(w,h)*.96):Math.max(180,Math.min(Math.min(w,h)*.8,720));}
-  function layout(){const R0=th.hud.radar,m=bodyMode();mode=m;D=big()?bigD():(R0.size[m]||R0.size.desktop);dpr=Math.min(2,devicePixelRatio||1);
+  /** Há um bloco de Battle Royale no topo AGORA? A resposta é o DOM, para não duplicar a condição do JSX. */
+  const brNoTopo=()=>!!(hud&&hud.querySelector("#hud-br"));
+  /** A altura reservada a ele, lida do CSS (`--brh`) — é lá que ela varia por data-mode. */
+  const brOff=()=>{const v=parseFloat(getComputedStyle(hud).getPropertyValue("--brh"));return (Number.isFinite(v)?v:48)+6;};
+  // `mode` guarda a CHAVE (data-mode + "há BR no topo?"), não só o data-mode: é ela que `draw` compara.
+  function layout(){const R0=th.hud.radar,m=bodyMode();mode=m+(brNoTopo()?":br":"");D=big()?bigD():(R0.size[m]||R0.size.desktop);dpr=Math.min(2,devicePixelRatio||1);
     // no tamanho grande o rótulo "RADAR" sai: ele é assinatura de um mostrador de canto, e no mapa aberto
     // cairia fora do canvas (o `dy` do tema conta com um diâmetro de 150 px, não de 700)
     const pad=R0.shadow?Math.max(R0.shadow.dx,R0.shadow.dy)+2:2,lab=!big()&&R0.label&&(!R0.label.desktopOnly||m==="desktop")?16:0,w=D+pad+2,h=D+pad+lab+2;
@@ -40,7 +45,13 @@ export function createMinimap({hud,theme,getScene,onPick}){
       // — com `left:50%` a faixa nem chegava ali, mas isso era um acidente do shrink-to-fit (ver o bloco da
       // faixa em ui.css). Descer o radar abaixo da faixa é o que permite ela ter a largura toda: o canto
       // continua sendo o dele, 44 px mais abaixo, sobre área de jogo que estava vazia.
-      const mt=P.marginTop&&P.marginTop[m]!=null?P.marginTop[m]:mg;
+      // ⚠️ NO RETRATO DO BATTLE ROYALE o bloco `#hud-br` mora na linha ABAIXO da faixa de chips, atravessando
+      // a tela — e o radar, que fica no canto superior esquerdo, ficaria por baixo dele. Ele desce a altura
+      // do bloco. CSS não resolveria: este canvas é posicionado por ESTILO INLINE (ver o cabeçalho).
+      // ⚠️ Quem responde "estou em BR?" é o próprio DOM, o MESMO `#hud-br` que o CSS consulta: uma segunda
+      // cópia da condição de render (`br && !noLobby && screen!=="round"`) sairia do ar na primeira mudança
+      // dela. E o deslocamento sai do CSS (`--brh`), que é onde a altura do bloco é decidida por data-mode.
+      const mt=(P.marginTop&&P.marginTop[m]!=null?P.marginTop[m]:mg)+(m==="portrait"&&brNoTopo()?brOff():0);
       cv.style.top=c.startsWith("top")?mt+"px":"auto";cv.style.bottom=c.startsWith("bottom")?mg+"px":"auto";
       cv.style.right=c.endsWith("right")?mg+"px":"auto";cv.style.left=c.endsWith("left")?mg+"px":"auto";
       cv.style.transform="none";cv.style.pointerEvents="none";cv.style.cursor="";}
@@ -50,10 +61,15 @@ export function createMinimap({hud,theme,getScene,onPick}){
     // reverte no próximo render.)
     // `--radar-top` acompanha `--radar-h` pelo mesmo motivo: o chat mora logo abaixo do radar e o `12px` que
     // havia cravado no `calc()` deixou de ser verdade no instante em que a margem do topo passou a variar.
+    // ⚠️ `--radar-top` tem que receber o MESMO deslocamento: o chat ancora em `--radar-top + --radar-h`, e
+    // sem isto ele ficaria a uma altura de bloco de distância do radar que diz seguir.
     if(hud&&hud.style){hud.style.setProperty("--radar-h",h+"px");
-      hud.style.setProperty("--radar-top",(big()?0:(R0.position&&R0.position.marginTop&&R0.position.marginTop[m]!=null?R0.position.marginTop[m]:(R0.position&&R0.position.margin!=null?R0.position.margin:12)))+"px");}}
+      const base=big()?0:(R0.position&&R0.position.marginTop&&R0.position.marginTop[m]!=null?R0.position.marginTop[m]:(R0.position&&R0.position.margin!=null?R0.position.margin:12));
+      hud.style.setProperty("--radar-top",(base+(!big()&&m==="portrait"&&brNoTopo()?brOff():0))+"px");}}
   layout();
-  function draw(now,zone){const R0=th.hud.radar,m=bodyMode();if(m!==mode)layout();const S=getScene();if(!S)return;
+  // ⚠️ A CHAVE DE RE-LAYOUT INCLUI O BR: com `m!==mode` só, entrar numa partida de Battle Royale não
+  // reposicionaria o radar — ele entraria por baixo do bloco exatamente no modo em que ele cresceu.
+  function draw(now,zone){const R0=th.hud.radar,m0=bodyMode(),m=m0,k=m0+(brNoTopo()?":br":"");if(k!==mode)layout();const S=getScene();if(!S)return;
     const c=ctx,R=D/2,cx=R+1,cy=R+1,t=now;c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,cv.width,cv.height);c.lineJoin="round";
     if(R0.shadow){c.fillStyle=R0.shadow.color;c.beginPath();c.arc(cx+R0.shadow.dx,cy+R0.shadow.dy,R,0,6.283);c.fill();}
     c.fillStyle=R0.face;c.beginPath();c.arc(cx,cy,R,0,6.283);c.fill();c.strokeStyle=R0.border.color;c.lineWidth=R0.border.width;c.stroke();

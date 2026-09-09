@@ -230,7 +230,15 @@ export function piecePair(w,A,B){
   const dx=B.x-A.x,dy=B.y-A.y,d2=dx*dx+dy*dy,ra=A.r,rb=B.r,sum=ra+rb;if(d2<=0)return;
   // aliado (ou aquecimento): mesmo tratamento das peças do MESMO dono — separação só posicional, sem impulso.
   // Dar quique entre companheiros transformaria correr em grupo num pinball, e é o empurrão que dava embalo de graça.
-  if(sameTeam(w,A.owner,B.owner)){if(d2<sum*sum)separateOwn(A,B);return;}
+  // ⚠️ MENOS DENTRO DA GAIOLA DE LARGADA: lá o pedido é literalmente "eles se trombam", e `separateOwn` é
+  // SILENCIOSO — empurra sem impulso, sem evento, ou seja sem som e sem faísca. No octógono todo mundo é
+  // "aliado" por causa de `w.peace` (é ele que desliga comer e atirar), então é aqui que a exceção mora: o
+  // contato vira o quique de INIMIGO, que é o que faz 50 planetas apertados parecerem uma multidão.
+  if(sameTeam(w,A.owner,B.owner)){
+    if(d2<sum*sum){
+      if(w.cage){const vn=bouncePiece(A,B,BOUNCE.E,true,true);if(vn>BOUNCE.FX_MIN_VN)bounceEvent(w,A,B,vn);}
+      else separateOwn(A,B);}
+    return;}
   const aBig=ra>=rb*EAT.RATIO,bBig=!aBig&&rb>=ra*EAT.RATIO;
   if(aBig||bBig){
     const big=aBig?A:B,small=aBig?B:A,psBig=aBig?psA:psB,psSmall=aBig?psB:psA;

@@ -27,7 +27,7 @@
 // ⚠️ `ENTRY_PANELS` é 'server' pelo mesmo motivo de `ROOM.MAX`: o servidor decide, e `/api/config` ecoa
 // o valor só para a tela poder desenhar antes de existir sala — não é física, não precisa de `wire`.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,SPLIT,ENTRY_PANELS,ENTRY} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,BR,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,SPLIT,ENTRY_PANELS,ENTRY} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt'|'bool',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
@@ -113,6 +113,31 @@ export const TUNABLES=[
   // 'both' fica declarado para o dia em que houver entrega ao cliente — e a rota recusa até lá, em vez de
   // gravar um número que só metade do jogo enxerga.
   num('jogador','PLAYER.MAX_R','Raio máximo de uma peça','px','both',100,2000,10,PLAYER,'MAX_R'),
+  // ── A MASSA COM QUE SE NASCE, e são DUAS porque os modos não são o mesmo jogo ──
+  // No painel elas são ditas em MASSA (a convenção do jogo inteiro: `mass = r²`, e é a massa que o jogador
+  // lê no HUD) e a física guarda RAIO — o mesmo par `{para,de}` do teto do ímã.
+  // ⚠️ NENHUMA DAS DUAS É O PISO DO DECAIMENTO. Esse continua sendo `PLAYER.START_R` (massa 900), que não é
+  // tunable porque `decayPiece` roda dentro do `predict.js`. Nascer acima do piso e murchar de volta em
+  // ~11,5 min sem comer é a regra de sempre, agora com um começo mais alto (ver o bloco em constants.js).
+  // ⚠️ QUATRO LIMIARES MORAM DENTRO DESTAS FAIXAS, e passar por um deles muda o jogo em silêncio:
+  //   1 600 (r=40) = `STAR.PASS_R` → acima disso o recém-nascido NÃO CABE MAIS dentro da estrela. O 40 foi
+  //                  escolhido acima de 30 justamente para o abrigo servir a quem mais precisa dele.
+  //   3 600 (r=60) = `SPLIT.MIN_R` e `EJECT.MIN_R` → daqui para cima o jogador nasce PODENDO dividir e
+  //                  cuspir. É a MESMA alavanca do portão do dividir, e os dois não se giram no escuro.
+  //   6 000        = `BOT.NOVATO_MASS` → daqui para cima a proteção do novato não vale nem no nascimento.
+  //   100 000      = `POWERUP.MAGNET_MAX_R²` → daqui para cima `_spawnPiece` não dá mais o ímã de graça.
+  // O mínimo é 400 (r=20) e não 256: 256 é `MIN_PIECE_R²`, o chão em que a peça MORRE no gás — nascer
+  // exatamente no chão da morte é um estado que ninguém deveria conseguir pedir.
+  num('jogador','PLAYER.SPAWN_R','Massa ao nascer e ao renascer (Livre)','massa','server',400,10000,100,PLAYER,'SPAWN_R',
+    {para:m=>Math.sqrt(m),de:r=>Math.round(r*r)}),
+  // ⚠️ O TETO DO BR NÃO É O MESMO DO LIVRE, e o motivo é geométrico: os 50 largam PRESOS no octógono
+  // (`BR.CAGE_AP`). Em massa 900 eles ocupam 8,2 % da área dele; em 3 600, 33 %; em 10 000, 91 % — uma
+  // pilha sólida que a contenção passaria a largada inteira desentalando. O teto é a gaiola falando, e
+  // coincide com `SPLIT.MIN_R`: a maior largada possível é a que já pode dividir.
+  // ⚠️ E ele mexe no GÁS: o tempo do gás base (.10/s) até o piso `MIN_PIECE_R` é ln(M/256)/.10 — 12,6 s em
+  // massa 900 e 26,4 s em 3 600. Engordar a largada é, literalmente, dar mais fôlego no gás.
+  num('jogador','BR.SPAWN_R','Massa na largada (Battle Royale)','massa','server',400,3600,100,BR,'SPAWN_R',
+    {para:m=>Math.sqrt(m),de:r=>Math.round(r*r)}),
   // ── PROTEÇÃO DO NOVATO ──
   // Os três números de `rules.recemChegado` — a regra que impede um PREENCHIMENTO de engolir uma pessoa
   // que acabou de chegar. Ela vale só no LIVRE (no Battle Royale `zoneNow()` a desliga) e só de bot para
@@ -286,6 +311,11 @@ export const TUNABLES=[
   opt('bots','BOT_LLM.THINK','Raciocinar antes de falar','server',BOT_LLM.THINKS,BOT_LLM,'THINK'),
   // O TIPO de conversa: entra como uma frase a mais no SYSTEM (ver ESTILO_PROMPT em rooms/botChat.js).
   opt('bots','BOT_LLM.ESTILO','Tipo de conversa','server',BOT_LLM.ESTILOS,BOT_LLM,'ESTILO'),
+  // A LÍNGUA, no molde EXATO do estilo: o id mora aqui (o painel desenha o `<select>` com ele) e a frase que
+  // vai ao modelo é server-only (`IDIOMA_NOME` em rooms/botChat.js). `montaSystem` é remontado a cada
+  // geração, então a troca vale na fala SEGUINTE, sem reiniciar pod nenhum — que é o "em tempo real" do
+  // pedido. `auto` é o comportamento de sempre; ver o bloco em constants.js para o resto.
+  opt('bots','BOT_LLM.IDIOMA','Idioma da fala dos bots','server',BOT_LLM.IDIOMAS,BOT_LLM,'IDIOMA'),
   num('bots','BOT_LLM.DIGITA_CPS','Velocidade de digitação dos bots','car/s','server',3,60,1,BOT_LLM,'DIGITA_CPS'),
   // ── QUÃO FALANTE É A SALA ──
   // "Conversam demais" e "conversam de menos" é julgamento que só se faz OLHANDO uma sala cheia de gente

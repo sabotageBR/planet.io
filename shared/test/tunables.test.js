@@ -4,7 +4,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {createWorld} from "../src/physics/index.js";
-import {POWERUP,FOOD,FOOD_TYPE,PLAYER,BOT_LLM,ROUND,MODES,MODE,TICK_HZ,ENTRY_PANELS} from "../src/constants.js";
+import {POWERUP,FOOD,FOOD_TYPE,PLAYER,BR,BOT_LLM,ROUND,MODES,MODE,TICK_HZ,ENTRY_PANELS} from "../src/constants.js";
 import {PIECE_FLAG} from "../src/protocol/constants.js";
 import {listTunables,applyTunable,resetTunable,readTunable,TUNABLE_BY_KEY,GRUPOS} from "../src/tunables.js";
 
@@ -111,3 +111,24 @@ test("tunables: a duração do Livre é dita em minutos, e o descritor do modo n
     resetTunable(chave);
     assert.equal(readTunable(chave),30,"restaurar devolve o padrão do arquivo");
   }finally{resetTunable(chave);}});
+
+// ── A MASSA COM QUE SE NASCE ─────────────────────────────────────────────────
+// Duas chaves, e o que este teste realmente trava é a TERCEIRA constante: `PLAYER.START_R` continua sendo o
+// piso do decaimento e a régua do jogo, e ela é a única das três que `predict.js` lê (via `decayPiece`).
+// Se um dia alguém "simplificar" as duas em uma só, é aqui que a física do cliente vai reclamar.
+test("tunables: a massa inicial é dita em MASSA, são DUAS (Livre e BR), e nenhuma é o piso do decaimento",()=>{
+  try{
+    assert.equal(readTunable('PLAYER.SPAWN_R'),900,"o padrão do arquivo é a massa 900 de sempre");
+    assert.equal(readTunable('BR.SPAWN_R'),900);
+    applyTunable('PLAYER.SPAWN_R',3600);
+    assert.equal(PLAYER.SPAWN_R,60,"massa entra, raio sai — a mesma tradução do teto do ímã");
+    assert.equal(PLAYER.START_R,30,"⚠️ o PISO DO DECAIMENTO não se move: é ele que `predict.js` lê");
+    assert.equal(BR.SPAWN_R,30,"e o Livre não arrasta o Battle Royale junto — é para isso que são duas");
+    // e a peça nasce com o tamanho novo, pelo caminho de verdade
+    const w=empty(931),pc=w.addPlayer(0);
+    assert.ok(Math.abs(pc.r-60)<1e-6,"o default de `addPlayer` é o parâmetro, não a régua");
+    assert.throws(()=>applyTunable('BR.SPAWN_R',10000),/out_of_range/,"o teto do BR é a densidade do octógono");
+    assert.throws(()=>applyTunable('PLAYER.SPAWN_R',256),/out_of_range/,"nascer no chão em que a peça morre no gás não é uma opção");
+    assert.equal(TUNABLE_BY_KEY.get('PLAYER.SPAWN_R').scope,'server',"nenhum leitor mora em predict.js");
+    assert.equal(TUNABLE_BY_KEY.get('BR.SPAWN_R').scope,'server');
+  }finally{resetTunable('PLAYER.SPAWN_R');resetTunable('BR.SPAWN_R');}});

@@ -10,6 +10,7 @@ import {clamp} from "../util.js";
 import {createBody,liveCount,decayPiece} from "./body.js";
 import {createGrid,createPointGrid,GRID_CELL} from "./spatial-hash.js";
 import {integratePiece,integrateFree} from "./integrate.js";
+import {clampCage,clampCagePoint} from "./cage.js";
 import {resolveBounce,separateOwn,tryMergeOwn} from "./collide.js";
 import * as R from "./rules.js";
 
@@ -104,7 +105,11 @@ export class World{
     // Zona do modo Battle Royale (null = sem zona, que é o modo Livre inteiro). `peace` é o aquecimento:
     // enquanto true TODO MUNDO é aliado, então a espera não precisa de regra própria — reusa sameTeam.
     /** @type {{x0:number,y0:number,r0:number,x1:number,y1:number,r1:number,t0:number,t1:number}|null} */this.zone=null;
-    this.peace=false;this._zc={x:0,y:0,r:0};this._foodScan=0;
+    // A GAIOLA de largada do Battle Royale (null = sem gaiola, que é o jogo inteiro fora dos 3 s iniciais).
+    // Ela e o `peace` andam SEMPRE juntos: uma contém, o outro desarma. Ver `Room.begin`/`largar` e
+    // `physics/cage.js`. `ap` é o APÓTEMA (centro→lado), que é o que os oito semiplanos testam.
+    /** @type {{x:number,y:number,ap:number}|null} */this.cage=null;
+    this.peace=false;this._zc={x:0,y:0,r:0};this._foodScan=0;this._tp={x:0,y:0};
     this.decay=o.decay!==false;this.weapons=!!o.weapons;this.foodCount=o.food;this.holeCount=o.holes;this.starCount=o.stars;this.astBase=o.asteroids?ASTEROID.BELTS*ASTEROID.PER_BELT+ASTEROID.WANDERERS:0;this.astCap=this.astBase+ASTEROID.MAX_EXTRA;
     this.grid=createGrid(w,h,GRID_CELL);
     // A comida tem grade PRÓPRIA e de outro tipo (ver createPointGrid): ela é a única população que
@@ -318,7 +323,7 @@ export class World{
 
   // ── jogadores ──
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
-  addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true}={}){
+  addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.SPAWN_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true}={}){
     let ps=this.players.get(slot);
     if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),weaponPin:false,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,autoDefN:0,autoFireAt:0,zoomUntil:0,feastUntil:0,aimLockId:-1,aimLockKind:0,aimLockUntil:0,
       ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false,spawnSafe:true};this.players.set(slot,ps);}
@@ -377,9 +382,10 @@ export class World{
     // pode estar nascendo colado num gigante. O nascimento sempre ignorou isso em silêncio; agora ao menos
     // ele DIZ (`ps.spawnSafe`, que a Room conta em `metrics.spawn`). Medir antes de consertar: se o número
     // for ~0 o problema é teórico, e se for alto vira o primeiro suspeito da retenção.
-    // ⚠️ `zc` (a zona atual) entra no sorteio cego SÓ quando existe (BR ao vivo): sem ele, um jogador
-    // entrando durante a janela de entrada tardia (ver Room.acceptsJoin) podia sortear um ponto fora do
-    // círculo seguro — o sorteio é uniforme no MAPA QUADRADO, e o círculo da 1ª etapa não cobre os cantos.
+    // ⚠️ `zc` (a zona atual) entra no sorteio cego SÓ quando existe: o sorteio é uniforme no MAPA QUADRADO e
+    // o círculo não cobre os cantos, então sem ele um nascimento com a zona ligada podia cair no gás.
+    // (A razão histórica era a janela de entrada tardia do BR, que já não existe — hoje ninguém entra numa
+    // partida em andamento. A guarda fica porque ela é do MUNDO, não daquela janela.)
     if(Number.isNaN(x)){const zc=this.zoneNow();const s=this._novaSpot(ps)||this._playerSpot(ps)||this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE,null,zc);x=s.x;y=s.y;ps.spawnSafe=s.ok;}
     else ps.spawnSafe=true;   // posição DADA (largada do BR, respawn com x/y): não houve sorteio a falhar
     ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.ejectRamp=0;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
@@ -392,7 +398,7 @@ export class World{
   /** Remove o jogador e suas peças (imediato; mísseis já lançados continuam). */
   removePlayer(slot){const ps=this.players.get(slot);if(!ps)return;this._dropPieces(ps);ps.alive=false;this.players.delete(slot);}
   /** Renasce com uma peça nova (score zera salvo `score`). Retorna a peça ou null se o slot não existe. */
-  respawnPlayer(slot,{x=NaN,y=NaN,r=PLAYER.START_R,score=0}={}){const ps=this.players.get(slot);if(!ps)return null;
+  respawnPlayer(slot,{x=NaN,y=NaN,r=PLAYER.SPAWN_R,score=0}={}){const ps=this.players.get(slot);if(!ps)return null;
     this._dropPieces(ps);ps.score=score;ps.splitCdUntil=ps.ejectCdUntil=0;ps.weapon=WEAPON.MISSILE;ps.ammo=newAmmo(0);return this._spawnPiece(ps,x,y,r);}
   setTarget(slot,tx,ty){const ps=this.players.get(slot);if(!ps)return;ps.tx=clamp(tx,0,this.w);ps.ty=clamp(ty,0,this.h);}
   requestSplit(slot){const ps=this.players.get(slot);if(ps)ps.splitReq=true;}
@@ -428,8 +434,16 @@ export class World{
     const tick=this.tick,ev=this.events,W=this.w,H=this.h,players=this.players,pieces=this.pieces,ejected=this.ejected,asts=this.asteroids,missiles=this.missiles,holes=this.holes,stars=this.stars;
     ev.length=0;
     // ── 1. inputs ──
+    const cg=this.cage,paz=this.peace;
     for(const ps of players.values()){
-      if(ps.alive){
+      // O ALVO também é contido (ver `clampCagePoint`), e escrito de volta: vale até o próximo INPUT, então
+      // o cérebro do bot — que mira o mapa inteiro — para de colar todo mundo na parede sem uma linha em
+      // `bot.js`. A rampa de `integratePiece` faz o resto: com o alvo dentro, a peça freia na chegada.
+      if(cg){const p=clampCagePoint(cg,ps.tx,ps.ty,this._tp);ps.tx=p.x;ps.ty=p.y;}
+      // ⚠️ `&&!paz` É A GAIOLA INTEIRA DA FASE 1: split, cusparada (avulsa e segurada), troca de arma, tiro
+      // e auto-defesa de uma vez. Os pedidos continuam sendo LIMPOS embaixo, e isso é o ponto — sem limpar,
+      // os 50 soltariam split e tiro no MESMO tick em que a gaiola abre.
+      if(ps.alive&&!paz){
         if(ps.splitReq&&tick>=ps.splitCdUntil){ps.splitCdUntil=tick+SPLIT.COOLDOWN_TICKS;R.applySplit(this,ps);}
         let ej=ps.ejectReq;if(ps.ejectHold&&tick>=ps.ejectHoldAt){ej=true;ps.ejectHoldAt=tick+EJECT.HOLD_TICKS;}
         if(ej&&tick>=ps.ejectCdUntil){
@@ -443,7 +457,8 @@ export class World{
     // ── 2. integração ──
     const zc=this.zoneNow();
     for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner);
-      integratePiece(pc,ps.tx,ps.ty,DT,W,H);if(this.decay)decayPiece(pc,DT);   // o gigante murcha se parar de comer (PLAYER.DECAY)
+      integratePiece(pc,ps.tx,ps.ty,DT,W,H);if(cg)clampCage(pc,cg);   // a gaiola vem logo depois da parede do MUNDO, e `predict.js` a chama no MESMO lugar
+      if(this.decay)decayPiece(pc,DT);   // o gigante murcha se parar de comer (PLAYER.DECAY)
       if(zc&&R.zoneBurn(this,pc,zc,DT))continue;   // fora da zona: queima e, no piso, MORRE (é o que fecha a partida)
       if(pc.shieldLv>0&&pc.shieldLv<POWERUP.SHIELD_MAX_LEVEL&&tick>=pc.shieldEvolveAt){   // escudo evolui por peça: só quem tem escudo E não apanha sobe de nível
         pc.shieldLv++;pc.shieldEvolveAt=tick+POWERUP.SHIELD_EVOLVE_TICKS;ev.push({type:"SHIELD_UP",slot:pc.owner,level:pc.shieldLv,up:true,x:pc.x,y:pc.y,r:pc.r});}
@@ -502,7 +517,10 @@ export class World{
     // por R_MIN/r (a rocha vem junto — o ímã não escolhe o que puxa); a estrela do mundo se arrasta a MAGNET_STAR;
     // fragmento gordo (mass ≥ FRAG.RICH_MASS) vem a FRAG.MAGNET_HEAVY disso — o prêmio grande custa a chegar.
     const ov=R.LOCAL.FOOD_OVERLAP,PW=POWERUP;
-    for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner),magnet=pc.magnetUntil>tick&&pc.r<=PW.MAGNET_MAX_R;   // cresceu demais: o ímã para de valer (ver POWERUP.MAGNET_MAX_R)
+    // ⚠️ A FASE 7 INTEIRA SAI NA GAIOLA, e não só o `eatFood`: o ímã de nascença (`_spawnPiece` dá um de
+    // graça a toda vida nova) arrastaria comida em espiral para dentro do octógono sem ninguém poder
+    // comê-la — powerup com som, anel e nenhum efeito é o pior jeito de um powerup falhar.
+    if(!paz)for(let i=0;i<pieces.length;i++){const pc=pieces[i];if(pc.dead)continue;const ps=players.get(pc.owner),magnet=pc.magnetUntil>tick&&pc.r<=PW.MAGNET_MAX_R;   // cresceu demais: o ímã para de valer (ver POWERUP.MAGNET_MAX_R)
       const range=magnet?Math.min(pc.r*PW.MAGNET_RANGE,PW.MAGNET_RANGE_MAX):pc.r+FOOD.R_MAX*ov,n=fg.query(pc.x,pc.y,range,q);   // teto ABSOLUTO: é ele que impede o planetão de sugar a tela inteira
       for(let k=0;k<n;k++){const f=food[q[k]];if(f.dead)continue;let dx=pc.x-f.x,dy=pc.y-f.y,d2=dx*dx+dy*dy;
         if(magnet&&d2<range*range&&d2>1e-6){const d=Math.sqrt(d2),hv=(f.type===FOOD_TYPE.COMET||f.type===FOOD_TYPE.STAR)?PW.MAGNET_HEAVY:1;
@@ -521,7 +539,7 @@ export class World{
         for(let k=0;k<stars.length;k++){const st=stars[k];if(st.dead)continue;const sx=pc.x-st.x,sy=pc.y-st.y,sd2=sx*sx+sy*sy;
           if(sd2>=range*range||sd2<1e-6)continue;const sd=Math.sqrt(sd2);let sp=PW.MAGNET_PULL*PW.MAGNET_STAR*DT;if(sp>sd)sp=sd;
           st.x=clamp(st.x+sx/sd*sp,st.r,W-st.r);st.y=clamp(st.y+sy/sd*sp,st.r,H-st.r);}}}
-    for(let p=0;p<np;p+=3){const code=pb[p+2];if(code!==PE&&code!==EA)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;
+    if(!paz)for(let p=0;p<np;p+=3){const code=pb[p+2];if(code!==PE&&code!==EA)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;
       if(code===PE)R.pieceEject(this,A,B,zc);else R.ejectAsteroid(this,A,B);}
     // ── 8. mísseis: míssil×míssil (O(n²) sobre w.missiles, teste varrido — fora da grade), depois peça×míssil e asteroide×míssil ──
     for(let i=0;i<missiles.length;i++){const A=missiles[i];if(A.dead)continue;for(let j=i+1;j<missiles.length;j++){const B=missiles[j];if(!B.dead&&R.missileMissile(this,A,B))break;}}
@@ -532,7 +550,9 @@ export class World{
       for(let i=0;i<n;i++){const a=arr[i];if(a.dead||a.mergeAt>tick)continue;for(let j=i+1;j<n;j++){const b=arr[j];if(b.dead)continue;
         if(tryMergeOwn(a,b,tick))ev.push({type:"MERGE",slot:ps.slot,pieceId:a.id,mergedId:b.id,x:a.x,y:a.y,r:a.r});}}}
     // ── 9b. auto-split acima de MAX_R (agar.io): pega o excesso vindo de comer E o de fundir no mesmo tick ──
-    for(const ps of players.values())if(ps.alive)R.autoSplit(this,ps);
+    // ⚠️ `&&!paz` aqui é cinto de segurança e não teoria: ninguém nasce acima de MAX_R hoje, mas `BR.SPAWN_R`
+    // é parâmetro do /admin, e um valor grande faria a gaiola explodir em 16 pedaços no primeiro tick.
+    for(const ps of players.values())if(ps.alive&&!paz)R.autoSplit(this,ps);
     // ── 10. compactação ordenada ──
     this._compact();
     // ── 11. spawns ──

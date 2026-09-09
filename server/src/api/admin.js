@@ -160,8 +160,13 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
     // `wireValues`/`aplicaWire` em shared/tunables.js), então os dois lados ficam com o mesmo número.
     if(t.scope==='both')throw err(501,'client_side','esse parâmetro também é lido pela física do cliente e não pode ser mudado em runtime');
     let v;try{v=applyTunable(key,ctx.body.value);}
-    catch(e){throw err(400,e.message==='out_of_range'?'out_of_range':'unknown_key',
-      e.message==='out_of_range'?`o valor tem que ficar entre ${t.min} e ${t.max}`:'esse parâmetro não existe');}
+    // ⚠️ A MENSAGEM TEM QUE CABER NO TIPO. `entre ${t.min} e ${t.max}` era cravado, e uma chave sem faixa
+    // (`opt`, `bool`) recusava dizendo "entre undefined e undefined" — o erro chegava ao administrador
+    // dizendo MENOS que o silêncio diria, justo nos dois tipos em que o valor certo é uma lista curta.
+    catch(e){if(e.message!=='out_of_range')throw err(400,'unknown_key','esse parâmetro não existe');
+      throw err(400,'out_of_range',t.type==='num'?`o valor tem que ficar entre ${t.min} e ${t.max}`
+        :t.type==='bool'?'esse parâmetro é um interruptor: só true ou false'
+        :`o valor tem que ser um destes: ${(t.options||[]).map(o=>o.v).join(', ')}`);}
     // ⚠️ Grava o valor EFETIVO (o que `applyTunable` devolveu), nunca o corpo cru: com o `Number(...)` de
     // antes, um tunable de ESCOLHA gravaria NaN no banco e a reconciliação o recusaria a cada 30 s — o
     // painel diria "salvo" e o parâmetro voltaria sozinho ao padrão, sem erro nenhum na tela.
@@ -186,13 +191,25 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
   // ⚠️ `?days=N` continua aceito e é traduzido — durante um rollout, um painel antigo fala com um pod novo.
   // Leitura NÃO audita (nenhum GET daqui audita): `admin_audit` não tem retenção por decisão, e encher o
   // log de aberturas de tela afogaria as linhas de ban/kick, que são a razão da tabela existir.
+  // ⚠️ `?origem=` é o recorte por PLATAFORMA, e ele tem DUAS defesas independentes que não se substituem:
+  // aqui, a lista branca do que EXISTE no banco (senão um `?origem=` inventado vira seis varreduras de
+  // `matches` e uma entrada de memo por URL); e lá no repo, o valor indo como `$1` — que é a defesa de
+  // injeção de verdade, porque `users.origin` é o cabeçalho `Origin` cru de quem criou a conta.
+  // ⚠️ 400, nunca fallback para "todas": uma tela dizendo "Poki" sobre os números do jogo inteiro é o mesmo
+  // defeito que a lista branca de janelas existe para não criar.
   router.add('GET',/^\/api\/admin\/retencao$/,async ctx=>{await requireAdmin(ctx);
-    const j=ctx.query.get('janela'),d=ctx.query.get('days');
+    const j=ctx.query.get('janela'),d=ctx.query.get('days'),o=ctx.query.get('origem')||'';
     if(j&&!JANELAS.has(j))throw err(400,'bad_janela','janela desconhecida');
     const id=j||(d?janelaDeDias(d):JANELA_PADRAO);
+    if(o&&analytics){const {origens}=await analytics.origens();
+      if(!origens.some(x=>x.origem===o))throw err(400,'bad_origem','plataforma desconhecida');}
     if(!analytics)return{janela:id,modo:JANELAS.get(id).modo,rotulo:JANELAS.get(id).rotulo,days:JANELAS.get(id).dias,
-      funil:[],primeira:null,histograma:[],algoz:[],coortes:[],visita:null};
-    return await analytics.tudo(id);},{rate:RD});
+      origem:o||null,funil:[],primeira:null,histograma:[],algoz:[],coortes:[],visita:null};
+    return await analytics.tudo(id,o);},{rate:RD});
+
+  /** As plataformas que a tela pode oferecer — a lista branca, dita uma vez (o molde de `/janelas`). */
+  router.add('GET',/^\/api\/admin\/retencao\/origens$/,async ctx=>{await requireAdmin(ctx);
+    return analytics?await analytics.origens():{origens:[]};},{rate:RD});
   /** As janelas que a tela pode oferecer — a lista branca, dita uma vez, para o `<select>` não a duplicar. */
   router.add('GET',/^\/api\/admin\/retencao\/janelas$/,async ctx=>{await requireAdmin(ctx);
     return{janelas:[...JANELAS].map(([id,x])=>({id,rotulo:x.rotulo,modo:x.modo})),padrao:JANELA_PADRAO};},{rate:RD});

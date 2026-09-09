@@ -40,9 +40,12 @@ function arena({seed=1,n=40,ticks=7200,zone=true,team=0,weapons=true,respawn=fal
     w.setEjectHold(slot,(c.flags&INPUT_FLAG.EJECT_HOLD)!==0);
     if(c.flags&INPUT_FLAG.SWAP)w.requestSwap(slot);
     if(c.flags&INPUT_FLAG.FIRE)w.requestFire(slot,(c.flags&INPUT_FLAG.AIM)!==0);};
-  const brains=[],ring=Math.min(w.w,w.h)*BR.SPAWN_RING;
+  // ⚠️ Um anel PRÓPRIO da arena, e não o da largada de verdade: `BR.SPAWN_RING` deixou de existir quando a
+  // largada virou o octógono, e esta bancada não quer a gaiola — ela quer os bots espalhados desde o tick 0
+  // para medir caça, fuga e leitura da zona. O número é o que o anel valia (.44 do lado do mapa).
+  const brains=[],ring=Math.min(w.w,w.h)*.44;
   for(let s=0;s<n;s++){const a=s/n*Math.PI*2;
-    w.addPlayer(s,{r:PLAYER.START_R,isBot:true,missiles:BR.START_AMMO,team:team?Math.floor(s/team):-1,
+    w.addPlayer(s,{r:BR.SPAWN_R,isBot:true,missiles:BR.START_AMMO,team:team?Math.floor(s/team):-1,
       x:w.w/2+Math.cos(a)*ring,y:w.h/2+Math.sin(a)*ring});
     brains.push(new BotBrain(w,s,rng,emit));}
   const z=zone?createZone(0):null;if(z)w.setZone(z);

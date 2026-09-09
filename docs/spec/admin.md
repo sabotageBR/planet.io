@@ -69,8 +69,9 @@ ausente dele não chega ao handler: cai em 404 (ou no `staticDir`, em dev), sem 
 | POST | `/api/admin/broadcast` 🛡 | `{text,level,ttlMs?}` | `{delivered,rooms,shards:[…]}` |
 | GET | `/api/admin/live?since=` 🛡 | — | **SSE** (`text/event-stream`) · 503 `too_many_streams` · 429 |
 | GET | `/api/admin/kpis` 🛡 | — | o fragmento de KPI DESTE pod (para `curl` e para a 1ª pintura) |
-| GET | `/api/admin/retencao?janela=` 🛡 | — | os 6 painéis + o eco `{janela,modo,rotulo}` · 400 `bad_janela` |
+| GET | `/api/admin/retencao?janela=&origem=` 🛡 | — | os 6 painéis + o eco `{janela,modo,rotulo,origem}` · 400 `bad_janela`/`bad_origem` |
 | GET | `/api/admin/retencao/janelas` 🛡 | — | `{janelas:[{id,rotulo,modo}],padrao}` — a lista branca |
+| GET | `/api/admin/retencao/origens` 🛡 | — | `{origens:[{origem,contas}]}` — as plataformas que EXISTEM |
 
 ### A faixa de shards só conta quem EXISTE
 
@@ -302,6 +303,52 @@ ausente é trocar a fala dos bots por 404 em silêncio. Padrão: **`gpt-oss:20b`
   ignora o pedido, pensa assim mesmo e a fala nem começa. HTTP 200, sala inteira no repertório fixo, sem uma
   linha de log. Por isso `auto` é o padrão e o rótulo da opção `não` diz o preço.
 
+### O IDIOMA DA FALA (`BOT_LLM.IDIOMA`, seção "Fala dos bots")
+
+`auto` (padrão) · `pt-BR` · `en` · `es`. Em `auto` nada muda: o bot responde a quem falou com ele na língua
+DELE (`detectaIdioma`), senão segue o chat recente, e sem chat usa português. É a disciplina do
+`BOT_LLM.THINK` logo acima — o padrão de um parâmetro novo tem que ser indistinguível do que já está no ar.
+
+⚠️ **TRAVADO É TRAVADO.** Escolhido um idioma, a regra "responda no idioma da mensagem" **sai do prompt
+inteiro** (`montaSystem`), e `detectaIdioma` é PULADO, não corrigido. Deixá-la de pé como exceção faria um
+`hi bro` perdido de um estrangeiro virar a sala em inglês — ou seja, um parâmetro que o primeiro turista
+desliga. Vale nos dois lugares em que o idioma aparece: a `LANGUAGE RULE` do SYSTEM e a ordem colada na
+mensagem dirigida, que é a linha que mais pesa na resposta.
+
+⚠️ **Só três idiomas, e não é limitação do detector** (travado ele nem roda). É que `sanitiza` peneira em
+pt/en/es — a lista `ODIO` barra a fala do bot em TODO nível de `CHAT.FILTRO` —, e a UI do jogo só existe
+nesses três. Um quarto entregaria bot sem peneira, em silêncio. Acrescentar um é mexer em três listas de
+propósito (`BOT_LLM.IDIOMAS`, `IDIOMA_NOME` e `MARCAS`), e há teste travando que elas são um conjunto só.
+
+⚠️ **Não é o país do bot.** `botNames.js` sorteia a bandeira e pede apelidos dela, e só isso: ligar
+país→fala faria metade da sala (o BR pesa ~52 % da roleta) responder em português independentemente do que
+a PESSOA escreveu. Numa sala de .io todo mundo digita na língua do lobby, com a bandeira que tiver.
+
+### A MASSA COM QUE SE NASCE (`PLAYER.SPAWN_R` e `BR.SPAWN_R`, seção "Jogador")
+
+Duas chaves, ditas em **massa** no painel (a física guarda raio — `mass = r²`, e a massa é o número que o
+jogador lê no HUD). Uma vale para nascer e renascer no **Livre**, a outra para a largada do **Battle
+Royale**: os dois modos não são o mesmo jogo, e engordar a largada do BR — onde os 50 saem juntos de um
+octógono — é uma decisão que não tem por que mexer no Livre.
+
+⚠️ **Nenhuma das duas é o piso do decaimento.** Esse continua sendo `PLAYER.START_R` (massa 900), e ele
+**não é tunable**: `decayPiece` é chamada por `predict.js`, ou seja é física do CLIENTE, e um número desses
+só existiria em escopo `both` — que esta rota recusa com 501. Quem nasce acima do piso murcha de volta se
+não comer, como já acontece hoje com quem passa dele; a taxa é de 11,5 min para ir de massa 3 600 a 900,
+mais que uma partida inteira de BR.
+
+⚠️ **Quatro limiares moram dentro das faixas**, e cruzar um muda o jogo em silêncio: **1 600** (acima disso
+o recém-nascido não cabe mais dentro da estrela, `STAR.PASS_R`), **3 600** (`SPLIT.MIN_R` — daqui para cima
+ele nasce PODENDO dividir, que é a mesma alavanca do portão do dividir), **6 000** (`BOT.NOVATO_MASS`) e
+**100 000** (o ímã de graça do nascimento).
+
+⚠️ O teto do BR (3 600) é **geométrico**: é a densidade do octógono de largada falando. Em massa 900 os 50
+ocupam 8,2 % da área dele; em 3 600, 33 %.
+
+⚠️ Efeito principal a saber antes de girar o do Livre: em massa 3 600 o humano nasce **acima de toda a
+faixa dos preenchimentos** (`PLAYER.BOT_R`, 24–58 de raio), e os primeiros minutos viram "eu como todo
+mundo". É a alavanca, não um efeito colateral.
+
 ### A DURAÇÃO DA SALA DO LIVRE (`ROUND.TICKS`, seção "Salas")
 
 Dita em **minutos** — como em todo o resto do jogo (o dono de sala escolhe minutos e `roundTicksOf`
@@ -384,6 +431,55 @@ entrada maior na lista.
 
 ⚠️ **Fuso:** `now()` e `date_trunc` são do relógio do POSTGRES e a tela formata em pt-BR. "Dia atual" pode
 não ser o dia do operador, e o rótulo diz isso.
+
+### O FILTRO DE PLATAFORMA (`?origem=`)
+
+O recorte por portal, ao lado do de período. O valor é `users.origin` **cru** (o domínio), nunca o nome
+bonito: quem traduz continua sendo `client/src/admin/portais.js`, no painel.
+
+⚠️ **DUAS DEFESAS, e nenhuma faz o trabalho da outra.** No repo, o valor vai como **`$1`** (foi por isso que
+`ler(sql)` virou `ler(sql,params)`): os fragmentos de `JANELAS` são NOSSOS e viram SQL, o pedido do operador
+nunca vira. Validar contra o que está no banco *pareceria* lista branca e seria "o atacante escreveu o valor
+aceito" — `users.origin` é o cabeçalho `Origin` de quem criou a conta. Na rota, a lista branca de
+`/retencao/origens` existe por outro motivo: sem ela um `?origem=` inventado dispara seis varreduras de
+`matches` e uma entrada de memo por URL, que é o mesmo argumento do teto de 90 dias.
+
+⚠️ **O JOIN com `users` só entra QUANDO HÁ FILTRO.** Sem filtro o SQL sai byte a byte o de hoje — é o que
+mantém os números da tela padrão imunes à entrega, e o que torna o diff revisável.
+
+⚠️ **A origem entra na CHAVE DO MEMO** (`'r:'+janela+'|'+origem`). Sem isso, escolher "Poki" mostraria os
+números de "todas" por 60 s, sem erro nenhum — o mesmo defeito que o `'r'+days` já produziu entre `1h` e
+`1 dia`.
+
+⚠️ `COALESCE(origin,'site')` é a mesma expressão que o funil já usava: conta nascida na própria origem não
+manda `Origin`, e essa ausência **é** a plataforma "site".
+
+⚠️ A lista de `/retencao/origens` **não tem corte de janela**: ela é do que EXISTE, não do que apareceu no
+período. Um portal sem conta nova na última hora tem que continuar selecionável, senão o filtro some
+justamente quando a janela encurta.
+
+⚠️ Com filtro ativo, "nenhuma conta nova jogou no período" passa a ter **duas** causas — e por isso a tela
+diz, no subtítulo, qual recorte valeu, desenhado a partir do **eco** (um pod antigo ignora `?origem` e não
+ecoa, então ele não anuncia um recorte que não aconteceu).
+
+### O PADRÃO DA TELA É 1 HORA; O DO SERVIDOR CONTINUA SENDO 14 DIAS
+
+São duas perguntas diferentes. Quem ABRE o painel quer o agora ("está entrando gente? está ficando?"); quem
+chama a rota **sem parâmetro** está pedindo o recorte histórico. Mover `JANELA_PADRAO` para `1h` viraria o
+`modo` de toda chamada sem parâmetro para `atividade` em silêncio — sem coortes, com `primeira`/`algoz`
+medindo outra coisa — e ainda assim não cumpriria a segunda metade do pedido: **no servidor não existe
+operador**, e "a não ser que o usuário tenha selecionado outro valor" é estado por pessoa.
+
+A preferência vive em `localStorage`, na primeira pref do painel (`getPref`/`setPref` em
+`client/src/admin/api.js`, prefixo `warspace_admin_pref_`, try/catch para a janela anônima, onde o acessor
+LANÇA). Duas armadilhas que custaram código: o placeholder do `<select>` não pode cravar "14 dias" (com a
+preferência em `1h` e a lista em voo, ele mostraria um período que não foi pedido), e uma pref salva com um
+id aposentado viraria **400 eterno** naquele navegador — por isso a tela reconcilia contra a lista branca
+assim que ela chega, caindo no `padrao` do servidor.
+
+⚠️ A **plataforma NÃO é persistida**, e é decisão: a janela é uma postura de trabalho, a plataforma é uma
+pergunta pontual sobre um portal. Lembrada, o operador volta na semana seguinte, vê só a Poki e lê como o
+jogo inteiro.
 
 ## De onde a conta veio
 

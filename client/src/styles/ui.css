@@ -134,21 +134,64 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 .party-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .party-actions .hint.waiting{flex:1 1 auto;opacity:.7}
 
-/* HUD do Sobrevivência: fica no rodapé, ao lado do chip da arma (o topo e as laterais já estão ocupados) */
-#hud-mode{position:absolute;left:50%;bottom:74px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;z-index:6}
-#hud-mode .chip{white-space:nowrap}
-#hud-mode .chip.alive b{color:var(--accent,#ffc22e)}
-#hud-mode .chip.warmup em{font-style:normal;opacity:.7;margin-left:6px}
-#hud-mode .chip.zone-out{background:var(--danger,#ff3d5a);color:#fff;animation:zonepulse 1s ease-in-out infinite}
+/* ── BATTLE ROYALE: O BLOCO DO TOPO ────────────────────────────────────────────────────────────────
+   Ele era `#hud-mode`: dois chips de 12 px no RODAPÉ, cujo comentário dizia "o topo e as laterais já estão
+   ocupados". Continuam ocupados — o que mudou foi a hierarquia. Num battle royale, quanto falta para o gás
+   e quantos restam são O JOGO, e o pedido foi literal: "de uma forma bem visível, para criar a expectativa
+   de que o tempo está acabando e quantas pessoas ainda faltam".
+   ⚠️ IRMÃO de `#hud-top`, na LINHA DE BAIXO — nunca um chip dentro dela. A conta em `body[data-mode=
+   "portrait"] #hud-top` mais abaixo mede a faixa em ~390 px de chips numa tela de 414: o primeiro chip a
+   mais a quebra em duas linhas, e a segunda cai em cima do kill feed.
+   ⚠️ `--top-h` é a altura RESERVADA para a faixa de chips (o `top` dela + a altura do chip): é dela que
+   este bloco pendura o próprio `top`, e é ela que o radar soma no retrato (ver Minimap.js). Um número
+   cravado aqui e outro lá divergiriam na primeira mudança de tipografia.
+   ⚠️ Especificidade: `theme/all.css` importa ESTE arquivo ANTES dos temas, e o `port.js` prefixa os
+   seletores deles com `:where(...)`, que soma ZERO — uma regra em (1,0,0) empata e PERDE. Nenhum tema
+   escreve `#hud-br` hoje, mas o `#hud ` na frente é o hábito do arquivo. */
+#hud{--top-h:52px;--brh:64px}
+#hud #hud-br{position:absolute;left:50%;top:var(--top-h);transform:translateX(-50%);z-index:7;
+  display:flex;align-items:center;gap:20px;padding:6px 22px;pointer-events:none;
+  border-radius:18px;border:3px solid var(--line,#0006);
+  background:color-mix(in srgb,var(--surface,#1a2350) 82%,transparent);box-shadow:0 6px 24px rgba(0,0,0,.45)}
+.br-stat{display:flex;flex-direction:column;align-items:center;line-height:1}
+.br-stat b{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--accent,#ffc22e)}
+.br-stat span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;opacity:.72;margin-top:4px;white-space:nowrap}
+/* ⚠️ PISO DE LARGURA NOS DOIS NÚMEROS. Eles mudam a 8 Hz, e `tabular-nums` só resolve o DÍGITO: a mudança
+   de CASA (12→9, 1:00→59) encolhe a caixa e faz o separador andar de um lado para o outro. A 34 px isso lê
+   como a tela tremendo, não como um contador. */
+.br-alive b{min-width:2ch;text-align:center}
+.br-timer b{min-width:4ch;text-align:center}
+.br-sep{width:2px;align-self:stretch;margin:6px 0;background:var(--line,#0006);opacity:.45}
+/* URGÊNCIA EM TRÊS NÍVEIS, e NENHUM só na cor: parado e longe é âmbar; `.shrinking` é vermelho E o rótulo
+   troca para "O GÁS ESTÁ AVANÇANDO" (i18n, já existia); `.warn` (≤10 s) usa a MESMA animação do "fora da
+   zona" — é o mesmo aviso, chegando antes de doer. */
+#hud #hud-br .br-timer.shrinking b{color:var(--danger,#ff3d5a)}
+#hud #hud-br .br-timer.warn b{animation:zonepulse 1s ease-in-out infinite}
+#hud #hud-br.hurt{border-color:var(--danger,#ff3d5a);
+  background:color-mix(in srgb,var(--danger,#ff3d5a) 34%,var(--surface,#1a2350))}
+.br-out{font-size:12px;font-weight:800;letter-spacing:.06em;color:#fff;white-space:nowrap;
+  animation:zonepulse 1s ease-in-out infinite}
+/* Sem animação o estado continua legível: a cor e o TEXTO do rótulo já carregam as três fases. */
+@media (prefers-reduced-motion:reduce){#hud #hud-br .br-timer.warn b,#hud #hud-br .br-out{animation:none}}
+/* TABLET: mesma forma, um passo menor — a tela é larga, mas a faixa de chips fica logo acima. */
+body[data-mode="tablet"] #hud{--brh:56px}
+body[data-mode="tablet"] #hud #hud-br{gap:16px;padding:5px 18px}
+body[data-mode="tablet"] .br-stat b{font-size:29px}
+/* DEITADO: aqui a ALTURA é o eixo escasso (375 px num celular), então o bloco encolhe de verdade. */
+body[data-mode="landscape"] #hud{--top-h:56px;--brh:40px}
+body[data-mode="landscape"] #hud #hud-br{gap:14px;padding:3px 14px;border-width:2px;border-radius:14px}
+body[data-mode="landscape"] .br-stat b{font-size:23px}
+body[data-mode="landscape"] .br-stat span{font-size:9px;margin-top:2px}
+/* EM PÉ: o bloco atravessa a tela (a faixa de chips já é `left:8px;right:8px`) e fica na SEGUNDA linha.
+   ⚠️ O rótulo do gás em avanço é a coisa mais larga daqui ("O GÁS ESTÁ AVANÇANDO", 21 caracteres): sem
+   `min-width:0` e sem deixar a caption quebrar, ele empurra o bloco para fora dos 360 px. */
+body[data-mode="portrait"] #hud{--top-h:58px;--brh:48px}
+body[data-mode="portrait"] #hud #hud-br{left:8px;right:8px;transform:none;justify-content:center;
+  gap:14px;padding:4px 10px;border-radius:14px}
+body[data-mode="portrait"] .br-stat{flex:0 1 auto;min-width:0}
+body[data-mode="portrait"] .br-stat b{font-size:26px}
+body[data-mode="portrait"] .br-stat span{font-size:9px;letter-spacing:.06em;text-align:center;white-space:normal}
 @keyframes zonepulse{0%,100%{opacity:1}50%{opacity:.45}}
-/* Contador do fechamento do gás: `b` (o número) muda de cor conforme a fase — âmbar enquanto o círculo
-   está PARADO (contagem para ele começar a fechar), vermelho enquanto ele já está FECHANDO (`.shrinking`,
-   "O GÁS ESTÁ AVANÇANDO"). `.warn` (≤10s) pisca com a MESMA animação do chip "fora da zona" — é o mesmo
-   aviso, só que chegando antes de doer. */
-#hud-mode .chip.zone-timer b{color:var(--accent,#ffc22e);font-variant-numeric:tabular-nums}
-#hud-mode .chip.zone-timer.shrinking b{color:var(--danger,#ff3d5a)}
-#hud-mode .chip.zone-timer.warn{animation:zonepulse 1s ease-in-out infinite}
-
 /* placar: companheiro e quem está falando */
 #hud-lb .lb-row.ally{box-shadow:inset 3px 0 0 var(--ok,#3ddc5f)}
 #hud-lb .lb-name .talk-dot{font-style:normal;margin-right:3px;animation:zonepulse .9s ease-in-out infinite}
@@ -453,7 +496,12 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
    aviso de inatividade mais precisa aparecer — quem está morto e ausente é o caso que a remoção existe para
    resolver. Sem esta exceção a faixa fica `display:none` justo no caso principal, sem erro no console e sem
    nada na tela acusando. (#hud não cria contexto de empilhamento, então o z-index dela ganha do .screen.) */
-#hud.spec > *:not(#hud-left):not(#hud-right):not(#radar):not(#talk):not(#touch):not(#chat):not(#idle-warn){display:none}
+/* ⚠️ `:not(#hud-br)`: o morto do Battle Royale continua NA SALA assistindo, e "restam N" com o relógio do
+   gás é a única coisa que dá SENTIDO a ficar — é o mesmo argumento que já manteve o chat e o mapa aqui
+   dentro, e este é mais informativo que o mapa. Ele nem precisa de guarda contra o "⚠ NO GÁS": `Sim.self`
+   já zera `SELF_FLAG.ZONE_HURT` para quem está morto, então o bloco degrada sozinho para os dois números.
+   E o pódio já não o renderiza — aquela guarda é do JSX (`screen !== "round"`). */
+#hud.spec > *:not(#hud-left):not(#hud-right):not(#radar):not(#talk):not(#touch):not(#chat):not(#idle-warn):not(#hud-br){display:none}
 #hud.spec #hud-right > *:not(#kill-feed){display:none}   /* a massa e o placar são de quem está vivo */
 #hud.spec #hud-status{display:none}                  /* arma e powerups não existem para quem morreu */
 /* O morto FALA (a voz foi liberada junto com o texto), então o anel do push-to-talk fica — e no dedo, onde
@@ -631,6 +679,12 @@ body[data-mode="portrait"] #s-dead .dead-card,body[data-mode="landscape"] #s-dea
    de arma/powerups, que cresce com os powerups ativos) porque lá embaixo é o dedo que precisa da tela livre
    para os botões de toque; a faixa de cima, abaixo do radar, é sobra. */
 body[data-mode="portrait"] #hud #chat,body[data-mode="landscape"] #hud #chat{left:8px;top:calc(var(--radar-top,12px) + var(--radar-h,92px) + 8px);bottom:auto;width:min(220px,44vw)}
+/* ⚠️ O CHAT DESCE JUNTO COM O RADAR quando há bloco de BR no topo. `--radar-top` já recebe o offset
+   (Minimap.js), e em partida isto seria redundante — mas na tela do MORTO e na do ESPECTADOR o radar pode
+   não estar montado, e aí o `calc` cai nos DEFAULTS do próprio `var()` e o chat sobe para debaixo do bloco.
+   `max()` porque o certo é o MAIOR dos dois pisos: o do radar (quando ele existe) e o do bloco. */
+body[data-mode="portrait"] #hud:has(#hud-br) #chat,body[data-mode="landscape"] #hud:has(#hud-br) #chat{
+  top:max(calc(var(--radar-top,12px) + var(--radar-h,92px) + 8px),calc(var(--top-h) + var(--brh) + 10px))}
 /* ⚠️ O teto é da LISTA (ver o bloco do #chat lá em cima) e vale ABERTO também: `#chat.open` é (1,2,0) e
    perde para esta regra, então digitar não afrouxa o teto — o campo de texto entra no lugar do botão,
    com os mesmos 44 px, e sem o conserto a conversa sumia igual enquanto se escrevia.
@@ -733,6 +787,12 @@ body[data-mode="portrait"] #hud #hud-top #h-clock>b:first-of-type{display:none}
 /* Sem os dois painéis sobra o feed, e a faixa do topo voltou a caber em uma linha: os 150 px reservavam
    espaço para um placar que não está mais ali. 60 px = 8 (top) + 44 (o alvo de toque do mudo/menu) + folga. */
 body[data-mode="portrait"] #hud-right{top:60px;right:8px;gap:6px;max-width:min(56vw,240px)}
+/* ⚠️ COM O BLOCO DO BR NO TOPO, a coluna da direita desce: em pé ela só tem o kill feed (o placar vira o
+   chip `#h-rank` da faixa), e ele começava a 60 px — dentro do bloco. `:has` e não uma classe no `#hud`
+   porque a condição de render mora no JSX (`br && !noLobby && screen!=="round"`): uma classe obrigaria a
+   repetir essa condição, e ela sairia do ar na primeira mudança dela. O precedente é o `#hud:has(#br-lobby)`
+   mais abaixo neste mesmo arquivo. */
+body[data-mode="portrait"] #hud:has(#hud-br) #hud-right{top:calc(var(--top-h) + var(--brh) + 10px)}
 body[data-mode="portrait"] #kill-feed{max-width:100%}
 /* ⚠️ E menos linhas: `overflow:hidden` na coluna esconde o excesso mas NÃO encolhe a caixa do filho, que é
    o que colide com os botões de toque (e o que a matriz mede). Quem tem que encolher é a LISTA. */
@@ -772,7 +832,6 @@ body[data-pointer="coarse"] #hud #hud-right .lb-row:nth-child(n+7):not(.mine){di
 body[data-pointer="coarse"] #hud #hud-status #hud-ammo{display:none}
 body[data-mode="portrait"] #hud #hud-status{max-width:calc(100% - 2*var(--tbtn,66px) - 44px)}
 body[data-mode="portrait"] #hud #hud-status #hud-pw{flex-wrap:wrap}
-body[data-mode="portrait"] #hud-mode{bottom:118px}
 body[data-mode="portrait"] #talk,body[data-mode="landscape"] #talk{bottom:190px}
 body[data-mode="portrait"] .modes{grid-template-columns:1fr}
 
@@ -784,6 +843,28 @@ body[data-mode="portrait"] .modes{grid-template-columns:1fr}
 
 /* ── LOBBY DO BATTLE ROYALE ───────────────────────────────────────────────────
    Ocupa a tela toda porque no lobby não há nada atrás para olhar: ninguém está no mapa ainda. */
+/* ── A CONTAGEM DA GAIOLA DE LARGADA (Battle Royale) ───────────────────────────────────────────────
+   Ao contrário do `#br-lobby` logo abaixo, ela NÃO é uma tela e NÃO apaga o resto: o ponto da gaiola é o
+   jogador ver o octógono e os 49 planetas em volta. Sem cartão, sem véu, sem clique — e por isso ela
+   também não usa o `#hud:has(...)` que o lobby usa para escurecer tudo. */
+#cage-start{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);z-index:19;
+  display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;text-align:center}
+#cage-start .cs-titulo{font-size:13px;font-weight:800;letter-spacing:.22em;opacity:.85;
+  color:var(--accent,#ffc22e);text-shadow:0 2px 10px rgba(0,0,0,.7)}
+/* `key` não é preciso aqui: o número é escrito por rAF num ref (ver CageStart.jsx), então a animação é do
+   ELEMENTO e roda uma vez — o que pulsa a cada segundo é o `steps`, não um remount. */
+#cage-start .cs-num{font-size:clamp(64px,14vh,124px);font-weight:900;line-height:.95;
+  font-variant-numeric:tabular-nums;color:#fff;text-shadow:0 0 24px var(--accent,#ffc22e),0 4px 18px rgba(0,0,0,.8);
+  animation:cagepulse 1s steps(1,end) infinite}
+#cage-start .cs-dica{font-size:11px;opacity:.7;text-shadow:0 2px 8px rgba(0,0,0,.8)}
+@keyframes cagepulse{0%{transform:scale(1.14);opacity:1}18%{transform:scale(1);opacity:.95}100%{transform:scale(1);opacity:.95}}
+@media (prefers-reduced-motion:reduce){#cage-start .cs-num{animation:none}}
+/* ⚠️ ENQUANTO A GAIOLA EXISTE, O HUD DE BRIGA SOME. Dar botão de dividir, cuspir e atirar que o servidor
+   descarta (ver as guardas de `w.peace` no World.step) é exatamente o defeito que a gaiola existe para não
+   criar — e o `#hud-br` também sai: "restam 50" antes de a partida começar não é informação. */
+#hud:has(#cage-start) #hud-cd,#hud:has(#cage-start) #touch,#hud:has(#cage-start) #hud-status,
+#hud:has(#cage-start) #hud-br{opacity:0;pointer-events:none}
+
 #br-lobby{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
   background:color-mix(in srgb,var(--bg,#141026) 72%,transparent);pointer-events:auto}
 .brl-card{display:flex;flex-direction:column;align-items:center;gap:8px;width:min(560px,92vw);padding:22px 20px;

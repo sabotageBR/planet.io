@@ -21,7 +21,7 @@ const TAU=.1,HIDE_TICKS=30;
 export function createPredictor({buffer,input}){
   const pieces=[],hidden=new Map(),old=new Map(),seen=new Set(),holes=[];   // hidden: id → tick de expiração
   const ej={hold:false,req:false,cdUntil:0,holdAt:0};   // agenda da cusparada (ver cabeçalho)
-  let slot=-1,localTick=0,acc=0,synced=false,tx=0,ty=0,dead=false,corrSum=0,corrN=0,lastLead=-1,zone=null;
+  let slot=-1,localTick=0,acc=0,synced=false,tx=0,ty=0,dead=false,corrSum=0,corrN=0,lastLead=-1,zone=null,cage=null;
   const p={pieces,slot:-1,localTick:0,alpha:0,stats:{corrAvg:0,replaySteps:0,lastCorr:0},
     setSlot(s){slot=p.slot=s;},
     setTarget(x,y){tx=x;ty=y;},
@@ -31,6 +31,13 @@ export function createPredictor({buffer,input}){
      * que está encolhendo — ela pulsaria de tamanho justo na borda, que é onde o jogador mais olha.
      */
     setZone(z){zone=z||null;},
+    /**
+     * O OCTÓGONO DE LARGADA (Battle Royale) no tick local. Pelo mesmo motivo da zona, e com mais urgência:
+     * ele muda a POSIÇÃO. Conter só no servidor faria a peça própria atravessar a parede aqui e ser puxada
+     * de volta 20×/s acima de `NET.SNAP_DIST` — com a CÂMERA junto, porque ela segue as peças próprias.
+     * Quem o liga é o `SELF_FLAG.LOBBY` do snapshot (20 Hz), não uma mensagem JSON solta.
+     */
+    setCage(c){cage=c||null;},
     get dead(){return dead;},
     /** Casa uma entidade do buffer com as peças próprias. */
     isOwn(e){return e.kind===KIND.PIECE&&(e.owner===slot||(e.flags&PIECE_FLAG.ME)!==0);},
@@ -46,7 +53,7 @@ export function createPredictor({buffer,input}){
       // ele custa um único recuo de 12 px, corrigido no snapshot seguinte — nada perto dos 106 px/s do hold.
       if(input)ej.hold=input.hold;
       while(acc>=DT){acc-=DT;localTick++;for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}
-        stepOwnPieces(pieces,{tx,ty},localTick,DT,undefined,undefined,hs,ej,zone);}
+        stepOwnPieces(pieces,{tx,ty},localTick,DT,undefined,undefined,hs,ej,zone,cage);}
       p.alpha=acc/DT;const k=Math.exp(-dt/TAU);for(const pc of pieces){pc.vox*=k;pc.voy*=k;}},
     /** Reconcilia com o snapshot (após buffer.apply). */
     onSnapshot(snap,rttMs){
@@ -74,7 +81,7 @@ export function createPredictor({buffer,input}){
       if(cur)ej.hold=(cur.flags&INPUT_FLAG.EJECT_HOLD)!==0;ej.req=false;
       for(let t=tick+1;t<=localTick;t++){while(hi<h.length&&h[hi].tick<=t){cur=h[hi];hi++;st.tx=cur.tx;st.ty=cur.ty;
           ej.hold=(cur.flags&INPUT_FLAG.EJECT_HOLD)!==0;if(cur.flags&INPUT_FLAG.EJECT)ej.req=true;}
-        for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}stepOwnPieces(pieces,st,t,DT,undefined,undefined,hs,ej,zone);steps++;}   // px = posição do passo anterior (mesma fase do render)
+        for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}stepOwnPieces(pieces,st,t,DT,undefined,undefined,hs,ej,zone,cage);steps++;}   // ⚠️ o REPLAY também recebe a gaiola: sem ela, reconciliar reproduziria a peça atravessando a parede e o snap voltaria no frame seguinte   // px = posição do passo anterior (mesma fase do render)
       if(!steps)for(const pc of pieces){pc.px=pc.x;pc.py=pc.y;}
       p.stats.replaySteps=steps;
       // fundidas localmente durante o replay (sumiram do array): ocultar até o servidor remover

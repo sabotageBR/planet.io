@@ -32,6 +32,68 @@ ela alcança na hora: sem isso a janela fechava em 40/50 e o número dava um pul
 `trimBots(1)`). Sem isso, dois amigos que procuram com 10 s de diferença cairiam em salas separadas — o
 oposto do que o matchmaking existe para fazer.
 
+## A largada é um OCTÓGONO
+
+Quando o lobby fecha, os 50 não caem espalhados num anel de 5 280 px — eles largam PRESOS num octógono no
+centro do mapa, por três segundos, com uma contagem 3·2·1. Lá dentro eles **se trombam** e nada mais: não há
+comer, atirar, dividir, cuspir, powerup, comida nem gás. Quando a gaiola abre, o mundo volta a ser o de
+sempre e a zona nasce.
+
+O que o anel fazia de errado era simples: ele espalhava os 50 tão longe uns dos outros que ninguém via
+ninguém largar — e a largada é justamente o instante em que um battle royale se apresenta. O octógono
+resolve isso e mais uma coisa: dá três segundos para o jogador entender onde está antes de a partida cobrar
+alguma coisa dele.
+
+**`Room.begin()` virou dois tempos.** `begin()` completa a sala, posiciona todo mundo e liga a contagem;
+`largar()` abre a gaiola e arma a zona. Entre os dois a sala é `live` **de verdade** — há corpo, snapshot,
+placar e radar. O que não há é jogo.
+
+- **A `phase` continua indo de `lobby` a `live` num passo só**, e isso é decisão: é `phase!=='lobby'` que faz
+  o `step()` chegar ao `_flush`, e o SNAPSHOT é o que desenha o octógono. Um terceiro valor obrigaria a
+  revisitar `respawn`, `joinRefusal`, `info`, o placar, o feed e o `phase` do cliente, por nada.
+- **Não custou um byte de protocolo.** O QUE a gaiola é sai da constante (`BR.CAGE_AP`, que os dois lados
+  leem, como já fazem com `WORLD.w` e `ZONE.R`); o QUANDO sai de `SELF_FLAG.LOBBY` — um bit que `Sim.self`
+  escreve desde sempre a partir de `w.peace` e que **nunca chegava ao cliente**, porque no lobby o
+  `Room.step` retorna antes do `_flush`. E a contagem sai de `round.startsAt`, tick absoluto que o cliente
+  já lia. `PROTOCOL_VERSION` não subiu.
+- **Ela reusa `w.peace`**, que já fazia todo mundo virar aliado (e portanto já desligava comer, míssil e
+  mira nos seis pontos de decisão de `sameTeam`). O que faltava eram as guardas da **fase 1** (split, eject,
+  swap, tiro e auto-defesa) e da **fase 7 inteira** do `World.step` — não só o `eatFood`: o ímã de nascença
+  arrastaria comida em espiral para dentro do octógono sem ninguém poder comê-la, e powerup com som e sem
+  efeito é o pior jeito de um powerup falhar.
+- **O gás não age por AUSÊNCIA, não por `if`**: a zona só é criada no `largar()`.
+- **"Eles se trombam" é uma exceção escrita.** Sob `peace` todo mundo é aliado, e aliado usa `separateOwn` —
+  separação posicional, sem impulso, sem evento, ou seja sem som e sem faísca. Dentro da gaiola o contato
+  vira o quique de INIMIGO, que é o que faz 50 planetas apertados parecerem uma multidão.
+- **A contenção é de OITO SEMIPLANOS** (`shared/src/physics/cage.js`), espelhada em `predict.js` na mesma
+  posição do laço. É o caso mais grave de paridade do jogo, porque ela muda a POSIÇÃO: conter só no servidor
+  faria a peça própria atravessar a parede e voltar 20×/s acima de `NET.SNAP_DIST`, com a câmera junto. Duas
+  passadas por tick, porque uma só deixa ~2 px de escape perto de um vértice.
+- ⚠️ **O ALVO é recortado pelo RAIO, nunca pelos semiplanos** — e isso foi medido, não deduzido. Recortar o
+  alvo face a face (que é o certo para o CORPO, onde a correção é perpendicular à parede) TORCE a direção
+  nos cantos: um planeta logo à direita do centro mirando 4 000 px à esquerda recebia um alvo a 214 px dele,
+  dentro da rampa de frenagem, e atravessava a gaiola a passo de tartaruga sem encostar em ninguém. É a
+  mesma lição que `qPos` e `World.setTarget` já carregam sobre o recorte ao mundo, num octógono em vez de
+  num quadrado. Sem conter o alvo de alguma forma, aliás, os 50 — e principalmente os bots, que miram o mapa
+  inteiro — ficariam todos grudados na parede, imóveis.
+- **A câmera abre pelo caminho que já existe**: `ps.zoomUntil` (o powerup de zoom). Sem isso um
+  recém-nascido enquadra 1920×1080 px de mundo e o octógono sai da tela — e reusar aquele campo é o que faz
+  câmera e AOI abrirem JUNTAS, porque `net/snapshot.js` lê o mesmo número.
+- **Os bots não foram tocados.** As duas guardas da fase 1 resolvem os dois sintomas, e qualquer coisa em
+  `bot.js` seria uma segunda fonte de verdade sobre a gaiola.
+- **O HUD de briga some** enquanto ela existe: dar botão de dividir, cuspir e atirar que o servidor descarta
+  é exatamente o defeito que a gaiola existe para não criar.
+
+## Depois da largada, a porta FECHA
+
+Existiu uma "janela de entrada tardia": enquanto a zona estava na etapa 0 e parada (~125 s depois da
+largada), a sala continuava aceitando jogadores. Ela saiu por decisão de produto — *"acabou a contagem para
+entrar, já era"* —, e o que sobrou é a regra que a tabela lá em cima sempre prometeu.
+
+Quem chega depois entra pela porta do **espectador** (`acceptsSpectator`), que continua aberta: assistir uma
+partida em andamento é o caso de uso; entrar nela, não. `RoomManager.findOrCreateRoom` e
+`matchmaking.escolheSala` não precisaram de uma linha — os dois já liam `acceptsJoin()`.
+
 Quem dá o ritmo é `Room.lobbyTick()`; nenhum snapshot é enviado nessa fase (sem peça não há o que enquadrar,
 e o foco da AOI de um jogador sem corpo seria NaN). O estado do lobby vai num JSON próprio, em
 **milissegundos** e a 2 Hz: sem snapshot o relógio de tick do cliente nunca sincroniza, então uma contagem
@@ -160,8 +222,26 @@ um dia alguém nascer cedo por engano, não vira almoço antes de a partida exis
 
 ## A zona
 
-`shared/src/zone.js`: círculo que fecha em `ZONE.STAGES` etapas (parada → fechamento), **32 000 ticks ≈ 8 min 53 s**
-no total. Determinística (o rng da sala, só na virada de fase) e testada: o círculo novo **sempre cabe dentro do
+`shared/src/zone.js`: círculo que fecha em `ZONE.STAGES` etapas (parada → fechamento), **33 000 ticks =
+9 min 10 s** no total.
+
+⚠️ **A primeira parada caiu de 2 min 05 para 50 s** (`ZONE.HOLD_TICKS[0]`, 7 500 → 3 000). Dois minutos
+parados no começo ensinam o contrário do que o modo precisa ensinar: que o círculo VAI fechar. Com 50 s, o
+jogador tem ~45 s de exploração depois da gaiola, ouve o aviso reforçado aos 0:40 e vê o gás andar aos 0:50.
+As outras cinco etapas não mudaram — o começo deixou de ser uma espera, o resto continua como estava.
+
+⚠️ E isso obrigou a escrever um número que só vivia em comentário: **`BR.DECIDE_TICKS`** (125 s), a folga
+entre o círculo fechar e a sala acabar por tempo. O piso de duração do BR é DERIVADO da zona
+(`roundTicksOf`), então encurtar uma etapa movia esse piso sozinho — e a opção de 10 min passaria a caber,
+com 50 s para o último círculo decidir a partida. Com a folga declarada, o piso continua em 20 min e o
+jogador não vê diferença nenhuma.
+
+⚠️ **O gás da etapa 0 machuca desde sempre, e o que estava errado era o comentário.** Não há guarda de etapa
+em lugar nenhum: `world.js` chama `zoneBurn` sempre que existe círculo, e a única porta é `ZONE.EXPOSE_MIN`.
+O que mudou foi o MAPA: com 12 000 de lado o centro→canto é 8 485 px contra os 7 440 do círculo inicial, ou
+seja sobram quatro "orelhas" de gás nos cantos (4,5 M px², 3,1 % da arena) desde o primeiro tick. O texto que
+dizia "cobre o mapa" foi escrito quando o lado era 9 600. O que o gás inicial não é, hoje, é ENCONTRADO: a
+largada acontece no octógono do centro, a 2 160 px da orelha mais próxima. Determinística (o rng da sala, só na virada de fase) e testada: o círculo novo **sempre cabe dentro do
 velho** — uma zona que pulasse para trás mataria quem já estava dentro.
 
 Fora dela a peça queima `zoneBurnRate(r)·exposição` da massa por segundo e, no piso `MIN_PIECE_R`, **morre**

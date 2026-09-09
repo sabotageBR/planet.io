@@ -328,7 +328,25 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ABSOLUTA, então vale 2 % para quem tem 900 de massa e 0,01 % para quem tem 200 000, que ainda perde `PLAYER.DECAY`
   por segundo. Sem isso o círculo final era um deserto de 20 grãos e a última fase premiava tamanho acumulado, não
   jogada.
-  ⚠️ **A zona fecha em 37 500 ticks (10 min 25 s)**: as três primeiras etapas ganharam quase
+  ⚠️ **A zona fecha em 33 000 ticks (9 min 10 s), e a PRIMEIRA PARADA caiu de 2 min 05 para 50 s**
+  (`ZONE.HOLD_TICKS[0]` 7 500 → 3 000): dois minutos parados no começo ensinam o contrário do que o modo
+  precisa ensinar, que é que o círculo VAI fechar. Com 50 s o jogador tem ~45 s depois da gaiola, ouve o
+  aviso reforçado aos 0:40 e vê o gás andar aos 0:50; as outras cinco etapas não mudaram. ⚠️ Isso obrigou a
+  escrever um número que só vivia em comentário: **`BR.DECIDE_TICKS`** (125 s, o que já valia: 45 000 −
+  37 500), a folga entre o círculo fechar e a sala acabar por tempo — e `roundTicksOf` passou a recusar
+  abaixo de `ZONE_TOTAL_TICKS + DECIDE_TICKS`. Sem ele, encurtar uma etapa da zona movia o PISO de duração
+  do BR sozinho e a opção de 10 min voltava, com 50 s para o último círculo decidir a partida. Com a folga
+  declarada, o piso continua em 20 min e o jogador não vê diferença.
+  ⚠️ **O GÁS DA ETAPA 0 MACHUCA DESDE SEMPRE — o que estava errado era o comentário.** Não há guarda de
+  etapa em lugar nenhum (`world.js` chama `zoneBurn` sempre que existe círculo; a única porta é
+  `EXPOSE_MIN`). O que mudou foi o MAPA: o texto que dizia "cobre o mapa" foi escrito com `WORLD.w`=9600, e
+  com 12 000 o centro→canto é 8 485 px contra os 7 440 do círculo inicial — sobram quatro "orelhas" de gás
+  nos cantos (4,5 M px², 3,1 % da arena) desde o primeiro tick. O que o gás inicial não é, hoje, é
+  ENCONTRADO: a largada é no octógono do centro, a 2 160 px da orelha mais próxima. Encolher `ZONE.R[0]`
+  resolveria isso e **não foi feito de propósito**: `zoneBurnRate` ancora a rampa nesse número, então mexer
+  nele muda a queimadura de TODAS as etapas do meio (medido: −17 % em r=5400) — é rebalanceamento de BR, e
+  `predict.js` espelha a conta.
+  ⚠️ (histórico) **A zona fechava em 37 500 ticks (10 min 25 s)**: as três primeiras etapas ganharam quase
   todo o tempo extra e as duas últimas não mudaram — o começo deixou de ser corrido e o fim continua tenso.
   `BR.ROUND_TICKS` subiu junto (36 000 → 45 000), e os dois andam SEMPRE juntos: alongar a zona sem alongar o
   teto faz a partida acabar por tempo antes de o círculo fechar, que é o único jeito de o Battle Royale
@@ -403,6 +421,121 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   10 bytes. O míssil nunca sai do cinto, nem zerado. `acceptsJoin()` é a porta única de entrada da sala.
   **Vitória tem fogos**: quem vence vê a salva sair do próprio planeta (`fireworkPrims` em theme/util.js —
   física compartilhada, paleta por tema; traço em vez de ponto, arrasto, gravidade, cor em 3 tempos, cintilação).
+- **O BATTLE ROYALE LARGA NUM OCTÓGONO** (`BR.CAGE_*`, `shared/src/physics/cage.js`, `Room.begin`/
+  `largar`, `renderer/layers/Cage.js`, `ui/CageStart.jsx`): os 50 nascem PRESOS num octógono no centro por
+  `BR.CAGE_TICKS` (3 s), com contagem 3·2·1. Lá dentro eles se TROMBAM e nada mais — não há comer, atirar,
+  dividir, cuspir, powerup, comida nem gás. O anel de largada (`BR.SPAWN_RING`, .44 = 5 280 px) SAIU: ele
+  espalhava os 50 tão longe uns dos outros que ninguém via ninguém largar, e a largada é justamente o
+  instante em que um battle royale se apresenta.
+  ⚠️ **`begin()` virou DOIS TEMPOS**: `begin()` completa a sala, posiciona e liga a contagem; `largar()`
+  abre a gaiola e arma a zona. A `phase` continua indo de `lobby` a `live` num passo só, e isso é decisão —
+  é `phase!=='lobby'` que faz o `step()` chegar ao `_flush`, e o SNAPSHOT é o que desenha o octógono. Um
+  terceiro valor obrigaria a revisitar `respawn`, `joinRefusal`, `info`, o placar, o feed e o `phase` do
+  cliente, por nada.
+  ⚠️ **NÃO CUSTOU UM BYTE DE PROTOCOLO.** O QUE ela é sai da constante (`BR.CAGE_AP`, que os dois lados
+  leem, como `WORLD.w` e `ZONE.R`); o QUANDO sai de `SELF_FLAG.LOBBY` — um bit que `Sim.self` escreve desde
+  sempre a partir de `w.peace` e que **nunca chegava ao cliente**, porque no lobby o `Room.step` retorna
+  antes do `_flush`; e a contagem sai de `round.startsAt`, tick absoluto que o cliente já lia.
+  `PROTOCOL_VERSION` não subiu.
+  ⚠️ Ela **reusa `w.peace`** (que já fazia todo mundo virar aliado e portanto já desligava comer, míssil e
+  mira nos seis pontos de `sameTeam`). O que faltava eram as guardas da **fase 1** (split, eject, swap,
+  tiro, auto-defesa) e da **fase 7 INTEIRA** — não só o `eatFood`: o ímã de nascença arrastaria comida em
+  espiral para dentro do octógono sem ninguém poder comê-la, e powerup com som e sem efeito é o pior jeito
+  de um powerup falhar. **O gás não age por AUSÊNCIA, não por `if`**: a zona só nasce no `largar()`.
+  ⚠️ **"Eles se trombam" é uma exceção escrita em `piecePair`**: sob `peace` todo mundo é aliado, e aliado
+  usa `separateOwn` — posicional, sem impulso, sem evento, ou seja sem som e sem faísca. Dentro da gaiola o
+  contato vira o quique de INIMIGO, que é o que faz 50 planetas apertados parecerem uma multidão.
+  ⚠️ **A contenção é de OITO SEMIPLANOS e é ESPELHADA em `predict.js`**, na mesma posição do laço. É o caso
+  mais grave de paridade do jogo porque ela muda a POSIÇÃO: conter só no servidor faria a peça própria
+  atravessar a parede e voltar 20×/s acima de `NET.SNAP_DIST`, com a câmera junto. Duas passadas por tick —
+  uma só deixa ~2 px de escape perto de um vértice.
+  ⚠️ **O ALVO é recortado pelo RAIO, nunca pelos semiplanos**, e isso foi MEDIDO: recortar face a face (que
+  é o certo para o CORPO) TORCE a direção nos cantos — um planeta logo à direita do centro mirando 4 000 px
+  à esquerda recebia um alvo a 214 px dele, dentro da rampa de frenagem, e atravessava a gaiola a passo de
+  tartaruga sem encostar em ninguém. É a mesma lição de `qPos`/`World.setTarget` sobre o recorte ao mundo,
+  num octógono em vez de num quadrado. E conter o alvo de ALGUMA forma é obrigatório: sem isso os 50 — e
+  principalmente os bots, que miram o mapa inteiro — ficam todos grudados na parede, imóveis.
+  ⚠️ De carona, `predict.js` passou a **saturar o alvo ao MUNDO** antes de tudo, como `World.setTarget`
+  sempre fez: o alvo daqui vem de `cam.toWorld(cursor)` e passa das bordas quando a câmera está encostada
+  nelas. Sem gaiola isso só torcia a direção de leve; com ela, dois pontos diferentes caem em lados
+  diferentes do octógono.
+  ⚠️ **A câmera abre pelo caminho que já existe** (`ps.zoomUntil`, o powerup de zoom): sem isso um
+  recém-nascido enquadra 1920×1080 px e o octógono (1 559 px de vértice a vértice) sai da tela — e reusar
+  aquele campo é o que faz câmera e AOI abrirem JUNTAS, porque `net/snapshot.js` lê o mesmo número.
+  ⚠️ **Os bots não foram tocados**: as duas guardas da fase 1 resolvem os dois sintomas, e qualquer coisa
+  em `bot.js` seria uma segunda fonte de verdade sobre a gaiola.
+- **E A PORTA DO BR FECHA NA LARGADA** (`Room.acceptsJoin`): existiu uma "janela de entrada tardia" — com a
+  zona na etapa 0 e parada (~125 s), a sala continuava aceitando jogadores. Ela saiu por decisão de
+  produto ("acabou a contagem para entrar, já era"), e o que sobrou é a regra que o modo sempre prometeu.
+  Quem chega depois entra pela porta do ESPECTADOR (`acceptsSpectator`), que continua aberta: assistir uma
+  partida em andamento é o caso de uso; entrar nela, não. ⚠️ `findOrCreateRoom` e `matchmaking.escolheSala`
+  **não precisaram de uma linha** — os dois já liam `acceptsJoin()`, e é isso que torna a mudança uma
+  remoção. `_lockInMs` ficou com uma janela só (o lobby) e `BR.JOIN_GRACE_TICKS`, declarada e nunca lida,
+  foi apagada. Efeito de produto a MEDIR, não a ajustar preventivamente: o BR passa a criar mais salas por
+  onda, e o convite no Livre (`announceBrStartCluster`) pode ficar mais frequente.
+- **QUANTOS RESTAM E QUANTO FALTA PARA O GÁS MORAM NO TOPO** (`#hud-br` em `ui/Hud.jsx`, o bloco homônimo
+  de `styles/ui.css`): eram dois chips de 12 px no RODAPÉ (`#hud-mode`), cujo comentário dizia "o topo e as
+  laterais já estão ocupados". Continuam ocupados — o que mudou foi a hierarquia: num battle royale essas
+  duas coisas não são metainformação, são o jogo, e sem elas à vista o jogador não sente o cerco fechando.
+  ⚠️ **IRMÃO de `#hud-top`, na linha de BAIXO — nunca um chip dentro dela.** A conta escrita no próprio
+  `ui.css` mede a faixa em ~390 px de chips numa tela de 414: o primeiro chip a mais a quebra em duas
+  linhas, e a segunda cai em cima do kill feed. `--top-h` é a altura reservada à faixa e `--brh` a do bloco;
+  os dois variam por `data-mode` e o RADAR soma os dois no retrato (`Minimap.js`, porque aquele canvas é
+  posicionado por estilo INLINE e CSS não o alcança) — junto com `--radar-top`, de onde o chat deriva o
+  próprio `top`. ⚠️ E o gatilho de re-layout do radar teve que incluir "há BR no topo?" na chave: com
+  `m!==mode` só, entrar numa partida não o reposicionaria.
+  ⚠️ **Zero bytes de protocolo e zero chaves de i18n**: `self.alive` (20 Hz) e `zone.t1` (do `MSG.ZONE`,
+  room-wide) já chegavam, e `aliveLeft`/`zoneCloses`/`zoneShrinking`/`zoneOut` já existiam nos três
+  dicionários. ⚠️ Ele **fica para o MORTO** (`:not(#hud-br)` na lista do `#hud.spec`): quem morreu no BR
+  continua na sala assistindo, e "restam N" com o relógio do gás é o que dá sentido a assistir — e ele nem
+  precisa de guarda contra o "⚠ NO GÁS", porque `Sim.self` já zera `ZONE_HURT` para quem está morto.
+  ⚠️ **PISO DE LARGURA nos dois números** (`min-width:2ch`/`4ch`): `tabular-nums` só resolve o DÍGITO, e a
+  mudança de CASA (12→9, 1:00→59) encolhe a caixa e faz o separador andar de um lado para o outro — a 34 px
+  isso lê como a tela tremendo. ⚠️ **Sem `aria-live`**: isto muda a cada 125 ms; quem anuncia o gás em
+  marcos discretos é o `ZoneWarnBanner`, que já tem `aria-live="assertive"`.
+  ⚠️ **E a matriz de responsividade NUNCA tinha medido esse bloco**: `hudDemo` (`state/actions.js`) enchia
+  `alive:24` mas **nunca setava `mode`**, então `Hud.jsx` não o desenhava — e `'hud-mode'` estava na lista
+  de ids de `scripts/responsive-check.mjs` desde sempre, como no-op silencioso, sobre ~600 combinações.
+- **A MASSA INICIAL SÃO DOIS PARÂMETROS** (`PLAYER.SPAWN_R` e `BR.SPAWN_R`, grupo "Jogador"), ditos em
+  MASSA no painel como o teto do ímã. `PLAYER.START_R` se partiu em duas coisas que sempre foram
+  diferentes: `SPAWN_R` é o tamanho com que se NASCE (e são dois, porque os modos não são o mesmo jogo — a
+  largada do BR agora acontece dentro de um octógono), e `START_R` continua sendo o **piso do decaimento**
+  (`body.js:decayPiece`) e a RÉGUA contra a qual `SPLIT.MIN_R` (60), `STAR.PASS_R` (40) e
+  `PLAYER_SPAWN_NEAR_MAX_R` (×5) foram escolhidos.
+  ⚠️ **`START_R` não é tunable e não pode ser**: `decayPiece` é chamada por `predict.js`, ou seja é física
+  do CLIENTE — escopo `both`, que a rota recusa com 501. Os dois `SPAWN_R` são `server` porque nenhum
+  leitor deles mora lá.
+  ⚠️ **O piso NÃO acompanha, de propósito**: quem nasce acima dele murcha de volta se não comer, como já
+  acontece hoje com quem passa de 900 — e a taxa é de 11,5 min de massa 3 600 até 900, mais que uma partida
+  inteira de BR. Fazer o piso seguir o parâmetro compraria uma regra que ninguém sente e pagaria com o
+  parâmetro inteiro.
+  ⚠️ **Quatro limiares moram dentro das faixas** e cruzar um muda o jogo em silêncio: 1 600
+  (`STAR.PASS_R`, acima disso o recém-nascido não cabe mais na estrela), 3 600 (`SPLIT.MIN_R` — daqui para
+  cima ele nasce PODENDO dividir, a mesma alavanca do portão do dividir), 6 000 (`BOT.NOVATO_MASS`) e
+  100 000 (o ímã de graça do nascimento). O teto do BR é 3 600 e é GEOMÉTRICO: é a densidade do octógono
+  falando (massa 900 = 8,2 % da área dele; 3 600 = 33 %).
+  ⚠️ **Defeito preexistente encontrado e NÃO consertado aqui**: `PLAYER.DECAY` está declarado `server` mas
+  `decayPiece` roda no `predict.js` — ele é, de fato, `both`. Mexer nele no painel faz a peça própria
+  divergir do servidor em massa, em silêncio. Merece issue própria; o que importa é não copiar o
+  precedente.
+- **EM QUE LÍNGUA O PREENCHIMENTO FALA É UM TUNABLE** (`BOT_LLM.IDIOMA`, grupo "Fala dos bots"): `auto`
+  (padrão) · `pt-BR` · `en` · `es`. Em `auto` nada muda — o bot responde na língua de quem falou com ele
+  (`detectaIdioma`), a disciplina do `BOT_LLM.THINK`. ⚠️ **Travado é travado**: a regra "responda no idioma
+  da mensagem" SAI do prompt inteiro, e o detector é PULADO — deixá-la como exceção faria um `hi bro`
+  perdido virar a sala em inglês, ou seja um parâmetro que o primeiro estrangeiro desliga. ⚠️ **Só os
+  três**, e não é limitação do detector: `sanitiza` peneira em pt/en/es (a lista `ODIO` barra a fala do bot
+  em TODO nível de `CHAT.FILTRO`) e a UI só existe nesses três — um quarto entregaria bot sem peneira, em
+  silêncio. As três listas (`IDIOMAS`, `IDIOMA_NOME`, `MARCAS`) são um conjunto só, e há teste. ⚠️ **Não é
+  o país do bot**: `botNames.js` sorteia a bandeira e pede apelidos dela, e só — ligar país→fala faria
+  metade da sala responder em português independentemente do que a PESSOA escreveu.
+- **A RETENÇÃO CORTA POR PLATAFORMA, E A TELA ABRE EM 1 HORA** (`?origem=` +
+  `GET /api/admin/retencao/origens`; `getPref`/`setPref` em `client/src/admin/api.js`): ver
+  `docs/spec/admin.md`. Dois pontos que não podem ser desfeitos por engano: o valor do filtro vai como
+  **`$1`** (por isso `ler(sql)` virou `ler(sql,params)`) — validar contra o próprio banco *pareceria* lista
+  branca e seria "o atacante escreveu o valor aceito", já que `users.origin` é o cabeçalho `Origin` de quem
+  criou a conta; e o **`JANELA_PADRAO` do servidor continua `14d`**, porque ele é o fallback de "não
+  perguntei nada" e movê-lo viraria o `modo` de toda chamada sem parâmetro em silêncio. Quem prefere 1 hora
+  é a TELA, e a escolha do operador manda.
 - **O MAPA É 12000×12000** (`WORLD` em constants; era 9600, +25% de lado e +56% de área). É edição de
   BUILD, e o cliente tem cópia própria do bundle — dois valores diferentes corrompem `qPos/dqPos` e toda
   posição do fio sai deslocada, em silêncio; os 3 shards e o cliente têm que subir na MESMA imagem.
@@ -428,8 +561,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   estrela e míssil vêm pela visão INTEIRA, sem teto de contagem. É o maior risco de rede do mapa maior e
   não aparece em teste nenhum: medir com `?stats` numa sala cheia.
   ⚠️ **O menor Battle Royale possível subiu de 10 para 20 min**: `roundTicksOf` recusa abaixo de
-  `ZONE_TOTAL_TICKS`, que agora é 37 500. A tela de "Sala sua" já filtra por essa função, então o chip de
-  10 min some sozinho — mas um teste que cravasse 10 quebra, e é isso que ele deve fazer.
+  `ZONE_TOTAL_TICKS` **mais `BR.DECIDE_TICKS`** (33 000 + 7 500 = 40 500). A tela de "Sala sua" já filtra
+  por essa função, então o chip de 10 min some sozinho — mas um teste que cravasse 10 quebra, e é isso que
+  ele deve fazer.
   ⚠️ Custo medido do tick (arena de `physics.test.js`, **com a máquina quieta**): média 0,62 → **0,75 ms**,
   ou seja +15% para +56% de área, com o dobro de folga até o teto de 1,5 ms. O `GRID_CELL` maior é o que
   segura o custo FIXO (`cellStart.fill(0)` em dois grids por tick, mais o `forEachPair` sobre `cols×rows`,

@@ -142,10 +142,18 @@ test('Battle Royale: cheio o lobby, entra a contagem e a partida larga',async()=
   const ph=await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'largada');
   assert.equal(ph.phase,'live');
   assert.equal(room.sim.players.size,BR.PLAYERS,'a sala larga com 50');
-  assert.ok(room.zone,'a zona foi armada');
-  assert.equal(room.sim.world.peace,false);
-  assert.ok(room.roundStart>0,'o relógio da rodada começou AGORA');
   assert.ok(room.sim.world.piecesOf(r.slot).length>0,'e agora sim eu tenho corpo no mapa');
+  // ⚠️ A LARGADA TEM DOIS TEMPOS: `begin()` põe os 50 na GAIOLA e liga a contagem 3·2·1; a zona e o fim da
+  // paz são do `largar()`, CAGE_TICKS depois. É `phase!=='lobby'` que faz o snapshot sair — e é o snapshot
+  // que desenha o octógono —, então a fase vira 'live' já aqui, com o jogo desarmado por dentro.
+  assert.ok(room.sim.world.cage,'a gaiola existe na largada');
+  assert.equal(room.sim.world.peace,true,'e dentro dela ninguém come, atira nem divide');
+  assert.equal(room.zone,null,'a zona só nasce quando a gaiola abre — é assim que "o gás não age" sai de graça');
+  assert.equal(ph.round.startsAt,room.roundStart,'a contagem e o relógio da rodada apontam para o MESMO tick');
+  assert.ok(room.roundStart>room.sim.tick-1,'o relógio da rodada começa quando a gaiola ABRIR');
+  await c.until(()=>room.zone,4000,'a gaiola abre e a zona nasce');
+  assert.equal(room.sim.world.cage,null);
+  assert.equal(room.sim.world.peace,false);
   const z=await c.until(()=>c.zones.length?c.zones[0]:null,4000,'ZONE');
   assert.ok(z.r0>1000,'a zona começa cobrindo o mapa');
   const s=await c.until(()=>{const x=c.last();return x&&!(x.self.flags&SELF_FLAG.LOBBY)?x:null;},4000,'self fora do lobby');
@@ -194,33 +202,31 @@ test('Battle Royale: a janela fecha com a sala CHEIA (o contador não pula na la
   assert.equal(room.sim.players.size,room.max,`a contagem só começa com a sala cheia (${room.sim.players.size}/${room.max})`);
   c.close();
 });
-test('Battle Royale: aceita entrar até o 1º fechamento do gás, e trava depois disso',async()=>{
+test('Battle Royale: a largada FECHA a porta — e a arquibancada continua aberta',async()=>{
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Dono',mode:MODE.BR,teamSize:1,room:newRoom()});
   const room=roomOf(r.code);room.lobbyUntil=room.sim.tick+60;room.lobbyStart=room.sim.tick;
   await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'live');
-  // ⚠️ A JANELA DE ENTRADA TARDIA: a largada não fecha mais a porta sozinha. Enquanto a zona ainda está
-  // na etapa 0 e PARADA (antes de o gás começar a fechar pela 1ª vez), a sala continua aceitando gente.
-  assert.ok(room.zone&&room.zone.stage===0&&!room.zone.shrinking,'a zona nasce parada na etapa 0');
-  assert.equal(room.acceptsJoin(),true,'ainda dá para entrar: o 1º gás não começou');
-  assert.equal(room.info().open,true);
-  assert.ok(room.info().lockInMs>0,'a lista de salas tem o que contar: falta o círculo começar a fechar');
-  const c2=new C(wsUrl);await c2.open();
-  const r2=await c2.join({nick:'Atrasado',mode:MODE.BR,teamSize:1,room:r.code});
-  assert.equal(r2.code,r.code,'entrou na MESMA sala, já em partida');
-  c2.close();
-  // Força o 1º fechamento a começar (o teste não quer esperar ZONE.HOLD_TICKS[0] de verdade): o próximo
-  // `stepZone` vira `shrinking` assim que o tick alcança `t1` — é a MESMA máquina de shared/src/zone.js.
-  room.zone.t1=room.sim.tick;
-  await c.until(()=>room.zone.shrinking===true,4000,'zona começou a fechar');
+  // ⚠️ EXISTIU AQUI UMA JANELA DE ENTRADA TARDIA: enquanto a zona estava na etapa 0 e parada (~125 s), a
+  // sala continuava aceitando gente. Ela saiu por decisão de produto — "acabou a contagem para entrar, já
+  // era" —, e o que sobrou é a regra que o modo sempre prometeu: a largada é o fim das inscrições.
   assert.equal(room.acceptsJoin(),false);
-  // ⚠️ ROOM_STARTED e não FULL: a sala tem vaga de sobra, o que acabou foi a JANELA. Dizer "cheia" mandava
-  // o jogador esperar por uma vaga que não ia adiantar, quando o certo é procurar outra partida.
+  // ⚠️ ROOM_STARTED e não FULL: a sala tem vaga de sobra, o que acabou foi a INSCRIÇÃO. Dizer "cheia"
+  // mandava o jogador esperar por uma vaga que não ia adiantar, quando o certo é procurar outra partida.
   assert.equal(room.joinRefusal(),'started');
+  assert.equal(room.info().open,false);
   assert.equal(room.info().closed,'started');
-  assert.equal(room.info().lockInMs,null,'trancada não conta mais nada — o cadeado já diz tudo');
+  assert.equal(room.info().lockInMs,null,'trancada não conta nada — não há mais janela para contar');
+  const c2=new C(wsUrl);await c2.open();
+  await assert.rejects(()=>c2.join({nick:'Atrasado',mode:MODE.BR,teamSize:1,room:r.code}),/ROOM_STARTED/);
+  c2.close();
+  // A PORTA IRMÃ continua aberta, e é essa distinção que é o desenho: assistir uma partida em andamento é
+  // exatamente o caso de uso; entrar nela, não. Se as duas fossem a mesma função, abrir uma abriria a outra.
+  assert.equal(room.acceptsSpectator(),true);
   const c3=new C(wsUrl);await c3.open();
-  await assert.rejects(()=>c3.join({nick:'MuitoAtrasado',mode:MODE.BR,teamSize:1,room:r.code}),/ROOM_STARTED/);
+  const r3=await c3.join({nick:'Publico',mode:MODE.BR,teamSize:1,room:r.code,spec:true});
+  assert.equal(r3.code,r.code);
+  assert.equal(room.humanCount,1,'e o espectador não ocupou vaga');
   c3.close();c.close();
 });
 // Era o oposto: entrar por código pedindo outro modo levava um erro `MODE`. Na tela de Salas o jogador
@@ -715,6 +721,23 @@ test('/api/auto separa os pools por modo e por tamanho de equipe',async()=>{
   assert.equal(quad.body.max,modeCap(MODE.BR,4));
   const rooms=await api(`/api/rooms?mode=${MODE.BR}`);
   assert.ok(rooms.body.rooms.every(r=>r.mode===MODE.BR),'a listagem filtra por modo');
+});
+
+test('Battle Royale já largado não é destino do JOGAR (AUTO), pelos DOIS caminhos',async()=>{
+  // Os dois caminhos de entrada leem a MESMA porta: `RoomManager.findOrCreateRoom` chama `acceptsJoin()` e
+  // `matchmaking.escolheSala` filtra por `r.open` (que É `info().open`). Consertar uma função consertou os
+  // dois — e é isso que este teste trava, para o dia em que alguém acrescentar um terceiro caminho.
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Pioneiro',mode:MODE.BR,teamSize:1,room:newRoom()});
+  const room=roomOf(r.code);room.lobbyUntil=room.sim.tick+60;room.lobbyStart=room.sim.tick;
+  await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'live');
+  const auto=await api(`/api/auto?mode=${MODE.BR}&teamSize=1`);
+  assert.equal(auto.status,200);
+  assert.notEqual(auto.body.code,r.code,'/api/auto manda para uma sala NOVA, não para a partida em curso');
+  const lista=await api(`/api/rooms?mode=${MODE.BR}`);
+  const eu=lista.body.rooms.find(x=>x.code===r.code);
+  if(eu)assert.equal(eu.open,false,'ela aparece na lista, trancada — sumir faria procurar a sala que viu há 5 s');
+  c.close();
 });
 
 // ── CORO E CORRENTE ──────────────────────────────────────────────────────────

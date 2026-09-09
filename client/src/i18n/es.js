@@ -17,6 +17,7 @@ export default {
   brLobbyTitle: "BATTLE ROYALE", brWaiting: "buscando jugadores…", brStarting: "la partida empieza en",
   brHint: "El último planeta en pie se lo lleva todo. La zona se cierra y no hay manera de revivir.",
   brCancel: "Cancelar",
+  brCageTitle: "PREPÁRATE", brCageHint: "sin peleas ni potenciadores hasta que se abra la jaula",
   aliveLeft: "QUEDAN", placementWord: "puesto", zoneOut: "⚠ EN EL GAS", zoneShrinking: "EL GAS ESTÁ AVANZANDO", zoneCloses: "el gas cierra en",
   zoneWarnAt: "⚠ ¡EL GAS CIERRA EN {n}s!",
   hintSplit: "{k} para dividir y alcanzarlo",

@@ -17,6 +17,7 @@ export default {
   brLobbyTitle: "BATTLE ROYALE", brWaiting: "looking for players…", brStarting: "match starts in",
   brHint: "The last planet standing takes it all. The zone closes in, and there is no respawn.",
   brCancel: "Cancel",
+  brCageTitle: "GET READY", brCageHint: "no fighting and no power-ups until the cage opens",
   aliveLeft: "LEFT", placementWord: "placement", zoneOut: "⚠ IN THE GAS", zoneShrinking: "THE GAS IS CLOSING IN", zoneCloses: "gas closes in",
   zoneWarnAt: "⚠ THE GAS CLOSES IN {n}s!",
   hintSplit: "{k} to split and catch it",

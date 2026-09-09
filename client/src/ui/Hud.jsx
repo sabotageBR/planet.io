@@ -15,6 +15,7 @@ import KillFeed from "./KillFeed.jsx";
 import { Nick } from "./bits.jsx";
 import { WEAPON_ICON } from "./icons.js";
 import BrLobby from "./BrLobby.jsx";
+import CageStart from "./CageStart.jsx";
 import Notice from "./Notice.jsx";
 import BrInvite from "./BrInvite.jsx";
 import { ZoneWarnBanner, ZoneAlarmFlash } from "./ZoneAlert.jsx";
@@ -198,19 +199,34 @@ export default function Hud() {
         </span>; })}</div>
     </div>
     </div>
-    {br && !noLobby ? <div id="hud-mode" className={h.zoneHurt ? "hurt" : ""}>
-      <span className="chip alive"><i>💀</i> <b>{h.alive || 0}</b> <span>{LB.aliveLeft}</span></span>
+    {/* ── O BLOCO DO BATTLE ROYALE, NO TOPO ───────────────────────────────────────────────────────
+        Era `#hud-mode`: dois chips de 12 px no RODAPÉ, ao lado da arma ("o topo e as laterais já estão
+        ocupados", dizia o comentário de ui.css). Continuam ocupados; o que mudou foi a hierarquia — num
+        battle royale, quanto falta e quantos faltam não são metainformação, são o jogo. Sem eles à vista o
+        jogador não sente o cerco fechando, que é a única coisa que este modo tem a mais que o Livre.
+        ⚠️ IRMÃO de `#hud-top`, e nunca mais um chip DENTRO dela: a conta escrita em ui.css mede a faixa em
+        ~390 px de chips numa tela de 414, e o primeiro chip a mais a quebra em duas linhas — em cima do
+        kill feed. Como bloco próprio ele mora na LINHA DE BAIXO e não disputa nada.
+        ⚠️ SAI NO PÓDIO (`screen === "round"`): a partida acabou e "restam 1" é ruído sobre o resultado.
+        Para o MORTO ele FICA — ver a lista do `#hud.spec` em ui.css.
+        ⚠️ SEM `aria-live`: isto muda a cada 125 ms, e uma região viva nessa cadência faz o leitor de tela
+        falar sem parar. Quem anuncia o gás em marcos discretos (10 s e 3 s) é o `ZoneWarnBanner` logo
+        abaixo, que já tem `aria-live="assertive"` — é lá que essa informação cabe, e ela já está lá. */}
+    {br && !noLobby && screen !== "round" ? <div id="hud-br" className={h.zoneHurt ? "hurt" : ""}>
       {/* Contador do fechamento do gás: `zoneIn` só vem `null` quando a zona já fechou tudo (`done`),
-          então o chip some sozinho no círculo final — não há mais "próximo fechamento" para contar.
+          então ele some sozinho no círculo final — não há mais "próximo fechamento" para contar.
           O rótulo troca com `zoneShrinking` (mesma leitura do servidor: "parada = origem e destino
           iguais"): parado, é contagem PARA o gás começar a avançar; avançando, é para ele parar de novo. */}
-      {h.zoneIn != null ? <span className={"chip zone-timer" + (h.zoneShrinking ? " shrinking" : "") + (h.zoneIn <= 10 ? " warn" : "")}>
-        <i>⏳</i> <b>{fmtTime(h.zoneIn)}</b> <span>{h.zoneShrinking ? LB.zoneShrinking : LB.zoneCloses}</span></span> : null}
-      {h.zoneHurt ? <span className="chip zone-out">{LB.zoneOut}</span> : null}
+      {h.zoneIn != null ? <><div className={"br-stat br-timer" + (h.zoneShrinking ? " shrinking" : "") + (h.zoneIn <= 10 ? " warn" : "")}>
+        <b>{fmtTime(h.zoneIn)}</b><span>{h.zoneShrinking ? LB.zoneShrinking : LB.zoneCloses}</span></div>
+        <i className="br-sep" aria-hidden="true" /></> : null}
+      <div className="br-stat br-alive"><b>{h.alive || 0}</b><span>{LB.aliveLeft}</span></div>
+      {h.zoneHurt ? <div className="br-out">{LB.zoneOut}</div> : null}
     </div> : null}
     <ZoneWarnBanner w={h.zoneWarn} />
     <DicaSplit d={h.dica} tecla={kSplit} />
     <BrLobby lobby={h.lobby} />
+    <CageStart c={h.cage} />
     <Notice n={h.notice} />
     <IdleWarn n={h.idle} />
     <BrInvite b={h.brInvite} />

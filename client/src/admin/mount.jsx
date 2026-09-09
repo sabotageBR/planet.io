@@ -5,7 +5,7 @@
 // O painel NÃO passa por `app.screen` nem por `body[data-screen]`, e o jogo não tem link para cá.
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { api, getToken, setToken, setOnAuthFail } from "./api.js";
+import { api, getToken, setToken, setOnAuthFail, getPref, setPref } from "./api.js";
 import { ordenar, proxOrdem } from "./ordenar.js";
 import { portalDe } from "./portais.js";
 import { AoVivo } from "./AoVivo.jsx";
@@ -350,16 +350,41 @@ function Salas({ erro }) {
  * ⚠️ Só leitura, e nada aqui audita (o mesmo contrato de todo GET do painel).
  */
 function Retencao({ erro }) {
-  const [d, setD] = useState(null), [janela, setJanela] = useState("14d"), [carregando, setCarregando] = useState(false);
+  // ⚠️ O PADRÃO DA TELA É 1 HORA E O DO SERVIDOR CONTINUA SENDO 14 DIAS — são duas perguntas diferentes.
+  // Quem ABRE o painel quer o agora ("está entrando gente? está ficando?"); quem chama a rota sem parâmetro
+  // está pedindo o recorte histórico, e mexer no `JANELA_PADRAO` viraria o `modo` de TODA chamada sem
+  // parâmetro para `atividade`, em silêncio — sem coortes e com `primeira`/`algoz` medindo outra coisa. O
+  // servidor também não teria como cumprir a segunda metade do pedido: lá não existe operador.
+  // ⚠️ E A ESCOLHA DO OPERADOR MANDA. Sem persistir, quem trabalha em 30 dias volta para "1 hora" a cada
+  // F5 e a cada ida e volta pelas abas do painel.
+  const [d, setD] = useState(null), [carregando, setCarregando] = useState(false);
+  const [janela, setJanela] = useState(() => getPref("retencao.janela", "1h"));
+  const trocaJanela = j => { setJanela(j); setPref("retencao.janela", j); };
+  // ⚠️ A PLATAFORMA **NÃO** É PERSISTIDA, e é decisão, não esquecimento. A janela é uma postura de trabalho
+  // ("até onde eu olho"); a plataforma é uma pergunta pontual sobre um portal. Lembrada, o operador abre o
+  // painel na semana seguinte, vê números só da Poki com um subtítulo pequeno e os lê como o jogo inteiro.
+  const [origem, setOrigem] = useState("");
+  const [origens, setOrigens] = useState([]);
   // A lista de janelas é do SERVIDOR (lista branca em `repos/analytics.js`). Duplicá-la aqui a faria
   // divergir na primeira janela nova — e o `<select>` ofereceria um valor que a rota recusa com 400.
   const [janelas, setJanelas] = useState([]);
   useEffect(() => { let vivo = true;
-    api.retencaoJanelas().then(r => { if (vivo) setJanelas(r.janelas || []); }).catch(() => {});
+    api.retencaoJanelas().then(r => { if (!vivo) return; setJanelas(r.janelas || []);
+      // ⚠️ UMA PREF SALVA QUE MORREU É 400 ETERNO. Ela vive no navegador e sobrevive ao deploy que aposentar
+      // uma janela; o `?janela=` iria com um id fora da lista branca e a rota responderia 400 para sempre
+      // NAQUELA máquina, com a tela quebrada até alguém abrir o devtools. Quem manda continua sendo a lista
+      // do servidor: o que ele não reconhece cai no `padrao` dele e é reescrito.
+      if (r.janelas && r.janelas.length && !r.janelas.some(j => j.id === janela)) trocaJanela(r.padrao || "1h");
+    }).catch(() => {});
+    return () => { vivo = false; }; }, []);
+  // A lista de plataformas é do BANCO (rota irmã), sem corte de janela: um portal sem conta nova na última
+  // hora tem que continuar selecionável, senão o filtro some justamente quando a janela encurta.
+  useEffect(() => { let vivo = true;
+    api.retencaoOrigens().then(r => { if (vivo) setOrigens(r.origens || []); }).catch(() => {});
     return () => { vivo = false; }; }, []);
   useEffect(() => { let vivo = true; setCarregando(true);
-    api.retencao(janela).then(r => { if (vivo) setD(r); }).catch(e => erro(e.message)).finally(() => { if (vivo) setCarregando(false); });
-    return () => { vivo = false; }; }, [janela]);
+    api.retencao(janela, origem).then(r => { if (vivo) setD(r); }).catch(e => erro(e.message)).finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; }; }, [janela, origem]);
   if (!d) return <div className="vazio">{carregando ? "carregando…" : "sem dados"}</div>;
   const v = d.visita, p = d.primeira;
   /**
@@ -370,17 +395,36 @@ function Retencao({ erro }) {
    * eco de `by`/`dir` das tabelas ordenáveis.
    */
   const atividade = d.modo === "atividade";
+  // ⚠️ `portalDe` COLAPSA domínios de propósito (poki.com, poki.io e poki-cdn.com são todos "Poki") e o
+  // filtro é pelo domínio CRU — três opções escritas "Poki" seriam um menu que mente. Quando o nome se
+  // repete, o host volta entre parênteses: continua legível e volta a ser único.
+  const nomesOrig = origens.map(x => portalDe(x.origem));
+  const rotuloOrigem = (x, i) => nomesOrig.filter(n => n === nomesOrig[i]).length > 1
+    ? `${nomesOrig[i]} (${String(x.origem).replace(/^https?:\/\//, "")})` : nomesOrig[i];
   const pc = (a, b) => (b ? Math.round(100 * a / b) + "%" : "—");
   // O histograma vem em baldes de 30 s (width_bucket de 0..600 em 20). Barra por largura relativa — nada
   // de biblioteca de gráfico para cinco números.
   const maxH = Math.max(1, ...d.histograma.map(h => h.n));
   return <div className="ad-form larga">
     <div className="ad-cab"><h2>Retenção</h2>
-      <select value={janela} onChange={e => setJanela(e.target.value)}>
-        {(janelas.length ? janelas : [{ id: "14d", rotulo: "14 dias" }]).map(j =>
-          <option key={j.id} value={j.id}>{j.rotulo}</option>)}</select></div>
+      {/* ⚠️ O PLACEHOLDER É A PRÓPRIA JANELA, e não um "14 dias" cravado: com a preferência em `1h` e a
+          lista ainda em voo, o `value` não casaria com nenhuma `<option>` e o navegador mostraria "14 dias"
+          enquanto a requisição de 1 hora já tinha saído. Mostrar o id cru por ~50 ms é feio; mentir, não. */}
+      <select value={janela} onChange={e => trocaJanela(e.target.value)}>
+        {(janelas.length ? janelas : [{ id: janela, rotulo: janela }]).map(j =>
+          <option key={j.id} value={j.id}>{j.rotulo}</option>)}</select>
+      <select value={origem} onChange={e => setOrigem(e.target.value)} title="filtrar por plataforma">
+        <option value="">todas as plataformas</option>
+        {origens.map((x, i) => <option key={x.origem} value={x.origem} title={x.origem}>
+          {rotuloOrigem(x, i)} · {num(x.contas)}</option>)}</select></div>
     {/* A janela curta troca a PERGUNTA, e a tela tem que dizer isso — senão o mesmo título passa a cobrir
         dois recortes diferentes. "dia atual" é do relógio do banco, que pode não ser o do operador. */}
+    {/* ⚠️ Do ECO (`d.origem`), nunca do estado: um pod em build antiga ignora `?origem` e não ecoa, e aí a
+        tela não anuncia um recorte que não valeu. É o mesmo contrato do `modo` logo acima.
+        ⚠️ E a segunda frase não é enfeite: com filtro ativo, "ninguém jogou no período" passa a ter DUAS
+        causas, e sem ela o operador lê a errada. */}
+    {d.origem ? <p className="ad-dim">Só <b>{portalDe(d.origem)}</b> (<code>{d.origem}</code>). Um painel
+      vazio aqui pode ser desta plataforma, não do jogo.</p> : null}
     {atividade ? <p className="ad-dim">Janela curta: os painéis medem <b>quem jogou</b> na janela, não quem
       criou conta nela. O corte é o relógio do servidor.</p> : null}
 

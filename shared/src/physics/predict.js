@@ -10,10 +10,14 @@
 // Só muda os objetos do array recebido (fundidas são removidas dele, na ordem).
 // @ts-check
 import {DT,WORLD,BLACKHOLE,EJECT,PLAYER} from "../constants.js";
+import {clamp} from "../util.js";
 import {integratePiece} from "./integrate.js";
 import {decayPiece,setMass} from "./body.js";
 import {separateOwn,tryMergeOwn} from "./collide.js";
 import {pullBody,ejectPiece,zoneExposure,zoneMass} from "./rules.js";
+import {clampCage,clampCagePoint} from "./cage.js";
+
+const TP={x:0,y:0};   // buffer do alvo contido: nada de alocar no laço quente (o mesmo hábito do `_tp` do World)
 
 /**
  * @param {import("./body.js").Body[]} pieces  peças próprias (mutadas no lugar)
@@ -27,16 +31,34 @@ import {pullBody,ejectPiece,zoneExposure,zoneMass} from "./rules.js";
  *   estar aqui pelo mesmo motivo do decaimento: ela muda o RAIO, e sem prever o servidor corrigiria 20×/s numa
  *   peça que está encolhendo — a peça pulsaria de tamanho na borda. A MORTE continua só do servidor (chega pelo
  *   REMOVE do snapshot), exatamente como o esmagamento do buraco negro: aqui a massa só encosta no piso.
+ * @param {{x:number,y:number,ap:number}|null} [cage]  o octógono de largada do Battle Royale, pelo mesmo motivo
+ *   da zona e com mais urgência: ele muda a POSIÇÃO. Conter só no servidor faria a peça própria atravessar a
+ *   parede aqui e voltar pelo snapshot 20×/s, acima de `NET.SNAP_DIST` — com a câmera junto, porque ela segue
+ *   as peças próprias. Quem liga isto é o `SELF_FLAG.LOBBY` do snapshot, não uma mensagem JSON solta.
  */
-export function stepOwnPieces(pieces,state,tick,dt=DT,w=WORLD.w,h=WORLD.h,holes=null,ej=null,zc=null){
+export function stepOwnPieces(pieces,state,tick,dt=DT,w=WORLD.w,h=WORLD.h,holes=null,ej=null,zc=null,cage=null){
   const n=pieces.length;
-  if(ej){let go=ej.req;                                                    // mesma ordem da fase 1 do World.step
+  // ⚠️ A GAIOLA CANCELA A CUSPARADA PREVISTA. O servidor ignora `ejectReq` sob `w.peace` (fase 1 do step), e
+  // sem esta guarda o cliente preveria o recuo de 12,35 px de uma cusparada que nunca aconteceu — que é
+  // exatamente o erro de predição que pôs o eject aqui dentro em primeiro lugar.
+  if(ej&&!cage){let go=ej.req;                                             // mesma ordem da fase 1 do World.step
     if(ej.hold&&tick>=ej.holdAt){go=true;ej.holdAt=tick+EJECT.HOLD_TICKS;}   // o hold avança mesmo se o cooldown barrar
     if(go&&tick>=ej.cdUntil){ej.cdUntil=tick+EJECT.COOLDOWN_TICKS;
       for(let i=0;i<n;i++)ejectPiece(pieces[i],state.tx,state.ty);}
     ej.req=false;}
   const floor=PLAYER.MIN_PIECE_R*PLAYER.MIN_PIECE_R;
-  for(let i=0;i<n;i++){const pc=pieces[i];integratePiece(pc,state.tx,state.ty,dt,w,h);decayPiece(pc,dt);   // mesmo decaimento do servidor, senão a predição diverge
+  // O ALVO PASSA PELAS MESMAS DUAS SATURAÇÕES DO SERVIDOR, na mesma ordem: primeiro o MUNDO (`setTarget`
+  // faz `clamp(tx,0,w)` desde sempre) e depois a gaiola.
+  // ⚠️ O clamp do mundo é conserto de um erro que já existia: o alvo daqui vem de `cam.toWorld(cursor)` e
+  // passa das bordas quando a câmera está encostada nelas, enquanto o servidor sempre o saturou. Sem
+  // gaiola isso só torcia a direção de leve; COM ela, dois pontos diferentes caem em lados diferentes do
+  // octógono, e a peça própria diverge de verdade.
+  // Nada é escrito de volta no `state`: quem o guarda entre os ticks é o cliente, e o INPUT que sai para o
+  // servidor continua sendo o cru (é lá que `qPos` satura).
+  let tx=clamp(state.tx,0,w),ty=clamp(state.ty,0,h);
+  if(cage){const p=clampCagePoint(cage,tx,ty,TP);tx=p.x;ty=p.y;}
+  for(let i=0;i<n;i++){const pc=pieces[i];integratePiece(pc,tx,ty,dt,w,h);if(cage)clampCage(pc,cage);   // MESMA ordem do servidor: parede do mundo, gaiola, decaimento
+    decayPiece(pc,dt);   // mesmo decaimento do servidor, senão a predição diverge
     if(zc){const e=zoneExposure(pc,zc);if(e>0){const m=zoneMass(pc.mass,dt,zc.r,e);setMass(pc,m>floor?m:floor);}}}
   if(holes)for(let j=0;j<holes.length;j++){const hb=holes[j],ri=hb.r*BLACKHOLE.INFLUENCE*hb.k,rc=hb.r*hb.k;if(ri<10)continue;   // depois da integração, como no servidor (passo 6)
     for(let i=0;i<n;i++)pullBody(hb,pieces[i],1,rc,ri);}

@@ -5,7 +5,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {citou,baseNick,sanitiza,normalizar,montaPrompt,detectaIdioma,createBotChat,aberta,estadoLinha,agressorLinha,
-  elencoLinha,escolheAssunto,paisEn} from '../src/rooms/botChat.js';
+  elencoLinha,escolheAssunto,paisEn,IDIOMA_NOME,MARCAS} from '../src/rooms/botChat.js';
 import {PERSONAS,pickPersona} from '../src/rooms/botPersonas.js';
 import {createRng} from '@warspace/shared/rng.js';
 import {botNick,BOT_LLM,CHAT} from '@warspace/shared/constants.js';
@@ -72,8 +72,10 @@ test('idioma: quem escreveu decide, e na dúvida não se afirma nada', () => {
   // decisão do modelo e a traz para cá, onde ela é testável.
   assert.equal(detectaIdioma('oye Alnitak, eres muy malo jugando'),'Spanish');
   assert.equal(detectaIdioma('Callistro what are you doing bro'),'English');
-  assert.equal(detectaIdioma('vc ta muito ruim mano kkkk'),'Portuguese');
-  assert.equal(detectaIdioma('Trovao vem ca seu covarde'),'Portuguese');
+  // ⚠️ 'Brazilian Portuguese', e não 'Portuguese': a chave de MARCAS é o NOME QUE VAI PARA O PROMPT, e o
+  // mesmo prompt saía com as duas grafias (esta e o chão da LANGUAGE RULE) se contradizendo de leve.
+  assert.equal(detectaIdioma('vc ta muito ruim mano kkkk'),'Brazilian Portuguese');
+  assert.equal(detectaIdioma('Trovao vem ca seu covarde'),'Brazilian Portuguese');
   // sem sinal nenhum é melhor não afirmar: a instrução genérica volta a valer
   assert.equal(detectaIdioma('gg'),null);
   assert.equal(detectaIdioma('Nebulox'),null);
@@ -418,3 +420,32 @@ test('tipo de conversa: cada opção do painel vira uma instrução PRÓPRIA no 
     applyTunable('BOT_LLM.ESTILO','seco');
     assert.match(montaPrompt({nome:'S',kind:'kill'}).system,/Do not mock anyone/);
   }finally{resetTunable('BOT_LLM.ESTILO');}});
+
+// ── O IDIOMA DA FALA (BOT_LLM.IDIOMA) ────────────────────────────────────────
+test('idioma: o painel oferece exatamente o que o servidor sabe tratar',()=>{
+  // Um id no `<select>` sem par em IDIOMA_NOME é um parâmetro que grava e não faz nada; um par sem entrada
+  // em MARCAS é um idioma que o modo `auto` nunca consegue detectar. As três listas são UMA, e é este
+  // teste que as mantém assim — acrescentar um idioma é mexer nas três de propósito.
+  assert.deepEqual(BOT_LLM.IDIOMAS.map(o=>o.v).filter(v=>v!=='auto').sort(),Object.keys(IDIOMA_NOME).sort());
+  assert.deepEqual(Object.values(IDIOMA_NOME).sort(),Object.keys(MARCAS).sort());
+  assert.equal(BOT_LLM.IDIOMA,'auto','o padrão tem que ser indistinguível do que já está no ar');});
+
+test('idioma: travado no painel, a regra de "responda na língua da mensagem" SAI do prompt',()=>{
+  try{
+    // auto = o de sempre: quem escreveu decide, e a regra completa está no SYSTEM
+    const p0=montaPrompt({nome:'X',kind:'mention',quem:'A',texto:'eres muy malo jugando'});
+    assert.match(p0.user,/write your line in Spanish/);
+    assert.match(p0.system,/reply in THAT message/);
+    applyTunable('BOT_LLM.IDIOMA','pt-BR');
+    const p=montaPrompt({nome:'X',kind:'mention',quem:'A',texto:'eres muy malo jugando'});
+    assert.match(p.user,/write your line in Brazilian Portuguese/,'travado, o detector é PULADO — não corrigido');
+    // ⚠️ A exceção não pode ficar de pé: com ela, um "hi bro" perdido viraria a sala inteira em inglês, e o
+    // parâmetro seria desligado pelo primeiro estrangeiro que aparecesse.
+    assert.doesNotMatch(p.system,/reply in THAT message/);
+    assert.match(p.system,/always write in Brazilian Portuguese/);
+    // e vale também na fala de INICIATIVA, que não tem mensagem nenhuma para detectar
+    assert.match(montaPrompt({nome:'X',kind:'puxa'}).user,/write your line in Brazilian Portuguese/);
+    applyTunable('BOT_LLM.IDIOMA','en');
+    assert.match(montaPrompt({nome:'X',kind:'mention',quem:'A',texto:'vc ta muito ruim mano'}).user,/write your line in English/);
+    assert.throws(()=>applyTunable('BOT_LLM.IDIOMA','fr'),/out_of_range/,'a lista de opções é a segunda lista branca');
+  }finally{resetTunable('BOT_LLM.IDIOMA');}});
