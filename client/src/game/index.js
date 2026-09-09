@@ -31,7 +31,10 @@ import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,P
 // vocabulário de jogo), e o cliente só precisa do aplicador — a validação vem junto de graça.
 import {aplicaWire} from "@warspace/shared/tunables.js";
 /** As raízes que um tunable 'wire' pode escrever. A chave do descritor É o caminho (`CAM.K`). */
-const RAIZES_WIRE={CAM,ZOOM,STAR,ROUND};
+// ⚠️ SPLIT entrou por causa de `SPLIT.MIN_R` (o portão do dividir): quem o aplica é o servidor, mas a
+// dica do cliente precisa do MESMO número para não anunciar um botão que o servidor recusa. Não é
+// física do cliente — `predict.js` não importa SPLIT.
+const RAIZES_WIRE={CAM,ZOOM,STAR,ROUND,SPLIT};
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
@@ -41,6 +44,7 @@ import {createSnapshotBuffer} from "./state/SnapshotBuffer.js";
 import {createInterpolator} from "./state/Interpolator.js";
 import {createPredictor} from "./state/Predictor.js";
 import {createWorldView} from "./state/WorldView.js";
+import {passoDica,temPresa,DICA0} from "./dica.js";
 import {createRenderer} from "./renderer/Renderer.js";
 import {createCamera} from "./renderer/Camera.js";
 import {createPointer} from "./input/Pointer.js";
@@ -173,6 +177,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(a==="talk"){if(ph==="down"){if(joined&&!SEM_VOZ&&curPrefs.voice!==false)mic.start();}else mic.stop();return;}   // morto também fala: o escopo é do servidor (Room._escopoFala)
     if(a==="specPrev"||a==="specNext"){if(ph==="down")game.spectate({dir:a==="specNext"?1:-1});return;}
     if(a==="zoomReset"){if(ph==="down")zoomReset();return;}
+    if(a==="split"&&ph==="down")dividiu=true;   // a dica existe para ensinar ISTO; ensinada, ela some
     if(a==="swap"&&ph==="down")audio.play("weapon",{mine:true});
     actions.act(a,ph);};
   /** Botão do ponteiro: mira/tiro (esquerdo) e split (direito) são inteiramente do createActions — sem
@@ -449,6 +454,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // em ROOM_EXPIRED.
     else if(m.t==="alive"){dead=false;specSlot=-1;spec=null;mapOn="";minimap.setView("",-1);minimap.show(false);
       morte=passoMorte(morte,{tipo:"vida",now:performance.now()});if(joy)joy.reset();   // o rumo travado é da vida ANTERIOR: sem isto o planeta nasce correndo
+      dividiu=false;dicaEst=DICA0;   // vida nova, lição nova: quem morreu sem dividir volta a ser ensinado
       if(m.sessionId&&conn&&conn.session)conn.session.sessionId=m.sessionId;
       buffer.clear();predictor.reset();view.reset();input.reset();input.setHold(false);cam.reset();
       aplicaRadar();pushHud(performance.now());}
@@ -664,7 +670,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // um `{deadAt,armAt}` VENCIDO. Ele chegava à tela de morte pelo store com throttle antes do par novo
       // e disparava o respawn no primeiro frame: a tela não aparecia e o jogador reentrava no ato. Ver
       // `ui/deadClock.js`, que fecha o mesmo buraco do outro lado com o piso.
-      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;specSlot=-1;selfTick=0;espectador=!!spec;
+      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;specSlot=-1;selfTick=0;espectador=!!spec;
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null,spec:!!spec};
@@ -686,7 +692,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa
     // por aqui (ela é do Connection, e volta pelo `resume`), então nada disso atrapalha quem só caiu.
     leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
+      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -920,6 +926,23 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       while(zoneWarnIdx<ZONE_WARN_AT_S.length&&zoneIn0<=ZONE_WARN_AT_S[zoneWarnIdx]){
         zoneWarn={sec:ZONE_WARN_AT_S[zoneWarnIdx],at:now};zoneWarnIdx++;
         audio.play("zoneWarn",{mine:true});}}
+    // A DICA DO DIVIDIR (game/dica.js): só quem PODE dividir e tem presa ao alcance de um salto.
+    // ⚠️ A varredura é sobre `view.pieces` (a AOI), que é o mesmo conjunto que o render já percorre, e roda
+    // a 8 Hz junto do resto do HUD — não é laço novo no frame. Aliado sai fora: saltar em cima do
+    // companheiro não é a lição.
+    let dica=null;{
+      let me=null;
+      if(joined&&!dead&&!pausado&&!dividiu&&own0.length){
+        let big=own0[0];for(let i=1;i<own0.length;i++)if(own0[i].rr>big.rr)big=own0[i];
+        me={x:big.rx,y:big.ry,r:big.rr};}
+      let presa=false;
+      if(me){const alvos=[];
+        for(const q of view.pieces){if(q.isMe)continue;const pl=view.playerOf(q.owner);if(pl&&pl.ally)continue;
+          alvos.push({x:q.rx,y:q.ry,r:q.rr});}
+        presa=temPresa(me,alvos);}
+      const passo=passoDica(dicaEst,{pode:!!me,presa},now);
+      dicaEst=passo.est;
+      if(passo.visivel)dica={at:dicaEst.ate,dedo};}
     hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
       powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:s?s.autoDefN|0:0,zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,map:mapOn,clock:roundClock,
@@ -934,6 +957,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         startsInMs:lobby.startsInMs?Math.max(0,lobby.startsInMs-(now-lobby.at)):0,
         waitMs:lobby.waitMs?Math.max(0,lobby.waitMs-(now-lobby.at)):0,
         roster:[...view.players.values()].map(p=>({slot:p.slot,name:p.name,skinId:p.skinId,me:p.slot===view.mySlot}))}:null,
+      dica,
       alive:s?s.alive:0,weapon:s?s.weapon|0:0,owned:s?s.owned|1:1,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
       // CONTADOR DO FECHAMENTO DO GÁS: `zone.t1` já chega pelo fio (MSG.ZONE, ver protocol/codec.js) —
       // é o tick em que a FASE ATUAL (parada ou fechamento) termina, então `(t1-tk)/TICK_HZ` é quanto
@@ -970,6 +994,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
     return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · estrelas ${c.stars} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}
   let bytesRate=0,bytesLast=0,bytesT=0,themeAt=0,own0=[];
+  // A DICA DO DIVIDIR: `dividiu` é por VIDA e some no primeiro split — a lição foi aprendida. Zerado
+  // nos MESMOS pontos que `morte`/`brMudo` (join/leave e `{t:"alive"}`), senão a vida seguinte herda
+  // o estado da anterior e a dica nunca mais aparece. Ver game/dica.js.
+  let dividiu=false,dicaEst=DICA0;
   // ZOOM MANUAL (a roda). O fator é guardado CRU e reclampado todo frame pela faixa da massa do momento
   // (`clampZoom`): assim a faixa anda junto com o jogador e leva o fator com ela — quem estacionou no máximo
   // afastado continua no máximo enquanto cresce (a visão abre sozinha, sem degrau), e quem foi comido até o

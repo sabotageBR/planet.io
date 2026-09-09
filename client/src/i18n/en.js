@@ -19,6 +19,8 @@ export default {
   brCancel: "Cancel",
   aliveLeft: "LEFT", placementWord: "placement", zoneOut: "⚠ IN THE GAS", zoneShrinking: "THE GAS IS CLOSING IN", zoneCloses: "gas closes in",
   zoneWarnAt: "⚠ THE GAS CLOSES IN {n}s!",
+  hintSplit: "{k} to split and catch it",
+  hintSplitTouch: "tap SPLIT to catch it",
   admJoin: "🟢 {n} joined the game", admJoinTitle: "warspace.io",
   brInviteTitle: "🚀 Battle Royale starting!", brInviteBody: "A new match is filling up. Want to join?",
   brInviteYes: "Join", brInviteNo: "Not now", brInviteMute: "Mute", brInviteMuteTip: "Stop alerting me in this room (to turn it off for good: Options → Interface)",

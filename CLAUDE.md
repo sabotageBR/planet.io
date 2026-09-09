@@ -1003,6 +1003,43 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ Escopo `server`, apesar de a regra morar em `physics/rules.js`: `predict.js` importa `DT, WORLD,
   BLACKHOLE, EJECT, PLAYER` e nada mais. E `bot.js:novatoProtegido` lê o MESMO objeto `BOT`, então o cérebro
   acompanha a troca no mesmo tick — sem isso o bot perseguiria alguém que ele só vai atravessar.
+- **O PORTÃO DO DIVIDIR ESTAVA ACIMA DO TETO DO NOVATO** (`SPLIT.MIN_R` virou tunable de escopo `wire`,
+  grupo "Proteção do novato"; a dica em `client/src/game/dica.js` + `ui/DicaSplit.jsx`): a física torna o
+  salto OBRIGATÓRIO para matar alguém — `vmax = 2110,6/r^0,449` faz a presa ser sempre mais rápida que o
+  predador (ser maior é a condição para comer, e ser maior é ser mais lento), então perseguir não é
+  difícil, é IMPOSSÍVEL. É o mesmo argumento que `bot.js:_plan` já usava para tratar o salto como a arma
+  principal. Só que `MIN_R`=60 exige **massa 3.600** e o jogador nasce com 900.
+  ⚠️ **Medido nos jogadores da Poki (554 primeiras vidas): o pico de massa mediano é 2.214, e 64,6% NUNCA
+  chegam a poder dividir.** Entre esses, **97,8% não fazem um único abate** — não por falta de habilidade,
+  mas porque a única ferramenta de alcance está trancada. Dos 35,4% que chegam ao portão, só 25,5% usam;
+  o produto disso (≈9%) bate com os 10% que "mataram alguém na 1ª vida", que é o grupo que fica (54%
+  chegam a 3 min, contra 22% de quem não fez nada).
+  ⚠️ O número não vira decisão de engenharia: `SPLIT.MIN_R` é PARÂMETRO, como os três da proteção do
+  novato e pelo mesmo motivo — baixá-lo dá a mecânica central a quem ainda está decidindo se fica, e em
+  troca põe peças menores em campo. Quem decide é o dono do jogo com o painel de Retenção na frente.
+  ⚠️ **Escopo `wire`, não `server`**: quem aplica `MIN_R` é `rules.applySplit` e `bot.js`, mas a DICA roda
+  no cliente e precisa do MESMO número — anunciar um botão que o servidor recusa é pior que não ensinar.
+  `predict.js` importa `DT, WORLD, BLACKHOLE, EJECT, PLAYER` e **não** SPLIT, então isto não é física do
+  cliente: é o caso de `CAM.K` e `STAR.PASS_R`. Por isso `SPLIT` entrou em `RAIZES_WIRE` (`game/index.js`).
+  ⚠️ **O piso é 44 e é derivado**: o filho de um split tem `r/√2`, e abaixo de 44 ele nasceria MENOR que
+  `PLAYER.START_R` (30) — o jogador produziria de propósito uma peça menor que um recém-nascido.
+  ⚠️ **Dependência cruzada com `STAR.PASS_R`**, hoje em 0 (o esconderijo na estrela está desligado): se ele
+  voltar a valer 40, `MIN_R` abaixo de **56,6** devolve o exploit de se picar para caber dentro da estrela
+  — é o `40 < SPLIT.MIN_R/√2` de `constants.js:545`. Mexer num obriga a conferir o outro.
+  ⚠️ **A DICA só aparece para quem PODE dividir** (`r >= SPLIT.MIN_R`) e com presa ENGOLÍVEL dentro de
+  `SPLIT.DIST` — os dois números são do jogo, e sem eles a frase mentiria. Ela some no primeiro split
+  (`dividiu`, por VIDA, zerado nos MESMOS pontos que `morte`/`brMudo`: `join`, `leave` e `{t:"alive"}`) e
+  tem teto de `DICA.MAX` por vida, senão vira parede.
+  ⚠️ `SPLIT.MIN_R` é lido A CADA CHAMADA em `dica.js`, nunca capturado na carga do módulo: o `aplicaWire`
+  do `room` o reescreve em cima do objeto de `constants.js`, e capturado o cliente anunciaria o portão do
+  BUILD enquanto o servidor usa o do painel.
+  ⚠️ A varredura da presa é sobre `view.pieces` (a AOI que o render já percorre) e roda a 8 Hz dentro do
+  `pushHud` — não é laço novo no frame. Aliado sai fora: saltar no companheiro não é a lição.
+  ⚠️ O CSS anima `opacity` e **`translate`**, nunca `transform`: o elemento se posiciona com
+  `translateX(-50%)`, e um keyframe terminando em `transform:none` o apagaria para sempre — é o defeito
+  que jogou a tela de morte metade para fora do celular.
+  ⚠️ E o que a dica NÃO resolve: os 64,6% que não alcançam o portão. Para eles não há frase que ajude —
+  só o parâmetro.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade

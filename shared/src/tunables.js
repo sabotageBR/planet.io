@@ -27,7 +27,7 @@
 // ⚠️ `ENTRY_PANELS` é 'server' pelo mesmo motivo de `ROOM.MAX`: o servidor decide, e `/api/config` ecoa
 // o valor só para a tela poder desenhar antes de existir sala — não é física, não precisa de `wire`.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,ENTRY_PANELS,ENTRY} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,SPLIT,ENTRY_PANELS,ENTRY} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt'|'bool',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
@@ -142,6 +142,22 @@ export const TUNABLES=[
   // ser maior para a regra o considerar atropelamento e mandá-lo ATRAVESSAR; abaixo disso ele come normal.
   // O piso útil é 1,33 e não 1: `EAT.RATIO` é 1,15 de RAIO, ou seja 1,32 de massa — abaixo disso nenhum
   // planeta engole ninguém, e o número não faria nada. 4 foi escolhido para deixar a briga apertada viva.
+  // ⚠️ O PORTÃO DO DIVIDIR. Medido nos jogadores da Poki: o pico de massa da PRIMEIRA vida tem mediana
+  // 2.214, e `MIN_R`=60 exige 3.600 — ou seja **64,6% nunca chegam a poder dividir**, e entre esses 97,8%
+  // não fazem um único abate. Não é coincidência: `vmax = K/r^0,449` faz a presa ser sempre MAIS RÁPIDA
+  // que o predador, então o salto é o único jeito de alcançar alguém em campo aberto (o mesmo argumento
+  // que `bot.js:_plan` já usa). Com o portão acima do teto do novato, a mecânica central do jogo fica
+  // trancada justamente para quem ainda está decidindo se fica.
+  // ⚠️ Escopo 'wire', não 'server': quem lê `MIN_R` é `rules.applySplit` e `bot.js` (servidor), mas a DICA
+  // do cliente (`game/dica.js`) precisa do mesmo número para não anunciar um botão que o servidor recusa.
+  // `predict.js` importa `DT, WORLD, BLACKHOLE, EJECT, PLAYER` e não SPLIT, então isto não é física do
+  // cliente — é o mesmo caso de CAM.K e STAR.PASS_R.
+  // ⚠️ O PISO É 44 e tem motivo: o filho de um split tem `r/√2`, e abaixo de 44 ele nasceria MENOR que
+  // `PLAYER.START_R` (30) — o jogador produziria de propósito uma peça menor que um recém-nascido.
+  // ⚠️ E há uma dependência cruzada com `STAR.PASS_R`, hoje em 0 (esconderijo desligado): se ele voltar a
+  // valer 40, `MIN_R` abaixo de 56,6 devolve o exploit de se picar para caber dentro da estrela — o
+  // comentário de `constants.js:545` explica por quê. Mexer num obriga a conferir o outro.
+  num('novato','SPLIT.MIN_R','Raio mínimo para o jogador poder dividir','px','wire',44,120,1,SPLIT,'MIN_R'),
   num('novato','BOT.NOVATO_RATIO','Quantas vezes maior o preenchimento precisa ser para atravessar em vez de comer','× a massa da pessoa','server',1.5,20,.5,BOT,'NOVATO_RATIO'),
   // ── CÂMERA E ÁREA DE INTERESSE ──
   // O botão de zoom. 'wire' porque o CLIENTE também chama `zoomFor` — com 'server' a AOI viria por um zoom

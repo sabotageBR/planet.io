@@ -2347,3 +2347,23 @@ body[data-pointer="coarse"] #s-modes .team-sizes .chip-btn{min-width:44px}
 #s-round .podium.v2.simples .step.p1{flex:1.2 1 0}
 /* o rótulo do ranking quando a equipe campeã está logo acima (ver ui/Round.jsx) */
 #s-round .ph.pos-rest{width:100%;margin:6px 0 0;font-size:.68em;letter-spacing:.12em;opacity:.72}
+
+/* ── A DICA DO DIVIDIR ───────────────────────────────────────────────────────
+   Mora no rodapé da área de jogo, acima dos botões de toque, e NUNCA captura o ponteiro: o `#hud` inteiro
+   é `pointer-events:none` justamente porque um painel que engole o toque congela o alvo do jogador.
+   Sem `backdrop-filter` pelo mesmo motivo do placar — é DOM sobre um canvas a 60 fps.                    */
+#hud .dica-split{position:absolute;left:50%;bottom:132px;transform:translateX(-50%);
+  z-index:6;pointer-events:none;white-space:nowrap;
+  padding:7px 14px;border-radius:999px;
+  background:#1c1440;border:2px solid #8b5cff;color:#fff;
+  font:700 13px/1 var(--font-ui,system-ui,sans-serif);letter-spacing:.02em;
+  box-shadow:0 2px 0 rgba(0,0,0,.45);
+  /* ⚠️ anima `opacity` e `translate`, nunca `transform`: o elemento se POSICIONA com transform, e um
+     keyframe que termine em `transform:none` apagaria o `translateX(-50%)` para sempre — foi exatamente
+     o defeito que jogou a tela de morte metade para fora do celular. `translate` compõe. */
+  animation:dica-entra 220ms ease-out both;}
+@keyframes dica-entra{from{opacity:0;translate:0 8px}to{opacity:1;translate:0 0}}
+body[data-mode="portrait"] #hud .dica-split{bottom:150px;font-size:12px;padding:6px 12px;
+  max-width:calc(100% - 24px);white-space:normal;text-align:center}
+body[data-mode="landscape"] #hud .dica-split{bottom:96px}
+@media (prefers-reduced-motion:reduce){#hud .dica-split{animation:none}}
