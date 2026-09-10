@@ -99,7 +99,13 @@ export function createPersistence({db,log,config,metrics=SEM_METRICS}){
       const stats=await matches.upsertStats(c,m);
       const owned=await achievements.keysFor(m.userId,c);
       const fresh=await achievements.unlock(c,m.userId,newAchievements(m,stats,owned),ins.id);
-      const skinsUnlocked=await skins.grantMany(c,m.userId,skinsForAchievements(fresh),'achievement');
+      // ⚠️ `[...owned,...fresh]` E NÃO SÓ `fresh`. `achievements.unlock` devolve apenas as chaves REALMENTE
+      // inseridas (`ON CONFLICT DO NOTHING RETURNING key`), então uma skin amarrada a uma conquista que a
+      // conta JÁ TINHA nunca era concedida — quem destravou `mass.s` antes de existir uma skin para ela
+      // ficava sem a skin para sempre, e a única saída seria uma migração de backfill.
+      // Não vira fonte infinita: `grantMany` (repos/skins.js) devolve só os ids que ele de fato inseriu,
+      // então a partir da segunda partida a lista volta vazia sozinha. É auto-corretivo e custa uma linha.
+      const skinsUnlocked=await skins.grantMany(c,m.userId,skinsForAchievements([...owned,...fresh]),'achievement');
       let coins=null,earned=0;
       const base=matchCoins(m);if(base>0){coins=(await ledger.apply(c,{userId:m.userId,delta:base,reason:'match',refType:'match',refId:ins.id})).coins;earned+=base;}
       for(const k of fresh){const d=achievementCoins(k);coins=(await ledger.apply(c,{userId:m.userId,delta:d,reason:'achievement',refType:'achievement',refId:k})).coins;earned+=d;}

@@ -63,6 +63,22 @@ function cracks(c,r,color,width,n,seed,glow){const g=mulberry(seed*57+5);c.lineC
  */
 export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2",avatar=null,face:faceBmp=null}={}){
   const p=sk&&sk.pattern,col=sk.color,acc=sk.accent||sh(col,.35),seed=(sk.id|0)+1;
+  // ── A ARTE VINDA DO BANCO DECIDE ANTES DO SWITCH ────────────────────────────────────────────────
+  // ⚠️ TEM que ser aqui, e este é o ponto que quase passou batido: o despacho abaixo é por `sk.pattern`,
+  // então uma skin com arte no banco cairia no case do PADRÃO PROCEDURAL dela (uma lendária continuaria
+  // desenhando a coroa) ou, se fosse `plain`, no `return false` que leva ao emoji fantasma. Marcar a arte
+  // fora do `pattern` e esperar que `faceFile` resolvesse não funcionaria: aquele governa o DOWNLOAD e a
+  // CHAVE do cache, nunca o desenho.
+  // ⚠️ SEM o bitmap, CAI NO PATTERN de sempre — e não num disco liso. Enquanto a arte não chega (ou se o
+  // banco estiver fora), a skin continua sendo desenhada como sempre foi: é o degrade certo para uma
+  // caricatura ou uma lendária, e não um flash de disco vazio. Quando o bitmap chega, a CHAVE da textura
+  // muda (faces.js) e o frame seguinte reassa com a imagem.
+  // O predicado é "TEM bitmap e o pattern não é um dos que já o consomem", e não um campo novo na skin:
+  // `faceBmp` só chega aqui porque `faceFile` disse que esta skin tem arte, e `face`/`mascote`/`avatar` já
+  // têm case próprio logo abaixo. Assim uma skin de banco (`plain`) e uma lendária com override (`crown`)
+  // caem no mesmo caminho, sem inventar bandeira nenhuma no catálogo.
+  if(faceBmp&&p!=="face"&&p!=="mascote"&&p!=="avatar"){
+    c.save();arte(c,r,faceBmp,{ink});c.restore();return true;}
   if(!p||p==="plain")return false;
   c.save();c.lineJoin="round";
   switch(p){
@@ -208,6 +224,17 @@ export function paintPattern(c,r,sk,{ink="#141026",light="#fff5c2",avatar=null,f
 // que chegar já decodificado em `P.face`. Enquanto não chega, isto desenha o disco liso da cor da skin e
 // devolve `true`: devolver `false` cairia no emoji fantasma, que seria uma bandeira no lugar de um rosto.
 // Quando o bitmap fica pronto a CHAVE da textura muda (faces.js:faceKey) e o planeta é reassado sozinho.
+/**
+ * A ARTE DE CATÁLOGO dentro do disco. Gêmea de `face` logo abaixo, com duas diferenças que importam:
+ * ela não tem fallback próprio (quem decide o degrade é `paintPattern`, que cai no pattern procedural) e
+ * o aro é mais discreto — arte de catálogo já vem com contorno próprio, ao contrário das caricaturas.
+ * ⚠️ QUADRADA por contrato (o upload recusa o resto): é o que dispensa a tabela de ajuste por personagem
+ * que os mascotes precisaram, e faz `drawImage(-r,-r,2r,2r)` ser a única conta.
+ */
+function arte(c,r,bmp,{ink}){
+  c.drawImage(bmp,-r,-r,r*2,r*2);
+  c.strokeStyle=rgba(ink,.35);c.lineWidth=Math.max(1.5,r*.035);
+  c.beginPath();c.arc(0,0,r*.985,0,TAU);c.stroke();}
 function face(c,r,sk,face,{ink}){
   if(face){c.drawImage(face,-r,-r,r*2,r*2);
     // o fio de tinta por dentro da borda cola a ilustração no corpo do planeta; sem ele o recorte do

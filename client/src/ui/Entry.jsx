@@ -10,11 +10,11 @@ import { skinName, rarityLabel } from "../i18n/catalog.js";
 import { keysOf } from "../game/input/Keyboard.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { go, setNick, loadTop5, toast, focaNome, play } from "../state/actions.js";
+import { go, setNick, loadTop5, toast, focaNome, play, entraDireto } from "../state/actions.js";
 import GoogleButton from "./GoogleButton.jsx";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { useInterval } from "../hooks/useInterval.js";
-import { ENTRA_DIRETO, PORTAL } from "../portal/flags.js";
+import { PORTAL } from "../portal/flags.js";
 import { portal } from "../portal/index.js";
 import { Field, MiniRank, Screen } from "./bits.jsx";
 import SkinPreview from "./SkinPreview.jsx";
@@ -88,10 +88,11 @@ function Body() {
   // ⚠️ Efeito colateral conhecido: o funil do GA perde o passo `/tela/modes` no caminho principal (o
   // `page_view` virtual só sai quando a tela troca). Não é regressão — é a tela deixando de existir no
   // meio do caminho. Não "consertar" essa queda depois.
-  const jogar = async () => { if (!ENTRA_DIRETO && !nick.trim()) { toast(LB.nickAsk, 3500); focaNome(); return; } if (nick.trim() && !await commit()) return;
+  const jogar = async () => { const direto = entraDireto();
+    if (!direto && !nick.trim()) { toast(LB.nickAsk, 3500); focaNome(); return; } if (nick.trim() && !await commit()) return;
     const pp = app.get().pendingPlay;
     if (pp) play(pp);
-    else if (ENTRA_DIRETO) play({ mode: app.get().gameMode | 0, teamSize: 1, party: null });
+    else if (direto) play({ mode: app.get().gameMode | 0, teamSize: 1, party: null });
     else play({ mode: MODE.FREE, teamSize: 1, party: null }); };
   // ⚠️ OPÇÕES SAIU DAQUI e virou o ícone do topo do cartão. O número de colunas desta grade responde à
   // largura do CARTÃO, e no celular em pé cabem cinco: o 6º alvo caía sozinho numa segunda fileira, ou

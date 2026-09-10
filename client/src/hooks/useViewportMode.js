@@ -2,6 +2,7 @@
 // São DUAS informações independentes, e misturá-las era a raiz da bagunça de responsividade:
 //   body[data-mode]    = FORMA   desktop | tablet | landscape | portrait   (trocas grossas de layout, tamanho do radar)
 //   body[data-pointer] = ENTRADA coarse | fine                             (botões de toque, joystick, alvo de 44 px)
+//   body[data-h]       = ALTURA  short | ""                                (cabe? — o frame de portal é um desktop BAIXO)
 // Medida fina (largura exata, quantas colunas cabem) é decisão do CSS, não daqui: assim o PRIMEIRO PAINT já
 // sai certo — o HTML nasce com data-mode="desktop" e, antes desta correção, qualquer celular pintava a tela
 // de desktop até o React montar.
@@ -23,6 +24,24 @@ const BAND = 40;          // folga da histerese: o limiar de subida e o de desci
 
 /** Limiar com folga: para SAIR de `dentro` é preciso passar de `lim+BAND`; para entrar, basta `lim`. */
 const cruza = (v, lim, dentro) => (dentro ? v <= lim + BAND : v <= lim);
+
+// ── A TERCEIRA DIMENSÃO: ALTURA ÚTIL ──────────────────────────────────────────
+// `data-mode` diz a FORMA e `data-pointer` diz a ENTRADA; nenhum dos dois responde "cabe?". Um frame de
+// portal é um DESKTOP BAIXO — 960×540 e 1920×1080 são o MESMO `data-mode`, com metade da altura —, e é
+// exatamente ali que o rodapé de ação das telas sai da dobra. Foi o que os prints da Poki mostraram.
+// ⚠️ `@media` não serve: a regra da casa é decidir por atributo (e o CDP da sonda fixa atributo, não
+// media query — sem isso a matriz não conseguiria medir a forma de tela que este número existe para pegar).
+// O número é a soma dos blocos fixos de uma tela: `--screen-top`×2 (88) + `--nav-h` (74) + o miolo mínimo
+// de um cartão (420) = 582, arredondado para cima.
+const SHORT_H_UI = 640;
+/**
+ * Falta ALTURA para o layout confortável desta tela? Puro, para ser conferido em tabela.
+ * ⚠️ Acende TAMBÉM no celular deitado (375 px de altura), e isso é correto, não descuido: ele tem o mesmo
+ * problema. O que a cascata precisa cuidar é de não EMPATAR com as regras de `data-mode="landscape"` —
+ * quem quiser tratar o caso combinado escreve `[data-h="short"][data-mode="landscape"]`, que ganha.
+ * @param {number} h @param {boolean} [antes] estava em "short"? (histerese, como o resto do arquivo)
+ */
+export const ehBaixa = (h, antes) => cruza(h, SHORT_H_UI, !!antes);
 
 /**
  * Decisão pura — sem globais, para poder ser testada. `antes` é o modo atual (histerese).
@@ -72,8 +91,12 @@ export function useViewportMode() {
     let t = 0;
     const apply = () => {
       const m = computeMode(document.body.dataset.mode), p = computePointer();
+      // "" e não "tall": o atributo só EXISTE quando falta altura, então nenhum seletor precisa do caso
+      // negativo — é o mesmo idioma de `body[data-shell]`, que também nasce vazio.
+      const alt = ehBaixa(innerHeight, document.body.dataset.h === "short") ? "short" : "";
       if (document.body.dataset.mode !== m) document.body.dataset.mode = m;
       if (document.body.dataset.pointer !== p) document.body.dataset.pointer = p;
+      if (document.body.dataset.h !== alt) document.body.dataset.h = alt;
       if (app.get().mode !== m) app.update({ mode: m });
     };
     const agenda = () => { clearTimeout(t); t = setTimeout(apply, 150); };

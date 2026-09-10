@@ -148,14 +148,25 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
    ⚠️ Especificidade: `theme/all.css` importa ESTE arquivo ANTES dos temas, e o `port.js` prefixa os
    seletores deles com `:where(...)`, que soma ZERO — uma regra em (1,0,0) empata e PERDE. Nenhum tema
    escreve `#hud-br` hoje, mas o `#hud ` na frente é o hábito do arquivo. */
-#hud{--top-h:52px;--brh:64px}
+/* ⚠️ "SÓ UM POUCO MENOR" É REDUÇÃO, NÃO REDESENHO: a FORMA continua (mesma borda, mesma pilha
+   número+legenda, mesmo lugar) e quem encolhe ~15% é o número GRANDE, que é o que domina a altura.
+   ⚠️ `--brh` TEM que acompanhar: o chat (:697), a coluna direita (:805) e o radar (Minimap.js, que lê a
+   variável do CSS em `brOff`) penduram os offsets deles nela. Encolher o painel sem baixar a variável
+   deixa um vão do tamanho exato do que se poupou — e é o tipo de coisa que ninguém liga ao commit certo.
+   Os números são um dial: se ficar pequeno demais no aparelho, mexe-se no `font-size` do `b` e no `--brh`
+   da mesma linha, e nada mais.
+   ⚠️ E `--brh` TEM QUE SER FIEL À ALTURA REAL — declarado baixo demais, o chat, a coluna direita e o radar
+   SOBEM e passam a colidir com o próprio painel. A matriz pegou isso na primeira tentativa (56 contra uma
+   altura real de ~61): três colisões novas em `dead:duelo`, onde o chat já mora no topo. A conta é
+   `padding*2 + b + margin-top do span + span + borda*2`, e o valor declarado fica ~2-3 px abaixo dela. */
+#hud{--top-h:52px;--brh:58px}
 #hud #hud-br{position:absolute;left:50%;top:var(--top-h);transform:translateX(-50%);z-index:7;
   display:flex;align-items:center;gap:20px;padding:6px 22px;pointer-events:none;
   border-radius:18px;border:3px solid var(--line,#0006);
   background:color-mix(in srgb,var(--surface,#1a2350) 82%,transparent);box-shadow:0 6px 24px rgba(0,0,0,.45)}
 .br-stat{display:flex;flex-direction:column;align-items:center;line-height:1}
-.br-stat b{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--accent,#ffc22e)}
-.br-stat span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;opacity:.72;margin-top:4px;white-space:nowrap}
+.br-stat b{font-size:29px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--accent,#ffc22e)}
+.br-stat span{font-size:9px;letter-spacing:.1em;text-transform:uppercase;opacity:.72;margin-top:3px;white-space:nowrap}
 /* ⚠️ PISO DE LARGURA NOS DOIS NÚMEROS. Eles mudam a 8 Hz, e `tabular-nums` só resolve o DÍGITO: a mudança
    de CASA (12→9, 1:00→59) encolhe a caixa e faz o separador andar de um lado para o outro. A 34 px isso lê
    como a tela tremendo, não como um contador. */
@@ -174,22 +185,22 @@ body[data-mode="portrait"] #t-fire .fire-cd,body[data-mode="landscape"] #t-fire 
 /* Sem animação o estado continua legível: a cor e o TEXTO do rótulo já carregam as três fases. */
 @media (prefers-reduced-motion:reduce){#hud #hud-br .br-timer.warn b,#hud #hud-br .br-out{animation:none}}
 /* TABLET: mesma forma, um passo menor — a tela é larga, mas a faixa de chips fica logo acima. */
-body[data-mode="tablet"] #hud{--brh:56px}
+body[data-mode="tablet"] #hud{--brh:52px}
 body[data-mode="tablet"] #hud #hud-br{gap:16px;padding:5px 18px}
-body[data-mode="tablet"] .br-stat b{font-size:29px}
+body[data-mode="tablet"] .br-stat b{font-size:25px}
 /* DEITADO: aqui a ALTURA é o eixo escasso (375 px num celular), então o bloco encolhe de verdade. */
-body[data-mode="landscape"] #hud{--top-h:56px;--brh:40px}
+body[data-mode="landscape"] #hud{--top-h:56px;--brh:38px}
 body[data-mode="landscape"] #hud #hud-br{gap:14px;padding:3px 14px;border-width:2px;border-radius:14px}
-body[data-mode="landscape"] .br-stat b{font-size:23px}
+body[data-mode="landscape"] .br-stat b{font-size:20px}
 body[data-mode="landscape"] .br-stat span{font-size:9px;margin-top:2px}
 /* EM PÉ: o bloco atravessa a tela (a faixa de chips já é `left:8px;right:8px`) e fica na SEGUNDA linha.
    ⚠️ O rótulo do gás em avanço é a coisa mais larga daqui ("O GÁS ESTÁ AVANÇANDO", 21 caracteres): sem
    `min-width:0` e sem deixar a caption quebrar, ele empurra o bloco para fora dos 360 px. */
-body[data-mode="portrait"] #hud{--top-h:58px;--brh:48px}
+body[data-mode="portrait"] #hud{--top-h:58px;--brh:44px}
 body[data-mode="portrait"] #hud #hud-br{left:8px;right:8px;transform:none;justify-content:center;
   gap:14px;padding:4px 10px;border-radius:14px}
 body[data-mode="portrait"] .br-stat{flex:0 1 auto;min-width:0}
-body[data-mode="portrait"] .br-stat b{font-size:26px}
+body[data-mode="portrait"] .br-stat b{font-size:22px}
 body[data-mode="portrait"] .br-stat span{font-size:9px;letter-spacing:.06em;text-align:center;white-space:normal}
 @keyframes zonepulse{0%,100%{opacity:1}50%{opacity:.45}}
 /* placar: companheiro e quem está falando */
@@ -508,6 +519,14 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
    não há Ctrl, o único botão de toque que sobrevive é o do microfone. Dividir e atirar, esses sim, acabaram. */
 #hud.spec #touch > *:not(#t-talk){display:none}
 #hud.spec #chat{top:12px}                            /* sem o radar em cima, o chat sobe e cresce */
+/* ⚠️ ...MAS NÃO POR CIMA DO PAINEL DO BATTLE ROYALE. Ele é a única coisa do HUD de jogo que SOBREVIVE ao
+   `#hud.spec` (a exceção `:not(#hud-br)` da lista acima), porque o morto do BR continua acompanhando o gás
+   e quantos restam. Com o chat subindo para `top:12` os dois disputavam o topo, e a matriz mediu 59 px de
+   sobreposição no frame de portal. `:has` é o predicado certo aqui: quem desce é o chat, e só quando o
+   painel existe — no Livre ele continua colado no topo, que é onde há espaço.
+   O offset é o mesmo par que o chat e a coluna direita já usam em celular (`--top-h` + `--brh`), então
+   mexer no tamanho do painel move os três juntos, por construção. */
+#hud.spec:has(#hud-br) #chat{top:calc(var(--top-h) + var(--brh) + 10px)}
 #hud.spec #chat .chat-lines{opacity:1;max-height:46vh} /* e NÃO desbota: atrás da tela de morte não há jogo a proteger */
 #hud.spec #chat .chat-open{opacity:.75}
 
@@ -671,7 +690,17 @@ body[data-pointer="coarse"] #hud.spec #hud-left{top:8px;bottom:auto;justify-cont
 body[data-mode="portrait"] #hud.spec #chat,body[data-mode="landscape"] #hud.spec #chat{top:8px;bottom:auto;width:min(260px,54vw)}
 body[data-mode="portrait"] #hud.spec #chat .chat-lines,body[data-mode="landscape"] #hud.spec #chat .chat-lines{max-height:30vh}
 body[data-mode="portrait"] #hud.spec.map #chat,body[data-mode="landscape"] #hud.spec.map #chat{display:none}
-body[data-mode="portrait"] #s-dead .dead-card,body[data-mode="landscape"] #s-dead .dead-card{max-height:min(64%,64dvh)}
+/* ⚠️ ESTA REGRA ERA CÓDIGO MORTO, e por isso a folha de morte tapava a partida inteira no celular apesar
+   de o número existir aqui desde sempre. Sem o `[data-style]` ela vale (1,2,1) e EMPATA com
+   `:where(html[data-theme=…]) body[data-mode="portrait"] #s-dead .dead-card` de dawn:251 / sunset:249 /
+   dusk:233 — o `:where` soma zero, mas `body`+`[data-mode]`+`#s-dead`+`.dead-card` dá o mesmo (1,2,1) —, e
+   empate perde por ORDEM: `ui.css` é importado ANTES dos temas. Quem valia era o `max-height:90%` deles.
+   O `[data-style]` (que ui/Dead.jsx sempre escreve na raiz) leva o seletor a (1,3,1) e o faz existir.
+   60% e não 64%: o pedido foi que a partida continue visível por cima, e o cartão ROLA — encolher não
+   esconde nada, porque o rodapé de ação agora gruda (ver o bloco "O RODAPÉ DE AÇÃO NÃO ROLA"). */
+body{--dead-h:min(60%,60dvh)}
+body[data-mode="portrait"] #s-dead[data-style] .dead-card,
+body[data-mode="landscape"] #s-dead[data-style] .dead-card{max-height:var(--dead-h)}
 
 /* mobile: o chat mora no topo-esquerda, logo abaixo do radar — a MESMA ancoragem do desktop
    (`--radar-top`/`--radar-h`, publicadas por Minimap.layout() em QUALQUER data-mode), então nunca cobre o
@@ -917,30 +946,30 @@ body[data-mode="portrait"] .brl-count b{font-size:2.2em}
    painel no meio da tela taparia justamente o que se veio olhar. Ela fica FORA do `#hud` (é uma tela, como
    `#s-dead`), acima dele no empilhamento, e recebe ponteiro — o `#hud` inteiro é `pointer-events:none`.
    ⚠️ `bottom` desconta a área segura: no iPhone a barra caía por baixo do indicador de home. */
-#s-spec{position:fixed;left:50%;transform:translateX(-50%);z-index:20;
+.spec-bar{position:fixed;left:50%;transform:translateX(-50%);z-index:20;
   bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
   display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;
   max-width:min(680px,94vw);padding:10px 14px;border-radius:14px;
   border:3px solid var(--line,#0006);background:color-mix(in srgb,var(--surface,#1a2350) 94%,transparent);
   box-shadow:0 8px 26px rgba(0,0,0,.45);color:var(--text,#fff);pointer-events:auto}
-#s-spec .sb-quem{display:flex;align-items:center;gap:10px}
-#s-spec .sb-acoes{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.spec-bar .sb-quem{display:flex;align-items:center;gap:10px}
+.spec-bar .sb-acoes{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 /* Em pé a barra vira duas linhas coladas nas bordas: com 360 px, "quem" + três botões não cabem numa só,
    e encolher a fonte deixaria os alvos abaixo dos 44 px que o dedo pede. */
-body[data-mode="portrait"] #s-spec{left:8px;right:8px;transform:none;max-width:none;
+body[data-mode="portrait"] .spec-bar{left:8px;right:8px;transform:none;max-width:none;
   flex-direction:column;align-items:stretch;gap:8px}
-body[data-mode="portrait"] #s-spec .sb-quem,body[data-mode="portrait"] #s-spec .sb-acoes{justify-content:center}
-body[data-mode="portrait"] #s-spec .sb-acoes>*{flex:1 1 0;min-width:0}
+body[data-mode="portrait"] .spec-bar .sb-quem,body[data-mode="portrait"] .spec-bar .sb-acoes{justify-content:center}
+body[data-mode="portrait"] .spec-bar .sb-acoes>*{flex:1 1 0;min-width:0}
 /* As três peças de "de quem é a câmera" são as MESMAS da tela de morte — uma gramática só para os dois
    lugares em que se assiste. Por isso o seletor virou lista em vez de ganhar uma cópia. */
-.dead-spec,#s-spec .sb-quem{display:flex;align-items:center;justify-content:center;gap:10px}
+.dead-spec,.spec-bar .sb-quem{display:flex;align-items:center;justify-content:center;gap:10px}
 .dead-spec{margin:6px 0 2px}
-.dead-spec .spec-arrow,#s-spec .spec-arrow{width:34px;height:34px;border-radius:99px;border:2px solid var(--line,#0006);
+.dead-spec .spec-arrow,.spec-bar .spec-arrow{width:34px;height:34px;border-radius:99px;border:2px solid var(--line,#0006);
   background:var(--surface,#2226);color:inherit;font-size:1.3em;line-height:1;padding:0}
-.dead-spec .spec-arrow:hover,#s-spec .spec-arrow:hover{background:var(--accent,#ffc22e);color:var(--line,#141026)}
-.dead-spec .spec-who,#s-spec .spec-who{display:flex;flex-direction:column;align-items:center;min-width:140px}
-.dead-spec .spec-who i,#s-spec .spec-who i{font-style:normal;font-size:.72em;opacity:.6;letter-spacing:.1em}
-.dead-spec .spec-who b,#s-spec .spec-who b{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dead-spec .spec-arrow:hover,.spec-bar .spec-arrow:hover{background:var(--accent,#ffc22e);color:var(--line,#141026)}
+.dead-spec .spec-who,.spec-bar .spec-who{display:flex;flex-direction:column;align-items:center;min-width:140px}
+.dead-spec .spec-who i,.spec-bar .spec-who i{font-style:normal;font-size:.72em;opacity:.6;letter-spacing:.1em}
+.dead-spec .spec-who b,.spec-bar .spec-who b{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* cinto de armas: o chip da arma vira botão de troca quando há mais de uma (tecla Q faz o mesmo) */
 #hud-ammo.belt{cursor:pointer;position:relative;border:0;font:inherit;color:inherit}
@@ -1020,12 +1049,12 @@ body[data-pointer="coarse"] select,
 body[data-pointer="coarse"] .tab{min-height:44px}
 body[data-pointer="coarse"] .btn-mini.back,
 body[data-pointer="coarse"] .dead-spec .spec-arrow,
-/* ⚠️ A barra do ESPECTADOR (`#s-spec`) tem que estar NOMEADA aqui. As setas dela são as mesmas da tela de
+/* ⚠️ A barra do ESPECTADOR (`.spec-bar`) tem que estar NOMEADA aqui. As setas dela são as mesmas da tela de
    morte e herdam os `34x34` do bloco lá em cima; a regra genérica de `button` só dá `min-height`, então no
    dedo elas saíam 34 px de LARGURA — abaixo do alvo, e num controle que É a funcionalidade (trocar de quem
    é a câmera). Quem pegou isso foi `scripts/responsive-check.mjs`, e é o motivo de `spec` ter entrado na
    matriz: alvo tátil tem DUAS dimensões, e a altura vinha de graça pelo flex. */
-body[data-pointer="coarse"] #s-spec .spec-arrow,
+body[data-pointer="coarse"] .spec-bar .spec-arrow,
 body[data-pointer="coarse"] #chat .chat-open{min-width:44px;min-height:44px}
 /* o toggle é um trilho, não um botão: o alvo cresce por padding, senão vira uma barra gorda */
 body[data-pointer="coarse"] .pref-row{min-height:44px}
@@ -1286,9 +1315,19 @@ body[data-mode="portrait"] #app .wrap>nav.nav{padding-left:6px;padding-right:6px
    de entrar em sala, o rodapé de Preferências, a faixa "Você 1º" do Ranking — pousava num lugar diferente
    em cada tela. Com a caixa idêntica em todas, esses quatro voltam a se comportar: o conteúdo rola por
    dentro e eles ficam presos no fundo do cartão, que é onde os mockups os desenharam.
-   ⚠️ `min-height` junto: numa janela muito baixa a caixa não pode virar uma fresta com uma barra dentro. */
+   ⚠️ `min-height` junto: numa janela muito baixa a caixa não pode virar uma fresta com uma barra dentro.
+   ⚠️ MAS O PISO TEM QUE DESCONTAR O TOPO E O FUNDO, e por muito tempo não descontava: `min(420px,100%)`
+   dava, numa janela de 375 px, um piso de 375 px — a ALTURA INTEIRA DA JANELA — numa caixa que começa em
+   `top:var(--screen-top)`. Resultado medido no iPhone SE deitado: caixa de 15 a 390 px numa janela de 375,
+   e a barra de navegação (que é `sticky;bottom:0` DENTRO dela) parando 10 px FORA da tela, em TODAS as
+   telas com barra — Modos, Salas, Ranking, Perfil, Opções e Loja. O `min-height` vencia o `max-height` da
+   regra de cima, que já fazia a conta certa, e por isso o defeito sobrevivia a ela.
+   Nenhum critério da matriz via isso: o de "clipado" para no primeiro ancestral rolável (que é a própria
+   caixa) e o de "a caixa cabe" só vale quando NÃO há como rolar. Quem o revelou foi o critério 7, e são
+   36 das 61 reprovações que ele acusou. A conta agora é a MESMA das duas pontas, escrita uma vez. */
 body:not([data-shell="rail"]):not([data-mode="portrait"]) .screen .wrap{
-  bottom:var(--screen-top);height:auto;max-height:none;min-height:min(420px,100%)}
+  bottom:var(--screen-top);height:auto;max-height:none;
+  min-height:min(420px,calc(100% - var(--screen-top) * 2))}
 body[data-mode="portrait"] .screen .wrap{max-height:86%}
 /* A tela inicial não tem barra (a navegação dela são os seis botões do cartão) e é a única cuja caixa
    continua com a ALTURA DO CONTEÚDO: ela não precisa de um rodapé fixo, e esticá-la deixaria um vazio
@@ -1330,6 +1369,103 @@ body[data-mode="portrait"] .screen .wrap,
 body[data-mode="portrait"] .card.modal,
 body[data-mode="portrait"] #s-dead .dead-card,
 body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}
+
+/* ── O PRÊMIO DA TELA DE MORTE ───────────────────────────────────────────────────────────────────
+   Um bloco só para as três mecânicas (skin destravada, skin por desempenho e a oferta de anúncio) — ver
+   ui/premio.js. Ele mora logo acima do rodapé de ação, que é sticky, então fica sempre à mão.
+   ⚠️ `min-height` fixo, e não `auto`: a skin destravada chega ~1 s DEPOIS da tela (fila + transação), e um
+   bloco que nasce nesse instante empurraria o conteúdo — o oposto do que o rodapé grudado acabou de
+   consertar. Com a altura reservada, a chegada TROCA o conteúdo no mesmo lugar. Quando não há nada o
+   componente devolve null e o bloco não existe: colapsar aproxima o rodapé, nunca o afasta. */
+#s-dead .dd-premio{display:flex;align-items:center;gap:10px;width:100%;min-height:64px;
+  padding:8px 10px;border-radius:var(--radius,16px);
+  background:color-mix(in srgb,var(--surface,#1a2350) 70%,transparent);
+  border:2px solid var(--stroke,rgba(255,255,255,.14))}
+/* Ganhou é MÉRITO: dourado, a mesma gramática do pódio e do badge de nível. A oferta fica neutra — ela é
+   um convite, não uma conquista, e vesti-la de ouro seria dizer que o jogador fez algo. */
+#s-dead .dd-premio.ganhou{border-color:var(--accent,#ffc22e);
+  background:color-mix(in srgb,var(--accent,#ffc22e) 12%,var(--surface,#1a2350))}
+#s-dead .dp-disco{position:relative;width:46px;height:46px;flex:0 0 auto;display:grid;place-items:center}
+#s-dead .dp-disco canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:132%;height:132%}
+#s-dead .dp-txt{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 auto;text-align:left}
+#s-dead .dp-txt i{font-style:normal;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted,#8fa0d8)}
+#s-dead .dd-premio.ganhou .dp-txt i{color:var(--accent,#ffc22e)}
+#s-dead .dp-txt b{font-size:1em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#s-dead .dp-txt em{font-style:normal;font-size:.78em;opacity:.7}
+#s-dead .dp-ad{flex:0 0 auto;width:auto;padding:8px 12px;font-size:.9em}
+/* No dedo o botão vira largura inteira, na linha de baixo: 44 px de alvo não cabem ao lado do disco e do
+   nome num aparelho de 360 px. */
+body[data-pointer="coarse"] #s-dead .dd-premio{flex-wrap:wrap}
+body[data-pointer="coarse"] #s-dead .dp-ad{width:100%;min-height:44px}
+
+/* ── O RODAPÉ DE AÇÃO NÃO ROLA ───────────────────────────────────────────────────────────────────
+   A queixa era "no frame da Poki os botões não aparecem", e a causa NÃO era falta de rolagem: as três
+   telas rolam. É a AÇÃO que rolava junto com o conteúdo — e os dois critérios da matriz que deveriam
+   pegar isso são estruturalmente cegos a ele, cada um pelo seu motivo. O de "clipado" PARA no primeiro
+   ancestral rolável, e o cartão de morte É esse ancestral: um botão abaixo da dobra dele contava como
+   alcançável. O de "a caixa cabe" só vale quando NÃO há como rolar. Resultado: a matriz voltava zero
+   problemas enquanto o RENASCER estava 184 px fora da vista. Medido depois de o critério 7 nascer: 24
+   das 34 combinações reprovavam — e não só no frame de portal, mas no iPhone SE, no Galaxy S8 e até no
+   iPad mini (5 px).
+
+   O conserto é UM só para as duas telas, mas o LUGAR muda porque o scrollport muda: em `#s-dead` quem
+   rola é o CARTÃO (os três temas dão a ele `overflow:auto`), em `#s-round` é a TELA (:963). É exatamente
+   a distinção que o revert de :2102 descobriu ao contrário — sticky dentro de um cartão ALTO que não
+   rola pousa por cima do próprio conteúdo. Por isso o `.dead-foot` é sempre o ÚLTIMO FILHO DE QUEM ROLA,
+   e não "o último filho do cartão".
+
+   ⚠️ Nada de `var(--wrap-pad)` aqui: ele só é DECLARADO em `#app .wrap` (:1255), e nem `#s-dead` nem
+   `#s-round` são descendentes de `.wrap` — os dois montam o `.screen` à mão. Custom property indefinida
+   SEM fallback invalida a declaração inteira, e o rodapé ficaria sem padding nenhum. Token próprio. */
+#s-dead .dead-foot,#s-round .dead-foot{--foot-pad:18px;
+  position:sticky;bottom:0;z-index:3;margin-top:auto;
+  display:flex;flex-direction:column;gap:8px;
+  background:var(--surface,#1a2350);border-top:3px solid var(--line,#0006);
+  padding:10px var(--foot-pad) calc(10px + env(safe-area-inset-bottom,0px));
+  /* a afordância de "há mais em cima" é a SOMBRA, não um gradiente: o conteúdo desliza visivelmente por
+     baixo de uma barra sólida, que é o mesmo objeto visual que a <Nav> já é nas telas com .wrap */
+  box-shadow:0 -12px 18px -10px rgba(0,0,0,.55)}
+body[data-mode="portrait"] #s-dead .dead-foot,body[data-mode="portrait"] #s-round .dead-foot{--foot-pad:16px}
+/* O rodapé sangra até a borda do cartão: ele é uma barra, não um bloco de conteúdo. As margens negativas
+   repetem o padding lateral de cada dono (a lista completa está no bloco de `padding-bottom` abaixo). */
+#s-dead .dead-foot{margin-left:calc(var(--foot-pad) * -1);margin-right:calc(var(--foot-pad) * -1);
+  width:calc(100% + var(--foot-pad) * 2)}
+/* ⚠️ O `padding-bottom:0` do cartão TEM que repetir a cadeia de cada dono real do padding, e não pode ser
+   uma regra só: `#s-dead .dead-card:has(>.dead-foot)` vale (1,2,0) e PERDE para os três seletores de
+   (1,3,1) que declaram esse padding — :1090 (gaveta), :1148 (caixa centralizada) e :1331 (folha em
+   retrato). Sem isto, sobra o padding do cartão POR BAIXO da barra grudada, e ela para acima do fundo:
+   é o mesmo defeito que a nota de :1242 conta. Por isso este bloco vem DEPOIS de :1331. */
+body[data-shell="rail"]:not([data-mode="portrait"]) #s-dead .dead-card:has(> .dead-foot),
+body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-dead .dead-card:has(> .dead-foot),
+body[data-mode="portrait"] #s-dead .dead-card:has(> .dead-foot){padding-bottom:0}
+/* No fim de rodada quem rola é a TELA, então o padding a zerar é o dela — e o rodapé toma a largura da
+   caixa, para ficar alinhado com os dois cartões em vez de atravessar a tela inteira. */
+#s-round.on:has(> .dead-foot){padding-bottom:0}
+#s-round .dead-foot{width:var(--screen-w,min(560px,100%));margin:0;align-self:center;
+  border-radius:var(--radius,16px) var(--radius,16px) 0 0;border:3px solid var(--line,#0006);border-bottom:0}
+/* Dentro do rodapé as duas fileiras continuam sendo o que sempre foram; o que muda é não rolarem mais. */
+#s-dead .dead-foot .dead-actions,#s-round .dead-foot .dead-actions{margin:0}
+
+/* ── A TELA DE MORTE NÃO ENGOLE O CLIQUE DE QUEM ESTÁ ASSISTINDO ──────────────────────────────────
+   `.screen` é `position:absolute;inset:0;z-index:10` (base.css:68) e NÃO tem `pointer-events:none`; o
+   `#hud` não cria contexto de empilhamento (:979, sem z-index), então seus filhos ficam em 5 e o `#chat`
+   em 6. Ou seja: o retângulo transparente de `#s-dead` já cobria HOJE o chat, o radar e os botões de
+   silenciar/denunciar de quem morreu — e com o cartão recolhido isso passaria a cobrir a tela inteira
+   sem nada visível explicando. O desenho é o mesmo do `#hud`: `none` no contêiner, `auto` no que é
+   controle. Vale nos DOIS estados, e não só no recolhido, porque o defeito não nasceu aqui. */
+#s-dead{pointer-events:none}
+#s-dead .dead-card,#s-dead .spec-bar{pointer-events:auto}
+
+/* ── RECOLHIDO: o cartão sai e a partida aparece ──────────────────────────────────────────────────
+   No desktop a tela de morte mora na gaveta, e recolher tem que devolver a largura ao jogo — senão
+   sobraria uma faixa vazia de 480 px ao lado da partida que o jogador acabou de pedir para ver. Quem
+   refaz câmera, zoom, AOI e o `{t:"view"}` é o ResizeObserver do jogo, sozinho (:1071-1072).
+   (0,4,1) para ganhar de :1078, que declara `--rail-w` em (0,3,1). */
+body[data-dead="min"][data-shell="rail"]:not([data-screen="game"]):not([data-mode="portrait"]){--rail-w:0px}
+/* A barra recolhida é a MESMA de quem assiste a uma sala em andamento (.spec-bar), então ela já está
+   posicionada e estilizada pelo bloco de :920. Aqui só o que é próprio da morte: ela divide o rodapé com
+   os botões de toque do HUD, então sobe um pouco no dedo. */
+body[data-pointer="coarse"] #s-dead-min{bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 /* `100%` em html/body é o `vh` de sempre: no Safari móvel ele conta a barra que está recolhida, e a folha
    escorrega para fora da tela conforme a barra aparece. `dvh` é a altura que existe AGORA. */
 @supports (height:100dvh){html,body{height:100dvh}}

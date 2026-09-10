@@ -39,15 +39,26 @@ import { Nick } from "./bits.jsx";
 // não é o único leitor — o administrador jogando é o segundo, e ele se perderia junto.
 const ENTRA_SAI = l => l.k === "sys" && (l.how === "joined" || l.how === "left");
 
-export default function KillFeed({ h }) {
+export default function KillFeed({ h, espectando }) {
   const LB = useLabels();
   const admin = useStore(app, s => !!(s.session.user && s.session.user.isAdmin));
   const linhas = h.feed || [];
   const [, setTick] = useState(0);
   useEffect(() => { if (!linhas.length) return; const t = setInterval(() => setTick(x => x + 1), 1000); return () => clearInterval(t); }, [linhas.length]);
   const agora = Date.now();
+  // ── O FEED APARECE? ─────────────────────────────────────────────────────────────────────────────
+  // `FEED.SHOW` é o interruptor do /admin (escopo 'wire': chega no JSON `room`). Duas exceções, e nenhuma
+  // é conforto:
+  //  • QUEM ESTÁ ASSISTINDO continua vendo. `ui.css` deixa o feed ser a ÚNICA coisa que sobra na coluna
+  //    direita do morto (`#hud.spec #hud-right > *:not(#kill-feed)`), então escondê-lo ali esvaziaria a
+  //    tela — e o CLAUDE.md registra o feed do morto como "a informação mais óbvia de quem acabou de
+  //    morrer". Esconder durante a PARTIDA e manter na arquibancada é o pedido inteiro.
+  //  • O ADMINISTRADOR continua vendo dentro da partida: o interruptor é GLOBAL, e religá-lo para si
+  //    seria religá-lo para todo mundo. É um dos dois caminhos de moderação que o projeto declara (o
+  //    outro é a aba AO VIVO do painel).
+  const mostra = FEED.SHOW || espectando || admin;
   const vivas = linhas.filter(l => agora - l.at < FEED.TTL_MS && (admin || !ENTRA_SAI(l)));
-  if (!vivas.length) return null;
+  if (!vivas.length || !mostra) return null;
   const F = LB.killFeed || {};
   const sysText = l => (F["sys_" + l.how] || l.how).replace("{n}", l.how === "crunch" ? crunchLabel(LB, l.n) : (l.a && l.a.name) || l.n);
   // o que a seta diz sem escrever: "Fulano matou Beltrano". Só para leitor de tela.

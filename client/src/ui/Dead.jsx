@@ -18,20 +18,20 @@
 // parava no `Room.js`) e o planeta do algoz é desenhado com a skin de verdade. E o `score` da
 // partida chegava em `lastMatch` desde sempre sem NENHUM componente lê-lo — o mesmo defeito que o
 // `score` do `roundEnd` tinha.
-import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { skinById, MODE, ROUND, TICK_HZ } from "@warspace/shared";
-import { useStore, throttleStore } from "../state/store.js";
+import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { gameRef } from "../state/game.js";
 import { play, leaveGame, respawnAqui } from "../state/actions.js";
+import { SpecBar, SpecWho, useSpec } from "./SpecBar.jsx";
 import { prazoDe } from "./deadClock.js";
 import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
+import DeadPrize from "./DeadPrize.jsx";
 import { fmt, fmtTime, ord } from "./format.js";
 import { preenche } from "../i18n/index.js";
 import { sfx } from "../audio/index.js";
 
-const EMPTY_SPEC = { get: () => ({ spec: null }), subscribe: () => () => {} };
 const ESTILOS = ["duelo", "balanco", "sala"];
 const Q = typeof location !== "undefined" ? new URLSearchParams(location.search).get("dead") : null;
 const estiloDe = p => (Q && (ESTILOS[+Q - 1] || (ESTILOS.includes(Q) ? Q : null)))
@@ -46,34 +46,31 @@ export default function Dead({ on }) {
   const prefs = useStore(app, s => s.session.prefs);
   const estilo = estiloDe(prefs);
   const after = r && r.rank ? r.rank.day : null;
-  // de quem é a cena que continua rodando atrás da tela: o servidor escolhe, mas o morto pode trocar
-  const game = useStore(gameRef, s => s.game);
-  const store = useMemo(() => (game && game.hudStore ? throttleStore(game.hudStore, 200) : EMPTY_SPEC), [game]);
-  const h = useSyncExternalStore(store.subscribe, store.get, store.get) || {};
-  const spec = h.spec, mapa = h.map || "";   // "" fechado · "map" o radar ampliado · "live" a sala em tempo real
-  const trocar = dir => { if (game && game.spectate) game.spectate({ dir }); };
-  const verMapa = modo => { if (game && game.toggleMap) game.toggleMap(modo); };
-  useEffect(() => {   // as setas do teclado também trocam (o motor ignora tudo com foco num campo de texto)
-    if (!on || !game || !game.spectate) return;
-    // ⚠️ `e.repeat` PRIMEIRO, e não é zelo: cada seta vira um `{t:"spectate"}`, que divide com o `view` e o
-    // `ping` o balde de NET.RATE_JSON (5/s, burst 10) — e três rejeições em 10 s ENCERRAM a conexão. O
-    // auto-repeat do teclado dispara ~25 vezes por segundo, então SEGURAR a seta derrubava o jogador em
-    // menos de 1 s com "Too many messages", no meio da partida. O molde é `game/input/Keyboard.js`, que
-    // filtra repeat desde sempre; estes handlers ouvem `keydown` cru e nasceram sem a guarda.
-    // Vale para o M/L/Esc pela mesma razão de sempre: repetição não é um segundo clique.
-    const kd = e => { if (e.repeat) return; const a = document.activeElement; if (a && /INPUT|TEXTAREA/.test(a.tagName)) return;
-      if (e.key === "ArrowLeft") { e.preventDefault(); trocar(-1); }
-      else if (e.key === "ArrowRight") { e.preventDefault(); trocar(1); }
-      else if (e.key === "m" || e.key === "M") { e.preventDefault(); verMapa("map"); }
-      // ⚠️ A vista ao vivo é o L, e não mais o T: o T virou a tecla de abrir o CHAT (ui/Chat.jsx), e quem
-      // morreu continua falando — as duas não podiam disputar a mesma letra.
-      else if (e.key === "l" || e.key === "L") { e.preventDefault(); verMapa("live"); }
-      // Esc fecha o mapa em vez de sair da tela: aqui ele é o "voltar" mais próximo
-      else if (e.key === "Escape" && game.showMap) { e.preventDefault(); game.showMap(""); } };
-    addEventListener("keydown", kd); return () => removeEventListener("keydown", kd);
-  }, [on, game]);
-  useEffect(() => { if (!on && game && game.showMap) game.showMap(""); }, [on, game]);   // saiu da tela, fecha o mapa
+  // De quem é a cena que continua rodando atrás da tela: o servidor escolhe, mas o morto pode trocar. Todo
+  // o estado de quem assiste (throttle, setas, teclado com as duas guardas) mora em ui/SpecBar.jsx — é o
+  // MESMO de ui/Spectate.jsx, e era o mesmo código escrito duas vezes.
+  const { game, h, spec, mapa, trocar, verMapa } = useSpec(on);
   useEffect(() => { if (on) sfx("deadScreen"); }, [on]);   // a tela de KABOOM tem som próprio (o `death` é o do mundo, lá atrás)
+  // ── RECOLHER: o cartão sai da frente e vira uma barra ────────────────────────────────────────────
+  // O pedido veio do Battle Royale no celular, onde o cartão tapava a partida inteira — e o jogo promete o
+  // contrário na própria tela (`LB.brWatchHint`: "fique para ver o pódio"). Mas o botão existe em TODOS os
+  // modos e formas de tela: um controle que só aparece em algumas é uma segunda lista para manter em dia
+  // (o argumento de Hud.jsx:104-107), e no frame de portal de 540 px o desktop precisa dele tanto quanto.
+  // ⚠️ O estado é LOCAL e não é pref: pref viaja com a CONTA (a lição de `lbShow`/`lbShowPortrait`) e esta
+  // decisão é por MORTE — o cartão é o relatório daquela vida. O reset é por `on`, nunca por `h.deadAt`:
+  // o par `{deadAt,armAt}` chega com throttle de 200 ms e no primeiro render ainda é o da morte ANTERIOR
+  // (ver o bloco do respawn, mais abaixo).
+  const [min, setMin] = useState(false);
+  // `deadMin` só é escrito pelo caminho de demo (`mostrarTela("dead:<estilo>@min")`, que já é DEV-only):
+  // é o que deixa a matriz de responsividade medir o estado recolhido, que de outro modo só existiria
+  // depois de um clique que a sonda não dá. Em produção o campo é `undefined` e a tela nasce aberta.
+  useEffect(() => { setMin(on ? !!app.get().deadMin : false); }, [on]);
+  // O espelho no `body` é o que deixa o CSS devolver a tela ao jogo (a gaveta encolhe a zero no desktop).
+  // Cleanup obrigatório: sem ele o atributo sobrevive à tela e a gaveta some no menu.
+  useEffect(() => {
+    document.body.dataset.dead = on && min ? "min" : "";
+    return () => { document.body.dataset.dead = ""; };
+  }, [on, min]);
   // ── RESPAWN AUTOMÁTICO (Livre), MAS SÓ DEPOIS DE UM SINAL DE VIDA ───────────────────────────────
   // A contagem já foi incondicional: abria no instante da morte e renascia sozinha 5 s depois, sem que
   // ninguém clicasse em nada — o botão era o espelho dela, não a causa. Uma aba esquecida aberta virava um
@@ -178,21 +175,40 @@ export default function Dead({ on }) {
      não estava em `room.sessions`. Por isso lá o botão é "outra partida" (sala nova) e a dica diz que
      ficar rende o pódio. */
   const semRespawn = h.mode === MODE.BR;
+  /* O botão que tira o jogador desta tela. Extraído porque a barra RECOLHIDA usa o mesmo: o `useEffect` de
+     respawn continua correndo recolhido, e um respawn automático disparando sem o contador à vista seria
+     surpresa — o jogador estaria assistindo à partida e voltaria ao jogo do nada. */
+  const botaoPrimario = <button className="btn-primary" data-go="play"
+    onClick={() => (semRespawn ? play({}) : respawnAqui(m.room))}>
+    {semRespawn ? LB.newMatch : (restante > 0 ? `${LB.respawn} · ${preenche(LB.fmt.s, { n: restante })}` : LB.respawn)}</button>;
+  /* ⚠️ A DICA VEM ANTES DO RODAPÉ, e o rodapé é UM bloco só. Antes eram três irmãos soltos no fim do
+     cartão, e por isso a AÇÃO rolava junto com o conteúdo: medido em 24 das 34 combinações da matriz, com
+     o RENASCER até 184 px abaixo da dobra no frame da Poki e 5 px num iPad mini. Conselho pode rolar;
+     botão não. Quem gruda o `.dead-foot` no rodapé de quem rola é o CSS (ui.css, bloco "O RODAPÉ DE AÇÃO
+     NÃO ROLA"), e aqui o que importa é ele ser o ÚLTIMO FILHO do cartão — que é o scrollport nos três
+     shells desta tela. */
   const rodape = <>
-    <div className="dead-actions">
-      <button className="btn-primary" data-go="play"
-        onClick={() => (semRespawn ? play({}) : respawnAqui(m.room))}>{semRespawn ? LB.newMatch : (restante > 0 ? `${LB.respawn} · ${preenche(LB.fmt.s, { n: restante })}` : LB.respawn)}</button>
-      <button className="btn-secondary" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.toLobby}</button>
-    </div>
-    <div className="dead-views">
-      <button className={"btn-secondary dead-map" + (mapa === "map" ? " on" : "")} onClick={() => verMapa("map")}>{mapa === "map" ? LB.mapClose : LB.mapOpen}</button>
-      <button className={"btn-secondary dead-live" + (mapa === "live" ? " on" : "")} onClick={() => verMapa("live")}>{mapa === "live" ? LB.liveClose : LB.liveOpen}</button>
-    </div>
+    {/* O PRÊMIO vem logo acima do rodapé de ação: é a informação que o jogador leva desta tela, e fica
+        colada nos botões — que agora grudam. Ele COLAPSA quando não há nada (nem skin destravada nem
+        oferta), e nesse caso a tela fica exatamente como era. Ver ui/premio.js para a prioridade. */}
+    <DeadPrize on={on} />
     {/* Desarmado, a dica diz o que fazer — e o botão continua clicável, renascendo na hora (o clique é um
         `pointerdown`, então ele mesmo arma). Quem não mexer em nada não renasce mais sozinho, que é o
         ponto. No BR a dica é outra: lá o certo é FICAR. */}
     {semRespawn ? <div className="hint dead-hint">{LB.brWatchHint}</div>
       : restante < 0 ? <div className="hint dead-hint">{LB.respawnArm}</div> : null}
+    <div className="dead-foot">
+      <div className="dead-actions">
+        {botaoPrimario}
+        <button className="btn-secondary" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.toLobby}</button>
+      </div>
+      <div className="dead-views">
+        <button className={"btn-secondary dead-map" + (mapa === "map" ? " on" : "")} onClick={() => verMapa("map")}>{mapa === "map" ? LB.mapClose : LB.mapOpen}</button>
+        <button className={"btn-secondary dead-live" + (mapa === "live" ? " on" : "")} onClick={() => verMapa("live")}>{mapa === "live" ? LB.liveClose : LB.liveOpen}</button>
+        <button className="btn-secondary dead-min" onClick={() => setMin(true)}
+          title={LB.deadCollapse} aria-label={LB.deadCollapse}>{LB.deadCollapseIcon}</button>
+      </div>
+    </div>
   </>;
   /** Uma linha do balanço: número grande, e a barra só quando existe um recorde para comparar. */
   const linha = (k, valor, atual, rec, novo) => <div className={"dd-linha" + (novo ? " novo" : "")} key={k}>
@@ -201,6 +217,19 @@ export default function Dead({ on }) {
       <span className="dl-trilho"><i style={{ width: Math.max(2, Math.min(100, Math.round((atual / Math.max(rec, atual)) * 100))) + "%" }} /></span>
       <em className="dl-rec">{novo ? LB.newRecord : LB.recordWord + " " + fmt(rec)}</em>
     </> : null}
+  </div>;
+
+  /* RECOLHIDO: sai o cartão, entra a barra — a MESMA de quem assiste a uma sala em andamento. Fica o que
+     se usa daqui em diante: de quem é a câmera, as duas vistas, o botão que tira desta tela, e o RESUMO
+     que traz o cartão de volta. O LOBBY não vem: são quatro alvos de 44 px em 360 px de largura, e sair
+     do jogo é um toque a mais que sempre coube no cartão. */
+  if (min) return <div className="screen on" id="s-dead" data-style={estilo} data-min="1">
+    <SpecBar id="s-dead-min" rotulo={LB.dead} quem={spec && spec.slot >= 0 ? <SpecWho spec={spec} trocar={trocar} LB={LB} /> : null}>
+      <button className={"btn-secondary" + (mapa === "map" ? " on" : "")} onClick={() => verMapa("map")}>{mapa === "map" ? LB.mapClose : LB.mapOpen}</button>
+      <button className={"btn-secondary" + (mapa === "live" ? " on" : "")} onClick={() => verMapa("live")}>{mapa === "live" ? LB.liveClose : LB.liveOpen}</button>
+      <button className="btn-secondary" onClick={() => setMin(false)}>{LB.deadSummary}</button>
+      {botaoPrimario}
+    </SpecBar>
   </div>;
 
   return <div className="screen on" id="s-dead" data-style={estilo}><div className="card dead-card">

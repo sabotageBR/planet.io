@@ -137,7 +137,25 @@ export const SKINS=[
   {"id": 118, "name": "Einstein", "emoji": "🧠", "rarity": "secret", "price": 0, "color": "#e8ded0", "ring": false, "glow": "#c56bff", "desc": "Segredo oculto", "pattern": "face", "face": "35_albert_einstein", "accent": "#c56bff"},
   {"id": 119, "name": "Marte Bravo", "emoji": "😡", "rarity": "epic", "price": 2100, "color": "#e8450a", "ring": false, "glow": "#ff7a3c", "desc": "O encrenqueiro vermelho", "pattern": "mascote", "mascot": "marte", "accent": "#8c2606"},
   {"id": 120, "name": "Terra Brava", "emoji": "🌍", "rarity": "epic", "price": 2100, "color": "#0a72cc", "ring": false, "glow": "#4fb4ff", "desc": "A encrenqueira azul", "pattern": "mascote", "mascot": "terra", "accent": "#2eae5a"},
-  {"id": 121, "name": "Lua Soldado", "emoji": "🪖", "rarity": "epic", "price": 1900, "color": "#a8a8b2", "ring": false, "glow": "#e6e9f2", "desc": "De capacete e mau humor", "pattern": "mascote", "mascot": "lua", "accent": "#6e727e"}
+  {"id": 121, "name": "Lua Soldado", "emoji": "🪖", "rarity": "epic", "price": 1900, "color": "#a8a8b2", "ring": false, "glow": "#e6e9f2", "desc": "De capacete e mau humor", "pattern": "mascote", "mascot": "lua", "accent": "#6e727e"},
+  // ── AS SEIS DE DESEMPENHO (122-127) ───────────────────────────────────────────────────────────────
+  // "Recompensa para ganhar skin na tela da morte" não precisou de mecanismo novo: `skinsForAchievements`
+  // + `grantMany` já concedem dentro da transação de `finishMatch`, e `skinsUnlocked` já viaja no payload
+  // de recompensas. O buraco era de CATÁLOGO — vencer um Battle Royale não premiava skin nenhuma, e nem os
+  // tiers acima do bronze premiavam.
+  // ⚠️ OS TIERS SÃO OS ALCANÇÁVEIS, e isso foi conferido contra a duração das salas: `survive.d` (30 min)
+  // e `top1.g` (25 min em 1º) são inatingíveis numa rodada do Livre de 30 min — para destravar o primeiro
+  // seria preciso entrar no tick 0 E sobreviver a rodada inteira, e `findOrCreateRoom` manda o jogador
+  // para a sala mais CHEIA com vaga, que por construção nunca é uma recém-criada. Daí `top1.s` (10 min) e
+  // `mass.g`/`streak.g`, que uma partida boa alcança.
+  // ⚠️ A FAIXA PARA no 127: de 128 em diante é o namespace das skins de BANCO (`SKIN_ART.ID_MIN`), e o
+  // `skinId` viaja como u8 no PLAYERS — id 256 chegaria ao cliente como 0, o Planeta Padrão.
+  {"id":122,"name":"Último de Pé","emoji":"👑","rarity":"earned","price":0,"color":"#f2c14e","ring":true,"glow":"#ffe9a8","desc":"Venceu um Battle Royale","pattern":"crown","accent":"#7a4b12","unlockKey":"brwin.b"},
+  {"id":123,"name":"Finalista","emoji":"🎗️","rarity":"earned","price":0,"color":"#8e6bd6","ring":false,"glow":"#d9c6ff","desc":"Terminou no top 10 do Battle Royale","pattern":"prism","accent":"#efe6ff","unlockKey":"brtop.b"},
+  {"id":124,"name":"Esquadrão","emoji":"🛰️","rarity":"earned","price":0,"color":"#2f9e8f","ring":true,"glow":"#9df0e4","desc":"Venceu o Battle Royale em equipe","pattern":"orbits","accent":"#d7fff8","unlockKey":"brteam.b"},
+  {"id":125,"name":"Titã","emoji":"⚖️","rarity":"earned","price":0,"color":"#c25b3a","ring":false,"glow":"#ffb28a","desc":"Chegou a 100 mil de massa numa vida","pattern":"magma","accent":"#ffd9a0","unlockKey":"mass.g"},
+  {"id":126,"name":"Ceifador","emoji":"🌪️","rarity":"earned","price":0,"color":"#3b4a6b","ring":false,"glow":"#9fb6e8","desc":"20 abates sem morrer","pattern":"tide","accent":"#cfe0ff","unlockKey":"streak.g"},
+  {"id":127,"name":"Soberano","emoji":"🏆","rarity":"earned","price":0,"color":"#d4a017","ring":true,"glow":"#ffe27a","desc":"Ficou 10 minutos em 1º lugar","pattern":"phoenix","accent":"#fff3c4","unlockKey":"top1.s"},
 ];
 export const SKIN_BY_ID=new Map(SKINS.map(s=>[s.id,s]));
 export const skinById=id=>SKIN_BY_ID.get(id)||SKINS[0];
@@ -146,6 +164,21 @@ export const isPurchasable=s=>s.price>0&&!s.unlockKey;
 export const levelReqOf=s=>(s&&s.levelReq)|0;
 /** As skins resgatáveis assistindo um anúncio recompensado (hoje: as 3 mascote). Derivado do catálogo,
  *  não uma lista cravada em dois lugares — um mascote novo entra aqui sozinho. */
+/**
+ * A POOL DO ANÚNCIO DA TELA DE MORTE — as skins que assistir um anúncio recompensado DÁ, de graça.
+ *
+ * ⚠️ É UMA POOL PRÓPRIA, e não as mascotes. As três mascotes seguem a regra que a migração 0012
+ * estabeleceu ao derrubar a 0011: o anúncio DESTRAVA a compra e as moedas continuam obrigatórias. Misturar
+ * as duas regras nas mesmas skins faria a Loja mentir — alguém pagaria 1.900 moedas pelo que o vizinho
+ * ganhou vendo um vídeo.
+ * ⚠️ E são skins que JÁ EXISTEM, das RARAS de 600-900 moedas: nenhum id novo. O catálogo de código vai até
+ * 127 e de 128 em diante é o namespace das skins de banco, então inventar seis ids aqui custaria a faixa
+ * inteira que o /admin vai usar. Reusar também é honesto com a economia: é uma skin que valeria ~4 partidas
+ * boas, não um item exclusivo que só quem vê anúncio tem.
+ * ⚠️ A ORDEM é a da oferta (o primeiro não possuído é o oferecido), então ela é estável entre a morte e o
+ * clique — uma oferta que troca no meio é a forma mais rápida de o jogador achar que foi enganado.
+ */
+export const AD_GIFT_SKINS=[10,13,11,14,12,15];
 export const AD_REWARD_SKINS=SKINS.filter(s=>s.mascot).map(s=>s.id);
 /** A conta nova sorteia UMA destas para nascer equipada (grátis + as 9 comuns, ids 0..9 — o mesmo
  *  conjunto que a loja mostra como "grátis"/"comum"). Derivado do catálogo pelo mesmo motivo de
@@ -153,3 +186,35 @@ export const AD_REWARD_SKINS=SKINS.filter(s=>s.mascot).map(s=>s.id);
 export const STARTER_SKINS=SKINS.filter(s=>s.rarity==="free"||s.rarity==="common").map(s=>s.id);
 /** Skin que o jogador nunca vê na loja (easter egg ou conquista secreta): não entra na conta de progresso. */
 export const isHiddenSkin=s=>s.rarity==="secret";
+import {SKIN_ART} from "./constants.js";
+export {SKIN_ART};
+// A faixa, em locais: `registerSkins` roda a cada carga da Loja e uma leitura de propriedade por linha é
+// desperdício óbvio. Os dois números são os de `SKIN_ART` — há teste travando que não divirjam.
+const SKIN_ART_ID_MIN=SKIN_ART.ID_MIN,SKIN_ART_ID_MAX=SKIN_ART.ID_MAX;
+
+/**
+ * ── AS SKINS QUE SÓ EXISTEM NO BANCO ──────────────────────────────────────────
+ * Empurra as linhas de `/api/skins` (campo `db`) no MESMO array `SKINS` e no MESMO `SKIN_BY_ID` que os
+ * consumidores de `skinById` já seguram. É o mesmo aliasing de objeto que `tunables.js` usa nas constantes:
+ * ninguém precisa saber que o catálogo cresceu — loja, render, prévia e `skinById` continuam iguais.
+ *
+ * ⚠️ SÓ ACRESCENTA E SÓ NA FAIXA DE BANCO. Uma linha com id de skin de CÓDIGO é ignorada: o bundle é a
+ * verdade das 128 de código, e deixar o banco sobrescrevê-las criaria a segunda verdade que este desenho
+ * evita — um pod com bundle velho passaria a servir um catálogo diferente do que a build desenha.
+ * ⚠️ IDEMPOTENTE: `loadSkins` roda em toda visita à Loja, e sem isto o array cresceria a cada chamada.
+ * ⚠️ A ARTE não vem por aqui: ela é bytes, servidos por `/api/skins/:id/art`, e quem a carrega é
+ * `client/src/theme/faces.js`. Aqui viaja só o metadado.
+ * @param {any[]} linhas
+ */
+export function registerSkins(linhas){
+  for(const r of linhas||[]){
+    const id=r&&r.id!=null?r.id|0:-1;
+    if(id<SKIN_ART_ID_MIN||id>SKIN_ART_ID_MAX)continue;
+    const skin={id,name:String(r.name||`Skin ${id}`),emoji:r.emoji||"🪐",rarity:r.rarity||"rare",
+      price:r.price|0,color:r.color||"#4ECDC4",ring:!!r.ring,glow:r.glow||r.color||"#4ECDC4",
+      desc:r.descr||r.desc||"",pattern:r.pattern||"plain",accent:r.accent||undefined,
+      ...(r.level_req?{levelReq:r.level_req|0}:{})};
+    const i=SKINS.findIndex(s=>s.id===id);
+    if(i>=0)Object.assign(SKINS[i],skin);else SKINS.push(skin);
+    SKIN_BY_ID.set(id,SKINS[i>=0?i:SKINS.length-1]);}}
+

@@ -10,7 +10,7 @@ import {ensureAvatar,avatarBitmap,avatarKey} from "../../../theme/avatars.js";
 import {ensureFace,faceBitmap,faceKey,faceFile} from "../../../theme/faces.js";
 import {PIECE_FLAG,mergeTicks,rectHas} from "@warspace/shared";
 import {colorOf,dashPolyline,seedUnit} from "../../util.js";
-import {paintTalk,paintNameBand} from "../../../theme/util.js";
+import {paintTalk,paintCrown,paintNameBand} from "../../../theme/util.js";
 
 const FS=48,CHARS=[[" ","~"],["¡","ÿ"],["Ā","ž"],"✓◆✦•–—…"],TRAIL_MAX=12,TRAIL_MIN_V=72,POP_MS=280,POP_AMP=.22;
 // ── BLOB (borda de gelatina, estilo agar.io) ──
@@ -26,6 +26,18 @@ const WOB_N=9,WOB_MIN_PX=15,WOB_MAX=16,WOB_AMP=.018,WOB_LOBES=[3,5],WOB_SPD=[1.7
 // é um aviso de interface, não um objeto do mundo — encolher com o zoom o tornaria invisível justo no
 // planetão. Só na MAIOR peça do dono: com 16 pedaços, 16 ícones viram confete.
 const TALK_TEX=96,TALK_PX=26,TALK_GAP=.34;
+// ── A COROA DO MAIOR DO MAPA ──
+// Mesma família do ícone acima, e pelo mesmo motivo: é ESTADO DE JOGO desenhado no objeto, não um rótulo.
+// Tamanho CONSTANTE EM TELA (dividido por cam.scale, como o alto-falante e a seta de rumo) — encolher com
+// o zoom a apagaria justo no planetão, que é quem mais provavelmente a está usando.
+// ⚠️ 30 px de caixa dão ~26×19 px de coroa VISÍVEL, ou seja MENOS que os 26×26 do alto-falante que já mora
+// ali. É isso que "discreta" quer dizer aqui: o tamanho e o não-animar, nunca a transparência — coroa
+// translúcida sobre arte é o que SOME, não o que fica discreto.
+// `MAX_K` impede que ela fique maior que o próprio planeta (numa sala recém-aberta o "líder" pode ter
+// r=30); `MIN_PX` a apaga quando cada ponta cairia abaixo de ~5 px e a silhueta vira borrão — mesmo
+// argumento do NAME_MIN_PX. `SINK` é o quanto a base afunda no disco: ela se APOIA no aro em vez de
+// flutuar acima dele (o pedido é "na cabeça"), e isso ainda absorve a ondulação do blob.
+const CROWN_TEX=96,CROWN_PX=30,CROWN_SINK=.10,CROWN_MAX_K=.9,CROWN_MIN_PX=20,CROWN_BASE=.252;
 // ── O NOME: no CENTRO do disco ──
 // Ele já foi para o rodapé, com uma tarja escura por trás, porque no centro caía em cima do nariz das
 // caricaturas. Ficou pior: um planeta com o nome pendurado embaixo lê como legenda de foto, não como um
@@ -39,11 +51,20 @@ const TALK_TEX=96,TALK_PX=26,TALK_GAP=.34;
 //    por isso o nome encostava nas duas bordas. ⚠️ O fator é FROUXO (.92, quase o diâmetro inteiro) por um
 //    motivo medido: com .74 um nick de 13 letras num planeta de r=54 era espremido a 9 px de tela e sumia —
 //    trocava um defeito por outro. Aperta só quem realmente transborda, e nick curto nunca encolhe.
-const BAND_TEX=128,NAME_MIN_PX=10;
+// ⚠️ `NAME_MIN_PX` acompanhou o `size` (10 → 11) para o CONJUNTO de planetas com nome não mudar: o piso é
+// do RESULTADO (`fs*cam.scale*R.res`, px de DEVICE), não da fonte, e com o corpo 15% maior deixá-lo em 10
+// faria o nome aparecer em planeta ~13% menor — justo onde o contorno mais grosso fecha as letras. Com 11
+// o limiar cai só ~5% e o ganho do pedido vai todo para o TAMANHO, que é o que foi pedido.
+const BAND_TEX=128,NAME_MIN_PX=11;
 export function createPlanets(R){
   const root=new Container();root.sortableChildren=true;const trails=new Graphics();
   const views=new Map(),trailMap=new Map(),seg=[],counts=new Map(),maior=new Map(),pops=new Map();let frame=0,fontName="",lastTrailTick=-1;
-  function setTheme(){const th=R.theme,L=th.hud.labels;fontName=`pn3-${th.id}`;
+  function setTheme(){const th=R.theme,L=th.hud.labels;// ⚠️ O NOME DO ATLAS É A CHAVE DO CACHE, e ele TEM que mudar quando `nameFill`/`strokeWidth` mudam: os
+  // dois são assados DENTRO do BitmapFont, e a instalação é pulada por `Cache.has(fontName+'-bitmap')`.
+  // Em produção a página é nova e o atlas seria regerado de qualquer jeito — quem paga é o DEV: com o HMR
+  // do Vite o módulo recarrega com os números novos e o Pixi devolve o atlas VELHO, então a mudança "não
+  // funciona" e alguém vai atrás do bug errado. pn3 → pn4 na passada que mexeu na letra.
+  fontName=`pn4-${th.id}`;
     const sw=L.strokeWidth(FS);
     // fonte fica instalada por tema (nome inclui o id): desinstalar quebra BitmapTexts de outra instância (StrictMode)
     // skipKerning é OBRIGATÓRIO aqui: o kerning do Pixi é O(n²) sobre o charset (≈324 glifos → ~210 mil measureText,
@@ -53,7 +74,7 @@ export function createPlanets(R){
       // O FILL é translúcido (labels.nameFill) e o CONTORNO é opaco: a forma da letra continua nítida e a
       // arte da caricatura aparece por dentro dela. Vem de um campo PRÓPRIO, e não de `nameColor`, porque
       // `nameColor` também pinta o ícone de push-to-talk logo abaixo — mexer num só desbotaria os dois.
-      // ⚠️ O atlas é cacheado pelo NOME (`pn3-`): mudar o estilo sem mudar o nome reaproveita o antigo.
+      // ⚠️ O atlas é cacheado pelo NOME (`pn4-`): mudar o estilo sem mudar o nome reaproveita o antigo.
       BitmapFont.install({name:fontName,skipKerning:true,style:{fontFamily:L.font,fontSize:FS,fontWeight:"bold",fill:L.nameFill||L.nameColor,stroke:{color:L.stroke,width:sw,join:"round"}},chars:CHARS,resolution:1,padding:Math.ceil(sw)+2});
     for(const v of views.values())v.name.style.fontFamily=fontName;}
   function mkView(id){const c=new Container(),body=new Sprite();body.anchor.set(.5);const gfx=new Graphics();
@@ -63,6 +84,11 @@ export function createPlanets(R){
   /** Ícone de voz desta peça (criado só quando ela fala pela primeira vez). */
   function talkOf(v,tex){let t=v.talk;
     if(!t){t=new Sprite();t.anchor.set(.5);v.talk=t;v.c.addChild(t);}
+    if(t.texture!==tex)t.texture=tex;
+    return t;}
+  /** Coroa desta peça (criada só quando ela vira líder pela primeira vez) — gêmea de `talkOf`. */
+  function crownOf(v,tex){let t=v.crown;
+    if(!t){t=new Sprite();t.anchor.set(.5);v.crown=t;v.c.addChild(t);}
     if(t.texture!==tex)t.texture=tex;
     return t;}
   /**
@@ -167,10 +193,34 @@ export function createPlanets(R){
           else if(v.band)v.band.visible=false;}
         else if(v.band)v.band.visible=false;
         // ícone de "está falando" (push-to-talk), acima do planeta
+        // ── A COROA: o maior do mapa, na maior peça dele ──
+        // O gate é o MESMO do alto-falante (`maior.get`), pelo mesmo motivo escrito lá: com 16 pedaços, 16
+        // coroas viram confete. Quem é o líder vem de `view.leaderSlot` (LEADERBOARD a 2 Hz, todos os
+        // vivos, fora da AOI, com histerese de 2%) — nenhum byte novo de protocolo.
+        // ⚠️ ELA APARECE NO MEU PRÓPRIO PLANETA quando eu sou o líder, e isso não é vaidade: é a única
+        // coisa na tela que me diz o que TODO MUNDO está vendo sobre mim — que eu sou o alvo. O "1º" do
+        // HUD é um número no canto, e no celular EM PÉ o placar inteiro recolhe num chip.
+        // ⚠️ Ela NÃO obedece ao modo econômico nem a `reduceMotion`, e não é descuido: não anima, custa UM
+        // sprite e UMA textura (só existe um líder), e esconder QUEM ESTÁ GANHANDO num aparelho fraco é
+        // amarrar informação de jogo ao hardware. Também não obedece a `showNames`: não é rótulo.
+        let coroaPx=0;
+        if(view.leaderSlot===e.owner&&maior.get(e.owner)===e.id){
+          const px=Math.min(CROWN_PX/cam.scale,e.rr*2*CROWN_MAX_K);
+          if(px*cam.scale>=CROWN_MIN_PX){
+            const tex=R.cache.get(`crown|${th.id}`,CROWN_TEX,(c,s2)=>paintCrown(c,s2,{fill:L.crown,stroke:L.stroke}));
+            const cr=crownOf(v,tex);coroaPx=px;
+            cr.visible=true;cr.width=cr.height=px;
+            // a BASE do desenho (CROWN_BASE do lado, abaixo do centro do sprite) pousa CROWN_SINK dentro do
+            // aro: daí o sinal do termo, e daí ela acompanhar o RAIO em vez de uma folga fixa
+            cr.y=-(e.rr+px*(CROWN_BASE-CROWN_SINK));}
+          else if(v.crown)v.crown.visible=false;}
+        else if(v.crown)v.crown.visible=false;
         if(view.talkingNow(pl)&&maior.get(e.owner)===e.id){
           const tex=R.cache.get(`talk|${th.id}`,TALK_TEX,(c,s2)=>paintTalk(c,s2,{fill:L.nameColor,stroke:L.stroke}));
           const tk=talkOf(v,tex),px=TALK_PX/cam.scale;
-          tk.visible=true;tk.width=tk.height=px;tk.y=-(e.rr+px*(.5+TALK_GAP));}
+          // com coroa no ar o alto-falante SOBE a altura dela: os dois moram no mesmo lugar acima do
+          // planeta e podem estar ativos ao mesmo tempo — o líder falando é o caso mais provável de todos
+          tk.visible=true;tk.width=tk.height=px;tk.y=-(e.rr+coroaPx*.62+px*(.5+TALK_GAP));}
         else if(v.talk)v.talk.visible=false;
         // arco de merge + anéis de powerup
         const g=v.gfx;g.clear();let drew=false;const n=counts.get(e.owner)||1;

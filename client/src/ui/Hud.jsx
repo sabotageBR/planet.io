@@ -160,7 +160,7 @@ export default function Hud() {
     {/* O feed é o ÚLTIMO da coluna, e isso é estrutural: ele nasce e morre (KillFeed devolve null sem linha
         viva), e enquanto era o primeiro cada abate empurrava o cartão de massa e o placar para baixo e os
         trazia de volta. No fim da pilha ele ocupa a sobra e nada acima dele se mexe. */}
-    <KillFeed h={h} />
+    <KillFeed h={h} espectando={espectando} />
     </div>
     {/* O chat é IRMÃO de #hud-left, não filho: em ponteiro grosso #hud-left vira `display:flex` e continua
         `position:absolute` (herdado de `#hud>*`, ver ui.css), então um `#chat` aninhado nele resolveria o

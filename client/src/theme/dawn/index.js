@@ -336,12 +336,32 @@ export const hud={
   // o fill entra no BitmapFont (miolo translúcido, a arte aparecendo por dentro da letra) e o `nameColor`
   // continua pintando o ícone de push-to-talk, que não pode desbotar junto. Contorno OPACO: é ele que dá a
   // forma quando a letra fica pequena. Para vazar a letra de vez, é `nameFill:"rgba(255,255,255,0)"`.
-  labels:{font:FONT,nameColor:"#fff",nameFill:"rgba(255,255,255,.68)",massColor:CREAM,stroke:INK,minR:13,
-    size:r=>Math.max(11,r*.26),massK:.68,nameY:()=>0,nameFitK:.92,bandAlpha:0,bandTop:.38,
+  // ⚠️ OS TRÊS TEMAS TÊM QUE MUDAR JUNTOS: eles são idênticos aqui (só `massColor` difere), e mexer num só
+  // cria divergência que ninguém percebe até virar a hora do outro tema.
+  // O PEDIDO foi "aumentar um pouco a fonte e deixar mais visível", e são três números, cada um com o seu
+  // porquê — nenhum deles é `nameY`, que continua no CENTRO (o nome já foi para o rodapé com tarja e
+  // VOLTOU, porque planeta com nome pendurado embaixo lê como legenda de foto):
+  //  • `size` .26 → .30 (+15%). O calibre está no próprio arquivo (Planets.js): a Trebuchet bold avança
+  //    ~.55 em por caractere, então `nameFitK` só começa a MORDER acima de 3.345/m letras — com .26 isso
+  //    é 12,9 letras e com .30 é 11,2. Ou seja o aumento chega inteiro a todo nick de até 11 letras, que
+  //    é a esmagadora maioria. O degrau seguinte honesto seria .33, e aí o ganho vira só para nick curto.
+  //  • `nameFill` .68 → .82. A translucidez existia para a arte da CARICATURA aparecer por dentro da
+  //    letra — e skin com rosto não desenha nome nenhum desde o `!fc` de Planets.js. O que sobrou é a
+  //    skin Retrato (a foto do jogador, que mantém o nome por decisão) e os padrões procedurais: .82 lê
+  //    sólido a 12-16 px e ainda deixa a foto passar num planeta grande.
+  //  • `strokeWidth` .11 → .13, e NUNCA perto de .20. O .20 foi medido como MANCHA: fecha os buracos das
+  //    letras a 11 px. .13 dá 1,56 px de contorno num em de 12, contra 2,4 do .20 — e o `padding` do
+  //    BitmapFont.install acompanha sozinho, então não há nada a ajustar à mão no atlas.
+  labels:{font:FONT,nameColor:"#fff",nameFill:"rgba(255,255,255,.82)",massColor:CREAM,stroke:INK,minR:13,
+    size:r=>Math.max(12,r*.30),massK:.68,nameY:()=>0,nameFitK:.92,bandAlpha:0,bandTop:.38,
     // ⚠️ O contorno era 20% do corpo da fonte (`s*.2`), e ele existia porque o nome ficava sobre a arte
     // NUA, em cima de qualquer cor. Com a faixa dando o chão, esse peso vira defeito: a 11 px na tela o
     // traço de 2,2 px fecha os buracos das letras e o nome vira mancha. Quem separa agora é a faixa.
-    massY:fs=>fs*.8,strokeWidth:s=>Math.max(1.5,s*.11)},
+    massY:fs=>fs*.8,strokeWidth:s=>Math.max(1.5,s*.13),
+    // A COR DA COROA é o `accent` do tema, que é a gramática já escrita no projeto: DOURADO é MÉRITO
+    // (pódio, badge de nível). Campo próprio e não `nameColor` reaproveitado — aquele pinta a letra do
+    // nome E o alto-falante, e retintá-lo por causa da coroa mexeria nos três de uma vez.
+    crown:YEL},
   cell:{merge:{color:YEL,width:r=>Math.max(3,r*.08),radiusK:1.18},
     powerups:{colors:{magnet:PUR,shield:BLU},width:r=>Math.min(6,Math.max(1.8,r*.035)),
       ringR:(r,i)=>r+3+i*7,alpha:[.62,.92],pulse:.01,shieldLevels:SHIELD_LV}},

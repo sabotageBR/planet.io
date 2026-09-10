@@ -49,6 +49,7 @@ import * as R from "./rules.js";
  * @property {boolean} fireAim   tiro mirado (trava na bolinha mais próxima do ponteiro)
  * @property {number} aimLockId    alvo travado pelo último tiro mirado (id de entidade ou slot; -1 = nenhum)
  * @property {number} aimLockKind  0 = o id é um SLOT de jogador · 1 = é um id de entidade (míssil/rocha/estrela)
+ * @property {number} aimLockPc    id da PEÇA travada (só com kind 0); -1 = o dono, tanto faz qual peça
  * @property {number} aimLockUntil até quando a trava vale (MISSILE.AIM_HOLD_TICKS depois do tiro mirado)
  */
 
@@ -139,7 +140,7 @@ export class World{
     if(this.ejected.length>=EJECT.MAX)this._dropOldestEject();   // teto de população: era a única lista sem limite, e segurar o W chegava a ~2.000 pelotas vivas
     const b=createBody(KIND.EJECT,this.newId(),x,y,r);b.mass=mass;b.vx=vx;b.vy=vy;b.owner=owner;b.type=kind;
     b.cdUntil=this.tick+immuneTicks;b.life=this.tick+lifeTicks;this.ejected.push(b);return this._register(b);}
-  addMissile(x,y,vx,vy,owner,targetSlot){const b=createBody(KIND.MISSILE,this.newId(),x,y,MISSILE.R);b.vx=vx;b.vy=vy;b.owner=owner;b.targetId=targetSlot;
+  addMissile(x,y,vx,vy,owner,targetSlot,targetPc=-1){const b=createBody(KIND.MISSILE,this.newId(),x,y,MISSILE.R);b.vx=vx;b.vy=vy;b.owner=owner;b.targetId=targetSlot;b.targetPc=targetPc;
     b.life=this.tick+MISSILE.LIFE_TICKS;this.missiles.push(b);return this._register(b);}
   /**
    * Comida nova: tipo por sorteio (AMMO_P, POWER_P entre os três powerups), matiz quantizado 0..HUES-1, r especial
@@ -325,7 +326,7 @@ export class World{
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.SPAWN_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true}={}){
     let ps=this.players.get(slot);
-    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),weaponPin:false,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,autoDefN:0,autoFireAt:0,zoomUntil:0,feastUntil:0,aimLockId:-1,aimLockKind:0,aimLockUntil:0,
+    if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),weaponPin:false,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,autoDefN:0,autoFireAt:0,zoomUntil:0,feastUntil:0,aimLockId:-1,aimLockKind:0,aimLockPc:-1,aimLockUntil:0,
       ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false,spawnSafe:true};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.ammo=newAmmo(missiles);ps.team=team;ps.weapon=weapon;ps.weaponPin=false;}
     // `spawn:false` = entrou na SALA mas ainda não no MAPA. É o lobby do battle royale: o jogador existe
@@ -389,9 +390,19 @@ export class World{
     if(Number.isNaN(x)){const zc=this.zoneNow();const s=this._novaSpot(ps)||this._playerSpot(ps)||this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE,null,zc);x=s.x;y=s.y;ps.spawnSafe=s.ok;}
     else ps.spawnSafe=true;   // posição DADA (largada do BR, respawn com x/y): não houve sorteio a falhar
     ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.ejectRamp=0;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
-    ps.autoDefN=0;ps.autoFireAt=0;ps.zoomUntil=0;ps.feastUntil=0;ps.aimLockId=-1;ps.aimLockUntil=0;ps.weaponPin=false;   // vida nova, powerups zerados — mesmo caminho do fireCdUntil, e é ele que cobre addPlayer, respawnPlayer e a largada do BR de uma vez
+    ps.autoDefN=0;ps.autoFireAt=0;ps.zoomUntil=0;ps.feastUntil=0;ps.aimLockId=-1;ps.aimLockPc=-1;ps.aimLockUntil=0;ps.weaponPin=false;   // vida nova, powerups zerados — mesmo caminho do fireCdUntil, e é ele que cobre addPlayer, respawnPlayer e a largada do BR de uma vez
     const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;
-    if(r<=POWERUP.MAGNET_MAX_R)pc.magnetUntil=this.tick+POWERUP.TICKS;   // toda vida nova começa com 1 carga de ímã, de graça — ajuda a achar comida logo cedo
+    // ── O KIT DE BOAS-VINDAS ──
+    // Ajuda a achar comida logo cedo, que é o problema real de quem nasce com 900 de massa num mapa de
+    // 144 M px². Os dois são TEMPO (ver POWERUP.SPAWN_* em constants.js) e o zero desliga cada um: com 0
+    // nenhuma das duas linhas escreve, e todo consumidor compara `>tick`.
+    // ⚠️ O ímã continua respeitando `MAGNET_MAX_R` — quem nasce grande (a semente de preenchimento) não o
+    // recebe, pelo mesmo motivo de sempre: num planetão ele sugaria a tela.
+    // ⚠️ Isto é RE-CARIMBADO na largada do Battle Royale (`Room.largar`): durante os `BR.CAGE_TICKS` de
+    // gaiola a fase 7 inteira do step sai sob `peace`, então nem atrair nem dobrar comida é possível ali e
+    // o kit queimaria sozinho antes de a partida começar.
+    if(r<=POWERUP.MAGNET_MAX_R&&POWERUP.SPAWN_MAGNET_TICKS>0)pc.magnetUntil=this.tick+POWERUP.SPAWN_MAGNET_TICKS;
+    if(POWERUP.SPAWN_FEAST_TICKS>0)ps.feastUntil=this.tick+POWERUP.SPAWN_FEAST_TICKS;
     return pc;}
   _dropPieces(ps){for(let i=0;i<ps.pieces.length;i++){const pc=ps.pieces[i];pc.dead=true;this.entityById.delete(pc.id);}
     ps.pieces.length=0;const arr=this.pieces;let k=0;for(let i=0;i<arr.length;i++)if(!arr[i].dead)arr[k++]=arr[i];arr.length=k;}

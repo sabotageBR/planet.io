@@ -81,7 +81,12 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
       // shared/src/constants.js.
       if(p==='/api/config')return sendJson(res,200,{shards:config.shards,shard:config.shard,roomMax:ROOM.MAX,
         protocol:PROTOCOL_VERSION,googleClientId:config.googleClientId||'',
-        entryPanels:{free:ENTRY_PANELS.FREE,br:ENTRY_PANELS.BR,own:ENTRY_PANELS.OWN,order:ENTRY_PANELS.ORDER}});
+        entryPanels:{free:ENTRY_PANELS.FREE,br:ENTRY_PANELS.BR,own:ENTRY_PANELS.OWN,order:ENTRY_PANELS.ORDER},
+        // `entraDireto`: a lista de plataformas em que o JOGAR pula a guarda do nome (ver PLATAFORMAS em
+        // constants.js). Vai por AQUI e não pelo `wire` porque a decisão vale antes de existir sala — o
+        // mesmo motivo de `entryPanels`. Quem compara com o `PORTAL_ID` (constante de BUILD) é o CLIENTE:
+        // o servidor não tem como saber de que portal veio esta aba.
+        entraDireto:ENTRY.DIRETO});
       // ── NICK SORTEADO PARA A TELA INICIAL ────────────────────────────────────────────────────
       // Mora aqui, e não em `server/src/api/`, por três razões que se somam: esta é a única camada
       // que tem o `rooms` — e é ele que responde "está em uso NAQUELE MOMENTO"; o `cors()` do topo do

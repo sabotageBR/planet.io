@@ -40,7 +40,7 @@ function Body() {
   // por isso não é um ramo de `stateOf` (que decide UMA ação), e sim uma condição à parte que soma um
   // botão extra no modal. Cada mascote pede o PRÓPRIO anúncio (`session.adWatched` é uma lista de ids,
   // não mais um id só por conta), então assistir a uma não esconde o botão das outras duas.
-  const canWatchAd = (s, st) => AD_REWARD_SKINS.includes(s.id) && portal.ativo && !(session.adWatched && session.adWatched.includes(s.id)) && st !== "eq" && st !== "owned";
+  const canWatchAd = (s, st) => AD_REWARD_SKINS.includes(s.id) && portal.temRecompensa && !(session.adWatched && session.adWatched.includes(s.id)) && st !== "eq" && st !== "owned";
   const list = useMemo(() => {
     const nq = norm(q);
     // ⚠️ `SEM_CONTA` também tira a Retrato da grade: sem foto ela é uma lendária de 25 000 moedas que
@@ -103,11 +103,11 @@ function SkinModal({ id, stateOf, onClose }) {
   const session = useStore(app, s => s.session), nivel = (session.stats && session.stats.level) | 0 || 1;
   const cur = skinById(id), st = stateOf(cur);
   const assistido = !!(session.adWatched && session.adWatched.includes(cur.id));
-  // `precisaAnuncio` vale mesmo sem `portal.ativo` — é ela quem TRAVA a compra (o servidor exige o mesmo,
+  // `precisaAnuncio` vale mesmo sem `portal.temRecompensa` — é ela quem TRAVA a compra (o servidor exige o mesmo,
   // `ad_required`); `podeAnuncio` só decide se o BOTÃO de assistir aparece (sem SDK de anúncio não há o
   // que assistir, e mostrar um botão morto seria pior que escondê-lo).
   const precisaAnuncio = AD_REWARD_SKINS.includes(cur.id) && !assistido && st !== "eq" && st !== "owned";
-  const podeAnuncio = precisaAnuncio && portal.ativo;
+  const podeAnuncio = precisaAnuncio && portal.temRecompensa;
   useEffect(() => { const kd = e => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
     addEventListener("keydown", kd); return () => removeEventListener("keydown", kd); }, [onClose]);
   const assistir = () => { sfx("buy"); watchMascotAd(cur.id); };

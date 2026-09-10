@@ -1057,6 +1057,87 @@ test("tiro: além de tirar massa, ESTILHAÇA a peça; e a rocha sempre explode n
   assert.ok(Math.abs(total+cacos-m0)<1e-6,"e nada evapora: o que saiu virou caco comível");
   assert.ok(total<m0,"o alvo perdeu massa de verdade");});
 
+// 42b. O TIRO MIRADO VAI NA PEÇA MIRADA, e não na primeira peça viva do dono
+test("mira: o míssil persegue O PEDAÇO que o cursor escolheu, mesmo com o dono dividido",()=>{
+  // ⚠️ ESTE TESTE PRECISA DO ALVO DIVIDIDO, e é por isso que ele monta oito peças à mão. O defeito era
+  // `aimTarget` gravar `p.owner` e `homeMissile` resolver com `firstLive(pieces)` — a PRIMEIRA peça por
+  // ordem de criação. Com um alvo de UMA peça só, `firstLive` É a peça mirada e o teste passaria por
+  // construção, antes e depois: ele não provaria nada.
+  const w=empty(777);
+  const alvo=w.addPlayer(0,{x:3000,y:3000,r:60});w.setTarget(0,3000,3000);
+  // sete peças a mais, em fila para a DIREITA; a última fica a 2.100 px da primeira
+  const extras=[];for(let i=1;i<8;i++)extras.push(w.newPiece(0,3000+i*300,3000,60));
+  const mirada=extras[extras.length-1];                       // a mais LONGE de `pieces[0]`
+  const atirador=w.addPlayer(1,{x:3000,y:2200,r:40,missiles:3});
+  arma(w);
+  // o ponteiro vai EM CIMA da peça escolhida — é assim que `aimTarget` decide (aimScore = distância do
+  // cursor à borda da bolinha), e o `fireAim` é o que distingue o tiro mirado do clique rápido
+  w.setTarget(1,mirada.x,mirada.y);w.requestFire(1,true);w.step();
+  const m=w.missiles.find(x=>!x.dead&&x.owner===1);
+  assert.ok(m,"saiu um míssil");
+  assert.equal(m.type,0,"o alvo é um jogador (kind 0)");
+  assert.equal(m.targetId,0,"e o jogador certo");
+  assert.equal(m.targetPc,mirada.id,"o PINO é a peça sob o cursor, não a primeira da lista");
+  assert.notEqual(mirada.id,alvo.id,"controle: a peça mirada NÃO é a primeira viva (senão o teste é vazio)");
+  // E ELE VOA PARA LÁ. ⚠️ A medida é a DIREÇÃO da velocidade, não a distância: depois de 40 ticks o míssil
+  // andou ~480 px de um trajeto de 2.200, e a primeira peça está no meio do caminho — comparar distâncias
+  // aqui mediria a geometria da montagem, não o alvo do homing. `perseguir` é para onde ele APONTA.
+  for(let t=0;t<40;t++)w.step();
+  if(!m.dead){
+    const uni=(a,b)=>{const dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy)||1;return[dx/l,dy/l];};
+    const vl=Math.hypot(m.vx,m.vy)||1,vu=[m.vx/vl,m.vy/vl];
+    const dm=uni(m,mirada),dp=uni(m,alvo);
+    const paraMirada=vu[0]*dm[0]+vu[1]*dm[1],paraPrimeira=vu[0]*dp[0]+vu[1]*dp[1];
+    assert.ok(paraMirada>paraPrimeira,
+      `o míssil aponta para a peça mirada (${paraMirada.toFixed(3)}) e não para a primeira (${paraPrimeira.toFixed(3)})`);
+    assert.ok(paraMirada>.9,`e aponta bem para ela (${paraMirada.toFixed(3)})`);}
+});
+
+test("mira: a peça mirada some no meio do voo e o míssil re-fixa na mais próxima do mesmo dono",()=>{
+  // Peça some o tempo todo neste jogo — fusão, split, ser comida. Desistir seria transformar todo tiro
+  // mirado num tiro reto; voltar para `firstLive` traria de volta o defeito pela porta dos fundos.
+  const w=empty(778);
+  const alvo=w.addPlayer(0,{x:3000,y:3000,r:60});w.setTarget(0,3000,3000);
+  const longe=w.newPiece(0,3000,4200,60);
+  const atirador=w.addPlayer(1,{x:3000,y:1800,r:40,missiles:3});
+  arma(w);w.setTarget(1,longe.x,longe.y);w.requestFire(1,true);w.step();
+  const m=w.missiles.find(x=>!x.dead&&x.owner===1);
+  assert.equal(m.targetPc,longe.id,"o pino é a peça de baixo");
+  longe.dead=true;                                   // ela some (fundiu, foi comida, tanto faz)
+  w.step();
+  assert.equal(m.targetPc,alvo.id,"o pino re-fixa na peça viva mais próxima, e não vira -1");
+});
+
+test("mira: SEM pino o comportamento é byte a byte o de sempre (o clique rápido não mudou)",()=>{
+  // É esta asserção que torna a entrega um no-op para tudo o que não é tiro mirado: clique rápido,
+  // auto-defesa, interceptação e o bot.
+  const w=empty(779);
+  const alvo=w.addPlayer(0,{x:3000,y:3000,r:60});w.setTarget(0,3000,3000);
+  w.newPiece(0,3600,3000,60);
+  const atirador=w.addPlayer(1,{x:3000,y:2200,r:40,missiles:3});
+  arma(w);w.setTarget(1,3000,3000);w.requestFire(1);w.step();   // sem `true`: clique rápido, teleguiado
+  const m=w.missiles.find(x=>!x.dead&&x.owner===1);
+  assert.ok(m,"saiu um míssil");
+  assert.equal(m.targetPc,-1,"sem mira não há pino — o alvo é o DONO, como sempre foi");
+});
+
+test("mira: o alerta de míssil vindo enxerga o tiro mirado numa peça distante",()=>{
+  // ⚠️ Sem o conserto de `incomingMissile`, este é o teste que falha: os chamadores passam
+  // `firstLive(pieces)` como referência, então um míssil mirado na peça do outro lado seria medido contra
+  // a peça errada — distância grande e produto escalar positivo — e o alerta, a interceptação e a
+  // auto-defesa ficariam cegos justamente para o tiro que esta entrega passou a mirar melhor.
+  const w=empty(780);
+  const alvo=w.addPlayer(0,{x:3000,y:3000,r:60});w.setTarget(0,3000,3000);
+  const mirada=w.newPiece(0,7000,3000,60);           // MUITO longe da primeira peça
+  const atirador=w.addPlayer(1,{x:7000,y:2000,r:40,missiles:3});
+  arma(w);w.setTarget(1,mirada.x,mirada.y);w.requestFire(1,true);
+  for(let t=0;t<10;t++)w.step();
+  const m=w.missiles.find(x=>!x.dead&&x.owner===1);
+  assert.ok(m&&m.targetPc===mirada.id,"o míssil está mirado na peça distante");
+  const alerta=incomingMissile(w,0,alvo.x,alvo.y,MISSILE.ALERT_DIST);
+  assert.ok(alerta,"o alerta VÊ o míssil, medindo contra a peça visada e não contra a primeira");
+});
+
 // 43. cuspir (W): pelota proporcional ao planeta, com teto de população, e custa massa de verdade
 test("eject: a pelota é proporcional a quem cospe, segurar o W esvazia o planeta e a população tem teto",()=>{
   // o raio da pelota acompanha o do planeta, com piso e teto
@@ -1140,6 +1221,11 @@ test("powerups de jogador: auto-defesa, +1 munição, zoom e comida em dobro",()
 
   // 2) FEAST dobra a COMIDA — e só ela: fragmento continua devolvendo o que saiu (conservação de massa)
   const w2=empty(61),p2=w2.addPlayer(0,{x:1000,y:1000,r:40}),ps2=w2.players.get(0);
+  // ⚠️ ZERA O KIT DE NASCENÇA ANTES DE MEDIR A REFERÊNCIA. `addPlayer` passa por `_spawnPiece`, que desde
+  // o kit de boas-vindas já entrega o BANQUETE ligado — sem esta linha o `normal` sai JÁ dobrado, pegar o
+  // powerup só empilha mais tempo, e a asserção compara um valor dobrado com ele mesmo. O arquivo já faz
+  // exatamente isto com o ímã de nascença em meia dúzia de lugares.
+  ps2.feastUntil=0;
   w2.setTarget(0,1000,1000);
   const grao=()=>{const f=w2.spawnFood();f.type=FOOD_TYPE.DUST;f.r=10;f.mass=100;f.x=p2.x;f.y=p2.y;w2.moveFood(f);
     const antes=p2.mass;w2.step();return p2.mass-antes;};
@@ -1194,7 +1280,15 @@ test("powerups de jogador: auto-defesa, +1 munição, zoom e comida em dobro",()
   assert.ok(ps6.zoomUntil>w6.tick&&ps6.feastUntil>w6.tick);
   w6.respawnPlayer(0,{r:PLAYER.START_R});
   assert.equal(ps6.zoomUntil,0,"vida nova, zoom zerado");
-  assert.equal(ps6.feastUntil,0,"vida nova, banquete zerado");
+  // ⚠️ O BANQUETE DEIXOU DE NASCER ZERADO: `_spawnPiece` o entrega como parte do KIT DE BOAS-VINDAS
+  // (`POWERUP.SPAWN_FEAST_TICKS`), junto do ímã que já era dado ali. O que continua sendo verdade — e é o
+  // que este teste guarda — é que a vida nova NÃO herda o relógio da anterior: ele é reescrito, e não
+  // acumulado como faz o powerup pego no chão.
+  assert.equal(ps6.feastUntil,w6.tick+POWERUP.SPAWN_FEAST_TICKS,"vida nova, banquete do kit — não o da vida anterior");
+  // e com o kit desligado ele volta a nascer zerado, que é o estado que o zero tem que produzir
+  const semKit=POWERUP.SPAWN_FEAST_TICKS;POWERUP.SPAWN_FEAST_TICKS=0;
+  try{w6.respawnPlayer(0,{r:PLAYER.START_R});assert.equal(ps6.feastUntil,0,"kit desligado: vida nova sem banquete");}
+  finally{POWERUP.SPAWN_FEAST_TICKS=semKit;}
   assert.equal(ps6.autoDefN,0,"vida nova, auto-defesa zerada");});
 
 // ── FAIXAS DO ENUM DE COMIDA ─────────────────────────────────────────────────

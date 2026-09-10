@@ -195,6 +195,35 @@ export function paintTalk(c,size,{fill="#fff",stroke="#000"}={}){
   c.beginPath();c.arc(u*.06,0,u*.62,-.95,.95);c.stroke();}
 
 /**
+ * A COROA DO MAIOR PLANETA DO MAPA, assada uma vez por tema — molde exato de `paintTalk` logo acima:
+ * mesmo contrato (`c` já transladado ao centro pelo TextureCache), mesma folga de contorno, mesmo
+ * vocabulário de canvas. Ela NÃO anima e NÃO gira: discrição aqui vem do TAMANHO e da imobilidade, que é
+ * o mesmo argumento já escrito para a borda neon do escudo.
+ *
+ * ⚠️ TRÊS PONTAS, e não as cinco do `case "crown"` de theme/patterns.js. Aquela é uma skin, desenhada num
+ * disco de 128–512 px; esta vive a ~26 px de tela, e a 5 px por dente cinco pontas viram serrilha. Três
+ * lê como coroa em qualquer tamanho — é o mesmo raciocínio das "duas ondas" do alto-falante.
+ * ⚠️ Nada de `createConicGradient`/`filter`/`Path2D`/`ImageData`: `client/test/textures.test.js` assa o
+ * catálogo com um contexto 2D FALSO via Proxy, onde qualquer método passa — o teste ficaria verde e o
+ * jogo quebraria. Só primitivas que o resto do arquivo já usa.
+ */
+export function paintCrown(c,size,{fill="#ffc22e",stroke="#000"}={}){
+  const u=size/2/1.15;                       // a MESMA folga do paintTalk, pelo mesmo motivo: o contorno
+  c.lineWidth=u*.16;c.strokeStyle=stroke;c.fillStyle=fill;c.lineJoin="round";c.lineCap="round";
+  // o corpo, num traço fechado só: base plana, dois vales e três pontas (a do meio mais alta)
+  c.beginPath();
+  c.moveTo(-u*.84,u*.58);c.lineTo(-u*.84,-u*.10);   // sobe pela esquerda
+  c.lineTo(-u*.50,u*.20);                            // vale
+  c.lineTo(0,-u*.62);                                // ponta central
+  c.lineTo(u*.50,u*.20);                             // vale
+  c.lineTo(u*.84,-u*.10);                            // sobe pela direita
+  c.lineTo(u*.84,u*.58);                             // e fecha na base
+  c.closePath();c.fill();c.stroke();
+  // a faixa da base: é ela que faz ler "coroa" e não "três montanhas". Fina, e por dentro do traço.
+  c.lineWidth=u*.10;
+  c.beginPath();c.moveTo(-u*.84,u*.24);c.lineTo(u*.84,u*.24);c.stroke();}
+
+/**
  * A FAIXA DO NOME: legenda de foto no rodapé do disco, assada uma vez por tema.
  * O nome nasceu no CENTRO do planeta (`nameY:()=>0`), e isso ficou insustentável quando as caricaturas
  * entraram: o centro do disco é exatamente onde mora o nariz e a boca — o Trump perdia a boca e o

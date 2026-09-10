@@ -215,7 +215,16 @@ export const BR={PLAYERS:50,TEAM_SIZES:[1,2,3,4],MIN_HUMANS:1,
   // ⚠️ Isto é ORTOGONAL à pref `brInvite` do jogador. Este número diz "com que frequência no máximo"; a
   // pref diz "eu não quero". Uma não substitui a outra: sem o teto, desligar vira a única saída para quem
   // só queria menos; sem a pref, quem não quer nada continua levando um card a cada 3 minutos.
-  INVITE_CD_MS:180000};
+  INVITE_CD_MS:180000,
+  // O BOTÃO "Silenciar" DO CARD APARECE? São TRÊS alcances, e este parâmetro mexe só no do meio:
+  //   o BOTÃO   "agora não, nesta sala"  → `Session.brMudo`, memória, morre com o socket
+  //   a PREF    "nunca mais"             → `prefs.brInvite`, banco, Opções e menu do Esc
+  //   este      "ninguém pode silenciar por sala"
+  // A pref CONTINUA existindo com o botão escondido: os portais pedem por escrito que o jogador consiga
+  // se proteger, e tirar as duas saídas de uma vez o deixaria sem nenhuma.
+  // ⚠️ O `case 'brMute'` do wsServer e o `if(s.brMudo)continue` do Room ficam de pé: um cliente de build
+  // anterior continua mandando a mensagem, e recusá-la quebraria quem já está em sala durante o rollout.
+  INVITE_MUTE:true};
 // PLAYERS é o total (humanos + bots): a sala livre já roda 30 humanos + 15 bots = 45, então 50 é o MESMO
 // regime de tick, não um salto de escala. Capacidade efetiva = PLAYERS − PLAYERS%teamSize (50/50/48/48):
 // equipe incompleta contra equipes cheias não é dificuldade, é sorteio.
@@ -387,7 +396,44 @@ export const ENTRY_PANELS={FREE:true,BR:true,OWN:true,ORDER:'free_br'};
 // preenchido quando a resposta chegasse.
 // ⚠️ Desligado, o comportamento é o de sempre: campo vazio, o placeholder pedindo o nome e a guarda
 // `semNome()` segurando quem tentar entrar sem nomear o planeta.
-export const ENTRY={NICK_AUTO:true};
+/**
+ * ONDE O CLIQUE EM JOGAR ENTRA DIRETO NA PARTIDA (sem passar pela guarda do nome).
+ *
+ * Era a constante de BUILD `ENTRA_DIRETO = PORTAL` (client/src/portal/flags.js): valia em TODOS os portais
+ * e em nenhum outro lugar, e mudar isso pedia um pacote novo — que num portal significa esperar a fila de
+ * revisão deles. Agora é uma MÚLTIPLA ESCOLHA do /admin.
+ *
+ * ⚠️ QUEM FILTRA É O CLIENTE, e não o servidor, por três razões medidas: `users.origin` é gravado UMA vez,
+ * no `POST /api/auth/guest` (quem criou a conta no site e depois joga na Poki carrega `warspace.io` para
+ * sempre); ele é um DOMÍNIO, não um id de portal; e vários portais servem de subdomínio POR JOGO
+ * (`<hru>.games.playgama.com`, `games.builds.gamepix.com`). O servidor não tem como saber de que portal
+ * veio um cliente — quem sabe é o `PORTAL_ID`, que é constante de build. Então a LISTA vem do servidor
+ * (por `/api/config`, no molde de `ENTRY_PANELS`) e a comparação acontece no cliente.
+ * ⚠️ Enquanto a lista não chegou vale o comportamento de BUILD, que é o de hoje. Não pisca porque o valor
+ * é lido DENTRO do clique, nunca renderizado.
+ * ⚠️ `site` e `bountyboard` estão na lista, desmarcados: o pedido é "para quais plataformas vale a regra",
+ * e o site é uma plataforma. Marcá-lo passa a ser uma decisão que o admin PODE tomar — hoje é impossível
+ * sem deploy.
+ * ⚠️ DEPENDÊNCIA NÃO CODIFICADA: isto só funciona com `ENTRY.NICK_AUTO` ligado. Sem ele o campo de nome
+ * nasce vazio e todo mundo entra como "Viajante-NNNN" — que foi exatamente o argumento que segurou a
+ * generalização desta regra por meses.
+ */
+export const PLATAFORMAS=[
+  {v:'poki',      label:'Poki'},
+  {v:'crazy',     label:'CrazyGames'},
+  {v:'gd',        label:'GameDistribution'},
+  {v:'y8',        label:'Y8'},
+  {v:'gm',        label:'GameMonetize'},
+  {v:'gamepix',   label:'GamePix'},
+  {v:'playgama',  label:'Playgama'},
+  {v:'gameflare', label:'GameFlare'},
+  {v:'itch',      label:'itch.io'},
+  {v:'bountyboard',label:'Bounty Board (enquadra o site)'},
+  {v:'site',      label:'warspace.io (o site)'},
+];
+export const ENTRY={NICK_AUTO:true,
+  // O padrão reproduz o que a constante de build fazia: todos os portais, e não o site.
+  DIRETO:'poki,crazy,gd,y8,gm,gamepix,playgama,gameflare,itch'};
 /**
  * Minutos escolhidos pelo dono da sala → ticks de rodada. UM lugar, porque a rota, a tela e os testes têm
  * que concordar — e porque "nada de `if (modo === …)` espalhado" é regra escrita de docs/design/modos.md.
@@ -710,6 +756,21 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:316.2278,MAGNET_RANGE:5.5,MAGNET_RA
   AUTODEF_CD_TICKS:90,AUTODEF_SCAN_TICKS:6,AUTODEF_MAX:3,
   ZOOM_TICKS:900,ZOOM_K:1.5,
   FEAST_TICKS:600,FEAST_K:2,
+  // ── O KIT DE BOAS-VINDAS: com o que se NASCE ──────────────────────────────────────────────────────
+  // Toda vida nova já ganhava um ímã de graça (`_spawnPiece`), e o pedido foi dobrá-lo e somar o banquete.
+  // ⚠️ "O DOBRO DO ÍMÃ" É O DOBRO DA DURAÇÃO, e o comentário antigo de `_spawnPiece` que falava em "1
+  // carga" estava errado desde sempre: o ímã é `magnetUntil`, um RELÓGIO. A única quantidade que o
+  // nascimento entrega é tempo — alcance e força saem de MAGNET_RANGE/MAGNET_PULL e são do powerup em si,
+  // então dobrá-los mudaria o ímã do jogo inteiro, não o presente de boas-vindas.
+  // ⚠️ CONSTANTES PRÓPRIAS, e não `TICKS*2`. O precedente literal está neste arquivo: `PLAYER.SPAWN_R` ×
+  // `PLAYER.START_R` — separar "o valor da mecânica" de "o valor com que se nasce" é o que torna o segundo
+  // ajustável sem mexer no primeiro. Derivadas, o admin teria duas alavancas amarradas: mexer no powerup
+  // do chão mudaria o nascimento junto, em silêncio.
+  // ⚠️ ZERO DESLIGA, e é estado válido em todo leitor: com 0 as duas linhas nem escrevem (a peça nasce com
+  // `magnetUntil` 0 e `ps.feastUntil` acabou de ser zerado), e todo consumidor compara `>tick`. Nada de
+  // gravar `tick+0`, que deixaria um valor morto na estrutura.
+  SPAWN_MAGNET_TICKS:840,   // 14 s — o dobro dos 7 s que já valiam
+  SPAWN_FEAST_TICKS:600,    // 10 s de comida em dobro, o mesmo tempo do powerup do chão
   DROP:[[FOOD_TYPE.MAGNET,32],[FOOD_TYPE.SHIELD,32],[FOOD_TYPE.AUTODEF,22],[FOOD_TYPE.AMMO_PLUS,7],[FOOD_TYPE.FEAST,7]]};
 // ⚠️ O ZOOM SAIU DO SORTEIO — não do código. Afastar a câmera é a única coisa que um powerup fazia com o
 // que o jogador VÊ, e isso não é vantagem: é mudar o jogo embaixo dele no meio de uma briga, sem aviso e
@@ -1035,27 +1096,16 @@ export function botSpawnR(rng,i,f){
 // o jeito mais fácil de denunciar. Quem fala é a SALA (server/src/rooms/Room.js), não o cérebro: falar é
 // evento de sala, e o LocalServer do `?local=1` não tem chat. O padrão é o silêncio: o orçamento em
 // BOT_TALK deixa passar pouca coisa.
-export const BOT_CHAT={
-  start:["bora","boa sorte","alguem ai","vamo","glhf","to dentro","partiu","primeira vez aqui","oi","salve"],
-  kill:["boa","peguei","kkkk","foi","ez","acertei","sai fora","proximo","huum","valeu"],
-  morte:["ah nao","kkkk","fui","boa ai","tava perdido","errei feio","de novo nao","travou","eita","foi mal"],
-  zona:["o gas","corre","to fora","vem pro meio","ta fechando","fui pego","sai dai","cuidado com o gas"],
-  poucos:["quantos faltam","ta apertado","chegando la","aguenta","top 5","calma ai","gg","boa sorte ai"],
-  equipe:["vem","to fraco","cuidado","atras de voce","me segue","toma massa","juntos","corre","espera","to indo"],
-  // Gatilhos novos: sem pool próprio o `||BOT_CHAT.kill` de _fraseFixa faria o bot dizer "peguei" ao LEVAR um míssil.
-  tiro:["quem atirou","ei","para com isso","serio isso","vou lembrar disso","me erra","ta me caçando?","calma la"],
-  escudo:["la se foi o escudo","perdi o escudo","ih","aguenta","to sem escudo","era meu escudo"],
-  cacado:["me deixa","sai de mim","to encurralado","socorro","ta colado em mim","nao me segue"],
-  lider:["to em primeiro","olha eu ai","cheguei","topo","vem me tirar dai","primeiro lugar"],
-  // Resposta ENLATADA a quem chamou pelo nome. Existe porque ser chamado e ficar mudo é o que mais denuncia
-  // um bot — e a LLM cai (disjuntor, teto de geração, fila cheia) com muito mais frequência do que se imagina.
-  resposta:["fala ai","que isso mano","kkkk","calma ai","vem entao","pode vir","que foi","to aqui",
-            "sei nao hein","fala serio","era so o que faltava","ta bom ne"],
-  // A INICIATIVA: o bot PUXA assunto quando a sala está calada (Room._iniciativaTick). Sem LLM ela não
-  // inventa assunto nenhum — só quebra o silêncio, que é o que uma frase enlatada sabe fazer honestamente.
-  // Pool próprio é obrigatório: sem ele o `||BOT_CHAT.kill` de _fraseFixa faria o bot dizer "peguei" do nada.
-  puxa:["alguem vivo ai","que silencio","essa sala ta quieta","quem ta ganhando","cade a galera",
-        "ta osso essa partida","alguem viu esse gigante","to quase morrendo aqui"]};
+// ── O REPERTÓRIO FIXO MUDOU DE CASA ──────────────────────────────────────────
+// Ele morava aqui e agora é `server/src/rooms/botFrases.js`, com as TRÊS línguas. Dois motivos:
+//  • ele é o CHÃO da fala (sai sempre que a LLM não responde) e era, por isso, a maior fonte de português
+//    na tela — com `BOT_LLM.IDIOMA` travado em inglês o prompt saía em inglês, o modelo obedecia, e
+//    metade das falas nunca passava por ele;
+//  • `constants.js` vai INTEIRO para o bundle do `?local=1`, e o repertório tinha exatamente dois
+//    consumidores, os dois no servidor (`Room._fraseFixa` e `_fraseResposta`) — o LocalServer não tem chat.
+// É o mesmo argumento que já pôs `botPersonas.js` e `ESTILO_PROMPT` do lado do servidor.
+// ⚠️ `BOT_TALK` FICA: ele é orçamento (números e probabilidades), não texto, e `BOT_TALK.P` é lido pelo
+// sorteio de gatilho em `Room.botChatTick`. As CHAVES dos dois têm que continuar batendo — há teste.
 export const BOT_TALK={ROOM_CD_TICKS:420,BOT_CD_TICKS:2400,MAX_PER_MATCH:3,NO_REPEAT:6,
   P:{start:.35,kill:.22,morte:.3,zona:.18,poucos:.3,equipe:.28,tiro:.10,escudo:.14,cacado:.06,lider:.12,puxa:.5},
   TYPO_P:.12,QUEUE_MAX:12,
@@ -1463,7 +1513,16 @@ export const ADMIN_BUS={RING:1024,ESTREIA:40,AWAKE_MS:15000,FANIN_MS:1000,KPI_MS
 // linha honesta é "⭐ amoleceu · Fulano devorou", não "morreu na estrela".
 export const FEED={KEEP:16,ROWS:8,TTL_MS:22000,HIT_TTL_TICKS:300,QUEUE_MAX:32,MAX_PER_FLUSH:4,
   LEAD_HOLD_TICKS:180,LEAD_MARGIN:.05,LEAD_CD_TICKS:1200,CRUNCH_AT_S:[600,300,60],STREAK_AT:[3,5,10],
-  JOIN_QUIET_MS:20000};
+  JOIN_QUIET_MS:20000,
+  // O KILL FEED APARECE? Decisão de PRODUTO, e por isso é interruptor do /admin e não pref do jogador:
+  // uma linha nas Opções que não liga nada é o defeito que `SEM_VOZ` já ensinou (ver prefsTable.js), e
+  // aqui seria pior — o valor só é conhecido DENTRO de uma sala, e Opções é alcançável do menu.
+  // ⚠️ NASCE FALSO porque o pedido foi "esconder", e isso vale também para o `?local=1` (offline não
+  // recebe `wire`) e para o zip de portal, até um admin religar no servidor.
+  // ⚠️ ESCONDER NÃO É CORTAR O FIO: `Room.broadcastFeed` continua difundindo. Cortar ali levaria junto o
+  // caminho do administrador (que continua vendo, para moderar) e custaria uma fila por sessão para
+  // poupar ~60 bytes.
+  SHOW:false};
 // JOIN_QUIET_MS: a janela em que a MESMA pessoa voltando NÃO vira "saiu"/"entrou" no log. A chave é a de
 // `_rosterKey` (a mesma que já resolve "a mesma pessoa entre vidas"), e a guarda mora DENTRO de
 // `join`/`leave`, nunca nos chamadores.
@@ -1494,6 +1553,20 @@ export const FEED={KEEP:16,ROWS:8,TTL_MS:22000,HIT_TTL_TICKS:300,QUEUE_MAX:32,MA
 // MAX_BYTES. 12 KB porque um rosto 256² em WebP q0,8 dá 6–10 KB — e o teto é o que torna viável guardar os
 // bytes no Postgres, que é o ÚNICO armazenamento durável do cluster (StatefulSet sem PVC, sem storage
 // dinâmico). O upload é ≤13 KB, bem abaixo do 1 MB padrão do nginx: nada de infra nova.
+/**
+ * A ARTE DE SKIN VINDA DO BANCO — os números que o upload e o render compartilham.
+ *
+ * ⚠️ `ID_MIN`/`ID_MAX` NÃO SÃO GOSTO: `skinId` viaja como u8 no registro PLAYERS
+ * (`shared/src/protocol/codec.js`, `.u8(p.skinId)`, e o servidor ainda mascara com `&255`). Um id 256
+ * chegaria ao cliente como 0 — o Planeta Padrão — e um id 1024 como 0 também, ou seja COLIDINDO com uma
+ * skin de código em silêncio, para o dono e para a sala inteira. O catálogo de código para em 127, então a
+ * faixa de banco é 128-255 e são 128 vagas PARA SEMPRE. Subir para u16 é inserção no MEIO do registro:
+ * sobe o `PROTOCOL_MIN` e derruba todo zip de portal congelado — é para uma janela em que os pacotes sejam
+ * reenviados de qualquer jeito. Há teste travando que nenhuma skin de CÓDIGO invada a faixa.
+ * ⚠️ `MAX_BYTES` é 4× o do avatar porque isto é ARTE de catálogo, vista grande na loja — mas continua
+ * pequeno pelo mesmo motivo: o Postgres é o único armazenamento durável do cluster (StatefulSet sem PVC).
+ */
+export const SKIN_ART={ID_MIN:128,ID_MAX:255,SIZE:512,MIN:64,MAX_BYTES:48*1024,MIME:["image/webp","image/png"]};
 export const AVATAR={SIZE:256,MIN:64,MAX_BYTES:12*1024,MIME:["image/webp","image/png"],FALLBACK_SIZE:128};
 // chat de sala (Livre e Battle Royale solo) ou de equipe (Battle Royale em equipe), pelo `chat` do MODE.
 // Sem histórico no servidor: quem entra não recebe o que já passou. RATE_MS/BURST ficam POR CIMA do balde

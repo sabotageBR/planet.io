@@ -10,6 +10,7 @@
 // @ts-check
 import { skinById } from "@warspace/shared";
 import { PORTAL } from "../portal/flags.js";
+import { apiUrl } from "../api/base.js";
 
 /**
  * OS TRÊS MASCOTES. Mesma máquina das caricaturas — mesmo cache, mesma chave, mesmo "assa liso agora e
@@ -67,7 +68,36 @@ export function onFaceReady(cb) { ouvintes.add(cb); return () => ouvintes.delete
  * cache, a prévia da loja e — o que menos se lembra — a decisão de NÃO escrever o nome do jogador em
  * cima dela, em `layers/Planets.js`), e duas respostas para a mesma pergunta divergem na 1ª correção.
  */
-export const faceFile = sk => (sk && sk.mascot ? chaveMascote(sk.mascot) : (!PORTAL && sk && sk.face) || null);
+/**
+ * ── A ARTE VINDA DO BANCO ─────────────────────────────────────────────────────
+ * `skinId → hash` do que o servidor mandou em `/api/skins` (campo `db`). É este mapa que faz uma skin de
+ * CÓDIGO ser desenhada com imagem sem trocar de id — o caminho pelo qual as 35 caricaturas saem do pacote
+ * e passam a vir do Postgres, mantendo `user_skins` e os `unlockKey` intactos.
+ * ⚠️ A CHAVE do cache carrega o HASH (`#84:abc123`): arte trocada no /admin = chave nova = textura reassada
+ * no frame seguinte, sem F5 e sem `drop(key)` — que o TextureCache não tem. É o mesmo mecanismo do avatar.
+ */
+const artDb = new Map();
+export function setSkinArt(lista) {
+  artDb.clear();
+  for (const s of lista || []) if (s && s.id != null && s.art_hash) artDb.set(s.id | 0, String(s.art_hash));
+}
+const chaveArt = (id, hash) => `#${id}:${hash}`;
+const artUrl = f => { const i = f.indexOf(":"); return apiUrl(`/api/skins/${f.slice(1, i)}/art?v=${f.slice(i + 1)}`); };
+/**
+ * ⚠️ A ORDEM É A REGRA, e cada degrau tem um porquê:
+ *   1. BANCO   — vale em TODA plataforma, portal incluído. É o que "não colocar elas no zip mas ter elas
+ *                no banco" quer dizer: os arquivos saem da build e a arte vem por URL.
+ *   2. MASCOTE — arte NOSSA, sempre embutida; é o que a torna vendável num portal.
+ *   3. ARQUIVO — a caricatura local, RESERVA e só fora do portal, até a migração para o banco provar em
+ *                produção. Ela sai da build num commit seguinte.
+ */
+export const faceFile = sk => {
+  if (!sk) return null;
+  const h = artDb.get(sk.id | 0);
+  if (h) return chaveArt(sk.id | 0, h);
+  if (sk.mascot) return chaveMascote(sk.mascot);
+  return (!PORTAL && sk.face) || null;
+};
 /** O bitmap, se já estiver pronto. Nunca espera — quem desenha está dentro de um frame. */
 export const faceBitmap = sk => { const f = faceFile(sk); return f ? cache.get(f) || null : null; };
 /** Sufixo de chave: só muda quando o bitmap CHEGA, que é exatamente quando a textura tem que ser refeita. */
@@ -82,7 +112,11 @@ export function ensureFace(sk) {
       // ⚠️ `BASE_URL` (e não "/"): num portal o jogo é servido de um subcaminho, e a raiz do zip é ele.
       // Ele SEMPRE termina em "/" — daí a interpolação sem barra própria, senão vira ".//faces/".
       // O mascote já vem com a URL pronta do bundler; a caricatura mora em `public/faces/`.
-      const url = f[0] === "@" ? MASCOTES[f.slice(1)] : `${import.meta.env.BASE_URL}faces/${f}.webp`;
+      // ⚠️ A arte de BANCO passa por `apiUrl`, e não por caminho relativo: num portal o jogo roda no
+      // domínio DELES e isto é cross-origin — quem consome é `fetch`, sujeito a CORS, exatamente como o
+      // avatar do jogador (ver theme/avatars.js). O `?v=` é o hash: é ele que torna o `immutable` de um
+      // ano seguro do lado do servidor.
+      const url = f[0] === "#" ? artUrl(f) : f[0] === "@" ? MASCOTES[f.slice(1)] : `${import.meta.env.BASE_URL}faces/${f}.webp`;
       if (!url) return;
       const r = await fetch(url, { cache: "force-cache" });
       if (!r.ok) return;

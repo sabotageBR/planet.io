@@ -132,41 +132,14 @@ export function sanitiza(txt,nome=''){
   return s;}
 
 // ── idioma ───────────────────────────────────────────────────────────────────
-// Dizer ao modelo "responda no idioma da mensagem" funciona quase sempre — e "quase" é o problema: uma
-// resposta em português para quem escreveu em espanhol é justamente o que se queria evitar. Nomear o idioma
-// ("reply in Spanish") tira a decisão do modelo e a traz para cá, onde dá para testar.
-// Não é um detector geral de idioma: é um voto entre as três línguas que aparecem no jogo, com palavras
-// FUNCIONAIS (as que ninguém escreve por acaso) e o desempate na dúvida sendo NÃO nomear nada.
-// ⚠️ A chave é o NOME QUE VAI PARA O PROMPT, então ela é "Brazilian Portuguese" e não "Portuguese": o
-// mesmo prompt podia sair com `[write your line in Portuguese]` (daqui) e `use Brazilian Portuguese` (do
-// chão da LANGUAGE RULE), uma contradição pequena que o modelo tinha de resolver sozinho. Uma grafia por
-// idioma no servidor inteiro — e é ela que `IDIOMA_NOME` espelha.
-const MARCAS={
-  'Brazilian Portuguese':'nao não vc você voce ta tá pra pro muito mano cara kkk kkkk seu sua dele dela isso aqui entao então vou vai tem foi eu te comer corre gordo lixo caralho porra merda mesmo agora ja já so só'.split(' '),
-  Spanish:'eres muy pero porque donde dónde jaja jajaja hola amigo basura mierda bueno malo mucho estas estás vamos tio tío puta joder gilipollas nino niño esto eso alli allí'.split(' '),
-  English:'the you your are is and this that what why how get got out off fuck shit bro dude man noob easy trash gonna dont don not going'.split(' '),
-};
-/** Idioma provável de um texto curto, ou `null` quando não dá para afirmar. */
-export function detectaIdioma(texto){
-  const ws=new Set(normalizar(texto).split(' ').filter(Boolean));
-  if(!ws.size)return null;
-  let melhor=null,max=0,empate=false;
-  for(const [lang,marcas] of Object.entries(MARCAS)){
-    let n=0;for(const m of marcas)if(ws.has(normalizar(m)))n++;
-    if(n>max){max=n;melhor=lang;empate=false;}else if(n===max&&n>0)empate=true;}
-  return max>=1&&!empate?melhor:null;}
-/**
- * O IDIOMA TRAVADO NO PAINEL (`BOT_LLM.IDIOMA`) → o nome EM INGLÊS que entra no prompt, que é a MESMA chave
- * de `MARCAS` logo acima. Server-only, pelo mesmo motivo de `ESTILO_PROMPT`: `shared/` vai inteiro para o
- * bundle do `?local=1` e instrução de LLM não tem o que fazer lá.
- * ⚠️ Este objeto é a ponte entre as listas de idioma que sempre viveram com grafias diferentes: o `LANGS`
- * do cliente ("pt-BR"), a pref de `api/me.js` e as chaves de `MARCAS`, que vão LITERALMENTE para dentro do
- * prompt. Um id oferecido no painel sem par aqui é um `<select>` que grava e não faz nada — há teste.
- */
-export const IDIOMA_NOME={'pt-BR':'Brazilian Portuguese',en:'English',es:'Spanish'};
-export {MARCAS};
-/** O nome inglês do idioma travado, ou `null` em `auto` (o comportamento de sempre: quem falou decide). */
-const idiomaFixo=()=>IDIOMA_NOME[BOT_LLM.IDIOMA]||null;
+// A DECISÃO DE IDIOMA mora inteira em `botFrases.js`, junto do repertório fixo — e essa vizinhança é o
+// ponto: a linha GERADA e a ENLATADA têm que responder na mesma língua, e enquanto cada uma decidia por
+// conta o bot respondia ao mesmo "hey bro" em inglês com a LLM de pé e em português quando ela caía (o
+// que acontece o tempo todo, que é a razão de o repertório existir).
+// ⚠️ Re-exportado daqui porque `detectaIdioma` e `IDIOMA_NOME` já eram públicos deste módulo e há testes
+// e chamadores apontando para cá. Mover sem re-exportar seria trocar um defeito por um import quebrado.
+import {MARCAS,detectaIdioma,IDIOMA_NOME,idiomaFixo,idiomaDaFala,IDIOMA_BASE} from './botFrases.js';
+export {MARCAS,detectaIdioma,IDIOMA_NOME};
 
 // ── quem a mensagem chama ────────────────────────────────────────────────────
 // Um vocativo coletivo ("e aí galera, tudo bem?") ou uma provocação à sala ("eu vou matar todo mundo") é
@@ -249,7 +222,7 @@ function montaSystem(){
     ?[`LANGUAGE RULE, follow it strictly: always write in ${idiomaFixo()}, whatever language anyone else uses.`]
     :['LANGUAGE RULE, follow it strictly: when a message is addressed to you, reply in THAT message\'s language,',
       'even if the rest of the chat is in another one. Otherwise use the language of the recent chat.',
-      'With no chat at all, use Brazilian Portuguese.']),
+      `With no chat at all, use ${IDIOMA_NOME[IDIOMA_BASE]}.`]),
   'If someone is talking to you, answer them directly, and use their name if they used yours. Otherwise, react to what the chat is ACTUALLY talking about right now, or to what just happened in the match — never to a topic nobody raised.',
   'React to what is happening to you in the match: if someone is chasing or shooting you, say it TO THEM, by name.',
   'Stay in character. You are typing, not narrating.',
@@ -434,12 +407,19 @@ export function montaPrompt(c){
   // português faria o parâmetro perder para a peça mais forte do prompt que ele existe para comandar.
   // Travado, `detectaIdioma` é PULADO — não corrigido: em `auto` ele decide como sempre.
   const lang=idiomaFixo()||(c.texto?detectaIdioma(c.texto):detectaIdioma((c.historico||[]).slice(-3).map(l=>l.text).join(' ')));
+  // O mesmo idioma, do outro lado: `lang` é o NOME em inglês (vai para o prompt) e `langId` é o id
+  // (`pt-BR`/`en`/`es`), que é o que indexa bordão e repertório. Uma fonte, dois formatos.
+  const langId=idiomaDaFala(c.texto,c.historico);
   const ordem=lang?`[write your line in ${lang}]`:'[answer in the SAME LANGUAGE as that message]';
   const alvo=dirigida&&c.texto
     ?`[${c.quem||'someone'} says to YOU: "${c.texto}"]\n${ordem}\n`
     :(lang?`${ordem}\n`:'');
   const SYSTEM=montaSystem();
-  const sys=h?`${SYSTEM} You sometimes end your line with "${h.bordao}", but rarely.`:SYSTEM;
+  // ⚠️ O BORDÃO ACOMPANHA A LÍNGUA. Ele entra LITERAL no SYSTEM, então enquanto era uma string só em
+  // pt-BR o prompt mandava, na mesma frase, escrever em inglês e terminar com "anota ai" — e o modelo
+  // obedecia aos dois. `lang` já foi resolvido logo acima, pela mesma cadeia do resto.
+  const bord=h&&h.bordao?(h.bordao[langId]||h.bordao[IDIOMA_BASE]):null;
+  const sys=bord?`${SYSTEM} You sometimes end your line with "${bord}", but rarely.`:SYSTEM;
   // ORDEM: quem ele é → a PARTIDA em volta → o que está vivendo → o que a sala viu → o gatilho → a
   // conversa → a linha dirigida. O que está mais perto do fim pesa mais, e por isso a partida vem cedo
   // (é pano de fundo) e a linha dirigida fica por último (é o que ele tem que responder).

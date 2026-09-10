@@ -5,13 +5,14 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { getLabels, setLang, currentLangPref, preenche } from "../i18n/index.js";
 import { errText } from "../i18n/errors.js";
-import { skinById, PROTOCOL_VERSION, SKINS, LEVEL, ROUND, MODE, playerNick, createRng } from "@warspace/shared";
+import { skinById, PROTOCOL_VERSION, SKINS, LEVEL, ROUND, MODE, playerNick, createRng, registerSkins} from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
 import { portal } from "../portal/index.js";
-import { PORTAL, ENTRA_DIRETO } from "../portal/flags.js";
-import { silenciaAnuncio } from "../audio/index.js";
+import { PORTAL, entraDiretoEm } from "../portal/flags.js";
+import { silenciaAnuncio, sfx } from "../audio/index.js";
+import { setSkinArt } from "../theme/faces.js";
 
 const Q = new URLSearchParams(location.search);
 const NICK_RE = /^.{2,16}$/;
@@ -284,12 +285,23 @@ function mostrarTela(s) {
   else if (s === "dead" || s.startsWith("dead:") || s === "round" || s.startsWith("round:")) {
     if (!import.meta.env.DEV) return;
     // ⚠️ O SUFIXO `dead:<estilo>` fixa o modelo no state local (sem PATCH), como `round:<estilo>`: é o
-    // que a sonda de responsividade usa para medir os três.
-    const dEstilo = s.startsWith("dead:") ? s.slice(5) : null;
+    // que a sonda de responsividade usa para medir os três. Mais dois sufixos, que se acumulam:
+    //   `:livre`  força MODE.FREE. Ele existe porque o padrão de fato SEMPRE foi o Battle Royale, por
+    //             ACIDENTE: `hudDemo()` grava `mode: MODE.BR` e a tela `game` roda ANTES das de morte em
+    //             cada par (aparelho, tema), então o resíduo ficava no hudStore e as ~600 combinações
+    //             mediam o rodapé do BR ("OUTRA PARTIDA" + a dica de ficar) e nunca o do Livre, que tem
+    //             o contador de respawn. Agora o modo é SEMEADO nos dois sentidos, nunca herdado.
+    //   `@min`    abre a tela já RECOLHIDA (a barra do espectador no lugar do cartão) — o estado que o
+    //             pedido do Battle Royale no celular criou, e que sem isto nenhuma combinação mediria.
+    const dSuf = s.startsWith("dead:") ? s.slice(5) : "";
+    const dMin = dSuf.endsWith("@min"), dSemMin = dMin ? dSuf.slice(0, -4) : dSuf;
+    const dLivre = dSemMin.endsWith(":livre");
+    const dEstilo = (dLivre ? dSemMin.slice(0, -6) : dSemMin) || null;
     app.update(st => ({ ...st, room: "1ABC", played: true, conn: "connected", rewards: null, rewardsPending: true, screen: "dead",
       session: dEstilo ? { ...st.session, prefs: { ...st.session.prefs, deadStyle: dEstilo } } : st.session,
       // os campos novos da foto da partida: quem matou tem SLOT e SKIN (o `bySlot` vem do servidor e o
       // cliente resolve skin/nível pelo PLAYERS), e o recorde ANTERIOR viaja junto para a comparação
+      deadMin: dMin,   // só o demo escreve isto; em produção é `undefined` e o estado nasce aberto
       lastMatch: { by: "Nebulox", bySlot: 1, bySkin: 30, byLevel: 12, mySkin: 18, myLevel: 7, myName: "Você",
         byHole: false, score: 6900, maxMass: 4820, kills: 3, durationS: 372, placement: 4, players: 17,
         recMass: 7400, recScore: 5200, room: "1ABC", at: Date.now() } }));
@@ -325,6 +337,11 @@ function mostrarTela(s) {
       // `lb`/`alive` são o que o modelo "sala" da tela de morte desenha (quem está na frente AGORA, do
       // placar de 2 Hz). Sem eles aquele bloco não existe no DOM e a sonda passaria por cima dele.
       g.hudStore.update(h => ({ ...h, dead: true, map: false, room: "1ABC", spec: { slot: 1, name: "Nebulox", vivos: 12 }, alive: 12,
+        // ⚠️ SEMEADO, nunca herdado: ver a nota dos sufixos acima. E `deadAt`/`armAt` fazem o contador de
+        // respawn do Livre existir — sem eles `prazoDe` devolve 0, a dica de "mexa para renascer" toma o
+        // lugar do contador e a sonda mede um rodapé que a partida real não tem.
+        mode: dLivre ? MODE.FREE : MODE.BR,
+        deadAt: performance.now(), armAt: dLivre ? performance.now() : 0,
         lb: [{ slot: 1, name: "Nebulox", mass: 12400, level: 12, rank: 1 }, { slot: 3, name: "Você", mass: 4820, level: 7, rank: 2, me: true },
           { slot: 5, name: "Drakonis", mass: 3100, level: 4, rank: 3 }, { slot: 7, name: "Cosmara", mass: 2400, level: 9, rank: 4 },
           { slot: 9, name: "Stellara", mass: 1800, level: 2, rank: 5 }],
@@ -360,8 +377,13 @@ export async function loadRooms() {
 }
 export async function loadSkins() {
   try { const r = await api.skins(); if (!r) return;
-    app.update(s => ({ ...s, session: { ...s.session, skins: r.owned && r.owned.length ? r.owned : s.session.skins, adWatched: r.adWatched !== undefined ? r.adWatched : s.session.adWatched,
-      user: s.session.user && r.equipped != null ? { ...s.session.user, equippedSkin: r.equipped } : s.session.user } })); }
+    // ⚠️ O CATÁLOGO DO BANCO deixou de ser descartado. Ele traz as skins criadas no /admin (que esta build
+    // não conhece) e o `art_hash` das que têm arte — inclusive as de CÓDIGO, e é por aí que as caricaturas
+    // passam a vir do Postgres em vez do zip. `setSkinArt` alimenta o carregador de textura; `registerSkins`
+    // acrescenta as de banco ao MESMO array `SKINS` que os 16 consumidores de `skinById` já seguram, então
+    // loja, render e prévia as enxergam sem uma linha de mudança.
+    if (r.db) { registerSkins(r.db); setSkinArt(r.db); }
+    app.update(s => ({ ...s, session: { ...s.session, skins: r.owned && r.owned.length ? r.owned : s.session.skins, adWatched: r.adWatched || s.session.adWatched, user: s.session.user ? { ...s.session.user, equippedSkin: r.equipped != null ? r.equipped : s.session.user.equippedSkin } : s.session.user } })); }
   catch { /* opcional */ }
 }
 export async function loadHistory(limit = 20) {
@@ -486,14 +508,42 @@ export async function buySkin(id) {
  * Assiste um anúncio recompensado (Poki `rewardedBreak`) para DESTRAVAR a compra de uma skin mascote —
  * cada mascote pede o PRÓPRIO anúncio, e assistir não dá mais a skin de graça: `buySkin` continua sendo
  * quem cobra as moedas e concede a posse, depois disto.
- * ⚠️ Só existe com `portal.ativo`: sem adaptador de anúncio não há o que assistir, e o `SkinModal`
+ * ⚠️ Só existe com `portal.temRecompensa`: ter adaptador NÃO é ter recompensa — só a Poki implementa
+ * `recompensa()`, e nos outros seis o botão caía num `return false` mudo. Sem ele não há o que assistir, e o `SkinModal`
  * já não oferece este estado fora dele — esta função é o braço, `Shop.jsx` decide quando mostrar o botão.
  */
+/**
+ * O ANÚNCIO DA TELA DE MORTE: assistiu, GANHOU a skin (e já equipada).
+ *
+ * ⚠️ NÃO reusa `watchMascotAd`, e não é duplicação: as regras são opostas de propósito e as POOLS são
+ * disjuntas. As três mascotes seguem o que a migração 0012 estabeleceu ao derrubar a 0011 — o anúncio
+ * DESTRAVA a compra, as moedas continuam obrigatórias; `AD_GIFT_SKINS` é dado. Um caminho só com um `if`
+ * dentro seria a mesma coisa com mais chance de alguém trocar as duas.
+ * ⚠️ E o carimbo de anúncio é do PORTAL (`portal.recompensa`), que já registra o `ultimoAd` — sem isso o
+ * jogador levaria o rewarded aqui e um midroll no clique seguinte em DE NOVO.
+ */
+export async function ganharSkinAnuncio(id) {
+  const s = app.get().session; if (!s.user) return;
+  if ((s.skins || []).includes(id)) return equipSkin(id);
+  if (!portal.temRecompensa) { toast(getLabels().adUnavailable); return; }
+  let assistiu = false;
+  try { assistiu = await portal.recompensa(); } catch { assistiu = false; }
+  if (!assistiu) { toast(getLabels().adSkipped); return; }
+  try {
+    const r = await api.adGift(id);
+    app.update(st => ({ ...st, session: { ...st.session,
+      skins: (r && r.skins) || [...(st.session.skins || []), id],
+      user: st.session.user ? { ...st.session.user, equippedSkin: (r && r.equippedSkin) != null ? r.equippedSkin : id } : st.session.user } }));
+    sfx("buy");
+    toast(getLabels().prizeGot, 2600);
+  } catch (e) { toast(errText(e), 2500); }
+}
+
 export async function watchMascotAd(id) {
   const s = app.get().session; if (!s.user) return;
   if (s.skins.includes(id)) return equipSkin(id);
   if (s.adWatched && s.adWatched.includes(id)) return;
-  if (!portal.ativo) { toast(getLabels().adUnavailable); return; }
+  if (!portal.temRecompensa) { toast(getLabels().adUnavailable); return; }
   let assistiu = false;
   try { assistiu = await portal.recompensa(); } catch { assistiu = false; }
   if (!assistiu) { toast(getLabels().adSkipped); return; }
@@ -517,6 +567,13 @@ export const focaNome = () => setTimeout(() => { const el = document.getElementB
  * ⚠️ `leaveGame` e não `go` quando já se está em partida: o respawn é chamado com a conexão VIVA, e
  * trocar de tela sem derrubá-la deixaria um socket de jogo pendurado atrás do menu.
  */
+/**
+ * O JOGAR entra direto na partida NESTA plataforma? A lista vem do /admin por `/api/config`
+ * (`ENTRY.DIRETO`); enquanto ela não chegou vale o comportamento de BUILD, que é o de hoje.
+ * ⚠️ É lido DENTRO do clique, nunca renderizado — por isso não pisca quando a lista chega depois.
+ */
+export const entraDireto = () => entraDiretoEm((app.get().config || {}).entraDireto);
+
 export function semNome(pedido = null) {
   // ⚠️ SÓ NA CRAZYGAMES A GUARDA NÃO VALE, e não é descuido: só ela exige, por escrito, que o jogador
   // novo caia direto no jogo ("new users should land in gameplay immediately", no máximo 1 clique). Ali
@@ -524,9 +581,9 @@ export function semNome(pedido = null) {
   // na tela inicial. A placa sorteada vira o nome de estreia (é o que todo .io faz) e o campo continua
   // ali, na mesma tela, para quem quiser trocar antes ou depois de jogar.
   // ⚠️ Isto já foi `if (PORTAL)`, generalizando a exigência da CrazyGames para TODOS os portais — e
-  // ninguém mais tem essa exigência escrita (ver ENTRA_DIRETO em portal/flags.js). Era isso que deixava
+  // ninguém mais tem essa exigência escrita (ver `entraDiretoEm` em portal/flags.js). Era isso que deixava
   // qualquer portal (a Poki incluída) entrar direto com `Viajante-NNNN` sem nunca pedir um nome.
-  if (ENTRA_DIRETO) return false;
+  if (entraDireto()) return false;
   const st = app.get(), u = st.session.user || {};
   if (st.nomeado || !nickSorteado(u.nick)) return false;
   app.update({ pendingPlay: pedido });
@@ -821,13 +878,28 @@ export function onRewards(r) {
         level: r.xp ? r.xp.level : 0, gained: r.xp ? r.xp.gained : 0,
         into: r.xp ? r.xp.into : 0, need: r.xp ? r.xp.need : 1, pct: r.xp ? r.xp.pct : 0,
         achievements: novas, proximaSkin, n: ++levelUpN };
-      // ⚠️ NA TELA DE FIM DE RODADA ELE ESPERA. A ordem `roundEnd` → `rewards` é ESTRUTURAL, não corrida:
-      // o primeiro sai dentro do `step()` do servidor e o segundo passa por fila + transação no Postgres.
-      // São ~200-800 ms, ou seja o cartão nascia no meio dos 2 s de abertura e ainda comia o clique de
-      // "pular" (ele é `pointer-events:auto` e o `RoundIntro` fecha em qualquer pointerdown).
+      // ── ONDE O CARTÃO PODE APARECER, NUM PREDICADO SÓ ────────────────────────────────────────────
+      // Duas decisões diferentes moram nesta condicional, e elas TÊM que ficar juntas: escritas em dois
+      // lugares, quem mexesse depois apagaria a outra em silêncio — e esta linha não tem um único teste.
+      //
+      // (1) NO BIG CRUNCH ELE NÃO APARECE. O pódio é o resultado da SALA, e o cartão de XP é `inset:0`
+      //     com `z-index:40`: ele cobre a tela inteira por 6,5 s justo quando o jogador quer ler quem
+      //     ganhou. O XP não se perde — ele já foi creditado na transação de `finishMatch`, e o Perfil o
+      //     mostra. Antes o cartão ESPERAVA a abertura terminar (`levelUpFila` + `soltaLevelUp`); agora
+      //     ele simplesmente não é publicado ali.
+      //     ⚠️ DÍVIDA DECLARADA: com isto `levelUpFila`, `app.roundPronto` e `soltaLevelUp()` ficam
+      //     WRITE-ONLY — a fila nunca mais enche, e `roundPronto` era lido só aqui (o `setPronto` de
+      //     ui/Round.jsx:149 é estado LOCAL do componente, não este campo). Ficam de propósito: drenar
+      //     uma fila vazia é no-op, e arrancar as chamadas de Round.jsx:149/:199 é risco de mexer na
+      //     ordem da abertura por zero ganho. Some numa varredura à parte, não aqui.
+      // (2) NA TELA DE MORTE COM SKIN DESTRAVADA ele também não aparece, porque o BLOCO DE PRÊMIO
+      //     (ui/DeadPrize.jsx) desenha a mesma conquista no cartão de morte, e o `.lvup-wrap` cairia por
+      //     cima dele — engolindo o primeiro clique do jogador. É o mesmo argumento que tirou a faixa do
+      //     campeão do modelo `podio`: a mesma coisa duas vezes na mesma tela.
       const st = app.get();
-      if (st.screen === "round" && !st.roundPronto) levelUpFila = cartao;
-      else app.update({ levelUp: cartao });
+      const noPodio = st.screen === "round";
+      const premioNaMorte = naMorte && r.skinsUnlocked && r.skinsUnlocked.length > 0;
+      if (!noPodio && !premioNaMorte) app.update({ levelUp: cartao });
     }
   }
   if (api.online === false && app.get().lastMatch) {

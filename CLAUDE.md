@@ -24,6 +24,8 @@ node scripts/loadtest.mjs --n 150 --dur 90    # N clientes DE VERDADE (guest →
 #   cache próprio, senão ele reusa os tokens de PRODUÇÃO e todo join volta 4401.
 node scripts/prof-room.mjs --bots 15 --humanos 10   # onde vai o tempo de UMA sala (cérebro · World.step · _consume)
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
+DATABASE_URL=... node scripts/skin-art.mjs [--dry]   # sobe a arte de client/public/faces/ para o banco (uma vez por ambiente)
+node scripts/responsive-check.mjs [url]   # a matriz de layout (17 aparelhos × 3 temas × 20 telas, 7 critérios)
 node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|gamepix|all  # o .zip do cliente para os portais (docs/spec/portais.md)
 ./scripts/build-push.sh      # builda (contexto = raiz, -f server/Dockerfile / client/Dockerfile) e publica evandromoura/warspace-io-{server,client}
 ./scripts/deploy.sh          # aplica k8s/ + Ingress em warspace.io (WARSPACE_HOST=... troca o host, NO_INGRESS=1 pula)
@@ -3352,6 +3354,206 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `X-Forwarded-For` pelo `remote_addr`, então o cliente não forja o próprio IP (foi tentado e medido).
   Ligar aquilo lá e este aqui ao mesmo tempo devolveria a forja a qualquer um. O teste de
   `persist.test.js` cobre as duas metades.
+
+- **A AÇÃO DA TELA NÃO ROLA, E O CRITÉRIO QUE PROVA ISSO É NOVO** (`.dead-foot` em `ui.css`, critério 7 de
+  `scripts/responsive-check.mjs`, `body[data-h]` em `useViewportMode.js`): a queixa era "no frame da Poki
+  os botões não aparecem", e a causa NÃO era falta de rolagem — as três telas rolam. É a AÇÃO que rolava
+  junto com o conteúdo, e os dois critérios da matriz que deviam pegar isso são estruturalmente cegos a
+  ele: o de "clipado" PARA no primeiro ancestral rolável (que é o próprio cartão de morte) e o de "a caixa
+  cabe" só vale quando NÃO há como rolar. A matriz voltava zero problemas com o RENASCER 184 px fora da
+  vista. Medido depois de o critério 7 nascer: **24 de 34 combinações reprovavam**, e não só no frame de
+  portal — iPhone SE, Galaxy S8 e até o iPad mini (5 px).
+  ⚠️ **O conserto é UM só para as duas telas, mas o LUGAR muda porque o scrollport muda**: em `#s-dead`
+  quem rola é o CARTÃO (os três temas lhe dão `overflow:auto`), em `#s-round` é a TELA. É exatamente a
+  distinção que o revert de `ui.css:2102` descobriu ao contrário — sticky dentro de um cartão alto que não
+  rola pousa por cima do próprio conteúdo. Por isso o `.dead-foot` é sempre o ÚLTIMO FILHO DE QUEM ROLA.
+  ⚠️ **`min-height:min(420px,100%)` era o defeito de raiz da barra de navegação**, e ele é pré-existente:
+  numa janela de 375 px o `100%` dá um piso de 375 px numa caixa que começa em `top:var(--screen-top)`.
+  Medido no iPhone SE deitado: caixa de 15 a 390 numa janela de 375, com a `nav` (que é `sticky;bottom:0`
+  dentro dela) parando **10 px FORA da tela**, em TODAS as telas com barra. O `min-height` vencia o
+  `max-height` da regra de cima, que já fazia a conta certa. Hoje é
+  `min(420px,calc(100% - var(--screen-top)*2))` — a mesma conta das duas pontas, escrita uma vez.
+  ⚠️ **`ui.css:674` (o teto de 64% da folha de morte) era CÓDIGO MORTO**: sem `[data-style]` ele vale
+  (1,2,1) e EMPATA com `:where(html[data-theme=…]) body[data-mode="portrait"] #s-dead .dead-card` dos três
+  temas — e empate perde por ORDEM, porque `ui.css` é importado ANTES deles. Quem valia era o `max-height:90%`
+  do tema, e é por isso que a folha tapava a partida inteira no celular apesar de o número existir aqui.
+  O `[data-style]`, que `Dead.jsx` sempre escreve, leva o seletor a (1,3,1) e o faz existir.
+  ⚠️ **`body[data-h="short"]` é a TERCEIRA dimensão** (`ehBaixa`, limiar 640 com a mesma histerese do resto):
+  `data-mode` diz a FORMA e `data-pointer` a ENTRADA, e nenhum dos dois responde "cabe?" — 960×540 e
+  1920×1080 são o MESMO `data-mode`. `@media` está fora pela regra da casa e porque o CDP da sonda fixa
+  atributo, não media query. Ele acende também no celular DEITADO, e isso é correto: quem precisar do caso
+  combinado escreve `[data-h][data-mode]`, que ganha por especificidade.
+  ⚠️ **`#s-dead` é `pointer-events:none`** com `auto` no cartão e na barra: `.screen` é `absolute;inset:0`
+  sem `pointer-events:none` (base.css) e o cartão é transparente nos três temas — ele já engolia HOJE todo
+  clique destinado ao chat e ao radar de quem está assistindo.
+- **A TELA DE MORTE RECOLHE PARA UMA BARRA** (`ui/SpecBar.jsx`, `body[data-dead="min"]`): no Battle Royale
+  do celular o cartão tapava a partida inteira — e o jogo promete o contrário na própria tela
+  (`LB.brWatchHint`). O botão existe em TODOS os modos e formas de tela: um controle que só aparece em
+  algumas é uma segunda lista para manter em dia, e no frame de portal de 540 px o desktop precisa dele
+  tanto quanto. Recolhido no desktop, `--rail-w:0` devolve a largura ao jogo (o ResizeObserver refaz câmera,
+  zoom, AOI e `{t:"view"}` sozinho).
+  ⚠️ A barra é **EXTRAÍDA**, não copiada: `Dead.jsx` e `Spectate.jsx` já eram o mesmo código duas vezes — o
+  mesmo throttle de 200 ms, o mesmo par de setas e o mesmo listener de teclado com as MESMAS duas guardas
+  (`e.repeat`, que evitava derrubar a conexão pelo balde de JSON, e a de campo de texto). Uma terceira
+  cópia divergiria na primeira correção.
+  ⚠️ O estado é `useState` LOCAL e não pref: pref viaja com a CONTA (a lição de `lbShow`) e a decisão é por
+  MORTE. O reset é por `on`, nunca por `h.deadAt` — aquele par chega com throttle e no primeiro render é o
+  da morte ANTERIOR.
+- **O REPERTÓRIO FIXO DOS BOTS SAIU DE `constants.js`** (`server/src/rooms/botFrases.js`, três línguas):
+  a queixa era "está soltando frases em português mesmo configurado em inglês", e o prompt já era 100%
+  inglês — `BOT_LLM.IDIOMA` já funcionava. O que vazava era tudo o que **não passa pelo modelo**: o
+  repertório fixo, que é o CHÃO e sai sempre que a LLM cai (disjuntor, teto de gerações, fila cheia — e
+  ela cai muito mais do que se imagina), e os 12 **bordões** das personas, que entram LITERAIS no SYSTEM:
+  com o idioma travado em inglês o prompt mandava, na mesma frase, escrever em inglês e terminar com
+  "anota ai". O modelo obedecia aos dois.
+  ⚠️ **UMA função decide a língua dos dois caminhos** (`idiomaDaFala`): dois caminhos decidindo isso
+  separadamente é como se produz um bot que responde ao mesmo "hey bro" em inglês com a LLM de pé e em
+  português quando ela cai. Em `auto` a ordem é a mesma de `montaPrompt` (mensagem dirigida → chat recente
+  → pt-BR), e **só linha de HUMANO entra na detecção da sala**: o bot lendo a própria fala trava a sala na
+  língua do chão para sempre.
+  ⚠️ Os bordões foram TRADUZIDOS, não desligados: sem a risada a persona `zoeiro` e sem o "ok" a `mudo`
+  deixam de ser personagens, e a persona é a única coisa que separa um preenchimento de outro na fala.
+  ⚠️ O bloco de IDIOMA (`MARCAS`, `detectaIdioma`, `IDIOMA_NOME`, `idiomaFixo`) mudou de casa junto, para
+  `botFrases.js`, e `botChat.js` o RE-EXPORTA: sem isso os dois módulos se importariam em ciclo.
+- **O MÍSSIL MIRADO VAI NA PEÇA MIRADA** (`Body.targetPc`, `chasePiece` em `rules.js`): `aimTarget` VARRE
+  peças mas gravava só `p.owner`, e `homeMissile`/`clusterSplit`/`aimLockAlive` resolviam com
+  `firstLive(t.pieces)` — a PRIMEIRA peça viva por ordem de criação. Contra um jogador dividido em 8 o
+  míssil ia atrás de outra bolinha, possivelmente do outro lado do mapa, enquanto o anel do cliente estava
+  desenhado na peça certa (`lockOn` sempre soube qual era). **Só o servidor estava errado.**
+  ⚠️ **`PROTOCOL_VERSION` fica em 15**: o pino é estado de servidor, como `aimLockId` e `weaponPin`, e o
+  `e.target` do fio continua sendo o SLOT. Nada aditivo, nada reinterpretado.
+  ⚠️ Alvo perdido: sem pino → `firstLive`, byte a byte o de sempre (é o que torna a mudança um NO-OP para o
+  clique rápido, a auto-defesa, a interceptação e o bot); pino vivo → a peça mirada; pino morto → RE-FIXA na
+  peça viva mais próxima do mesmo dono (na fusão a sobrevivente está encostada, então não há salto).
+  ⚠️ **A guarda `!t.alive` não é decoração**: `World.removePlayer` faz `players.delete(slot)` enquanto os
+  mísseis lançados continuam vivos — sem ela um quit banal derruba o tick da sala.
+  ⚠️ **`incomingMissile` precisou entrar na mesma entrega**: os três chamadores passam `firstLive(pieces)`
+  como referência, então um míssil mirado numa peça distante seria medido contra a peça errada e o alerta
+  `self.threat`, a interceptação, a auto-defesa e o medo do bot ficariam cegos JUSTAMENTE para o tiro que
+  esta mudança passou a mirar melhor. E o teste que "provaria" que não: com um alvo de UMA peça só,
+  `firstLive` É a peça mirada e ele passa por construção, antes e depois — não prova nada.
+- **O KIT DE BOAS-VINDAS** (`POWERUP.SPAWN_MAGNET_TICKS`/`SPAWN_FEAST_TICKS`, `_spawnPiece`): "o dobro do
+  ímã" é o dobro da DURAÇÃO — o nascimento só entrega tempo, e o comentário antigo que falava em "1 carga"
+  estava errado desde sempre. 420 → 840 ticks, mais o banquete por 600. Constantes PRÓPRIAS e não
+  `TICKS*2`, no precedente de `PLAYER.SPAWN_R` × `START_R`: separar "o valor da mecânica" do "valor com que
+  se nasce" é o que torna o segundo ajustável sem mexer no primeiro.
+  ⚠️ **`Room.largar()` re-carimba os DOIS**: durante os `BR.CAGE_TICKS` de gaiola a fase 7 inteira sai sob
+  `peace`, então nem atrair nem dobrar comida é possível e o kit queimaria sozinho antes da largada.
+  ⚠️ **Custo de tick medido, com a bancada limpa: 0,557 → 0,671 ms** (+20%, teto 1,5). Com um Chrome
+  headless rodando junto o mesmo teste dá 1,03 e depois 1,64 — a contaminação quase triplica, e é ela que
+  leva a afrouxar um teto que não precisava ser afrouxado.
+  ⚠️ **Dois testes quebraram e nenhum era o esperado**: `physics.test.js` media a referência de comida
+  ANTES do banquete (a linha `normal` já saía dobrada, porque `addPlayer` passa por `_spawnPiece`), e
+  `bot.test.js` tinha uma asserção presa a UMA semente — a cusparada de equipe é rara e situacional, e
+  qualquer mudança de física desloca o stream do rng. Varrer sementes mantém o que o teste afirma.
+- **SKIN COM ARTE VINDA DO BANCO** (migração 0014, `skin_art`, `SKIN_ART` em constants): as 35 caricaturas
+  saíram da build e passaram a ser servidas do Postgres, e o /admin ganhou uma tela para criar skin nova
+  sem tocar no código.
+  ⚠️ **`skinId` É u8 NO FIO** (`encodePlayers` faz `.u8(p.skinId)` e `Sim.js` mascara com `&255`): o
+  catálogo de código para em 127, então a faixa de banco é **128-255 e são 128 vagas, para sempre**. Um
+  `ID_MIN=1000` faria a skin 1024 chegar ao cliente como 0 (Planeta Padrão) e a 1075 como 51 — colidindo
+  com uma skin de código, em silêncio, para o dono e para a sala inteira. Há teste travando que nenhuma
+  skin de CÓDIGO invada a faixa. Subir para u16 é inserção no MEIO do registro: sobe o `PROTOCOL_MIN` e
+  derruba todo zip de portal congelado — é para uma janela em que os pacotes sejam reenviados de qualquer
+  jeito.
+  ⚠️ **`seedSkins` ganhou `AND source='code'`**, e essa linha é o que torna o painel possível: sem ela o
+  primeiro pod a bootar DESATIVA toda skin criada no /admin (ela não está no bundle, por definição) e a
+  compra passa a dar 404 sem uma linha de log. A faca de sempre continua valendo para as de código.
+  ⚠️ **A arte NÃO viaja em base64**, e isso cumpre melhor o "carregado somente 1 vez" do pedido: base64 num
+  JSON é 1,33× o tamanho, não é cacheável por item e obrigaria TODO jogador a baixar a arte de TODAS as
+  skins em todo boot. Com bytes por URL carimbada com o hash + `immutable` de um ano, o navegador nem
+  refaz a requisição. O molde inteiro é o avatar (0005), inclusive `nosniff` + CSP `default-src 'none'` —
+  é a RESPOSTA, e não o validador, que fecha o buraco do arquivo disfarçado.
+  ⚠️ **`paintPattern` decide ANTES do switch.** O despacho é por `sk.pattern`, então uma skin com arte no
+  banco cairia no case do padrão PROCEDURAL dela (uma lendária continuaria desenhando a coroa) ou, sendo
+  `plain`, no `return false` que leva ao emoji fantasma. Marcar a arte fora do `pattern` e esperar que
+  `faceFile` resolvesse não funciona: aquele governa o DOWNLOAD e a CHAVE do cache, nunca o desenho.
+  Sem o bitmap ele CAI no pattern de sempre — o degrade certo, e não um flash de disco liso.
+  ⚠️ **A CHAVE do cache carrega o HASH** (`#84:abc123`): arte trocada no painel = chave nova = textura
+  reassada no frame seguinte, sem F5 e sem `drop(key)`, que o TextureCache não tem.
+  ⚠️ **A prévia do painel tem rota PRÓPRIA**: a pública exige `active`, e o fluxo prescrito é "sobe a arte →
+  confere → ativa" — com uma rota só, a janela em que o admin precisa da prévia é exatamente a janela em
+  que ela responde 404.
+  ⚠️ **A rota de arte precisa de `rate` próprio**: sem ele ela cai no balde compartilhado de 60/min por IP
+  (a chave `ip:*:<ip>`), que divide com `/api/config`, `/api/rooms` e `/api/ranking` — e `warmFaces`
+  dispara um GET por skin distinta da sala, até 50 num Battle Royale.
+  ⚠️ **As caricaturas VOLTAM a aparecer nos portais** (o `!PORTAL` de `faceFile` saiu), por decisão do dono
+  do jogo. É o conteúdo que a CrazyGames reprovou ("IP sem direitos de posse", "uso explícito de política")
+  e que a GameMonetize chamou de "AI-generated"; onze das 35 são políticos. O que o código faz é deixar a
+  decisão REVERSÍVEL sem deploy. Os arquivos de `client/public/faces/` ficam como reserva até a migração
+  provar em produção, e saem num commit seguinte.
+- **QUATRO PARÂMETROS DE TELA NO /admin** (`FEED.SHOW`, `BR.INVITE_MUTE`, e o painel do BR e o XP sem
+  interruptor): o kill feed nasce ESCONDIDO e o admin o religa; o botão "Silenciar" do convite de BR pode
+  sumir. Os dois são `bool` de escopo **'wire'** — o feed e o card só existem DENTRO de uma sala, e o JSON
+  `room` chega antes de qualquer snapshot (o molde `entryPanels` existe porque a tela de Modos é decidida
+  ANTES de haver sala; não é o caso aqui).
+  ⚠️ **`aplicaWire` DESCARTAVA `type:'bool'` EM SILÊNCIO** (`Number(true)` é 1 contra `min`/`max`
+  indefinidos): o defeito estava dormente porque nenhum tunable `wire` era booleano, e estes dois caem
+  exatamente nele. Há teste travando que nenhum tipo entre em `wire` sem passar por `aplicaWire` — ele
+  falha com a mensagem certa quando o ramo é removido.
+  ⚠️ **O feed continua visível para quem está ASSISTINDO** e para o ADMIN dentro da partida: `ui.css:505`
+  deixa o feed ser a única coisa que sobra na coluna direita do morto, e escondê-lo esvaziaria a tela que o
+  recolher acabou de criar.
+  ⚠️ **`--brh` TEM que ser fiel à altura real do painel do BR**: chat, coluna direita e radar penduram
+  offsets nele. Declarado baixo demais (56 contra uma altura real de ~61), os três SOBEM e passam a colidir
+  com o próprio painel — a matriz pegou isso na primeira tentativa, com três colisões novas em `dead:duelo`.
+  ⚠️ **A pref `brInvite` volta ao padrão APAGANDO a chave** (migração 0013), nunca gravando `true`: o padrão
+  mora num lugar só (`PREF_DEFAULTS`) e `normalizePrefs` trata ausência como padrão. Gravar criaria uma
+  segunda verdade que sobrevive à próxima mudança de padrão.
+- **O PRÊMIO DA TELA DE MORTE** (`ui/premio.js`, `ui/DeadPrize.jsx`, `AD_GIFT_SKINS`): três mecânicas num
+  bloco só, com prioridade "skin destravada > oferta de anúncio > nada" — empilhar três blocos numa tela
+  que estava com os botões fora da dobra seria desfazer um pedido para entregar outro.
+  ⚠️ **`skinsUnlocked` já chegava ao cliente e NENHUM componente o lia** — ele só engordava `sess.skins` em
+  silêncio. Metade da máquina já existia.
+  ⚠️ **`skinsForAchievements([...owned,...fresh])`, e não só `fresh`**: `achievements.unlock` devolve apenas
+  as chaves realmente inseridas, então uma skin amarrada a uma conquista que a conta JÁ TINHA nunca era
+  concedida. Uma linha, auto-corretiva (o `grantMany` devolve só o que inseriu).
+  ⚠️ **Os tiers escolhidos são os ALCANÇÁVEIS**: `survive.d` (30 min numa vida) e `top1.g` (25 min em 1º)
+  são inatingíveis numa rodada do Livre de 30 min — para o primeiro seria preciso entrar no tick 0 E
+  sobreviver a rodada inteira, e o automático manda o jogador para a sala mais CHEIA com vaga.
+  ⚠️ **DUAS regras de anúncio, e elas convivem porque as POOLS são disjuntas**: as três mascotes seguem o
+  que a migração 0012 estabeleceu ao derrubar a 0011 — o anúncio DESTRAVA a compra, as moedas continuam;
+  `AD_GIFT_SKINS` (raras de 600-900, ids que já existem) é DADA. Misturar as duas nas mesmas skins faria a
+  Loja mentir, que foi exatamente o motivo de a 0011 cair. Há teste travando a disjunção.
+  ⚠️ **`portal.temRecompensa` NÃO é `portal.ativo`**, e a diferença estava custando um botão morto: só a
+  Poki implementa `recompensa()`, e nos outros seis portais o botão da Loja aparecia e o clique caía num
+  `return false` silencioso. Os TRÊS pontos que liam `ativo` passaram a ler o novo.
+  ⚠️ **O cartão de XP e o bloco de prêmio disputam a mesma tela**, e a condicional virou UM predicado: o
+  `.lvup-wrap` é `inset:0;z-index:40` por 6,5 s e engoliria o primeiro clique. Ele também não aparece mais
+  no BIG CRUNCH — ali ele cobre o resultado da sala.
+- **ENTRA_DIRETO É MÚLTIPLA ESCOLHA DO /admin** (`ENTRY.DIRETO`, `PLATAFORMAS`, `entraDiretoEm`): deixou de
+  ser a constante de build `PORTAL`. O tipo `multi` é o quarto do painel, com valor CANÔNICO em CSV —
+  ordenado pela lista declarada, sem repetição. CSV e não array porque com string o `admin_settings.value`
+  continua sendo a forma do `opt`, o memo `aplicados.get(key)===v` casa por VALOR (com array ele nunca
+  casa e os 12-24 pods reaplicam e logam a cada 30 s) e a auditoria continua legível.
+  ⚠️ **QUEM FILTRA É O CLIENTE**, e são três razões: `users.origin` é gravado UMA vez, no primeiro guest
+  (quem criou a conta no site e depois joga na Poki carrega `warspace.io` para sempre); ele é um DOMÍNIO,
+  não um id de portal; e vários portais servem de subdomínio POR JOGO. Quem sabe a plataforma é o
+  `PORTAL_ID`, que é constante de BUILD — então a LISTA vem por `/api/config` e a comparação acontece lá.
+  ⚠️ **Sem a lista, vale o comportamento de BUILD.** `/api/config` é disparado sem `await` no boot e o
+  clique pode vir antes; não pisca porque o valor é lido DENTRO do clique, nunca renderizado.
+  ⚠️ **A dependência não codificada continua**: isto só funciona com `ENTRY.NICK_AUTO` ligado — sem ele
+  todo mundo entra como "Viajante-NNNN", que foi o argumento que segurou a generalização por meses.
+- **A COROA DO MAIOR DO MAPA** (`paintCrown`, `proximoLider` em `WorldView.js`): molde exato do ícone de
+  push-to-talk — sprite de tamanho CONSTANTE EM TELA na maior peça do líder, apoiado no aro. O líder sai do
+  LEADERBOARD que já chega a 2 Hz com todos os vivos: **zero byte de protocolo**.
+  ⚠️ **Histerese de 2%**: dois gigantes dentro da precisão um do outro trocam de topo a cada amostra, e sem
+  folga a coroa piscaria meia vez por segundo — justo no duelo em que os dois estão na tela. O preço,
+  declarado: ela pode discordar do "1º" do HUD por até 2% e por uma amostra.
+  ⚠️ **Ela aparece no PRÓPRIO planeta** quando eu sou o líder: é a única coisa na tela que me diz o que
+  todo mundo está vendo sobre mim — que eu sou o alvo. E não obedece ao modo econômico nem a
+  `reduceMotion`: não anima, custa um sprite, e esconder quem está ganhando num aparelho fraco é amarrar
+  informação de jogo ao hardware.
+  ⚠️ **TRÊS pontas, e não as cinco da skin `crown`**: aquela é desenhada num disco de 128-512 px; esta vive
+  a ~26 px de tela, e a 5 px por dente cinco pontas viram serrilha.
+- **O NOME DO PLANETA FICOU MAIOR** (`size` .26 → .30, `nameFill` .68 → .82, `strokeWidth` .11 → .13,
+  `NAME_MIN_PX` 10 → 11, nos TRÊS temas): o calibre está no próprio arquivo — a fonte avança ~.55 em por
+  caractere, então `nameFitK` só morde acima de 3.345/m letras (12,9 com .26, 11,2 com .30), e o aumento
+  chega inteiro a todo nick de até 11 letras. A translucidez do miolo existia para a arte da CARICATURA
+  aparecer por dentro da letra — e skin com rosto não desenha nome desde o `!fc` de `Planets.js`.
+  ⚠️ **O ATLAS TEVE que mudar de nome** (`pn3-` → `pn4-`): `nameFill` e `strokeWidth` são assados DENTRO do
+  BitmapFont e a instalação é pulada por `Cache.has`. Em produção a página é nova e o atlas seria regerado
+  de qualquer jeito — quem paga é o DEV, com o HMR devolvendo o atlas velho e a mudança "não funcionando".
 
 ## Convenções
 

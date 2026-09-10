@@ -8,12 +8,15 @@
 // ⚠️ `/api/admin/login` devolve o MESMO 401 para senha errada e para conta não-admin, sempre pagando o
 // `dummyHash()`: senão a rota vira um oráculo de quem é administrador.
 // @ts-check
-import {err} from './router.js';
+import {err,RAW} from './router.js';
 import {verifyPassword,dummyHash} from '../auth/password.js';
 import {normalizeNick,normalizeLogin,loginTaken} from '../auth/nick.js';
 import {cleanCountry} from '@warspace/shared/countries.js';
 import {listTunables,applyTunable,resetTunable,TUNABLE_BY_KEY,GRUPOS} from '@warspace/shared/tunables.js';
 import {LIMITS} from '../auth/ratelimit.js';
+import {probeImage} from './imagemeta.js';
+import {createHash} from 'node:crypto';
+import {SKIN_ART,RARITY_ORDER} from '@warspace/shared/skins.js';
 import {ORDEM_USERS} from '../repos/users.js';
 import {ORDEM_AUDIT} from '../repos/audit.js';
 import {JANELAS,JANELA_PADRAO,janelaDeDias} from '../repos/analytics.js';
@@ -44,7 +47,7 @@ function ordem(ctx,lista){
 const proxima=(more,by,offset,rows)=>!more?null
   :by==='id'&&!offset?{before:rows.length?rows[rows.length-1].id:null}:{offset:offset+rows.length};
 
-export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,audit,tunables,analytics,requireUser}){
+export function mountAdmin(router,{db,log,config,users,tokens,ledger,skins,settings,audit,tunables,analytics,requireUser}){
   /** As DUAS condições. Um 403 genérico de propósito: não distingue "não é admin" de "token de jogo". */
   const requireAdmin=async ctx=>{const u=await requireUser(ctx);
     if(!u.is_admin||u.token_kind!=='admin')throw err(403,'forbidden','acesso restrito');return u;};
@@ -166,6 +169,7 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
     catch(e){if(e.message!=='out_of_range')throw err(400,'unknown_key','esse parâmetro não existe');
       throw err(400,'out_of_range',t.type==='num'?`o valor tem que ficar entre ${t.min} e ${t.max}`
         :t.type==='bool'?'esse parâmetro é um interruptor: só true ou false'
+        :t.type==='multi'?`escolha zero ou mais destes, separados por vírgula: ${(t.options||[]).map(o=>o.v).join(', ')}`
         :`o valor tem que ser um destes: ${(t.options||[]).map(o=>o.v).join(', ')}`);}
     // ⚠️ Grava o valor EFETIVO (o que `applyTunable` devolveu), nunca o corpo cru: com o `Number(...)` de
     // antes, um tunable de ESCOLHA gravaria NaN no banco e a reconciliação o recusaria a cada 30 s — o
@@ -173,6 +177,83 @@ export function mountAdmin(router,{db,log,config,users,tokens,ledger,settings,au
     if(settings)await settings.set(key,{v},adm.id);
     reg('setting',adm,ctx,{target:key,detail:{value:v}});
     return{key,value:v,applied:await espalha(ctx)};},{rate:WR});
+
+  // ── SKINS DO BANCO ────────────────────────────────────────────────────────────────────────────────
+  // Duas coisas moram aqui, e é bom não confundi-las: CRIAR uma skin que não existe na build (`source:'db'`,
+  // ids 128-255) e trocar a ARTE de uma que já existe no código (o `art_hash`, que é como as 35 caricaturas
+  // saem do pacote sem mudar de id).
+  // ⚠️ EDITAR uma skin de CÓDIGO pelo painel é recusado de propósito: `seedSkins` roda no BOOT de todo pod
+  // e reescreveria nome/preço/cor a cada restart — o painel diria "salvo" e a mudança se desfaria sozinha,
+  // em silêncio. O que uma skin de código aceita daqui é só a arte.
+  router.add('GET',/^\/api\/admin\/skins$/,async ctx=>{await requireAdmin(ctx);
+    return{skins:await skins.adminList(),idMin:SKIN_ART.ID_MIN,idMax:SKIN_ART.ID_MAX,raridades:RARITY_ORDER};},{rate:RD});
+
+  router.add('PUT',/^\/api\/admin\/skins\/(?<id>\d+)$/,async ctx=>{const adm=await requireAdmin(ctx);
+    const id=Number(ctx.params.id),b=ctx.body||{};
+    // ⚠️ A FRONTEIRA DE ID É CHECADA AQUI E NO BANCO. `skinId` viaja como u8 no PLAYERS: um id fora de
+    // 128-255 colidiria com uma skin de código ou viraria o Planeta Padrão na tela de todo mundo.
+    if(!(id>=SKIN_ART.ID_MIN&&id<=SKIN_ART.ID_MAX))
+      throw err(400,'out_of_range',`skin de banco tem id entre ${SKIN_ART.ID_MIN} e ${SKIN_ART.ID_MAX}`);
+    const nome=String(b.name||'').trim();
+    if(nome.length<2||nome.length>32)throw err(400,'bad_request','o nome tem entre 2 e 32 caracteres');
+    if(b.rarity&&!RARITY_ORDER.includes(String(b.rarity)))throw err(400,'bad_request','raridade desconhecida');
+    const cor=c=>c==null?null:(/^#[0-9a-fA-F]{6}$/.test(String(c))?String(c):null);
+    if(b.color&&!cor(b.color))throw err(400,'bad_request','a cor é #rrggbb');
+    if(b.accent&&!cor(b.accent))throw err(400,'bad_request','o acento é #rrggbb');
+    const linha=await db.tx(c=>skins.upsertDb(c,{id,name:nome,rarity:String(b.rarity||'rare'),
+      price:Math.max(0,b.price|0),levelReq:Math.max(0,b.levelReq|0),color:cor(b.color)||'#4ECDC4',
+      accent:cor(b.accent),emoji:String(b.emoji||'🪐').slice(0,4),desc:String(b.desc||'').slice(0,80),
+      // ⚠️ NASCE DESLIGADA: skin ativa sem arte é um disco liso à venda na loja, e a loja cobra moedas
+      // por ela. O fluxo é subir a arte, conferir na prévia, e só então ligar.
+      active:b.active===true}));
+    if(!linha)throw err(409,'conflict','esse id já é de uma skin de CÓDIGO — o painel só edita as de banco');
+    reg('skin',adm,ctx,{target:String(id),detail:{name:nome}});
+    return{skin:linha};},{rate:WR});
+
+  router.add('POST',/^\/api\/admin\/skins\/(?<id>\d+)\/active$/,async ctx=>{const adm=await requireAdmin(ctx);
+    const id=Number(ctx.params.id),on=!!(ctx.body&&ctx.body.active);
+    const n=await db.tx(c=>skins.setActive(c,id,on));
+    // ⚠️ 409 e não 200 mudo: `setActive` só toca em `source='db'`, e um botão que responde OK sem ter
+    // mudado nada é exatamente o tipo de mentira que este painel existe para não contar.
+    if(!n)throw err(409,'conflict','só skin de banco pode ser ligada ou desligada por aqui');
+    reg('skin_active',adm,ctx,{target:String(id),detail:{active:on}});
+    return{id,active:on};},{rate:WR});
+
+  // A ARTE, em corpo CRU — o molde é POST /api/me/avatar, a única outra rota do servidor com `raw`.
+  // ⚠️ Vale para skin de CÓDIGO também, e é o ponto: é assim que uma caricatura (id 84-118) passa a ser
+  // servida do banco em vez de vir no zip.
+  // ⚠️ O tipo sai do CONTEÚDO (`probeImage`), nunca do cabeçalho — é o cliente que estaria mentindo. E é a
+  // RESPOSTA da leitura (nosniff + CSP) que fecha o buraco do políglota, não este validador.
+  router.add('POST',/^\/api\/admin\/skins\/(?<id>\d+)\/art$/,async ctx=>{const adm=await requireAdmin(ctx);
+    const id=Number(ctx.params.id),buf=ctx.raw;
+    if(!buf||!buf.length)throw err(400,'empty','nenhuma imagem recebida');
+    if(buf.length>SKIN_ART.MAX_BYTES)throw err(413,'too_big',`a arte tem que caber em ${Math.round(SKIN_ART.MAX_BYTES/1024)} KB`);
+    const meta=probeImage(buf);
+    if(!meta)throw err(415,'bad_image','só PNG ou WebP');
+    // QUADRADA: ela é desenhada dentro de um DISCO, com `drawImage(-r,-r,2r,2r)`. Uma imagem retangular
+    // seria esticada, e cada uma de um jeito — foi o que obrigou a tabela `MASC_FIT` dos mascotes.
+    if(meta.w!==meta.h)throw err(400,'not_square','a arte tem que ser quadrada');
+    if(meta.w<SKIN_ART.MIN||meta.w>SKIN_ART.SIZE)throw err(400,'bad_size',`entre ${SKIN_ART.MIN} e ${SKIN_ART.SIZE} px`);
+    const skin=await skins.byId(id).catch(()=>null);
+    if(!skin&&!(id>=SKIN_ART.ID_MIN&&id<=SKIN_ART.ID_MAX))throw err(404,'not_found','skin não encontrada');
+    const hash=createHash('sha256').update(buf).digest('hex').slice(0,32);
+    await db.tx(c=>skins.putArt(c,{skinId:id,mime:meta.mime,bytes:buf,w:meta.w,h:meta.h,hash}));
+    reg('skin_art',adm,ctx,{target:String(id),detail:{bytes:buf.length,w:meta.w}});
+    log.info(`arte de skin: #${adm.id} skin ${id} (${buf.length} B, ${meta.w}px)`);
+    return{id,art:hash,w:meta.w,h:meta.h,bytes:buf.length};
+  },{rate:WR,raw:{max:SKIN_ART.MAX_BYTES+1024}});
+
+  // A PRÉVIA DO PAINEL. ⚠️ Rota SEPARADA da pública de propósito: aquela exige `active`, e o fluxo que
+  // este painel prescreve é "sobe a arte → confere → ativa". Com uma rota só, o admin nunca veria o que
+  // acabou de subir — a janela em que ele precisa da prévia é exatamente a janela em que a skin está
+  // desligada. Sem cache: aqui a arte muda a cada upload.
+  router.add('GET',/^\/api\/admin\/skins\/(?<id>\d+)\/art$/,async ctx=>{await requireAdmin(ctx);
+    const row=await skins.artAdmin(Number(ctx.params.id));
+    if(!row)throw err(404,'not_found','sem arte');
+    ctx.res.writeHead(200,{'Content-Type':row.mime,'Content-Length':row.bytes.length,
+      'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
+      'Content-Security-Policy':"default-src 'none'",'Content-Disposition':'inline'});
+    ctx.res.end(row.bytes);return RAW;},{rate:RD});
 
   router.add('DELETE',/^\/api\/admin\/settings\/(?<key>[A-Za-z0-9_.]+)$/,async ctx=>{const adm=await requireAdmin(ctx);
     const key=ctx.params.key;if(!TUNABLE_BY_KEY.get(key))throw err(400,'unknown_key','esse parâmetro não existe');

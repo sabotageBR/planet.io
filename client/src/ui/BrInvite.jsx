@@ -7,7 +7,7 @@ import { play } from "../state/actions.js";
 import { getGame } from "../state/game.js";
 import { app } from "../state/app.js";
 import { useStore } from "../state/store.js";
-import { MODE } from "@warspace/shared";
+import { MODE, BR } from "@warspace/shared";
 import { useLabels } from "../hooks/useTheme.js";
 
 export default function BrInvite({ b }) {
@@ -40,7 +40,12 @@ export default function BrInvite({ b }) {
     <b>{LB.brInviteTitle}</b>
     <span>{LB.brInviteBody}</span>
     <div className="bi-actions">
-      <button className="bi-mudo" onClick={silencia} title={LB.brInviteMuteTip}>{LB.brInviteMute}</button>
+      {/* O BOTÃO é 'agora não, NESTA sala' (Session.brMudo, memória, morre com o socket); a pref
+          `brInvite` das Opções é 'nunca mais' (banco). `BR.INVITE_MUTE` é o interruptor do /admin
+          sobre o primeiro — e a pref continua de pé com ele desligado, senão o jogador ficaria sem
+          saída nenhuma, contra o que os portais pedem por escrito. */}
+      {BR.INVITE_MUTE ?
+      <button className="bi-mudo" onClick={silencia} title={LB.brInviteMuteTip}>{LB.brInviteMute}</button> : null}
       <button className="btn-secondary" onClick={fecha}>{LB.brInviteNo}</button>
       {/* ⚠️ SEM `autoFocus`. Ele roubava o teclado no meio de uma partida do Livre: o card sobe sozinho, sem
           ninguém ter pedido, e a partir dali um Espaço (dividir) virava "clicar em Entrar" e mandava o

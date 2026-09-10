@@ -3,7 +3,7 @@
 // ser conferida numa tabela. node --test client/test/viewport.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { modeFor, pointerFor, ehCelular } from "../src/hooks/useViewportMode.js";
+import { modeFor, pointerFor, ehCelular, ehBaixa } from "../src/hooks/useViewportMode.js";
 
 // aparelho, largura, altura, toque, modo esperado
 const TABELA = [
@@ -74,4 +74,33 @@ test("celular é o telefone nas duas formas, e o tablet não é celular", () => 
   assert.equal(ehCelular(modeFor(390, 844, true)), true, "iPhone em pé");
   assert.equal(ehCelular(modeFor(844, 390, true)), true, "iPhone deitado");
   assert.equal(ehCelular(modeFor(1180, 820, true)), false, "iPad deitado");
+});
+
+// ── ALTURA ÚTIL: a terceira dimensão ────────────────────────────────────────────────────────────────
+// Ela nasceu do frame de portal, que é um DESKTOP BAIXO: 960×540 e 1920×1080 são o MESMO `data-mode`, e é
+// no primeiro que o rodapé de ação sai da dobra. Sem um atributo próprio não havia como o CSS distingui-los
+// (e `@media` está fora: a sonda fixa atributo, não media query).
+test("ehBaixa: o frame de portal é baixo; a tela cheia não é", () => {
+  for (const [nome, h] of [["Poki laptop", 540], ["Poki desktop 16:9", 576], ["Portal 4:3", 600],
+                           ["frame baixo", 480], ["Poki celular em pé", 640]])
+    assert.equal(ehBaixa(h), true, `${nome} (${h} px) tem que acender data-h="short"`);
+  for (const [nome, h] of [["iPhone SE em pé", 667], ["Galaxy S8 em pé", 740], ["iPhone 14 em pé", 844],
+                           ["Notebook", 900], ["Desktop", 1080], ["iPad Pro em pé", 1366]])
+    assert.equal(ehBaixa(h), false, `${nome} (${h} px) NÃO é tela baixa`);
+});
+
+test("ehBaixa: o celular DEITADO também é baixo — e isso é decisão, não descuido", () => {
+  // 375 e 390 são iPhone SE/14 deitados. Eles têm o mesmo problema de altura que o frame de portal, então
+  // acendem os dois atributos. Quem precisar tratar o caso combinado escreve `[data-h][data-mode]`, que
+  // ganha por especificidade — empatar com as regras de `landscape` é que seria o defeito.
+  for (const h of [375, 390]) assert.equal(ehBaixa(h), true, `celular deitado (${h} px) é tela baixa`);
+});
+
+test("ehBaixa: tem histerese, como o resto do arquivo", () => {
+  // Sem folga, arrastar a borda da janela por cima de 640 px repintaria o layout a cada pixel — é o mesmo
+  // argumento do BAND de `modeFor`, e o mesmo número.
+  assert.equal(ehBaixa(660, false), false, "entrando: 660 não acende");
+  assert.equal(ehBaixa(660, true), true, "mas quem JÁ estava em short só sai depois da folga");
+  assert.equal(ehBaixa(681, true), false, "passou da folga (640+40), sai");
+  assert.equal(ehBaixa(640, false), true, "o limiar em si acende");
 });

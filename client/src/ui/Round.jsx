@@ -209,10 +209,16 @@ export default function Round({ on }) {
     <div><b>{left}s</b><i>{LB.nextRoom}</i></div>
     <div><b className={pending ? "pending" : ""}>{rew ? "+" + (rew.coinsEarned || 0) : pending ? LB.saving : "—"}</b><i>{LB.coinsEarned}</i></div>
   </div>;
-  const acoes = <div className="dead-actions">
+  /* ⚠️ AS AÇÕES SAEM DO CARTÃO E VIRAM O RODAPÉ DA TELA, e essa é a diferença que o revert de
+     ui.css:2102 descobriu ao contrário. O `.dead-foot` tem que ser o ÚLTIMO FILHO DE QUEM ROLA — e aqui
+     quem rola é a TELA (`#s-round.on{overflow:auto}`, ui.css:963-964), não o cartão, porque desde que o
+     resto do placar virou um cartão irmão esta tela é uma COLUNA de dois. Grudá-lo dentro do cartão
+     alto, que não rola, o faria pousar por cima do próprio conteúdo — que é exatamente o que aquele
+     revert consertou. Medido antes: o "Entrar agora" ficava 346 px abaixo da dobra no frame da Poki. */
+  const acoes = <div className="dead-foot"><div className="dead-actions">
     <button className="btn-primary" data-go="play" onClick={() => { fired.current = true; play({}); }}>{LB.enterNow}</button>
     <button className="btn-secondary" data-go="lobby" onClick={() => { fired.current = true; leaveGame("lobby"); }}>{LB.toLobby}</button>
-  </div>;
+  </div></div>;
   return <div className="screen on" id="s-round" data-style={estilo}><div className="card dead-card">
     {cabeca}
     {estilo === "podio" ? <>
@@ -239,7 +245,6 @@ export default function Round({ on }) {
       </div>
     </>}
     {numeros}
-    {acoes}
   </div>
   {/* O resto do placar é o SEGUNDO cartão — o mesmo par de painéis da tela inicial, e pelo mesmo motivo:
       empilhar uma tabela de seis colunas dentro do cartão do pódio fazia a caixa rolar por dentro. Ele
@@ -258,5 +263,6 @@ export default function Round({ on }) {
         <td className="num c-kd">{(b.kd || 0).toFixed(2)}</td>
       </tr>)}</tbody>
     </table></div> : null}
+  {acoes}
   </div>;
 }

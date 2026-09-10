@@ -84,6 +84,60 @@ jogador clicou num `.io` para jogar com gente, e um single-player silencioso **p
 `servidorFora` (campo de topo do estado, nunca dentro de `overlays` — `go()` e `play()` reescrevem
 aquele objeto inteiro) levanta `ui/Offline.jsx`, que fica até o servidor voltar.
 
+## ENTRAR DIRETO É DECISÃO DO /admin, NÃO DA BUILD
+
+`ENTRA_DIRETO` era a constante de build `PORTAL`: valia em todos os portais e em nenhum outro lugar, e
+mudar isso pedia um pacote novo — que num portal significa entrar na fila de revisão deles. Hoje é
+`ENTRY.DIRETO`, uma **múltipla escolha** do painel (a lista `PLATAFORMAS` em `shared/src/constants.js`),
+entregue por `/api/config` no molde do `entryPanels`.
+
+⚠️ **Quem compara é o CLIENTE**, e são três razões medidas:
+
+1. `users.origin` é gravado **uma vez**, no `POST /api/auth/guest` — quem criou a conta no site e depois
+   joga na Poki carrega `https://warspace.io` para sempre;
+2. ele é um **domínio**, não um id de portal;
+3. vários portais servem de **subdomínio por jogo** (`<hru>.games.playgama.com`,
+   `games.builds.gamepix.com`).
+
+O servidor não tem como saber de que portal veio uma aba. Quem sabe é o `PORTAL_ID`, que é constante de
+BUILD — então a LISTA vem de lá e a comparação acontece aqui.
+
+⚠️ **Sem a lista, vale o comportamento de BUILD** (o de hoje). `/api/config` é disparado sem `await` no
+boot e o clique pode vir antes; não pisca porque o valor é lido DENTRO do clique, nunca renderizado. E um
+`PORTAL_ID` vazio (um `vite build --mode portal` na mão, sem a env) também cai no padrão de build, nunca em
+"pede o nome": um zip que deixa de entrar direto por causa de uma env faltando é reprova de certificação em
+silêncio.
+
+⚠️ **A dependência não codificada continua**: isto só funciona com `ENTRY.NICK_AUTO` ligado. Sem ele o
+campo de nome nasce vazio e todo mundo entra como `Viajante-NNNN` — que foi exatamente o argumento que
+segurou a generalização desta regra por meses.
+
+⚠️ **`scripts/portal-pack.mjs` tem uma guarda nova**: todo perfil de zip (e o `SEM_ZIP`) precisa de par em
+`PLATAFORMAS`. Um perfil sem par é um pacote que o painel não consegue configurar, e o sintoma seria mudo.
+
+## A ARTE DAS CARICATURAS SAIU DA BUILD
+
+As 35 caricaturas (ids 84–118) eram cortadas do pacote por duas metades — o `!PORTAL` de `faceFile()` e a
+poda de `faces` no empacotador — mas **continuavam no repositório e na build do site**. Agora a arte vive
+no Postgres (`skin_art`, migração 0014) e é servida por `GET /api/skins/:id/art`: os arquivos saem da build
+inteiramente, e o nome (`07_putin.webp`), que entrega a identidade sem ninguém abrir a imagem, deixa de
+existir no zip.
+
+⚠️ **Elas voltam a APARECER dentro dos portais** — o `!PORTAL` de `faceFile` saiu, por decisão do dono do
+jogo. É o conteúdo que a CrazyGames reprovou ("IP sem direitos de posse", "uso explícito de política") e
+que a GameMonetize chamou de "AI-generated"; onze das 35 são políticos, e num jogo chamado WARspace Putin
+e Zelensky no mesmo catálogo são o pior par possível. Como a arte não está no zip, um revisor que as
+encontre **jogando** pode ler isso como contorno da revisão estática. O que o código faz é deixar a decisão
+**reversível sem deploy**.
+
+⚠️ **CORS**: no portal a arte é cross-origin. Ela passa pelo `apiUrl` (quem consome é `fetch`, sujeito a
+CORS, não `<img>`) e sai com `Access-Control-Allow-Origin: *`, por ser pública e `immutable` — o mesmo par
+do avatar. `server/test/cors.test.js` lê o `k8s/05-config.yaml` de verdade e cobra a origem real de cada
+portal empacotado.
+
+⚠️ **Os arquivos de `client/public/faces/` ficam como RESERVA** (e só fora do portal) até a migração provar
+em produção; saem num commit seguinte.
+
 ## O que NÃO vai no pacote (e por quê)
 
 As *Prohibited Practices* da GameDistribution batem em coisas que o jogo tem no site:

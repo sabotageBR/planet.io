@@ -6,6 +6,7 @@
 //   4. nada saindo da viewport (aproximação de área segura)
 //   5. a caixa da tela cabe na janela: no rodapé quando não há como rolar até ela, e SEMPRE na largura
 //   6. nenhum CONTÊINER rolando na horizontal (o critério 1 mede o DOCUMENTO e não pega a caixa das telas)
+//   7. a AÇÃO da tela não exige rolagem para ser alcançada (o 4 e o 5 são cegos a isso — ver a nota lá embaixo)
 // As TELAS são DOM (React) e renderizam bem em headless; só o canvas do Pixi não roda aqui — por isso a
 // matriz mede layout e HUD, e o jogo em si continua sendo aprovado de olho, em Chrome de verdade.
 // uso:  node scripts/responsive-check.mjs [url]        (padrão: http://127.0.0.1:5173)
@@ -21,6 +22,19 @@ const APARELHOS=[   // nome, largura, altura, dedo?, modo (o mesmo que modeFor d
   ["iPad mini deitado",1133,744,1,"tablet"],  ["iPad 10.9 deitado",1180,820,1,"tablet"],
   ["iPad Pro em pé",1024,1366,1,"tablet"],
   ["Notebook",1440,900,0,"desktop"],          ["Desktop",1920,1080,0,"desktop"],["Ultrawide",2560,1080,0,"desktop"],
+  // ── O FRAME DE PORTAL: um DESKTOP BAIXO ──
+  // Faltava esta forma de tela inteira. Todos os 12 acima são de tela CHEIA, e o jogo passa a maior parte
+  // da vida dentro de um iframe cuja altura o portal decide — foi ali que o BIG CRUNCH e a tela de morte
+  // apareceram com os botões fora da dobra, e nenhuma combinação da matriz reproduzia isso: 960×540 e
+  // 1920×1080 são o MESMO `data-mode`, com metade da altura.
+  // ⚠️ São slots PADRÃO dos portais (16:9 e 4:3 em torno da área útil de um laptop), não medidos dentro do
+  // iframe publicado. Quando der para rodar `innerWidth/innerHeight` lá dentro, troca-se a estimativa pela
+  // medida — e o mesmo vale para CrazyGames, GameFlare e Playgama.
+  ["Poki laptop",960,540,0,"desktop"],        ["Poki desktop 16:9",1024,576,0,"desktop"],
+  ["Portal 4:3",800,600,0,"desktop"],
+  // 1024×480 cruza SHORT_H (500) e cai em `landscape` com ponteiro FINO — combinação que não existia aqui.
+  ["Frame de portal baixo",1024,480,0,"landscape"],
+  ["Poki celular em pé",360,640,1,"portrait"],
 ];
 // `dead` e `round` são as telas do PÓS-JOGO (menu na gaveta, câmera à esquerda) e ficavam de fora — logo
 // as duas que mais precisam: o card do fim de rodada não tinha CSS nenhum e caía cortado no canto.
@@ -37,6 +51,11 @@ const APARELHOS=[   // nome, largura, altura, dedo?, modo (o mesmo que modeFor d
 // `#s-modes{--screen-w:760px}` não vale.
 const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile","shop","shop@rail","prefs","game",
   "dead:duelo","dead:balanco","dead:sala","round:podio","round:cinema","round:dossie",
+  // `dead:<estilo>:livre` é o rodapé do LIVRE (RENASCER com contador). Ele faltava, e não por descuido: a
+  // matriz media o do Battle Royale por ACIDENTE, herdando o `mode: MODE.BR` que `hudDemo()` deixa no
+  // hudStore quando a tela `game` roda antes. `@min` é a tela de morte RECOLHIDA — o estado que o pedido
+  // do celular criou, e que só existe depois de um clique que a sonda não dá.
+  "dead:duelo:livre","dead:duelo@min",
   // `spec` é a barra de quem assiste a uma sala em andamento: `position:fixed`, variante própria em
   // retrato e três alvos de toque — a forma de elemento que esta matriz existe para cobrar.
   "spec"];
@@ -153,8 +172,30 @@ const SONDA=`(()=>{
     const s2=getComputedStyle(el);if(s2.display==='none')continue;
     if((s2.overflowX==='auto'||s2.overflowX==='scroll')&&el.scrollWidth-el.clientWidth>1)
       lados.push(nome(el)+' '+el.scrollWidth+'>'+el.clientWidth);}
-  return{modo:document.body.dataset.mode,ponteiro:document.body.dataset.pointer,over,pequenos,cx,
-         fora:fora.slice(0,6),estoura,lados:[...new Set(lados)].slice(0,4),tela:tela?tela.id:'game'};
+  // A AÇÃO DA TELA NÃO EXIGE ROLAGEM. Os critérios 4 e 5 são estruturalmente cegos a isto, cada um pelo
+  // seu motivo: o 4 (clipado) PARA no primeiro ancestral rolável, e o cartão de morte É esse ancestral —
+  // um botão abaixo da dobra dele conta como alcançável; o 5 só vale quando NÃO há como rolar. Ou seja: a
+  // tela rolava, o conteúdo estava lá, e mesmo assim o RENASCER estava fora da vista. Foi exatamente o que
+  // os prints do frame da Poki mostraram, com a matriz voltando zero problemas.
+  // ⚠️ Cobra o RODAPÉ DECLARADO, e nunca [data-go] sozinho: aquele é atributo de NAVEGAÇÃO, a própria
+  // sonda o usa como alvo de clique, e Lobby.jsx põe um por LINHA da lista de salas — uma lista que rola
+  // de propósito. Com ele, a matriz reprovaria as telas de Salas e de Modos inteiras e viraria ruído.
+  // (Sem crase em comentário nenhum daqui: a sonda inteira é um template literal — o arquivo avisa isso
+  // duas vezes mais acima, e esta linha custou uma rodada.)
+  const ACOES='.dead-foot button,.dead-actions button,.dead-views button,.lobby-hero [data-go],.prefs-foot button,nav.nav';
+  const escondida=[];
+  for(const el of (tela?tela.querySelectorAll(ACOES):[])){
+    if(!vis(el))continue;const r=el.getBoundingClientRect();
+    // o scrollport de quem rola; sem ninguém rolando por perto, o scrollport é a janela
+    let topo=0,base=innerHeight;
+    for(let p=el.parentElement;p&&p!==document.body;p=p.parentElement){
+      if(rolavel(p,'y')==='rola'){const pr=p.getBoundingClientRect();topo=pr.top;base=pr.bottom;break;}}
+    const lim=Math.min(base,innerHeight);
+    if(r.bottom>lim+2)escondida.push(nome(el)+' '+Math.round(r.bottom-lim)+'px abaixo da dobra');
+    else if(r.top<Math.max(topo,0)-2)escondida.push(nome(el)+' acima da dobra');}
+  return{modo:document.body.dataset.mode,ponteiro:document.body.dataset.pointer,alt:document.body.dataset.h||'',
+         over,pequenos,cx,fora:fora.slice(0,6),estoura,lados:[...new Set(lados)].slice(0,4),
+         escondida:[...new Set(escondida)].slice(0,4),tela:tela?tela.id:'game'};
 })()`;
 
 let falhas=0;const linhas=[];
@@ -199,7 +240,7 @@ for(const [nome,w,h,toque,modo] of APARELHOS){
     await new Promise(r=>setTimeout(r,80));
     const r=await ev(SONDA);if(!r)continue;
     await ev(`(()=>{const h=document.getElementById('hud');if(h&&!document.querySelector('.screen.on'))return;if(h)h.classList.add('hidden');})()`);
-    const ruim=r.over>0||r.cx.length||r.pequenos.length||r.fora.length||(r.estoura&&r.estoura.length)||(r.lados&&r.lados.length);
+    const ruim=r.over>0||r.cx.length||r.pequenos.length||r.fora.length||(r.estoura&&r.estoura.length)||(r.lados&&r.lados.length)||(r.escondida&&r.escondida.length);
     if(ruim)falhas++;
     linhas.push({nome,w,h,t,tema,...r,ruim});
   }
@@ -208,7 +249,7 @@ for(const [nome,w,h,toque,modo] of APARELHOS){
 const porTela=new Map();for(const l of linhas){const k=l.t+" → "+l.tela;porTela.set(k,(porTela.get(k)||0)+1);}
 console.log("visitas (tela pedida → tela medida):");
 for(const [k,n] of porTela)console.log("  "+k.padEnd(28)+n);
-console.log("aparelho                    tela      tema      modo      ponteiro  problemas");
+console.log("aparelho                    tela      tema      modo      ponteiro  altura  problemas");
 for(const l of linhas){
   if(!l.ruim)continue;
   const p=[];if(l.over)p.push("transborda "+l.over+"px");
@@ -217,7 +258,8 @@ for(const l of linhas){
   if(l.fora.length)p.push("clipado: "+l.fora.join(", "));
   if(l.estoura&&l.estoura.length)p.push("fora da janela: "+l.estoura.join(", "));
   if(l.lados&&l.lados.length)p.push("rola de lado: "+l.lados.join(", "));
-  console.log((l.nome+" "+l.w+"x"+l.h).padEnd(28)+l.t.padEnd(10)+String(l.tema).padEnd(10)+String(l.modo).padEnd(10)+String(l.ponteiro).padEnd(10)+p.join("  ·  "));
+  if(l.escondida&&l.escondida.length)p.push("ação fora da dobra: "+l.escondida.join(", "));
+  console.log((l.nome+" "+l.w+"x"+l.h).padEnd(28)+l.t.padEnd(10)+String(l.tema).padEnd(10)+String(l.modo).padEnd(10)+String(l.ponteiro).padEnd(10)+String(l.alt||"-").padEnd(8)+p.join("  ·  "));
 }
 console.log(`\n${linhas.length} combinações · ${falhas} com problema · ${linhas.length-falhas} limpas`);
 ws.close();fim(falhas?1:0);

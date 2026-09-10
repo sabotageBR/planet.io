@@ -183,6 +183,12 @@ export const api = {
     if (!api.online) throw offline("offline", "Isso precisa de conta.");
     return request("POST", `/api/skins/${id}/watch-ad`);
   },
+  /** O anúncio da TELA DE MORTE: DÁ a skin (pool própria, `AD_GIFT_SKINS`) e equipa. Regra diferente da
+   *  do `watchAd` acima, que só destrava a compra das mascotes — as duas pools são disjuntas. */
+  async adGift(id, equip = true) {
+    if (!api.online) throw offline("offline", "Isso precisa de conta.");
+    return request("POST", `/api/skins/${id}/ad-gift`, { equip });
+  },
   async equip(id) {
     if (!api.online) { const p = localProfile(); if (!p.skins.includes(id)) throw offline("not_owned", "Você não tem essa skin."); p.user.equippedSkin = id; saveLocal(p); return { equippedSkin: id }; }
     return request("POST", `/api/skins/${id}/equip`);

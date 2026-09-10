@@ -34,7 +34,9 @@ import {aplicaWire} from "@warspace/shared/tunables.js";
 // ⚠️ SPLIT entrou por causa de `SPLIT.MIN_R` (o portão do dividir): quem o aplica é o servidor, mas a
 // dica do cliente precisa do MESMO número para não anunciar um botão que o servidor recusa. Não é
 // física do cliente — `predict.js` não importa SPLIT.
-const RAIZES_WIRE={CAM,ZOOM,STAR,ROUND,SPLIT};
+// ⚠️ RAIZ AUSENTE AQUI É FALHA MUDA: `aplicaWire` faz `continue` na chave cuja raiz não está no mapa, e
+// o painel continua dizendo "salvo" para sempre. Todo tunable 'wire' novo entra nesta linha.
+const RAIZES_WIRE={CAM,ZOOM,STAR,ROUND,SPLIT,FEED,BR,MISSILE};
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
@@ -838,7 +840,13 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
    * Roda todo frame, então o anel PULA de bolinha em bolinha conforme o mouse anda — que é a graça da mira nova.
    */
   function lockOn(src,tx,ty){let bs=MISSILE.AIM_PICK,best=null;
-    const scan=arr=>{for(const e of arr){if(e.owner===view.mySlot)continue;
+    // ⚠️ ALIADO NÃO É ALVO, e aqui isto estava divergente do servidor há tempos: `aimTarget` usa
+    // `sameTeam` e este laço só pulava o PRÓPRIO slot. Em equipe, o anel era desenhado no companheiro e o
+    // míssil saía noutro lugar — o cliente prometia uma coisa e o servidor fazia outra. `pl.ally` já vem
+    // pronto do WorldView (ele o recalcula no PLAYERS e no `room`), então é uma leitura, não uma conta.
+    const meu=e=>{if(e.owner===view.mySlot)return true;
+      const pl=e.owner>=0?view.playerOf(e.owner):null;return !!(pl&&pl.ally);};
+    const scan=arr=>{for(const e of arr){if(meu(e))continue;
       const ax=e.rx-src.rx,ay=e.ry-src.ry;if(ax*ax+ay*ay>=AIM_R2)continue;   // fora do alcance da arma
       const sc=aimScore(e.rx-tx,e.ry-ty,e.rr);if(sc>=bs)continue;bs=sc;best=e;}};
     scan(view.pieces);scan(view.missiles);scan(view.asteroids);scan(view.stars);

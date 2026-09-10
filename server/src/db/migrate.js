@@ -20,12 +20,22 @@ async function listMigrations(){
  */
 export async function seedSkins(c){
   const vals=[],params=[];
-  SKINS.forEach((s,i)=>{const b=i*6;vals.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6})`);
-    params.push(s.id,s.name,s.rarity,s.price,s.unlockKey||null,s.levelReq|0);});
-  await c.query(`INSERT INTO skins(id,name,rarity,price,unlock_key,level_req) VALUES ${vals.join(',')}
+  const N=10;
+  SKINS.forEach((s,i)=>{const b=i*N;vals.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10})`);
+    params.push(s.id,s.name,s.rarity,s.price,s.unlockKey||null,s.levelReq|0,s.color||null,s.accent||null,s.emoji||null,s.desc||null);});
+  // ⚠️ `art_hash` NÃO entra no upsert, de propósito: ele é escrito pela rota de arte do /admin, e um seed
+  // que o sobrescrevesse apagaria a arte de toda skin a cada boot de pod — inclusive das caricaturas, que
+  // é justamente o que saiu da build para viver aqui.
+  await c.query(`INSERT INTO skins(id,name,rarity,price,unlock_key,level_req,color,accent,emoji,descr) VALUES ${vals.join(',')}
     ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,rarity=EXCLUDED.rarity,price=EXCLUDED.price,
-      unlock_key=EXCLUDED.unlock_key,level_req=EXCLUDED.level_req,active=true`,params);
-  await c.query(`UPDATE skins SET active=false WHERE id<>ALL($1::int[]) AND active`,[SKINS.map(s=>s.id)]);
+      unlock_key=EXCLUDED.unlock_key,level_req=EXCLUDED.level_req,color=EXCLUDED.color,accent=EXCLUDED.accent,
+      emoji=EXCLUDED.emoji,descr=EXCLUDED.descr,source='code',active=true`,params);
+  // ⚠️ `AND source='code'` É A LINHA QUE TORNA O /admin POSSÍVEL. Sem ela, o primeiro pod a bootar
+  // DESATIVARIA toda skin criada pelo painel — ela não está no catálogo do bundle, por definição —, e a
+  // compra passaria a dar 404 sem uma linha de log. A faca de sempre continua valendo para as de CÓDIGO:
+  // um pod com `shared/skins.js` antigo desativa as skins de código novas, então os shards têm que subir
+  // na MESMA imagem antes de uma skin de código nova ficar comprável.
+  await c.query(`UPDATE skins SET active=false WHERE id<>ALL($1::int[]) AND active AND source='code'`,[SKINS.map(s=>s.id)]);
 }
 /**
  * Aplica migrações pendentes (serializado entre pods pelo advisory lock) e semeia skins.

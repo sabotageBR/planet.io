@@ -11,7 +11,10 @@ if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.e
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';process.env.SHARDS='1';process.env.PEERS='';
 const {startServer}=await import('../src/index.js');
 const {decodeMessage,encodeInput,encodeVoiceUp,MSG,KIND,PLAYER_FLAG,SELF_FLAG,NO_TEAM,PROTOCOL_VERSION}=await import('@warspace/shared/protocol/index.js');
-const {MODE,BR,ZONE,VOICE,CHAT,WEAPON,NET,BOT_NAMES,BOT_CHAT,BOT_TALK,modeCap}=await import('@warspace/shared/constants.js');
+const {MODE,BR,ZONE,VOICE,CHAT,WEAPON,NET,BOT_NAMES,BOT_TALK,modeCap}=await import('@warspace/shared/constants.js');
+// O repertório fixo saiu de `constants.js` e virou `rooms/botFrases.js`, com as três línguas: ele é o CHÃO
+// da fala e era, por isso, a maior fonte de português na tela com o idioma travado em inglês.
+const {FRASES,IDIOMA_BASE,frasesDe}=await import('../src/rooms/botFrases.js');
 const LOG=process.env.LOG_LEVEL;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let srv,base,wsUrl,token='pt_sem_banco';
@@ -438,7 +441,7 @@ test('fala dos bots: sai pelo caminho do chat e o orçamento segura o coro',asyn
   await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'largada');
   const bot=[...room.sim.players.values()].find(g=>g.isBot);
   assert.ok(bot,'a sala tem preenchimento');
-  const frases=new Set(Object.values(BOT_CHAT).flat());
+  const frases=new Set(Object.values(FRASES).flatMap(f=>Object.values(f).flat()));
   // O ORÇAMENTO é conferido no SERVIDOR, que é determinístico: contar mensagem chegando pelo socket faz o
   // teste depender de quando o WS entrega, e foi assim que ele ficou intermitente.
   const gatilho=()=>{room.sim.botTalk.length=0;room.sim._talk(bot.slot,'kill');room.botChatTick();};
@@ -816,7 +819,7 @@ test('ninguém fica mudo: chamado pelo nome com a LLM fora, sai o repertório',a
   // Era o buraco: o fallback da menção devolvia null, então bot chamado pelo nome com o disjuntor aberto
   // simplesmente não respondia — que é o que mais denuncia um preenchimento.
   const {citou}=await import('../src/rooms/botChat.js');
-  const {BOT_CHAT,BOT_TALK}=await import('@warspace/shared/constants.js');
+  const {BOT_TALK}=await import('@warspace/shared/constants.js');
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Humano',room:newRoom()});
   const room=roomOf(r.code);
@@ -832,7 +835,7 @@ test('ninguém fica mudo: chamado pelo nome com a LLM fora, sai o repertório',a
     c.send({t:'chat',text:`${bot.name} vem ca`});
     await sleep(120);vivo=false;                 // o disjuntor abre entre o agendamento e o despacho
     const resp=await c.until(()=>c.json.slice(n).find(m=>m.t==='chat'&&m.slot===bot.slot),8000,'resposta enlatada');
-    assert.ok(BOT_CHAT.resposta.includes(resp.text),
+    assert.ok(frasesDe('resposta',IDIOMA_BASE).includes(resp.text),
       `"${resp.text}" não veio do repertório de resposta`);
   }finally{room.rng.chance=chance;room.botChat=null;}
   c.close();
@@ -846,7 +849,7 @@ test('ninguém fica mudo: nem com a LLM fora DESDE O COMEÇO, nem sem LLM nenhum
   // qualquer outra ficar MUDO, e o repertório de resposta nunca era alcançado. Aqui a LLM está fora desde
   // antes da primeira palavra, que é o caso do disjuntor aberto e o de um deploy sem OLLAMA_URL.
   const {citou}=await import('../src/rooms/botChat.js');
-  const {BOT_CHAT,BOT_TALK}=await import('@warspace/shared/constants.js');
+  const {BOT_TALK}=await import('@warspace/shared/constants.js');
   for(const cenario of ['ocupada','ausente']){
     const c=new C(wsUrl);await c.open();
     const r=await c.join({nick:'Humano',room:newRoom()});
@@ -861,7 +864,7 @@ test('ninguém fica mudo: nem com a LLM fora DESDE O COMEÇO, nem sem LLM nenhum
       c.send({t:'chat',text:`${bot.name} vem ca`});
       const resp=await c.until(()=>c.json.slice(n).find(m=>m.t==='chat'&&m.slot===bot.slot),8000,
         `resposta enlatada (${cenario})`);
-      assert.ok(BOT_CHAT.resposta.includes(resp.text),`"${resp.text}" não veio do repertório (${cenario})`);
+      assert.ok(frasesDe('resposta',IDIOMA_BASE).includes(resp.text),`"${resp.text}" não veio do repertório (${cenario})`);
       // ...e a linha enlatada também LEVA TEMPO PARA DIGITAR: sair instantânea enquanto as geradas levam
       // 0,5–3,4 s é a assinatura de bot que o DIGITA_CPS existe para apagar.
       assert.ok(room.digitaFila.length===0,'a fila de digitação tinha que ter drenado junto com a resposta');

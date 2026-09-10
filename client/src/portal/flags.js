@@ -19,25 +19,48 @@
 export const PORTAL = typeof __PORTAL__ !== "undefined" && __PORTAL__ === "1";
 export const PORTAL_ID = typeof __PORTAL_ID__ !== "undefined" ? __PORTAL_ID__ : "";
 export const SEM_CONTA = typeof __PORTAL_STRICT__ !== "undefined" && __PORTAL_STRICT__ === "1";
+export const ENTRA_DIRETO_PADRAO = PORTAL;
 /**
- * ENTRA_DIRETO — no pacote de portal o clique em JOGAR entra na partida, sem passar pela guarda do nome
- * (`semNome()` em state/actions.js, `jogar()` em ui/Entry.jsx).
- *
- * ⚠️ ISTO JÁ FOI `PORTAL_ID === "crazy"`, e o argumento de então tinha DUAS metades que morreram em dias
- *    diferentes. A primeira: "só a CrazyGames exige por escrito que o jogador novo caia direto na
- *    partida" — verdade, e irrelevante, porque o jogo NUNCA rodou lá; o gate protegia um caminho que
- *    jamais executou em produção. A segunda: "generalizar deixava TODOS entrando com a placa
- *    `Viajante-NNNN` sem nunca serem convidados a nomear o planeta" — isso era verdade quando o campo
- *    nascia VAZIO, e deixou de ser quando `ENTRY.NICK_AUTO` passou a entregá-lo preenchido com um nick
- *    de gente. Hoje entrar direto é entrar COM nome, e o campo continua na tela inicial para trocar.
- * ⚠️ E o preço da guarda foi MEDIDO no funil da Poki (Fit Test de 09-set, 1.12): **17% de abandono em
- *    `menu/entry`** — 85 dos 500 fecharam a aba na tela inicial sem jogar um segundo, cada um entrando
- *    na média de playtime como ZERO. Só eles valem ~4 pontos de "engaged players", que é mais do que
- *    qualquer parâmetro de jogo girado na mesma semana.
- * ⚠️ Continua FALSO no site: lá nomear o planeta é a única coisa que se pede antes de entrar, e quem
- *    chegou pelo próprio domínio escolheu vir.
+ * QUAL PLATAFORMA É ESTA ABA — um id de `PLATAFORMAS` (shared/src/constants.js), resolvido num lugar só.
+ * ⚠️ A ORDEM importa: `BOUNTY` vem ANTES de `site` porque o build da Bounty Board É um build de site
+ * (`PORTAL` é falso lá — eles enquadram https://warspace.io). Sem essa ordem ele cairia em `site` e nunca
+ * poderia ser marcado sozinho no painel. `?bb=1` continua sendo o jeito de provar isso em 127.0.0.1.
  */
-export const ENTRA_DIRETO = PORTAL;
+export const plataformaAtual = () => (PORTAL ? PORTAL_ID || "" : BOUNTY ? "bountyboard" : "site");
+/**
+ * ENTRA_DIRETO — o clique em JOGAR entra na partida sem passar pela guarda do nome (`semNome()` em
+ * state/actions.js, `jogar()` em ui/Entry.jsx).
+ *
+ * Deixou de ser constante de build e virou decisão do /admin (`ENTRY.DIRETO`, uma múltipla escolha de
+ * plataformas que chega em `/api/config`). O motivo é o de sempre com portal: mudar uma constante de build
+ * significa um pacote novo, e um pacote novo significa entrar na fila de revisão deles.
+ *
+ * ⚠️ QUEM COMPARA É O CLIENTE. O servidor não sabe de que portal veio esta aba: `users.origin` é gravado
+ * uma vez, no primeiro guest, e é um DOMÍNIO — e vários portais servem de subdomínio por jogo. Quem sabe é
+ * o `PORTAL_ID`, que é constante de BUILD. Então a LISTA vem de lá e a comparação acontece aqui.
+ * ⚠️ SEM A LISTA, VALE O COMPORTAMENTO DE BUILD (o de hoje). `/api/config` é disparado sem `await` no boot
+ * e o clique pode vir antes; não pisca porque isto é lido DENTRO do clique, nunca renderizado. A janela de
+ * erro é de um clique, num jogador, e o seguinte já está certo.
+ * ⚠️ ID DE BUILD DESCONHECIDO (um `vite build --mode portal` na mão, sem `VITE_PORTAL_ID`) cai no padrão
+ * de build, nunca em "pede o nome": um zip que deixa de entrar direto por causa de uma env faltando é
+ * reprova de certificação em silêncio.
+ * @param {string|null|undefined} lista o CSV de `/api/config` (`config.entraDireto`)
+ */
+export function entraDiretoEm(lista) {
+  if (lista == null) return ENTRA_DIRETO_PADRAO;
+  const id = plataformaAtual();
+  if (!id) return ENTRA_DIRETO_PADRAO;
+  return String(lista).split(",").includes(id);
+}
+/**
+ * ⚠️ HISTÓRICO, e o preço da guarda foi MEDIDO no funil da Poki (Fit Test de 09-set, 1.12): **17% de
+ *    abandono em `menu/entry`** — 85 dos 500 fecharam a aba na tela inicial sem jogar um segundo, cada um
+ *    entrando na média de playtime como ZERO. Isto já foi `PORTAL_ID === "crazy"` e depois `PORTAL`; o que
+ *    destravou a generalização foi `ENTRY.NICK_AUTO` passar a entregar o campo preenchido com um nick de
+ *    gente — entrar direto é entrar COM nome, e o campo continua na tela inicial para trocar.
+ * ⚠️ DEPENDÊNCIA NÃO CODIFICADA: isto só funciona com `ENTRY.NICK_AUTO` ligado. Desligá-lo no painel
+ *    devolve o `Viajante-NNNN` a todos os portais, em silêncio.
+ */
 /**
  * SEM_VOZ — o push-to-talk não existe no pacote de portal, e são duas razões independentes:
  *  • MODERAÇÃO. O servidor é relay puro (não decodifica, não grava, não loga), então não há como

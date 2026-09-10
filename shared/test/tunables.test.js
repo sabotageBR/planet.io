@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import {createWorld} from "../src/physics/index.js";
 import {POWERUP,FOOD,FOOD_TYPE,PLAYER,BR,BOT_LLM,ROUND,MODES,MODE,TICK_HZ,ENTRY_PANELS} from "../src/constants.js";
 import {PIECE_FLAG} from "../src/protocol/constants.js";
-import {listTunables,applyTunable,resetTunable,readTunable,TUNABLE_BY_KEY,GRUPOS} from "../src/tunables.js";
+import {listTunables,applyTunable,resetTunable,readTunable,TUNABLE_BY_KEY,GRUPOS,aplicaWire,wireValues} from "../src/tunables.js";
 
 const empty=(seed=1)=>createWorld({seed,food:0,asteroids:false,holes:0,stars:0,decay:false});
 /** Uma peça de raio `r` come um ímã: ela ganha o poder? (2 passos — o flag sai na integração seguinte) */
@@ -51,6 +51,15 @@ test("tunables: todo descritor é coerente (faixa contém o padrão, e o escopo 
       for(const o of t.options)assert.ok(o.v&&o.label,`${t.key}: toda opção precisa de id e rótulo`);
     }else if(t.type==='bool'){
       assert.equal(typeof t.def,'boolean',`${t.key}: padrão de um bool tem que ser boolean`);
+      // Os dois estados vêm do DESCRITOR desde que "Exibindo/Oculto" deixou de ser cravado no painel.
+      assert.ok(t.onLabel&&t.offLabel,`${t.key}: um interruptor precisa dizer o que é ligado e o que é desligado`);
+    }else if(t.type==='multi'){
+      assert.ok(t.options&&t.options.length>1,`${t.key}: uma múltipla escolha com menos de duas opções não é escolha`);
+      for(const o of t.options)assert.ok(o.v&&o.label,`${t.key}: toda opção precisa de id e rótulo`);
+      assert.equal(typeof t.def,'string',`${t.key}: o valor de um multi é CSV canônico, não array (ver o memo de server/src/tunables.js)`);
+      for(const id of String(t.def).split(',').filter(Boolean))
+        assert.ok(t.options.some(o=>o.v===id),`${t.key}: o padrão tem '${id}', que não está nas opções`);
+      assert.ok(!/\s/.test(t.def),`${t.key}: o CSV canônico não tem espaço — ele é comparado por igualdade`);
     }else{
       assert.ok(t.min<=t.def&&t.def<=t.max,`${t.key}: o padrão (${t.def}) tem que caber na faixa ${t.min}–${t.max}`);
       assert.ok(t.unit,`${t.key}: número sem unidade é número que o admin não sabe ler`);}
@@ -62,6 +71,47 @@ test("tunables: todo descritor é coerente (faixa contém o padrão, e o escopo 
   }
   assert.ok(TUNABLE_BY_KEY.get('PLAYER.MAX_R').scope==='both',"PLAYER.MAX_R é lido pela predição do cliente");
   assert.ok(TUNABLE_BY_KEY.get('POWERUP.MAGNET_MAX_R').scope==='server',"o ímã é 100% servidor (predict.js não o consome)");});
+
+// ── O TIPO QUE `aplicaWire` NÃO TRATA É DESCARTADO EM SILÊNCIO ──────────────────────────────────────
+// Este teste existe por causa de um defeito que ficou DORMENTE: `aplicaWire` só tinha ramo para 'opt' e
+// para número, e um booleano caía no ramo numérico — `Number(true)` é 1, mas `t.min`/`t.max` são
+// `undefined`, toda comparação dá falso e o valor some sem erro nenhum. Não doía porque nenhum tunable
+// 'wire' era booleano; o primeiro que fosse cairia exatamente ali, com o painel dizendo "salvo" para
+// sempre. A trava não é "o bool funciona": é que NENHUM tipo novo entre em 'wire' sem passar por aqui.
+test("tunables: todo tipo de escopo 'wire' chega ao cliente — nenhum é descartado em silêncio",()=>{
+  const RAIZES={};
+  const wires=listTunables().filter(t=>t.scope==='wire');
+  assert.ok(wires.length,"há tunables 'wire' para conferir");
+  for(const t of wires){
+    const [raiz,campo]=t.key.split('.');
+    RAIZES[raiz]=RAIZES[raiz]||{};
+    // um valor RECONHECIDAMENTE diferente do padrão, por tipo
+    const outro=t.type==='bool'?!t.def
+      :t.type==='opt'?(t.options.find(o=>o.v!==t.def)||t.options[0]).v
+      :t.type==='multi'?t.options.map(o=>o.v).join(',')
+      :(t.def===t.min?t.max:t.min);
+    RAIZES[raiz][campo]='intocado';
+    aplicaWire({[t.key]:outro},RAIZES);
+    assert.notEqual(RAIZES[raiz][campo],'intocado',
+      `${t.key} (${t.type}): aplicaWire NÃO escreveu nada — o valor foi descartado em silêncio, que é o defeito que este teste tranca`);
+    if(t.type==='bool')assert.equal(RAIZES[raiz][campo],outro,`${t.key}: um bool tem que chegar como boolean, não como 1`);
+  }
+});
+
+test("tunables: o valor de uma múltipla escolha é CANÔNICO — mesma escolha, mesmo texto",()=>{
+  // Sem isso "a,b" e "b,a" seriam dois valores para o mesmo estado, e o memo `aplicados.get(key)===v` de
+  // server/src/tunables.js pararia de casar: os 12–24 pods reaplicariam e logariam a cada 30 s, para sempre.
+  const t=listTunables().find(x=>x.type==='multi');
+  if(!t)return;   // ainda não há nenhum: o teste passa a valer quando o primeiro nascer
+  const ids=t.options.map(o=>o.v);
+  const direto=applyTunable(t.key,ids.join(','));
+  const avesso=applyTunable(t.key,[...ids].reverse().join(','));
+  assert.equal(avesso,direto,`${t.key}: a ordem do que chega não pode mudar o valor gravado`);
+  assert.equal(applyTunable(t.key,`${ids[0]},${ids[0]}`),ids[0],`${t.key}: repetição é dobrada num id só`);
+  assert.equal(applyTunable(t.key,`${ids[0]},naoexiste`),ids[0],`${t.key}: id fora da lista é descartado, sem recusar a gravação inteira`);
+  assert.equal(applyTunable(t.key,''),'',`${t.key}: nenhuma escolha é estado válido`);
+  resetTunable(t.key);
+});
 
 test("tunables: a ESCOLHA tem lista branca própria — só um id declarado entra",()=>{
   const chave='BOT_LLM.ESTILO';

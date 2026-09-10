@@ -36,6 +36,9 @@ export default {
   swapWeapon: "swap weapon", keySwap: "Q",
   deadByZone: "THE GAS CAUGHT YOU", champTeam: "WINNING SQUAD", lastAliveTitle: "LAST PLANET STANDING",
   watching: "watching", specPrev: "previous", specNext: "next",
+  deadCollapse: "collapse to watch", deadSummary: "SUMMARY", deadCollapseIcon: "⌄",
+  prizeUnlocked: "SKIN UNLOCKED", prizeOffer: "GET THIS SKIN", prizeWatch: "🎬 Watch and get it",
+  prizeEquipNote: "equipped next life", prizeGot: "It is yours! It kicks in next life.",
   mapOpen: "🗺 MAP", mapClose: "🗺 CLOSE", liveOpen: "📡 LIVE", liveClose: "📡 CLOSE",
   title: "WARSPACE.IO", tagline: "CONQUER THE GALAXY · SPLIT · EJECT · DEVOUR",
   coinIcon: "🪙", coinWord: "coins", nameLabel: "Your planet's name", namePlaceholder: "Enter your planet's name", nickAsk: "Name your planet to play", swap: "Change",
@@ -271,5 +274,9 @@ export default {
     // os três mascotes do jogo: nome próprio de personagem, mas o adjetivo é do idioma
     119: { n: "Angry Mars", d: "The red troublemaker" }, 120: { n: "Angry Earth", d: "The blue troublemaker" },
     121: { n: "Trooper Moon", d: "Helmet on, mood off" },
+    // as seis de DESEMPENHO (122-127): concedidas por conquista, anunciadas na tela de morte
+    122: { n: "Last One Standing", d: "Won a Battle Royale" }, 123: { n: "Finalist", d: "Finished top 10 in Battle Royale" },
+    124: { n: "Squad", d: "Won a Battle Royale with a team" },  125: { n: "Titan", d: "Reached 100k mass in one life" },
+    126: { n: "Reaper", d: "20 kills without dying" },          127: { n: "Sovereign", d: "Held 1st place for 10 minutes" },
   },
 };

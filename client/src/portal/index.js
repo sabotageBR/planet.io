@@ -84,6 +84,15 @@ const pronto = (async () => {
 export const portal = {
   /** Há adaptador vivo? (site, dev, itch.io e SDK bloqueado → false) */
   get ativo() { return !!sdk; },
+  /**
+   * Este portal tem ANÚNCIO RECOMPENSADO de verdade?
+   * ⚠️ `ativo` NÃO responde isso, e a diferença estava custando um botão morto: `ativo` é "há um adaptador
+   * de portal", e só a Poki implementa `recompensa()` — nos outros seis (GD, CrazyGames, Y8, GameMonetize,
+   * Playgama, GamePix) o botão da Loja aparecia e o clique caía num `return false` silencioso. É o defeito
+   * que o próprio comentário de Shop.jsx descreve ("um botão morto é pior que escondê-lo") aplicado ao
+   * lugar errado. Quem oferece recompensa pergunta AQUI.
+   */
+  get temRecompensa() { return !!(sdk && sdk.recompensa); },
   pronto,
   /** O jogo terminou de carregar (CrazyGames e Poki contam isso; a GD não tem equivalente). */
   async carregou() { pediuCarregou = true; await pronto; if (sdk && sdk.carregou) try { sdk.carregou(); } catch { /* nunca derruba */ } },

@@ -8,7 +8,7 @@
 // cada encode devolve uma vista reutilizada; se um socket ficou com bytes pendentes trocamos de
 // writer (o antigo fica com o socket até drenar) em vez de copiar a cada envio.
 // @ts-check
-import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,botCountry,botSpawnR,BOT_CHAT,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,POWERUP,MODE,modeOf,modeCap,BR,CHAT,NOTICE,VOICE,FEED,WEAPON} from '@warspace/shared/constants.js';
+import {SNAPSHOT_EVERY,LEADERBOARD_EVERY,TICK_HZ,NET,BOT,BOT_NAMES,botNick,botCountry,botSpawnR,BOT_TALK,BOT_LLM,botTypo,ROUND,ROOM,POWERUP,MODE,modeOf,modeCap,BR,CHAT,NOTICE,VOICE,FEED,WEAPON} from '@warspace/shared/constants.js';
 import {createWriter,encodePlayers,encodeLeaderboard,encodeEvent,encodeZone,encodeVoice} from '@warspace/shared/protocol/index.js';
 import {rectHas} from '@warspace/shared/camera.js';
 import {wireValues} from '@warspace/shared/tunables.js';
@@ -27,6 +27,7 @@ import {mascara} from '../palavrao.js';
 // `aberta` é função PURA (classifica a mensagem), então vem por import e não pelo objeto injetado: só a
 // LLM é dependência de verdade, e um `botChat` falso de teste não deveria precisar reimplementá-la.
 import {aberta,citou,escolheAssunto} from './botChat.js';
+import {frasesDe,idiomaDaFala} from './botFrases.js';
 import {BUS_MUDO} from '../admin/bus.js';
 const WRITER_SIZE=32768,BOT_SKINS=35;   // bots usam skins 0..34 (compráveis; nada de "earned"/secretas)
 export class Room{
@@ -104,7 +105,7 @@ export class Room{
     this.sim.world.peace=this.phase==='lobby';
     /** @type {Map<string,number>} código de party → equipe (para os amigos caírem juntos) */this.parties=new Map();
     this.roundStart=0;this.over=false;this.endedAt=0;this.endReason='time';this.champion=null;this.voiceAt=0;this.voiceN=0;this.botTalkAt=-1e9;/** @type {string[]} */this.ditas=[];
-    // fala gerada (Ollama): opcional em tudo — sem ela a sala volta ao repertório fixo de BOT_CHAT
+    // fala gerada (Ollama): opcional em tudo — sem ela a sala volta ao repertório fixo (rooms/botFrases.js)
     this.botChat=botChat;this.botNames=botNames;this.mencaoAt=-1e9;this.ultimoBot=null;
     this._paisBot=null;   // o país que veio junto do apelido do balde, entre `_botNome` e `_nasceBot`
     /**
@@ -914,11 +915,16 @@ export class Room{
     w.cage=null;w.peace=false;
     this.zone=createZone(w.tick);w.setZone(this.zone);
     this.startsAt=0;
-    // O ÍMÃ DE NASCENÇA COMEÇA A VALER AGORA. `_spawnPiece` o deu três segundos atrás e ele dura
-    // POWERUP.TICKS: sem re-carimbar, boa parte dele seria gasta dentro de uma gaiola onde não há um grão
-    // de comida para atrair — um powerup que expira sem nunca ter podido fazer nada.
-    for(const ps of w.players.values())for(const pc of ps.pieces)
-      if(!pc.dead&&pc.r<=POWERUP.MAGNET_MAX_R)pc.magnetUntil=w.tick+POWERUP.TICKS;
+    // O KIT DE BOAS-VINDAS COMEÇA A VALER AGORA. `_spawnPiece` o deu três segundos atrás; sem re-carimbar,
+    // boa parte dele seria gasta dentro de uma gaiola onde a fase 7 inteira do step sai sob `peace` — não
+    // há um grão para atrair nem comida para dobrar. Um powerup que expira sem nunca ter podido fazer nada.
+    // ⚠️ São os DOIS agora (ímã e banquete) e os dois pelos valores de NASCENÇA (`SPAWN_*`), nunca pelos do
+    // powerup do chão: quem chega aqui está nascendo, e o kit é o mesmo que `_spawnPiece` teria dado se a
+    // gaiola não existisse.
+    for(const ps of w.players.values()){
+      if(POWERUP.SPAWN_FEAST_TICKS>0)ps.feastUntil=w.tick+POWERUP.SPAWN_FEAST_TICKS;
+      for(const pc of ps.pieces)
+        if(!pc.dead&&pc.r<=POWERUP.MAGNET_MAX_R&&POWERUP.SPAWN_MAGNET_TICKS>0)pc.magnetUntil=w.tick+POWERUP.SPAWN_MAGNET_TICKS;}
     for(let i=0;i<3;i++)this._talkAlgum('start');   // largada: alguém diz alguma coisa, como em qualquer sala
     this._pushFeed({k:'sys',a:-1,b:-1,how:'start',by:null});
     this.broadcastPhase();this.broadcastZone();
@@ -1158,7 +1164,12 @@ export class Room{
   /** Uma frase do repertório: o CHÃO da fala (sem LLM, com ela fora, ou quando a resposta não presta). */
   _fraseFixa(gp,kind){
     const equipe=this.mode.chat==='team'&&gp.team>=0;
-    const pool=BOT_CHAT[equipe&&this.rng.chance(.5)?'equipe':kind]||BOT_CHAT.kill;
+    // ⚠️ A LÍNGUA SAI DA MESMA FUNÇÃO QUE A DA LINHA GERADA (`idiomaDaFala`, em botFrases.js): dois
+    // caminhos decidindo isso separadamente é como se produz um bot que responde ao mesmo "hey bro" em
+    // inglês quando a LLM está de pé e em português quando ela cai — e ela cai o tempo todo, que é a razão
+    // de este repertório existir. Era aqui que o português vazava com o idioma travado em inglês.
+    const lang=idiomaDaFala(null,this.chatLog);
+    const pool=frasesDe(equipe&&this.rng.chance(.5)?'equipe':kind,lang)||frasesDe('kill',lang);
     // Sorteia entre as frases que a sala NÃO disse há pouco. Era por tentativas (sorteia, se repetiu tenta de
     // novo) e escapava: quatro sorteios podiam cair todos no que acabou de sair. Filtrar antes é exato.
     const livres=pool.filter(f=>!this.ditas.includes(f)),lista=livres.length?livres:pool;
@@ -1296,7 +1307,7 @@ export class Room{
    * no meio de uma partida, então a comparação é por raiz, sufixo e distância (`botChat.citou`). Sem
    * citação nenhuma, só quem acabou de falar tem direito a uma réplica, e raramente: o padrão continua
    * sendo o silêncio, senão o chat vira dois bots conversando sozinhos por cima do jogo.
-   * Sem LLM a sala NÃO fica muda: quem foi chamado pelo nome responde do repertório (`BOT_CHAT.resposta`),
+   * Sem LLM a sala NÃO fica muda: quem foi chamado pelo nome responde do repertório (`FRASES[lang].resposta`),
    * porque ser chamado e não responder é o que mais denuncia um preenchimento. O que continua calado é o
    * que não faz sentido enlatar — a réplica sem vocativo e o elo de corrente —, porque aí a frase fixa É
    * responder fora de contexto, que é pior do que não responder.
@@ -1305,7 +1316,7 @@ export class Room{
     // ⚠️ NÃO se checa `bc.ativo()` aqui, e essa linha era um BUG de dois anos de comentário: `ativo()` é
     // "disjuntor fechado E gerações em voo < teto", ou seja uma condição de OCUPAÇÃO usada como condição
     // de EXISTÊNCIA. Com 4 gerações em voo em QUALQUER sala do shard, quem fosse chamado pelo nome em
-    // qualquer outra ficava MUDO — e `BOT_CHAT.resposta`/`_fraseResposta`, que existem exatamente para
+    // qualquer outra ficava MUDO — e o pool `resposta`/`_fraseResposta`, que existem exatamente para
     // esse caso, nunca eram alcançados. Quem escolhe entre gerar e enlatar é `_filaTick`, no despacho,
     // onde a informação é atual; aqui só se decide QUEM fala.
     if(this.phase!=='live'||this.over)return;
@@ -1434,7 +1445,9 @@ export class Room{
    */
   _fraseResposta(gp,g){
     if(g.kind==='cadeia')return null;
-    const pool=BOT_CHAT.resposta,livres=pool.filter(f=>!this.ditas.includes(f)),lista=livres.length?livres:pool;
+    // A língua vem do TEXTO de quem chamou, com o chat da sala como reserva — a mesma cadeia da geração.
+    const pool=frasesDe('resposta',idiomaDaFala(g&&g.texto,this.chatLog));
+    const livres=pool.filter(f=>!this.ditas.includes(f)),lista=livres.length?livres:pool;
     const txt=lista[this.rng.int(0,lista.length-1)];
     return this.rng.chance(BOT_TALK.TYPO_P)?botTypo(this.rng,txt):txt;}
   /**

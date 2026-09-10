@@ -36,6 +36,9 @@ export default {
   swapWeapon: "cambiar arma", keySwap: "Q",
   deadByZone: "EL GAS TE ALCANZÓ", champTeam: "EQUIPO CAMPEÓN", lastAliveTitle: "ÚLTIMO PLANETA EN PIE",
   watching: "viendo a", specPrev: "anterior", specNext: "siguiente",
+  deadCollapse: "contraer para mirar", deadSummary: "RESUMEN", deadCollapseIcon: "⌄",
+  prizeUnlocked: "SKIN DESBLOQUEADA", prizeOffer: "CONSIGUE ESTA SKIN", prizeWatch: "🎬 Míralo y gánala",
+  prizeEquipNote: "equipada en la próxima vida", prizeGot: "¡Es tuya! Entra en la próxima vida.",
   mapOpen: "🗺 MAPA", mapClose: "🗺 CERRAR", liveOpen: "📡 EN VIVO", liveClose: "📡 CERRAR",
   title: "WARSPACE.IO", tagline: "CONQUISTA LA GALAXIA · DIVIDE · EXPULSA · DEVORA",
   coinIcon: "🪙", coinWord: "monedas", nameLabel: "Nombre de tu planeta", namePlaceholder: "Escribe el nombre de tu planeta", nickAsk: "Ponle nombre a tu planeta para jugar", swap: "Cambiar",
@@ -270,6 +273,10 @@ export default {
     117: { n: "Churchill", d: "Secreto oculto" }, 118: { n: "Einstein", d: "Secreto oculto" },
     // los tres mascotas del juego: nombre propio de personaje, pero el adjetivo sí se traduce
     119: { n: "Marte Bravo", d: "El buscapleitos rojo" }, 120: { n: "Tierra Brava", d: "La buscapleitos azul" },
-    121: { n: "Luna Soldado", d: "Casco puesto y mal humor" },
+    121: { n: "Luna Soldado", d: "Con casco y mal humor" },
+    // las seis de DESEMPEÑO (122-127): concedidas por logro, anunciadas en la pantalla de muerte
+    122: { n: "Último en Pie", d: "Ganó un Battle Royale" },   123: { n: "Finalista", d: "Terminó en el top 10 del Battle Royale" },
+    124: { n: "Escuadrón", d: "Ganó el Battle Royale en equipo" }, 125: { n: "Titán", d: "Llegó a 100 mil de masa en una vida" },
+    126: { n: "Segador", d: "20 bajas sin morir" },            127: { n: "Soberano", d: "Estuvo 10 minutos en 1.º lugar" },
   },
 };

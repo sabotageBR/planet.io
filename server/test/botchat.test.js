@@ -7,6 +7,9 @@ import assert from 'node:assert/strict';
 import {citou,baseNick,sanitiza,normalizar,montaPrompt,detectaIdioma,createBotChat,aberta,estadoLinha,agressorLinha,
   elencoLinha,escolheAssunto,paisEn,IDIOMA_NOME,MARCAS} from '../src/rooms/botChat.js';
 import {PERSONAS,pickPersona} from '../src/rooms/botPersonas.js';
+// O repertório fixo saiu de `constants.js` e virou `rooms/botFrases.js`, com as TRÊS línguas: ele é o CHÃO
+// da fala (sai sempre que a LLM não responde) e era, por isso, a maior fonte de português na tela.
+import {FRASES,IDIOMA_BASE,idiomaDaFala,frasesDe} from '../src/rooms/botFrases.js';
 import {createRng} from '@warspace/shared/rng.js';
 import {botNick,BOT_LLM,CHAT} from '@warspace/shared/constants.js';
 import * as CONST from '@warspace/shared/constants.js';
@@ -52,10 +55,10 @@ test('menção: varredura de falso positivo com os nomes e as frases que o jogo 
   // chat". Esta varredura é o que segura os parâmetros de `citou` (tolerância, corte, sufixo, stopwords) —
   // sem ela, afrouxar um deles para reconhecer mais menções passa despercebido até virar bot tagarela.
   // Já aconteceu: sem a lista de comuns, o nick "PRO" respondia a todo "vem pro meio" e "vex" a todo "vem".
-  const {BOT_NAMES,BOT_CHAT}=CONST;
+  const {BOT_NAMES}=CONST;
   const rng=createRng(999),usados=new Set(),nicks=[...BOT_NAMES];
   for(let i=0;i<300;i++){const n=botNick(rng,usados);usados.add(n);nicks.push(n);}
-  const frases=[...Object.values(BOT_CHAT).flat(),
+  const frases=[...Object.values(FRASES).flatMap(f=>Object.values(f).flat()),
     'corre que o gas ta vindo','alguem quer time','essa foi por pouco','to quase morrendo','cuidado com a estrela',
     'vamo la pessoal','nossa que sorte','perdi tudo de novo','quem ta ganhando','alguem viu meu planeta',
     'boa sorte a todos','que jogo bom','estou com fome','calma ai gente','vou ali e volto','milagre aconteceu',
@@ -215,7 +218,7 @@ test('prompt: a persona entra e o pior caso cabe no teto de caracteres',()=>{
     feed:Array.from({length:BOT_LLM.FEED_HIST},()=>`${'A'.repeat(16)} killed ${'B'.repeat(16)}`),
     gente,historico:hist});
   assert.ok(p.user.includes(pior.quem),'a história do bot não chegou ao prompt');
-  assert.ok(p.system.includes(pior.bordao),'o bordão mora no SYSTEM (string estável, reaproveitada)');
+  assert.ok(p.system.includes(pior.bordao[IDIOMA_BASE]),'o bordão mora no SYSTEM (string estável, reaproveitada)');
   assert.ok(p.user.length<=BOT_LLM.PROMPT_MAX_CHARS,
     `prompt de ${p.user.length} chars passou de PROMPT_MAX_CHARS (${BOT_LLM.PROMPT_MAX_CHARS}) — prompt gordo é prompt lento`);
   // mensagem dirigida corta MAIS o histórico: a linha dirigida vale mais que o backlog
@@ -241,7 +244,11 @@ test('persona: determinística pela semente, sem repetir e sempre completa',()=>
   const u=new Set();for(let i=0;i<PERSONAS.length+3;i++)assert.ok(pickPersona(createRng(i),u),'esgotado o pool, ainda tem que devolver alguém');
   for(const p of PERSONAS){
     assert.ok(p.id&&p.quem&&p.jeito&&p.bordao,`persona ${p.id} incompleta`);
-    assert.ok(p.bordao.length<=16,`bordão de ${p.id} longo demais`);
+    // ⚠️ O BORDÃO É POR IDIOMA desde que ele passou a entrar no SYSTEM na língua da fala: enquanto era uma
+    // string só em pt-BR, o prompt mandava (na mesma frase) escrever em inglês e terminar com "anota ai".
+    for(const id of Object.keys(FRASES)){
+      assert.ok(p.bordao[id],`persona ${p.id} sem bordão em ${id}`);
+      assert.ok(p.bordao[id].length<=20,`bordão de ${p.id} em ${id} longo demais`);}
     assert.ok(/^[\x20-\x7e]+$/.test(p.quem+p.jeito),`${p.id}: quem/jeito precisam ser ASCII (vão no prompt em inglês)`);}
 });
 
@@ -385,8 +392,8 @@ test('constantes: os freios da conversa longa são coerentes entre si',()=>{
   assert.ok(BOT_LLM.FILA_MAX>=BOT_LLM.CONVERSA_MAX_GER,'a fila é o amortecedor: menor que o teto ela transborda por construção');
   assert.ok(CONST.BOT_TALK.SILENCIO_TICKS>CONST.BOT_TALK.ROOM_CD_TICKS,
     'a iniciativa não pode disparar antes de a sala poder falar de novo');
-  assert.ok(CONST.BOT_CHAT.puxa&&CONST.BOT_CHAT.puxa.length>=4,
-    'sem pool próprio o _fraseFixa cai no ||BOT_CHAT.kill e o bot diz "peguei" do nada');
+  assert.ok(frasesDe('puxa',IDIOMA_BASE).length>=4,
+    'sem pool próprio o _fraseFixa cai no ||kill e o bot diz "peguei" do nada');
 });
 
 // ── O TAMANHO E O TIPO DA FALA SÃO PARÂMETROS DO PAINEL (/admin → Parâmetros) ──
@@ -449,3 +456,66 @@ test('idioma: travado no painel, a regra de "responda na língua da mensagem" SA
     assert.match(montaPrompt({nome:'X',kind:'mention',quem:'A',texto:'vc ta muito ruim mano'}).user,/write your line in English/);
     assert.throws(()=>applyTunable('BOT_LLM.IDIOMA','fr'),/out_of_range/,'a lista de opções é a segunda lista branca');
   }finally{resetTunable('BOT_LLM.IDIOMA');}});
+
+// ── O IDIOMA TRAVADO VALE PARA TUDO QUE CHEGA À TELA ───────────────────────────────────────────────
+// A queixa foi literal: "está soltando frases em português mesmo configurado em inglês". O prompt já era
+// 100% inglês e `BOT_LLM.IDIOMA` já funcionava — o que vazava era tudo o que NÃO passa pelo modelo, e é
+// isso que estes testes trancam. Eles valem justamente no caminho em que a suíte roda: SEM `OLLAMA_URL`,
+// ou seja com a LLM fora e o repertório fixo sendo o único emissor.
+test('idioma: o repertório fixo tem as mesmas chaves nos três idiomas', () => {
+  const base=Object.keys(FRASES[IDIOMA_BASE]);
+  for(const [id,pools] of Object.entries(FRASES)){
+    // Buraco aqui não é uma frase faltando: `_fraseFixa` indexa por `kind` e cairia no `||kill`, fazendo o
+    // bot dizer "peguei" ao LEVAR um míssil — a armadilha que os pools próprios existem para fechar.
+    assert.deepEqual(Object.keys(pools).sort(),base.slice().sort(),`${id}: as chaves têm que bater com ${IDIOMA_BASE}`);
+    for(const k of base)assert.ok(pools[k].length>=4,`${id}.${k}: pool pequeno demais para não repetir`);}
+});
+
+test('idioma: travado em inglês, NENHUMA linha enlatada sai em português', () => {
+  const antes=BOT_LLM.IDIOMA;
+  try{
+    BOT_LLM.IDIOMA='en';
+    // 1) a decisão de idioma ignora o chat da sala, mesmo ele estando todo em português
+    assert.equal(idiomaDaFala(null,[{text:'nao vou conseguir mano',bot:false}]),'en','travado é travado: o chat não decide');
+    assert.equal(idiomaDaFala('vc eh muito ruim cara',[]),'en','nem a mensagem dirigida');
+    // 2) e o que SAI é inglês. Quem julga é o `detectaIdioma` DO PRÓPRIO JOGO, sobre o pool inteiro
+    //    concatenado — texto curto ele recusa por construção, mas 12 pools juntos são sinal de sobra.
+    //    ⚠️ Caçar palavra portuguesa à mão não serve, e isto foi medido: a primeira versão deste teste
+    //    reprovava "the gas" porque `gas` está na lista de marcas do pt-BR. Reusar o detector do projeto
+    //    é o que faz o teste concordar com a máquina que decide de verdade.
+    const lang=idiomaDaFala(null,[]);
+    const tudo=k=>Object.keys(FRASES[IDIOMA_BASE]).flatMap(kind=>frasesDe(kind,k)).join(' ');
+    assert.equal(detectaIdioma(tudo(lang)),'English','com o painel em inglês, o repertório inteiro é inglês');
+    // 3) controle: o MESMO teste sobre os outros dois pools tem que dar as outras duas línguas — senão
+    //    ele passaria com um repertório que é inglês em todo lugar, que não é o que se quer.
+    assert.equal(detectaIdioma(tudo('pt-BR')),'Brazilian Portuguese');
+    assert.equal(detectaIdioma(tudo('es')),'Spanish');
+  }finally{BOT_LLM.IDIOMA=antes;}
+});
+
+test('idioma: a fala GERADA e a ENLATADA nunca discordam de língua', () => {
+  // Dois caminhos decidindo idioma separadamente é como se produz um bot que responde ao mesmo "hey bro"
+  // em inglês quando a LLM está de pé e em português quando ela cai — e ela cai o tempo todo, que é a
+  // razão de o repertório existir. Por isso `idiomaDaFala` é UMA função, usada pelos dois.
+  const antes=BOT_LLM.IDIOMA;
+  try{
+    BOT_LLM.IDIOMA='auto';
+    const chat=[{name:'alguem',text:'what are you doing bro',bot:false}];
+    const p=montaPrompt({nome:'Manu',kind:'mention',texto:'hey bro whats up',quem:'alguem',historico:chat});
+    assert.ok(/English/.test(p.user),'o prompt nomeia o inglês para o modelo');
+    assert.equal(idiomaDaFala('hey bro whats up',chat),'en','e o repertório escolhe o MESMO idioma');
+  }finally{BOT_LLM.IDIOMA=antes;}
+});
+
+test('idioma: o bordão da persona entra no SYSTEM na língua da fala', () => {
+  // Esta era a causa mais direta do vazamento: o bordão vai LITERAL para dentro do prompt, então com o
+  // idioma travado em inglês o SYSTEM mandava escrever em inglês E terminar com "anota ai".
+  const antes=BOT_LLM.IDIOMA;
+  try{
+    BOT_LLM.IDIOMA='en';
+    const zoeiro=PERSONAS.find(p=>p.id==='zoeiro');
+    const p=montaPrompt({nome:'Manu',kind:'kill',historia:zoeiro,alvo:'Beltrano'});
+    assert.ok(p.system.includes(zoeiro.bordao.en),'o bordão inglês entra no SYSTEM');
+    assert.ok(!p.system.includes(zoeiro.bordao['pt-BR']),'e o português NÃO');
+  }finally{BOT_LLM.IDIOMA=antes;}
+});

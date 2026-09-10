@@ -46,6 +46,14 @@ export default {
   swapWeapon: "trocar arma", keySwap: "Q",
   deadByZone: "O GÁS TE ALCANÇOU", champTeam: "EQUIPE CAMPEÃ", lastAliveTitle: "ÚLTIMO PLANETA DE PÉ",
   watching: "assistindo", specPrev: "anterior", specNext: "próximo",
+  // RECOLHER a tela de morte: o cartão sai da frente e vira a barra do espectador. O ícone é um chevron
+  // de TEXTO, não emoji: a fonte de emoji desenha em cores próprias e ignoraria o `color` do tema.
+  deadCollapse: "recolher para assistir", deadSummary: "RESUMO", deadCollapseIcon: "⌄",
+  // O prêmio da tela de morte. `prizeEquipNote` não é enfeite: a skin da VIDA é resolvida no join, e o
+  // respawn repassa a da vida anterior — ela aparece na PRÓXIMA. A tela diz isso em vez de deixar o
+  // jogador clicar e achar que não funcionou.
+  prizeUnlocked: "SKIN DESBLOQUEADA", prizeOffer: "GANHE ESTA SKIN", prizeWatch: "🎬 Assistir e ganhar",
+  prizeEquipNote: "equipada na próxima vida", prizeGot: "Skin sua! Ela entra na próxima vida.",
   mapOpen: "🗺 MAPA", mapClose: "🗺 FECHAR", liveOpen: "📡 TEMPO REAL", liveClose: "📡 FECHAR",
   title: "WARSPACE.IO", tagline: "CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",
   coinIcon: "🪙", coinWord: "moedas", nameLabel: "Nome do seu planeta", namePlaceholder: "Informe o nome do seu planeta", nickAsk: "Dê um nome ao seu planeta para jogar", swap: "Trocar",

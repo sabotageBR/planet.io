@@ -690,7 +690,7 @@ export function homeMissile(w,m){
   if(m.type===1){const t=w.entityById.get(m.targetId);
     if(!t||t.dead||(t.kind!==KIND.MISSILE&&t.kind!==KIND.ASTEROID&&t.kind!==KIND.STAR)){m.type=0;m.targetId=m.srcSlot;m.srcSlot=-1;return;}
     tx=t.x;ty=t.y;}
-  else{const t=w.players.get(m.targetId),tp=t&&t.alive?firstLive(t.pieces):null;if(!tp)return;tx=tp.x;ty=tp.y;}
+  else{const tp=chasePiece(w,m);if(!tp)return;tx=tp.x;ty=tp.y;}
   const dx=tx-m.x,dy=ty-m.y,l=Math.sqrt(dx*dx+dy*dy)||1,k=MISSILE.TURN;
   m.vx+=(dx/l*MISSILE.SPEED-m.vx)*k;m.vy+=(dy/l*MISSILE.SPEED-m.vy)*k;}
 /**
@@ -713,13 +713,13 @@ const armaDoMissil=m=>(m&&m.hits)?m.hits:(m?m.hue:WEAPON.MISSILE);
 function clusterSplit(w,m){
   if(m.targetId<0)return false;
   let tx,ty;
-  if(m.type===0){const ps=w.players.get(m.targetId),p=ps&&ps.alive?firstLive(ps.pieces):null;if(!p)return false;tx=p.x;ty=p.y;}
+  if(m.type===0){const p=chasePiece(w,m);if(!p)return false;tx=p.x;ty=p.y;}
   else{const e=w.entityById.get(m.targetId);if(!e||e.dead)return false;tx=e.x;ty=e.y;}
   const wp=WEAPONS[WEAPON.CLUSTER],dx=tx-m.x,dy=ty-m.y;
   if(dx*dx+dy*dy>wp.splitD*wp.splitD)return false;
   const a0=Math.atan2(m.vy,m.vx);
   for(let i=0;i<wp.n;i++){const an=a0+(i/(wp.n-1)-.5)*wp.spread,ux=Math.cos(an),uy=Math.sin(an);
-    const q=w.addMissile(m.x,m.y,ux*MISSILE.SPEED,uy*MISSILE.SPEED,m.owner,m.targetId);
+    const q=w.addMissile(m.x,m.y,ux*MISSILE.SPEED,uy*MISSILE.SPEED,m.owner,m.targetId,m.targetPc);
     q.type=m.type;q.srcSlot=m.srcSlot;q.hue=WEAPON.MISSILE;q.hits=WEAPON.CLUSTER;q.life=m.life;}   // hue = como ele se COMPORTA (míssil simples); hits = de onde ele VEIO (cacho), para o kill feed
   m.dead=true;w.events.push({type:"SHOOT",x:m.x,y:m.y,nx:Math.cos(a0),ny:Math.sin(a0)});
   return true;}
@@ -885,7 +885,15 @@ export function applyEject(w,ps){
 export function incomingMissile(w,slot,x,y,dist,livres=false){
   const ms=w.missiles;let best=null,bd=dist*dist;
   for(let i=0;i<ms.length;i++){const m=ms[i];if(m.dead||sameTeam(w,m.owner,slot)||m.type!==0||m.targetId!==slot)continue;
-    const dx=m.x-x,dy=m.y-y,d2=dx*dx+dy*dy;if(d2>=bd||dx*m.vx+dy*m.vy>=0)continue;
+    // ⚠️ A REFERÊNCIA É A PEÇA VISADA, e não o (x,y) que o chamador passou. Os três chamadores do servidor
+    // passam `firstLive(ps.pieces)`, então com o pino de peça no ar um míssil mirado numa bolinha DISTANTE
+    // seria medido contra a peça errada: a distância daria grande e o produto escalar daria positivo
+    // ("está se afastando"), e o alerta `self.threat`, a interceptação, a auto-defesa e o medo do bot
+    // ficariam cegos JUSTAMENTE para o tiro que esta entrega passou a mirar melhor. Um `Map.get` por
+    // míssil, no laço mais curto do tick (no máximo MAX_AMMO vivos por jogador).
+    let rx=x,ry=y;
+    if(m.targetPc>=0){const p=w.entityById.get(m.targetPc);if(p&&!p.dead&&p.owner===slot){rx=p.x;ry=p.y;}}
+    const dx=m.x-rx,dy=m.y-ry,d2=dx*dx+dy*dy;if(d2>=bd||dx*m.vx+dy*m.vy>=0)continue;
     if(livres&&coberto(w,slot,m.id))continue;
     bd=d2;best=m;}
   return best;}
@@ -908,12 +916,48 @@ function aimTarget(w,slot,src,tx,ty,out){
   const rr=MISSILE.AIM_RANGE*MISSILE.AIM_RANGE;let bs=MISSILE.AIM_PICK,id=-1,kind=0;
   const perto=b=>{const dx=b.x-src.x,dy=b.y-src.y;if(dx*dx+dy*dy>=rr)return false;   // fora do alcance da arma
     const sc=aimScore(b.x-tx,b.y-ty,b.r);if(sc>=bs)return false;bs=sc;return true;};
-  const pcs=w.pieces;for(let i=0;i<pcs.length;i++){const p=pcs[i];if(!p.dead&&!sameTeam(w,p.owner,slot)&&perto(p)){id=p.owner;kind=0;}}
-  const ms=w.missiles;for(let i=0;i<ms.length;i++){const m=ms[i];if(!m.dead&&!sameTeam(w,m.owner,slot)&&perto(m)){id=m.id;kind=1;}}
-  const as=w.asteroids;for(let i=0;i<as.length;i++){const a=as[i];if(!a.dead&&perto(a)){id=a.id;kind=1;}}
-  const sts=w.stars;for(let i=0;i<sts.length;i++){const st=sts[i];if(!st.dead&&perto(st)){id=st.id;kind=1;}}
-  out[0]=id;out[1]=kind;}
-const AIM=[-1,0];
+  let pcId=-1;
+  const pcs=w.pieces;for(let i=0;i<pcs.length;i++){const p=pcs[i];if(!p.dead&&!sameTeam(w,p.owner,slot)&&perto(p)){id=p.owner;kind=0;pcId=p.id;}}
+  const ms=w.missiles;for(let i=0;i<ms.length;i++){const m=ms[i];if(!m.dead&&!sameTeam(w,m.owner,slot)&&perto(m)){id=m.id;kind=1;pcId=-1;}}
+  const as=w.asteroids;for(let i=0;i<as.length;i++){const a=as[i];if(!a.dead&&perto(a)){id=a.id;kind=1;pcId=-1;}}
+  const sts=w.stars;for(let i=0;i<sts.length;i++){const st=sts[i];if(!st.dead&&perto(st)){id=st.id;kind=1;pcId=-1;}}
+  out[0]=id;out[1]=kind;out[2]=pcId;}
+const AIM=[-1,0,-1];
+/**
+ * A PEÇA que este míssil persegue. É aqui que mora o conserto do "mirei num pedaço e o míssil foi noutro".
+ *
+ * ⚠️ O DEFEITO ERA ESTRUTURAL, não de precisão: `aimTarget` VARRE peças mas gravava só `p.owner`, e
+ * `homeMissile` resolvia o alvo com `firstLive(t.pieces)` — a PRIMEIRA peça viva por ordem de criação.
+ * Contra um jogador dividido em 8, o míssil ia atrás de outra bolinha, possivelmente do outro lado do
+ * mapa, enquanto o anel do cliente estava desenhado na peça certa (o `lockOn` sempre soube qual era).
+ *
+ * As três respostas, nesta ordem:
+ *   sem pino (`pcId<0`)  → `firstLive`, byte a byte o comportamento de sempre. É isto que torna a mudança
+ *                          um NO-OP para todo tiro NÃO mirado (o clique rápido, a auto-defesa, o bot).
+ *   pino vivo            → a peça mirada.
+ *   pino morto           → a peça viva MAIS PRÓXIMA do mesmo dono, re-fixando o pino. Peça some o tempo
+ *                          todo aqui (fusão a cada 30-57 s, split, ser comida); na fusão a sobrevivente
+ *                          está encostada na que morreu, então "mais próxima" é ela e não há salto.
+ *                          Re-fixar em vez de recalcular todo tick evita o vaivém entre duas equidistantes.
+ *
+ * ⚠️ A GUARDA `!t.alive` NÃO É DECORAÇÃO: `World.removePlayer` faz `players.delete(slot)` enquanto os
+ * mísseis já lançados continuam vivos, então um quit banal deixaria `t` indefinido e derrubaria o tick da
+ * sala inteira. Ela reproduz, byte a byte, o predicado que este helper substituiu.
+ * @param {World} w @param {Body} m @returns {Body|null}
+ */
+function chasePiece(w,m){
+  const t=w.players.get(m.targetId);
+  if(!t||!t.alive)return null;
+  if(m.targetPc>=0){
+    const p=w.entityById.get(m.targetPc);
+    if(p&&!p.dead&&p.kind===KIND.PIECE&&p.owner===m.targetId)return p;
+    // a peça mirada morreu: re-fixa na mais próxima do mesmo dono, UMA vez
+    let melhor=null,bd=Infinity;
+    for(const pc of t.pieces){if(pc.dead)continue;
+      const dx=pc.x-m.x,dy=pc.y-m.y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;melhor=pc;}}
+    m.targetPc=melhor?melhor.id:-1;
+    return melhor;}
+  return firstLive(t.pieces);}
 /**
  * O alvo travado ainda vale? Vale se continua VIVO e dentro de AIM_RANGE de quem atira — as duas condições
  * que `aimTarget` já exige de qualquer alvo. Devolve o corpo (ou o líder da vítima) ou null.
@@ -922,7 +966,16 @@ const AIM=[-1,0];
 function aimLockAlive(w,ps,src){
   const id=ps.aimLockId;if(id<0)return null;
   let b=null;
-  if(ps.aimLockKind===0){const o=w.players.get(id);if(!o||!o.alive||sameTeam(w,id,ps.slot))return null;b=firstLive(o.pieces);}
+  if(ps.aimLockKind===0){const o=w.players.get(id);if(!o||!o.alive||sameTeam(w,id,ps.slot))return null;
+    // a MESMA regra do míssil em voo: a peça travada enquanto ela vive, a mais próxima quando ela morre.
+    // Sem isto, o segundo tiro da trava (que existe justamente para não refazer a mira) iria para outra
+    // bolinha — o defeito voltaria pela porta dos fundos, e só no tiro repetido.
+    if(ps.aimLockPc>=0){const p=w.entityById.get(ps.aimLockPc);
+      if(p&&!p.dead&&p.kind===KIND.PIECE&&p.owner===id)b=p;
+      else{let melhor=null,bd=Infinity;
+        for(const pc of o.pieces){if(pc.dead)continue;const dx=pc.x-src.x,dy=pc.y-src.y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;melhor=pc;}}
+        ps.aimLockPc=melhor?melhor.id:-1;b=melhor;}}
+    else b=firstLive(o.pieces);}
   else{for(const m of w.missiles)if(m.id===id&&!m.dead){b=m;break;}
     if(!b)for(const a of w.asteroids)if(a.id===id&&!a.dead){b=a;break;}
     if(!b)for(const q of w.stars)if(q.id===id&&!q.dead){b=q;break;}}
@@ -1017,15 +1070,15 @@ function fireHoming(w,ps,src,im=undefined){
   if(ps.fireAim){dirTo(src.x,src.y,ps.tx,ps.ty,DIR);const ax=DIR[0],ay=DIR[1];aimTarget(w,ps.slot,src,ps.tx,ps.ty,AIM);
     // a trava SOBREVIVE ao soltar o botão (MISSILE.AIM_HOLD_TICKS): mirar custa movimento, e refazer a mira
     // inteira para mandar o segundo míssil no mesmo alvo era pagar duas vezes pelo mesmo trabalho
-    if(AIM[0]>=0){ps.aimLockId=AIM[0];ps.aimLockKind=AIM[1];ps.aimLockUntil=w.tick+MISSILE.AIM_HOLD_TICKS;}
-    const m=w.addMissile(src.x,src.y,ax*MISSILE.SPEED,ay*MISSILE.SPEED,ps.slot,AIM[0]);m.type=AIM[1];m.hue=ps.weapon;
+    if(AIM[0]>=0){ps.aimLockId=AIM[0];ps.aimLockKind=AIM[1];ps.aimLockPc=AIM[2];ps.aimLockUntil=w.tick+MISSILE.AIM_HOLD_TICKS;}
+    const m=w.addMissile(src.x,src.y,ax*MISSILE.SPEED,ay*MISSILE.SPEED,ps.slot,AIM[0],AIM[2]);m.type=AIM[1];m.hue=ps.weapon;
     w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:AIM[1]?-1:AIM[0],targetMissile:AIM[1]?AIM[0]:-1,aimed:true,weapon:ps.weapon});return true;}
   // Tiro comum COM a trava viva: sai no mesmo alvo, sem precisar segurar o botão de novo. Perde para a
   // interceptação de um teleguiado entrante (`im`), que é defesa e vem antes de qualquer escolha ofensiva.
   if(im===undefined)im=incomingMissile(w,ps.slot,src.x,src.y,MISSILE.INTERCEPT_DIST,true);   // só quando alguém chama fora do applyFire
   if(!im&&w.tick<ps.aimLockUntil){const alvo=aimLockAlive(w,ps,src);
     if(alvo){dirTo(src.x,src.y,alvo.x,alvo.y,DIR);
-      const m=w.addMissile(src.x,src.y,DIR[0]*MISSILE.SPEED,DIR[1]*MISSILE.SPEED,ps.slot,ps.aimLockId);m.type=ps.aimLockKind;m.hue=ps.weapon;
+      const m=w.addMissile(src.x,src.y,DIR[0]*MISSILE.SPEED,DIR[1]*MISSILE.SPEED,ps.slot,ps.aimLockId,ps.aimLockKind===0?ps.aimLockPc:-1);m.type=ps.aimLockKind;m.hue=ps.weapon;
       w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:ps.aimLockKind?-1:ps.aimLockId,targetMissile:ps.aimLockKind?ps.aimLockId:-1,aimed:true,weapon:ps.weapon});return true;}
     ps.aimLockUntil=0;}   // o alvo morreu ou fugiu do alcance: a trava morre com ele
   let ux,uy,best=-1,kind=0,foe=-1;

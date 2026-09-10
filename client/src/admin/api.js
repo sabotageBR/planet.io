@@ -35,6 +35,21 @@ async function req(method,path,body){
   return j;
 }
 /**
+ * Sobe um arquivo CRU (a arte de uma skin). Irmão de `req()`, e não um parâmetro dele: aquele sempre
+ * serializa JSON, e um WebP dentro de JSON viraria base64 — 1,33× o tamanho, para estourar o `BODY_MAX`
+ * de 16 KB do router. É o mesmo desenho do upload de avatar (client/src/api/client.js), a única outra
+ * rota do servidor com corpo cru.
+ */
+async function reqRaw(method,path,blob){
+  const h={accept:"application/json","content-type":blob.type||"application/octet-stream"};
+  const tk=getToken();if(tk)h.authorization="Bearer "+tk;
+  const r=await fetch(apiUrl("/api/admin"+path),{method,headers:h,body:blob});
+  const j=await r.json().catch(()=>null);
+  if(r.status===401||r.status===403){setToken("");if(onAuthFail)onAuthFail();}
+  if(!r.ok)throw Object.assign(new Error((j&&j.message)||`erro ${r.status}`),{code:j&&j.error,status:r.status});
+  return j;
+}
+/**
  * Abre um STREAM (SSE) com o mesmo Bearer e o mesmo contrato de 401/403 do `req()`.
  * ⚠️ Existe porque `req()` faz `await r.json()`, e num corpo que nunca termina isso NÃO REJEITA: fica
  * pendurado para sempre, a tela diz "carregando…" e o console fica limpo. Aqui o corpo é do chamador.
@@ -73,6 +88,13 @@ export const api={
   closeRoom:code=>req("POST",`/rooms/${code}/close`),
   broadcast:(text,level,ttlMs)=>req("POST","/broadcast",{text,level,ttlMs}),
   settings:()=>req("GET","/settings"),
+  // ── SKINS ──
+  skins:()=>req("GET","/skins"),
+  saveSkin:(id,dados)=>req("PUT","/skins/"+id,dados),
+  setSkinActive:(id,active)=>req("POST",`/skins/${id}/active`,{active}),
+  uploadSkinArt:(id,blob)=>reqRaw("POST",`/skins/${id}/art`,blob),
+  /** A URL da PRÉVIA (rota do painel, que vê skin desativada). `t` fura o cache depois de um upload. */
+  skinArtUrl:(id,t)=>apiUrl(`/api/admin/skins/${id}/art`)+(t?`?t=${t}`:""),
   setSetting:(key,value)=>req("PUT","/settings/"+key,{value}),
   resetSetting:key=>req("DELETE","/settings/"+key),
   audit:q=>req("GET","/audit"+(q||"")),

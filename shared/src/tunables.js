@@ -27,10 +27,10 @@
 // ⚠️ `ENTRY_PANELS` é 'server' pelo mesmo motivo de `ROOM.MAX`: o servidor decide, e `/api/config` ecoa
 // o valor só para a tela poder desenhar antes de existir sala — não é física, não precisa de `wire`.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,BR,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,SPLIT,ENTRY_PANELS,ENTRY} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,BR,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,SPLIT,ENTRY_PANELS,ENTRY,FEED,PLATAFORMAS} from "./constants.js";
 
-/** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt'|'bool',grupo:string,
- *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],def:any,
+/** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt'|'bool'|'multi',grupo:string,
+ *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],onLabel?:string,offLabel?:string,def:any,
  *   read:()=>any,write:(v:any)=>void}} Tunable */
 
 // ── CATEGORIAS ───────────────────────────────────────────────────────────────
@@ -52,6 +52,7 @@ export const GRUPOS=[
   ['bots','Fala dos bots'],
   ['entrada','Tela inicial'],
   ['modos','Tela de Modos'],
+  ['hud','HUD e avisos'],
 ];
 
 /** Um número inteiro guardado numa constante, com a unidade que o ADMIN entende (ver o do ímã). */
@@ -70,10 +71,35 @@ const opt=(grupo,key,label,scope,options,obj,campo)=>({
   key,label,unit:'',scope,grupo,type:'opt',options,def:obj[campo],
   read:()=>obj[campo],write(v){obj[campo]=String(v);}});
 
-/** Um interruptor liga/desliga — sem faixa, sem opções, só um booleano guardado numa constante. */
-const bool=(grupo,key,label,scope,obj,campo)=>({
-  key,label,unit:'',scope,grupo,type:'bool',def:!!obj[campo],
+/**
+ * Um interruptor liga/desliga — sem faixa, sem opções, só um booleano guardado numa constante.
+ * ⚠️ `on`/`off` são os RÓTULOS dos dois estados, e existem porque o painel os tinha CRAVADOS como
+ * "Exibindo"/"Oculto": eles nasceram para `ENTRY_PANELS.*` e já mentiam para `NET.IDLE_KICK`, um
+ * interruptor cujo sentido não é exibir coisa nenhuma. O par de exibição continua sendo o PADRÃO, então
+ * nenhum descritor existente muda de linha.
+ */
+const bool=(grupo,key,label,scope,obj,campo,{on='Exibindo',off='Oculto'}={})=>({
+  key,label,unit:'',scope,grupo,type:'bool',onLabel:on,offLabel:off,def:!!obj[campo],
   read:()=>!!obj[campo],write(v){obj[campo]=!!v;}});
+
+/**
+ * VÁRIAS escolhas de uma lista fechada, guardadas numa STRING CSV — o quarto tipo.
+ *
+ * ⚠️ CSV E NÃO ARRAY, e a decisão é o que barateia tudo o mais. Com string, `admin_settings.value`
+ * continua sendo a mesma forma do `opt` (jsonb `{v:'…'}`), o memo `aplicados.get(key)===v` de
+ * server/src/tunables.js casa por VALOR — com array ele NUNCA casaria, e os 12–24 pods reaplicariam e
+ * logariam a cada 30 s, para sempre — e o `detail:{value}` da auditoria continua legível.
+ *
+ * ⚠️ O valor é CANÔNICO: `canon` filtra pela lista declarada (segunda lista branca, como no `opt`),
+ * tira repetição e ORDENA pela ordem de `options`. Sem isso, "a,b" e "b,a" seriam dois valores
+ * diferentes para o mesmo estado e o memo acima deixaria de funcionar.
+ */
+const canon=(v,options)=>{
+  const querido=new Set(String(v==null?'':v).split(',').map(x=>x.trim()).filter(Boolean));
+  return options.filter(o=>querido.has(o.v)).map(o=>o.v).join(',');};
+const multi=(grupo,key,label,scope,options,obj,campo)=>({
+  key,label,unit:'',scope,grupo,type:'multi',options,def:canon(obj[campo],options),
+  read:()=>canon(obj[campo],options),write(v){obj[campo]=canon(v,options);}});
 
 /** @type {Tunable[]} */
 export const TUNABLES=[
@@ -87,11 +113,31 @@ export const TUNABLES=[
   num('powerups','POWERUP.AUTODEF_MAX','Cargas de auto-defesa acumuláveis','cargas','server',1,9,1,POWERUP,'AUTODEF_MAX'),
   num('powerups','POWERUP.TICKS','Duração do ímã','ticks','server',60,3600,30,POWERUP,'TICKS'),
   num('powerups','POWERUP.FEAST_TICKS','Duração do banquete','ticks','server',60,3600,30,POWERUP,'FEAST_TICKS'),
+  // ── O KIT DE BOAS-VINDAS ──
+  // Ditos em SEGUNDOS, com o par {para,de} — o mesmo molde de `BOT.SPAWN_GRACE_S` e de `ROUND.TICKS` em
+  // minutos: o admin pensa "14 segundos", a física guarda 840 ticks. 840/60 e 600/60 são inteiros exatos,
+  // então `resetTunable` (que escreve `para(def)`) faz o caminho de volta sem drift.
+  // ⚠️ Os DOIS tunables acima ficam em 'ticks' de propósito. Trocar a unidade deles MANTENDO a chave faria
+  // a reconciliação reinterpretar uma linha já salva em `admin_settings` (420 ticks lidos como 420
+  // segundos), recusá-la por faixa, e o override sumir sozinho — com um warn no log e nada na tela.
+  // ⚠️ Mínimo ZERO nos dois: desligar o kit tem que ser possível sem deploy.
+  num('powerups','POWERUP.SPAWN_MAGNET_TICKS','Ímã com que se nasce','segundos','server',0,60,1,POWERUP,'SPAWN_MAGNET_TICKS',
+    {para:sg=>Math.round(sg*TICK_HZ),de:t=>Math.round(t/TICK_HZ)}),
+  num('powerups','POWERUP.SPAWN_FEAST_TICKS','Banquete com que se nasce','segundos','server',0,60,1,POWERUP,'SPAWN_FEAST_TICKS',
+    {para:sg=>Math.round(sg*TICK_HZ),de:t=>Math.round(t/TICK_HZ)}),
+  // "O dobro de ganho" do pedido, literalmente. ⚠️ Vale para os DOIS banquetes (o do chão e o de nascença):
+  // é a mesma constante lida em rules.js, e dois multiplicadores seriam duas verdades que divergem na
+  // primeira correção.
+  num('powerups','POWERUP.FEAST_K','Quanto o banquete multiplica a comida','×','server',1,4,.5,POWERUP,'FEAST_K'),
   // ── ARMAS ──
   num('armas','MISSILE.MAX_AMMO','Munição máxima do míssil','mísseis','server',1,9,1,MISSILE,'MAX_AMMO'),
   num('armas','MISSILE.AMMO_OVER','Balas emprestadas pelo powerup +1','mísseis','server',0,3,1,MISSILE,'AMMO_OVER'),
   num('armas','MISSILE.SPAWN_CD_TICKS','Carência de tiro ao nascer','ticks','server',0,3600,60,MISSILE,'SPAWN_CD_TICKS'),
-  num('armas','MISSILE.AIM_HOLD_TICKS','Duração da mira travada','ticks','server',0,900,30,MISSILE,'AIM_HOLD_TICKS'),
+  // ⚠️ 'wire' e não 'server': a duração da trava é a metade VISÍVEL do tiro mirado — o anel que fica na
+  // tela depois de soltar o botão sai de `MISSILE.AIM_HOLD_TICKS` lido do BUNDLE do cliente
+  // (game/index.js). Com escopo 'server' o painel movia a trava real e não movia o anel: o jogador via 3 s
+  // e o servidor contava outro número, sem nada na tela explicando. Ver RAIZES_WIRE.
+  num('armas','MISSILE.AIM_HOLD_TICKS','Duração da mira travada','ticks','wire',0,900,30,MISSILE,'AIM_HOLD_TICKS'),
   // ── PERIGOS DO MAPA ──
   num('perigos','STAR.BURN','Massa que a estrela queima','fração','server',0,.9,.01,STAR,'BURN'),
   // Quem cabe DENTRO da estrela atravessa e se esconde lá (ver o porquê do 40 em `STAR.PASS_R`).
@@ -345,6 +391,21 @@ export const TUNABLES=[
   // config é disparado sem `await` no boot do cliente, e o campo já estaria preenchido quando a
   // resposta chegasse.
   bool('entrada','ENTRY.NICK_AUTO','Sortear um nick por padrão na tela inicial','server',ENTRY,'NICK_AUTO'),
+  // ⚠️ Escopo 'server' e NÃO 'wire': a decisão vale ANTES de existir sala, então o JSON `room` chegaria
+  // tarde demais. É o mesmo argumento já escrito para `ENTRY_PANELS`, e o mesmo canal: `/api/config`.
+  // O primeiro tunable de MÚLTIPLA ESCOLHA do projeto — ver a fábrica `multi` lá em cima.
+  multi('entrada','ENTRY.DIRETO','Entrar direto na partida (pular a guarda do nome) nestas plataformas',
+    'server',PLATAFORMAS,ENTRY,'DIRETO'),
+  // ── HUD E AVISOS ──
+  // Os dois são 'wire' e não 'server'+/api/config: o feed e o card de convite só existem DENTRO de uma
+  // partida, e o JSON `room` chega antes de qualquer snapshot. O molde do `entryPanels` existe porque a
+  // tela "Escolha o Modo" é decidida ANTES de haver sala — não é o caso aqui.
+  // ⚠️ São os PRIMEIROS booleanos de escopo 'wire' do projeto, e é por isso que `aplicaWire` precisou
+  // ganhar o ramo `bool`: sem ele os dois seriam descartados em silêncio no cliente e o painel diria
+  // "salvo" para sempre. Há teste travando isso (shared/test/tunables.test.js).
+  bool('hud','FEED.SHOW','Mostrar o kill feed durante a partida','wire',FEED,'SHOW',{on:'Aparecendo',off:'Escondido'}),
+  bool('hud','BR.INVITE_MUTE','Botão de silenciar no convite de Battle Royale','wire',BR,'INVITE_MUTE',
+    {on:'Aparecendo',off:'Escondido'}),
 ];
 export const TUNABLE_BY_KEY=new Map(TUNABLES.map(t=>[t.key,t]));
 /**
@@ -352,7 +413,8 @@ export const TUNABLE_BY_KEY=new Map(TUNABLES.map(t=>[t.key,t]));
  * Nada é hardcoded na UI — nem os rótulos, nem as seções, nem que controle desenhar.
  */
 export const listTunables=()=>TUNABLES.map(t=>({key:t.key,label:t.label,unit:t.unit,scope:t.scope,
-  type:t.type,grupo:t.grupo,min:t.min,max:t.max,step:t.step,options:t.options,def:t.def,value:t.read()}));
+  type:t.type,grupo:t.grupo,min:t.min,max:t.max,step:t.step,options:t.options,
+  onLabel:t.onLabel,offLabel:t.offLabel,def:t.def,value:t.read()}));
 export const readTunable=key=>{const t=TUNABLE_BY_KEY.get(key);return t?t.read():null;};
 /**
  * Os valores das chaves 'wire', prontos para ir no JSON `room`. É um objeto plano `{chave: valor}` — quem
@@ -376,6 +438,12 @@ export function aplicaWire(vals,raizes){
     const t=TUNABLE_BY_KEY.get(key);if(!t||t.scope!=='wire')continue;
     const [raiz,campo]=key.split('.');const obj=raizes[raiz];if(!obj)continue;
     if(t.type==='opt'){if(t.options.some(o=>o.v===String(v)))obj[campo]=String(v);continue;}
+    // ⚠️ `bool` e `multi` PRECISAM de ramo próprio, e a falta deles era um defeito MUDO: sem isto o
+    // booleano caía no ramo numérico abaixo, onde `Number(true)` é 1 mas `t.min`/`t.max` são
+    // `undefined` — toda comparação dá falso e o valor é DESCARTADO em silêncio. Não doía só porque
+    // nenhum tunable 'wire' era booleano ainda; o primeiro que fosse cairia exatamente aqui.
+    if(t.type==='bool'){obj[campo]=!!v;continue;}
+    if(t.type==='multi'){obj[campo]=canon(v,t.options);continue;}
     const n=Number(v);if(Number.isFinite(n)&&n>=t.min&&n<=t.max)obj[campo]=n;}}
 /**
  * Aplica (validando faixa, ou a lista de opções). Devolve o valor efetivo; lança se a chave não existe
@@ -389,6 +457,10 @@ export function applyTunable(key,valor){
     if(!t.options.some(o=>o.v===v))throw new Error('out_of_range');
     t.write(v);return t.read();}
   if(t.type==='bool'){t.write(!!valor);return t.read();}
+  // Múltipla escolha: um id fora da lista é DESCARTADO (não recusa a gravação inteira), porque o corpo
+  // pode vir de um painel de build anterior que ainda oferecia uma opção que saiu. Lista vazia é estado
+  // válido — "nenhuma plataforma" é uma resposta, não um erro.
+  if(t.type==='multi'){t.write(valor);return t.read();}
   const v=Number(valor);
   if(!Number.isFinite(v)||v<t.min||v>t.max)throw new Error('out_of_range');
   t.write(v);return t.read();}

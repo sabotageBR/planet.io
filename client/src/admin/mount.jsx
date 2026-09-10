@@ -9,12 +9,13 @@ import { api, getToken, setToken, setOnAuthFail, getPref, setPref } from "./api.
 import { ordenar, proxOrdem } from "./ordenar.js";
 import { portalDe } from "./portais.js";
 import { AoVivo } from "./AoVivo.jsx";
+import Skins from "./Skins.jsx";
 import "./admin.css";
 
 // ⚠️ AO VIVO é a PRIMEIRA aba, mas NÃO é o destino do path vazio (ver `rota()` logo abaixo, que continua
 // caindo em "usuarios"). São coisas diferentes: primeira da lista é onde o olho vai; padrão de `/admin`
 // abriria uma conexão SSE em TODO login, inclusive o de quem só ia ajustar um parâmetro.
-const TELAS = [["vivo", "Ao vivo"], ["usuarios", "Usuários"], ["salas", "Salas"], ["retencao", "Retenção"], ["aviso", "Aviso global"], ["parametros", "Parâmetros"], ["auditoria", "Auditoria"]];
+const TELAS = [["vivo", "Ao vivo"], ["usuarios", "Usuários"], ["salas", "Salas"], ["retencao", "Retenção"], ["skins", "Skins"], ["aviso", "Aviso global"], ["parametros", "Parâmetros"], ["auditoria", "Auditoria"]];
 const rota = () => (location.pathname.replace(/^\/admin\/?/, "").split("/")[0] || "usuarios");
 const vaPara = t => { history.pushState({}, "", "/admin/" + t); dispatchEvent(new PopStateEvent("popstate")); };
 const dt = s => (s ? new Date(s).toLocaleString("pt-BR") : "—");
@@ -556,6 +557,14 @@ function Parametros({ erro }) {
     .filter(([, itens]) => itens.length);
   const mudados = ts.filter(t => t.changed).length;
 
+  // Os dois estados de um interruptor, ditos pelo DESCRITOR. O par de exibição fica como reserva para um
+  // pod de build anterior, que ainda não manda os campos.
+  const liga = (t, v) => (v ? t.onLabel || "Exibindo" : t.offLabel || "Oculto");
+  // O CSV canônico visto como conjunto, e a alternância que devolve outro CSV. A ORDEM não importa aqui:
+  // quem canoniza é o servidor, e é ele que decide o valor efetivo que volta no `carregar()`.
+  const marcados = v => new Set(String(v || "").split(",").filter(Boolean));
+  const alterna = (v, id) => { const m = marcados(v); m.has(id) ? m.delete(id) : m.add(id); return [...m].join(","); };
+
   const cartao = t => {
     // só 'both' é fixo: a FÍSICA do cliente lê aquele número e a rota recusa (501). 'wire' é gravável —
     // o servidor entrega o valor ao cliente no JSON da sala (ver wireValues/aplicaWire em shared/tunables).
@@ -581,10 +590,27 @@ function Parametros({ erro }) {
             : t.type === "bool"
               // Mesmo padrão do `opt`: grava no clique, sem Salvar/Cancelar. `.checked`, não `.value`
               // — um checkbox não tem valor booleano de verdade em `.value`.
+              // ⚠️ Os rótulos saem do DESCRITOR (`onLabel`/`offLabel`) e não são mais cravados aqui:
+              // "Exibindo/Oculto" nasceu para `ENTRY_PANELS.*` e já mentia para `NET.IDLE_KICK`, que
+              // decide EXPULSAR gente. O par antigo continua sendo o padrão da fábrica.
               ? <label className="pm-bool">
                   <input type="checkbox" checked={!!val} onChange={e => salvar(t, e.target.checked)} />
-                  {val ? "Exibindo" : "Oculto"}
+                  {liga(t, val)}
                 </label>
+            : t.type === "multi"
+              // Múltipla escolha: um checkbox por opção, gravando no CLIQUE como o `opt` e o `bool`, e
+              // o valor viaja em CSV canônico (o servidor reordena e deduplica — ver `canon` em
+              // shared/tunables.js). Nada de Salvar: o que está na tela é o que está no servidor.
+              ? <div className="pm-multi">
+                  {t.options.map(o => {
+                    const on = marcados(val).has(o.v);
+                    return <label key={o.v} className={on ? "on" : ""}>
+                      <input type="checkbox" checked={on} onChange={() => salvar(t, alterna(val, o.v))} />
+                      {o.label}
+                    </label>;
+                  })}
+                  {marcados(val).size ? null : <em className="pm-vazio">nenhuma</em>}
+                </div>
               : <><input type="number" min={t.min} max={t.max} step={t.step} value={val}
                     onChange={e => setEdit(x => ({ ...x, [t.key]: e.target.value }))}
                     onKeyDown={e => { if (e.key === "Enter" && sujo) salvar(t, Number(edit[t.key])); }} />
@@ -595,8 +621,10 @@ function Parametros({ erro }) {
           {t.type === "opt"
             ? <>padrão <i>{rotulo(t.def)}</i></>
             : t.type === "bool"
-              ? <>padrão <i>{t.def ? "Exibindo" : "Oculto"}</i></>
-              : <>padrão <i>{num(t.def)}</i> · faixa <i>{num(t.min)} – {num(t.max)}</i></>}
+              ? <>padrão <i>{liga(t, t.def)}</i></>
+              : t.type === "multi"
+                ? <>padrão <i>{t.def ? t.def.split(",").map(rotulo).join(" · ") : "nenhuma"}</i></>
+                : <>padrão <i>{num(t.def)}</i> · faixa <i>{num(t.min)} – {num(t.max)}</i></>}
         </span>
         <span className="pm-acoes">
           {fixo ? <em>lido pela física do cliente</em> : null}
@@ -699,7 +727,7 @@ function App() {
   // estiver pintando no body naquela hora.
   if (!pronto) return <div className="ad vazio">…</div>;
   if (!admin) return <Login onOk={setAdmin} />;
-  const T = { vivo: AoVivo, usuarios: Usuarios, salas: Salas, retencao: Retencao, aviso: Aviso, parametros: Parametros, auditoria: Auditoria }[tela] || Usuarios;
+  const T = { vivo: AoVivo, usuarios: Usuarios, salas: Salas, retencao: Retencao, skins: Skins, aviso: Aviso, parametros: Parametros, auditoria: Auditoria }[tela] || Usuarios;
   return <div className="ad">
     <header className="ad-topo">
       <b>warspace.io <span>admin</span></b>

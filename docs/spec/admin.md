@@ -257,7 +257,119 @@ preenchimentos comentarem a manutenção. No cliente ele sai em **dois lugares d
 **Limitação declarada:** quem está no MENU não está em sala nenhuma e **não recebe**. A saída (um aviso
 fixo em `/api/config`, que todo cliente lê no boot) fica para quando for preciso.
 
+## A tela SKINS: a arte sai da build
+
+Duas coisas moram nela, e vale não confundi-las:
+
+* **Trocar a ARTE de uma skin que já existe no código.** É por aqui que as 35 caricaturas (ids 84–118)
+  saíram do pacote: o id continua o mesmo, `user_skins` fica intacta (todo mundo que já tem continua
+  tendo), os `unlockKey` valem, e um zip de portal congelado continua desenhando o que já desenhava.
+* **Criar uma skin que não existe na build** (`source:'db'`, ids 128–255) — o "criar novas skins sem mexer
+  na build" do pedido.
+
+⚠️ **Editar nome/preço/cor de uma skin de CÓDIGO é recusado (409), e não é zelo:** `seedSkins` roda no
+BOOT de todo pod e reescreveria os campos do bundle no restart seguinte. O painel diria "salvo" e a
+mudança se desfaria sozinha, em silêncio. O que uma skin de código aceita daqui é só a arte.
+
+⚠️ **A faixa 128–255 é um teto DURO.** `skinId` viaja como `u8` no registro PLAYERS
+(`shared/src/protocol/codec.js`: `.u8(p.skinId)`, e `Sim.js` ainda mascara com `&255`). Um id 256 chega ao
+cliente como 0 — o Planeta Padrão — e um 1024 como 0 também, ou seja **colidindo com uma skin de código**,
+em silêncio, para o dono e para a sala inteira. O catálogo de código para em 127, então são **128 vagas,
+para sempre**. Há teste (`shared/test/skins.test.js`) travando que nenhuma skin de código invada a faixa.
+
+⚠️ **A skin nasce DESLIGADA** e o admin a liga depois de subir a arte: skin ativa sem arte é um disco liso
+à venda na loja — e a loja cobra moedas por ela. O botão "ativar" fica desabilitado enquanto não há arte.
+
+### As rotas
+
+| rota | o quê |
+|---|---|
+| `GET /api/admin/skins` | a lista INTEIRA, inclusive o que está desativado — é lá que se religa |
+| `PUT /api/admin/skins/:id` | cria/edita uma skin de banco (409 se o id for de código) |
+| `POST /api/admin/skins/:id/active` | liga/desliga (409 se não for de banco — ver acima) |
+| `POST /api/admin/skins/:id/art` | sobe a arte, **corpo CRU** (a 2ª rota do servidor com `raw`) |
+| `GET /api/admin/skins/:id/art` | a PRÉVIA do painel |
+| `GET /api/skins/:id/art` | a arte PÚBLICA, com ETag + `immutable` de um ano |
+
+⚠️ **A prévia tem rota própria de propósito.** A pública exige `s.active`, e o fluxo que este painel
+prescreve é "sobe a arte → confere → ativa": com uma rota só, a janela em que o admin precisa da prévia
+seria exatamente a janela em que ela responde 404.
+
+⚠️ **A arte NÃO viaja em base64**, e isso cumpre melhor o "carregado somente 1 vez" do pedido do que base64
+cumpriria: num JSON ele é 1,33× o tamanho, não é cacheável por item e obrigaria todo jogador a baixar a
+arte de TODAS as skins em todo boot. Com bytes por URL carimbada com o hash + `immutable`, o navegador nem
+refaz a requisição. O molde inteiro é o do avatar do jogador (migração 0005), inclusive o par
+`X-Content-Type-Options: nosniff` + `Content-Security-Policy: default-src 'none'` — é a RESPOSTA, e não o
+validador de upload, que fecha o buraco do arquivo disfarçado.
+
+⚠️ **A rota pública tem `rate` próprio** (240/min por IP). Sem ele ela cairia no balde compartilhado de
+60/min (a chave `ip:*:<ip>` do router), que divide com `/api/config`, `/api/rooms` e `/api/ranking` — e
+`warmFaces` dispara um GET por skin distinta da sala, até 50 num Battle Royale. Numa escola ou CGNAT isso
+derrubaria o boot de todo mundo.
+
+### Semear a arte que já existe
+
+```bash
+DATABASE_URL=postgres://planet:planet@127.0.0.1:5433/planet node scripts/skin-art.mjs --dry   # confere
+DATABASE_URL=... node scripts/skin-art.mjs                                                    # sobe
+```
+
+Sobe o que estiver em `client/public/faces/` para `skin_art` e carimba `skins.art_hash`. Idempotente: rodar
+de novo regrava os mesmos bytes e o mesmo hash, e como o hash não muda a URL do cliente não muda e o cache
+de um ano continua valendo. Tem a **mesma guarda de host** de `server/test/persist.test.js` — sem
+`ALLOW_REMOTE_DB=1` ele recusa um `DATABASE_URL` que não seja local, porque o `.env` da raiz aponta para
+produção.
+
 ## Parâmetros de jogo em runtime
+
+### O quarto tipo: MÚLTIPLA ESCOLHA (`multi`)
+
+Depois de `num`, `opt` e `bool`, nasceu o `multi` — várias escolhas de uma lista fechada, guardadas numa
+**string CSV canônica** (ordenada pela lista declarada, sem repetição). O primeiro é `ENTRY.DIRETO`, a
+lista de plataformas em que o botão JOGAR entra direto na partida.
+
+⚠️ **CSV e não array**, e é a decisão que barateia tudo: com string, `admin_settings.value` continua sendo
+a mesma forma do `opt` (jsonb `{v:'…'}`), o memo `aplicados.get(key)===v` de `server/src/tunables.js` casa
+por VALOR — com um array ele **nunca** casaria, e os 12–24 pods reaplicariam e logariam a cada 30 s, para
+sempre — e o `detail:{value}` da auditoria continua legível.
+
+⚠️ **O valor é canônico**, senão "a,b" e "b,a" seriam dois valores para o mesmo estado e o memo acima
+deixaria de funcionar. Há teste.
+
+### Os rótulos de um interruptor saem do DESCRITOR
+
+`"Exibindo"/"Oculto"` estavam **cravados** no painel: eles nasceram para `ENTRY_PANELS.*` e já mentiam para
+`NET.IDLE_KICK`, um interruptor que decide **expulsar gente**. Hoje vêm de `onLabel`/`offLabel`, com o par
+antigo como padrão da fábrica — nenhum descritor existente mudou de linha.
+
+### ⚠️ `aplicaWire` descartava `bool` EM SILÊNCIO
+
+Ela só tinha ramo para `opt` e para número, e um booleano caía no ramo numérico: `Number(true)` é 1, mas
+`t.min`/`t.max` são `undefined`, toda comparação dá falso e **o valor some sem erro nenhum**. O defeito
+estava dormente porque nenhum tunable `wire` era booleano — e os dois primeiros (`FEED.SHOW`,
+`BR.INVITE_MUTE`) caem exatamente nele. Hoje há um teste em `shared/test/tunables.test.js` que reprova
+qualquer tipo de escopo `wire` que `aplicaWire` não trate; ele falha nomeando a chave quando o ramo é
+removido.
+
+### O grupo "HUD e avisos"
+
+| chave | o quê |
+|---|---|
+| `FEED.SHOW` | o kill feed aparece durante a partida (padrão **desligado**) |
+| `BR.INVITE_MUTE` | o botão "Silenciar" do convite de Battle Royale aparece |
+
+Os dois são `bool` de escopo **`wire`**: o feed e o card só existem DENTRO de uma sala, e o JSON `room`
+chega antes de qualquer snapshot. (O molde `entryPanels`/`/api/config` existe porque a tela de Modos é
+decidida ANTES de haver sala — não é o caso aqui.)
+
+⚠️ **O feed continua visível para quem está ASSISTINDO** e para o administrador dentro da partida:
+`#hud.spec #hud-right > *:not(#kill-feed)` deixa o feed ser a única coisa que sobra na coluna direita do
+morto, e escondê-lo esvaziaria a tela de quem acabou de morrer.
+
+⚠️ **`BR.INVITE_MUTE` esconde só o BOTÃO.** São três alcances diferentes: o botão é "agora não, nesta sala"
+(`Session.brMudo`, memória, morre com o socket); a pref `brInvite` da conta é "nunca mais" (banco, Opções);
+e este parâmetro é "ninguém pode silenciar por sala". A pref continua existindo com o botão escondido — os
+portais pedem por escrito que o jogador consiga se proteger, e tirar as duas saídas o deixaria sem nenhuma.
 
 `shared/src/tunables.js` é uma **lista branca** — nada fora dela é gravável, nem por um `key` vindo do
 corpo de uma requisição. O valor cai direto no objeto de `constants.js`, e isso **custa zero no laço de

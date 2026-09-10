@@ -17,7 +17,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PORTAL } from "@warspace/shared";
+import { PORTAL, PLATAFORMAS } from "@warspace/shared";
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SAIDA = path.join(RAIZ, "portal");
@@ -124,6 +124,16 @@ const PODA = ["og.png", "icon-180.png", "icon-192.png", "icon-512.png", "manifes
 const SEM_ZIP = {
   bountyboard: "a Bounty Board enquadra o SITE (https://warspace.io), não recebe zip: o build enviado deles\n    roda em origem OPACA e ali o nosso servidor é inalcançável. Ver docs/spec/portais.md.",
 };
+// ⚠️ OS PERFIS E A LISTA DE PLATAFORMAS TÊM QUE BATER. `PLATAFORMAS` (shared/src/constants.js) é a mesma
+// lista que o /admin desenha para decidir onde o JOGAR entra direto (`ENTRY.DIRETO`) e que o cliente usa
+// para se reconhecer. Um perfil aqui sem par lá é um zip que o painel não consegue configurar — e o
+// sintoma seria mudo: o jogo entraria direto ou não, e ninguém saberia por quê.
+{
+  const declaradas = new Set(PLATAFORMAS.map(p => p.v));
+  const orfas = [...Object.keys(PERFIS), ...Object.keys(SEM_ZIP)].filter(id => !declaradas.has(id));
+  if (orfas.length) morre(`perfil de portal sem par em PLATAFORMAS (shared/src/constants.js): ${orfas.join(", ")}`);
+}
+
 
 const arquivos = dir => fs.readdirSync(dir, { withFileTypes: true, recursive: true })
   .filter(d => d.isFile()).map(d => path.join(d.parentPath || d.path, d.name));
