@@ -674,6 +674,40 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   fragmentos; `NOVA_SPOT_R` 420 deixa o cacho dentro da AOI, então ele nasce VENDO o que ganhou.
   ⚠️ Nada de protocolo e nada em `predict.js` (que não conhece spawn nem estrela): `world.novas` nunca sai
   do servidor, e o `?local=1` herda o comportamento de graça porque roda o `World` inteiro na página.
+- **O NOVATO NASCE PERTO DE GENTE, E ESSA MECÂNICA NUNCA TINHA RODADO** (`World._playerSpot`,
+  `PLAYER_SPAWN_NEAR_MIN`; ela agora vem ANTES de `_novaSpot` em `_spawnPiece`): a função existe há
+  tempo para dar o PRIMEIRO ENCONTRO sem esperar minutos, e **colocou zero jogadores em zero lugares**.
+  Ela sorteia um ponto a até `PLAYER_SPAWN_NEAR_R` (360 px) de uma peça âncora e, na MESMA chamada,
+  exigia ≥ `PLAYER_SAFE` (1500 px) de toda peça viva — inclusive a âncora que ela mesma acabara de
+  escolher. É contradição aritmética: as 40 tentativas de `_farSpot` falhavam SEMPRE, `s.ok` vinha false
+  e o nascimento caía no sorteio cego do mapa inteiro. Medido antes do conserto: **0 acertos em 200
+  chamadas**, com o novato nascendo a 3.911 px do único humano da sala; numa sala do Livre com 25
+  humanos e 25 bots, **82% dos nascimentos eram sorteio cego** e 18% iam para o berçário. Depois: 21%
+  cego, 12% berçário, **67% ao lado de uma pessoa**.
+  ⚠️ **Nada quebrava e nada logava** — é o modo de falha que `s.ok` foi criado para expor e que ninguém
+  leu. `_novaSpot` tem a MESMA forma e está CERTA: lá o centro do disco é uma cratera, não uma peça,
+  então "1500 px de toda peça" é satisfazível. O defeito é exclusivo de quem ancora numa PEÇA.
+  ⚠️ **São DUAS RÉGUAS, e é isso que `_farSpot` não sabe fazer**: aquele argumento cobra a mesma
+  distância de todo mundo. Agora um `pred` varre as peças com dois números — `PLAYER_SPAWN_NEAR_MIN`
+  (220 px) para a âncora e para quem NÃO me engole (`r <= r·EAT.RATIO`), `PLAYER_SAFE` para quem engole.
+  Cobrando os 1500 de todo mundo o predicado ainda reprovava ~2/3 das salas cheias, pelo tamanho do
+  disco: com 50 planetas em 144 M px² o vizinho mais próximo de qualquer um está a ~849 px.
+  ⚠️ **O ENCONTRO PASSOU NA FRENTE DO BERÇÁRIO**, e o motivo é dado: comida não é o que falta. Medido no
+  teste da Poki de 10/09 (533 primeiras vidas) — quem sai antes de 1 min já comeu 52 grãos e cresceu de
+  900 para 2.198, **sai VIVO em 76,4% das vezes** e sem um abate em 95,4%. Ele está comendo e indo
+  embora. E o encontro é justamente o que retém: quem MORREU na 1ª vida chega aos 3 min em **36,7%**
+  contra **25,5%** de quem saiu vivo, e renasce mais (50,8% × 42,4%). O berçário continua sendo o degrau
+  seguinte e volta a mandar sozinho quando não há humano novo na sala — que é quando não há encontro a
+  oferecer.
+  ⚠️ **A mediana diz o resto da história em dois números**: quem sai vivo da 1ª vida sai aos **51 s**;
+  quem morre, morre aos **68 s**. O encontro que prenderia o jogador chega DEPOIS de ele já ter ido.
+  ⚠️ **Não vira spawn camping**: a âncora tem que ter `r <= PLAYER_SPAWN_NEAR_MAX_R` (150), então quem
+  cresce sai do papel sozinho — e um camper que come novatos passa de 150 rápido. E quem pode engolir é
+  sempre MAIS LENTO (`vmax ∝ r^-0,449`): a 220 px, um r=150 anda a 215 px/s contra os 447 do recém-nascido.
+  ⚠️ **A ORDEM DO RNG MUDOU** (as tentativas de `_farSpot` agora acertam cedo em vez de gastar 40): a
+  mesma semente não dá mais a mesma sala. Não toca em fio nem em `predict.js` — nascimento não é predito.
+  ⚠️ `shared/test/spawn.test.js` trava os dois sentidos, e foi conferido por MUTAÇÃO: devolvendo
+  `this.pieces`/`PLAYER_SAFE` para a lista de `_farSpot`, 4 dos 6 testes ficam vermelhos.
 - **COLHER DENTRO DO GÁS VALE METADE** (`ZONE.GAS_GAIN`, `rules.gasGain`): acampar na beirada era RENDA
   LÍQUIDA, e o laço se fechava sozinho — `zoneBurn` arranca `pc.shed` e cospe pelotas para FORA, e passada
   a imunidade `pieceEject` devolvia 100% (`EAT.EJECT_GAIN`=1). Quem ficava no gás queimava e recolhia a
