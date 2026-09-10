@@ -4,7 +4,7 @@
 // desenho do port.js), então `.entry-v2 .brand` em styles/ui.css passa por cima sem um `!important` —
 // e `ui.css` é escrito à mão, nunca sobrescrito por `node client/src/theme/port.js`.
 // As cores continuam vindo dos tokens do tema, então a tela segue mudando com o relógio.
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { skinById, RARITY_COLORS, MODE } from "@warspace/shared";
 import { skinName, rarityLabel } from "../i18n/catalog.js";
 import { keysOf } from "../game/input/Keyboard.js";
@@ -54,7 +54,13 @@ function Body() {
   const sugerido = useStore(app, s => s.nickSugerido);
   const nickDoUsuario = nickSorteado(user.nick) ? sugerido : user.nick;
   const [nick, setNickLocal] = useState(nickDoUsuario);
-  useEffect(() => { setNickLocal(nickDoUsuario); }, [nickDoUsuario]);
+  // ⚠️ NÃO SOBRESCREVER O QUE O JOGADOR JÁ ESTÁ DIGITANDO. `nickSugerido` chega do servidor
+  // (`GET /api/nick`, medido em ~0,67 s) DEPOIS de a tela montar, e sem esta guarda ele apagava o nome
+  // que a pessoa tinha acabado de escrever no primeiro segundo — o campo se limpava sozinho, sem nada
+  // acusando. `tocou` só vira true por gesto do jogador; a sincronização automática continua valendo
+  // para quem não encostou no campo, que é o caso da esmagadora maioria.
+  const tocou = useRef(false);
+  useEffect(() => { if (!tocou.current) setNickLocal(nickDoUsuario); }, [nickDoUsuario]);
   useInterval(loadTop5, 5000, true);   // só o TOP 5: pedir a lista de salas para não desenhá-la é o mesmo erro que a coluna escondida dos temas já foi
   // Game Event da Poki: 1ª etapa do funil "onde exatamente o jogador some". `complete` sai em `play()`
   // (state/actions.js), no mesmo instante em que a guarda do nome libera o clique em JOGAR.
@@ -119,7 +125,7 @@ function Body() {
         </button>
         <div className="id-fields">
           <Field id="nameIn" label={LB.nameLabel} placeholder={LB.namePlaceholder} maxLength={16} autoComplete="off" value={nick}
-            onChange={e => setNickLocal(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+            onChange={e => { tocou.current = true; setNickLocal(e.target.value); }} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} />
           <div className="skinmeta"><b id="m-skin">{skinName(sk)}</b><i id="m-rar" style={{ color: RC[sk.rarity] || "#999" }}>{rarityLabel(sk.rarity)}</i></div>
         </div>
       </div>

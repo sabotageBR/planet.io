@@ -20,14 +20,24 @@ export const PORTAL = typeof __PORTAL__ !== "undefined" && __PORTAL__ === "1";
 export const PORTAL_ID = typeof __PORTAL_ID__ !== "undefined" ? __PORTAL_ID__ : "";
 export const SEM_CONTA = typeof __PORTAL_STRICT__ !== "undefined" && __PORTAL_STRICT__ === "1";
 /**
- * ENTRA_DIRETO — só a CrazyGames exige, por escrito, que o jogador novo caia DIRETO na partida
- * ("land directly in gameplay", Full Launch, máx. 1 clique) — ver `semNome()` em state/actions.js e
- * `jogar()` em ui/Entry.jsx. Os outros portais (Poki incluída) não têm essa exigência documentada em
- * `docs/spec/portais.md`, e generalizar pelo `PORTAL` genérico deixava TODOS entrando com a placa
- * `Viajante-NNNN` sorteada, sem nunca serem convidados a nomear o planeta — o oposto do que se quer
- * fora da CrazyGames. Por isso é POR PORTAL (`PORTAL_ID`), não pelo flag que cobre qualquer um deles.
+ * ENTRA_DIRETO — no pacote de portal o clique em JOGAR entra na partida, sem passar pela guarda do nome
+ * (`semNome()` em state/actions.js, `jogar()` em ui/Entry.jsx).
+ *
+ * ⚠️ ISTO JÁ FOI `PORTAL_ID === "crazy"`, e o argumento de então tinha DUAS metades que morreram em dias
+ *    diferentes. A primeira: "só a CrazyGames exige por escrito que o jogador novo caia direto na
+ *    partida" — verdade, e irrelevante, porque o jogo NUNCA rodou lá; o gate protegia um caminho que
+ *    jamais executou em produção. A segunda: "generalizar deixava TODOS entrando com a placa
+ *    `Viajante-NNNN` sem nunca serem convidados a nomear o planeta" — isso era verdade quando o campo
+ *    nascia VAZIO, e deixou de ser quando `ENTRY.NICK_AUTO` passou a entregá-lo preenchido com um nick
+ *    de gente. Hoje entrar direto é entrar COM nome, e o campo continua na tela inicial para trocar.
+ * ⚠️ E o preço da guarda foi MEDIDO no funil da Poki (Fit Test de 09-set, 1.12): **17% de abandono em
+ *    `menu/entry`** — 85 dos 500 fecharam a aba na tela inicial sem jogar um segundo, cada um entrando
+ *    na média de playtime como ZERO. Só eles valem ~4 pontos de "engaged players", que é mais do que
+ *    qualquer parâmetro de jogo girado na mesma semana.
+ * ⚠️ Continua FALSO no site: lá nomear o planeta é a única coisa que se pede antes de entrar, e quem
+ *    chegou pelo próprio domínio escolheu vir.
  */
-export const ENTRA_DIRETO = PORTAL_ID === "crazy";
+export const ENTRA_DIRETO = PORTAL;
 /**
  * SEM_VOZ — o push-to-talk não existe no pacote de portal, e são duas razões independentes:
  *  • MODERAÇÃO. O servidor é relay puro (não decodifica, não grava, não loga), então não há como

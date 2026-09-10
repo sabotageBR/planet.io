@@ -162,7 +162,15 @@ async function resolveNickSugerido(user) {
   const s = await api.nickSugerido();
   if (s === null) return "";                                        // desligado no painel
   if (s) return s;
-  return playerNick(createRng((Date.now() ^ (Math.random() * 1e9)) | 0), new Set());   // chão local
+  return chaoLocalNick();
+}
+/**
+ * O CHÃO LOCAL, extraído de `resolveNickSugerido` porque agora tem DOIS chamadores: ele (quando a rota
+ * falha) e o boot (que precisa de um nome ANTES de qualquer ida ao servidor). É a mesma lista de
+ * `playerNick` que o `?local=1` e o modo offline sempre usaram.
+ */
+function chaoLocalNick() {
+  return playerNick(createRng((Date.now() ^ (Math.random() * 1e9)) | 0), new Set());
 }
 /**
  * Grava a sugestão ANTES de a guarda de nome ser consultada. Sem isto, quem fosse a Modos ou às Salas
@@ -194,11 +202,23 @@ export async function boot() {
   else if (api.server === false) toast(getLabels().offlineNote, 3200);
   else if (api.online === false) toast(getLabels().noDbNote, 3200);
   loadConfig(); loadTop5(); loadRooms();
-  // A sugestão de nick é ESPERADA, ao contrário do `loadConfig()` logo acima: ela precisa estar no
-  // estado antes de a tela inicial montar, senão o campo nasce vazio e o texto entra por baixo do
-  // jogador um instante depois. É uma rota que não toca no banco, e o `bootstrap()` acima já fez de
-  // duas a três idas ao servidor — ela nunca é o gargalo.
-  app.update({ nickSugerido: await resolveNickSugerido(app.get().session.user) });
+  // ⚠️ O CAMPO NÃO PODE ESPERAR A REDE. O comentário que morava aqui dizia que esta rota "nunca é o
+  // gargalo"; foi MEDIDO contra produção e é falso: `GET /api/nick` responde em ~0,67 s morno e 1,19 s
+  // frio a partir do Brasil, e o `booted:true` logo acima já deixou a tela inicial montar. Nessa janela
+  // o campo fica VAZIO — e com o campo vazio o JOGAR de `ui/Entry.jsx` cai no `toast(nickAsk)` e
+  // RETORNA, ou seja o botão principal do jogo não faz NADA por mais de um segundo para quem chega e
+  // clica na hora, que é exatamente o que faz alguém empurrado para dentro de um jogo por um portal.
+  // O público da Poki é global, então lá é pior. Hoje o chão local entra SÍNCRONO e a sugestão do
+  // servidor apenas melhora o que já está lá.
+  // ⚠️ A guarda `nickSorteado` é obrigatória: quem já escolheu um nome vê o DELE, e semear aqui
+  // ofereceria um nick sorteado a quem não pediu — é a mesma condição que abre `resolveNickSugerido`.
+  // ⚠️ E a resposta do servidor continua podendo LIMPAR o campo: `null` é "o painel desligou"
+  // (`ENTRY.NICK_AUTO`) e tem que vencer o chão local, senão o interruptor não desliga nada.
+  // ⚠️ Deixou de ser `await`: segurar o boot por uma ida ao servidor é o defeito, não a solução. Quem
+  // depende do valor é `garanteNick()`, lá no `play()` — e ele encontra o chão local já gravado.
+  const uBoot = app.get().session.user;
+  if (nickSorteado(uBoot && uBoot.nick)) app.update({ nickSugerido: chaoLocalNick() });
+  resolveNickSugerido(uBoot).then(n => app.update({ nickSugerido: n }));
   const conv = Q.get("party");
   if (conv) { history.replaceState(null, "", location.pathname); joinParty(conv); return; }   // link de convite: cai direto no lobby da equipe do amigo
   // Convite para a SALA de alguém. ⚠️ Consulta o modo ANTES de entrar: sem isso o convidado entraria com o
