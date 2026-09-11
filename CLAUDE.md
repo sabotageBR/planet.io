@@ -1359,11 +1359,37 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **O CLARÃO NÃO É ENFEITE**: sem nenhum retorno de tela o planeta só reaparece noutro canto e o
   jogador não entende que morreu — pior que o cartão que se acabou de tirar. O som já existia (o
   `EVENT.DEATH` toca `death` pelo motor). Ele NÃO sai com `reduceMotion`, só encurta.
-  ⚠️ **`app.morto` É O TERCEIRO TERMO DO GAMEPLAY DO SDK** (`ATIVO` em `portal/sessao.js`): até aqui a
-  prova de que o jogador tinha morrido era `screen` deixar de ser "game", e com o respawn automático ela
-  nunca deixa — morrer e renascer passaria inteiro como gameplay ATIVO, contra o requisito escrito da
-  Poki ("gameplayStop() must fire on any gameplay interruption"). De quebra ele fecha um buraco que já
-  existia: `DEAD_DELAY_MS` (1,2 s) sempre foi tela "game" com o jogador morto.
+  ⚠️ **`app.interrompido` É O TERCEIRO TERMO DO GAMEPLAY DO SDK** (`ATIVO` em `portal/sessao.js`): até
+  aqui a prova de que o jogador tinha morrido era `screen` deixar de ser "game", e com o respawn
+  automático ela nunca deixa — morrer e abrir a tela de morte passaria inteiro como gameplay ATIVO,
+  contra o requisito escrito da Poki ("gameplayStop() must fire on any gameplay interruption (pause,
+  menu open, level end, cutscene)").
+  ⚠️ **MAS ELE NASCEU CHAMADO `morto` E ESCRITO `true` EM TODA MORTE, E ISSO CUSTOU O FIT TEST 1.21.**
+  A morte SEM TELA passou a emitir um `gameplayStop` e, 1,2 s depois, um `gameplayStart` — e esse start
+  sai **INVÁLIDO por construção**: o SDK deles anexa `interaction: getRecentInteraction()`, que exige um
+  `pointerdown`/`keydown` nos últimos 5 s, e **num respawn automático não há gesto nenhum**. Antes disso
+  a morte abria a tela e o respawn só era ARMADO por um gesto real (`ui/deadClock.js`), então o start
+  seguinte sempre tinha um. **Medido na bancada**, com o stub de `scripts/poki-stub.js` replicando o
+  rastreador deles: `gameplayStop` · `life/respawn` · `gameplayStart INVALIDO (último input há 29190ms)`.
+  Vinte e nove segundos — e no celular é pior, porque o rumo fica travado (`game/input/Joystick.js`) e
+  o jogador dirige minutos sem um `pointerdown`. Hoje quem declara a interrupção é `onDead`
+  (`interrompido: !sozinho`), e na primeira morte o SDK vê **uma partida contínua**: nenhum stop, nenhum
+  start inválido.
+  ⚠️ **O NOME É METADE DO CONSERTO.** A pergunta que o campo responde nunca foi "há um cadáver?": é "há
+  uma INTERRUPÇÃO de gameplay agora?", que é a palavra que eles usam por escrito. Com `morto`, escrever
+  `true` em toda morte parecia obviamente certo — e era o defeito. Ele é lido em UM lugar só
+  (`portal/sessao.js`) e escrito em cinco.
+  ⚠️ **Isto não desfaz o buraco que ele veio fechar**: `DEAD_DELAY_MS` (1,2 s) continua sendo tela "game"
+  com o jogador morto, e na morte QUE ABRE TELA o stop continua saindo antecipado. `client/test/portal-sessao.test.js`
+  trava os dois sentidos, e foi conferido por MUTAÇÃO (devolver o `true` incondicional o deixa vermelho).
+  ⚠️ **E A MORTE SEM TELA PRECISOU DE UMA REDE** (`redeDaMorte` em `state/actions.js`, `game.morto()`):
+  `mostra()` dispara `respawnAqui()` e não olha o resultado, e há TRÊS jeitos silenciosos de esse respawn
+  não acontecer — o `if (entrando) return` do trinco, o `g.respawn()` devolvendo false com o socket
+  fechado, e o servidor recusando sem responder `{t:"alive"}`. Nos três o jogador ficava em
+  `screen:"game"`, morto, **sem tela de morte e sem vida nova**, assistindo para sempre e sem um botão.
+  A rede pergunta ao MOTOR (o store é escrito otimista em `renasceAqui` e mentiria justamente aí), exige
+  `conn === "connected"` (senão sobe a tela por cima da reentrada do fallback) e **não tenta renascer de
+  novo**: devolve a decisão ao jogador, porque laço de respawn é como se produz a aba esquecida.
   ⚠️ **ZERO ANÚNCIO NAS DUAS PRIMEIRAS VIDAS** (`pedagioLiberado`, `PORTAL.VIDAS_SEM_AD`/`FIRST_AD_MS`),
   recompensado inclusive (a oferta de `DeadPrize` passa pelo mesmo portão; o PRÊMIO de uma skin
   destravada não, porque é fato consumado e não venda). Passadas elas, o midroll ainda espera um SINAL de
@@ -2779,12 +2805,33 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   é outra pergunta, e quem responde a ela é a cortina.
   ⚠️ **COMO SE MEDE ISTO SEM A POKI, e é o que encerrou três rodadas de adivinhação**: `VITE_POKI_SDK_URL`
   aponta o adaptador para um arquivo local, então um stub que só registra as chamadas em `window.__sdkLog`
-  dá a SEQUÊNCIA exata que o cliente emite. `WARSPACE_API_BASE=http://127.0.0.1:3003
-  VITE_POKI_SDK_URL=./poki-sdk.js node scripts/portal-pack.mjs poki`, o stub copiado para o `dist`, um
-  servidor local com `ALLOWED_ORIGINS` daquela origem, e o pacote servido estático. **Desligar o servidor
-  local reproduz o ambiente do Inspector** (lá o Restart recarrega o jogo enquanto a sessão anterior ainda
-  segura o nick por `NET.RESUME_MS`, e o join é recusado 3-6 vezes seguidas), que é o caso em que tudo
-  isto quebrava.
+  dá a SEQUÊNCIA exata que o cliente emite. O stub é **`scripts/poki-stub.js`**, versionado e com o
+  rastreador de interação deles replicado verbatim: cada `gameplayStart` sai carimbado `VALIDO`/`INVALIDO`
+  pelo MESMO `if(!interaction)` do Inspector, e `__sdkResumo()` devolve a sequência e a contagem de
+  inválidos. Ele não é mock de teste, é um MEDIDOR — foi ele que provou, com o antes e o depois na mesma
+  bancada, que o respawn automático da 1ª morte emitia `gameplayStart INVALIDO (último input há 29190ms)`.
+  ```bash
+  DATABASE_URL=postgres://planet:planet@127.0.0.1:5433/planet PORT=3002 SHARDS=1 \
+    MIGRATE_ON_START=1 ALLOWED_ORIGINS=http://127.0.0.1:4173 npm -w server start   # ⚠️ `start`, nunca
+  WARSPACE_API_BASE=http://127.0.0.1:3002 VITE_POKI_SDK_URL=./poki-sdk.js \        # `dev`: aquele lê
+    node scripts/portal-pack.mjs poki                                              # o .env de PRODUÇÃO
+  cp scripts/poki-stub.js portal/poki/dist/poki-sdk.js
+  python3 -m http.server 4173 --directory portal   # → 127.0.0.1:4173/poki/dist/
+  ```
+  ⚠️ **Para a morte acontecer em segundos**, zerar `BOT.SPAWN_GRACE_S` e `BOT.NOVATO_MASS` em
+  `admin_settings` do banco de DEV (30 s até o pod reconciliar; o jogador tem que NASCER depois disso,
+  porque `graceUntil` é escrito em `_spawnPiece`) — e **apagar as linhas no fim**, senão o dev fica sem a
+  proteção do novato e ninguém lembra por quê.
+  ⚠️ **Dirigir com o MOUSE (`pointermove`) e não clicar é o ponto do teste**, não preguiça: é assim que
+  se reproduz o jogador real: `pointermove` não conta como interação para eles, então o relógio dos 5 s
+  corre enquanto a pessoa está jogando normalmente.
+  ⚠️ **Desligar o servidor local reproduz o ambiente do Inspector** (lá o Restart recarrega o jogo enquanto
+  a sessão anterior ainda segura o nick por `NET.RESUME_MS`, e o join é recusado 3-6 vezes seguidas), que é
+  o caso em que tudo isto quebrava — e um F5 rápido na bancada o reproduz de graça: medido, cinco
+  `connect/match/fail` e o `complete` em 10,6 s, sem um anúncio no meio. ⚠️ Ali o backoff (5 tentativas em
+  ~12 s) e o `RESUME_MS` (10 s) ficam no LIMITE: um F5 um pouco mais rápido esgota as tentativas e cai na
+  tela `servidorFora`, com o TENTAR DE NOVO resolvendo. Não é regressão; é a folga a medir se um dia o
+  Inspector reclamar de "não carrega".
   ⚠️ **`screen` nasce em `"boot"`, e ele fica FORA de `SCREENS`** — aquela é a lista branca de `go()`, e é
   isso que torna `go("boot")` impossível por construção (o precedente é `"spec"`). **Não usar `"game"`**:
   `ATIVO`/`RETIDO` de `portal/sessao.js` passariam a valer antes de existir partida — `gameplayStart` sem

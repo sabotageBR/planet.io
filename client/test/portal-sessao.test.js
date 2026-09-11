@@ -129,6 +129,33 @@ const roteiro = (passos, { gestoAntes = true } = {}) => {
   return log;
 };
 
+// ── A MORTE SEM TELA NÃO É UMA INTERRUPÇÃO ───────────────────────────────────
+// Foi o defeito que custou o Fit Test 1.21, e ele não tinha teste nenhum: o campo (então chamado `morto`)
+// era escrito `true` em TODA morte, então a primeira — a que renasce sozinha em 1,2 s, sem modal, sem
+// menu e sem anúncio — passou a emitir um `gameplayStop` e, logo depois, um `gameplayStart` que o SDK
+// deles recusa por não ter `pointerdown`/`keydown` atrás (o respawn é automático: não há gesto nenhum).
+// Quem declara a interrupção é `onDead`, com `interrompido: !sozinho`; aqui se trava o efeito disso.
+test("a morte que renasce sozinha não fecha o gameplay: o SDK vê UMA partida contínua", () => {
+  const log = roteiro([
+    jogando(),                                        // entrou
+    { interrompido: false },                          // MORREU, e a morte não abre tela: `screen` fica "game"
+    { flash: 1 },                                     // o clarão
+    { screen: "game", interrompido: false },          // renasceu 1,2 s depois
+  ]);
+  assert.deepEqual(log, ["start"],
+    "nenhum stop/start no meio — é o par que produzia o `gameplayStart` sem interação");
+});
+
+test("...mas a morte QUE ABRE TELA fecha, que é o requisito escrito da Poki", () => {
+  const log = roteiro([
+    jogando(),
+    { interrompido: true },                           // 2ª morte em diante: o cartão vem, e antes dele o stop
+    { screen: "dead" },                               // ...a tela sobe 1,2 s depois (ROUND.DEAD_DELAY_MS)
+  ]);
+  assert.deepEqual(log, ["start", "stop"],
+    "`interrompido` é o que antecipa o stop em ROUND.DEAD_DELAY_MS, e ele tem que continuar saindo");
+});
+
 test("a sessão típica: entrar, morrer, renascer, fim de rodada, sair", () => {
   const log = roteiro([
     jogando(),                       // entrou na partida

@@ -705,6 +705,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
      * na tela de morte, com o botão ainda ali.
      */
     respawn(){if(!conn||!conn.isOpen||!joined||!dead)return false;conn.sendJson({t:"respawn"});return true;},
+    /**
+     * AINDA ESTOU MORTO? A ÚNICA fonte de verdade sobre isso — `dead` só sai do ar no `{t:"alive"}` do
+     * servidor, ou seja quando o planeta existe de novo. Quem pergunta é a rede de `state/actions.js`,
+     * porque o store é escrito OTIMISTA no respawn (`renasceAqui` grava `screen:"game"` antes de o
+     * servidor responder) e mentiria exatamente no caso que a rede existe para pegar: o respawn que foi
+     * pedido e nunca aconteceu.
+     */
+    morto(){return dead;},
     zoomReset(){zoomReset();},   // o chip do HUD (e a tecla 0, e o botão do meio) devolvem a câmera ao automático
     /** Silencia (ou devolve a voz a) um jogador. Local, por sala — ver o comentário de `mudos`. */
     mute(slot,on=true){const sl=slot|0;if(sl<0||sl===view.mySlot)return;

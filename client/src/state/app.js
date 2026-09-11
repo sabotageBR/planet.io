@@ -149,11 +149,15 @@ export const initialState = {
   // respondem ("esta pessoa já viu o jogo funcionar?") é da PESSOA, não da partida.
   mortes: 0,
   kills: 0,
-  // `morto` é o terceiro estado do gameplay do SDK, e ele existe porque a tela de morte deixou de ser a
-  // prova de que o jogador morreu: com a primeira morte renascendo sozinha, `screen` continua "game" o
-  // tempo todo e o `gameplayStop` que a Poki exige na letra ("must fire on any gameplay interruption")
-  // nunca sairia. Ver `ATIVO` em portal/sessao.js.
-  morto: false,
+  // `interrompido` é o terceiro estado do gameplay do SDK, e o NOME é a correção mais importante dele:
+  // ele nasceu chamado `morto` e escrito `true` em TODA morte, o que fez a morte SEM TELA — 1,2 s de
+  // clarão entre duas vidas, sem modal, sem menu e sem anúncio — emitir um `gameplayStop` e, logo
+  // depois, um `gameplayStart` que o SDK da Poki recusa por não ter interação atrás (ver `ATIVO` em
+  // portal/sessao.js). A pergunta que este campo responde nunca foi "o jogador está morto?": é "há uma
+  // INTERRUPÇÃO de gameplay agora?", que é a palavra que eles usam por escrito ("gameplayStop() must
+  // fire on any gameplay interruption (pause, menu open, level end, cutscene)"). Com o nome certo,
+  // `interrompido: !sozinho` em `onDead` se lê sozinho.
+  interrompido: false,
   flash: 0,              // contador do clarão da morte sem tela (ui/Hud.jsx): só muda de valor, nunca é lido
   roundResult: null,     // {code, champion, board:[{slot,name,mass,score,kills,isBot,registered}], nextInMs, at} — fim do mundo
   roundPronto: false,    // a ABERTURA do fim de rodada já acabou? É o portão do cartão de recompensa: o

@@ -83,13 +83,24 @@ export function passoSessao(est, retido, agora) {
 // mais nada, nunca. No Inspector isso é o caso NORMAL (o Restart deles recarrega enquanto a sessão
 // anterior ainda segura o nick por `NET.RESUME_MS`, e o join é recusado 3 a 6 vezes). O gesto resolve o
 // handshake de graça: ninguém dá input antes de ver a arena.
-// ⚠️ `!st.morto` É O TERCEIRO TERMO, e ele nasceu com a primeira morte sem tela (portal/primeiraVida.js):
-// até aqui a prova de que o jogador tinha morrido era `screen` deixar de ser "game", e com o respawn
-// automático ela nunca deixa. Sem esta parcela, morrer e renascer passaria inteiro como gameplay ativo —
-// contra o requisito escrito da Poki ("gameplayStop() must fire on any gameplay interruption"). De
-// quebra ele conserta um buraco que já existia: `ROUND.DEAD_DELAY_MS` (1,2 s) sempre foi tempo de tela
-// "game" com o jogador morto.
-const ATIVO = (st, gesto) => gesto && st.screen === "game" && !st.morto && !st.overlays.pause;
+// ⚠️ `!st.interrompido` É O TERCEIRO TERMO, e ele nasceu com a primeira morte sem tela
+// (portal/primeiraVida.js): até aqui a prova de que o jogador tinha morrido era `screen` deixar de ser
+// "game", e com o respawn automático ela nunca deixa. Sem esta parcela, morrer e abrir a tela de morte
+// passaria inteiro como gameplay ativo — contra o requisito escrito da Poki ("gameplayStop() must fire
+// on any gameplay interruption (pause, menu open, level end, cutscene)").
+//
+// ⚠️ **MAS A MORTE SEM TELA NÃO É UMA INTERRUPÇÃO, E TRATÁ-LA COMO SE FOSSE CUSTOU O FIT TEST 1.21.**
+// Ela chamava-se `morto` e era escrita `true` em TODA morte, então a primeira — a que renasce sozinha em
+// `PORTAL.RESPAWN_1_MS` (1,2 s), sem modal, sem menu e sem anúncio — passou a emitir um `gameplayStop` e,
+// logo em seguida, um `gameplayStart`. E esse start sai INVÁLIDO por construção: o SDK deles anexa
+// `interaction: getRecentInteraction()`, que exige um `pointerdown`/`keydown` nos últimos 5 s, e no
+// respawn automático **não há gesto nenhum** — no celular, com o rumo travado (`game/input/Joystick.js`),
+// o jogador chega a passar um minuto sem um único `pointerdown`. Antes disso a morte abria a tela e o
+// respawn só era ARMADO por um gesto real (`ui/deadClock.js`), então o start seguinte sempre tinha um.
+// Aqueles 1,2 s são os mesmos `ROUND.DEAD_DELAY_MS` que sempre foram tela "game" com o jogador morto e
+// nunca emitiram evento nenhum: o que se mede aqui é a INTERRUPÇÃO, e quem a declara é `onDead`
+// (`interrompido: !sozinho`), não o fato de haver um cadáver.
+const ATIVO = (st, gesto) => gesto && st.screen === "game" && !st.interrompido && !st.overlays.pause;
 // ⚠️ `spec` (assistir a uma sala em andamento) conta como RETIDO pelo mesmo motivo que `dead` e `round`
 // contam: o relógio é da CARGA DA PÁGINA e mede quem está AQUI, não quem está jogando — quem assiste está
 // na sala, olhando o jogo. Fora daqui, quem entrasse para ver uma partida apareceria como evasão no funil,

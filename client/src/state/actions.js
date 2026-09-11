@@ -728,7 +728,7 @@ async function entraNaSala({ room, mode, teamSize, party, semAnuncio } = {}) {
   let code = room ? String(room).toUpperCase() : null;
   if (!code) { try { const a = await api.auto({ mode: md, teamSize: ts }); if (a && a.code) code = a.code; } catch (e) { if (!isUnreachable(e)) toast(errText(e), 2500); } }
   levelUpFila = null;
-  app.update(s => ({ ...s, screen: "game", played: true, morto: false, rewards: null, rewardsPending: false, roundPronto: false, overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
+  app.update(s => ({ ...s, screen: "game", played: true, interrompido: false, rewards: null, rewardsPending: false, roundPronto: false, overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
     gameMode: md, teamSize: ts,
     pendingPlay: null,
     pendingJoin: { room: code, mode: md, teamSize: ts, party: pt, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
@@ -753,7 +753,7 @@ export function assistir({ room } = {}) {
   const code = room ? String(room).toUpperCase() : null;
   if (!code) return;
   levelUpFila = null; cancelaTelaMorte();
-  app.update(s => ({ ...s, screen: "spec", morto: false, rewards: null, rewardsPending: false, roundPronto: false,
+  app.update(s => ({ ...s, screen: "spec", interrompido: false, rewards: null, rewardsPending: false, roundPronto: false,
     overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
     pendingPlay: null,
     pendingJoin: { room: code, spec: true, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
@@ -795,7 +795,7 @@ async function renasceAqui(room) {
   if (PORTAL && pedagioLiberado({ mortes: a0.mortes, kills: a0.kills, sessaoMs: performance.now() })) await portal.anuncio("midroll");
   levelUpFila = null;
   const st = app.get();
-  app.update(s => ({ ...s, screen: "game", morto: false, rewards: null, rewardsPending: false, levelUp: null,
+  app.update(s => ({ ...s, screen: "game", interrompido: false, rewards: null, rewardsPending: false, levelUp: null,
     overlays: { ...s.overlays, account: false, pause: false } }));
   partidaIniciada({ mode: st.gameMode | 0, teamSize: st.teamSize || 1, party: st.party ? st.party.code : null });
 }
@@ -885,7 +885,7 @@ export function leaveGame(screen = "lobby") {
   // ela é desviada — a mesma conversão de `go()`, pelo mesmo motivo. `boot` continua valendo como destino
   // explícito: quem o pede acende `servidorFora` na mesma linha, e aí a tela que fica é o `Offline`.
   if (SEM_MENU && screen === "entry") screen = "modes";
-  app.update(s => ({ ...s, screen, morto: false, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
+  app.update(s => ({ ...s, screen, interrompido: false, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
 /**
  * SAIR DA PARTIDA — o botão, nos sete lugares em que ele existe (o ☰ do HUD, o lobby do BR, o espectador,
@@ -916,8 +916,35 @@ let rewardsT = null, levelUpN = 0, levelUpFila = null;
  * ou de uma sala nova: fim de rodada, queda/kick, sair da sala e entrar em outra. `lastMatch` é escrito na
  * HORA — o dado é dele, e quem espera é só a tela.
  */
-let deadT = null;
-const cancelaTelaMorte = () => { if (deadT) { clearTimeout(deadT); deadT = null; } };
+let deadT = null, redeT = null;
+const cancelaTelaMorte = () => { if (deadT) { clearTimeout(deadT); deadT = null; }
+  if (redeT) { clearTimeout(redeT); redeT = null; } };
+/**
+ * A REDE DA MORTE SEM TELA — o beco sem saída que o respawn automático abriu.
+ *
+ * `mostra()` dispara `respawnAqui(...)` e não olha o resultado, e existem TRÊS jeitos de esse respawn
+ * não acontecer, todos silenciosos: `respawnAqui` abre com `if (entrando) return`; `game.respawn()`
+ * devolve false com o socket fechado ou sem `joined`; e o servidor pode recusar em silêncio (a sala
+ * acabou, é Battle Royale) — nesse caso o `{t:"alive"}` simplesmente não chega. Nos três o jogador fica
+ * em `screen:"game"`, morto, **sem tela de morte e sem vida nova**: assistindo a partida de outra pessoa
+ * para sempre, sem um botão na tela. Antes do 1.21 isso não existia, porque a tela de morte subia sempre
+ * e o botão ficava lá.
+ *
+ * ⚠️ QUEM RESPONDE "AINDA ESTOU MORTO?" É O MOTOR (`game.morto()`), nunca o store: o store foi escrito
+ * otimista em `renasceAqui` e mentiria exatamente no caso que esta função existe para pegar.
+ * ⚠️ `conn === "connected"` é obrigatório: o fallback de `renasceAqui` é `entraNaSala`, que reconecta —
+ * subir a tela de morte por cima de uma reentrada em curso trocaria um defeito por outro.
+ * ⚠️ Ela NÃO tenta renascer de novo. Um laço de respawn é como se produz a aba esquecida que renasce
+ * para sempre (o motivo de `ui/deadClock.js` armar por gesto); aqui se devolve a DECISÃO ao jogador.
+ */
+const redeDaMorte = () => {
+  clearTimeout(redeT);
+  redeT = setTimeout(() => { redeT = null;
+    const a = app.get(), g = getGame();
+    if (a.screen !== "game" || a.conn !== "connected" || !g || !g.morto || !g.morto()) return;
+    app.update({ screen: "dead", interrompido: true });
+  }, (P.RESPAWN_1_MS | 0) + 2500);
+};
 // Game Event da Poki: se `connect/match` já foi fechado (complete OU fail) nesta tentativa. Sem isto, uma
 // queda de WS que nunca chega a conectar cai em "Left" (indistinguível de desinteresse) e uma
 // RECONEXÃO depois de já ter conectado reabriria/fecharia o mesmo Progress Event de novo — reset em
@@ -960,7 +987,14 @@ export function onDead(info) {
   // cair, o pack falhou"). O painel da Poki não tinha NENHUM evento entre `match` e `session/60s`.
   marco("first_death");
   marco("first_death_" + faixaIdade(info.durationS));
-  app.update(a => ({ ...a, mortes, kills: (a.kills | 0) + (info.kills | 0), morto: true,
+  // ⚠️ ESTA DECISÃO SOBE PARA CÁ PORQUE ELA DECIDE DUAS COISAS, NÃO UMA. Ela já escolhia se a tela de
+  // morte abre; agora escolhe também se isto é uma INTERRUPÇÃO de gameplay para o SDK — e essa segunda
+  // metade precisa ser escrita no MESMO `app.update` da morte, senão o `gameplayStop` sai antes de
+  // qualquer um saber que não havia interrupção nenhuma. Ver `ATIVO` em portal/sessao.js: a morte que
+  // renasce sozinha em 1,2 s não tem modal, menu, anúncio nem cutscene, e fechar o gameplay ali era o
+  // que produzia um `gameplayStart` sem interação do outro lado — o defeito que custou o Fit Test 1.21.
+  const sozinho = renasceSozinho({ portal: comoPortal(), modo: s.gameMode | 0, mortes });
+  app.update(a => ({ ...a, mortes, kills: (a.kills | 0) + (info.kills | 0), interrompido: !sozinho,
     lastMatch: { ...info, room: a.room, at: Date.now(), recMass, recScore },
     session: { ...a.session, stats: { ...st, bestMass: Math.max(recMass, +info.maxMass || 0), bestScore: Math.max(recScore, +info.score || 0) } },
     rewards: null, rewardsPending: true }));
@@ -977,10 +1011,9 @@ export function onDead(info) {
   // nível funcionando numa vida que ninguém chegou a ver terminar.
   // ⚠️ A GUARDA DO DISPARO RELÊ O ESTADO nos dois ramos, pela mesma razão de sempre: entre o agendamento
   // e o estouro pode ter chegado um fim de rodada, uma queda ou uma sala nova.
-  const sozinho = renasceSozinho({ portal: comoPortal(), modo: s.gameMode | 0, mortes });
   const mostra = () => { deadT = null; const a = app.get();
     if (!(a.lastMatch && a.screen === "game")) return;
-    if (sozinho) { app.update(x => ({ ...x, flash: x.flash + 1 })); respawnAqui(a.lastMatch.room); }
+    if (sozinho) { app.update(x => ({ ...x, flash: x.flash + 1 })); respawnAqui(a.lastMatch.room); redeDaMorte(); }
     else app.update({ screen: "dead" }); };
   const espera = Math.max(0, (sozinho ? P.RESPAWN_1_MS : ROUND.DEAD_DELAY_MS) | 0);
   if (espera) deadT = setTimeout(mostra, espera); else mostra();
