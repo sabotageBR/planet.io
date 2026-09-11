@@ -216,7 +216,25 @@ export const TUNABLES=[
   // vai atravessar (um planetão colado no novato sem nada acontecer lê pior que ser comido).
   num('novato','BOT.SPAWN_GRACE_S','Tempo em que o preenchimento não come quem nasceu (0 desliga)','segundos','server',0,60,1,BOT,'SPAWN_GRACE_TICKS',
     {para:s=>Math.round(s*TICK_HZ),de:t=>Math.round(t/TICK_HZ)}),
+  // ⚠️ A PRIMEIRA VIDA TEM RELÓGIO PRÓPRIO, e ele NÃO é interruptor: quem desliga a graça por tempo
+  // continua sendo `SPAWN_GRACE_S` (zero ali zera as duas, ver `World._spawnPiece`). Este número só diz
+  // quanto a primeira vida ganha a mais — ela é a única em que a pessoa ainda não viu o jogo funcionar,
+  // e é a que o Player Fit da Poki mede. Pô-lo no mesmo valor das outras apaga a distinção sem apagar a
+  // proteção, que é o ajuste intermediário que se vai querer antes de desligar qualquer coisa.
+  num('novato','BOT.SPAWN_GRACE_1_S','O mesmo, na PRIMEIRA vida de cada jogador','segundos','server',0,180,5,BOT,'SPAWN_GRACE_1_TICKS',
+    {para:s=>Math.round(s*TICK_HZ),de:t=>Math.round(t/TICK_HZ)}),
   num('novato','BOT.NOVATO_MASS','Até que massa a pessoa ainda conta como novato (0 desliga)','massa','server',0,60000,500,BOT,'NOVATO_MASS'),
+  // ⚠️ CONTRA GENTE A RÉGUA É SÓ A RAZÃO DE MASSA, nunca a janela cega — ver o bloco de
+  // `rules.recemChegado`. Ligado, um humano com `NOVATO_RATIO` vezes a massa de quem acabou de nascer
+  // ATRAVESSA em vez de comer, durante a janela do nascimento; desligado, a proteção volta a ser só
+  // contra preenchimento, que é como ela nasceu. É o tunable com mais chance de precisar voltar atrás
+  // depressa: ele é o único da regra que muda o que acontece entre duas PESSOAS.
+  bool('novato','BOT.NOVATO_HUMANO','A proteção também vale quando quem atropela é gente','server',BOT,'NOVATO_HUMANO',{on:'Vale',off:'Só contra preenchimento'}),
+  // ⚠️ A OUTRA METADE DO PRIMEIRO MINUTO: a proteção diz de quem o novato não morre, e isto diz o que ele
+  // tem para COMER. Zero devolve o comportamento anterior (a presa existia só nos treze planetas da
+  // semente, no tick 0, e sumia junto com eles); em 1 toda reposição nasce comível, o que enche a sala de
+  // planetinhas e tira do placar o degrau de tamanhos que a abertura existe para contar.
+  num('novato','ROOM.ISCA_P','Com que frequência o preenchimento novo nasce comível por um novato','fração','server',0,1,.05,ROOM,'ISCA_P'),
   // ⚠️ O SENTIDO É FÁCIL DE INVERTER: número MAIOR = MENOS proteção. Ele é o quanto o preenchimento precisa
   // ser maior para a regra o considerar atropelamento e mandá-lo ATRAVESSAR; abaixo disso ele come normal.
   // O piso útil é 1,33 e não 1: `EAT.RATIO` é 1,15 de RAIO, ou seja 1,32 de massa — abaixo disso nenhum

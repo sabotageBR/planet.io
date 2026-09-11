@@ -15,6 +15,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { escolhePremio } from "./premio.js";
+import { pedagioLiberado } from "../portal/primeiraVida.js";
 import { ganharSkinAnuncio } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
@@ -36,8 +37,13 @@ export default function DeadPrize({ on }) {
   const oferta = useRef(null);
   useEffect(() => {
     if (!on) { oferta.current = null; setPedindo(false); return; }
-    const s = app.get().session;
-    oferta.current = escolhePremio(null, s.skins, portal.temRecompensa, !!(s.user && s.user.id));
+    const a = app.get(), s = a.session;
+    // ⚠️ ZERO ANÚNCIO NAS DUAS PRIMEIRAS VIDAS, RECOMPENSADO INCLUSIVE (`pedagioLiberado`): é o mesmo
+    // portão do midroll, e vale aqui porque o custo do pedido é o mesmo — o jogador que ainda não sabe se
+    // gosta do jogo levando uma proposta de vídeo. O PRÊMIO (uma skin que a partida destravou) não passa
+    // por isto: ele é um fato consumado, não uma venda.
+    const pedagio = pedagioLiberado({ mortes: a.mortes, kills: a.kills, sessaoMs: performance.now() });
+    oferta.current = escolhePremio(null, s.skins, pedagio && portal.temRecompensa, !!(s.user && s.user.id));
   }, [on]);
   if (!on) return null;
   // A skin destravada ganha da oferta — e ela só é conhecida quando `rewards` chega.

@@ -9,7 +9,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createWorld, setR } from "../src/physics/index.js";
 import { piecePair, pieceMissile, incomingMissile } from "../src/physics/rules.js";
-import { BOT, ROOM, PLAYER, EAT, MISSILE } from "../src/constants.js";
+import { BOT, ROOM, PLAYER, EAT, MISSILE, POWERUP, botRespawnR } from "../src/constants.js";
+import { createRng } from "../src/rng.js";
 
 /** Laboratório: sem comida, sem perigo, sem decaimento. */
 const arena = () => createWorld({ seed: 7, food: 0, asteroids: false, holes: 0, stars: 0, decay: false });
@@ -27,7 +28,7 @@ test("bot GIGANTE não engole o humano recém-nascido — ele atravessa", () => 
   const w = arena();
   w.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
   w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
-  assert.equal(w.tick - w.players.get(1).spawnTick < BOT.SPAWN_GRACE_TICKS, true, "está sob a graça");
+  assert.equal(w.players.get(1).graceUntil > w.tick, true, "está sob a graça");
   assert.equal(encosta(w, 0, 1), false, "o novato sobreviveu ao contato");
 });
 
@@ -40,16 +41,42 @@ test("passada a graça, o algoz PROPORCIONAL mata — a proteção não é invul
   w.addPlayer(0, { isBot: true, x: 5000, y: 5000 });
   w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
   setR(w.players.get(0).pieces[0], PLAYER.START_R * 1.9);   // 3,6× de massa: engole e NÃO é atropelamento
-  w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
+  w.tick = w.players.get(1).graceUntil + 1;
   assert.ok(w.players.get(0).pieces[0].mass < w.players.get(1).pieces[0].mass * BOT.NOVATO_RATIO);
   assert.equal(encosta(w, 0, 1), true, "acabada a graça, o grande come");
 });
 
-test("entre PESSOAS a regra não muda: o jogo continua sendo o jogo", () => {
+// ── ...E CONTRA GENTE A RÉGUA É OUTRA (`BOT.NOVATO_HUMANO`) ─────────────────
+// Este par de testes ESTAVA escrito ao contrário — "entre PESSOAS a regra não muda: o jogo continua
+// sendo o jogo" —, e mudou por pedido do dono com o Fit Test 1.20 na frente: a sala do Livre tem até 30
+// humanos, então bastava UM deles para a proteção inteira não valer nada naquele encontro. O que NÃO
+// mudou, e é o que o primeiro teste trava, é a briga apertada: contra gente vale só a RAZÃO DE MASSA,
+// nunca a janela cega. Estendida cega, ela apagava o `EAT.RATIO` do jogo por um minuto e meio a cada
+// respawn de qualquer pessoa da sala.
+test("entre PESSOAS a briga apertada continua sendo o jogo: o proporcional come no tick 0", () => {
+  const w = arena();
+  w.addPlayer(0, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], PLAYER.START_R * 1.7);
+  w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+  const g = w.players.get(0).pieces[0], p = w.players.get(1).pieces[0];
+  assert.ok(w.players.get(1).graceUntil > w.tick, "o pequeno acabou de nascer");
+  assert.ok(g.mass < p.mass * BOT.NOVATO_RATIO, "e o grande NÃO é atropelamento");
+  assert.equal(encosta(w, 0, 1), true, "come, com graça ou sem — a janela cega é só contra preenchimento");
+});
+
+test("mas o ATROPELAMENTO humano atravessa: 4x de massa em cima de quem acabou de nascer", () => {
   const w = arena();
   w.addPlayer(0, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
   w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
-  assert.equal(encosta(w, 0, 1), true, "humano grande come humano pequeno, com graça ou sem");
+  assert.equal(encosta(w, 0, 1), false, "atravessa: não há decisão que o novato pudesse ter tomado");
+  // e o interruptor devolve o comportamento anterior, sem deploy
+  const on = BOT.NOVATO_HUMANO;
+  try {
+    BOT.NOVATO_HUMANO = 0;
+    const w2 = arena();
+    w2.addPlayer(0, { isBot: false, x: 5000, y: 5000 }); setR(w2.players.get(0).pieces[0], 180);
+    w2.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w2.players.get(1).pieces[0], PLAYER.START_R);
+    assert.equal(encosta(w2, 0, 1), true, "desligado: gente come gente como sempre comeu");
+  } finally { BOT.NOVATO_HUMANO = on; }
 });
 
 test("e o novato não fica imune ao contrário: ele engole o bot pequeno normalmente", () => {
@@ -85,7 +112,7 @@ test("passada a graça, o bot MUITO maior ainda atravessa quem é pequeno", () =
   const w = arena();
   w.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
   w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
-  w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;   // a graça JÁ ACABOU
+  w.tick = w.players.get(1).graceUntil + 1;   // a graça JÁ ACABOU
   const g = w.players.get(0).pieces[0], p = w.players.get(1).pieces[0];
   assert.ok(p.mass < BOT.NOVATO_MASS, "a pessoa ainda é pequena");
   assert.ok(g.mass > p.mass * BOT.NOVATO_RATIO, "e o bot é MUITO maior");
@@ -100,7 +127,7 @@ test("a briga APERTADA continua existindo: abaixo de NOVATO_RATIO o bot come", (
   // Massa entre EAT.RATIO² (1,32×) e NOVATO_RATIO (4×): engole, como sempre engoliu.
   setR(w.players.get(0).pieces[0], PLAYER.START_R * 1.7);
   const g = w.players.get(0).pieces[0];
-  w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
+  w.tick = w.players.get(1).graceUntil + 1;
   assert.ok(g.r >= p.r * EAT.RATIO, "é grande o bastante para engolir");
   assert.ok(g.mass < p.mass * BOT.NOVATO_RATIO, "e NÃO é atropelamento");
   assert.equal(encosta(w, 0, 1), true, "come normalmente");
@@ -112,7 +139,7 @@ test("quem já cresceu perde a proteção: acima de NOVATO_MASS o gigante come",
   w.addPlayer(1, { isBot: false, x: 5000, y: 5000 });
   const p = w.players.get(1).pieces[0];
   setR(p, Math.sqrt(BOT.NOVATO_MASS) + 20);          // passou do limiar de novato
-  w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
+  w.tick = w.players.get(1).graceUntil + 1;
   assert.ok(p.mass > BOT.NOVATO_MASS, "não é mais novato");
   assert.equal(encosta(w, 0, 1), true, "e volta a ser presa");
 });
@@ -135,16 +162,20 @@ test("o gigante DIVIDIDO não contorna a regra: quem conta é a massa do jogador
   assert.equal(vivas.length, 16, "o gigante está em 16 pedaços");
   assert.ok(w.massOf(0) > p.mass * BOT.NOVATO_RATIO, "o JOGADOR é muito maior");
   assert.ok(vivas[0].mass < p.mass * BOT.NOVATO_RATIO, "mas nenhuma PEÇA dele é");
-  w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
+  w.tick = w.players.get(1).graceUntil + 1;
   assert.equal(encosta(w, 0, 1), false, "atravessa: dividir não contorna a proteção");
 });
 
-test("entre PESSOAS nada mudou — a razão de massa não protege ninguém", () => {
+// ⚠️ E CONTRA GENTE A PROTEÇÃO ACABA COM A JANELA, nunca depois dela. Contra preenchimento a razão de
+// massa é PERMANENTE enquanto a pessoa for pequena (é o que apaga o atropelamento pelo resto da vida);
+// contra gente ela vale só no minuto do nascimento. A diferença é de propósito: um bot grande é
+// ambientação que a sala pôs ali, e um humano grande é alguém jogando.
+test("passada a janela, gente come gente com qualquer diferença de tamanho", () => {
   const w = arena();
   w.addPlayer(0, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
   w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
-  w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
-  assert.equal(encosta(w, 0, 1), true, "gente come gente, com qualquer diferença de tamanho");
+  w.tick = w.players.get(1).graceUntil + 1;
+  assert.equal(encosta(w, 0, 1), true, "acabada a janela do nascimento, o jogo é o jogo");
 });
 
 // ── ...MAS NADA DISSO VALE NO BATTLE ROYALE ──────────────────────────────────
@@ -161,7 +192,7 @@ test("no BATTLE ROYALE não há proteção por massa: encolher não deixa ningu�
   const p = w.players.get(1).pieces[0];
   assert.ok(p.mass < BOT.NOVATO_MASS, "seria protegido no Livre");
   assert.ok(w.massOf(0) > p.mass * BOT.NOVATO_RATIO, "e o outro é MUITO maior");
-  w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
+  w.tick = w.players.get(1).graceUntil + 1;
   assert.equal(encosta(w, 0, 1), true, "no BR o grande come: pequeno é resultado, não novato");
 });
 
@@ -170,7 +201,7 @@ test("e no LIVRE a mesma cena continua protegida — a guarda é do modo, não d
   assert.equal(w.zoneNow(), null, "a arena está no Livre");
   w.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
   w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
-  w.tick = w.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS + 1;
+  w.tick = w.players.get(1).graceUntil + 1;
   assert.equal(encosta(w, 0, 1), false, "atravessa, como no bloco acima");
 });
 
@@ -209,13 +240,12 @@ test("zerar só NOVATO_MASS devolve o penhasco de relógio", () => {
     const w = arena();
     w.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
     w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
-    const nasceu = w.players.get(1).spawnTick;
-    w.tick = nasceu + BOT.SPAWN_GRACE_TICKS - 1;
+    w.tick = w.players.get(1).graceUntil - 1;
     assert.equal(encosta(w, 0, 1), false, "um tick ANTES: intocável");
     const w2 = arena();
     w2.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w2.players.get(0).pieces[0], 180);
     w2.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w2.players.get(1).pieces[0], PLAYER.START_R);
-    w2.tick = w2.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS;
+    w2.tick = w2.players.get(1).graceUntil;
     assert.equal(encosta(w2, 0, 1), true, "um tick DEPOIS: comida — é o degrau, e é por isso que são as duas ou nenhuma");
   } finally { BOT.NOVATO_MASS = massa; }
 });
@@ -246,17 +276,23 @@ test("passada a proteção, o mesmo míssil fere normalmente", () => {
   const w = arena();
   w.addPlayer(0, { x: 5000, y: 5000, r: 200, isBot: true });
   w.addPlayer(1, { x: 5600, y: 5000, r: PLAYER.START_R, isBot: false });
-  w.tick = BOT.SPAWN_GRACE_TICKS + 1;                       // fora da graça de tempo
+  w.tick = w.players.get(1).graceUntil + 1;                 // fora da graça de tempo
   setR(w.players.get(1).pieces[0], Math.sqrt(BOT.NOVATO_MASS) + 20);   // e fora da razão de massa
   const r = acerta(w, 0, 1);
   assert.equal(r.feriu, true, "a proteção é do NOVATO, não um escudo permanente contra bot");
 });
 
-test("entre PESSOAS o míssil nunca atravessa, nem no primeiro segundo", () => {
+test("o míssil segue a MESMA regra da mordida, inclusive entre pessoas", () => {
+  // proporcional: fere, mesmo no tick do nascimento — a briga apertada continua sendo o jogo
   const w = arena();
-  w.addPlayer(0, { x: 5000, y: 5000, r: 200, isBot: false });   // humano grande
+  w.addPlayer(0, { x: 5000, y: 5000, r: PLAYER.START_R * 1.7, isBot: false });
   w.addPlayer(1, { x: 5600, y: 5000, r: PLAYER.START_R, isBot: false });
-  assert.equal(acerta(w, 0, 1).feriu, true, "proteger disso seria inventar invulnerabilidade num .io");
+  assert.equal(acerta(w, 0, 1).feriu, true, "humano proporcional fere quem acabou de nascer");
+  // atropelamento: atravessa, pelo mesmo `recemChegado` que decide a mordida
+  const w2 = arena();
+  w2.addPlayer(0, { x: 5000, y: 5000, r: 200, isBot: false });
+  w2.addPlayer(1, { x: 5600, y: 5000, r: PLAYER.START_R, isBot: false });
+  assert.equal(acerta(w2, 0, 1).feriu, false, "um teleguiado nasce muito além da AOI de quem nasceu agora");
 });
 
 test("A DEFESA DO NOVATO CONTINUA ENXERGANDO O MÍSSIL", () => {
@@ -269,4 +305,119 @@ test("A DEFESA DO NOVATO CONTINUA ENXERGANDO O MÍSSIL", () => {
   const m = w.addMissile(pc.x - 400, pc.y, 400, 0, 0, 1);
   m.type = 0;
   assert.ok(incomingMissile(w, 1, pc.x, pc.y, MISSILE.ALERT_DIST), "o novato TEM que ver o que vem nele");
+});
+
+// ── A GRAÇA TEM TRÊS SAÍDAS, E ELA REINICIA A CADA VIDA ──────────────────────
+// O pack 1.21 pediu as três por escrito: "a graça acaba no primeiro de: 90 s, ou o novato passar de
+// NOVATO_MASS com folga, ou o novato matar alguém" — e "reinicia em todo spawn do humano, senão o
+// auto-respawn nasce em cima de quem acabou de comer o tester e a sessão morre 5 s depois".
+test("a PRIMEIRA vida tem o dobro de graça; da segunda em diante volta ao normal", () => {
+  const w = arena();
+  w.addPlayer(1, { isBot: false, x: 5000, y: 5000 });
+  const ps = w.players.get(1);
+  assert.equal(ps.vidas, 1, "acabou de nascer pela primeira vez");
+  assert.equal(ps.graceUntil - w.tick, BOT.SPAWN_GRACE_1_TICKS, "a janela da estreia");
+  w.tick = ps.graceUntil + 500;
+  w.respawnPlayer(1);
+  assert.equal(ps.vidas, 2);
+  assert.equal(ps.graceUntil - w.tick, BOT.SPAWN_GRACE_TICKS, "a segunda vida usa a janela de sempre");
+  assert.ok(BOT.SPAWN_GRACE_1_TICKS > BOT.SPAWN_GRACE_TICKS, "e a estreia é a maior das duas");
+});
+
+// ⚠️ O QUE O ABATE ENCERRA É A JANELA DO NASCIMENTO, e não a regra inteira: contra PREENCHIMENTO a razão
+// de massa continua valendo enquanto a pessoa for pequena (é ela que apaga o atropelamento pelo resto da
+// vida, e é anterior a 2026-09-11). Quem mede a janela sozinha é o algoz HUMANO, onde ela é a única
+// régua — por isso o cenário deste teste usa gente dos dois lados.
+test("MATAR ALGUÉM encerra a janela na hora: quem abate não é mais recém-chegado", () => {
+  const w = arena();
+  w.addPlayer(0, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
+  w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+  w.addPlayer(2, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(2).pieces[0], 12);   // a isca
+  assert.equal(encosta(w, 0, 1), false, "sob a janela, o atropelamento humano atravessa");
+  const A = w.players.get(1).pieces[0], B = w.players.get(2).pieces[0];
+  B.x = A.x + 1; B.y = A.y; piecePair(w, A, B);
+  assert.equal(B.dead, true, "o novato engoliu a isca");
+  assert.equal(w.players.get(1).graceUntil, 0, "e a janela foi embora com o abate");
+  assert.equal(encosta(w, 0, 1), true, "caçador não é novato: o humano grande volta a comer");
+});
+
+test("CRESCER encerra a graça, mesmo com o relógio correndo", () => {
+  const w = arena();
+  w.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 400);
+  w.addPlayer(1, { isBot: false, x: 5000, y: 5000 });
+  const p = w.players.get(1).pieces[0];
+  assert.ok(w.players.get(1).graceUntil > w.tick, "o relógio ainda está correndo");
+  setR(p, Math.sqrt(BOT.NOVATO_MASS) + 20);   // ficou do tamanho de um médio
+  assert.equal(encosta(w, 0, 1), true, "quem cresceu deixa de ser intocável, mesmo dentro da janela");
+});
+
+test("a graça REINICIA a cada nascimento — é o que impede o auto-respawn de virar um atraso de 10 s", () => {
+  const w = arena();
+  w.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
+  w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+  w.tick = w.players.get(1).graceUntil + 1;
+  assert.equal(w.players.get(1).graceUntil > w.tick, false, "a vida anterior saiu da janela");
+  w.respawnPlayer(1); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+  assert.equal(w.players.get(1).graceUntil > w.tick, true, "a vida nova entra na janela de novo");
+  assert.equal(encosta(w, 0, 1), false, "e o gigante atravessa a vida 2 como atravessou a 1");
+});
+
+// ⚠️ O ÍMÃ DE NASCENÇA NÃO ARRASTA O PERIGO: "o ímã puxa a recompensa E o perigo" é escolha de quem
+// pisou num 🧲, e o kit de boas-vindas dá um de graça a toda vida nova. Sem esta regra o novato ganhava
+// uma escolha que nunca fez — uma estrela se arrastando até ele — e nem sabia que fora o próprio ímã.
+test("sob a graça, o ímã de nascença não puxa a estrela", () => {
+  const monta = graca => {
+    const w = createWorld({ seed: 11, food: 0, asteroids: false, holes: 0, stars: 0, decay: false });
+    const ps = w.addPlayer(0, { isBot: false, x: 5000, y: 5000, r: 40 }) && w.players.get(0);
+    w.setTarget(0, 5000, 5000);
+    ps.pieces[0].magnetUntil = 1e9;
+    if (!graca) ps.graceUntil = 0;
+    const st = w.spawnStar(true); st.x = 5000 + 40 * POWERUP.MAGNET_RANGE - 30; st.y = 5000;
+    const x0 = st.x; w.step();
+    return x0 - st.x;
+  };
+  assert.equal(monta(true), 0, "sob a graça a estrela não sai do lugar");
+  assert.ok(monta(false) > 0, "e fora dela o ímã continua arrastando o perigo, como sempre arrastou");
+});
+
+// ── ...E A PRESA NÃO PODE ACABAR JUNTO COM A SEMENTE ─────────────────────────
+// O tier ISCA vivia só em `SEED_MIX` — os treze primeiros planetas, no tick 0 —, e eles CRESCEM. Passados
+// dois minutos, todo preenchimento que entra vem de `PLAYER.BOT_R` [24,58], e um novato de r=30 só engole
+// `r <= 30/EAT.RATIO`: 6% daquela faixa. A sala ficava cheia e sem nada para comer, que é o outro lado do
+// "81% das primeiras vidas terminam sem um único abate".
+/** Fração dos preenchimentos novos que um recém-nascido consegue engolir. */
+const comiveis = (seed, n = 4000) => { const rng = createRng(seed), lim = PLAYER.SPAWN_R / EAT.RATIO;
+  let k = 0; for (let i = 0; i < n; i++) if (botRespawnR(rng) <= lim) k++; return k / n; };
+
+test("o preenchimento que RENASCE também nasce isca, e a isca é comível por quem acabou de nascer", () => {
+  const antes = ROOM.ISCA_P, medido = { com: 0, sem: 0 };
+  try { medido.com = comiveis(4242); ROOM.ISCA_P = 0; medido.sem = comiveis(4242); }
+  finally { ROOM.ISCA_P = antes; }
+  // ⚠️ O CHÃO NÃO É ZERO, e é ele que mede o tamanho do problema: `PLAYER.BOT_R` começa em 24 e o novato
+  // engole até 26,1, então ~6% da faixa de sempre já era comível — por acidente de intervalo, não por
+  // desenho. É esse número que fazia 81% das primeiras vidas acabarem sem um único abate.
+  assert.ok(medido.sem > 0 && medido.sem < .1, `sem ISCA_P, só ${(medido.sem * 100).toFixed(1)}% dos novos são presa`);
+  assert.ok(medido.com > medido.sem + ROOM.ISCA_P - .05,
+    `com ISCA_P=${ROOM.ISCA_P} a presa tem que subir de ${(medido.sem * 100).toFixed(1)}% para ~${((medido.sem + ROOM.ISCA_P) * 100).toFixed(0)}%, e deu ${(medido.com * 100).toFixed(1)}%`);
+});
+
+test("zerar ISCA_P devolve o comportamento anterior — a faixa de sempre, e só ela", () => {
+  const antes = ROOM.ISCA_P;
+  try {
+    ROOM.ISCA_P = 0;
+    const rng = createRng(7);
+    for (let i = 0; i < 500; i++) { const r = botRespawnR(rng);
+      assert.ok(r >= PLAYER.BOT_R[0] && r <= PLAYER.BOT_R[1], `${r.toFixed(1)} fora da faixa de sempre`); }
+  } finally { ROOM.ISCA_P = antes; }
+});
+
+test("e o teto da isca sai do JOGADOR: baixar a massa inicial no painel não a transforma em predador", () => {
+  const spawn = PLAYER.SPAWN_R;
+  try {
+    PLAYER.SPAWN_R = 22;   // o dono do jogo baixou a massa inicial
+    const rng = createRng(99), lim = PLAYER.SPAWN_R / EAT.RATIO;
+    let iscas = 0;
+    for (let i = 0; i < 2000; i++) if (botRespawnR(rng) <= lim) iscas++;
+    assert.ok(iscas > 0, "a isca continua existindo com a massa inicial menor");
+  } finally { PLAYER.SPAWN_R = spawn; }
 });

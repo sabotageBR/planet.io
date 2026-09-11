@@ -120,8 +120,19 @@ export const ROOM={SPEC_MAX:10,MAX:30,BOTS:32,CODE_LEN:4,STOP_AFTER_MS:30000,REM
   // passou a valer na FÍSICA (o gigante atravessa o novato em vez de comê-lo) e `bonusHumano` tirou do
   // grande a preferência por presa humana. O guarda-corpo é a razão de massa do algoz no painel de
   // Retenção: se ela subir, o segundo gigante volta a sair — e é um clique, não um deploy.
-  SEED_R:[[140,180],[80,150],[20,26]],SEED_MIX:[2,4],SEED_WINDOW_TICKS:7200,
+  // ⚠️ E O SEGUNDO GIGANTE SAIU DE NOVO (cota 2 → 1), pelo guarda-corpo que o parágrafo acima declarou.
+  // O Fit Test 1.20 mediu o efeito de tê-lo de volta: a coluna 0–1 min melhorou (185 → 155 sessões,
+  // que é o boot direto funcionando) e a de 1–2 min PIOROU (132 → 177) — ou seja quem entrou por causa
+  // do 1.20 morreu no minuto seguinte, com os engajados parados em 20%. Dois predadores imbatíveis na
+  // abertura são a explicação mais simples, e o par de defesas que justificou a volta (`recemChegado`
+  // na física, `bonusHumano` sem preferência por gente) protege a pessoa de ser COMIDA, não de ter a
+  // sala inteira ocupada por quem ela não pode enfrentar. Com 1, a semente continua contando "isto já
+  // estava rolando" — há um gigante, quatro médios e OITO iscas.
+  SEED_R:[[140,180],[80,150],[20,26]],SEED_MIX:[1,4],SEED_WINDOW_TICKS:7200,
   BOT_SEED:13,BOT_JOIN_TICKS:[180,420],
+  // Com que frequência um preenchimento NOVO (o que chega depois da semente, e o que renasce no Livre)
+  // nasce no tier ISCA — comível por quem acabou de nascer. Ver `botRespawnR`, onde está o porquê.
+  ISCA_P:.35,
   // ── A SALA DO DONO NÃO É A SALA AUTOMÁTICA ──
   // Ela não nasce "em andamento": quem abre uma sala sua entra SOZINHO e vê os preenchimentos chegarem.
   // A semente e os tamanhos grandes existem para contar "isto já estava rolando" a quem cai numa sala que
@@ -857,13 +868,34 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:316.2278,MAGNET_RANGE:5.5,MAGNET_RA
 // escudo: não expira; nível 1..SHIELD_MAX_LEVEL (N mísseis para destruir), sobe 1 nível a cada SHIELD_EVOLVE_TICKS sem ser atingido; −1 nível ao disparar e ao dividir
 // ímã e escudo valem POR PEÇA: só a parte que pegou o powerup se beneficia; ao fundir, os poderes das duas se juntam (escudo soma até o teto, ímã soma o tempo restante)
 export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1.3,HUNT_DIST:900,FOOD_DIST:520,MAX_PIECES:8,
-  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:2700,NOVATO_MASS:6000,NOVATO_RATIO:4,   /* 45 s — era 15, e antes disso 7. Ver `rules.piecePair` (ela também IMPEDE de ser comido) e agora
+  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:2700,SPAWN_GRACE_1_TICKS:5400,NOVATO_HUMANO:true,NOVATO_MASS:6000,NOVATO_RATIO:4,   /* 45 s — era 15, e antes disso 7. Ver `rules.piecePair` (ela também IMPEDE de ser comido) e agora
      `fireHoming`/`pieceMissile` (o míssil do preenchimento atravessa). A subida é do Player Fit da
      Poki: a mediana da primeira vida é 31 s, ou seja METADE dos novatos morria dentro da janela de 15.
      ⚠️ Esticar a graça de TEMPO recria o PENHASCO num ponto mais tarde — a menos que a perna de MASSA
      pegue o jogador na saída, e ela pega: o pico mediano da 1ª vida é 2.214 contra `NOVATO_MASS` 6.000.
      O aviso operacional é literal: nunca subir este número sem olhar o histograma de mortes na faixa
-     logo depois dele (aqui, [45,49] s) no painel de Retenção. */AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
+     logo depois dele (aqui, [45,49] s) no painel de Retenção.
+     ⚠️ **A PRIMEIRA VIDA TEM GRAÇA PRÓPRIA, E ELA É O DOBRO** (`SPAWN_GRACE_1_TICKS`, 90 s). Elas são
+     dois números porque respondem a perguntas diferentes: a primeira vida é a única em que o jogador
+     ainda não sabe o que é um planeta grande, e é ela que o Player Fit mede; da segunda em diante ele
+     já viu o jogo funcionar, e 90 s a cada respawn seria um jogador intocável metade da sessão. Medido
+     no 1.20 da Poki: a coluna 1–2 min PIOROU (132 → 177 sessões) enquanto a 0–1 melhorou, ou seja quem
+     o boot direto trouxe para dentro está morrendo no minuto seguinte. Quem escreve o relógio é
+     `World._spawnPiece` (em `ps.graceUntil`), e não uma subtração de `spawnTick` espalhada: são TRÊS
+     saídas — tempo, massa e o primeiro abate — e só um campo consegue representar as três.
+     ⚠️ **`NOVATO_HUMANO` estende a proteção a quem é comido por GENTE**, e isto contradiz de propósito o
+     que este arquivo dizia ("entre pessoas nada muda — proteger disso seria inventar invulnerabilidade
+     num .io"). O argumento continua válido para o JOGO; o que mudou foi o que a regra protege: com a
+     graça amarrada ao primeiro minuto de vida e cancelada pelo primeiro abate, ela não é
+     invulnerabilidade, é a janela em que a pessoa ainda está descobrindo o controle. E o furo era real:
+     uma sala do Livre tem até 30 humanos, e bastava UM deles para o pack inteiro de graça não valer
+     nada naquele encontro. É interruptor (0 devolve o comportamento anterior, bot × humano só).
+     ⚠️ **A GRAÇA NÃO É DO PORTAL, É DO JOGO.** O pedido pedia "PORTAL / origem Poki apenas", e o
+     servidor não tem como saber: `users.origin` é gravado uma vez, no primeiro guest, e é um DOMÍNIO —
+     quem criou a conta no site e hoje joga na Poki carrega `warspace.io` para sempre. Fazer por origem
+     custaria um campo novo atravessando sessão, sala e física para separar dois públicos que sofrem do
+     MESMO problema. Vale para todo mundo, e o guarda-corpo é o painel: os quatro números são tunables
+     do grupo "Proteção do novato" e voltam ao que eram sem deploy. */AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
   STICK:1.28,HAZ_TTL:6,DANG_N:6,FIRE_CD:[50,130],FEED_CD:40,MISSILE_MIN_D:1100,
   // Quanto dura o ARREMESSO do salto: o tick em que |v| do canal de impulso cai abaixo de BOOST.STOP.
   // DERIVADO, nunca cravado — o filho é dirigível o voo inteiro (integratePiece soma o ponteiro por cima
@@ -1120,19 +1152,35 @@ export function playerNick(rng,usados){
  * o gerador tão bem quanto o `xX…Xx` que saiu do `botNick`.
  * @param {{next:()=>number,range:(a:number,b:number)=>number}} rng @param {number} i @param {number} f
  */
-export function botSpawnR(rng,i,f){
-  const g=ROOM.SEED_MIX[0],m=ROOM.SEED_MIX[1],n=ROOM.BOT_SEED;let tier=3;   // 3 = a faixa de sempre
-  if(f>0){
-    if(i<n)tier=i<g?0:i<g+m?1:2;                                     // a semente: cota, sem sorteio — e o RESTO dela é ISCA
-    else if(rng.next()<m/n*(f<1?f:1))tier=1;                         // depois dela: no máximo um médio, cada vez mais raro
-  }
-  const faixa=tier<3?ROOM.SEED_R[tier]:PLAYER.BOT_R;
-  // ⚠️ O TETO DA ISCA SAI DO JOGADOR, não do número declarado em `SEED_R[2]`. Ela existe para ser COMÍVEL
-  // por quem acabou de nascer, e `PLAYER.SPAWN_R` é parâmetro do /admin: com a faixa cravada, baixar a
-  // massa inicial no painel transformaria a isca em predador — em silêncio, e justamente para o novato.
-  // `rng.range` gasta UM `next()` em qualquer faixa, então isto não desloca o stream da sala.
+// ⚠️ O TETO DA ISCA SAI DO JOGADOR, não do número declarado em `SEED_R[2]`. Ela existe para ser COMÍVEL
+// por quem acabou de nascer, e `PLAYER.SPAWN_R` é parâmetro do /admin: com a faixa cravada, baixar a
+// massa inicial no painel transformaria a isca em predador — em silêncio, e justamente para o novato.
+// `rng.range` gasta UM `next()` em qualquer faixa, então a escolha do tier não desloca o stream da sala.
+const faixaBotR=(rng,tier)=>{const faixa=tier<3?ROOM.SEED_R[tier]:PLAYER.BOT_R;
   const teto=tier===2?Math.min(faixa[1],PLAYER.SPAWN_R/EAT.RATIO):faixa[1];
-  return rng.range(Math.min(faixa[0],teto),teto);}
+  return rng.range(Math.min(faixa[0],teto),teto);};
+export function botSpawnR(rng,i,f){
+  const g=ROOM.SEED_MIX[0],m=ROOM.SEED_MIX[1],n=ROOM.BOT_SEED;
+  if(f>0&&i<n)return faixaBotR(rng,i<g?0:i<g+m?1:2);                 // a semente: cota, sem sorteio — e o RESTO dela é ISCA
+  const u=rng.next();
+  if(f>0&&u<m/n*(f<1?f:1))return faixaBotR(rng,1);                   // depois dela: no máximo um médio, cada vez mais raro
+  return faixaBotR(rng,u>=1-ROOM.ISCA_P?2:3);}                       // ...e a ISCA continua chegando (ver botRespawnR)
+/**
+ * O raio de um preenchimento que RENASCE (só o Livre tem respawn de bot).
+ *
+ * ⚠️ **A PRESA ACABAVA JUNTO COM A SEMENTE, e é isso que este número conserta.** O tier ISCA existia só
+ * em `SEED_MIX` — ou seja nos primeiros treze planetas da sala, no tick 0 —, e eles crescem: passados
+ * dois minutos nenhum deles é mais comível por quem acabou de nascer. Daí em diante o único preenchimento
+ * que entra vem de `PLAYER.BOT_R` [24,58], e um novato de r=30 só engole `r <= 30/EAT.RATIO` = 26,1, ou
+ * seja 6% daquela faixa — a sala fica cheia e sem nada para comer. Medido no Fit Test: 81% das primeiras
+ * vidas terminam sem um único abate, e quem mata alguém chega a 3 min em 54% contra 22%.
+ * ⚠️ O que a isca entrega é PRESENÇA e uma perseguição, não um abate garantido: `vmax ∝ r^-0,449` faz
+ * ela ser mais RÁPIDA que o novato e `BOT.FLEE_DIST` a faz fugir. Quem fecha a perseguição é o salto.
+ * ⚠️ CONSUMO DE RNG: dois `next()` sempre (o sorteio do tier e a faixa), onde antes havia um. O stream da
+ * sala desloca — a mesma semente deixa de dar a mesma sala —, e isso não toca fio nem `predict.js`
+ * (nascimento não é predito). Fazer o consumo depender do resultado seria pior: aí ele variaria por tick.
+ */
+export function botRespawnR(rng){const u=rng.next();return faixaBotR(rng,u<ROOM.ISCA_P?2:3);}
 // ── FALA DOS BOTS ────────────────────────────────────────────────────────────
 // Uma sala de 50 pessoas que atravessa a partida inteira em silêncio é tão estranha quanto um bot correndo
 // em linha reta. As falas são CURTAS, minúsculas e presas a um gatilho do jogo — nada de papo solto, que é
@@ -1672,4 +1720,12 @@ export const KEY_LABEL={Space:"ESPAÇO",KeyW:"W",KeyE:"E",KeyD:"D",KeyC:"C",KeyZ
 //             não pode ficar de portas fechadas por causa disso — vencido o prazo, joga sem anúncio.
 // AD_MS       teto de um anúncio. `showAd` às vezes nem rejeita quando não há preenchimento: sem este
 //             relógio o botão JOGAR ficaria pendurado para sempre, que é a pior falha possível aqui.
-export const PORTAL={MIN_AD_MS:120000,SDK_MS:6000,AD_MS:45000};
+// ── A PRIMEIRA VIDA (client/src/portal/primeiraVida.js) ──
+// VIDAS_SEM_TELA  quantas MORTES passam direto para uma vida nova, sem a tela de morte. 1 = só a
+//                 primeira. Zero devolve o comportamento anterior (toda morte abre o cartão).
+// RESPAWN_1_MS    quanto essa morte sem tela demora até a vida nova. Curto de propósito, e nunca zero: é
+//                 o tempo de ver o próprio planeta estourar, que é a única coisa que a pessoa quer ali.
+// VIDAS_SEM_AD    quantas mortes entram sem NENHUM anúncio. Ver `pedagioLiberado`.
+// FIRST_AD_MS     ...e, passadas elas, quanto tempo de página o jogador precisa ter para pagar o
+//                 primeiro — a não ser que já tenha feito um abate, que é o sinal mais forte de que ficou.
+export const PORTAL={MIN_AD_MS:120000,SDK_MS:6000,AD_MS:45000,VIDAS_SEM_TELA:1,RESPAWN_1_MS:1200,VIDAS_SEM_AD:2,FIRST_AD_MS:180000};

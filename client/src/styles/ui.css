@@ -2653,3 +2653,22 @@ body[data-mode="landscape"] #hud .dica-split{bottom:96px}
   0%,100%{box-shadow:0 0 0 0 rgba(139,92,255,.55);filter:brightness(1)}
   50%    {box-shadow:0 0 0 10px rgba(139,92,255,0);filter:brightness(1.25)}}
 @media (prefers-reduced-motion:reduce){#hud #t-split.dica{animation:none;outline-color:#8b5cff}}
+
+/* ── O CLARÃO DA MORTE SEM TELA (App.jsx, portal/primeiraVida.js) ────────────
+   A primeira morte do pacote não abre cartão nenhum: vira este clarão e uma vida nova 1,2 s depois. Sem
+   ele o planeta só reaparece noutro canto, e o jogador não entende que morreu — o que é pior que o
+   cartão que se acabou de tirar. O som já existe (o `EVENT.DEATH` toca `death` pelo motor).
+   ⚠️ `pointer-events:none` e NADA de `backdrop-filter`: isto pousa por cima de um canvas a 60 fps, e
+   engolir o ponteiro congelaria o alvo do jogador — a mesma razão do `#hud` inteiro.
+   ⚠️ Ele anima `opacity` e só: o elemento não se posiciona com `transform`, mas seguir a regra do bloco
+   "ANIMAÇÃO DE ENTRADA NÃO ESCREVE `transform`" custa zero e não deixa a armadilha plantada.
+   ⚠️ Com `reduceMotion` ele vira um piscar seco em vez de sumir: o retorno de "você morreu" é
+   informação, não enfeite — é o mesmo argumento da seta de rumo do direcional. */
+#morte-flash{position:absolute;inset:0;z-index:30;pointer-events:none;
+  background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.55),rgba(255,120,60,.22) 45%,transparent 72%);
+  animation:morte-flash .42s ease-out forwards}
+@keyframes morte-flash{0%{opacity:0}12%{opacity:1}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  #morte-flash{animation-duration:.24s}
+  @keyframes morte-flash{0%{opacity:.8}100%{opacity:0}}
+}

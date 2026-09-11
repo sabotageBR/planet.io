@@ -7,14 +7,16 @@
 // espelhamos (uma fonte só, sem contar duas vezes).
 // @ts-check
 import {createWorld} from '@warspace/shared/physics/world.js';
-import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT,BOT_TALK,BOT_LLM,FEED,MISSILE,MODE,modeOf,WEAPON,WEAPONS} from '@warspace/shared/constants.js';
+import {TICK_HZ,SAMPLE_EVERY,PLAYER,BOT,BOT_TALK,BOT_LLM,FEED,MISSILE,MODE,modeOf,WEAPON,WEAPONS,botRespawnR} from '@warspace/shared/constants.js';
+/** De quantos em quantos ticks se pergunta se a graça de alguém acabou (4 Hz). Ver `_graceTick`. */
+const GRACE_EVERY=15;
 import {EVENT,REMOVE,PLAYER_FLAG,SELF_FLAG,POWER_BIT,INPUT_FLAG,NO_TEAM} from '@warspace/shared/protocol/constants.js';
 import {createRng} from '@warspace/shared/rng.js';
 import {kdOf} from '@warspace/shared/levels.js';
 import {packDir} from '@warspace/shared/util.js';
 import {NOOP_HOOKS} from './hooks.js';
 import {BotBrain} from '@warspace/shared/bot.js';
-import {incomingMissile,ammoOf,ownedMask,outOfZone,explodeQuit} from '@warspace/shared/physics/rules.js';
+import {incomingMissile,ammoOf,ownedMask,outOfZone,explodeQuit,sobGraca} from '@warspace/shared/physics/rules.js';
 import {firstLive} from '@warspace/shared/physics/body.js';
 
 export const NO_SLOT=0xffff;
@@ -64,7 +66,10 @@ export class Sim{
     /** @type {((o:any)=>void)|null} espelho SEM TETO da fila acima, para o fluxo ao vivo do /admin (ver `_feed`) */this.onFeed=null;
     /** @type {((gp:GamePlayer)=>boolean)|null} o preenchimento que morreu deve VOLTAR? (a sala responde com `botAlvo`; sem ela, sempre) */this.botGate=null;
     /** @type {Map<number,{by:number,how:string,tick:number}>} último dano levado por slot: quem AMOLECEU antes de alguém colher */this._lastHit=new Map();
-    this._listeners=new Map();this._lb=[];this._lbTick=-1;this._hit=new Map();this._statTick=new Map();this._deaths=[];this._elim=0;}
+    this._listeners=new Map();this._lb=[];this._lbTick=-1;this._hit=new Map();this._statTick=new Map();this._deaths=[];this._elim=0;
+    // Quem ainda está sob a graça do nascimento (`rules.sobGraca`). Só serve para AVISAR a tela quando ela
+    // acaba — e por que —, e é por isso que é um Set e não um campo: esvaziado, o laço do `step` custa zero.
+    this._grace=new Set();}
   get tick(){return this.world.tick;}
   // ── emissor mínimo ──
   on(ev,fn){const l=this._listeners.get(ev);if(l)l.push(fn);else this._listeners.set(ev,[fn]);return this;}
@@ -83,6 +88,10 @@ export class Sim{
     if(this.players.has(slot))this.remove(slot);
     this._lastHit.delete(slot);
     this.world.addPlayer(slot,{r:PLAYER.SPAWN_R,isBot:false,missiles:0,team,spawn});
+    // ⚠️ `spawn` e `!spectator`: sem corpo não há graça a acabar — o lobby do BR e a arquibancada
+    // entrariam no laço de `_graceTick` para nunca sair dele (o `!ps.alive` os tiraria no primeiro passo,
+    // mas com um `grace_end` falso no caminho).
+    if(spawn&&!spectator)this._grace.add(slot);
     const gp=this._mk(slot,{name,registered,skinId,sessionId,userId,isBot:false,team,level,spectator});this.players.set(slot,gp);
     // ⚠️ ESPECTADOR NASCE MORTO, e não é gambiarra — é o que faz o resto sair de graça. `gp.dead` já é o
     // estado de quem assiste: `wsServer` aceita `{t:"spectate"}` dele, `Room._escopoFala` o põe na
@@ -115,7 +124,7 @@ export class Sim{
   remove(slot,explode=false){const gp=this.players.get(slot);if(!gp)return;
     if(explode)for(const b of explodeQuit(this.world,this.world.piecesOf(slot)))this._ev(EVENT.SUPERNOVA,b.x,b.y,b.r,NO_SLOT,NO_SLOT,0);
     for(const pc of this.world.piecesOf(slot))if(!pc.dead)this.gone.set(pc.id,REMOVE.DESPAWN);
-    this.world.removePlayer(slot);this.players.delete(slot);this._lastHit.delete(slot);this.playersDirty=true;}
+    this.world.removePlayer(slot);this.players.delete(slot);this._lastHit.delete(slot);this._grace.delete(slot);this.playersDirty=true;}
   /**
    * INPUT de humano (seq u16 com wrap: aceita se (seq-lastSeq)&0xffff ∈ (0,32768)) ou de bot (seq null).
    * Flags one-shot SPLIT/EJECT/FIRE valem uma vez por seq nova; EJECT_HOLD liga/desliga a repetição.
@@ -139,7 +148,30 @@ export class Sim{
     w.step();
     this._consume();
     for(const gp of this.players.values()){const ps=w.players.get(gp.slot);if(!ps)continue;gp.score=ps.score;if(ps.alive){const m=w.massOf(gp.slot);if(m>gp.maxMass)gp.maxMass=m;}}
+    if(this._grace.size&&w.tick%GRACE_EVERY===0)this._graceTick();
     if(w.tick%SAMPLE_EVERY===0)this._sample();}
+  /**
+   * A GRAÇA DO NASCIMENTO ACABOU — e POR QUÊ (`{t:'grace',why}` → o funil `grace_end` do portal).
+   *
+   * ⚠️ ISTO É MEDIÇÃO, e é a única forma de a regra do 1.21 ser conferida em produção: ela tem TRÊS
+   * saídas (tempo, massa e o primeiro abate) e o painel de Retenção só enxerga a morte que vem DEPOIS.
+   * Sem saber por qual delas o jogador saiu, "esticar a graça funcionou?" não tem resposta — a mesma
+   * razão de `metrics.spawn` existir antes de consertar o `_farSpot`.
+   * ⚠️ O CLIENTE NÃO PODE DERIVAR ISTO: `SPAWN_GRACE_TICKS` e `NOVATO_MASS` são tunables de escopo
+   * 'server', ou seja o bundle dele tem a cópia do BUILD e o painel pode estar com outro número.
+   * ⚠️ A 4 Hz (`GRACE_EVERY`), não a 60: `sobGraca` chama `massOf`, que percorre as peças, e 250 ms de
+   * imprecisão num evento de analytics não muda nada. O laço só existe enquanto há alguém sob graça.
+   * ⚠️ Apagar do Set durante o `for...of` é seguro — o iterador de Set tolera remoção do item corrente.
+   */
+  _graceTick(){const w=this.world;
+    for(const slot of this._grace){
+      const ps=w.players.get(slot);
+      if(!ps||!ps.alive){this._grace.delete(slot);continue;}
+      if(sobGraca(w,ps))continue;
+      this._grace.delete(slot);
+      // A ordem das perguntas É a ordem de precedência: `eatPiece` ZERA o campo, então zero só pode ser
+      // abate; ainda no futuro com a graça vencida só pode ser massa; o resto é o relógio.
+      this._emit('grace',{slot,why:!ps.graceUntil?'kill':ps.graceUntil>w.tick?'mass':'time'});}}
   /**
    * Gatilho de fala de um preenchimento. É só uma FILA: quem decide se sai alguma coisa (e o orçamento) é a
    * sala, porque falar é evento de sala e não de física — o cérebro compartilhado nem enxerga chat.
@@ -279,7 +311,10 @@ export class Sim{
     // ninguém ver um planeta sumir do nada. Sem o portão aqui, `trimBots` teria que arrancar todos vivos.
     if(gp.isBot&&this.mode.respawnBots){
       if(this.botGate&&!this.botGate()){this.remove(e.slot);return;}
-      w.respawnPlayer(e.slot,{r:this.rng.range(PLAYER.BOT_R[0],PLAYER.BOT_R[1]),score:Math.floor(gp.score*BOT.RESPAWN_SCORE)});gp.score=Math.floor(gp.score*BOT.RESPAWN_SCORE);if(gp.brain)gp.brain.reset();return;}
+      // ⚠️ `botRespawnR` e não a faixa crua: é ele que mantém a ISCA chegando a sala inteira. O respawn de
+      // bot é a fonte CONTÍNUA de preenchimento no Livre (eles morrem o tempo todo), então era aqui que a
+      // presa do novato sumia depois dos dois minutos de semente — ver o bloco da função em constants.js.
+      w.respawnPlayer(e.slot,{r:botRespawnR(this.rng),score:Math.floor(gp.score*BOT.RESPAWN_SCORE)});gp.score=Math.floor(gp.score*BOT.RESPAWN_SCORE);if(gp.brain)gp.brain.reset();return;}
     gp.dead=true;gp.deathTick=w.tick;gp.placement=0;this._elim++;
     if(gp.isBot)return;   // bot eliminado não tem sessão, hooks nem tela de morte: o caminho abaixo é só de humano
     const byHole=e.cause==='blackhole',durationMs=Math.round((w.tick-gp.joinedTick)*1000/TICK_HZ),maxMass=Math.round(gp.maxMass);
@@ -327,6 +362,7 @@ export class Sim{
     gp.score=0;gp.kills=0;gp.botKills=0;gp.deaths=0;gp.food=0;gp.streak=0;gp.maxMass=0;gp.top1Ticks=0;
     gp.quadrants=new Set();gp.joinedTick=w.tick;gp.gotInput=false;gp.lastInput={seq:0,tx:0,ty:0,flags:0};
     this._hit.delete(slot);this._lastHit.delete(slot);this._statTick.delete(slot);
+    this._grace.add(slot);   // vida nova, graça nova (`World._spawnPiece` reescreve `graceUntil`)
     w.respawnPlayer(slot);
     this.playersDirty=true;
     return true;}

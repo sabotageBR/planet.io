@@ -168,14 +168,52 @@ function bouncePiece(A,B,e,aPiece,bPiece){
   return vn;}
 
 /**
- * O maior é um PREENCHIMENTO e o menor é uma pessoa que acabou de nascer?
+ * A graça do NASCIMENTO ainda vale para esta pessoa? Ela tem TRÊS saídas e este é o único lugar que as
+ * conhece — `graceUntil` (escrito por `World._spawnPiece`) cobre as duas primeiras e o abate a terceira:
+ *   · TEMPO  — `BOT.SPAWN_GRACE_1_TICKS` na primeira vida, `SPAWN_GRACE_TICKS` nas seguintes;
+ *   · MASSA  — passou de `BOT.NOVATO_MASS`: ficou do tamanho de um médio e deixou de ser novato;
+ *   · ABATE  — comeu alguém (`eatPiece` apaga o `graceUntil` do matador). Quem já matou não precisa mais.
+ *
+ * ⚠️ ERA SÓ UMA SUBTRAÇÃO DE `spawnTick`, e por isso só tinha a primeira saída: um novato que crescesse
+ * ou matasse alguém continuava intocável até o relógio vencer, e esticar o relógio (que é o que o pack
+ * 1.21 pede) tornaria isso visível. Um campo só representa as três porque as três são "quando acaba".
+ * ⚠️ O corte por massa é GUARDADO por `NOVATO_MASS>0`: zero é o interruptor documentado da razão de
+ * massa, e sem a guarda zerá-lo mataria também a graça por tempo — desligar pela metade, que é
+ * exatamente o que o bloco de `tunables.js` manda não fazer.
+ * ⚠️ `massOf` percorre as peças, então vem DEPOIS da checagem do relógio: com a graça vencida (o caso
+ * comum) o predicado sai no primeiro `if`.
+ * @param {World} w @param {any} ps
+ */
+export function sobGraca(w,ps){
+  if(!ps||ps.isBot||!(ps.graceUntil>w.tick))return false;
+  return !(BOT.NOVATO_MASS>0)||w.massOf(ps.slot)<BOT.NOVATO_MASS;}
+
+/**
+ * O maior pode engolir o menor, ou tem que ATRAVESSAR? (o menor é uma pessoa que acabou de nascer)
  *
  * ⚠️ `BOT.SPAWN_GRACE_TICKS` já existia e cobria METADE do problema: em `bot.js` ela só faz o cérebro
  * não ESCOLHER o recém-chegado como presa. Ela nunca impediu a colisão — o novato que andasse para cima
  * de um bot grande era engolido do mesmo jeito, e o bot grande parado no caminho dele também. Medido em
  * produção: 1.428 primeiras vidas terminaram comidas por bot, com o algoz 6,1× mais pesado, aos 46 s.
- * ⚠️ Vale só para BOT × HUMANO, e nesse sentido. Entre pessoas a regra não muda: um jogador de verdade
- * comendo outro é o jogo, e proteger contra isso seria inventar invulnerabilidade num .io.
+ * ⚠️ **VALIA SÓ PARA BOT × HUMANO, e hoje vale contra gente também — MAS NÃO DO MESMO JEITO**
+ * (`BOT.NOVATO_HUMANO`). O furo era real: a sala do Livre tem até 30 humanos, e bastava UM deles para a
+ * proteção inteira não valer nada naquele encontro. O que NÃO se estende é a janela CEGA: contra um
+ * preenchimento o recém-nascido é intocável por qualquer maior, e contra gente vale só a RAZÃO DE MASSA
+ * (4×), dentro da janela. A distinção não é meio-termo, é a linha que este arquivo já defendia em dois
+ * lugares: "a briga apertada é o jogo; o que a regra mata é o ATROPELAMENTO". Estendida cega, ela
+ * quebrava a mecânica básica — um humano de r=60 deixava de comer um de r=30, que é o `EAT.RATIO`
+ * inteiro deixando de existir por um minuto e meio a cada respawn de qualquer pessoa da sala (medido:
+ * doze testes de física vermelhos, e nenhum deles é sobre novato).
+ * ⚠️ Quem é PROTEGIDO continua sendo sempre GENTE, nunca um preenchimento, e o interruptor devolve o
+ * comportamento anterior sem deploy.
+ * ⚠️ **A RAZÃO DE MASSA É DO LIVRE, E SÓ DELE** (`zoneNow()` = há Battle Royale rolando). No BR não
+ * existe novato: todo mundo começa igual, no mesmo tick, não há respawn, e ficar pequeno é RESULTADO da
+ * partida — não a condição de quem acabou de chegar. Sem esta guarda, quem encolhe vira fantasma e
+ * atravessa a sala inteira, o que além de estranho na tela quebra o modo: dá para sobreviver até o fim
+ * sem poder ser comido, e o BR é decidido por sobrevivência. Visto em partida, e é o mesmo `zoneNow()`
+ * que já tira o berçário da supernova do BR (`world.js:345`). O que ATRAVESSA essa guarda é a janela
+ * CEGA contra preenchimento (`cego`), que é pré-existente e não decide nada lá: na largada do BR todo
+ * mundo tem a mesma massa.
  * ⚠️ **A GRAÇA POR TEMPO ERA UM PENHASCO, e o dado mostrava o degrau.** Medido em 07/09/2026 nos
  * jogadores do Fit Test da Poki: a primeira vida tem um PICO de 6× exatamente na faixa 15-19 s — 118
  * mortes contra 19 na faixa anterior —, 88-93% delas comido. A proteção não ensinava nada, só adiava:
@@ -199,24 +237,21 @@ function bouncePiece(A,B,e,aPiece,bPiece){
  * ⚠️ Protegido, o grande ATRAVESSA — sem quique. Dar quique aqui faria o novato ser chutado pelo mapa
  * por algo que ele nem pode enfrentar, e é o mesmo tratamento que `STAR.PASS_R` dá a quem cabe na estrela.
  * ⚠️ E não há espelho em `predict.js`: ele prevê as peças PRÓPRIAS e não decide quem come quem.
- * @param {World} w @param {any} big @param {any} small
+ * @param {World} w @param {any} big o dono da peça que engoliria @param {any} small o dono da peça engolida
  */
-function recemChegado(w,big,small){
-  if(!(big&&small&&big.isBot&&!small.isBot))return false;
-  if(w.tick-small.spawnTick<BOT.SPAWN_GRACE_TICKS)return true;              // a graça de sempre, por TEMPO
-  // ⚠️ **A RAZÃO DE MASSA É DO LIVRE, E SÓ DELE** (`zoneNow()` = há Battle Royale rolando). No BR não
-  // existe novato: todo mundo começa igual, no mesmo tick, não há respawn, e ficar pequeno é RESULTADO da
-  // partida — não a condição de quem acabou de chegar. Sem esta guarda, quem encolhe vira fantasma e
-  // atravessa a sala inteira, o que além de estranho na tela quebra o modo: dá para sobreviver até o fim
-  // sem poder ser comido, e o BR é decidido por sobrevivência. Visto em partida, e é o mesmo `zoneNow()`
-  // que já tira o berçário da supernova do BR (`world.js:345`).
-  if(w.zoneNow())return false;
-  // ...e depois dela o ABISMO continua: enquanto a pessoa é pequena, o preenchimento MUITO maior atravessa.
-  // ⚠️ `massOf` (que percorre as peças) vem DEPOIS das guardas baratas de propósito: isto roda no par de
-  // colisão, e só chega aqui quando um preenchimento está prestes a engolir uma pessoa.
+export function recemChegado(w,big,small){
+  if(!(big&&small&&!small.isBot))return false;                              // protegido é sempre GENTE
+  const gente=!big.isBot;
+  if(gente&&!BOT.NOVATO_HUMANO)return false;                               // contra gente, só com o interruptor ligado
+  const dentro=small.graceUntil>w.tick;                                    // a janela do nascimento (ver `sobGraca`)
+  const cego=dentro&&!gente;     // a janela CEGA (protege de QUALQUER maior) é só contra preenchimento
+  if(!cego&&w.zoneNow())return false;   // a razão de massa é do LIVRE — ver o bloco acima
   const ms=w.massOf(small.slot);
-  if(!(ms<BOT.NOVATO_MASS))return false;
-  return w.massOf(big.slot)>ms*BOT.NOVATO_RATIO;}
+  if(BOT.NOVATO_MASS>0&&ms>=BOT.NOVATO_MASS)return false;                  // cresceu: a graça acabou, pelos DOIS caminhos
+  if(cego)return true;
+  if(gente&&!dentro)return false;   // contra gente a régua vale só DENTRO da janela do nascimento
+  // ...e depois dela o ABISMO continua: enquanto a pessoa é pequena, o MUITO maior atravessa.
+  return BOT.NOVATO_MASS>0&&w.massOf(big.slot)>ms*BOT.NOVATO_RATIO;}
 
 // ── peça × peça (donos diferentes) ──
 /**
@@ -249,6 +284,11 @@ export function piecePair(w,A,B){
 /** A (de killer) engole B (de victim): ma += mb·GAIN (GAIN=1: a massa toda, como no agar), pontos, EAT e talvez PLAYER_DEAD. */
 export function eatPiece(w,killer,A,victim,B){
   addMass(A,B.mass*EAT.GAIN);killer.score+=Math.floor(B.r*EAT.SCORE_PLAYER);
+  // ⚠️ A TERCEIRA SAÍDA DA GRAÇA (ver `sobGraca`): quem comeu alguém não é mais um recém-chegado. Ela
+  // é apagada aqui e não num predicado porque "já matou" é um FATO da vida, não um estado a recalcular —
+  // e porque o preço de errar é alto nos dois sentidos: um novato que abate e continua intocável vira
+  // caçador imune, e é exatamente esse o abuso que a graça mais longa do 1.21 abriria.
+  killer.graceUntil=0;
   w.events.push({type:"EAT",killerSlot:killer.slot,victimSlot:victim.slot,pieceId:B.id,x:B.x,y:B.y,r:B.r,lastPiece:liveCount(victim.pieces)===1});
   w.killPiece(B,"eaten",killer.slot);}
 

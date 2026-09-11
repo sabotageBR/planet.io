@@ -3,7 +3,7 @@
 // pares de donos diferentes → perigos (asteroides, buracos, estrelas) → comida/ejetados → mísseis → fusões →
 // compactação ordenada → spawns → tick++. Remoção só por `dead` + compactação (ordem estável).
 // @ts-check
-import {WORLD,DT,PLAYER,SPEED,SPLIT,EJECT,EAT,FRAG,BOUNCE,WALL,FOOD,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR,WEAPON,WEAPONS,BR,ZONE} from "../constants.js";
+import {WORLD,DT,PLAYER,SPEED,SPLIT,EJECT,EAT,FRAG,BOUNCE,WALL,FOOD,FOOD_TYPE,ASTEROID,BLACKHOLE,MISSILE,POWERUP,STAR,WEAPON,WEAPONS,BR,ZONE,BOT} from "../constants.js";
 import {KIND,PIECE_FLAG,FOOD_FLAG,BH_PHASE,STAR_PHASE,FRAG_KIND} from "../protocol/constants.js";
 import {createRng} from "../rng.js";
 import {clamp} from "../util.js";
@@ -23,6 +23,8 @@ import * as R from "./rules.js";
  * @property {boolean} alive
  * @property {boolean} isBot
  * @property {number} spawnTick    tick do último nascimento (graça de spawn dos bots)
+ * @property {number} vidas        quantas vezes esta pessoa já nasceu NESTA sala (1 = a primeira vida)
+ * @property {number} graceUntil   até quando vale a graça do nascimento (0 = não vale; ver rules.sobGraca)
  * @property {Body[]} pieces        refs (ordem de criação; compactada 1×/passo)
  * @property {number} team          equipe (-1 = sem equipe: todo mundo é inimigo). Fogo amigo e "quem come quem"
  *                                 saem daqui, não do bot — ver rules.sameTeam
@@ -336,7 +338,7 @@ export class World{
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.SPAWN_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true}={}){
     let ps=this.players.get(slot);
     if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),weaponPin:false,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,autoDefN:0,autoFireAt:0,zoomUntil:0,feastUntil:0,aimLockId:-1,aimLockKind:0,aimLockPc:-1,aimLockUntil:0,
-      ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false,spawnSafe:true};this.players.set(slot,ps);}
+      ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false,spawnSafe:true,vidas:0,graceUntil:0};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.ammo=newAmmo(missiles);ps.team=team;ps.weapon=weapon;ps.weaponPin=false;}
     // `spawn:false` = entrou na SALA mas ainda não no MAPA. É o lobby do battle royale: o jogador existe
     // (ocupa vaga, aparece no PLAYERS, escolhe equipe) e só ganha corpo na largada, via respawnPlayer.
@@ -433,6 +435,23 @@ export class World{
     if(Number.isNaN(x)){const zc=this.zoneNow();const s=this._playerSpot(ps,r)||this._novaSpot(ps)||this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE,null,zc);x=s.x;y=s.y;ps.spawnSafe=s.ok;}
     else ps.spawnSafe=true;   // posição DADA (largada do BR, respawn com x/y): não houve sorteio a falhar
     ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.ejectRamp=0;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
+    // ── A GRAÇA DO NASCIMENTO, EM UM CAMPO SÓ ──
+    // `rules.sobGraca` lê isto; as outras duas saídas (massa e o primeiro abate) moram lá e em `eatPiece`.
+    // ⚠️ A PRIMEIRA VIDA VALE O DOBRO (`SPAWN_GRACE_1_TICKS`), e é por isso que `vidas` existe: ela é a
+    // única em que a pessoa ainda não viu o jogo funcionar, e é a que o Player Fit mede. Da segunda em
+    // diante a janela volta ao normal — 90 s a cada respawn seria um jogador intocável metade da sessão.
+    // ⚠️ ELA REINICIA A CADA NASCIMENTO, e isso é o pedido literal do pack 1.21: sem isso o respawn
+    // automático nasce ao lado de quem acabou de comer a pessoa, e a sessão morre 5 s depois — ou seja o
+    // conserto da primeira morte viraria só um atraso de dez segundos no mesmo abandono.
+    // ⚠️ Preenchimento não tem graça (ele nunca é o PROTEGIDO), e escrever o campo para ele só criaria um
+    // segundo lugar de onde `recemChegado` poderia tirar uma resposta errada.
+    // ⚠️ `SPAWN_GRACE_TICKS` EM ZERO DESLIGA AS DUAS, e essa guarda é o contrato do painel: ele é O
+    // interruptor documentado da graça por tempo (`tunables.js`, grupo "Proteção do novato"), e sem ela
+    // zerá-lo deixaria a primeira vida protegida por 90 s em silêncio — desligar pela metade, que é o
+    // que aquele bloco manda não fazer.
+    ps.vidas=(ps.vidas|0)+1;
+    const g=BOT.SPAWN_GRACE_TICKS>0?(ps.vidas>1?BOT.SPAWN_GRACE_TICKS:BOT.SPAWN_GRACE_1_TICKS):0;
+    ps.graceUntil=ps.isBot||!g?0:this.tick+g;
     ps.autoDefN=0;ps.autoFireAt=0;ps.zoomUntil=0;ps.feastUntil=0;ps.aimLockId=-1;ps.aimLockPc=-1;ps.aimLockUntil=0;ps.weaponPin=false;   // vida nova, powerups zerados — mesmo caminho do fireCdUntil, e é ele que cobre addPlayer, respawnPlayer e a largada do BR de uma vez
     const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;
     // ── O KIT DE BOAS-VINDAS ──
@@ -582,15 +601,22 @@ export class World{
           f.x+=dx/d*s;f.y+=dy/d*s;f.flags|=FOOD_FLAG.MOVED;this.moveFood(f);dx=pc.x-f.x;dy=pc.y-f.y;d2=dx*dx+dy*dy;}
         // `zc` é o círculo da zona já calculado no topo do step: quem colhe EXPOSTO ao gás recebe menos
         const lim=pc.r+f.r*ov;if(d2<lim*lim)R.eatFood(this,ps,pc,f,zc);}
+      // ⚠️ O ÍMÃ DE NASCENÇA NÃO ARRASTA O PERIGO. "O ímã puxa a recompensa E o perigo" é escolha de quem
+      // pisou num 🧲 — e o kit de boas-vindas dá um de graça a toda vida nova, então o novato ganhava uma
+      // escolha que nunca fez: uma estrela se arrastando até ele (MAGNET_STAR) enquanto ele ainda está
+      // descobrindo o controle, e ele nem sabe que foi o próprio ímã. Sob graça o ímã vale só para comida
+      // e ejetado, que é o que ele veio fazer. A comida não entra na exceção: ela é o ponto do kit.
+      const perigo=magnet&&!R.sobGraca(this,ps);
       if(magnet){const m=grid.query(pc.x,pc.y,range,q);
         for(let k=0;k<m;k++){const b=dyn[q[k]];if(b.dead)continue;
           if(b.kind===KIND.EJECT){if(b.owner===pc.owner&&tick<b.cdUntil)continue;
             const ex=pc.x-b.x,ey=pc.y-b.y,ed2=ex*ex+ey*ey;if(ed2>=range*range||ed2<1e-6)continue;
             const hv=b.mass>=FRAG.RICH_MASS?FRAG.MAGNET_HEAVY:1,a=PW.MAGNET_EJECT_A*hv*DT/Math.sqrt(ed2);b.vx+=ex*a;b.vy+=ey*a;}   // pedaço gordo se arrasta (MAGNET_HEAVY), igual cometa/estrela na comida
           else if(b.kind===KIND.ASTEROID){   // o ímã puxa a rocha também: recompensa e perigo vêm juntos
+            if(!perigo)continue;
             const ax=pc.x-b.x,ay=pc.y-b.y,ad2=ax*ax+ay*ay;if(ad2>=range*range||ad2<1e-6)continue;
             const a=PW.MAGNET_AST*(b.r>ASTEROID.R_MIN?ASTEROID.R_MIN/b.r:1)*DT/Math.sqrt(ad2);b.vx+=ax*a;b.vy+=ay*a;}}
-        for(let k=0;k<stars.length;k++){const st=stars[k];if(st.dead)continue;const sx=pc.x-st.x,sy=pc.y-st.y,sd2=sx*sx+sy*sy;
+        if(perigo)for(let k=0;k<stars.length;k++){const st=stars[k];if(st.dead)continue;const sx=pc.x-st.x,sy=pc.y-st.y,sd2=sx*sx+sy*sy;
           if(sd2>=range*range||sd2<1e-6)continue;const sd=Math.sqrt(sd2);let sp=PW.MAGNET_PULL*PW.MAGNET_STAR*DT;if(sp>sd)sp=sd;
           st.x=clamp(st.x+sx/sd*sp,st.r,W-st.r);st.y=clamp(st.y+sy/sd*sp,st.r,H-st.r);}}}
     if(!paz)for(let p=0;p<np;p+=3){const code=pb[p+2];if(code!==PE&&code!==EA)continue;const A=dyn[pb[p]],B=dyn[pb[p+1]];if(A.dead||B.dead)continue;

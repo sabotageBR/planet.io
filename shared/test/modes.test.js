@@ -320,14 +320,20 @@ test("sameTeam: sem equipe ninguém é aliado; no aquecimento todo mundo é",()=
   w.peace=true;assert.equal(sameTeam(w,0,1),true,"aquecimento: a espera não precisa de regra própria");
   w.peace=false;assert.equal(sameTeam(w,0,1),false);});
 test("aliado NÃO come aliado, por maior que seja — e inimigo do mesmo tamanho come",()=>{
-  const monta=team=>{const w=empty(7);
-    w.addPlayer(0,{x:4000,y:4000,r:200,team});w.addPlayer(1,{x:4120,y:4000,r:30,team});
+  // ⚠️ O INIMIGO É PROPORCIONAL (r 45 × r 30 = 2,25× de massa), e não o gigante de antes: desde o 1.21 a
+  // proteção do novato vale contra GENTE pela razão de massa (`BOT.NOVATO_HUMANO`), então um r=200 em
+  // cima de um recém-nascido ATRAVESSA — e este teste é sobre EQUIPE, não sobre novato. Com o par
+  // proporcional ele volta a medir só o que o nome dele diz.
+  const monta=(team,rg)=>{const w=empty(7);
+    w.addPlayer(0,{x:4000,y:4000,r:rg,team});w.addPlayer(1,{x:4120,y:4000,r:30,team});
     for(let i=0;i<20;i++){w.setTarget(0,4000,4000);w.setTarget(1,4000,4000);w.step();}
     return w;};
-  const aliados=monta(1);
+  const aliados=monta(1,200);
   assert.equal(aliados.players.get(1).alive,true,"o companheiro pequeno tem que sobreviver colado no gigante");
-  const inimigos=monta(-1);
-  assert.equal(inimigos.players.get(1).alive,false,"sem equipe, o gigante come normalmente");});
+  const inimigos=monta(-1,45);
+  assert.equal(inimigos.players.get(1).alive,false,"sem equipe, o maior come normalmente");
+  const atropelo=monta(-1,200);
+  assert.equal(atropelo.players.get(1).alive,true,"e o ATROPELAMENTO atravessa: é a proteção do novato, não a equipe");});
 test("aliados se separam sem quique: nada de empurrão de graça entre companheiros",()=>{
   const w=empty(8);
   w.addPlayer(0,{x:4000,y:4000,r:60,team:1});w.addPlayer(1,{x:4050,y:4000,r:60,team:1});

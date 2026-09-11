@@ -1290,6 +1290,102 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   que jogou a tela de morte metade para fora do celular.
   ⚠️ E o que a dica NÃO resolve: os 64,6% que não alcançam o portão. Para eles não há frase que ajude —
   só o parâmetro.
+- **A GRAÇA DO NOVATO VIROU UM CAMPO, COM TRÊS SAÍDAS** (`ps.graceUntil` em `World._spawnPiece`,
+  `rules.sobGraca`/`recemChegado`, `BOT.SPAWN_GRACE_1_TICKS`/`NOVATO_HUMANO`): ela era uma subtração de
+  `spawnTick` contra uma constante, e por isso só sabia acabar por TEMPO. Agora acaba no primeiro de:
+  **tempo** (90 s na PRIMEIRA vida, 45 s nas seguintes), **massa** (passou de `NOVATO_MASS`) ou o
+  **primeiro abate** (`eatPiece` zera o campo do matador). E ela REINICIA a cada nascimento — sem isso o
+  respawn automático da tela de morte nasce ao lado de quem acabou de comer a pessoa, e o conserto da
+  primeira morte vira um atraso de dez segundos no mesmo abandono.
+  ⚠️ **O DIAGNÓSTICO É DO FIT TEST 1.20 DA POKI**: a coluna de 0–1 min MELHOROU (185 → 155 sessões, o
+  boot direto funcionando) e a de **1–2 min PIOROU (132 → 177)**, com os engajados parados em 20% contra
+  os 25% que o critério pede. Quem o 1.20 trouxe para dentro está morrendo no minuto seguinte.
+  ⚠️ **A PROTEÇÃO PASSOU A VALER CONTRA GENTE, MAS NÃO DO MESMO JEITO** (`BOT.NOVATO_HUMANO`, tunable):
+  contra PREENCHIMENTO o recém-nascido segue intocável por qualquer maior (a janela CEGA); contra GENTE
+  vale só a RAZÃO DE MASSA (4×) e só DENTRO da janela. A distinção não é meio-termo — estendida cega, ela
+  apagava o `EAT.RATIO` do jogo por um minuto e meio a cada respawn de qualquer pessoa da sala, e o
+  preço foi MEDIDO: doze testes de física vermelhos, nenhum deles sobre novato (um humano de r=60
+  deixava de comer um de r=30). O que o interruptor fecha é o furo real: a sala do Livre tem até 30
+  humanos, e bastava UM deles para o pack inteiro de graça não valer nada naquele encontro.
+  ⚠️ **ISTO CONTRADIZ DE PROPÓSITO o que estava escrito aqui** ("entre pessoas nada muda — proteger
+  disso seria inventar invulnerabilidade num .io"). O argumento continua de pé sobre o JOGO; o que mudou
+  foi o que a regra protege — com a janela amarrada ao primeiro minuto de VIDA e cancelada pelo primeiro
+  abate, ela não é invulnerabilidade, é o minuto em que a pessoa ainda está descobrindo o controle.
+  ⚠️ **A GRAÇA NÃO É DO PORTAL, É DO JOGO.** O pedido pedia "PORTAL / origem Poki apenas", e o servidor
+  não tem como saber: `users.origin` é gravado uma vez, no primeiro guest, e é um DOMÍNIO — quem criou a
+  conta no site e hoje joga na Poki carrega `warspace.io` para sempre. Fazer por origem custaria um campo
+  novo atravessando sessão, sala e física para separar dois públicos com o MESMO problema. Vale para
+  todo mundo, e o guarda-corpo é o painel: os cinco números são tunables do grupo "Proteção do novato"
+  (`SPAWN_GRACE_S`, `SPAWN_GRACE_1_S`, `NOVATO_HUMANO`, `NOVATO_MASS`, `NOVATO_RATIO`) e voltam ao que
+  eram sem deploy.
+  ⚠️ `SPAWN_GRACE_S`=0 continua desligando as DUAS janelas (a guarda mora em `_spawnPiece`): ele é O
+  interruptor documentado da graça por tempo, e sem ela zerá-lo deixaria a primeira vida protegida por
+  90 s em silêncio — desligar pela metade, que é o que `tunables.js` manda não fazer.
+  ⚠️ **`bot.js` DEIXOU DE ESPELHAR e passou a CHAMAR `rules.recemChegado`.** O espelho tinha o aviso de
+  que as duas "TÊM que concordar" e agora seriam duas regras de três saídas cada — o jeito conhecido de
+  elas se separarem. `bot.js` já importava de `rules.js`, então não há ciclo novo.
+  ⚠️ **O ÍMÃ DE NASCENÇA NÃO ARRASTA MAIS O PERIGO**: "o ímã puxa a recompensa E o perigo" é escolha de
+  quem pisou num 🧲, e o kit de boas-vindas dá um de graça a toda vida nova — o novato ganhava uma
+  escolha que nunca fez (uma estrela se arrastando até ele) sem saber que fora o próprio ímã. Sob graça
+  ele vale só para comida e ejetado. A comida não entra na exceção: ela é o ponto do kit.
+  ⚠️ **Nada disto é espelhado em `predict.js`**, que prevê as peças PRÓPRIAS e não decide quem come quem.
+- **A PRESA ACABAVA JUNTO COM A SEMENTE** (`ROOM.ISCA_P`, `botRespawnR`, `Sim._died`): o tier ISCA vivia
+  só em `SEED_MIX` — os treze primeiros planetas, no tick 0 — e eles CRESCEM. Passados dois minutos, todo
+  preenchimento que entra vem de `PLAYER.BOT_R` [24,58], e um novato de r=30 só engole `r <= 26,1`: 6% da
+  faixa, por acidente de intervalo. A sala ficava cheia e sem nada para comer, que é o outro lado do "81%
+  das primeiras vidas terminam sem um único abate" (e quem mata alguém chega a 3 min em 54% contra 22%).
+  Agora `ISCA_P` (.35) dos preenchimentos NOVOS — os que chegam depois da abertura e os que RENASCEM —
+  nasce comível por quem acabou de nascer.
+  ⚠️ O respawn de bot é a fonte CONTÍNUA de preenchimento no Livre (eles morrem o tempo todo), então era
+  ali, em `Sim._died`, que a presa sumia; `botSpawnR` sozinho só resolveria a abertura.
+  ⚠️ O TETO da isca sai do JOGADOR (`PLAYER.SPAWN_R/EAT.RATIO`), nunca do número de `SEED_R[2]`: a massa
+  inicial é parâmetro do /admin, e com a faixa cravada baixá-la transformaria a isca em predador.
+  ⚠️ **CONSUMO DE RNG**: `botRespawnR` gasta dois `next()` sempre (o tier e a faixa), e `botSpawnR` passou
+  a gastar dois também fora da semente — o stream da sala desloca e a mesma semente deixa de dar a mesma
+  sala. Não toca fio nem `predict.js` (nascimento não é predito). Consumo FIXO de propósito: fazê-lo
+  depender do resultado o faria variar por tick.
+  ⚠️ E **o segundo gigante da semente saiu de novo** (`SEED_MIX` [2,4] → [1,4]), pelo guarda-corpo que o
+  próprio bloco do `SEED_R` declarou: dois predadores imbatíveis na abertura são a explicação mais simples
+  para a coluna de 1–2 min ter piorado no 1.20. Sobram um gigante, quatro médios e OITO iscas.
+- **A PRIMEIRA MORTE NÃO ABRE TELA** (`client/src/portal/primeiraVida.js`, `PORTAL.VIDAS_SEM_TELA`/
+  `RESPAWN_1_MS`, o `#morte-flash` de `App.jsx`): no pacote de portal e no modo Livre, a primeira morte de
+  cada carga da página vira um clarão e uma vida nova 1,2 s depois, no mesmo slot e na mesma sala. Da
+  segunda em diante a tela de morte volta inteira. O que se poupa não é um clique: entre a morte e a
+  decisão de fechar a aba há exatamente uma tela, e ela é um modal com o placar de uma vida de 40
+  segundos — no instante em que a pessoa ainda não sabe que morrer é normal num agar.
+  ⚠️ **O DADO CONTINUA SENDO ESCRITO** (`lastMatch`, `mortes`, `kills`, a recompensa): quem espera é só a
+  tela, exatamente como no caminho normal do `ROUND.DEAD_DELAY_MS`. É isso que mantém o funil e o cartão
+  de nível funcionando numa vida que ninguém chegou a ver terminar.
+  ⚠️ **O CLARÃO NÃO É ENFEITE**: sem nenhum retorno de tela o planeta só reaparece noutro canto e o
+  jogador não entende que morreu — pior que o cartão que se acabou de tirar. O som já existia (o
+  `EVENT.DEATH` toca `death` pelo motor). Ele NÃO sai com `reduceMotion`, só encurta.
+  ⚠️ **`app.morto` É O TERCEIRO TERMO DO GAMEPLAY DO SDK** (`ATIVO` em `portal/sessao.js`): até aqui a
+  prova de que o jogador tinha morrido era `screen` deixar de ser "game", e com o respawn automático ela
+  nunca deixa — morrer e renascer passaria inteiro como gameplay ATIVO, contra o requisito escrito da
+  Poki ("gameplayStop() must fire on any gameplay interruption"). De quebra ele fecha um buraco que já
+  existia: `DEAD_DELAY_MS` (1,2 s) sempre foi tela "game" com o jogador morto.
+  ⚠️ **ZERO ANÚNCIO NAS DUAS PRIMEIRAS VIDAS** (`pedagioLiberado`, `PORTAL.VIDAS_SEM_AD`/`FIRST_AD_MS`),
+  recompensado inclusive (a oferta de `DeadPrize` passa pelo mesmo portão; o PRÊMIO de uma skin
+  destravada não, porque é fato consumado e não venda). Passadas elas, o midroll ainda espera um SINAL de
+  que a pessoa ficou: um abate ou três minutos de página. O respawn é a MAIORIA dos anúncios de uma
+  sessão, e é exatamente o passo que isto existe para tornar barato.
+  ⚠️ **É SÓ PARA O MIDROLL**: o preroll é anterior à primeira vida e a GameDistribution o EXIGE por
+  escrito (§2.1) — barrá-lo trocaria uma reprova por outra. Quem não quer preroll declara `semPreroll` no
+  próprio adaptador, que é onde a regra do SDK mora (a Poki já declara).
+  ⚠️ **NÃO existe respawn incondicional em laço**: da segunda morte em diante continua valendo o
+  armamento por GESTO de `ui/deadClock.js`, ou seja uma aba esquecida renasce no máximo UMA vez.
+- **O FUNIL DA PRIMEIRA VIDA** (`client/src/portal/marcos.js`): o painel da Poki mostra `loading`, `match`
+  e os três `session/*`, e NADA entre eles — quando o Fit Test disse "a coluna de 1–2 min piorou", não
+  havia um único evento para dizer o que acontece nesse minuto, e a versão seguinte seria palpite. Agora
+  saem `first_eat`, `first_kill`, `first_death` (+ a faixa de idade), `respawn` e `grace_end_<motivo>`.
+  ⚠️ UMA VEZ POR CARGA DA PÁGINA, e não por vida: a pergunta é "esta PESSOA chegou a fazer X?". E só
+  `complete`, nunca `fail` — a lição de `portal/sessao.js`.
+  ⚠️ A IDADE VAI NA FAIXA (`0_30s`, `30_60s`, `60_120s`, `120s_mais`): `measure` tem três strings e
+  nenhuma delas é numérica, então o histograma é feito de nomes.
+  ⚠️ **`grace_end` VEM DO SERVIDOR** (`Sim._graceTick` → `{t:'grace',why}`, JSON de controle, sem subir o
+  `PROTOCOL_VERSION`): o cliente não pode derivá-lo porque `SPAWN_GRACE_TICKS` e `NOVATO_MASS` são
+  tunables de escopo `server` — o bundle dele tem a cópia do BUILD e o painel pode estar com outro
+  número. A varredura é a 4 Hz e só existe enquanto há alguém sob graça (um `Set` que se esvazia).
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade

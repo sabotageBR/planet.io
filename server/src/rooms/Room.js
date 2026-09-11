@@ -201,6 +201,10 @@ export class Room{
       // desorienta. Battle Royale mantém o espectador: assiste quem te matou, ou o companheiro vivo.
       // Nos dois casos as setas ‹ › (spectatePick) continuam funcionando para quem quiser seguir alguém.
       this.spectateTargetFor(s,this.mode.lastAlive?info.bySlot:-2);});
+    // A graça do nascimento acabou, e POR QUÊ (`_graceTick`). JSON de controle, uma vez por vida, só para
+    // quem tem sessão — o `PROTOCOL_VERSION` não sobe (o precedente é o `{t:"talk"}`) e um cliente antigo
+    // simplesmente ignora a mensagem. Quem a lê é o funil `grace_end` do pacote de portal.
+    this.sim.on('grace',({slot,why})=>{const s=this.sessions.get(slot);if(s)s.sendJson({t:'grace',why});});
     this.sim.on('rewards',({slot,sessionId,rewards})=>{const s=this.sessions.get(slot);
       if(s&&s.sessionId===sessionId)s.deliverRewards(rewards);else if(this.onRewards)this.onRewards(sessionId,rewards);});}
   // ── ciclo de vida ──

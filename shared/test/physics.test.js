@@ -451,6 +451,9 @@ test("estrela: GROW→ACTIVE→OLD incha e vira supernova (partículas, asteroid
 // 17. ímã mais fraco: comida pesada e a estrela vêm devagar
 test("ímã: cometa/estrela vêm a MAGNET_HEAVY da poeira e a estrela do mundo se arrasta a MAGNET_STAR",()=>{
   const w=empty(74),me=w.addPlayer(0,{x:1000,y:1000,r:40});w.setTarget(0,1000,1000);me.magnetUntil=1e9;
+  // ⚠️ Fora da graça do nascimento: sob ela o ímã vale só para comida e ejetado (`world.js`, o bloco
+  // "O ÍMÃ DE NASCENÇA NÃO ARRASTA O PERIGO"), e a estrela deste teste não sairia do lugar.
+  w.players.get(0).graceUntil=0;
   const d=w.spawnFood();d.type=FOOD_TYPE.DUST;d.x=1150;d.y=1000;w.moveFood(d);
   const c=w.spawnFood();c.type=FOOD_TYPE.COMET;c.x=1150;c.y=1100;w.moveFood(c);w.step();
   const dd=1150-d.x,dc=1150-c.x;assert.ok(dd>0&&dc>0,"os dois são puxados");

@@ -5,18 +5,30 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { getLabels, setLang, currentLangPref, preenche } from "../i18n/index.js";
 import { errText } from "../i18n/errors.js";
-import { skinById, PROTOCOL_VERSION, SKINS, LEVEL, ROUND, MODE, playerNick, createRng, registerSkins} from "@warspace/shared";
+import { skinById, PROTOCOL_VERSION, SKINS, LEVEL, ROUND, MODE, PORTAL as P, playerNick, createRng, registerSkins} from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
 import { portal } from "../portal/index.js";
 import { PORTAL, SEM_MENU, entraDiretoEm } from "../portal/flags.js";
+import { renasceSozinho, pedagioLiberado } from "../portal/primeiraVida.js";
+import { marco, evento, faixaIdade } from "../portal/marcos.js";
 import { destinoDoBoot, destinoDaSaida } from "./entrada.js";
 import { silenciaAnuncio, sfx } from "../audio/index.js";
 import { setSkinArt } from "../theme/faces.js";
 
 const Q = new URLSearchParams(location.search);
 const NICK_RE = /^.{2,16}$/;
+// ⚠️ `?vida1=1` LIGA À FORÇA o fluxo da primeira vida do PACOTE (a morte sem tela, o pedágio do anúncio)
+// no site de dev. Sem ele não há como PROVAR o comportamento antes de subir o zip — `PORTAL` é constante
+// de BUILD e não se falsifica em 127.0.0.1 —, e o pack 1.21 exige dez sessões internas antes de gastar o
+// Fit Test do dia. É o mesmo tipo de interruptor de bancada que `?bb=1`, `?local=1`, `?bench` e `?sfx`
+// já são, e pelo mesmo motivo: ele não muda o que é EMPACOTADO, só o que esta aba faz.
+// ⚠️ Ele NÃO entra na poda do Rollup e nem poderia: quem decide o que sai do zip é a constante literal
+// `PORTAL`, e a leitura aqui é de runtime, depois dela.
+const FORCA_1VIDA = Q.get("vida1") === "1";
+/** Esta aba se comporta como o pacote de portal para efeito da PRIMEIRA VIDA? */
+const comoPortal = () => PORTAL || FORCA_1VIDA;
 
 // ── toast / navegação / overlays ─────────────────────────────────────────────
 let toastN = 0, toastT = null;
@@ -702,14 +714,21 @@ async function entraNaSala({ room, mode, teamSize, party, semAnuncio } = {}) {
   // por isso. Visto no Event Log do Inspector da Poki: `Commercial break` no meio de quatro
   // `connect/match/fail`, e antes do `Game loading finished`, que é o que eles proíbem por escrito.
   // Anúncio é preço de ENTRAR EM PARTIDA, nunca de uma falha nossa.
-  if (PORTAL && !semAnuncio) await portal.anuncio(app.get().played ? "midroll" : "preroll");
+  // ⚠️ O MIDROLL TEM PEDÁGIO (`pedagioLiberado`), o PREROLL não: aquele é anterior à primeira vida e a
+  // GameDistribution o EXIGE por escrito (§2.1) — barrá-lo trocaria uma reprova por outra. Quem não quer
+  // preroll declara `semPreroll` no próprio adaptador, que é onde a regra do SDK mora.
+  if (PORTAL && !semAnuncio) {
+    const a0 = app.get();
+    if (!a0.played) await portal.anuncio("preroll");
+    else if (pedagioLiberado({ mortes: a0.mortes, kills: a0.kills, sessaoMs: performance.now() })) await portal.anuncio("midroll");
+  }
   const st = app.get();
   const md = mode != null ? mode | 0 : st.gameMode | 0, ts = teamSize != null ? teamSize | 0 : st.teamSize || 1;
   const pt = party !== undefined ? party : (st.party ? st.party.code : null);
   let code = room ? String(room).toUpperCase() : null;
   if (!code) { try { const a = await api.auto({ mode: md, teamSize: ts }); if (a && a.code) code = a.code; } catch (e) { if (!isUnreachable(e)) toast(errText(e), 2500); } }
   levelUpFila = null;
-  app.update(s => ({ ...s, screen: "game", played: true, rewards: null, rewardsPending: false, roundPronto: false, overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
+  app.update(s => ({ ...s, screen: "game", played: true, morto: false, rewards: null, rewardsPending: false, roundPronto: false, overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
     gameMode: md, teamSize: ts,
     pendingPlay: null,
     pendingJoin: { room: code, mode: md, teamSize: ts, party: pt, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
@@ -734,7 +753,7 @@ export function assistir({ room } = {}) {
   const code = room ? String(room).toUpperCase() : null;
   if (!code) return;
   levelUpFila = null; cancelaTelaMorte();
-  app.update(s => ({ ...s, screen: "spec", rewards: null, rewardsPending: false, roundPronto: false,
+  app.update(s => ({ ...s, screen: "spec", morto: false, rewards: null, rewardsPending: false, roundPronto: false,
     overlays: { account: false, reconn: false, pause: false }, conn: "connecting",
     pendingPlay: null,
     pendingJoin: { room: code, spec: true, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
@@ -765,13 +784,18 @@ export async function respawnAqui(room) {
   try { return await renasceAqui(room); } finally { entrando = false; }
 }
 async function renasceAqui(room) {
+  evento("respawn");   // contagem, não marco: é a razão `respawn`/`first_death` que diz se o auto disparou no iframe
   cancelaTelaMorte();   // clicou em DE NOVO durante a espera: a tela de morte não tem mais para que subir
   const g = getGame();
   if (!g || !g.respawn || !g.respawn()) return entraNaSala(room ? { room } : {});
-  if (PORTAL) await portal.anuncio("midroll");
+  // ⚠️ E AQUI O PEDÁGIO MORDE DE VERDADE: o respawn é a MAIORIA dos anúncios de uma sessão, e é
+  // exatamente o passo que o 1.21 existe para tornar barato. As duas primeiras mortes passam sem nada;
+  // depois delas ainda é preciso um abate ou três minutos de página. Ver `portal/primeiraVida.js`.
+  const a0 = app.get();
+  if (PORTAL && pedagioLiberado({ mortes: a0.mortes, kills: a0.kills, sessaoMs: performance.now() })) await portal.anuncio("midroll");
   levelUpFila = null;
   const st = app.get();
-  app.update(s => ({ ...s, screen: "game", rewards: null, rewardsPending: false, levelUp: null,
+  app.update(s => ({ ...s, screen: "game", morto: false, rewards: null, rewardsPending: false, levelUp: null,
     overlays: { ...s.overlays, account: false, pause: false } }));
   partidaIniciada({ mode: st.gameMode | 0, teamSize: st.teamSize || 1, party: st.party ? st.party.code : null });
 }
@@ -861,7 +885,7 @@ export function leaveGame(screen = "lobby") {
   // ela é desviada — a mesma conversão de `go()`, pelo mesmo motivo. `boot` continua valendo como destino
   // explícito: quem o pede acende `servidorFora` na mesma linha, e aí a tela que fica é o `Offline`.
   if (SEM_MENU && screen === "entry") screen = "modes";
-  app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
+  app.update(s => ({ ...s, screen, morto: false, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
 /**
  * SAIR DA PARTIDA — o botão, nos sete lugares em que ele existe (o ☰ do HUD, o lobby do BR, o espectador,
@@ -930,7 +954,14 @@ export function onDead(info) {
   // "RECORDE!" de novo com um número menor. Aqui se guarda o recorde ANTERIOR (é ele que a tela compara)
   // e se atualiza o da conta em memória, para a próxima morte comparar com o número certo.
   const st = s.session.stats || {}, recMass = +st.bestMass || 0, recScore = +st.bestScore || 0;
-  app.update(a => ({ ...a, lastMatch: { ...info, room: a.room, at: Date.now(), recMass, recScore },
+  const mortes = (s.mortes | 0) + 1;
+  // ⚠️ O FUNIL DA PRIMEIRA MORTE (portal/marcos.js). A idade vai na FAIXA porque `measure` só aceita
+  // strings — e é dela que sai o histograma que o pack 1.21 elegeu como juiz ("se a coluna 1–2 min não
+  // cair, o pack falhou"). O painel da Poki não tinha NENHUM evento entre `match` e `session/60s`.
+  marco("first_death");
+  marco("first_death_" + faixaIdade(info.durationS));
+  app.update(a => ({ ...a, mortes, kills: (a.kills | 0) + (info.kills | 0), morto: true,
+    lastMatch: { ...info, room: a.room, at: Date.now(), recMass, recScore },
     session: { ...a.session, stats: { ...st, bestMass: Math.max(recMass, +info.maxMass || 0), bestScore: Math.max(recScore, +info.score || 0) } },
     rewards: null, rewardsPending: true }));
   clearTimeout(rewardsT); rewardsT = setTimeout(() => { if (app.get().rewardsPending) app.update({ rewardsPending: false }); }, 5000);
@@ -938,9 +969,20 @@ export function onDead(info) {
   // ter chegado um fim de rodada, uma queda ou uma sala nova, e aí a tela de morte não tem mais o que
   // fazer ali. `cancelaTelaMorte` cobre os caminhos conhecidos; esta guarda cobre os que sobrarem.
   cancelaTelaMorte();
+  // ── A PRIMEIRA MORTE NÃO ABRE TELA (portal/primeiraVida.js) ──
+  // Ela vira um clarão e uma vida nova 1,2 s depois, no mesmo slot e na mesma sala. O que se poupa não é
+  // um clique: é a decisão de fechar a aba, que no Fit Test 1.20 mora inteira na coluna de 1–2 min.
+  // ⚠️ O DADO CONTINUA SENDO ESCRITO (`lastMatch`, `mortes`, `kills`, a recompensa): quem espera é só a
+  // tela, exatamente como no caminho normal — é isso que mantém o `first_death` do funil e o cartão de
+  // nível funcionando numa vida que ninguém chegou a ver terminar.
+  // ⚠️ A GUARDA DO DISPARO RELÊ O ESTADO nos dois ramos, pela mesma razão de sempre: entre o agendamento
+  // e o estouro pode ter chegado um fim de rodada, uma queda ou uma sala nova.
+  const sozinho = renasceSozinho({ portal: comoPortal(), modo: s.gameMode | 0, mortes });
   const mostra = () => { deadT = null; const a = app.get();
-    if (a.lastMatch && a.screen === "game") app.update({ screen: "dead" }); };
-  const espera = Math.max(0, ROUND.DEAD_DELAY_MS | 0);
+    if (!(a.lastMatch && a.screen === "game")) return;
+    if (sozinho) { app.update(x => ({ ...x, flash: x.flash + 1 })); respawnAqui(a.lastMatch.room); }
+    else app.update({ screen: "dead" }); };
+  const espera = Math.max(0, (sozinho ? P.RESPAWN_1_MS : ROUND.DEAD_DELAY_MS) | 0);
   if (espera) deadT = setTimeout(mostra, espera); else mostra();
   // ⚠️ AQUI HAVIA O FUNIL QUE MENTIA PARA A POKI, e o motivo de ele ter saído está em portal/sessao.js:
   // ele fechava `survival/60s|120s|180s` com o `durationS` da VIDA, e o `start` correspondente só saía

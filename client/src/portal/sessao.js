@@ -83,7 +83,13 @@ export function passoSessao(est, retido, agora) {
 // mais nada, nunca. No Inspector isso é o caso NORMAL (o Restart deles recarrega enquanto a sessão
 // anterior ainda segura o nick por `NET.RESUME_MS`, e o join é recusado 3 a 6 vezes). O gesto resolve o
 // handshake de graça: ninguém dá input antes de ver a arena.
-const ATIVO = (st, gesto) => gesto && st.screen === "game" && !st.overlays.pause;
+// ⚠️ `!st.morto` É O TERCEIRO TERMO, e ele nasceu com a primeira morte sem tela (portal/primeiraVida.js):
+// até aqui a prova de que o jogador tinha morrido era `screen` deixar de ser "game", e com o respawn
+// automático ela nunca deixa. Sem esta parcela, morrer e renascer passaria inteiro como gameplay ativo —
+// contra o requisito escrito da Poki ("gameplayStop() must fire on any gameplay interruption"). De
+// quebra ele conserta um buraco que já existia: `ROUND.DEAD_DELAY_MS` (1,2 s) sempre foi tempo de tela
+// "game" com o jogador morto.
+const ATIVO = (st, gesto) => gesto && st.screen === "game" && !st.morto && !st.overlays.pause;
 // ⚠️ `spec` (assistir a uma sala em andamento) conta como RETIDO pelo mesmo motivo que `dead` e `round`
 // contam: o relógio é da CARGA DA PÁGINA e mede quem está AQUI, não quem está jogando — quem assiste está
 // na sala, olhando o jogo. Fora daqui, quem entrasse para ver uma partida apareceria como evasão no funil,

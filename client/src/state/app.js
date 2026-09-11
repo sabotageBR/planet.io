@@ -143,6 +143,18 @@ export const initialState = {
                          // quando duas partidas seguidas rendem o mesmo conteúdo.
   mode: "desktop",       // desktop|portrait|landscape (body[data-mode])
   lastMatch: null,       // {by, byHole, score, maxMass, kills, durationS, room, at}
+  // ── O QUE JÁ ACONTECEU NESTA CARGA DA PÁGINA (client/src/portal/primeiraVida.js) ──
+  // `mortes` e `kills` são ACUMULADOS da carga, nunca da vida: é com eles que se decide a tela de morte
+  // da primeira morte e o pedágio do primeiro anúncio. Não zeram ao trocar de sala — a pergunta que eles
+  // respondem ("esta pessoa já viu o jogo funcionar?") é da PESSOA, não da partida.
+  mortes: 0,
+  kills: 0,
+  // `morto` é o terceiro estado do gameplay do SDK, e ele existe porque a tela de morte deixou de ser a
+  // prova de que o jogador morreu: com a primeira morte renascendo sozinha, `screen` continua "game" o
+  // tempo todo e o `gameplayStop` que a Poki exige na letra ("must fire on any gameplay interruption")
+  // nunca sairia. Ver `ATIVO` em portal/sessao.js.
+  morto: false,
+  flash: 0,              // contador do clarão da morte sem tela (ui/Hud.jsx): só muda de valor, nunca é lido
   roundResult: null,     // {code, champion, board:[{slot,name,mass,score,kills,isBot,registered}], nextInMs, at} — fim do mundo
   roundPronto: false,    // a ABERTURA do fim de rodada já acabou? É o portão do cartão de recompensa: o
                          // `{t:"rewards"}` chega ~200-800 ms depois do `roundEnd`, ou seja NO MEIO dos 2 s

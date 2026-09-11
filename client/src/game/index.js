@@ -24,6 +24,7 @@ import {ESCADA} from "../audio/kit.js";
 import {api} from "../api/client.js";
 import {apiUrl,wsUrl} from "../api/base.js";
 import {PORTAL} from "../portal/flags.js";
+import {marco} from "../portal/marcos.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
 import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,BR,NET,POWERUP,ZOOM,CAM,WORLD,PROTOCOL_VERSION,ZONE_WARN_AT_S,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
@@ -328,7 +329,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // enquanto `PLAYER.DECAY` faz a massa andar PARA TRÁS.
       // ⚠️ `own0` é do frame ANTERIOR (≤16 ms, ≤7 px): já é assim para o som, não é regressão nova.
       if(own0.some(p=>Math.hypot(p.rx-e.rx,p.ry-e.ry)<p.rr+e.rr+18)){audio.play("food",{mine:true,ladder:true});
-        if(e.kind===KIND.FOOD)comidas++;}}}   // só o grão que EU comi faz barulho — e a fila sobe a escada
+        // ⚠️ `!comidas++` e não uma chamada por grão: `comidas` é por VIDA (a missão o usa), então isto
+        // dispara uma vez por vida e o `marco` filtra o resto — 20 `Set.has` por segundo para um evento
+        // que sai uma vez na carga da página seria trabalho jogado fora no laço do HUD.
+        if(e.kind===KIND.FOOD&&!comidas++)marco("first_eat");}}}   // só o grão que EU comi faz barulho — e a fila sobe a escada
   // ── texturas: aquece as skins da sala (tiers 128/256) e a própria (128/256/512, variante isMe) ──
   function warmSkins(){if(!renderer||!joined)return;const skins=[];let me=null;
     for(const pl of view.players.values()){if(!pl.skin)continue;if(pl.slot===view.mySlot)me=pl.skin;else if(!skins.includes(pl.skin))skins.push(pl.skin);}
@@ -435,6 +439,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     else if(m.t==="chat"){pushChat(m);}
     else if(m.t==="talk"){view.setTalking(m.slot,!!m.on);}   // push-to-talk de outro: acende/apaga o ícone no planeta dele
     else if(m.t==="feed"){pushFeed(m);}
+    // A GRAÇA DO NASCIMENTO ACABOU, e o servidor diz POR QUÊ (`Sim._graceTick`): tempo, massa ou o
+    // primeiro abate. Não muda nada na tela — é só a linha do funil que torna a regra do 1.21 conferível
+    // em produção, e por isso mora aqui em vez de virar estado. Um `why` desconhecido é ignorado: o
+    // servidor pode ganhar uma saída nova antes de o zip do portal ser reenviado.
+    else if(m.t==="grace"){if(m.why==="time"||m.why==="mass"||m.why==="kill")marco("grace_end_"+m.why);}
     // CONVITE DE BATTLE ROYALE: só chega em sala do modo Livre (Room.brInvite filtra no servidor).
     // Interativo — fica no hudStore até responder ou o TTL vencer, ao contrário do `notice` passivo.
     else if(m.t==="brStart"){
@@ -544,7 +553,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         // seja `slotA` é QUEM COMEU. Ele sai para toda peça engolida (não só a última), então morder um
         // pedaço de alguém dividido conta — que é o que se quer. E não há falso positivo: comer peça
         // PRÓPRIA é `MERGE`, outro kind, e aliado nem é comível.
-        if(m.kind===EVENT.EAT&&m.slotA===view.mySlot)comeuAlguem=true;
+        if(m.kind===EVENT.EAT&&m.slotA===view.mySlot){comeuAlguem=true;marco("first_kill");}
         if(m.kind===EVENT.EAT){const eater=nearestPieceOf(m.slotA,m.x,m.y);   // absorção: a vítima é sugada para quem comeu, que dá um "gulp" e cresce
           if(eater){f.tx=eater.rx;f.ty=eater.ry;f.tr=eater.rr;pendingEat.set(m.extra,eater.id);renderer.planets.pop(eater.id,delay);}}
         else if(m.kind===EVENT.BH_SUCK){const h=nearestHole(m.x,m.y);   // espaguetificação: o planeta se estica de onde estava até a boca do buraco

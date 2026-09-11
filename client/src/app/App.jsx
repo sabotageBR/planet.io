@@ -35,6 +35,15 @@ export default function App() {
   const hoverRef = React.useRef(null);
   const screen = useStore(app, s => s.screen), overlays = useStore(app, s => s.overlays), online = useStore(app, s => s.session.online);
   const played = useStore(app, s => s.played), conn = useStore(app, s => s.conn);
+  // ⚠️ O CLARÃO DA MORTE SEM TELA. Quando a primeira morte renasce sozinha (portal/primeiraVida.js) não
+  // há modal nenhum entre uma vida e outra, e sem UM retorno de tela o planeta simplesmente reaparece
+  // noutro canto — o jogador não entende que morreu, o que é pior que o cartão que se acabou de tirar.
+  // O som já existe (o `EVENT.DEATH` toca `death` pelo motor), então o que faltava era a imagem.
+  // ⚠️ `key` no contador e não um booleano com timer: assim duas mortes seguidas reanimam de verdade, e
+  // o elemento sai do DOM sozinho quando a animação acaba (`onAnimationEnd`). Zero é "nunca houve".
+  const flash = useStore(app, s => s.flash);
+  const [clarao, setClarao] = React.useState(0);
+  useEffect(() => { if (flash) setClarao(flash); }, [flash]);
   useEffect(() => { if (!booted) { booted = true; boot(); } }, []);
   useEffect(() => { document.body.dataset.screen = screen; }, [screen]);
   // "center" = o menu fica centralizado, com o céu inteiro atrás.
@@ -98,6 +107,7 @@ export default function App() {
         poderiam sair: `planeta-*`/`lua` são a arte das skins de mascote (theme/faces.js). */}
     {SEM_MENU ? null : <Scene />}
     <Hud />
+    {clarao ? <div id="morte-flash" key={clarao} onAnimationEnd={() => setClarao(0)} /> : null}
     {SEM_MENU ? null : <Entry on={screen === "entry"} />}
     <Lobby on={screen === "lobby"} />
       <Modes on={screen === "modes"} />

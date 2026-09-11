@@ -26,7 +26,7 @@ import {INPUT_FLAG} from "./protocol/constants.js";
 import {clamp} from "./util.js";
 import {createRng} from "./rng.js";
 import {vmaxFor} from "./physics/integrate.js";
-import {incomingMissile,sameTeam,outOfZone,ammoOf} from "./physics/rules.js";
+import {incomingMissile,sameTeam,outOfZone,ammoOf,recemChegado} from "./physics/rules.js";
 
 // Entre duas presas iguais, a humana vale mais: bot que caça bot é chato de ver.
 // ⚠️ MAS SÓ ENQUANTO O BOT É PEQUENO. Este 1,5 valia para todo preenchimento, inclusive o gigante que a
@@ -36,20 +36,13 @@ import {incomingMissile,sameTeam,outOfZone,ammoOf} from "./physics/rules.js";
 const HUMAN_BONUS=1.5;
 /** O bônus de caçar gente, para um bot deste tamanho. */
 const bonusHumano=r=>r<=BOT.HUNT.BONUS_MAX_R?HUMAN_BONUS:1;
-/**
- * A pessoa está protegida deste preenchimento? ESPELHA `rules.recemChegado`, e as duas TÊM que
- * concordar: lá é a física (quem come quem), aqui é a escolha de presa. Divergindo, o bot persegue
- * alguém que ele vai apenas atravessar — o que na tela é pior que ser comido, porque o gigante fica
- * colado no novato sem que nada aconteça e sem que ele entenda por quê.
- * ⚠️ Massa do JOGADOR (`massOf`), nunca da peça — ver o bloco de `recemChegado`, onde a versão por peça
- * deixava o gigante DIVIDIDO contornar a regra. Aqui a fidelidade importa pelo mesmo motivo: com a
- * aproximação por r² da maior peça, o bot partido continuaria escolhendo como presa quem ele não come.
- */
-const novatoProtegido=(w,tick,o,ps)=>{
-  if(tick-o.spawnTick<BOT.SPAWN_GRACE_TICKS)return true;
-  if(w.zoneNow())return false;   // a razão de massa é do LIVRE — ver o bloco de `rules.recemChegado`
-  const ms=w.massOf(o.slot);
-  return ms<BOT.NOVATO_MASS&&w.massOf(ps.slot)>ms*BOT.NOVATO_RATIO;};
+// ⚠️ A ESCOLHA DE PRESA CHAMA A PRÓPRIA REGRA DA FÍSICA (`rules.recemChegado`), e não uma cópia dela.
+// Aqui viveu um `novatoProtegido` que a ESPELHAVA linha a linha, com o aviso de que as duas "TÊM que
+// concordar": divergindo, o bot persegue alguém que ele vai apenas atravessar, e um gigante colado no
+// novato sem nada acontecer lê pior que ser comido. O 1.21 acrescentou à regra uma terceira saída (o
+// primeiro abate) e um relógio por vida, e manter o espelho passou a significar reescrever as duas —
+// que é o jeito conhecido de elas se separarem. `bot.js` já importava de `rules.js` (`incomingMissile`,
+// `sameTeam`, `outOfZone`, `ammoOf`), então não há ciclo novo nem custo de import.
 const TAU=6.28318,PI=Math.PI;
 const SPLIT_R=Math.SQRT2*EAT.RATIO;   // raio mínimo para engolir a presa DEPOIS do salto (r/√2 ≥ 1,15·rb)
 const SKILL_W=BOT.SKILLS.reduce((a,x)=>a+x.w,0);
@@ -265,7 +258,7 @@ export class BotBrain{
             const v=(q.br*(o.isBot?1:bonusHumano(c.big))-bd*.1)*BOT.HUNT.BITE_PENALTY;
             if(v>pv){pv=v;prey=o.slot;preyBig=q.br;preyX=q.bx;preyY=q.by;preyPiece=q.bid;}}}}
       else if(c.big>=oc.big*huntRatio&&d<BOT.HUNT_DIST){
-        if(!o.isBot&&novatoProtegido(w,tick,o,ps))continue;   // acabou de cair no mapa, ou ainda é pequeno demais para mim
+        if(!o.isBot&&recemChegado(w,ps,o))continue;   // acabou de cair no mapa, ou ainda é pequeno demais para mim
         const v=oc.big*(o.isBot?1:bonusHumano(c.big))-d*.1;
         if(v>pv){pv=v;prey=o.slot;preyBig=oc.big;preyX=oc.x;preyY=oc.y;preyPiece=-1;}}}
     this.press=press;this.alive=alive;this.mate=mate;this.ed=ed;

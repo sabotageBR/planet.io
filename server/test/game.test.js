@@ -17,7 +17,7 @@ process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';proce
 process.env.GOOGLE_CLIENT_ID='';
 const {startServer}=await import('../src/index.js');
 const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG,PROTOCOL_VERSION,PROTOCOL_MIN}=await import('@warspace/shared/protocol/index.js');
-const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE,WORLD,ROOM}=await import('@warspace/shared/constants.js');
+const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE,WORLD,ROOM,BOT}=await import('@warspace/shared/constants.js');
 const {rectHas,viewRect}=await import('@warspace/shared/camera.js');
 const {setR}=await import('@warspace/shared/physics/body.js');
 const {newCode,shardOf,isValidCode,normalizeCode}=await import('../src/rooms/codes.js');
@@ -360,4 +360,30 @@ test('saída: fecha os sockets, salas expiram as sessões',async()=>{
   A.close();B.close();await sleep(100);const room=roomOf(roomCode);assert.equal(room.humanCount,3,'A, B e Carol na graça');assert.ok([...room.sessions.values()].every(s=>!s.ws));
   for(const s of room.sessions.values())s.disconnectedAt-=NET.RESUME_MS+1;room.housekeeping(Date.now());assert.equal(room.humanCount,0);
   assert.equal(room.sim.humanCount(),0);assert.ok(room.sim.botCount()>=ROOM.BOT_SEED,'o preenchimento fica na sala depois que os humanos saem');
+});
+
+// ── A GRAÇA DO NASCIMENTO AVISA QUANDO ACABA, E POR QUÊ ──────────────────────
+// `{t:'grace',why}` (JSON de controle, sem subir o PROTOCOL_VERSION) é o que torna a regra do pack 1.21
+// conferível em produção: ela tem TRÊS saídas e o painel de Retenção só enxerga a morte que vem DEPOIS.
+// O cliente NÃO pode derivar isto — `SPAWN_GRACE_TICKS` e `NOVATO_MASS` são tunables de escopo 'server',
+// e o bundle dele tem a cópia do BUILD.
+// ⚠️ O teste força a saída em vez de esperar 90 s: cada uma delas é um estado do `PlayerState`, e é
+// exatamente esse estado que `Sim._graceTick` lê. Esperar o relógio testaria o `setTimeout` do Node.
+test('grace: o servidor avisa por que a graça acabou (tempo · massa · abate)',async()=>{
+  const cena=async forca=>{
+    const C=new Client();await C.open();const r=await C.join('Grace');
+    const sala=roomOf(r.code),ps=sala.sim.world.players.get(C.slot);
+    assert.ok(ps.graceUntil>sala.sim.world.tick,'nasceu sob a graça');
+    assert.equal(ps.vidas,1,'primeira vida');
+    const n=C.json.length;
+    forca(ps,sala.sim.world);
+    const m=await C.until(()=>C.jsonOf('grace',n),4000,'grace');
+    C.close();return m.why;};
+  // TEMPO: o relógio venceu. ⚠️ `1` e não `w.tick`: a sala pode estar no tick 0 quando o join resolve, e
+  // `graceUntil=0` é o valor RESERVADO do abate — o teste estaria medindo a outra saída.
+  assert.equal(await cena(ps=>{ps.graceUntil=1;}),'time');
+  // MASSA: ficou do tamanho de um médio antes de o relógio vencer.
+  assert.equal(await cena((ps,w)=>{setR(ps.pieces[0],Math.sqrt(BOT.NOVATO_MASS)+20);}),'mass');
+  // ABATE: `eatPiece` zera o campo — quem já matou não é mais recém-chegado.
+  assert.equal(await cena(ps=>{ps.graceUntil=0;}),'kill');
 });
