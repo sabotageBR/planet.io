@@ -708,6 +708,56 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   mesma semente não dá mais a mesma sala. Não toca em fio nem em `predict.js` — nascimento não é predito.
   ⚠️ `shared/test/spawn.test.js` trava os dois sentidos, e foi conferido por MUTAÇÃO: devolvendo
   `this.pieces`/`PLAYER_SAFE` para a lista de `_farSpot`, 4 dos 6 testes ficam vermelhos.
+- **...E NUMA SALA RECÉM-ABERTA ELE NASCIA LONGE DE TUDO, PORQUE TODO MUNDO ERA BOT** (`SPAWN_ISCA` e o
+  balde `iscas` em `_playerSpot`): o bloco acima consertou o encontro e continuou cego ao caso da ESTREIA.
+  `_playerSpot` filtra `if(!o||o.isBot||!o.alive)continue`, e na sala que acabou de abrir **não há um
+  humano** — a lista de âncoras sai vazia, a função devolve `null` e o nascimento cai no sorteio cego, que
+  cobra `PLAYER_SAFE` (1500 px) de TODA peça viva. Ou seja: o jogador que chega primeiro nasce
+  garantidamente longe dos 13 planetas que a semente acabou de pôr no mapa. **Sem isto, aumentar
+  `BOT_SEED` não muda um pixel do que ele vê.**
+  ⚠️ **É um SEGUNDO balde, consultado só quando não há humano** (`cand.length ? cand : iscas`): gente
+  continua ganhando de preenchimento, sempre. Não é um `||` no filtro — seria trocar uma pessoa por um bot.
+  ⚠️ **Só preenchimento que EU ENGULO** (`pc.r <= r/EAT.RATIO`), nunca um que me engole: o ponto é dar o
+  primeiro alvo, e nascer colado num predador é o atropelamento que `recemChegado` existe para apagar.
+  ⚠️ **O que a isca entrega é PRESENÇA NA TELA E UMA PERSEGUIÇÃO, não um abate** — e isso é honestidade,
+  não limitação: `vmax ∝ r^-0,449` faz a isca ser MAIS RÁPIDA que o novato e `FLEE_DIST` a faz fugir. O
+  abate vem do portão do dividir, que já é tunable. E **não** se passa persona/perícia ao cérebro para
+  fabricar "agressividade baixa": um planeta de r=23 NÃO PODE caçar um de r=30 (`HUNT_RATIO` 1,3 contra
+  `EAT.RATIO` 1,15) — o tamanho já dá a propriedade, e forçá-la custaria três assinaturas.
+- **A SEMENTE GANHOU UM TIER DE ISCA, E "O PEQUENO" NUNCA FOI COMÍVEL** (`ROOM.SEED_R` com um terceiro
+  par `[20,26]`, `SEED_MIX:[2,4]`, `BOT_SEED:13`, `botSpawnR`): a sala abria com 6 preenchimentos, dos
+  quais os "pequenos" nasciam em `PLAYER.BOT_R`=[24,58] — e quem nasce com r=30 só engole `r ≤ 26,1`, ou
+  seja **6,2% daquela faixa**. Sete "pequenos" davam 0,43 comíveis esperados: o novato tinha vizinhos e
+  nenhum bocado. Hoje são 13 na abertura (2 gigantes + 4 médios + **7 iscas**) e sobram 19 vagas para a
+  chegada gradual.
+  ⚠️ **O TETO DA ISCA SAI DO JOGADOR, NÃO DE UM NÚMERO SOLTO**:
+  `teto = min(faixa[1], PLAYER.SPAWN_R/EAT.RATIO)`. Cravar [20,26] faria a isca virar PREDADOR no dia em
+  que alguém baixasse a massa inicial no painel — em silêncio, e justamente para quem a isca existe. E
+  `rng.range` gasta um `next()` em qualquer faixa, então o teto **não desloca o stream** do rng da sala.
+  ⚠️ **Os 2 gigantes voltaram, e `SEED_R[0]` FICA em [140,180]** — não voltar para [200,250], que é o tier
+  de 40–62 mil de massa que o histograma acusou como algoz. O que mudou foi só a COTA, e isso só é seguro
+  agora porque `recemChegado` passou a valer na FÍSICA e `bonusHumano` tirou a preferência do grande por
+  caçar gente: os dois consertos não existiam quando a cota caiu de 2 para 1. `shared/test/novato.test.js`
+  afirmava `SEED_MIX[0]===1` como memória escrita de uma decisão medida — virou `<=2`, **com o comentário
+  reescrito**: mudar o número sem mudar o porquê deixaria o teste mentindo sobre si mesmo.
+  ⚠️ **NUNCA O ÚNICO VIVO**: `_chegadaBots` ganhou um piso que FURA o relógio quando
+  `bots + humanos < botSeed`. O buraco real é a sala que esvaziou de bots pelo trim e depois esvaziou de
+  gente — o próximo a entrar ficaria sozinho por segundos. Na sala do DONO `botSeed` é zero, então lá nada
+  muda (é o `abreEmAndamento`, e ele continua mandando).
+  ⚠️ **`admin_settings` VENCE `constants.js`**, e este é o risco nº 1 da entrega: toda chave tocada aqui
+  que já tenha linha no banco precisa ser APAGADA, senão a mudança é invisível e se procura o defeito no
+  código. `ROOM.BOTS=32` já estava lá.
+- **O MÍSSIL DO PREENCHIMENTO NÃO ACERTA QUEM ESTÁ SOB A GRAÇA** (`recemChegado` em `fireHoming` e em
+  `pieceMissile`; `BOT.SPAWN_GRACE_TICKS` 2700 = 45 s): `MISSILE.SPAWN_CD_TICKS` impedia o novato de
+  ATIRAR e nunca de ser ALVO — a proteção que `recemChegado` dá contra ser engolido não cobria a arma que
+  alcança o mapa inteiro. São **dois** pontos porque um só não basta: `fireHoming` faz a situação deixar
+  de existir (o bot nem escolhe o alvo) e `pieceMissile` é a garantia FÍSICA, que cobre Cacho e Rajada.
+  ⚠️ **NUNCA em `incomingMissile`**: ela é o SENSOR DA VÍTIMA, e cegá-la desligaria o alerta na borda da
+  tela, a interceptação e a auto-defesa **do próprio novato** — o oposto exato do que a regra faz.
+  ⚠️ **Nunca tirar o alvo de um míssil EM VOO**: vira errante e acerta terceiros. A decisão é no
+  lançamento, e só lá.
+  ⚠️ **Não existe `BOT.NOVATO_MISSIL`**: a regra monta nos mesmos três números da proteção do novato e
+  herda o interruptor deles — "desligar pela metade é pior que não desligar" vale aqui igual.
 - **COLHER DENTRO DO GÁS VALE METADE** (`ZONE.GAS_GAIN`, `rules.gasGain`): acampar na beirada era RENDA
   LÍQUIDA, e o laço se fechava sozinho — `zoneBurn` arranca `pc.shed` e cospe pelotas para FORA, e passada
   a imunidade `pieceEject` devolvia 100% (`EAT.EJECT_GAIN`=1). Quem ficava no gás queimava e recolhia a
@@ -1173,6 +1223,36 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ Escopo `server`, apesar de a regra morar em `physics/rules.js`: `predict.js` importa `DT, WORLD,
   BLACKHOLE, EJECT, PLAYER` e nada mais. E `bot.js:novatoProtegido` lê o MESMO objeto `BOT`, então o cérebro
   acompanha a troca no mesmo tick — sem isso o bot perseguiria alguém que ele só vai atravessar.
+- **A PRIMEIRA VIDA GANHOU UMA MISSÃO DE TRÊS ETAPAS** (`passoMissao` em `game/dica.js`): coma as pedras →
+  coma o planeta pequeno → divida. A dica do dividir ensinava a ÚLTIMA coisa que um novato precisa saber, e
+  só aparecia para quem já tinha chegado ao portão — um terço deles. As duas etapas antes dela são as que
+  o resto nunca recebia.
+  ⚠️ **A INVARIANTE É A FORMA DO RETORNO**: `banda` é uma STRING SÓ, então "no máximo uma faixa de texto
+  por vez" deixou de ser disciplina do chamador e virou impossível de violar.
+  ⚠️ `passoDica` e `temPresa` **não mudaram uma linha** — a etapa 3 é a dica de hoje, DELEGADA, e o teste
+  que já existia é a prova. `temComivel` é o mesmo laço SEM o portão do split (comer alguém menor não pede
+  `SPLIT.MIN_R`, pede só ser maior).
+  ⚠️ **CONTAR AS 8 PEDRAS É NO CLIENTE, no evento que já toca o som** (`onVanish`, `KIND.FOOD` +
+  `REMOVE.EATEN` + proximidade de `own0`): não existe contagem de comida no protocolo (o `self` é de
+  tamanho fixo e `EVENT.EAT` é só de peça de JOGADOR), e aquela linha já era a única que sabe dizer "fui EU
+  que comi este grão". Separar as duas produziria uma faixa que completa sem o jogador ter ouvido nada.
+  **Massa e score foram descartados com conta**: `EAT.FOOD_GAIN` sobre grãos de 36 a 225 de massa, DOBRADO
+  pelo banquete de nascença, dá 8 grãos valendo de 46 a 576 — 12,5× de espalhamento sobre uma base de 900;
+  ~12,5% dos grãos (munição, powerup) não dão massa nenhuma; e `PLAYER.DECAY` faz a massa andar PARA TRÁS.
+  ⚠️ "Comi alguém" é `EVENT.EAT` com `slotA === view.mySlot` — `slotA` é QUEM COMEU, o evento sai para toda
+  peça engolida (morder um pedaço de alguém dividido conta) e não há falso positivo (peça própria é
+  `MERGE`, aliado não é comível).
+  ⚠️ **"Só na primeira vida da sessão" é o OPOSTO do que `dicaEst` faz**, e a conciliação é: o zeramento
+  por vida CONTINUA sendo o mecanismo — o que muda é o VALOR INICIAL, lido de um `sessionStorage` com
+  try/catch (ele LANÇA em janela anônima e em origem opaca; sem storage a missão reaparece, que é a
+  degradação aceitável). A marca é escrita na morte e no `leave`, este **guardado por `was`**: `join()`
+  chama `game.leave(true)` na primeira linha, e sem a guarda a própria entrada marcaria a sessão.
+  ⚠️ O veterano entra na **etapa 3**, nunca em "fim": as etapas 1 e 2 ensinam o óbvio para quem já viveu,
+  mas a dica do dividir está em produção com dado medido atrás dela.
+  ⚠️ **`#t-split.dica` passou a exigir `h.dica.id === "split"`**, e essa linha é a regressão mais provável
+  da entrega inteira: a classe liga o pulso do botão de DIVIDIR, e enquanto a única dica do jogo era a do
+  split isso acertava por acidente. Com três etapas, "coma as pedras" faria o botão pulsar para um novato
+  de r=30 — anunciando um comando que o servidor recusa.
 - **O PORTÃO DO DIVIDIR ESTAVA ACIMA DO TETO DO NOVATO** (`SPLIT.MIN_R` virou tunable de escopo `wire`,
   grupo "Proteção do novato"; a dica em `client/src/game/dica.js` + `ui/DicaSplit.jsx`): a física torna o
   salto OBRIGATÓRIO para matar alguém — `vmax = 2110,6/r^0,449` faz a presa ser sempre mais rápida que o
@@ -2166,6 +2246,28 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   INPUT são 10 bytes fixos), então a trava mora no `PlayerState` e o cliente redesenha o anel pela mesma
   conta — os dois chegam ao mesmo alvo sozinhos, sem protocolo novo. A interceptação de um teleguiado
   entrante continua ganhando dela: defesa vem antes de escolha ofensiva.
+- **NO DEDO A MIRA SÓ ARMA DEPOIS DE SEGURAR DE VERDADE** (`MISSILE.AIM_MS` 160 / `AIM_MS_TOUCH` 420,
+  tunables de escopo `wire`; `dedo()` injetado em `game/input/actions.js`): o limiar era um `const` de
+  MÓDULO com 160 ms, e 160 ms no mouse é um "segurar" deliberado — no polegar está dentro da cauda de um
+  TOQUE. O `#t-fire` do HUD passa por `press("fire")` → `Touch.js` → `act()` **sem** a guarda
+  `if(type==="touch")return` que protege o canvas, então ali quem decide é só a duração.
+  ⚠️ **O preço de armar sem querer é DUPLO, e a segunda metade é a que ninguém liga à mira**: (1) o clique
+  rápido é TELEGUIADO e `fireHoming` varre a sala inteira sem limite de alcance — mirado sem alvo dentro
+  de `AIM_PICK` (700 px do "cursor", que no dedo é o alvo de MOVIMENTO) o míssil sai RETO, ou seja o tiro
+  que acertaria em qualquer canto do mapa vira um foguete burro; e (2) `setAim(true)` chama `onAim(true)`
+  → `joy.setAiming(true)`, e pela regra de PAPÉIS do direcional **o próximo dedo vai para a MIRA, não para
+  o volante** — enquanto o polegar segura o fogo, o outro dedo não dirige. É literalmente o sintoma "no
+  celular o planeta não anda", produzido pelo botão de atirar.
+  ⚠️ **`wire` e não `server`**: quem aplica é o CLIENTE. O precedente está ao lado (`AIM_HOLD_TICKS` já é
+  `wire`) e **`MISSILE` já está em `RAIZES_WIRE`**, então não há o risco da falha muda de raiz ausente.
+  ⚠️ **Lido A CADA CHAMADA**, nunca capturado na carga do módulo — é o antipadrão que `SPLIT.MIN_R`
+  documenta, e `client/test/actions.test.js` o trava mutando a constante entre dois toques.
+  ⚠️ `dedo` é um GETTER (`()=>…`), não um valor: ele vem do MESMO `matchMedia("(pointer: coarse)")` que
+  arma o direcional, e o ponteiro pode mudar no meio da sessão (tablet com teclado). Congelado na criação,
+  o limiar do mouse valeria para sempre num aparelho que virou dedo.
+  ⚠️ 420 ms é PONTO DE PARTIDA, e é por isso que nasce tunable: o número final sai da medição. A única
+  relação que importa é `AIM_MS_TOUCH > AIM_MS`, e invertê-los devolve o defeito — as faixas dos tunables
+  a garantem e há teste.
 - **Powerups: ÍCONE COM O NÚMERO, não chip com rótulo** (`#hud-pw`, `Hud.jsx`): eram pílulas com o nome por
   extenso ("🧲 Ímã 6s"), e em partida ninguém lê palavra — some no ruído e a lista cresce de largura
   empurrando o chat. Hoje cada um é um DISCO de 44 px com o número num badge por cima. Três formas, uma
@@ -2490,6 +2592,60 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   formas. Foi ele que aposentou o array `places` do pódio, e com isso o dicionário ficou sem nenhum array.
   Quem impede a tradução de apodrecer é `client/test/i18n.test.js`: paridade exata de chaves, moldes `{n}`
   que precisam sobreviver, o ouro dos temas e o do catálogo.
+- **NO PACOTE DE PORTAL A TELA INICIAL NÃO EXISTE** (`SEM_MENU` em `portal/flags.js`, o desvio no fim de
+  `boot()`, `sairDaPartida()` em `state/actions.js`): o boot termina na ARENA. Sem Entry, sem Modos, sem
+  `#cena` — o menu inteiro (nick, skin, ranking, opções, sair) mora atrás do Esc/☰, em `ui/Pause.jsx`.
+  ⚠️ O motivo é medido: o funil da Poki 1.12 leu **17% de abandono em `menu/entry`** — 85 de 500 fecharam
+  a aba na tela inicial sem jogar um segundo, cada um entrando na média de playtime como ZERO. O tester
+  já clicou "Play" no site DELES; o nosso cartão é a segunda porta.
+  ⚠️ **O `await entraPeloPortal()` saiu do caminho crítico**: ele abre com `portal.identidade()`, que por
+  dentro é `await pronto` — a promessa do SDK de terceiro, com teto de `PORTAL.SDK_MS` (6 s). A Poki não
+  implementa `identidade`, então o boot esperava o SDK inteiro **para receber `null`**, e tudo depois dele
+  herdava a espera. Isso era o gargalo do "arena visível em menos de 1 s".
+  ⚠️ **A CORTINA `#boot` FICA ATÉ A ARENA ABRIR** (`main.jsx`). No site o primeiro render já tem o que
+  mostrar; aqui não há tela nenhuma entre a cortina e o primeiro frame, e tirá-la no render descobriria um
+  shell vazio pelo tempo do guest + handshake. A rede de segurança (`SDK_MS + 4000`) não é opcional:
+  cortina presa é pior que qualquer tela feia. As três telas-que-ficam (`servidorFora`, `desatualizado`,
+  `expulsoInativo`) entram na condição, senão o `Offline.jsx` ficaria escondido atrás dela.
+  ⚠️ **`screen` nasce em `"boot"`, e ele fica FORA de `SCREENS`** — aquela é a lista branca de `go()`, e é
+  isso que torna `go("boot")` impossível por construção (o precedente é `"spec"`). **Não usar `"game"`**:
+  `ATIVO`/`RETIDO` de `portal/sessao.js` passariam a valer antes de existir partida — `gameplayStart` sem
+  jogo (que a Poki cobra por escrito) e o funil contando o carregamento da página.
+  ⚠️ **Os SETE botões de sair chamam `sairDaPartida()`**, nunca `leaveGame` direto: sete `if (PORTAL)`
+  divergem no primeiro conserto (a lição de `useSpec`/`SpecBar`). E **nada de `leaveGame()` seguido de
+  `play()`** — o `leaveGame` escreve `screen` e o React chega a montar a tela do meio, um frame de cartão
+  de menu, que é exatamente o que o aceite proíbe. `go()` ganhou uma REDE (no pacote ele recusa tela de
+  menu): foi encontrada assim, em bancada, um Esc apertado durante o boot indo parar na tela inicial.
+  ⚠️ **UM `quit` DELIBERADO DEIXOU DE SER LIDO COMO QUEDA** (`saindo` em `game/index.js`). `game.leave()`
+  fecha o socket de propósito e o `Connection` avisava `closed` como avisaria uma queda — indistinguível
+  para quem ouve. No site era inofensivo (quem sai muda de tela); aqui, onde sair é RE-ENTRAR, o
+  fechamento da re-entrada era lido como queda e disparava outra: o Inspector mostrava `connect/match/fail`
+  em rajada. **Medido e consertado no mesmo dia.**
+  ⚠️ **O que NÃO foi possível**: a poda do Rollup. `Entry`/`Scene` continuam no zip (conferido com
+  `unzip -l`) porque o Rollup não dobra a constante através da fronteira de módulo para tree-shaking de um
+  componente JSX. O ganho é o DOWNLOAD: não montados, eles não produzem um `<img>`, e os ~217 KB de arte
+  de menu deixam de ser baixados na janela que o Player Fit mede. Três daqueles arquivos nem poderiam sair
+  (`planeta-*`/`lua` são a arte das skins de mascote).
+  ⚠️ **`ENTRY.DIRETO` vira letra morta no pacote**: sem Entry não há para onde mandar quem não nomeou o
+  planeta, então `semNome()` sai cedo. O tunable continua valendo para `site` e `bountyboard`.
+- **A TELA DE MORTE DO PACOTE É UM TOQUE** (`kaboom`, o 4º modelo de `ui/Dead.jsx`; a escolha em
+  `ui/deadEstilo.js`): o estouro, UM número (o score) e o DE NOVO de largura cheia. Sai o relatório
+  inteiro — ranking do dia, recorde, colocação, prêmio, as duas vistas e o "voltar ao lobby".
+  ⚠️ A ORDEM da escolha é a regra: `?dead=` primeiro (o atalho de QA tem de ganhar até do pacote, senão os
+  outros três modelos deixam de ser mensuráveis na build que mais precisa ser medida), o PACOTE depois, a
+  pref por último. E **o `kaboom` não vale no Battle Royale**: lá o jogo promete o pódio na própria tela.
+  ⚠️ **Ele NÃO é gaveta.** `--rail-w` só é zero em `[data-screen="game"]`, então em `dead` o `#game`
+  encolhe 480 px para abrir espaço a um painel de altura cheia — aqui isso daria uma gaveta de 480 px com
+  um número dentro. O caminho já existia e é o do recolhido: o espelho em `body[data-dead]`, que passou a
+  carregar o ESTILO.
+  ⚠️ **O respawn automático caiu para 2 s** (`ROUND.RESPAWN_TICKS` 300 → 120): num agar a vida mediana é
+  de 15–40 s, e cinco segundos de cartão a cada morte é uma fatia grande do primeiro minuto. Com 2 s o
+  PISO de `DEAD_MIN_MS` (1,5 s) passa a morder para quem já estava com a mão no mouse na hora da morte —
+  não é conflito, é o piso fazendo o que existe para fazer; abaixo de 1,5 s aqui a contagem exibida mente.
+  ⚠️ **`respawnAqui` passou a compartilhar o trinco de `play()`**, e não era zelo: o primeiro clique manda
+  `{t:"respawn"}` ANTES do `await` do anúncio, então o `{t:"alive"}` chega durante o comercial e zera o
+  `dead`; um segundo clique (o botão fica com o FOCO por trás do anúncio) achava `g.respawn()` falso e caía
+  no `play({room})` — socket fechado e reaberto, "saiu/entrou" no feed e um `match_start` a mais.
 - **O JOGAR ENTRA NA PARTIDA, NÃO NA TELA DE MODOS** (`ui/Entry.jsx`): o caminho até o primeiro frame era
   nomear o planeta · JOGAR · escolher o modo · JOGAR de novo — duas telas e dois cliques para uma decisão
   que a esmagadora maioria não toma. O Livre É o jogo; quem quer battle royale ou esquadrão continua a UM
