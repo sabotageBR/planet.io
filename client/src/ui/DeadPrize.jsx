@@ -18,7 +18,12 @@ import { escolhePremio } from "./premio.js";
 import { ganharSkinAnuncio } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
-import * as portal from "../portal/index.js";
+// ⚠️ `{ portal }`, NUNCA `* as portal`: a fachada é um OBJETO exportado com esse nome, então a importação
+// de namespace faz `portal.temRecompensa` ler um export que não existe — `undefined`, em silêncio, e a
+// oferta de anúncio NUNCA aparecia em portal nenhum. Quem acusou foi o empacotador (o Rollup avisa
+// "temRecompensa is not exported by src/portal/index.js"); nada quebrava em dev, e este era o único
+// arquivo do projeto que importava a fachada assim.
+import { portal } from "../portal/index.js";
 
 export default function DeadPrize({ on }) {
   const LB = useLabels();
