@@ -2614,11 +2614,30 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   dentro é `await pronto` — a promessa do SDK de terceiro, com teto de `PORTAL.SDK_MS` (6 s). A Poki não
   implementa `identidade`, então o boot esperava o SDK inteiro **para receber `null`**, e tudo depois dele
   herdava a espera. Isso era o gargalo do "arena visível em menos de 1 s".
-  ⚠️ **A CORTINA `#boot` FICA ATÉ A ARENA ABRIR** (`main.jsx`). No site o primeiro render já tem o que
+  ⚠️ **A CORTINA `#boot` FICA ATÉ DAR PARA JOGAR** (`main.jsx`). No site o primeiro render já tem o que
   mostrar; aqui não há tela nenhuma entre a cortina e o primeiro frame, e tirá-la no render descobriria um
   shell vazio pelo tempo do guest + handshake. A rede de segurança (`SDK_MS + 4000`) não é opcional:
   cortina presa é pior que qualquer tela feia. As três telas-que-ficam (`servidorFora`, `desatualizado`,
   `expulsoInativo`) entram na condição, senão o `Offline.jsx` ficaria escondido atrás dela.
+  ⚠️ **E a condição cobra `conn === "connected"`, não só `screen === "game"`** — `play()` escreve aquela
+  tela ANTES de conectar, então a cortina saía no começo do handshake (até `JOIN_TIMEOUT_MS` = 3 s) e
+  descobria um céu vazio onde o jogador não podia dar input nenhum.
+  ⚠️ **`portal.carregou()` SAI JUNTO COM ELA**, e isso é o conserto do `gameLoadingFinished` que MENTIA.
+  Ele saía no primeiro render: medido no pacote com o SDK instrumentado, `gameLoadingFinished` aos 109 ms
+  e o primeiro `gameplayStart` aos 370 ms — o jogo anunciava ter carregado antes de existir, e entre os
+  dois ficava um vão que numa rede de verdade é de segundos. É esse vão que o Inspector da Poki lê como
+  "o `gameplayStart` não está no começo do gameplay". Depois: `gameLoadingStart` 114 ms ·
+  `gameLoadingFinished` 326 ms · `gameplayStart` 326 ms — a ordem que eles documentam, encostados.
+  ⚠️ **CAVEAT PARA QUEM REEMPACOTAR A PLAYGAMA**: lá o preroll voltou e o `initialInterstitialDelay: 0`
+  do config conta a partir do `game_ready`, que é o que `pg.js:carregou()` manda — com o marco atrasado, o
+  preroll de `play()` passa a sair ANTES dele. Rodar a QA Tool deles antes de submeter. Na Poki não há
+  esse risco: o preroll está desligado (`semPreroll`).
+  ⚠️ **COMO SE MEDE ISTO SEM A POKI**: `VITE_POKI_SDK_URL` aponta o adaptador para um arquivo local, então
+  um stub que só registra as chamadas em `window.__sdkLog` dá a SEQUÊNCIA exata que o cliente emite —
+  `WARSPACE_API_BASE=http://127.0.0.1:3003 VITE_POKI_SDK_URL=./poki-sdk.js node scripts/portal-pack.mjs
+  poki`, o stub copiado para o `dist`, um servidor local com `ALLOWED_ORIGINS` daquela origem e o pacote
+  servido estático. Foi assim que os dois números acima saíram, e é o único jeito de parar de adivinhar o
+  que o checklist deles está vendo.
   ⚠️ **`screen` nasce em `"boot"`, e ele fica FORA de `SCREENS`** — aquela é a lista branca de `go()`, e é
   isso que torna `go("boot")` impossível por construção (o precedente é `"spec"`). **Não usar `"game"`**:
   `ATIVO`/`RETIDO` de `portal/sessao.js` passariam a valer antes de existir partida — `gameplayStart` sem
@@ -3685,6 +3704,13 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   Sem o bitmap ele CAI no pattern de sempre — o degrade certo, e não um flash de disco liso.
   ⚠️ **A CHAVE do cache carrega o HASH** (`#84:abc123`): arte trocada no painel = chave nova = textura
   reassada no frame seguinte, sem F5 e sem `drop(key)`, que o TextureCache não tem.
+  ⚠️ **`loadSkins()` PRECISOU ENTRAR NO BOOT, e sem isso a arte de banco só existia para quem abrisse a
+  LOJA.** Ele é o único alimentador de `setSkinArt`, e o único chamador dele era o `useEffect` de
+  `Shop.jsx` — então um jogador que entrasse como "trump" via um disco LISO, porque `faceFile` não achava
+  o hash e caía no ramo seguinte. No site o defeito ficava escondido (`(!PORTAL && sk.face)` acha o
+  arquivo de `public/faces/`); no PACOTE aquele ramo é `null`, e a caricatura simplesmente não aparecia —
+  sem erro, sem 404 e sem nada na tela dizendo por quê. Foi relatado assim: "entrei como TRUMP e não
+  apareceu a skin".
   ⚠️ **A prévia do painel tem rota PRÓPRIA**: a pública exige `active`, e o fluxo prescrito é "sobe a arte →
   confere → ativa" — com uma rota só, a janela em que o admin precisa da prévia é exatamente a janela em
   que ela responde 404.

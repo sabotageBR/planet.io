@@ -233,7 +233,15 @@ export async function boot() {
   // desenha — o mesmo defeito que a própria tela inicial já corrigiu uma vez ("A PORTA DE ENTRADA NÃO
   // ANUNCIA SALA VAZIA") e que a coluna escondida pelos temas cometeu antes dela. O TOP 5 fica: ele é
   // barato e o painel de ranking da pausa o consome.
-  loadConfig(); loadTop5(); if (!SEM_MENU) loadRooms();
+  // ⚠️ `loadSkins()` NO BOOT, e isto é o conserto de "entrei como TRUMP e a caricatura não apareceu".
+  // Ele é o ÚNICO alimentador de `setSkinArt`, e o único chamador dele era o `useEffect` de `Shop.jsx` —
+  // ou seja, a arte que vem do BANCO (as 35 caricaturas de egg, desde que saíram do zip) só existia para
+  // quem tivesse ABERTO A LOJA naquela carga da página. No site o defeito ficava escondido, porque
+  // `faceFile` cai em `(!PORTAL && sk.face)` e o arquivo de `public/faces/` salva; no PACOTE aquele ramo é
+  // `null`, então o planeta saía como disco liso — sem erro, sem 404 e sem nada na tela dizendo por quê.
+  // ⚠️ Sem `await`, como os dois ao lado: a arte chegando tarde não atrasa a arena (a chave da textura
+  // carrega "o bitmap já chegou?", então o planeta se reassa sozinho no frame seguinte).
+  loadConfig(); loadTop5(); loadSkins(); if (!SEM_MENU) loadRooms();
   // ⚠️ O CAMPO NÃO PODE ESPERAR A REDE. O comentário que morava aqui dizia que esta rota "nunca é o
   // gargalo"; foi MEDIDO contra produção e é falso: `GET /api/nick` responde em ~0,67 s morno e 1,19 s
   // frio a partir do Brasil, e o `booted:true` logo acima já deixou a tela inicial montar. Nessa janela
