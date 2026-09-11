@@ -162,24 +162,30 @@ export const skinById=id=>SKIN_BY_ID.get(id)||SKINS[0];
 export const isPurchasable=s=>s.price>0&&!s.unlockKey;
 /** Nível mínimo para comprar (0 = nenhum). */
 export const levelReqOf=s=>(s&&s.levelReq)|0;
-/** As skins resgatáveis assistindo um anúncio recompensado (hoje: as 3 mascote). Derivado do catálogo,
- *  não uma lista cravada em dois lugares — um mascote novo entra aqui sozinho. */
 /**
- * A POOL DO ANÚNCIO DA TELA DE MORTE — as skins que assistir um anúncio recompensado DÁ, de graça.
+ * A POOL DO ANÚNCIO RECOMPENSADO — as skins que assistir um vídeo DÁ, de graça: hoje **as três mascotes**
+ * (Marte Bravo, Terra Brava, Lua Soldado). Derivada do catálogo, nunca uma lista cravada: mascote novo
+ * entra sozinho. Oferecida em DOIS lugares, a tela de morte (`ui/DeadPrize.jsx`) e a Loja (`ui/Shop.jsx`).
  *
- * ⚠️ É UMA POOL PRÓPRIA, e não as mascotes. As três mascotes seguem a regra que a migração 0012
- * estabeleceu ao derrubar a 0011: o anúncio DESTRAVA a compra e as moedas continuam obrigatórias. Misturar
- * as duas regras nas mesmas skins faria a Loja mentir — alguém pagaria 1.900 moedas pelo que o vizinho
- * ganhou vendo um vídeo.
- * ⚠️ E são skins que JÁ EXISTEM, das RARAS de 600-900 moedas: nenhum id novo. O catálogo de código vai até
- * 127 e de 128 em diante é o namespace das skins de banco, então inventar seis ids aqui custaria a faixa
- * inteira que o /admin vai usar. Reusar também é honesto com a economia: é uma skin que valeria ~4 partidas
- * boas, não um item exclusivo que só quem vê anúncio tem.
+ * ⚠️ **ELA ERA [10,13,11,14,12,15] — SEIS RARAS —, E AS MASCOTES ERAM A OUTRA REGRA.** O que a migração
+ * 0012 estabeleceu ao derrubar a 0011 era "o anúncio DESTRAVA a compra e as moedas continuam
+ * obrigatórias" (`AD_REWARD_SKINS`), e o texto que morava aqui defendia a separação: misturar as duas
+ * regras nas mesmas skins faria a Loja mentir. A separação continua valendo — o que mudou foi QUAL das
+ * duas regras vale, e ela agora vale sozinha. O motivo é o checklist da Poki: *"Are rewardedBreaks()
+ * properly fired and well-placed?"*, e um vídeo que não dá nada além do DIREITO de gastar 1.900 moedas
+ * não é uma recompensa, é um pedágio — falha o "properly" pela definição deles.
+ * ⚠️ `AD_REWARD_SKINS` fica **VAZIA e DORMENTE**, no precedente de `BLACKHOLE.COUNT=0` e da Nova: a rota
+ * `/watch-ad`, o `ad_required` do `/buy` e `watchMascotAd()` continuam inteiros e testados, e a mecânica
+ * volta trocando esta linha. Com a lista vazia as duas pools são disjuntas por construção, que é o que o
+ * teste sempre cobrou.
+ * ⚠️ As mascotes CONTINUAM compráveis com moeda: o vídeo é o atalho, não a única porta. E são skins que
+ * JÁ EXISTEM — nenhum id novo, porque o catálogo de código vai até 127 e de 128 em diante é o namespace
+ * das skins de banco, que o /admin usa.
  * ⚠️ A ORDEM é a da oferta (o primeiro não possuído é o oferecido), então ela é estável entre a morte e o
  * clique — uma oferta que troca no meio é a forma mais rápida de o jogador achar que foi enganado.
  */
-export const AD_GIFT_SKINS=[10,13,11,14,12,15];
-export const AD_REWARD_SKINS=SKINS.filter(s=>s.mascot).map(s=>s.id);
+export const AD_GIFT_SKINS=SKINS.filter(s=>s.mascot).map(s=>s.id);
+export const AD_REWARD_SKINS=[];
 /** A conta nova sorteia UMA destas para nascer equipada (grátis + as 9 comuns, ids 0..9 — o mesmo
  *  conjunto que a loja mostra como "grátis"/"comum"). Derivado do catálogo pelo mesmo motivo de
  *  AD_REWARD_SKINS: uma skin nova nessa faixa entra sozinha, sem precisar editar dois lugares. */

@@ -343,7 +343,12 @@ function mostrarTela(s) {
     const dMin = dSuf.endsWith("@min"), dSemMin = dMin ? dSuf.slice(0, -4) : dSuf;
     const dLivre = dSemMin.endsWith(":livre");
     const dEstilo = (dLivre ? dSemMin.slice(0, -6) : dSemMin) || null;
-    app.update(st => ({ ...st, room: "1ABC", played: true, conn: "connected", rewards: null, rewardsPending: true, screen: "dead",
+    // ⚠️ `rewards` COM UMA SKIN DESTRAVADA, e não `null`. O `DeadPrize` tem duas portas — o prêmio (que
+    // sai de `rewards.skinsUnlocked`) e a OFERTA de anúncio (que exige `portal.temRecompensa`, falso em
+    // dev por não haver adaptador) —, então com `null` a sonda media um cartão SEM o bloco e dava um
+    // "18 limpas" que não provava nada sobre a tela que o jogador vê num portal. A porta do prêmio não
+    // depende de SDK nenhum e desenha o mesmo nó, com a mesma altura.
+    app.update(st => ({ ...st, room: "1ABC", played: true, conn: "connected", rewards: { skinsUnlocked: [119] }, rewardsPending: false, screen: "dead",
       session: dEstilo ? { ...st.session, prefs: { ...st.session.prefs, deadStyle: dEstilo } } : st.session,
       // os campos novos da foto da partida: quem matou tem SLOT e SKIN (o `bySlot` vem do servidor e o
       // cliente resolve skin/nível pelo PLAYERS), e o recorde ANTERIOR viaja junto para a comparação

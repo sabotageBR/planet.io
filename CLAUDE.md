@@ -3725,10 +3725,25 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **Os tiers escolhidos são os ALCANÇÁVEIS**: `survive.d` (30 min numa vida) e `top1.g` (25 min em 1º)
   são inatingíveis numa rodada do Livre de 30 min — para o primeiro seria preciso entrar no tick 0 E
   sobreviver a rodada inteira, e o automático manda o jogador para a sala mais CHEIA com vaga.
-  ⚠️ **DUAS regras de anúncio, e elas convivem porque as POOLS são disjuntas**: as três mascotes seguem o
-  que a migração 0012 estabeleceu ao derrubar a 0011 — o anúncio DESTRAVA a compra, as moedas continuam;
-  `AD_GIFT_SKINS` (raras de 600-900, ids que já existem) é DADA. Misturar as duas nas mesmas skins faria a
-  Loja mentir, que foi exatamente o motivo de a 0011 cair. Há teste travando a disjunção.
+  ⚠️ **A RECOMPENSA SÃO AS TRÊS MASCOTES, E ELA É A ÚNICA REGRA DE ANÚNCIO EM VIGOR** (`AD_GIFT_SKINS` =
+  Marte Bravo · Terra Brava · Lua Soldado, derivada do catálogo). O vídeo **DÁ** a skin e já a equipa, e
+  comprar com moeda continua livre — o anúncio é o atalho, não a única porta. Ela é oferecida em DOIS
+  lugares pelo MESMO braço (`ganharSkinAnuncio`): a tela de morte e o modal da Loja; duas implementações
+  da mesma promessa divergiriam no primeiro conserto, e o rótulo é o mesmo nos dois (`LB.prizeWatch`,
+  "Assistir e GANHAR" — nunca `watchAd`, que só diz "assistir anúncio").
+  ⚠️ **Isto era o contrário até a 1.16.** A pool eram seis RARAS de 600-900, e as mascotes seguiam o que a
+  migração 0012 estabeleceu ao derrubar a 0011: o vídeo DESTRAVAVA a compra e as 1.900 moedas continuavam
+  obrigatórias. O que derrubou essa regra foi o checklist da Poki — *"Are rewardedBreaks() properly fired
+  and well-placed?"* —, porque um vídeo que entrega só o DIREITO de gastar moeda não é uma recompensa, é
+  um pedágio: reprova no "properly" pela definição deles. `AD_REWARD_SKINS` ficou **vazia e dormente**, no
+  precedente de `BLACKHOLE.COUNT=0` e da Nova: `/watch-ad`, o `ad_required` do `/buy` e `watchMascotAd()`
+  continuam inteiros, a mecânica volta trocando uma linha de `skins.js`, e `persist.test.js` trava que
+  dormente quer dizer INALCANÇÁVEL (a pool vazia, as duas pools disjuntas e `/watch-ad` recusando tudo) —
+  senão ela voltaria pela porta dos fundos numa skin qualquer e a Loja passaria a exigir um vídeo que nada
+  na tela anuncia. Misturar as duas regras nas MESMAS skins faria a Loja mentir, que foi o motivo de a
+  0011 cair, e continua valendo.
+  ⚠️ **E o `DeadPrize` voltou ao `kaboom`** (ver o bloco da tela de morte do pacote): o `rewardedBreak` tem
+  só DOIS chamadores, e sem ele o pacote da Poki ficava com um, a três telas de distância.
   ⚠️ **`portal.temRecompensa` NÃO é `portal.ativo`**, e a diferença estava custando um botão morto: só a
   Poki implementa `recompensa()`, e nos outros seis portais o botão da Loja aparecia e o clique caía num
   `return false` silencioso. Os TRÊS pontos que liam `ativo` passaram a ler o novo.

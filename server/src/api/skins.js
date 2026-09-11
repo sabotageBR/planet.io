@@ -87,10 +87,13 @@ export function mountSkins(router,{db,users,skins,ledger,matches,requireUser,opt
   },{rate:{scope:'ip',lim:{n:240,win:60e3}}});
   // POST /api/skins/:id/ad-gift 🔒 → {skins,equippedSkin} — o anúncio da TELA DE MORTE DÁ a skin.
   //
-  // ⚠️ É UMA REGRA DIFERENTE DA DAS MASCOTES, de propósito, e as duas convivem porque as POOLS são
-  // disjuntas: `AD_REWARD_SKINS` (as três mascote) segue o que a migração 0012 estabeleceu ao derrubar a
-  // 0011 — o anúncio DESTRAVA a compra e as moedas continuam obrigatórias; `AD_GIFT_SKINS` (raras de
-  // 600-900) é dado. Misturar as duas nas MESMAS skins faria a Loja mentir, e foi por isso que a 0011 caiu.
+  // ⚠️ HOJE A POOL É A DAS TRÊS MASCOTES, e ela é a ÚNICA regra de anúncio em vigor: `AD_REWARD_SKINS`
+  // (o "o vídeo DESTRAVA a compra" que a migração 0012 criou ao derrubar a 0011) ficou VAZIA e dormente —
+  // ver `AD_GIFT_SKINS` em shared/src/skins.js para o porquê (um vídeo que só dá o DIREITO de gastar 1.900
+  // moedas não é recompensa, e o checklist da Poki cobra isso). As duas pools continuam disjuntas, agora
+  // por construção; misturá-las nas MESMAS skins faria a Loja mentir, que foi o motivo de a 0011 cair.
+  // ⚠️ Com a lista vazia, `/watch-ad` recusa tudo e `/buy` não cobra `ad_required` de ninguém. As duas
+  // continuam inteiras e testadas: a mecânica volta trocando uma linha de `skins.js`.
   // ⚠️ `source:'grant'` — o valor que o CHECK de `user_skins` sempre aceitou e que ninguém emitia. Ele é o
   // que separa, no banco, "ganhou" de "comprou" e de "conquistou", que é o que uma auditoria de economia
   // precisa distinguir depois.

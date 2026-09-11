@@ -12,7 +12,7 @@ import http from 'node:http';
 import {readFileSync,readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {SKINS,STARTER_SKINS,AD_REWARD_SKINS} from '@warspace/shared/skins.js';
+import {SKINS,STARTER_SKINS,AD_REWARD_SKINS,AD_GIFT_SKINS} from '@warspace/shared/skins.js';
 import crypto from 'node:crypto';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.env'),'utf8').split('\n')){const m=/^\s*([A-Z_]+)=(.*)$/.exec(l);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].trim();}}catch{}}
@@ -164,24 +164,46 @@ test('skin inicial: sorteio entre as 10 (função pura + fiação de ponta a pon
     assert.deepEqual(sk.owned,[0,5]);assert.equal(sk.equipped,5);
   }finally{server2.close();}
 });
-test('mascote: exige o PRÓPRIO anúncio E moedas — assistir uma não libera as outras nem substitui o preço',async()=>{
+test('mascote: o anúncio DÁ a skin e equipa — e comprar com moeda continua livre',async()=>{
   // Conta ISOLADA (novoGuest), nunca S.t3: testes mais adiante comparam a lista de skins dele por
-  // igualdade exata, e comprar uma mascote ali quebraria aquele teste sem relação nenhuma com este.
+  // igualdade exata, e ganhar uma mascote ali quebraria aquele teste sem relação nenhuma com este.
+  // ⚠️ ESTE TESTE JÁ AFIRMOU O CONTRÁRIO ("exige o PRÓPRIO anúncio E moedas"): as mascotes eram
+  // `AD_REWARD_SKINS`, onde o vídeo só DESTRAVAVA a compra. Hoje elas são `AD_GIFT_SKINS` e o vídeo DÁ —
+  // ver o comentário daquela constante para o porquê (um vídeo que só dá o direito de gastar 1.900 moedas
+  // reprova no "properly fired" do checklist da Poki).
+  // ⚠️ QUAIS skins é decisão de produto, e é por isso que ela está escrita aqui e não só derivada: a
+  // recompensa é Marte Bravo · Terra Brava · Lua Soldado, nessa ordem (a ordem É a da oferta na tela de
+  // morte). Mascote novo no catálogo entra na pool sozinho e derruba esta linha de propósito — quem a
+  // acrescentar decide, com o texto na frente, se ela também vale um vídeo.
+  assert.deepEqual(AD_GIFT_SKINS.map(id=>SKINS.find(s=>s.id===id).name),['Marte Bravo','Terra Brava','Lua Soldado']);
   const g=await novoGuest('TestadorAnuncio');
-  await call('POST',`/api/skins/${AD_REWARD_SKINS[2]}/watch-ad`,{token:g.token});   // ruído: outra mascote, não deve valer para a 1ª
-  let r=await call('GET','/api/skins',{token:g.token});assert.deepEqual(r.body.adWatched,[AD_REWARD_SKINS[2]]);
-  const alvo=AD_REWARD_SKINS[0];
-  r=await call('POST',`/api/skins/${alvo}/buy`,{token:g.token});assert.equal(r.status,403);assert.equal(r.body.error,'ad_required');   // moeda de sobra, mas sem anúncio
-  r=await call('POST','/api/skins/6/watch-ad',{token:g.token});assert.equal(r.status,400);assert.equal(r.body.error,'bad_request');   // skin fora de AD_REWARD_SKINS
-  r=await call('POST',`/api/skins/${alvo}/watch-ad`,{token:g.token});assert.equal(r.status,200,JSON.stringify(r.body));
-  assert.ok(r.body.adWatched.includes(alvo));assert.ok(r.body.adWatched.includes(AD_REWARD_SKINS[2]));
-  r=await call('GET','/api/skins',{token:g.token});assert.ok(r.body.adWatched.includes(alvo));   // GET reflete o watch-ad
-  r=await call('POST',`/api/skins/${alvo}/buy`,{token:g.token});assert.equal(r.status,402);assert.equal(r.body.error,'insufficient_coins');   // anúncio ok, moeda não
+  const alvo=AD_GIFT_SKINS[0];
+  let r=await call('POST','/api/skins/6/ad-gift',{token:g.token});assert.equal(r.status,400);assert.equal(r.body.error,'bad_request');   // fora da pool
+  r=await call('POST',`/api/skins/${alvo}/ad-gift`,{token:g.token});assert.equal(r.status,200,JSON.stringify(r.body));
+  assert.ok(r.body.skins.includes(alvo),'a skin é CONCEDIDA, não apenas destravada');
+  assert.equal(r.body.equippedSkin,alvo,'e já vem equipada — foi o pedido');
+  // IDEMPOTENTE: o servidor não confirma que o vídeo rodou, então não há o que punir numa 2ª chamada.
+  r=await call('POST',`/api/skins/${alvo}/ad-gift`,{token:g.token});assert.equal(r.status,200);
+  assert.equal(r.body.skins.filter(id=>id===alvo).length,1,'não duplica a posse');
+  // ⚠️ E NADA TRAVA A COMPRA: `ad_required` era da mecânica dormente. Outra mascote, sem vídeo nenhum,
+  // tem que cobrar só moeda — primeiro faltando, depois sobrando.
+  const outra=AD_GIFT_SKINS[1];
+  r=await call('POST',`/api/skins/${outra}/buy`,{token:g.token});assert.equal(r.status,402);assert.equal(r.body.error,'insufficient_coins');
   await db.query(`UPDATE users SET coins=$2 WHERE id=$1`,[g.userId,10000]);
-  r=await call('POST',`/api/skins/${alvo}/buy`,{token:g.token});assert.equal(r.status,200,JSON.stringify(r.body));assert.ok(r.body.owned.includes(alvo));
-  // a 3ª mascote nunca foi assistida: nem moeda de sobra libera
-  r=await call('POST',`/api/skins/${AD_REWARD_SKINS[1]}/buy`,{token:g.token});assert.equal(r.status,403);assert.equal(r.body.error,'ad_required');
+  r=await call('POST',`/api/skins/${outra}/buy`,{token:g.token});assert.equal(r.status,200,JSON.stringify(r.body));assert.ok(r.body.owned.includes(outra));
   assert.equal(db.health.fails,0,'erros de aplicação não contam no circuit breaker');
+});
+test('a mecânica de "o vídeo destrava a compra" está DORMENTE, e dormente quer dizer inalcançável',async()=>{
+  // O precedente é `BLACKHOLE.COUNT=0` e a Nova: o código fica inteiro e volta trocando uma linha. O que
+  // este teste trava é que, com a pool vazia, ela não age em LUGAR NENHUM — senão ela voltaria pela porta
+  // dos fundos numa skin qualquer, e a Loja passaria a exigir um vídeo que nada na tela anuncia.
+  assert.deepEqual(AD_REWARD_SKINS,[],'a pool dormente tem que estar vazia');
+  assert.equal(AD_GIFT_SKINS.filter(id=>AD_REWARD_SKINS.includes(id)).length,0,'as duas pools nunca se cruzam');
+  const g=await novoGuest('TestadorDormente');
+  for(const id of [AD_GIFT_SKINS[0],6]){
+    const r=await call('POST',`/api/skins/${id}/watch-ad`,{token:g.token});
+    assert.equal(r.status,400,`/watch-ad tem que recusar a skin ${id}`);assert.equal(r.body.error,'bad_request');}
+  const r=await call('GET','/api/skins',{token:g.token});assert.deepEqual(r.body.adWatched,[]);
 });
 test('prefs: whitelist e merge',async()=>{
   let r=await call('PATCH','/api/me/prefs',{token:S.t3,body:{theme:'dusk',volume:50,showFps:true,hack:1,lbSize:99,quality:'low'}});

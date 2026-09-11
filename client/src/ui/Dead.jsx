@@ -234,15 +234,22 @@ export default function Dead({ on }) {
      quem vai clicar em DE NOVO é "quanto eu fiz", não "quanto eu era".
      ⚠️ `LB.dead` JÁ É "KABOOM!" — nenhuma chave de i18n nova, nos três dicionários.
      ⚠️ Ele vem ANTES do recolhido e não tem botão para lá: um cartão deste tamanho não tapa a partida,
-     então o estado recolhido não teria o que resolver. E não monta `DeadPrize` nem `SpecBar` — não é a
-     mesma tela com `display:none`, é um quarto modelo, e por isso não paga o custo deles.
-     ⚠️ TRADE-OFF DECLARADO: sai a oferta de anúncio recompensado do caminho de morte mais frequente do
-     jogo. A receita não zera (o midroll do respawn continua, com `PORTAL.MIN_AD_MS` entre eles), mas é
-     isto que está sendo trocado por retenção. */
+     então o estado recolhido não teria o que resolver. E não monta `SpecBar` — não é a mesma tela com
+     `display:none`, é um quarto modelo, e por isso não paga o custo dele.
+     ⚠️ **O `DeadPrize` VOLTOU, e o trade-off que estava escrito aqui ("sai a oferta de anúncio
+     recompensado do caminho de morte mais frequente") foi revertido — não por receita, por CHECKLIST.**
+     O `rewardedBreak` da Poki só tem DOIS chamadores no cliente (este e a Loja), e tirá-lo daqui deixava
+     o pacote com um só, a três telas de distância: o Inspector deles pergunta *"Are rewardedBreaks()
+     properly fired and well-placed?"* e a resposta honesta virava não. A tela de fim de partida é o
+     lugar canônico de um anúncio recompensado num `.io`, é iniciada pelo jogador e diz qual é o prêmio —
+     que é exatamente o que eles cobram. O custo de tela é UMA faixa de 64 px (`.dd-premio` já nasceu
+     compacta: disco de 46 px, rótulo e botão na mesma linha), o DE NOVO continua sendo o CTA de largura
+     cheia logo abaixo, e o "um toque" não muda — a oferta é opcional e nunca fica no caminho dele. */
   if (estilo === "kaboom") return <div className="screen on" id="s-dead" data-style="kaboom">
     <div className="card dead-card">
       {cabecaMin}
       <div className="kb-num"><b>{fmt(m.score || 0)}</b><i>{LB.scoreLabel}</i></div>
+      <DeadPrize on={on} />
       <div className="dead-foot"><div className="dead-actions">{botaoPrimario}</div></div>
     </div>
   </div>;

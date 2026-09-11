@@ -5,12 +5,12 @@
 // cartão nunca gasta moeda, só abre a pergunta.
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { SKINS, skinById, RARITY_ORDER, RARITY_COLORS, AD_REWARD_SKINS } from "@warspace/shared";
+import { SKINS, skinById, RARITY_ORDER, RARITY_COLORS, AD_GIFT_SKINS } from "@warspace/shared";
 import { skinName, skinDesc, rarityLabel } from "../i18n/catalog.js";
 import { currentLang } from "../i18n/index.js";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { buySkin, equipSkin, watchMascotAd, loadSkins, toast } from "../state/actions.js";
+import { buySkin, equipSkin, ganharSkinAnuncio, loadSkins, toast } from "../state/actions.js";
 import { sfx } from "../audio/index.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { ScreenHeader, Screen } from "./bits.jsx";
@@ -36,11 +36,11 @@ function Body() {
   const stateOf = s => { const own = owned.includes(s.id);
     return s.id === eqId ? "eq" : own ? "owned" : s.rarity === "secret" ? "secret" : s.unlockKey ? "locked"
       : (s.levelReq || 0) > nivel ? "lowlevel" : s.price > coins ? "poor" : "buyable"; };
-  // Mascote exige os DOIS: o anúncio DESTRAVA a compra, e comprar continua cobrando moeda normalmente —
+  // O anúncio DÁ a skin (`AD_GIFT_SKINS`, hoje as três mascotes), e comprar com moeda continua valendo —
   // por isso não é um ramo de `stateOf` (que decide UMA ação), e sim uma condição à parte que soma um
-  // botão extra no modal. Cada mascote pede o PRÓPRIO anúncio (`session.adWatched` é uma lista de ids,
-  // não mais um id só por conta), então assistir a uma não esconde o botão das outras duas.
-  const canWatchAd = (s, st) => AD_REWARD_SKINS.includes(s.id) && portal.temRecompensa && !(session.adWatched && session.adWatched.includes(s.id)) && st !== "eq" && st !== "owned";
+  // botão extra no modal. Antes isto era `AD_REWARD_SKINS` e o vídeo só DESTRAVAVA a compra; ver o
+  // comentário de `AD_GIFT_SKINS` em shared/src/skins.js para por que a regra virou.
+  const canWatchAd = (s, st) => AD_GIFT_SKINS.includes(s.id) && portal.temRecompensa && st !== "eq" && st !== "owned";
   const list = useMemo(() => {
     const nq = norm(q);
     // ⚠️ `SEM_CONTA` também tira a Retrato da grade: sem foto ela é uma lendária de 25 000 moedas que
@@ -102,18 +102,21 @@ function SkinModal({ id, stateOf, onClose }) {
   const LB = useLabels(), theme = useTheme(), RC = (theme && theme.rarityColor) || RARITY_COLORS;
   const session = useStore(app, s => s.session), nivel = (session.stats && session.stats.level) | 0 || 1;
   const cur = skinById(id), st = stateOf(cur);
-  const assistido = !!(session.adWatched && session.adWatched.includes(cur.id));
-  // `precisaAnuncio` vale mesmo sem `portal.temRecompensa` — é ela quem TRAVA a compra (o servidor exige o mesmo,
-  // `ad_required`); `podeAnuncio` só decide se o BOTÃO de assistir aparece (sem SDK de anúncio não há o
-  // que assistir, e mostrar um botão morto seria pior que escondê-lo).
-  const precisaAnuncio = AD_REWARD_SKINS.includes(cur.id) && !assistido && st !== "eq" && st !== "owned";
-  const podeAnuncio = precisaAnuncio && portal.temRecompensa;
+  // ⚠️ O ANÚNCIO DEIXOU DE SER PRÉ-REQUISITO E VIROU ATALHO: ele DÁ a skin (`AD_GIFT_SKINS`), então não
+  // trava mais nada — o botão de moeda fica livre, e quem quiser pagar paga. `precisaAnuncio` some com a
+  // mecânica que a 0012 tinha criado (ver `AD_GIFT_SKINS` em shared/src/skins.js).
+  // ⚠️ `podeAnuncio` continua exigindo `portal.temRecompensa`: ter adaptador NÃO é ter recompensa (só a
+  // Poki implementa `recompensa()`), e um botão que não abre vídeo nenhum é pior que botão nenhum.
+  const podeAnuncio = AD_GIFT_SKINS.includes(cur.id) && portal.temRecompensa && st !== "eq" && st !== "owned";
   useEffect(() => { const kd = e => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
     addEventListener("keydown", kd); return () => removeEventListener("keydown", kd); }, [onClose]);
-  const assistir = () => { sfx("buy"); watchMascotAd(cur.id); };
+  // ⚠️ `ganharSkinAnuncio` e não `watchMascotAd`: o vídeo DÁ a skin. É o MESMO braço que a tela de morte
+  // usa, de propósito — dois caminhos para a mesma promessa divergem no primeiro conserto. Ele já equipa,
+  // já registra o `ultimoAd` do portal (senão o clique seguinte levaria um midroll em cima) e já trata o
+  // "não assistiu até o fim". O modal FECHA depois: a skin virou posse, não há segunda ação a tomar aqui.
+  const assistir = async () => { sfx("buy"); await ganharSkinAnuncio(cur.id); onClose(); };
   const act = () => {
-    // `precisaAnuncio` desabilita o botão (abaixo), então este ramo nunca é alcançado por ele — o mesmo
-    // já valia para `st==="eq"`, que também não tem ramo aqui.
+    // `st==="eq"` não tem ramo aqui: o botão fica desabilitado nesse estado.
     if (st === "owned") { sfx("equip"); equipSkin(cur.id); return onClose(); }
     if (st === "buyable") { sfx("buy"); buySkin(cur.id); return onClose(); }
     sfx("error");   // sem moeda / secreta / travada: o "não pode" tem que soar diferente do "pode"
@@ -124,7 +127,7 @@ function SkinModal({ id, stateOf, onClose }) {
   };
   const actLabel = st === "eq" ? LB.equipped : st === "owned" ? LB.equip : st === "secret" ? "???" : st === "locked" ? LB.locked
     : st === "lowlevel" ? `🔒 ${LB.levelReq.replace("{n}", cur.levelReq)}` : `${LB.coinIcon} ${fmt(cur.price)}`;
-  const pergunta = st === "owned" ? LB.skinConfirmEquip : st === "buyable" && !precisaAnuncio ? LB.skinConfirmBuy : "";
+  const pergunta = st === "owned" ? LB.skinConfirmEquip : st === "buyable" ? LB.skinConfirmBuy : "";
   // ⚠️ PORTAL, e não é preciosismo: o `.overlay` é `position:absolute` e o bloco contentor dele seria o
   // `.wrap` da loja, que é absoluto, ROLA e ainda tem `transform:translateX(-50%)`. Daí os dois defeitos:
   // o `top:50%` do modal centrava no meio da CAIXA (não da tela) e o modal descia junto com a rolagem da
@@ -136,21 +139,20 @@ function SkinModal({ id, stateOf, onClose }) {
       <SkinPreview skin={cur} r={48} className="" secret={st === "secret"} />
       <div className="sm-info"><b>{st === "secret" ? LB.secret : cur.name}</b>
         <i>{rarityLabel(cur.rarity)}</i><span>{skinDesc(cur)}</span>
-        {pergunta ? <em className="sm-ask">{pergunta}</em> : null}
-        {/* explica por que o botão de moeda está desabilitado — sem isto "trancado sem aviso" parece bug */}
-        {precisaAnuncio ? <em className="sm-ask ad">{podeAnuncio ? LB.adRequiredHint : LB.adUnavailable}</em> : null}</div>
+        {pergunta ? <em className="sm-ask">{pergunta}</em> : null}</div>
       {/* a foto vem AQUI, não escondida no fim da tela: quem acabou de equipar a Retrato está olhando
           exatamente para este cartão, e é este o momento em que a foto faz sentido */}
       {cur.pattern === "avatar" && (st === "eq" || st === "owned") ? <AvatarPicker /> : null}
       <div className="sm-actions">
         <button className="btn-secondary" onClick={onClose}>{LB.cancel}</button>
-        {/* o anúncio agora é PRÉ-REQUISITO da compra, não alternativa a ela: enquanto não assistido, o
-            botão de moeda abaixo fica desabilitado (`precisaAnuncio`) e este é o único caminho. Some
-            assim que o servidor confirma o `watch-ad` (`assistido` vira true), e o botão de moeda libera
-            — mesma classe `btn-primary`, então nunca fica menor que ele. O modal continua ABERTO depois
-            de assistir, para a compra acontecer sem reabrir nada. */}
-        {podeAnuncio ? <button className="btn-primary act ad" onClick={assistir}>{LB.watchAd}</button> : null}
-        <button className="btn-primary act" disabled={st === "eq" || precisaAnuncio} onClick={act}>{actLabel}</button>
+        {/* o anúncio é ALTERNATIVA à compra, não pré-requisito dela: os dois botões ficam ativos lado a
+            lado (mesma classe `btn-primary`, então nenhum fica menor que o outro) e o jogador escolhe
+            entre pagar e assistir. Ele só existe onde há `rewardedBreak` de verdade. */}
+        {/* ⚠️ `prizeWatch` ("Assistir e GANHAR"), nunca `watchAd` ("Assistir anúncio"): o rótulo é a única
+            coisa que diz o que o vídeo entrega, e é a MESMA promessa da tela de morte — duas frases para a
+            mesma mecânica é como se produz um jogador que acha que foi enganado. */}
+        {podeAnuncio ? <button className="btn-primary act ad" onClick={assistir}>{LB.prizeWatch}</button> : null}
+        <button className="btn-primary act" disabled={st === "eq"} onClick={act}>{actLabel}</button>
       </div>
     </div>
   </div>, document.getElementById("app"));
