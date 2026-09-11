@@ -19,6 +19,7 @@ import { play, setMode, createParty, joinParty, criarSala } from "../state/actio
 import { useLabels } from "../hooks/useTheme.js";
 import { preenche } from "../i18n/index.js";
 import { Screen, ScreenHeader } from "./bits.jsx";
+import { SEM_MENU } from "../portal/flags.js";
 // Os mascotes JÁ ESTÃO no bundle, em WebP, e são os mesmos que o cenário de fundo usa (`ui/Scene.jsx`):
 // importados por módulo, o Vite emite UM asset compartilhado — mesma URL, mesmo cache, zero byte a mais no
 // zip de portal. ⚠️ Nada de PNG em `client/public/`: a `base:"./"` do build de portal não conserta
@@ -102,7 +103,8 @@ function Body() {
     </div>
   ) : null;
   return <>
-    <ScreenHeader title={LB.modesTitle} />
+    {/* ⚠️ No pacote esta tela É o início (não há `Entry`), então o "Voltar" não tem para onde ir. */}
+    <ScreenHeader title={LB.modesTitle} semVoltar={SEM_MENU} />
     {/* ⚠️ ABRIR "Sala sua" ESCONDE OS DOIS CARTÕES. Eles não são alternativa ao formulário: quem clicou
         em CRIAR SUA SALA já escolheu o modo lá dentro (o primeiro controle do cartão é justamente
         Livre × Battle Royale), então deixá-los no ar oferece a mesma decisão duas vezes, com dois

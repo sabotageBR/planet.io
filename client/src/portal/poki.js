@@ -26,12 +26,19 @@ export async function criar({ pausou, retomou }) {
   try { if (s.gameLoadingStart) s.gameLoadingStart(); } catch { /* nunca derruba o jogo */ }
   return {
     carregou() { const g = sdk(); if (g && g.gameLoadingFinished) g.gameLoadingFinished(); },
-    // ⚠️ O PREROLL DA POKI NUNCA ACONTECE, e isso é DELES, não nosso. Medido no console do SDK real:
-    // `commercialBreak not possible before gameplayStart` — eles recusam qualquer comercial antes do
-    // primeiro `gameplayStart`, e o nosso preroll sai em `play()`, que é justamente antes. A fachada não
-    // percebe (o `commercialBreak` resolve normalmente) e o jogo segue; o efeito prático é que a PRIMEIRA
-    // partida de cada carga entra sem anúncio. Não há o que consertar aqui: inverter a ordem é
-    // `gameplayStart` sem jogo, que eles cobram por escrito. Os midrolls do respawn funcionam.
+    // ⚠️ A POKI NÃO TEM PREROLL, E PEDIR UM CUSTA O CHECKLIST INTEIRO. Medido no console do SDK real:
+    // `commercialBreak not possible before gameplayStart` — eles RECUSAM qualquer comercial antes do
+    // primeiro `gameplayStart`, e o nosso preroll saía em `play()`, que é justamente antes. Por muito
+    // tempo isso pareceu inofensivo ("a primeira partida de cada carga entra sem anúncio"), porque a
+    // fachada não percebe e o jogo segue — mas o Inspector deles LÊ A ORDEM: o primeiro evento de
+    // anúncio da sessão era um `commercialBreak` inválido, ANTES de existir gameplay, e o item
+    // "Is a gameplayStart() event fired at the start of gameplay?" fica vermelho com o fluxo quebrado
+    // logo no primeiro passo. Declarar `semPreroll` (o precedente é `crazy.js`) **não custa receita
+    // nenhuma**: o anúncio que ele suprime é exatamente o que a Poki já rejeitava. O que se ganha é a
+    // ordem que eles esperam — `gameLoadingFinished` → `gameplayStart` → … → `gameplayStop` →
+    // `commercialBreak` → `gameplayStart` — e a arena aparecendo sem o pedágio do `prazo()` do anúncio.
+    // Os midrolls do respawn continuam inteiros, que é de onde a receita sai de verdade aqui.
+    semPreroll: true,
     jogoComecou() { const g = sdk(); if (g && g.gameplayStart) g.gameplayStart(); },
     jogoParou() { const g = sdk(); if (g && g.gameplayStop) g.gameplayStop(); },
     anuncio() {

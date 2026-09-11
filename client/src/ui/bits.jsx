@@ -8,6 +8,7 @@ import { fmt } from "./format.js";
 import NavIcon from "./NavIcons.jsx";
 import { flagOf } from "@warspace/shared";
 import { countryNameIn } from "../i18n/catalog.js";
+import { SEM_MENU } from "../portal/flags.js";
 
 // ⚠️ O `<i className="nav-ico">` era VAZIO: o desenho vinha de `content:` emoji no CSS de cada tema, e
 // os três só definiam SEIS chaves — faltando justo `modes`, que nasceu depois dos mockups. Resultado: um
@@ -17,15 +18,24 @@ import { countryNameIn } from "../i18n/catalog.js";
 // (traço em `currentColor`, então se re-tinge com o relógio); o emoji é suprimido em styles/ui.css.
 export function Nav({ cur }) {
   const LB = useLabels();
-  const NAV = [["entry", LB.home], ["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
+  // ⚠️ NO PACOTE O "INÍCIO" SAI, e não é enfeite: `Entry` não está montada (`SEM_MENU`) e o `go("entry")`
+  // é desviado para `modes` — ou seja, os dois primeiros botões fariam a MESMA coisa, com nomes
+  // diferentes. Ali a tela de Modos É o início.
+  const NAV = [...(SEM_MENU ? [] : [["entry", LB.home]]),
+    ["modes", LB.modesShort], ["lobby", LB.rooms], ["rank", LB.ranking], ["profile", LB.profile], ["shop", LB.shop], ["prefs", LB.prefs]];
   return <nav className="nav">{NAV.map(([s, l]) =>
     <button key={s} className={"nav-btn" + (s === cur ? " on" : "")} data-go={s} data-nav={s} onClick={() => go(s)}><i className="nav-ico"><NavIcon k={s} /></i><span>{l}</span></button>)}</nav>;
 }
-/** `onBack`: a tela de equipe precisa AVISAR o servidor antes de sair (senão o lobby fica órfão). */
-export function ScreenHeader({ title, onBack = null }) {
+/**
+ * `onBack`: a tela de equipe precisa AVISAR o servidor antes de sair (senão o lobby fica órfão).
+ * `semVoltar`: esta tela É o início — no pacote, a de Modos. Sem ele o botão levaria a `entry`, que o
+ * `go()` desvia de volta para a própria tela: um "Voltar" que não volta, que é pior que nenhum.
+ */
+export function ScreenHeader({ title, onBack = null, semVoltar = false }) {
   const LB = useLabels(); const user = useStore(app, s => s.session.user);
   return <header className="sh">
-    <button className="btn-mini back" data-go="entry" onClick={onBack || (() => go("entry"))}>{LB.back}</button>
+    {semVoltar ? null
+      : <button className="btn-mini back" data-go="entry" onClick={onBack || (() => go("entry"))}>{LB.back}</button>}
     <h1 className="stitle">{title}</h1>
     <span className="coinbar sh-coins">{LB.coinIcon} <b className="v-coins">{fmt(user ? user.coins : 0)}</b></span>
   </header>;

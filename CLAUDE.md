@@ -1837,6 +1837,17 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (`semPreroll` em `crazy.js`), não uma flag de build: a regra é do SDK e mora junto dele. E o par
   start/stop estava quebrado onde ninguém olha — só `leaveGame()` chamava `jogoParou()`, então respawn e
   fim de rodada passavam por `play()` e o SDK recebia N × start para 1 × stop numa sessão normal.
+  ⚠️ **A POKI TAMBÉM ENTROU NO `semPreroll`, e o custo de não estar era o CHECKLIST INTEIRO.** Medido no
+  console do SDK real: `commercialBreak not possible before gameplayStart` — eles RECUSAM qualquer
+  comercial antes do primeiro `gameplayStart`, e o nosso preroll saía em `play()`, que é justamente
+  antes. Isso ficou aqui escrito por meses como inofensivo ("a primeira partida de cada carga entra sem
+  anúncio"), e não era: o **Inspector deles lê a ORDEM**, então o primeiro evento de anúncio da sessão
+  era um `commercialBreak` inválido, ANTES de existir gameplay, e o item *"Is a gameplayStart() event
+  fired at the start of gameplay?"* ficava vermelho com o fluxo quebrado no primeiro passo — era ali que
+  a submissão travava. Declará-lo **não custa receita nenhuma**: o anúncio suprimido é exatamente o que a
+  Poki já rejeitava, e os midrolls do respawn (de onde a receita sai) não mudam. O que se ganha é a ordem
+  que eles esperam (`gameLoadingFinished` → `gameplayStart` → … → `gameplayStop` → `commercialBreak` →
+  `gameplayStart`) e a arena sem o pedágio do `prazo()` do anúncio, que é o aceite do "< 1 s".
   ⚠️ **O CONSERTO DE ENTÃO ERA MEIO CONSERTO, e o texto que ficou aqui ("o `anuncio()` fecha e REABRE o
   gameplay em volta do anúncio, então nenhum chamador precisa lembrar disso") descrevia exatamente o
   buraco que sobrou.** Fechar em volta do anúncio conserta o anúncio; a MORTE, a PAUSA e o fim de rodada
@@ -2593,8 +2604,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   Quem impede a tradução de apodrecer é `client/test/i18n.test.js`: paridade exata de chaves, moldes `{n}`
   que precisam sobreviver, o ouro dos temas e o do catálogo.
 - **NO PACOTE DE PORTAL A TELA INICIAL NÃO EXISTE** (`SEM_MENU` em `portal/flags.js`, o desvio no fim de
-  `boot()`, `sairDaPartida()` em `state/actions.js`): o boot termina na ARENA. Sem Entry, sem Modos, sem
-  `#cena` — o menu inteiro (nick, skin, ranking, opções, sair) mora atrás do Esc/☰, em `ui/Pause.jsx`.
+  `boot()`, `sairDaPartida()` em `state/actions.js`): o boot termina na ARENA. Sem Entry e sem `#cena` —
+  **durante a partida** o menu inteiro (nick, skin, ranking, opções, sair) mora atrás do Esc/☰, em
+  `ui/Pause.jsx`; quem SAI da partida cai na tela de Modos, que é o menu do pacote (ver abaixo).
   ⚠️ O motivo é medido: o funil da Poki 1.12 leu **17% de abandono em `menu/entry`** — 85 de 500 fecharam
   a aba na tela inicial sem jogar um segundo, cada um entrando na média de playtime como ZERO. O tester
   já clicou "Play" no site DELES; o nosso cartão é a segunda porta.
@@ -2612,13 +2624,25 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `ATIVO`/`RETIDO` de `portal/sessao.js` passariam a valer antes de existir partida — `gameplayStart` sem
   jogo (que a Poki cobra por escrito) e o funil contando o carregamento da página.
   ⚠️ **Os SETE botões de sair chamam `sairDaPartida()`**, nunca `leaveGame` direto: sete `if (PORTAL)`
-  divergem no primeiro conserto (a lição de `useSpec`/`SpecBar`). E **nada de `leaveGame()` seguido de
-  `play()`** — o `leaveGame` escreve `screen` e o React chega a montar a tela do meio, um frame de cartão
-  de menu, que é exatamente o que o aceite proíbe. `go()` ganhou uma REDE (no pacote ele recusa tela de
-  menu): foi encontrada assim, em bancada, um Esc apertado durante o boot indo parar na tela inicial.
+  divergem no primeiro conserto (a lição de `useSpec`/`SpecBar`).
+  ⚠️ **SAIR DA PARTIDA LEVA À TELA DE MODOS, e isso é a correção de um BECO SEM SAÍDA que esta entrega
+  criou.** `destinoDaSaida` devolvia `{tipo:'jogar'}`: "leave the match" RE-ENTRAVA no Livre, ou seja o
+  botão de sair reiniciava a partida em vez de sair dela — e como a tela de Modos é o **único** lugar do
+  cliente que oferece o Battle Royale, o modo inteiro ficou inalcançável no pacote, sem erro, sem log e
+  sem nada na tela dizendo por quê. O invariante nunca foi "nenhum caminho sai da arena"; é "nenhum
+  caminho termina numa tela que não está MONTADA" — e `modes` está (`App.jsx` a monta sem guarda; quem
+  não monta são `Entry` e `Scene`). O BOOT continua terminando na arena, que é o item medido; SAIR é um
+  gesto deliberado e merece a escolha do modo.
+  ⚠️ **`entry` é DESVIADA, não bloqueada** (em `go()` e em `leaveGame()`): o `go("entry")` do `escape()`,
+  o "voltar" de todo `ScreenHeader` e o beco de `UNREACHABLE`/`LOST` continuam levando a algum lugar —
+  `modes` —, sem espalhar `if (SEM_MENU)` por sete arquivos. E a guarda que sobrou em `go()` é pela tela
+  de **ORIGEM** (`screen === "boot"`, que é o Esc apertado durante o boot, encontrado em bancada); pela de
+  DESTINO ela bloqueava o menu inteiro, e foi exatamente isso que trancou o Battle Royale.
+  ⚠️ Sem "Início" na `Nav` e sem "Voltar" no cabeçalho de Modos (`semVoltar`): com `entry` desviada para
+  `modes`, os dois seriam controles que não fazem nada — e ali a tela de Modos É o início.
   ⚠️ **UM `quit` DELIBERADO DEIXOU DE SER LIDO COMO QUEDA** (`saindo` em `game/index.js`). `game.leave()`
   fecha o socket de propósito e o `Connection` avisava `closed` como avisaria uma queda — indistinguível
-  para quem ouve. No site era inofensivo (quem sai muda de tela); aqui, onde sair é RE-ENTRAR, o
+  para quem ouve. No site era inofensivo (quem sai muda de tela); aqui, enquanto sair era RE-ENTRAR, o
   fechamento da re-entrada era lido como queda e disparava outra: o Inspector mostrava `connect/match/fail`
   em rajada. **Medido e consertado no mesmo dia.**
   ⚠️ **O que NÃO foi possível**: a poda do Rollup. `Entry`/`Scene` continuam no zip (conferido com

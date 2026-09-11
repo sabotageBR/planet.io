@@ -36,9 +36,19 @@ test("`assistir` sozinho não vale nada: sem sala não há o que assistir", () =
   assert.deepEqual(destinoDoBoot({ semMenu: true, assistir: true }), { tipo: "jogar" });
 });
 
-test("SAIR DA PARTIDA: no pacote é re-entrar, no site é o lobby", () => {
-  assert.deepEqual(destinoDaSaida(true), { tipo: "jogar" });
+test("SAIR DA PARTIDA: no pacote é a tela de MODOS, no site é o lobby", () => {
+  assert.deepEqual(destinoDaSaida(true), { tipo: "tela", tela: "modes" });
   assert.deepEqual(destinoDaSaida(false), { tipo: "tela", tela: "lobby" });
+});
+
+test("SAIR NO PACOTE NUNCA RE-ENTRA, e nunca cai na tela inicial", () => {
+  // Isto já foi `{tipo:'jogar'}` — "leave the match" reiniciava a partida em vez de sair dela, e como a
+  // tela de Modos é o ÚNICO lugar do cliente que oferece o Battle Royale, o modo inteiro ficou
+  // inalcançável no pacote. E `entry` continua proibida: o componente nem é montado (`App.jsx`), então
+  // ir para lá é um shell VAZIO. As duas metades são o teste.
+  const d = destinoDaSaida(true);
+  assert.notEqual(d.tipo, "jogar");
+  assert.notEqual(d.tela, "entry");
 });
 
 test("`jogar` NUNCA carrega modo — quem chama crava MODE.FREE", () => {

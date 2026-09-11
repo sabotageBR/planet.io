@@ -25,13 +25,18 @@ export function toast(msg, ms = 1800) {
   toastT = setTimeout(() => app.update({ toast: null }), ms);
 }
 export function go(screen) {
+  // ⚠️ NO PACOTE A TELA INICIAL NÃO EXISTE (`SEM_MENU`): `App.jsx` não monta `Entry` nem `Scene`, e o
+  // Rollup os poda do zip. Um `go("entry")` ali não dá erro nenhum — deixa o jogador olhando um shell
+  // VAZIO, sem caminho de volta. O menu do pacote é a tela de MODOS, que está montada, então `entry` é
+  // REDIRECIONADA em vez de bloqueada: assim o `go("entry")` do `escape()` e o "voltar" de todo
+  // `ScreenHeader` continuam levando a algum lugar, sem sete `if` espalhados.
+  if (SEM_MENU && screen === "entry") screen = "modes";
   if (!SCREENS.includes(screen)) return;
-  // ⚠️ NO PACOTE NENHUMA TELA DE MENU ESTÁ MONTADA (`SEM_MENU`), então navegar para uma é levar o jogador
-  // a um shell VAZIO — sem erro no console e sem caminho de volta. Isto é a REDE, não a regra: quem sai da
-  // partida usa `sairDaPartida()`, que re-entra. Foi encontrado assim, em bancada: um Esc apertado durante
-  // o boot (`screen:"boot"`, antes de o `play()` completar) caía no último ramo de `escape()` e ia para a
-  // tela inicial — tela preta, no primeiro segundo, que é justamente o que o Player Fit mede.
-  if (SEM_MENU && screen !== "game" && screen !== "dead" && screen !== "round") return;
+  // ⚠️ E DURANTE O BOOT NÃO SE NAVEGA. Foi encontrado assim, em bancada: um Esc apertado antes de o
+  // `play()` do boot direto completar (`screen:"boot"`) caía no último ramo de `escape()` e tirava o
+  // jogador da arena no primeiro segundo, que é justamente o que o Player Fit mede. A guarda é pela tela
+  // de ORIGEM — a de DESTINO bloqueava o menu inteiro e foi o que tornou o Battle Royale inalcançável.
+  if (SEM_MENU && app.get().screen === "boot") return;
   app.update(s => ({ ...s, prevScreen: s.screen === screen ? s.prevScreen : s.screen, screen,
     overlays: { account: false, pause: false, reconn: s.overlays.reconn && screen === "game" } }));
 }
@@ -831,30 +836,31 @@ export function leaveGame(screen = "lobby") {
   // abaixo já fecha o gameplay por `portal/sessao.js` — e cobria só ESTE caminho, nunca a morte.
   if (PORTAL) portal.saiuDaSala();
   levelUpFila = null; cancelaTelaMorte();
-  // ⚠️ REDE DE SEGURANÇA, não a regra: no pacote nenhuma tela de menu está montada, então qualquer
-  // chamador que peça `entry`/`lobby` (inclusive um caminho NOVO que ninguém lembrou de converter) deixaria
-  // o jogador diante de um shell vazio. Quem sai da partida de propósito usa `sairDaPartida()` logo abaixo.
-  if (SEM_MENU && screen !== "game" && screen !== "dead" && screen !== "round" && screen !== "spec") screen = "boot";
+  // ⚠️ REDE DE SEGURANÇA, não a regra: no pacote a tela INICIAL não está montada, então um chamador que
+  // peça `entry` (o beco de `UNREACHABLE`/`LOST`, e qualquer caminho NOVO que ninguém lembrou de
+  // converter) deixaria o jogador diante de um shell vazio. O menu do pacote é `modes`, e é para lá que
+  // ela é desviada — a mesma conversão de `go()`, pelo mesmo motivo. `boot` continua valendo como destino
+  // explícito: quem o pede acende `servidorFora` na mesma linha, e aí a tela que fica é o `Offline`.
+  if (SEM_MENU && screen === "entry") screen = "modes";
   app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
 }
 /**
  * SAIR DA PARTIDA — o botão, nos sete lugares em que ele existe (o ☰ do HUD, o lobby do BR, o espectador,
  * o pódio, a reconexão, a tela de morte e a pausa).
  *
- * No site é voltar ao menu; no pacote **não existe "fora da partida"**, e a decisão do dono é re-entrar no
- * Livre. A escolha mora em `state/entrada.js` (pura e testada) porque sete `if (PORTAL)` espalhados
- * divergem no primeiro conserto — é a lição de `useSpec`/`SpecBar`, que nasceu de duas cópias do mesmo
- * código de espectador.
+ * No site é a tela de SALAS; no pacote é a tela de MODOS. A escolha mora em `state/entrada.js` (pura e
+ * testada) porque sete `if (PORTAL)` espalhados divergem no primeiro conserto — é a lição de
+ * `useSpec`/`SpecBar`, que nasceu de duas cópias do mesmo código de espectador.
  *
- * ⚠️ NADA DE `leaveGame()` SEGUIDO DE `play()`. `leaveGame` escreve `screen`, e o React chega a montar a
- * tela do meio — um frame de cartão de menu, que é exatamente o que o aceite do 1.14 proíbe. `play()`
- * sozinho basta: quem fecha o socket velho é `game.join()` → `game.leave(true)` (ver game/index.js).
+ * ⚠️ **NO PACOTE ISTO RE-ENTRAVA NO LIVRE, E ERA UM BECO SEM SAÍDA.** "Leave the match" reiniciava a
+ * partida em vez de sair dela, e como a tela de Modos é o ÚNICO lugar do cliente que oferece o Battle
+ * Royale, o modo inteiro ficou inalcançável no pacote — sem erro, sem log e sem nada na tela dizendo
+ * por quê. A regra que continua valendo é a do BOOT (quem chega cai na arena, T1); sair é um gesto
+ * deliberado, e quem o faz merece a escolha do modo.
  */
 export function sairDaPartida() {
   const d = destinoDaSaida(SEM_MENU);
-  if (d.tipo === "tela") return leaveGame(d.tela);
-  if (PORTAL) portal.saiuDaSala();   // o "Full" da CrazyGames: saí DAQUELA sala (o `play()` abaixo não avisa)
-  return play({ mode: MODE.FREE, teamSize: 1, party: null });
+  return leaveGame(d.tela);
 }
 let rewardsT = null, levelUpN = 0, levelUpFila = null;
 /**
