@@ -108,7 +108,13 @@ const storeFalso = (st0) => {
   return { get: () => st, subscribe(f) { subs.add(f); return () => subs.delete(f); },
     vai(p) { st = { ...st, ...p, overlays: { ...st.overlays, ...(p.overlays || {}) } }; for (const f of subs) f(st); } };
 };
-const TELA0 = { screen: "entry", overlays: { pause: false, tab: false, account: false, reconn: false } };
+// ⚠️ `conn` FAZ PARTE DO ESTADO desde que `ATIVO` passou a exigir `connected`: `play()` escreve
+// `screen:"game"` e `conn:"connecting"` no MESMO update, e o gameplay do SDK só abre quando o WS
+// confirma. Os roteiros abaixo usam `jogando()` em vez de `{screen:"game"}` cru — escrever a tela sem a
+// conexão é um estado que o jogo NUNCA produz, e um teste que o monte mede outra coisa.
+const TELA0 = { screen: "entry", conn: "idle", overlays: { pause: false, tab: false, account: false, reconn: false } };
+/** O passo "entrei na partida e o WS confirmou" — o par que `play()` + `onConnection` produzem. */
+const jogando = () => ({ screen: "game", conn: "connected" });
 
 const roteiro = passos => {
   const store = storeFalso(TELA0), log = [];
@@ -121,10 +127,10 @@ const roteiro = passos => {
 
 test("a sessão típica: entrar, morrer, renascer, fim de rodada, sair", () => {
   const log = roteiro([
-    { screen: "game" },                       // entrou na partida
+    jogando(),                       // entrou na partida
     { screen: "dead" },                       // MORREU — o `stop` que nunca saía
     { screen: "dead" },                       // continua assistindo: nada novo
-    { screen: "game" },                       // renasceu
+    jogando(),                       // renasceu
     { screen: "round" },                      // BIG CRUNCH
     { screen: "lobby" },                      // saiu
   ]);
@@ -133,22 +139,22 @@ test("a sessão típica: entrar, morrer, renascer, fim de rodada, sair", () => {
 
 test("a pausa é interrupção — a Poki pede isso na letra", () => {
   assert.deepEqual(roteiro([
-    { screen: "game" }, { overlays: { pause: true } }, { overlays: { pause: false } }, { screen: "lobby" },
+    jogando(), { overlays: { pause: true } }, { overlays: { pause: false } }, { screen: "lobby" },
   ]), ["start", "stop", "start", "stop"]);
 });
 
 test("o painel do TAB NÃO para o jogo: o planeta continua seguindo o mouse por baixo dele", () => {
   assert.deepEqual(roteiro([
-    { screen: "game" }, { overlays: { tab: true } }, { overlays: { tab: false } },
+    jogando(), { overlays: { tab: true } }, { overlays: { tab: false } },
   ]), ["start"]);
 });
 
 test("nunca sai start-após-start nem stop-após-stop, em nenhum roteiro", () => {
   const roteiros = [
-    [{ screen: "game" }, { screen: "game" }, { screen: "game" }],
+    [jogando(), jogando(), jogando()],
     [{ screen: "dead" }, { screen: "round" }, { screen: "lobby" }, { screen: "entry" }],
-    [{ screen: "game" }, { overlays: { pause: true } }, { screen: "dead" }, { overlays: { pause: false } },
-     { screen: "game" }, { screen: "game" }, { screen: "shop" }],
+    [jogando(), { overlays: { pause: true } }, { screen: "dead" }, { overlays: { pause: false } },
+     jogando(), jogando(), { screen: "shop" }],
   ];
   for (const r of roteiros) {
     const log = roteiro(r);
@@ -163,7 +169,7 @@ test("nada é emitido enquanto o jogador está fora da partida", () => {
 test("o funil abre UMA vez por carga, na primeira vez que ele entra na sala", () => {
   const store = storeFalso(TELA0), m = [];
   const off = iniciaSessaoPortal({ comecou(){}, parou(){}, medir: (c, o, a) => m.push(`${c}/${o}/${a}`) }, store, () => 0);
-  store.vai({ screen: "game" }); store.vai({ screen: "dead" }); store.vai({ screen: "game" });
+  store.vai(jogando()); store.vai({ screen: "dead" }); store.vai(jogando());
   off();
   assert.deepEqual(m, ["session/60s/start", "session/180s/start", "session/300s/start"]);
 });
@@ -182,7 +188,7 @@ test("sair de assistir para jogar abre o gameplay UMA vez", () => {
   assert.deepEqual(roteiro([
     { screen: "spec" },     // estava assistindo
     { screen: "lobby" },    // saiu
-    { screen: "game" },     // agora entrou de verdade
+    jogando(),     // agora entrou de verdade
     { screen: "dead" },
   ]), ["start", "stop"]);
 });
@@ -191,9 +197,40 @@ test("a espera de ROUND.DEAD_DELAY_MS não produz evento nenhum a mais", () => {
   // Durante a espera entre a morte e a tela, `screen` continua "game" — o jogador está vendo o próprio
   // planeta estourar. O `stop` sai UMA vez, quando a tela finalmente entra.
   assert.deepEqual(roteiro([
-    { screen: "game" },     // jogando
-    { screen: "game" },     // morreu, mas a tela ainda não subiu (a espera)
+    jogando(),     // jogando
+    jogando(),     // morreu, mas a tela ainda não subiu (a espera)
     { screen: "dead" },     // a tela entrou
     { screen: "lobby" },
   ]), ["start", "stop"]);
+});
+
+// ── O HANDSHAKE NÃO É GAMEPLAY ───────────────────────────────────────────────
+// O item 2 da auditoria do Player Fit pede `gameplayStart` no "primeiro input". Mover o gatilho para o
+// caminho de input criaria uma segunda verdade sobre "estou jogando" — o erro que já custou o `stop` da
+// morte. O que endereça o espírito dele sem isso é APERTAR o predicado: `play()` escreve `screen:"game"`
+// e `conn:"connecting"` no mesmo update, e entre esse instante e o `connected` (até `JOIN_TIMEOUT_MS`,
+// 3 s) o jogador não pode dar input nenhum — era playtime inflado, contado pelo painel deles.
+
+test("entrar em partida NÃO abre o gameplay enquanto o WS não confirma", () => {
+  assert.deepEqual(roteiro([{ screen: "game", conn: "connecting" }]), [],
+    "o relógio do SDK não pode começar no handshake");
+  assert.deepEqual(roteiro([{ screen: "game", conn: "connecting" }, { conn: "connected" }]), ["start"]);
+});
+
+test("uma RECONEXÃO é interrupção de gameplay, e fecha o par", () => {
+  // "gameplayStop() must fire on any gameplay interruption" — e uma queda de rede é uma.
+  assert.deepEqual(roteiro([jogando(), { conn: "reconnecting" }, { conn: "connected" }]),
+    ["start", "stop", "start"]);
+});
+
+test("mas a RETIDÃO não depende da conexão: quem está reconectando continua na sala", () => {
+  // o funil de sessão mede quem está AQUI, não quem está jogando — é a distinção que o arquivo inteiro
+  // existe para manter, e o `conn` não pode vazar para ela
+  const store = storeFalso(TELA0), marcos = [];
+  const alvo = { comecou: () => {}, parou: () => {}, medir: (c, o, a) => marcos.push(`${c}/${o}/${a}`) };
+  let t = 0;
+  const off = iniciaSessaoPortal(alvo, store, () => t);
+  store.vai({ screen: "game", conn: "connecting" });
+  assert.ok(marcos.some(m => m === "session/60s/start"), "o relógio da sessão abre com a tela, não com o WS");
+  off();
 });

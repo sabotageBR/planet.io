@@ -57,7 +57,15 @@ export function passoSessao(est, retido, agora) {
     marcos, emMs: retido && feitos < MARCOS.length ? MARCOS[feitos] * 1000 - acum : null };
 }
 
-const ATIVO = st => st.screen === "game" && !st.overlays.pause;
+// ⚠️ `conn === "connected"` É A TERCEIRA CONDIÇÃO, e ela endereça o item 2 da auditoria do Player Fit
+// ("gameplayStart no primeiro input") sem criar uma segunda verdade sobre "estou jogando" — o erro que
+// já custou o `gameplayStop` da morte. `play()` escreve `screen:"game"` e `conn:"connecting"` no MESMO
+// update, então sem ela o relógio do SDK começava no HANDSHAKE do join (até `JOIN_TIMEOUT_MS` = 3 s),
+// que é exatamente o tempo em que o jogador NÃO pode dar input nenhum. O campo já existe e já é escrito
+// por `onConnection` (state/actions.js): zero plumbing, e continua sendo UMA expressão.
+// ⚠️ Efeito de borda declarado: uma RECONEXÃO passa a produzir `stop`/`start`. Isso É "gameplay
+// interruption" pela letra deles ("must fire on any gameplay interruption"), e `emJogo` impede repetição.
+const ATIVO = st => st.screen === "game" && !st.overlays.pause && st.conn === "connected";
 // ⚠️ `spec` (assistir a uma sala em andamento) conta como RETIDO pelo mesmo motivo que `dead` e `round`
 // contam: o relógio é da CARGA DA PÁGINA e mede quem está AQUI, não quem está jogando — quem assiste está
 // na sala, olhando o jogo. Fora daqui, quem entrasse para ver uma partida apareceria como evasão no funil,

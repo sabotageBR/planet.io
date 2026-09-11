@@ -26,6 +26,12 @@ export function toast(msg, ms = 1800) {
 }
 export function go(screen) {
   if (!SCREENS.includes(screen)) return;
+  // ⚠️ NO PACOTE NENHUMA TELA DE MENU ESTÁ MONTADA (`SEM_MENU`), então navegar para uma é levar o jogador
+  // a um shell VAZIO — sem erro no console e sem caminho de volta. Isto é a REDE, não a regra: quem sai da
+  // partida usa `sairDaPartida()`, que re-entra. Foi encontrado assim, em bancada: um Esc apertado durante
+  // o boot (`screen:"boot"`, antes de o `play()` completar) caía no último ramo de `escape()` e ia para a
+  // tela inicial — tela preta, no primeiro segundo, que é justamente o que o Player Fit mede.
+  if (SEM_MENU && screen !== "game" && screen !== "dead" && screen !== "round") return;
   app.update(s => ({ ...s, prevScreen: s.screen === screen ? s.prevScreen : s.screen, screen,
     overlays: { account: false, pause: false, reconn: s.overlays.reconn && screen === "game" } }));
 }
@@ -657,7 +663,12 @@ async function entraNaSala({ room, mode, teamSize, party } = {}) {
   if (semNome({ room, mode, teamSize, party })) return;
   // Game Events da Poki: fecha a etapa "menu" e abre "connect" — ver o `start` em ui/Entry.jsx e o
   // `complete` de "connect" em `onConnection`, mais abaixo.
-  if (PORTAL) { portal.medir("menu", "entry", "complete"); portal.medir("connect", "match", "start"); matchResolvido = false; }
+  // ⚠️ O PASSO `menu/entry` SAI DO FUNIL NO PACOTE, e é uma consequência direta do boot direto: quem abre
+  // aquele passo é o mount de `ui/Entry.jsx`, que ali não monta — então só o `complete` chegava ao painel
+  // deles, um fechamento sem abertura. Pior que ruído: o funil 1.12 leu 17% de abandono NESSE passo, e
+  // mantê-lo agora reportaria 100% de conversão numa tela que deixou de existir. O que sobra é o que
+  // passou a ser verdade: `connect/match` e `session/60s|180s|300s`.
+  if (PORTAL) { if (!SEM_MENU) portal.medir("menu", "entry", "complete"); portal.medir("connect", "match", "start"); matchResolvido = false; }
   // ── ANÚNCIO DE PORTAL ──
   // Ponto ÚNICO, e de propósito: `play()` é a porta por onde passam Modos, Salas (auto, código e lista),
   // o convite, a largada de equipe, o respawn da tela de morte e a entrada automática depois do BIG
