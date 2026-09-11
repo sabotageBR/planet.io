@@ -248,7 +248,18 @@ export class Room{
    * abaixo do alvo, lá só se remove acima dele. Com a população parada no alvo, nenhum dos dois faz nada.
    */
   _chegadaBots(){
-    if(this.sim.tick<this._proxBot||this.sim.botCount()>=this.botAlvo())return;
+    const bots=this.sim.botCount(),alvo=this.botAlvo();
+    if(bots>=alvo)return;
+    // ── NINGUÉM JOGA SOZINHO ──
+    // A chegada é gradual ACIMA do piso, nunca abaixo dele. O buraco é a sala que esvaziou de
+    // preenchimento (o `_trimTick` a limpou enquanto ela estava cheia de gente) e DEPOIS esvaziou de
+    // gente: o próximo que entrar fica com UMA bola no mapa por 3 a 7 s, que é tempo de a pessoa fechar a
+    // aba — e o Player Fit mede exatamente esse minuto.
+    // ⚠️ `botSeed` é ZERO na sala do DONO, então lá isto é no-op por construção: ela existe justamente
+    // para ele esperar os amigos, e encher de bot seria tirar a vaga deles.
+    const vivos=bots+this.humanCount;
+    if(vivos<this.botSeed){this.topUpBots(-1,this.botSeed-vivos);this._agendaBot();return;}
+    if(this.sim.tick<this._proxBot)return;
     this.topUpBots(-1,1);this._agendaBot();}
   /**
    * QUANTOS PREENCHIMENTOS ESTA SALA QUER AGORA. `botCount` é a lotação de preenchimento da sala; o alvo é

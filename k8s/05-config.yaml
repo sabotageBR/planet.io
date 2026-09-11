@@ -10,7 +10,11 @@ data:
   PEER_HOST: "warspace-server.warspace.svc.cluster.local"
   PEER_NAME: "warspace-server"
   ROOM_MAX: "30"
-  ROOM_BOTS: "15"
+  # ⚠️ ERA "15", e isso era ARMADILHA, não configuração: o env SEMEIA o boot e o painel manda ≤30 s
+  # depois, então todo pod rodava a densidade pela METADE durante a partida de quem entrasse nesse
+  # intervalo — e para SEMPRE num pod sem DATABASE_URL, que é um modo suportado. Os três lugares
+  # (constants.js, este arquivo e o .env.example) passam a dizer o mesmo número.
+  ROOM_BOTS: "32"
   ROUND_TICKS: "108000"   # rodada de 30 min a 60 Hz = 2 dias do relógio do espaço (fim do mundo + sala nova)
   # 0 = usa o mundo do build (12000 px de lado). Este env é só a SEMENTE: quem manda de verdade é o
   # parâmetro WORLD.LADO do /admin, e ele vale no próximo boot do pod — trocar o mundo com salas rodando

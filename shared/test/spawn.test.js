@@ -85,3 +85,57 @@ test("o encontro vem ANTES do berçário da supernova: comida não é o que falt
   assert.ok(dist(pc, ancora) <= 360 + PLAYER.SPAWN_R,
     "com gente E berçário disponíveis, quem ganha é a gente");
 });
+
+// ── E NUMA SALA SÓ DE PREENCHIMENTO, A ISCA ──────────────────────────────────
+// O buraco que a versão acima deixou, e que anulava a sala cheia inteira: numa sala recém-aberta TODO
+// mundo é bot, então a lista de âncoras vinha VAZIA — sempre —, `_playerSpot` devolvia null, o berçário
+// não tinha cratera nenhuma no tick 0 e o nascimento caía no sorteio CEGO, que cobra PLAYER_SAFE de todas
+// as peças. Ou seja: semear 13 planetas punha o novato garantidamente a 1500 px de todos eles.
+
+test("sem NENHUM humano, o novato nasce ao lado de um preenchimento que ele engole", () => {
+  const w = arena();
+  // a isca: pequena o bastante para ser comida por quem nasce com PLAYER.SPAWN_R
+  w.addPlayer(1, { x: 6000, y: 6000, r: PLAYER.SPAWN_R / EAT.RATIO - 2, isBot: true });
+  const ps = { slot: 2, isBot: false, pieces: [] };
+  let ok = 0, perto = 0;
+  for (let i = 0; i < 50; i++) {
+    const s = w._playerSpot(ps, PLAYER.SPAWN_R);
+    if (!s) continue;
+    ok++;
+    if (dist(s, { x: 6000, y: 6000 }) <= 360) perto++;
+  }
+  assert.equal(ok, 50, "0/50 é o estado de antes: encher a sala de bots não punha ninguém na tela");
+  assert.equal(perto, 50, "e o ponto sai DENTRO do disco de amostragem da isca");
+});
+
+test("mas nunca ao lado de um preenchimento que o ENGOLE", () => {
+  const w = arena();
+  w.addPlayer(1, { x: 6000, y: 6000, r: PLAYER.SPAWN_R * EAT.RATIO + 5, isBot: true });   // come o novato
+  const ps = { slot: 2, isBot: false, pieces: [] };
+  for (let i = 0; i < 50; i++) {
+    const s = w._playerSpot(ps, PLAYER.SPAWN_R);
+    assert.equal(s, null, "nascer colado em quem me come é nascer morto — o oposto do que isto faz");
+  }
+});
+
+test("GENTE continua ganhando da isca", () => {
+  const w = arena();
+  w.addPlayer(1, { x: 2000, y: 2000, r: PLAYER.SPAWN_R, isBot: false });                 // humano, longe
+  w.addPlayer(2, { x: 9000, y: 9000, r: PLAYER.SPAWN_R / EAT.RATIO - 2, isBot: true });  // isca, do outro lado
+  const ps = { slot: 3, isBot: false, pieces: [] };
+  for (let i = 0; i < 30; i++) {
+    const s = w._playerSpot(ps, PLAYER.SPAWN_R);
+    assert.ok(s, "há candidato");
+    assert.ok(dist(s, { x: 2000, y: 2000 }) <= 360,
+      "o encontro que retém é com uma PESSOA; a isca é o degrau de baixo, não um empate");
+  }
+});
+
+test("a isca respeita o teto de tamanho: preenchimento GRANDE não é âncora nem isca", () => {
+  const w = arena();
+  // grande o bastante para passar de PLAYER_SPAWN_NEAR_MAX_R (PLAYER.START_R*5), e ainda assim comível
+  // seria impossível — o que este teste trava é que o teto de tamanho vem ANTES da pergunta "eu engulo?"
+  w.addPlayer(1, { x: 6000, y: 6000, r: PLAYER.START_R * 5 + 10, isBot: true });
+  const ps = { slot: 2, isBot: false, pieces: [] };
+  assert.equal(w._playerSpot(ps, PLAYER.SPAWN_R), null);
+});

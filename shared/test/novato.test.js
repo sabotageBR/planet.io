@@ -8,8 +8,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createWorld, setR } from "../src/physics/index.js";
-import { piecePair } from "../src/physics/rules.js";
-import { BOT, ROOM, PLAYER, EAT } from "../src/constants.js";
+import { piecePair, pieceMissile, incomingMissile } from "../src/physics/rules.js";
+import { BOT, ROOM, PLAYER, EAT, MISSILE } from "../src/constants.js";
 
 /** Laboratório: sem comida, sem perigo, sem decaimento. */
 const arena = () => createWorld({ seed: 7, food: 0, asteroids: false, holes: 0, stars: 0, decay: false });
@@ -63,7 +63,14 @@ test("a semente deixou de trazer um predador imbatível", () => {
   const [gig] = ROOM.SEED_R, massaGig = gig[0] * gig[0];
   const novato = PLAYER.START_R * PLAYER.START_R;
   assert.ok(massaGig < 40000, `o menor gigante da semente vale ${massaGig} de massa (era 40.000+)`);
-  assert.equal(ROOM.SEED_MIX[0], 1, "e é UM por sala, não dois");
+  // ⚠️ ERA `=== 1`, "e é UM por sala, não dois". O segundo gigante voltou por decisão do dono, com o
+  // Player Fit da Poki na frente (a sala precisa parecer cheia no tick 0), e o que mudou desde setembro
+  // são as duas defesas que não existiam quando a cota caiu: `recemChegado` passou a valer na FÍSICA (o
+  // gigante ATRAVESSA o novato em vez de comê-lo — é o teste logo acima) e `bonusHumano` tirou do grande
+  // a preferência por presa humana. O tier continua sendo METADE do que era.
+  // O guarda-corpo não é este teste, é o painel: a razão de massa do algoz em /admin → Retenção. Se ela
+  // subir, o segundo sai de novo — e isso é um clique, não um deploy.
+  assert.ok(ROOM.SEED_MIX[0] <= 2, `${ROOM.SEED_MIX[0]} gigantes na semente: acima de dois ninguém testou`);
   // ele continua sendo um gigante de verdade: come o novato de longe, o que é o ponto da ambientação
   assert.ok(gig[0] >= PLAYER.START_R * EAT.RATIO, "ainda é grande o bastante para engolir quem nasce");
   assert.ok(massaGig / novato > 20, "e a diferença continua enorme — o que mudou é a ordem de grandeza");
@@ -211,4 +218,55 @@ test("zerar só NOVATO_MASS devolve o penhasco de relógio", () => {
     w2.tick = w2.players.get(1).spawnTick + BOT.SPAWN_GRACE_TICKS;
     assert.equal(encosta(w2, 0, 1), true, "um tick DEPOIS: comida — é o degrau, e é por isso que são as duas ou nenhuma");
   } finally { BOT.NOVATO_MASS = massa; }
+});
+
+// ── E O MÍSSIL DO PREENCHIMENTO TAMBÉM ATRAVESSA ─────────────────────────────
+// `MISSILE.SPAWN_CD_TICKS` impedia o novato de ATIRAR e nunca impediu de ser ALVO — e um teleguiado nasce
+// muito além da AOI dele, ou seja chega sem ele nunca ter visto de onde. A regra é a MESMA da mordida
+// (`recemChegado`), então ela herda os três parâmetros do painel e o interruptor deles.
+
+/** Põe um míssil do bot `dono` em cima da peça de `alvo` e devolve se a peça foi ferida. */
+const acerta = (w, dono, alvo) => {
+  const pc = w.players.get(alvo).pieces[0], antes = pc.mass;
+  const m = w.addMissile(pc.x + 1, pc.y, 0, 0, dono, alvo);
+  pieceMissile(w, pc, m);
+  return { feriu: pc.mass < antes - 1e-9, morreu: !!m.dead };
+};
+
+test("o míssil de um preenchimento não fere quem está sob a graça", () => {
+  const w = arena();
+  w.addPlayer(0, { x: 5000, y: 5000, r: 200, isBot: true });
+  w.addPlayer(1, { x: 5600, y: 5000, r: PLAYER.START_R, isBot: false });
+  const r = acerta(w, 0, 1);
+  assert.equal(r.feriu, false, "ele atravessa: sem dano, sem evento, sem explosão falsa");
+  assert.equal(r.morreu, false, "e o míssil segue em frente — nada de estouro em cima de quem não pode reagir");
+});
+
+test("passada a proteção, o mesmo míssil fere normalmente", () => {
+  const w = arena();
+  w.addPlayer(0, { x: 5000, y: 5000, r: 200, isBot: true });
+  w.addPlayer(1, { x: 5600, y: 5000, r: PLAYER.START_R, isBot: false });
+  w.tick = BOT.SPAWN_GRACE_TICKS + 1;                       // fora da graça de tempo
+  setR(w.players.get(1).pieces[0], Math.sqrt(BOT.NOVATO_MASS) + 20);   // e fora da razão de massa
+  const r = acerta(w, 0, 1);
+  assert.equal(r.feriu, true, "a proteção é do NOVATO, não um escudo permanente contra bot");
+});
+
+test("entre PESSOAS o míssil nunca atravessa, nem no primeiro segundo", () => {
+  const w = arena();
+  w.addPlayer(0, { x: 5000, y: 5000, r: 200, isBot: false });   // humano grande
+  w.addPlayer(1, { x: 5600, y: 5000, r: PLAYER.START_R, isBot: false });
+  assert.equal(acerta(w, 0, 1).feriu, true, "proteger disso seria inventar invulnerabilidade num .io");
+});
+
+test("A DEFESA DO NOVATO CONTINUA ENXERGANDO O MÍSSIL", () => {
+  // `incomingMissile` é o SENSOR DA VÍTIMA: dele saem o alerta da seta na borda, a interceptação e a
+  // auto-defesa. Pôr `recemChegado` ali cegaria justamente quem a regra existe para proteger.
+  const w = arena();
+  w.addPlayer(0, { x: 5000, y: 5000, r: 200, isBot: true });
+  w.addPlayer(1, { x: 5600, y: 5000, r: PLAYER.START_R, isBot: false });
+  const pc = w.players.get(1).pieces[0];
+  const m = w.addMissile(pc.x - 400, pc.y, 400, 0, 0, 1);
+  m.type = 0;
+  assert.ok(incomingMissile(w, 1, pc.x, pc.y, MISSILE.ALERT_DIST), "o novato TEM que ver o que vem nele");
 });

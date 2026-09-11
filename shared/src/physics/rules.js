@@ -737,6 +737,13 @@ function clusterSplit(w,m){
  */
 export function pieceMissile(w,pc,m){
   if(sameTeam(w,m.owner,pc.owner))return;const dx=m.x-pc.x,dy=m.y-pc.y,d2=dx*dx+dy*dy,s=pc.r+m.r;if(d2>=s*s)return;
+  // ⚠️ E O MÍSSIL ATRAVESSA quem está sob a graça, a mesma linguagem que `piecePair` já usa para a
+  // mordida ("o gigante atravessa"): sem morte, sem evento, sem explosão falsa. Quem impede o tiro de
+  // NASCER é `fireHoming`, e isto é a garantia física — ela cobre o que aquele não vê: o Cacho que se
+  // abre perto, a Rajada em leque e um teleguiado já em voo cujo alvo virou novato. Nunca em
+  // `incomingMissile`: aquele é o SENSOR DA VÍTIMA, e cegá-lo desligaria o alerta, a interceptação e a
+  // auto-defesa DO PRÓPRIO NOVATO — o oposto exato do que isto existe para fazer.
+  if(recemChegado(w,w.players.get(m.owner),w.players.get(pc.owner)))return;
   const d=Math.sqrt(d2)||1;
   if(pc.shieldLv>0){m.dead=true;hitShield(w,pc,m.owner,dx/d,dy/d,armaDoMissil(m));return;}
   const ux=-dx/d,uy=-dy/d,ps=w.players.get(pc.owner),wp=weaponOf(m.hue);   // (ux,uy) = para LONGE do míssil: a MESMA direção do estilhaço, e é para lá que a massa resvala
@@ -1088,7 +1095,12 @@ function fireHoming(w,ps,src,im=undefined){
     let bd=Infinity,bx=0,by=0;
     if(cob&&cob.owner>=0){const o=w.players.get(cob.owner),op=o&&o.alive?firstLive(o.pieces):null;
       if(op){best=cob.owner;bx=op.x;by=op.y;bd=0;}}
-    if(best<0)for(const o of w.players.values()){if(o===ps||!o.alive||sameTeam(w,o.slot,ps.slot))continue;const op=firstLive(o.pieces);if(!op)continue;
+    // ⚠️ O PREENCHIMENTO NÃO MIRA EM QUEM ACABOU DE NASCER. `MISSILE.SPAWN_CD_TICKS` impede o novato de
+    // ATIRAR e nunca impediu de ser ALVO — e um teleguiado nasce muito além da AOI dele, ou seja chega
+    // sem ele nunca ter visto de onde. `recemChegado` é a mesma regra da mordida (`piecePair`), então
+    // ela herda de graça os três parâmetros do painel e o interruptor deles. As guardas baratas dela
+    // (`!big.isBot||small.isBot`) fazem o custo ser ZERO para tiro de gente.
+    if(best<0)for(const o of w.players.values()){if(o===ps||!o.alive||sameTeam(w,o.slot,ps.slot)||recemChegado(w,ps,o))continue;const op=firstLive(o.pieces);if(!op)continue;
       const dx=op.x-src.x,dy=op.y-src.y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;best=o.slot;bx=op.x;by=op.y;}}
     if(best>=0){dirTo(src.x,src.y,bx,by,DIR);ux=DIR[0];uy=DIR[1];}else{const an=w.rng.angle();ux=Math.cos(an);uy=Math.sin(an);}}
   const m=w.addMissile(src.x,src.y,ux*MISSILE.SPEED,uy*MISSILE.SPEED,ps.slot,best);m.type=kind;m.srcSlot=foe;m.hue=ps.weapon;

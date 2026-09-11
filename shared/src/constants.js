@@ -26,7 +26,7 @@ export const TICK_HZ=60,DT=1/60,SNAPSHOT_EVERY=3,LEADERBOARD_EVERY=30,SAMPLE_EVE
 // o item mais caro POR SESSÃO do laço (ver o profiling em CLAUDE.md). Por isso ele tem teto próprio: sem
 // número, uma sala que virou assunto acumularia espectadores até o tick estourar, e quem paga seria quem
 // está jogando. Quando o teto enche, a resposta é `ROOM_FULL` — nunca uma fila.
-export const ROOM={SPEC_MAX:10,MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600,
+export const ROOM={SPEC_MAX:10,MAX:30,BOTS:32,CODE_LEN:4,STOP_AFTER_MS:30000,REMOVE_AFTER_MS:35000,RESUME_GRACE_TICKS:600,
   HOST_HOLD_MS:120000,HOST_GRACE_MS:30000,
   // ── O AUTOMÁTICO AGRUPA ATÉ AQUI, E DAÍ EM DIANTE ESPALHA ──
   // `MAX` é o teto DURO de uma sala (quem entra por código ou convite vai até ele). Estes dois são os
@@ -104,8 +104,24 @@ export const ROOM={SPEC_MAX:10,MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REM
   // imbatíveis na frente de quem entra com 900 para parecer "já em andamento", e eles cobravam a conta
   // no primeiro minuto. O tier caiu para r 140–180 (19.600–32.400, ~metade) e a cota de gigantes de 2
   // para 1: a sala continua tendo planeta de todo tamanho — que é o ponto — sem ter dois deles.
-  SEED_R:[[140,180],[80,150]],SEED_MIX:[1,3],SEED_WINDOW_TICKS:7200,
-  BOT_SEED:6,BOT_JOIN_TICKS:[360,840],
+  // ⚠️ E A SEMENTE CRESCEU DE 6 PARA 13, com um TERCEIRO tier. O Player Fit da Poki reprovou cinco vezes
+  // seguidas com ~21% de jogadores acima de 3 min (o critério pede 25%), e o histograma diz onde: 67% das
+  // sessões acabam antes dos 2 min. O diagnóstico medido é DENSIDADE — um celular em pé enxerga 0,47% do
+  // mapa, o que dava 0,15 outros planetas na tela contra os 0,67 do agar.io.
+  // ⚠️ O TERCEIRO TIER É A ISCA, e ele existe porque "o resto da semente é pequeno" NUNCA foi comível: o
+  // pequeno é `PLAYER.BOT_R` [24,58], quem nasce tem r=30 e só engole `r <= 30/EAT.RATIO` = 26,1 — ou seja
+  // 6% daquela faixa. Sete "pequenos" davam 0,43 presas esperadas, e é por isso que 81% das primeiras
+  // vidas terminam sem um único abate. O teto da faixa sai do JOGADOR (`botSpawnR`), nunca de um número
+  // solto: `PLAYER.SPAWN_R` é parâmetro do /admin, e cravar [20,26] faria a isca virar predador no dia em
+  // que alguém baixasse a massa inicial.
+  // ⚠️ DOIS gigantes, de novo — a cota tinha caído para 1 pelo bloco acima, e volta por decisão do dono
+  // com o Fit Test na frente. O que torna isso diferente de setembro é que o gigante de hoje é METADE do
+  // que era (r 140–180, não 200–250) e as duas defesas que não existiam lá já existem: `recemChegado`
+  // passou a valer na FÍSICA (o gigante atravessa o novato em vez de comê-lo) e `bonusHumano` tirou do
+  // grande a preferência por presa humana. O guarda-corpo é a razão de massa do algoz no painel de
+  // Retenção: se ela subir, o segundo gigante volta a sair — e é um clique, não um deploy.
+  SEED_R:[[140,180],[80,150],[20,26]],SEED_MIX:[2,4],SEED_WINDOW_TICKS:7200,
+  BOT_SEED:13,BOT_JOIN_TICKS:[180,420],
   // ── A SALA DO DONO NÃO É A SALA AUTOMÁTICA ──
   // Ela não nasce "em andamento": quem abre uma sala sua entra SOZINHO e vê os preenchimentos chegarem.
   // A semente e os tamanhos grandes existem para contar "isto já estava rolando" a quem cai numa sala que
@@ -833,7 +849,13 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:316.2278,MAGNET_RANGE:5.5,MAGNET_RA
 // escudo: não expira; nível 1..SHIELD_MAX_LEVEL (N mísseis para destruir), sobe 1 nível a cada SHIELD_EVOLVE_TICKS sem ser atingido; −1 nível ao disparar e ao dividir
 // ímã e escudo valem POR PEÇA: só a parte que pegou o powerup se beneficia; ao fundir, os poderes das duas se juntam (escudo soma até o teto, ímã soma o tempo restante)
 export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1.3,HUNT_DIST:900,FOOD_DIST:520,MAX_PIECES:8,
-  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:900,NOVATO_MASS:6000,NOVATO_RATIO:4,   /* 15 s — era 7 s, e ver `rules.piecePair`: agora ela também IMPEDE de ser comido */AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
+  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:2700,NOVATO_MASS:6000,NOVATO_RATIO:4,   /* 45 s — era 15, e antes disso 7. Ver `rules.piecePair` (ela também IMPEDE de ser comido) e agora
+     `fireHoming`/`pieceMissile` (o míssil do preenchimento atravessa). A subida é do Player Fit da
+     Poki: a mediana da primeira vida é 31 s, ou seja METADE dos novatos morria dentro da janela de 15.
+     ⚠️ Esticar a graça de TEMPO recria o PENHASCO num ponto mais tarde — a menos que a perna de MASSA
+     pegue o jogador na saída, e ela pega: o pico mediano da 1ª vida é 2.214 contra `NOVATO_MASS` 6.000.
+     O aviso operacional é literal: nunca subir este número sem olhar o histograma de mortes na faixa
+     logo depois dele (aqui, [45,49] s) no painel de Retenção. */AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
   STICK:1.28,HAZ_TTL:6,DANG_N:6,FIRE_CD:[50,130],FEED_CD:40,MISSILE_MIN_D:1100,
   // Quanto dura o ARREMESSO do salto: o tick em que |v| do canal de impulso cai abaixo de BOOST.STOP.
   // DERIVADO, nunca cravado — o filho é dirigível o voo inteiro (integratePiece soma o ponteiro por cima
@@ -1091,12 +1113,18 @@ export function playerNick(rng,usados){
  * @param {{next:()=>number,range:(a:number,b:number)=>number}} rng @param {number} i @param {number} f
  */
 export function botSpawnR(rng,i,f){
-  const g=ROOM.SEED_MIX[0],m=ROOM.SEED_MIX[1],n=ROOM.BOT_SEED;let tier=2;
+  const g=ROOM.SEED_MIX[0],m=ROOM.SEED_MIX[1],n=ROOM.BOT_SEED;let tier=3;   // 3 = a faixa de sempre
   if(f>0){
-    if(i<n)tier=i<g?0:i<g+m?1:2;                                     // a semente: cota, sem sorteio
+    if(i<n)tier=i<g?0:i<g+m?1:2;                                     // a semente: cota, sem sorteio — e o RESTO dela é ISCA
     else if(rng.next()<m/n*(f<1?f:1))tier=1;                         // depois dela: no máximo um médio, cada vez mais raro
   }
-  const faixa=tier<2?ROOM.SEED_R[tier]:PLAYER.BOT_R;return rng.range(faixa[0],faixa[1]);}
+  const faixa=tier<3?ROOM.SEED_R[tier]:PLAYER.BOT_R;
+  // ⚠️ O TETO DA ISCA SAI DO JOGADOR, não do número declarado em `SEED_R[2]`. Ela existe para ser COMÍVEL
+  // por quem acabou de nascer, e `PLAYER.SPAWN_R` é parâmetro do /admin: com a faixa cravada, baixar a
+  // massa inicial no painel transformaria a isca em predador — em silêncio, e justamente para o novato.
+  // `rng.range` gasta UM `next()` em qualquer faixa, então isto não desloca o stream da sala.
+  const teto=tier===2?Math.min(faixa[1],PLAYER.SPAWN_R/EAT.RATIO):faixa[1];
+  return rng.range(Math.min(faixa[0],teto),teto);}
 // ── FALA DOS BOTS ────────────────────────────────────────────────────────────
 // Uma sala de 50 pessoas que atravessa a partida inteira em silêncio é tão estranha quanto um bot correndo
 // em linha reta. As falas são CURTAS, minúsculas e presas a um gatilho do jogo — nada de papo solto, que é

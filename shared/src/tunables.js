@@ -278,10 +278,32 @@ export const TUNABLES=[
   // `ROOM.BOT_TRIM_TICKS`, o mais longe de qualquer humano) e antes disso por atrito, morrendo sem voltar.
   // ⚠️ `ROOM.BOTS` é a lotação de preenchimento, não a população: o alvo de agora é o que FALTA para a
   // sala parecer viva (`Room.botAlvo` = BOTS − humanos), então uma sala cheia de gente fica sem nenhum.
-  // ⚠️ `ROOM.BOT_SEED` (6) é quantos abrem a sala: com `ROOM.BOTS` abaixo disso a sala nasce com menos
-  // que a semente e o enchimento gradual não tem o que fazer.
   num('sala','ROOM.MAX','Jogadores por sala no modo Livre (vale nas salas novas)','jogadores','server',2,60,1,ROOM,'MAX'),
   num('sala','ROOM.BOTS','Preenchimentos por sala no modo Livre (vale nas salas novas)','bots','server',0,60,1,ROOM,'BOTS'),
+  // ── A SEMENTE: COM QUANTOS, E DE QUE TAMANHO, A SALA ABRE ──
+  // O Player Fit da Poki reprovou cinco vezes com ~21% acima de 3 min (o critério pede 25%), e o
+  // diagnóstico medido é DENSIDADE: um celular em pé enxerga 0,47% do mapa, o que dava 0,15 outros
+  // planetas na tela contra os 0,67 do agar.io. Esta é a alavanca mais direta disso, e ela precisa ser
+  // ajustável OLHANDO o painel de Retenção — não a cada deploy.
+  // ⚠️ `BOT_SEED` acima de `ROOM.BOTS` não quebra nada (o laço de `topUpBots` para no alvo), mas a cota
+  // sai truncada: a sala abre com `ROOM.BOTS` e o enchimento gradual fica sem o que fazer.
+  // ⚠️ A soma dos dois `SEED_MIX` tem que caber em `BOT_SEED` — o que sobra é a ISCA (o tier comível), e
+  // ela é a razão de a sala cheia valer alguma coisa: sem isca, 81% das primeiras vidas terminam sem um
+  // abate. Somando MAIS que a semente, a isca simplesmente deixa de existir, em silêncio.
+  num('sala','ROOM.BOT_SEED','Preenchimentos com que a sala ABRE','bots','server',0,40,1,ROOM,'BOT_SEED'),
+  // ⚠️ CHAVE COM ÍNDICE, e ela funciona porque as fábricas só fazem `obj[campo]`: `SEED_MIX` é um ARRAY,
+  // e passá-lo como `obj` com o índice no lugar do campo não pede mecanismo novo. O ponto na chave só
+  // teria significado em escopo 'wire' (`aplicaWire` faz `key.split('.')`) — estas são 'server', e
+  // nenhuma pode virar 'wire' sem antes ganhar raiz em RAIZES_WIRE (game/index.js).
+  num('sala','ROOM.SEED_MIX.0','Gigantes na semente','bots','server',0,4,1,ROOM.SEED_MIX,0),
+  num('sala','ROOM.SEED_MIX.1','Médios na semente','bots','server',0,10,1,ROOM.SEED_MIX,1),
+  // ⚠️ AS DUAS FAIXAS NÃO SE CRUZAM, pelo precedente de AOI_PAD/AOI_PAD_OUT logo acima: elas escrevem nos
+  // dois lados do MESMO array, e invertidas o `rng.int(a,b)` de `_agendaBot` devolve um tick ABAIXO de
+  // `a` — o relógio da chegada vence no PASSADO e entra um preenchimento por tick.
+  num('sala','ROOM.BOT_JOIN_MIN_S','Espera mínima entre duas chegadas','segundos','server',1,6,1,ROOM.BOT_JOIN_TICKS,0,
+    {para:s=>Math.round(s*TICK_HZ),de:t=>Math.round(t/TICK_HZ)}),
+  num('sala','ROOM.BOT_JOIN_MAX_S','Espera máxima entre duas chegadas','segundos','server',7,40,1,ROOM.BOT_JOIN_TICKS,1,
+    {para:s=>Math.round(s*TICK_HZ),de:t=>Math.round(t/TICK_HZ)}),
   // ── OS DOIS TETOS DO "JOGAR (AUTO)" ──
   // Estes valem NA HORA (não são copiados por sala nenhuma): quem os lê são `matchmaking.escolheSala` e
   // `RoomManager.findOrCreateRoom`, a cada entrada. São o freio do agrupamento — sem eles a sala mais

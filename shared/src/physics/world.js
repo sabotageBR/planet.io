@@ -68,6 +68,11 @@ const PLAYER_MARGIN=300,PLAYER_SAFE=1500,AST_MARGIN=200,BELT_MARGIN=ASTEROID.BEL
 // aritmética — as 40 tentativas falham SEMPRE e a mecânica inteira nunca roda (medido: 0 acertos em 200).
 // Dos DEMAIS o 1500 continua sendo cobrado inteiro; da âncora se cobra só não nascer em cima dela.
 const PLAYER_SPAWN_NEAR_MAX_R=PLAYER.START_R*5,PLAYER_SPAWN_NEAR_R=360,PLAYER_SPAWN_NEAR_MIN=220;
+// SPAWN_ISCA: sem NENHUM humano candidato, vale nascer ao lado de um preenchimento que eu ENGULO. É o que
+// faz a sala cheia (ROOM.BOT_SEED) chegar à tela de quem entra — sem ela, `_playerSpot` devolve null em
+// toda sala recém-aberta (lá todo mundo é bot) e o nascimento cai no sorteio cego, a 1500 px de todos.
+// Fica aqui, ao lado das outras três, e não em constants.js: é o mesmo bloco de decisão.
+const SPAWN_ISCA=true;
 // Powerups: tabela CUMULATIVA de pesos dentro de FOOD.POWER_P (POWERUP.DROP), exatamente como a das armas.
 // Eram dois tipos com peso igual; hoje são seis, e dois deles são RAROS — peso igual faria "raro" ser só
 // uma palavra no comentário. ⚠️ Um sorteio ponderado tem que gastar UM `rng.next()`, como o rollWeapon:
@@ -372,22 +377,37 @@ export class World{
    * ninguém nascer dentro da boca de alguém, e uma peça que não me engole não é perigo — é companhia, que é
    * o que esta função foi escrita para arranjar. Cobrando os 1500 de todo mundo o predicado reprovava as 40
    * tentativas em ~2/3 das salas cheias, pelo tamanho do disco de amostragem.
-   * ⚠️ Só GENTE (bot já está em toda sala, não é isso que falta) e só de porte PEQUENO
-   * (`PLAYER_SPAWN_NEAR_MAX_R`): nascer colado num gigante é nascer morto, o oposto do que isto existe
-   * para fazer — e como só peça pequena qualifica, um jogador estabelecido nunca vira alvo, o que também
-   * fecha de graça o risco de virar "spawn camping" (o candidato tem que estar ele mesmo começando).
+   * ⚠️ GENTE PRIMEIRO, e só de porte PEQUENO (`PLAYER_SPAWN_NEAR_MAX_R`): nascer colado num gigante é
+   * nascer morto, o oposto do que isto existe para fazer — e como só peça pequena qualifica, um jogador
+   * estabelecido nunca vira alvo, o que também fecha de graça o risco de virar "spawn camping".
+   * ⚠️ MAS "SÓ GENTE" ERA UM BURACO, e ele anulava a sala cheia inteira: numa sala recém-aberta TODO
+   * mundo é preenchimento, então a lista de âncoras vinha VAZIA — sempre —, a função devolvia `null`, o
+   * berçário não tinha cratera nenhuma no tick 0 e o nascimento caía no sorteio CEGO, que cobra
+   * `PLAYER_SAFE` de todas as peças. Ou seja: encher a sala com 13 planetas punha o novato garantidamente
+   * a 1500 px de todos eles. O segundo balde é a ISCA — preenchimento que EU ENGULO (`pc.r·EAT.RATIO <=
+   * r`), nunca um que me engole —, consultado só quando não há humano candidato.
+   * ⚠️ O que a isca entrega é PRESENÇA e uma perseguição, não um abate: `vmax ∝ r^-0,449` faz a isca ser
+   * mais RÁPIDA que o novato, e `BOT.FLEE_DIST` a faz fugir. Quem fecha a perseguição é o salto, e o
+   * portão dele é `SPLIT.MIN_R` (tunable). Prometer abate aqui seria mentir.
+   * ⚠️ Ela não vira spawn camping pela mesma razão do balde de cima, e mais uma: bot não acampa.
+   * ⚠️ CONSUMO DE RNG: quando há humano candidato o caminho é byte a byte o de antes. Quando NÃO havia,
+   * antes se saía sem gastar um `next()` e agora se gasta o sorteio da isca — o stream do mundo desloca
+   * para todo nascimento em sala só de bots. Não toca fio nem `predict.js` (nascimento não é predito).
    * ⚠️ Mesmas guardas de `_novaSpot`: bot não é atraído, e BR nem passa por aqui (x/y explícitos no anel).
    */
   _playerSpot(ps,r){
     if(ps.isBot||this.zoneNow())return null;
-    const cand=[];
+    const cand=[],iscas=[],rEngulo=r/EAT.RATIO;
     for(const pc of this.pieces){
-      if(pc.dead||pc.owner===ps.slot||pc.r>PLAYER_SPAWN_NEAR_MAX_R)continue;
+      if(pc.dead||pc.owner===ps.slot)continue;
+      if(pc.r>PLAYER_SPAWN_NEAR_MAX_R)continue;   // grande demais: nem âncora, nem isca
       const o=this.players.get(pc.owner);
-      if(!o||o.isBot||!o.alive)continue;
-      cand.push(pc);}
-    if(!cand.length)return null;
-    const pc=cand[Math.floor(this.rng.next()*cand.length)];
+      if(!o||!o.alive)continue;
+      if(!o.isBot)cand.push(pc);
+      else if(SPAWN_ISCA&&pc.r<=rEngulo)iscas.push(pc);}
+    const lista=cand.length?cand:iscas;
+    if(!lista.length)return null;
+    const pc=lista[Math.floor(this.rng.next()*lista.length)];
     // ⚠️ As peças NÃO vão como lista de `_farSpot`: aquele argumento cobra a MESMA distância mínima de
     // todo mundo, e aqui a âncora é ela própria uma peça — ver o comentário de PLAYER_SPAWN_NEAR_MIN.
     // O predicado faz a mesma varredura com DUAS réguas: a âncora responde por NEAR_MIN, o resto do mapa

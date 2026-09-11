@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 process.env.LOG_LEVEL='silent';
 const {Room}=await import('../src/rooms/Room.js');
-const {ROOM,MODE,TICK_HZ,PLAYER}=await import('@warspace/shared/constants.js');
+const {ROOM,MODE,TICK_HZ,PLAYER,EAT}=await import("@warspace/shared/constants.js");
 const {setR}=await import('@warspace/shared/physics/body.js');
 const {World}=await import('@warspace/shared/physics/world.js');
 
@@ -19,22 +19,27 @@ const sala=(bots=15,extra={})=>new Room({code:'TST0',shard:0,seed:7,hooks:null,l
 const salaDono=(priv,bots=15)=>sala(bots,{private:priv,hostUserId:53,hostNick:'dono'});
 const anda=(r,ticks)=>{for(let i=0;i<ticks;i++)r.step();};
 
+const ALVO=ROOM.BOT_SEED+20;   // a sala dos testes de RITMO: o alvo tem que sobrar acima da semente
+
 test('abre com o punhado inicial, não com a sala cheia', () => {
-  const r=sala(15); r.start();
+  const r=sala(ALVO); r.start();
   assert.equal(r.sim.botCount(),ROOM.BOT_SEED,'a porta abre com BOT_SEED');
-  assert.ok(ROOM.BOT_SEED<15,'e o alvo é bem maior que o punhado');
+  assert.ok(ROOM.BOT_SEED<ALVO,'e o alvo é maior que o punhado');
 });
 
 test('vai enchendo aos poucos: meio minuto não enche a sala', () => {
-  const r=sala(15); r.start();
+  const r=sala(ALVO); r.start();
   const antes=r.sim.botCount();
   anda(r,ROOM.BOT_JOIN_TICKS[1]+1);          // o MAIOR intervalo possível: aí alguém já entrou com certeza
   assert.ok(r.sim.botCount()>antes,'passado um intervalo, alguém entrou');
   anda(r,30*TICK_HZ);
   // O intervalo é sorteado, então a conta é de RITMO, não de contagem exata: em 30 s cabem no máximo
-  // 30/6 = 5 chegadas. O que importa é que a sala AINDA não esteja cheia — se estivesse, a chegada
+  // `30/MIN` chegadas. O que importa é que a sala AINDA não esteja cheia — se estivesse, a chegada
   // gradual não estaria acontecendo, e o jogador veria a mesma multidão instantânea de antes.
-  assert.ok(r.sim.botCount()<15,`meio minuto depois ainda não encheu (tem ${r.sim.botCount()})`);
+  // ⚠️ O teto sai do INTERVALO declarado, nunca de um número cravado: ele é tunable (`BOT_JOIN_MIN_S`),
+  // e um 6 escrito à mão aqui quebraria o teste no dia em que alguém apertasse o ritmo no painel.
+  const teto=ROOM.BOT_SEED+Math.ceil(30*TICK_HZ/ROOM.BOT_JOIN_TICKS[0])+1;
+  assert.ok(r.sim.botCount()<Math.min(ALVO,teto),`meio minuto depois ainda não encheu (tem ${r.sim.botCount()})`);
   assert.ok(r.sim.botCount()>=antes+1,'mas cresceu');
 });
 
@@ -86,15 +91,28 @@ const raios=r=>[...r.sim.players.values()].filter(p=>p.isBot)
   .map(p=>{const pc=r.sim.world.piecesOf(p.slot)[0];return pc?pc.r:0;});
 const [GIG,MED]=ROOM.SEED_R;
 
-test('a sala abre EM ANDAMENTO: gigante, médio e pequeno na semente', () => {
-  const r=sala(15); r.start();
+// ⚠️ ESTE TESTE TROCOU DE REGRA, e a troca é o 1.14 inteiro num lugar só. Ele afirmava que "o pequeno
+// não pode ser a MAIORIA da semente" — a regra de produto "a sala parece já em andamento", escrita quando
+// a semente tinha 6. Mas "parecer em andamento" e "ter o que comer" são objetivos DIFERENTES, e o Player
+// Fit reprova pelo segundo: 81% das primeiras vidas terminam sem um único abate, porque o "pequeno" é
+// `PLAYER.BOT_R` [24,58] e quem nasce com r=30 só engole até 26,1 — 6% daquela faixa.
+// Agora a semente tem um terceiro tier (a ISCA) e o teste cobra as DUAS coisas.
+test('a sala abre EM ANDAMENTO e COM O QUE COMER', () => {
+  const r=sala(ALVO); r.start();
   const rs=raios(r);
   assert.equal(rs.length,ROOM.BOT_SEED,'a semente inteira nasceu no start');
-  assert.ok(rs.some(x=>x>=GIG[0]&&x<=GIG[1]),`nenhum gigante em ${rs}`);
-  assert.ok(rs.some(x=>x>=MED[0]&&x<=MED[1]),`nenhum médio em ${rs}`);
-  assert.ok(rs.some(x=>x<=PLAYER.BOT_R[1]),`nenhum pequeno em ${rs}`);
-  // e o pequeno é MINORIA: "alguns gigantes, outros médios e alguns poucos pequenos"
-  assert.ok(rs.filter(x=>x<=PLAYER.BOT_R[1]).length*2<rs.length,'pequeno não pode ser a maioria');
+  // ⚠️ Por ÍNDICE, nunca por raio: as faixas de gigante [140,180] e médio [80,150] se SOBREPÕEM, então
+  // classificar pelo tamanho conta um médio de 148 como gigante. A cota é do `botSpawnR`, e é ela que
+  // este teste tem que ler.
+  const gig=rs.slice(0,ROOM.SEED_MIX[0]),med=rs.slice(ROOM.SEED_MIX[0],ROOM.SEED_MIX[0]+ROOM.SEED_MIX[1]);
+  const iscas=rs.slice(ROOM.SEED_MIX[0]+ROOM.SEED_MIX[1]);
+  assert.ok(gig.every(x=>x>=GIG[0]&&x<=GIG[1]),`gigante fora da faixa em ${gig}`);
+  assert.ok(med.every(x=>x>=MED[0]&&x<=MED[1]),`médio fora da faixa em ${med}`);
+  // A CONDIÇÃO NOVA: a isca tem que ser comível por quem acabou de nascer. É o que faz a sala cheia
+  // chegar à tela — sem ela, encher de bots só põe 13 planetas que o novato não pode tocar.
+  const comivel=x=>x*EAT.RATIO<=PLAYER.SPAWN_R;
+  assert.ok(iscas.length>=3,`só ${iscas.length} iscas: o aceite pede pelo menos 3 comíveis`);
+  assert.ok(iscas.every(comivel),`isca que o novato NÃO engole em ${iscas.map(Math.round)}`);
 });
 
 test('a cota não depende de sorte: toda sala abre em andamento', () => {
@@ -109,9 +127,9 @@ test('a cota não depende de sorte: toda sala abre em andamento', () => {
 });
 
 test('a mistura se esgota: quem chega depois da janela entra pequeno', () => {
-  // sala com alvo GRANDE de propósito: com 15 a sala enche antes dos 2 min da janela e não sobra
-  // ninguém para chegar depois — que é justamente o caso que este teste precisa observar.
-  const r=sala(25); r.start();
+  // sala com alvo GRANDE de propósito: com o alvo colado na semente a sala enche antes dos 2 min da
+  // janela e não sobra ninguém para chegar depois — que é justamente o caso que este teste observa.
+  const r=sala(ROOM.BOT_SEED+25); r.start();
   anda(r,ROOM.SEED_WINDOW_TICKS+1);
   const antes=r.sim.botCount();
   assert.ok(antes>ROOM.BOT_SEED,'a chegada gradual aconteceu durante a janela');
@@ -376,4 +394,27 @@ test('o lobby do Battle Royale não segue este alvo: lá o preenchimento é o ad
   const r=new Room({code:'TST1',shard:0,seed:7,hooks:nada,log:mudo,metrics:{inc(){},add(){}},config:{},mode:MODE.BR,teamSize:1});
   for(let i=0;i<10;i++)humano(r,i);
   assert.equal(r.botAlvo(),r.botCount,'o alvo do BR é o do modo, não o que falta');
+});
+
+// ── NINGUÉM JOGA SOZINHO ─────────────────────────────────────────────────────
+// A chegada é gradual ACIMA do piso, nunca abaixo dele. O buraco que isto fecha é a sala que esvaziou de
+// preenchimento (o `_trimTick` a limpou enquanto ela estava cheia de gente) e DEPOIS esvaziou de gente: o
+// próximo que entrar ficava com UMA bola no mapa por 3 a 7 s — e o Player Fit mede exatamente esse minuto.
+test('sala que esvaziou não entrega um mapa vazio ao próximo que entrar', () => {
+  const r=salaG(ROOM.BOT_SEED+10); r.start();
+  anda(r,60*TICK_HZ*3);
+  r.trimBots(99);                                    // o trim levou todos (o caso da sala cheia de gente)
+  assert.equal(r.sim.botCount(),0,'a sala ficou sem preenchimento nenhum');
+  humano(r,1);                                       // e agora chega uma pessoa
+  r.step();                                          // UM tick: sem o piso, ela esperaria BOT_JOIN_TICKS
+  assert.ok(r.sim.botCount()>0,'alguém apareceu no mesmo tick — o mapa não fica vazio na frente dela');
+  assert.ok(r.sim.botCount()+r.humanCount>=ROOM.BOT_SEED,'e a sala volta ao piso de uma vez');
+});
+
+test('o piso NÃO vale na sala do dono: ela existe para esperar os amigos', () => {
+  const r=sala(ROOM.BOT_SEED+10,{private:true,hostUserId:53,hostNick:'dono',hooks:nada}); r.start();
+  assert.equal(r.botSeed,0,'sala do dono nasce sem semente');
+  humano(r,1);
+  anda(r,TICK_HZ*10);
+  assert.equal(r.sim.botCount(),0,'encher de bot seria tirar a vaga de quem foi convidado');
 });
