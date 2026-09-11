@@ -26,6 +26,12 @@ export async function criar({ pausou, retomou }) {
   try { if (s.gameLoadingStart) s.gameLoadingStart(); } catch { /* nunca derruba o jogo */ }
   return {
     carregou() { const g = sdk(); if (g && g.gameLoadingFinished) g.gameLoadingFinished(); },
+    // ⚠️ O PREROLL DA POKI NUNCA ACONTECE, e isso é DELES, não nosso. Medido no console do SDK real:
+    // `commercialBreak not possible before gameplayStart` — eles recusam qualquer comercial antes do
+    // primeiro `gameplayStart`, e o nosso preroll sai em `play()`, que é justamente antes. A fachada não
+    // percebe (o `commercialBreak` resolve normalmente) e o jogo segue; o efeito prático é que a PRIMEIRA
+    // partida de cada carga entra sem anúncio. Não há o que consertar aqui: inverter a ordem é
+    // `gameplayStart` sem jogo, que eles cobram por escrito. Os midrolls do respawn funcionam.
     jogoComecou() { const g = sdk(); if (g && g.gameplayStart) g.gameplayStart(); },
     jogoParou() { const g = sdk(); if (g && g.gameplayStop) g.gameplayStop(); },
     anuncio() {

@@ -24,23 +24,36 @@ export const DICA={MAX:3,DUR_MS:5000,GAP_MS:12000};
 export const DICA0={n:0,ate:0,prox:0};
 
 /**
- * Há presa ao alcance de UM salto? Pura, para poder ser testada sem DOM (o molde de `game/quality.js`).
- *
- * Duas condições, e as duas são do jogo: a peça tem que ser ENGOLÍVEL (`EAT.RATIO` de raio) e estar dentro
- * de `SPLIT.DIST`, que é literalmente a distância que o arremesso percorre. Fora disso a dica mentiria.
+ * Há peça de terceiro ENGOLÍVEL à vista? Pura, para poder ser testada sem DOM (o molde de
+ * `game/quality.js`). É o laço de `temPresa` SEM o portão do split — que é o que a etapa 2 da missão
+ * precisa: comer alguém menor não pede `SPLIT.MIN_R`, pede só ser maior.
  *
  * @param {{x:number,y:number,r:number}|null} me a MAIOR peça própria
  * @param {Array<{x:number,y:number,r:number}>} alvos peças de terceiros (sem aliados, sem as minhas)
  * @param {number} [alcance]
  */
-export function temPresa(me,alvos,alcance=SPLIT.DIST){
-  if(!me||me.r<SPLIT.MIN_R)return false;   // não posso dividir: não há o que dizer
+export function temComivel(me,alvos,alcance=Infinity){
+  if(!me)return false;
   const lim=me.r/EAT.RATIO,d2=alcance*alcance;
   for(let i=0;i<alvos.length;i++){const a=alvos[i];
     if(!(a.r<=lim))continue;               // não engulo: perseguir isso não é a lição
     const dx=a.x-me.x,dy=a.y-me.y;
     if(dx*dx+dy*dy<=d2)return true;}
   return false;}
+
+/**
+ * Há presa ao alcance de UM salto? Duas condições, e as duas são do jogo: a peça tem que ser ENGOLÍVEL
+ * (`EAT.RATIO` de raio) e estar dentro de `SPLIT.DIST`, que é literalmente a distância que o arremesso
+ * percorre. Fora disso a dica mentiria.
+ *
+ * @param {{x:number,y:number,r:number}|null} me @param {Array<{x:number,y:number,r:number}>} alvos
+ * @param {number} [alcance]
+ */
+export function temPresa(me,alvos,alcance=SPLIT.DIST){
+  // ⚠️ `SPLIT.MIN_R` LIDO AQUI, a cada chamada, e não hoistado para fora na refatoração: ele é 'wire' e o
+  // `aplicaWire` do JSON `room` o reescreve em cima do objeto de constants.js.
+  if(!me||me.r<SPLIT.MIN_R)return false;   // não posso dividir: não há o que dizer
+  return temComivel(me,alvos,alcance);}
 
 /**
  * O passo da dica. Pura pelo mesmo motivo de `ui/roundClock.js`: é a decisão que precisa ser conferida.
@@ -60,3 +73,60 @@ export function passoDica(est,ctx,agora){
   if(agora<est.ate)return{est,visivel:true};                     // já está no ar: não reavalia a presa
   if(est.n>=DICA.MAX||agora<est.prox||!ctx.presa)return{est,visivel:false};
   return{est:{n:est.n+1,ate:agora+DICA.DUR_MS,prox:agora+DICA.DUR_MS+DICA.GAP_MS},visivel:true};}
+
+// ── A MISSÃO DE SESSÃO 0 ──────────────────────────────────────────────────────
+// A dica do dividir ensina a ÚLTIMA coisa que um novato precisa aprender, e ela só aparece para quem já
+// chegou ao portão (`SPLIT.MIN_R`) — ou seja, para um terço deles. As duas etapas antes dela são as que o
+// resto nunca recebe: "coma as pedras" e "coma o planeta pequeno".
+//
+// ⚠️ A INVARIANTE É A FORMA DO RETORNO: `banda` é uma STRING SÓ. "No máximo uma faixa de texto por vez"
+// deixa de ser disciplina de quem chama e passa a ser impossível de violar — que é o pedido literal.
+// ⚠️ `passoDica` e `temPresa` NÃO mudaram uma linha: a etapa 3 é a dica de hoje, DELEGADA, e o teste que
+// já existe continua sendo a prova disso.
+// ⚠️ Nada aqui é tutorial: sem modal, sem bloquear input, sem `alert`. A faixa mora no rodapé do HUD e
+// some sozinha.
+
+/** As etapas, na ordem. `FIM` nunca é escrito — quem já viveu uma vida entra direto em `SPLIT`. */
+export const ETAPA={FIM:0,COMER:1,PRESA:2,SPLIT:3};
+/** Quantas pedras fecham a etapa 1, e quanto o "consegui" fica no ar antes de a próxima subir. */
+export const MISSAO={COMIDAS:8,SOBRA_MS:3000};
+export const MISSAO0={etapa:ETAPA.COMER,ate:0,feito:0,desde:0,dica:DICA0};
+/** Quem já viveu uma vida NESTA sessão entra na etapa 3: comer grão e comer quem é menor ele já sabe. */
+export const MISSAO_VETERANO={etapa:ETAPA.SPLIT,ate:0,feito:0,desde:0,dica:DICA0};
+
+/** Sobe (ou mantém) a faixa `id`, carimbando `desde` só quando ela estava FORA — é o `key` do React. */
+const sobe=(est,id,agora,extra)=>({est:{...est,...extra,desde:est.desde||agora},banda:id,festa:0});
+
+/**
+ * O passo da missão. Pura, como `passoDica` — e ela ENVOLVE o `passoDica`, não o substitui.
+ *
+ * @param {{etapa:number,ate:number,feito:number,desde:number,dica:{n:number,ate:number,prox:number}}} est
+ * @param {{vivo:boolean,comidas:number,comeuAlguem:boolean,comivel:boolean,pode:boolean,presa:boolean}} ctx
+ * @param {number} agora ms monotônicos
+ * @returns {{est:object,banda:""|"comer"|"presa"|"split",festa:number}}
+ */
+export function passoMissao(est,ctx,agora){
+  // morto, pausado, fora da sala: apaga tudo e não gasta aparição (a mesma regra do `pode` de passoDica)
+  if(!ctx.vivo)return{est:{...est,ate:0,feito:0,desde:0,dica:{...est.dica,ate:0}},banda:"",festa:0};
+  if(est.etapa===ETAPA.COMER){
+    if(est.feito)return agora>=est.feito
+      // ⚠️ ATALHO: quem já comeu alguém enquanto completava as pedras pula a etapa 2 — ela existe para
+      // ensinar isso, e ensinar o que já foi feito é ruído.
+      ? passoMissao({...est,etapa:ctx.comeuAlguem?ETAPA.SPLIT:ETAPA.PRESA,feito:0,desde:0},ctx,agora)
+      : sobe(est,"comer",agora);
+    if(ctx.comidas>=MISSAO.COMIDAS)return{...sobe(est,"comer",agora,{feito:agora+MISSAO.SOBRA_MS}),festa:ETAPA.COMER};
+    return sobe(est,"comer",agora);}
+  if(est.etapa===ETAPA.PRESA){
+    if(est.feito)return agora>=est.feito
+      ? passoMissao({...est,etapa:ETAPA.SPLIT,feito:0,desde:0},ctx,agora)
+      : sobe(est,"presa",agora);
+    if(ctx.comeuAlguem)return{...sobe(est,"presa",agora,{feito:agora+MISSAO.SOBRA_MS}),festa:ETAPA.PRESA};
+    // ⚠️ PISO DE TELA (`ate`): a presa cruza a borda da AOI o tempo todo, e sem ele a faixa piscaria a
+    // 8 Hz. É o mesmo papel do `est.ate` de `passoDica`.
+    if(agora<est.ate)return sobe(est,"presa",agora);
+    if(ctx.comivel)return sobe(est,"presa",agora,{ate:agora+DICA.DUR_MS});
+    return{est:{...est,desde:0},banda:"",festa:0};}
+  // etapa 3: a dica do dividir, inteira e intacta
+  const p=passoDica(est.dica,{pode:ctx.pode,presa:ctx.presa},agora);
+  return p.visivel?sobe({...est,dica:p.est},"split",agora)
+                  :{est:{...est,dica:p.est,desde:0},banda:"",festa:0};}

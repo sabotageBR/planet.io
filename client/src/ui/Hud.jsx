@@ -243,7 +243,12 @@ export default function Hud() {
       <div className={"cd" + (ejectReady ? " ready" : "")} id="cd-eject" style={{ "--p": (1 - (h.ejectCd || 0)).toFixed(2) }}><i className="cd-fill"></i><span>{LB.eject}</span><em>{kEject}</em></div>
     </div>
     <div id="touch">
-      <button className={"tbtn" + (splitReady ? "" : " cd") + (h.dica && h.dica.dedo ? " dica" : "")} id="t-split" {...press("split")}><span>{LB.split}</span></button>
+      {/* ⚠️ `id === "split"` NÃO É DECORAÇÃO. A classe `.dica` liga o pulso do botão de DIVIDIR, e enquanto
+          a única dica do jogo era a do split isto acertava por acidente. Com as três etapas da missão, a
+          faixa "coma as pedras" faria o botão DIVIDIR pulsar para um novato de r=30 — anunciando um
+          comando que o servidor recusa (`SPLIT.MIN_R`), que é pior que não ensinar nada e é exatamente o
+          erro que o bloco de game/dica.js existe para prevenir. */}
+      <button className={"tbtn" + (splitReady ? "" : " cd") + (h.dica && h.dica.dedo && h.dica.id === "split" ? " dica" : "")} id="t-split" {...press("split")}><span>{LB.split}</span></button>
       <button className={"tbtn" + (ejectReady ? "" : " cd")} id="t-eject" {...press("eject")}><span>{LB.eject}</span></button>
       <button className={"tbtn" + (armed ? "" : " empty") + (fireCd ? " cd" : "")} id="t-fire" {...press("fire")}><span>{LB.fire}</span><b id="t-ammo">{ammo}</b>{fireCd ? <em className="fire-cd">{fireCd}</em> : null}</button>
       <button className={"tbtn talk" + (falando ? " on" : "") + (talkAviso === "cd" ? " cd" : "")} id="t-talk" {...press("talk")}><span>🎤</span></button>

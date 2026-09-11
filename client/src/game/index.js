@@ -46,7 +46,25 @@ import {createSnapshotBuffer} from "./state/SnapshotBuffer.js";
 import {createInterpolator} from "./state/Interpolator.js";
 import {createPredictor} from "./state/Predictor.js";
 import {createWorldView} from "./state/WorldView.js";
-import {passoDica,temPresa,DICA0} from "./dica.js";
+import {passoDica,temPresa,temComivel,passoMissao,ETAPA,DICA0,MISSAO0,MISSAO_VETERANO} from "./dica.js";
+
+// ── A MISSÃO SÓ VALE NA PRIMEIRA VIDA DA SESSÃO ──────────────────────────────
+// O pedido é o OPOSTO do que `dicaEst` faz: ela zera a cada vida (join/leave/`{t:"alive"}`) justamente
+// para que "quem morreu sem dividir volte a ser ensinado". As duas coisas convivem porque o zeramento por
+// vida CONTINUA sendo o mecanismo — o que muda é o VALOR INICIAL.
+// ⚠️ `sessionStorage` e não `localStorage`: sessão aqui é a carga da aba, a mesma unidade de
+// `portal/sessao.js`. Com `localStorage` o veterano de ontem nunca mais veria nada, o que é outra
+// decisão — e uma que o jogador não consegue desfazer.
+// ⚠️ E ele LANÇA em janela anônima e em origem opaca (o zip num iframe sandboxed). Sem storage a marca
+// não existe e a missão reaparece na 2ª vida: é a degradação aceitável; uma exceção não tratada não é.
+// É o mesmo cuidado de `net/Connection.js` e de `admin/api.js`.
+// ⚠️ O veterano entra na ETAPA 3, nunca em "fim": as etapas 1 e 2 ensinam o óbvio para quem já viveu, mas
+// a dica do dividir está em produção com dado medido atrás dela (64,6% nunca chegam ao portão) —
+// desligá-la a partir da 2ª vida seria regredir comportamento já medido.
+const MISSAO_KEY="warspace_missao_v1";
+const missaoFeita=()=>{try{return sessionStorage.getItem(MISSAO_KEY)==="1";}catch{return false;}};
+const missaoZero=()=>missaoFeita()?MISSAO_VETERANO:MISSAO0;
+const fimDaVida=()=>{try{sessionStorage.setItem(MISSAO_KEY,"1");}catch{/* anônima/opaca: a missão volta */}};
 import {createRenderer} from "./renderer/Renderer.js";
 import {createCamera} from "./renderer/Camera.js";
 import {createPointer} from "./input/Pointer.js";
@@ -296,7 +314,17 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(eid!=null){pendingEat.delete(e.id);for(const p of view.pieces)if(p.id===eid){f.tx=p.rx;f.ty=p.ry;f.tr=p.rr;break;}}
       renderer.fx.add("vanish",f);}}
     else if((e.kind===KIND.FOOD||e.kind===KIND.EJECT)&&e.reason===REMOVE.EATEN){const pl=e.kind===KIND.EJECT?view.playerOf(e.owner):null;renderer.fx.spark(e.rx,e.ry,e.rr,pl?pl.skin.color:null);
-      if(own0.some(p=>Math.hypot(p.rx-e.rx,p.ry-e.ry)<p.rr+e.rr+18))audio.play("food",{mine:true,ladder:true});}}   // só o grão que EU comi faz barulho — e a fila sobe a escada
+      // ⚠️ O CONTADOR DE PEDRAS DA MISSÃO SAI DAQUI, do MESMO `if` que toca o som — e não é conveniência:
+      // não existe contagem de comida em lugar nenhum do protocolo (o `self` é de tamanho fixo e
+      // `EVENT.EAT` é só de peça de JOGADOR), e esta linha já é a única que sabe dizer "fui EU que comi
+      // este grão". Separar as duas produziria uma faixa que completa sem o jogador ter ouvido nada.
+      // ⚠️ Massa e score foram descartados como proxy, com conta: `EAT.FOOD_GAIN` sobre grãos de 36 a 225
+      // de massa, DOBRADO pelo banquete de nascença, dá 8 grãos valendo de 46 a 576 — 12,5× de
+      // espalhamento sobre uma base de 900. E ~12,5% dos grãos (munição, powerup) não dão massa nenhuma,
+      // enquanto `PLAYER.DECAY` faz a massa andar PARA TRÁS.
+      // ⚠️ `own0` é do frame ANTERIOR (≤16 ms, ≤7 px): já é assim para o som, não é regressão nova.
+      if(own0.some(p=>Math.hypot(p.rx-e.rx,p.ry-e.ry)<p.rr+e.rr+18)){audio.play("food",{mine:true,ladder:true});
+        if(e.kind===KIND.FOOD)comidas++;}}}   // só o grão que EU comi faz barulho — e a fila sobe a escada
   // ── texturas: aquece as skins da sala (tiers 128/256) e a própria (128/256/512, variante isMe) ──
   function warmSkins(){if(!renderer||!joined)return;const skins=[];let me=null;
     for(const pl of view.players.values()){if(!pl.skin)continue;if(pl.slot===view.mySlot)me=pl.skin;else if(!skins.includes(pl.skin))skins.push(pl.skin);}
@@ -452,6 +480,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     else if(m.t==="dead"){dead=true;input.setHold(false);mic.cancel();aplicaRadar();
       // A contagem do respawn nasce DESARMADA: quem morreu e não deu sinal de vida não renasce mais sozinho.
       morte=passoMorte(morte,{tipo:"morte",now:performance.now()});
+      fimDaVida();   // a missão de sessão 0 é da PRIMEIRA vida: daqui em diante só a dica do dividir
       pushHud(performance.now());
       // QUEM ME MATOU, com planeta. O `bySlot` já existia no `info` do servidor e parava no `Room.js`; com
       // ele o cliente resolve skin e nível pelo PLAYERS (que traz a sala inteira, não só a AOI) e a tela de
@@ -468,7 +497,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // em ROOM_EXPIRED.
     else if(m.t==="alive"){dead=false;specSlot=-1;spec=null;mapOn="";minimap.setView("",-1);minimap.show(false);
       morte=passoMorte(morte,{tipo:"vida",now:performance.now()});if(joy)joy.reset();   // o rumo travado é da vida ANTERIOR: sem isto o planeta nasce correndo
-      dividiu=false;dicaEst=DICA0;   // vida nova, lição nova: quem morreu sem dividir volta a ser ensinado
+      dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();   // vida nova, lição nova: quem morreu sem dividir volta a ser ensinado
+      // ⚠️ mas a MISSÃO não: `missaoZero()` devolve o veterano se esta sessão já viveu uma vida (a marca
+      // foi escrita na morte, logo acima). O zeramento por vida continua sendo o mecanismo; o que muda é
+      // de onde ele parte — ver o bloco de MISSAO_KEY no topo.
       if(m.sessionId&&conn&&conn.session)conn.session.sessionId=m.sessionId;
       buffer.clear();predictor.reset();view.reset();input.reset();input.setHold(false);cam.reset();
       aplicaRadar();pushHud(performance.now());}
@@ -504,6 +536,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
           f.text=m.slotA!==SEM_SLOT?(L.nebula||"NEBULOSA PLANETÁRIA!"):(L.supernova||"SUPERNOVA!");}
         const mine=m.slotA===view.mySlot||m.slotB===view.mySlot;   // o que envolve a própria peça (já à frente) não espera
         const delay=mine?0:interp.delayMs;
+        // ⚠️ "COMI ALGUÉM" É ESTE EVENTO, e o sinal é exato: `Sim._ev(EVENT.EAT, …, e.killerSlot, …)`, ou
+        // seja `slotA` é QUEM COMEU. Ele sai para toda peça engolida (não só a última), então morder um
+        // pedaço de alguém dividido conta — que é o que se quer. E não há falso positivo: comer peça
+        // PRÓPRIA é `MERGE`, outro kind, e aliado nem é comível.
+        if(m.kind===EVENT.EAT&&m.slotA===view.mySlot)comeuAlguem=true;
         if(m.kind===EVENT.EAT){const eater=nearestPieceOf(m.slotA,m.x,m.y);   // absorção: a vítima é sugada para quem comeu, que dá um "gulp" e cresce
           if(eater){f.tx=eater.rx;f.ty=eater.ry;f.tr=eater.rr;pendingEat.set(m.extra,eater.id);renderer.planets.pop(eater.id,delay);}}
         else if(m.kind===EVENT.BH_SUCK){const h=nearestHole(m.x,m.y);   // espaguetificação: o planeta se estica de onde estava até a boca do buraco
@@ -603,9 +640,18 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   function nearestPieceOf(slot,x,y){let best=null,bd=Infinity;
     for(const e of view.pieces){if(e.owner!==slot)continue;const dx=e.rx-x,dy=e.ry-y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;best=e;}}
     return best;}
+  // ⚠️ UM `quit` DELIBERADO NÃO É UMA QUEDA DE CONEXÃO, e confundir os dois cria um LAÇO. `game.leave()`
+  // fecha o socket de propósito (sair da partida, ou o `leave(true)` que abre todo `join`), e o
+  // `Connection` avisa `closed` como avisaria uma queda de rede — indistinguível para quem ouve. No site
+  // isso era inofensivo porque quem sai muda de tela e o ramo do erro não pega; no PACOTE, onde sair é
+  // RE-ENTRAR (`sairDaPartida`), a tela continua em `game`: o fechamento da re-entrada era lido como
+  // queda, disparava outra re-entrada, e o Inspector da Poki mostrava `connect/match/fail` em rajada.
+  // A flag vive de `leave()` até a próxima conexão abrir — nada além disso a apaga.
+  let saindo=false;
   function onState(ev){if(ev.state==="connected"){game.resize();}
+    if(saindo&&(ev.state==="closed"||ev.state==="error"))return;
     if(onConnection)onConnection(ev);}
-  function connectWith(makeSocket){conn=createConnection({makeSocket,onJson,onBinary,onState,onOpenSend,onStale});conn.open();}
+  function connectWith(makeSocket){saindo=false;conn=createConnection({makeSocket,onJson,onBinary,onState,onOpenSend,onStale});conn.open();}
   // ⚠️ SHARD NOVO A CADA TENTATIVA, e é isso que tira o jogador de um pod ainda antigo durante um rollout:
   // sem código de sala o shard vem do /api/config, que é BALANCEADO entre os pods, então refazer a consulta
   // sorteia de novo. Com código de sala não há escolha (o shard é o 1º char do código) e só resta esperar
@@ -690,7 +736,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // um `{deadAt,armAt}` VENCIDO. Ele chegava à tela de morte pelo store com throttle antes do par novo
       // e disparava o respawn no primeiro frame: a tela não aparecia e o jogador reentrava no ato. Ver
       // `ui/deadClock.js`, que fecha o mesmo buraco do outro lado com o piso.
-      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;specSlot=-1;selfTick=0;espectador=!!spec;
+      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();specSlot=-1;selfTick=0;espectador=!!spec;
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null,spec:!!spec};
@@ -711,8 +757,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // indistinguível de uma queda de rede — a sessão fica em graça por NET.RESUME_MS segurando o slot, e
     // no lobby do battle royale isso põe um fantasma no mapa na largada. A reconexão automática não passa
     // por aqui (ela é do Connection, e volta pelo `resume`), então nada disso atrapalha quem só caiu.
-    leave(silent){if(conn){const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
-      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
+    leave(silent){if(conn){saindo=true;const c=conn;conn=null;try{c.sendJson({t:"quit"});}catch{}c.close();}if(local){local.stop();local=null;}
+      // ⚠️ `was` é obrigatório aqui: `join()` chama `game.leave(true)` na PRIMEIRA linha, e sem a guarda a
+      // própria entrada marcaria a sessão como "já viveu uma vida" — a missão nunca apareceria para
+      // ninguém, em silêncio.
+      if(joined)fimDaVida();
+      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -962,19 +1012,36 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // ⚠️ A varredura é sobre `view.pieces` (a AOI), que é o mesmo conjunto que o render já percorre, e roda
     // a 8 Hz junto do resto do HUD — não é laço novo no frame. Aliado sai fora: saltar em cima do
     // companheiro não é a lição.
-    let dica=null;{
+    // ⚠️ E AS DUAS ETAPAS ANTES DELA (a missão de sessão 0): "coma as pedras" e "coma o planeta pequeno".
+    // A decisão inteira mora em `passoMissao`, que DELEGA ao `passoDica` na etapa 3 — o laço aqui é o
+    // mesmo de antes e passa a produzir DOIS booleanos em vez de um: `comivel` (sem portão de split, para
+    // a etapa 2) e `presa` (com portão, para a 3). Nenhum custo novo por frame.
+    let dica=null,festa=0;{
       let me=null;
-      if(joined&&!dead&&!pausado&&!dividiu&&own0.length){
+      if(joined&&!dead&&!pausado&&own0.length){
         let big=own0[0];for(let i=1;i<own0.length;i++)if(own0[i].rr>big.rr)big=own0[i];
         me={x:big.rx,y:big.ry,r:big.rr};}
-      let presa=false;
+      let presa=false,comivel=false;
       if(me){const alvos=[];
         for(const q of view.pieces){if(q.isMe)continue;const pl=view.playerOf(q.owner);if(pl&&pl.ally)continue;
           alvos.push({x:q.rx,y:q.ry,r:q.rr});}
+        // sem alcance: `view.pieces` JÁ é a AOI, ou seja tudo o que está na lista está na tela dele
+        comivel=temComivel(me,alvos);
         presa=temPresa(me,alvos);}
-      const passo=passoDica(dicaEst,{pode:!!me,presa},now);
-      dicaEst=passo.est;
-      if(passo.visivel)dica={at:dicaEst.ate,dedo};}
+      // `dividiu` some só da etapa 3 (é a lição DELA), e por isso entra no `pode`, não no `vivo`
+      const passo=passoMissao(missaoEst,{vivo:!!me,comidas,comeuAlguem,comivel,pode:!!me&&!dividiu,presa},now);
+      missaoEst=passo.est;festa=passo.festa;
+      if(passo.banda)dica={id:passo.banda,at:missaoEst.desde,dedo};
+      // ⚠️ A FESTA SAI UMA VEZ por construção: `festa` só é diferente de zero no tick em que a etapa
+      // COMPLETA (nos seguintes o `feito` já é truthy e o ramo não repete). Sem flag no chamador.
+      // ⚠️ `combo` e não `firework`: aquele é a estrela com texto que já existe nos TRÊS temas e já aceita
+      // `f.text` do i18n; o firework dura 2,5 s e é o vocabulário exclusivo da VITÓRIA da rodada.
+      // ⚠️ `audio.play` e não `sfx()`: este é o motor, e `sfx` é o helper das telas React (outra instância).
+      // `achievement` já está no kit e é descrito lá como "a irmã menor do levelUp" — feita para não
+      // virar fanfarra repetida.
+      if(festa&&me&&renderer){const L=getLabels().fx||{};
+        renderer.fx.add("combo",{x:me.x,y:me.y,r:me.r,n:1,text:L.missao||"BOA!"},0);
+        audio.play("achievement",{mine:true,pitch:ESCADA[Math.min(festa-1,ESCADA.length-1)]});}}
     hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
       powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:s?s.autoDefN|0:0,zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,map:mapOn,clock:roundClock,
@@ -1035,7 +1102,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // A DICA DO DIVIDIR: `dividiu` é por VIDA e some no primeiro split — a lição foi aprendida. Zerado
   // nos MESMOS pontos que `morte`/`brMudo` (join/leave e `{t:"alive"}`), senão a vida seguinte herda
   // o estado da anterior e a dica nunca mais aparece. Ver game/dica.js.
-  let dividiu=false,dicaEst=DICA0;
+  let dividiu=false,dicaEst=DICA0,comidas=0,comeuAlguem=false,missaoEst=missaoZero();
   // ZOOM MANUAL (a roda). O fator é guardado CRU e reclampado todo frame pela faixa da massa do momento
   // (`clampZoom`): assim a faixa anda junto com o jogador e leva o fator com ela — quem estacionou no máximo
   // afastado continua no máximo enquanto cresce (a visão abre sozinha, sem degrau), e quem foi comido até o

@@ -30,6 +30,8 @@ export default {
   aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ NO GÁS", zoneShrinking: "O GÁS ESTÁ AVANÇANDO", zoneCloses: "gás fecha em",
   zoneWarnAt: "⚠ O GÁS FECHA EM {n}s!",
   // A DICA DO DIVIDIR: quem foge é sempre mais rápido, então o salto é o único jeito de alcançar.
+  hintEat: "Coma as pedras",
+  hintPrey: "Coma o planeta pequeno",
   hintSplit: "{k} para dividir e alcançar",
   hintSplitTouch: "toque em DIVIDIR para alcançar",
   admJoin: "🟢 {n} entrou no jogo", admJoinTitle: "warspace.io",
@@ -84,7 +86,7 @@ export default {
   // temas, porque a mesma string repetida em três arquivos diverge na primeira correção.
   // "Nebulosa planetária" é o nome certo do que sobra de uma estrela que morre SEM supernova de verdade —
   // e é exatamente o caso do atropelamento, o único que não larga prêmio (STAR.RAM_REWARD).
-  fx: { supernova: "SUPERNOVA!", nebula: "NEBULOSA PLANETÁRIA!", shield: "ESCUDO", combo: "COMBO {n}x" },
+  fx: { supernova: "SUPERNOVA!", nebula: "NEBULOSA PLANETÁRIA!", shield: "ESCUDO", combo: "COMBO {n}x", missao: "BOA!" },
   // ⚠️ Sem emoji: o ícone vinha do TEXTO (não há <i> nos botões da tela de morte) e o 🔄 competia com
   // o próprio rótulo num botão que já é o maior da tela.
   respawn: "DE NOVO!", newMatch: "OUTRA PARTIDA", brWatchHint: "Fique para ver o pódio no fim.", respawnArm: "Mexa o mouse ou toque na tela para renascer", toLobby: "Lobby", timeWord: "tempo", rankWord: "ranking diário", coinsEarned: "moedas ganhas",
