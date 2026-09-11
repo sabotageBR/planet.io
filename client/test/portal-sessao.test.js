@@ -204,23 +204,35 @@ test("a espera de ROUND.DEAD_DELAY_MS não produz evento nenhum a mais", () => {
   ]), ["start", "stop"]);
 });
 
-// ── O HANDSHAKE NÃO É GAMEPLAY ───────────────────────────────────────────────
-// O item 2 da auditoria do Player Fit pede `gameplayStart` no "primeiro input". Mover o gatilho para o
-// caminho de input criaria uma segunda verdade sobre "estou jogando" — o erro que já custou o `stop` da
-// morte. O que endereça o espírito dele sem isso é APERTAR o predicado: `play()` escreve `screen:"game"`
-// e `conn:"connecting"` no mesmo update, e entre esse instante e o `connected` (até `JOIN_TIMEOUT_MS`,
-// 3 s) o jogador não pode dar input nenhum — era playtime inflado, contado pelo painel deles.
+// ── O GAMEPLAY NÃO PODE SER REFÉM DO NOSSO SERVIDOR ──────────────────────────
+// Isto já foi o contrário: `ATIVO` cobrava `conn === "connected"` para não contar o handshake do join
+// (até `JOIN_TIMEOUT_MS`, 3 s) como playtime. A intenção era boa e o efeito foi grave — enquanto a
+// conexão não fechasse, o evento mais importante do SDK simplesmente NÃO EXISTIA. Medido em bancada com
+// um SDK instrumentado e o servidor fora: `gameLoadingStart` · `gameLoadingFinished` ·
+// `connect/match/fail`, e nada mais, nunca. No Inspector da Poki isso é o caso NORMAL: o Restart deles
+// recarrega o jogo enquanto a sessão anterior ainda segura o nick por `NET.RESUME_MS` (10 s), o join é
+// recusado três ou quatro vezes seguidas, e o checklist reprova em "Is a gameplayStart() event fired at
+// the start of gameplay?". A 1.13, que passava, não tinha esta condição.
+//
+// ⚠️ ESTES DOIS TESTES SÃO A MEMÓRIA DESSA DECISÃO. Eles afirmavam o oposto, palavra por palavra, e é
+// por isso que a reversão não podia ser só apagar uma condição: quem reintroduzir o `conn` os deixa
+// vermelhos e lê aqui o porquê. O preço aceito é ~1-3 s de handshake dentro do playtime.
 
-test("entrar em partida NÃO abre o gameplay enquanto o WS não confirma", () => {
-  assert.deepEqual(roteiro([{ screen: "game", conn: "connecting" }]), [],
-    "o relógio do SDK não pode começar no handshake");
-  assert.deepEqual(roteiro([{ screen: "game", conn: "connecting" }, { conn: "connected" }]), ["start"]);
+test("o gameplay abre com a TELA, não com o WS — nem que a conexão nunca feche", () => {
+  assert.deepEqual(roteiro([{ screen: "game", conn: "connecting" }]), ["start"],
+    "esperar o `connected` faz o gameplayStart deixar de existir quando o join é recusado");
+  // e o caso do Inspector: entra, o join falha, o pacote tenta de novo — o par continua coerente.
+  assert.deepEqual(roteiro([{ screen: "game", conn: "connecting" }, { conn: "closed" }, { conn: "connecting" }]),
+    ["start"], "o start sai UMA vez: quem impede a repetição é o trinco `emJogo` da fachada");
 });
 
-test("uma RECONEXÃO é interrupção de gameplay, e fecha o par", () => {
-  // "gameplayStop() must fire on any gameplay interruption" — e uma queda de rede é uma.
-  assert.deepEqual(roteiro([jogando(), { conn: "reconnecting" }, { conn: "connected" }]),
-    ["start", "stop", "start"]);
+test("uma RECONEXÃO não fecha o gameplay: quem fecha é sair da tela", () => {
+  // Ela FOI tratada como interrupção enquanto o `conn` valia. Sem ele, cair e voltar não produz mais
+  // stop/start — e é o certo: o planeta continua na sala, o jogador continua olhando para ele, e o
+  // overlay de reconexão é do jogo, não do portal. Quem interrompe de verdade continua interrompendo:
+  // a pausa, a morte, o pódio e sair (os testes acima).
+  assert.deepEqual(roteiro([jogando(), { conn: "reconnecting" }, { conn: "connected" }]), ["start"]);
+  assert.deepEqual(roteiro([jogando(), { overlays: { pause: true } }]), ["start", "stop"]);
 });
 
 test("mas a RETIDÃO não depende da conexão: quem está reconectando continua na sala", () => {

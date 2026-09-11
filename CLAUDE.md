@@ -1837,6 +1837,23 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (`semPreroll` em `crazy.js`), não uma flag de build: a regra é do SDK e mora junto dele. E o par
   start/stop estava quebrado onde ninguém olha — só `leaveGame()` chamava `jogoParou()`, então respawn e
   fim de rodada passavam por `play()` e o SDK recebia N × start para 1 × stop numa sessão normal.
+  ⚠️ **O `gameplayStart` NÃO PODE DEPENDER DO NOSSO SERVIDOR** (`ATIVO` em `portal/sessao.js`). Ele já
+  cobrou `conn === "connected"`, para não contar o handshake do join (até `JOIN_TIMEOUT_MS`, 3 s) como
+  playtime — intenção boa, efeito grave: enquanto a conexão não fechasse, o evento mais importante do SDK
+  simplesmente NÃO EXISTIA. Medido na bancada com o servidor fora: `gameLoadingStart` ·
+  `gameLoadingFinished` · `connect/match/fail`, e nada mais, NUNCA. No Inspector da Poki esse é o caso
+  normal — o Restart deles recarrega o jogo enquanto a sessão anterior ainda segura o nick por
+  `NET.RESUME_MS` (10 s) e o join é recusado três a seis vezes —, e o checklist reprovava em *"Is a
+  gameplayStart() event fired at the start of gameplay?"*. A 1.13, que passava, não tinha a condição.
+  O preço aceito ao removê-la: ~1-3 s de handshake dentro do playtime. `client/test/portal-sessao.test.js`
+  é a memória disso — os dois testes afirmavam o oposto, palavra por palavra, e hoje afirmam a reversão.
+  ⚠️ **E A RE-ENTRADA AUTOMÁTICA DEIXOU DE COMPRAR ANÚNCIO** (`semAnuncio` em `entraNaSala`, passado por
+  `voltaAoJogo`). Ela também passa pela porta única do `play()`, e com `played` já true cada TENTATIVA de
+  reconexão pedia um MIDROLL: o jogo que não conseguiu entrar cobrava um anúncio do jogador por isso.
+  Visto no Event Log deles, `Commercial break` no meio de quatro `connect/match/fail` — e, com o
+  `gameLoadingFinished` atrasado da mesma entrega, ANTES dele, que é o que a Poki proíbe. Medido depois:
+  **zero anúncios em seis tentativas recusadas**. Anúncio é preço de ENTRAR EM PARTIDA, nunca de uma
+  falha nossa.
   ⚠️ **A POKI TAMBÉM ENTROU NO `semPreroll`, e o custo de não estar era o CHECKLIST INTEIRO.** Medido no
   console do SDK real: `commercialBreak not possible before gameplayStart` — eles RECUSAM qualquer
   comercial antes do primeiro `gameplayStart`, e o nosso preroll saía em `play()`, que é justamente
@@ -2614,30 +2631,27 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   dentro é `await pronto` — a promessa do SDK de terceiro, com teto de `PORTAL.SDK_MS` (6 s). A Poki não
   implementa `identidade`, então o boot esperava o SDK inteiro **para receber `null`**, e tudo depois dele
   herdava a espera. Isso era o gargalo do "arena visível em menos de 1 s".
-  ⚠️ **A CORTINA `#boot` FICA ATÉ DAR PARA JOGAR** (`main.jsx`). No site o primeiro render já tem o que
+  ⚠️ **A CORTINA `#boot` FICA ATÉ A ARENA ABRIR** (`main.jsx`). No site o primeiro render já tem o que
   mostrar; aqui não há tela nenhuma entre a cortina e o primeiro frame, e tirá-la no render descobriria um
   shell vazio pelo tempo do guest + handshake. A rede de segurança (`SDK_MS + 4000`) não é opcional:
   cortina presa é pior que qualquer tela feia. As três telas-que-ficam (`servidorFora`, `desatualizado`,
   `expulsoInativo`) entram na condição, senão o `Offline.jsx` ficaria escondido atrás dela.
-  ⚠️ **E a condição cobra `conn === "connected"`, não só `screen === "game"`** — `play()` escreve aquela
-  tela ANTES de conectar, então a cortina saía no começo do handshake (até `JOIN_TIMEOUT_MS` = 3 s) e
-  descobria um céu vazio onde o jogador não podia dar input nenhum.
-  ⚠️ **`portal.carregou()` SAI JUNTO COM ELA**, e isso é o conserto do `gameLoadingFinished` que MENTIA.
-  Ele saía no primeiro render: medido no pacote com o SDK instrumentado, `gameLoadingFinished` aos 109 ms
-  e o primeiro `gameplayStart` aos 370 ms — o jogo anunciava ter carregado antes de existir, e entre os
-  dois ficava um vão que numa rede de verdade é de segundos. É esse vão que o Inspector da Poki lê como
-  "o `gameplayStart` não está no começo do gameplay". Depois: `gameLoadingStart` 114 ms ·
-  `gameLoadingFinished` 326 ms · `gameplayStart` 326 ms — a ordem que eles documentam, encostados.
-  ⚠️ **CAVEAT PARA QUEM REEMPACOTAR A PLAYGAMA**: lá o preroll voltou e o `initialInterstitialDelay: 0`
-  do config conta a partir do `game_ready`, que é o que `pg.js:carregou()` manda — com o marco atrasado, o
-  preroll de `play()` passa a sair ANTES dele. Rodar a QA Tool deles antes de submeter. Na Poki não há
-  esse risco: o preroll está desligado (`semPreroll`).
-  ⚠️ **COMO SE MEDE ISTO SEM A POKI**: `VITE_POKI_SDK_URL` aponta o adaptador para um arquivo local, então
-  um stub que só registra as chamadas em `window.__sdkLog` dá a SEQUÊNCIA exata que o cliente emite —
-  `WARSPACE_API_BASE=http://127.0.0.1:3003 VITE_POKI_SDK_URL=./poki-sdk.js node scripts/portal-pack.mjs
-  poki`, o stub copiado para o `dist`, um servidor local com `ALLOWED_ORIGINS` daquela origem e o pacote
-  servido estático. Foi assim que os dois números acima saíram, e é o único jeito de parar de adivinhar o
-  que o checklist deles está vendo.
+  ⚠️ **`portal.carregou()` SAI NO PRIMEIRO RENDER, E ATRASÁ-LO CUSTOU UMA SUBMISSÃO.** Houve aqui uma
+  tentativa de torná-lo "honesto" — esperar a arena conectar, porque aos 109 ms o jogo ainda não carregou
+  de fato —, e ela inverteu a ordem que a Poki cobra por escrito: **nenhum `commercialBreak` antes do
+  `gameLoadingFinished`**. Com o marco atrasado, qualquer anúncio que saísse durante as tentativas de
+  conexão passava na frente dele, e o Inspector marcava o `Gameplay start` em VERMELHO — visto no Event
+  Log deles, `Commercial break` 03:01:35 contra `Game loading finished` 03:01:41. Este marco significa
+  "o BUNDLE carregou", que é o que eles usam para liberar anúncio; quanto o jogo demora até ficar JOGÁVEL
+  é outra pergunta, e quem responde a ela é a cortina.
+  ⚠️ **COMO SE MEDE ISTO SEM A POKI, e é o que encerrou três rodadas de adivinhação**: `VITE_POKI_SDK_URL`
+  aponta o adaptador para um arquivo local, então um stub que só registra as chamadas em `window.__sdkLog`
+  dá a SEQUÊNCIA exata que o cliente emite. `WARSPACE_API_BASE=http://127.0.0.1:3003
+  VITE_POKI_SDK_URL=./poki-sdk.js node scripts/portal-pack.mjs poki`, o stub copiado para o `dist`, um
+  servidor local com `ALLOWED_ORIGINS` daquela origem, e o pacote servido estático. **Desligar o servidor
+  local reproduz o ambiente do Inspector** (lá o Restart recarrega o jogo enquanto a sessão anterior ainda
+  segura o nick por `NET.RESUME_MS`, e o join é recusado 3-6 vezes seguidas), que é o caso em que tudo
+  isto quebrava.
   ⚠️ **`screen` nasce em `"boot"`, e ele fica FORA de `SCREENS`** — aquela é a lista branca de `go()`, e é
   isso que torna `go("boot")` impossível por construção (o precedente é `"spec"`). **Não usar `"game"`**:
   `ATIVO`/`RETIDO` de `portal/sessao.js` passariam a valer antes de existir partida — `gameplayStart` sem

@@ -63,39 +63,32 @@ if (!PORTAL && (location.pathname === "/admin" || location.pathname.startsWith("
     // ⚠️ E as três telas-que-ficam entram na condição: `Offline.jsx` é o que aparece quando o servidor
     // está fora, a build está velha ou o jogador foi removido por inatividade — com a cortina por cima,
     // ele não veria nem isso.
-    // ⚠️ **A ARENA SÓ ESTÁ ABERTA QUANDO DÁ PARA JOGAR NELA**, e por isso `caiu` cobra `conn`. Ele dizia
-    // só `screen === "game"` — e `play()` escreve essa tela ANTES de conectar, então a cortina saía no
-    // começo do handshake (até `JOIN_TIMEOUT_MS` = 3 s) e descobria um céu vazio onde o jogador não podia
-    // dar input nenhum. Medido no pacote com o SDK instrumentado: `gameLoadingFinished` aos 109 ms e o
-    // primeiro `gameplayStart` aos 370 ms — ou seja o jogo ANUNCIAVA ter carregado antes de existir, e no
-    // meio ficava um vão que numa rede de verdade é de segundos. É esse vão que o Inspector da Poki lê
-    // como "o gameplayStart não está no começo do gameplay".
-    // ⚠️ As três telas-que-ficam continuam derrubando a cortina: `Offline.jsx` é o que aparece quando o
-    // servidor está fora, a build está velha ou o jogador foi removido por inatividade — com a cortina por
-    // cima, ele não veria nem isso. E a REDE DE SEGURANÇA não é opcional (cortina presa é pior que
-    // qualquer tela feia, o mesmo princípio do `prazo()` de portal/index.js): o teto soma o do SDK porque
-    // o anúncio de um portal desenha por CIMA dela, fora do nosso DOM.
-    const pronto = st => (st.screen === "game" && st.conn === "connected")
-      || st.servidorFora || st.desatualizado || (st.expulsoInativo | 0) > 0;
+    // ⚠️ As três telas-que-ficam entram na condição: `Offline.jsx` é o que aparece quando o servidor está
+    // fora, a build está velha ou o jogador foi removido por inatividade — com a cortina por cima, ele não
+    // veria nem isso. E a REDE DE SEGURANÇA não é opcional (cortina presa é pior que qualquer tela feia, o
+    // mesmo princípio do `prazo()` de portal/index.js): o teto soma o do SDK porque o anúncio de um portal
+    // desenha por CIMA dela, fora do nosso DOM.
+    if (!SEM_MENU) tiraBoot();
+    else {
+      const caiu = st => st.screen === "game" || st.servidorFora || st.desatualizado || (st.expulsoInativo | 0) > 0;
+      let t = 0;
+      const off = app.subscribe(st => { if (caiu(st)) { off(); clearTimeout(t); tiraBoot(); } });
+      t = setTimeout(() => { off(); tiraBoot(); }, P.SDK_MS + 4000);
+      if (caiu(app.get())) { off(); clearTimeout(t); tiraBoot(); }
+    }
     // CrazyGames e Poki contam "o jogo carregou" para decidir a hora do anúncio; a GD não tem equivalente.
-    // ⚠️ NO PACOTE ELE SAI JUNTO COM A CORTINA, não no primeiro render: é a MESMA pergunta ("já dá para
-    // jogar?"), e responder duas vezes em dois lugares é como se produz um `gameLoadingFinished` que
-    // mente. Assim o tempo de carga que o painel deles mostra é o real e o `gameplayStart` encosta nele.
-    // ⚠️ SEM o `if (PORTAL)` no caminho do site: a Bounty Board enquadra o SITE (ver portal/flags.js) e o
+    // ⚠️ **ELE SAI AQUI, NO PRIMEIRO RENDER, E ATRASÁ-LO JÁ CUSTOU UMA SUBMISSÃO.** A tentativa de torná-lo
+    // "honesto" (esperar a arena conectar, porque aos 109 ms o jogo ainda não carregou de fato) inverteu a
+    // ordem que a Poki cobra por escrito: **nenhum `commercialBreak` antes do `gameLoadingFinished`**. Com
+    // o marco atrasado, um anúncio que saísse durante as tentativas de conexão passava na frente dele, e o
+    // Inspector marcava o `Gameplay start` em vermelho — visto no Event Log deles, `Commercial break`
+    // 03:01:35 contra `Game loading finished` 03:01:41. Este marco é "o BUNDLE carregou", que é o que eles
+    // usam para liberar anúncio; quanto o jogo demora até ficar jogável é outra pergunta, e quem responde
+    // a ela é a cortina logo acima.
+    // ⚠️ SEM o `if (PORTAL)`: a Bounty Board enquadra o SITE (ver portal/flags.js) e o
     // `gameLoadingFinished` dela sai por aqui. A fachada é no-op quando não há adaptador vivo, então no
     // site normal isto continua não fazendo nada — e o SDK só desce se um embutidor conhecido pediu.
-    // ⚠️ CAVEAT PARA QUEM REEMPACOTAR A PLAYGAMA: lá o preroll VOLTOU e o `initialInterstitialDelay: 0`
-    // do config conta a partir do `game_ready`, que é o que `pg.js:carregou()` manda. Com o marco agora
-    // atrasado até a arena abrir, o preroll de `play()` passa a sair ANTES dele — rode a QA Tool deles
-    // antes de submeter. Na Poki não há esse risco: o preroll está desligado (`semPreroll`).
-    if (!SEM_MENU) { tiraBoot(); portal.carregou(); }
-    else {
-      let t = 0;
-      const abre = () => { tiraBoot(); portal.carregou(); };
-      const off = app.subscribe(st => { if (pronto(st)) { off(); clearTimeout(t); abre(); } });
-      t = setTimeout(() => { off(); abre(); }, P.SDK_MS + 4000);
-      if (pronto(app.get())) { off(); clearTimeout(t); abre(); }
-    }
+    portal.carregou();
     // ⚠️ E o CICLO DE VIDA: quem diz ao portal "comecei/parei de jogar" e quanto tempo a pessoa está
     // aqui é `portal/sessao.js`, assinando o store — não os chamadores. Sem esta linha o pacote volta
     // a mandar `gameplayStart` sem nunca fechar na morte, e o funil da sessão simplesmente não existe.

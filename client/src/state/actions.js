@@ -672,7 +672,7 @@ export async function play(pedido = {}) {
   entrando = true;
   try { return await entraNaSala(pedido); } finally { entrando = false; }
 }
-async function entraNaSala({ room, mode, teamSize, party } = {}) {
+async function entraNaSala({ room, mode, teamSize, party, semAnuncio } = {}) {
   cancelaTelaMorte();   // entrar noutra sala durante a espera: a tela de morte seria da sala que ficou
   // ANTES da guarda, e é o que a torna inerte quando há sugestão: com o campo já preenchido, mandar o
   // jogador de volta à tela inicial para pedir um nome que está lá é repique puro. Com a sugestão vazia
@@ -696,7 +696,13 @@ async function entraNaSala({ room, mode, teamSize, party } = {}) {
   //    está assistindo de propósito (troca de câmera, mapa, sala ao vivo) — cobrir isso com anúncio é o
   //    que a regra dos portais proíbe. No respawn não há partida rodando, então "pausado e mudo" é
   //    verdade por construção. E nada disso pode PENDURAR o botão: a fachada sempre resolve.
-  if (PORTAL) await portal.anuncio(app.get().played ? "midroll" : "preroll");
+  // ⚠️ `semAnuncio` existe por UM chamador: `voltaAoJogo()`, a re-entrada automática do pacote. Ela também
+  // passa por aqui (é a porta única, e tem que continuar sendo), e com `played` já true cada TENTATIVA de
+  // reconexão pedia um MIDROLL — ou seja, o jogo que não conseguiu entrar cobrava um anúncio do jogador
+  // por isso. Visto no Event Log do Inspector da Poki: `Commercial break` no meio de quatro
+  // `connect/match/fail`, e antes do `Game loading finished`, que é o que eles proíbem por escrito.
+  // Anúncio é preço de ENTRAR EM PARTIDA, nunca de uma falha nossa.
+  if (PORTAL && !semAnuncio) await portal.anuncio(app.get().played ? "midroll" : "preroll");
   const st = app.get();
   const md = mode != null ? mode | 0 : st.gameMode | 0, ts = teamSize != null ? teamSize | 0 : st.teamSize || 1;
   const pt = party !== undefined ? party : (st.party ? st.party.code : null);
@@ -1099,6 +1105,8 @@ function voltaAoJogo() {
   if (voltaT) { clearTimeout(voltaT); voltaT = null; }
   if (voltaN > VOLTA_MAX) { leaveGame("boot"); app.update({ servidorFora: true }); return; }
   const espera = (voltaN - 1) * VOLTA_PASSO_MS;   // 0 · 0,9 · 1,8 · 2,7 · 3,6 s
-  const entra = () => { voltaT = null; play({ mode: MODE.FREE, teamSize: 1, party: null }); };
+  // ⚠️ `semAnuncio`: isto NÃO é o jogador pedindo partida, é o jogo tentando de novo depois de uma
+  // recusa. Sem a flag, cada tentativa comprava um midroll — ver o comentário em `entraNaSala`.
+  const entra = () => { voltaT = null; play({ mode: MODE.FREE, teamSize: 1, party: null, semAnuncio: true }); };
   if (espera) voltaT = setTimeout(entra, espera); else entra();
 }
