@@ -27,6 +27,7 @@
 //    Board não duplica porque `bb.js` fala DIRETO com o SDK dela e não expõe `jogoComecou`/`jogoParou`.
 import { app } from "../state/app.js";
 import { portal } from "./index.js";
+import { createActivity } from "../game/input/Activity.js";
 
 /** Os marcos do funil, em segundos. `60` é "passou da primeira morte"; `180` é a pergunta dos 3 minutos. */
 export const MARCOS = [60, 180, 300];
@@ -57,18 +58,34 @@ export function passoSessao(est, retido, agora) {
     marcos, emMs: retido && feitos < MARCOS.length ? MARCOS[feitos] * 1000 - acum : null };
 }
 
-// ⚠️ **`conn === "connected"` JÁ ESTEVE AQUI E FOI UMA REGRESSÃO DE TRÊS ENTREGAS.** A ideia era não
-// contar como gameplay o handshake do join (até `JOIN_TIMEOUT_MS` = 3 s), em que o jogador de fato não
-// pode dar input — o que ela fez de verdade foi tornar o evento MAIS IMPORTANTE do SDK refém do nosso
-// servidor: enquanto a conexão não fechasse, `gameplayStart` simplesmente não existia. Medido na bancada
-// com um SDK instrumentado, com o servidor fora: `gameLoadingStart` · `gameLoadingFinished` ·
-// `connect/match/fail` e MAIS NADA, nunca. E no Inspector da Poki isso aparece no ambiente deles, onde o
-// Restart recarrega o jogo enquanto a sessão anterior ainda segura o nick por `NET.RESUME_MS` (10 s) e o
-// join é recusado 3 ou 4 vezes seguidas — foi exatamente o que o Event Log mostrou. A versão 1.13, que
-// passava no checklist, não tinha esta condição.
-// ⚠️ O preço, declarado: o handshake entra no playtime (~1-3 s por partida). É barato perto de "o evento
-// não sai". Quem mede quanto o jogo demora a ficar jogável é a cortina de `main.jsx`, não isto aqui.
-const ATIVO = st => st.screen === "game" && !st.overlays.pause;
+// ⚠️ **O GATILHO É O PRIMEIRO INPUT DO JOGADOR, E ISSO É REGRA ESCRITA DA POKI**, não interpretação:
+// *"gameplayStart() must fire on the player's first input (not on load)"*
+// (developers.poki.com/guide/requirements-quality). É o item que o Inspector deles marca em vermelho, e
+// o que o tornou um defeito NOSSO foi o boot direto: até a 1.13 o jogador clicava em JOGAR na tela
+// inicial, e esse clique ERA o primeiro input — o evento saía certo por acidente de fluxo. Sem a tela,
+// o jogo entra na arena sozinho e `gameplayStart` virou um evento de CARGA, exatamente o que a frase
+// deles proíbe entre parênteses. Foi por isso que quebrou na 1.14 e nenhum conserto de ordem resolveu.
+// ⚠️ **NÃO é uma segunda verdade sobre "estou jogando"** — o medo que manteve isto sem conserto por três
+// entregas. `screen`/`pause` continuam dizendo SE há gameplay; o gesto diz QUANDO ele começou, que é uma
+// pergunta diferente e é a única que o SDK faz. E é um LATCH por carga de página: depois do primeiro
+// gesto, despausar volta a abrir o gameplay na hora, sem esperar gesto nenhum.
+// ⚠️ Quem detecta é `Activity.js`, o MESMO detector do armamento do respawn e do `{t:"awake"}` — nada de
+// um segundo conceito de "gesto de gente". Ele já resolve o que ninguém acerta de primeira: o limiar em
+// px de TELA (o navegador dispara `pointermove` quando o layout se mexe sob o cursor), o `!e.repeat` de
+// tecla presa, e o dedo entrando pelo `pointerdown` sintetizado.
+// ⚠️ **NO SITE ISTO É INERTE**, sem um `if (PORTAL)`: `iniciaSessaoPortal()` roda no boot, então o clique
+// em JOGAR da tela inicial já arma o latch antes de existir `screen:"game"`.
+// ⚠️ **CONSEQUÊNCIA ACEITA**: uma aba aberta e esquecida na arena não produz `gameplayStart` nenhum. É o
+// que a regra deles diz, e de quebra tira do playtime exatamente o tempo que não é jogo.
+//
+// ⚠️ **`conn === "connected"` JÁ ESTEVE AQUI E ERA A TENTATIVA ERRADA DE RESOLVER ISTO.** A ideia era não
+// contar o handshake do join (até `JOIN_TIMEOUT_MS` = 3 s) como playtime; o que ela fez foi tornar o
+// evento refém do nosso servidor — enquanto a conexão não fechasse, `gameplayStart` não existia. Medido
+// na bancada com o servidor fora: `gameLoadingStart` · `gameLoadingFinished` · `connect/match/fail` e
+// mais nada, nunca. No Inspector isso é o caso NORMAL (o Restart deles recarrega enquanto a sessão
+// anterior ainda segura o nick por `NET.RESUME_MS`, e o join é recusado 3 a 6 vezes). O gesto resolve o
+// handshake de graça: ninguém dá input antes de ver a arena.
+const ATIVO = (st, gesto) => gesto && st.screen === "game" && !st.overlays.pause;
 // ⚠️ `spec` (assistir a uma sala em andamento) conta como RETIDO pelo mesmo motivo que `dead` e `round`
 // contam: o relógio é da CARGA DA PÁGINA e mede quem está AQUI, não quem está jogando — quem assiste está
 // na sala, olhando o jogo. Fora daqui, quem entrasse para ver uma partida apareceria como evasão no funil,
@@ -82,6 +99,16 @@ const FACHADA = { comecou: () => portal.jogoComecou(), parou: () => portal.jogoP
   medir: (c, o, a) => portal.medir(c, o, a) };
 
 /**
+ * O PRIMEIRO GESTO HUMANO, uma vez por carga de página. Injetável para o teste — não há jsdom aqui, e o
+ * que precisa ser conferido é a DECISÃO (o gameplay não abre sem gesto), não os listeners do navegador.
+ * @param {() => void} cb @returns {() => void} cancelar
+ */
+const GESTO = cb => {
+  const a = createActivity({ onAtivo: () => { a.destroy(); cb(); } });
+  return () => a.destroy();
+};
+
+/**
  * Liga a assinatura. Uma vez por carga da página, de `main.jsx`. Devolve a função de cancelar.
  *
  * ⚠️ NENHUM EVENTO DO SDK PODE SAIR DURANTE UM ANÚNCIO (requisito escrito da Poki), e quem garante isso
@@ -93,8 +120,8 @@ const FACHADA = { comecou: () => portal.jogoComecou(), parou: () => portal.jogoP
  *    caminhos peçam a mesma coisa o SDK nunca vê start-após-start nem stop-após-stop — que é o outro
  *    item que eles cobram por escrito.
  */
-export function iniciaSessaoPortal(alvo = FACHADA, store = app, agora = Date.now) {
-  let est = SESSAO0, jogando = false, abriu = false, t = null;
+export function iniciaSessaoPortal(alvo = FACHADA, store = app, agora = Date.now, esperaGesto = GESTO) {
+  let est = SESSAO0, jogando = false, abriu = false, t = null, gesto = false;
   const conta = () => {
     clearTimeout(t); t = null;
     const st = store.get(), retido = RETIDO(st);
@@ -108,15 +135,18 @@ export function iniciaSessaoPortal(alvo = FACHADA, store = app, agora = Date.now
     if (r.emMs != null) t = setTimeout(conta, Math.max(50, r.emMs));
   };
   const passo = st => {
-    const a = ATIVO(st);
+    const a = ATIVO(st, gesto);
     // ⚠️ Só na TRANSIÇÃO. A fachada já é idempotente, mas o `passo` roda a cada escrita no store e cada
     // chamada dela custa um `await pronto` — e, mais importante, é a transição que se lê num log de QA.
     if (a !== jogando) { jogando = a; if (a) alvo.comecou(); else alvo.parou(); }
     conta();
   };
   const off = store.subscribe(passo);
+  // ⚠️ O gesto NÃO passa pelo store, e é decisão: ele não é estado de tela — nada no jogo o desenha, e
+  // pô-lo lá faria toda a UI re-renderizar no primeiro movimento do mouse. Ele só reavalia o passo.
+  const offGesto = esperaGesto(() => { gesto = true; passo(store.get()); });
   // ⚠️ E o estado de AGORA: o adaptador é um chunk sob demanda com script de terceiro dentro, e numa
   // rede ruim o jogador chega à partida antes de isto rodar (o mesmo argumento de `portal/vidas.js`).
   passo(store.get());
-  return () => { clearTimeout(t); t = null; off(); };
+  return () => { clearTimeout(t); t = null; off(); offGesto(); };
 }

@@ -1837,7 +1837,24 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (`semPreroll` em `crazy.js`), não uma flag de build: a regra é do SDK e mora junto dele. E o par
   start/stop estava quebrado onde ninguém olha — só `leaveGame()` chamava `jogoParou()`, então respawn e
   fim de rodada passavam por `play()` e o SDK recebia N × start para 1 × stop numa sessão normal.
-  ⚠️ **O `gameplayStart` NÃO PODE DEPENDER DO NOSSO SERVIDOR** (`ATIVO` em `portal/sessao.js`). Ele já
+  ⚠️ **O `gameplayStart` SAI NO PRIMEIRO INPUT DO JOGADOR, E ISSO É REGRA ESCRITA DELES** — *"gameplayStart()
+  must fire on the player's first input (not on load)"* (developers.poki.com/guide/requirements-quality).
+  Foi o item que reprovou a submissão por QUATRO entregas seguidas enquanto se procurava o defeito na
+  ORDEM dos eventos, e o que o criou foi o **boot direto**: até a 1.13 o jogador clicava em JOGAR na tela
+  inicial e esse clique ERA o primeiro input, então o evento saía certo por acidente de fluxo; sem a tela,
+  o jogo entra na arena sozinho e `gameplayStart` virou um evento de CARGA — exatamente o que o parêntese
+  deles proíbe. Quem detecta é `Activity.js`, o MESMO detector do armamento do respawn e do `{t:"awake"}`,
+  injetado em `iniciaSessaoPortal` (o teste não tem DOM). É LATCH por carga de página: depois do primeiro
+  gesto, despausar e renascer voltam a abrir o gameplay na hora.
+  ⚠️ **Não é uma segunda verdade sobre "estou jogando"** — o medo que segurou este conserto: `screen`/
+  `pause` continuam dizendo SE há gameplay, e o gesto diz QUANDO ele começou. No SITE é inerte sem um
+  `if (PORTAL)`, porque o clique em JOGAR arma o latch antes de existir `screen:"game"`.
+  ⚠️ **E `Activity.js` passou a escutar na CAPTURA**: na bolha, qualquer `stopPropagation()` no caminho
+  esconde o gesto dele — e há vários (o `down` do direcional virtual, os botões de toque do HUD, os
+  handlers do canvas). Era detalhe enquanto ele só armava o respawn; virou crítico quando o evento mais
+  importante do SDK passou a depender dele, porque no dedo um toque sem arrastar pode ser o único input
+  que existe. `removeEventListener` TEM que repetir o flag, senão `destroy()` vira vazamento silencioso.
+  ⚠️ **O `gameplayStart` TAMBÉM NÃO PODE DEPENDER DO NOSSO SERVIDOR** (`ATIVO` em `portal/sessao.js`). Ele já
   cobrou `conn === "connected"`, para não contar o handshake do join (até `JOIN_TIMEOUT_MS`, 3 s) como
   playtime — intenção boa, efeito grave: enquanto a conexão não fechasse, o evento mais importante do SDK
   simplesmente NÃO EXISTIA. Medido na bancada com o servidor fora: `gameLoadingStart` ·

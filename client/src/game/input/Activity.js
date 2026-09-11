@@ -40,17 +40,27 @@ export function createActivity({onAtivo,hud=null}){
   // ⚠️ `touchstart` NÃO entra: todo alvo suportado sintetiza `pointerdown`, e dois listeners para o mesmo
   // gesto contariam duas vezes sem comprar nada. O pedido falava em mouse, mas no celular não há mouse — sem
   // o ponteiro do dedo a tela de morte ficaria travada para sempre em metade do público de um .io.
-  addEventListener("pointermove",onMove,{passive:true});
-  addEventListener("pointerdown",onDown,{passive:true});
-  addEventListener("pointerup",onDown,{passive:true});
-  addEventListener("keydown",onKey);
-  addEventListener("wheel",onDown,{passive:true});   // roda e pinça de trackpad
+  // ⚠️ CAPTURA, não bolha. O detector existe para responder "alguém fez alguma coisa?", e na bolha
+  // qualquer `stopPropagation()` no caminho ESCONDE o gesto dele — e há vários: o `down` do direcional
+  // virtual dá `stopPropagation`, os botões de toque do HUD param o próprio evento, e os handlers do
+  // canvas ficam todos entre o alvo e a janela. Na captura o evento passa por aqui ANTES de qualquer um
+  // deles, e ninguém consegue mentir sobre presença. Isso deixou de ser detalhe quando o
+  // `gameplayStart` da Poki passou a depender do PRIMEIRO INPUT (ver portal/sessao.js): no dedo, um
+  // toque sem arrastar pode ser o único input que existe, e engoli-lo é o evento não sair nunca.
+  // ⚠️ O `removeEventListener` TEM que repetir o flag — sem ele o listener não sai, e `destroy()` vira
+  // um vazamento silencioso.
+  const CAP={capture:true,passive:true};
+  addEventListener("pointermove",onMove,CAP);
+  addEventListener("pointerdown",onDown,CAP);
+  addEventListener("pointerup",onDown,CAP);
+  addEventListener("keydown",onKey,{capture:true});
+  addEventListener("wheel",onDown,CAP);   // roda e pinça de trackpad
   if(hud)hud.addEventListener("warspace:action",onDown);   // os botões de toque do HUD
   return{
     /** O clique num botão da UI também é gesto — quem chama sabe disso sem depender de bubbling. */
     marca:bate,
     destroy(){
-      removeEventListener("pointermove",onMove);removeEventListener("pointerdown",onDown);
-      removeEventListener("pointerup",onDown);removeEventListener("keydown",onKey);
-      removeEventListener("wheel",onDown);
+      removeEventListener("pointermove",onMove,CAP);removeEventListener("pointerdown",onDown,CAP);
+      removeEventListener("pointerup",onDown,CAP);removeEventListener("keydown",onKey,{capture:true});
+      removeEventListener("wheel",onDown,CAP);
       if(hud)hud.removeEventListener("warspace:action",onDown);}};}

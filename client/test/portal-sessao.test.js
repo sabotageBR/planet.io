@@ -108,19 +108,23 @@ const storeFalso = (st0) => {
   return { get: () => st, subscribe(f) { subs.add(f); return () => subs.delete(f); },
     vai(p) { st = { ...st, ...p, overlays: { ...st.overlays, ...(p.overlays || {}) } }; for (const f of subs) f(st); } };
 };
-// ⚠️ `conn` FAZ PARTE DO ESTADO desde que `ATIVO` passou a exigir `connected`: `play()` escreve
-// `screen:"game"` e `conn:"connecting"` no MESMO update, e o gameplay do SDK só abre quando o WS
-// confirma. Os roteiros abaixo usam `jogando()` em vez de `{screen:"game"}` cru — escrever a tela sem a
-// conexão é um estado que o jogo NUNCA produz, e um teste que o monte mede outra coisa.
+// ⚠️ `conn` continua no estado por REALISMO (`play()` escreve `screen:"game"` e `conn:"connecting"` no
+// mesmo update, e `onConnection` fecha depois), mas `ATIVO` NÃO o lê mais — ver o bloco em sessao.js.
 const TELA0 = { screen: "entry", conn: "idle", overlays: { pause: false, tab: false, account: false, reconn: false } };
 /** O passo "entrei na partida e o WS confirmou" — o par que `play()` + `onConnection` produzem. */
 const jogando = () => ({ screen: "game", conn: "connected" });
 
-const roteiro = passos => {
+// ⚠️ O GESTO É INJETADO. A Poki exige `gameplayStart` no PRIMEIRO INPUT do jogador, então o detector real
+// (`Activity.js`) escuta o DOM — que não existe aqui. `"GESTO"` no meio de um roteiro dispara o latch; por
+// padrão ele já está armado antes do primeiro passo, que é o que todo roteiro anterior a esta regra
+// presumia (no site o clique em JOGAR arma, e no pacote o jogador mexe no mouse assim que a arena abre).
+const roteiro = (passos, { gestoAntes = true } = {}) => {
   const store = storeFalso(TELA0), log = [];
   const alvo = { comecou: () => log.push("start"), parou: () => log.push("stop"), medir: () => {} };
-  const off = iniciaSessaoPortal(alvo, store, () => 0);
-  for (const p of passos) store.vai(p);
+  let dispara = () => {};
+  const off = iniciaSessaoPortal(alvo, store, () => 0, cb => { dispara = cb; return () => {}; });
+  if (gestoAntes) dispara();
+  for (const p of passos) { if (p === "GESTO") dispara(); else store.vai(p); }
   off();
   return log;
 };
@@ -168,7 +172,8 @@ test("nada é emitido enquanto o jogador está fora da partida", () => {
 
 test("o funil abre UMA vez por carga, na primeira vez que ele entra na sala", () => {
   const store = storeFalso(TELA0), m = [];
-  const off = iniciaSessaoPortal({ comecou(){}, parou(){}, medir: (c, o, a) => m.push(`${c}/${o}/${a}`) }, store, () => 0);
+  // gesto no-op: este teste é do FUNIL, que mede presença e não depende de input nenhum
+  const off = iniciaSessaoPortal({ comecou(){}, parou(){}, medir: (c, o, a) => m.push(`${c}/${o}/${a}`) }, store, () => 0, () => () => {});
   store.vai(jogando()); store.vai({ screen: "dead" }); store.vai(jogando());
   off();
   assert.deepEqual(m, ["session/60s/start", "session/180s/start", "session/300s/start"]);
@@ -218,6 +223,29 @@ test("a espera de ROUND.DEAD_DELAY_MS não produz evento nenhum a mais", () => {
 // por isso que a reversão não podia ser só apagar uma condição: quem reintroduzir o `conn` os deixa
 // vermelhos e lê aqui o porquê. O preço aceito é ~1-3 s de handshake dentro do playtime.
 
+// ── O PRIMEIRO INPUT ─────────────────────────────────────────────────────────
+// Regra ESCRITA da Poki: *"gameplayStart() must fire on the player's first input (not on load)"*
+// (developers.poki.com/guide/requirements-quality). Até a 1.13 ela era cumprida por acidente de fluxo —
+// o jogador clicava em JOGAR na tela inicial e ESSE era o input. O boot direto da 1.14 tirou o clique, e
+// o evento virou um evento de carga: exatamente o que o parêntese deles proíbe, e o item que o Inspector
+// marcava em vermelho enquanto tudo o mais parecia certo no Event Log.
+
+test("SEM GESTO NÃO HÁ GAMEPLAY: entrar na arena sozinho não abre o evento", () => {
+  assert.deepEqual(roteiro([jogando()], { gestoAntes: false }), [],
+    "gameplayStart na carga é o que a Poki proíbe na letra");
+  assert.deepEqual(roteiro([jogando(), "GESTO"], { gestoAntes: false }), ["start"],
+    "e o gesto o abre, ainda que a tela já estivesse lá");
+});
+
+test("o gesto é LATCH da carga: depois dele, despausar não espera input novo", () => {
+  assert.deepEqual(roteiro([jogando(), "GESTO", { overlays: { pause: true } }, { overlays: { pause: false } }],
+    { gestoAntes: false }), ["start", "stop", "start"]);
+});
+
+test("gesto FORA da partida não abre gameplay nenhum — quem decide SE há jogo continua sendo a tela", () => {
+  assert.deepEqual(roteiro(["GESTO", { screen: "shop" }, { screen: "dead" }], { gestoAntes: false }), []);
+});
+
 test("o gameplay abre com a TELA, não com o WS — nem que a conexão nunca feche", () => {
   assert.deepEqual(roteiro([{ screen: "game", conn: "connecting" }]), ["start"],
     "esperar o `connected` faz o gameplayStart deixar de existir quando o join é recusado");
@@ -241,7 +269,7 @@ test("mas a RETIDÃO não depende da conexão: quem está reconectando continua 
   const store = storeFalso(TELA0), marcos = [];
   const alvo = { comecou: () => {}, parou: () => {}, medir: (c, o, a) => marcos.push(`${c}/${o}/${a}`) };
   let t = 0;
-  const off = iniciaSessaoPortal(alvo, store, () => t);
+  const off = iniciaSessaoPortal(alvo, store, () => t, () => () => {});   // sem gesto: o funil não o exige
   store.vai({ screen: "game", conn: "connecting" });
   assert.ok(marcos.some(m => m === "session/60s/start"), "o relógio da sessão abre com a tela, não com o WS");
   off();
