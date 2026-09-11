@@ -22,7 +22,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { skinById, MODE, ROUND, TICK_HZ } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { play, leaveGame, respawnAqui } from "../state/actions.js";
+import { play, sairDaPartida, respawnAqui } from "../state/actions.js";
 import { SpecBar, SpecWho, useSpec } from "./SpecBar.jsx";
 import { prazoDe } from "./deadClock.js";
 import { useLabels } from "../hooks/useTheme.js";
@@ -200,7 +200,7 @@ export default function Dead({ on }) {
     <div className="dead-foot">
       <div className="dead-actions">
         {botaoPrimario}
-        <button className="btn-secondary" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.toLobby}</button>
+        <button className="btn-secondary" data-go="lobby" onClick={sairDaPartida}>{LB.toLobby}</button>
       </div>
       <div className="dead-views">
         <button className={"btn-secondary dead-map" + (mapa === "map" ? " on" : "")} onClick={() => verMapa("map")}>{mapa === "map" ? LB.mapClose : LB.mapOpen}</button>

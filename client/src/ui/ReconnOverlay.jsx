@@ -1,7 +1,7 @@
 import React from "react";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { leaveGame } from "../state/actions.js";
+import { sairDaPartida } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 
 export default function ReconnOverlay({ on }) {
@@ -10,6 +10,6 @@ export default function ReconnOverlay({ on }) {
     <div className="spinner"></div>
     <div className="modal-title rc-title">{LB.reconnTitle}</div>
     <div className="rc-sub" id="rc-sub">{LB.reconnSub.replace("{n}", String(n || 1))}</div>
-    <button className="btn-secondary" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.toLobby}</button>
+    <button className="btn-secondary" data-go="lobby" onClick={sairDaPartida}>{LB.toLobby}</button>
   </div> : null}</div>;
 }

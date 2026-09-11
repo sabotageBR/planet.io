@@ -24,7 +24,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { skinById } from "@warspace/shared";
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
-import { play, leaveGame, soltaLevelUp } from "../state/actions.js";
+import { play, sairDaPartida, soltaLevelUp } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
 import RoundIntro from "./RoundIntro.jsx";
@@ -217,7 +217,7 @@ export default function Round({ on }) {
      revert consertou. Medido antes: o "Entrar agora" ficava 346 px abaixo da dobra no frame da Poki. */
   const acoes = <div className="dead-foot"><div className="dead-actions">
     <button className="btn-primary" data-go="play" onClick={() => { fired.current = true; play({}); }}>{LB.enterNow}</button>
-    <button className="btn-secondary" data-go="lobby" onClick={() => { fired.current = true; leaveGame("lobby"); }}>{LB.toLobby}</button>
+    <button className="btn-secondary" data-go="lobby" onClick={() => { fired.current = true; sairDaPartida(); }}>{LB.toLobby}</button>
   </div></div>;
   return <div className="screen on" id="s-round" data-style={estilo}><div className="card dead-card">
     {cabeca}

@@ -27,6 +27,7 @@ import Toast from "../ui/Toast.jsx";
 import LevelUp from "../ui/LevelUp.jsx";
 import Roster from "../ui/Roster.jsx";
 import { sfx } from "../audio/index.js";
+import { SEM_MENU } from "../portal/flags.js";
 
 let booted = false; // StrictMode monta o efeito duas vezes em dev
 export default function App() {
@@ -86,9 +87,18 @@ export default function App() {
   }, []);
   return <>
     <GameHost />
-    <Scene />
+    {/* ⚠️ NO PACOTE A TELA INICIAL E O CENÁRIO NÃO SÃO MONTADOS, e o ganho é o DOWNLOAD, não o tamanho do
+        zip. `#cena` já era `display:none` no portal — mas `<img src>` em subárvore oculta é BAIXADO assim
+        mesmo, e o logo ainda ia com `fetchPriority="high"`: MEDIDO, 217 KB (logo 68 + planetas 105 +
+        lua 35 + míssil 8) disputando banda com o bundle e o handshake do WS, exatamente na janela que o
+        Player Fit mede. Sem montar, nenhum `<img>` existe e nada é pedido.
+        ⚠️ E os arquivos CONTINUAM no zip — conferido com `unzip -l` depois do `portal-pack.mjs`. O Rollup
+        não dobra `SEM_MENU` através da fronteira de módulo para decidir tree-shaking de um componente,
+        então não prometa aqui a poda que o `GoogleButton` consegue por outro caminho. Três deles nem
+        poderiam sair: `planeta-*`/`lua` são a arte das skins de mascote (theme/faces.js). */}
+    {SEM_MENU ? null : <Scene />}
     <Hud />
-    <Entry on={screen === "entry"} />
+    {SEM_MENU ? null : <Entry on={screen === "entry"} />}
     <Lobby on={screen === "lobby"} />
       <Modes on={screen === "modes"} />
       <Party on={screen === "party"} />

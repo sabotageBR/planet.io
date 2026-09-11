@@ -21,6 +21,23 @@ export const PORTAL_ID = typeof __PORTAL_ID__ !== "undefined" ? __PORTAL_ID__ : 
 export const SEM_CONTA = typeof __PORTAL_STRICT__ !== "undefined" && __PORTAL_STRICT__ === "1";
 export const ENTRA_DIRETO_PADRAO = PORTAL;
 /**
+ * SEM_MENU — no pacote a TELA INICIAL NÃO EXISTE: o boot termina na arena e o menu inteiro (nick, skin,
+ * ranking, opções) mora atrás do Esc/☰.
+ *
+ * ⚠️ O motivo é medido, não gosto: o tester da Poki já clicou "Play" no site DELES, e o nosso cartão é a
+ * segunda porta. O funil do Fit Test 1.12 leu **17% de abandono em `menu/entry`** — 85 de 500 fecharam a
+ * aba na tela inicial sem jogar um segundo, cada um entrando na média de playtime como ZERO.
+ * ⚠️ Ele DERIVA de PORTAL e é LITERAL de build pelo motivo do topo deste arquivo — mas **não espere poda
+ * de módulo dele**: MEDIDO com `unzip -l` depois do `portal-pack.mjs`, `Entry`, `Scene` e os ~217 KB de
+ * arte de menu continuam no zip, porque o Rollup não dobra uma constante através da fronteira de módulo
+ * para decidir tree-shaking de um componente JSX. O ganho é outro, e é o que importa: não montados, eles
+ * não produzem um único `<img>`, e os 217 KB deixam de ser BAIXADOS na janela que o Player Fit mede.
+ * ⚠️ ELE SUPERA `ENTRY.DIRETO`, e isso tem que estar escrito: sem Entry montada não há para onde mandar
+ * quem não nomeou o planeta, então a guarda do nome (`semNome`) deixa de existir no pacote. O tunable
+ * continua valendo para `site` e `bountyboard`; desmarcar `poki` no painel não devolve a tela inicial.
+ */
+export const SEM_MENU = PORTAL;
+/**
  * QUAL PLATAFORMA É ESTA ABA — um id de `PLATAFORMAS` (shared/src/constants.js), resolvido num lugar só.
  * ⚠️ A ORDEM importa: `BOUNTY` vem ANTES de `site` porque o build da Bounty Board É um build de site
  * (`PORTAL` é falso lá — eles enquadram https://warspace.io). Sem essa ordem ele cairia em `site` e nunca

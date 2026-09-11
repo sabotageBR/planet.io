@@ -2,6 +2,7 @@
 // Só UI: sessão (usuário/skins/prefs/stats/conquistas/online), tela, overlays, sala, toast, modo,
 // última partida e recompensas. A simulação vive no módulo do jogo (hudStore), não aqui.
 import { createStore } from "./store.js";
+import { SEM_MENU } from "../portal/flags.js";
 
 export const SCREENS = ["entry", "modes", "party", "lobby", "rank", "profile", "shop", "prefs", "game", "dead", "round"];
 export const NAV_SCREENS = ["entry", "lobby", "rank", "profile", "shop", "prefs"];
@@ -79,7 +80,16 @@ export function normalizeStats(s) {
 export const initialState = {
   booted: false, bootError: null,
   session: { user: null, skins: [0], adWatched: [], prefs: { ...PREF_DEFAULTS }, stats: EMPTY_STATS, achievements: [], online: null, server: null, dayRank: null },
-  screen: "entry",
+  // ⚠️ NO PACOTE A TELA INICIAL NÃO EXISTE (`SEM_MENU`), então o shell nasce num estado que NENHUM
+  // componente casa: o `#app` fica vazio e quem cobre a espera é a cortina `#boot` do index.html, até o
+  // `play()` do fim de `boot()` escrever `screen:"game"`.
+  // ⚠️ `"boot"` fica FORA de `SCREENS` de propósito — aquela é a lista branca de `go()`, e é isso que
+  // torna `go("boot")` impossível por construção. O precedente é `"spec"`, que `assistir()` escreve
+  // direto no store e também nunca esteve lá.
+  // ⚠️ E NÃO pode ser `"game"`. Parece atalho e quebra duas coisas de uma vez: `ATIVO`/`RETIDO` de
+  // portal/sessao.js passariam a valer ANTES de existir partida — `gameplayStart` sem jogo (que a Poki
+  // cobra por escrito) e o funil de sessão começando a contar no carregamento da página.
+  screen: SEM_MENU ? "boot" : "entry",
   prevScreen: "entry",   // de onde se chegou à tela atual: Opções é alcançável da entrada E da <Nav>,
                          // então "salvar e voltar" tem que voltar para quem abriu, não para um lugar fixo
   played: false,         // já entrou em alguma partida NESTA carga da página? decide o body[data-shell]:

@@ -93,6 +93,14 @@ export const portal = {
    * lugar errado. Quem oferece recompensa pergunta AQUI.
    */
   get temRecompensa() { return !!(sdk && sdk.recompensa); },
+  /**
+   * Este portal sabe fazer link de convite? Mesmo argumento do `temRecompensa` acima, e o defeito que ele
+   * fecha é de CERTIFICAÇÃO: sem `sdk.convite` o botão do dono cai em `linkConvite()` e copia uma URL de
+   * **warspace.io de dentro do iframe deles**, contra a regra escrita de "nenhuma URL própria no jogo"
+   * (§6.1 da GameDistribution; foi por uma lista dessas que as caricaturas saíram do pacote uma vez).
+   * Só a CrazyGames implementa isto — na Poki o botão não deve existir.
+   */
+  get temConvite() { return !!(sdk && sdk.convite); },
   pronto,
   /** O jogo terminou de carregar (CrazyGames e Poki contam isso; a GD não tem equivalente). */
   async carregou() { pediuCarregou = true; await pronto; if (sdk && sdk.carregou) try { sdk.carregou(); } catch { /* nunca derruba */ } },

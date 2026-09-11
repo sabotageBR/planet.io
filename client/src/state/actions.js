@@ -10,7 +10,8 @@ import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
 import { portal } from "../portal/index.js";
-import { PORTAL, entraDiretoEm } from "../portal/flags.js";
+import { PORTAL, SEM_MENU, entraDiretoEm } from "../portal/flags.js";
+import { destinoDoBoot, destinoDaSaida } from "./entrada.js";
 import { silenciaAnuncio, sfx } from "../audio/index.js";
 import { setSkinArt } from "../theme/faces.js";
 
@@ -82,6 +83,11 @@ export function escape() {
   if (s.overlays.tab) { setRoster(false); return true; }
   if (s.overlays.pause) { setPause(false); return true; }
   if (s.screen === "game") { setPause(true); return true; }
+  // ⚠️ NO PACOTE O ESC TAMBÉM VALE PARA QUEM MORREU OU ESTÁ ASSISTINDO, e isso conserta um buraco que já
+  // existia: em `dead` o Esc não fazia NADA (a linha de baixo exclui `dead` de propósito). No site isso
+  // era só uma tecla sem resposta; aqui a pausa virou o único menu que existe, e quem morreu é justamente
+  // quem tem tempo de abrir um menu.
+  if (SEM_MENU && (s.screen === "dead" || s.screen === "spec")) { setPause(true); return true; }
   if (s.screen === "party") { leaveParty(); return true; }   // sair sem avisar deixa o lobby órfão até o TTL, com os amigos olhando uma equipe que não existe
   if (s.screen !== "game" && s.screen !== "dead" && s.screen !== "entry") { go("entry"); return true; }
   return false;
@@ -195,14 +201,28 @@ export async function boot() {
   // gravado por cima da escolha dele — e o idioma voltava para o do navegador no F5 seguinte.
   catch (e) { app.update({ bootError: e.message || String(e) }); applyPrefsSideEffects({ ...PREF_DEFAULTS, lang: currentLangPref() }); }
   app.update({ booted: true });
-  await entraPeloPortal();
+  // ⚠️ SEM `await` NO PACOTE, e isto é o gargalo do "arena visível em menos de 1 s". `entraPeloPortal`
+  // abre com `portal.identidade()`, que por dentro é `await pronto` — a promessa do SDK de TERCEIRO, com
+  // teto de `PORTAL.SDK_MS` (6 s). A Poki não implementa `identidade`, então o boot esperava o SDK inteiro
+  // para receber `null`, e tudo o que vem depois herdava a espera. Ele continua valendo (é a promoção de
+  // guest a conta do portal, o "Full" da CrazyGames), só deixa de estar no caminho crítico.
+  if (SEM_MENU) entraPeloPortal(); else await entraPeloPortal();
   // ⚠️ No pacote de portal, servidor fora NÃO pode virar um toast de 3 s e uma partida contra bots: ali
   // não existe "modo local" que faça sentido (o jogador clicou num .io para jogar com gente), e o
   // silêncio faz o jogo PARECER que funcionou. Vira uma tela que fica.
   if (PORTAL && api.server === false) app.update({ servidorFora: true });
   else if (api.server === false) toast(getLabels().offlineNote, 3200);
   else if (api.online === false) toast(getLabels().noDbNote, 3200);
-  loadConfig(); loadTop5(); loadRooms();
+  // ⚠️ E BOOT QUE FALHOU TAMBÉM É TELA QUE FICA, no pacote. `bootError` sozinho não muda tela nenhuma: no
+  // site ele aparece como a nota de convidado da tela inicial, e sem tela inicial isso vira SHELL PRETO —
+  // o jogador olhando nada, sem nem um botão de tentar de novo. `Offline.jsx` já é essa tela e já tem o
+  // botão; o que faltava era alguém acendê-la.
+  if (SEM_MENU && app.get().bootError) app.update({ servidorFora: true });
+  // ⚠️ `loadRooms()` SAI no pacote: é um pedido de rede, a cada boot, para uma lista que nenhuma tela
+  // desenha — o mesmo defeito que a própria tela inicial já corrigiu uma vez ("A PORTA DE ENTRADA NÃO
+  // ANUNCIA SALA VAZIA") e que a coluna escondida pelos temas cometeu antes dela. O TOP 5 fica: ele é
+  // barato e o painel de ranking da pausa o consome.
+  loadConfig(); loadTop5(); if (!SEM_MENU) loadRooms();
   // ⚠️ O CAMPO NÃO PODE ESPERAR A REDE. O comentário que morava aqui dizia que esta rota "nunca é o
   // gargalo"; foi MEDIDO contra produção e é falso: `GET /api/nick` responde em ~0,67 s morno e 1,19 s
   // frio a partir do Brasil, e o `booted:true` logo acima já deixou a tela inicial montar. Nessa janela
@@ -220,16 +240,31 @@ export async function boot() {
   const uBoot = app.get().session.user;
   if (nickSorteado(uBoot && uBoot.nick)) app.update({ nickSugerido: chaoLocalNick() });
   resolveNickSugerido(uBoot).then(n => app.update({ nickSugerido: n }));
-  const conv = Q.get("party");
-  if (conv) { history.replaceState(null, "", location.pathname); joinParty(conv); return; }   // link de convite: cai direto no lobby da equipe do amigo
+  // ── PARA ONDE ESTE BOOT VAI ──
+  // A escolha mora em `state/entrada.js` (pura e testada); aqui só se executa o que ela decidiu. Os quatro
+  // ramos de querystring continuam GANHANDO do boot direto, e o motivo é que todos já terminam numa
+  // partida ou numa sala — ver o cabeçalho de `destinoDoBoot`.
+  const destino = destinoDoBoot({ semMenu: SEM_MENU, party: Q.get("party"), sala: Q.get("sala"), assistir: !!Q.get("assistir") });
+  if (destino.tipo !== "dev" && destino.tipo !== "jogar") history.replaceState(null, "", location.pathname);
+  const conv = destino.tipo === "party" ? destino.code : null;
+  if (conv) { joinParty(conv); return; }   // link de convite: cai direto no lobby da equipe do amigo
   // Convite para a SALA de alguém. ⚠️ Consulta o modo ANTES de entrar: sem isso o convidado entraria com o
   // modo do estado dele, e o servidor recusaria com `MODE` — um link que não funciona sem dizer por quê.
-  const sala = Q.get("sala");
   // `?assistir=1` entra como ESPECTADOR em vez de jogador. Quem produz esse link hoje é o painel /admin
   // (ele não tem motor de jogo, então delega para a SPA); um jogador chega por aqui pelo botão "Assistir"
   // da tela de Salas, que chama `assistir()` direto e nem passa pela URL.
-  if (sala && Q.get("assistir")) { history.replaceState(null, "", location.pathname); assistir({ room: sala }); return; }
-  if (sala) { history.replaceState(null, "", location.pathname); entrarPorConvite(sala); return; }
+  if (destino.tipo === "spec") { assistir({ room: destino.code }); return; }
+  if (destino.tipo === "sala") { entrarPorConvite(destino.code); return; }
+  // ── NO PACOTE, O BOOT TERMINA NA ARENA ──
+  // Não há tela inicial para clicar: o jogador veio de um portal que já É a tela inicial dele, e o nosso
+  // cartão era a segunda porta (17% de abandono medido em `menu/entry` no Fit Test 1.12).
+  // ⚠️ `MODE.FREE` CRAVADO, nunca `st.gameMode`: um Battle Royale de uma visita anterior sobrevive no
+  // estado e decidiria a partida de ESTREIA de quem acabou de chegar — e lá a estreia é um lobby de
+  // espera, o oposto do que isto existe para fazer.
+  // ⚠️ E é `play()`, nunca um `app.update({screen:"game"})` à mão: `play()` é a porta única onde moram o
+  // anúncio de portal, o `partidaIniciada` do GA e a ORDEM que `portal/sessao.js` depende (o anúncio
+  // ANTES da escrita de `screen`, senão o SDK recebe evento por trás do comercial).
+  if (destino.tipo === "jogar") { play({ mode: MODE.FREE, teamSize: 1, party: null }); return; }
   devQuery();
 }
 /** ?screen=<id> (entry|account|lobby|rank|profile|shop|prefs|game|dead|round|reconn) — atalho de desenvolvimento. */
@@ -583,6 +618,11 @@ export function semNome(pedido = null) {
   // ⚠️ Isto já foi `if (PORTAL)`, generalizando a exigência da CrazyGames para TODOS os portais — e
   // ninguém mais tem essa exigência escrita (ver `entraDiretoEm` em portal/flags.js). Era isso que deixava
   // qualquer portal (a Poki incluída) entrar direto com `Viajante-NNNN` sem nunca pedir um nome.
+  // ⚠️ NO PACOTE A GUARDA NÃO EXISTE, e não é o mesmo caso do `entraDireto()` logo abaixo: lá ela é
+  // DESLIGADA por decisão do painel; aqui ela é IMPOSSÍVEL. Sem tela inicial montada não há para onde
+  // mandar quem não nomeou o planeta — as duas saídas desta função (`go("entry")` e `leaveGame("entry")`)
+  // deixariam o jogador diante de um shell vazio, sem erro nenhum no console. Ver `SEM_MENU`.
+  if (SEM_MENU) return false;
   if (entraDireto()) return false;
   const st = app.get(), u = st.session.user || {};
   if (st.nomeado || !nickSorteado(u.nick)) return false;
@@ -674,11 +714,25 @@ export function assistir({ room } = {}) {
  * RENASCIMENTO — que é a maioria deles numa sessão — sumiria da receita em silêncio.
  * ⚠️ Recusado (socket caído, sala acabada, Battle Royale), cai no `play({room})` de sempre: o caminho
  * antigo continua inteiro e é a rede.
+ *
+ * ⚠️ ELE COMPARTILHA O TRINCO DE `play()`, e o defeito que isso fecha é maior do que "dois avisos". O
+ * primeiro clique manda `{t:"respawn"}` ANTES do `await` do anúncio, então o `{t:"alive"}` chega durante
+ * o comercial e zera o `dead` do motor; um segundo clique (o botão continua com o FOCO por trás do
+ * anúncio — é o mesmo caminho que produziu os seis `Measure` do Inspector, ver `play()`) acha
+ * `g.respawn()` devolvendo false e cai no `play({room})`: socket fechado e reaberto, "saiu/entrou" no
+ * feed, uma janela em que um preenchimento toma o nick e um `match_start` a mais no GA. Com o respawn
+ * automático em 2 s e o CTA sempre clicável, o clique e o relógio chegam juntos o tempo todo.
+ * ⚠️ O fallback chama `entraNaSala` DIRETO: `play()` de dentro do trinco cairia no próprio `if (entrando)`.
  */
 export async function respawnAqui(room) {
+  if (entrando) return;
+  entrando = true;
+  try { return await renasceAqui(room); } finally { entrando = false; }
+}
+async function renasceAqui(room) {
   cancelaTelaMorte();   // clicou em DE NOVO durante a espera: a tela de morte não tem mais para que subir
   const g = getGame();
-  if (!g || !g.respawn || !g.respawn()) return play(room ? { room } : {});
+  if (!g || !g.respawn || !g.respawn()) return entraNaSala(room ? { room } : {});
   if (PORTAL) await portal.anuncio("midroll");
   levelUpFila = null;
   const st = app.get();
@@ -766,7 +820,30 @@ export function leaveGame(screen = "lobby") {
   // abaixo já fecha o gameplay por `portal/sessao.js` — e cobria só ESTE caminho, nunca a morte.
   if (PORTAL) portal.saiuDaSala();
   levelUpFila = null; cancelaTelaMorte();
+  // ⚠️ REDE DE SEGURANÇA, não a regra: no pacote nenhuma tela de menu está montada, então qualquer
+  // chamador que peça `entry`/`lobby` (inclusive um caminho NOVO que ninguém lembrou de converter) deixaria
+  // o jogador diante de um shell vazio. Quem sai da partida de propósito usa `sairDaPartida()` logo abaixo.
+  if (SEM_MENU && screen !== "game" && screen !== "dead" && screen !== "round" && screen !== "spec") screen = "boot";
   app.update(s => ({ ...s, screen, overlays: { account: false, reconn: false, pause: false }, pendingJoin: null, conn: "idle", reconnAttempt: 0 }));
+}
+/**
+ * SAIR DA PARTIDA — o botão, nos sete lugares em que ele existe (o ☰ do HUD, o lobby do BR, o espectador,
+ * o pódio, a reconexão, a tela de morte e a pausa).
+ *
+ * No site é voltar ao menu; no pacote **não existe "fora da partida"**, e a decisão do dono é re-entrar no
+ * Livre. A escolha mora em `state/entrada.js` (pura e testada) porque sete `if (PORTAL)` espalhados
+ * divergem no primeiro conserto — é a lição de `useSpec`/`SpecBar`, que nasceu de duas cópias do mesmo
+ * código de espectador.
+ *
+ * ⚠️ NADA DE `leaveGame()` SEGUIDO DE `play()`. `leaveGame` escreve `screen`, e o React chega a montar a
+ * tela do meio — um frame de cartão de menu, que é exatamente o que o aceite do 1.14 proíbe. `play()`
+ * sozinho basta: quem fecha o socket velho é `game.join()` → `game.leave(true)` (ver game/index.js).
+ */
+export function sairDaPartida() {
+  const d = destinoDaSaida(SEM_MENU);
+  if (d.tipo === "tela") return leaveGame(d.tela);
+  if (PORTAL) portal.saiuDaSala();   // o "Full" da CrazyGames: saí DAQUELA sala (o `play()` abaixo não avisa)
+  return play({ mode: MODE.FREE, teamSize: 1, party: null });
 }
 let rewardsT = null, levelUpN = 0, levelUpFila = null;
 /**
@@ -931,7 +1008,16 @@ export function onConnection(ev) {
     // NICK_IN_ROOM não é "deu erro": é "troque o nome". Desde que o nick ficou livre (dois "Messi" são
     // legais no mundo) isso deixou de ser raro — e cai bem no caminho de EQUIPE, onde todos entram pelo
     // mesmo código. Mandar para a tela de Salas era um beco: a frase não diz onde se troca o nome.
-    if (s.screen === "game" && ev.code === "NICK_IN_ROOM") {
+    // ⚠️ NO PACOTE NÃO HÁ ONDE TROCAR O NOME, então a recusa é resolvida SOZINHA — mas **sem tocar no
+    // nick**. A tentação é aplicar a `suggestion` que o servidor manda no corpo do erro; ela grava na
+    // CONTA, e o caso comum desta recusa é um F5: a sessão anterior ainda segura o nick por
+    // `NET.RESUME_MS`, então cada recarga somaria um sufixo ("Sirio10" → "Sirio10_993" →
+    // "Sirio10_993_6454") até o teto de 16 caracteres. Foi medido em bancada, e é permanente.
+    // O que resolve de graça é RE-ENTRAR SEM CÓDIGO: `findOrCreateRoom` já pula as salas em que o nick
+    // está em uso, então o automático escolhe outra e o jogador entra com o nome dele. A recusa só
+    // sobrevive a isso para quem entra por CÓDIGO — e no pacote ninguém entra.
+    if (SEM_MENU && ev.code === "NICK_IN_ROOM") voltaAoJogo();
+    else if (s.screen === "game" && ev.code === "NICK_IN_ROOM") {
       toast(errText(ev) + (ev.suggestion ? ` · ${ev.suggestion}` : ""), 4000); leaveGame("entry"); focaNome();
     }
     // no portal, "não deu para conectar" também é a tela que fica: o toast some e o jogador acha que
@@ -950,7 +1036,39 @@ export function onConnection(ev) {
     // da tela de morte e do pódio a conexão continua viva, então uma expulsão dali (o kick e o ban do dono
     // já faziam isso) caía no toast lá embaixo e deixava a tela no ar com o socket fechado — o botão DE
     // NOVO tentando renascer numa conexão que não existe mais.
+    // No pacote, "caiu por outro motivo" também termina numa partida — mas com anti-laço (ver `voltaAoJogo`).
+    else if (SEM_MENU && (s.screen === "game" || s.screen === "dead" || s.screen === "round" || s.screen === "spec")) {
+      toast(errText(ev), 3000); voltaAoJogo();
+    }
     else if (s.screen === "game" || s.screen === "dead" || s.screen === "round") { toast(errText(ev), 3000); leaveGame("lobby"); }
     else if (ev.code || ev.message) toast(errText(ev), 3000);
   }
+}
+/**
+ * A RE-ENTRADA AUTOMÁTICA DO PACOTE, com BACKOFF e anti-laço.
+ *
+ * Sem tela de menu, toda queda tem que terminar numa partida nova — mas um servidor que recusasse TUDO
+ * viraria um laço de join, com o console do revisor enchendo de WebSocket.
+ *
+ * ⚠️ AS TENTATIVAS SÃO ESPAÇADAS, e isto veio de um defeito MEDIDO em bancada: a primeira versão desistia
+ * na segunda falha dentro de 5 s e acendia `servidorFora` — e três F5 seguidos (a sessão anterior ainda
+ * segura o nick por `NET.RESUME_MS` = 10 s, então cada recarga recusa com `NICK_IN_ROOM`) davam a tela
+ * "SEM CONTATO COM A BASE" com o servidor de pé e respondendo. Uma tela que MENTE sobre o motivo é pior
+ * que a espera que ela evita — e o caso mais comum desta função nem é o servidor: é uma recusa de sala
+ * que se resolve sozinha em segundos.
+ * ⚠️ Por isso a desistência é tardia (`VOLTA_MAX`) e o atraso cresce: em `NICK_IN_ROOM` o nick volta ao
+ * bolo assim que a sessão velha expira, e a tentativa seguinte entra. O contador zera sozinho quando uma
+ * entrada dura mais que a janela, que é a definição operacional de "deu certo".
+ */
+const VOLTA_JANELA_MS = 12000, VOLTA_MAX = 5, VOLTA_PASSO_MS = 900;
+let voltaAt = 0, voltaN = 0, voltaT = null;
+function voltaAoJogo() {
+  const agora = Date.now();
+  voltaN = agora - voltaAt < VOLTA_JANELA_MS ? voltaN + 1 : 1;
+  voltaAt = agora;
+  if (voltaT) { clearTimeout(voltaT); voltaT = null; }
+  if (voltaN > VOLTA_MAX) { leaveGame("boot"); app.update({ servidorFora: true }); return; }
+  const espera = (voltaN - 1) * VOLTA_PASSO_MS;   // 0 · 0,9 · 1,8 · 2,7 · 3,6 s
+  const entra = () => { voltaT = null; play({ mode: MODE.FREE, teamSize: 1, party: null }); };
+  if (espera) voltaT = setTimeout(entra, espera); else entra();
 }

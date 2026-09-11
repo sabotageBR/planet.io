@@ -11,7 +11,7 @@
 // A BARRA em si (e o estado de quem assiste) mora em ui/SpecBar.jsx: ela é a mesma da tela de morte
 // recolhida, e era o mesmo código escrito duas vezes.
 import React from "react";
-import { leaveGame } from "../state/actions.js";
+import { sairDaPartida } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { SpecBar, SpecWho, useSpec } from "./SpecBar.jsx";
 
@@ -22,6 +22,6 @@ export default function Spectate({ on }) {
   return <SpecBar id="s-spec" rotulo={LB.watchTitle} quem={<SpecWho spec={spec} trocar={trocar} LB={LB} />}>
     <button className={"btn-secondary" + (mapa === "map" ? " on" : "")} onClick={() => verMapa("map")}>{mapa === "map" ? LB.mapClose : LB.mapOpen}</button>
     <button className={"btn-secondary" + (mapa === "live" ? " on" : "")} onClick={() => verMapa("live")}>{mapa === "live" ? LB.liveClose : LB.liveOpen}</button>
-    <button className="btn-primary" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.watchLeave}</button>
+    <button className="btn-primary" data-go="lobby" onClick={sairDaPartida}>{LB.watchLeave}</button>
   </SpecBar>;
 }

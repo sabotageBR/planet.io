@@ -6,7 +6,7 @@ import React, { useMemo, useSyncExternalStore } from "react";
 import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
-import { leaveGame, toggleMute, setPause, setPref } from "../state/actions.js";
+import { sairDaPartida, toggleMute, setPause, setPref } from "../state/actions.js";
 import { useLabels, useTheme } from "../hooks/useTheme.js";
 import { fmt, ord, fmtTime } from "./format.js";
 import { preenche } from "../i18n/index.js";
@@ -23,6 +23,7 @@ import IdleWarn from "./IdleWarn.jsx";
 import DicaSplit from "./DicaSplit.jsx";
 import { MODE, weaponOf, POWERUP, TICK_HZ, flagOf } from "@warspace/shared";
 import { keysOf } from "../game/input/Keyboard.js";   // a legenda tem que dizer a tecla que está DE FATO ligada (inclusive a do desempate de colisão)
+import { SEM_MENU } from "../portal/flags.js";
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0, autodef: 0, zoom: 0, feast: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: "", clock: null, notice: null,
   mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, zoneIn: null, zoneShrinking: false, talk: null, chat: [], feed: [], lobby: null,
@@ -130,8 +131,12 @@ export default function Hud() {
           direto agora abre o MENU, onde sair é uma das opções (e é a que precisa de um segundo clique: sair
           sem querer no meio de uma partida é irreversível). Para quem morreu ele volta a ser só "Sair":
           ali não há partida para pausar nem comando para largar. */}
-      {espectando
-        ? <button className="btn-mini" id="h-exit" data-go="lobby" onClick={() => leaveGame("lobby")}>{LB.exit}</button>
+      {/* ⚠️ NO PACOTE O ☰ VALE TAMBÉM PARA QUEM MORREU. Aqui o "Sair" levava à tela de Salas, que lá não
+          existe — e a pausa virou o único menu do jogo, onde sair é UMA das opções. Quem morreu é
+          justamente quem tem tempo de abrir um menu (trocar a skin, o nome, ver o ranking), e no site
+          nada muda: `espectando` continua trocando o botão. */}
+      {espectando && !SEM_MENU
+        ? <button className="btn-mini" id="h-exit" data-go="lobby" onClick={sairDaPartida}>{LB.exit}</button>
         : <button className="btn-mini" id="h-menu" title={LB.pauseHint} onClick={() => setPause(true)}>☰</button>}
     </div>
     {/* Coluna DIREITA (meu placar · top 10 · kill feed), no arranjo do Counter-Strike. É uma caixa flex de

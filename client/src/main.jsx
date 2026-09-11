@@ -4,9 +4,11 @@ import App from "./app/App.jsx";
 import "./app/theme.js"; // ponte do tema (tokens/CSS quando o módulo real existir)
 import { bootLang } from "./i18n/index.js";
 import { iniciaAnalytics } from "./app/analytics.js";
-import { PORTAL } from "./portal/flags.js";
+import { PORTAL, SEM_MENU } from "./portal/flags.js";
 import { portal } from "./portal/index.js";
 import { iniciaSessaoPortal } from "./portal/sessao.js";
+import { app } from "./state/app.js";
+import { PORTAL as P } from "@warspace/shared";
 
 // coletor de erros para os screenshots headless (--dump-dom lê window.__errors)
 if (import.meta.env.DEV) {
@@ -50,7 +52,25 @@ if (!PORTAL && (location.pathname === "/admin" || location.pathname.startsWith("
   if (!PORTAL) iniciaAnalytics();
   bootLang().then(() => {
     createRoot(document.getElementById("app")).render(<React.StrictMode><App /></React.StrictMode>);
-    tiraBoot();
+    // ── A CORTINA FICA ATÉ A ARENA ABRIR (só no pacote) ──
+    // No site o primeiro render JÁ tem o que mostrar: a tela inicial. No pacote não há tela inicial
+    // nenhuma (`SEM_MENU`), então tirar o `#boot` aqui descobriria um shell VAZIO — sobre o `background`
+    // preto do `#app` — pelo tempo do `/api/auth/guest` mais o handshake do WS. Que é, exatamente, a
+    // janela que o Player Fit mede como "não carregou".
+    // ⚠️ A REDE DE SEGURANÇA NÃO É OPCIONAL: cortina presa é pior que qualquer tela feia, e é o mesmo
+    // princípio do `prazo()` de portal/index.js — nada aqui pode ficar pendurado. O teto soma o do SDK
+    // porque o preroll da Poki desenha por CIMA da cortina (é overlay do iframe deles, fora do nosso DOM).
+    // ⚠️ E as três telas-que-ficam entram na condição: `Offline.jsx` é o que aparece quando o servidor
+    // está fora, a build está velha ou o jogador foi removido por inatividade — com a cortina por cima,
+    // ele não veria nem isso.
+    if (!SEM_MENU) tiraBoot();
+    else {
+      const caiu = st => st.screen === "game" || st.servidorFora || st.desatualizado || (st.expulsoInativo | 0) > 0;
+      let t = 0;
+      const off = app.subscribe(st => { if (caiu(st)) { off(); clearTimeout(t); tiraBoot(); } });
+      t = setTimeout(() => { off(); tiraBoot(); }, P.SDK_MS + 4000);
+      if (caiu(app.get())) { off(); clearTimeout(t); tiraBoot(); }
+    }
     // CrazyGames e Poki contam "o jogo carregou" para decidir a hora do anúncio; a GD não tem equivalente.
     // ⚠️ SEM o `if (PORTAL)`: a Bounty Board enquadra o SITE (ver portal/flags.js) e o
     // `gameLoadingFinished` dela sai por aqui. A fachada é no-op quando não há adaptador vivo, então no

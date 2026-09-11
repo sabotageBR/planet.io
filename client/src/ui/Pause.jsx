@@ -14,14 +14,18 @@ import React, { useMemo, useSyncExternalStore } from "react";
 import { useStore, throttleStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { gameRef } from "../state/game.js";
-import { setPause, leaveGame, flushPrefs, hostAct, toast } from "../state/actions.js";
+import { setPause, sairDaPartida, flushPrefs, hostAct, toast, setNick, equipSkin, loadTop5 } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { PREFS } from "./prefsTable.js";
 import { PrefRow } from "./Prefs.jsx";
-import { Nick } from "./bits.jsx";
+import { Nick, Field, MiniRank } from "./bits.jsx";
 import { linkConvite } from "../util/convite.js";
-import { PORTAL } from "../portal/flags.js";
+import { PORTAL, SEM_MENU } from "../portal/flags.js";
 import { portal } from "../portal/index.js";
+import { skinById } from "@warspace/shared";
+import { skinName } from "../i18n/catalog.js";
+import SkinPreview from "./SkinPreview.jsx";
+import { nickSorteado } from "../util/nick.js";
 
 // as chaves que valem em partida, na ordem em que se procura por elas
 // ⚠️ `brInvite` entra aqui porque a pergunta "como faço isto parar?" nasce EM PARTIDA, com o card na
@@ -46,12 +50,69 @@ export default function Pause({ on }) {
     {on ? <div className="card modal pause" role="dialog" aria-modal="true" aria-label={LB.pauseTitle}>
       <div className="modal-title">{LB.pauseTitle}</div>
       {h.host ? <HostPanel host={h.host} room={room} LB={LB} /> : null}
+      {/* ⚠️ NO PACOTE ESTE É O ÚNICO MENU QUE EXISTE, então o que era da tela inicial vem para cá — mas
+          DENTRO do overlay, nunca por `go()`: `GameHost.jsx` chama `game.leave()` assim que `screen` sai
+          de `game|dead|round|spec`, ou seja "abrir a loja" seria sair da partida com outro nome.
+          Colapsado por padrão para a altura do cartão não mudar (a matriz não mede overlay). */}
+      {SEM_MENU ? <EuBloco LB={LB} /> : null}
       <div className="pause-prefs">{ITENS.map(it => <PrefRow key={it.key} it={it} v={prefs[it.key]} pfx="pause-" />)}</div>
       <div className="modal-actions pause-actions">
-        <button className="btn-secondary" id="pause-exit" data-go="lobby" onClick={() => { flushPrefs(); leaveGame("lobby"); }}>{LB.exitMatch}</button>
+        <button className="btn-secondary" id="pause-exit" data-go="lobby" onClick={() => { flushPrefs(); sairDaPartida(); }}>{LB.exitMatch}</button>
         <button className="btn-primary" id="pause-resume" onClick={fecha} autoFocus>{LB.resume}</button>
       </div>
     </div> : null}</div>;
+}
+
+/**
+ * QUEM EU SOU — o que era da tela inicial, agora dentro da pausa (só no pacote, ver `SEM_MENU`).
+ *
+ * Três coisas, e são exatamente as que alguém abre um menu para fazer num `.io`: trocar o NOME do
+ * planeta, trocar a SKIN (entre as que já tem) e ver quem está ganhando hoje. A loja completa fica de
+ * fora por enquanto: ela é uma grade com modal próprio, e empilhá-la aqui é o oposto de "sem inflar a
+ * tela" — quando entrar, entra como um quarto `<details>` com a grade extraída de `Shop.jsx`.
+ *
+ * ⚠️ `<details>` FECHADO por padrão: o cartão da pausa já rola por dentro, e três blocos abertos fariam
+ * o botão RETOMAR sair da dobra num frame de portal de 470 px de altura — que é o mesmo defeito que a
+ * tela de morte levou 24 de 34 combinações da matriz para admitir.
+ * ⚠️ O TOP 5 é pedido na ABERTURA, nunca no boot: `loadTop5` saiu do caminho crítico do pacote junto com
+ * `loadRooms`, e um pedido de rede para um painel fechado é o defeito que a tela inicial já corrigiu.
+ */
+function EuBloco({ LB }) {
+  const session = useStore(app, s => s.session);
+  const top5 = useStore(app, s => s.top5);
+  const sugerido = useStore(app, s => s.nickSugerido);
+  const user = session.user || {};
+  const nickDoUsuario = nickSorteado(user.nick) ? sugerido : user.nick;
+  const [nick, setNickLocal] = React.useState(nickDoUsuario);
+  const tocou = React.useRef(false);
+  // mesma guarda de ui/Entry.jsx: a sugestão do servidor chega DEPOIS e não pode apagar o que a pessoa
+  // acabou de escrever — `tocou` só vira true por gesto dela
+  React.useEffect(() => { if (!tocou.current) setNickLocal(nickDoUsuario); }, [nickDoUsuario]);
+  const commit = async () => { const v = (nick || "").trim(); if (!v || v === (user.nick || "")) return;
+    const r = await setNick(v); if (!r.ok) setNickLocal(nickDoUsuario); };
+  const minhas = (session.skins || []).map(id => skinById(id | 0)).filter(Boolean);
+  return <>
+    <details className="pause-eu">
+      <summary>{LB.nameLabel} · {LB.swap}</summary>
+      <div className="pause-id">
+        {/* ⚠️ `size` é o CANVAS e `r` é medido na escala de 112 (`k = cv.width/112`, ver SkinPreview):
+            o disco sai com `r*size/112`. Sem o `size` o padrão é 112 — um planeta de 112 px dentro de um
+            menu de pausa, que foi exatamente o que a primeira versão desenhou. */}
+        <SkinPreview skin={skinById(user.equippedSkin | 0)} r={40} size={72} />
+        <Field id="pauseNome" label={LB.nameLabel} placeholder={LB.namePlaceholder} maxLength={16} autoComplete="off" value={nick || ""}
+          onChange={e => { tocou.current = true; setNickLocal(e.target.value); }} onBlur={commit}
+          onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+      </div>
+      {minhas.length > 1 ? <div className="pause-skins">{minhas.map(sk =>
+        <button key={sk.id} className={"skin-mini" + (sk.id === (user.equippedSkin | 0) ? " on" : "")}
+          onClick={() => equipSkin(sk.id)} title={skinName(sk)} aria-label={skinName(sk)}>
+          <SkinPreview skin={sk} r={40} size={38} /></button>)}</div> : null}
+    </details>
+    <details className="pause-rank" onToggle={e => { if (e.currentTarget.open) loadTop5(); }}>
+      <summary>{LB.top5}</summary>
+      <MiniRank id="pause-top5" rows={top5} n={5} />
+    </details>
+  </>;
 }
 
 /**
@@ -68,8 +129,14 @@ function HostPanel({ host, room, LB }) {
   const convite = async () => { const url = (PORTAL && await portal.convite(room || "")) || linkConvite("sala", room || "");
     if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast(LB.hostInvite), () => toast(url, 4000));
     else toast(url, 4000); };
+  // ⚠️ SEM `portal.convite` O BOTÃO NÃO PODE EXISTIR, e isto é certificação, não estética: o fallback
+  // `linkConvite` copia uma URL de **warspace.io de dentro do iframe deles**, contra a regra escrita de
+  // "nenhuma URL própria dentro do jogo" (§6.1 da GameDistribution — foi por uma lista dessas que as
+  // caricaturas saíram do pacote uma vez). Só a CrazyGames implementa `convite`; na Poki ele devolvia
+  // `null` e o botão virava exatamente esse problema. O predicado é o mesmo molde de `temRecompensa`.
+  const podeConvidar = room && (!PORTAL || portal.temConvite);
   return <section className="pause-host">
-    <div className="ph">{LB.hostPanel} {room ? <button className="btn-mini" onClick={convite}>{room} ⧉</button> : null}</div>
+    <div className="ph">{LB.hostPanel} {podeConvidar ? <button className="btn-mini" onClick={convite}>{room} ⧉</button> : null}</div>
     {outros.length
       ? <ul className="host-list">{outros.map(l => <li key={l.pid}>
           <Nick p={l} />
