@@ -27,7 +27,6 @@
 //    Board não duplica porque `bb.js` fala DIRETO com o SDK dela e não expõe `jogoComecou`/`jogoParou`.
 import { app } from "../state/app.js";
 import { portal } from "./index.js";
-import { createActivity } from "../game/input/Activity.js";
 
 /** Os marcos do funil, em segundos. `60` é "passou da primeira morte"; `180` é a pergunta dos 3 minutos. */
 export const MARCOS = [60, 180, 300];
@@ -69,10 +68,9 @@ export function passoSessao(est, retido, agora) {
 // entregas. `screen`/`pause` continuam dizendo SE há gameplay; o gesto diz QUANDO ele começou, que é uma
 // pergunta diferente e é a única que o SDK faz. E é um LATCH por carga de página: depois do primeiro
 // gesto, despausar volta a abrir o gameplay na hora, sem esperar gesto nenhum.
-// ⚠️ Quem detecta é `Activity.js`, o MESMO detector do armamento do respawn e do `{t:"awake"}` — nada de
-// um segundo conceito de "gesto de gente". Ele já resolve o que ninguém acerta de primeira: o limiar em
-// px de TELA (o navegador dispara `pointermove` quando o layout se mexe sob o cursor), o `!e.repeat` de
-// tecla presa, e o dedo entrando pelo `pointerdown` sintetizado.
+// ⚠️ O que conta como input é a definição DELES — `pointerdown` ou `keydown`, nos 5 s anteriores à
+// chamada —, e não a nossa. Ver o bloco de `GESTO` mais abaixo: pendurar isto em movimento de mouse
+// (o sinal mais natural num `.io`) reprova o checklist do mesmo jeito, com o evento saindo no log.
 // ⚠️ **NO SITE ISTO É INERTE**, sem um `if (PORTAL)`: `iniciaSessaoPortal()` roda no boot, então o clique
 // em JOGAR da tela inicial já arma o latch antes de existir `screen:"game"`.
 // ⚠️ **CONSEQUÊNCIA ACEITA**: uma aba aberta e esquecida na arena não produz `gameplayStart` nenhum. É o
@@ -101,11 +99,43 @@ const FACHADA = { comecou: () => portal.jogoComecou(), parou: () => portal.jogoP
 /**
  * O PRIMEIRO GESTO HUMANO, uma vez por carga de página. Injetável para o teste — não há jsdom aqui, e o
  * que precisa ser conferido é a DECISÃO (o gameplay não abre sem gesto), não os listeners do navegador.
+ *
+ * ⚠️ **ESTES DOIS EVENTOS, E SÓ ELES, PORQUE SÃO OS DOIS QUE O SDK DELES ESCUTA.** Isto não é escolha
+ * nossa: `PokiSDK.gameplayStart()` anexa ao evento um campo `interaction` vindo de
+ * `getRecentInteraction()`, e o Inspector reprova o item quando ele vem vazio — o validador, lido no
+ * bundle deles, é literalmente `const {interaction}=e.payload.data; if(!interaction) FALHA`. E o
+ * rastreador do SDK é:
+ *     startTrackingInteractions = () => { window.addEventListener("pointerdown", h);
+ *                                         document.addEventListener("keydown",  h); }
+ *     getRecentInteraction     = () => { if (performance.now() - ultimo < 5000) return interacao }
+ * Ou seja: **`pointerdown` ou `keydown`, e no máximo 5 s antes da chamada.** `pointermove` NÃO conta —
+ * e foi nele que este gatilho esteve pendurado, o que fez o checklist reprovar exatamente igual, com o
+ * evento saindo no log e tudo. Num `.io` isso é contraintuitivo (mexer o mouse É jogar), mas quem define
+ * "interação" aqui é o medidor, não nós.
+ *
+ * ⚠️ **NÃO é `Activity.js`**, e a diferença é o ponto: aquele responde "ainda tem alguém do outro lado?"
+ * e por isso conta movimento de mouse, que é o sinal mais comum de presença. Aqui a pergunta é outra —
+ * "o SDK vai considerar isto uma interação?" —, e a resposta tem que ESPELHAR a definição deles. Duas
+ * perguntas diferentes, dois detectores; unificá-los é o que quebrou.
+ *
+ * ⚠️ **CAPTURA + `setTimeout(0)`, e as duas metades são obrigatórias.** Captura porque na bolha um
+ * `stopPropagation()` esconde o evento (o direcional virtual e os botões de toque do HUD dão), e no dedo
+ * o toque pode ser o único input que existe. E o `setTimeout` porque em captura NÓS rodamos ANTES do
+ * listener do SDK, que é de bolha — chamar `gameplayStart()` ali dentro o faria ler o `interaction` de
+ * antes deste gesto, ou seja vazio. O timeout devolve o controle depois do despacho inteiro, e 0 ms cabe
+ * com folga nos 5 s. (O próprio SDK usa `setTimeout(...,0)` dentro do `gameplayStart` pelo mesmo motivo.)
+ *
  * @param {() => void} cb @returns {() => void} cancelar
  */
 const GESTO = cb => {
-  const a = createActivity({ onAtivo: () => { a.destroy(); cb(); } });
-  return () => a.destroy();
+  const fora = () => {
+    removeEventListener("pointerdown", bate, true);
+    document.removeEventListener("keydown", bate, true);
+  };
+  const bate = () => { fora(); setTimeout(cb, 0); };
+  addEventListener("pointerdown", bate, true);
+  document.addEventListener("keydown", bate, true);
+  return fora;
 };
 
 /**

@@ -1837,23 +1837,43 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   (`semPreroll` em `crazy.js`), não uma flag de build: a regra é do SDK e mora junto dele. E o par
   start/stop estava quebrado onde ninguém olha — só `leaveGame()` chamava `jogoParou()`, então respawn e
   fim de rodada passavam por `play()` e o SDK recebia N × start para 1 × stop numa sessão normal.
-  ⚠️ **O `gameplayStart` SAI NO PRIMEIRO INPUT DO JOGADOR, E ISSO É REGRA ESCRITA DELES** — *"gameplayStart()
-  must fire on the player's first input (not on load)"* (developers.poki.com/guide/requirements-quality).
-  Foi o item que reprovou a submissão por QUATRO entregas seguidas enquanto se procurava o defeito na
-  ORDEM dos eventos, e o que o criou foi o **boot direto**: até a 1.13 o jogador clicava em JOGAR na tela
-  inicial e esse clique ERA o primeiro input, então o evento saía certo por acidente de fluxo; sem a tela,
-  o jogo entra na arena sozinho e `gameplayStart` virou um evento de CARGA — exatamente o que o parêntese
-  deles proíbe. Quem detecta é `Activity.js`, o MESMO detector do armamento do respawn e do `{t:"awake"}`,
-  injetado em `iniciaSessaoPortal` (o teste não tem DOM). É LATCH por carga de página: depois do primeiro
-  gesto, despausar e renascer voltam a abrir o gameplay na hora.
+  ⚠️ **O `gameplayStart` SAI NUM `pointerdown` OU `keydown`, E TEM 5 SEGUNDOS PARA SAIR — a regra é do
+  SDK deles, e está no CÓDIGO, não na doc.** Este item reprovou a submissão por CINCO entregas seguidas
+  enquanto se procurava o defeito na ORDEM dos eventos; ele saía no log, no lugar certo, e reprovava
+  mesmo assim. O que fecha a questão é ler os dois bundles:
+  - **Inspector** (`inspector.poki.dev/main.js`): `const {interaction}=e.payload.data; if(!interaction)`
+    → FALHA. O veredito não olha o nosso código: olha um campo do PRÓPRIO evento.
+  - **SDK core** (`game-cdn.poki.com/scripts/<hash>/poki-sdk-core-<hash>.js`): `gameplayStart` anexa
+    `interaction: getRecentInteraction()`, e o rastreador é
+    `window.addEventListener("pointerdown",h)` + `document.addEventListener("keydown",h)`, com
+    `getRecentInteraction = () => performance.now()-ultimo < 5000 ? interacao : undefined`.
+  Ou seja: **`pointermove` NÃO conta**, e uma chamada mais de 5 s depois do input também não. Num `.io`
+  isso é contraintuitivo — mexer o mouse É jogar —, mas quem define "interação" é o medidor.
+  ⚠️ **A causa raiz foi o BOOT DIRETO.** Até a 1.13 o jogador clicava em JOGAR na tela inicial: aquele
+  clique era um `pointerdown` a menos de 5 s do `gameplayStart`, e o evento saía válido por acidente de
+  fluxo. Sem a tela, o jogo entra na arena sozinho e o evento virou de CARGA. A doc pública diz a mesma
+  coisa em prosa (*"must fire on the player's first input (not on load)"*), e ainda assim a tentativa de
+  cumpri-la por MOVIMENTO de mouse reprovou igual — é por isso que o que vale é o código acima.
+  ⚠️ **O detector NÃO é `Activity.js`** (`GESTO` em `portal/sessao.js`), e a diferença é o ponto: aquele
+  responde "ainda tem alguém do outro lado?" e por isso conta movimento; aqui a pergunta é "o SDK vai
+  considerar isto uma interação?", e a resposta tem que ESPELHAR a definição deles. Unificá-los foi o
+  que quebrou. É LATCH por carga de página: depois do primeiro, despausar e renascer abrem na hora — e
+  os dois carregam interação própria (o clique em RETOMAR, o clique em DE NOVO).
+  ⚠️ **CAPTURA + `setTimeout(0)`, e as duas metades são obrigatórias.** Captura porque na bolha um
+  `stopPropagation()` esconde o evento (o direcional virtual e os botões de toque do HUD dão) e no dedo o
+  toque pode ser o único input que existe. O `setTimeout` porque em captura NÓS rodamos ANTES do listener
+  do SDK, que é de bolha — chamar `gameplayStart()` ali dentro leria o `interaction` de antes deste
+  gesto, ou seja vazio. Medido no harness com o rastreador deles replicado: sem o timeout o campo vem
+  `undefined`; com ele, `{type:"pointerdown"}`.
   ⚠️ **Não é uma segunda verdade sobre "estou jogando"** — o medo que segurou este conserto: `screen`/
   `pause` continuam dizendo SE há gameplay, e o gesto diz QUANDO ele começou. No SITE é inerte sem um
   `if (PORTAL)`, porque o clique em JOGAR arma o latch antes de existir `screen:"game"`.
-  ⚠️ **E `Activity.js` passou a escutar na CAPTURA**: na bolha, qualquer `stopPropagation()` no caminho
-  esconde o gesto dele — e há vários (o `down` do direcional virtual, os botões de toque do HUD, os
-  handlers do canvas). Era detalhe enquanto ele só armava o respawn; virou crítico quando o evento mais
-  importante do SDK passou a depender dele, porque no dedo um toque sem arrastar pode ser o único input
-  que existe. `removeEventListener` TEM que repetir o flag, senão `destroy()` vira vazamento silencioso.
+  ⚠️ **CONSEQUÊNCIA ACEITA**: quem só mexe o mouse e nunca clica nem digita não produz `gameplayStart`.
+  Na prática não existe (dividir é tecla, atirar é clique, e no dedo tudo é `pointerdown`), e a
+  alternativa seria mandar um evento que o medidor deles REPROVA.
+  ⚠️ **COMO SE VALIDA ISTO SEM A POKI**: o stub de `VITE_POKI_SDK_URL` replica `getRecentInteraction`
+  verbatim e carimba `VALIDO` em cada `gameplayStart`. É a única forma de ver o veredito deles antes de
+  gastar uma submissão.
   ⚠️ **O `gameplayStart` TAMBÉM NÃO PODE DEPENDER DO NOSSO SERVIDOR** (`ATIVO` em `portal/sessao.js`). Ele já
   cobrou `conn === "connected"`, para não contar o handshake do join (até `JOIN_TIMEOUT_MS`, 3 s) como
   playtime — intenção boa, efeito grave: enquanto a conexão não fechasse, o evento mais importante do SDK
