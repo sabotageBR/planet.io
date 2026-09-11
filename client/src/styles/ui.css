@@ -1116,7 +1116,11 @@ body[data-shell="rail"][data-mode="landscape"]:not([data-screen="game"]){--drawe
 
 /* ── a gaveta: todas as telas, os três temas ── */
 body[data-shell="rail"]:not([data-mode="portrait"]) .screen .wrap,
-body[data-shell="rail"]:not([data-mode="portrait"]) #s-dead .dead-card,
+/* ⚠️ O KABOOM SAI DA GAVETA: ele é um cartão de UM número, e uma gaveta de altura cheia com um número
+   dentro é o pior dos dois mundos — ainda por cima tirando metade da arena de quem está assistindo. Ele
+   vira a caixa CENTRADA do bloco "TODA TELA NO MESMO LUGAR" (a regra logo abaixo), e `--rail-w` vai a
+   zero por `body[data-dead="kaboom"]`, na seção da tela de morte. */
+body[data-shell="rail"]:not([data-mode="portrait"]) #s-dead:not([data-style="kaboom"]) .dead-card,
 body[data-shell="rail"]:not([data-mode="portrait"]) #s-round .dead-card,
 body[data-shell="rail"]:not([data-mode="portrait"]) #s-entry .entry-wrap{
   position:absolute;left:auto;right:0;top:0;bottom:0;transform:none;
@@ -1175,7 +1179,9 @@ body[data-mode="landscape"] #s-entry .entry-wrap{overflow:auto;overscroll-behavi
    Especificidade (0,3,1)/(1,3,1): `ui.css` é importado ANTES dos temas, então empate perderia. */
 body:not([data-shell="rail"]):not([data-mode="portrait"]) .screen .wrap,
 body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-dead .dead-card,
-body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-round .dead-card{
+body:not([data-shell="rail"]):not([data-mode="portrait"]) #s-round .dead-card,
+/* o KABOOM entra aqui mesmo com a gaveta no ar — ver a exclusão na regra do rail, acima */
+body[data-shell="rail"]:not([data-mode="portrait"]) #s-dead[data-style="kaboom"] .dead-card{
   position:absolute;left:50%;right:auto;top:var(--screen-top);bottom:auto;transform:translateX(-50%);
   width:var(--screen-w,min(520px,100%));height:auto;max-height:calc(100% - var(--screen-top) * 2);
   display:flex;flex-direction:column;align-items:stretch;gap:12px;justify-content:flex-start;
@@ -2322,6 +2328,30 @@ body[data-mode="portrait"] .portal-login{font-size:12px;padding:6px 12px}
 #s-dead[data-style="duelo"]{--screen-w:min(560px,100%)}
 #s-dead[data-style="balanco"]{--screen-w:min(520px,100%)}
 #s-dead[data-style="sala"]{--screen-w:min(540px,100%)}
+
+/* ── MODELO 4: KABOOM, a tela de morte de UM TOQUE (pacote de portal, modo Livre) ────────────────
+   ⚠️ ELE NÃO É GAVETA. `--rail-w` (ver o bloco do rail) só vale zero em `[data-screen="game"]`, então em
+   `dead` o `#game` encolhe 480 px / 46vw para abrir espaço a um painel de altura cheia — e aqui isso
+   daria uma gaveta de 480 px com UM número dentro, tirando metade da arena de quem está olhando. O
+   caminho já existe e é o do recolhido: o espelho em `body[data-dead]`, escrito por ui/Dead.jsx. */
+#s-dead[data-style="kaboom"]{--screen-w:min(380px,100%)}
+body[data-dead="kaboom"][data-shell="rail"]:not([data-screen="game"]):not([data-mode="portrait"]){--rail-w:0px}
+/* ⚠️ O CARTÃO CENTRALIZA OS FILHOS, e isso precisa ser dito: a caixa unificada é `align-items:stretch`
+   (o bloco "TODA TELA NO MESMO LUGAR"), e os três temas alinham `.dead-icon`/`.dead-title` à esquerda —
+   ficavam encostados na borda com o número centrado embaixo, o que lê como dois cartões colados. */
+#s-dead[data-style="kaboom"] .dead-card{align-items:center;text-align:center;gap:6px}
+#s-dead[data-style="kaboom"] .dead-card>*{align-self:center}
+#s-dead[data-style="kaboom"] .dead-foot{align-self:stretch}
+#s-dead[data-style="kaboom"] .kb-num{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%}
+#s-dead[data-style="kaboom"] .kb-num b{font-size:clamp(38px,11vw,64px);line-height:1;
+  font-variant-numeric:tabular-nums;color:var(--accent,#ffc22e)}
+#s-dead[data-style="kaboom"] .kb-num i{font-style:normal;font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;opacity:.7}
+/* ⚠️ O CTA OCUPA A LARGURA, e isso PRECISA de regra própria: `base.css` dá `flex-direction:column` a
+   `.dead-actions`, mas os TRÊS temas a viram para `row` — e em `row` um botão sozinho, sem `flex`, fica
+   do tamanho do texto. (1,2,0) aqui ganha do (0,1,0) do tema. */
+#s-dead[data-style="kaboom"] .dead-actions{flex-direction:column}
+#s-dead[data-style="kaboom"] .dead-actions .btn-primary{width:100%;min-height:56px;font-size:20px}
 
 /* ── o alvo (eu · quem me matou): disco grande, rótulo, nome, massa ──
    O canvas transborda o bloco em 132% e é centrado por absoluto — o disco ocupa ~57% do canvas (o

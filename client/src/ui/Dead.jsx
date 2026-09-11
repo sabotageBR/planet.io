@@ -25,6 +25,8 @@ import { app } from "../state/app.js";
 import { play, sairDaPartida, respawnAqui } from "../state/actions.js";
 import { SpecBar, SpecWho, useSpec } from "./SpecBar.jsx";
 import { prazoDe } from "./deadClock.js";
+import { estiloDe } from "./deadEstilo.js";
+import { SEM_MENU } from "../portal/flags.js";
 import { useLabels } from "../hooks/useTheme.js";
 import SkinPreview from "./SkinPreview.jsx";
 import DeadPrize from "./DeadPrize.jsx";
@@ -32,10 +34,7 @@ import { fmt, fmtTime, ord } from "./format.js";
 import { preenche } from "../i18n/index.js";
 import { sfx } from "../audio/index.js";
 
-const ESTILOS = ["duelo", "balanco", "sala"];
 const Q = typeof location !== "undefined" ? new URLSearchParams(location.search).get("dead") : null;
-const estiloDe = p => (Q && (ESTILOS[+Q - 1] || (ESTILOS.includes(Q) ? Q : null)))
-  || (ESTILOS.includes(p && p.deadStyle) ? p.deadStyle : "duelo");
 // `r` é sempre medido na escala de 112 (paintSkin escala por cv.width/112) e quem cresce é o `size`:
 // subir o `r` estoura o aro das skins com anel para fora do canvas, que corta. Ver Round.jsx.
 const Planeta = ({ skinId, size = 240 }) => <SkinPreview skin={skinById(skinId | 0)} r={30} size={size} className="" />;
@@ -44,12 +43,15 @@ export default function Dead({ on }) {
   const LB = useLabels();
   const m = useStore(app, s => s.lastMatch), r = useStore(app, s => s.rewards), pending = useStore(app, s => s.rewardsPending), before = useStore(app, s => s.session.dayRank);
   const prefs = useStore(app, s => s.session.prefs);
-  const estilo = estiloDe(prefs);
   const after = r && r.rank ? r.rank.day : null;
   // De quem é a cena que continua rodando atrás da tela: o servidor escolhe, mas o morto pode trocar. Todo
   // o estado de quem assiste (throttle, setas, teclado com as duas guardas) mora em ui/SpecBar.jsx — é o
   // MESMO de ui/Spectate.jsx, e era o mesmo código escrito duas vezes.
   const { game, h, spec, mapa, trocar, verMapa } = useSpec(on);
+  // ⚠️ DEPOIS do `useSpec`, porque agora o estilo depende do MODO — e o modo vem de `h.mode`, o mesmo que
+  // decide o `semRespawn` lá embaixo. Lendo de fontes diferentes sairia um cartão mínimo com "OUTRA
+  // PARTIDA" dentro. A regra inteira (quem ganha de quem) mora em `ui/deadEstilo.js`, pura e testada.
+  const estilo = estiloDe(prefs, { q: Q, portal: SEM_MENU, modo: h.mode, br: MODE.BR });
   useEffect(() => { if (on) sfx("deadScreen"); }, [on]);   // a tela de KABOOM tem som próprio (o `death` é o do mundo, lá atrás)
   // ── RECOLHER: o cartão sai da frente e vira uma barra ────────────────────────────────────────────
   // O pedido veio do Battle Royale no celular, onde o cartão tapava a partida inteira — e o jogo promete o
@@ -67,10 +69,14 @@ export default function Dead({ on }) {
   useEffect(() => { setMin(on ? !!app.get().deadMin : false); }, [on]);
   // O espelho no `body` é o que deixa o CSS devolver a tela ao jogo (a gaveta encolhe a zero no desktop).
   // Cleanup obrigatório: sem ele o atributo sobrevive à tela e a gaveta some no menu.
+  // ⚠️ ELE CARREGA O ESTILO, e não só o `min`: o `kaboom` é um cartão CENTRADO e pequeno, então ele
+  // precisa do mesmo tratamento que o recolhido — devolver a largura ao jogo em vez de virar uma gaveta
+  // de 480 px com um número dentro (`--rail-w` só é zero em `[data-screen="game"]`). O valor `"min"`
+  // continua significando o que sempre significou; quem lê é o CSS.
   useEffect(() => {
-    document.body.dataset.dead = on && min ? "min" : "";
+    document.body.dataset.dead = on ? (min ? "min" : estilo) : "";
     return () => { document.body.dataset.dead = ""; };
-  }, [on, min]);
+  }, [on, min, estilo]);
   // ── RESPAWN AUTOMÁTICO (Livre), MAS SÓ DEPOIS DE UM SINAL DE VIDA ───────────────────────────────
   // A contagem já foi incondicional: abria no instante da morte e renascia sozinha 5 s depois, sem que
   // ninguém clicasse em nada — o botão era o espelho dela, não a causa. Uma aba esquecida aberta virava um
@@ -122,11 +128,13 @@ export default function Dead({ on }) {
   const novoMass = m.maxMass > 0 && m.maxMass > recMass, novoScore = (m.score || 0) > 0 && m.score > recScore;
 
   // ── peças ────────────────────────────────────────────────────────────────
-  const cabeca = <>
+  // duas metades: o `kaboom` fica só com o estouro e o título — o subtítulo ("a galáxia continua sem
+  // você") é sabor, e sabor é a primeira coisa que sai de um cartão que existe para ter UM toque
+  const cabecaMin = <>
     <div className="dead-icon">{LB.deadIcon}</div>
     <div className="dead-title">{LB.dead}</div>
-    <div className="dead-sub">{LB.deadSub}</div>
   </>;
+  const cabeca = <>{cabecaMin}<div className="dead-sub">{LB.deadSub}</div></>;
   /** Quem te matou, com planeta. Sem algoz (gás, buraco) o disco vira o ÍCONE do perigo: inventar um
       planeta para o cenário seria mentir sobre quem estava do outro lado. */
   const algozBloco = tam => <div className={"dd-alvo" + (perigo ? " perigo" : "")}>
@@ -217,6 +225,26 @@ export default function Dead({ on }) {
       <span className="dl-trilho"><i style={{ width: Math.max(2, Math.min(100, Math.round((atual / Math.max(rec, atual)) * 100))) + "%" }} /></span>
       <em className="dl-rec">{novo ? LB.newRecord : LB.recordWord + " " + fmt(rec)}</em>
     </> : null}
+  </div>;
+
+  /* ── KABOOM: A TELA DE MORTE DE UM TOQUE (pacote de portal, modo Livre) ──────────────────────────
+     O estouro, UM número e o DE NOVO ocupando a largura. Sai tudo o que é RELATÓRIO — os três modelos,
+     o ranking do dia, o recorde, a colocação, o prêmio, as duas vistas e o "voltar ao lobby".
+     ⚠️ O número é o SCORE e não a massa: `maxMass` já esteve no HUD a partida inteira, e a pergunta de
+     quem vai clicar em DE NOVO é "quanto eu fiz", não "quanto eu era".
+     ⚠️ `LB.dead` JÁ É "KABOOM!" — nenhuma chave de i18n nova, nos três dicionários.
+     ⚠️ Ele vem ANTES do recolhido e não tem botão para lá: um cartão deste tamanho não tapa a partida,
+     então o estado recolhido não teria o que resolver. E não monta `DeadPrize` nem `SpecBar` — não é a
+     mesma tela com `display:none`, é um quarto modelo, e por isso não paga o custo deles.
+     ⚠️ TRADE-OFF DECLARADO: sai a oferta de anúncio recompensado do caminho de morte mais frequente do
+     jogo. A receita não zera (o midroll do respawn continua, com `PORTAL.MIN_AD_MS` entre eles), mas é
+     isto que está sendo trocado por retenção. */
+  if (estilo === "kaboom") return <div className="screen on" id="s-dead" data-style="kaboom">
+    <div className="card dead-card">
+      {cabecaMin}
+      <div className="kb-num"><b>{fmt(m.score || 0)}</b><i>{LB.scoreLabel}</i></div>
+      <div className="dead-foot"><div className="dead-actions">{botaoPrimario}</div></div>
+    </div>
   </div>;
 
   /* RECOLHIDO: sai o cartão, entra a barra — a MESMA de quem assiste a uma sala em andamento. Fica o que

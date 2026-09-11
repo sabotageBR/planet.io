@@ -6,6 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { morteZero, passoMorte, prazoDe } from '../src/ui/deadClock.js';
+import { ROUND, TICK_HZ } from '@warspace/shared';
 
 const RESP = 5000, T = 1_000_000;
 
@@ -107,4 +108,31 @@ test('tela que ainda não apareceu não tem prazo nenhum', () => {
 test('desarmado continua sem prazo, com ou sem piso', () => {
   const so_morto = passoMorte(morteZero(), { tipo: 'morte', now: T });
   assert.equal(prazoDe(so_morto, RESP, T + 1200, 1500), 0, 'sem gesto, ninguém renasce sozinho');
+});
+
+// ── OS 2 SEGUNDOS DO PACOTE DE PORTAL ────────────────────────────────────────
+// `ROUND.RESPAWN_TICKS` caiu de 300 (5 s) para 120 (2 s) pelo Player Fit da Poki, e nesse valor o PISO de
+// `DEAD_MIN_MS` deixa de ser folgado: ele passa a mandar para quem já estava com a mão no mouse na hora
+// da morte. Isso não é conflito — é o piso fazendo o que existe para fazer —, mas é uma fronteira nova e
+// silenciosa, e o que este bloco trava é onde exatamente ela cai.
+const DOIS = Math.round(ROUND.RESPAWN_TICKS / TICK_HZ) * 1000, ATRASO = ROUND.DEAD_DELAY_MS, PISO = ROUND.DEAD_MIN_MS;
+
+test('o padrão do jogo são 2 s de respawn automático', () => {
+  assert.equal(DOIS, 2000, 'se este número mudar, a conta dos dois casos abaixo muda junto');
+  assert.ok(PISO < DOIS, 'abaixo disto quem manda passa a ser o piso e a contagem exibida mente');
+});
+
+test('gesto NO INSTANTE da morte: quem manda é o piso da tela, não os 2 s', () => {
+  let st = passoMorte(morteZero(), { tipo: 'morte', now: T });
+  st = passoMorte(st, { tipo: 'atividade', now: T });          // a mão já estava em movimento
+  const telaAt = T + ATRASO;                                    // a tela só aparece depois de DEAD_DELAY_MS
+  assert.equal(prazoDe(st, DOIS, telaAt, PISO), telaAt + PISO);
+  assert.equal(prazoDe(st, DOIS, telaAt, PISO) - T, ATRASO + PISO, 'total desde a morte: 2,7 s');
+});
+
+test('gesto DEPOIS do cartão aparecer: valem os 2 s, contados do gesto', () => {
+  let st = passoMorte(morteZero(), { tipo: 'morte', now: T });
+  const telaAt = T + ATRASO;
+  st = passoMorte(st, { tipo: 'atividade', now: telaAt + 900 });   // mexeu quase 1 s depois de ver a tela
+  assert.equal(prazoDe(st, DOIS, telaAt, PISO), telaAt + 900 + DOIS, 'o gesto ganha do piso');
 });

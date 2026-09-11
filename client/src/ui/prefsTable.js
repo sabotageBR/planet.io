@@ -41,7 +41,7 @@ export const PREFS = [
     { key: "lbSize", type: "select", opts: [5, 8, 10], kind: "num" },
     { key: "chat", type: "toggle" },
     // Os três modelos da tela de fim de rodada e a abertura dela (ver PREF_DEFAULTS em state/app.js).
-    { key: "deadStyle", type: "select", opts: ["duelo", "balanco", "sala"] },
+    { key: "deadStyle", type: "select", opts: ["duelo", "balanco", "sala", "kaboom"] },
     { key: "roundStyle", type: "select", opts: ["podio", "cinema", "dossie"] },
     { key: "roundIntro", type: "toggle" },
     { key: "brInvite", type: "toggle" } ] },

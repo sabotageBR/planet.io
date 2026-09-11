@@ -56,6 +56,10 @@ const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile",
   // hudStore quando a tela `game` roda antes. `@min` é a tela de morte RECOLHIDA — o estado que o pedido
   // do celular criou, e que só existe depois de um clique que a sonda não dá.
   "dead:duelo:livre","dead:duelo@min",
+  // `dead:kaboom:livre` é a tela de morte do PACOTE DE PORTAL: o estouro, um número e o DE NOVO de
+  // largura cheia. Vai com `:livre` e sem `@min` de propósito — no Battle Royale o kaboom não existe
+  // (ui/deadEstilo.js) e um cartão deste tamanho não tapa a partida, então não há recolhido a medir.
+  "dead:kaboom:livre",
   // `spec` é a barra de quem assiste a uma sala em andamento: `position:fixed`, variante própria em
   // retrato e três alvos de toque — a forma de elemento que esta matriz existe para cobrar.
   "spec"];

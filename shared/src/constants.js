@@ -136,7 +136,7 @@ export const ROOM={SPEC_MAX:10,MAX:30,BOTS:24,CODE_LEN:4,STOP_AFTER_MS:30000,REM
 // HOST_GRACE_MS: o dono pode cair e voltar. Passado esse tempo fora, a coroa vai para o humano mais antigo
 // que estiver na sala — sem isso uma sala privada com 20 pessoas fica sem quem possa expulsar um invasor.
 export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,FADE_MS:600,BOARD_MAX:60,AWARD_MIN_KILLS:3,
-  DAY_TICKS:54000,CHOICES_MIN:[10,20,30,60,0],RESPAWN_TICKS:300,DEAD_DELAY_MS:1200,DEAD_MIN_MS:1500};
+  DAY_TICKS:54000,CHOICES_MIN:[10,20,30,60,0],RESPAWN_TICKS:120,DEAD_DELAY_MS:1200,DEAD_MIN_MS:1500};
 // DEAD_DELAY_MS: quanto o jogo espera entre a MORTE e a tela de morte. Era zero — `onDead` escrevia
 // `screen:"dead"` no mesmo tick da mensagem —, então o modal cobria exatamente o quadro em que o planeta
 // estoura, que é a única coisa que a pessoa quer ver ali. A câmera já foi para o alvo que o servidor
@@ -145,8 +145,15 @@ export const ROUND={TICKS:108000,BREAK_MS:15000,DAY_START_H:5,WARN_S:10,DAYS:2,F
 // é o que impede o respawn automático de disparar no primeiro frame quando o par `{deadAt,armAt}` que
 // chega à tela ainda é o de uma vida ANTERIOR (ver client/src/ui/deadClock.js). Sem ele existia uma morte
 // em que a tela simplesmente não aparecia e o jogador reentrava no ato.
-// RESPAWN_TICKS: quanto tempo a tela de morte espera antes de renascer SOZINHA no Livre (300 = 5 s a
-// 60 Hz). ⚠️ Quem decide QUANDO renascer é o CLIENTE, não o servidor: `respawn` já aceitava o pedido a
+// RESPAWN_TICKS: quanto tempo a tela de morte espera antes de renascer SOZINHA no Livre (120 = 2 s a
+// 60 Hz). ⚠️ ERA 5 s, e a queda veio do Player Fit da Poki: 67% das sessões acabam antes dos 2 min, e
+// cinco segundos de tela parada a cada morte — num agar, onde a vida mediana é de 15–40 s — é uma fatia
+// grande do primeiro minuto gasta olhando um cartão. Dois segundos é o tempo de ler um número e decidir.
+// ⚠️ O PISO DE `DEAD_MIN_MS` (1,5 s) passa a MORDER para quem já estava com a mão no mouse na hora da
+// morte: `prazoDe` é `max(armAt + RESPAWN, telaAt + DEAD_MIN_MS)`, então o gesto que chega antes de
+// `deadAt + 700 ms` cai no piso. Não é conflito — é o piso fazendo o que existe para fazer (a tela tem
+// que APARECER). Abaixo de 1,5 s aqui, quem manda passa a ser ele, e a contagem exibida mente.
+// ⚠️ Quem decide QUANDO renascer é o CLIENTE, não o servidor: `respawn` já aceitava o pedido a
 // qualquer momento (era só o botão "DE NOVO" que faltava apertar), então isto só automatiza o clique —
 // não é autoridade de jogo, é temporização de tela, e por isso é `wire` em tunables.js (chega pelo JSON
 // `room`, no molde de `CAM.K`) em vez de `server`. O jogador continua podendo clicar "DE NOVO" a

@@ -209,7 +209,7 @@ export default {
     showNames: "Mostrar nomes", showMinimap: "Minimapa", showFps: "Mostrar FPS e ping", lbSize: "Linhas do placar", chat: "Chat",
     colorblind: "Modo daltonismo", colorblind_off: "Desligado", colorblind_deutan: "Deuteranopia", colorblind_protan: "Protanopia", colorblind_tritan: "Tritanopia",
     reduceMotion: "Reduzir movimento", bigText: "Texto maior",
-    deadStyle: "Tela de morte", deadStyle_duelo: "Duelo", deadStyle_balanco: "Balanço", deadStyle_sala: "Sala",
+    deadStyle: "Tela de morte", deadStyle_duelo: "Duelo", deadStyle_balanco: "Balanço", deadStyle_sala: "Sala", deadStyle_kaboom: "KABOOM (um toque)",
     roundStyle: "Placar final", roundStyle_podio: "Pódio", roundStyle_cinema: "Cinema", roundStyle_dossie: "Dossiê",
     roundIntro: "Abertura do fim de rodada",
     brInvite: "Avisar quando começar um Battle Royale",
