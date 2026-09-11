@@ -138,6 +138,14 @@ export const TUNABLES=[
   // (game/index.js). Com escopo 'server' o painel movia a trava real e não movia o anel: o jogador via 3 s
   // e o servidor contava outro número, sem nada na tela explicando. Ver RAIZES_WIRE.
   num('armas','MISSILE.AIM_HOLD_TICKS','Duração da mira travada','ticks','wire',0,900,30,MISSILE,'AIM_HOLD_TICKS'),
+  // ⚠️ Os dois limiares da mira, em ms. 'wire' porque quem os lê é o CLIENTE (`input/actions.js`) e não a
+  // física — o precedente é a linha acima, e `MISSILE` já está em RAIZES_WIRE (game/index.js), sem o que
+  // `aplicaWire` daria `continue` e o painel diria 'salvo' para sempre.
+  // ⚠️ As faixas não se cruzam de propósito: o limiar do DEDO tem que ficar acima do limiar do mouse,
+  // senão o celular volta a armar a mira por acidente — que é o defeito que estes dois números existem
+  // para fechar.
+  num('armas','MISSILE.AIM_MS','Tempo até a mira armar (mouse)','ms','wire',80,400,10,MISSILE,'AIM_MS'),
+  num('armas','MISSILE.AIM_MS_TOUCH','Tempo até a mira armar (toque)','ms','wire',420,1200,20,MISSILE,'AIM_MS_TOUCH'),
   // ── PERIGOS DO MAPA ──
   num('perigos','STAR.BURN','Massa que a estrela queima','fração','server',0,.9,.01,STAR,'BURN'),
   // Quem cabe DENTRO da estrela atravessa e se esconde lá (ver o porquê do 40 em `STAR.PASS_R`).

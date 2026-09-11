@@ -191,7 +191,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   let aiming=false,aim=null;const pendingEat=new Map();   // id da peça comida → id de quem comeu (destino da sucção no frame do sumiço)
   let travado=-1,travadoAte=0;   // o alvo do último tiro mirado e até quando o anel continua na tela (MISSILE.AIM_HOLD_TICKS)
   let comboN=0,comboT=0;   // acertos SEGUIDOS do meu tiro — só cosmético (fx/som), nunca entra na física
-  const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self&&!view.self.fireCd?view.self.missiles:0),canAct,
+  // ⚠️ `dedo` vai como GETTER, e é o MESMO booleano que liga o direcional e escolhe a frase da dica —
+  // uma fonte de verdade sobre "o ponteiro é um dedo", não três. Ele decide o limiar da mira (ver o
+  // cabeçalho de input/actions.js: com 160 ms o polegar armava a mira sem querer, o tiro deixava de ser
+  // teleguiado e o segundo dedo era roubado do volante).
+  const actions=createActions({input,prefs:()=>curPrefs,ammo:()=>(view.self&&!view.self.fireCd?view.self.missiles:0),canAct,dedo:()=>dedo,
     onAim:on=>{aiming=on;if(joy)joy.setAiming(on);   // com o rumo travado o normal é NENHUM dedo no canvas: sem isto, o dedo que vai mirar seria lido como volante
       if(!on){aim=null;lastLock=-1;audio.stopLoop("aimCharge");}else audio.startLoop("aimCharge",{k:0});},
     onCancel:()=>audio.play("cancel",{mine:true}),

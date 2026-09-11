@@ -31,6 +31,10 @@ const APARELHOS=[   // nome, largura, altura, dedo?, modo (o mesmo que modeFor d
   // iframe publicado. Quando der para rodar `innerWidth/innerHeight` lá dentro, troca-se a estimativa pela
   // medida — e o mesmo vale para CrazyGames, GameFlare e Playgama.
   ["Poki laptop",960,540,0,"desktop"],        ["Poki desktop 16:9",1024,576,0,"desktop"],
+  // A medida que o documento do Player Fit 1.14 manda usar para o playtest cronometrado. Ela cruza
+  // SHORT_H (500) e cai em `landscape` com ponteiro FINO — a mesma classe do "Frame de portal baixo",
+  // mas 188 px mais estreita, que é onde a faixa do topo e o rodapé de ação apertam.
+  ["Poki 836x470",836,470,0,"landscape"],
   ["Portal 4:3",800,600,0,"desktop"],
   // 1024×480 cruza SHORT_H (500) e cai em `landscape` com ponteiro FINO — combinação que não existia aqui.
   ["Frame de portal baixo",1024,480,0,"landscape"],

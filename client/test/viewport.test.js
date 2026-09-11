@@ -25,6 +25,9 @@ const TABELA = [
   ["Ultrawide",             2560, 1080, false, "desktop"],
   ["Monitor com toque",     1920, 1080, true,  "desktop"],
   ["Janela estreita",        700,  900, false, "portrait"],
+  // O frame que o documento do Player Fit 1.14 manda usar no playtest cronometrado. Ele é a classe que
+  // mais aperta: `landscape` com ponteiro FINO (nenhum celular cai aí) e altura abaixo de SHORT_H.
+  ["Poki 836x470",           836,  470, false, "landscape"],
 ];
 
 test("cada aparelho cai no modo certo", () => {

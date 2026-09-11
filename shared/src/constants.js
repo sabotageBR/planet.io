@@ -708,7 +708,15 @@ export const STAR={COUNT:19,R:46,BURN:.30,RAM_REWARD:false,SWELL:1.75,ARM_K:.5,G
 export const STAR_LAYOUTS=[{v:'0',label:'Clássica (coroa de plasma)'},{v:'1',label:'Anã manchada'},
   {v:'2',label:'Azul com jatos'},{v:'3',label:'Binária'},{v:'4',label:'Pulsar'}];
 export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:625,MAX_AMMO:3,AMMO_OVER:1,R:11,SPAWN_CD_TICKS:600,HIT_SHRINK:.9,STUCK_SHRINK:.82,HIT_DEBRIS:5,DEBRIS_DIST:560,DEBRIS_SPREAD:.9,SHATTER_N:[3,6],SHATTER_DIST:342,
-  INTERCEPT_DIST:1100,ALERT_DIST:3250,AST_KICK:420,AIM_PICK:700,AIM_RANGE:2750,AIM_HOLD_TICKS:180};
+  INTERCEPT_DIST:1100,ALERT_DIST:3250,AST_KICK:420,AIM_PICK:700,AIM_RANGE:2750,AIM_HOLD_TICKS:180,
+  // AIM_MS / AIM_MS_TOUCH: quanto o botão de tiro fica segurado antes de a MIRA armar (a reta pontilhada
+  // aparece e o disparo vai com INPUT_FLAG.AIM). São DOIS números porque o dedo e o mouse não são a mesma
+  // coisa: 160 ms é um "segurar" deliberado com o mouse, e está DENTRO da cauda de um toque de polegar num
+  // botão de ação — no celular o jogador armava a mira sem saber, o tiro deixava de ser teleguiado e o
+  // segundo dedo ia para a MIRA em vez do volante (ver o cabeçalho de client/src/game/input/actions.js).
+  // ⚠️ 420 é PONTO DE PARTIDA, não medição: o número certo sai de aparelho real, e é por isso que os dois
+  // são tunables ('wire', grupo Armas) — calibrar o limiar do dedo não pode pedir um pacote novo.
+  AIM_MS:160,AIM_MS_TOUCH:420};
 // DEBRIS_DIST/DEBRIS_SPREAD/STUCK_SHRINK: o impacto sem escudo era REEMBOLSO, não dano. Os HIT_DEBRIS cacos
 // nasciam no CENTRO da peça, em TODAS as direções (o spread era 2π, e spillFrag com spread>=6.28 sorteia o
 // ângulo) e a 540 px/s — como o ejetado integra com arrasto puro, o alcance é v/DRAG = 146 px, ou seja DENTRO
