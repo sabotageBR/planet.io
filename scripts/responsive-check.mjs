@@ -75,7 +75,7 @@ const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile",
   // (outras frases, outro prompt) e `ok<n>` é a TELA de etapa concluída, que sem isto nenhuma combinação
   // mediria. `fim` é o cartão com o prêmio — o único bloco que pede rolagem em tela baixa, e é ali que a
   // tela de morte e o BIG CRUNCH já reprovaram uma vez com os botões fora da dobra.
-  "tutor:1","tutor:2@2","tutor:3@1","tutor:3!","tutor:ok2","tutor:fim"];
+  "tutor:pre","tutor:1","tutor:2@2","tutor:3@1","tutor:3!","tutor:ok2","tutor:fim"];
 const TEMAS=(process.env.RESP_TEMAS||"dawn,sunset,dusk").split(",");   // o dusk é o mais fraco: tem menos regras de mobile que os outros dois
 // `RESP_TELAS` recorta a matriz, no molde do `RESP_TEMAS`: a rodada inteira são ~600 combinações e vários
 // minutos, e quem acabou de mexer em UMA tela quer o retorno dela em segundos. A rodada completa continua

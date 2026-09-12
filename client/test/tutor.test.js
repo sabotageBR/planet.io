@@ -218,3 +218,39 @@ test("`celebra` é a JANELA, `festa` é o instante", () => {
   assert.equal(d.celebra, false, "e sai quando a próxima etapa sobe");
   assert.equal(d.etapa, ETAPA.TIRO);
 });
+
+test("NA EXPLOSÃO A FALA É OUTRA, E NÃO HÁ BOTÃO A APERTAR", () => {
+  // ⚠️ A etapa 1 abre com a estrela ainda inteira. Dizer "leve seu planeta até os pedaços" ali é pedir
+  // algo que não está na tela — e um prompt pulsando manda agir antes de existir o que fazer.
+  const pre = { etapa: ETAPA.NOVA, ajuda: 0, pct: 0, dedo: false, pre: true };
+  assert.deepEqual(falaDoTutor(pre, T, "ESPAÇO"), ["nova", "novaEspera"]);
+  assert.equal(promptDoTutor(pre, T, "ESPAÇO"), null);
+  // e assim que ela estoura, a lição de mover começa — com botão
+  const pos = { ...pre, pre: false };
+  assert.deepEqual(falaDoTutor(pos, T, "ESPAÇO"), ["novaTit", "novaMouse"]);
+  assert.equal(promptDoTutor(pos, T, "ESPAÇO").tipo, "mouse-mover");
+});
+
+test("depois do primeiro terço a instrução vira ELOGIO, não repetição", () => {
+  // Repetir "mova o mouse" para quem já está movendo o mouse é a tela dizendo que não viu o que ele fez.
+  const d = (pct, dedo = false) => falaDoTutor({ etapa: ETAPA.NOVA, ajuda: 0, pct, dedo }, T, "ESPAÇO")[1];
+  assert.equal(d(0), "novaMouse");
+  assert.equal(d(.5), "novaMais");
+  assert.equal(d(.5, true), "novaMais");
+});
+
+test("NA ETAPA 3 O DIAGNÓSTICO VEM ANTES DA ORDEM", () => {
+  // ⚠️ `splitNao` ("CORRENDO VOCÊ NUNCA ALCANÇA") é a lição — a presa é mais rápida por FÍSICA, não por
+  // falta de habilidade. Repetir "DIVIDA PARA ALCANÇAR" no degrau 1 só mandaria de novo, mais alto, o
+  // que o jogador acabou de tentar sem sucesso.
+  assert.deepEqual(falaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0, pct: 0, dedo: false }, T, "ESPAÇO"),
+    ["splitTit", "splitCaca"]);
+  assert.equal(falaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 1, pct: 0, dedo: false }, T, "ESPAÇO")[0], "splitNao");
+});
+
+test("A ETAPA 3 NÃO DEIXA O JOGADOR CORRER MAIS DE 5 s ATRÁS DO IMPOSSÍVEL", () => {
+  // A mediana de uma primeira vida é 31 s. Oito segundos perseguindo algo que a física torna
+  // inalcançável não ensinam a dividir; ensinam que o jogo não responde.
+  assert.ok(AJUDA[ETAPA.SPLIT].d1 <= 5000, `${AJUDA[ETAPA.SPLIT].d1} ms até a dica do salto`);
+  assert.ok(AJUDA[ETAPA.SPLIT].d1 > AJUDA[ETAPA.NOVA].d1 * .8, "mas não tão cedo que ele nem tente");
+});

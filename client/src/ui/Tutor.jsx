@@ -3,7 +3,8 @@
 // tela nova deixaria o HUD inteiro `hidden` (`Hud.jsx`), faria o `GameHost` chamar `game.leave()` no
 // primeiro render, prenderia a cortina `#boot` por 10 s no pacote e pararia o relógio de sessão do portal.
 //
-//   1. EM CURSO — a trilha 1·2·3, o título da etapa, a instrução em letra grande e o PROMPT DE BOTÃO;
+//   1. EM CURSO — a trilha 1·2·3 com o contador "N/3", a barra da etapa 1, o título, a instrução em
+//      letra grande e o PROMPT DE BOTÃO;
 //   2. ETAPA COMPLETA — a tela que aparece, comemora e fecha sozinha (`celebra`, a janela de `SOBRA_MS`);
 //   3. FIM — o cartão com a oferta da skin e a passagem para a sala.
 //
@@ -32,6 +33,9 @@ import SkinPreview from "./SkinPreview.jsx";
 
 /** Segundos da contagem do botão de entrar na sala. Promessa, não ameaça — ver o `pausa` abaixo. */
 const CONTA_S = 12;
+
+/** O título de cada etapa, para a tela de "completa" poder anunciar a próxima. */
+const TIT_ETAPA = { [ETAPA.NOVA]: "novaTit", [ETAPA.TIRO]: "tiroTit", [ETAPA.SPLIT]: "splitTit" };
 
 /** O desenho do prompt: um mouse, uma tecla ou o botão do HUD. SVG inline — nada de imagem nova. */
 function Prompt({ p }) {
@@ -74,6 +78,14 @@ export default function Tutor({ d, tecla }) {
   return <>
     <div id="tutor" data-etapa={d.etapa}>
       <Trilha etapa={d.etapa} T={T} />
+      {/* ⚠️ A BARRA SÓ EXISTE NA ETAPA 1, e isso é escolha: lá o `pct` é contínuo (sai da massa) e diz
+          quanto falta; nas outras duas a etapa é UM gesto, então a barra ficaria parada em zero por
+          dez segundos — uma barra que não anda enquanto o jogador tenta lê como "não estou
+          registrando o que você faz", que é o oposto do que ela existe para dizer. */}
+      {d.etapa === ETAPA.NOVA && !d.pre ? <div className="tut-barra"
+        role="progressbar" aria-valuenow={Math.round(d.pct * 100)} aria-valuemin={0} aria-valuemax={100}>
+        <i style={{ width: Math.round(d.pct * 100) + "%" }} />
+      </div> : null}
       <div className="tut-fala" key={tit + txt} role="status" aria-live="polite">
         <b className="tut-tit">{tit}</b>
         <span className="tut-txt">{txt}</span>
@@ -91,7 +103,15 @@ export default function Tutor({ d, tecla }) {
  * de paleta, o verde e o âmbar dos tokens ficam com ΔE 6,7 em protanopia.
  */
 function Trilha({ etapa, T }) {
-  return <div className="tut-trilha" role="progressbar" aria-valuenow={etapa} aria-valuemin={1} aria-valuemax={ETAPAS}>
+  // ⚠️ `pos`, e não `n`: o `map` abaixo declara o próprio `n`, e um homônimo aqui fora seria sombreado
+  // dentro dele. É a mesma classe de defeito que o `marco`/`degrau` de `game/index.js` custou caro.
+  const pos = Math.min(Math.max(etapa, 1), ETAPAS);
+  return <div className="tut-trilha" role="progressbar" aria-valuenow={pos} aria-valuemin={1} aria-valuemax={ETAPAS}>
+    {/* ⚠️ O "1/3" É TEXTO, ao lado das bolas, e não substitui nenhuma delas: as bolas dizem o CAMINHO
+        (onde já esteve, onde está, quanto falta) e o número diz a POSIÇÃO sem depender de contar
+        círculos numa tela de 360 px com um planeta andando por baixo. É o mesmo princípio de "nenhum
+        estado vai só na cor" aplicado à forma. */}
+    <b className="tut-passo">{preenche(T.passo, { n: pos, t: ETAPAS })}</b>
     {Array.from({ length: ETAPAS }, (_, i) => {
       const n = i + 1, st = n < etapa ? "ok" : n === etapa ? "now" : "off";
       return <React.Fragment key={n}>
@@ -119,6 +139,9 @@ function Completa({ d, T }) {
       <div className="tok-tit">{preenche(T.feito, { n })}</div>
       <div className="tok-sub">{T["feito" + n] || ""}</div>
       {d.auto ? <div className="tok-auto">{T.tiroAuto}</div> : null}
+      {/* ⚠️ Dizer O QUE VEM é o que transforma três lições soltas numa sequência: a tela fecha sozinha, e
+          sem esta linha a etapa seguinte começa com o jogador ainda olhando para o elogio da anterior. */}
+      {n < ETAPAS ? <div className="tok-prox">{preenche(T.prox, { s: T[TIT_ETAPA[n + 1]] || "" })}</div> : null}
       <Trilha etapa={Math.min(n + 1, ETAPAS)} T={T} />
     </div>
   </div>;

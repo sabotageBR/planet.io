@@ -40,10 +40,12 @@ export default {
   // vira, nada explode, e ele conclui que o tutorial mente. O precedente é `hintSplit`/`hintSplitTouch`.
   // ⚠️ E nunca a palavra "pedra": a pedra do jogo é o ASTEROIDE, que estilhaça quem encosta. É "fragmento".
   tutor: {
-    pular: "Pular", passo: "{n} de {t}", etapa: "ETAPA {n}",
+    pular: "Pular", passo: "{n}/{t}", etapa: "ETAPA {n}", prox: "A SEGUIR: {s}",
     // ETAPA 1 — mover
     novaTit: "COMA OS PEDAÇOS",
-    nova: "A estrela vai explodir!",
+    nova: "A ESTRELA VAI EXPLODIR!",
+    novaEspera: "Espere: ela vai espalhar um monte de pedaços.",
+    novaMais: "Isso! Continue comendo os pedaços.",
     novaMouse: "MOVA O MOUSE para levar seu planeta até os pedaços",
     novaDedo: "TOQUE na tela para onde você quer ir",
     novaRumo: "Ele vai sozinho. Toque de novo para virar.",
@@ -57,7 +59,7 @@ export default {
     // ETAPA 3 — dividir
     splitTit: "DIVIDA PARA ALCANÇAR",
     splitCaca: "Coma o planeta pequeno!",
-    splitNao: "Ele é mais rápido. Correndo você nunca alcança.",
+    splitNao: "CORRENDO VOCÊ NUNCA ALCANÇA",
     splitMouse: "Aperte {k} para se dividir e dar o salto!",
     splitDedo: "Toque em DIVIDIR para dar o salto!",
     splitAjuda: "Ele parou! Divida agora.",

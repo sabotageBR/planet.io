@@ -31,37 +31,77 @@ import {passoTutor,TUTOR0,ETAPA} from "../tutor.js";
  * ⚠️ `roundTicks:0` = SEM FIM. O tutorial acaba pelo roteiro, nunca por tempo.
  */
 export const OPCOES_TUTORIAL={seed:7,bots:0,food:0,roundTicks:0,code:"0TUT",
-  // ⚠️ **A ARENA É UM QUADRADINHO, e isso é o coração da experiência.** O mundo do jogo tem 12.000 px de
-  // lado; num tutorial isso é um vazio sem beira, onde tudo o que importa está fora da tela e o jogador
-  // não tem nem senso de LUGAR. Aqui são 1.200 — medido contra `zoomFor`: o menor lado visível de todas as
-  // telas da matriz é **838 px** (celular em pé, largura), e o maior passa de 2.800. Com 1.200 a borda
-  // tracejada do mundo aparece na tela em qualquer aparelho, e tudo o que a lição precisa cabe dentro dela.
+  // ⚠️ **A ARENA É UM QUADRADINHO — mas 1.200 px era PEQUENO DEMAIS, e o preço foi a tela inteira.**
+  // O mundo do jogo tem 12.000 px de lado e num tutorial aquilo é um vazio sem beira; o erro foi corrigir
+  // isso sem olhar o PISO da câmera. `shared/camera.js` nunca afasta além de mostrar o mundo inteiro, e
+  // `zoomFor` mantém ~1920×1080 px de MUNDO visíveis em qualquer tela — num mundo de 1.200 esses 1920 não
+  // cabem, então o piso vira um TETO e a câmera é forçada a AMPLIAR. Medido em produção, numa janela de
+  // 1854×871: escala **1,545** e apenas **564 px de mundo na vertical** (±282 do centro), contra uma
+  // coreografia que planta tudo a 300 px. Ou seja: no desktop o alvo da etapa 2 e a presa da etapa 3
+  // nasciam FORA DO ENQUADRAMENTO, e o tutorial mandava atirar em algo que não estava na tela.
+  // Com 1.800 o piso ainda morde um pouco no desktop (escala 1,03), e isso é PROPOSITAL: é o que mantém
+  // a arena "um quadradinho" — o planeta grande na tela, a borda tracejada à vista — sem cortar a cena.
+  // A conta que decide o número está travada em `client/test/tutor-mundo.test.js`, com o `zoomFor` de
+  // verdade sobre as telas da matriz: a meia-altura visível fica em 423 px (desktop) a 900 (retrato),
+  // contra os 286 px por eixo que a coreografia diagonal planta com o aluno no teto.
   // ⚠️ O tamanho do mundo NÃO mexe na quantização: `qPos`/`dqPos` usam a constante GLOBAL `WORLD.w` nos
   // dois lados, então um mundo menor só ganha precisão (0,18 px por unidade). E o cliente obedece ao
   // `world:{w,h}` do JSON `room`, que o `LocalServer` já mandava — a grade, a borda e o radar acompanham.
-  mundo:{w:1200,h:1200,asteroids:false,holes:0,stars:0,decay:false}};
+  mundo:{w:1800,h:1800,asteroids:false,holes:0,stars:0,decay:false}};
 
 /** A coreografia, num lugar só. Ver o bloco de contas no fim do arquivo. */
 export const CENA={
-  DIST:300,          // ⚠️ o raio de tudo, e ele é PEQUENO de propósito: numa arena de 1.200 px tudo tem de
-                     // caber na tela de um celular em pé (838 px de largura visível) sem o jogador
-                     // precisar procurar. Nada no tutorial fica a mais de 300 px dele.
+  // ⚠️ **`DIST` É O VÃO ENTRE AS SUPERFÍCIES, não a distância entre os centros.** Medindo de centro a
+  // centro, tudo encolhe conforme o aluno cresce: no fim da etapa 1 ele chega a r≈110, o alvo da etapa 2
+  // nasce com 1,05× isso, e os 300 px viravam **um vão de 80** — os dois planetas colados, com a lição
+  // "atire nele" apontando para algo encostado no jogador. A distância real é `DIST + r_me + r_alvo`.
+  DIST:130,
+  NOVA_D:290,        // ⚠️ a etapa 1 tem PISO PRÓPRIO de distância, e ele não é gosto: o miolo que
+                     // estilhaça vale ~138 px com a estrela já inchada, e um aluno dentro dele é
+                     // despedaçado pela primeira coisa que o tutorial faz. 290 dá folga de 2,1×, que é o
+                     // que `client/test/tutor-mundo.test.js` cobra — "sobreviveu" não basta como asserção,
+                     // porque a primeira versão sobrevivia por 10 px e só com o jogador parado.
+  R_MAX:96,          // ⚠️ **E O ALUNO TEM TETO.** Ele come os 24 cacos da supernova E os pedaços que o
+                     // míssil arranca do alvo da etapa 2: medido em bancada, chegava a **r=141
+                     // (massa 19.900)** — um planeta de 282 px de diâmetro numa cena em que nada mais
+                     // cabia. Com 96 ele ainda DOBRA de tamanho (nasce em 63), que é a recompensa da
+                     // etapa 1, e a cena continua enquadrável com o alvo INTEIRO dentro da tela — o que
+                     // obriga a somar o raio DELE ao envelope, e não só a distância entre os centros.
+                     // É massa descartada em silêncio, e num tutorial sem placar isso não tem
+                     // consequência; a alternativa era o alvo cortado pela borda, que foi o relatado.
+                     // ⚠️ E o teto NUNCA pode ficar abaixo do que a etapa 3 precisa: ele é lido como
+                     // `max(R_MAX, SPLIT.MIN_R*SPLIT_K)`, porque `SPLIT.MIN_R` é tunable do /admin e um
+                     // teto cravado abaixo dele devolveria o pior defeito possível aqui — o botão
+                     // DIVIDIR na tela e o `applySplit` recusando em silêncio.
   ESTRELA_R:24,      // ⚠️ **METADE da `STAR.R` de série**, e é o que faz a explosão caber na arena: o raio
                      // do estouro é `r·NOVA_R`, então uma estrela de 46 solta uma onda de 368 px (644 já
                      // inchada na fase OLD) — mais da metade do mundo do tutorial, e um miolo letal de 290
                      // px contra um jogador que está a 300. Com 24 a onda é de 192 (336 inchada) e o miolo
                      // cai para 86 px. A MASSA dos cacos não muda: ela sai de `EJECT_MASS·NOVA_PART_MASS`,
                      // que não conhece o raio da estrela.
-  NOVA_ESPERA:150,   // ticks até a estrela estourar (2,5 s)
-  NOVA_INCHA:60,     // ticks finais em que ela incha, telegrafando o estouro
+  // ⚠️ **A EXPLOSÃO É A ABERTURA DA CENA, NÃO UM EVENTO NO MEIO DELA.** Ela esperava 2,5 s, e nesses
+  // 2,5 s o jogador via uma estrela parada com a instrução "coma os pedaços" e nenhum pedaço na tela —
+  // ou seja, a primeira coisa que o tutorial fazia era pedir algo impossível. Hoje o mundo abre, a
+  // estrela incha e estoura em 1,1 s, e SÓ ENTÃO a lição de mover começa (o relógio da ajuda é
+  // recarimbado no estouro, em `passo`). O inchaço continua telegrafando: explosão sem aviso lê como
+  // defeito, e o empurrão que ele leva precisa ter uma causa visível.
+  NOVA_ESPERA:66,    // ticks até a estrela estourar (1,1 s)
+  NOVA_INCHA:48,     // ticks finais em que ela incha, telegrafando o estouro
   NOVA_SWELL:1.6,    // o quanto ela incha (o inchaço é NOSSO — ver o ⚠️ do `tickStar` abaixo)
+  NOVA_TETO:240,     // ⚠️ ...mas ela espera NO MÁXIMO isto (4 s). O adiamento sem teto é um travamento:
+                     // o aluno que corre direto para a estrela (448 px/s contra os 300 px que a separam)
+                     // ficaria colado nela para sempre, com a etapa 1 nunca abrindo e nada na tela
+                     // dizendo por quê. Passado o teto ela estoura de qualquer jeito — o pior caso é ele
+                     // ser estilhaçado, que a física garante não ser mortal (`MIN_PIECE_R`).
   NOVA_SAFE:200,     // ⚠️ e ela ESPERA se o jogador estiver mais perto que isto: o miolo que estilhaça é
                      // `blast·NOVA_SHATTER` ≈ 138 px com a estrela já inchada, e a etapa 1 não pode abrir
                      // punindo quem obedeceu à instrução de ir até lá.
   CACO_VIDA:7200,    // ⚠️ os cacos da supernova vivem `NOVA_LIFE_TICKS` = 15 s. Um novato descobrindo o
                      // mouse não come 17 deles nesse tempo, e a etapa se esvaziaria sozinha — justo para
                      // quem esta feature existe para atender. 2 min é o tutorial inteiro, com folga.
-  CACO_PUXA:150,     // px/s da deriva do 2º degrau de ajuda (ela PARA quando ele se move)
+  CACO_PUXA:150,     // px/s da deriva do 2º degrau de ajuda (ela PARA quando ele se move...)
+  CACO_LONGE:520,    // ...mas volta a valer, mesmo andando, se o caco ficou a mais que isto dele
+  CACO_VOLTA:600,    // e aí a puxada é esta, 4× a da muleta — é resgate, não ajuda
   ALVO_K:1.05,       // ⚠️ o alvo da etapa 2 É UMA RAZÃO, nunca um raio absoluto — e isso não é detalhe:
                      //   `EAT.RATIO` é 1,15 nos DOIS sentidos, então um número cravado ou é comível (e a
                      //   etapa se resolve encostando, sem atirar) ou COME o aluno. Com 1,05 ninguém come
@@ -71,10 +111,32 @@ export const CENA={
   PRESA_R:40,        // ⚠️ a presa tem de caber na METADE, não no planeta inteiro: com r=96 cada metade
                      //   sai em 67,9 e engole até 59. Um alvo de 60 seria comível inteiro e INCOMÍVEL
                      //   pela metade que salta — o tutorial ensinaria o gesto e puniria quem o fizesse.
-  PRESA_V:1.0,       // fração da velocidade de fuga (1 = foge de verdade; a presa É mais rápida)
+  // ⚠️ **A PRESA FOGE EM ÓRBITA, E ISSO NÃO É ENFEITE: ELA IA PARA O CANTO E FICAVA LÁ.** A fuga era
+  // "corra na direção oposta ao jogador", com o alvo saturado ao mundo EIXO A EIXO — e saturar por eixo
+  // torce a direção (é a mesma lição que `qPos`/`World.setTarget` já custaram uma vez). O resultado
+  // medido: a presa encostava num canto da arena em poucos segundos e morria ali, comprimida contra
+  // duas paredes, com o jogador chegando a pé e a lição do salto nunca acontecendo. Agora ela corre
+  // numa PISTA: um ponto na circunferência de raio `ORBITA` em torno de uma âncora, sempre `GIRO`
+  // radianos à frente, para o lado que a afasta de quem a persegue. Presa acuada circula — e o alvo
+  // está a no máximo `ORBITA` da âncora, que por construção fica a `MARGEM` da borda, então NENHUM
+  // clamp por eixo entra na conta e a direção nunca é torcida.
+  // ⚠️ O raio da pista NÃO é constante: ele é a própria distância com que a presa foi plantada
+  // (`st.orbR` = `DIST + r_me + r_presa`), senão ela nasceria num lugar e a órbita a arrancaria para
+  // outro no primeiro frame.
+  AJUDA1_K:0.7,      // e no 1º degrau a pista encolhe para esta fração dela
+  PISTA_K:1.15,      // o disco de projeção é um pouco MAIOR que a pista: colados, o alvo cairia em cima
+                     // da circunferência e a direção efetiva viraria puramente tangencial — e aí o
+                     // perseguidor que corta pelo miolo ganha, mesmo sendo mais lento (curva de perseguição).
+  MIRA:700,          // ⚠️ **o alvo da presa tem de estar LONGE dela**, e este número é velocidade, não
+                     // geometria: `integratePiece` anda a `vmax·min(d,SPEED.RAMP)/RAMP`, então um alvo
+                     // perto a deixa LENTA. Com a mira curta ela estabilizava a 107 px do aluno e era
+                     // comida a pé — medido. O ponto é projetado no disco logo abaixo, então mirar longe
+                     // não a leva para longe: só a faz correr de verdade.
+  FUGA_R:1.0,        // peso da componente RADIAL da fuga (cresce até 1,35 quando ele encosta)
+  FUGA_T:0.7,        // peso da componente TANGENCIAL — é ela que faz a presa contornar em vez de reta
   SPLIT_K:1.6,       // r do jogador ao abrir a etapa 3, em múltiplos de `SPLIT.MIN_R` (o filho sai em
                      // r/√2 e tem de continuar acima do portão)
-  AJUDA1_D:220,AJUDA2_D:120,   // a presa chega mais perto nos degraus de ajuda
+  AJUDA2_D:60,       // no 2º degrau ela para, a este VÃO do aluno (de borda a borda, como `DIST`)
   MARGEM:120,        // folga até a borda da arena ao plantar qualquer coisa
 };
 
@@ -85,17 +147,32 @@ function centro(ps){const a=vivas(ps);if(!a.length)return null;
   let x=0,y=0;for(const p of a){x+=p.x;y+=p.y;}return{x:x/a.length,y:y/a.length,r:Math.max(...a.map(p=>p.r))};}
 
 /**
- * Um ponto a `dist` do jogador, PREFERINDO o eixo vertical.
+ * As quatro direções em que o tutorial planta alguma coisa, na ordem de preferência. Sempre a 45°.
  *
- * ⚠️ Vertical de propósito: em retrato a meia-largura é 327–491 px e a meia-altura passa de 700. Armar
- * no eixo horizontal põe o alvo fora da tela do aparelho que mais precisa do tutorial.
- * ⚠️ E ele inverte quando não cabe: o jogador anda durante a etapa, e o mundo tem borda.
+ * ⚠️ **NÃO no eixo vertical puro, e a razão é a PRÓPRIA TELA DO TUTORIAL.** A instrução mora no topo
+ * (`#tutor`: trilha, barra e a caixa de fala, ~140 px) e o prompt de botão mora no rodapé (`#tut-prompt`,
+ * a 96 px da borda) — ou seja, a coluna central vertical é justamente a faixa que o tutorial ocupa com
+ * texto. Plantado ali, o alvo nascia ATRÁS da explicação: a explicação cobrindo a coisa explicada, que é
+ * o defeito que separou a instrução do prompt em primeiro lugar. Na diagonal, cada eixo recebe só 71% da
+ * distância — e ela cabe nos dois, inclusive na meia-largura de 375 px de um celular em pé.
+ */
+// ⚠️ **30° DA VERTICAL, não 45°**, e o número saiu de medir os dois eixos: em retrato a meia-largura
+// visível é de apenas **329 px** (`CAM.PORTRAIT_K` já contado) contra ~423 px de meia-altura no desktop —
+// ou seja o eixo apertado é a LARGURA, e é dela que a coreografia tem de tirar. A 45° a componente
+// horizontal empatava com a vertical e o alvo saía pela lateral do celular; a 30° ela é metade.
+const DIRS=[[.5,.866],[-.5,.866],[.5,-.866],[-.5,-.866]];
+
+/**
+ * Um ponto a `dist` do jogador, na primeira diagonal que couber na arena com margem.
+ * ⚠️ O jogador ANDA durante a etapa, então a escolha é refeita a cada montagem — e o `clamp` final só
+ * existe para o caso impossível de nenhuma das quatro caber.
  */
 function perto(w,c,dist){
   const m=CENA.MARGEM;
-  const cima=c.y-dist>=m,baixo=c.y+dist<=w.h-m;
-  const y=cima?c.y-dist:baixo?c.y+dist:clamp(c.y-dist,m,w.h-m);
-  return{x:clamp(c.x,m,w.w-m),y};}
+  for(const [dx,dy] of DIRS){
+    const x=c.x+dx*dist,y=c.y+dy*dist;
+    if(x>=m&&x<=w.w-m&&y>=m&&y<=w.h-m)return{x,y};}
+  return{x:clamp(c.x+DIRS[0][0]*dist,m,w.w-m),y:clamp(c.y+DIRS[0][1]*dist,m,w.h-m)};}
 
 /**
  * Deixa o jogador pronto para a etapa: munição, cooldowns e — quando pedido — tamanho e graça.
@@ -136,11 +213,17 @@ function limpaDaNova(w,st){
   for(const e of w.ejected)if(!e.dead)e.life=w.tick+CENA.CACO_VIDA;
   w.starQueue.length=0;}
 
-/** Apaga o que a etapa anterior deixou: cacos, comida, estrelas, o alvo e a FILA de estrelas. */
+/** Apaga o que a etapa anterior deixou: cacos, comida, estrelas, MÍSSEIS, o alvo e a FILA de estrelas. */
 function limpa(w,st,api){
   for(const e of w.ejected)if(!e.dead)e.dead=true;
   for(const f of w.food)if(f&&!f.dead)w.killFood(f);
   for(const s of w.stars)if(!s.dead)s.dead=true;
+  // ⚠️ **OS MÍSSEIS EM VOO MATAM A ETAPA SEGUINTE, e isso foi visto na tela.** O teto da etapa 2 atira
+  // pelo aluno; o míssil vive `MISSILE.LIFE_TICKS` e a troca de etapa acontece com ele ainda no ar. Ele
+  // então persegue a PRESA recém-plantada (r=40, o menor corpo da cena), a estilhaça abaixo do piso e a
+  // mata — e a etapa 3 fica com `st.alvo` apontando para um slot que não existe, sem presa, sem erro e
+  // sem nada na tela além de um "KABOOM!" no canto. Medido em bancada: o mundo com UM jogador só.
+  for(const m of w.missiles)if(!m.dead)m.dead=true;
   // ⚠️ `supernova()` chama `w.queueStar(STAR.RESPAWN_TICKS)`, e a fila é drenada INCONDICIONALMENTE na
   // fase 11 do `step` — `stars:0` não a impede. Sem esta linha uma estrela nasce em ponto sorteado do
   // mapa 10 s depois da explosão, no meio da etapa 2 ou 3.
@@ -157,7 +240,7 @@ export function montaEtapa(w,api,etapa,slot,st){
   limpa(w,st,api);
   const c=centro(ps);if(!c)return;
   if(etapa===ETAPA.NOVA){
-    const p=perto(w,c,CENA.DIST);
+    const p=perto(w,c,Math.max(CENA.NOVA_D,CENA.DIST+c.r+CENA.ESTRELA_R));
     // ⚠️ **A ESTRELA FICA EM ACTIVE E QUEM A EXPLODE SOMOS NÓS**, e isto não é preciosismo — foi MEDIDO.
     // Pondo-a em `STAR_PHASE.OLD`, `rules.tickStar` assume o inchaço e o faz sobre a CONSTANTE
     // (`setR(st, STAR.R*(1+(SWELL-1)*p))`): o raio de 24 que plantamos vira 80,4, o estouro salta de 192
@@ -165,13 +248,13 @@ export function montaEtapa(w,api,etapa,slot,st){
     // sobrevivia por 10 px parado, e era despedaçado assim que se mexia (visto em bancada: o planeta do
     // tutorial virou dois). Em ACTIVE o raio é o nosso, o inchaço é o nosso, e a margem é de 162 px.
     const s=w.spawnStar(true,{x:p.x,y:p.y,r:CENA.ESTRELA_R,life:w.tick+9e6});
-    if(s){st.estrela=s.id;st.novaEm=w.tick+CENA.NOVA_ESPERA;}
+    if(s){st.estrela=s.id;st.novaEm=w.tick+CENA.NOVA_ESPERA;st.novaLim=w.tick+CENA.NOVA_TETO;}
     st.base=w.massOf(slot);
     return;}
   if(etapa===ETAPA.TIRO){
     preparaJogador(w,slot,{ammo:MISSILE.MAX_AMMO});
-    const p=perto(w,c,CENA.DIST);
     const r=c.r*CENA.ALVO_K;
+    const p=perto(w,c,CENA.DIST+c.r+r);
     st.alvo=api.alvo({x:p.x,y:p.y,r});
     return;}
   if(etapa===ETAPA.SPLIT){
@@ -180,9 +263,64 @@ export function montaEtapa(w,api,etapa,slot,st){
     // `SPLIT.MIN_R` é lido A CADA CHAMADA, nunca capturado na carga do módulo: ele é tunable 'wire'.
     preparaJogador(w,slot,{r:SPLIT.MIN_R*CENA.SPLIT_K,graca:false});
     api.json({t:"grace",why:"tutor"});
-    const p=perto(w,c,CENA.DIST);
-    st.alvo=api.alvo({x:p.x,y:p.y,r:CENA.PRESA_R});
+    // ⚠️ O CENTRÓIDE É RELIDO AQUI, e não reaproveitado do `c` de cima: `preparaJogador` acabou de mexer
+    // no RAIO do aluno, e a pista é medida de borda a borda (`DIST + r_me + r_presa`). Com o valor
+    // velho ela nasceria apertada justamente na etapa em que ele está no maior tamanho do tutorial.
+    // ⚠️ A âncora aqui é só o PONTO DE PARTIDA: quem a escreve a cada tick é `orbita()`, que a mantém
+    // em cima do aluno (clampada para a pista caber na arena) — ver o bloco de lá.
+    const me=centro(ps)||c;
+    st.orbR=CENA.DIST+me.r+CENA.PRESA_R;
+    const lim=CENA.MARGEM+st.orbR;
+    st.ancora={x:clamp(me.x,lim,w.w-lim),y:clamp(me.y,lim,w.h-lim)};
+    st.giro=1;
+    // e ela nasce SOBRE a pista, na direção que `perto` escolheria — sem isso o primeiro alvo da órbita
+    // a arrancaria de lado, e o jogador veria a presa dar um tranco no primeiro frame.
+    const p=perto(w,me,st.orbR);
+    const dx=p.x-st.ancora.x,dy=p.y-st.ancora.y,n=Math.hypot(dx,dy)||1;
+    st.alvo=api.alvo({x:st.ancora.x+dx/n*st.orbR,y:st.ancora.y+dy/n*st.orbR,r:CENA.PRESA_R});
     return;}}
+
+/**
+ * A FUGA EM ÓRBITA. Devolve o ponto da pista em que a presa deve mirar: `GIRO` radianos à frente da
+ * posição angular dela, no sentido que a afasta de quem persegue.
+ *
+ * ⚠️ O ponto está SEMPRE a `R` da âncora, e a âncora está a `MARGEM+ORBITA` de toda borda — então ele
+ * cai dentro da arena por construção e `World.setTarget` nunca satura. Era a saturação por EIXO que
+ * mandava a presa para o canto: ela fugia na diagonal, o alvo era cortado em x e depois em y, e o que
+ * sobrava apontava exatamente para o vértice.
+ * ⚠️ A HISTERESE existe porque com o jogador em cima da âncora os dois sentidos empatam: sem ela a presa
+ * trocaria de lado a cada tick e ficaria tremendo no lugar, que lê como travamento e não como fuga.
+ */
+function orbita(w,st,c,ac,R){
+  // ⚠️ **O CENTRO DA PISTA É O PRÓPRIO ALUNO** (clampado para ela caber na arena), e não um ponto fixo
+  // marcado quando a etapa abriu. Com a âncora parada, ele corria atrás da presa, a pista ficava para
+  // trás e a presa passava a circular um lugar vazio — longe, às vezes além do alcance do salto.
+  const lim=CENA.MARGEM+R;
+  const anc=st.ancora||(st.ancora={x:0,y:0});
+  anc.x=clamp(c.x,lim,w.w-lim);anc.y=clamp(c.y,lim,w.h-lim);
+  // ⚠️ **E A FUGA TEM DUAS COMPONENTES, não só a tangencial.** Um alvo puramente angular (o ponto da
+  // circunferência `GIRO` radianos à frente) deixa a presa com velocidade radial ZERO: o aluno avança
+  // 4,5 px por tick em cima dela e a distância simplesmente cai até ele a comer a pé, em menos de um
+  // segundo — a lição do salto morre e nada acusa. Com um termo RADIAL que cresce conforme ele encosta
+  // (`falta`), ela recua enquanto contorna, que é o que uma presa acuada faz.
+  const dx=ac.x-c.x,dy=ac.y-c.y,d=Math.hypot(dx,dy)||1;
+  const ux=dx/d,uy=dy/d;
+  // ⚠️ O SENTIDO DO CONTORNO É FIXO NA ETAPA (`st.giro`, escrito na montagem) e NÃO é reescolhido por
+  // tick. Houve aqui uma inversão "para o lado que a afasta mais": com o aluno perto do centro da pista
+  // os dois lados empatam, ela trocava de lado a cada tick e tremia no lugar em vez de fugir. Quem a
+  // mantém longe da borda é a projeção no disco, não o sentido.
+  const sn=st.giro||1;
+  const falta=clamp((R-d)/R,0,1);
+  const tx=-uy*sn,ty=ux*sn;
+  let fx=ux*(CENA.FUGA_R+falta)+tx*CENA.FUGA_T,fy=uy*(CENA.FUGA_R+falta)+ty*CENA.FUGA_T;
+  const n=Math.hypot(fx,fy)||1;fx/=n;fy/=n;
+  // o alvo é um ponto à frente dela, PROJETADO no disco da pista — é essa projeção (e não um clamp por
+  // eixo) que a mantém longe das bordas sem torcer a direção: cortar eixo a eixo aponta para o vértice.
+  let px=ac.x+fx*CENA.MIRA,py=ac.y+fy*CENA.MIRA;
+  const rx=px-anc.x,ry=py-anc.y,rd=Math.hypot(rx,ry);
+  const Rp=R*CENA.PISTA_K;
+  if(rd>Rp){px=anc.x+rx/rd*Rp;py=anc.y+ry/rd*Rp;}
+  w.setTarget(st.alvo,px,py);}
 
 /**
  * O roteiro, pronto para ser injetado no `LocalServer`.
@@ -190,7 +328,10 @@ export function montaEtapa(w,api,etapa,slot,st){
  */
 export function criaRoteiro(){
   const st={etapa:TUTOR0,slot:-1,alvo:-1,estrela:-1,novaEm:0,base:0,montada:0,
-    sobrou:0,ultimo:0,acertou:false,comeu:false,moveu:false,ultEnv:""};
+    sobrou:0,ultimo:0,acertou:false,comeu:false,moveu:false,ultEnv:"",
+    // `pre` = a estrela ainda não estourou, ou seja a lição de mover ainda não começou. Ele vai no JSON
+    // porque é a TELA que precisa saber (a fala e o prompt mudam), e o cliente não tem como derivá-lo.
+    pre:false,ancora:null,giro:1,novaLim:0,orbR:0};
 
   function nasce(w,slot,api){
     st.slot=slot;
@@ -229,8 +370,18 @@ export function criaRoteiro(){
           // ⚠️ e ela ESPERA se o aluno estiver perto demais: a etapa 1 não pode abrir punindo quem
           // obedeceu à instrução de ir até lá.
           const c=centro(ps);
-          if(c&&Math.hypot(c.x-s.x,c.y-s.y)<CENA.NOVA_SAFE)st.novaEm=w.tick+30;
-          else{supernova(w,s);st.estrela=-1;limpaDaNova(w,st);}}}}
+          if(c&&Math.hypot(c.x-s.x,c.y-s.y)<CENA.NOVA_SAFE&&w.tick<st.novaLim)st.novaEm=w.tick+15;
+          else{supernova(w,s);st.estrela=-1;limpaDaNova(w,st);
+            // ⚠️ **O RELÓGIO DA LIÇÃO COMEÇA AQUI, não na abertura do mundo.** `desde:0` faz o passo
+            // seguinte reabrir a etapa (é o ramo `!est.desde` de `passoTutor`, o único lugar que abre
+            // uma etapa) — sem isso os degraus de ajuda contariam o tempo da explosão, e o jogador
+            // levaria a primeira muleta antes de a lição ter começado. `montada` já é 1, então a cena
+            // NÃO é remontada: nenhuma estrela nova, nenhum caco apagado.
+            st.etapa={...st.etapa,desde:0};st.pre=false;}}}}
+
+    // ── o teto do aluno (ver `CENA.R_MAX`) ──
+    const rMax=Math.max(CENA.R_MAX,SPLIT.MIN_R*CENA.SPLIT_K);
+    if(ps)for(const pc of vivas(ps))if(pc.r>rMax)setR(pc,rMax);
 
     // ── a decisão ──
     const c=centro(ps);
@@ -240,28 +391,61 @@ export function criaRoteiro(){
     const r=passoTutor(st.etapa,ctx,agora);
     st.etapa=r.est;
 
+    // ⚠️ O FIM TAMBÉM É UMA CENA, e ela é o cartão com o planeta DELE atrás — mais nada. Sem esta linha
+    // a presa da etapa 3 continua viva e girando por trás do "PRONTO! VOCÊ SABE JOGAR", inclusive quando
+    // a etapa fechou pelo teto e ele nunca a comeu: o tutorial se despede exibindo a única coisa que o
+    // aluno não conseguiu fazer.
+    if(r.fim&&st.montada!==ETAPA.FIM){st.montada=ETAPA.FIM;limpa(w,st,api);}
+
     // montar a cena da etapa que acabou de abrir (e só uma vez por etapa)
     if(r.etapa!==st.montada&&r.etapa<ETAPA.FIM&&st.etapa.desde){
       st.montada=r.etapa;st.acertou=false;st.comeu=false;st.ultimo=0;
+      st.pre=r.etapa===ETAPA.NOVA;   // a etapa 1 abre ANTES da explosão; as outras não têm fase de espera
       montaEtapa(w,api,r.etapa,st.slot,st);}
+
+    // ⚠️ **A REDE DO ALVO SUMIDO.** `st.alvo` é um slot, e um slot pode deixar de existir por caminhos que
+    // não passam pelo roteiro (foi um míssil órfão que matou a presa da etapa 3 em bancada). Sem esta
+    // linha a etapa fica sem o que ensinar e só fecha pelo TETO, com o aluno olhando um mundo vazio.
+    if(st.alvo>=0&&r.etapa!==ETAPA.NOVA&&!r.fim&&!r.celebra){
+      const a=w.players.get(st.alvo);
+      if((!a||!a.alive)&&c)montaEtapa(w,api,r.etapa,st.slot,st);}
 
     // ── a ajuda que mexe no MUNDO (a que é só texto mora na tela) ──
     if(ps&&c)ajuda(w,api,r,st,ps,c);
 
     // ── o estado, só quando muda ──
-    const env=r.etapa+"|"+Math.round(r.pct*100)+"|"+r.ajuda+"|"+(r.celebra?1:0)+"|"+(r.fim?1:0);
+    const env=r.etapa+"|"+Math.round(r.pct*100)+"|"+r.ajuda+"|"+(r.celebra?1:0)+"|"+(r.fim?1:0)
+      +"|"+(st.pre?1:0);
     if(env!==st.ultEnv||r.festa){st.ultEnv=env;
       api.json({t:"tutor",etapa:r.etapa,pct:+r.pct.toFixed(3),ajuda:r.ajuda,
-        festa:r.festa,celebra:r.celebra,auto:r.auto,fim:r.fim});}}
+        festa:r.festa,celebra:r.celebra,auto:r.auto,fim:r.fim,pre:st.pre});}}
 
   /** Os degraus 2 e 3 de cada etapa, do lado do mundo. O degrau 1 é sempre só texto. */
   function ajuda(w,api,r,st,ps,c){
-    if(r.etapa===ETAPA.NOVA&&r.ajuda>=2&&!r.fim){
-      // os cacos derivam até ele — e PARAM no instante em que ele se move (quem executa o gesto é ele)
+    // ⚠️ **NADA DE AJUDA DURANTE A COMEMORAÇÃO.** `r.ajuda` continua valendo 3 pelos `SOBRA_MS` inteiros
+    // da tela de "etapa completa", e sem esta linha o teto da etapa 2 seguia PUXANDO O GATILHO por trás
+    // do cartão — três segundos de mísseis e "KABOOM!" em cima do elogio, com o último deles ainda no ar
+    // quando a etapa 3 monta. Visto na tela.
+    if(r.celebra||r.fim)return;
+    if(r.etapa===ETAPA.NOVA&&!r.fim){
+      // A deriva tem DUAS metades, e elas respondem a perguntas diferentes.
+      // ⚠️ (1) A MULETA, no 2º degrau: os cacos vêm até ele — e PARAM no instante em que ele se move,
+      //     porque quem executa o gesto tem de ser ele.
+      // ⚠️ (2) O RESGATE, a qualquer momento: **o caco que ficou longe demais volta correndo, ande ele
+      //     ou não.** Isto não é generosidade, é o conserto de um defeito visto em bancada duas vezes
+      //     seguidas — e a causa é do JOGO, não do tutorial: com o mouse largado fora do centro o
+      //     planeta NUNCA alcança o cursor (a câmera o persegue, então o ponto de mundo sob o pixel foge
+      //     junto), que é exatamente o que um iniciante faz. Ele saía andando antes da explosão,
+      //     atravessava a arena em dois segundos e ficava vagando num mundo vazio com a barra parada e
+      //     nada na tela explicando por quê. `CACO_VOLTA` é 4× a muleta: em 2–3 s a lição o alcança.
       const pc=vivas(ps)[0],parado=pc&&Math.hypot(pc.svx||0,pc.svy||0)<20;
-      if(parado)for(const e of w.ejected){if(e.dead)continue;
+      const muleta=r.ajuda>=2&&parado;
+      for(const e of w.ejected){if(e.dead)continue;
         const dx=c.x-e.x,dy=c.y-e.y,d=Math.hypot(dx,dy)||1;
-        e.vx+=dx/d*CENA.CACO_PUXA*(1/TICK_HZ)*8;e.vy+=dy/d*CENA.CACO_PUXA*(1/TICK_HZ)*8;}}
+        const perdido=d>CENA.CACO_LONGE;
+        if(!perdido&&!muleta)continue;
+        const k=perdido?CENA.CACO_VOLTA:CENA.CACO_PUXA;
+        e.vx+=dx/d*k*(1/TICK_HZ)*8;e.vy+=dy/d*k*(1/TICK_HZ)*8;}}
     if(r.etapa===ETAPA.NOVA&&r.ajuda>=3){
       // O TETO: ele não chegou à meta sozinho. Concede a massa — e a tela DIZ que concedeu (`auto`).
       // Fazer por alguém em silêncio é a pior das três opções, porque a pessoa sai achando que aprendeu.
@@ -277,12 +461,16 @@ export function criaRoteiro(){
       const a=w.players.get(st.alvo);if(!a||!a.alive)return;
       const ac=centro(a);if(!ac)return;
       const d=Math.hypot(ac.x-c.x,ac.y-c.y);
-      if(r.ajuda>=2){w.setTarget(st.alvo,ac.x,ac.y);   // parou de fugir
-        if(d>CENA.AJUDA2_D)aproxima(w,st.alvo,c,CENA.AJUDA2_D);}
-      else if(r.ajuda>=1){w.setTarget(st.alvo,ac.x,ac.y);
-        if(d>CENA.AJUDA1_D)aproxima(w,st.alvo,c,CENA.AJUDA1_D);}
-      else{const dx=ac.x-c.x,dy=ac.y-c.y,n=Math.hypot(dx,dy)||1;   // foge
-        w.setTarget(st.alvo,clamp(ac.x+dx/n*900,0,w.w),clamp(ac.y+dy/n*900,0,w.h));}}}
+      // ⚠️ Os degraus 1 e 2 encolhem a PISTA, não desligam a fuga — e essa é a diferença entre ajudar e
+      // resolver por ele. Uma presa que simplesmente PARA no primeiro degrau desfaz a lição inteira: o
+      // jogador a alcança andando e sai do tutorial sem ter dividido uma vez. Ela só para no degrau 2,
+      // que é a muleta declarada ("Ele parou! Divida agora.") e mesmo aí fica a `AJUDA2_D` — perto, mas
+      // ainda do outro lado de uma corrida que o jogador acabou de perder.
+      const perto2=c.r+CENA.PRESA_R+CENA.AJUDA2_D;
+      if(r.ajuda>=2){w.setTarget(st.alvo,ac.x,ac.y);
+        if(d>perto2)aproxima(w,st.alvo,c,perto2);}
+      else if(r.ajuda>=1)orbita(w,st,c,ac,(st.orbR||300)*CENA.AJUDA1_K);
+      else orbita(w,st,c,ac,st.orbR||300);}}
 
   function aproxima(w,slot,c,dist){
     const a=w.players.get(slot),pc=vivas(a)[0];if(!pc)return;

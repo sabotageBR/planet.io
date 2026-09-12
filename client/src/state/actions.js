@@ -343,8 +343,9 @@ function devQuery() {
  * verdade os blocos ficam com altura zero e o `vis()` da sonda os descarta, então ~600 combinações
  * passariam por cima de uma tela inteira. Aqui a tela vira "game" e o hudStore recebe o `tutor` no pior
  * formato plausível: a frase mais longa de cada etapa.
- * `suf` = "1" | "2" | "3" | "fim" | "ok1".."ok3" (a tela de etapa concluída), com `@ajuda` opcional
- * ("2@2") e `!` para forçar o par do DEDO ("2!"), que tem outras frases e outro prompt.
+ * `suf` = "pre" (a explosão, antes de a lição de mover começar) | "1" | "2" | "3" | "fim" |
+ * "ok1".."ok3" (a tela de etapa concluída), com `@ajuda` opcional ("2@2") e `!` para forçar o par do
+ * DEDO ("2!"), que tem outras frases e outro prompt.
  */
 function tutorDemo(suf) {
   const g = gameRef.get().game;
@@ -352,10 +353,13 @@ function tutorDemo(suf) {
   if (!g || !g.hudStore) return;
   const [qual0, aj] = String(suf || "1").split("@");
   const dedo = qual0.endsWith("!"), qual = dedo ? qual0.slice(0, -1) : qual0;
-  const fim = qual === "fim", celebra = qual.startsWith("ok");
-  const etapa = fim ? 4 : Math.min(3, Math.max(1, +(celebra ? qual.slice(2) : qual) || 1));
+  const fim = qual === "fim", celebra = qual.startsWith("ok"), pre = qual === "pre";
+  const etapa = fim ? 4 : pre ? 1 : Math.min(3, Math.max(1, +(celebra ? qual.slice(2) : qual) || 1));
+  // ⚠️ `pre` é uma CARA À PARTE da etapa 1: outra fala, sem barra e sem prompt. Fora da matriz ela não é
+  // medida, e é a primeira tela que um jogador novo vê na vida.
   g.hudStore.update(h => ({ ...h, mass: 8482, room: "0TUT", ping: 0, fps: 60, ammo: 3, splitOff: etapa < 3,
-    tutor: { t: "tutor", etapa, pct: etapa === 1 ? .45 : 0, ajuda: +aj || 0, festa: 0, celebra, auto: false, fim, dedo } }));
+    tutor: { t: "tutor", etapa, pct: etapa === 1 && !pre ? .45 : 0, ajuda: +aj || 0, festa: 0, celebra,
+      auto: false, fim, pre, dedo } }));
 }
 function hudDemo() {
   const g = gameRef.get().game;

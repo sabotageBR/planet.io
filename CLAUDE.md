@@ -1380,11 +1380,12 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   inteiro `hidden` (somem `#t-split`, `#t-fire`, a faixa), `GameHost` chama `game.leave()` no primeiro
   render, a cortina `#boot` fica presa 10 s no pacote (ela espera `screen==="game"`) e o `RETIDO` de
   `portal/sessao.js` para de contar — o 1.x seguinte leria "engajamento caiu" sem nada ter piorado.
-  ⚠️ **A ARENA É UM QUADRADINHO DE 1.200 px, e isso é metade da experiência.** O mundo do jogo tem 12.000
-  de lado; num tutorial aquilo é um vazio sem beira, com tudo o que importa fora da tela e nenhum senso de
-  LUGAR — foi a primeira queixa da versão de estreia. Medido por `zoomFor`: o menor lado visível de todas
-  as telas da matriz é **838 px** (celular em pé, largura) e o maior passa de 2.800, então com 1.200 a
-  borda tracejada do mundo aparece em qualquer aparelho e tudo cabe dentro dela. ⚠️ E o tamanho do mundo
+  ⚠️ **A ARENA É UM QUADRADINHO, e isso é metade da experiência.** O mundo do jogo tem 12.000 de lado; num
+  tutorial aquilo é um vazio sem beira, com tudo o que importa fora da tela e nenhum senso de LUGAR — foi
+  a primeira queixa da versão de estreia. ⚠️ **Ela já foi 1.200 px, e esse número estava ERRADO** — ver o
+  bloco "...E A PRIMEIRA VERSÃO DELE NÃO CABIA NA TELA", abaixo: a conta de "838 px de menor lado visível"
+  que justificou o 1.200 ignorava o PISO da câmera, que num mundo pequeno vira um teto de zoom e corta a
+  cena inteira. Hoje são 1.800. ⚠️ E o tamanho do mundo
   NÃO toca na quantização: `qPos`/`dqPos` leem a constante GLOBAL nos dois lados, então um mundo menor só
   ganha precisão; o cliente obedece ao `world:{w,h}` do JSON `room`, que o `LocalServer` já mandava.
   ⚠️ **A ESTRELA FICA EM `ACTIVE` E QUEM A EXPLODE É O ROTEIRO** (`supernova(w,st)` na mão) — pôr `OLD` é
@@ -1494,6 +1495,70 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   O `#hud-top` sai INTEIRO: ele é `position:absolute;top:0` e continuaria ocupando a faixa com os filhos
   invisíveis (a matriz pegou em 18 de 18). ⚠️ Mas `#touch` e `#hud-cd` FICAM — é o OPOSTO da regra da
   gaiola de largada, e de propósito: lá eles falam de uma partida que não começou; aqui eles SÃO a lição.
+- **...E A PRIMEIRA VERSÃO DELE NÃO CABIA NA TELA** (a arena, a coreografia e a fuga da presa, todas
+  medidas no navegador depois de jogar): defeitos que não davam erro nenhum, não apareciam em teste e só
+  existiam com o tutorial rodando de verdade — a lista abaixo é o que uma tarde jogando encontrou.
+  ⚠️ **A ARENA DE 1.200 px FAZIA A CÂMERA AMPLIAR.** `shared/camera.js` tem um piso — nunca afastar além
+  de mostrar o mundo inteiro (`zmin = max(W/WORLD.w, H/WORLD.h)`) — e o cliente escreve `WORLD.w` com o
+  mundo DA SALA ao receber o `room`. Como `zoomFor` mantém ~1920×1080 px de MUNDO visíveis e esses 1920
+  não cabem em 1.200, o piso virou TETO: medido numa janela de 1854×871, escala **1,545** e só **564 px
+  de mundo na vertical** (±282 do centro) contra uma coreografia que plantava tudo a 300 px. O alvo da
+  etapa 2 e a presa da etapa 3 nasciam FORA DO ENQUADRAMENTO — o tutorial mandava atirar no que não
+  estava na tela. Hoje a arena é **1.800**: o piso ainda morde de leve no desktop (escala 1,03), que é o
+  que mantém o "quadradinho" com a borda tracejada à vista, e a meia-altura visível volta a 423 px.
+  `client/test/tutor-mundo.test.js` trava isso com o `zoomFor` REAL sobre as telas da matriz, e a
+  mutação devolve os 282 px medidos.
+  ⚠️ **AS DISTÂNCIAS SÃO DE BORDA A BORDA, E A DIREÇÃO É 30° DA VERTICAL.** Medindo de centro a centro,
+  tudo encolhe conforme o aluno cresce — no fim da etapa 1 os 300 px viravam um vão de 80 e os dois
+  planetas nasciam colados. E o eixo VERTICAL puro, que parecia o certo (retrato tem altura de sobra), é
+  justamente onde o tutorial põe TEXTO: a instrução no topo e o prompt de botão no rodapé. Na diagonal
+  cada eixo leva só parte da distância — e são 30°, não 45°, porque o eixo apertado é a LARGURA
+  (**329 px** de meia-largura em retrato, `CAM.PORTRAIT_K` contado, contra 423 de meia-altura no
+  desktop). O envelope do teste cobra as COMPONENTES **mais o raio do alvo**: com só a distância, o alvo
+  da etapa 2 nascia com o centro na tela e a metade de baixo cortada pela borda.
+  ⚠️ **O ALUNO TEM TETO DE TAMANHO** (`CENA.R_MAX`, 96 = `SPLIT.MIN_R·SPLIT_K`): ele come os 24 cacos da
+  supernova E os pedaços que o próprio míssil arranca do alvo da etapa 2, e chegava a **r=141 (massa
+  19.900)** — 282 px de diâmetro numa cena em que nada mais cabia. É massa descartada em silêncio, e num
+  tutorial sem placar isso não tem consequência; a alternativa era o alvo cortado pela borda. O teto é
+  lido como `max(R_MAX, SPLIT.MIN_R·SPLIT_K)` porque `SPLIT.MIN_R` é tunable: cravado abaixo dele,
+  devolveria o pior defeito possível aqui — o botão DIVIDIR na tela e o `applySplit` recusando calado.
+  ⚠️ **A PRESA FUGIA PARA O CANTO E MORRIA LÁ.** A fuga era "corra na direção oposta", com o alvo
+  saturado ao mundo EIXO A EIXO — e cortar por eixo TORCE a direção (a lição que `qPos`/`World.setTarget`
+  já custaram uma vez): o que sobrava apontava para o vértice. Hoje ela corre numa PISTA centrada no
+  PRÓPRIO ALUNO (clampada para caber na arena), com o alvo projetado num disco — nenhum clamp por eixo
+  entra na conta.
+  ⚠️ **E A FUGA TEM DE SER RADIAL, NÃO TANGENCIAL — é a curva de perseguição, e ela foi MEDIDA.** Com a
+  fuga quase toda tangencial a presa mantinha 403 px/s contra 272 do aluno e **mesmo assim era comida em
+  2,5 s**: quem corre em círculo percorre π·d de arco enquanto quem corta pelo miolo percorre d, e π é
+  maior que os 1,48 de vantagem dela. O que precisa bater a velocidade dele é a COMPONENTE RADIAL
+  (`FUGA_R`/`FUGA_T` a ~35° da radial), e o alvo precisa estar LONGE (`MIRA`), senão
+  `vmax·min(d,SPEED.RAMP)/RAMP` a deixa lenta. Medido depois: equilíbrio estável em **180 px** com o
+  aluno perseguindo sem parar, presa viva, sempre na tela. Sem isso o tutorial ensina o salto e premia
+  quem não o usa.
+  ⚠️ **UM MÍSSIL EM VOO MATAVA A ETAPA SEGUINTE.** O teto da etapa 2 atira pelo aluno; o míssil vive
+  `MISSILE.LIFE_TICKS` e a troca de etapa acontece com ele no ar — ele então perseguia a presa recém
+  plantada (r=40, o menor corpo da cena), estilhaçava-a abaixo do piso e a matava. A etapa 3 ficava com
+  `st.alvo` apontando para um slot inexistente: sem presa, sem lição, sem erro, só um "KABOOM!" no canto.
+  `limpa()` passou a matar mísseis, `ajuda()` não roda durante a celebração (eram três segundos de tiros
+  por trás do cartão de elogio) e há uma REDE: alvo que sumir por qualquer caminho faz a etapa remontar.
+  ⚠️ **A EXPLOSÃO É A ABERTURA DA CENA, não um evento no meio dela.** Ela esperava 2,5 s, e nesses 2,5 s
+  o jogador via uma estrela parada com a instrução "coma os pedaços" e nenhum pedaço na tela — a primeira
+  coisa que o tutorial fazia era pedir o impossível. Hoje o mundo abre, a estrela incha e estoura em
+  1,1 s (fase `pre`, com fala própria e SEM prompt), e o relógio dos degraus de ajuda é RECARIMBADO no
+  estouro: contado da abertura do mundo, a primeira muleta chegaria antes de a lição começar.
+  ⚠️ **E O CACO QUE FICA PARA TRÁS VOLTA CORRENDO** (`CACO_LONGE`/`CACO_VOLTA`), ande o aluno ou não —
+  isto não é generosidade, é o conserto de um travamento visto duas vezes em bancada, e a causa é do
+  JOGO: com o mouse largado fora do centro o planeta NUNCA alcança o cursor (a câmera o persegue, então o
+  ponto de mundo sob o pixel foge junto), que é exatamente o que um iniciante faz. Ele saía andando antes
+  da explosão, atravessava a arena em dois segundos e ficava vagando num mundo vazio com a barra parada.
+  ⚠️ **A TELA GANHOU O "1/3" E A BARRA DA ETAPA.** O número diz a POSIÇÃO sem depender de contar círculos
+  numa tela de 360 px com um planeta andando por baixo, e a tela de "etapa completa" anuncia a PRÓXIMA
+  ("A SEGUIR: ATIRE NELE") — sem isso a etapa seguinte começa com o jogador ainda lendo o elogio da
+  anterior. A barra só existe na etapa 1, onde o progresso é contínuo (a massa): nas outras a etapa é UM
+  gesto, e uma barra parada em zero enquanto ele tenta lê como "não estou registrando o que você faz".
+  ⚠️ Os tempos de ajuda foram remedidos: a etapa 1 é a mais LONGA (24 fragmentos num disco de ~250 px
+  levam 15–25 s para um iniciante, e com o teto em 22 s o caso NORMAL terminava em "concedemos a massa
+  por você"), e a etapa 3 encurtou (o degrau 1 dela não é muleta, é o "aha" da lição).
 - **O PORTÃO DO DIVIDIR ESTAVA ACIMA DO TETO DO NOVATO** (`SPLIT.MIN_R` virou tunable de escopo `wire`,
   grupo "Proteção do novato"; a dica em `client/src/game/dica.js` + `ui/DicaSplit.jsx`): a física torna o
   salto OBRIGATÓRIO para matar alguém — `vmax = 2110,6/r^0,449` faz a presa ser sempre mais rápida que o

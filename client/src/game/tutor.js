@@ -45,9 +45,17 @@ export const TUTOR = { SOBRA_MS: 3200, LIMPO_MS: 4000 };
  * pior das três opções, porque a pessoa sai achando que aprendeu.
  */
 export const AJUDA = {
-  [ETAPA.NOVA]:  { d1: 4000, d2: 10000, teto: 22000 },
+  // ⚠️ A etapa 1 é a mais LONGA de todas, e os números de antes (4/10/22 s) não cabiam nela: são 24
+  // fragmentos espalhados por um disco de ~250 px, e um iniciante descobrindo o mouse leva 15–25 s para
+  // varrê-los. Com o teto em 22 s o caso NORMAL terminava em "concedemos a massa por você", que é a
+  // mensagem oposta à que a primeira vitória do jogo tem de dar.
+  [ETAPA.NOVA]:  { d1: 6000, d2: 14000, teto: 30000 },
   [ETAPA.TIRO]:  { d1: 5000, d2: 10000, teto: 18000 },
-  [ETAPA.SPLIT]: { d1: 8000, d2: 15000, teto: 25000 },
+  // ⚠️ A etapa 3 abre o primeiro degrau em 5 s, e não nos 8 que ela teve: ali o degrau 1 não é uma
+  // muleta, é o "aha" da lição — a frase que explica por que perseguir não funciona e o botão de
+  // DIVIDIR aparecendo grande. Oito segundos correndo atrás de algo que a física torna inalcançável
+  // não ensinam nada; ensinam que o jogo não responde. A mediana de uma primeira vida é 31 s.
+  [ETAPA.SPLIT]: { d1: 5000, d2: 12000, teto: 24000 },
 };
 
 /** Estado zerado. `desde` 0 = a etapa ainda não abriu (quem a abre é o primeiro passo). */

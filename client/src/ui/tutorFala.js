@@ -13,14 +13,22 @@ import { preenche } from "../i18n/index.js";
 
 /**
  * O título e a instrução da vez.
- * @param {{etapa:number,ajuda:number,pct:number,dedo:boolean}} d @param {*} T o grupo `tutor` do i18n
+ * @param {{etapa:number,ajuda:number,pct:number,dedo:boolean,pre?:boolean}} d
+ * @param {*} T o grupo `tutor` do i18n
  * @param {string} tecla a tecla de dividir que o JOGADOR configurou (`prefs.keySplit`)
  * @returns {[string,string]} [título, instrução]
  */
 export function falaDoTutor(d, T, tecla) {
   const dedo = !!d.dedo;
   if (d.etapa === ETAPA.NOVA) {
+    // ⚠️ A FASE `pre` É A EXPLOSÃO ACONTECENDO, e ela tem fala PRÓPRIA: enquanto a estrela não estourou
+    // não existem pedaços, e "leve seu planeta até os pedaços" pede algo que não está na tela. Pedir o
+    // impossível na primeira frase do jogo é o jeito mais rápido de alguém concluir que não entendeu.
+    if (d.pre) return [T.nova, T.novaEspera];
     if (d.ajuda >= 2) return [T.novaTit, T.novaPuxa];
+    // e depois do primeiro terço a instrução vira ELOGIO: repetir "mova o mouse" para quem já está
+    // movendo o mouse é a tela dizendo que não percebeu o que ele fez.
+    if (d.pct >= .35) return [T.novaTit, T.novaMais];
     if (d.pct > 0) return [T.novaTit, dedo ? T.novaRumo : T.novaMouse];
     return [T.novaTit, dedo ? T.novaDedo : T.novaMouse];
   }
@@ -30,7 +38,11 @@ export function falaDoTutor(d, T, tecla) {
   }
   if (d.etapa === ETAPA.SPLIT) {
     if (d.ajuda >= 2) return [T.splitTit, T.splitAjuda];
-    if (d.ajuda >= 1) return [T.splitTit, dedo ? T.splitDedo : preenche(T.splitMouse, { k: tecla })];
+    // ⚠️ NO DEGRAU 1 O TÍTULO VIRA O DIAGNÓSTICO ("CORRENDO VOCÊ NUNCA ALCANÇA"), e isso é a lição
+    // inteira da etapa 3 em duas linhas: primeiro POR QUE a corrida não funciona — que é física, não
+    // falta de habilidade: `vmax ∝ r^-0,449` faz a presa ser sempre mais rápida —, depois o que apertar.
+    // Repetir "DIVIDA PARA ALCANÇAR" ali só mandaria de novo, mais alto, o que ele já tentou.
+    if (d.ajuda >= 1) return [T.splitNao, dedo ? T.splitDedo : preenche(T.splitMouse, { k: tecla })];
     return [T.splitTit, T.splitCaca];
   }
   return ["", ""];
@@ -52,8 +64,11 @@ export function falaDoTutor(d, T, tecla) {
  */
 export function promptDoTutor(d, T, tecla) {
   const dedo = !!d.dedo;
+  // ⚠️ Nada a apertar enquanto a estrela não estourou: um botão pulsando durante a explosão manda o
+  // jogador agir antes de haver o que fazer, e o gesto que ele fizer ali não produz retorno nenhum.
   if (d.etapa === ETAPA.NOVA)
-    return dedo ? { tipo: "toque", rotulo: T.btnDedoTocar } : { tipo: "mouse-mover", rotulo: T.btnMouseMover };
+    return d.pre ? null
+      : dedo ? { tipo: "toque", rotulo: T.btnDedoTocar } : { tipo: "mouse-mover", rotulo: T.btnMouseMover };
   if (d.etapa === ETAPA.TIRO)
     return dedo ? { tipo: "hud", rotulo: T.btnDedoMissil } : { tipo: "mouse-clique", rotulo: T.btnMouseClicar };
   if (d.etapa === ETAPA.SPLIT && d.ajuda >= 1)
