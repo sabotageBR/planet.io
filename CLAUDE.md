@@ -1223,6 +1223,52 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ Escopo `server`, apesar de a regra morar em `physics/rules.js`: `predict.js` importa `DT, WORLD,
   BLACKHOLE, EJECT, PLAYER` e nada mais. E `bot.js:novatoProtegido` lê o MESMO objeto `BOT`, então o cérebro
   acompanha a troca no mesmo tick — sem isso o bot perseguiria alguém que ele só vai atravessar.
+- **O QUE OS PLAYTESTS GRAVADOS MOSTRARAM, E QUE NENHUM HISTOGRAMA MOSTRA** (o pack 1.23, cinco webms
+  do 1.22): três dos quatro sintomas filmados **não eram código — eram número no painel**, e o quarto
+  era o ponto de respawn. Vale como método antes de valer como conserto: seis versões foram inferidas de
+  estatística, e uma tarde de vídeo achou mais que todas elas.
+  ⚠️ **`BOT.NOVATO_MASS=0` APAGAVA A PROTEÇÃO CONTRA GENTE POR COMPLETO** (VN, BR: `Guarana67` e
+  `carolena`, planetas enormes engolindo quem tinha acabado de nascer). A proteção contra humano existe
+  por UM caminho só — a razão de massa — e a linha final de `recemChegado` abria com
+  `BOT.NOVATO_MASS>0&&`, ou seja o teto de massa era PRÉ-REQUISITO da regra inteira. Zero no painel
+  apagava a regra, em silêncio, com o rótulo prometendo outra coisa ("até que massa a pessoa ainda conta
+  como novata"). **Hoje, DENTRO da janela do nascimento a razão de massa não depende dele**: quem nasceu
+  há dez segundos é novato por definição, não por medida. Fora da janela ele continua sendo o que
+  sustenta a regra — sem teto declarado não há como saber quando ela acaba, e proteção sem fim é jogador
+  imortal. `shared/test/novato.test.js` trava os dois sentidos, conferido por mutação.
+  ⚠️ **O NOVATO NASCIA PODENDO DIVIDIR** (KR: split no primeiro minuto → cacho → recolhido por dois
+  adversários em 64 s). Não por defeito de código: `PLAYER.SPAWN_R`=2100 (r≈45,8) contra `SPLIT.MIN_R`=44
+  no painel — os dois portões que existem para discordar passaram a concordar pelo lado errado. Agora
+  `rules.applySplit` recusa sob a graça (`BOT.NOVATO_SPLIT`), e a trava é a GRAÇA e não um relógio novo:
+  ela libera também pelo primeiro ABATE e pela MASSA, ou seja quem provou que sabe jogar divide na hora.
+  ⚠️ **NO BATTLE ROYALE A TRAVA NÃO VALE** (`!w.zoneNow()`, a mesma guarda de `recemChegado`): lá todo
+  mundo larga junto, do mesmo tamanho, e `_spawnPiece` dá graça à sala INTEIRA — sem a linha o modo
+  ficaria 90 s sem dividir, para todos, que não é proteger novato nenhum, é tirar a mecânica central do
+  jogo de dentro dele.
+  ⚠️ **O CLIENTE PRECISA SABER, E SABE SEM UM BYTE NOVO**: `souNovato` nasce true e só o `{t:"grace"}` do
+  1.21 o apaga. Ele tira o `#t-split` da tela, ignora a tecla e segura a etapa 3 da missão — anunciar um
+  comando que o servidor recusa é a mesma lição do `#t-split.dica` pulsando abaixo de `SPLIT.MIN_R`.
+  ⚠️ **A VIDA SEGUINTE NASCIA NO MESMO TRITURADOR** (VN: 50 segundos, QUATRO vidas). `PLAYER_SAFE`
+  (1500 px) é a folga para não nascer COLADO — e a 1500 px o algoz continua dentro do enquadramento de um
+  novato em retrato. `rules.eatPiece` passou a gravar `ps.killerSlot` e `World._spotNovato` o evita por
+  `PLAYER_RESPAWN_AWAY` (3000). ⚠️ E a mesma função conserta um buraco antigo: `_farSpot` cobra
+  `PLAYER_SAFE` de TODA peça e, falhando as 40 tentativas, **devolve a última mesmo assim** (o `s.ok` que
+  `_spawnPiece` sempre ignorou) — numa sala de 60 isso falha com frequência, e o prêmio é nascer colado
+  em qualquer coisa. A saída é AFROUXAR o que não machuca: de quem eu ENGULO não se cobra distância
+  nenhuma, e a régua fica só onde importa.
+  ⚠️ **A CÂMERA DO NOVATO ABRE PELO CAMPO DO POWERUP DE ZOOM** (`ps.zoomUntil`, `BOT.NOVATO_ZOOM`), e
+  isso não é reaproveitamento preguiçoso: é o ÚNICO jeito de a AOI afastar JUNTO — `net/snapshot.js` e a
+  câmera do cliente leem o mesmo número, pelo mesmo `POWERUP.ZOOM_K`, que é o único afastamento para o
+  qual a AOI já foi dimensionada e medida. Escrito no cliente, o anel extra viria VAZIO. O diagnóstico é
+  de vídeo: em retrato a tela do novato é um close-up do próprio sprite com um predador colado, e o mesmo
+  jogo no desktop 16:9 mostra um anel de comida em volta — o jogador de celular, que é a maioria do
+  tráfego da Poki, está vendo outro jogo.
+  ⚠️ **A LINHA TRACEJADA DOS VÍDEOS NÃO É ZONA** — conferido antes de mexer, como o pack manda:
+  `zoneNow()` devolve `null` sem `this.zone`, que só nasce no `Room.largar` do BR, e `layers/Zone.js` se
+  esconde sem ela. É a borda do MUNDO (`layers/Grid.js`), e ela fica.
+  ⚠️ **E A MISSÃO MANDAVA O NOVATO PARA CIMA DE UM ASTEROIDE**: a etapa 1 dizia "coma as pedras", e a
+  pedra do jogo é o asteroide, que estilhaça quem encosta. O grão é uma PARTÍCULA, que é como o resto do
+  jogo o chama. Corrigido nos três dicionários.
 - **A PRIMEIRA VIDA GANHOU UMA MISSÃO DE TRÊS ETAPAS** (`passoMissao` em `game/dica.js`): coma as pedras →
   coma o planeta pequeno → divida. A dica do dividir ensinava a ÚLTIMA coisa que um novato precisa saber, e
   só aparecia para quem já tinha chegado ao portão — um terço deles. As duas etapas antes dela são as que

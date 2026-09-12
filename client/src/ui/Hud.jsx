@@ -87,7 +87,11 @@ export default function Hud() {
   // fireCd: carência de tiro do spawn (MISSILE.SPAWN_CD_TICKS) em segundos — enquanto corre, a contagem regressiva
   // fica EM CIMA do ícone da arma e o botão apaga como se não houvesse munição (o clique vira ejeção)
   const ammo = h.ammo || 0, fireCd = Math.ceil(h.fireCd || 0), armed = ammo > 0 && !fireCd, pw = Object.entries(h.powerups || {}).filter(([, v]) => v > 0);
-  const splitReady = !(h.splitCd > 0), ejectReady = !(h.ejectCd > 0);
+  // ⚠️ `splitOff` é a GRAÇA do nascimento, e não o cooldown: o servidor recusa o split de quem acabou de
+  // nascer (`rules.applySplit`), e um botão que não faz nada é pior que um botão ausente — foi um
+  // playtest gravado do 1.22 (KR) que mostrou o custo do contrário, com o jogador dividindo no primeiro
+  // minuto e virando um cacho comestível. Ele some do toque e apaga no teclado.
+  const splitReady = !(h.splitCd > 0) && !h.splitOff, ejectReady = !(h.ejectCd > 0);
   // Teclas configuráveis: `#hud-cd` desenha a legenda, e uma legenda que mente é pior que nenhuma.
   const teclas = keysOf(prefs), kSplit = LB.keys[teclas.split] || LB.keySplit, kEject = LB.keys[teclas.eject] || LB.keyEject;
   const br = h.mode === MODE.BR, noLobby = !!h.lobby;
@@ -248,7 +252,7 @@ export default function Hud() {
           faixa "coma as pedras" faria o botão DIVIDIR pulsar para um novato de r=30 — anunciando um
           comando que o servidor recusa (`SPLIT.MIN_R`), que é pior que não ensinar nada e é exatamente o
           erro que o bloco de game/dica.js existe para prevenir. */}
-      <button className={"tbtn" + (splitReady ? "" : " cd") + (h.dica && h.dica.dedo && h.dica.id === "split" ? " dica" : "")} id="t-split" {...press("split")}><span>{LB.split}</span></button>
+      {h.splitOff ? null : <button className={"tbtn" + (splitReady ? "" : " cd") + (h.dica && h.dica.dedo && h.dica.id === "split" ? " dica" : "")} id="t-split" {...press("split")}><span>{LB.split}</span></button>}
       <button className={"tbtn" + (ejectReady ? "" : " cd")} id="t-eject" {...press("eject")}><span>{LB.eject}</span></button>
       <button className={"tbtn" + (armed ? "" : " empty") + (fireCd ? " cd" : "")} id="t-fire" {...press("fire")}><span>{LB.fire}</span><b id="t-ammo">{ammo}</b>{fireCd ? <em className="fire-cd">{fireCd}</em> : null}</button>
       <button className={"tbtn talk" + (falando ? " on" : "") + (talkAviso === "cd" ? " cd" : "")} id="t-talk" {...press("talk")}><span>🎤</span></button>

@@ -230,6 +230,19 @@ export const TUNABLES=[
   // contra preenchimento, que é como ela nasceu. É o tunable com mais chance de precisar voltar atrás
   // depressa: ele é o único da regra que muda o que acontece entre duas PESSOAS.
   bool('novato','BOT.NOVATO_HUMANO','A proteção também vale quando quem atropela é gente','server',BOT,'NOVATO_HUMANO',{on:'Vale',off:'Só contra preenchimento'}),
+  // ⚠️ DIVIDIR É A MECÂNICA QUE MATA, E TAMBÉM A QUE MAIS RÁPIDO MATA QUEM NÃO SABE USÁ-LA. Um playtest
+  // gravado do 1.22 (KR) mostrou o ciclo inteiro em 64 s: split no primeiro minuto → cacho de pedacinhos
+  // → recolhido por dois adversários. Travado, o split só libera quando a graça acaba — ou seja também
+  // pelo primeiro ABATE e pela MASSA, não só pelo relógio. ⚠️ Ele NÃO substitui `SPLIT.MIN_R`, que é o
+  // portão de TAMANHO e continua valendo depois: são duas perguntas diferentes ("já sou grande?" e "já
+  // sei jogar?"), e hoje elas discordam — com `SPAWN_R` 2100 e `MIN_R` 44 o jogador NASCE podendo
+  // dividir, que é como o caso KR chegou a existir.
+  bool('novato','BOT.NOVATO_SPLIT','O recém-nascido pode dividir durante a graça','server',BOT,'NOVATO_SPLIT',{on:'Pode',off:'Travado até a graça acabar'}),
+  // ⚠️ A câmera do novato abre por `ps.zoomUntil`, o campo do powerup de zoom — ou seja a AOI afasta
+  // JUNTO, pelo mesmo fator, e o anel extra vem com conteúdo. Nos playtests do 1.22 em retrato o novato
+  // enxergava o próprio sprite e um predador colado; no desktop 16:9, o mesmo jogo mostrava comida em
+  // volta. Desligar devolve o enquadramento padrão do agar.
+  bool('novato','BOT.NOVATO_ZOOM','A câmera do recém-nascido mostra mais mundo','server',BOT,'NOVATO_ZOOM',{on:'Mais aberta',off:'Padrão'}),
   // ⚠️ A OUTRA METADE DO PRIMEIRO MINUTO: a proteção diz de quem o novato não morre, e isto diz o que ele
   // tem para COMER. Zero devolve o comportamento anterior (a presa existia só nos treze planetas da
   // semente, no tick 0, e sumia junto com eles); em 1 toda reposição nasce comível, o que enche a sala de

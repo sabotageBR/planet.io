@@ -20,7 +20,7 @@ export default {
   brCageTitle: "GET READY", brCageHint: "no fighting and no power-ups until the cage opens",
   aliveLeft: "LEFT", placementWord: "placement", zoneOut: "⚠ IN THE GAS", zoneShrinking: "THE GAS IS CLOSING IN", zoneCloses: "gas closes in",
   zoneWarnAt: "⚠ THE GAS CLOSES IN {n}s!",
-  hintEat: "Eat the rocks",
+  hintEat: "Eat the particles",
   hintPrey: "Eat the small planet",
   hintSplit: "{k} to split and catch it",
   hintSplitTouch: "tap SPLIT to catch it",

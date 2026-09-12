@@ -248,9 +248,22 @@ export function recemChegado(w,big,small){
   if(!cego&&w.zoneNow())return false;   // a razão de massa é do LIVRE — ver o bloco acima
   const ms=w.massOf(small.slot);
   if(BOT.NOVATO_MASS>0&&ms>=BOT.NOVATO_MASS)return false;                  // cresceu: a graça acabou, pelos DOIS caminhos
-  if(cego)return true;
-  if(gente&&!dentro)return false;   // contra gente a régua vale só DENTRO da janela do nascimento
-  // ...e depois dela o ABISMO continua: enquanto a pessoa é pequena, o MUITO maior atravessa.
+  if(cego)return true;                                                     // preenchimento, dentro da janela: intocável
+  // ⚠️ **DENTRO DA JANELA A RAZÃO DE MASSA NÃO DEPENDE DE `NOVATO_MASS`, E ISSO É UM CONSERTO.**
+  // A linha era `BOT.NOVATO_MASS>0&&big>ms*RATIO`, ou seja o teto de massa era PRÉ-REQUISITO da regra
+  // inteira — e como a proteção contra GENTE existe só por este caminho, `NOVATO_MASS=0` no painel a
+  // apagava POR COMPLETO, sem apagar mais nada e sem nada na tela dizendo por quê. Foi isso que os
+  // playtests do 1.22 filmaram: `Guarana67` e `carolena`, planetas enormes, engolindo quem tinha
+  // acabado de nascer — e, com o painel em 0, aquilo era o comportamento CORRETO do código.
+  // O que `NOVATO_MASS` responde é "até que tamanho esta pessoa ainda conta como novata?", e no
+  // INSTANTE do nascimento a resposta já é sim: quem nasceu há dez segundos é novato por definição,
+  // não por medida. Zero volta a significar o que o rótulo promete — sem teto de massa —, e não
+  // "sem proteção nenhuma".
+  if(dentro)return w.massOf(big.slot)>ms*BOT.NOVATO_RATIO;
+  if(gente)return false;   // contra gente a régua vale só DENTRO da janela do nascimento
+  // ...e depois dela o ABISMO continua: enquanto a pessoa é pequena, o MUITO maior atravessa. Aqui,
+  // FORA da janela, quem sustenta a regra é o teto de massa — sem ele declarado não há como saber
+  // quando ela acaba, e proteção sem fim é jogador imortal.
   return BOT.NOVATO_MASS>0&&w.massOf(big.slot)>ms*BOT.NOVATO_RATIO;}
 
 // ── peça × peça (donos diferentes) ──
@@ -289,6 +302,12 @@ export function eatPiece(w,killer,A,victim,B){
   // e porque o preço de errar é alto nos dois sentidos: um novato que abate e continua intocável vira
   // caçador imune, e é exatamente esse o abuso que a graça mais longa do 1.21 abriria.
   killer.graceUntil=0;
+  // ⚠️ QUEM MATOU, PARA A VIDA SEGUINTE NÃO NASCER NO COLO DELE (`World._spotNovato`). É escrito aqui, no
+  // ÚNICO caminho por onde uma pessoa é engolida, e a cada bocado — a última peça comida manda, que é o
+  // que se quer quando duas pessoas dividem o abate. Os playtests do 1.22 mostraram o custo de não ter
+  // isto: VN, 50 segundos, QUATRO vidas, todas terminadas pelo mesmo par de gigantes que o respawn
+  // devolvia ao enquadramento. O respawn não estava lento demais — o PONTO é que estava errado.
+  victim.killerSlot=killer.slot;
   w.events.push({type:"EAT",killerSlot:killer.slot,victimSlot:victim.slot,pieceId:B.id,x:B.x,y:B.y,r:B.r,lastPiece:liveCount(victim.pieces)===1});
   w.killPiece(B,"eaten",killer.slot);}
 
@@ -845,6 +864,21 @@ export function hitShield(w,pc,bySlot=-1,nx=0,ny=0,weapon=-1){
  * @param {World} w @param {PlayerState} ps
  */
 export function applySplit(w,ps){
+  // ⚠️ **O NOVATO NÃO DIVIDE, E QUEM MOSTROU ISSO FOI UM PLAYTEST GRAVADO** (KR, 1.22): o jogador
+  // apertou dividir no primeiro minuto, virou um cacho de pedacinhos e foi recolhido por dois
+  // adversários em sequência. Dividir é a mecânica que MATA num agar, e também a que mais rápido mata
+  // quem ainda não sabe usá-la — no celular ainda por cima, onde o direcional de alvo único deixa as
+  // peças espalhadas se anulando (ver o bloco do analógico no CLAUDE.md).
+  // ⚠️ A trava é a GRAÇA, não um relógio novo: "novato" já é um conceito com dono (`sobGraca`), três
+  // saídas e interruptor no painel. Amarrá-la a `PORTAL` seria impossível aqui — o servidor não sabe de
+  // que portal veio a aba — e amarrá-la a um segundo relógio criaria duas verdades sobre a mesma coisa.
+  // ⚠️ Ela libera junto com a graça, ou seja também pelo primeiro ABATE e pela MASSA: quem já matou
+  // alguém, ou já cresceu, provou que sabe o que está fazendo.
+  // ⚠️ **NO BATTLE ROYALE NÃO EXISTE NOVATO**, e a guarda é a MESMA de `recemChegado`: lá todo mundo
+  // larga junto, no mesmo tick e do mesmo tamanho, então `_spawnPiece` dá graça à sala INTEIRA — sem
+  // esta linha o modo ficaria 90 segundos sem poder dividir, para todos, o que não é proteger novato
+  // nenhum: é tirar a mecânica central do jogo de dentro dele.
+  if(BOT.NOVATO_SPLIT===false&&!w.zoneNow()&&sobGraca(w,ps))return 0;
   const arr=ps.pieces,len=arr.length,tick=w.tick;let count=liveCount(arr),did=0;
   for(let i=0;i<len;i++){const pc=arr[i];if(pc.dead)continue;if(count>=PLAYER.MAX_PIECES)break;if(pc.r<SPLIT.MIN_R)continue;
     dirTo(pc.x,pc.y,ps.tx,ps.ty,DIR);const ux=DIR[0],uy=DIR[1],nr=pc.r/Math.SQRT2;

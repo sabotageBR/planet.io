@@ -30,7 +30,7 @@ export default {
   aliveLeft: "RESTAM", placementWord: "colocação", zoneOut: "⚠ NO GÁS", zoneShrinking: "O GÁS ESTÁ AVANÇANDO", zoneCloses: "gás fecha em",
   zoneWarnAt: "⚠ O GÁS FECHA EM {n}s!",
   // A DICA DO DIVIDIR: quem foge é sempre mais rápido, então o salto é o único jeito de alcançar.
-  hintEat: "Coma as pedras",
+  hintEat: "Coma as partículas",
   hintPrey: "Coma o planeta pequeno",
   hintSplit: "{k} para dividir e alcançar",
   hintSplitTouch: "toque em DIVIDIR para alcançar",

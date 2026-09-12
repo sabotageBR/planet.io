@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createWorld, setR } from "../src/physics/index.js";
 import { piecePair, pieceMissile, incomingMissile } from "../src/physics/rules.js";
-import { BOT, ROOM, PLAYER, EAT, MISSILE, POWERUP, botRespawnR } from "../src/constants.js";
+import { BOT, ROOM, PLAYER, EAT, MISSILE, POWERUP, SPLIT, botRespawnR } from "../src/constants.js";
 import { createRng } from "../src/rng.js";
 
 /** Laboratório: sem comida, sem perigo, sem decaimento. */
@@ -44,6 +44,102 @@ test("passada a graça, o algoz PROPORCIONAL mata — a proteção não é invul
   w.tick = w.players.get(1).graceUntil + 1;
   assert.ok(w.players.get(0).pieces[0].mass < w.players.get(1).pieces[0].mass * BOT.NOVATO_RATIO);
   assert.equal(encosta(w, 0, 1), true, "acabada a graça, o grande come");
+});
+
+// ── O CASO KR: SPLIT NO PRIMEIRO MINUTO VIRA CACHO COMESTÍVEL ──────────────
+// 64 segundos de vídeo com o ciclo inteiro: o jogador divide cedo, vira um punhado de pedacinhos e é
+// recolhido por dois adversários em sequência. Dividir é a mecânica que MATA num agar — e a que mais
+// rápido mata quem ainda não sabe usá-la. Hoje em produção ela nem sequer tem o portão de tamanho
+// funcionando: com `PLAYER.SPAWN_R` 2100 (r≈45,8) e `SPLIT.MIN_R` 44, o jogador NASCE podendo dividir.
+test("o recém-nascido não divide — e a trava é a GRAÇA, não um relógio novo", () => {
+  const n = BOT.NOVATO_MASS;
+  try {
+    // ⚠️ Zero é o que está gravado em `admin_settings` na produção que gerou os playtests, então este é
+    // o cenário REAL: sem teto de massa, quem diz "ainda é novato" é só a janela do nascimento.
+    BOT.NOVATO_MASS = 0;
+    const w = arena();
+    w.addPlayer(0, { isBot: false, x: 5000, y: 5000 });
+    const ps = w.players.get(0); setR(ps.pieces[0], SPLIT.MIN_R * 1.5);   // tamanho de sobra: quem recusa é a graça
+    w.setTarget(0, 9000, 5000);
+    w.requestSplit(0); w.step();
+    assert.equal(ps.pieces.filter(p => !p.dead).length, 1, "sob a graça, dividir não faz nada");
+    ps.graceUntil = 0;   // a graça acabou (por tempo, por massa ou pelo primeiro abate — tanto faz qual)
+    // ⚠️ `world.js` grava `splitCdUntil` ANTES de chamar `applySplit`, então o pedido recusado QUEIMA o
+    // cooldown do mesmo jeito. É o comportamento que o split já tinha ao ser recusado por `MIN_R` ou por
+    // `MAX_PIECES`, custa meio segundo e vale a pena: a regra fica num lugar só, em `rules.js`.
+    for (let i = 0; i <= SPLIT.COOLDOWN_TICKS; i++) w.step();
+    w.requestSplit(0); w.step();
+    assert.equal(ps.pieces.filter(p => !p.dead).length, 2, "acabada a graça, o split volta ao normal");
+  } finally { BOT.NOVATO_MASS = n; }
+});
+
+test("...e o interruptor devolve o comportamento anterior sem deploy", () => {
+  const v = BOT.NOVATO_SPLIT;
+  try {
+    BOT.NOVATO_SPLIT = true;
+    const w = arena();
+    w.addPlayer(0, { isBot: false, x: 5000, y: 5000 });
+    const ps = w.players.get(0); setR(ps.pieces[0], SPLIT.MIN_R * 1.1);   // massa abaixo de NOVATO_MASS: sob a graça de verdade
+    w.setTarget(0, 9000, 5000);
+    w.requestSplit(0); w.step();
+    assert.equal(ps.pieces.filter(p => !p.dead).length, 2, "ligado, o novato divide como sempre dividiu");
+  } finally { BOT.NOVATO_SPLIT = v; }
+});
+
+// ── O CASO VN: QUATRO VIDAS EM 50 SEGUNDOS, TODAS NO MESMO TRITURADOR ───────
+// O respawn não estava lento demais — o PONTO é que estava errado. `PLAYER_SAFE` (1500 px) é a folga
+// para não nascer COLADO, e a 1500 px o algoz continua dentro do enquadramento de um novato em retrato.
+// Agora a vida seguinte nasce a `PLAYER_RESPAWN_AWAY` de quem matou a anterior (`World._spotNovato`,
+// alimentado por `rules.eatPiece`).
+test("a vida seguinte nasce LONGE de quem matou a anterior — o caso VN", () => {
+  const w = createWorld({ seed: 11, food: 0, asteroids: false, holes: 0, stars: 0, decay: false });
+  w.addPlayer(0, { isBot: false, x: 6000, y: 6000 }); setR(w.players.get(0).pieces[0], 180);   // o algoz, parado
+  w.addPlayer(1, { isBot: false, x: 6000, y: 6000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+  const algoz = w.players.get(0), vitima = w.players.get(1);
+  // mata pelo caminho REAL (`eatPiece` é quem grava o algoz), com a graça já vencida
+  w.tick = vitima.graceUntil + 1;
+  assert.equal(encosta(w, 0, 1), true, "sem graça, o gigante come — é o cenário do vídeo");
+  assert.equal(vitima.killerSlot, 0, "a vítima guardou quem a matou");
+  // ⚠️ 30 renascimentos, não um: o ponto é SORTEADO, então um único acerto não prova nada.
+  const dAlgoz = () => {
+    w.respawnPlayer(1);
+    const p = w.players.get(1).pieces[0], a = algoz.pieces[0];
+    return Math.hypot(p.x - a.x, p.y - a.y);
+  };
+  for (let i = 0; i < 30; i++)
+    assert.ok(dAlgoz() >= 3000, `renascimento ${i}: nasceu a ${Math.round(dAlgoz())} px do algoz`);
+});
+
+// ── O CASO `Guarana67`: A PROTEÇÃO SUMIA INTEIRA COM UM NÚMERO DO PAINEL ────
+// Os playtests gravados do 1.22 filmaram o que o histograma não dizia: o novato nascendo ao lado de um
+// planeta ENORME de outra PESSOA e sendo engolido em segundos — `Guarana67` (VN, 4 vidas em 50 s) e
+// `carolena` (BR, 17 s). A causa não era o spawn: era `BOT.NOVATO_MASS=0` gravado em `admin_settings`.
+// A proteção contra gente existe por UM caminho só — a razão de massa — e aquela linha abria com
+// `BOT.NOVATO_MASS>0&&`, então zero a apagava por completo, em silêncio, enquanto o resto da regra
+// continuava de pé. Estes dois testes existem para que ela não possa mais ser desligada por um número
+// que promete outra coisa ("até que massa a pessoa ainda conta como novata").
+test("com NOVATO_MASS ZERO a proteção CONTINUA valendo dentro da janela — o caso Guarana67", () => {
+  const n = BOT.NOVATO_MASS;
+  try {
+    BOT.NOVATO_MASS = 0;   // exatamente o que estava em produção durante os playtests do 1.22
+    const w = arena();
+    w.addPlayer(0, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);   // GENTE, e enorme
+    w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+    assert.ok(w.players.get(0).pieces[0].mass > w.players.get(1).pieces[0].mass * BOT.NOVATO_RATIO, "é atropelamento, não briga");
+    assert.equal(encosta(w, 0, 1), false, "sem teto de massa declarado, a janela do nascimento sozinha já protege");
+  } finally { BOT.NOVATO_MASS = n; }
+});
+
+test("...e zero não vira invulnerabilidade: fora da janela o grande volta a comer", () => {
+  const n = BOT.NOVATO_MASS;
+  try {
+    BOT.NOVATO_MASS = 0;
+    const w = arena();
+    w.addPlayer(0, { isBot: true, x: 5000, y: 5000 }); setR(w.players.get(0).pieces[0], 180);
+    w.addPlayer(1, { isBot: false, x: 5000, y: 5000 }); setR(w.players.get(1).pieces[0], PLAYER.START_R);
+    w.tick = w.players.get(1).graceUntil + 1;   // a janela venceu
+    assert.equal(encosta(w, 0, 1), true, "sem teto de massa, o que limita a proteção é o RELÓGIO — e ele venceu");
+  } finally { BOT.NOVATO_MASS = n; }
 });
 
 // ── ...E CONTRA GENTE A RÉGUA É OUTRA (`BOT.NOVATO_HUMANO`) ─────────────────

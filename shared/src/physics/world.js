@@ -25,6 +25,7 @@ import * as R from "./rules.js";
  * @property {number} spawnTick    tick do último nascimento (graça de spawn dos bots)
  * @property {number} vidas        quantas vezes esta pessoa já nasceu NESTA sala (1 = a primeira vida)
  * @property {number} graceUntil   até quando vale a graça do nascimento (0 = não vale; ver rules.sobGraca)
+ * @property {number} killerSlot   quem matou a vida anterior (-1 = ninguém); a próxima nasce longe dele
  * @property {Body[]} pieces        refs (ordem de criação; compactada 1×/passo)
  * @property {number} team          equipe (-1 = sem equipe: todo mundo é inimigo). Fogo amigo e "quem come quem"
  *                                 saem daqui, não do bot — ver rules.sameTeam
@@ -75,6 +76,13 @@ const PLAYER_SPAWN_NEAR_MAX_R=PLAYER.START_R*5,PLAYER_SPAWN_NEAR_R=360,PLAYER_SP
 // toda sala recém-aberta (lá todo mundo é bot) e o nascimento cai no sorteio cego, a 1500 px de todos.
 // Fica aqui, ao lado das outras três, e não em constants.js: é o mesmo bloco de decisão.
 const SPAWN_ISCA=true;
+// PLAYER_RESPAWN_AWAY: a vida N+1 nasce LONGE de quem acabou de matar a vida N. Os playtests gravados do
+// 1.22 mostraram o motivo em um clipe só: VN, 50 segundos, QUATRO vidas — o jogador renascia dentro do
+// enquadramento do mesmo par de gigantes e era comido de novo antes de entender o que tinha acontecido.
+// O `PLAYER_SAFE` de 1500 px não resolve isso: ele é a folga para NÃO nascer colado, e a 1500 px o algoz
+// continua na tela (em retrato, com `CAM.PORTRAIT_K`, a câmera de um novato enquadra bem mais que isso).
+// O que se quer aqui é outra coisa — que ele não esteja no FRAME —, e por isso o número é o dobro.
+const PLAYER_RESPAWN_AWAY=3000;
 // Powerups: tabela CUMULATIVA de pesos dentro de FOOD.POWER_P (POWERUP.DROP), exatamente como a das armas.
 // Eram dois tipos com peso igual; hoje são seis, e dois deles são RAROS — peso igual faria "raro" ser só
 // uma palavra no comentário. ⚠️ Um sorteio ponderado tem que gastar UM `rng.next()`, como o rollWeapon:
@@ -338,7 +346,7 @@ export class World{
   addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.SPAWN_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true}={}){
     let ps=this.players.get(slot);
     if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),weaponPin:false,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,autoDefN:0,autoFireAt:0,zoomUntil:0,feastUntil:0,aimLockId:-1,aimLockKind:0,aimLockPc:-1,aimLockUntil:0,
-      ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false,spawnSafe:true,vidas:0,graceUntil:0};this.players.set(slot,ps);}
+      ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false,spawnSafe:true,vidas:0,graceUntil:0,killerSlot:-1};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.ammo=newAmmo(missiles);ps.team=team;ps.weapon=weapon;ps.weaponPin=false;}
     // `spawn:false` = entrou na SALA mas ainda não no MAPA. É o lobby do battle royale: o jogador existe
     // (ocupa vaga, aparece no PLAYERS, escolhe equipe) e só ganha corpo na largada, via respawnPlayer.
@@ -421,6 +429,29 @@ export class World{
       return true;};
     const s=this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,null,0,livre,{x:pc.x,y:pc.y,r:PLAYER_SPAWN_NEAR_R});
     return s.ok?s:null;}
+  /**
+   * O PONTO QUE NÃO TEM UM PREDADOR DENTRO — nem o algoz da vida anterior.
+   *
+   * ⚠️ ELE EXISTE PORQUE O SORTEIO CEGO DESISTE EM SILÊNCIO. `_farSpot` cobra `PLAYER_SAFE` de TODA
+   * peça viva e, falhando as 40 tentativas, **devolve a última mesmo assim** (`s.ok` false, que
+   * `_spawnPiece` sempre ignorou). Numa sala de 60 com 50 preenchimentos isso falha com frequência —
+   * e o prêmio de falhar é nascer colado em qualquer coisa, inclusive num gigante.
+   * ⚠️ A saída é AFROUXAR o que não machuca em vez de insistir no mesmo critério: de quem eu ENGULO
+   * não se cobra distância nenhuma (nascer ao lado de um pequeno é a mecânica social de `_playerSpot`,
+   * não um problema), e a régua fica só onde ela importa — quem me come, e o algoz. Com dois números
+   * em vez de um, o predicado passa a ter solução na esmagadora maioria das salas.
+   * ⚠️ Ele entra DEPOIS de `_playerSpot`/`_novaSpot` e ANTES do sorteio cego: é a rede, não a política.
+   */
+  _spotNovato(ps,r){
+    const pecas=this.pieces,rEngole=r*EAT.RATIO,algoz=ps.killerSlot>=0?ps.killerSlot:-1;
+    const longe2=PLAYER_SAFE*PLAYER_SAFE,away2=PLAYER_RESPAWN_AWAY*PLAYER_RESPAWN_AWAY;
+    const limpo=(x,y)=>{for(let i=0;i<pecas.length;i++){const b=pecas[i];if(!b||b.dead||b.owner===ps.slot)continue;
+        const min2=b.owner===algoz?away2:(b.r>rEngole?longe2:0);   // pequeno que não é o algoz: pode ficar ao lado
+        if(!min2)continue;
+        const dx=b.x-x,dy=b.y-y;if(dx*dx+dy*dy<min2)return false;}
+      return true;};
+    const s=this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,null,0,limpo,this.zoneNow());
+    return s.ok?s:null;}
   _spawnPiece(ps,x,y,r){
     // nasce longe de ESTRELA (era do buraco negro, que saiu de cena): com 12 estrelas e a queimadura de STAR.BURN,
     // cair colado numa delas custaria 30% da massa antes de encostar no primeiro grão.
@@ -432,7 +463,7 @@ export class World{
     // o círculo não cobre os cantos, então sem ele um nascimento com a zona ligada podia cair no gás.
     // (A razão histórica era a janela de entrada tardia do BR, que já não existe — hoje ninguém entra numa
     // partida em andamento. A guarda fica porque ela é do MUNDO, não daquela janela.)
-    if(Number.isNaN(x)){const zc=this.zoneNow();const s=this._playerSpot(ps,r)||this._novaSpot(ps)||this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE,null,zc);x=s.x;y=s.y;ps.spawnSafe=s.ok;}
+    if(Number.isNaN(x)){const zc=this.zoneNow();const s=this._playerSpot(ps,r)||this._novaSpot(ps)||this._spotNovato(ps,r)||this._farSpot(PLAYER_MARGIN,this.stars,STAR.SAFE_SPAWN,this.asteroids,ASTEROID.SAFE_SPAWN,this.pieces,PLAYER_SAFE,null,zc);x=s.x;y=s.y;ps.spawnSafe=s.ok;}
     else ps.spawnSafe=true;   // posição DADA (largada do BR, respawn com x/y): não houve sorteio a falhar
     ps.alive=true;ps.tx=x;ps.ty=y;ps.ejectHold=false;ps.ejectRamp=0;ps.spawnTick=this.tick;ps.fireCdUntil=this.tick+MISSILE.SPAWN_CD_TICKS;   // carência: ninguém nasce atirando
     // ── A GRAÇA DO NASCIMENTO, EM UM CAMPO SÓ ──
@@ -453,6 +484,25 @@ export class World{
     const g=BOT.SPAWN_GRACE_TICKS>0?(ps.vidas>1?BOT.SPAWN_GRACE_TICKS:BOT.SPAWN_GRACE_1_TICKS):0;
     ps.graceUntil=ps.isBot||!g?0:this.tick+g;
     ps.autoDefN=0;ps.autoFireAt=0;ps.zoomUntil=0;ps.feastUntil=0;ps.aimLockId=-1;ps.aimLockPc=-1;ps.aimLockUntil=0;ps.weaponPin=false;   // vida nova, powerups zerados — mesmo caminho do fireCdUntil, e é ele que cobre addPlayer, respawnPlayer e a largada do BR de uma vez
+    // ── A CÂMERA DO NOVATO É MAIS ABERTA, E ELA ABRE PELO CAMINHO QUE JÁ EXISTE ──
+    // ⚠️ **A AOI TEM QUE AFASTAR JUNTO, senão o anel extra vem VAZIO** — e é exatamente por isso que o
+    // campo reusado é `zoomUntil`, o do powerup de zoom: `net/snapshot.js` e a câmera do cliente leem o
+    // MESMO número, então os dois afastam pelo mesmo fator (`POWERUP.ZOOM_K`), que é o único
+    // afastamento para o qual a AOI já foi dimensionada e medida. Escrever isto no cliente daria um
+    // buraco preto em volta do planeta.
+    // ⚠️ O DIAGNÓSTICO É DE VÍDEO, não de histograma: nos playtests do 1.22 em RETRATO (BR, VN) a tela
+    // do novato é um close-up do próprio sprite com um predador colado; o mesmo jogo no desktop 16:9
+    // (US) mostra um anel de comida em volta. O jogador de celular está vendo outro jogo — e é ele a
+    // maioria do tráfego da Poki.
+    // ⚠️ VALE EM TODA TELA, e não só no retrato: o servidor conhece `w`/`h` da sessão, mas `zoomUntil` é
+    // do MUNDO (é física, e o mesmo player pode ter duas abas). O desktop também nasce sem saber o que
+    // fazer — o clipe US durou 14 s —, e ver mais mundo no primeiro minuto não machuca ninguém.
+    // ⚠️ Ela FECHA quando a graça acaba, inclusive pelo primeiro abate ou pela massa. É a mesma
+    // "mudança de câmera no meio do jogo" que tirou o zoom do sorteio de powerups — aqui ela é aceita
+    // porque o gatilho não é sorte: é o jogador ter deixado de ser novato, e `CAM.TAU_ZOOM` suaviza.
+    // ⚠️ `Math.max` e não atribuição: a gaiola de largada do Battle Royale escreve este mesmo campo
+    // (`Room.begin`), e sobrescrever encurtaria a abertura dela.
+    if(BOT.NOVATO_ZOOM!==false&&ps.graceUntil>this.tick)ps.zoomUntil=Math.max(ps.zoomUntil,ps.graceUntil);
     const pc=this.newPiece(ps.slot,clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);pc.cdUntil=this.tick+BLACKHOLE.CD_TICKS;
     // ── O KIT DE BOAS-VINDAS ──
     // Ajuda a achar comida logo cedo, que é o problema real de quem nasce com 900 de massa num mapa de

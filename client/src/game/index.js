@@ -82,7 +82,7 @@ import {createActivity} from "./input/Activity.js";
 import {morteZero,passoMorte} from "../ui/deadClock.js";
 import {Q,qflag,bodyMode} from "./util.js";
 
-const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0,autodef:0,zoom:0,feast:0},splitCd:0,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
+const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0,autodef:0,zoom:0,feast:0},splitCd:0,splitOff:false,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
   mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:"",notice:null,zoom:null,host:null,
   brInvite:null,zoneWarn:null,zoneAlarmAt:0,deadAt:0,armAt:0,idle:null,cage:null});   // `cage` = a contagem 3·2·1 da gaiola de largada; sem ele aqui, o primeiro render leria `undefined`
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
@@ -213,6 +213,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(a==="talk"){if(ph==="down"){if(joined&&!SEM_VOZ&&curPrefs.voice!==false)mic.start();}else mic.stop();return;}   // morto também fala: o escopo é do servidor (Room._escopoFala)
     if(a==="specPrev"||a==="specNext"){if(ph==="down")game.spectate({dir:a==="specNext"?1:-1});return;}
     if(a==="zoomReset"){if(ph==="down")zoomReset();return;}
+    // ⚠️ O NOVATO NÃO DIVIDE, E O CLIENTE TEM QUE SABER DISSO (`rules.applySplit` recusa no servidor).
+    // Mandar a flag assim mesmo "funcionaria" — o servidor ignora —, mas custaria o `splitCdUntil` dele
+    // por nada e, pior, o HUD anunciaria um comando que não faz nada: é a mesma lição do `#t-split.dica`
+    // pulsando para quem ainda não alcançou `SPLIT.MIN_R`.
+    if(a==="split"&&ph==="down"&&souNovato)return;
     if(a==="split"&&ph==="down")dividiu=true;   // a dica existe para ensinar ISTO; ensinada, ela some
     if(a==="swap"&&ph==="down")audio.play("weapon",{mine:true});
     actions.act(a,ph);};
@@ -443,7 +448,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // primeiro abate. Não muda nada na tela — é só a linha do funil que torna a regra do 1.21 conferível
     // em produção, e por isso mora aqui em vez de virar estado. Um `why` desconhecido é ignorado: o
     // servidor pode ganhar uma saída nova antes de o zip do portal ser reenviado.
-    else if(m.t==="grace"){if(m.why==="time"||m.why==="mass"||m.why==="kill")marco("grace_end_"+m.why);}
+    // ⚠️ ...E ELE É TAMBÉM O QUE DESTRAVA O DIVIDIR NA TELA. O cliente não tem como DERIVAR a graça —
+    // `SPAWN_GRACE_TICKS` e `NOVATO_MASS` são tunables de escopo 'server' e o bundle dele tem a cópia do
+    // BUILD —, mas não precisa: o servidor já avisa quando ela acaba, e "acabou" é a única transição que
+    // importa. Nasce novato, deixa de ser quando esta mensagem chega. Zero byte de protocolo novo.
+    else if(m.t==="grace"){souNovato=false;pushHud(performance.now());
+      if(m.why==="time"||m.why==="mass"||m.why==="kill")marco("grace_end_"+m.why);}
     // CONVITE DE BATTLE ROYALE: só chega em sala do modo Livre (Room.brInvite filtra no servidor).
     // Interativo — fica no hudStore até responder ou o TTL vencer, ao contrário do `notice` passivo.
     else if(m.t==="brStart"){
@@ -510,7 +520,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // em ROOM_EXPIRED.
     else if(m.t==="alive"){dead=false;specSlot=-1;spec=null;mapOn="";minimap.setView("",-1);minimap.show(false);
       morte=passoMorte(morte,{tipo:"vida",now:performance.now()});if(joy)joy.reset();   // o rumo travado é da vida ANTERIOR: sem isto o planeta nasce correndo
-      dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();   // vida nova, lição nova: quem morreu sem dividir volta a ser ensinado
+      dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;   // vida nova, lição nova: quem morreu sem dividir volta a ser ensinado
       // ⚠️ mas a MISSÃO não: `missaoZero()` devolve o veterano se esta sessão já viveu uma vida (a marca
       // foi escrita na morte, logo acima). O zeramento por vida continua sendo o mecanismo; o que muda é
       // de onde ele parte — ver o bloco de MISSAO_KEY no topo.
@@ -757,7 +767,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // um `{deadAt,armAt}` VENCIDO. Ele chegava à tela de morte pelo store com throttle antes do par novo
       // e disparava o respawn no primeiro frame: a tela não aparecia e o jogador reentrava no ato. Ver
       // `ui/deadClock.js`, que fecha o mesmo buraco do outro lado com o piso.
-      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();specSlot=-1;selfTick=0;espectador=!!spec;
+      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;specSlot=-1;selfTick=0;espectador=!!spec;
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null,spec:!!spec};
@@ -783,7 +793,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // própria entrada marcaria a sessão como "já viveu uma vida" — a missão nunca apareceria para
       // ninguém, em silêncio.
       if(joined)fimDaVida();
-      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
+      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -1050,7 +1060,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         comivel=temComivel(me,alvos);
         presa=temPresa(me,alvos);}
       // `dividiu` some só da etapa 3 (é a lição DELA), e por isso entra no `pode`, não no `vivo`
-      const passo=passoMissao(missaoEst,{vivo:!!me,comidas,comeuAlguem,comivel,pode:!!me&&!dividiu,presa},now);
+      // ⚠️ ...e `souNovato` entra no MESMO `pode` pelo mesmo motivo: sob a graça o servidor RECUSA o
+      // split (`rules.applySplit`), e ensinar um comando que não funciona é pior que não ensinar. A
+      // etapa 3 espera a graça acabar — que é quando o botão volta e a lição passa a valer.
+      const passo=passoMissao(missaoEst,{vivo:!!me,comidas,comeuAlguem,comivel,pode:!!me&&!dividiu&&!souNovato,presa},now);
       missaoEst=passo.est;festa=passo.festa;
       if(passo.banda)dica={id:passo.banda,at:missaoEst.desde,dedo};
       // ⚠️ A FESTA SAI UMA VEZ por construção: `festa` só é diferente de zero no tick em que a etapa
@@ -1064,7 +1077,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         renderer.fx.add("combo",{x:me.x,y:me.y,r:me.r,n:1,text:L.missao||"BOA!"},0);
         audio.play("achievement",{mine:true,pitch:ESCADA[Math.min(festa-1,ESCADA.length-1)]});}}
     hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
-      powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:s?s.autoDefN|0:0,zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
+      powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:s?s.autoDefN|0:0,zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),splitOff:souNovato,ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,map:mapOn,clock:roundClock,
       // ZOOM MANUAL: só existe no HUD quando o jogador saiu do automático — widget permanente para
       // funcionalidade ocasional é ruído. `pct` é o que ele PERCEBE (quanto de mundo a mais/a menos), não o
@@ -1124,6 +1137,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // nos MESMOS pontos que `morte`/`brMudo` (join/leave e `{t:"alive"}`), senão a vida seguinte herda
   // o estado da anterior e a dica nunca mais aparece. Ver game/dica.js.
   let dividiu=false,dicaEst=DICA0,comidas=0,comeuAlguem=false,missaoEst=missaoZero();
+  // ⚠️ ESTOU SOB A GRAÇA DO NASCIMENTO? Nasce `true` e só o servidor o apaga, pelo `{t:"grace"}` — ver
+  // o handler daquela mensagem. É ele que trava o DIVIDIR na tela enquanto o servidor o recusa.
+  let souNovato=true;
   // ZOOM MANUAL (a roda). O fator é guardado CRU e reclampado todo frame pela faixa da massa do momento
   // (`clampZoom`): assim a faixa anda junto com o jogador e leva o fator com ela — quem estacionou no máximo
   // afastado continua no máximo enquanto cresce (a visão abre sozinha, sem degrau), e quem foi comido até o

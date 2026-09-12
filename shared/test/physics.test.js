@@ -504,6 +504,7 @@ test("asteroide: o escudo paga pela VELOCIDADE da batida (1/2/3 níveis) e rápi
 // 19. powerups por peça
 test("powerup por peça: só a parte que pegou o 🛡️/🧲 se beneficia; ao fundir fica o melhor das duas",()=>{
   const w=empty(80),a=w.addPlayer(0,{x:1000,y:1000,r:60});a.magnetUntil=0;w.setTarget(0,2000,1000);   // sem a carga de nascimento, "a" fica de fato sem ímã até o teste dar um
+  w.players.get(0).graceUntil=0;   // dividir é mecânica de quem JÁ jogou: a graça do novato trava o split (rules.applySplit)
   w.requestSplit(0);w.step();const b=w.piecesOf(0).find(p=>p!==a);assert.ok(b,"dividiu em duas");
   for(let t=0;t<25;t++)w.step();assert.ok(b.x-a.x>120,"as partes se afastaram");
   const f=w.spawnFood();f.type=FOOD_TYPE.SHIELD;f.x=b.x;f.y=b.y;w.moveFood(f);w.step();
@@ -564,6 +565,7 @@ test("estrela: míssil e partícula empurram; no 3º hit ela EXPLODE e morre (n�
 test("split: o filho é arremessado SPLIT.DIST px, o boost SEMPRE chega a zero e o ponteiro nunca perde o controle",()=>{
   const w=empty(86),a=w.addPlayer(0,{x:3000,y:3000,r:120});w.setTarget(0,9000,3000);   // ponteiro na direção do arremesso: o pior caso
   for(let t=0;t<60;t++)w.step();                                                        // já na velocidade padrão
+  w.players.get(0).graceUntil=0;   // dividir é mecânica de quem JÁ jogou: a graça do novato trava o split (rules.applySplit)
   w.requestSplit(0);const b0=w.piecesOf(0).length;w.step();
   const b=w.piecesOf(0).find(p=>p!==a);assert.ok(b&&w.piecesOf(0).length===b0+1,"dividiu");
   assert.equal(boostLeft(a),0,"quem fica não é empurrado (no agar o split não tem recuo)");
@@ -575,13 +577,14 @@ test("split: o filho é arremessado SPLIT.DIST px, o boost SEMPRE chega a zero e
   assert.ok(Math.abs(sep()-s1)<b.r,"e daí as duas andam juntas, na mesma velocidade padrão");
   // controle durante o arremesso: o boost é SOMADO ao ponteiro, não o substitui
   const wc=empty(88),m=wc.addPlayer(0,{x:5000,y:5000,r:120});wc.setTarget(0,9000,5000);
-  for(let t=0;t<60;t++)wc.step();wc.requestSplit(0);wc.step();
+  for(let t=0;t<60;t++)wc.step();wc.players.get(0).graceUntil=0;wc.requestSplit(0);wc.step();
   const f=wc.piecesOf(0).find(p=>p!==m);wc.setTarget(0,5000,9000);   // vira 90° no meio do arremesso
   const y0=f.y;for(let t=0;t<20;t++)wc.step();
   assert.ok(f.y-y0>40,`dá para virar a peça durante o arremesso (andou ${(f.y-y0).toFixed(0)} px no eixo novo)`);
   // a distância do arremesso é ABSOLUTA: 780 px do planeta inteiro à peça já dividida três vezes
   const salto=R=>{const ww=empty(87),mm=ww.addPlayer(0,{x:1200,y:4800,r:R});ww.setTarget(0,9500,4800);
     for(let t=0;t<90;t++)ww.step();
+    ww.players.get(0).graceUntil=0;   // o menor da lista (r=60) ainda é "novato" por massa, e ali o split é travado
     ww.requestSplit(0);ww.step();const ff=ww.piecesOf(0).find(p=>p!==mm);const d0=ff.x-mm.x;
     for(let t=0;t<400;t++)ww.step();
     return(ff.x-mm.x)-d0;};   // deslocamento EXTRA do filho = o que o boost rendeu
@@ -1281,8 +1284,14 @@ test("powerups de jogador: auto-defesa, +1 munição, zoom e comida em dobro",()
   w6.setTarget(0,1000,1000);
   pega(w6,f0,FOOD_TYPE.ZOOM);pega(w6,f0,FOOD_TYPE.FEAST);
   assert.ok(ps6.zoomUntil>w6.tick&&ps6.feastUntil>w6.tick);
+  const zoomVelho=ps6.zoomUntil;
   w6.respawnPlayer(0,{r:PLAYER.START_R});
-  assert.equal(ps6.zoomUntil,0,"vida nova, zoom zerado");
+  // ⚠️ O ZOOM DEIXOU DE NASCER ZERADO, pelo MESMO motivo do banquete logo abaixo: a câmera do novato é
+  // mais aberta enquanto a graça vale, e ela abre por este campo — é ele que faz a AOI do servidor
+  // afastar JUNTO (`net/snapshot.js`), sem o que o anel extra viria vazio. O que continua sendo
+  // verdade, e é o que este teste guarda, é que a vida nova não HERDA o relógio da anterior.
+  assert.equal(ps6.zoomUntil,w6.players.get(0).graceUntil,"vida nova: o zoom é o da graça, reescrito");
+  assert.notEqual(ps6.zoomUntil,zoomVelho,"e não o que sobrou da vida passada");
   // ⚠️ O BANQUETE DEIXOU DE NASCER ZERADO: `_spawnPiece` o entrega como parte do KIT DE BOAS-VINDAS
   // (`POWERUP.SPAWN_FEAST_TICKS`), junto do ímã que já era dado ali. O que continua sendo verdade — e é o
   // que este teste guarda — é que a vida nova NÃO herda o relógio da anterior: ele é reescrito, e não

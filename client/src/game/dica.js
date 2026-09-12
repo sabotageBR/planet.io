@@ -77,7 +77,7 @@ export function passoDica(est,ctx,agora){
 // ── A MISSÃO DE SESSÃO 0 ──────────────────────────────────────────────────────
 // A dica do dividir ensina a ÚLTIMA coisa que um novato precisa aprender, e ela só aparece para quem já
 // chegou ao portão (`SPLIT.MIN_R`) — ou seja, para um terço deles. As duas etapas antes dela são as que o
-// resto nunca recebe: "coma as pedras" e "coma o planeta pequeno".
+// resto nunca recebe: "coma as partículas" e "coma o planeta pequeno".
 //
 // ⚠️ A INVARIANTE É A FORMA DO RETORNO: `banda` é uma STRING SÓ. "No máximo uma faixa de texto por vez"
 // deixa de ser disciplina de quem chama e passa a ser impossível de violar — que é o pedido literal.
@@ -88,7 +88,13 @@ export function passoDica(est,ctx,agora){
 
 /** As etapas, na ordem. `FIM` nunca é escrito — quem já viveu uma vida entra direto em `SPLIT`. */
 export const ETAPA={FIM:0,COMER:1,PRESA:2,SPLIT:3};
-/** Quantas pedras fecham a etapa 1, e quanto o "consegui" fica no ar antes de a próxima subir. */
+/**
+ * Quantas PARTÍCULAS fecham a etapa 1, e quanto o "consegui" fica no ar antes de a próxima subir.
+ *
+ * ⚠️ **A frase dizia "pedras", e mandava o novato para cima de um ASTEROIDE.** É o pior erro possível
+ * numa missão de primeira vida: a pedra do jogo é o asteroide, que POP/estilhaça quem encosta — a
+ * missão ensinava exatamente o que mata. O grão é uma partícula, e é como o resto do jogo o chama.
+ */
 export const MISSAO={COMIDAS:8,SOBRA_MS:3000};
 export const MISSAO0={etapa:ETAPA.COMER,ate:0,feito:0,desde:0,dica:DICA0};
 /** Quem já viveu uma vida NESTA sessão entra na etapa 3: comer grão e comer quem é menor ele já sabe. */

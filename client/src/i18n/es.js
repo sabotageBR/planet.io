@@ -20,7 +20,7 @@ export default {
   brCageTitle: "PREPÁRATE", brCageHint: "sin peleas ni potenciadores hasta que se abra la jaula",
   aliveLeft: "QUEDAN", placementWord: "puesto", zoneOut: "⚠ EN EL GAS", zoneShrinking: "EL GAS ESTÁ AVANZANDO", zoneCloses: "el gas cierra en",
   zoneWarnAt: "⚠ ¡EL GAS CIERRA EN {n}s!",
-  hintEat: "Come las rocas",
+  hintEat: "Come las partículas",
   hintPrey: "Cómete el planeta pequeño",
   hintSplit: "{k} para dividir y alcanzarlo",
   hintSplitTouch: "toca DIVIDIR para alcanzarlo",

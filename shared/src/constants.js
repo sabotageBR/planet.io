@@ -868,7 +868,7 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:316.2278,MAGNET_RANGE:5.5,MAGNET_RA
 // escudo: não expira; nível 1..SHIELD_MAX_LEVEL (N mísseis para destruir), sobe 1 nível a cada SHIELD_EVOLVE_TICKS sem ser atingido; −1 nível ao disparar e ao dividir
 // ímã e escudo valem POR PEÇA: só a parte que pegou o powerup se beneficia; ao fundir, os poderes das duas se juntam (escudo soma até o teto, ímã soma o tempo restante)
 export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1.3,HUNT_DIST:900,FOOD_DIST:520,MAX_PIECES:8,
-  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:2700,SPAWN_GRACE_1_TICKS:5400,NOVATO_HUMANO:true,NOVATO_MASS:6000,NOVATO_RATIO:4,   /* 45 s — era 15, e antes disso 7. Ver `rules.piecePair` (ela também IMPEDE de ser comido) e agora
+  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:2700,SPAWN_GRACE_1_TICKS:5400,NOVATO_HUMANO:true,NOVATO_MASS:6000,NOVATO_RATIO:4,NOVATO_SPLIT:false,NOVATO_ZOOM:true,   /* 45 s — era 15, e antes disso 7. Ver `rules.piecePair` (ela também IMPEDE de ser comido) e agora
      `fireHoming`/`pieceMissile` (o míssil do preenchimento atravessa). A subida é do Player Fit da
      Poki: a mediana da primeira vida é 31 s, ou seja METADE dos novatos morria dentro da janela de 15.
      ⚠️ Esticar a graça de TEMPO recria o PENHASCO num ponto mais tarde — a menos que a perna de MASSA
