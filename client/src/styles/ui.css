@@ -4,6 +4,35 @@
    nova) mora aqui e usa só os tokens do tema (--bg, --accent, --line…), então
    funciona nos três céus. Carregado por client/src/theme/all.css. ── */
 
+/* ── A APLICAÇÃO TERMINA ONDE A TELA TERMINA, NÃO ONDE O NAVEGADOR DIZ ───────────────────────────
+   `#app` é `position:fixed;inset:0` (base.css), e num celular isso NÃO é a área visível: o bloco
+   contenedor de um `position:fixed` é o LAYOUT viewport, que no Safari do iPhone é o viewport GRANDE —
+   as barras do navegador ficam POR CIMA dele. Medido no print do bug: a fileira de baixo dos botões de
+   toque (`#touch` é `bottom:14px` e `flex-wrap`, ou seja cresce para cima a partir da borda de baixo do
+   `#hud`) aparecia com ~12 px de 64, com os outros ~50 px atrás da barra de abas do Safari. A coluna de
+   powerups do canto esquerdo perdia o último chip pelo mesmo motivo.
+   ⚠️ `env(safe-area-inset-bottom)` NÃO cobre isso, e é por isso que o defeito sobreviveu ao
+   `viewport-fit=cover`: a área segura fala do ENTALHE e da barra de home, não da interface do
+   navegador — com a barra de abas na tela ela vale ZERO.
+   ⚠️ **`dvh` e não `visualViewport`.** O teclado virtual encolhe o `visualViewport` em ~300 px, e com o
+   canvas amarrado a ele digitar no chat repintaria a partida inteira num quadro menor (e pagaria o
+   reassado do céu, o item mais caro do render). O viewport DINÂMICO é sobre a interface RETRÁTIL do
+   navegador e ignora o teclado — que é exatamente a linha que se quer.
+   ⚠️ Sem `dvh` (navegador anterior a 2022) a declaração é descartada e vale o `inset:0` de sempre: o
+   comportamento antigo, nunca um layout quebrado. E `top:0` + `height` deixa o `bottom:0` do `inset`
+   sem efeito — é a resolução normal de uma caixa sobre-restringida, não um acidente.
+   ⚠️ Isto a matriz de responsividade NÃO prova: ela roda num Chrome headless com janela fixa, onde não
+   existe barra de navegador para sobrepor nada. Este é caso de olhar num telefone de verdade.
+
+   ⚠️ **O `html,body` ABAIXO JÁ EXISTIA, E SOZINHO NÃO RESOLVIA NADA DISSO** — ele morava no meio do
+   bloco da tela de morte e subiu para cá porque as duas linhas são o MESMO problema visto de dois
+   lados. `100%` em html/body é o `vh` de sempre, que conta a barra recolhida e fazia a folha de morte
+   escorregar para fora da tela; mas `#app` é `position:fixed`, e um fixo não se mede contra o `body` —
+   mede-se contra o viewport. Consertar um e não o outro deixava o HUD inteiro (que é filho do `#app`)
+   com a borda de baixo atrás da barra do navegador. */
+#app{height:100dvh}
+@supports (height:100dvh){html,body{height:100dvh}}
+
 /* troca de tema: o fade é só do céu, dentro do Pixi (renderer/layers/Background.js). Aqui o HUD e as telas
    acompanham a paleta nova sem corte seco — só cor, nada de layout. */
 #hud,#hud *,.screen,.card,.btn-primary,.btn-secondary{transition:background-color .35s ease,color .35s ease,border-color .35s ease}
@@ -40,6 +69,15 @@ body[data-mode="portrait"] .podium .step.p1 canvas{width:68px;height:68px}
    `auto-fill` responde ao CONTÊINER — a mesma razão pela qual os atalhos da entrada o usam. */
 body #s-shop .shop-grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;
   max-height:none;overflow:visible}
+/* ⚠️ **A COLOCAÇÃO DA BARRA DE BUSCA DEIXOU DE SER SORTE.** `.shop-wrap` é um grid por ÁREAS NOMEADAS
+   (base.css, que é GERADO por theme/port.js — por isso a correção mora aqui), e `.shop-tools` estava
+   com `grid-area:auto`: com as seis linhas nomeadas todas ocupadas, o auto-placement o jogava numa
+   linha IMPLÍCITA, depois da nota de rodapé. Tirando o cartão da skin equipada e os chips, as linhas
+   `eq` e `filters` esvaziam e ele passaria a cair na primeira delas — certo por acidente, e o próximo
+   bloco que entrar na tela o desloca de novo. Aqui a linha tem nome. (Em retrato e paisagem nada disso
+   vale: `base.css:198` desliga TODA área nomeada e o `.wrap` volta à ordem do DOM.) */
+#s-shop .shop-wrap{grid-template-areas:"nav" "head" "tools" "grid" "note"}
+#s-shop .shop-tools{grid-area:tools}
 .shop-tools{grid-area:auto;display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:2px 0 6px}
 .shop-tools input[type="search"]{flex:1 1 120px;min-width:96px;padding:7px 10px;border-radius:var(--radius,10px);
   border:2px solid var(--line,#0006);background:var(--surface,#2226);color:inherit}
@@ -1499,10 +1537,6 @@ body[data-dead="min"][data-shell="rail"]:not([data-screen="game"]):not([data-mod
    posicionada e estilizada pelo bloco de :920. Aqui só o que é próprio da morte: ela divide o rodapé com
    os botões de toque do HUD, então sobe um pouco no dedo. */
 body[data-pointer="coarse"] #s-dead-min{bottom:calc(12px + env(safe-area-inset-bottom,0px))}
-/* `100%` em html/body é o `vh` de sempre: no Safari móvel ele conta a barra que está recolhida, e a folha
-   escorrega para fora da tela conforme a barra aparece. `dvh` é a altura que existe AGORA. */
-@supports (height:100dvh){html,body{height:100dvh}}
-
 /* o "+" entre o ícone de quem amoleceu e o de quem finalizou */
 #kill-feed .kf-plus{opacity:.4;font-size:.8em;margin:0 1px}
 
@@ -2502,9 +2536,17 @@ body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:non
    de largura no iPhone SE deitado, medido pela matriz. É o mesmo argumento dos seis botões da tela
    inicial: coluna FIXA foi exatamente o que produziu alvos de 37 px lá. */
 #s-modes .modes.duo{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+/* ⚠️ `align-items:start`: a grade ESTICAVA os dois cartões à altura da fileira, e a fileira era a do
+   cartão mais alto — o do Battle Royale, com sete blocos dentro. Com os chips e o campo de código fora
+   (ENTRY_PANELS.SQUAD/CODE) os dois têm quase o mesmo conteúdo, e esticar só produz vazio: no frame de
+   portal de 470 px cada pixel de vazio é um pixel que o JOGAR desce. */
+#s-modes .modes.duo{align-items:start}
 /* o mascote mora no canto de baixo do cartão e o texto reserva a faixa dele com padding — sem isso o
    subtítulo passa por baixo do planeta e fica ilegível justo no cartão em que se clica */
-#s-modes .mode-card.grande{position:relative;overflow:hidden;min-height:180px}
+/* ⚠️ 180 px era a altura de um cartão com QUATRO CHIPS, botão e campo de código dentro. Sem eles a
+   conta muda: o piso agora é só o que o MASCOTE precisa (`clamp(52px,20%,72px)` no topo, ver abaixo)
+   mais as duas linhas de texto — abaixo disso o planeta encostaria no botão. */
+#s-modes .mode-card.grande{position:relative;overflow:hidden;min-height:132px}
 #s-modes .mode-mascote{pointer-events:none;user-select:none;filter:drop-shadow(0 6px 14px rgba(0,0,0,.4))}
 /* ⚠️ OS DOIS CARTÕES TÊM O MESMO DESENHO, e é isso que faz a tela ler como um par: planeta pequeno no
    alto à direita, texto ao lado dele e a chamada à ação embaixo, da largura do cartão. Quem impõe a
@@ -2535,11 +2577,16 @@ body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:non
 #s-modes .mode-card[data-side="right"]>b,
 #s-modes .mode-card[data-side="right"]>span{padding-right:78px}
 /* ⚠️ O JOGAR DO LIVRE OCUPA O MESMO ESPAÇO QUE O DO VIZINHO: a largura sai de graça (`.btn-primary` é
-   `width:100%` no base.css, e é por isso que ele tem que ser filho DIRETO do cartão), e o
-   `margin-block:auto` resolve a altura — a grade estica os dois cartões ao mesmo tamanho e o do Livre
-   tem duas linhas de texto contra os seis blocos do outro, então sem isso o botão ficava colado no topo,
-   com um palmo de vazio embaixo. Centrado na sobra, ele pousa na mesma faixa do JOGAR do Battle Royale. */
-#s-modes .mode-card[data-mode="free"]>.btn-primary{margin-block:auto}
+   `width:100%` no base.css, e é por isso que ele tem que ser filho DIRETO do cartão).
+   ⚠️ **O `margin-block:auto` SAIU, e o motivo dele saiu junto.** Ele centrava o botão na sobra vertical
+   porque o cartão do Livre tinha duas linhas de texto contra os SEIS blocos do vizinho, e a grade
+   esticava os dois ao mesmo tamanho: sem ele, o Livre ficava com o botão no topo e um palmo de vazio
+   embaixo. Hoje o vizinho perdeu os chips e o campo de código (ENTRY_PANELS.SQUAD/CODE) e a grade não
+   estica mais (`align-items:start`, acima) — não há sobra para centrar, e centrar o que não sobra só
+   empurrava o botão para baixo no frame de portal. O JOGAR pousa logo abaixo do subtítulo, que é onde
+   o pedido o quer. A faixa dos dois botões fica a uma linha de distância (o "50 planetas" do BR), e
+   isso é conteúdo de verdade, não vazio. */
+#s-modes .mode-card>.btn-primary{margin-block:0}
 /* o botão que revela "Sala sua": a lua ao lado do rótulo, e o cartão nasce logo abaixo */
 #s-modes .own-toggle{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:2px}
 #s-modes .own-mascote{width:30px;height:auto;pointer-events:none}
@@ -2549,7 +2596,10 @@ body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:non
 #s-modes .mode-card{padding:12px 14px;gap:4px}
 #s-modes .mode-card b{font-size:1.15em}
 #s-modes .mode-card span{font-size:.85em;line-height:1.25}
-#s-modes .mode-card.br{gap:7px}
+/* ⚠️ O `.br` TINHA `gap:7px` CONTRA OS 4px DO VIZINHO, e era o respiro dos seis blocos que moravam
+   dentro dele (quatro chips, botão e campo de código). Com o cartão reduzido a título · subtítulo ·
+   JOGAR são DOIS gaps, e os 3 px a mais em cada um desalinhavam os dois JOGAR em exatamente 6 px —
+   medido no navegador, e a causa não era o texto: os dois subtítulos ocupam as mesmas duas linhas. */
 #s-modes .own-row{gap:5px;flex-wrap:wrap}
 #s-modes .own-priv{margin:0}
 #s-modes .chip-btn{padding:5px 9px}
@@ -2564,6 +2614,43 @@ body[data-mode="landscape"] #s-dead .dd-sala .dd-vivo:nth-child(n+5){display:non
    matriz, os quatro chips ficavam com 41 px de largura na gaveta do iPhone SE deitado. Aqui eles voltam ao
    piso e QUEBRAM em duas fileiras, que é o certo — o `.team-sizes` já é `flex-wrap`. */
 body[data-pointer="coarse"] #s-modes .team-sizes .chip-btn{min-width:44px}
+/* ── TELA BAIXA: OS DOIS CARTÕES LADO A LADO, PORQUE O RECURSO ESCASSO É A ALTURA ────────────────
+   ⚠️ **Este é o primeiro consumidor de `body[data-h="short"]`** (useViewportMode.js): o atributo já era
+   escrito no `<body>`, com histerese, e não tinha uma regra sequer. Ele responde "cabe?", que é a
+   pergunta que nem `data-mode` nem `data-pointer` respondem — 960×540 e 1920×1080 são o MESMO
+   `data-mode`, com metade da altura.
+   ⚠️ O caso que o obrigou a existir é a GAVETA em celular deitado (`modes@rail`, 667×375 e 844×390):
+   ali o `--screen-w:760px` não vale, quem manda é o `--drawer-w` do tema, os dois cartões empilham numa
+   coluna só e o JOGAR do segundo fica abaixo da dobra. Foi medido pelo critério 7 da matriz, que
+   passou a cobrar esse botão nesta mesma rodada — antes, o problema existia e ninguém via (178 px
+   abaixo da dobra no iPhone SE deitado).
+   ⚠️ O piso de coluna cai de 280 para 190 px **só aqui**: baixá-lo no seletor de cima daria duas colunas
+   num celular EM PÉ de 430 px, que tem altura de sobra e precisa da largura. E é `auto-fit`, então onde
+   não couberem duas ele volta sozinho para uma.
+   ⚠️ O mascote encolhe junto e a faixa reservada para ele encolhe na mesma conta (78 → 58): com 190 px
+   de cartão, 78 px de recuo deixariam "BATTLE ROYALE" com 112 px e o título quebraria em três linhas —
+   devolvendo em altura o que a coluna economizou. */
+body[data-h="short"] #s-modes .modes.duo{grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+body[data-h="short"] #s-modes .mode-card.grande{min-height:0}
+body[data-h="short"] #s-modes .mode-card{padding:10px 12px}
+body[data-h="short"] #s-modes .mode-mascote{width:clamp(40px,16%,56px)}
+body[data-h="short"] #s-modes .mode-card[data-side="left"]>b,
+body[data-h="short"] #s-modes .mode-card[data-side="left"]>span{padding-left:58px}
+body[data-h="short"] #s-modes .mode-card[data-side="right"]>b,
+body[data-h="short"] #s-modes .mode-card[data-side="right"]>span{padding-right:58px}
+/* ⚠️ **CELULAR DEITADO NA GAVETA É O CASO EXTREMO, e ali as duas colunas não têm como caber**: o tema dá
+   `--drawer-w:min(400px,52vw)` (ui.css:1148), ou seja 347 px num iPhone SE deitado — menos de 320 px de
+   conteúdo, contra os 388 que duas colunas de 190 pedem. O `auto-fit` volta para uma coluna sozinho, e
+   é o certo; o que sobra é cortar ALTURA, e a matriz mediu quanto faltava: 40 px.
+   ⚠️ O que sai é o SUBTÍTULO, reduzido a uma linha, e a etiqueta "50 planetas" — nesta ordem, porque é
+   a ordem inversa da que o jogador precisa para decidir. Título e mascote dizem qual modo é; o
+   subtítulo explica, e explicar é o que se corta primeiro quando a alternativa é o JOGAR ficar fora da
+   dobra. ⚠️ Só aqui: `[data-h][data-mode]` é (0,2,0) contra (0,1,0) do bloco acima, então os frames de
+   portal (que são `desktop`/`landscape` de PONTEIRO FINO e já passavam limpos) não perdem nada. */
+body[data-h="short"][data-mode="landscape"] #s-modes .mode-card{padding:8px 10px;gap:3px}
+body[data-h="short"][data-mode="landscape"][data-pointer="coarse"] #s-modes .mode-card>span{
+  display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+body[data-h="short"][data-mode="landscape"][data-pointer="coarse"] #s-modes .mode-tag{display:none}
 
 /* ── O PAINEL DO TAB (ui/Roster.jsx) ─────────────────────────────────────────────────────────────
    Segurar TAB mostra quem está na sala, e o JOGO CONTINUA VIVO por baixo — é por isso que aqui NÃO há

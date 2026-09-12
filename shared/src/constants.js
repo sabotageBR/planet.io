@@ -417,7 +417,18 @@ export const modeCap=(id,teamSize=1)=>{const m=modeOf(id),t=teamSize>0?teamSize|
 // desenhar/decidir algo antes de entrar numa sala.
 // ORDER é a posição relativa dos dois cartões QUANDO OS DOIS APARECEM: 'free_br' (padrão — Livre
 // à esquerda, Battle Royale à direita) ou 'br_free' (invertido). Com um só visível, não tem efeito.
-export const ENTRY_PANELS={FREE:true,BR:true,OWN:true,ORDER:'free_br'};
+// ⚠️ SQUAD e CODE são os DOIS CONTROLES DE DENTRO do cartão do Battle Royale, e nascem DESLIGADOS:
+// os quatro chips de tamanho de esquadrão (1·Solo, 2·Dupla, 3·Trio, 4·Quarteto) e o campo de código
+// de 4 letras. Eles somam seis blocos num cartão que precisa caber num frame de portal de 470 px de
+// altura, e o pedido foi explícito — no cartão do BR fica o JOGAR e mais nada.
+//   · SQUAD desligado força `teamSize = 1`: sem os chips, um `teamSize` guardado no store deixaria o
+//     botão dizendo "CRIAR EQUIPE" e o clique iria por `createParty`, que NÃO passa por `play()` — ou
+//     seja, sem o anúncio de portal, que é reprova de certificação. Ver `ts` em ui/Modes.jsx.
+//   · CODE desligado não fecha porta nenhuma: o LINK de convite continua caindo em `joinParty`
+//     (state/actions.js) e a tela de Salas continua com o campo de código dela (ui/Lobby.jsx).
+// São de EXIBIÇÃO como os três acima, e por isso ficam aqui e não viram constante de build: ligá-los
+// de volta é um clique no /admin, sem pacote novo na fila de revisão do portal.
+export const ENTRY_PANELS={FREE:true,BR:true,OWN:true,SQUAD:false,CODE:false,ORDER:'free_br'};
 // ── TELA INICIAL ─────────────────────────────────────────────────────────────
 // NICK_AUTO: a tela inicial sorteia um nick e já entrega o campo preenchido, em vez de deixá-lo vazio
 // pedindo um nome. É de EXIBIÇÃO como o ENTRY_PANELS acima, e o interruptor existe porque a decisão é
@@ -500,7 +511,21 @@ export function roundTicksOf(modeId,min){
   const t=m*60*TICK_HZ;
   if(modeOf(modeId).lastAlive){if(!m)return null;return t<ZONE_TOTAL_TICKS+BR.DECIDE_TICKS?null:t;}   // BR: sem fim não, e nunca menos que a zona MAIS a folga de decisão
   return t;}
-export const PLAYER={START_R:30,SPAWN_R:30,MIN_PIECE_R:16,MAX_R:1250,MAX_PIECES:16,BOT_R:[24,58],DECAY:.002,OVER_N:6,OVER_DIST:420};
+export const PLAYER={START_R:30,SPAWN_R:63,MIN_PIECE_R:16,MAX_R:1250,MAX_PIECES:16,BOT_R:[24,58],DECAY:.002,OVER_N:6,OVER_DIST:420};
+// ⚠️ **`SPAWN_R` NASCE ACIMA DE `SPLIT.MIN_R` (60), E ESSA É A RELAÇÃO QUE O NÚMERO EXISTE PARA MANTER**:
+// quem entra no Livre tem que poder dividir no primeiro segundo, se quiser. Em 30 (massa 900) não podia —
+// faltava crescer 4× antes de a mecânica central do jogo existir para ele, e um botão que não faz nada é
+// o pior jeito de ensinar um jogo. 63 dá massa 3 969, 10 % acima do portão.
+//   ⚠️ A MARGEM É CONTRA O DECAIMENTO, não folga estética: em `SPAWN_R` = 60 cravado o `PLAYER.DECAY`
+//     (.002/s) derruba abaixo do portão no PRIMEIRO segundo, e a janela de "já nasce podendo" duraria um
+//     frame. Com 3 969 são ln(3969/3600)/.002 ≈ 49 s sem encostar em nada antes de o portão fechar.
+//   ⚠️ E A MARGEM TEM TETO, pelo outro lado: com `EAT.RATIO` 1.15, r=63 engole até r=54,8 — ou seja o
+//     recém-chegado come QUASE todo preenchimento (`BOT_R` [24,58]), mas não os maiores. Subir para
+//     r=70 passaria de 58 e o mapa inteiro viraria comida no tick do nascimento.
+//   ⚠️ O BATTLE ROYALE TEM O DELE (`BR.SPAWN_R`, ainda 30) e não foi tocado: lá os 50 largam PRESOS no
+//     octógono, e a ocupação da gaiola cresce com a massa — em 3 600 são 33 % da área dela. O teto do
+//     tunable dele é exatamente 3 600 justamente porque "a maior largada possível é a que já pode
+//     dividir"; mudar isso é decisão de balanceamento do MODO, não deste parâmetro.
 // ⚠️ START_R e SPAWN_R SÃO COISAS DIFERENTES, e separá-las é o que torna a massa inicial ajustável:
 //   SPAWN_R  = o tamanho com que se NASCE no modo Livre (entrar e renascer). É parâmetro do /admin, dito em
 //              MASSA no painel. Quem o lê: os defaults de `World.addPlayer`/`respawnPlayer` e `Sim.addHuman`.
@@ -885,7 +910,7 @@ export const POWERUP={TICKS:420,MAGNET_MAX_R:316.2278,MAGNET_RANGE:5.5,MAGNET_RA
 // escudo: não expira; nível 1..SHIELD_MAX_LEVEL (N mísseis para destruir), sobe 1 nível a cada SHIELD_EVOLVE_TICKS sem ser atingido; −1 nível ao disparar e ao dividir
 // ímã e escudo valem POR PEÇA: só a parte que pegou o powerup se beneficia; ao fundir, os poderes das duas se juntam (escudo soma até o teto, ímã soma o tempo restante)
 export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1.3,HUNT_DIST:900,FOOD_DIST:520,MAX_PIECES:8,
-  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:2700,SPAWN_GRACE_1_TICKS:5400,NOVATO_HUMANO:true,NOVATO_MASS:6000,NOVATO_RATIO:4,NOVATO_SPLIT:false,NOVATO_ZOOM:true,   /* 45 s — era 15, e antes disso 7. Ver `rules.piecePair` (ela também IMPEDE de ser comido) e agora
+  HOLE_AVOID:1.3,STAR_FEAR:2.6,RESPAWN_SCORE:.3,SPAWN_GRACE_TICKS:2700,SPAWN_GRACE_1_TICKS:5400,NOVATO_HUMANO:true,NOVATO_MASS:6000,NOVATO_RATIO:4,NOVATO_SPLIT:true,NOVATO_ZOOM:true,   /* 45 s — era 15, e antes disso 7. Ver `rules.piecePair` (ela também IMPEDE de ser comido) e agora
      `fireHoming`/`pieceMissile` (o míssil do preenchimento atravessa). A subida é do Player Fit da
      Poki: a mediana da primeira vida é 31 s, ou seja METADE dos novatos morria dentro da janela de 15.
      ⚠️ Esticar a graça de TEMPO recria o PENHASCO num ponto mais tarde — a menos que a perna de MASSA

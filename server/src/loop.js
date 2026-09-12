@@ -26,7 +26,10 @@ export class Scheduler{
         for(const r of this.rooms){try{r.step();}catch(e){if(this.log)this.log.error(`sala ${r.code}: erro no passo:`,e);}}
         if(m)m.tick(performance.now()-t0);
         this.steps++;this.next+=this.period;n++;now=performance.now();}
-      if(now>=this.next){this.overruns++;if(m)m.overrun();this.next=now+this.period;}   // atrasou mais que MAX_STEPS: descarta
+      // ⚠️ O ATRASO VAI JUNTO: `now-this.next` é quanta simulação está sendo DESCARTADA aqui, e é o
+      // número que diz se o tropeço foi de 90 ms ou de dois segundos. Sem ele, `overruns` conta
+      // eventos de tamanho desconhecido — ver o bloco em metrics.js.
+      if(now>=this.next){this.overruns++;if(m)m.overrun(now-this.next);this.next=now+this.period;}   // atrasou mais que MAX_STEPS: descarta
     }
     this._arm();}
 }

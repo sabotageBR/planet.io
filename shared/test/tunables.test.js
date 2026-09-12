@@ -4,7 +4,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {createWorld} from "../src/physics/index.js";
-import {POWERUP,FOOD,FOOD_TYPE,PLAYER,BR,BOT_LLM,ROUND,MODES,MODE,TICK_HZ,ENTRY_PANELS} from "../src/constants.js";
+import {POWERUP,FOOD,FOOD_TYPE,PLAYER,BR,BOT_LLM,ROUND,MODES,MODE,TICK_HZ,ENTRY_PANELS,SPLIT} from "../src/constants.js";
 import {PIECE_FLAG} from "../src/protocol/constants.js";
 import {listTunables,applyTunable,resetTunable,readTunable,TUNABLE_BY_KEY,GRUPOS,aplicaWire,wireValues} from "../src/tunables.js";
 
@@ -168,7 +168,11 @@ test("tunables: a duração do Livre é dita em minutos, e o descritor do modo n
 // Se um dia alguém "simplificar" as duas em uma só, é aqui que a física do cliente vai reclamar.
 test("tunables: a massa inicial é dita em MASSA, são DUAS (Livre e BR), e nenhuma é o piso do decaimento",()=>{
   try{
-    assert.equal(readTunable('PLAYER.SPAWN_R'),900,"o padrão do arquivo é a massa 900 de sempre");
+    // ⚠️ 3 969 (r=63) e não 900: o Livre passou a nascer ACIMA de `SPLIT.MIN_R` (60 ⇒ massa 3 600) para
+    // que dividir exista desde o primeiro segundo. A relação é o que este número guarda — ver o bloco de
+    // `PLAYER` em constants.js —, e o BR continua em 900 porque a gaiola dele é o outro limite.
+    assert.equal(readTunable('PLAYER.SPAWN_R'),3969,"o Livre nasce acima do portão do split (3 600)");
+    assert.ok(readTunable('PLAYER.SPAWN_R')>SPLIT.MIN_R*SPLIT.MIN_R,"se cair abaixo, o novato volta a não poder dividir");
     assert.equal(readTunable('BR.SPAWN_R'),900);
     applyTunable('PLAYER.SPAWN_R',3600);
     assert.equal(PLAYER.SPAWN_R,60,"massa entra, raio sai — a mesma tradução do teto do ímã");

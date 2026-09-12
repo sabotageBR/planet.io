@@ -61,23 +61,30 @@ function Body() {
     : st === "lowlevel" ? `🔒 ${LB.levelReq.replace("{n}", s.levelReq)}` : `${LB.coinIcon} ${fmt(s.price)}`;
   return <>
     <ScreenHeader title={LB.shopTitle} />
+    {/* ⚠️ **A LOJA FICOU COM BUSCA E GRADE, E SÓ.** Saíram QUATRO blocos que moravam entre o título e a
+        primeira skin — o cartão da skin equipada, a barra de progresso N/50, o seletor de ordenação e a
+        fileira de nove chips (Todas · Adquiridas · 7 raridades). Somados, eles empurravam a grade para
+        baixo da dobra num frame de portal, e a tela em que se COMPRA abria sem mostrar nada à venda.
+        ⚠️ O ESTADO FICA INTEIRO (`filter`, `mineOnly`, `sort`, e o `useMemo` que os aplica): sem os
+        controles eles valem "all", false e "rarity", e a peneira passa a ser só o campo de busca — que
+        é o pedido. Devolver qualquer um deles é descomentar o bloco abaixo.
+        ⚠️ A skin equipada não ficou sem sinal: o selo EQUIPADA continua no cartão dela dentro da grade.
+
     <div className="card shop-eq"><SkinPreview skin={eq} r={40} />
       <div className="skinmeta"><b id="s-skin">{skinName(eq)}</b><i id="s-rar" style={{ color: RC[eq.rarity] }}>{rarityLabel(eq.rarity)}</i><span className="hint" id="s-count">{ownedVis}/{TOTAL_VIS} {LB.unlocked}</span></div>
       <span className="badge">{LB.equipped}</span></div>
     <div className="shop-prog"><i style={{ width: Math.round(ownedVis / TOTAL_VIS * 100) + "%" }} /></div>
-    <div className="shop-tools">
-      <input type="search" value={q} placeholder={LB.shopSearch} onChange={e => setQ(e.target.value)} aria-label={LB.shopSearch} />
       <select value={sort} onChange={e => setSort(e.target.value)} aria-label={LB.sortBy.rarity}>
         {["rarity", "price", "name"].map(k => <option key={k} value={k}>{LB.sortBy[k]}</option>)}
       </select>
-    </div>
-    {/* "Adquiridas" é um filtro como qualquer outro e agora mora com os outros. Como toggle solto na barra
-        de ferramentas ele competia por espaço com a busca e o seletor de ordem, e era o primeiro a ser
-        cortado quando o painel encolhia. */}
     <div className="filters" id="shop-filters">
       <button data-f="all" className={filter === "all" && !mineOnly ? "on" : ""} onClick={() => { setFilter("all"); setMineOnly(false); }}>{LB.filterAll}</button>
       <button data-f="mine" className={mineOnly ? "on" : ""} onClick={() => setMineOnly(v => !v)}>{LB.onlyMine}</button>
       {RARITY_ORDER.map(r => <button key={r} data-f={r} className={filter === r ? "on" : ""} style={{ "--rc": RC[r] }} onClick={() => setFilter(r)}>{rarityLabel(r)}</button>)}
+    </div>
+    */}
+    <div className="shop-tools">
+      <input type="search" value={q} placeholder={LB.shopSearch} onChange={e => setQ(e.target.value)} aria-label={LB.shopSearch} />
     </div>
     <div className="shop-grid" id="shop-grid">{list.map(s => { const st = stateOf(s), sec = st === "secret";
       return <div key={s.id} className={"skin-card " + st} data-skin={s.id} data-rar={s.rarity} style={{ "--rc": RC[s.rarity] }}

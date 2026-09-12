@@ -567,7 +567,11 @@ export class World{
       // e auto-defesa de uma vez. Os pedidos continuam sendo LIMPOS embaixo, e isso é o ponto — sem limpar,
       // os 50 soltariam split e tiro no MESMO tick em que a gaiola abre.
       if(ps.alive&&!paz){
-        if(ps.splitReq&&tick>=ps.splitCdUntil){ps.splitCdUntil=tick+SPLIT.COOLDOWN_TICKS;R.applySplit(this,ps);}
+        // ⚠️ O COOLDOWN SÓ QUEIMA SE ALGUMA PEÇA DIVIDIU DE VERDADE. Ele era gravado ANTES da chamada,
+        // então toda recusa (`SPLIT.MIN_R`, teto de peças, a trava do novato) custava os 250 ms — quem
+        // apertasse repetido ficava com um comando que não faz nada E fora de cooldown metade do tempo.
+        // `applySplit` já devolvia `did`; o que faltava era alguém ler.
+        if(ps.splitReq&&tick>=ps.splitCdUntil&&R.applySplit(this,ps)>0)ps.splitCdUntil=tick+SPLIT.COOLDOWN_TICKS;
         let ej=ps.ejectReq;if(ps.ejectHold&&tick>=ps.ejectHoldAt){ej=true;ps.ejectHoldAt=tick+EJECT.HOLD_TICKS;}
         if(ej&&tick>=ps.ejectCdUntil){
           if(tick>ps.ejectCdUntil+EJECT.RAMP_RESET_TICKS)ps.ejectRamp=0;   // parou de cuspir: a força recomeça do início

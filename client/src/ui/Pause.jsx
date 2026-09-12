@@ -71,11 +71,17 @@ export default function Pause({ on }) {
  * fora por enquanto: ela é uma grade com modal próprio, e empilhá-la aqui é o oposto de "sem inflar a
  * tela" — quando entrar, entra como um quarto `<details>` com a grade extraída de `Shop.jsx`.
  *
- * ⚠️ `<details>` FECHADO por padrão: o cartão da pausa já rola por dentro, e três blocos abertos fariam
- * o botão RETOMAR sair da dobra num frame de portal de 470 px de altura — que é o mesmo defeito que a
- * tela de morte levou 24 de 34 combinações da matriz para admitir.
- * ⚠️ O TOP 5 é pedido na ABERTURA, nunca no boot: `loadTop5` saiu do caminho crítico do pacote junto com
- * `loadRooms`, e um pedido de rede para um painel fechado é o defeito que a tela inicial já corrigiu.
+ * ⚠️ **O NOME DO PLANETA ABRE POR PADRÃO; O TOP 5, NÃO.** Trocar o nome é a razão nº 1 de alguém abrir
+ * este menu num `.io`, e escondê-la atrás de um clique numa seta fazia o menu do pacote parecer só uma
+ * mesa de som. O TOP 5 continua fechado, e não por simetria: o `onToggle` dele é o que dispara
+ * `loadTop5()` na PRIMEIRA abertura — `loadTop5` saiu do caminho crítico do boot do pacote junto com
+ * `loadRooms`, e abri-lo por padrão devolveria ao boot o pedido de rede que foi tirado dele.
+ * ⚠️ **O motivo do fechado-por-padrão continua de pé, e quem o cobre hoje é outro.** Com os blocos
+ * abertos o RETOMAR saía da dobra num frame de portal de 470 px — o mesmo defeito que a tela de morte
+ * levou 24 de 34 combinações da matriz para admitir. O que segura agora é `.pause-actions`
+ * (`position:sticky;bottom:0;margin-top:auto`, ui.css) sobre um cartão que rola (`overflow:auto`), ou
+ * seja a ação está ANCORADA e não depende mais de o conteúdo caber. ⚠️ E isso tem que ser conferido de
+ * OLHO: a matriz de responsividade percorre TELAS e não mede overlay — aqui não há rede automática.
  */
 function EuBloco({ LB }) {
   const session = useStore(app, s => s.session);
@@ -92,7 +98,7 @@ function EuBloco({ LB }) {
     const r = await setNick(v); if (!r.ok) setNickLocal(nickDoUsuario); };
   const minhas = (session.skins || []).map(id => skinById(id | 0)).filter(Boolean);
   return <>
-    <details className="pause-eu">
+    <details className="pause-eu" open>
       <summary>{LB.nameLabel} · {LB.swap}</summary>
       <div className="pause-id">
         {/* ⚠️ `size` é o CANVAS e `r` é medido na escala de 112 (`k = cv.width/112`, ver SkinPreview):

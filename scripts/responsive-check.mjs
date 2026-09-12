@@ -202,7 +202,12 @@ const SONDA=`(()=>{
   // ⚠️ O rodapé do TUTORIAL entra aqui, e não é opcional: este critério é uma lista DECLARADA de
   // seletores, então um botão que não esteja nela é invisível para ele — e o botão de entrar na sala é
   // literalmente o único caminho de saída do cartão de fim.
-  const ACOES='.dead-foot button,.dead-actions button,.dead-views button,.lobby-hero [data-go],.prefs-foot button,nav.nav,.tut-ir,.tut-sair,.dp-ad';
+  // ⚠️ O JOGAR DOS CARTÕES DE MODOS entrou pelo mesmo argumento, e a falta dele foi sentida: a tela de
+  // Modos passou por uma reforma para caber no frame de portal (o botão do Livre subiu, os chips de
+  // esquadrao e o campo de codigo sairam) e a matriz nao tinha como reprovar nada disso, porque o unico
+  // botao que aquela reforma move nao estava nesta lista. E o seletor e o do CARTAO, nunca [data-go]
+  // solto: o motivo esta duas linhas acima.
+  const ACOES='.dead-foot button,.dead-actions button,.dead-views button,.lobby-hero [data-go],.prefs-foot button,nav.nav,.tut-ir,.tut-sair,.dp-ad,.mode-card>.btn-primary';
   const escondida=[];
   for(const el of (tela?tela.querySelectorAll(ACOES):[])){
     if(!vis(el))continue;const r=el.getBoundingClientRect();

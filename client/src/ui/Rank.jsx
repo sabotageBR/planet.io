@@ -32,6 +32,15 @@ function Body() {
   const myId = user && user.id;
   return <>
     <ScreenHeader title={LB.rankTitle} />
+    {/* ⚠️ **AS DUAS FILEIRAS DE ABAS SAÍRAM DA TELA, E O CÓDIGO DELAS FICOU.** Eram `#rk-period`
+        (Geral · Semanal · Diário) e `#rk-scope` (Global · Meu país), empilhadas em coluna pelos três
+        temas (`.toggles{flex-direction:column}`) — duas linhas de botões antes de a lista começar,
+        numa caixa que no frame de portal tem 470 px de altura. O pedido é um ranking global e geral, e
+        é exatamente o que os estados PADRÃO já produzem: `period="all"`, `scope="global"`,
+        `country=null`. O `useEffect` da busca não muda uma vírgula, a rota não é tocada, e devolver os
+        filtros é descomentar o bloco abaixo — que é o motivo de `PERIODS`, `setPeriod` e `setScope`
+        continuarem declarados aqui em vez de virarem `git log`.
+
     <div className="toggles">
       <div className="seg" id="rk-period">{PERIODS.map(p => <button key={p} data-p={p} className={p === period ? "on" : ""} onClick={() => setPeriod(p)}>{LB.periods[p]}</button>)}</div>
       <div className="seg" id="rk-scope">
@@ -40,6 +49,7 @@ function Body() {
           onClick={() => pais && setScope("country")}>{pais ? `${flagOf(pais)} ${countryNameIn(pais)}` : LB.scopeCountry}</button>
       </div>
     </div>
+    */}
     <div className="card rank-table"><table id="rk-table">
       {/* A coluna Δ saiu: ela lia `r.delta`, que o servidor NUNCA mandou — era um "·" fixo ocupando espaço
           que agora vale mais como nível, partículas e K/D, que é o que o jogador pediu para ver. */}

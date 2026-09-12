@@ -237,7 +237,15 @@ export const TUNABLES=[
   // portão de TAMANHO e continua valendo depois: são duas perguntas diferentes ("já sou grande?" e "já
   // sei jogar?"), e hoje elas discordam — com `SPAWN_R` 2100 e `MIN_R` 44 o jogador NASCE podendo
   // dividir, que é como o caso KR chegou a existir.
-  bool('novato','BOT.NOVATO_SPLIT','O recém-nascido pode dividir durante a graça','server',BOT,'NOVATO_SPLIT',{on:'Pode',off:'Travado até a graça acabar'}),
+  // ⚠️ **NASCE LIGADO, e o padrão foi invertido depois de o interruptor custar o DIVIDIR INTEIRO no
+  // Battle Royale** — ver o bloco de `client/src/game/index.js` (`souNovato`). Travá-lo de novo é uma
+  // decisão de produto que o painel toma sem deploy; o que não pode voltar é o cliente adivinhando.
+  // ⚠️ **É 'wire', e não 'server', por isso mesmo**: o gate mora nos DOIS lados (o servidor recusa em
+  // `rules.applySplit`, o cliente nem manda a tecla e esconde `#t-split`), então o cliente precisa do
+  // MESMO booleano. É o argumento de `SPLIT.MIN_R`, e `predict.js` não importa `BOT` — a raiz é segura.
+  // Todo tunable 'wire' novo tem que entrar em `RAIZES_WIRE` (client/src/game/index.js), senão
+  // `aplicaWire` faz `continue` na chave e o painel diz "salvo" para sempre.
+  bool('novato','BOT.NOVATO_SPLIT','O recém-nascido pode dividir durante a graça','wire',BOT,'NOVATO_SPLIT',{on:'Pode',off:'Travado até a graça acabar'}),
   // ⚠️ A câmera do novato abre por `ps.zoomUntil`, o campo do powerup de zoom — ou seja a AOI afasta
   // JUNTO, pelo mesmo fator, e o anel extra vem com conteúdo. Nos playtests do 1.22 em retrato o novato
   // enxergava o próprio sprite e um predador colado; no desktop 16:9, o mesmo jogo mostrava comida em
@@ -440,6 +448,16 @@ export const TUNABLES=[
   bool('modos','ENTRY_PANELS.FREE','Mostrar o cartão do Livre','server',ENTRY_PANELS,'FREE'),
   bool('modos','ENTRY_PANELS.BR','Mostrar o cartão do Battle Royale','server',ENTRY_PANELS,'BR'),
   bool('modos','ENTRY_PANELS.OWN','Mostrar o botão de Sala sua','server',ENTRY_PANELS,'OWN'),
+  // ⚠️ OS DOIS CONTROLES DE DENTRO DO CARTÃO DO BR, e os dois nascem OCULTOS. Não é gosto: o cartão
+  // tinha mascote, título, subtítulo, "50 planetas", QUATRO chips, o JOGAR e um campo de código —
+  // sete blocos numa caixa que precisa caber num frame de portal de 470 px.
+  // ⚠️ Desligar SQUAD força `teamSize = 1` no cliente (ver `ts` em ui/Modes.jsx): sem os chips, um
+  // tamanho guardado no store mandaria o clique por `createParty`, que não passa por `play()` e
+  // portanto não passa pelo anúncio do portal — reprova de certificação.
+  bool('modos','ENTRY_PANELS.SQUAD','Mostrar os chips de esquadrão do Battle Royale','server',ENTRY_PANELS,'SQUAD'),
+  // ⚠️ Desligar CODE não deixa ninguém de fora: o LINK de convite cai direto em `joinParty`
+  // (state/actions.js) e a tela de Salas tem o campo de código dela (ui/Lobby.jsx).
+  bool('modos','ENTRY_PANELS.CODE','Mostrar o campo de entrar por código no cartão do BR','server',ENTRY_PANELS,'CODE'),
   opt('modos','ENTRY_PANELS.ORDER','Ordem dos cartões (com os dois visíveis)','server',
     [{v:'free_br',label:'Livre à esquerda · Battle Royale à direita'},
      {v:'br_free',label:'Battle Royale à esquerda · Livre à direita'}],

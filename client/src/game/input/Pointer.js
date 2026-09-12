@@ -15,10 +15,24 @@
 //    que era impossível ter um hint no HUD sem quebrar o controle. Na janela, o alvo nunca congela — e as
 //    coordenadas continuam sendo do canvas, convertidas pelo `getBoundingClientRect()`.
 //    `down`/`up` continuam NO CANVAS de propósito: eles são cliques de jogo, e no HUD o clique é da UI.
+// ⚠️ **O RETÂNGULO DO CANVAS É CACHEADO, e isso é conserto de ENGASGO, não microotimização.**
+//    `getBoundingClientRect()` é uma leitura de LAYOUT: chamada depois de qualquer escrita no DOM, ela
+//    obriga o navegador a recalcular o layout do documento inteiro ali mesmo (forced reflow). Ela estava
+//    em TODO `pointermove` — num mouse de 500–1000 Hz, num listener de JANELA — e o HUD é reconciliado
+//    pelo React 8 vezes por segundo (`pushHud`, game/index.js). O par "React escreve · mouse lê" é
+//    layout thrashing com cadência de 8 Hz, que é exatamente a forma do sintoma: para e volta.
+//    O retângulo do canvas só muda quando o LAYOUT muda, e para isso existe o `ResizeObserver` que o
+//    jogo já mantém (`agendaResize` em game/index.js chama `game.resize()`, que passa por aqui). Então
+//    ele é lido uma vez e invalidado por evento: resize, rolagem e a própria troca de tamanho do canvas.
+//    ⚠️ `scroll` em CAPTURA e na janela: a página do jogo não rola, mas o embutidor de portal rola — e
+//    um scroll de ancestral move o canvas sem disparar resize nenhum.
 export function createPointer(canvas,{onButton}){
   const st={sx:NaN,sy:NaN,down:false,type:"mouse",active:false};
   let pid=-1;   // ponteiro que está dirigindo (-1 = nenhum; o mouse dirige mesmo sem botão, por isso o `pid<0` no move)
-  const pos=e=>{const r=canvas.getBoundingClientRect();st.sx=e.clientX-r.left;st.sy=e.clientY-r.top;st.type=e.pointerType||"mouse";st.active=true;};
+  let cx=0,cy=0,temRect=false;
+  const mediu=()=>{const r=canvas.getBoundingClientRect();cx=r.left;cy=r.top;temRect=true;};
+  const invalida=()=>{temRect=false;};
+  const pos=e=>{if(!temRect)mediu();st.sx=e.clientX-cx;st.sy=e.clientY-cy;st.type=e.pointerType||"mouse";st.active=true;};
   const move=e=>{if(pid>=0&&e.pointerId!==pid)return;
     if(e.pointerType&&e.pointerType!=="mouse"&&e.target!==canvas&&pid<0)return;   // dedo fora do canvas e sem captura não dirige
     pos(e);};
@@ -35,5 +49,9 @@ export function createPointer(canvas,{onButton}){
   alvoMove.addEventListener("pointermove",move);
   canvas.addEventListener("pointerdown",down);canvas.addEventListener("pointerup",up);canvas.addEventListener("pointercancel",up);
   canvas.addEventListener("contextmenu",ctx);
+  if(typeof window!=="undefined"){addEventListener("resize",invalida);addEventListener("orientationchange",invalida);addEventListener("scroll",invalida,true);}
   return{state:st,center(W,H){st.sx=W/2;st.sy=H/2;st.active=false;pid=-1;},
-    destroy(){alvoMove.removeEventListener("pointermove",move);canvas.removeEventListener("pointerdown",down);canvas.removeEventListener("pointerup",up);canvas.removeEventListener("pointercancel",up);canvas.removeEventListener("contextmenu",ctx);}};}
+    /** O canvas mudou de tamanho/lugar: a próxima leitura remede. Chamado pelo `resize()` do jogo. */
+    invalida,
+    destroy(){alvoMove.removeEventListener("pointermove",move);canvas.removeEventListener("pointerdown",down);canvas.removeEventListener("pointerup",up);canvas.removeEventListener("pointercancel",up);canvas.removeEventListener("contextmenu",ctx);
+      if(typeof window!=="undefined"){removeEventListener("resize",invalida);removeEventListener("orientationchange",invalida);removeEventListener("scroll",invalida,true);}}};}

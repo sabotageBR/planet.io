@@ -909,7 +909,10 @@ export class Room{
       i++;
       const gx=cg.x+Math.cos(an)*rad,gy=cg.y+Math.sin(an)*rad,a2=an+Math.PI/2;
       arr.forEach((gp,j)=>{const off=(j-(arr.length-1)/2)*BR.CAGE_GAP;   // centrado no grupo, não corrido para um lado
-        w.respawnPlayer(gp.slot,{x:gx+Math.cos(a2)*off,y:gy+Math.sin(a2)*off,r:BR.SPAWN_R,score:0});   // o BR tem massa inicial PRÓPRIA (parâmetro do /admin): os dois modos não são o mesmo jogo
+        // ⚠️ `sim.nasceEm` e NÃO `w.respawnPlayer`: o mundo dá o corpo, mas quem mantém a lista da graça
+        // (`Sim._grace`) é o Sim — e pular o Sim aqui foi o que deixou o `{t:"grace"}` nunca sair numa
+        // partida de BR, com o cliente engolindo toda tecla de dividir. Ver o cabeçalho de `nasceEm`.
+        sim.nasceEm(gp.slot,{x:gx+Math.cos(a2)*off,y:gy+Math.sin(a2)*off,r:BR.SPAWN_R,score:0});   // o BR tem massa inicial PRÓPRIA (parâmetro do /admin): os dois modos não são o mesmo jogo
         const ps=w.players.get(gp.slot);
         if(ps){ps.ammo[WEAPON.MISSILE]=BR.START_AMMO;   // ⚠️ era `ps.missiles`, campo que não existe desde que a munição virou `ps.ammo[]` por arma: ninguém largava o BR com a bala inicial
           // A CÂMERA (e a AOI JUNTO) abre na gaiola pelo caminho que JÁ EXISTE: o powerup de zoom. Sem isto

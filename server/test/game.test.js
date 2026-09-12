@@ -210,7 +210,13 @@ test('resync: sessão que esqueceu o known avisa o cliente e recria tudo',async(
 
 test('/healthz: tick p99, overruns, db, protocol',async()=>{
   const h=await (await fetch(base+'/healthz')).json();assert.equal(h.ok,true);assert.equal(h.shard,0);assert.ok(h.rooms>=1);assert.ok(h.players>=2);
-  assert.equal(typeof h.tick.p99,'number');assert.equal(typeof h.tick.overruns,'number');assert.equal(typeof h.loopLagMs.p99,'number');assert.ok(['ok','down','none'].includes(h.db));assert.equal(h.protocol,PROTOCOL_VERSION);assert.ok(h.net.outKBps>0);
+  assert.equal(typeof h.tick.p99,'number');assert.equal(typeof h.tick.overruns,'number');assert.equal(typeof h.loopLagMs.p99,'number');
+  // ⚠️ O TAMANHO do tropeço, e não só a contagem: um overrun é ≥ 83 ms de simulação descartada para a
+  // sala inteira (ver Scheduler/MAX_STEPS), e "43 overruns" não distingue 43 tropeços de 90 ms de 43
+  // travadas de dois segundos. `ultimoHa` é `null` enquanto nenhum aconteceu — nunca 0, que se leria
+  // como "agora mesmo".
+  assert.equal(typeof h.overrunMs.max,'number');assert.equal(typeof h.overrunMs.p99,'number');
+  assert.ok(h.overrunMs.ultimoHa===null||typeof h.overrunMs.ultimoHa==='number');assert.ok(['ok','down','none'].includes(h.db));assert.equal(h.protocol,PROTOCOL_VERSION);assert.ok(h.net.outKBps>0);
   const cfg=await (await fetch(base+'/api/config')).json();
   // `googleClientId` vazio é o interruptor do login com Google: o cliente só desenha o botão quando vem preenchido.
   // ⚠️ `deepEqual` e não `match`: este objeto é CONTRATO com o cliente, e um campo que aparece sem que
@@ -218,7 +224,7 @@ test('/healthz: tick p99, overruns, db, protocol',async()=>{
   // `entraDireto` é a lista de plataformas em que o JOGAR pula a guarda do nome (ENTRY.DIRETO): o padrão
   // reproduz o que a constante de build fazia — todos os portais, e não o site.
   assert.deepEqual(cfg,{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:'',
-    entryPanels:{free:true,br:true,own:true,order:'free_br'},
+    entryPanels:{free:true,br:true,own:true,squad:false,code:false,order:'free_br'},
     entraDireto:'poki,crazy,gd,y8,gm,gamepix,playgama,gameflare,itch',
     // `tutorial` nasce VAZIO: o padrão de um tunable reproduz o comportamento de hoje, e hoje o tutorial
     // de estreia não aparece em lugar nenhum. Quem o liga por plataforma é o /admin.

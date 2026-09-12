@@ -6,6 +6,7 @@
 // o fade é SÓ do fundo. HUD, telas e o jogo (o container `world`, irmão deste) não piscam.
 import {Container,Sprite,ParticleContainer,Particle,Texture,CanvasSource} from "pixi.js";
 import {WORLD,ROUND,rectHas} from "@warspace/shared";
+import {perf} from "../../perf.js";
 
 /** Receita do atlas do parallax (quadradinho + 2 estrelas grandes) — compartilhada com o pré-aquecimento. */
 const starItems=TX=>[{key:"sq",size:4,draw:c=>{c.fillStyle="#fff";c.fillRect(-2,-2,4,4);}},
@@ -21,8 +22,13 @@ export function createBackground(R){
   const skyKey=(th,W,H,res)=>`${th.id}:${W}x${H}:${res.toFixed(2)}`;
   /** Assa o céu de um tema (canvas do tamanho da tela) e devolve {key,tex}. */
   function bakeSky(th,W,H){const res=resFor(W,H),key=skyKey(th,W,H,res);
+    // ⚠️ O ITEM MAIS CARO DO JOGO, e o único que não passa pelo TextureCache: um canvas do TAMANHO DA
+    // TELA (teto de 3,5 Mpx ⇒ ~19 MB de textura a 1920×1080 com dpr ≥ 1,5) desenhado de forma
+    // procedural, síncrono, dentro de um frame. Acontece na troca de resolução e na virada de tema.
+    perf.ini("assaCeu");
     const c=document.createElement("canvas");c.width=Math.round(W*res);c.height=Math.round(H*res);const x=c.getContext("2d");x.scale(res,res);th.textures.background(x,W,H,{});
-    return{key,tex:new Texture({source:new CanvasSource({resource:c,resolution:res,scaleMode:"linear"})})};}
+    const out={key,tex:new Texture({source:new CanvasSource({resource:c,resolution:res,scaleMode:"linear"})})};
+    perf.fim("assaCeu");return out;}
   function bakeBg(){const th=R.theme,W=R.W,H=R.H;if(W<2||H<2)return;
     const key=skyKey(th,W,H,resFor(W,H));if(key===bgKey)return;
     // ⚠️ `ready=null` cru VAZAVA: quando a chave não bate (é o caso da troca de RESOLUÇÃO, que muda `resFor`),

@@ -15,7 +15,16 @@ export function createOverlay(hud){
   const el=document.createElement("pre");el.id="game-stats";
   el.style.cssText="position:absolute;left:12px;top:64px;z-index:9;margin:0;padding:6px 8px;font:11px/1.35 'Courier New',monospace;color:#fff;background:rgba(0,0,0,.55);border-radius:6px;pointer-events:none;white-space:pre;max-width:46vw";
   (hud||document.body).appendChild(el);let last=0;
-  return{el,update(now,text){if(now-last<250)return;last=now;el.textContent=text;},destroy(){el.remove();}};}
+  /**
+   * ⚠️ **`update` RECEBE UMA FUNÇÃO, e não o texto pronto.** Recebendo a string, o laço MONTAVA o
+   * relatório 60 vezes por segundo para escrevê-lo 4 — e montar não é de graça: `statsText` pede
+   * `renderer.counts()` DUAS vezes (a segunda por dentro de `drawCallsEstimate`, que o chama de novo),
+   * percorre a janela de 240 frames com dois `reduce` e ainda faz um `map`+`sort` dela inteira para o
+   * p95. Ou seja, quem ligava `?stats` para caçar um engasgo pagava, por frame, um custo que o jogo sem
+   * o overlay não tem — a ferramenta de medição mexendo na medida. Com a função, ela só roda no frame
+   * em que o texto vai realmente para o DOM.
+   */
+  return{el,update(now,texto){if(now-last<250)return;last=now;el.textContent=typeof texto==="function"?texto():texto;},destroy(){el.remove();}};}
 /** Acumulador de tempos de frame (update/render) com médias e p95 por janela. */
 export function createFrameStats(){const upd=[],ren=[];let sum=0,n=0;
   return{push(u,r){upd.push(u);ren.push(r);if(upd.length>240){upd.shift();ren.shift();}sum+=u+r;n++;},

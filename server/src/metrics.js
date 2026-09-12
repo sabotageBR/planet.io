@@ -10,6 +10,16 @@ class Ring{
 const r3=v=>Math.round(v*1000)/1000;
 export function createMetrics(){
   const tick=new Ring(),lag=new Ring();let overruns=0,rateLimitHits=0,bytesOutTotal=0,msgsInTotal=0;
+  // ── O OVERRUN PASSA A DIZER DE QUE TAMANHO ELE FOI ──────────────────────────
+  // ⚠️ Contar overrun e jogar fora o ATRASO era medir metade do que interessa. Um overrun é o laço ter
+  // ficado mais de `MAX_STEPS` (5) ticks para trás, ou seja **no mínimo 83 ms de simulação parada para a
+  // sala inteira** — que é exatamente a forma do engasgo que se está caçando do lado do cliente. Com só
+  // o contador, "43 overruns" não distingue 43 tropeços de 90 ms de 43 travadas de dois segundos, e as
+  // duas coisas têm causas e consertos diferentes.
+  // ⚠️ E o `loopLagMs` NÃO responde isso: ele é medido na ENTRADA do turno, sobre um anel de 600
+  // amostras a 60 Hz — dez segundos. Um tropeço a cada poucos minutos cai fora do p99 dele e some. Por
+  // isso aqui é MÁXIMO acumulado e ÚLTIMO, que não expiram, mais o instante do último.
+  const atraso=new Ring(120);let overrunMax=0,overrunUlt=0,overrunAt=0;
   // ── fala gerada (Ollama) ──
   // O que interessa aqui não é "quantas gerações": é quantas viraram FALA. `fallback` alto com `fail`
   // baixo quer dizer que o teto de gerações está apertando; `fail` alto quer dizer que o modelo saiu da
@@ -44,7 +54,9 @@ export function createMetrics(){
   const rate=arr=>{const s=Math.floor(Date.now()/1000);let sum=0;for(let k=0;k<WIN;k++)if(secs[k]>s-WIN)sum+=arr[k];
     const span=Math.min(WIN,Math.max(1,(Date.now()-startedAt)/1000));return sum/span;};
   return{
-    tick:ms=>tick.push(ms),lag:ms=>lag.push(ms),overrun:()=>{overruns++;},
+    tick:ms=>tick.push(ms),lag:ms=>lag.push(ms),
+    /** @param {number} [ms] quanto o laço estava atrasado quando desistiu de recuperar (ver Scheduler) */
+    overrun:(ms=0)=>{overruns++;if(ms>0){atraso.push(ms);overrunUlt=ms;overrunAt=Date.now();if(ms>overrunMax)overrunMax=ms;}},
     bytesOut:n=>{bo[bucket()]+=n;bytesOutTotal+=n;},msgIn:()=>{mi[bucket()]++;msgsInTotal++;},rateLimitHit:()=>{rateLimitHits++;},
     /** @param {number|null} v versão declarada no join (null = o cliente não declarou) */
     join:v=>{joins++;jo[bucket()]++;const k=v==null?'n/d':String(v);proto.set(k,(proto.get(k)||0)+1);},
@@ -64,7 +76,13 @@ export function createMetrics(){
     /** {tick:{p50,p99,max,overruns},loopLagMs:{p50,p99},net:{outKBps,inMsgps,rateLimitHits}} */
     snapshot(){const t=tick.pct(),l=lag.pct();
       const m=llmMs.pct();
+      const o=atraso.pct();
       return{tick:{p50:r3(t.p50),p99:r3(t.p99),max:r3(t.max),overruns},loopLagMs:{p50:r3(l.p50),p99:r3(l.p99)},
+        // `atrasoMs` é o tamanho dos tropeços, em ms de simulação descartada. `ultimoHa` em segundos:
+        // saber que o último foi há 4 s ou há 3 h é a diferença entre "está acontecendo agora" e
+        // "aconteceu no boot".
+        overrunMs:{p50:r3(o.p50),p99:r3(o.p99),max:r3(overrunMax),ultimo:r3(overrunUlt),
+          ultimoHa:overrunAt?Math.round((Date.now()-overrunAt)/1000):null},
         net:{outKBps:r3(rate(bo)/1024),inMsgps:r3(rate(mi)),rateLimitHits},
         llm:{...llmN,p50:r3(m.p50),p99:r3(m.p99),inflight:llmInflight()|0,breaker:!!llmBreaker()},
         joins:{total:joins,refused:versionRefused,perMin:r3(rate(jo)*60),proto:Object.fromEntries(proto)},

@@ -367,6 +367,25 @@ export class Sim{
     this.playersDirty=true;
     return true;}
   /**
+   * NASCER NUM PONTO DADO (a largada do Battle Royale) — e ENTRAR NA LISTA DA GRAÇA.
+   *
+   * ⚠️ **ELA EXISTE PORQUE FALTAR NESSA LISTA CUSTOU O DIVIDIR INTEIRO DO BR.** `Room._posicionaGaiola`
+   * chamava `world.respawnPlayer` DIRETO, pulando o `Sim` — e é o `Sim` que mantém o `_grace`. No BR o
+   * outro caminho também não serve: quem entra no lobby entra com `spawn:false`, e `addHuman` só
+   * carimba quem nasce com corpo. Resultado: o slot nunca entrava no Set, `_graceTick` nunca via nada
+   * que acabasse e **`{t:"grace"}` nunca saía numa partida inteira**. O cliente, que apaga o
+   * `souNovato` só com essa mensagem, engolia toda tecla de dividir do começo ao fim.
+   * ⚠️ Os marcos `grace_end_*` do funil da primeira vida (`client/src/portal/marcos.js`) sumiam pelo
+   * mesmo buraco — o BR simplesmente não produzia nenhum.
+   * ⚠️ `World._spawnPiece` é quem escreve `graceUntil`; aqui só se registra o interesse em saber
+   * quando ela acaba. **Preenchimento fica de fora**: `sobGraca` recusa bot de saída, então ele sairia
+   * do Set no primeiro passo — mas COM um `grace` falso no caminho, que é o mesmo motivo pelo qual
+   * `addHuman` filtra o espectador em vez de deixar `_graceTick` limpar depois.
+   */
+  nasceEm(slot,opts){const gp=this.players.get(slot);
+    if(gp&&!gp.isBot)this._grace.add(slot);
+    this.world.respawnPlayer(slot,opts);}
+  /**
    * Fim de rodada (o mundo explodiu): fecha a partida de todo humano vivo pelo mesmo caminho de persistência da morte
    * (`cause:'round'`, sem mandar `dead` — quem manda o placar é a Room) e devolve o placar final: vivos por massa
    * (o 1º é o campeão) e, no fim, os humanos que já tinham morrido.

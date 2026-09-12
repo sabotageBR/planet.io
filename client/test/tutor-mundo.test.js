@@ -163,16 +163,25 @@ test("...e o alvo da etapa 2 não come nem é comido", () => {
 });
 
 test("ETAPA 3: O SPLIT FUNCIONA — as duas travas caem juntas", () => {
-  // ⚠️ Este é o teste central da entrega. `applySplit > 0` prova de uma vez que `graceUntil` foi zerado
-  // (senão `rules.js` devolve 0 em SILÊNCIO) e que o raio passou de `SPLIT.MIN_R`. Errar qualquer um dos
-  // dois põe na tela um botão que o servidor recusa — o defeito que `game/dica.js` inteiro existe para
-  // prevenir.
+  // ⚠️ Este é o teste central da entrega: `applySplit > 0` prova que o mundo foi montado de um jeito em
+  // que o gesto que a etapa ENSINA realmente acontece. Um botão que a tela anuncia e o mundo recusa é o
+  // defeito que `game/dica.js` inteiro existe para prevenir.
+  // ⚠️ **AS "DUAS TRAVAS" DO TÍTULO NÃO SÃO MAIS AS DE ONTEM, e as duas caíram por decisão, não aqui.**
+  //   · a GRAÇA deixou de travar o split: `BOT.NOVATO_SPLIT` nasce ligado (constants.js), então
+  //     `applySplit` não olha mais `graceUntil`. Por isso o zero da graça é afirmado DIRETO, abaixo — se
+  //     virasse só consequência de `applySplit>0`, a prova sumiria junto com o acoplamento.
+  //   · o TAMANHO deixou de travar no nascimento: `PLAYER.SPAWN_R` subiu para 63, acima do portão de 60,
+  //     justamente para dividir existir desde o primeiro segundo. Havia aqui um
+  //     `assert.equal(applySplit(w,ps),0,"de fábrica o novato NÃO divide")` que era a redação antiga
+  //     dessa regra — ele saiu porque a regra saiu, e não porque ficou inconveniente.
+  // O que a etapa 3 ainda FAZ, e é o que continua travado: levar o raio bem ACIMA do portão, para que as
+  // METADES também sirvam (é o teste irmão, logo abaixo) e o gesto não produza um cacho inútil.
   const { w, api, st } = banca();
   const ps = w.players.get(0);
-  assert.equal(applySplit(w, ps), 0, "de fábrica o novato NÃO divide (graça + tamanho)");
+  assert.ok(vivas(ps)[0].r >= SPLIT.MIN_R, "o tutorial nasce com a massa inicial do jogo, que já passa do portão");
   montaEtapa(w, api, ETAPA.SPLIT, 0, st);
   assert.equal(ps.graceUntil, 0, "a graça acabou");
-  assert.ok(vivas(ps)[0].r >= SPLIT.MIN_R, "e o tamanho passou do portão");
+  assert.ok(vivas(ps)[0].r > SPLIT.MIN_R * 1.4, "e o tamanho ficou com FOLGA sobre o portão, não colado nele");
   assert.ok(applySplit(w, ps) > 0, "o split SAIU");
 });
 

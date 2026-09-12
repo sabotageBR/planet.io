@@ -83,7 +83,12 @@ test("zona: determinística — mesma seed, mesma sequência de círculos",()=>{
   assert.equal(roda(),roda());});
 // o gás ENDURECE conforme o círculo fecha: quem mede o tempo de sobrevida tem que dizer EM QUE RAIO,
 // senão o número não quer dizer nada. Aqui rodam os dois extremos da rampa na mesma peça.
-const morreEmS=(seed,raio)=>{const w=empty(seed);w.addPlayer(0,{x:1000,y:1000});
+// ⚠️ `r:BR.SPAWN_R` EXPLÍCITO, e não o default de `addPlayer`: a zona é mecânica do BATTLE ROYALE, e o
+// default é `PLAYER.SPAWN_R` — o tamanho do LIVRE, que passou a nascer acima de `SPLIT.MIN_R`. Medir uma
+// coisa com o parâmetro da outra fazia este teste virar vermelho por uma mudança que não é dele: o tempo
+// no gás é ln(M/MIN_PIECE_R²)/taxa, ou seja PROPORCIONAL à massa de partida, e os números abaixo (≈13 s
+// e ≈6 s) foram escolhidos para a massa 900 com que se larga no BR.
+const morreEmS=(seed,raio)=>{const w=empty(seed);w.addPlayer(0,{x:1000,y:1000,r:BR.SPAWN_R});
   w.setZone({x0:8000,y0:8000,r0:raio,x1:8000,y1:8000,r1:raio,t0:0,t1:Infinity});
   const pc=w.piecesOf(0)[0];assert.ok(outOfZone(pc,w.zoneNow()),"a peça está fora");
   let t=0;const ps=w.players.get(0);

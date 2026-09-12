@@ -163,6 +163,29 @@ test('Battle Royale: cheio o lobby, entra a contagem e a partida larga',async()=
   assert.ok(s.self.alive>1,'o `self` traz o "restam N"');
   c.close();
 });
+// ── A GRAÇA DO NASCIMENTO TAMBÉM AVISA NO BATTLE ROYALE ─────────────────────
+// ⚠️ **ISTO É UM TESTE DE REGRESSÃO DE UM DEFEITO QUE MATOU O DIVIDIR NO MODO INTEIRO.** No BR ninguém
+// entrava em `Sim._grace`: quem chega ao lobby chega com `spawn:false` (e `addHuman` só carimba quem
+// nasce com corpo) e a largada chamava `world.respawnPlayer` DIRETO, pulando o Sim. Sem ninguém no Set,
+// `_graceTick` nunca via nada acabar e `{t:'grace'}` NUNCA SAÍA numa partida de BR — e o cliente, que
+// apaga o `souNovato` só com essa mensagem, engolia toda tecla de dividir do começo ao fim.
+// ⚠️ Como em game.test.js, a saída é FORÇADA em vez de esperar 90 s: cada uma é um estado do
+// `PlayerState`, e é esse estado que `_graceTick` lê. Esperar o relógio testaria o timer do Node.
+test('Battle Royale: a largada põe o jogador na lista da graça, e o fim dela AVISA',async()=>{
+  const c=new C(wsUrl);await c.open();
+  const r=await c.join({nick:'Graca',mode:MODE.BR,teamSize:1,room:newRoom()});
+  const room=roomOf(r.code);
+  room.lobbyUntil=room.sim.tick+60;room.lobbyStart=room.sim.tick;
+  await c.until(()=>c.all('phase').find(p=>p.phase==='live'),8000,'largada');
+  assert.ok(room.sim._grace.has(r.slot),'o slot entrou no Set da graça NA LARGADA');
+  const ps=room.sim.world.players.get(r.slot);
+  assert.ok(ps.graceUntil>room.sim.world.tick,'e largou sob a graça (World._spawnPiece a escreve)');
+  const n=c.json.length;
+  ps.graceUntil=1;   // o relógio venceu (1 e não 0: zero é o valor RESERVADO do abate)
+  const m=await c.until(()=>c.of('grace',n),4000,'grace');
+  assert.equal(m.why,'time');
+  c.close();
+});
 test('Battle Royale: o preenchimento NÃO se identifica como bot e usa nome de gente',async()=>{
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Anon',mode:MODE.BR,teamSize:1,room:newRoom()});

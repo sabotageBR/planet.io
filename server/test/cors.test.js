@@ -123,7 +123,7 @@ test('lista vazia = comportamento de hoje, byte a byte', async () => {
     // contrato (e portanto tem que ser editado quando ele muda) é game.test.js. Aqui o assunto é CORS, e
     // duplicar o padrão faria uma decisão de produto quebrar dois arquivos em vez de um.
     assert.deepEqual(await r.json(),{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:'',
-      entryPanels:{free:ENTRY_PANELS.FREE,br:ENTRY_PANELS.BR,own:ENTRY_PANELS.OWN,order:ENTRY_PANELS.ORDER},
+      entryPanels:{free:ENTRY_PANELS.FREE,br:ENTRY_PANELS.BR,own:ENTRY_PANELS.OWN,squad:ENTRY_PANELS.SQUAD,code:ENTRY_PANELS.CODE,order:ENTRY_PANELS.ORDER},
       entraDireto:ENTRY.DIRETO,tutorial:TUTORIAL.PLATAFORMAS});
     // sem a camada, o OPTIONS continua caindo no roteamento normal: 405 no router de party e — sem
     // banco — 503 nas rotas de conta. O que importa é que NÃO vira o 204 do preflight, e que segue seco.
@@ -142,7 +142,7 @@ test('origem permitida: eco + Vary, preflight 204 e o 503 sem banco também com 
     assert.equal(h(c,'access-control-allow-origin'),PORTAL);
     assert.equal(h(c,'vary'),'Origin');
     assert.deepEqual(await c.json(),{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:'',
-      entryPanels:{free:ENTRY_PANELS.FREE,br:ENTRY_PANELS.BR,own:ENTRY_PANELS.OWN,order:ENTRY_PANELS.ORDER},
+      entryPanels:{free:ENTRY_PANELS.FREE,br:ENTRY_PANELS.BR,own:ENTRY_PANELS.OWN,squad:ENTRY_PANELS.SQUAD,code:ENTRY_PANELS.CODE,order:ENTRY_PANELS.ORDER},
       entraDireto:ENTRY.DIRETO,tutorial:TUTORIAL.PLATAFORMAS});
 
     const pre=await fetch(base+'/api/me',{method:'OPTIONS',headers:{Origin:PORTAL,

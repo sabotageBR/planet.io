@@ -11,7 +11,7 @@
 // um quarto dela — e com quatro cartões a caixa passava dos 1.300 px, cortando o último pela metade.
 // Offline (`api.server === false`) o Battle Royale fica desabilitado: o `?local=1` só sabe rodar o Livre.
 import React, { useState } from "react";
-import { MODE, BR, ROUND, roundTicksOf } from "@warspace/shared";
+import { MODE, ROUND, roundTicksOf } from "@warspace/shared";   // `BR` saiu junto com a etiqueta "50 planetas" — era o único uso dele aqui
 import { useStore } from "../state/store.js";
 import { app } from "../state/app.js";
 import { api } from "../api/client.js";
@@ -44,9 +44,21 @@ function Body() {
   // "Sala sua" virou BOTÃO: o cartão de criação é a coisa menos usada da tela e ocupava um quarto dela.
   const [abrirSala, setAbrirSala] = useState(false);
   const offline = api.server === false;
+  const showFree = cfgPanels.free !== false, showBr = cfgPanels.br !== false, showOwn = cfgPanels.own !== false;
+  // ⚠️ ESTES DOIS SÃO `=== true`, NÃO `!== false`, e a diferença é o que os faz funcionarem no portal:
+  // os três acima tratam AUSÊNCIA como visível (o padrão de sempre, para não quebrar com um servidor
+  // mais velho nem no modo offline). Aqui a ausência tem que ser OCULTO — o cartão foi redesenhado
+  // sem eles, e um `/api/config` que ainda não chegou (ele é disparado sem `await` no boot) faria os
+  // chips piscarem na tela por um instante e, pior, o `ts` mudar debaixo do primeiro clique.
+  const showSquad = cfgPanels.squad === true, showCode = cfgPanels.code === true;
   // ⚠️ `1` passa a ser válido: Solo deixou de ser cartão e virou o primeiro chip do Battle Royale. Antes
   // isto era `teamSize > 1 ? teamSize : 2`, e com aquela linha o chip "Solo" nunca acenderia.
-  const ts = teamSize >= 1 && teamSize <= 4 ? teamSize : 1;
+  // ⚠️ **SEM OS CHIPS, `ts` É 1 À FORÇA — e essa linha é a metade perigosa de esconder o esquadrão.**
+  // `teamSize` mora no store e sobrevive à sessão: quem escolheu "3 · Trio" ontem voltaria hoje, sem
+  // ver chip nenhum, com o botão dizendo "CRIAR EQUIPE" e o clique caindo em `createParty` — que NÃO
+  // passa por `play()` e portanto não passa pelo anúncio de portal. É reprova de certificação, em
+  // silêncio, sem nada na tela dizendo por quê.
+  const ts = showSquad && teamSize >= 1 && teamSize <= 4 ? teamSize : 1;
   const SIZES = [[1, LB.soloWord], [2, LB.duo], [3, LB.trio], [4, LB.quad]];
   // ⚠️ O caminho RAMIFICA, e não pode ser unificado: `createParty` NÃO passa por `play()` — ele faz o POST
   // e vai para a tela de equipe, e quem chama `play()` depois é a largada em Party.jsx. É dentro de `play()`
@@ -55,7 +67,6 @@ function Body() {
   const entrarBR = () => { setMode(MODE.BR, ts);
     if (ts > 1) createParty(ts); else play({ mode: MODE.BR, teamSize: 1, party: null }); };
   const entrarLivre = () => { setMode(MODE.FREE, 1); play({ mode: MODE.FREE, teamSize: 1, party: null }); };
-  const showFree = cfgPanels.free !== false, showBr = cfgPanels.br !== false, showOwn = cfgPanels.own !== false;
   // A ORDEM só importa com os DOIS visíveis — sozinho, um cartão fica sempre no lado de sempre
   // (Livre='left', BR='right'): é o que faz `sideFree`/`sideBr` abaixo não dependerem de `order`
   // fora do caso `bothShown`.
@@ -87,19 +98,23 @@ function Body() {
       <img className="mode-mascote" src={terra} alt="" aria-hidden="true" width="640" height="616" decoding="async" />
       <b>{LB.modeSolo}</b>
       <span>{LB.modeSoloSub}</span>
-      <em className="mode-tag">{preenche(LB.fmt.planets, { n: BR.PLAYERS })}</em>
-      <div className="team-sizes" role="radiogroup" aria-label={LB.teamSizeLabel}>
+      {/* ⚠️ A ETIQUETA "50 planetas" SAIU PARA OS DOIS JOGAR FICAREM NA MESMA LINHA. Ela era a única
+          diferença de conteúdo entre os dois cartões depois que os chips e o campo de código saíram, e
+          uma linha a mais num deles empurra o botão dele para baixo do vizinho — numa tela cujo assunto
+          é escolher entre os dois, dois botões desalinhados leem como dois estados diferentes. O número
+          continua vindo do servidor e aparece no lobby do modo, que é onde ele decide alguma coisa. */}
+      {showSquad ? <div className="team-sizes" role="radiogroup" aria-label={LB.teamSizeLabel}>
         {SIZES.map(([n, l]) => <button key={n} role="radio" aria-checked={ts === n}
           className={"chip-btn" + (ts === n ? " on" : "")} disabled={offline}
           onClick={() => setMode(MODE.BR, n)}>{n} · {l}</button>)}
-      </div>
+      </div> : null}
       <button className="btn-primary" data-go="play" disabled={offline} onClick={entrarBR}>{ts > 1 ? LB.createParty : LB.play}</button>
-      <div className="code-row">
+      {showCode ? <div className="code-row">
         <input maxLength={4} placeholder={LB.partyCode} autoComplete="off" value={code} disabled={offline}
           onChange={e => setCode(e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 4))}
           onKeyDown={e => { if (e.key === "Enter") joinParty(code); }} />
         <button className="btn-secondary" disabled={offline} onClick={() => joinParty(code)}>{LB.joinParty}</button>
-      </div>
+      </div> : null}
     </div>
   ) : null;
   return <>

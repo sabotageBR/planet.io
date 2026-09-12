@@ -27,7 +27,7 @@ import {PORTAL} from "../portal/flags.js";
 import {marco} from "../portal/marcos.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,BR,NET,POWERUP,ZOOM,CAM,WORLD,PROTOCOL_VERSION,ZONE_WARN_AT_S,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,BR,BOT,NET,POWERUP,ZOOM,CAM,WORLD,PROTOCOL_VERSION,ZONE_WARN_AT_S,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
 // direto do módulo: `tunables.js` não entra no barril de `shared` (ele é a lista BRANCA do painel, não
 // vocabulário de jogo), e o cliente só precisa do aplicador — a validação vem junto de graça.
 import {aplicaWire} from "@warspace/shared/tunables.js";
@@ -35,9 +35,13 @@ import {aplicaWire} from "@warspace/shared/tunables.js";
 // ⚠️ SPLIT entrou por causa de `SPLIT.MIN_R` (o portão do dividir): quem o aplica é o servidor, mas a
 // dica do cliente precisa do MESMO número para não anunciar um botão que o servidor recusa. Não é
 // física do cliente — `predict.js` não importa SPLIT.
+// ⚠️ BOT entrou pelo MESMO motivo, e o preço de não estar aqui já foi pago: `BOT.NOVATO_SPLIT` era
+// 'server', o cliente não tinha como saber dele e mesmo assim engolia a tecla de dividir por conta
+// própria (ver `souNovato`, abaixo). Um gate que mora nos dois lados precisa do mesmo booleano nos
+// dois lados. `predict.js` importa DT, WORLD, BLACKHOLE, EJECT e PLAYER — não BOT.
 // ⚠️ RAIZ AUSENTE AQUI É FALHA MUDA: `aplicaWire` faz `continue` na chave cuja raiz não está no mapa, e
 // o painel continua dizendo "salvo" para sempre. Todo tunable 'wire' novo entra nesta linha.
-const RAIZES_WIRE={CAM,ZOOM,STAR,ROUND,SPLIT,FEED,BR,MISSILE};
+const RAIZES_WIRE={CAM,ZOOM,STAR,ROUND,SPLIT,FEED,BR,MISSILE,BOT};
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
@@ -79,6 +83,9 @@ import {createTouchButtons} from "./input/Touch.js";
 import {createActions} from "./input/actions.js";
 import {createMinimap} from "./hud/Minimap.js";
 import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./bench.js";
+// ⚠️ `perf` é a instância de MÓDULO, e desligada (sem `?perf`) todos os `ini`/`fim` são funções vazias —
+// ver o cabeçalho de perf.js. Ela mede FASES do frame, que é a pergunta que o `?stats` nunca respondeu.
+import {perf} from "./perf.js";
 import {passoQualidade,qualidadeZero} from "./quality.js";
 import {createActivity} from "./input/Activity.js";
 import {morteZero,passoMorte} from "../ui/deadClock.js";
@@ -220,11 +227,20 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(a==="talk"){if(ph==="down"){if(joined&&!SEM_VOZ&&curPrefs.voice!==false)mic.start();}else mic.stop();return;}   // morto também fala: o escopo é do servidor (Room._escopoFala)
     if(a==="specPrev"||a==="specNext"){if(ph==="down")game.spectate({dir:a==="specNext"?1:-1});return;}
     if(a==="zoomReset"){if(ph==="down")zoomReset();return;}
-    // ⚠️ O NOVATO NÃO DIVIDE, E O CLIENTE TEM QUE SABER DISSO (`rules.applySplit` recusa no servidor).
+    // ⚠️ O NOVATO NÃO DIVIDE **QUANDO O PAINEL DIZ QUE NÃO** (`rules.applySplit` recusa no servidor).
     // Mandar a flag assim mesmo "funcionaria" — o servidor ignora —, mas custaria o `splitCdUntil` dele
     // por nada e, pior, o HUD anunciaria um comando que não faz nada: é a mesma lição do `#t-split.dica`
     // pulsando para quem ainda não alcançou `SPLIT.MIN_R`.
-    if(a==="split"&&ph==="down"&&souNovato)return;
+    // ⚠️ **`BOT.NOVATO_SPLIT` ENTRA NA CONTA, e sem ele isto foi um BUG DE PARTIDA INTEIRA.** O gate
+    // era só `souNovato`, que o cliente deriva de UMA mensagem (`{t:"grace"}`) — e no Battle Royale
+    // aquela mensagem nunca saía (`Sim._grace` não recebia o slot na largada), então o cliente engolia
+    // TODO split do começo ao fim da partida enquanto o servidor teria aceitado todos. Duas verdades
+    // sobre a mesma regra é o defeito; a correção é o cliente ler o MESMO booleano (agora 'wire').
+    // ⚠️ **E A RECUSA DEIXOU DE SER MUDA.** Era o único comando do jogo que falhava em silêncio: o tiro
+    // sem munição tem `onNoAmmo`, a cusparada pequena demais nem toca o som, e o split não tinha nada —
+    // o jogador apertava e não recebia sinal nenhum de que o pedido tinha sido recusado. São DOIS
+    // motivos e o som é o mesmo, porque para quem está jogando a informação é uma só ("agora não").
+    if(a==="split"&&ph==="down"&&(splitTravado()||semTamanhoPraDividir())){audio.play("error",{mine:true});return;}
     if(a==="split"&&ph==="down")dividiu=true;   // a dica existe para ensinar ISTO; ensinada, ela some
     if(a==="swap"&&ph==="down")audio.play("weapon",{mine:true});
     actions.act(a,ph);};
@@ -844,7 +860,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // Derruba o contexto WebGL de propósito. É o único jeito de conferir a recuperação sem ter de estourar
       // a memória de GPU de verdade — e é por não haver esse jeito que o defeito passou tanto tempo no ar.
       loseContext:()=>{if(renderer)renderer.loseContext();},
-      qualidade:()=>({nivel:econLevel,alvo:econAlvo,pref:curPrefs.quality||"auto",st:qSt,perdido:!!(renderer&&renderer.R.lost)})},
+      qualidade:()=>({nivel:econLevel,alvo:econAlvo,pref:curPrefs.quality||"auto",st:qSt,perdido:!!(renderer&&renderer.R.lost)}),
+      // ⚠️ DE QUEM É O FRAME LONGO (`?perf`). Sem a query string devolve o aviso em vez de uma tabela
+      // vazia: medidor desligado que responde "0 problemas" é pior que medidor nenhum.
+      perf:()=>{if(!perf.ativo)return"ligue com ?perf na URL";const t=perf.relatorio();console.log(t);return t;},
+      perfReset:()=>perf.reset()},
   };
 
   // ── qualidade / modo econômico (0 = cheio, 1 = econômico, 2 = mínimo) ──
@@ -1104,14 +1124,16 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         comivel=temComivel(me,alvos);
         presa=temPresa(me,alvos);}
       // `dividiu` some só da etapa 3 (é a lição DELA), e por isso entra no `pode`, não no `vivo`
-      // ⚠️ ...e `souNovato` entra no MESMO `pode` pelo mesmo motivo: sob a graça o servidor RECUSA o
-      // split (`rules.applySplit`), e ensinar um comando que não funciona é pior que não ensinar. A
-      // etapa 3 espera a graça acabar — que é quando o botão volta e a lição passa a valer.
+      // ⚠️ ...e `splitTravado()` entra no MESMO `pode` pelo mesmo motivo: com o painel travando o
+      // split o servidor RECUSA (`rules.applySplit`), e ensinar um comando que não funciona é pior
+      // que não ensinar. A etapa 3 espera a graça acabar — que é quando o botão volta e a lição passa
+      // a valer. ⚠️ É `splitTravado()` e não `souNovato` cru: com o interruptor LIGADO (o padrão) o
+      // recém-nascido divide, e a lição tem que ser ensinada na hora em que ela é verdade.
       // ⚠️ COM O TUTORIAL NO AR A MISSÃO NÃO EXISTE. Duas faixas de instrução ao mesmo tempo é
       // exatamente o que a invariante de `passoMissao` (uma `banda` string só) existe para impedir — e
       // aqui elas ensinariam a mesma coisa, uma por cima da outra.
       const passo=tutor?{est:missaoEst,banda:"",festa:0}
-        :passoMissao(missaoEst,{vivo:!!me,comidas,comeuAlguem,comivel,pode:!!me&&!dividiu&&!souNovato,presa},now);
+        :passoMissao(missaoEst,{vivo:!!me,comidas,comeuAlguem,comivel,pode:!!me&&!dividiu&&!splitTravado(),presa},now);
       missaoEst=passo.est;festa=passo.festa;
       if(passo.banda)dica={id:passo.banda,at:missaoEst.desde,dedo};
       // ⚠️ A FESTA SAI UMA VEZ por construção: `festa` só é diferente de zero no tick em que a etapa
@@ -1123,7 +1145,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // virar fanfarra repetida.
       if(festa)festeja(festa,me);}
     hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
-      powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:s?s.autoDefN|0:0,zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),splitOff:souNovato,ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
+      powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:s?s.autoDefN|0:0,zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),splitOff:splitTravado(),ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,map:mapOn,clock:roundClock,
       // ZOOM MANUAL: só existe no HUD quando o jogador saiu do automático — widget permanente para
       // funcionalidade ocasional é ruído. `pct` é o que ele PERCEBE (quanto de mundo a mais/a menos), não o
@@ -1197,6 +1219,26 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ⚠️ ESTOU SOB A GRAÇA DO NASCIMENTO? Nasce `true` e só o servidor o apaga, pelo `{t:"grace"}` — ver
   // o handler daquela mensagem. É ele que trava o DIVIDIR na tela enquanto o servidor o recusa.
   let souNovato=true;
+  /**
+   * O DIVIDIR ESTÁ TRANCADO PARA MIM AGORA? — a pergunta feita num lugar só.
+   *
+   * São DUAS condições e as duas vêm do servidor: o interruptor (`BOT.NOVATO_SPLIT`, tunable 'wire'
+   * aplicado no `{t:"room"}`) e a graça desta vida (`souNovato`, apagado pelo `{t:"grace"}`). Ela
+   * existe como função porque os dois consumidores — o gate da tecla e o `splitOff` do HUD — TÊM que
+   * responder igual: um botão na tela que o outro lado recusa é o defeito que este bloco corrige.
+   * ⚠️ O portão de TAMANHO (`SPLIT.MIN_R`) NÃO entra aqui: ele é por PEÇA e quem o aplica é o
+   * servidor, peça a peça. Esta é a pergunta "já sei jogar?", não "já sou grande?".
+   */
+  const splitTravado=()=>BOT.NOVATO_SPLIT===false&&souNovato;
+  /**
+   * NENHUMA PEÇA MINHA ALCANÇA `SPLIT.MIN_R` — ou seja, `applySplit` vai pular todas e não fazer nada.
+   *
+   * ⚠️ É o MESMO predicado do servidor (`rules.applySplit`: `if(pc.r<SPLIT.MIN_R)continue`), lido da
+   * mesma fonte: `SPLIT.MIN_R` é tunable 'wire' e chega no `{t:"room"}`. Aqui ele NÃO trava o envio —
+   * só decide o som —, porque o alvo móvel é o raio e o servidor é quem tem a verdade do tick.
+   * ⚠️ `own0` é do frame anterior (≤16 ms): é a mesma folga que o som de comer já aceita.
+   */
+  const semTamanhoPraDividir=()=>own0.length>0&&!own0.some(p=>p.rr>=SPLIT.MIN_R);
   // ZOOM MANUAL (a roda). O fator é guardado CRU e reclampado todo frame pela faixa da massa do momento
   // (`clampZoom`): assim a faixa anda junto com o jogador e leva o fator com ela — quem estacionou no máximo
   // afastado continua no máximo enquanto cresce (a visão abre sozinha, sem degrau), e quem foi comido até o
@@ -1258,7 +1300,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(renderer.R.theme!==curTheme)renderer.setTheme(curTheme);
     aplicaEcon();   // a troca de nível acontece AQUI, no mesmo tick do render — ver econCheck
     enviarInput(now);
-    predictor.update(dt);interp.update(now);view.build();roundTick(now);
+    perf.ini("predicao");predictor.update(dt);perf.fim("predicao");
+    perf.ini("interp");interp.update(now);perf.fim("interp");
+    perf.ini("view");view.build();perf.fim("view");
+    roundTick(now);
     const own=[];predictor.forEach(pc=>own.push(pc));own0=own;cam.W=renderer.W;cam.H=renderer.H;
     // ── A SETA DE RUMO (renderer/layers/Heading.js) ──
     // Quem decide SE existe seta é aqui, não a camada: no MOUSE o cursor já é o indicador de rumo e uma
@@ -1309,10 +1354,13 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     const cageDraw=cage;   // o objeto é o MESMO que a predição recebe: um só lugar decide se a gaiola existe
     // Fora de partida some a GRADE e a borda do mundo: elas são a moldura da arena, e com o menu na frente
     // viram um traço solto no meio da tela. O céu (que é assado por resolução e não custa nada) fica.
+    perf.ini("render");
     renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,heading,zone:zoneDraw,cage:cageDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
       showNames:curPrefs.showNames!==false,showTrails:!curPrefs.reduceMotion&&!econ});
+    perf.fim("render");
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU
-    if(joined){minimap.update(now,zoneDraw);if(now-lastHud>=125){lastHud=now;pushHud(now);}
+    if(joined){perf.ini("radar");minimap.update(now,zoneDraw);perf.fim("radar");
+      if(now-lastHud>=125){lastHud=now;perf.ini("hud");pushHud(now);perf.fim("hud");}
       const sf=view.self;if(sf)somDoSelf(sf,now);
       // cuspir não tem evento no fio (seriam ~9 por segundo por jogador, só para um "pft"): o som sai do MEU
       // gesto, na mesma cadência do servidor, e a altura sobe com a rampa — dá para OUVIR a força aumentando.
@@ -1320,7 +1368,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         const m=sf?sf.mass:0;
         if(m>=EJECT.MIN_R*EJECT.MIN_R){audio.play("eject",{mine:true,pitch:pitchOf(m)*(1+.55*Math.min(1,ejN/EJECT.RAMP_N))});
           if(ejN<EJECT.RAMP_N)ejN++;}}}
-    if(statsOv){if(now-bytesT>1000){bytesRate=conn?(conn.bytesIn-bytesLast)*1000/(now-bytesT):0;bytesLast=conn?conn.bytesIn:0;bytesT=now;}statsOv.update(now,statsText());}}
+    if(statsOv){if(now-bytesT>1000){bytesRate=conn?(conn.bytesIn-bytesLast)*1000/(now-bytesT):0;bytesLast=conn?conn.bytesIn:0;bytesT=now;}statsOv.update(now,statsText);}   // a FUNÇÃO, não o texto: ver o cabeçalho de `update` em bench.js
+    // ⚠️ O quadro fecha com o custo de CPU (`t0` até agora), NUNCA com o `dt` entre frames: o que se
+    // procura é o trabalho que ESTE frame fez, e não o tempo que o navegador levou para chamá-lo de
+    // novo (que também cresce quando outra aba trava ou o compositor engasga).
+    perf.frame(performance.now()-t0);}
   // Em dev sempre; em produção só com `?stats`. Sem isto, um bug que só aparece na BUILD (ordem de módulos,
   // minificação) vira caça às cegas: o console não mostra estado nenhum e não há como perguntar ao motor.
   if(typeof window!=="undefined"&&((import.meta.env&&import.meta.env.DEV)||isStats()))window.__warspace=game.debug;

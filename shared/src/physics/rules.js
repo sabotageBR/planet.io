@@ -864,6 +864,11 @@ export function hitShield(w,pc,bySlot=-1,nx=0,ny=0,weapon=-1){
  * @param {World} w @param {PlayerState} ps
  */
 export function applySplit(w,ps){
+  // ⚠️ **NASCE DESLIGADA** (`BOT.NOVATO_SPLIT` é `true` por padrão): a trava existe, é do painel, e o
+  // que está abaixo é o motivo de ela existir — não o estado de hoje. Ligá-la de volta é um clique em
+  // /admin, e o tunable é 'wire' justamente para o CLIENTE saber junto (ver `RAIZES_WIRE` e
+  // `splitTravado` em client/src/game/index.js): enquanto ele era 'server', o cliente adivinhava, e
+  // adivinhou errado a partida inteira no Battle Royale.
   // ⚠️ **O NOVATO NÃO DIVIDE, E QUEM MOSTROU ISSO FOI UM PLAYTEST GRAVADO** (KR, 1.22): o jogador
   // apertou dividir no primeiro minuto, virou um cacho de pedacinhos e foi recolhido por dois
   // adversários em sequência. Dividir é a mecânica que MATA num agar, e também a que mais rápido mata

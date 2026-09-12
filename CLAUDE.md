@@ -33,7 +33,7 @@ node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|gamepix
 
 Dev sem servidor: o cliente cai em modo offline (perfil local em `localStorage`) e `?local=1` roda um servidor
 falso na própria página (`client/src/game/net/LocalServer.js`) — **só o modo Livre**; a tela de modos desabilita
-Battle Royale offline. `LOBBY_TICKS=600` no servidor encurta o lobby do Battle Royale para testar. `?bench` = pior caso de render; `?stats` = overlay de rede;
+Battle Royale offline. `LOBBY_TICKS=600` no servidor encurta o lobby do Battle Royale para testar. `?bench` = pior caso de render; `?stats` = overlay de rede; `?perf` = de QUEM é o frame longo (`__warspace.perf()`);
 `?sfx` = mesa de som (toca todo o `KIT`, sem entrar em partida).
 Mockups aprovados continuam em `mockups/v2/` (CommonJS; `node mockups/v2/src/build.js`) — são a referência visual.
 
@@ -58,6 +58,7 @@ client/src/    api/base.js (a ÚNICA fonte de "onde mora o servidor") · portal/
                audio/ (index.js motor: 4 barramentos, prioridade de vozes, loops · kit.js receitas · mic.js push-to-talk · audition.js a mesa de som do ?sfx)
                theme/ (index.js + dawn|sunset|dusk: tokens/hud/screens.css gerados por port.js, index.js com textures/effects/hud) · styles/base.css
                game/ (index.js createGame · quality.js (a política de nível econômico, pura) · net/ · state/ · renderer/ · input/ (Pointer·Keyboard·Touch·Joystick·Wheel) · hud/ · bench.js
+                     perf.js (`?perf`: o frame dividido em FASES nomeadas — de quem é a travada; a tabela é pura)
                      tutor.js (a decisão das 3 etapas do tutorial de estreia, PURA) · net/tutorServer.js (o diretor: o único que toca no World)
                      ui/Tutor.jsx (a tela: trilha 1·2·3, o prompt de botão, a tela de etapa e o cartão de fim) · ui/tutorFala.js (qual frase e qual botão, PURAS)
                      estreia.js (as duas marcas: o tutorial por dispositivo, a missão por sessão — elas se cruzam))
@@ -1272,6 +1273,72 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **E A MISSÃO MANDAVA O NOVATO PARA CIMA DE UM ASTEROIDE**: a etapa 1 dizia "coma as pedras", e a
   pedra do jogo é o asteroide, que estilhaça quem encosta. O grão é uma PARTÍCULA, que é como o resto do
   jogo o chama. Corrigido nos três dicionários.
+- **O DIVIDIR ESTAVA MORTO NO BATTLE ROYALE, A PARTIDA INTEIRA — E ERA SÓ DO CLIENTE**
+  (`souNovato`/`splitTravado` em `game/index.js`, `Sim.nasceEm`, `Room._posicionaGaiola`): o relato foi
+  "já estava grande no início e não dividiu", e o defeito não era o portão de tamanho nem a trava do
+  novato. Era o ESPELHO da trava. O cliente engole a tecla por conta própria (`if(a==="split"&&souNovato)
+  return`) para não anunciar um comando que o servidor recusa, e `souNovato` só é apagado pelo
+  `{t:"grace"}` — que `Sim._graceTick` emite varrendo o `Set this._grace`. **No BR ninguém entrava nesse
+  Set**: quem chega ao lobby chega com `spawn:false` (e `addHuman` só carimba quem nasce com corpo) e a
+  largada chamava `world.respawnPlayer` DIRETO, pulando o Sim. Resultado: a mensagem nunca saía, o
+  espelho ficava travado para sempre e o `#t-split` nem era desenhado no toque — enquanto o servidor,
+  cuja guarda tem `!w.zoneNow()`, teria aceitado todos os splits daquela partida.
+  ⚠️ **O buraco também comia os marcos do funil**: `grace_end_time|mass|kill` (`portal/marcos.js`) nunca
+  saíram de uma sala de Battle Royale, e ninguém tinha como notar — a ausência de um evento não aparece
+  em painel nenhum. `Sim.nasceEm` é o caminho único agora, e `server/test/br.test.js` trava a largada.
+  ⚠️ **DUAS VERDADES SOBRE A MESMA REGRA É O DEFEITO DE RAIZ**, e é ele que foi consertado: o gate mora
+  nos dois lados, então o booleano tem que ser o MESMO. `BOT.NOVATO_SPLIT` era escopo `'server'`, ou
+  seja o cliente não tinha como saber dele e adivinhava — e mesmo com o interruptor LIGADO no painel ele
+  continuaria engolindo a tecla. Agora é `'wire'` (com `BOT` acrescentado ao `RAIZES_WIRE` de
+  `game/index.js`, pelo mesmo caminho de `SPLIT.MIN_R`), e `splitTravado()` é a pergunta feita num lugar
+  só, lida pelos dois consumidores: o gate da tecla e o `splitOff` do HUD.
+  ⚠️ **O PADRÃO VIROU LIGADO** (`BOT.NOVATO_SPLIT:true`): a trava continua existindo e é um clique no
+  /admin, mas ela deixou de ser o comportamento de fábrica. O que ela custava em produção era pior do
+  que o bloco acima sugere, porque `admin_settings` tem `BOT.NOVATO_MASS = 0`: sem teto de massa,
+  `sobGraca` é verdadeira pela JANELA inteira, ou seja **90 segundos sem dividir na primeira vida, sem
+  saída pela massa** — só pelo relógio ou por um abate. Os dois testes de `novato.test.js` trocaram de
+  lado: quem declara o cenário agora é quem quer a trava.
+  ⚠️ **A RECUSA CUSTAVA O COOLDOWN**, e agora não custa: `world.js` gravava `ps.splitCdUntil` ANTES de
+  chamar `applySplit`, então toda negativa (tamanho, teto de peças, a trava) comprava 250 ms de espera
+  por nada — apertar repetido deixava o jogador sem o comando E fora de cooldown metade do tempo.
+  `applySplit` já devolvia `did`; faltava alguém ler. Há teste.
+  ⚠️ **E A RECUSA DEIXOU DE SER MUDA**: era o único comando do jogo que falhava em silêncio (o tiro tem
+  `onNoAmmo`, a cusparada pequena demais nem toca o som). Hoje sai um `error`, e vale também para o
+  portão de tamanho — `semTamanhoPraDividir()` repete o predicado do servidor com o `SPLIT.MIN_R` que
+  chega pelo fio, e só decide o SOM: quem tem a verdade do tick continua sendo o servidor.
+- **O BOTÃO DE DIVIDIR NUNCA MAIS SOME, E A MASSA INICIAL PASSOU O PORTÃO DELE** (`ui/Hud.jsx`,
+  `PLAYER.SPAWN_R` em `constants.js`). O relato veio depois do conserto acima e é outro sintoma da mesma
+  ideia: *"no modo livre o botão de split não estava aparecendo até eu comer alguém"* — que é a graça
+  acabando pela terceira saída. Duas coisas, e a segunda é a que resolve de verdade.
+  ⚠️ **HIDDEN ERA A DECISÃO ERRADA.** O HUD fazia `{h.splitOff ? null : <button…>}`, e um comando que
+  EXISTE e some é pior que um comando desabilitado: quem nunca o viu não sabe que ele existe, e quem já
+  o viu acha que o jogo quebrou. Hoje `splitOff` apaga o botão do mesmo jeito que o cooldown apaga
+  (`.cd`) — mesma posição, mesma affordance —, e apertá-lo devolve o som de recusa. O argumento antigo
+  ("um botão que não faz nada é pior que um botão ausente", do playtest KR) media a coisa errada: o
+  problema do KR era o novato DIVIDIR cedo demais, não ver o botão.
+  ⚠️ **`PLAYER.SPAWN_R`: 30 → 63, e o número é a RELAÇÃO, não um gosto.** `SPLIT.MIN_R` é 60, ou seja em
+  r=30 (massa 900) faltava crescer 4× antes de a mecânica central do jogo existir para quem chegou. Em
+  63 são 3 969 de massa, 10 % acima do portão — e a margem é contra o DECAIMENTO: em 60 cravado o
+  `PLAYER.DECAY` (.002/s) derrubaria abaixo no primeiro segundo e a janela duraria um frame. Com 3 969
+  são ~49 s sem encostar em nada. Conferido pelo caminho de verdade: `addPlayer` sem `r` nasce em 63 e
+  `requestSplit` no tick seguinte devolve duas peças de 44,5 — **ainda sob a graça**, que é o ponto.
+  ⚠️ **A MARGEM TEM TETO PELO OUTRO LADO, e é por isso que não é 70.** Com `EAT.RATIO` 1,15, r=63 engole
+  até 54,8 contra um `BOT_R` de [24,58]: o recém-chegado come quase todo preenchimento, mas não os
+  maiores. Em r=70 o limite passa de 58 e o mapa inteiro vira comida no tick do nascimento.
+  ⚠️ **E ISSO APOSENTOU UM MECANISMO PELA METADE, o que é dívida e fica escrito**: `ROOM.ISCA_P` (.35)
+  nasceu porque um novato de r=30 engolia 6 % da faixa de preenchimento e 81 % das primeiras vidas
+  terminavam sem um único abate. Com r=63 o CHÃO — sem isca nenhuma — já é ~91 %. A isca continua
+  fazendo o que promete, mas deixou de ser a diferença entre ter e não ter presa e virou ajuste fino;
+  `shared/test/novato.test.js` passou a travar a invariante que sobrevive (a isca é sempre comível pelo
+  recém-nascido e nunca reduz a presa) em vez do número que só valia para a massa antiga.
+  ⚠️ **O BATTLE ROYALE NÃO FOI JUNTO** (`BR.SPAWN_R`, ainda 900): lá os 50 largam presos no octógono e a
+  ocupação da gaiola cresce com a massa — em 3 600 são 33 % da área. O teto do tunable dele é exatamente
+  3 600 porque "a maior largada possível é a que já pode dividir", então igualar é UM número no painel —
+  mas é decisão de balanceamento do MODO, não deste parâmetro.
+  ⚠️ **DOIS TESTES MUDARAM DE PREMISSA, e nenhum foi afrouxado**: `shared/test/modes.test.js` media a
+  queimadura da ZONA (mecânica de BR) com o default de `addPlayer`, que é o tamanho do LIVRE — agora ele
+  passa `r:BR.SPAWN_R` explícito, que é o que ele sempre quis medir; e `client/test/tutor-mundo.test.js`
+  afirmava "de fábrica o novato NÃO divide", uma frase que deixou de ser verdade por decisão.
 - **A PRIMEIRA VIDA GANHOU UMA MISSÃO DE TRÊS ETAPAS** (`passoMissao` em `game/dica.js`): coma as pedras →
   coma o planeta pequeno → divida. A dica do dividir ensinava a ÚLTIMA coisa que um novato precisa saber, e
   só aparecia para quem já tinha chegado ao portão — um terço deles. As duas etapas antes dela são as que
@@ -3464,6 +3531,71 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   6 cobra quem ROLA de lado, não quem está fora do lugar. O critério 5 media só topo e rodapé. A
   cobrança lateral não tem o `podeRolar` do eixo vertical: nenhuma tela do jogo rola na horizontal,
   então sobra lateral é sempre defeito.
+- **AS QUATRO TELAS DE MENU EMAGRECERAM PARA CABER NO FRAME DA POKI** (`ui/Modes.jsx` · `ui/Rank.jsx` ·
+  `ui/Shop.jsx` · `ui/Pause.jsx`, mais o bloco de `[data-h="short"]` em `ui.css`). O pedido foi olhando
+  os prints do portal, e a queixa é sempre a mesma vista de quatro ângulos: entre o título e a COISA que
+  se veio fazer havia controles demais, e num iframe de 470 px de altura eles empurram a coisa para fora
+  da dobra. **Nada foi apagado — foi escondido, e cada esconderijo diz como se desfaz.**
+  ⚠️ **MODOS**: saíram os quatro chips de esquadrão e o campo de código do cartão do Battle Royale, por
+  `ENTRY_PANELS.SQUAD` e `ENTRY_PANELS.CODE` — o mesmo canal de `/api/config` que já ligava/desligava os
+  cartões, ou seja **o "por enquanto" do pedido volta atrás pelo painel, sem um zip novo na fila de
+  revisão deles**. Os dois nascem `false` e são lidos com `=== true`, e não com `!== false` como os três
+  vizinhos: ali a ausência tem que ser OCULTO, senão o `/api/config` (que é disparado sem `await` no
+  boot) faria os chips piscarem e o `ts` mudar debaixo do primeiro clique.
+  ⚠️ **E ESCONDER OS CHIPS OBRIGA A FORÇAR `ts = 1`.** `teamSize` mora no store e sobrevive à sessão:
+  quem escolheu "3 · Trio" ontem voltaria hoje sem ver chip nenhum, com o botão dizendo CRIAR EQUIPE e o
+  clique caindo em `createParty` — que **não passa por `play()`** e portanto não passa pelo anúncio de
+  portal. Reprova de certificação, em silêncio. É a metade perigosa desta mudança.
+  ⚠️ **E OS DOIS JOGAR FICARAM NA MESMA LINHA, o que custou mais um corte e uma descoberta.** Saiu
+  também a etiqueta "50 planetas" (`.mode-tag`): com os chips e o código fora, ela era a única diferença
+  de CONTEÚDO entre os dois cartões, e uma linha a mais num deles desce o botão dele — numa tela cujo
+  assunto é escolher ENTRE os dois, botões desalinhados leem como dois estados diferentes. Só que
+  faltavam ainda 6 px, e a causa não era o texto (os dois subtítulos ocupam as mesmas duas linhas):
+  era `#s-modes .mode-card.br{gap:7px}` contra os 4 px do vizinho — o respiro dos SEIS blocos que
+  moravam ali dentro. Com três filhos são dois gaps, 2 × 3 px = exatamente os 6 px. Medido no
+  navegador; a regra saiu junto com o que a justificava.
+  ⚠️ **O JOGAR DO LIVRE SUBIU tirando uma regra, não acrescentando uma**: o `margin-block:auto` existia
+  porque a grade esticava os dois cartões ao tamanho do mais alto e o do Livre ficava com um palmo de
+  vazio embaixo. Com o vizinho sem os chips e sem o código, e com `align-items:start` na grade, não há
+  sobra para centrar — e centrar o que não sobra só empurrava o botão para baixo. O `min-height` do
+  cartão caiu de 180 para 132 pelo mesmo motivo: 180 era a altura de um cartão com sete blocos dentro.
+  ⚠️ **RANKING**: o corte é um NÓ SÓ, o `div.toggles` com as duas fileiras de abas (Geral·Semanal·Diário
+  e Global·Meu país). Os estados padrão já produzem exatamente o que o pedido quer — `period="all"`,
+  `scope="global"`, `country=null` —, então o `useEffect` da busca não muda uma vírgula e a rota não é
+  tocada. O JSX das abas ficou dentro de um comentário, literal: é o que torna honesta a frase "devolver
+  é descomentar" e o que explica `PERIODS`, `setPeriod` e `setScope` continuarem declarados.
+  ⚠️ **LOJA**: saíram quatro blocos que moravam entre o título e a primeira skin — o cartão da skin
+  equipada, a barra de progresso N/50, o seletor de ordenação e a fileira de nove chips. A tela em que
+  se COMPRA abria sem mostrar nada à venda. O estado fica inteiro (`filter`/`mineOnly`/`sort` e o
+  `useMemo` que os aplica), e a peneira passa a ser só a busca. A skin equipada não ficou sem sinal: o
+  selo EQUIPADA continua no cartão dela dentro da grade.
+  ⚠️ **E A COLOCAÇÃO DA BUSCA DEIXOU DE SER SORTE**: `.shop-wrap` é grid por ÁREAS NOMEADAS e
+  `.shop-tools` estava com `grid-area:auto` — com as seis linhas ocupadas, o auto-placement o jogava
+  numa linha IMPLÍCITA, depois da nota de rodapé. Tirando `eq` e `filters` ele passaria a cair na
+  primeira delas, certo por acidente. Agora a linha tem nome (`tools`), em `ui.css`, porque `base.css` é
+  GERADO pelo `port.js`.
+  ⚠️ **PAUSA**: o bloco do nome do planeta abre por padrão (`<details open>`) e o TOP 5 continua fechado
+  — e isso não é assimetria por descuido: o `onToggle` dele é o que dispara `loadTop5()` na primeira
+  abertura, e abri-lo devolveria ao boot do pacote o pedido de rede que foi tirado dele de propósito.
+  ⚠️ **O motivo do fechado-por-padrão continua de pé; quem o cobre é outro.** Com os blocos abertos o
+  RETOMAR saía da dobra num frame de 470 px — hoje `.pause-actions` é `sticky;bottom:0;margin-top:auto`
+  sobre um cartão que rola, ou seja a ação está ANCORADA e não depende de o conteúdo caber.
+  ⚠️ **A MATRIZ NÃO COBRE ISTO — ela percorre TELAS e a pausa é OVERLAY**, então a checagem foi feita à
+  parte, com uma sonda CDP no molde dela (Chrome headless, `--window-size`, os três temas, o pacote da
+  Poki servido de `portal/poki/dist`). Medido com o bloco do nome ABERTO: 836×470 → cartão de 446 px,
+  1024×480 → 456, iPhone SE deitado 667×375 → 351, celular em pé 360×640 → 616; RETOMAR e SAIR DA
+  PARTIDA dentro da dobra nos três temas, em todas. É o número que a nota antiga não tinha.
+  ⚠️ **O CRITÉRIO 7 DA MATRIZ ERA CEGO AO BOTÃO QUE ESTA REFORMA MOVE**, e isso foi consertado junto: a
+  lista de seletores de "a ação não exige rolagem" não tinha o JOGAR dos cartões de Modos. Acrescentado
+  `.mode-card>.btn-primary`, ela reprovou **na primeira execução** — e o problema era PRÉ-EXISTENTE e
+  grande: 178 px abaixo da dobra no iPhone SE deitado, em `modes@rail`. A reforma já o tinha reduzido a
+  50 px sem ninguém pedir; o resto saiu no bloco abaixo.
+  ⚠️ **E ELE É O PRIMEIRO CONSUMIDOR DE `body[data-h="short"]`** (`useViewportMode.js`): o atributo era
+  escrito no `<body>` desde que nasceu, com histerese, e **não tinha uma regra de CSS sequer**. Em tela
+  baixa os dois cartões vão lado a lado (piso de coluna 190 em vez de 280 — só aqui, senão um celular EM
+  PÉ de 430 px ganharia duas colunas e ele tem altura de sobra). Onde nem isso cabe — a GAVETA em
+  celular deitado, `--drawer-w:min(400px,52vw)` = 347 px —, o que sai é o subtítulo (reduzido a uma
+  linha) e a etiqueta "50 planetas", nessa ordem, que é a inversa da que o jogador precisa para decidir.
 - **OS DOIS CARTÕES DA TELA DE MODOS TÊM O MESMO DESENHO** (`ui/Modes.jsx`, `ui.css`): planeta pequeno no
   alto à direita, texto ao lado dele e um JOGAR da largura do cartão embaixo. O do Livre era o ÚNICO da
   tela sem botão nenhum — o clique era no cartão inteiro —, e ao lado de um vizinho com um JOGAR grande e
@@ -3705,6 +3837,64 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   São 2 draw calls no total, não um por partícula, e nada de filtro/blur (proibidos: custam render target).
   A queda do gradiente é rápida de propósito — halo largo e opaco satura para branco e a tela vira névoa.
   Some no modo econômico e com "menos movimento".
+- **`?perf` — DE QUEM É O FRAME LONGO** (`game/perf.js` + `client/test/perf.test.js`; fases instrumentadas
+  em `game/index.js`, `layers/Grid.js`, `layers/Background.js` e `TextureCache.js`). O `?stats` responde
+  "o frame demorou?" e nunca respondeu "por quê?" — e essa é a pergunta de um ENGASGO, que é UM frame
+  isolado de dezenas de ms no meio de sessenta de 3 ms: a média não o vê, o p95 mal o vê. Aqui o frame é
+  dividido em fases nomeadas (`predicao · interp · view · render · radar · hud · bakeBorder · assaTextura
+  · assaAtlas · assaCeu · despejo`), só os frames RUINS (≥17 ms) viram amostra e a tabela sai ordenada
+  por quanto cada fase contribuiu para eles. `__warspace.perf()` no console.
+  ⚠️ **A LINHA `(não medido)` É O QUE IMPEDE A TABELA DE MENTIR**: sem ela, um frame de 40 ms com 2 ms
+  instrumentados pareceria um frame de 2 ms, e a conclusão seria "não é o render" — quando o que a
+  medição diz é "não sei de quem é".
+  ⚠️ **GUARDA OS PIORES, NÃO OS PRIMEIROS** (a amostra é ordenada e cortada): um engasgo que só aparece
+  depois de dez minutos de partida nunca caberia numa janela que enche e para de aceitar.
+  ⚠️ **AS FASES SE ANINHAM, e só as de TOPO entram na conta do não medido**: os bakes acontecem DENTRO
+  de `render`, então somar todas daria mais que o frame e a linha sairia NEGATIVA — uma tabela dizendo
+  uma impossibilidade. O nível é medido na ABERTURA (quantas estavam abertas naquele instante), e não
+  por uma lista de "quem está dentro de quem", que envelheceria na primeira fase nova. Há teste.
+  ⚠️ **DESLIGADO É QUASE LITERALMENTE NADA** (`ini`/`fim` viram funções vazias), e é isso que permite as
+  chamadas morarem dentro do render sem um `if` em volta de cada uma. O que NÃO pode é entrar em laço
+  POR ENTIDADE: `cache.get` é chamado ~200×/frame, e o que se instrumenta ali é o MISS.
+  ⚠️ **E O `?stats` MEDIA ERRADO — a ferramenta mexia na medida.** `statsText()` era avaliado TODO frame
+  para um overlay que escreve a 4 Hz, e ele chama `renderer.counts()` duas vezes (a segunda por dentro
+  de `drawCallsEstimate`), faz dois `reduce` de 240 elementos e um `map`+`sort` da janela inteira para o
+  p95. Hoje `overlay.update` recebe a FUNÇÃO e só a chama no frame em que o texto vai para o DOM. Sem
+  isso, qualquer medição de engasgo feita com `?stats` estava contaminada.
+- **TRÊS CUSTOS PERIÓDICOS QUE VALIAM CONSERTO ANTES DE QUALQUER MEDIÇÃO** (`layers/Grid.js`,
+  `input/Pointer.js`, `metrics.js`/`loop.js`):
+  ⚠️ **A BORDA DO MUNDO REASSAVA COM ELA INVISÍVEL.** `bakeBorder` percorre um perímetro de 48 000 px
+  com `dash:[40,26]` — ~727 segmentos no zoom em que a câmera nasce, ~1 818 num zoom de 1.25 —, cada um
+  um `moveTo`+`lineTo`, e o `stroke()` final faz o Pixi v8 retesselar o contexto inteiro e resubir a
+  geometria. A checagem de patamar (`REBAKE_K`, 4 %) vinha DEPOIS de `border.visible` e ignorava o
+  resultado dela: fora de partida, com o menu na frente e a câmera do lobby passeando, ele continuava
+  pagando isso. E é periódico por construção — a câmera nunca para (`Camera.js` persegue o alvo sem
+  chegar nele), então crescer, dividir, fundir ou girar a roda atravessa bandas de 4 % em cascata.
+  Subir `REBAKE_K` é o primeiro teste de bissecção de qualquer engasgo de render.
+  ⚠️ **`getBoundingClientRect()` EM TODO `pointermove` É UM REFLOW FORÇADO.** Ele estava num listener de
+  JANELA (que é o certo — ver o cabeçalho de `Pointer.js`), com um mouse de 500–1000 Hz, e o HUD é
+  reconciliado pelo React 8 vezes por segundo. O par "React escreve · mouse lê" é layout thrashing com
+  cadência de 8 Hz, que é a forma do sintoma. O retângulo do canvas só muda quando o layout muda: hoje é
+  lido uma vez e invalidado por `resize`, `orientationchange` e `scroll` em CAPTURA — este último porque
+  a página do jogo não rola, mas o embutidor de portal rola, e um scroll de ancestral move o canvas sem
+  disparar resize nenhum.
+  ⚠️ **O OVERRUN DO SERVIDOR CONTAVA EVENTOS DE TAMANHO DESCONHECIDO.** Um overrun é o laço ter ficado
+  mais de `MAX_STEPS` (5) ticks para trás, ou seja **no mínimo 83 ms de simulação parada para a sala
+  inteira** — a forma exata do engasgo visto do cliente. `/healthz` dizia "43 overruns" e jogava o
+  ATRASO fora, e 43 tropeços de 90 ms e 43 travadas de dois segundos têm causas e consertos diferentes.
+  Agora vai `overrunMs:{p50,p99,max,ultimo,ultimoHa}`. ⚠️ E o `loopLagMs` **não** responde isso: ele é
+  medido na ENTRADA do turno sobre um anel de 600 amostras a 60 Hz — dez segundos —, então um tropeço a
+  cada poucos minutos cai fora do p99 dele e some. Medido em produção no dia: os três shards com
+  `overruns` 43 · 6 · 15 e `tick.max` entre 5 e 11 ms, ou seja **o trabalho do tick não é o que estoura**
+  — o que bloqueia o event loop está FORA dele.
+  ⚠️ **E O PERFIL DE SALA NÃO MEDIA A METADE QUE MAIS CRESCE** (`scripts/prof-room.mjs`): ele dividia o
+  relógio em cérebro · `World.step` · `_consume`, que é `Sim.step`; a outra metade do tick é o
+  `Room._flush`, que a cada 3 ticks monta e CODIFICA um snapshot POR SESSÃO. Com a fase nova, medido
+  numa sala de 49 preenchimentos: **o snapshot é 62 % do tick com 50 sessões**, e custa 4,19 ms no tick
+  em que sai — contra 16,67 ms de orçamento, e com várias salas por processo. `LEADERBOARD_EVERY %
+  SNAPSHOT_EVERY === 0` (30/3) faz snapshot e placar caírem SEMPRE no mesmo tick, então é essa soma que
+  se compara com o orçamento. ⚠️ A sessão do perfil é FALSA de propósito (mede CPU, não WebSocket) e
+  QUEBRA se `snapshot.js` passar a ler um campo que ela não tem — melhor que medir um caminho morto.
 - **Render (PixiJS v8)**: sprites assados por (skin, tier 128/256/512), ParticleContainer para comida/ejetados, fundo em cache por resolução,
   culling manual, HUD e minimapa em DOM (mesmos ids/classes dos mockups — o CSS dos temas depende disso).
   **Troca de tema sem pausa**: o cache NÃO é invalidado (as chaves já têm o id do tema, então os céus convivem e voltar a um é acerto),
@@ -3964,6 +4154,26 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   Ligar aquilo lá e este aqui ao mesmo tempo devolveria a forja a qualquer um. O teste de
   `persist.test.js` cobre as duas metades.
 
+- **OS BOTÕES DE TOQUE FICAVAM ATRÁS DA BARRA DO SAFARI, E A ÁREA SEGURA NÃO COBRE ISSO**
+  (`#app{height:100dvh}` em `ui.css`): a queixa veio com print — iPhone em pé, `warspace.io` direto, a
+  fileira de baixo do `#touch` aparecendo com ~12 px de 64 e o último chip de powerup cortado no canto
+  esquerdo. **A causa é o bloco contenedor de um `position:fixed`**: `#app` é `position:fixed;inset:0`
+  (base.css) e num Safari de iPhone isso é o LAYOUT viewport, que é o viewport GRANDE — as barras do
+  navegador ficam POR CIMA dele. O `#touch` é `bottom:14px` com `flex-wrap`, ou seja cresce para cima a
+  partir da borda de baixo do `#hud`; com essa borda ~50 px abaixo do que se vê, a última fileira some.
+  ⚠️ **`env(safe-area-inset-bottom)` NÃO resolve, e é por isso que o defeito sobreviveu ao
+  `viewport-fit=cover`**: a área segura fala do ENTALHE e da barra de home, não da interface do
+  navegador — com a barra de abas na tela ela vale ZERO.
+  ⚠️ **`html,body{height:100dvh}` JÁ EXISTIA e sozinho não resolvia nada disso.** Ele morava no meio do
+  bloco da tela de morte, e é a outra metade do mesmo problema: consertava a folha de morte (que se mede
+  contra o `body`) e não tocava no `#app`, porque um FIXO não se mede contra o `body`. As duas linhas
+  agora moram juntas, no topo do `ui.css`.
+  ⚠️ **`dvh` e NÃO `visualViewport`**, e a diferença é o teclado: ele encolhe o `visualViewport` em
+  ~300 px, e com o canvas amarrado a isso digitar no chat repintaria a partida num quadro menor — e
+  pagaria o reassado do céu, o item mais caro do render. O viewport DINÂMICO é sobre a interface
+  RETRÁTIL do navegador e ignora o teclado, que é exatamente a linha que se quer.
+  ⚠️ **A matriz NÃO prova isto**: ela roda num Chrome headless de janela fixa, onde não existe barra de
+  navegador para sobrepor nada. É caso de olhar num telefone de verdade — e foi assim que apareceu.
 - **A AÇÃO DA TELA NÃO ROLA, E O CRITÉRIO QUE PROVA ISSO É NOVO** (`.dead-foot` em `ui.css`, critério 7 de
   `scripts/responsive-check.mjs`, `body[data-h]` em `useViewportMode.js`): a queixa era "no frame da Poki
   os botões não aparecem", e a causa NÃO era falta de rolagem — as três telas rolam. É a AÇÃO que rolava

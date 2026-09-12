@@ -51,12 +51,26 @@ test("passada a graça, o algoz PROPORCIONAL mata — a proteção não é invul
 // recolhido por dois adversários em sequência. Dividir é a mecânica que MATA num agar — e a que mais
 // rápido mata quem ainda não sabe usá-la. Hoje em produção ela nem sequer tem o portão de tamanho
 // funcionando: com `PLAYER.SPAWN_R` 2100 (r≈45,8) e `SPLIT.MIN_R` 44, o jogador NASCE podendo dividir.
-test("o recém-nascido não divide — e a trava é a GRAÇA, não um relógio novo", () => {
-  const n = BOT.NOVATO_MASS;
+// ⚠️ **O PADRÃO HOJE É LIGADO** (`BOT.NOVATO_SPLIT = true`): a trava virou uma opção do painel, e não
+// o comportamento de fábrica. Ela custou caro do jeito que estava — ver o teste do Battle Royale em
+// server/test/game.test.js —, e o que ficou é o interruptor. Por isso estes dois testes trocaram de
+// lado: quem precisa declarar o cenário agora é quem quer a trava.
+test("por padrão o recém-nascido DIVIDE: a trava é opção do painel, não o de fábrica", () => {
+  assert.equal(BOT.NOVATO_SPLIT, true, "o padrão de fábrica é o novato podendo dividir");
+  const w = arena();
+  w.addPlayer(0, { isBot: false, x: 5000, y: 5000 });
+  const ps = w.players.get(0); setR(ps.pieces[0], SPLIT.MIN_R * 1.1);   // massa abaixo de NOVATO_MASS: sob a graça de verdade
+  w.setTarget(0, 9000, 5000);
+  w.requestSplit(0); w.step();
+  assert.equal(ps.pieces.filter(p => !p.dead).length, 2, "sob a graça, com o padrão, o split funciona");
+});
+
+test("travado no painel, o recém-nascido não divide — e a trava é a GRAÇA, não um relógio novo", () => {
+  const n = BOT.NOVATO_MASS, v = BOT.NOVATO_SPLIT;
   try {
     // ⚠️ Zero é o que está gravado em `admin_settings` na produção que gerou os playtests, então este é
     // o cenário REAL: sem teto de massa, quem diz "ainda é novato" é só a janela do nascimento.
-    BOT.NOVATO_MASS = 0;
+    BOT.NOVATO_MASS = 0; BOT.NOVATO_SPLIT = false;
     const w = arena();
     w.addPlayer(0, { isBot: false, x: 5000, y: 5000 });
     const ps = w.players.get(0); setR(ps.pieces[0], SPLIT.MIN_R * 1.5);   // tamanho de sobra: quem recusa é a graça
@@ -64,26 +78,29 @@ test("o recém-nascido não divide — e a trava é a GRAÇA, não um relógio n
     w.requestSplit(0); w.step();
     assert.equal(ps.pieces.filter(p => !p.dead).length, 1, "sob a graça, dividir não faz nada");
     ps.graceUntil = 0;   // a graça acabou (por tempo, por massa ou pelo primeiro abate — tanto faz qual)
-    // ⚠️ `world.js` grava `splitCdUntil` ANTES de chamar `applySplit`, então o pedido recusado QUEIMA o
-    // cooldown do mesmo jeito. É o comportamento que o split já tinha ao ser recusado por `MIN_R` ou por
-    // `MAX_PIECES`, custa meio segundo e vale a pena: a regra fica num lugar só, em `rules.js`.
-    for (let i = 0; i <= SPLIT.COOLDOWN_TICKS; i++) w.step();
     w.requestSplit(0); w.step();
     assert.equal(ps.pieces.filter(p => !p.dead).length, 2, "acabada a graça, o split volta ao normal");
-  } finally { BOT.NOVATO_MASS = n; }
+  } finally { BOT.NOVATO_MASS = n; BOT.NOVATO_SPLIT = v; }
 });
 
-test("...e o interruptor devolve o comportamento anterior sem deploy", () => {
-  const v = BOT.NOVATO_SPLIT;
+// ⚠️ E A RECUSA NÃO PODE CUSTAR O COOLDOWN. Era o oposto: `world.js` gravava `splitCdUntil` ANTES de
+// chamar `applySplit`, então cada tentativa negada comprava 250 ms de espera por nada — o jogador
+// apertava, não acontecia nada, e o pedido seguinte (já legítimo) ainda era engolido pelo cooldown.
+test("o pedido RECUSADO não queima o cooldown do split", () => {
+  const n = BOT.NOVATO_MASS, v = BOT.NOVATO_SPLIT;
   try {
-    BOT.NOVATO_SPLIT = true;
+    BOT.NOVATO_MASS = 0; BOT.NOVATO_SPLIT = false;
     const w = arena();
     w.addPlayer(0, { isBot: false, x: 5000, y: 5000 });
-    const ps = w.players.get(0); setR(ps.pieces[0], SPLIT.MIN_R * 1.1);   // massa abaixo de NOVATO_MASS: sob a graça de verdade
+    const ps = w.players.get(0); setR(ps.pieces[0], SPLIT.MIN_R * 1.5);
     w.setTarget(0, 9000, 5000);
     w.requestSplit(0); w.step();
-    assert.equal(ps.pieces.filter(p => !p.dead).length, 2, "ligado, o novato divide como sempre dividiu");
-  } finally { BOT.NOVATO_SPLIT = v; }
+    assert.equal(ps.splitCdUntil, 0, "recusado sob a graça: o cooldown não foi tocado");
+    ps.graceUntil = 0;
+    w.requestSplit(0); w.step();   // no tick SEGUINTE, sem esperar cooldown nenhum
+    assert.equal(ps.pieces.filter(p => !p.dead).length, 2, "o split legítimo sai na hora");
+    assert.ok(ps.splitCdUntil > w.tick, "e AGORA o cooldown existe");
+  } finally { BOT.NOVATO_MASS = n; BOT.NOVATO_SPLIT = v; }
 });
 
 // ── O CASO VN: QUATRO VIDAS EM 50 SEGUNDOS, TODAS NO MESMO TRITURADOR ───────
@@ -478,9 +495,17 @@ test("sob a graça, o ímã de nascença não puxa a estrela", () => {
 
 // ── ...E A PRESA NÃO PODE ACABAR JUNTO COM A SEMENTE ─────────────────────────
 // O tier ISCA vivia só em `SEED_MIX` — os treze primeiros planetas, no tick 0 —, e eles CRESCEM. Passados
-// dois minutos, todo preenchimento que entra vem de `PLAYER.BOT_R` [24,58], e um novato de r=30 só engole
+// dois minutos, todo preenchimento que entra vem de `PLAYER.BOT_R` [24,58], e um novato de r=30 só engolia
 // `r <= 30/EAT.RATIO`: 6% daquela faixa. A sala ficava cheia e sem nada para comer, que é o outro lado do
 // "81% das primeiras vidas terminam sem um único abate".
+//
+// ⚠️ **`PLAYER.SPAWN_R` SUBIU PARA 63 E ISSO MUDOU O TAMANHO DO PROBLEMA, não a existência dele.** O
+// novato passou a engolir até 54,8, ou seja ~91% da faixa de sempre — o chão de 6% virou história. A
+// consequência é DELIBERADA (nascer acima de `SPLIT.MIN_R` é o que faz dividir existir desde o primeiro
+// segundo, ver o bloco de `PLAYER` em constants.js) e tem um preço a registrar: **`ROOM.ISCA_P` deixou de
+// ser a diferença entre ter e não ter presa e virou um ajuste fino.** Ele continua fazendo o que promete,
+// e é isso que este teste passa a travar — que a isca é SEMPRE comível pelo recém-nascido e nunca piora
+// o quadro —, em vez de travar um número que só valia para a massa inicial antiga.
 /** Fração dos preenchimentos novos que um recém-nascido consegue engolir. */
 const comiveis = (seed, n = 4000) => { const rng = createRng(seed), lim = PLAYER.SPAWN_R / EAT.RATIO;
   let k = 0; for (let i = 0; i < n; i++) if (botRespawnR(rng) <= lim) k++; return k / n; };
@@ -489,12 +514,15 @@ test("o preenchimento que RENASCE também nasce isca, e a isca é comível por q
   const antes = ROOM.ISCA_P, medido = { com: 0, sem: 0 };
   try { medido.com = comiveis(4242); ROOM.ISCA_P = 0; medido.sem = comiveis(4242); }
   finally { ROOM.ISCA_P = antes; }
-  // ⚠️ O CHÃO NÃO É ZERO, e é ele que mede o tamanho do problema: `PLAYER.BOT_R` começa em 24 e o novato
-  // engole até 26,1, então ~6% da faixa de sempre já era comível — por acidente de intervalo, não por
-  // desenho. É esse número que fazia 81% das primeiras vidas acabarem sem um único abate.
-  assert.ok(medido.sem > 0 && medido.sem < .1, `sem ISCA_P, só ${(medido.sem * 100).toFixed(1)}% dos novos são presa`);
-  assert.ok(medido.com > medido.sem + ROOM.ISCA_P - .05,
-    `com ISCA_P=${ROOM.ISCA_P} a presa tem que subir de ${(medido.sem * 100).toFixed(1)}% para ~${((medido.sem + ROOM.ISCA_P) * 100).toFixed(0)}%, e deu ${(medido.com * 100).toFixed(1)}%`);
+  // ⚠️ A INVARIANTE QUE SOBREVIVE À MASSA INICIAL: o tier ISCA é, por definição, comível por quem acabou
+  // de nascer. Enquanto `SPAWN_R` estiver acima do topo do tier, ligar `ISCA_P` só pode AUMENTAR a presa.
+  assert.ok(medido.com >= medido.sem,
+    `ISCA_P nunca pode reduzir a presa: ${(medido.sem * 100).toFixed(1)}% → ${(medido.com * 100).toFixed(1)}%`);
+  assert.ok(medido.com > .5, `com ISCA_P=${ROOM.ISCA_P} a maioria dos novos tem que ser presa, e deu ${(medido.com * 100).toFixed(1)}%`);
+  // ⚠️ E O CHÃO É MEDIDO, não afirmado: ele é a prova de que `SPAWN_R` está acima do portão do split — se
+  // alguém baixar a massa inicial de volta para 900, este número despenca para ~6% e o teste diz por quê.
+  assert.ok(medido.sem > .5,
+    `sem ISCA_P a presa vem da massa inicial (SPAWN_R=${PLAYER.SPAWN_R}, engole até ${(PLAYER.SPAWN_R / EAT.RATIO).toFixed(1)}): deu ${(medido.sem * 100).toFixed(1)}%`);
 });
 
 test("zerar ISCA_P devolve o comportamento anterior — a faixa de sempre, e só ela", () => {
