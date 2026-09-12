@@ -555,7 +555,10 @@ body[data-mode="portrait"] #hud #hud-right>.panel{width:100%}
 #hud.spec #hud-status{display:none}                  /* arma e powerups não existem para quem morreu */
 /* O morto FALA (a voz foi liberada junto com o texto), então o anel do push-to-talk fica — e no dedo, onde
    não há Ctrl, o único botão de toque que sobrevive é o do microfone. Dividir e atirar, esses sim, acabaram. */
-#hud.spec #touch > *:not(#t-talk){display:none}
+/* ⚠️ Era `#touch > *:not(#t-talk)`: quem assiste perdia os botões de jogo e ficava só com o microfone.
+   Com o `#t-talk` fora do dedo (ui/Hud.jsx) não sobra nada dentro, e uma caixa flex vazia ainda ocupa
+   padding e gap no canto — então some inteira. */
+#hud.spec #touch{display:none}
 #hud.spec #chat{top:12px}                            /* sem o radar em cima, o chat sobe e cresce */
 /* ⚠️ ...MAS NÃO POR CIMA DO PAINEL DO BATTLE ROYALE. Ele é a única coisa do HUD de jogo que SOBREVIVE ao
    `#hud.spec` (a exceção `:not(#hud-br)` da lista acima), porque o morto do BR continua acompanhando o gás

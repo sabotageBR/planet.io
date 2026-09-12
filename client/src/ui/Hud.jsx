@@ -261,7 +261,15 @@ export default function Hud() {
       <button className={"tbtn" + (splitReady ? "" : " cd") + (h.dica && h.dica.dedo && h.dica.id === "split" ? " dica" : "")} id="t-split" {...press("split")}><span>{LB.split}</span></button>
       <button className={"tbtn" + (ejectReady ? "" : " cd")} id="t-eject" {...press("eject")}><span>{LB.eject}</span></button>
       <button className={"tbtn" + (armed ? "" : " empty") + (fireCd ? " cd" : "")} id="t-fire" {...press("fire")}><span>{LB.fire}</span><b id="t-ammo">{ammo}</b>{fireCd ? <em className="fire-cd">{fireCd}</em> : null}</button>
-      <button className={"tbtn talk" + (falando ? " on" : "") + (talkAviso === "cd" ? " cd" : "")} id="t-talk" {...press("talk")}><span>🎤</span></button>
+      {/* ⚠️ **O MICROFONE SAIU DO DEDO.** Ele era o único botão de `#touch` que não é ação de JOGO, e
+          custava uma coluna inteira num canto onde o `flex-wrap` já quebra em três fileiras — espaço que
+          vale mais para dividir, cuspir e atirar. No teclado a voz continua inteira (`KeyK`, a tecla
+          FIXA de `input/Keyboard.js`), então o que se perde é o push-to-talk de celular, não o recurso.
+          ⚠️ E no pacote de portal ele já era um botão MORTO: `SEM_VOZ` é `PORTAL || BOUNTY`
+          (`portal/flags.js`) e `act("talk")` sai cedo, ou seja o revisor da Poki via um microfone que
+          não grava nada. Este era o único lugar que ainda o desenhava.
+          ⚠️ Quem assiste também não fala mais no dedo — ver a regra de `#hud.spec #touch` em ui.css,
+          que existia só para deixar ESTE botão de pé. */}
       {podeTrocar ? <button className="tbtn swap" id="t-swap" {...press("swap")}><span>{armaIco}</span><em>⇄</em></button> : null}
     </div>
   </div>;
