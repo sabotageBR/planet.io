@@ -31,7 +31,7 @@ export default function GameHost() {
   useEffect(() => {
     const game = getGame(); if (!game || !pending) return;
     const user = app.get().session.user || {};
-    game.join({ token: api.token, fallbackNick: user.nick || "Viajante", room: pending.room || null, mode: pending.mode | 0, teamSize: pending.teamSize || 1, party: pending.party || null, spec: !!pending.spec }); joined.current = true;
+    game.join({ token: api.token, fallbackNick: user.nick || "Viajante", room: pending.room || null, mode: pending.mode | 0, teamSize: pending.teamSize || 1, party: pending.party || null, spec: !!pending.spec, tutorial: !!pending.tutorial }); joined.current = true;
   }, [pending]);
 
   // ⚠️ `spec` entra na lista: sair dela chama `game.leave()`, e quem está assistindo tem uma conexão viva

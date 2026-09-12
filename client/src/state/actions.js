@@ -10,10 +10,11 @@ import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
 import { portal } from "../portal/index.js";
-import { PORTAL, SEM_MENU, entraDiretoEm } from "../portal/flags.js";
+import { PORTAL, SEM_MENU, entraDiretoEm, tutorialEm } from "../portal/flags.js";
 import { renasceSozinho, pedagioLiberado } from "../portal/primeiraVida.js";
 import { marco, evento, faixaIdade } from "../portal/marcos.js";
-import { destinoDoBoot, destinoDaSaida } from "./entrada.js";
+import { destinoDoBoot, destinoDaSaida, precisaTutorial } from "./entrada.js";
+import { tutorVisto, marcaTutor, marcaMissao } from "../game/estreia.js";
 import { silenciaAnuncio, sfx } from "../audio/index.js";
 import { setSkinArt } from "../theme/faces.js";
 
@@ -275,7 +276,26 @@ export async function boot() {
   // A escolha mora em `state/entrada.js` (pura e testada); aqui só se executa o que ela decidiu. Os quatro
   // ramos de querystring continuam GANHANDO do boot direto, e o motivo é que todos já terminam numa
   // partida ou numa sala — ver o cabeçalho de `destinoDoBoot`.
-  const destino = destinoDoBoot({ semMenu: SEM_MENU, party: Q.get("party"), sala: Q.get("sala"), assistir: !!Q.get("assistir") });
+  // ── O TUTORIAL DE ESTREIA ──
+  // ⚠️ A LISTA JÁ ESTÁ EM MÃOS, e sem uma requisição a mais: `loadConfig()` é disparado sem `await` logo
+  // acima, então `app.config` quase sempre ainda é `null` aqui — mas a sonda de `api.bootstrap()` (que É
+  // `await`ada, na primeira linha desta função) pede o MESMO `/api/config` e agora GUARDA o corpo. Foi
+  // esta corrida que tirou `ENTRY.NICK_AUTO` do config e o mandou para `GET /api/nick`; aqui o truque
+  // que salva o `ENTRA_DIRETO` ("lido dentro do clique") não serve, porque isto É a decisão do boot.
+  // ⚠️ `precisaTutorial` é conjunção de propósito: `games===0` sozinho seria verdade também quando o boot
+  // falhou e quando o banco está fora (o perfil local devolve zero em toda carga), e aí o tutorial
+  // ligaria para todo mundo, para sempre.
+  const cfgSonda = (app.get().config || api.cfg || null);
+  const st0 = app.get();
+  // ⚠️ `?tutorial=1` GANHA DA LISTA TAMBÉM, e tem de ganhar: a plataforma desta aba é uma constante de
+  // BUILD que não se falsifica em 127.0.0.1, então sem isso não haveria como PROVAR a tela em dev sem
+  // marcar `site` no painel de produção. É o mesmo tipo de interruptor de bancada que `?vida1=1` já é.
+  const forcado = Q.get("tutorial");
+  const tutor = forcado === "1" ? true : forcado === "0" ? false
+    : (precisaTutorial({ games: (st0.session.stats || {}).games | 0, marcado: tutorVisto(),
+        online: api.online, erro: !!st0.bootError })
+      && tutorialEm(cfgSonda ? cfgSonda.tutorial : null));
+  const destino = destinoDoBoot({ semMenu: SEM_MENU, party: Q.get("party"), sala: Q.get("sala"), assistir: !!Q.get("assistir"), tutor });
   if (destino.tipo !== "dev" && destino.tipo !== "jogar") history.replaceState(null, "", location.pathname);
   const conv = destino.tipo === "party" ? destino.code : null;
   if (conv) { joinParty(conv); return; }   // link de convite: cai direto no lobby da equipe do amigo
@@ -295,6 +315,7 @@ export async function boot() {
   // ⚠️ E é `play()`, nunca um `app.update({screen:"game"})` à mão: `play()` é a porta única onde moram o
   // anúncio de portal, o `partidaIniciada` do GA e a ORDEM que `portal/sessao.js` depende (o anúncio
   // ANTES da escrita de `screen`, senão o SDK recebe evento por trás do comercial).
+  if (destino.tipo === "tutor") { entraNoTutorial(); return; }
   if (destino.tipo === "jogar") { play({ mode: MODE.FREE, teamSize: 1, party: null }); return; }
   devQuery();
 }
@@ -317,6 +338,23 @@ function devQuery() {
  * combinações. Aqui a tela vira "game" de verdade (o `Hud` só some quando `screen!=="game"`) e o hudStore
  * recebe dados no pior formato plausível: nomes longos, números grandes, feed cheio.
  */
+/**
+ * O TUTORIAL de mentira, só em DEV — o irmão de `hudDemo()`, e pelo mesmo motivo: sem uma partida de
+ * verdade os blocos ficam com altura zero e o `vis()` da sonda os descarta, então ~600 combinações
+ * passariam por cima de uma tela inteira. Aqui a tela vira "game" e o hudStore recebe o `tutor` no pior
+ * formato plausível: a frase mais longa de cada etapa.
+ * `suf` = "1" | "2" | "3" | "fim" (com `@ajuda` opcional: "2@2").
+ */
+function tutorDemo(suf) {
+  const g = gameRef.get().game;
+  app.update({ screen: "game", played: true });
+  if (!g || !g.hudStore) return;
+  const [qual, aj] = String(suf || "1").split("@");
+  const fim = qual === "fim";
+  const etapa = fim ? 4 : Math.min(3, Math.max(1, +qual || 1));
+  g.hudStore.update(h => ({ ...h, mass: 8482, room: "0TUT", ping: 0, fps: 60, ammo: 3, splitOff: etapa < 3,
+    tutor: { t: "tutor", etapa, pct: etapa === 1 ? .45 : 0, ajuda: +aj || 0, festa: 0, auto: false, fim, dedo: false } }));
+}
 function hudDemo() {
   const g = gameRef.get().game;
   app.update({ screen: "game", played: true });
@@ -347,6 +385,9 @@ function hudDemo() {
 function mostrarTela(s) {
   if (s === "account") { go("entry"); openAccount(); }
   else if (s === "game") play({});
+  // O TUTORIAL, para a matriz de responsividade e para conferir de olho. `?screen=tutor:<etapa>` fixa a
+  // etapa e o degrau de ajuda no hudStore, sem precisar jogar até lá — o molde é `dead:<estilo>`.
+  else if (s === "tutor" || s.startsWith("tutor:")) { if (import.meta.env.DEV) tutorDemo(s.slice(6)); }
   else if (s === "reconn") { play({}); setTimeout(() => setReconn(true, 2), 400); }
   else if (s === "dead" || s.startsWith("dead:") || s === "round" || s.startsWith("round:")) {
     if (!import.meta.env.DEV) return;
@@ -737,6 +778,46 @@ async function entraNaSala({ room, mode, teamSize, party, semAnuncio } = {}) {
   // é o `screen:"game"` escrito logo acima que o abre — sozinho, uma vez, e depois do anúncio. Chamá-lo
   // à mão também aqui não quebra (a fachada é idempotente), mas cria uma segunda verdade sobre "estou
   // jogando" que diverge no primeiro caminho novo — foi exatamente assim que a MORTE ficou sem `stop`.
+}
+/**
+ * O TUTORIAL DE ESTREIA. Irmão de `assistir()`, e o que o separa de `play()` é o que ele NÃO é:
+ * · **não passa por `semNome()`** — quem está aprendendo a mover um planeta não precisa nomeá-lo antes;
+ * · **não chama `portal.anuncio()`** — um comercial antes do primeiro frame de quem nunca jogou é
+ *   exatamente o que a CrazyGames proíbe por escrito, e a Poki recusa `commercialBreak` antes do
+ *   primeiro `gameplayStart`, que ainda nem aconteceu;
+ * · **não chama `api.auto`** — não há sala; o mundo roda na própria página (`game/net/tutorServer.js`);
+ * · **não escreve `played`**, e esta é a linha que mais parece detalhe e menos é. Com `played:true` o
+ *   `play()` do FIM do tutorial pediria MIDROLL — e `pedagioLiberado` (0 mortes) o bloquearia, então o
+ *   jogador entraria na primeira partida sem anúncio nenhum, contra a §2.1 da GameDistribution. Falso,
+ *   sai o PREROLL, e ele cai no melhor lugar possível: depois de a pessoa já ter gostado do jogo.
+ *
+ * ⚠️ A MARCA É GRAVADA AQUI, na abertura — nunca no fim. Uma tela de estreia que reaparece a cada F5 (ou
+ * a cada erro de JS no meio dela) é a pior falha possível desta feature; o preço de errar para o outro
+ * lado é perder 40 s de tutorial num reload. É uma tentativa por pessoa.
+ */
+export function entraNoTutorial() {
+  levelUpFila = null; cancelaTelaMorte(); marcaTutor(); marco("tutor_start");
+  app.update(s => ({ ...s, screen: "game", interrompido: false, rewards: null, rewardsPending: false, roundPronto: false,
+    overlays: { account: false, reconn: false, pause: false }, conn: "connecting", pendingPlay: null,
+    pendingJoin: { room: null, mode: MODE.FREE, teamSize: 1, party: null, tutorial: true, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
+}
+/**
+ * SAIR DO TUTORIAL — pular e terminar são a MESMA saída (entrar numa sala de verdade) e diferem em uma
+ * coisa só, que é uma decisão de produto e não de código:
+ *
+ * ⚠️ **CONCLUIR marca a missão como feita; PULAR não.** Quem concluiu já aprendeu a comer, a atirar e a
+ * dividir, e entra na primeira vida direto na etapa 3 (a dica do dividir). Quem pulou não aprendeu nada e
+ * precisa da faixa inteira no rodapé. Sem esta linha o cruzamento acontece sozinho e **para o lado
+ * errado**: `game.leave()` chama `fimDaVida()` sempre que havia partida, e sair daqui passa por `play()`
+ * → `game.join()` → `leave(true)`. O default do código é punir quem pulou.
+ * ⚠️ E a saída passa por `play()` inteiro, que é a porta única do anúncio de portal, do `api.auto`, do
+ * `partidaIniciada` do GA e do `connect/match` do funil. `game.join()` chama `game.leave(true)` na
+ * primeira linha, que faz `local.stop()` — o servidor do tutorial morre sozinho.
+ */
+export function saiDoTutorial({ fim = false } = {}) {
+  marcaTutor();
+  if (fim) { marcaMissao(); marco("tutor_done"); } else marco("tutor_skip");
+  return play({ mode: MODE.FREE, teamSize: 1, party: null });
 }
 /**
  * ASSISTIR a uma sala em andamento. É o irmão de `play()`, e o que o separa dele é o que assistir NÃO é:

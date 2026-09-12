@@ -69,6 +69,22 @@ export const api = {
   /** null até o bootstrap; depois true (servidor respondeu) ou false (modo offline). */
   online: null,   // serviço de contas (banco) disponível?
   server: null,   // servidor de jogo alcançável (/api/config)?
+  /**
+   * O CORPO do `/api/config` da sonda de `bootstrap()`, guardado em vez de jogado fora.
+   *
+   * ⚠️ Ele existe por causa de uma CORRIDA: `loadConfig()` é disparado SEM `await` no boot
+   * (state/actions.js) e a decisão de PARA ONDE O BOOT VAI acontece nas linhas seguintes — quando o
+   * tutorial de estreia precisa saber se esta plataforma está marcada, `app.config` ainda é `null`. Foi
+   * essa mesma corrida que tirou `ENTRY.NICK_AUTO` do config e o mandou para `GET /api/nick`
+   * (shared/src/tunables.js), e o truque que salva o `ENTRA_DIRETO` ("lido DENTRO do clique") não serve
+   * aqui: o tutorial é a decisão do boot, não há clique onde adiar a leitura.
+   * ⚠️ E não custa uma requisição nova: a sonda logo abaixo JÁ pede esta rota, JÁ é `await`ada dentro do
+   * `bootstrap()` — que por sua vez é `await`ado pelo `boot()` — e JÁ descartava a resposta. O que muda é
+   * uma atribuição. `loadConfig()` continua onde está, para o `checaVersao` e para o resto da sessão.
+   * ⚠️ `null` = a sonda não chegou a responder (servidor fora, boot que falhou). Quem lê tem que tratar
+   * isso como "não sei", nunca como "vazio".
+   */
+  cfg: null,
   get token() { return getToken(); },
   /**
    * Adota um Bearer que veio de FORA (hoje: o save na nuvem do Playgama, client/src/portal/pg.js).
@@ -88,7 +104,10 @@ export const api = {
       // aviso da tela era "servidor sem banco" — mentira, o servidor inteiro estava fora. Quem já tinha
       // token via a outra metade do defeito: caía em modo local sem que nada dissesse por quê. Custa
       // zero: `loadConfig()` pede a MESMA rota logo depois.
-      try { await request("GET", "/api/config", undefined, { auth: false }); api.server = true; } catch { api.server = false; }
+      // ⚠️ A RESPOSTA É GUARDADA (`api.cfg`), e não jogada fora: é ela que põe o parâmetro do tutorial de
+      // estreia em mãos ANTES de `destinoDoBoot`, sem uma requisição a mais. Ver o campo lá em cima.
+      try { api.cfg = await request("GET", "/api/config", undefined, { auth: false }); api.server = true; }
+      catch { api.server = false; }
       let me = null;
       if (getToken()) {
         try { me = await request("GET", "/api/me"); }

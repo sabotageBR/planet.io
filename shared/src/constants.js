@@ -469,6 +469,23 @@ export const ENTRY={NICK_AUTO:true,
   // O padrão reproduz o que a constante de build fazia: todos os portais, e não o site.
   DIRETO:'poki,crazy,gd,y8,gm,gamepix,playgama,gameflare,itch'};
 /**
+ * ONDE A TELA DE ESTREIA (o tutorial de 3 etapas) APARECE.
+ *
+ * Mesmo mecanismo de `ENTRY.DIRETO`, e pelo mesmo motivo: a LISTA vem do servidor (por `/api/config`) e
+ * quem COMPARA com o `PORTAL_ID` é o CLIENTE — o servidor não sabe de que portal veio a aba, porque
+ * `users.origin` é gravado UMA vez, é um DOMÍNIO, e vários portais servem de subdomínio por jogo.
+ *
+ * ⚠️ O padrão é VAZIO (ninguém), e isso é a regra de todo tunable: o padrão reproduz o comportamento de
+ * HOJE, que é não haver tutorial em lugar nenhum. O dono liga plataforma por plataforma no painel, sem
+ * deploy — que foi o pedido literal.
+ * ⚠️ Escopo 'server' e NÃO 'wire': a decisão vale ANTES de existir sala, então o JSON `room` chegaria
+ * tarde demais. É o mesmo argumento já escrito para `ENTRY_PANELS` e `ENTRY.DIRETO`.
+ * ⚠️ SEM A LISTA, NÃO MOSTRA — ao contrário do `ENTRY.DIRETO`, que cai no padrão de build. Aqui o padrão
+ * de build é "não existe tutorial", e o erro para o lado seguro é claro: um jogador sem tutorial joga;
+ * um jogador preso num tutorial que não consegue terminar, não.
+ */
+export const TUTORIAL={PLATAFORMAS:''};
+/**
  * Minutos escolhidos pelo dono da sala → ticks de rodada. UM lugar, porque a rota, a tela e os testes têm
  * que concordar — e porque "nada de `if (modo === …)` espalhado" é regra escrita de docs/design/modos.md.
  * Devolve `0` para SEM FIM e `null` quando a escolha não vale para o modo.

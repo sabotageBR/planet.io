@@ -27,7 +27,7 @@
 // ⚠️ `ENTRY_PANELS` é 'server' pelo mesmo motivo de `ROOM.MAX`: o servidor decide, e `/api/config` ecoa
 // o valor só para a tela poder desenhar antes de existir sala — não é física, não precisa de `wire`.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,BR,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,SPLIT,ENTRY_PANELS,ENTRY,FEED,PLATAFORMAS} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,BR,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,SPLIT,ENTRY_PANELS,ENTRY,TUTORIAL,FEED,PLATAFORMAS} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt'|'bool'|'multi',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],onLabel?:string,offLabel?:string,def:any,
@@ -457,6 +457,14 @@ export const TUNABLES=[
   // O primeiro tunable de MÚLTIPLA ESCOLHA do projeto — ver a fábrica `multi` lá em cima.
   multi('entrada','ENTRY.DIRETO','Entrar direto na partida (pular a guarda do nome) nestas plataformas',
     'server',PLATAFORMAS,ENTRY,'DIRETO'),
+  // ── O TUTORIAL DE ESTREIA ──
+  // Ver o comentário de `TUTORIAL` em constants.js. Nasce VAZIO: o padrão de um tunable reproduz o
+  // comportamento de hoje, e hoje não há tutorial em lugar nenhum. Marcar uma plataforma o liga lá, e
+  // só lá — inclusive `site`, que é o pedido de "incluindo a web".
+  // ⚠️ Mesmo escopo e mesmo canal do `ENTRY.DIRETO` logo acima, pelo mesmo motivo: a decisão vale antes
+  // de existir sala. Quem compara com a plataforma desta aba é o cliente (`tutorialEm` em portal/flags.js).
+  multi('entrada','TUTORIAL.PLATAFORMAS','Mostrar o tutorial de estreia nestas plataformas',
+    'server',PLATAFORMAS,TUTORIAL,'PLATAFORMAS'),
   // ── HUD E AVISOS ──
   // Os dois são 'wire' e não 'server'+/api/config: o feed e o card de convite só existem DENTRO de uma
   // partida, e o JSON `room` chega antes de qualquer snapshot. O molde do `entryPanels` existe porque a

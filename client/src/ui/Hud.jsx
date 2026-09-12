@@ -21,6 +21,7 @@ import BrInvite from "./BrInvite.jsx";
 import { ZoneWarnBanner, ZoneAlarmFlash } from "./ZoneAlert.jsx";
 import IdleWarn from "./IdleWarn.jsx";
 import DicaSplit from "./DicaSplit.jsx";
+import Tutor from "./Tutor.jsx";
 import { MODE, weaponOf, POWERUP, TICK_HZ, flagOf } from "@warspace/shared";
 import { keysOf } from "../game/input/Keyboard.js";   // a legenda tem que dizer a tecla que está DE FATO ligada (inclusive a do desempate de colisão)
 import { SEM_MENU } from "../portal/flags.js";
@@ -234,6 +235,7 @@ export default function Hud() {
     </div> : null}
     <ZoneWarnBanner w={h.zoneWarn} />
     <DicaSplit d={h.dica} tecla={kSplit} />
+    <Tutor d={h.tutor} tecla={kSplit} />
     <BrLobby lobby={h.lobby} />
     <CageStart c={h.cage} />
     <Notice n={h.notice} />

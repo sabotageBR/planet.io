@@ -41,6 +41,7 @@ const RAIZES_WIRE={CAM,ZOOM,STAR,ROUND,SPLIT,FEED,BR,MISSILE};
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
+import {OPCOES_TUTORIAL,criaRoteiro} from "./net/tutorServer.js";
 import {createMic} from "../audio/mic.js";
 import {SEM_VOZ} from "../portal/flags.js";
 import {createSnapshotBuffer} from "./state/SnapshotBuffer.js";
@@ -48,6 +49,7 @@ import {createInterpolator} from "./state/Interpolator.js";
 import {createPredictor} from "./state/Predictor.js";
 import {createWorldView} from "./state/WorldView.js";
 import {passoDica,temPresa,temComivel,passoMissao,ETAPA,DICA0,MISSAO0,MISSAO_VETERANO} from "./dica.js";
+import {missaoFeita,marcaMissao} from "./estreia.js";
 
 // ── A MISSÃO SÓ VALE NA PRIMEIRA VIDA DA SESSÃO ──────────────────────────────
 // O pedido é o OPOSTO do que `dicaEst` faz: ela zera a cada vida (join/leave/`{t:"alive"}`) justamente
@@ -62,10 +64,10 @@ import {passoDica,temPresa,temComivel,passoMissao,ETAPA,DICA0,MISSAO0,MISSAO_VET
 // ⚠️ O veterano entra na ETAPA 3, nunca em "fim": as etapas 1 e 2 ensinam o óbvio para quem já viveu, mas
 // a dica do dividir está em produção com dado medido atrás dela (64,6% nunca chegam ao portão) —
 // desligá-la a partir da 2ª vida seria regredir comportamento já medido.
-const MISSAO_KEY="warspace_missao_v1";
-const missaoFeita=()=>{try{return sessionStorage.getItem(MISSAO_KEY)==="1";}catch{return false;}};
+// ⚠️ As DUAS marcas de estreia (o tutorial e a missão) moram em `game/estreia.js`, num lugar só, porque
+// elas se CRUZAM: concluir o tutorial marca a missão como feita, e pular NÃO marca. Ver o cabeçalho de lá.
 const missaoZero=()=>missaoFeita()?MISSAO_VETERANO:MISSAO0;
-const fimDaVida=()=>{try{sessionStorage.setItem(MISSAO_KEY,"1");}catch{/* anônima/opaca: a missão volta */}};
+const fimDaVida=()=>marcaMissao();
 import {createRenderer} from "./renderer/Renderer.js";
 import {createCamera} from "./renderer/Camera.js";
 import {createPointer} from "./input/Pointer.js";
@@ -84,7 +86,7 @@ import {Q,qflag,bodyMode} from "./util.js";
 
 const initialHud=()=>({mass:0,score:0,rank:0,coins:null,ammo:0,powerups:{magnet:0,shield:0,autodef:0,zoom:0,feast:0},splitCd:0,splitOff:false,ejectCd:0,lb:[],room:null,ping:0,fps:0,dead:false,clock:null,
   mode:MODE.FREE,teamSize:1,team:-1,phase:"live",startsInMs:0,alive:0,weapon:0,zoneHurt:false,talk:null,chat:[],feed:[],map:"",notice:null,zoom:null,host:null,
-  brInvite:null,zoneWarn:null,zoneAlarmAt:0,deadAt:0,armAt:0,idle:null,cage:null});   // `cage` = a contagem 3·2·1 da gaiola de largada; sem ele aqui, o primeiro render leria `undefined`
+  brInvite:null,zoneWarn:null,zoneAlarmAt:0,deadAt:0,armAt:0,idle:null,cage:null,tutor:null});   // `cage` = a contagem 3·2·1 da gaiola de largada; sem ele aqui, o primeiro render leria `undefined` (e `tutor` pelo mesmo motivo)
 const PREF_DEFAULTS={quality:"auto",showNames:true,showGrid:true,showMinimap:true,showFps:true,holdEject:true,rightSplit:true,reduceMotion:false,
   keySplit:"Space",keyEject:"KeyW",
   sound:true,music:false,ambience:true,volume:70};   // som/música/ambiência/volume TÊM que estar aqui: são os mesmos padrões de state/app.js e sem eles o áudio caía num estado que ninguém escreveu
@@ -454,6 +456,13 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // importa. Nasce novato, deixa de ser quando esta mensagem chega. Zero byte de protocolo novo.
     else if(m.t==="grace"){souNovato=false;pushHud(performance.now());
       if(m.why==="time"||m.why==="mass"||m.why==="kill")marco("grace_end_"+m.why);}
+    // O TUTORIAL DE ESTREIA (só o servidor LOCAL manda isto — ver game/net/tutorServer.js). JSON de
+    // controle, então o `PROTOCOL_VERSION` não sobe: o precedente é o próprio `grace` logo acima.
+    // ⚠️ A festa sai DAQUI e não da tela: o efeito e o som moram no motor, e `festa` chega uma vez só
+    // por etapa (o servidor já garante isso — ver `passoTutor`).
+    else if(m.t==="tutor"){tutor=m;pushHud(performance.now());
+      if(m.festa)festeja(m.festa);
+      if(m.fim)celebrate();}
     // CONVITE DE BATTLE ROYALE: só chega em sala do modo Livre (Room.brInvite filtra no servidor).
     // Interativo — fica no hudStore até responder ou o TTL vencer, ao contrário do `notice` passivo.
     else if(m.t==="brStart"){
@@ -760,14 +769,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     showMap(modo){const m=modo===true?"map":(modo||"");const v=joined&&(dead||espectador)?m:"";if(v===mapOn)return;
       mapOn=v;minimap.setView(mapOn,specSlot);aplicaRadar();pushHud(performance.now());},
     toggleMap(modo){const m=modo===true||modo===undefined?"map":(modo||"");game.showMap(mapOn===m?"":m);},
-    join({token,fallbackNick,room,local:useLocal,skinId,mode,teamSize:ts,party,spec=false}={}){
+    join({token,fallbackNick,room,local:useLocal,skinId,mode,teamSize:ts,party,spec=false,tutorial=false}={}){
       // ⚠️ `morte` ZERA AQUI, ao lado do `dead`. Ela não zerava em `join`/`leave` — só o `{t:"alive"}` do
       // respawn na mesma conexão fazia isso —, então toda re-entrada por `play()` (o fallback de
       // `respawnAqui`, o "OUTRA PARTIDA" do BR, a sala nova do BIG CRUNCH) carregava para a vida seguinte
       // um `{deadAt,armAt}` VENCIDO. Ele chegava à tela de morte pelo store com throttle antes do par novo
       // e disparava o respawn no primeiro frame: a tela não aparecia e o jogador reentrava no ato. Ver
       // `ui/deadClock.js`, que fecha o mesmo buraco do outro lado com o piso.
-      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;specSlot=-1;selfTick=0;espectador=!!spec;
+      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;specSlot=-1;selfTick=0;espectador=!!spec;tutor=null;souTutorial=!!tutorial;
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null,spec:!!spec};
@@ -780,9 +789,16 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // continuam funcionando: o que sai é só o automático.
       // ⚠️ `qflag("local")` também sob `!PORTAL`: com ele, um revisor da Poki abrindo `?local=1` jogaria
       // uma partida SÓ DE BOTS, sem servidor, e concluiria que o multiplayer não existe.
-      const isLocal=useLocal||(!PORTAL&&qflag("local"))||isBench()||(api.server===false&&!PORTAL);
+      // ⚠️ `tutorial` entra ANTES da guarda `!PORTAL`, e isso precisa de comentário: o aviso logo acima
+      // ("servidor fora NÃO vira partida local no pacote") continua valendo para o AUTOMÁTICO, que é o
+      // caso enganoso — o jogador clicou num .io e cairia calado num single-player. Aqui a partida local
+      // é DELIBERADA, anunciada na tela e termina entrando numa sala de verdade. É o único single-player
+      // permitido no zip, e é justamente no pacote que ele mais importa.
+      const isLocal=useLocal||tutorial||(!PORTAL&&qflag("local"))||isBench()||(api.server===false&&!PORTAL);
       if(isLocal){const rs=+(Q.get("round")||0);   // ?round=<segundos> encurta a rodada local (dev)
-        local=createLocalServer(isBench()?benchOptions():{lag:+(Q.get("lag")||0),seed:+(Q.get("seed")||7),...(rs>0?{roundTicks:Math.round(rs*TICK_HZ)}:{})});connectWith(()=>local.connect());return;}
+        local=createLocalServer(isBench()?benchOptions()
+          :tutorial?{...OPCOES_TUTORIAL,roteiro:criaRoteiro()}
+          :{lag:+(Q.get("lag")||0),seed:+(Q.get("seed")||7),...(rs>0?{roundTicks:Math.round(rs*TICK_HZ)}:{})});connectWith(()=>local.connect());return;}
       staleTries=0;conectaAoServidor();},
     // sair é DELIBERADO: avisa o servidor antes de fechar. Sem o `quit`, o `close` do socket é
     // indistinguível de uma queda de rede — a sessão fica em graça por NET.RESUME_MS segurando o slot, e
@@ -792,8 +808,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // ⚠️ `was` é obrigatório aqui: `join()` chama `game.leave(true)` na PRIMEIRA linha, e sem a guarda a
       // própria entrada marcaria a sessão como "já viveu uma vida" — a missão nunca apareceria para
       // ninguém, em silêncio.
-      if(joined)fimDaVida();
-      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;espectador=false;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
+      if(joined&&!souTutorial)fimDaVida();
+      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;espectador=false;tutor=null;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -1020,6 +1036,29 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     }
     setTimeout(()=>{if(joined)audio.play("podium",{mine:true});},600);}
 
+  /**
+   * A FESTA PEQUENA: a estrela com "BOA!" saindo do próprio planeta, e o bipe.
+   *
+   * Extraída porque agora tem DOIS chamadores — a missão de sessão 0 (`passoMissao`) e o tutorial de
+   * estreia. Duas cópias divergem na primeira correção, e esta já vinha com três cuidados escritos que
+   * ninguém quer repetir de memória:
+   * ⚠️ `combo` e não `firework`: aquele é a estrela com texto que já existe nos TRÊS temas e já aceita
+   * `f.text` do i18n; o firework dura 2,5 s e é o vocabulário exclusivo da VITÓRIA (`celebrate`). Gastá-lo
+   * a cada etapa faz dele papel de parede.
+   * ⚠️ `audio.play` e não `sfx()`: este é o motor, e `sfx` é o helper das telas React (outra instância).
+   * O `achievement` é descrito no kit como "a irmã menor do levelUp", feita para não virar fanfarra.
+   * ⚠️ A ESCADA (pentatônica) faz N bipes separados lerem como UM arco subindo — é ela que transforma
+   * três etapas em uma progressão, e não em três avisos iguais.
+   * ⚠️ `me` opcional: o tutorial chama sem peça em mão (a festa sai do centro da câmera), a missão passa
+   * a maior peça própria.
+   * @param {number} n 1..3 — o degrau da escada @param {{x:number,y:number,r:number}|null} [me]
+   */
+  function festeja(n,me=null){
+    if(!renderer)return;
+    const p=me||{x:cam.x,y:cam.y,r:60},L=getLabels().fx||{};
+    renderer.fx.add("combo",{x:p.x,y:p.y,r:p.r,n:1,text:L.missao||"BOA!"},0);
+    audio.play("achievement",{mine:true,pitch:ESCADA[Math.min(Math.max(n,1)-1,ESCADA.length-1)]});}
+
   // ── HUD (8 Hz) ──
   function pushHud(now){const s=view.self,tk=buffer.tickAt(now),el=Math.max(0,tk-selfTick);
     const cd=(v,max)=>s?Math.min(1,Math.max(0,(v-el)/max)):0,sec=v=>s?Math.max(0,(v-el)/TICK_HZ):0;
@@ -1063,7 +1102,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // ⚠️ ...e `souNovato` entra no MESMO `pode` pelo mesmo motivo: sob a graça o servidor RECUSA o
       // split (`rules.applySplit`), e ensinar um comando que não funciona é pior que não ensinar. A
       // etapa 3 espera a graça acabar — que é quando o botão volta e a lição passa a valer.
-      const passo=passoMissao(missaoEst,{vivo:!!me,comidas,comeuAlguem,comivel,pode:!!me&&!dividiu&&!souNovato,presa},now);
+      // ⚠️ COM O TUTORIAL NO AR A MISSÃO NÃO EXISTE. Duas faixas de instrução ao mesmo tempo é
+      // exatamente o que a invariante de `passoMissao` (uma `banda` string só) existe para impedir — e
+      // aqui elas ensinariam a mesma coisa, uma por cima da outra.
+      const passo=tutor?{est:missaoEst,banda:"",festa:0}
+        :passoMissao(missaoEst,{vivo:!!me,comidas,comeuAlguem,comivel,pode:!!me&&!dividiu&&!souNovato,presa},now);
       missaoEst=passo.est;festa=passo.festa;
       if(passo.banda)dica={id:passo.banda,at:missaoEst.desde,dedo};
       // ⚠️ A FESTA SAI UMA VEZ por construção: `festa` só é diferente de zero no tick em que a etapa
@@ -1073,9 +1116,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // ⚠️ `audio.play` e não `sfx()`: este é o motor, e `sfx` é o helper das telas React (outra instância).
       // `achievement` já está no kit e é descrito lá como "a irmã menor do levelUp" — feita para não
       // virar fanfarra repetida.
-      if(festa&&me&&renderer){const L=getLabels().fx||{};
-        renderer.fx.add("combo",{x:me.x,y:me.y,r:me.r,n:1,text:L.missao||"BOA!"},0);
-        audio.play("achievement",{mine:true,pitch:ESCADA[Math.min(festa-1,ESCADA.length-1)]});}}
+      if(festa)festeja(festa,me);}
     hudStore.set({mass:s?s.mass:0,score:s?s.score:0,rank:s&&s.rank?s.rank:view.myRank(),coins:null,ammo:s?s.missiles:0,fireCd:sec(s?s.fireCd:0),
       powerups:{magnet:sec(s?s.magnetT:0),shield:s?s.shieldLv|0:0,autodef:s?s.autoDefN|0:0,zoom:sec(s?s.zoomT:0),feast:sec(s?s.feastT:0)},splitCd:cd(s?s.splitCd:0,SPLIT.COOLDOWN_TICKS),splitOff:souNovato,ejectCd:cd(s?s.ejectCd:0,EJECT.COOLDOWN_TICKS),
       lb:view.lb,room:view.room,ping:conn?Math.round(conn.rttAvg):0,fps,dead,map:mapOn,clock:roundClock,
@@ -1085,6 +1126,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       zoom:zoomF===1?null:{pct:Math.round((zoomF-1)*100),fresh:now-zoomAt<1500},
       host:souDono?{private:salaPrivada,roster:painel?painel.roster:[],bans:painel?painel.bans:[]}:null,
       mode:modeId,teamSize,team:myTeam,phase,cap:roomCap,
+      // ⚠️ DENTRO do literal do `set`, nunca por `hudStore.update` depois: o `set` troca o objeto inteiro
+      // a 8 Hz e apagaria o campo. É a mesma armadilha já documentada para `cage`, `brInvite` e `idle`.
+      tutor:tutor?{...tutor,dedo}:null,
       lobby:lobby?{...lobby,
         // o servidor manda a 2 Hz; aqui o número desce liso, descontando o tempo desde que a mensagem chegou
         startsInMs:lobby.startsInMs?Math.max(0,lobby.startsInMs-(now-lobby.at)):0,
@@ -1137,6 +1181,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // nos MESMOS pontos que `morte`/`brMudo` (join/leave e `{t:"alive"}`), senão a vida seguinte herda
   // o estado da anterior e a dica nunca mais aparece. Ver game/dica.js.
   let dividiu=false,dicaEst=DICA0,comidas=0,comeuAlguem=false,missaoEst=missaoZero();
+  let tutor=null;   // o estado do TUTORIAL DE ESTREIA, vindo do `{t:"tutor"}` do servidor local
+  // ⚠️ **O TUTORIAL NÃO É UMA VIDA, e sem esta flag ele marca a missão de sessão 0 sozinho — para o lado
+  // errado.** `leave()` chama `fimDaVida()` sempre que havia partida, e SAIR do tutorial passa por
+  // `play()` → `game.join()` → `leave(true)`. Ou seja: quem PULOU — que é justamente quem não aprendeu
+  // nada — entrava na primeira vida real com a missão já dada por vista, sem "coma as partículas" nem
+  // "coma o planeta pequeno" no rodapé. Medido em bancada antes de virar este comentário.
+  // Quem decide a marca é `saiDoTutorial` (concluir marca, pular não); o motor só não decide por ele.
+  let souTutorial=false;
   // ⚠️ ESTOU SOB A GRAÇA DO NASCIMENTO? Nasce `true` e só o servidor o apaga, pelo `{t:"grace"}` — ver
   // o handler daquela mensagem. É ele que trava o DIVIDIR na tela enquanto o servidor o recusa.
   let souNovato=true;

@@ -9,16 +9,27 @@ import {createWriter,encodeSnapshot,encodePlayers,encodeLeaderboard,encodeEvent,
   WORLD,TICK_HZ,DT,SNAPSHOT_EVERY,LEADERBOARD_EVERY,ROOM,ROUND,PLAYER,BOT,botNick,botSpawnR,NET,BLACKHOLE,MISSILE,SKINS,FOOD,STAR,POWERUP,
   focusOf,zoomFor,viewRect,rectHas,aoiScaleFood,clampZoom,ZOOM,qPos,qR,qV,createRng,SCORE_COINS,clamp,packDir,FEED} from "@warspace/shared";
 import {createWorld,applySplit,incomingMissile,firstLive} from "@warspace/shared/physics/index.js";
-import {ammoOf,ownedMask} from "@warspace/shared/physics/rules.js";
+import {ammoOf,ownedMask,sobGraca} from "@warspace/shared/physics/rules.js";
 import {BotBrain} from "@warspace/shared/bot.js";
 const ARMA=["missile","burst","cluster","nova"];   // WEAPON.* → a chave do kill feed (a mesma tabela do Sim)
 const ZOOM_GRACE_TICKS=15;   // idem server/src/net/snapshot.js: a AOI larga sobrevive um pouco à expiração do powerup (ela pode sobrar, nunca faltar)
 
 const seqNewer=(a,b)=>b<0||(((a-b)&0xFFFF)>0&&((a-b)&0xFFFF)<0x8000);
-export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=FOOD.COUNT,code="0LOC",roundTicks=ROUND.TICKS}={}){
-  const w=createWorld({seed,food:bench?Math.max(food,1800):food,holes:BLACKHOLE.COUNT});
+const GRACE_EVERY=15;   // idem server/src/sim/Sim.js: a graça é conferida a 4 Hz, não a 60
+/**
+ * @param {object} [o]
+ * @param {object|null} [o.mundo]   repassado ao `createWorld` (`asteroids`, `stars`, `holes`, `decay`).
+ *   ⚠️ Sem ele `stars`/`asteroids` caem nos DEFAULTS e vêm 19 estrelas e 58 asteroides — eles nunca foram
+ *   repassados, e é por isso que não havia como pedir um mundo VAZIO aqui.
+ * @param {object|null} [o.roteiro] o diretor do tutorial de estreia (`game/net/tutorServer.js`), com
+ *   `nasce(w,slot,api)` e `passo(w,api)`. O LocalServer NÃO conhece tutorial nenhum: ele só chama os dois
+ *   ganchos. Com `null`, tudo aqui se comporta byte a byte como antes.
+ */
+export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=FOOD.COUNT,code="0LOC",roundTicks=ROUND.TICKS,mundo=null,roteiro=null}={}){
+  const w=createWorld({seed,food:bench?Math.max(food,1800):food,holes:BLACKHOLE.COUNT,...(mundo||{})});
   const rng=createRng(seed*7+1),writer=createWriter(1<<16),meta=new Map(),sessions=new Set(),brains=new Map();
   const nicksUsados=new Set();   // o gerador de apelidos não repete nome na mesma sala
+  const souGraca=new Set();      // slots HUMANOS sob a graça do nascimento — ver graceTick()
   let nextSlot=0,timer=0,acc=0,last=0,playersDirty=true,running=false,over=false;   // over: a rodada acabou (mundo explodido)
   const reasonMap=new Map();
   // ── bots ── (mesmo cérebro do servidor: shared/src/bot.js)
@@ -55,7 +66,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
   const sendJson=(sock,o)=>deliver(sock,JSON.stringify(o));
   const sendBin=(sock,u8)=>deliver(sock,u8.slice().buffer);
   function sessOf(sock){for(const s of sessions)if(s.sock===sock)return s;return null;}
-  function drop(sock){const s=sessOf(sock);if(!s)return;sessions.delete(s);if(s.slot>=0){w.removePlayer(s.slot);meta.delete(s.slot);playersDirty=true;}if(!sessions.size)stopLoop();}
+  function drop(sock){const s=sessOf(sock);if(!s)return;sessions.delete(s);if(s.slot>=0){w.removePlayer(s.slot);meta.delete(s.slot);souGraca.delete(s.slot);playersDirty=true;}if(!sessions.size)stopLoop();}
   function recv(sock,d){const s=sessOf(sock);
     if(typeof d==="string"){let m=null;try{m=JSON.parse(d);}catch{return;}
       if(m.t==="join"||m.t==="resume"){let sess=s;
@@ -84,12 +95,31 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     if(inp.flags&INPUT_FLAG.SPLIT)w.requestSplit(s.slot);if(inp.flags&INPUT_FLAG.EJECT)w.requestEject(s.slot);if(inp.flags&INPUT_FLAG.FIRE)w.requestFire(s.slot,!!(inp.flags&INPUT_FLAG.AIM));
     w.setEjectHold(s.slot,!!(inp.flags&INPUT_FLAG.EJECT_HOLD));}
   function spawn(sess){const slot=sess.slot;meta.set(slot,{slot,name:sess.name,skinId:sess.skinId,isBot:false,registered:false});sess.dead=false;sess.specSlot=-1;sess.kills=0;sess.maxMass=0;sess.startTick=w.tick;
+    souGraca.add(slot);   // vida nova = graça nova (`_spawnPiece` reescreve `graceUntil` a cada nascimento)
     if(bench){const x=w.w/2,y=w.h/2;w.addPlayer(slot,{x,y,r:190,missiles:3});const ps=w.players.get(slot);ps.tx=x+300;ps.ty=y+120;
       for(let i=0;i<3;i++)applySplit(w,ps);ps.splitCdUntil=0;
       let i=0;for(const b of brains.keys()){const a=i/brains.size*6.283,d=900+(i%3)*400;const bp=w.players.get(b);if(bp)w.respawnPlayer(b,{x:x+Math.cos(a)*d,y:y+Math.sin(a)*d,r:40+(i%4)*12});i++;}
       w.holes.forEach((h,j)=>{h.x=x+Math.cos(j*2.1)*1100;h.y=y+Math.sin(j*2.1)*900;h.type=1;h.k=1;h.life=w.tick+5000;});
       w.asteroids.forEach((a,j)=>{if(j%2)return;a.x=x+Math.cos(j*.7)*(500+j*40);a.y=y+Math.sin(j*.7)*(400+j*30);});}
+    else if(roteiro)roteiro.nasce(w,slot,API);
     else w.addPlayer(slot,{missiles:0});playersDirty=true;}
+  /**
+   * O QUE O ROTEIRO PODE PEDIR — três métodos, todos montados com o que já existe neste arquivo.
+   *
+   * ⚠️ `alvo()` é o `addBot` SEM CÉREBRO: a peça não recebe `setTarget`, `d²≈0` em `integratePiece` e ela
+   * fica PARADA. É literalmente "o planeta do lado" que o tutorial precisa — e ela nasce `isBot:true`
+   * porque `recemChegado` só protege quem NÃO é bot; como sessão humana falsa o jogador atravessaria o
+   * alvo sem comer, em silêncio.
+   * ⚠️ `json()` difunde JSON de CONTROLE, que não versiona o fio binário (o precedente é o `{t:"talk"}`).
+   */
+  const API={
+    json:o=>{for(const s of sessions)if(s.slot>=0)sendJson(s.sock,o);},
+    alvo({x,y,r,name="",skinId=0,missiles=0}){const slot=nextSlot++;
+      w.addPlayer(slot,{x,y,r,isBot:true,missiles});
+      meta.set(slot,{slot,name:name||botNick(rng,nicksUsados),skinId,level:0,isBot:true,registered:false});
+      playersDirty=true;return slot;},
+    tiraAlvo(slot){w.removePlayer(slot);meta.delete(slot);playersDirty=true;},
+  };
   function playerList(){const out=[];for(const [slot,m] of meta){const ps=w.players.get(slot);out.push({slot,flags:(m.isBot?PLAYER_FLAG.BOT:0)|(ps&&!ps.alive?PLAYER_FLAG.DEAD:0)|(m.registered?PLAYER_FLAG.REG:0),skinId:m.skinId,team:NO_TEAM,level:m.level|0,name:m.name,score:ps?ps.score:0});}return out;}   // `?local=1` é só Livre: ninguém tem equipe
   // ── passo ──
   function start(){if(running)return;running=true;last=performance.now();acc=0;timer=setInterval(loop,8);}
@@ -103,6 +133,32 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     for(const s of sessions)if(s.slot>=0&&!board.some(b=>b.slot===s.slot))board.push({slot:s.slot,name:s.name,mass:0,score:0,kills:s.kills,isBot:false,registered:false,skinId:s.skinId});
     const msg={t:"roundEnd",code,champion:board[0]||null,board:board.slice(0,20),nextInMs:ROUND.BREAK_MS,tick:w.tick};
     for(const s of sessions)if(s.slot>=0)sendJson(s.sock,msg);}
+  /**
+   * A GRAÇA DO NASCIMENTO ACABOU — e o cliente PRECISA saber (espelho de `Sim._graceTick`).
+   *
+   * ⚠️ **ISTO ERA UM DEFEITO REAL, e nada o acusava: NINGUÉM CONSEGUIA DIVIDIR NO `?local=1`.**
+   * `souNovato` (game/index.js) nasce `true` e o ÚNICO apagador dele é esta mensagem. Sem ela:
+   *   · `act()` engole todo comando de dividir antes de virar flag de INPUT — tecla e botão de toque;
+   *   · `hudStore.splitOff` esconde o `#t-split`, então no dedo o botão nem existe;
+   *   · `passoMissao` nunca chega à etapa 3, e a dica do dividir não aparece para ninguém.
+   * O servidor de verdade manda desde sempre (`Room.js`, do `sim.on('grace')`); o servidor local, não —
+   * e o cabeçalho deste arquivo já avisa que é exatamente assim que o offline diverge em silêncio.
+   *
+   * ⚠️ A 4 Hz e não a 60 (`GRACE_EVERY`), pelo mesmo motivo de lá: `sobGraca` chama `massOf`, que percorre
+   * as peças, e 250 ms de imprecisão num evento que só troca um booleano de UI não muda nada. O laço só
+   * existe enquanto há alguém sob graça.
+   * ⚠️ A ordem das perguntas É a ordem de precedência, idêntica à do servidor: `eatPiece` ZERA o campo,
+   * então zero só pode ser abate; ainda no futuro com a graça vencida só pode ser massa; o resto é o
+   * relógio. Apagar do Set durante o `for...of` é seguro.
+   */
+  function graceTick(){
+    for(const slot of souGraca){
+      const ps=w.players.get(slot);
+      if(!ps||!ps.alive){souGraca.delete(slot);continue;}
+      if(sobGraca(w,ps))continue;
+      souGraca.delete(slot);
+      const why=!ps.graceUntil?'kill':ps.graceUntil>w.tick?'mass':'time';
+      for(const s of sessions)if(s.slot===slot)sendJson(s.sock,{t:"grace",why});}}
   // ── KILL FEED (espelho do servidor) ──
   // Sem isto o modo offline diverge EM SILÊNCIO: o `switch` abaixo não tem `default`, então tipo de evento
   // desconhecido é ignorado sem erro — é exatamente assim que o `botInput` já divergiu uma vez.
@@ -113,8 +169,15 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
   const flushFeed=()=>{if(!feed.length)return;const v=feed.slice(-FEED.MAX_PER_FLUSH);feed.length=0;
     for(const s of sessions)if(s.slot>=0)sendJson(s.sock,{t:"feed",v,at:Date.now()});};
   let feedLider=-1,feedCrunch=0;
-  function step(){if(over)return;if(w.tick>=roundTicks)return endRound();
+  function step(){if(over)return;
+    // `roundTicks:0` = SEM FIM. É o mesmo sentido que `ROUND.TICKS=0` já tem no servidor e no cliente (o
+    // `roundTick` de lá devolve `roundClock=null` e o chip do relógio nem aparece), e é o que o tutorial
+    // usa: ele acaba pelo roteiro, nunca por tempo.
+    if(roundTicks>0&&w.tick>=roundTicks)return endRound();
     for(const b of brains.values())b.act(w.tick);w.step();
+    // ⚠️ DEPOIS do `w.step()`, e isso não é gosto: `world.js` zera `w.events` na ABERTURA do passo, então
+    // este é o único ponto em que o roteiro enxerga o que aconteceu no tick (a supernova, o BOOM, o EAT).
+    if(roteiro)roteiro.passo(w,API);
     reasonMap.clear();const tick=w.tick;
     for(const ev of w.events){let e=null;
       switch(ev.type){
@@ -163,6 +226,7 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
           e={kind:EVENT.DEATH,x:0,y:0,r:0,slotA:ev.slot,slotB:ev.bySlot<0?0:ev.bySlot,extra:0};break;}}
       if(e){const u8=encodeEvent(writer,e);
         for(const s of sessions)if(s.slot>=0&&(e.kind===EVENT.DEATH||e.slotA===s.slot||e.slotB===s.slot||!s.aoi||rectHas(s.aoi,e.x,e.y,e.r*3+200)))sendBin(s.sock,u8);}}   // o que é sobre mim sempre chega (ver Room.flushEvents)
+    if(souGraca.size&&tick%GRACE_EVERY===0)graceTick();
     if(playersDirty){playersDirty=false;const u8=encodePlayers(writer,playerList());for(const s of sessions)if(s.slot>=0)sendBin(s.sock,u8);}
     if(tick%SNAPSHOT_EVERY===0)for(const s of sessions)if(s.slot>=0)snapshot(s);
     if(tick%LEADERBOARD_EVERY===0){const rows=[];   // TODOS os vivos com posição, como o servidor: o HUD corta no top 10 e o radar usa a lista inteira

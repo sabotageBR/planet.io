@@ -2672,3 +2672,93 @@ body[data-mode="landscape"] #hud .dica-split{bottom:96px}
   #morte-flash{animation-duration:.24s}
   @keyframes morte-flash{0%{opacity:.8}100%{opacity:0}}
 }
+
+/* ── O TUTORIAL DE ESTREIA (ui/Tutor.jsx) ──────────────────────────────────────
+   Duas caras: a faixa+barra EM CURSO (sem véu, `pointer-events:none` — o jogador precisa ver e dirigir
+   o planeta o tempo todo, o mesmo argumento do `#cage-start`) e o CARTÃO DE FIM, que é o único momento
+   em que a tela pede uma decisão (aí sim véu, no molde do `#br-lobby`).
+   ⚠️ CSS à mão aqui, nunca nos temas: `theme/<id>/screens.css` e `hud.css` são GERADOS pelo `port.js` e
+   a próxima geração apagaria a mão.
+   ⚠️ Prefixo `tut-`, nunca `ad-*` nem `live-*`: um filtro cosmético de bloqueador de anúncio já apagou a
+   tela inteira do /admin por causa de `ad-wrap`. */
+#tutor{position:absolute;left:0;right:0;top:0;z-index:19;pointer-events:none;
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0;
+  font-family:var(--font-ui,inherit);color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.85)}
+/* ⚠️ A barra tem SUPERFÍCIE PRÓPRIA, e não é enfeite: ela fica por cima do campo de destroços da
+   supernova — dezenas de discos claros —, e sobre eles o "1 de 3" e os segmentos vazios simplesmente
+   somem. Visto na primeira foto de bancada. */
+.tut-topo{display:flex;align-items:center;gap:10px;min-width:0;max-width:min(560px,100%);
+  padding:6px 10px;border-radius:999px;background:rgba(13,11,31,.78);border:2px solid rgba(139,92,255,.55)}
+/* A barra é de SEGMENTOS discretos, um por etapa: preenchimento contínuo dentro da etapa competiria com
+   o instinto de "comer tudo", que é o que a etapa 1 quer que o jogador faça. */
+.tut-bar{display:flex;gap:4px;min-width:0;flex:1 1 auto}
+.tut-bar i{display:block;flex:1 1 0;min-width:18px;height:8px;border-radius:99px;
+  border:2px solid rgba(0,0,0,.45);background:rgba(255,255,255,.22);overflow:hidden;position:relative}
+.tut-bar i.on::after,.tut-bar i.now::after{content:"";position:absolute;inset:0;
+  transform-origin:left center;transform:scaleX(var(--p,1));
+  background:var(--accent,#ffc22e);transition:transform .28s ease}
+.tut-bar i.on{border-color:var(--accent,#ffc22e)}
+/* ⚠️ NENHUM ESTADO VAI SÓ NA COR — o número diz o mesmo que os segmentos. O verde e o âmbar dos tokens
+   ficam com ΔE 6,7 em protanopia (medido), e quem enxerga assim não distingue um do outro. */
+.tut-passo{font-size:.78em;letter-spacing:.1em;opacity:.85;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* O Pular: discreto de propósito e presente do segundo zero. Nunca primário e nunca um ✕ sozinho — um ✕
+   lê como "fechar o jogo". Ele volta a receber ponteiro pela regra genérica de `#hud button`. */
+.tut-sair{padding:6px 12px;border-radius:99px;border:2px solid rgba(255,255,255,.28);
+  background:transparent;color:inherit;font-family:inherit;font-size:.76em;font-weight:bold;
+  letter-spacing:.04em;cursor:pointer;opacity:.6;white-space:nowrap;
+  transition:opacity .15s ease,border-color .15s ease}
+.tut-sair:hover,.tut-sair:focus-visible{opacity:1;border-color:var(--accent,#ffc22e)}
+.tut-fala{max-width:min(40ch,92vw);text-align:center;font-size:1.02em;line-height:1.35;font-weight:bold;
+  padding:8px 16px;border-radius:14px;background:rgba(28,20,64,.82);border:2px solid #8b5cff;
+  animation:tut-entra 240ms ease-out both}
+/* ⚠️ `translate`, NUNCA `transform`: um keyframe terminando em `transform:none` apaga o posicionamento
+   de quem se posiciona por transform, e foi assim que a tela de morte saiu meia janela para fora. */
+@keyframes tut-entra{from{opacity:0;translate:0 -8px}to{opacity:1;translate:0 0}}
+@media (prefers-reduced-motion:reduce){.tut-fala{animation:none}.tut-bar i.on::after,.tut-bar i.now::after{transition:none}}
+body[data-mode="portrait"] #tutor{padding-top:calc(env(safe-area-inset-top,0px) + 8px)}
+body[data-mode="portrait"] .tut-fala{font-size:.92em;padding:7px 12px;max-width:94vw}
+body[data-mode="landscape"] #tutor{padding-top:6px;gap:5px}
+body[data-mode="landscape"] .tut-fala{font-size:.88em;padding:5px 12px}
+/* No dedo o alvo volta a 44 px, como todo botão do HUD. */
+body[data-pointer="coarse"] .tut-sair{min-height:44px;padding:6px 14px}
+
+/* ── O CARTÃO DE FIM ── */
+#tutor-fim{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+  padding:12px;background:color-mix(in srgb,var(--bg,#141026) 68%,transparent);pointer-events:auto}
+.tut-card{display:flex;flex-direction:column;align-items:center;gap:10px;
+  width:min(480px,94vw);max-height:92%;overflow:auto;padding:20px 18px;text-align:center;
+  border-radius:var(--radius-lg,20px);border:3px solid var(--line,#0006);background:var(--surface,#2226);
+  box-shadow:var(--shadow,6px 6px 0 #141026)}
+.tut-fim-tit{font-size:1.35em;font-weight:bold;letter-spacing:.1em;color:var(--accent,#ffc22e);line-height:1.2}
+.tut-ok{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:6px 14px}
+.tut-ok li{font-size:.9em;opacity:.9}
+.tut-ok li::before{content:"✓ ";color:var(--ok,#3ddc5f);font-weight:bold}
+.tut-nota{margin:0;font-size:.82em;opacity:.66;line-height:1.4;max-width:34ch}
+.tut-ganhou{margin:0;font-size:.82em;opacity:.8;color:var(--accent,#ffc22e)}
+/* O botão de entrar é o primário e CARREGA a contagem: ela é promessa, não ameaça — o mesmo botão que
+   espera é o que continua. `min-width` fixo para o segundo que muda não fazer a caixa andar. */
+.tut-ir{width:100%;min-height:46px;font-variant-numeric:tabular-nums}
+body[data-mode="portrait"] .tut-card{gap:8px;padding:16px 14px}
+body[data-mode="landscape"] .tut-card{gap:6px;padding:12px 16px;max-height:96%}
+body[data-mode="landscape"] .tut-fim-tit{font-size:1.1em}
+
+/* Enquanto o tutorial está no ar, o HUD fica só com o que É a lição. Placar, feed, chat e os chips do
+   topo não significam nada para quem ainda não sabe o que é um planeta.
+   ⚠️ `#touch` e `#hud-cd` FICAM — é o OPOSTO da regra da gaiola de largada, e de propósito: lá eles
+   falam de uma partida que ainda não começou; aqui eles são o que se está ensinando. */
+/* ⚠️ O `#hud-top` INTEIRO sai, e não os chips um a um: ele é `position:absolute;top:0` e continuaria
+   ocupando a faixa mesmo com os filhos invisíveis — a matriz pegou isso como `hud-top×tutor` em 18 de 18
+   combinações. Código da sala, relógio, ping e colocação não significam nada para quem ainda não sabe o
+   que é um planeta; a saída do tutorial é o "Pular", o menu continua no Esc e o mudo continua no M. */
+/* ⚠️ `visibility:hidden` e não `opacity:0` como fazem os overlays do Battle Royale, e por duas razões
+   que se somam: ela HERDA (o `opacity` do pai não muda o `getComputedStyle` do filho, e a matriz de
+   responsividade lê o filho — foram 6 falsos positivos de `hud-lb×tutor` até isto virar `visibility`), e
+   ela tira o bloco da árvore de acessibilidade, que é o certo para um placar que ninguém deve ouvir
+   enquanto ainda está aprendendo o que é um planeta. */
+#hud:has(#tutor) #hud-top,#hud:has(#tutor) #hud-right,#hud:has(#tutor) #chat,
+#hud:has(#tutor) #hud-br,#hud:has(#tutor) > canvas#radar{visibility:hidden;pointer-events:none}
+/* ⚠️ E o NÚMERO DA MASSA sai junto: o tutorial termina com o planeta grande e a sala começa em 900. Se o
+   HUD escreve "8.482" e depois "900", a queda vira um número — e número se lembra. */
+#hud:has(#tutor) #hud-score{visibility:hidden;pointer-events:none}
+#hud:has(#tutor-fim) > *:not(#tutor-fim){visibility:hidden;pointer-events:none}

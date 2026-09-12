@@ -11,7 +11,7 @@
 // — ver `destinoDaSaida`. O BOOT termina na arena (T1); SAIR termina na tela de MODOS, que está montada.
 // @ts-check
 
-/** @typedef {{tipo:'party'|'spec'|'sala'|'jogar'|'dev',code?:string}} Destino */
+/** @typedef {{tipo:'party'|'spec'|'sala'|'tutor'|'jogar'|'dev',code?:string}} Destino */
 
 /**
  * O destino do boot. A ORDEM é a decisão, e ela é a de hoje: os quatro ramos de querystring ganham do
@@ -22,14 +22,49 @@
  * de uma visita anterior decidir a partida de ESTREIA de quem acabou de chegar de um portal — e no BR a
  * estreia é um lobby de espera, que é o oposto do que o boot direto existe para fazer.
  *
- * @param {{semMenu:boolean,party?:string|null,sala?:string|null,assistir?:boolean}} q
+ * ⚠️ `tutor` entra DEPOIS dos quatro ramos de link e ANTES do boot direto, e a ordem é a decisão: um
+ * link de convite não pode terminar num tutorial (o amigo está esperando do outro lado), mas o tutorial
+ * GANHA do boot direto — ele É o boot direto de quem nunca jogou. Vale para o site também, se a
+ * plataforma estiver marcada no painel.
+ * ⚠️ O parâmetro é OPCIONAL e cai em `false`: sem ele, todo chamador antigo (e todo teste que já
+ * existia) continua devolvendo exatamente o que devolvia.
+ *
+ * @param {{semMenu:boolean,party?:string|null,sala?:string|null,assistir?:boolean,tutor?:boolean}} q
  * @returns {Destino}
  */
-export function destinoDoBoot({ semMenu, party = null, sala = null, assistir = false }) {
+export function destinoDoBoot({ semMenu, party = null, sala = null, assistir = false, tutor = false }) {
   if (party) return { tipo: "party", code: String(party) };
   if (sala && assistir) return { tipo: "spec", code: String(sala) };
   if (sala) return { tipo: "sala", code: String(sala) };
+  if (tutor) return { tipo: "tutor" };
   return semMenu ? { tipo: "jogar" } : { tipo: "dev" };
+}
+
+/**
+ * ESTA PESSOA PRECISA DO TUTORIAL DE ESTREIA?
+ *
+ * Pura pelo mesmo motivo das duas acima: o que precisa ser conferido é a ESCOLHA, e cada termo dela
+ * fecha um buraco medido.
+ *
+ * ⚠️ **`games === 0` NÃO quer dizer "nunca jogou"**, e essa é a armadilha central. Com o boot em erro
+ * (`bootError`) o `applySession` nunca roda e `stats` fica zerado; com o banco fora (`online:false`) o
+ * perfil LOCAL devolve `games:0` em toda carga da página. Nos dois casos o tutorial ligaria para todo
+ * mundo, para sempre — e no pacote de portal ele ainda competiria com a tela de `servidorFora`. Daí a
+ * conjunção: só entra quem realmente chegou ao servidor e realmente nunca jogou.
+ * ⚠️ `marcado` vem de `localStorage`, que **lança** em aba anônima e em origem opaca (a Bounty Board
+ * roda em sandbox). Quem lê tem que engolir a exceção e devolver `false` — a degradação aceitável é o
+ * tutorial reaparecer, nunca o boot morrer.
+ * ⚠️ `forcado` é o interruptor de bancada (`?tutorial=1|0`), no molde exato do `?vida1=1`: sem ele não
+ * há como PROVAR a tela sem limpar o `localStorage`, e a lista de plataformas é decidida por uma
+ * constante de build que não se falsifica em 127.0.0.1. Ele ganha dos dois lados.
+ *
+ * @param {{games:number,marcado:boolean,online:boolean,erro:boolean,forcado?:string|null}} ctx
+ */
+export function precisaTutorial({ games, marcado, online, erro, forcado = null }) {
+  if (forcado === "1") return true;
+  if (forcado === "0") return false;
+  if (marcado || erro || online !== true) return false;
+  return (games | 0) === 0;
 }
 
 /**

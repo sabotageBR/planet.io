@@ -66,7 +66,12 @@ const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile",
   "dead:kaboom:livre",
   // `spec` é a barra de quem assiste a uma sala em andamento: `position:fixed`, variante própria em
   // retrato e três alvos de toque — a forma de elemento que esta matriz existe para cobrar.
-  "spec"];
+  "spec",
+  // O TUTORIAL DE ESTREIA. As três etapas têm a mesma casca mas frases de comprimentos bem diferentes, e
+  // o `@2` mede o degrau de ajuda (a frase mais longa de todas). O `fim` é o cartão com o prêmio, que é o
+  // único bloco dele que pede rolagem em tela baixa — e é justamente ali que a tela de morte e o BIG
+  // CRUNCH já reprovaram uma vez, com os botões fora da dobra.
+  "tutor:1","tutor:2@2","tutor:3","tutor:fim"];
 const TEMAS=(process.env.RESP_TEMAS||"dawn,sunset,dusk").split(",");   // o dusk é o mais fraco: tem menos regras de mobile que os outros dois
 // `RESP_TELAS` recorta a matriz, no molde do `RESP_TEMAS`: a rodada inteira são ~600 combinações e vários
 // minutos, e quem acabou de mexer em UMA tela quer o retorno dela em segundos. A rodada completa continua
@@ -114,7 +119,7 @@ const SONDA=`(()=>{
     if(r.width<44||r.height<44)pequenos.push(nome(el)+' '+Math.round(r.width)+'x'+Math.round(r.height));}
   // Só blocos com CAIXA própria: os wrappers (#hud-left é display:contents no desktop, #hud-right contém
   // os três da direita) colidiriam com os próprios filhos e dariam falso positivo o tempo todo.
-  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-br','touch','chat','talk','radar','toast','kill-feed'];
+  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-br','touch','chat','talk','radar','toast','kill-feed','tutor'];
   const cai=ids.map(i=>document.getElementById(i)).filter(e=>e&&vis(e)),cx=[];
   for(let a=0;a<cai.length;a++)for(let b=a+1;b<cai.length;b++){
     const A=cai[a].getBoundingClientRect(),B=cai[b].getBoundingClientRect();
@@ -190,7 +195,10 @@ const SONDA=`(()=>{
   // de propósito. Com ele, a matriz reprovaria as telas de Salas e de Modos inteiras e viraria ruído.
   // (Sem crase em comentário nenhum daqui: a sonda inteira é um template literal — o arquivo avisa isso
   // duas vezes mais acima, e esta linha custou uma rodada.)
-  const ACOES='.dead-foot button,.dead-actions button,.dead-views button,.lobby-hero [data-go],.prefs-foot button,nav.nav';
+  // ⚠️ O rodapé do TUTORIAL entra aqui, e não é opcional: este critério é uma lista DECLARADA de
+  // seletores, então um botão que não esteja nela é invisível para ele — e o botão de entrar na sala é
+  // literalmente o único caminho de saída do cartão de fim.
+  const ACOES='.dead-foot button,.dead-actions button,.dead-views button,.lobby-hero [data-go],.prefs-foot button,nav.nav,.tut-ir,.tut-sair,.dp-ad';
   const escondida=[];
   for(const el of (tela?tela.querySelectorAll(ACOES):[])){
     if(!vis(el))continue;const r=el.getBoundingClientRect();

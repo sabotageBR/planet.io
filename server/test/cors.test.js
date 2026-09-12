@@ -12,7 +12,7 @@ process.env.DATABASE_URL='';process.env.ALLOWED_ORIGINS='';process.env.WS_ORIGIN
 const {startServer}=await import('../src/index.js');
 const {createOriginMatcher}=await import('../src/http/cors.js');
 const {PROTOCOL_VERSION}=await import('@warspace/shared/protocol/index.js');
-const {ENTRY_PANELS,ENTRY}=await import('@warspace/shared/constants.js');
+const {ENTRY_PANELS,ENTRY,TUTORIAL}=await import('@warspace/shared/constants.js');
 
 const PORTAL='https://html5.gamedistribution.com',MAU='https://evil.example';
 const LISTA=[PORTAL,'https://*.itch.zone','https://*.crazygames.com'];
@@ -124,7 +124,7 @@ test('lista vazia = comportamento de hoje, byte a byte', async () => {
     // duplicar o padrão faria uma decisão de produto quebrar dois arquivos em vez de um.
     assert.deepEqual(await r.json(),{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:'',
       entryPanels:{free:ENTRY_PANELS.FREE,br:ENTRY_PANELS.BR,own:ENTRY_PANELS.OWN,order:ENTRY_PANELS.ORDER},
-      entraDireto:ENTRY.DIRETO});
+      entraDireto:ENTRY.DIRETO,tutorial:TUTORIAL.PLATAFORMAS});
     // sem a camada, o OPTIONS continua caindo no roteamento normal: 405 no router de party e — sem
     // banco — 503 nas rotas de conta. O que importa é que NÃO vira o 204 do preflight, e que segue seco.
     const p=await fetch(base+'/api/party/0ABC',{method:'OPTIONS',headers:{Origin:PORTAL}});
@@ -143,7 +143,7 @@ test('origem permitida: eco + Vary, preflight 204 e o 503 sem banco também com 
     assert.equal(h(c,'vary'),'Origin');
     assert.deepEqual(await c.json(),{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:'',
       entryPanels:{free:ENTRY_PANELS.FREE,br:ENTRY_PANELS.BR,own:ENTRY_PANELS.OWN,order:ENTRY_PANELS.ORDER},
-      entraDireto:ENTRY.DIRETO});
+      entraDireto:ENTRY.DIRETO,tutorial:TUTORIAL.PLATAFORMAS});
 
     const pre=await fetch(base+'/api/me',{method:'OPTIONS',headers:{Origin:PORTAL,
       'Access-Control-Request-Method':'GET','Access-Control-Request-Headers':'authorization'}});

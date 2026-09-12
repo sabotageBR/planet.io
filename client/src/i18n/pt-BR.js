@@ -34,6 +34,37 @@ export default {
   hintPrey: "Coma o planeta pequeno",
   hintSplit: "{k} para dividir e alcançar",
   hintSplitTouch: "toque em DIVIDIR para alcançar",
+  // ── O TUTORIAL DE ESTREIA (ui/Tutor.jsx) ──
+  // ⚠️ Toda instrução vem em PAR mouse/dedo, e isso não é zelo: no dedo, tocar no canvas NÃO atira —
+  // dirige o planeta. Um jogador de celular a quem se diz "clique para atirar" toca na tela, o planeta
+  // vira, nada explode, e ele conclui que o tutorial mente. O precedente é `hintSplit`/`hintSplitTouch`.
+  // ⚠️ E nunca a palavra "pedra": a pedra do jogo é o ASTEROIDE, que estilhaça quem encosta. É "fragmento".
+  tutor: {
+    pular: "Pular tutorial ›", passo: "{n} de {t}",
+    nova: "A estrela vai explodir. Fique de olho.",
+    novaMouse: "Explodiu! Leve seu planeta até os fragmentos.",
+    novaDedo: "Explodiu! Toque na tela onde você quer ir.",
+    novaRumo: "Ele continua indo sozinho — toque de novo para virar.",
+    novaAjudaMouse: "Mexa o mouse: o planeta segue o ponteiro.",
+    novaAjudaDedo: "Toque na tela, em qualquer lugar.",
+    novaPuxa: "Os fragmentos estão vindo até você.",
+    novaFeito: "É assim que se cresce.",
+    tiroMouse: "Aquele planeta é grande demais para comer. Clique para disparar um míssil.",
+    tiroDedo: "Aquele planeta é grande demais para comer. Toque em MÍSSIL.",
+    tiroAjuda: "Ele está vindo. Atire.",
+    tiroAjudaMouse: "Clique com o botão esquerdo, em qualquer lugar da tela.",
+    tiroAjudaDedo: "O botão MÍSSIL fica embaixo, à direita.",
+    tiroFeito: "O míssil não mata: ele parte. Agora os pedaços cabem em você.",
+    tiroAuto: "A gente atirou por você desta vez.",
+    splitCaca: "Esse é pequeno. Coma ele.",
+    splitNao: "Quem é menor é sempre mais rápido. Correr atrás nunca alcança.",
+    splitAjuda: "Ele parou. Divida agora.",
+    splitFeito: "É o salto que alcança. Agora você sabe.",
+    fimTitulo: "PRONTO. VOCÊ SABE JOGAR.",
+    fimMover: "Mover", fimAtirar: "Atirar", fimDividir: "Dividir e alcançar",
+    fimNota: "Na sala de verdade você começa pequeno de novo. É assim que o jogo começa.",
+    fimJogar: "ENTRAR NA SALA",
+  },
   admJoin: "🟢 {n} entrou no jogo", admJoinTitle: "warspace.io",
   brInviteTitle: "🚀 Battle Royale começando!", brInviteBody: "Uma nova partida está se formando. Quer entrar?",
   brInviteYes: "Entrar", brInviteNo: "Agora não", brInviteMute: "Silenciar", brInviteMuteTip: "Não avisar mais nesta sala (para desligar de vez: Opções → Interface)",

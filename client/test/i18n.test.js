@@ -133,7 +133,10 @@ test("toda skin e toda família têm entrada em todo idioma", () => {
 // Esta lista é a única fonte de "quem pode ser objeto"; qualquer outro grupo novo falha aqui.
 test("nenhuma chave de topo vira grupo por acidente", () => {
   const GRUPOS = new Set(["weapons", "killFeed", "fx", "awards", "periods", "metrics", "stats", "causes",
-    "sortBy", "powerups", "powerupHints", "themes", "opt", "err", "fmt", "ord", "keys", "rarity", "ach", "skins"]);
+    "sortBy", "powerups", "powerupHints", "themes", "opt", "err", "fmt", "ord", "keys", "rarity", "ach", "skins",
+    // `tutor` = o tutorial de estreia (ui/Tutor.jsx). Declarado de propósito, que é o ponto deste teste:
+    // `prefs` já virou grupo por acidente e o React morreu com "Objects are not valid as a React child".
+    "tutor"]);
   for (const [id, d] of dicts) for (const [k, v] of Object.entries(d)) {
     const ehGrupo = !!v && typeof v === "object";
     assert.equal(ehGrupo, GRUPOS.has(k), `${id}: "${k}" ${ehGrupo ? "virou grupo e não está na lista" : "está na lista mas não é grupo"}`);

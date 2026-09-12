@@ -57,7 +57,9 @@ client/src/    api/base.js (a ÚNICA fonte de "onde mora o servidor") · portal/
                Logo.jsx + logoArt.js = a marca · NavIcons.jsx + navIconArt.js = os ícones da entrada) · util/image.js · api/client.js · state/ (store) · hooks/
                audio/ (index.js motor: 4 barramentos, prioridade de vozes, loops · kit.js receitas · mic.js push-to-talk · audition.js a mesa de som do ?sfx)
                theme/ (index.js + dawn|sunset|dusk: tokens/hud/screens.css gerados por port.js, index.js com textures/effects/hud) · styles/base.css
-               game/ (index.js createGame · quality.js (a política de nível econômico, pura) · net/ · state/ · renderer/ · input/ (Pointer·Keyboard·Touch·Joystick·Wheel) · hud/ · bench.js)
+               game/ (index.js createGame · quality.js (a política de nível econômico, pura) · net/ · state/ · renderer/ · input/ (Pointer·Keyboard·Touch·Joystick·Wheel) · hud/ · bench.js
+                     tutor.js (a decisão das 3 etapas do tutorial de estreia, PURA) · net/tutorServer.js (o diretor: o único que toca no World)
+                     estreia.js (as duas marcas: o tutorial por dispositivo, a missão por sessão — elas se cruzam))
 docs/spec/     protocol.md · api.md · admin.md · hooks.md · server-game.md · client-game.md · portais.md      docs/design/  telas.md · theme-time.md · rodada-1.md · som.md · modos.md
 k8s/           00-namespace · 05-config (ConfigMap) · 10-server (StatefulSet 3 shards, envFrom ConfigMap+Secret) · 20-client
                30-ingress (warspace.io: /ws/0|1|2 por shard, /api no Service agregador, / no cliente; + o 301 de www) · 40-backup
@@ -1299,6 +1301,95 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   da entrega inteira: a classe liga o pulso do botão de DIVIDIR, e enquanto a única dica do jogo era a do
   split isso acertava por acidente. Com três etapas, "coma as pedras" faria o botão pulsar para um novato
   de r=30 — anunciando um comando que o servidor recusa.
+- **O TUTORIAL DE ESTREIA: TRÊS ETAPAS NUM MUNDO QUE É NOSSO** (`game/tutor.js` a decisão · `game/net/
+  tutorServer.js` o diretor · `ui/Tutor.jsx` a tela · `TUTORIAL.PLATAFORMAS` o interruptor): supernova →
+  míssil → salto, single-player, e no fim a oferta de uma skin por anúncio e a entrada automática numa
+  sala. Ele existe pelo número que o `algoz` e o histograma vinham repetindo: **64,6% dos novatos nunca
+  chegam a poder dividir**, e entre esses **97,8% não fazem um único abate** — o funil quebra antes do
+  primeiro minuto, e nenhuma frase no rodapé alcança quem não tem tamanho para o comando que ela ensina.
+  ⚠️ **NÃO É UMA TELA, é uma PARTIDA.** `screen:"game"` com overlay no `#hud`, no molde de
+  `BrLobby`/`CageStart`. Uma tela em `SCREENS` quebraria quatro coisas de uma vez: `Hud.jsx` deixa o HUD
+  inteiro `hidden` (somem `#t-split`, `#t-fire`, a faixa), `GameHost` chama `game.leave()` no primeiro
+  render, a cortina `#boot` fica presa 10 s no pacote (ela espera `screen==="game"`) e o `RETIDO` de
+  `portal/sessao.js` para de contar — o 1.x seguinte leria "engajamento caiu" sem nada ter piorado.
+  ⚠️ **O MUNDO É O `LocalServer`, que ganhou `mundo` e `roteiro` e continua não sabendo o que é tutorial.**
+  Ele já fala o protocolo binário real e entrega um socket com a interface do `WebSocket`; o `bench` é o
+  precedente literal de mutar o `World` depois de criado. Um servidor irmão copiaria as ~200 linhas de
+  AOI, quantização e os 22 `case` de tradução de evento — e o cabeçalho de lá já diz que é assim que o
+  offline diverge em silêncio (o `switch` não tem `default`). `mundo:{asteroids:false,holes:0,stars:0,
+  decay:false}` é o que finalmente PODE esvaziar o mapa: `stars`/`asteroids` nunca eram repassados ao
+  `createWorld` e caíam nos defaults (19 estrelas, 58 asteroides). `roundTicks:0` = sem fim.
+  ⚠️ **O PORTÃO REAL DO DIVIDIR É 6.000, NÃO 3.600**, e errar isso é o pior defeito possível aqui.
+  `SPLIT.MIN_R`=60 pede massa 3.600 — mas `applySplit` tem uma linha ANTES dela, e `sobGraca` só solta
+  pela massa em `BOT.NOVATO_MASS`. Quem chega a 3.600 e aperta DIVIDIR leva um `return 0` **silencioso**.
+  E 6.000 é o MESMO número que apaga `souNovato` e faz o `#t-split` aparecer na tela: o botão nascer no
+  fim da etapa 1 não é enfeite, é a recompensa ficando visível.
+  ⚠️ **A SUPERNOVA ENTREGA ISSO SOZINHA**: 24 cacos × `EJECT.R_MIN²·MASS_FACTOR·NOVA_PART_MASS` = 7.582 de
+  massa, com `EAT.EJECT_GAIN`=1. Medido rodando o `World` de verdade: 900 → **8.482**. Cruza 3.600 no 9º
+  caco e 6.000 no 17º. Não falta massa, não precisa de segunda estrela nem de mexer em `PLAYER.SPAWN_R`.
+  ⚠️ **NENHUMA ETAPA DEPENDE DO DESEMPENHO NA ANTERIOR.** Ao ENTRAR, cada uma CARIMBA o que precisa: a 2
+  zera `fireCdUntil` (os 10 s de `MISSILE.SPAWN_CD_TICKS` fariam o botão não responder — e o novato
+  aprenderia que ele está quebrado) e dá munição (o humano nasce com ZERO no servidor local); a 3 zera
+  `graceUntil` e leva o raio a `SPLIT.MIN_R·1,6`. ⚠️ E zerar a graça não é redundante com a massa:
+  `sobGraca` é **re-entrante** — se ela cair abaixo de `NOVATO_MASS` com `graceUntil` ainda no futuro, o
+  split volta a ser recusado em silêncio, com o botão já na tela.
+  ⚠️ **NADA DISSO ENTRA EM `shared/physics`.** As travas continuam de pé no servidor de verdade; o que o
+  tutorial faz é o que o `bench` já fazia — mutar o mundo LOCAL. A única mensagem nova é
+  `{t:"grace",why:"tutor"}`, JSON de controle, e `index.js` já ignora um `why` que não conhece.
+  ⚠️ **OS TAMANHOS DOS ALVOS SÃO RELATIVOS, NUNCA CRAVADOS**, e a faixa quebra para os dois lados: alvo
+  pequeno demais e a etapa 2 se resolve ENCOSTANDO (sem atirar); grande demais e ele COME o aluno. O da
+  etapa 2 é `1,05 × r_me` — houve um piso absoluto de 90 aqui, e contra um aluno que ficou em r=30 ele
+  virava 3× o tamanho dele; o teste pegou. E o da 3 tem de caber na **METADE** (`r/√2`), não no planeta
+  inteiro: com r=96 a metade engole até 59, então um alvo de 60 seria comível inteiro e **incomível pela
+  metade que salta** — o tutorial ensinaria o gesto e puniria quem o executasse.
+  ⚠️ **TUDO A ≤480 px, E NO EIXO VERTICAL.** Medido por `zoomFor`: a meia-largura de um celular em pé é
+  491 px com o zoom de novato e **327 px sem ele** (`BOT.NOVATO_ZOOM` é tunable). Um alvo a 900 px está
+  FORA DA TELA do aparelho que mais precisa do tutorial.
+  ⚠️ **DOIS EFEITOS COLATERAIS DA SUPERNOVA QUEBRAVAM TUDO EM SILÊNCIO, e os dois foram medidos antes de
+  uma linha ser escrita**: os cacos vivem `NOVA_LIFE_TICKS` = **15 s** (um novato não come 17 nesse tempo,
+  e a etapa se esvaziaria sozinha — justo para quem isto existe), e `supernova()` chama `queueStar`, cuja
+  fila é drenada **incondicionalmente** na fase 11 (`stars:0` não a impede): 10 s depois nasceria uma
+  estrela em ponto sorteado do mapa, no meio da etapa 2. Os dois consertos são uma linha cada, no mundo
+  local. E a explosão é por RELÓGIO, nunca por trombada — com `RAM_REWARD:false` ela não larga destroço
+  nenhum, e a etapa 1 ficaria sem nada para comer.
+  ⚠️ **PULAR NÃO PODE MARCAR A MISSÃO, e o default do código marcava.** `game.leave()` chama
+  `fimDaVida()` sempre que havia partida, e sair do tutorial passa por `play()` → `join()` → `leave(true)`:
+  quem PULOU — justamente quem não aprendeu nada — entrava na primeira vida com `MISSAO_VETERANO`, sem
+  "coma as partículas" nem "coma o planeta pequeno". Hoje o motor tem `souTutorial` e não decide por
+  ninguém; quem decide é `saiDoTutorial` (**concluir marca, pular não**). Visto em bancada.
+  ⚠️ **`played` FICA FALSO durante o tutorial.** Com `true`, o `play()` do fim pediria MIDROLL — e
+  `pedagioLiberado` (0 mortes) o bloquearia, então a primeira partida sairia **sem anúncio nenhum**,
+  contra a §2.1 da GameDistribution. Falso, sai o PREROLL, e ele cai depois de a pessoa já ter gostado.
+  ⚠️ O `DeadPrize.jsx` **não** é reusado como componente (só as classes e as labels): ele aplica
+  `pedagioLiberado`, que com 0 mortes devolve `false` e a oferta nunca apareceria. Quem decide continua
+  sendo `escolhePremio`, sem uma linha alterada. A oferta exige **`api.online === true`** e não `user.id`
+  — o perfil local tem `id:"local"`, que é truthy, e um portal com SDK vivo e banco fora faria o jogador
+  ver 30 s de vídeo para levar um toast de erro.
+  ⚠️ **O INTERRUPTOR É POR PLATAFORMA** (`TUTORIAL.PLATAFORMAS`, grupo "Tela inicial"), molde exato de
+  `ENTRY.DIRETO`: `multi` de escopo `server`, eco em `/api/config`, comparação no cliente por
+  `plataformaAtual()`. Nasce VAZIO — o padrão de um tunable reproduz o comportamento de hoje. ⚠️ E
+  `tutorialEm` difere do irmão num ponto: **sem a lista, NÃO mostra**. Lá o erro seguro é entrar direto;
+  aqui é o oposto — um jogador sem tutorial joga, um preso num tutorial que não termina, não.
+  ⚠️ **A CORRIDA DO `/api/config` FOI RESOLVIDA SEM UM BYTE DE REDE**: `loadConfig()` é disparado sem
+  `await` e a decisão do boot acontece nas linhas seguintes (foi isso que tirou `ENTRY.NICK_AUTO` do
+  config), e aqui o truque do `ENTRA_DIRETO` ("lido dentro do clique") não serve, porque isto É a decisão
+  do boot. Mas a sonda de `api.bootstrap()` — que É `await`ada — já pedia a MESMA rota e **jogava a
+  resposta fora**; agora ela a guarda em `api.cfg`.
+  ⚠️ **`precisaTutorial` é CONJUNÇÃO**: `games===0` sozinho também é verdade com o boot em erro e com o
+  banco fora (o perfil local devolve zero em toda carga), e aí o tutorial ligaria para todo mundo, para
+  sempre. `?tutorial=1|0` ganha de tudo, inclusive da lista — é o interruptor de bancada, no molde do
+  `?vida1=1`, e sem ele não há como provar a tela sem marcar `site` no painel de produção.
+  ⚠️ **DE QUEBRA, O `?local=1` VOLTOU A DIVIDIR.** `souNovato` só é apagado pelo `{t:"grace"}` e o
+  `LocalServer` **nunca mandava essa mensagem**: no modo local ele ficava `true` para sempre, `act()`
+  engolia todo comando de dividir, o `#t-split` não era renderizado e a etapa 3 da missão nunca aparecia.
+  Ninguém conseguia dividir ali, e nada acusava. O `graceTick` de lá é o espelho de `Sim._graceTick`.
+  ⚠️ **O HUD ENCOLHE COM `visibility:hidden`, não `opacity:0`** (ao contrário dos overlays do BR): ela
+  HERDA — `getComputedStyle` de um filho não vê o `opacity` do pai, e a matriz de responsividade lê o
+  filho (foram 6 falsos positivos de `hud-lb×tutor` até virar `visibility`) — e tira o bloco da árvore de
+  acessibilidade, que é o certo para um placar que ninguém deve ouvir enquanto aprende o que é um planeta.
+  O `#hud-top` sai INTEIRO: ele é `position:absolute;top:0` e continuaria ocupando a faixa com os filhos
+  invisíveis (a matriz pegou em 18 de 18). ⚠️ Mas `#touch` e `#hud-cd` FICAM — é o OPOSTO da regra da
+  gaiola de largada, e de propósito: lá eles falam de uma partida que não começou; aqui eles SÃO a lição.
 - **O PORTÃO DO DIVIDIR ESTAVA ACIMA DO TETO DO NOVATO** (`SPLIT.MIN_R` virou tunable de escopo `wire`,
   grupo "Proteção do novato"; a dica em `client/src/game/dica.js` + `ui/DicaSplit.jsx`): a física torna o
   salto OBRIGATÓRIO para matar alguém — `vmax = 2110,6/r^0,449` faz a presa ser sempre mais rápida que o

@@ -7,7 +7,7 @@
 // Rodar: node --test client/test/entrada.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { destinoDoBoot, destinoDaSaida } from "../src/state/entrada.js";
+import { destinoDoBoot, destinoDaSaida, precisaTutorial } from "../src/state/entrada.js";
 
 test("no pacote, o boot sem querystring termina na ARENA", () => {
   assert.deepEqual(destinoDoBoot({ semMenu: true }), { tipo: "jogar" });
@@ -57,4 +57,56 @@ test("`jogar` NUNCA carrega modo — quem chama crava MODE.FREE", () => {
   const d = destinoDoBoot({ semMenu: true });
   assert.equal(Object.prototype.hasOwnProperty.call(d, "mode"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(d, "teamSize"), false);
+});
+
+// ── O TUTORIAL DE ESTREIA ─────────────────────────────────────────────────────
+
+test("o tutorial GANHA do boot direto — ele É o boot direto de quem nunca jogou", () => {
+  assert.deepEqual(destinoDoBoot({ semMenu: true, tutor: true }), { tipo: "tutor" });
+  assert.deepEqual(destinoDoBoot({ semMenu: false, tutor: true }), { tipo: "tutor" }, "e vale no site");
+});
+
+test("mas o CONVITE ganha do tutorial: o amigo está esperando do outro lado", () => {
+  assert.equal(destinoDoBoot({ semMenu: true, tutor: true, sala: "1ABC" }).tipo, "sala");
+  assert.equal(destinoDoBoot({ semMenu: true, tutor: true, party: "XY12" }).tipo, "party");
+  assert.equal(destinoDoBoot({ semMenu: true, tutor: true, sala: "1ABC", assistir: true }).tipo, "spec");
+});
+
+test("`tutor` é OPCIONAL — sem ele nada do que já existia muda", () => {
+  // É isto que permite acrescentar o ramo sem tocar num único chamador nem num único teste antigo.
+  assert.deepEqual(destinoDoBoot({ semMenu: true }), { tipo: "jogar" });
+  assert.deepEqual(destinoDoBoot({ semMenu: false }), { tipo: "dev" });
+});
+
+test("precisaTutorial: quem nunca jogou, com servidor de pé e sem marca, precisa", () => {
+  assert.equal(precisaTutorial({ games: 0, marcado: false, online: true, erro: false }), true);
+});
+
+test("...e quem JÁ jogou, ou já viu, não", () => {
+  assert.equal(precisaTutorial({ games: 1, marcado: false, online: true, erro: false }), false);
+  assert.equal(precisaTutorial({ games: 0, marcado: true, online: true, erro: false }), false);
+});
+
+test("O BURACO CENTRAL: `games===0` não quer dizer 'nunca jogou'", () => {
+  // Com o boot em erro o `applySession` nunca roda e `stats` fica zerado; com o banco fora, o perfil
+  // LOCAL devolve `games:0` em TODA carga da página. Sem estes dois termos o tutorial ligaria para todo
+  // mundo, para sempre — e no pacote ainda competiria com a tela de `servidorFora`.
+  assert.equal(precisaTutorial({ games: 0, marcado: false, online: true, erro: true }), false, "boot que falhou");
+  assert.equal(precisaTutorial({ games: 0, marcado: false, online: false, erro: false }), false, "banco fora");
+  assert.equal(precisaTutorial({ games: 0, marcado: false, online: null, erro: false }), false, "sonda que não respondeu");
+});
+
+test("?tutorial=1|0 ganha dos dois lados — é o interruptor de bancada", () => {
+  // Sem ele não há como PROVAR a tela sem limpar o localStorage; com ele, dá para desligá-la numa aba
+  // que já cairia nela. O molde é o `?vida1=1`.
+  assert.equal(precisaTutorial({ games: 99, marcado: true, online: true, erro: false, forcado: "1" }), true);
+  assert.equal(precisaTutorial({ games: 0, marcado: false, online: true, erro: false, forcado: "0" }), false);
+  assert.equal(precisaTutorial({ games: 0, marcado: false, online: true, erro: false, forcado: null }), true, "sem o parâmetro, a regra normal");
+});
+
+test("precisaTutorial é PURA: a mesma entrada dá a mesma saída", () => {
+  const ctx = { games: 0, marcado: false, online: true, erro: false };
+  const a = precisaTutorial(ctx);
+  assert.equal(precisaTutorial(ctx), a);
+  assert.deepEqual(ctx, { games: 0, marcado: false, online: true, erro: false }, "e não mexe no argumento");
 });

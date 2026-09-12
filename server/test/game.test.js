@@ -219,7 +219,10 @@ test('/healthz: tick p99, overruns, db, protocol',async()=>{
   // reproduz o que a constante de build fazia — todos os portais, e não o site.
   assert.deepEqual(cfg,{shards:1,shard:0,roomMax:srv.config.roomMax,protocol:PROTOCOL_VERSION,googleClientId:'',
     entryPanels:{free:true,br:true,own:true,order:'free_br'},
-    entraDireto:'poki,crazy,gd,y8,gm,gamepix,playgama,gameflare,itch'});
+    entraDireto:'poki,crazy,gd,y8,gm,gamepix,playgama,gameflare,itch',
+    // `tutorial` nasce VAZIO: o padrão de um tunable reproduz o comportamento de hoje, e hoje o tutorial
+    // de estreia não aparece em lugar nenhum. Quem o liga por plataforma é o /admin.
+    tutorial:''});
   // o bloco de métricas da fala gerada sobe junto — é por ele que dá para ver, em produção, se a LLM está
   // realmente falando ou se a sala inteira caiu no repertório fixo
   assert.equal(typeof h.llm,'object');assert.equal(typeof h.llm.ask,'number');assert.equal(typeof h.llm.fallback,'number');

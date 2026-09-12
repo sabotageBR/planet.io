@@ -70,6 +70,29 @@ export function entraDiretoEm(lista) {
   return String(lista).split(",").includes(id);
 }
 /**
+ * TUTORIAL_EM — a TELA DE ESTREIA (o tutorial de 3 etapas) aparece NESTA plataforma?
+ *
+ * Gêmeo de `entraDiretoEm`, e pelo mesmo motivo: a LISTA vem do /admin por `/api/config`
+ * (`TUTORIAL.PLATAFORMAS`) e quem compara com o `PORTAL_ID` — constante de BUILD — é o cliente. O
+ * servidor não sabe de que portal veio esta aba.
+ *
+ * ⚠️ **ELE DIFERE DO IRMÃO NUM PONTO, E O PONTO É O QUE IMPORTA: sem lista, NÃO MOSTRA.**
+ * `entraDiretoEm` cai no padrão de build porque lá o erro seguro é "entrar direto" — um zip que deixa de
+ * entrar direto por uma env faltando é reprova de certificação. Aqui o padrão de build é "não existe
+ * tutorial", e o erro seguro é o mesmo: um jogador sem tutorial joga; um jogador preso num tutorial que
+ * não consegue terminar (porque o servidor está fora e o boot falhou), não.
+ * ⚠️ `plataformaAtual()` vazio (um `vite build --mode portal` sem `VITE_PORTAL_ID`) cai no mesmo lado.
+ * ⚠️ Comparação por ITEM, nunca `includes` na string crua: "sit" não pode casar com "site". É a mesma
+ * armadilha do matcher de CORS.
+ * @param {string|null|undefined} lista o CSV de `/api/config` (`config.tutorial`)
+ */
+export function tutorialEm(lista) {
+  if (lista == null) return false;
+  const id = plataformaAtual();
+  if (!id) return false;
+  return String(lista).split(",").includes(id);
+}
+/**
  * ⚠️ HISTÓRICO, e o preço da guarda foi MEDIDO no funil da Poki (Fit Test de 09-set, 1.12): **17% de
  *    abandono em `menu/entry`** — 85 dos 500 fecharam a aba na tela inicial sem jogar um segundo, cada um
  *    entrando na média de playtime como ZERO. Isto já foi `PORTAL_ID === "crazy"` e depois `PORTAL`; o que

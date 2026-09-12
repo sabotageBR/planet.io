@@ -3,7 +3,7 @@
 import {readFile,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
-import {modeOf,roundTicksOf,ROOM,ENTRY_PANELS,ENTRY,playerNick} from '@warspace/shared/constants.js';
+import {modeOf,roundTicksOf,ROOM,ENTRY_PANELS,ENTRY,TUTORIAL,playerNick} from '@warspace/shared/constants.js';
 import {createRng} from '@warspace/shared/rng.js';
 import {sendJson,readJson,bearer,clientIp} from '../api/router.js';
 import {sessionKey} from '../auth/tokens.js';
@@ -86,7 +86,11 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
         // constants.js). Vai por AQUI e não pelo `wire` porque a decisão vale antes de existir sala — o
         // mesmo motivo de `entryPanels`. Quem compara com o `PORTAL_ID` (constante de BUILD) é o CLIENTE:
         // o servidor não tem como saber de que portal veio esta aba.
-        entraDireto:ENTRY.DIRETO});
+        entraDireto:ENTRY.DIRETO,
+        // `tutorial`: a lista de plataformas em que a TELA DE ESTREIA aparece (ver TUTORIAL em
+        // constants.js). Mesmo canal e mesmo motivo do `entraDireto` acima — a decisão vale antes de
+        // existir sala, e quem compara com o PORTAL_ID desta aba é o cliente.
+        tutorial:TUTORIAL.PLATAFORMAS});
       // ── NICK SORTEADO PARA A TELA INICIAL ────────────────────────────────────────────────────
       // Mora aqui, e não em `server/src/api/`, por três razões que se somam: esta é a única camada
       // que tem o `rooms` — e é ele que responde "está em uso NAQUELE MOMENTO"; o `cors()` do topo do
