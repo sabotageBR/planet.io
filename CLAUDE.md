@@ -1582,6 +1582,14 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `complete`, nunca `fail` — a lição de `portal/sessao.js`.
   ⚠️ A IDADE VAI NA FAIXA (`0_30s`, `30_60s`, `60_120s`, `120s_mais`): `measure` tem três strings e
   nenhuma delas é numérica, então o histograma é feito de nomes.
+  ⚠️ **OS TRÊS MARCOS NUNCA SAÍRAM, E A CAUSA ERA UM NOME** (`degrau` em `game/index.js`): o módulo
+    IMPORTA `marco` e declarava, dentro de `createGame`, um `let ... marco=0` — o degrau da escada de
+    massa do carrilhão "cresci". A local sombreia a função no módulo INTEIRO, então
+    `marco("first_kill")` chamava o NÚMERO. `TypeError` dentro do `onmessage`, ou seja cada abate meu
+    abortava o resto do processamento daquele snapshot (efeito e som dos eventos seguintes) — medidas
+    **142 exceções em 20 s** de produção, e nada no jogo acusava. Quem acusa agora é
+    `client/test/sombra-import.test.js`, que varre `client/`, `shared/` e `server/` por import
+    sombreado — a forma inteira do defeito, não este caso.
   ⚠️ **`grace_end` VEM DO SERVIDOR** (`Sim._graceTick` → `{t:'grace',why}`, JSON de controle, sem subir o
   `PROTOCOL_VERSION`): o cliente não pode derivá-lo porque `SPAWN_GRACE_TICKS` e `NOVATO_MASS` são
   tunables de escopo `server` — o bundle dele tem a cópia do BUILD e o painel pode estar com outro

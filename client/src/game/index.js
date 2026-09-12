@@ -122,7 +122,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const hudStore=createStore(initialHud());
   let curPrefs={...PREF_DEFAULTS,...prefs},curTheme=theme||currentTheme();
   const audio=createAudio(curPrefs);let lastAmmo=0,lastMagnet=false;   // som: o que o cliente descobre sozinho (atirar/munição/ímã) sai do self
-  let lastMass=0,marco=0,lastFireCd=0,lastDead=false,lastLock=-1,ambT=0,threat=null;   // marcos de massa, arma pronta, dano, troca de alvo e a ameaça do míssil
+  // ⚠️ `degrau` NÃO pode se chamar `marco`: este módulo IMPORTA `marco` (o funil da primeira vida), e a
+  //    local sombreava a função dentro de `createGame` inteiro — `marco("first_kill")` chamava o NÚMERO.
+  //    Lançava dentro do `onmessage`, então cada abate meu abortava o resto daquele snapshot (efeito e
+  //    som dos eventos seguintes), e os três marcos do funil NUNCA saíram. 142 exceções em 20 s, medidas
+  //    em produção; nada no jogo acusava.
+  let lastMass=0,degrau=0,lastFireCd=0,lastDead=false,lastLock=-1,ambT=0,threat=null;   // marcos de massa, arma pronta, dano, troca de alvo e a ameaça do míssil
   let ejHold=false,ejT=0,ejN=0;   // cusparada: o som sai do gesto local (não há evento no fio), com a rampa de força junto
   const wakeAudio=()=>audio.resume();   // fica armado: o contexto pode ser suspenso de novo (aba em segundo plano, política do navegador)
   // ⚠️ QUATRO EVENTOS, não dois: `pointerdown` cobre mouse e dedo de verdade, mas a certificação de
@@ -984,9 +989,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(lastFireCd>0&&!sf.fireCd&&sf.missiles>0&&!dead)audio.play("ready",{mine:true});   // a carência de spawn acabou
     if(sf.mass>0){
       const mk=Math.floor(Math.log(sf.mass)/Math.log(MASS_STEP));
-      if(!lastMass||sf.mass<lastMass*.5)marco=mk;                                        // nasci/renasci/fui partido: recalibra sem tocar nada
-      else{if(mk>marco){marco=mk;audio.play("grow",{mine:true,pitch:pitchOf(sf.mass)});}
-        else if(mk<marco)marco=mk;
+      if(!lastMass||sf.mass<lastMass*.5)degrau=mk;                                       // nasci/renasci/fui partido: recalibra sem tocar nada
+      else{if(mk>degrau){degrau=mk;audio.play("grow",{mine:true,pitch:pitchOf(sf.mass)});}
+        else if(mk<degrau)degrau=mk;
         if(sf.mass<lastMass*.88&&!dead)audio.play("hurt",{mine:true,pitch:pitchOf(sf.mass)});}}   // levei um tombo de massa (queimadura, míssil, lasca)
     const fora=!dead&&!!(sf.flags&SELF_FLAG.ZONE_HURT);   // o servidor é quem diz: o círculo do cliente é interpolado e ficaria discordando na borda
     if(fora&&!lastHurt)audio.startLoop("alert",{k:.55});
