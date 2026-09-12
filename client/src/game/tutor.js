@@ -33,7 +33,7 @@ export const ETAPAS = 3;
  * ⚠️ Ela é PARÂMETRO da função, não import: `BOT.NOVATO_MASS` é tunable do /admin e quem o lê é o
  * diretor, a cada chamada — capturá-lo aqui na carga do módulo é o antipadrão que `dica.js` documenta.
  */
-export const TUTOR = { SOBRA_MS: 2200, LIMPO_MS: 4000 };
+export const TUTOR = { SOBRA_MS: 3200, LIMPO_MS: 4000 };
 
 /**
  * Os três degraus de ajuda de cada etapa, em ms desde que ela abriu, e o TETO em que ela se conclui
@@ -103,12 +103,17 @@ function cumpriu(etapa, ctx, agora) {
  * @param {{vivo:boolean,massa:number,base:number,meta:number,sobrou:number,ultimo:number,
  *          acertou:boolean,comeu:boolean}} ctx
  * @param {number} agora ms monotônicos (`performance.now()` no cliente, um contador no teste)
- * @returns {{est:object, etapa:number, pct:number, festa:number, ajuda:number, auto:boolean, fim:boolean}}
+ * ⚠️ `celebra` é a JANELA da tela de "etapa concluída", não o instante: `festa` sai uma vez (é o gatilho
+ * do som e do efeito) e `celebra` fica verdadeiro pelos `SOBRA_MS` inteiros, que é o que a tela precisa
+ * para existir. Sem os dois, ou a tela pisca um frame, ou o som toca a 8 Hz.
+ *
+ * @returns {{est:object, etapa:number, pct:number, festa:number, celebra:boolean, ajuda:number,
+ *            auto:boolean, fim:boolean}}
  */
 export function passoTutor(est, ctx, agora) {
   const saida = (e, extra) => ({
     est: e, etapa: e.etapa, pct: e.etapa >= ETAPA.FIM ? 1 : fracao(e.etapa, ctx),
-    festa: 0, ajuda: e.ajuda, auto: !!e.auto, fim: e.etapa >= ETAPA.FIM, ...extra });
+    festa: 0, celebra: !!e.feito, ajuda: e.ajuda, auto: !!e.auto, fim: e.etapa >= ETAPA.FIM, ...extra });
 
   // Morto, pausado, fora da sala: congela sem gastar nada. Mesma regra do `vivo` de `passoMissao` e do
   // `pode` de `passoDica` — o relógio da ajuda não pode correr com o jogador sem controle.
@@ -134,7 +139,7 @@ export function passoTutor(est, ctx, agora) {
   if (cumpriu(est.etapa, ctx, agora) || d >= 3) {
     const auto = cumpriu(est.etapa, ctx, agora) ? 0 : 1;
     const e = { ...est, feito: agora, ajuda: d, auto };
-    return { est: e, etapa: e.etapa, pct: 1, festa: e.etapa, ajuda: d, auto: !!auto, fim: false };
+    return { est: e, etapa: e.etapa, pct: 1, festa: e.etapa, celebra: true, ajuda: d, auto: !!auto, fim: false };
   }
   return saida(d === est.ajuda ? est : { ...est, ajuda: d });
 }

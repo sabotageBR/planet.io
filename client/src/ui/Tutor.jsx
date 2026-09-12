@@ -1,15 +1,18 @@
 // ── O TUTORIAL DE ESTREIA, NA TELA ───────────────────────────────────────────
-// Duas caras num arquivo só, e as duas são OVERLAY dentro do `#hud` — nunca uma tela em `SCREENS`. Uma
+// Três caras num arquivo só, e as três são OVERLAY dentro do `#hud` — nunca uma tela em `SCREENS`. Uma
 // tela nova deixaria o HUD inteiro `hidden` (`Hud.jsx`), faria o `GameHost` chamar `game.leave()` no
-// primeiro render, prenderia a cortina `#boot` por 10 s no pacote e pararia o relógio de sessão do
-// portal. O molde é `CageStart.jsx` (em curso) e `BrLobby.jsx` (o cartão de fim).
+// primeiro render, prenderia a cortina `#boot` por 10 s no pacote e pararia o relógio de sessão do portal.
 //
-// ⚠️ O PRIMEIRO FRAME JÁ É A ARENA. Sem cartão de abertura, sem "Bem-vindo", sem botão de começar: o
-// funil do Fit Test 1.12 leu 17% de abandono numa tela antes de jogar, e foi por isso que a tela inicial
-// deixou de existir no pacote. Um tutorial que ABRE com um modal é a mesma tela de volta.
-// ⚠️ TODA instrução vem em par mouse/dedo. No dedo, tocar no canvas NÃO atira — dirige o planeta. Dizer
-// "clique para atirar" a quem tem dedo faz o planeta virar, nada explodir, e o jogador concluir que o
-// tutorial mente. `d.dedo` vem do mesmo getter que arma o direcional virtual.
+//   1. EM CURSO — a trilha 1·2·3, o título da etapa, a instrução em letra grande e o PROMPT DE BOTÃO;
+//   2. ETAPA COMPLETA — a tela que aparece, comemora e fecha sozinha (`celebra`, a janela de `SOBRA_MS`);
+//   3. FIM — o cartão com a oferta da skin e a passagem para a sala.
+//
+// ⚠️ O PRIMEIRO FRAME JÁ É A ARENA. Sem cartão de abertura e sem botão de começar: o funil do Fit Test
+// 1.12 leu 17% de abandono numa tela antes de jogar, e foi por isso que a tela inicial deixou de existir
+// no pacote. Um tutorial que ABRE com um modal é a mesma tela de volta.
+// ⚠️ TODA instrução vem em par mouse/dedo, e o PROMPT também. No dedo, tocar no canvas NÃO atira — dirige
+// o planeta; dizer "clique para atirar" a quem tem dedo faz o planeta virar, nada explodir, e o jogador
+// concluir que o tutorial mente. `d.dedo` vem do mesmo getter que arma o direcional virtual.
 // ⚠️ `pointer-events:none` no bloco em curso, com `auto` só no botão: o `#hud` inteiro é `none` porque os
 // painéis engoliam o alvo do jogador e congelavam o movimento.
 import React, { useEffect, useRef, useState } from "react";
@@ -18,6 +21,9 @@ import { app } from "../state/app.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { preenche } from "../i18n/index.js";
 import { ETAPA, ETAPAS } from "../game/tutor.js";
+// ⚠️ As duas decisões (qual frase, qual botão) moram num `.js` à parte: o `node --test` não carrega
+// `.jsx`, e uma função de decisão que ninguém testa é onde o par mouse/dedo se inverte em silêncio.
+import { falaDoTutor, promptDoTutor } from "./tutorFala.js";
 import { escolhePremio } from "./premio.js";
 import { saiDoTutorial, ganharSkinAnuncio } from "../state/actions.js";
 import { portal } from "../portal/index.js";
@@ -27,31 +33,31 @@ import SkinPreview from "./SkinPreview.jsx";
 /** Segundos da contagem do botão de entrar na sala. Promessa, não ameaça — ver o `pausa` abaixo. */
 const CONTA_S = 12;
 
-/**
- * A frase da vez. PURA e exportada: é a única parte disto que dá para conferir sem jsdom, e ela tem seis
- * pares mouse/dedo que falham em SILÊNCIO se trocados.
- * @param {{etapa:number,ajuda:number,festa:number,auto:boolean,dedo:boolean}} d @param {*} T os labels
- */
-export function fraseDoTutor(d, T) {
-  const dedo = !!d.dedo;
-  if (d.festa) return d.etapa === ETAPA.NOVA ? T.novaFeito
-    : d.etapa === ETAPA.TIRO ? (d.auto ? T.tiroAuto : T.tiroFeito) : T.splitFeito;
-  if (d.etapa === ETAPA.NOVA) {
-    if (d.ajuda >= 2) return T.novaPuxa;
-    if (d.ajuda >= 1) return dedo ? T.novaAjudaDedo : T.novaAjudaMouse;
-    return d.pct > 0 ? (dedo ? T.novaRumo : T.novaMouse) : (dedo ? T.novaDedo : T.novaMouse);
-  }
-  if (d.etapa === ETAPA.TIRO) {
-    if (d.ajuda >= 2) return dedo ? T.tiroAjudaDedo : T.tiroAjudaMouse;
-    if (d.ajuda >= 1) return T.tiroAjuda;
-    return dedo ? T.tiroDedo : T.tiroMouse;
-  }
-  if (d.etapa === ETAPA.SPLIT) {
-    if (d.ajuda >= 2) return T.splitAjuda;
-    if (d.ajuda >= 1) return T.splitNao;
-    return T.splitCaca;
-  }
-  return "";
+/** O desenho do prompt: um mouse, uma tecla ou o botão do HUD. SVG inline — nada de imagem nova. */
+function Prompt({ p }) {
+  if (!p) return null;
+  const mouse = p.tipo === "mouse-mover" || p.tipo === "mouse-clique";
+  return <div id="tut-prompt" className={"tut-btn tut-btn-" + p.tipo} aria-hidden="true">
+    {mouse ? <svg viewBox="0 0 40 60" aria-hidden="true" className="tut-mouse">
+      <rect x="4" y="4" width="32" height="52" rx="16" className="tm-corpo" />
+      {/* a metade ESQUERDA acesa é a resposta a "qual botão na tela" */}
+      {p.tipo === "mouse-clique"
+        ? <path d="M4 20 V20 A16 16 0 0 1 20 4 V20 Z" className="tm-esq" />
+        : null}
+      <line x1="20" y1="4" x2="20" y2="20" className="tm-div" />
+      <line x1="4" y1="20" x2="36" y2="20" className="tm-div" />
+      {p.tipo === "mouse-mover"
+        ? <g className="tm-setas"><path d="M20 34 l-7 7 h4 v8 h6 v-8 h4 Z" /></g>
+        : null}
+    </svg> : null}
+    {p.tipo === "tecla" ? <kbd className="tut-tecla">{p.rotulo}</kbd> : null}
+    {p.tipo === "toque" ? <svg viewBox="0 0 40 60" aria-hidden="true" className="tut-mouse">
+      <circle cx="20" cy="26" r="11" className="tm-toque" />
+      <circle cx="20" cy="26" r="17" className="tm-onda" />
+    </svg> : null}
+    {p.tipo === "hud" ? <span className="tut-hud-btn">{p.rotulo}</span> : null}
+    {p.tipo !== "tecla" && p.tipo !== "hud" ? <b>{p.rotulo}</b> : null}
+  </div>;
 }
 
 export default function Tutor({ d, tecla }) {
@@ -59,26 +65,62 @@ export default function Tutor({ d, tecla }) {
   if (!d) return null;
   const T = LB.tutor || {};
   if (d.fim) return <Fim T={T} LB={LB} />;
-  const feitas = d.etapa - 1 + (d.festa ? 1 : 0);
-  // ⚠️ Na etapa 3 a frase do salto é a DO JOGO (`hintSplit`/`hintSplitTouch`), literalmente: já está
-  // traduzida, já está testada, e o tutorial passa a ensinar exatamente a frase que a primeira vida de
-  // verdade vai repetir no rodapé.
-  const txt = d.etapa === ETAPA.SPLIT && d.ajuda >= 1 && !d.festa
-    ? (d.dedo ? LB.hintSplitTouch : preenche(LB.hintSplit, { k: tecla }))
-    : fraseDoTutor(d, T);
-  return <div id="tutor" data-etapa={d.etapa}>
-    <div className="tut-topo">
-      {/* ⚠️ NENHUM ESTADO VAI SÓ NA COR: o número acompanha os segmentos. Medido com o validador de
-          paleta, o verde e o âmbar dos tokens ficam com ΔE 6,7 em protanopia. */}
-      <div className="tut-bar" role="progressbar" aria-valuenow={feitas} aria-valuemin={0} aria-valuemax={ETAPAS}>
-        {Array.from({ length: ETAPAS }, (_, i) =>
-          <i key={i} className={i < feitas ? "on" : i === feitas ? "now" : ""} style={{ "--p": i === feitas ? (d.pct || 0).toFixed(3) : "1" }} />)}
+  if (d.celebra) return <Completa d={d} T={T} />;
+  const [tit, txt] = falaDoTutor(d, T, tecla);
+  // ⚠️ **O PROMPT MORA NO RODAPÉ, LONGE DA INSTRUÇÃO, E ISSO NÃO É ESTÉTICA.** Empilhados no topo eles
+  // desciam até o meio da tela e TAPAVAM o planeta e os pedaços — ou seja, a explicação cobria a coisa
+  // explicada. Com a instrução em cima e o prompt embaixo, o miolo da tela (onde o jogo acontece) fica
+  // livre; e no dedo o prompt ainda cai ao lado dos botões de toque reais, que é para onde ele aponta.
+  return <>
+    <div id="tutor" data-etapa={d.etapa}>
+      <Trilha etapa={d.etapa} T={T} />
+      <div className="tut-fala" key={tit + txt} role="status" aria-live="polite">
+        <b className="tut-tit">{tit}</b>
+        <span className="tut-txt">{txt}</span>
       </div>
-      <b className="tut-passo">{preenche(T.passo, { n: Math.min(d.etapa, ETAPAS), t: ETAPAS })}</b>
       <button className="tut-sair" onClick={() => saiDoTutorial({ fim: false })}>{T.pular}</button>
     </div>
-    {/* `key` no texto: sem ele a faixa não reanima quando a frase troca e a mudança passa despercebida */}
-    <div className="tut-fala" key={txt} role="status" aria-live="polite">{txt}</div>
+    <Prompt p={promptDoTutor(d, T, tecla)} />
+  </>;
+}
+
+/**
+ * A trilha 1·2·3. Três bolas NUMERADAS ligadas por um traço — o vocabulário de tutorial que o pedido
+ * nomeia ("uma barra que tem 3 etapas, 1,2,3").
+ * ⚠️ NENHUM ESTADO VAI SÓ NA COR: o número está sempre lá e a etapa feita vira ✓. Medido com o validador
+ * de paleta, o verde e o âmbar dos tokens ficam com ΔE 6,7 em protanopia.
+ */
+function Trilha({ etapa, T }) {
+  return <div className="tut-trilha" role="progressbar" aria-valuenow={etapa} aria-valuemin={1} aria-valuemax={ETAPAS}>
+    {Array.from({ length: ETAPAS }, (_, i) => {
+      const n = i + 1, st = n < etapa ? "ok" : n === etapa ? "now" : "off";
+      return <React.Fragment key={n}>
+        {i ? <i className={"tut-liga " + (n <= etapa ? "ok" : "")} /> : null}
+        <b className={"tut-bola " + st}>{st === "ok" ? "✓" : n}</b>
+      </React.Fragment>;
+    })}
+  </div>;
+}
+
+/**
+ * A TELA DE "PASSOU DE ETAPA". Ela aparece, comemora e **fecha sozinha** — é o pedido literal ("aparece
+ * uma comemoração que passou de nível, a tela fecha e começa a segunda etapa").
+ *
+ * ⚠️ SEM BOTÃO, de propósito: é uma celebração, não uma decisão. Um botão aqui pediria um clique para
+ * receber um elogio, e ainda precisaria de um caminho de volta ao servidor para encurtar a janela.
+ * ⚠️ Quem a segura é `celebra` (a janela de `SOBRA_MS` em `game/tutor.js`), não um timer local: o relógio
+ * do tutorial é o do MUNDO, e um `setTimeout` aqui descolaria da etapa seguinte se o render congelasse.
+ */
+function Completa({ d, T }) {
+  const n = d.etapa;
+  return <div id="tutor-ok" role="status" aria-live="assertive">
+    <div className="tok-card">
+      <div className="tok-selo">✓</div>
+      <div className="tok-tit">{preenche(T.feito, { n })}</div>
+      <div className="tok-sub">{T["feito" + n] || ""}</div>
+      {d.auto ? <div className="tok-auto">{T.tiroAuto}</div> : null}
+      <Trilha etapa={Math.min(n + 1, ETAPAS)} T={T} />
+    </div>
   </div>;
 }
 

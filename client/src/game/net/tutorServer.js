@@ -16,7 +16,7 @@
 import {STAR,SPLIT,MISSILE,PLAYER,BOT,POWERUP,WEAPON,TICK_HZ,clamp} from "@warspace/shared";
 import {STAR_PHASE} from "@warspace/shared/protocol/constants.js";
 import {setR} from "@warspace/shared/physics/body.js";
-import {applyFire} from "@warspace/shared/physics/rules.js";
+import {applyFire,supernova} from "@warspace/shared/physics/rules.js";
 import {passoTutor,TUTOR0,ETAPA} from "../tutor.js";
 
 /**
@@ -31,16 +31,33 @@ import {passoTutor,TUTOR0,ETAPA} from "../tutor.js";
  * ⚠️ `roundTicks:0` = SEM FIM. O tutorial acaba pelo roteiro, nunca por tempo.
  */
 export const OPCOES_TUTORIAL={seed:7,bots:0,food:0,roundTicks:0,code:"0TUT",
-  mundo:{asteroids:false,holes:0,stars:0,decay:false}};
+  // ⚠️ **A ARENA É UM QUADRADINHO, e isso é o coração da experiência.** O mundo do jogo tem 12.000 px de
+  // lado; num tutorial isso é um vazio sem beira, onde tudo o que importa está fora da tela e o jogador
+  // não tem nem senso de LUGAR. Aqui são 1.200 — medido contra `zoomFor`: o menor lado visível de todas as
+  // telas da matriz é **838 px** (celular em pé, largura), e o maior passa de 2.800. Com 1.200 a borda
+  // tracejada do mundo aparece na tela em qualquer aparelho, e tudo o que a lição precisa cabe dentro dela.
+  // ⚠️ O tamanho do mundo NÃO mexe na quantização: `qPos`/`dqPos` usam a constante GLOBAL `WORLD.w` nos
+  // dois lados, então um mundo menor só ganha precisão (0,18 px por unidade). E o cliente obedece ao
+  // `world:{w,h}` do JSON `room`, que o `LocalServer` já mandava — a grade, a borda e o radar acompanham.
+  mundo:{w:1200,h:1200,asteroids:false,holes:0,stars:0,decay:false}};
 
 /** A coreografia, num lugar só. Ver o bloco de contas no fim do arquivo. */
 export const CENA={
-  DIST:480,          // ⚠️ o raio de tudo. O MENOR envelope de tela medido é 520 px de meia-altura
-                     // (celular deitado, sem o zoom de novato) — um alvo a 900 px está FORA da tela.
-  NOVA_ESPERA:120,   // ticks até a estrela estourar (2 s: ela já nasce inchada e cresce um pouco mais)
-  NOVA_SAFE:340,     // ⚠️ e ela ESPERA se o jogador estiver mais perto que isto: o miolo que estilhaça
-                     // é `blast·NOVA_SHATTER` ≈ 290 px na fase OLD, e a etapa 1 não pode abrir punindo
-                     // quem obedeceu à instrução de ir até lá.
+  DIST:300,          // ⚠️ o raio de tudo, e ele é PEQUENO de propósito: numa arena de 1.200 px tudo tem de
+                     // caber na tela de um celular em pé (838 px de largura visível) sem o jogador
+                     // precisar procurar. Nada no tutorial fica a mais de 300 px dele.
+  ESTRELA_R:24,      // ⚠️ **METADE da `STAR.R` de série**, e é o que faz a explosão caber na arena: o raio
+                     // do estouro é `r·NOVA_R`, então uma estrela de 46 solta uma onda de 368 px (644 já
+                     // inchada na fase OLD) — mais da metade do mundo do tutorial, e um miolo letal de 290
+                     // px contra um jogador que está a 300. Com 24 a onda é de 192 (336 inchada) e o miolo
+                     // cai para 86 px. A MASSA dos cacos não muda: ela sai de `EJECT_MASS·NOVA_PART_MASS`,
+                     // que não conhece o raio da estrela.
+  NOVA_ESPERA:150,   // ticks até a estrela estourar (2,5 s)
+  NOVA_INCHA:60,     // ticks finais em que ela incha, telegrafando o estouro
+  NOVA_SWELL:1.6,    // o quanto ela incha (o inchaço é NOSSO — ver o ⚠️ do `tickStar` abaixo)
+  NOVA_SAFE:200,     // ⚠️ e ela ESPERA se o jogador estiver mais perto que isto: o miolo que estilhaça é
+                     // `blast·NOVA_SHATTER` ≈ 138 px com a estrela já inchada, e a etapa 1 não pode abrir
+                     // punindo quem obedeceu à instrução de ir até lá.
   CACO_VIDA:7200,    // ⚠️ os cacos da supernova vivem `NOVA_LIFE_TICKS` = 15 s. Um novato descobrindo o
                      // mouse não come 17 deles nesse tempo, e a etapa se esvaziaria sozinha — justo para
                      // quem esta feature existe para atender. 2 min é o tutorial inteiro, com folga.
@@ -57,7 +74,8 @@ export const CENA={
   PRESA_V:1.0,       // fração da velocidade de fuga (1 = foge de verdade; a presa É mais rápida)
   SPLIT_K:1.6,       // r do jogador ao abrir a etapa 3, em múltiplos de `SPLIT.MIN_R` (o filho sai em
                      // r/√2 e tem de continuar acima do portão)
-  AJUDA1_D:350,AJUDA2_D:150,   // a presa chega mais perto nos degraus de ajuda
+  AJUDA1_D:220,AJUDA2_D:120,   // a presa chega mais perto nos degraus de ajuda
+  MARGEM:120,        // folga até a borda da arena ao plantar qualquer coisa
 };
 
 const ms=w=>w.tick*(1000/TICK_HZ);
@@ -74,7 +92,7 @@ function centro(ps){const a=vivas(ps);if(!a.length)return null;
  * ⚠️ E ele inverte quando não cabe: o jogador anda durante a etapa, e o mundo tem borda.
  */
 function perto(w,c,dist){
-  const m=dist+200;
+  const m=CENA.MARGEM;
   const cima=c.y-dist>=m,baixo=c.y+dist<=w.h-m;
   const y=cima?c.y-dist:baixo?c.y+dist:clamp(c.y-dist,m,w.h-m);
   return{x:clamp(c.x,m,w.w-m),y};}
@@ -101,6 +119,23 @@ export function preparaJogador(w,slot,{r=0,ammo=-1,graca=null}={}){
   if(graca===false)ps.graceUntil=0;
   return ps;}
 
+/**
+ * O que a supernova deixa para trás e que o tutorial precisa corrigir. Chamada NA HORA de `supernova()`.
+ *
+ * ⚠️ **E não pelo evento `SUPERNOVA`, que é a armadilha aqui:** `world.js` zera `w.events` na ABERTURA do
+ * `step()`, e o roteiro roda DEPOIS dele — então um evento que o PRÓPRIO roteiro emite nunca chega ao
+ * laço de eventos dele, porque o `step()` seguinte o apaga antes. Custou um teste vermelho para aparecer.
+ *
+ * ⚠️ **Os cacos expiram em 15 s** (`STAR.NOVA_LIFE_TICKS`=900): um novato descobrindo o mouse não come 17
+ * deles nesse tempo, e a etapa 1 se esvaziaria sozinha — justo para o jogador que ela existe para atender.
+ * ⚠️ **E `supernova()` enfileira uma estrela nova** (`queueStar`), cuja fila é drenada INCONDICIONALMENTE
+ * na fase 11 do `step` — `stars:0` não a impede. Sem esta linha, uma estrela aparece em ponto sorteado do
+ * mapa 10 s depois, no meio da etapa 2 ou 3.
+ */
+function limpaDaNova(w,st){
+  for(const e of w.ejected)if(!e.dead)e.life=w.tick+CENA.CACO_VIDA;
+  w.starQueue.length=0;}
+
 /** Apaga o que a etapa anterior deixou: cacos, comida, estrelas, o alvo e a FILA de estrelas. */
 function limpa(w,st,api){
   for(const e of w.ejected)if(!e.dead)e.dead=true;
@@ -123,11 +158,14 @@ export function montaEtapa(w,api,etapa,slot,st){
   const c=centro(ps);if(!c)return;
   if(etapa===ETAPA.NOVA){
     const p=perto(w,c,CENA.DIST);
-    const s=w.spawnStar(true,{x:p.x,y:p.y});
-    if(s){
-      // Já em OLD: ela nasce inchada e cresce mais um pouco antes de estourar — o telegrama que o cliente
-      // desenha de graça (`effects.star.nursery`). `spawnStar(true)` sozinho sortearia 40 a 70 s de vida.
-      s.type=STAR_PHASE.OLD;s.life=w.tick+CENA.NOVA_ESPERA;st.estrela=s.id;}
+    // ⚠️ **A ESTRELA FICA EM ACTIVE E QUEM A EXPLODE SOMOS NÓS**, e isto não é preciosismo — foi MEDIDO.
+    // Pondo-a em `STAR_PHASE.OLD`, `rules.tickStar` assume o inchaço e o faz sobre a CONSTANTE
+    // (`setR(st, STAR.R*(1+(SWELL-1)*p))`): o raio de 24 que plantamos vira 80,4, o estouro salta de 192
+    // para **644 px** e o miolo que estilhaça, de 86 para **290** — contra um aluno que está a 300. Ele
+    // sobrevivia por 10 px parado, e era despedaçado assim que se mexia (visto em bancada: o planeta do
+    // tutorial virou dois). Em ACTIVE o raio é o nosso, o inchaço é o nosso, e a margem é de 162 px.
+    const s=w.spawnStar(true,{x:p.x,y:p.y,r:CENA.ESTRELA_R,life:w.tick+9e6});
+    if(s){st.estrela=s.id;st.novaEm=w.tick+CENA.NOVA_ESPERA;}
     st.base=w.massOf(slot);
     return;}
   if(etapa===ETAPA.TIRO){
@@ -151,7 +189,7 @@ export function montaEtapa(w,api,etapa,slot,st){
  * @returns {{nasce:Function, passo:Function, estado:Function}}
  */
 export function criaRoteiro(){
-  const st={etapa:TUTOR0,slot:-1,alvo:-1,estrela:-1,base:0,montada:0,
+  const st={etapa:TUTOR0,slot:-1,alvo:-1,estrela:-1,novaEm:0,base:0,montada:0,
     sobrou:0,ultimo:0,acertou:false,comeu:false,moveu:false,ultEnv:""};
 
   function nasce(w,slot,api){
@@ -173,26 +211,26 @@ export function criaRoteiro(){
 
     // ── o que aconteceu NESTE tick ──
     for(const ev of w.events){
-      if(ev.type==="SUPERNOVA"){
-        // ⚠️ **OS CACOS EXPIRAM EM 15 s** (`STAR.NOVA_LIFE_TICKS`=900, consumido em `world.js`), e um
-        // novato descobrindo o mouse não come 17 deles nesse tempo: a etapa 1 se esvaziaria sozinha e ele
-        // ficaria num mundo sem nada, sem entender por quê — justo o jogador para quem esta feature
-        // existe. Estender a vida no mundo LOCAL é uma linha e não toca em física nenhuma.
-        for(const e of w.ejected)if(!e.dead)e.life=w.tick+CENA.CACO_VIDA;
-        // E a fila de respawn de estrela some junto: `supernova()` enfileira uma para daqui a 10 s, e ela
-        // nasceria em ponto sorteado do mapa no meio da etapa 2 ou 3.
-        w.starQueue.length=0;st.estrela=-1;}
-      else if(ev.type==="EJECT_EATEN"&&ev.slot===st.slot)st.ultimo=agora;
+      if(ev.type==="EJECT_EATEN"&&ev.slot===st.slot)st.ultimo=agora;
       else if(ev.type==="FOOD_EATEN"&&ev.slot===st.slot)st.ultimo=agora;
       else if(ev.type==="BOOM"&&ev.bySlot===st.slot)st.acertou=true;
       else if(ev.type==="EAT"&&ev.killerSlot===st.slot)st.comeu=true;}
     st.sobrou=w.ejected.reduce((n,e)=>n+(e.dead?0:1),0);
 
-    // a estrela só estoura com o jogador a salvo do miolo — ver CENA.NOVA_SAFE
+    // ── a estrela: o inchaço e o estouro são nossos (ver `montaEtapa`) ──
     if(st.estrela>=0){const s=w.stars.find(x=>x.id===st.estrela&&!x.dead);
       if(!s)st.estrela=-1;
-      else{const c=centro(ps);
-        if(c&&Math.hypot(c.x-s.x,c.y-s.y)<CENA.NOVA_SAFE&&w.tick>=s.life-1)s.life=w.tick+30;}}
+      else{
+        const falta=st.novaEm-w.tick;
+        // o telegrama: ela incha nos últimos `NOVA_INCHA` ticks, com o raio que NÓS escolhemos
+        if(falta<=CENA.NOVA_INCHA){const p=1-Math.max(0,falta)/CENA.NOVA_INCHA;
+          setR(s,CENA.ESTRELA_R*(1+(CENA.NOVA_SWELL-1)*p));}
+        if(falta<=0){
+          // ⚠️ e ela ESPERA se o aluno estiver perto demais: a etapa 1 não pode abrir punindo quem
+          // obedeceu à instrução de ir até lá.
+          const c=centro(ps);
+          if(c&&Math.hypot(c.x-s.x,c.y-s.y)<CENA.NOVA_SAFE)st.novaEm=w.tick+30;
+          else{supernova(w,s);st.estrela=-1;limpaDaNova(w,st);}}}}
 
     // ── a decisão ──
     const c=centro(ps);
@@ -211,10 +249,10 @@ export function criaRoteiro(){
     if(ps&&c)ajuda(w,api,r,st,ps,c);
 
     // ── o estado, só quando muda ──
-    const env=r.etapa+"|"+Math.round(r.pct*100)+"|"+r.ajuda+"|"+(r.fim?1:0);
+    const env=r.etapa+"|"+Math.round(r.pct*100)+"|"+r.ajuda+"|"+(r.celebra?1:0)+"|"+(r.fim?1:0);
     if(env!==st.ultEnv||r.festa){st.ultEnv=env;
       api.json({t:"tutor",etapa:r.etapa,pct:+r.pct.toFixed(3),ajuda:r.ajuda,
-        festa:r.festa,auto:r.auto,fim:r.fim});}}
+        festa:r.festa,celebra:r.celebra,auto:r.auto,fim:r.fim});}}
 
   /** Os degraus 2 e 3 de cada etapa, do lado do mundo. O degrau 1 é sempre só texto. */
   function ajuda(w,api,r,st,ps,c){

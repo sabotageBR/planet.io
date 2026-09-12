@@ -59,6 +59,7 @@ client/src/    api/base.js (a ÚNICA fonte de "onde mora o servidor") · portal/
                theme/ (index.js + dawn|sunset|dusk: tokens/hud/screens.css gerados por port.js, index.js com textures/effects/hud) · styles/base.css
                game/ (index.js createGame · quality.js (a política de nível econômico, pura) · net/ · state/ · renderer/ · input/ (Pointer·Keyboard·Touch·Joystick·Wheel) · hud/ · bench.js
                      tutor.js (a decisão das 3 etapas do tutorial de estreia, PURA) · net/tutorServer.js (o diretor: o único que toca no World)
+                     ui/Tutor.jsx (a tela: trilha 1·2·3, o prompt de botão, a tela de etapa e o cartão de fim) · ui/tutorFala.js (qual frase e qual botão, PURAS)
                      estreia.js (as duas marcas: o tutorial por dispositivo, a missão por sessão — elas se cruzam))
 docs/spec/     protocol.md · api.md · admin.md · hooks.md · server-game.md · client-game.md · portais.md      docs/design/  telas.md · theme-time.md · rodada-1.md · som.md · modos.md
 k8s/           00-namespace · 05-config (ConfigMap) · 10-server (StatefulSet 3 shards, envFrom ConfigMap+Secret) · 20-client
@@ -1312,6 +1313,24 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   inteiro `hidden` (somem `#t-split`, `#t-fire`, a faixa), `GameHost` chama `game.leave()` no primeiro
   render, a cortina `#boot` fica presa 10 s no pacote (ela espera `screen==="game"`) e o `RETIDO` de
   `portal/sessao.js` para de contar — o 1.x seguinte leria "engajamento caiu" sem nada ter piorado.
+  ⚠️ **A ARENA É UM QUADRADINHO DE 1.200 px, e isso é metade da experiência.** O mundo do jogo tem 12.000
+  de lado; num tutorial aquilo é um vazio sem beira, com tudo o que importa fora da tela e nenhum senso de
+  LUGAR — foi a primeira queixa da versão de estreia. Medido por `zoomFor`: o menor lado visível de todas
+  as telas da matriz é **838 px** (celular em pé, largura) e o maior passa de 2.800, então com 1.200 a
+  borda tracejada do mundo aparece em qualquer aparelho e tudo cabe dentro dela. ⚠️ E o tamanho do mundo
+  NÃO toca na quantização: `qPos`/`dqPos` leem a constante GLOBAL nos dois lados, então um mundo menor só
+  ganha precisão; o cliente obedece ao `world:{w,h}` do JSON `room`, que o `LocalServer` já mandava.
+  ⚠️ **A ESTRELA FICA EM `ACTIVE` E QUEM A EXPLODE É O ROTEIRO** (`supernova(w,st)` na mão) — pôr `OLD` é
+  a armadilha, e ela só aparece de olho. `rules.tickStar` assume o inchaço e o faz sobre a **constante**
+  (`setR(st, STAR.R*(1+(SWELL-1)*p))`): o raio de 24 que o tutorial planta vira **80,4**, o estouro salta
+  de 192 para **644 px** e o miolo que estilhaça, de 86 para **290** — contra um aluno que está a 300. Ele
+  sobrevivia por 10 px PARADO e era despedaçado assim que se mexia; em bancada o planeta virou dois na
+  etapa que devia ensiná-lo a crescer. Com o inchaço nosso a margem é de 162 px, e há teste travando a
+  RAZÃO (`d > miolo·1,8`), não um "sobreviveu" que passava por 10 px.
+  ⚠️ **UM EVENTO QUE O PRÓPRIO ROTEIRO EMITE NUNCA CHEGA AO LAÇO DE EVENTOS DELE**: `world.js` zera
+  `w.events` na ABERTURA do `step()`, e o roteiro roda DEPOIS — então o `SUPERNOVA` que ele mesmo empurrou
+  é apagado antes de ser lido. O que a supernova deixa para corrigir (a vida dos cacos, a fila de estrela)
+  é tratado NA CHAMADA, em `limpaDaNova`. Custou um teste vermelho para aparecer.
   ⚠️ **O MUNDO É O `LocalServer`, que ganhou `mundo` e `roteiro` e continua não sabendo o que é tutorial.**
   Ele já fala o protocolo binário real e entrega um socket com a interface do `WebSocket`; o `bench` é o
   precedente literal de mutar o `World` depois de criado. Um servidor irmão copiaria as ~200 linhas de
@@ -1383,6 +1402,24 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `LocalServer` **nunca mandava essa mensagem**: no modo local ele ficava `true` para sempre, `act()`
   engolia todo comando de dividir, o `#t-split` não era renderizado e a etapa 3 da missão nunca aparecia.
   Ninguém conseguia dividir ali, e nada acusava. O `graceTick` de lá é o espelho de `Sim._graceTick`.
+  ⚠️ **A TELA: trilha 1·2·3, letra de instrução e o BOTÃO QUE SE APERTA, desenhado.** São três caras
+  (`ui/Tutor.jsx`): a faixa em curso, a TELA DE "ETAPA COMPLETA" (que aparece, comemora e **fecha sozinha**
+  — sem botão, porque é uma celebração e não uma decisão) e o cartão de fim. ⚠️ A instrução fica no TOPO e
+  o prompt no RODAPÉ, e essa separação não é estética: empilhados eles desciam até o meio da tela e
+  TAPAVAM o planeta e os pedaços, ou seja a explicação cobria a coisa explicada.
+  ⚠️ **O PROMPT É A ÚNICA COISA DO JOGO QUE DIZ QUAL BOTÃO APERTAR**, e ele existe porque no mouse **não
+  há nada na tela** dizendo isso: `#hud-cd` é `display:none` nos três temas e `#touch` só aparece com
+  `pointer:coarse`. Ele desenha um mouse com a metade ESQUERDA acesa, a tecla como tecla (com a aresta de
+  baixo, para ler como algo que se aperta) ou o botão do HUD replicado — e a tecla vem de `prefs.keySplit`,
+  nunca cravada, porque ela é configurável e uma legenda que mente é pior que legenda nenhuma.
+  ⚠️ `falaDoTutor`/`promptDoTutor` moram num `.js` (`ui/tutorFala.js`) e não no `.jsx`: o `node --test` não
+  carrega `.jsx`, e uma função de DECISÃO que ninguém testa é onde o par mouse/dedo se inverte em
+  silêncio. O molde é `ui/premio.js` e `ui/deadEstilo.js`.
+  ⚠️ **`celebra` é a JANELA e `festa` é o INSTANTE**: aquele segura a tela de etapa pelos `SOBRA_MS`, este
+  dispara som e efeito uma vez. Com só um dos dois, ou a tela pisca um frame, ou o som toca a 8 Hz.
+  ⚠️ **O bloco de arma fica só na ETAPA 2**, que é a do tiro — lá a munição É a lição e o jogador precisa
+  vê-la cair de 3 para 2. Nas outras duas um "0 MÍSSIL" na etapa de MOVER é ruído, e ainda brigava com o
+  prompt pelo mesmo pedaço de rodapé.
   ⚠️ **O HUD ENCOLHE COM `visibility:hidden`, não `opacity:0`** (ao contrário dos overlays do BR): ela
   HERDA — `getComputedStyle` de um filho não vê o `opacity` do pai, e a matriz de responsividade lê o
   filho (foram 6 falsos positivos de `hud-lb×tutor` até virar `visibility`) — e tira o bloco da árvore de

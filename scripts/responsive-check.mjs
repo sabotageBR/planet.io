@@ -71,7 +71,11 @@ const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile",
   // o `@2` mede o degrau de ajuda (a frase mais longa de todas). O `fim` é o cartão com o prêmio, que é o
   // único bloco dele que pede rolagem em tela baixa — e é justamente ali que a tela de morte e o BIG
   // CRUNCH já reprovaram uma vez, com os botões fora da dobra.
-  "tutor:1","tutor:2@2","tutor:3","tutor:fim"];
+  // As três etapas têm a mesma casca mas frases, prompts e alturas diferentes; `!` força o par do DEDO
+  // (outras frases, outro prompt) e `ok<n>` é a TELA de etapa concluída, que sem isto nenhuma combinação
+  // mediria. `fim` é o cartão com o prêmio — o único bloco que pede rolagem em tela baixa, e é ali que a
+  // tela de morte e o BIG CRUNCH já reprovaram uma vez com os botões fora da dobra.
+  "tutor:1","tutor:2@2","tutor:3@1","tutor:3!","tutor:ok2","tutor:fim"];
 const TEMAS=(process.env.RESP_TEMAS||"dawn,sunset,dusk").split(",");   // o dusk é o mais fraco: tem menos regras de mobile que os outros dois
 // `RESP_TELAS` recorta a matriz, no molde do `RESP_TEMAS`: a rodada inteira são ~600 combinações e vários
 // minutos, e quem acabou de mexer em UMA tela quer o retorno dela em segundos. A rodada completa continua
@@ -119,7 +123,7 @@ const SONDA=`(()=>{
     if(r.width<44||r.height<44)pequenos.push(nome(el)+' '+Math.round(r.width)+'x'+Math.round(r.height));}
   // Só blocos com CAIXA própria: os wrappers (#hud-left é display:contents no desktop, #hud-right contém
   // os três da direita) colidiriam com os próprios filhos e dariam falso positivo o tempo todo.
-  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-br','touch','chat','talk','radar','toast','kill-feed','tutor'];
+  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-br','touch','chat','talk','radar','toast','kill-feed','tutor','tutor-ok'];
   const cai=ids.map(i=>document.getElementById(i)).filter(e=>e&&vis(e)),cx=[];
   for(let a=0;a<cai.length;a++)for(let b=a+1;b<cai.length;b++){
     const A=cai[a].getBoundingClientRect(),B=cai[b].getBoundingClientRect();

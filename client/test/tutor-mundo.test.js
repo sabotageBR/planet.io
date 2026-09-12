@@ -82,6 +82,21 @@ test("ETAPA 1: a estrela explode e o aluno SOBREVIVE", () => {
   assert.equal(Math.round(w.massOf(0)), PLAYER.SPAWN_R * PLAYER.SPAWN_R, "com a massa intacta");
 });
 
+test("A MARGEM DA EXPLOSÃO É FOLGADA, não raspada", () => {
+  // ⚠️ Este teste existe porque a primeira versão sobrevivia por **10 px** — e só com o jogador
+  // perfeitamente parado. Pondo a estrela em `STAR_PHASE.OLD`, `rules.tickStar` assume o inchaço e o faz
+  // sobre a CONSTANTE `STAR.R`: o raio de 24 que o tutorial planta vira 80,4, o estouro salta de 192 para
+  // 644 px e o miolo que estilhaça, de 86 para 290 — contra um aluno a 300. Em bancada o planeta do
+  // tutorial virou DOIS na etapa que devia ensiná-lo a crescer. "Sobreviveu" não basta como asserção.
+  const { w, rot, api } = banca();
+  let ev = null;
+  for (let i = 0; i < CENA.NOVA_ESPERA + 60 && !ev; i++) { w.step(); rot.passo(w, api); ev = w.events.find(e => e.type === "SUPERNOVA"); }
+  assert.ok(ev, "a supernova aconteceu");
+  const pc = vivas(w.players.get(0))[0];
+  const d = Math.hypot(pc.x - ev.x, pc.y - ev.y), miolo = ev.r * STAR.NOVA_SHATTER;
+  assert.ok(d > miolo * 1.8, `folga curta: ${Math.round(d)} px contra um miolo de ${Math.round(miolo)} px`);
+});
+
 test("...e ela deixa massa de sobra para o portão do dividir", () => {
   const { w, rot, api } = banca();
   anda(w, rot, api, CENA.NOVA_ESPERA + 30);

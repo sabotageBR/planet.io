@@ -229,7 +229,13 @@ export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=
     if(souGraca.size&&tick%GRACE_EVERY===0)graceTick();
     if(playersDirty){playersDirty=false;const u8=encodePlayers(writer,playerList());for(const s of sessions)if(s.slot>=0)sendBin(s.sock,u8);}
     if(tick%SNAPSHOT_EVERY===0)for(const s of sessions)if(s.slot>=0)snapshot(s);
-    if(tick%LEADERBOARD_EVERY===0){const rows=[];   // TODOS os vivos com posição, como o servidor: o HUD corta no top 10 e o radar usa a lista inteira
+    // ⚠️ **NO TUTORIAL NÃO HÁ PLACAR — e é por isso que ele não tem COROA.** `WorldView` tira o líder do
+    // LEADERBOARD, e num mundo com um jogador só o aluno é sempre o primeiro: ele ganhava a coroa de
+    // "maior do mapa" na etapa em que ainda está aprendendo a se mover, o que não significa nada e ainda
+    // some com o topo do planeta. Sem a mensagem, `leaderSlot` fica -1 e `layers/Planets.js` não desenha
+    // nada — zero linha de cliente. E não se perde o resto: o radar e o `rank` que o LEADERBOARD também
+    // alimenta já estão escondidos durante o tutorial.
+    if(tick%LEADERBOARD_EVERY===0&&!roteiro){const rows=[];   // TODOS os vivos com posição, como o servidor: o HUD corta no top 10 e o radar usa a lista inteira
       for(const slot of meta.keys()){const ps=w.players.get(slot);if(!ps||!ps.alive)continue;
         let sx=0,sy=0,n=0;for(const pc of ps.pieces){if(pc.dead)continue;sx+=pc.x;sy+=pc.y;n++;}
         if(n)rows.push({slot,mass:Math.round(w.massOf(slot)),x:sx/n,y:sy/n});}

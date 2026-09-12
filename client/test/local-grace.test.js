@@ -67,3 +67,34 @@ test("o `why` é um dos três que o cliente conhece", async () => {
     assert.ok(["time", "mass", "kill"].includes(g.why), g.why);
   } finally { srv.stop(); }
 });
+
+// ── E O TUTORIAL NÃO TEM PLACAR, LOGO NÃO TEM COROA ──────────────────────────
+test("com roteiro, o servidor local NÃO manda LEADERBOARD", async () => {
+  // `WorldView` tira o líder do LEADERBOARD, e num mundo com um jogador só o aluno é sempre o primeiro:
+  // ele ganhava a coroa de "maior do mapa" na etapa em que ainda está aprendendo a se mover — sem
+  // significado nenhum, e ainda por cima tapando o topo do próprio planeta. Sem a mensagem, `leaderSlot`
+  // fica -1 e o render não desenha nada.
+  const { createLocalServer } = await import("../src/game/net/LocalServer.js");
+  const { MSG } = await import("@warspace/shared");
+  const roteiro = { nasce: (w, slot) => w.addPlayer(slot, { x: 600, y: 600 }), passo: () => {} };
+  const srv = createLocalServer({ bots: 0, food: 0, seed: 1, mundo: { w: 1200, h: 1200, asteroids: false, holes: 0, stars: 0 }, roteiro });
+  const sock = srv.connect(); const tipos = new Set();
+  sock.onmessage = e => { if (typeof e.data !== "string") tipos.add(new Uint8Array(e.data)[0]); };
+  sock.onopen = () => sock.send(JSON.stringify({ t: "join", fallbackNick: "T", view: { w: 1280, h: 720 } }));
+  try {
+    await espera(700);   // LEADERBOARD_EVERY = 30 ticks = 0,5 s: mais de uma janela
+    assert.equal(tipos.has(MSG.LEADERBOARD), false, "nenhum LEADERBOARD saiu");
+    assert.equal(tipos.has(MSG.SNAPSHOT), true, "mas o snapshot continua — o jogo roda normalmente");
+  } finally { srv.stop(); }
+});
+
+test("...e SEM roteiro ele continua mandando, byte a byte como sempre", async () => {
+  const { createLocalServer } = await import("../src/game/net/LocalServer.js");
+  const { MSG } = await import("@warspace/shared");
+  const srv = createLocalServer({ bots: 0, food: 0, seed: 1 });
+  const sock = srv.connect(); const tipos = new Set();
+  sock.onmessage = e => { if (typeof e.data !== "string") tipos.add(new Uint8Array(e.data)[0]); };
+  sock.onopen = () => sock.send(JSON.stringify({ t: "join", fallbackNick: "T", view: { w: 1280, h: 720 } }));
+  try { await espera(700); assert.equal(tipos.has(MSG.LEADERBOARD), true); }
+  finally { srv.stop(); }
+});

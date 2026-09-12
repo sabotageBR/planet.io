@@ -152,3 +152,69 @@ test("é PURA: não mexe no estado nem no contexto que recebe", () => {
   assert.deepEqual(est, copia);
   assert.deepEqual(c, cc);
 });
+
+// ── AS DUAS FUNÇÕES PURAS DA TELA (ui/Tutor.jsx) ─────────────────────────────
+// Elas são puras e exportadas justamente para poderem ser conferidas aqui: o que falha nelas falha em
+// SILÊNCIO — uma instrução de mouse para quem tem dedo faz o planeta virar, nada acontecer, e o jogador
+// concluir que o tutorial mente.
+import { falaDoTutor, promptDoTutor } from "../src/ui/tutorFala.js";
+
+/** Labels de mentira, com o valor igual à chave: assim a asserção diz QUAL chave saiu. */
+const T = new Proxy({}, { get: (_, k) => String(k) });
+
+test("cada etapa tem título e instrução, e nenhum vem vazio", () => {
+  for (const etapa of [ETAPA.NOVA, ETAPA.TIRO, ETAPA.SPLIT])
+    for (const dedo of [false, true])
+      for (const ajuda of [0, 1, 2]) {
+        const [tit, txt] = falaDoTutor({ etapa, ajuda, pct: 0, dedo }, T, "ESPAÇO");
+        assert.ok(tit, `etapa ${etapa} ajuda ${ajuda} dedo ${dedo}: sem título`);
+        assert.ok(txt, `etapa ${etapa} ajuda ${ajuda} dedo ${dedo}: sem instrução`);
+      }
+});
+
+test("MOUSE E DEDO NUNCA RECEBEM A MESMA FRASE onde o gesto difere", () => {
+  // No dedo, tocar no canvas NÃO atira — dirige o planeta. "Clique para atirar" ali é o tutorial mentindo.
+  for (const [etapa, ajuda] of [[ETAPA.NOVA, 0], [ETAPA.TIRO, 0], [ETAPA.SPLIT, 1]]) {
+    const m = falaDoTutor({ etapa, ajuda, pct: 0, dedo: false }, T, "ESPAÇO")[1];
+    const d = falaDoTutor({ etapa, ajuda, pct: 0, dedo: true }, T, "ESPAÇO")[1];
+    assert.notEqual(m, d, `etapa ${etapa}: mouse e dedo recebem a mesma frase`);
+  }
+});
+
+test("o prompt do MOUSE diz QUAL BOTÃO; o do dedo aponta o botão do HUD", () => {
+  // É o pedido literal: "aparece grande o botão que tem que apertar, se for mouse qual botão na tela".
+  assert.equal(promptDoTutor({ etapa: ETAPA.TIRO, ajuda: 0, dedo: false }, T, "ESPAÇO").tipo, "mouse-clique");
+  assert.equal(promptDoTutor({ etapa: ETAPA.TIRO, ajuda: 0, dedo: true }, T, "ESPAÇO").tipo, "hud");
+  assert.equal(promptDoTutor({ etapa: ETAPA.NOVA, ajuda: 0, dedo: false }, T, "ESPAÇO").tipo, "mouse-mover");
+  assert.equal(promptDoTutor({ etapa: ETAPA.NOVA, ajuda: 0, dedo: true }, T, "ESPAÇO").tipo, "toque");
+});
+
+test("a TECLA do prompt é a que o jogador configurou, não uma cravada", () => {
+  // `prefs.keySplit` é configurável (o `code` físico, que vale em ABNT/QWERTY/AZERTY). Uma legenda que
+  // mente é pior que legenda nenhuma.
+  const p = promptDoTutor({ etapa: ETAPA.SPLIT, ajuda: 1, dedo: false }, T, "CTRL");
+  assert.equal(p.tipo, "tecla");
+  assert.equal(p.rotulo, "CTRL");
+});
+
+test("NADA DE PROMPT antes de o problema existir", () => {
+  // Na etapa 3, enquanto o jogador ainda está descobrindo que perseguir não funciona (ajuda 0), não há
+  // gesto a pedir. Uma dica que chega antes do problema é ruído; depois do problema é alívio.
+  assert.equal(promptDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0, dedo: false }, T, "ESPAÇO"), null);
+  assert.equal(promptDoTutor({ etapa: ETAPA.FIM, ajuda: 0, dedo: false }, T, "ESPAÇO"), null);
+});
+
+test("`celebra` é a JANELA, `festa` é o instante", () => {
+  // `festa` dispara som e efeito (uma vez); `celebra` segura a tela de "etapa completa" pelos SOBRA_MS.
+  // Com só um dos dois, ou a tela pisca um frame, ou o som toca a 8 Hz.
+  const a = passoTutor(TUTOR0, ctx(), 1000);
+  const b = passoTutor(a.est, ctx({ massa: 7000, sobrou: 0 }), 1100);
+  assert.equal(b.festa, ETAPA.NOVA);
+  assert.equal(b.celebra, true);
+  const c = passoTutor(b.est, ctx(), 1600);
+  assert.equal(c.festa, 0, "o instante passou");
+  assert.equal(c.celebra, true, "mas a tela continua no ar");
+  const d = passoTutor(b.est, ctx(), 1100 + TUTOR.SOBRA_MS);
+  assert.equal(d.celebra, false, "e sai quando a próxima etapa sobe");
+  assert.equal(d.etapa, ETAPA.TIRO);
+});
