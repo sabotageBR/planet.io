@@ -23,13 +23,7 @@ const RELOAD_KEY="warspace_proto_reload";
 const jaRecarregou=v=>{try{return sessionStorage.getItem(RELOAD_KEY)===String(v);}catch{return false;}};
 const marcaReload=v=>{try{sessionStorage.setItem(RELOAD_KEY,String(v));}catch{}};
 
-// ⚠️ **A ESCADA TEM QUE CABER EM `NET.RESUME_MS`, E NÃO CABIA.** Ela era [500,1000,2000,4000,4000], ou
-// seja as tentativas caíam em 0,5 · 1,5 · 3,5 · 7,5 · **11,5 s** — e o servidor segura a sessão órfã por
-// 10 s (`Room.housekeeping`), depois dos quais o `resume` é recusado com `ROOM_EXPIRED`. A última
-// tentativa nascia condenada: quem sobreviveu a 11 s de rede ruim perdia a partida mesmo com o socket
-// reaberto, e na prática só havia QUATRO tentativas úteis. Agora a 5ª cai em 9,0 s, com ~1 s de folga
-// para o `resume` chegar do outro lado. Mexer em qualquer um dos dois números pede refazer esta soma.
-const BACKOFF=[500,1000,2000,3000,2500],MAX_ATTEMPTS=5;
+const BACKOFF=[500,1000,2000,4000,4000],MAX_ATTEMPTS=5;
 export function createConnection({makeSocket,onJson,onBinary,onState,onOpenSend,onStale}){
   let ws=null,state="idle",attempt=0,timer=0,pingT=0,deliberate=false,fatal=false,joinedOnce=false,stale=false;
   const c={state:"idle",session:null,room:null,rtt:0,rttAvg:0,bytesIn:0,msgsIn:0,pongTick:0,pongAt:0,tickOffset:NaN,

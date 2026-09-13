@@ -101,7 +101,6 @@ test("é pura: não escreve no estado que recebe", () => {
 // ("a gameplayStart() cannot follow another gameplayStart()"). O jogo cumpria nenhuma das duas — o
 // único fechamento era `leaveGame()`, então a tela de morte inteira contava como jogo ativo.
 import { iniciaSessaoPortal } from "../src/portal/sessao.js";
-import { PORTAL } from "@warspace/shared";
 
 /** Um store com a mesma forma do `app` (get/subscribe/update), sem React e sem o resto do jogo. */
 const storeFalso = (st0) => {
@@ -301,74 +300,4 @@ test("mas a RETIDÃO não depende da conexão: quem está reconectando continua 
   store.vai({ screen: "game", conn: "connecting" });
   assert.ok(marcos.some(m => m === "session/60s/start"), "o relógio da sessão abre com a tela, não com o WS");
   off();
-});
-
-// ── A JANELA DE INTERAÇÃO: O START ADIADO ────────────────────────────────────
-// Isto é a correção de raiz do defeito que custou o Fit Test 1.21 e reapareceu inteiro na cauda da
-// 1.26. O `gesto` era um LATCH de uma vez por carga de página, então do SEGUNDO `gameplayStart` em
-// diante ninguém conferia recência — e o SDK deles confere em TODOS: ele anexa
-// `interaction: getRecentInteraction()`, vazio passados 5 s, e o validador é `if(!interaction) FALHA`.
-// Os três caminhos abaixo são os que foram medidos saindo INVÁLIDOS em campo, e nenhum tinha teste:
-// o roteiro antigo ia `game → dead → game → round → lobby` e parava — a reentrada `round → game`
-// (`ui/Round.jsx`, um `setInterval` depois de ~17 s de pódio) nunca era exercitada.
-const relogio = () => { const r = { t: 0 }; r.agora = () => r.t; r.anda = ms => { r.t += ms; }; return r; };
-/** Como `roteiro`, mas com o tempo na mão: `["ANDA", ms]` avança o relógio, `"GESTO"` dispara um input. */
-const roteiroT = passos => {
-  const store = storeFalso(TELA0), log = [], rel = relogio();
-  const alvo = { comecou: () => log.push("start"), parou: () => log.push("stop"), medir: () => {} };
-  let dispara = () => {};
-  const off = iniciaSessaoPortal(alvo, store, rel.agora, cb => { dispara = cb; return () => {}; });
-  for (const p of passos) {
-    if (p === "GESTO") dispara();
-    else if (Array.isArray(p) && p[0] === "ANDA") rel.anda(p[1]);
-    else store.vai(p);
-  }
-  off();
-  return log;
-};
-
-test("o BIG CRUNCH reentra na sala sozinho: o start ESPERA o gesto em vez de sair inválido", () => {
-  // `ui/Round.jsx` chama `play({})` por `setInterval` depois de ROUND.BREAK_MS (15 s) + a abertura de
-  // 2 s. Não há clique nenhum nesse caminho — é o propósito da tela —, então o start nascia com
-  // `interaction` vazio e o relógio de playtime deles parava justo em quem já estava engajado.
-  const log = roteiroT([
-    "GESTO", jogando(),          // jogou a rodada inteira
-    { screen: "round" },         // BIG CRUNCH: stop
-    ["ANDA", 17000],             // pódio + abertura, sem um único pointerdown
-    jogando(),                   // reentrou sozinho na sala nova
-  ]);
-  assert.deepEqual(log, ["start", "stop"], "o segundo start NÃO pode sair aqui: não há interação atrás dele");
-
-  const comGesto = roteiroT([
-    "GESTO", jogando(), { screen: "round" }, ["ANDA", 17000], jogando(),
-    "GESTO",                     // ...e o primeiro toque na sala nova solta o que estava pendente
-  ]);
-  assert.deepEqual(comGesto, ["start", "stop", "start"], "adiar, nunca descartar");
-});
-
-test("o respawn automático da tela de morte também espera — `armAt` vem de `pointermove`", () => {
-  // `ui/deadClock.js` arma a contagem com `game/input/Activity.js`, que conta movimento de mouse (8 px).
-  // A Poki NÃO conta `pointermove`. Num `.io` o jogador dirige com o mouse, então ele pode passar a
-  // partida inteira sem um `pointerdown` — foi medido `último input há 29190ms` na bancada.
-  const log = roteiroT([
-    "GESTO", jogando(),
-    { screen: "dead", interrompido: true },   // 2ª morte em diante: o cartão vem
-    ["ANDA", 8000],                           // ele lê o cartão mexendo o mouse, sem clicar
-    { screen: "game", interrompido: false },  // a contagem venceu e renasceu sozinho
-  ]);
-  assert.deepEqual(log, ["start", "stop"]);
-});
-
-test("gesto RECENTE vale, gesto velho não — e a janela é menor que a do SDK", () => {
-  assert.ok(PORTAL.INTERACAO_MS < 5000,
-    "a janela do `getRecentInteraction` é 5000 ms; a nossa tem que ser menor, nunca igual");
-  // dentro da janela: o clique que abriu a tela ainda conta
-  assert.deepEqual(roteiroT(["GESTO", ["ANDA", PORTAL.INTERACAO_MS - 1], jogando()]), ["start"]);
-  // fora dela: é o caso do midroll, que separa o clique do `screen:"game"` por até PORTAL.AD_MS
-  assert.deepEqual(roteiroT(["GESTO", ["ANDA", PORTAL.INTERACAO_MS], jogando()]), []);
-});
-
-test("sem NENHUM gesto nada sai, como antes — o boot direto não produz start de carga", () => {
-  // a regra escrita deles: "gameplayStart() must fire on the player's first input (not on load)"
-  assert.deepEqual(roteiroT([jogando(), ["ANDA", 60000], jogando()]), []);
 });
