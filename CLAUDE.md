@@ -2118,6 +2118,13 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   um jogador que morre, renasce, morre e renasce **para sempre**, ocupando vaga, virando comida de graça e
   poluindo o placar e o kill feed de toda sala por onde passava. Hoje quem arma é o primeiro GESTO depois da
   morte, e o servidor remove quem não age há `NET.IDLE_MS`, avisando `NET.IDLE_WARN_MS` antes.
+  ⚠️ **E A ESCADA DE RECONEXÃO TEM QUE CABER EM `RESUME_MS`** (`BACKOFF` em `game/net/Connection.js`):
+  ela era `[500,1000,2000,4000,4000]`, ou seja as tentativas caíam em 0,5 · 1,5 · 3,5 · 7,5 · **11,5 s**
+  contra os 10 s em que `Room.housekeeping` segura a sessão órfã. A quinta tentativa nascia condenada a
+  `ROOM_EXPIRED` mesmo com a rede de volta e o socket reaberto: quem sobreviveu a 11 s de rede ruim
+  perdia a partida de qualquer jeito, e na prática só havia QUATRO tentativas úteis. Hoje é
+  `[500,1000,2000,3000,2500]` — a 5ª em 9,0 s, com ~1 s de folga para o `resume` chegar do outro lado.
+  Mexer em qualquer um dos dois números pede refazer esta soma.
   ⚠️ **SÃO TRÊS RELÓGIOS DE SESSÃO E ELES NÃO MEDEM A MESMA COISA**: `NET.DEAD_MS` (15 s) é o SOCKET morto,
   `NET.RESUME_MS` (10 s) é a sessão SEM socket esperando o `resume`, e `NET.IDLE_MS` (3 min) é o socket vivo
   com a PESSOA ausente. `lastPong` serve aos dois primeiros e a nenhum do terceiro — ele é renovado por
@@ -2293,8 +2300,34 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **O detector NÃO é `Activity.js`** (`GESTO` em `portal/sessao.js`), e a diferença é o ponto: aquele
   responde "ainda tem alguém do outro lado?" e por isso conta movimento; aqui a pergunta é "o SDK vai
   considerar isto uma interação?", e a resposta tem que ESPELHAR a definição deles. Unificá-los foi o
-  que quebrou. É LATCH por carga de página: depois do primeiro, despausar e renascer abrem na hora — e
-  os dois carregam interação própria (o clique em RETOMAR, o clique em DE NOVO).
+  que quebrou.
+  ⚠️ **ELE FOI UM LATCH POR CARGA DE PÁGINA, E ERA POR AÍ QUE O DEFEITO DA 1.22 VOLTAVA INTEIRO.** O
+  texto que estava aqui dizia que "depois do primeiro, despausar e renascer abrem na hora — e os dois
+  carregam interação própria (o clique em RETOMAR, o clique em DE NOVO)". As duas metades são
+  verdadeiras e a conclusão era falsa, porque **nem todo caminho até `screen:"game"` tem um clique**:
+  `GESTO` removia os próprios listeners no primeiro disparo, então do SEGUNDO `gameplayStart` em diante
+  ninguém conferia recência — e o SDK confere em TODOS. Três caminhos foram medidos saindo com
+  `interaction` vazio, e nenhum tinha teste: o **BIG CRUNCH**, que reentra numa sala nova por
+  `setInterval` (`ui/Round.jsx`) depois de `ROUND.BREAK_MS` + 2 s de abertura ≈ **17 s** sem um toque —
+  ninguém clica num placar que entra sozinho, é o propósito dele; o **respawn automático da tela de
+  morte**, que arma por `deadClock`/`Activity.js`, ou seja por `pointermove`, justamente o evento que
+  não conta (medido na bancada: `último input há 29190ms`); e **qualquer `play()`/`respawnAqui()` com
+  midroll**, porque o comercial de até `PORTAL.AD_MS` (45 s) separa o clique do `screen:"game"`. Hoje
+  `ATIVO` não tem mais o termo `gesto` e o start é **ADIADO, nunca descartado**: sem interação dentro de
+  `PORTAL.INTERACAO_MS` ele fica pendente e sai no gesto seguinte.
+  ⚠️ **A JANELA É MENOR QUE A DELES, e isso não é margem de conforto**: 4000 contra os 5000 de
+  `getRecentInteraction`. Entre a nossa conta e a leitura do SDK correm o `setTimeout(0)`, o
+  `await pronto` da fachada e o despacho do evento — um start que vence por 10 ms é um start que um dia
+  sai INVÁLIDO em campo, sem nada acusar.
+  ⚠️ **"Há interação recente?" NÃO PODE SER TERMO DE `ATIVO`**, e é a armadilha óbvia deste conserto:
+  como predicado de ESTADO ele fecharia o gameplay 4 s depois de cada gesto. Quem decide SE há gameplay
+  é a tela; o gesto decide QUANDO o start pode sair. Foi juntar as duas perguntas que criou o latch.
+  ⚠️ **`-Infinity` é o sentinela de "nunca houve gesto", nunca `0`**: zero é uma leitura legítima de
+  relógio (os testes injetam `()=>0`) e confundir os dois faz o start sumir em silêncio.
+  ⚠️ **Nada disso tira playtime de quem já tinha**: quem nunca dá `pointerdown`/`keydown` também não
+  abria o PRIMEIRO gameplay (o latch exigia o mesmo gesto), então o conserto só devolve o tempo que o
+  SDK estava jogando fora. E o `stop` continua imediato — a regra deles ("must fire on any gameplay
+  interruption") vale na letra; o que mudou foi só quando o START é seguro.
   ⚠️ **CAPTURA + `setTimeout(0)`, e as duas metades são obrigatórias.** Captura porque na bolha um
   `stopPropagation()` esconde o evento (o direcional virtual e os botões de toque do HUD dão) e no dedo o
   toque pode ser o único input que existe. O `setTimeout` porque em captura NÓS rodamos ANTES do listener
@@ -2372,6 +2405,19 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   e nunca `prefs.muted`, que é escolha persistida do jogador. ⚠️ Nada de arquivo chamado `ads.js` (o
   nome vai para a URL do chunk e o bloqueador o mata) nem `import(`./${id}.js`)` (vira glob no Rollup e
   o zip da GD sai com o código da Poki dentro).
+  ⚠️ **O RECOMPENSADO NÃO CARIMBAVA `ultimoAd`, E DOIS COMENTÁRIOS JURAVAM QUE SIM** (`recompensa()` em
+  `portal/index.js`): só `anuncio()` escrevia o carimbo, então quem assistia ao vídeo para ganhar a skin
+  no `DeadPrize` e clicava DE NOVO levava **dois comerciais seguidos** — no instante exato em que decide
+  se continua jogando. `state/actions.js` e `ui/Shop.jsx` afirmavam cada um, por escrito, que esta
+  função "já registra o `ultimoAd`". ⚠️ Isto **não** é dar cooldown ao recompensado, o que a Poki proíbe
+  na letra ("don't add internal cooldowns — we manage ad frequency"): não LER o intervalo e não ESCREVER
+  o carimbo que o midroll lê são coisas diferentes, e só a segunda estava faltando. E só com `assistiu`:
+  sem preenchimento não houve comercial nenhum, e carimbar ali roubaria um midroll legítimo.
+  ⚠️ **`MIN_AD_MS` subiu de 2 para 3 min** pela aritmética do Player Fit Test: o gameplay fica FECHADO
+  durante o comercial (`jogoParou` antes de pedir) e o "Average Playtime" deles é a soma dos intervalos
+  `gameplayStart`→`gameplayStop`. Medido na 1.26, a média mora na CAUDA — 13% das pessoas (o bin 5m+)
+  respondem por 49% de todo o tempo jogado —, e é exatamente ela que, morrendo várias vezes, podia levar
+  um anúncio a cada duas mortes.
   ⚠️ **AS CARICATURAS NÃO VÃO NO PACOTE — o risco deixou de ser hipótese.** As regras dos portais
   proíbem "IP sem direitos de posse" e "uso explícito de política", e as 35 são de pessoas reais, 11
   delas políticos: num jogo chamado WARspace, Putin e Zelensky com bandeira no mesmo catálogo são o

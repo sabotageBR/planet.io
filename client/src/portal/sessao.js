@@ -25,6 +25,7 @@
 // ⚠️ Fala com a FACHADA (`portal.jogoComecou`/`jogoParou`/`medir`), nunca com um SDK: assim vale para
 //    todos os portais de uma vez, e no site — onde não há adaptador — é no-op por construção. A Bounty
 //    Board não duplica porque `bb.js` fala DIRETO com o SDK dela e não expõe `jogoComecou`/`jogoParou`.
+import { PORTAL } from "@warspace/shared";
 import { app } from "../state/app.js";
 import { portal } from "./index.js";
 
@@ -100,7 +101,18 @@ export function passoSessao(est, retido, agora) {
 // Aqueles 1,2 s são os mesmos `ROUND.DEAD_DELAY_MS` que sempre foram tela "game" com o jogador morto e
 // nunca emitiram evento nenhum: o que se mede aqui é a INTERRUPÇÃO, e quem a declara é `onDead`
 // (`interrompido: !sozinho`), não o fato de haver um cadáver.
-const ATIVO = (st, gesto) => gesto && st.screen === "game" && !st.interrompido && !st.overlays.pause;
+//
+// ⚠️ **O GESTO SAIU DAQUI, E ESSA É A CORREÇÃO DE RAIZ DO DEFEITO DA 1.22.** Ele era um termo do
+// predicado e um LATCH de uma vez por carga de página (`GESTO` removia os próprios listeners no
+// primeiro disparo), então do SEGUNDO `gameplayStart` em diante ninguém conferia recência nenhuma — e
+// o SDK confere em TODOS. Medido: o fim de rodada reentra numa sala nova por `setInterval`
+// (`ui/Round.jsx`) depois de ~17 s de pódio, o respawn da tela de morte arma por `pointermove`
+// (`game/input/Activity.js`, que NÃO é o detector deles) e um midroll de até `PORTAL.AD_MS` separa o
+// clique do `screen:"game"`. Nos três o start saía com `interaction` vazio.
+// ⚠️ E ele NÃO pode ser condição de estado: "há interação recente?" como termo de `ATIVO` fecharia o
+// gameplay 4 s depois de cada gesto. Quem decide SE há gameplay é a tela; o gesto decide QUANDO o
+// start pode ser emitido — duas perguntas diferentes, e foi juntá-las que criou o latch.
+const ATIVO = st => st.screen === "game" && !st.interrompido && !st.overlays.pause;
 // ⚠️ `spec` (assistir a uma sala em andamento) conta como RETIDO pelo mesmo motivo que `dead` e `round`
 // contam: o relógio é da CARGA DA PÁGINA e mede quem está AQUI, não quem está jogando — quem assiste está
 // na sala, olhando o jogo. Fora daqui, quem entrasse para ver uma partida apareceria como evasão no funil,
@@ -114,8 +126,15 @@ const FACHADA = { comecou: () => portal.jogoComecou(), parou: () => portal.jogoP
   medir: (c, o, a) => portal.medir(c, o, a) };
 
 /**
- * O PRIMEIRO GESTO HUMANO, uma vez por carga de página. Injetável para o teste — não há jsdom aqui, e o
- * que precisa ser conferido é a DECISÃO (o gameplay não abre sem gesto), não os listeners do navegador.
+ * TODO GESTO HUMANO, enquanto a página viver. Injetável para o teste — não há jsdom aqui, e o que
+ * precisa ser conferido é a DECISÃO (o gameplay não abre sem gesto RECENTE), não os listeners do
+ * navegador.
+ *
+ * ⚠️ **ELE JÁ FOI DE UMA VEZ SÓ, e era essa a falha.** `bate()` chamava `fora()` antes do callback, ou
+ * seja os listeners morriam no primeiro `pointerdown` — o que bastava para o latch de "já houve gente
+ * aqui", mas não para a pergunta que o SDK faz em TODA chamada. Manter os dois registrados custa duas
+ * entradas na tabela de eventos e nada por frame: `pointerdown` e `keydown` são raros por construção
+ * (é `pointermove` que é caro, e é justamente o que não conta).
  *
  * ⚠️ **ESTES DOIS EVENTOS, E SÓ ELES, PORQUE SÃO OS DOIS QUE O SDK DELES ESCUTA.** Isto não é escolha
  * nossa: `PokiSDK.gameplayStart()` anexa ao evento um campo `interaction` vindo de
@@ -142,17 +161,16 @@ const FACHADA = { comecou: () => portal.jogoComecou(), parou: () => portal.jogoP
  * antes deste gesto, ou seja vazio. O timeout devolve o controle depois do despacho inteiro, e 0 ms cabe
  * com folga nos 5 s. (O próprio SDK usa `setTimeout(...,0)` dentro do `gameplayStart` pelo mesmo motivo.)
  *
- * @param {() => void} cb @returns {() => void} cancelar
+ * @param {() => void} cb chamado DEPOIS do despacho, a cada gesto @returns {() => void} cancelar
  */
 const GESTO = cb => {
-  const fora = () => {
+  const bate = () => setTimeout(cb, 0);
+  addEventListener("pointerdown", bate, true);
+  document.addEventListener("keydown", bate, true);
+  return () => {
     removeEventListener("pointerdown", bate, true);
     document.removeEventListener("keydown", bate, true);
   };
-  const bate = () => { fora(); setTimeout(cb, 0); };
-  addEventListener("pointerdown", bate, true);
-  document.addEventListener("keydown", bate, true);
-  return fora;
 };
 
 /**
@@ -168,7 +186,7 @@ const GESTO = cb => {
  *    item que eles cobram por escrito.
  */
 export function iniciaSessaoPortal(alvo = FACHADA, store = app, agora = Date.now, esperaGesto = GESTO) {
-  let est = SESSAO0, jogando = false, abriu = false, t = null, gesto = false;
+  let est = SESSAO0, jogando = false, abriu = false, t = null, ultimoGesto = -Infinity, pendente = false;
   const conta = () => {
     clearTimeout(t); t = null;
     const st = store.get(), retido = RETIDO(st);
@@ -181,17 +199,33 @@ export function iniciaSessaoPortal(alvo = FACHADA, store = app, agora = Date.now
     for (const m of r.marcos) alvo.medir("session", m + "s", "complete");
     if (r.emMs != null) t = setTimeout(conta, Math.max(50, r.emMs));
   };
+  // Há interação DENTRO da janela que o SDK deles aceita? `PORTAL.INTERACAO_MS` é menor que os 5 s de
+  // `getRecentInteraction` de propósito: entre esta conta e a leitura do SDK correm o `setTimeout(0)`,
+  // o `await pronto` da fachada e o despacho do evento, e um start que vence por 10 ms é um start que
+  // um dia sai INVÁLIDO em campo sem nada acusar.
+  // ⚠️ `-Infinity` e não 0: o instante zero é um valor legítimo de relógio (os testes injetam `()=>0`),
+  // e um sentinela que pode ser confundido com uma leitura real é a receita de um start que some.
+  const recente = () => agora() - ultimoGesto < PORTAL.INTERACAO_MS;
+  // ⚠️ **ADIAR, NUNCA DESCARTAR.** Sem gesto recente o start fica PENDENTE e sai no próximo — que é a
+  // letra da regra deles ("fire on the player's first input") aplicada a toda reentrada, e não só à
+  // primeira. Quem nunca dá `pointerdown`/`keydown` já não abria o primeiro gameplay, então isto não
+  // tira playtime de ninguém: devolve o de quem o SDK estava jogando fora.
+  const abre = () => { if (recente()) { pendente = false; alvo.comecou(); } else pendente = true; };
   const passo = st => {
-    const a = ATIVO(st, gesto);
+    const a = ATIVO(st);
     // ⚠️ Só na TRANSIÇÃO. A fachada já é idempotente, mas o `passo` roda a cada escrita no store e cada
     // chamada dela custa um `await pronto` — e, mais importante, é a transição que se lê num log de QA.
-    if (a !== jogando) { jogando = a; if (a) alvo.comecou(); else alvo.parou(); }
+    if (a !== jogando) { jogando = a; if (a) abre(); else { pendente = false; alvo.parou(); } }
     conta();
   };
   const off = store.subscribe(passo);
   // ⚠️ O gesto NÃO passa pelo store, e é decisão: ele não é estado de tela — nada no jogo o desenha, e
-  // pô-lo lá faria toda a UI re-renderizar no primeiro movimento do mouse. Ele só reavalia o passo.
-  const offGesto = esperaGesto(() => { gesto = true; passo(store.get()); });
+  // pô-lo lá faria toda a UI re-renderizar a cada toque. Ele carimba o relógio e, se havia um start
+  // esperando por ele, solta-o AGORA — reavaliar o `passo` não bastaria, porque a tela não mudou.
+  const offGesto = esperaGesto(() => {
+    ultimoGesto = agora();
+    if (pendente && jogando) { pendente = false; alvo.comecou(); }
+  });
   // ⚠️ E o estado de AGORA: o adaptador é um chunk sob demanda com script de terceiro dentro, e numa
   // rede ruim o jogador chega à partida antes de isto rodar (o mesmo argumento de `portal/vidas.js`).
   passo(store.get());

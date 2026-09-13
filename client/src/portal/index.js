@@ -155,6 +155,14 @@ export const portal = {
    * estourou. ⚠️ SEM `MIN_AD_MS`: a Poki é explícita ("don't add internal cooldowns — we manage ad
    * frequency"), e o gatilho aqui é um CLIQUE do jogador pedindo a recompensa, não um preroll/midroll
    * automático — o mesmo motivo pelo qual isto nunca deve virar um `setInterval`/cooldown nosso.
+   *
+   * ⚠️ **MAS ELE CARIMBA `ultimoAd`, E ISSO NÃO É UM COOLDOWN — É O CONTRÁRIO.** Não ler o intervalo
+   * (o que a Poki proíbe) e não ESCREVER o carimbo que o midroll lê são coisas diferentes, e a
+   * segunda estava faltando: `state/actions.js` e `ui/Shop.jsx` afirmavam, cada um num comentário,
+   * que esta função "já registra o `ultimoAd`" — e ela nunca registrou. Quem via o vídeo para ganhar
+   * a skin na tela de morte e clicava DE NOVO levava **dois comerciais seguidos**, no instante exato
+   * em que decide se continua jogando. Só com `assistiu`: sem preenchimento não houve comercial
+   * nenhum, e carimbar ali roubaria um midroll legítimo.
    */
   async recompensa() {
     await pronto;
@@ -173,6 +181,7 @@ export const portal = {
       while (filaMedir.length) { const m = filaMedir.shift(); portal.medir(m[0], m[1], m[2]); }
       if (comecouNoAd) { comecouNoAd = false; await portal.jogoComecou(); }
     }
+    if (assistiu) ultimoAd = Date.now();
     return !!assistiu;
   },
   /**

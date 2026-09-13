@@ -1757,7 +1757,12 @@ export const KEY_LABEL={Space:"ESPAÇO",KeyW:"W",KeyE:"E",KeyD:"D",KeyC:"C",KeyZ
 // domínio deles num iframe. Deles vem a obrigação de anúncio (preroll antes da partida e midroll entre
 // partidas), e daqui vêm os números.
 // ⚠️ Não são `tunables`: o painel /admin muda o que roda NESTE servidor, e um zip já assado não relê nada.
-// MIN_AD_MS   intervalo mínimo entre anúncios; a própria GameDistribution sugere 2 min.
+// MIN_AD_MS   intervalo mínimo entre anúncios; a própria GameDistribution sugere 2 min. ⚠️ Está em 3 e
+//             não em 2 porque o gameplay fica FECHADO durante o comercial (`jogoParou` antes de pedir,
+//             em portal/index.js) e o "Average Playtime" do Player Fit Test da Poki é a soma dos
+//             intervalos `gameplayStart`→`gameplayStop`: com o teto de 2 min, uma sessão longa — que é
+//             onde a média mora, 13% das pessoas e 49% do tempo, medido na 1.26 — podia levar um
+//             anúncio a cada morte depois da segunda.
 // SDK_MS      espera pelo script do portal. Ele é a primeira coisa que um bloqueador derruba, e o jogo
 //             não pode ficar de portas fechadas por causa disso — vencido o prazo, joga sem anúncio.
 // AD_MS       teto de um anúncio. `showAd` às vezes nem rejeita quando não há preenchimento: sem este
@@ -1770,4 +1775,12 @@ export const KEY_LABEL={Space:"ESPAÇO",KeyW:"W",KeyE:"E",KeyD:"D",KeyC:"C",KeyZ
 // VIDAS_SEM_AD    quantas mortes entram sem NENHUM anúncio. Ver `pedagioLiberado`.
 // FIRST_AD_MS     ...e, passadas elas, quanto tempo de página o jogador precisa ter para pagar o
 //                 primeiro — a não ser que já tenha feito um abate, que é o sinal mais forte de que ficou.
-export const PORTAL={MIN_AD_MS:120000,SDK_MS:6000,AD_MS:45000,VIDAS_SEM_TELA:1,RESPAWN_1_MS:1200,VIDAS_SEM_AD:2,FIRST_AD_MS:180000};
+// ── A JANELA DE INTERAÇÃO (client/src/portal/sessao.js) ──
+// INTERACAO_MS  quanto tempo depois de um `pointerdown`/`keydown` ainda é seguro emitir `gameplayStart`.
+//               O SDK da Poki anexa `interaction: getRecentInteraction()`, que devolve vazio passados
+//               **5000 ms**, e o validador do Inspector é `if(!interaction) FALHA`. Aqui são 4000 de
+//               propósito: entre a nossa conta e a leitura deles correm um `setTimeout(0)`, o
+//               `await pronto` da fachada e o despacho do evento, e um start que vence por 10 ms é um
+//               start que um dia sai INVÁLIDO em campo sem nada acusar. Menor que a janela deles,
+//               nunca igual.
+export const PORTAL={MIN_AD_MS:180000,SDK_MS:6000,AD_MS:45000,VIDAS_SEM_TELA:1,RESPAWN_1_MS:1200,VIDAS_SEM_AD:2,FIRST_AD_MS:180000,INTERACAO_MS:4000};
