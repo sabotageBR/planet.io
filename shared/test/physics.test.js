@@ -544,6 +544,46 @@ test("tiro mirado: trava na bolinha mais próxima do ponteiro e TROCA de alvo qu
   arma(w3);w3.setTarget(0,2000,1000);w3.requestFire(0);w3.step();
   assert.equal(w3.missiles[0].targetId,1,"clique rápido persegue como antes");});
 
+// 20b. clique rápido: o alvo sai da DIREÇÃO em que eu viajo (nota, não cone)
+test("clique rápido: o míssil prefere quem está no meu caminho — de lado vale 2×, atrás 3×, e sem rumo é a regra antiga",()=>{
+  // Todo mundo com o MESMO raio de propósito: massa 1600 não chega a NOVATO_RATIO×1600, então `recemChegado`
+  // não filtra ninguém e a cena mede o que quer medir. E o tiro é a FASE 1 do step, ou seja o atirador ainda
+  // não se moveu quando a nota é calculada — por isso as contas abaixo fecham exatas.
+  let seed=200;
+  const cena=(A,B,al=[7000,5000])=>{const w=empty(seed++);w.addPlayer(0,{x:5000,y:5000,r:40,missiles:1});
+    w.addPlayer(1,{x:A[0],y:A[1],r:40});w.addPlayer(2,{x:B[0],y:B[1],r:40});arma(w);
+    w.setTarget(0,al[0],al[1]);w.requestFire(0);w.step();return w.missiles[0];};
+  // rumo +x, nota = d + (d - dx). Á FRENTE a 1600 (nota 1600) contra ATRÁS a 600 (nota 1800)
+  assert.equal(cena([6600,5000],[4400,5000]).targetId,1,"o da frente ganha do de trás mais PERTO: era este o bug do celular");
+  // ...mas atrás a 400 dá nota 1200: 3× mais perto continua levando o tiro — a nota penaliza, não veta
+  assert.equal(cena([6600,5000],[4600,5000]).targetId,2,"atrás, mas 3× mais perto: ainda é ele");
+  // DE LADO a distância vale 2×: 900 px viram nota 1800, mais que os 1600 de quem está no caminho
+  assert.equal(cena([6600,5000],[5000,5900]).targetId,1,"de lado a distância conta o dobro");
+  assert.equal(cena([6600,5000],[5000,5700]).targetId,2,"e 2× é só 2×: a 700 px ele leva");
+  // SEM RUMO (alvo em cima de mim: pausa, fim de rodada, celular que ainda não recebeu o 1º toque)
+  assert.equal(cena([6600,5000],[4400,5000],[5000,5000]).targetId,2,"parado cai no critério de sempre: o mais perto");
+  assert.equal(cena([6600,5000],[4400,5000],[5004,5000]).targetId,2,"um resto de pixel não é rumo (MISSILE.AHEAD_MIN_D)");
+  // NUNCA fica sem alvo: com o único inimigo atrás, o míssil vira e vai — teleguiado sem alvo é foguete burro
+  const w2=empty(210);w2.addPlayer(0,{x:5000,y:5000,r:40,missiles:1});w2.addPlayer(1,{x:4400,y:5000,r:40});
+  arma(w2);w2.setTarget(0,7000,5000);w2.requestFire(0);w2.step();const so=w2.missiles[0];
+  assert.equal(so.targetId,1,"só há alguém atrás: ele é o alvo");assert.ok(so.vx<0,"e o míssil sai virado para trás, que é onde ele está");
+  // o ESCOPO: o tiro MIRADO continua obedecendo só ao cursor — é assim que se atira para trás de propósito
+  const w3=empty(211);w3.addPlayer(0,{x:5000,y:5000,r:40,missiles:1});w3.addPlayer(1,{x:6600,y:5000,r:40});w3.addPlayer(2,{x:4400,y:5000,r:40});
+  arma(w3);w3.setTarget(0,4400,5000);w3.requestFire(0,true);w3.step();
+  assert.equal(w3.missiles[0].targetId,2,"mirado: o cursor manda, o rumo não entra na conta");
+  // e a DEFESA continua vindo antes de qualquer escolha ofensiva, mesmo com o entrante nas costas
+  const w4=empty(212);w4.addPlayer(0,{x:5000,y:5000,r:40,missiles:1});w4.addPlayer(2,{x:4100,y:5000,r:40,missiles:1});
+  arma(w4);w4.setTarget(2,5000,5000);w4.requestFire(2);w4.step();
+  const entrante=w4.missiles[0];assert.ok(entrante&&entrante.targetId===0,"o inimigo de trás mira em mim");
+  w4.setTarget(0,7000,5000);w4.requestFire(0);w4.step();
+  const meu=w4.missiles[1];assert.ok(meu,"meu tiro");assert.equal(meu.type,1,"interceptação ganha do rumo: defesa antes de escolha ofensiva");
+  assert.equal(meu.targetId,entrante.id);
+  // o painel desliga sem deploy: 1× nas costas é K=0, ou seja a regra antiga
+  try{applyTunable("MISSILE.AHEAD_K",1);
+    assert.equal(cena([6600,5000],[4400,5000]).targetId,2,"com o painel em 1× volta a valer o mais próximo");}
+  finally{resetTunable("MISSILE.AHEAD_K");}
+  assert.equal(cena([6600,5000],[4400,5000]).targetId,1,"e o reset devolve a regra nova");});
+
 // 21. estrela apanha de míssil/partícula e racha
 test("estrela: míssil e partícula empurram; no 3º hit ela EXPLODE e morre (não se multiplica)",()=>{
   const w=empty(84),st=w.spawnStar(true);st.x=3000;st.y=3000;st.life=1e9;st.vx=st.vy=0;

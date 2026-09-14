@@ -310,7 +310,10 @@ export class Sim{
     // encolhe conforme a sala enche de gente, e é morrendo que o excedente vai embora — por ATRITO, sem
     // ninguém ver um planeta sumir do nada. Sem o portão aqui, `trimBots` teria que arrancar todos vivos.
     if(gp.isBot&&this.mode.respawnBots){
-      if(this.botGate&&!this.botGate()){this.remove(e.slot);return;}
+      // ⚠️ O `gp` VAI JUNTO: o portão da Room também devolve o nick e a bandeira ao sorteio (`_esqueceBot`),
+      // e sem o argumento aquela metade caía em `if(!gp)return` — a sala virava lista negra de nomes, em
+      // silêncio, sempre que um preenchimento morresse acima do alvo em vez de sair pelo `trimBots`.
+      if(this.botGate&&!this.botGate(gp)){this.remove(e.slot);return;}
       // ⚠️ `botRespawnR` e não a faixa crua: é ele que mantém a ISCA chegando a sala inteira. O respawn de
       // bot é a fonte CONTÍNUA de preenchimento no Livre (eles morrem o tempo todo), então era aqui que a
       // presa do novato sumia depois dos dois minutos de semente — ver o bloco da função em constants.js.

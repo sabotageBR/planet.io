@@ -1174,13 +1174,34 @@ function fireHoming(w,ps,src,im=undefined){
     let bd=Infinity,bx=0,by=0;
     if(cob&&cob.owner>=0){const o=w.players.get(cob.owner),op=o&&o.alive?firstLive(o.pieces):null;
       if(op){best=cob.owner;bx=op.x;by=op.y;bd=0;}}
+    // ── O CLIQUE RÁPIDO PEGA QUEM ESTÁ NA DIREÇÃO EM QUE EU VIAJO ──
+    // A escolha era o MAIS PRÓXIMO em qualquer direção, inclusive às minhas costas, e `ps.tx/ty` não
+    // aparecia em uma linha sequer deste ramo. No mouse quase não incomoda (o rumo é o cursor); no DEDO é o
+    // caso NORMAL — o rumo fica travado, quem ficou para trás segue sendo o mais perto, e o míssil sai
+    // fazendo meia-volta. Hoje a distância vira NOTA (ver AHEAD_K em constants): 1× à frente, 2× de lado,
+    // 3× atrás. É nota e não cone — ela penaliza, nunca veta, então com todo mundo atrás o míssil ainda
+    // vira e vai, em vez de virar foguete burro.
+    // ⚠️ O RUMO É `src→(ps.tx,ps.ty)`, o MESMO vetor que `integratePiece` usa para mover ESTA peça (e já
+    // recortado pela gaiola, que roda antes na fase 1) — nunca `src.svx/svy`: o tiro é a FASE 1 do `step` e
+    // a integração é a FASE 2, então aquilo seria sempre o tick anterior, e ZERO no tick do nascimento.
+    // ⚠️ E não passa por `dirTo`: o fallback dele é (1,0), ou seja um rumo INVENTADO justo quando não há
+    // rumo nenhum (pausa, fim de rodada, `_spawnPiece` gravando ps.tx=x, celular ainda sem o 1º toque) — o
+    // míssil passaria a preferir o leste do mapa. Sem rumo `k` é 0, a nota vira a distância pura e vale a
+    // regra de sempre.
+    // ⚠️ `bd` passa a guardar NOTA, não d². O `bd=0` do ramo `cob` continua coerente (0 é a melhor nota
+    // possível, e nota nunca é negativa) e, de todo modo, este laço só roda com `best<0`.
     // ⚠️ O PREENCHIMENTO NÃO MIRA EM QUEM ACABOU DE NASCER. `MISSILE.SPAWN_CD_TICKS` impede o novato de
     // ATIRAR e nunca impediu de ser ALVO — e um teleguiado nasce muito além da AOI dele, ou seja chega
     // sem ele nunca ter visto de onde. `recemChegado` é a mesma regra da mordida (`piecePair`), então
     // ela herda de graça os três parâmetros do painel e o interruptor deles. As guardas baratas dela
     // (`!big.isBot||small.isBot`) fazem o custo ser ZERO para tiro de gente.
-    if(best<0)for(const o of w.players.values()){if(o===ps||!o.alive||sameTeam(w,o.slot,ps.slot)||recemChegado(w,ps,o))continue;const op=firstLive(o.pieces);if(!op)continue;
-      const dx=op.x-src.x,dy=op.y-src.y,d2=dx*dx+dy*dy;if(d2<bd){bd=d2;best=o.slot;bx=op.x;by=op.y;}}
+    if(best<0){let rx=ps.tx-src.x,ry=ps.ty-src.y;const rl=Math.sqrt(rx*rx+ry*ry),k=rl>MISSILE.AHEAD_MIN_D?MISSILE.AHEAD_K:0;
+      if(k>0){rx/=rl;ry/=rl;}else{rx=0;ry=0;}
+      for(const o of w.players.values()){if(o===ps||!o.alive||sameTeam(w,o.slot,ps.slot)||recemChegado(w,ps,o))continue;const op=firstLive(o.pieces);if(!op)continue;
+        // a raiz vem DEPOIS das guardas (só `recemChegado` já chama `massOf` duas vezes): é UM sqrt por
+        // candidato sobrevivente e por PUXÃO DE GATILHO, num caminho que já pagou dois `incomingMissile`
+        const dx=op.x-src.x,dy=op.y-src.y,d=Math.sqrt(dx*dx+dy*dy),nota=d+k*(d-dx*rx-dy*ry);
+        if(nota<bd){bd=nota;best=o.slot;bx=op.x;by=op.y;}}}
     if(best>=0){dirTo(src.x,src.y,bx,by,DIR);ux=DIR[0];uy=DIR[1];}else{const an=w.rng.angle();ux=Math.cos(an);uy=Math.sin(an);}}
   const m=w.addMissile(src.x,src.y,ux*MISSILE.SPEED,uy*MISSILE.SPEED,ps.slot,best);m.type=kind;m.srcSlot=foe;m.hue=ps.weapon;
   w.events.push({type:"FIRE",slot:ps.slot,missileId:m.id,x:m.x,y:m.y,targetSlot:kind?-1:best,targetMissile:kind?best:-1,weapon:ps.weapon});return true;}

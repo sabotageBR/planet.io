@@ -17,7 +17,7 @@ process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';proce
 process.env.GOOGLE_CLIENT_ID='';
 const {startServer}=await import('../src/index.js');
 const {decodeMessage,encodeInput,MSG,KIND,PIECE_FLAG,PLAYER_FLAG,INPUT_FLAG,ERROR_CODE,SELF_FLAG,PROTOCOL_VERSION,PROTOCOL_MIN}=await import('@warspace/shared/protocol/index.js');
-const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE,WORLD,ROOM,BOT}=await import('@warspace/shared/constants.js');
+const {FOOD,NET,BOT_NAMES,SNAPSHOT_EVERY,BLACKHOLE,WORLD,ROOM,BOT,PLAYER}=await import('@warspace/shared/constants.js');
 const {rectHas,viewRect}=await import('@warspace/shared/camera.js');
 const {setR}=await import('@warspace/shared/physics/body.js');
 const {newCode,shardOf,isValidCode,normalizeCode}=await import('../src/rooms/codes.js');
@@ -99,7 +99,10 @@ test('join: room + PLAYERS com bots + snapshots com criações na AOI',async()=>
   const me=A.players.find(p=>p.slot===A.slot);assert.ok(me);assert.equal(me.flags&PLAYER_FLAG.BOT,0);
   await A.until(()=>A.snaps.length>=3,3000,'3 snapshots');
   const first=A.snaps[0];assert.ok(first.creates.some(c=>c.kind===KIND.PIECE&&(c.flags&PIECE_FLAG.ME)&&c.owner===A.slot),'peça própria com ME no 1º snapshot');
-  assert.equal(first.updates.length,0);assert.equal(first.removes.length,0);assert.ok(first.self.mass>=800&&first.self.mass<1100,`massa inicial ${first.self.mass}`);   // 30²=900, ±: come algum grão nos primeiros ticks, ou leva uma lasca se uma rocha passar raspando (o cinturão está vivo)
+  assert.equal(first.updates.length,0);assert.equal(first.removes.length,0);const m0=PLAYER.SPAWN_R*PLAYER.SPAWN_R;assert.ok(first.self.mass>=m0*.88&&first.self.mass<m0*1.25,`massa inicial ${first.self.mass} (nasce com ${m0})`);   // ±: come algum grão nos primeiros ticks, ou leva uma lasca se uma rocha passar raspando (o cinturão está vivo)
+  // ⚠️ DERIVADO de PLAYER.SPAWN_R, nunca o literal: a massa com que se nasce no Livre virou PARÂMETRO do
+  // /admin (SPAWN_R 63 = 3969, contra os 900 de START_R), e este número continuava cravado em "30²=900" —
+  // o teste media uma regra que o jogo não tem mais, e ficava vermelho sozinho no HEAD.
   const food=A.ofKind(KIND.FOOD),known=A.known.size;
   assert.ok(food>0&&food<FOOD.COUNT,`comida conhecida ${food} (nunca as ${FOOD.COUNT})`);assert.ok(known>=5&&known<=600,`entidades conhecidas ${known}`);
   // AOI: tudo que o servidor tem dentro do retângulo interno da sessão é conhecido; nada conhecido fora do externo

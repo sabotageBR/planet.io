@@ -146,6 +146,14 @@ export const TUNABLES=[
   // para fechar.
   num('armas','MISSILE.AIM_MS','Tempo até a mira armar (mouse)','ms','wire',80,400,10,MISSILE,'AIM_MS'),
   num('armas','MISSILE.AIM_MS_TOUCH','Tempo até a mira armar (toque)','ms','wire',420,1200,20,MISSILE,'AIM_MS_TOUCH'),
+  // ⚠️ O ADMIN DIGITA O QUE ELE LÊ NA TELA: "quem está às minhas COSTAS precisa estar 3× mais perto para
+  // levar o míssil do clique rápido". A física guarda o peso K da nota `d + K·(d − dot)`, e as costas valem
+  // 1+2K — é o mesmo par {para,de} do teto do ímã (massa ↔ raio): o admin não traduz fórmula. 1× = K 0, ou
+  // seja a regra antiga (o mais próximo em qualquer direção), e o interruptor de desligar não pede deploy.
+  // ⚠️ 'server' e NÃO 'wire': quem escolhe o alvo do clique rápido é só o servidor. O cliente espelha apenas
+  // o tiro MIRADO (`aimScore` em game/index.js) e `predict.js` não conhece míssil nenhum.
+  num('armas','MISSILE.AHEAD_K','Distância de quem está às costas (clique rápido)','×','server',1,5,.5,MISSILE,'AHEAD_K',
+    {para:v=>(v-1)/2,de:k=>1+2*k}),
   // ── PERIGOS DO MAPA ──
   num('perigos','STAR.BURN','Massa que a estrela queima','fração','server',0,.9,.01,STAR,'BURN'),
   // Quem cabe DENTRO da estrela atravessa e se esconde lá (ver o porquê do 40 em `STAR.PASS_R`).

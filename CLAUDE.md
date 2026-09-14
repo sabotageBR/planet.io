@@ -2790,6 +2790,43 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ 420 ms é PONTO DE PARTIDA, e é por isso que nasce tunable: o número final sai da medição. A única
   relação que importa é `AIM_MS_TOUCH > AIM_MS`, e invertê-los devolve o defeito — as faixas dos tunables
   a garantem e há teste.
+- **O CLIQUE RÁPIDO PEGA QUEM ESTÁ NA DIREÇÃO EM QUE EU VIAJO** (`MISSILE.AHEAD_K`/`AHEAD_MIN_D`, o laço
+  final de `fireHoming`): o alvo do teleguiado sem mira era o inimigo **mais próximo em QUALQUER direção**,
+  inclusive às costas de quem atirou e sem teto de alcance — `ps.tx/ty` não aparecia em uma linha sequer
+  daquele ramo. No mouse quase não incomoda (o rumo É o cursor); no DEDO é o caso NORMAL, por duas causas
+  somadas: o rumo fica TRAVADO (`input/Joystick.js`), então quem ficou para trás segue sendo o mais perto; e
+  armar a mira no toque custa `AIM_MS_TOUCH`, ou seja quase todo toque no botão cai justamente ali. O
+  jogador virava para a direita e via o míssil sair para a esquerda — foi relatado como bug.
+  Hoje a distância vira **NOTA**: `d + AHEAD_K·(d − dot)`, com `dot` = projeção de (atirador→candidato) no
+  rumo unitário, o mesmo produto escalar que `incomingMissile` já usava. `d − dot` vale 0 à frente, `d` de
+  lado e `2d` atrás, então com K=1 a distância conta **1× à frente, 2× de lado e 3× atrás**: quem está nas
+  minhas costas precisa estar 3× MAIS PERTO para roubar o tiro de quem está no meu caminho.
+  ⚠️ **NOTA, não cone**: ela penaliza e nunca VETA — com todo mundo atrás o míssil ainda vira e vai, porque
+  teleguiado sem alvo é munição virada em foguete burro. E é monotônica em `d` para ângulo fixo, então não
+  cria empate novo nem desempate por ordem de `Map`. `AHEAD_K=0` devolve a regra antiga linha por linha, e é
+  por isso que ele é tunable — o painel o diz em "×" (o que o admin lê é *quanto vale a distância de quem
+  está às costas*, 3 por padrão), no mesmo par `{para,de}` do teto do ímã. Escopo **`server`**: quem escolhe
+  o alvo do clique rápido é só o servidor — o cliente espelha apenas o tiro MIRADO e `predict.js` não conhece
+  míssil nenhum, então não sobe `PROTOCOL_VERSION` nem exige cliente e shards no mesmo minuto.
+  ⚠️ **O rumo é `src→(ps.tx,ps.ty)`**, o mesmo vetor que `integratePiece` usa para mover ESSA peça (e já
+  recortado pela gaiola, que roda antes na fase 1) — **nunca `src.svx/svy`**: o tiro é a FASE 1 do `step` e a
+  integração é a FASE 2, então aquilo seria sempre o tick anterior, e ZERO no tick do nascimento.
+  ⚠️ **E não passa por `dirTo`**: o fallback dele é `(1,0)`, ou seja um rumo INVENTADO justo quando não há
+  rumo (pausa, fim de rodada, `_spawnPiece` gravando `ps.tx=x`, celular ainda sem o 1º toque) — o míssil
+  passaria a preferir o leste do mapa. Sem rumo `k=0`, a nota vira a distância pura e vale a regra de sempre;
+  `AHEAD_MIN_D` (8 = `SPEED.RAMP`/4) é esse piso, e não é tunable de propósito: acima de 32 ele desligaria a
+  regra no celular em silêncio, porque `joyTarget` com o rumo travado entrega exatamente 32 px.
+  ⚠️ **Os três ramos acima continuam ganhando dele**, nesta ordem: interceptação de teleguiado entrante,
+  trava do tiro mirado (`aimLockUntil`) e o dono do entrante já coberto. Defesa vem antes de escolha ofensiva.
+  ⚠️ **Medido**: 12 sementes da arena de bots, 190 mortes contra 180 e ZERO por gás contra 3 — a regra nova
+  mata MAIS. Mas `bot.test.js` tinha um teste de UMA semente com piso de 10 mortes, e a semente 3 isolada caiu
+  de 11 para 9: ele passou a somar TRÊS partidas, que é a mesma lição que o teste da zona ao lado já tinha
+  aprendido. **Não afrouxar limiar; aumentar a amostra.**
+  ⚠️ E isto acordou um defeito MUDO de anos: `Sim._died` chamava `this.botGate()` **sem argumento**, mas o
+  portão da `Room` é `gp=>{…this._esqueceBot(gp)…}` — a metade que devolve o nick e a bandeira ao sorteio
+  caía em `if(!gp)return`, e a sala virava lista negra de nomes sempre que um preenchimento morresse acima do
+  alvo em vez de sair pelo `trimBots`. Só aparecia quando bot MORRE em vez de ser removido, que é justamente
+  o que a regra nova passou a fazer mais.
 - **Powerups: ÍCONE COM O NÚMERO, não chip com rótulo** (`#hud-pw`, `Hud.jsx`): eram pílulas com o nome por
   extenso ("🧲 Ímã 6s"), e em partida ninguém lê palavra — some no ruído e a lista cresce de largura
   empurrando o chat. Hoje cada um é um DISCO de 44 px com o número num badge por cima. Três formas, uma

@@ -84,13 +84,19 @@ function arena({seed=1,n=40,ticks=7200,zone=true,team=0,weapons=true,respawn=fal
 }
 const chave=w=>w.pieces.map(p=>`${p.owner}:${p.x.toFixed(3)}:${p.y.toFixed(3)}:${p.r.toFixed(3)}`).join("|");
 
+// ⚠️ TRÊS partidas, não uma — a MESMA lição do teste da zona, logo abaixo, e pelo mesmo motivo. Com
+// `seed:3` sozinha o piso de 10 mortes ficava a UMA morte da borda, então qualquer mudança que mexesse no
+// mundo virava o teste vermelho sem nada estar quebrado. Foi o que aconteceu quando o clique rápido passou
+// a escolher o alvo pela DIREÇÃO (MISSILE.AHEAD_K): medido sobre 12 sementes, a regra nova mata MAIS — 190
+// mortes contra 180, e ZERO por gás contra 3 —, e mesmo assim na semente 3 isolada ela dá 9 contra 11.
+// Somando três sementes a amostra triplica e o vermelho volta a significar alguma coisa. O custo é ~3 s.
 test("arena: a sala se resolve na porrada, não no gás", ()=>{
-  const a=arena({seed:3});
-  const c={};for(const m of a.morte)c[m.cause]=(c[m.cause]|0)+1;
-  assert.ok(a.morte.length>=10,`poucas mortes (${a.morte.length}): os bots não estão se enfrentando`);
+  const morte=[arena({seed:3}),arena({seed:17}),arena({seed:5})].flatMap(a=>a.morte);
+  const c={};for(const m of morte)c[m.cause]=(c[m.cause]|0)+1;
+  assert.ok(morte.length>=30,`poucas mortes (${morte.length} em 3 partidas): os bots não estão se enfrentando`);
   const gas=c.zone||0;
-  assert.ok(gas/a.morte.length<.35,`gás matou ${gas}/${a.morte.length} — a zona não pode ser a assassina principal`);
-  assert.ok((c.eaten||0)>=a.morte.length*.5,"a maioria das mortes tem que ser de ser comido");
+  assert.ok(gas/morte.length<.35,`gás matou ${gas}/${morte.length} — a zona não pode ser a assassina principal`);
+  assert.ok((c.eaten||0)>=morte.length*.5,"a maioria das mortes tem que ser de ser comido");
 });
 
 test("arena: o salto é usado e converte em abate", ()=>{

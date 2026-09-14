@@ -769,7 +769,29 @@ export const MISSILE={SPEED:720,TURN:.07,LIFE_TICKS:625,MAX_AMMO:3,AMMO_OVER:1,R
   // segundo dedo ia para a MIRA em vez do volante (ver o cabeçalho de client/src/game/input/actions.js).
   // ⚠️ 420 é PONTO DE PARTIDA, não medição: o número certo sai de aparelho real, e é por isso que os dois
   // são tunables ('wire', grupo Armas) — calibrar o limiar do dedo não pode pedir um pacote novo.
-  AIM_MS:160,AIM_MS_TOUCH:420};
+  AIM_MS:160,AIM_MS_TOUCH:420,
+  // AHEAD_K / AHEAD_MIN_D: o alvo do CLIQUE RÁPIDO (o ramo sem mira de `fireHoming`). Ele era o inimigo
+  // mais próximo em QUALQUER direção, inclusive às costas de quem atirou, e sem teto de alcance. No mouse
+  // isso quase não aparece — o rumo É o cursor, e quem aponta para a frente costuma ter alguém ali —, mas
+  // no DEDO é o caso NORMAL: o rumo fica TRAVADO (input/Joystick.js), quem ficou para trás continua sendo
+  // o mais perto, e o míssil sai fazendo meia-volta na cara de quem atirou. Some a isso que armar a mira
+  // no toque custa AIM_MS_TOUCH, ou seja quase todo toque no botão cai justamente neste ramo. Lê-se como
+  // bug, e é o contrário do que o gesto promete: virei para a direita, o míssil é do próximo da direita.
+  // Hoje a escolha é uma NOTA — `d + AHEAD_K·(d − dot)`, com `dot` = projeção de (atirador→candidato) no
+  // rumo unitário, o mesmo produto escalar de `incomingMissile`. `d − dot` vale 0 à frente, d de lado e 2d
+  // atrás, então com K=1 a distância conta 1× à frente, 2× de lado e 3× atrás: quem está nas minhas costas
+  // precisa estar 3× MAIS PERTO para roubar o tiro de quem está no meu caminho.
+  // ⚠️ NOTA, e não cone: ela penaliza e nunca VETA — com todo mundo atrás o míssil ainda vira e vai, porque
+  // teleguiado sem alvo é munição virada em foguete burro. E é monotônica em d para ângulo fixo, então não
+  // cria empate novo nem desempate por ordem de Map. `AHEAD_K:0` devolve a regra antiga linha por linha —
+  // é o interruptor de desligar, e é por isso que ele é tunable ('server', grupo Armas).
+  // ⚠️ AHEAD_MIN_D (px) é o piso do rumo: abaixo dele não HÁ direção, e a nota vira a distância pura
+  // (pausa, fim de rodada, `_spawnPiece` gravando ps.tx=x, celular que ainda não recebeu o primeiro toque).
+  // 8 = SPEED.RAMP/4, o ponto em que `integratePiece` já move a peça a menos de 25% da velocidade. O número
+  // tem de ser lido contra o CELULAR: `joyTarget` entrega RAMP·k + spread·JOY.SPREAD_K, e o rumo travado
+  // força k=1, ou seja 32 px com uma peça só — 4× o piso. Não é tunable de propósito: é guarda numérica, e
+  // um valor acima de 32 desligaria a regra no celular em silêncio.
+  AHEAD_K:1,AHEAD_MIN_D:8};
 // DEBRIS_DIST/DEBRIS_SPREAD/STUCK_SHRINK: o impacto sem escudo era REEMBOLSO, não dano. Os HIT_DEBRIS cacos
 // nasciam no CENTRO da peça, em TODAS as direções (o spread era 2π, e spillFrag com spread>=6.28 sorteia o
 // ângulo) e a 540 px/s — como o ejetado integra com arrasto puro, o alcance é v/DRAG = 146 px, ou seja DENTRO
