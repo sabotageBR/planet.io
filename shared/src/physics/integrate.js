@@ -10,8 +10,22 @@ import {PIECE_FLAG} from "../protocol/constants.js";
 import {clamp} from "../util.js";
 
 const BOOST_F=Math.exp(-BOOST.K*DT),BOOST_STEP=(1-BOOST_F)/BOOST.K,STOP2=BOOST.STOP*BOOST.STOP;
-/** Velocidade padrão de uma peça pelo raio: clamp(K/r^EXP, MIN, MAX) — a curva do agar.io (EXP=.449). */
-export const vmaxFor=r=>clamp(SPEED.K/Math.pow(r,SPEED.EXP),SPEED.MIN,SPEED.MAX);
+// A VELOCIDADE DE REFERÊNCIA, capturada no LOAD com os números literais do agar: é a âncora em torno da
+// qual `SPEED.EXP` gira. Fica num `const` de módulo (e não em constants.js) porque é DERIVADA — cravá-la
+// à mão criaria uma segunda verdade que envelhece na primeira vez que alguém mexer em K ou EXP aqui.
+const V_REF=SPEED.K/Math.pow(SPEED.REF_R,SPEED.EXP);
+// K ancorado: só é recalculado quando o expoente sai do padrão, então o caminho quente (uma chamada por
+// peça por tick) continua com UM `Math.pow`, e com EXP no padrão `_k` é o `SPEED.K` literal — a conta
+// fica byte a byte a de antes desta mudança.
+let _exp=SPEED.EXP,_k=SPEED.K;
+/**
+ * Velocidade padrão de uma peça pelo raio: clamp(K/r^EXP, MIN, MAX) · MUL — a curva do agar.io (EXP=.449).
+ * `MUL` entra DEPOIS do clamp (senão MIN/MAX viram teto invisível do botão) e `EXP` gira em torno de
+ * `SPEED.REF_R`, para os dois parâmetros do painel serem ortogonais — ver o bloco SPEED em constants.js.
+ */
+export const vmaxFor=r=>{
+  if(SPEED.EXP!==_exp){_exp=SPEED.EXP;_k=V_REF*Math.pow(SPEED.REF_R,_exp);}
+  return clamp(_k/Math.pow(r,_exp),SPEED.MIN,SPEED.MAX)*SPEED.MUL;};
 
 /**
  * Integra uma peça: impulso (boost) + direção (ponteiro) + paredes (WALL.E reflete o impulso, como o

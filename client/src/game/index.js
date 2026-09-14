@@ -27,7 +27,7 @@ import {PORTAL} from "../portal/flags.js";
 import {marco} from "../portal/marcos.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
-import {MSG,EVENT,SELF_FLAG,SPLIT,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,BR,BOT,NET,POWERUP,ZOOM,CAM,WORLD,PROTOCOL_VERSION,ZONE_WARN_AT_S,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
+import {MSG,EVENT,SELF_FLAG,SPLIT,SPEED,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,BR,BOT,NET,POWERUP,ZOOM,CAM,WORLD,PROTOCOL_VERSION,ZONE_WARN_AT_S,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
 // direto do módulo: `tunables.js` não entra no barril de `shared` (ele é a lista BRANCA do painel, não
 // vocabulário de jogo), e o cliente só precisa do aplicador — a validação vem junto de graça.
 import {aplicaWire} from "@warspace/shared/tunables.js";
@@ -41,7 +41,7 @@ import {aplicaWire} from "@warspace/shared/tunables.js";
 // dois lados. `predict.js` importa DT, WORLD, BLACKHOLE, EJECT e PLAYER — não BOT.
 // ⚠️ RAIZ AUSENTE AQUI É FALHA MUDA: `aplicaWire` faz `continue` na chave cuja raiz não está no mapa, e
 // o painel continua dizendo "salvo" para sempre. Todo tunable 'wire' novo entra nesta linha.
-const RAIZES_WIRE={CAM,ZOOM,STAR,ROUND,SPLIT,FEED,BR,MISSILE,BOT};
+const RAIZES_WIRE={CAM,ZOOM,STAR,ROUND,SPLIT,SPEED,FEED,BR,MISSILE,BOT};   // SPEED: a velocidade é física do CLIENTE também (predict.js), então ela TEM que chegar junto
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";

@@ -27,7 +27,7 @@
 // ⚠️ `ENTRY_PANELS` é 'server' pelo mesmo motivo de `ROOM.MAX`: o servidor decide, e `/api/config` ecoa
 // o valor só para a tela poder desenhar antes de existir sala — não é física, não precisa de `wire`.
 // @ts-check
-import {POWERUP,MISSILE,PLAYER,BR,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,SPLIT,ENTRY_PANELS,ENTRY,TUTORIAL,FEED,PLATAFORMAS} from "./constants.js";
+import {POWERUP,MISSILE,PLAYER,BR,STAR,STAR_LAYOUTS,ASTEROID,ZONE,BOT,BOT_LLM,BOT_TALK,ROUND,CHAT,TICK_HZ,CAM,NET,ZOOM,WORLD,ROOM,SPLIT,SPEED,ENTRY_PANELS,ENTRY,TUTORIAL,FEED,PLATAFORMAS} from "./constants.js";
 
 /** @typedef {{key:string,label:string,unit:string,scope:'server'|'both'|'wire',type:'num'|'opt'|'bool'|'multi',grupo:string,
  *   min?:number,max?:number,step?:number,options?:{v:string,label:string}[],onLabel?:string,offLabel?:string,def:any,
@@ -172,6 +172,17 @@ export const TUNABLES=[
   num('zona','ZONE.BURN_K','Multiplicador do gás no círculo final','×','server',1,5,.1,ZONE,'BURN_K'),
   // ── JOGADOR ──
   num('jogador','PLAYER.DECAY','Decaimento de massa por segundo','fração/s','server',0,.02,.0005,PLAYER,'DECAY'),
+  // ── OS DOIS BOTÕES DE VELOCIDADE (o bloco SPEED de constants.js explica a conta e o porquê de cada um) ──
+  // ⚠️ 'wire' e nunca 'server': `vmaxFor` roda dentro de `predict.js`. Com escopo de servidor a predição
+  // andaria numa velocidade e o servidor em outra, e `NET.SNAP_DIST` (120 px) faria o planeta ser corrigido
+  // de solavanco — o mesmo argumento que já pôs `CAM.K` em 'wire', agravado por ser física.
+  // ⚠️ O valor chega ao cliente no JSON `room`, ou seja na ENTRADA da sala: girar estes dois com partidas
+  // em andamento deixa quem já está dentro tremendo até a sala seguinte. Calibrar com a sala vazia.
+  num('jogador','SPEED.MUL','Velocidade de todo mundo (1 = padrão)','×','wire',.5,2.5,.05,SPEED,'MUL'),
+  // O expoente gira a curva em torno de `SPEED.REF_R` (63): SUBIR freia o gigante e solta o pequeno sem
+  // mexer em quem tem o tamanho de referência; descer achata o jogo (todo mundo na mesma velocidade).
+  // A faixa não chega a 0 porque 0 é "o tamanho não pesa nada", e aí crescer deixa de ter preço.
+  num('jogador','SPEED.EXP','Quanto o tamanho freia o planeta','expoente','wire',.2,.8,.005,SPEED,'EXP'),
   // 'both' fica declarado para o dia em que houver entrega ao cliente — e a rota recusa até lá, em vez de
   // gravar um número que só metade do jogo enxerga.
   num('jogador','PLAYER.MAX_R','Raio máximo de uma peça','px','both',100,2000,10,PLAYER,'MAX_R'),

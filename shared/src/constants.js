@@ -552,7 +552,28 @@ export const PLAYER={START_R:30,SPAWN_R:63,MIN_PIECE_R:16,MAX_R:1250,MAX_PIECES:
 // MAX_R/MAX_PIECES vêm do agar.io: lá a célula para em 1500 num mundo de 14142 (9,4×) e o jogador tem 16 células.
 // Aqui o mundo é 9600, então 1000 mantém a MESMA proporção. Passar do teto NÃO trava o crescimento: a peça se
 // divide sozinha (rules.autoSplit), e só com as 16 peças ocupadas é que o raio é cortado.
-export const SPEED={K:2110.6,EXP:.449,MIN:48,MAX:460,RAMP:32};
+export const SPEED={K:2110.6,EXP:.449,MIN:48,MAX:460,RAMP:32,MUL:1,REF_R:63};
+// ── MUL / REF_R: OS DOIS BOTÕES DE VELOCIDADE DO /admin ('wire', grupo Jogador) ──────────────
+// A queixa que os criou foi "o jogo está muito lento para celular no INÍCIO", e a causa não era a curva:
+// é que `PLAYER.SPAWN_R` virou parâmetro e subiu para 63 (massa 3969, escolhida logo acima de
+// `SPLIT.MIN_R` para o novato JÁ nascer podendo dividir). Como vmax = K/r^EXP, nascer 4,4× mais pesado é
+// 28 % mais devagar: 328 px/s contra os 458 de quando se nascia com massa 900. Ou seja o botão que
+// faltava não era a massa (essa já existe e tem dono), era a VELOCIDADE.
+// MUL multiplica o resultado FINAL, depois do clamp: 1 = o agar literal. Fora do clamp de propósito —
+// por dentro, MIN/MAX virariam um teto invisível e o painel diria "salvo" sem nada mudar para o pequeno
+// (em MUL 1.4 o recém-nascido já encosta em MAX=460).
+// EXP gira a curva EM TORNO de REF_R, e é isso que torna os dois botões ORTOGONAIS: subir o expoente
+// deixa o gigante mais lento e o pequeno mais rápido SEM mexer em quem tem o tamanho de referência. Sem a
+// âncora, EXP sozinho deixava TODO MUNDO mais lento (K/r^EXP com r>1) e só servia acompanhado de uma
+// correção de K na mesma mão — dois números acoplados que ninguém calibra no escuro.
+// ⚠️ REF_R=63 é FIXO e NÃO acompanha `PLAYER.SPAWN_R`, embora hoje sejam o mesmo número: ancorar a curva
+// num tunable faria mexer na massa inicial mudar a velocidade de TODO MUNDO, de um jeito que ninguém
+// relacionaria com o botão girado. Ele é referência da CURVA, não do nascimento.
+// ⚠️ Com os padrões (MUL 1, EXP .449) a conta é byte a byte a de sempre — a âncora só é exercida quando o
+// expoente sai do padrão (ver `vmaxFor` em physics/integrate.js).
+// ⚠️ 'wire' e nunca 'server': `vmaxFor` roda DENTRO de `predict.js`, ou seja é física do CLIENTE também.
+// Com escopo de servidor, a predição andaria numa velocidade e o servidor em outra — `NET.SNAP_DIST` é
+// 120 px, então com 30 % de diferença o planeta passa a ser corrigido de solavanco a cada ~1,2 s.
 export const BOOST={K:2.634,MAX_STEP:32.5,STOP:8};
 export const JOY={SPREAD_K:6};
 // ── ANALÓGICO: a distância do alvo tem que CRESCER com o espalhamento das peças ──────────────
@@ -1498,12 +1519,16 @@ export function botTypo(rng,txt){
   if(txt.length<3)return txt;
   const i=rng.int(0,txt.length-2);
   return rng.next()<.5?txt.slice(0,i)+txt[i]+txt.slice(i):txt.slice(0,i)+txt[i+1]+txt[i]+txt.slice(i+2);}
-export const CAM={BASE:64,EXP:.4,K:1,PORTRAIT_K:1.12,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,AOI_FOOD_VIEW:.44};
+export const CAM={BASE:64,EXP:.4,K:1,PORTRAIT_K:1.06,REF_W:1920,REF_H:1080,TAU_POS:.024,TAU_ZOOM:.158,AOI_FOOD_VIEW:.44};
 // PORTRAIT_K: no celular EM PÉ a largura manda no `max(H/REF_H,W/REF_W)` só de raspão — a tela é estreita
 // e a proporção agar (mesma ÁREA de mundo em qualquer tela) mostra pouco mundo na HORIZONTAL, mesmo com
 // K=1. É um segundo divisor, só ativo quando W<H (retrato: celular em pé, nunca desktop nem paisagem), que
-// afasta um POUCO a câmera nesse caso — 1.12 é ~11% a menos de escala, deliberadamente pequeno (o pedido
-// era "diminuir só um pouco"). Some no MESMO lugar de CAM.K (antes do piso do mundo), pelo mesmo motivo:
+// afasta um POUCO a câmera nesse caso — deliberadamente pequeno (o pedido era "diminuir só um pouco").
+// ⚠️ NASCEU 1.12 e hoje é 1.06, e os dois pedidos são do mesmo dono em momentos diferentes: o primeiro
+// queria ver mais mundo na horizontal, o segundo veio de "o jogo está muito lento para celular". Afastar a
+// câmera não muda a velocidade real, muda os PIXELS DE TELA por segundo — medido com o recém-nascido
+// (r=63) num 390×844: 229 px/s de tela em 1.12, 242 em 1.06, 257 em 1.00. 1.06 é metade do caminho, e o
+// botão continua no painel ('wire', vale ao vivo) para achar o ponto sem deploy. Some no MESMO lugar de CAM.K (antes do piso do mundo), pelo mesmo motivo:
 // enquadramento de jogo não pode mostrar além do mapa.
 // K é o ÚNICO botão de zoom do /admin, e é multiplicador global: >1 afasta a câmera de todo mundo, <1
 // aproxima. Um botão e não seis porque os outros candidatos são armadilhas — REF_W/REF_H carregam a regra

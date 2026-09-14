@@ -1016,6 +1016,28 @@ test("zoom manual: a faixa cresce com a massa, é log-simétrica, engole lixo e 
   assert.ok(aoiScaleFood(.05,W,H,1,g)<aoiScaleFood(.05,W,H),"afastou: o piso da comida desce junto, senão o anel de fora vem sem um grão");
   assert.equal(aoiScaleFood(.05,W,H,1,1/g),aoiScaleFood(.05,W,H),"aproximou: a AOI NÃO encolhe (a AOI pode sobrar; faltar, nunca)");});
 
+// 38b. os dois botões de velocidade do /admin: ortogonais, e o padrão é o agar literal
+test("velocidade: MUL escala tudo DEPOIS do clamp e EXP gira a curva em torno de SPEED.REF_R",()=>{
+  const agar=r=>Math.min(Math.max(SPEED.K/Math.pow(r,.449),SPEED.MIN),SPEED.MAX);   // a conta de antes destes botões
+  for(const r of [30,63,120,300,1000])
+    assert.ok(Math.abs(vmaxFor(r)-agar(r))<1e-9,`r=${r}: com os padrões a conta é a de sempre`);
+  const base=[30,63,300].map(vmaxFor);
+  try{
+    // MUL multiplica o resultado FINAL: vale inclusive para quem está encostado no teto MAX, que é o
+    // recém-nascido — por dentro do clamp o botão seria inerte justamente para quem a queixa era sobre
+    applyTunable("SPEED.MUL",1.4);
+    [30,63,300].forEach((r,i)=>assert.ok(Math.abs(vmaxFor(r)-base[i]*1.4)<1e-9,`r=${r}: MUL escala depois do clamp`));
+    assert.ok(vmaxFor(30)>SPEED.MAX,"e por isso o pequeno passa do MAX, em vez de ficar preso nele");
+    resetTunable("SPEED.MUL");
+    // EXP gira em torno de REF_R: quem tem o tamanho de referência não sente NADA, o gigante freia e o
+    // pequeno solta. Sem a âncora, subir o expoente deixava todo mundo mais lento de uma vez.
+    applyTunable("SPEED.EXP",.6);
+    assert.ok(Math.abs(vmaxFor(SPEED.REF_R)-base[1])<1e-9,"o raio de referência não muda de velocidade");
+    assert.ok(vmaxFor(300)<base[2],"o gigante freia");
+    assert.ok(vmaxFor(30)>=base[0],"e o pequeno não perde velocidade");
+  }finally{resetTunable("SPEED.MUL");resetTunable("SPEED.EXP");}
+  [30,63,300].forEach((r,i)=>assert.ok(Math.abs(vmaxFor(r)-base[i])<1e-9,`r=${r}: o reset devolve o padrão`));});
+
 // 39. velocidade padrão: sem inércia, sem embalo de graça
 test("velocidade: é SEMPRE a padrão do tamanho — vira na hora, não acelera, não acumula embalo de ninguém",()=>{
   for(const r of [30,60,120,290,1000]){

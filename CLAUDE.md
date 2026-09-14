@@ -165,6 +165,35 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   o ×0,9 por tick de 40 ms do agar) que **sempre chega a zero** e percorre exatamente `|v|/BOOST.K` px — por isso todo empurrão
   é uma DISTÂNCIA. Quique tem teto (`bouncePiece` → `BOUNCE.DIST_MAX`), e entre peças próprias não há impulso nem atração:
   era a atração que dava embalo ao reintegrar. Nada de velocidade acumulada = nada de embalo de graça.
+- **A VELOCIDADE TEM DOIS BOTÕES NO /admin, E ELES SÃO ORTOGONAIS** (`SPEED.MUL`/`SPEED.EXP`, ambos
+  `wire`; a conta em `physics/integrate.js`): a queixa foi "o jogo está muito lento para celular no
+  INÍCIO", e a causa não era a curva — é que `PLAYER.SPAWN_R` virou parâmetro e subiu para 63 (massa
+  3969, escolhida logo acima de `SPLIT.MIN_R` para o novato JÁ nascer podendo dividir). Como
+  `vmax = K/r^EXP`, nascer 4,4× mais pesado é **28 % mais devagar**: 328 px/s contra os 458 de quando se
+  nascia com massa 900. O botão que faltava não era a massa (essa já existe e tem dono), era a
+  VELOCIDADE. `MUL` multiplica o resultado **depois do clamp** — por dentro, `MIN`/`MAX` virariam teto
+  invisível e o painel diria "salvo" sem mudar nada justo para o pequeno, que em MUL 1.4 já encosta em
+  `MAX`=460. `EXP` **gira a curva em torno de `SPEED.REF_R`** (63): subir freia o gigante e solta o
+  pequeno SEM mexer em quem tem o tamanho de referência — sem essa âncora, o expoente sozinho deixava
+  todo mundo mais lento (K/r^EXP com r>1) e só servia acompanhado de uma correção de K na mesma mão,
+  dois números acoplados que ninguém calibra no escuro.
+  ⚠️ **Com os padrões (MUL 1, EXP .449) a conta é byte a byte a de sempre**, e há teste comparando com a
+  fórmula antiga: o `_k` ancorado só é recalculado quando o expoente SAI do padrão, então o caminho
+  quente (uma chamada por peça por tick) continua com UM `Math.pow`.
+  ⚠️ **`REF_R`=63 é FIXO e NÃO acompanha `PLAYER.SPAWN_R`**, embora hoje sejam o mesmo número: ancorar a
+  curva num tunable faria mexer na massa inicial mudar a velocidade de TODO MUNDO, de um jeito que
+  ninguém relacionaria com o botão girado. É referência da CURVA, não do nascimento.
+  ⚠️ **'wire' e nunca 'server'**: `vmaxFor` roda DENTRO de `predict.js`, ou seja é física do CLIENTE
+  também — `SPEED` teve que entrar em `RAIZES_WIRE` (`game/index.js`). Com escopo de servidor a predição
+  andaria numa velocidade e o servidor em outra, e `NET.SNAP_DIST` (120 px) faria o planeta ser corrigido
+  de solavanco a cada ~1,2 s com 30 % de diferença. O valor chega no JSON `room`, ou seja na ENTRADA da
+  sala: **girar estes dois com partidas em andamento deixa quem já está dentro tremendo até a sala
+  seguinte** — calibrar com a sala vazia. É a mesma razão de `scope:'both'` responder 501.
+  ⚠️ E a outra metade da queixa é CÂMERA, não física: no celular em pé `CAM.PORTRAIT_K` afasta um pouco
+  mais, e afastar não muda a velocidade real — muda os PIXELS DE TELA por segundo. Medido com o
+  recém-nascido (r=63) num 390×844: **229 px/s de tela em 1.12, 242 em 1.06, 257 em 1.00**. Ele nasceu
+  1.12 (o pedido de "ver mais mundo na horizontal") e hoje é **1.06**, metade do caminho — os dois pedidos
+  são do mesmo dono em momentos diferentes, e o botão continua no painel para achar o ponto sem deploy.
 - **Resto do modelo do agar** (divisão/teto/câmera): `r/√2` nas duas metades, até `PLAYER.MAX_PIECES`=16, `SPLIT.MIN_R`=60
   (=`EJECT.MIN_R`), fusão em `max(30 s, 0,2·r s)`, arremesso de 780 px absolutos com controle total do ponteiro durante ele.
   `PLAYER.MAX_R`=1250 (mesma proporção mundo/célula do agar: 12000/1250 = 9,6) e passar dele **não trava**: `rules.autoSplit` reparte em
