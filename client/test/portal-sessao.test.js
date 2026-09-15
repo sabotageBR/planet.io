@@ -301,3 +301,60 @@ test("mas a RETIDÃO não depende da conexão: quem está reconectando continua 
   assert.ok(marcos.some(m => m === "session/60s/start"), "o relógio da sessão abre com a tela, não com o WS");
   off();
 });
+
+// ── O RELÓGIO DE GAMEPLAY, AO LADO DO DE PRESENÇA ─────────────────────────────
+// Nos Fit Tests 1.26–1.29 a nossa presença acima de 3 min ficou 2 a 8 pontos acima do "engaged players"
+// da Poki, e a documentação deles não diz como contam. `gameplay/*` mede só o que o SDK vê como jogo (o
+// intervalo entre o nosso `gameplayStart` e o `gameplayStop`); o que bater com o número deles responde.
+import { faixaGesto } from "../src/portal/sessao.js";
+
+/** Um roteiro com relógio controlado: cada passo é `[ms, mudança]` ou `[ms, "GESTO"]`. */
+function cronometro(passos, { aparelho = () => null } = {}) {
+  const store = storeFalso(TELA0), m = [];
+  let t = 0, dispara = () => {};
+  const alvo = { comecou() {}, parou() {}, medir: (c, o, a) => m.push(`${c}/${o}/${a}`) };
+  const off = iniciaSessaoPortal(alvo, store, () => t, cb => { dispara = cb; return () => {}; }, aparelho);
+  for (const [ms, p] of passos) { t = ms; if (p === "GESTO") dispara(); else store.vai(p); }
+  off();
+  return m;
+}
+const S2 = n => n * 1000;
+
+test("gameplay/* só conta o jogo ATIVO: a tela de morte conta como presença e NÃO como gameplay", () => {
+  const m = cronometro([
+    [0, jogando()], [S2(1), "GESTO"],
+    [S2(150), { screen: "dead" }],            // 149 s de jogo
+    [S2(190), jogando()],                     // 40 s na tela de morte: presença sim, gameplay não
+    [S2(215), { screen: "modes" }],           // +25 s de jogo = 174 s de gameplay, 215 s de presença
+  ]);
+  assert.ok(m.includes("session/180s/complete"), "a presença passou de 3 min");
+  assert.ok(!m.includes("gameplay/180s/complete"), "o gameplay NÃO passou: a tela de morte não conta");
+  assert.ok(m.includes("gameplay/60s/complete"));
+});
+
+test("o tempo ANTES do primeiro gesto é presença, e não gameplay", () => {
+  // No computador a lição da supernova só pede para MOVER — e mover não abre o gameplay do SDK.
+  const m = cronometro([[0, jogando()], [S2(70), "GESTO"], [S2(125), { screen: "modes" }]]);
+  assert.ok(m.includes("session/60s/complete"), "70 s na sala");
+  assert.ok(!m.includes("gameplay/60s/complete"), "mas só 55 s de gameplay");
+  assert.ok(m.includes("gesture/60s_mais/complete"), "e a faixa diz quanto tempo ele passou sem clicar");
+});
+
+test("o gesto sai UMA vez, na faixa da presença acumulada", () => {
+  const m = cronometro([[0, jogando()], [S2(8), "GESTO"], [S2(9), "GESTO"], [S2(40), "GESTO"]]);
+  assert.deepEqual(m.filter(x => x.startsWith("gesture/")), ["gesture/5_15s/complete"]);
+  assert.equal(faixaGesto(0), "0_5s"); assert.equal(faixaGesto(14.9), "5_15s");
+  assert.equal(faixaGesto(29), "15_30s"); assert.equal(faixaGesto(59), "30_60s"); assert.equal(faixaGesto(61), "60s_mais");
+});
+
+test("o aparelho sai uma vez, quando ele entra na sala — e nada fora do navegador", () => {
+  assert.deepEqual(cronometro([[0, jogando()], [1, { screen: "dead" }], [2, jogando()]], { aparelho: () => "touch" })
+    .filter(x => x.startsWith("device/")), ["device/touch/complete"]);
+  assert.deepEqual(cronometro([[0, jogando()]]).filter(x => x.startsWith("device/")), []);
+});
+
+test("gameplay/* abre o funil UMA vez, no primeiro jogo ativo", () => {
+  const m = cronometro([[0, jogando()], [1, "GESTO"], [2, { overlays: { pause: true } }], [3, { overlays: { pause: false } }]]);
+  assert.deepEqual(m.filter(x => x.endsWith("/start") && x.startsWith("gameplay/")),
+    ["gameplay/60s/start", "gameplay/180s/start", "gameplay/300s/start"]);
+});

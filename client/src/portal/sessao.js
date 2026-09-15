@@ -109,6 +109,26 @@ const ATIVO = (st, gesto) => gesto && st.screen === "game" && !st.interrompido &
 // coisa que os portais cobram por escrito.
 const RETIDO = st => st.screen === "game" || st.screen === "dead" || st.screen === "round" || st.screen === "spec";
 
+/**
+ * A faixa do tempo na sala antes do primeiro gesto, em segundos. Nome e não número pelo mesmo motivo de
+ * `faixaIdade` (portal/marcos.js): `measure` só tem strings, e o histograma do painel é feito de nomes.
+ * @param {number} s
+ */
+const FAIXAS_GESTO = [[5, "0_5s"], [15, "5_15s"], [30, "15_30s"], [60, "30_60s"]];
+export const faixaGesto = s => { const n = +s || 0;
+  for (const [ate, id] of FAIXAS_GESTO) if (n < ate) return id;
+  return "60s_mais"; };
+
+/**
+ * `touch` ou `mouse`, pela MESMA pergunta que arma o direcional virtual (`(pointer: coarse)`). A demora
+ * até o primeiro gesto só faz sentido cortada por aparelho: no dedo o primeiro toque já é `pointerdown`.
+ * `null` fora do navegador — o teste roda no Node, e aí nada é emitido.
+ */
+const APARELHO = () => {
+  try { return typeof matchMedia === "function" ? (matchMedia("(pointer: coarse)").matches ? "touch" : "mouse") : null; }
+  catch { return null; }
+};
+
 /** O destino padrão: a fachada. Injetável só para o teste poder LER a sequência que chega ao SDK. */
 const FACHADA = { comecou: () => portal.jogoComecou(), parou: () => portal.jogoParou(),
   medir: (c, o, a) => portal.medir(c, o, a) };
@@ -167,31 +187,48 @@ const GESTO = cb => {
  *    caminhos peçam a mesma coisa o SDK nunca vê start-após-start nem stop-após-stop — que é o outro
  *    item que eles cobram por escrito.
  */
-export function iniciaSessaoPortal(alvo = FACHADA, store = app, agora = Date.now, esperaGesto = GESTO) {
-  let est = SESSAO0, jogando = false, abriu = false, t = null, gesto = false;
+export function iniciaSessaoPortal(alvo = FACHADA, store = app, agora = Date.now, esperaGesto = GESTO, aparelho = APARELHO) {
+  let est = SESSAO0, estJ = SESSAO0, jogando = false, abriu = false, abriuJ = false, t = null, gesto = false;
+  // ⚠️ **DOIS RELÓGIOS LADO A LADO, e a distância entre eles é a pergunta.** `session/*` conta PRESENÇA
+  // (partida, tela de morte, pódio); `gameplay/*` conta só o tempo entre o `gameplayStart` e o
+  // `gameplayStop` que ESTE arquivo manda ao SDK. Medido nos Fit Tests 1.26–1.29, a nossa presença acima
+  // de 3 min fica 2 a 8 pontos acima do "engaged players" da Poki, e a documentação deles não diz como o
+  // playtime é contado. Com os dois no mesmo painel de eventos, o que bater com o número deles responde.
   const conta = () => {
     clearTimeout(t); t = null;
-    const st = store.get(), retido = RETIDO(st);
+    const st = store.get(), retido = RETIDO(st), ag = agora();
     // Os três marcos abrem juntos na primeira vez que ele entra — é o que dá o denominador do funil.
-    if (retido && !abriu) { abriu = true; for (const m of MARCOS) alvo.medir("session", m + "s", "start"); }
-    const r = passoSessao(est, retido, agora());
-    est = r.est;
+    if (retido && !abriu) { abriu = true; for (const m of MARCOS) alvo.medir("session", m + "s", "start");
+      const ap = aparelho(); if (ap) alvo.medir("device", ap, "complete"); }
+    if (jogando && !abriuJ) { abriuJ = true; for (const m of MARCOS) alvo.medir("gameplay", m + "s", "start"); }
+    const r = passoSessao(est, retido, ag), rj = passoSessao(estJ, jogando, ag);
+    est = r.est; estJ = rj.est;
     // ⚠️ Só `complete`, nunca `fail`: num funil de progressão quem não completou É a evasão, e foi o
     // `fail` explícito da versão anterior que encheu o painel deles de abandono que não existiu.
     for (const m of r.marcos) alvo.medir("session", m + "s", "complete");
-    if (r.emMs != null) t = setTimeout(conta, Math.max(50, r.emMs));
+    for (const m of rj.marcos) alvo.medir("gameplay", m + "s", "complete");
+    const em = Math.min(r.emMs ?? Infinity, rj.emMs ?? Infinity);
+    if (em !== Infinity) t = setTimeout(conta, Math.max(50, em));
   };
   const passo = st => {
     const a = ATIVO(st, gesto);
     // ⚠️ Só na TRANSIÇÃO. A fachada já é idempotente, mas o `passo` roda a cada escrita no store e cada
     // chamada dela custa um `await pronto` — e, mais importante, é a transição que se lê num log de QA.
+    // (A ordem com `conta()` não importa: `passoSessao` fecha o intervalo pelo `desde` que abriu, e o
+    // valor novo só decide se ele reabre.)
     if (a !== jogando) { jogando = a; if (a) alvo.comecou(); else alvo.parou(); }
     conta();
   };
   const off = store.subscribe(passo);
   // ⚠️ O gesto NÃO passa pelo store, e é decisão: ele não é estado de tela — nada no jogo o desenha, e
   // pô-lo lá faria toda a UI re-renderizar no primeiro movimento do mouse. Ele só reavalia o passo.
-  const offGesto = esperaGesto(() => { gesto = true; passo(store.get()); });
+  const offGesto = esperaGesto(() => {
+    // ⚠️ QUANTO TEMPO NA SALA ANTES DO PRIMEIRO CLIQUE OU TECLA. É o tempo que o SDK deles não chama de
+    // jogo (mover o mouse não é interação), e é a pergunta que decide se vale reordenar o tutorial: no
+    // computador a lição da supernova só pede para MOVER. A faixa usa a PRESENÇA acumulada, não o relógio
+    // da página, porque o tempo de carga não é o que se quer medir. Uma vez por carga, como o latch.
+    if (!gesto) alvo.medir("gesture", faixaGesto(passoSessao(est, RETIDO(store.get()), agora()).est.acum / 1000), "complete");
+    gesto = true; passo(store.get()); });
   // ⚠️ E o estado de AGORA: o adaptador é um chunk sob demanda com script de terceiro dentro, e numa
   // rede ruim o jogador chega à partida antes de isto rodar (o mesmo argumento de `portal/vidas.js`).
   passo(store.get());

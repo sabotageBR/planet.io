@@ -1755,6 +1755,16 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `PROTOCOL_VERSION`): o cliente não pode derivá-lo porque `SPAWN_GRACE_TICKS` e `NOVATO_MASS` são
   tunables de escopo `server` — o bundle dele tem a cópia do BUILD e o painel pode estar com outro
   número. A varredura é a 4 Hz e só existe enquanto há alguém sob graça (um `Set` que se esvazia).
+- **DOIS RELÓGIOS NO FUNIL DA POKI, E A DISTÂNCIA ENTRE ELES É A PERGUNTA** (`portal/sessao.js`, pacote
+  1.30): `session/60s|180s|300s` conta PRESENÇA (partida, tela de morte, pódio) e `gameplay/60s|180s|300s`
+  conta só o intervalo entre o nosso `gameplayStart` e o `gameplayStop`. Medido nos Fit Tests 1.26–1.29,
+  a presença acima de 3 min fica 2 a 8 pontos ACIMA do "engaged players" deles, e a documentação da Poki
+  não diz como o playtime é contado — o relógio que bater com o número deles responde. Junto saem
+  `gesture/<faixa>` (quanto tempo na sala antes do primeiro clique ou tecla, que é o que o SDK chama de
+  interação), `device/touch|mouse` e `life/tutor_nova|tiro|split[_auto]` (em qual etapa do tutorial a
+  metade que não termina desiste). ⚠️ A pergunta que `gesture` responde é se vale pôr o TIRO antes da
+  supernova: no computador a lição da supernova só pede para mover o mouse, e mover não abre gameplay.
+  Ficou de fora de propósito, para a 1.30 medir sem mudar o jogo.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade

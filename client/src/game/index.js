@@ -46,6 +46,7 @@ import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
 import {OPCOES_TUTORIAL,criaRoteiro} from "./net/tutorServer.js";
+import {ETAPA as ETAPA_TUTOR} from "./tutor.js";
 import {createMic} from "../audio/mic.js";
 import {SEM_VOZ} from "../portal/flags.js";
 import {createSnapshotBuffer} from "./state/SnapshotBuffer.js";
@@ -482,7 +483,12 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // ⚠️ A festa sai DAQUI e não da tela: o efeito e o som moram no motor, e `festa` chega uma vez só
     // por etapa (o servidor já garante isso — ver `passoTutor`).
     else if(m.t==="tutor"){tutor=m;pushHud(performance.now());
-      if(m.festa)festeja(m.festa);
+      // ⚠️ O MARCO DE CADA ETAPA, pelo NOME da lição e não pelo número: o funil 1.29 mostrou 1.045
+      // `tutor_start` contra 522 `tutor_done`, e sem isto não há como saber EM QUAL etapa metade dos
+      // jogadores desiste. `_auto` separa quem fez de quem foi carregado pelo teto da ajuda.
+      if(m.festa){festeja(m.festa);
+        const nome={[ETAPA_TUTOR.NOVA]:"nova",[ETAPA_TUTOR.TIRO]:"tiro",[ETAPA_TUTOR.SPLIT]:"split"}[m.festa];
+        if(nome)marco("tutor_"+nome+(m.auto?"_auto":""));}
       if(m.fim)celebrate();}
     // CONVITE DE BATTLE ROYALE: só chega em sala do modo Livre (Room.brInvite filtra no servidor).
     // Interativo — fica no hudStore até responder ou o TTL vencer, ao contrário do `notice` passivo.
