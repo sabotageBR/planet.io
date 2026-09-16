@@ -172,10 +172,15 @@ test('mascote: o anúncio DÁ a skin e equipa — e comprar com moeda continua l
   // ver o comentário daquela constante para o porquê (um vídeo que só dá o direito de gastar 1.900 moedas
   // reprova no "properly fired" do checklist da Poki).
   // ⚠️ QUAIS skins é decisão de produto, e é por isso que ela está escrita aqui e não só derivada: a
-  // recompensa é Marte Bravo · Terra Brava · Lua Soldado, nessa ordem (a ordem É a da oferta na tela de
-  // morte). Mascote novo no catálogo entra na pool sozinho e derruba esta linha de propósito — quem a
-  // acrescentar decide, com o texto na frente, se ela também vale um vídeo.
-  assert.deepEqual(AD_GIFT_SKINS.map(id=>SKINS.find(s=>s.id===id).name),['Marte Bravo','Terra Brava','Lua Soldado']);
+  // recompensa é Terra Brava · Lua Soldado, nessa ordem (a ordem É a da oferta na tela de morte). Mascote
+  // novo no catálogo entra na pool sozinho e derruba esta linha de propósito — quem a acrescentar decide,
+  // com o texto na frente, se ela também vale um vídeo.
+  // ⚠️ **O MARTE BRAVO SAIU, e a linha mudou com a decisão que a motivou.** Ele virou o prêmio de
+  // PROGRESSÃO (`PROGRESSO.PARTIDAS` partidas jogadas, concedido em `persist/hooks.js`) e é a skin com que
+  // o tutorial é jogado. Nas duas portas ao mesmo tempo a barra seria decorativa: ninguém espera três
+  // partidas por algo que um vídeo de 30 s entrega. Sobram dois, ou seja o `rewardedBreak` continua tendo
+  // o que oferecer — sem isso o pacote perderia um item que a Poki cobra por escrito.
+  assert.deepEqual(AD_GIFT_SKINS.map(id=>SKINS.find(s=>s.id===id).name),['Terra Brava','Lua Soldado']);
   const g=await novoGuest('TestadorAnuncio');
   const alvo=AD_GIFT_SKINS[0];
   let r=await call('POST','/api/skins/6/ad-gift',{token:g.token});assert.equal(r.status,400);assert.equal(r.body.error,'bad_request');   // fora da pool
@@ -429,6 +434,32 @@ test('skin lendária: o nível é gate de verdade, e ele destrava com XP',async(
   const cat=await req('GET','/api/skins',null,t.token);
   assert.equal(cat.body.level,alvo.levelReq);
   assert.ok(cat.body.skins.find(s=>s.id===alvo.id).levelReq===alvo.levelReq);
+});
+
+test('progressão: N partidas dão a skin do tutorial, e só uma vez',async()=>{
+  // O jogador a EXPERIMENTA no tutorial e a perde ao entrar na primeira sala de verdade; é esta concessão
+  // que a devolve, e é ela que a barra da tela de morte promete. O `games` do payload existe porque o
+  // cliente não tem outra fonte — `session.stats` só é escrito no boot pelo `GET /api/me`.
+  const {SKIN_TUTORIAL}=await import('@warspace/shared/skins.js');
+  const {PROGRESSO}=await import('@warspace/shared/constants.js');
+  const t=await novoGuest('Estreante');
+  const h=persist.hooks;
+  const uma=async()=>{const j=await h.onPlayerJoin({token:t.token,fallbackNick:'Estreante',roomCode:'0ABC'});
+    return h.onMatchEnd({sessionId:j.sessionId,cause:'eaten',score:10,maxMass:900,durationMs:9000});};
+  let r=null;
+  for(let i=1;i<PROGRESSO.PARTIDAS;i++){r=await uma();
+    assert.equal(r.games,i,'o payload leva o acumulado da CONTA, não o da partida');
+    assert.ok(!r.skinsUnlocked.includes(SKIN_TUTORIAL),`concedida cedo demais (partida ${i})`);}
+  r=await uma();
+  assert.equal(r.games,PROGRESSO.PARTIDAS);
+  assert.ok(r.skinsUnlocked.includes(SKIN_TUTORIAL),'a partida do alvo tem de conceder');
+  // ⚠️ E NÃO REPETE: `grantMany` devolve só o que de fato inseriu, então da partida seguinte em diante a
+  // lista volta vazia sozinha. Sem isso a tela de morte comemoraria a mesma skin para sempre.
+  r=await uma();
+  assert.equal(r.games,PROGRESSO.PARTIDAS+1);
+  assert.ok(!r.skinsUnlocked.includes(SKIN_TUTORIAL),'concedeu duas vezes: a comemoração viraria loop');
+  const owned=(await req('GET','/api/me',null,t.token)).body.skins;
+  assert.ok(owned.includes(SKIN_TUTORIAL),'a skin tem de estar na conta, não só no payload');
 });
 
 test('easter egg: o nick escolhe a skin da VIDA, sem tocar na skin equipada',async()=>{

@@ -18,6 +18,7 @@ import { escolhePremio } from "./premio.js";
 import { pedagioLiberado } from "../portal/primeiraVida.js";
 import { ganharSkinAnuncio } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
+import { preenche } from "../i18n/index.js";
 import SkinPreview from "./SkinPreview.jsx";
 // ⚠️ `{ portal }`, NUNCA `* as portal`: a fachada é um OBJETO exportado com esse nome, então a importação
 // de namespace faz `portal.temRecompensa` ler um export que não existe — `undefined`, em silêncio, e a
@@ -43,15 +44,39 @@ export default function DeadPrize({ on }) {
     // gosta do jogo levando uma proposta de vídeo. O PRÊMIO (uma skin que a partida destravou) não passa
     // por isto: ele é um fato consumado, não uma venda.
     const pedagio = pedagioLiberado({ mortes: a.mortes, kills: a.kills, sessaoMs: performance.now() });
-    oferta.current = escolhePremio(null, s.skins, pedagio && portal.temRecompensa, !!(s.user && s.user.id));
+    // ⚠️ `stats.games` JÁ inclui a partida que acabou de acontecer: `onDead` o incrementa de forma otimista
+    // antes de agendar esta tela, porque o `{t:"rewards"}` com o número autoritativo chega ~1 s DEPOIS dela
+    // abrir. Sem aquele incremento a barra mostraria sempre o passo anterior — 0/3 na morte que fez a 1ª.
+    oferta.current = escolhePremio(null, s.skins, pedagio && portal.temRecompensa,
+      !!(s.user && s.user.id), (s.stats || {}).games | 0);
   }, [on]);
   if (!on) return null;
   // A skin destravada ganha da oferta — e ela só é conhecida quando `rewards` chega.
+  // ⚠️ `logado:false` aqui é o que mantém esta chamada sendo SÓ o detector do ramo 1: com `true` ela
+  // devolveria o progresso e passaria por cima do que foi congelado no mount, voltando a trocar o bloco
+  // debaixo do jogador — que é o defeito que o congelamento existe para fechar.
   const premio = escolhePremio(r, skins, false, false) || oferta.current;
   if (!premio) return null;
 
   const ganhou = premio.tipo === "skin";
+  const progresso = premio.tipo === "progresso";
   const jaTem = (skins || []).includes(premio.id);
+  // O PROGRESSO é o mesmo nó, com a mesma altura: disco + texto, e a barra no lugar do botão. Trocar a
+  // altura entre os estados moveria o rodapé sticky, que é o que `min-height:64px` existe para impedir.
+  if (progresso) {
+    const p = Math.max(0, Math.min(1, premio.feitas / premio.alvo));
+    return <div className="dd-premio prog">
+      <div className="dp-disco"><SkinPreview skin={premio.skin} r={30} size={112} className="" /></div>
+      <div className="dp-txt">
+        <i>{preenche(LB.prizeProgress, { n: premio.alvo })}</i>
+        <b>{premio.skin.name}</b>
+        {/* A barra é o markup do Perfil (`.ach-bar` + `--p`), para as duas telas falarem a mesma língua. */}
+        <span className="ach-bar" role="progressbar" aria-valuemin={0} aria-valuemax={premio.alvo}
+          aria-valuenow={premio.feitas}><i style={{ "--p": p }} /></span>
+      </div>
+      <div className="dp-passo">{premio.feitas}<span>/{premio.alvo}</span></div>
+    </div>;
+  }
   return <div className={"dd-premio" + (ganhou ? " ganhou" : "")}>
     <div className="dp-disco"><SkinPreview skin={premio.skin} r={30} size={112} className="" /></div>
     <div className="dp-txt">

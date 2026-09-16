@@ -12,6 +12,8 @@ import {createQueue} from './queue.js';
 import {matchCoins,achievementCoins,newAchievements,skinsForAchievements,achievementTitle,matchXp,matchDeaths} from './rewards.js';
 import {levelFromXp,levelProgress} from '@warspace/shared/levels.js';
 import {eggSkinFor} from '@warspace/shared/eggs.js';
+import {SKIN_TUTORIAL} from '@warspace/shared/skins.js';
+import {PROGRESSO} from '@warspace/shared/constants.js';
 const JOIN_TIMEOUT_MS=3000,DRAIN_MS=10000,CLEAN_LOCK=727002,HOUR=3600e3,DAY=24*HOUR;
 // Sem banco não há skin equipada nem nível — mas o EASTER EGG continua valendo: ele depende só do nick,
 // e é justamente no modo sem persistência (e no ?local=1) que ele é mais visível.
@@ -106,6 +108,19 @@ export function createPersistence({db,log,config,metrics=SEM_METRICS}){
       // Não vira fonte infinita: `grantMany` (repos/skins.js) devolve só os ids que ele de fato inseriu,
       // então a partir da segunda partida a lista volta vazia sozinha. É auto-corretivo e custa uma linha.
       const skinsUnlocked=await skins.grantMany(c,m.userId,skinsForAchievements([...owned,...fresh]),'achievement');
+      // ⚠️ A SKIN DO TUTORIAL, POR PARTIDAS JOGADAS. O jogador a experimenta no tutorial e a perde ao entrar
+      // na primeira sala de verdade; `PROGRESSO.PARTIDAS` partidas a devolvem para sempre, e a barra da tela
+      // de morte (`ui/premio.js`) mostra o que falta. `games` é o acumulado da CONTA e o tutorial não entra
+      // nele — ele roda no `LocalServer` e não grava partida nenhuma —, então são três de verdade.
+      // ⚠️ `source:'grant'` e NUNCA um `unlockKey` na skin: aquele campo a tiraria da venda por
+      // `isPurchasable`, e a decisão é que ela CONTINUE comprável (2.100 moedas) para quem não quer esperar.
+      // Também evitaria uma conquista "jogue 3 partidas" no Perfil ao lado da família `games`
+      // ("Veterano: jogue 10 partidas"), que já existe e diria quase a mesma coisa.
+      // ⚠️ Não vira fonte infinita nem custa uma consulta por partida a mais: `grantMany` devolve só o que
+      // de fato inseriu, então da 4ª partida em diante a lista volta vazia sozinha — é o mesmo argumento
+      // auto-corretivo escrito logo acima para as conquistas.
+      if((stats.games|0)>=PROGRESSO.PARTIDAS)
+        for(const id of await skins.grantMany(c,m.userId,[SKIN_TUTORIAL],'grant'))skinsUnlocked.push(id);
       let coins=null,earned=0;
       const base=matchCoins(m);if(base>0){coins=(await ledger.apply(c,{userId:m.userId,delta:base,reason:'match',refType:'match',refId:ins.id})).coins;earned+=base;}
       for(const k of fresh){const d=achievementCoins(k);coins=(await ledger.apply(c,{userId:m.userId,delta:d,reason:'achievement',refType:'achievement',refId:k})).coins;earned+=d;}
@@ -115,7 +130,12 @@ export function createPersistence({db,log,config,metrics=SEM_METRICS}){
       // é assim que a tela sabe dizer "subiu de nível" sem precisar de um segundo campo no banco.
       const total=Number(stats.xp||0),level=levelFromXp(total),prev=levelFromXp(total-m.xp);
       const p=levelProgress(total);
-      return{saved:true,matchId:ins.id,coinsEarned:earned,coins,achievements:fresh.map(k=>({key:k,title:achievementTitle(k)})),skinsUnlocked,
+      // ⚠️ `games` VIAJA PORQUE O CLIENTE NÃO TEM COMO SABER. `session.stats` só é escrito no boot pelo
+      // `GET /api/me`, e nada depois disso o atualizava — uma barra de progresso pendurada nele ficaria
+      // congelada a sessão inteira. O `onDead` o incrementa otimista para a tela abrir com o número certo;
+      // este aqui é o autoritativo, e é o MESMO que decide a concessão acima (uma fonte só para os dois
+      // lados da promessa).
+      return{saved:true,matchId:ins.id,coinsEarned:earned,coins,achievements:fresh.map(k=>({key:k,title:achievementTitle(k)})),skinsUnlocked,games:stats.games|0,
         xp:{gained:m.xp,total,level,prevLevel:prev,leveledUp:level>prev,into:p.into,need:p.need,pct:p.pct}};
     });
     let day=null,pais=null;try{const r=await ranking.rankOf({period:'day',by:'score',userId:m.userId});day=r?r.rank:null;}catch{}

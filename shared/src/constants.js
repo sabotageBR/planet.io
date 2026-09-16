@@ -497,6 +497,20 @@ export const ENTRY={NICK_AUTO:true,
  */
 export const TUTORIAL={PLATAFORMAS:''};
 /**
+ * QUANTAS PARTIDAS VALEM A SKIN DO TUTORIAL (`SKIN_TUTORIAL`, o Marte Bravo). O jogador a EXPERIMENTA no
+ * tutorial, ela é tirada dele ao entrar na primeira sala de verdade, e a barra da tela de morte diz o que
+ * falta para tê-la para sempre. Uma PARTIDA é uma vida (uma linha em `matches`), que é o que
+ * `user_stats.games` conta — e o tutorial não entra nessa conta, porque roda no `LocalServer` e não grava
+ * partida nenhuma. São três de verdade.
+ * ⚠️ **Constante de build, NÃO tunable**, e a razão é que os dois lados precisam do MESMO número ao mesmo
+ * tempo: o servidor concede (`persist/hooks.js`) e o cliente desenha a barra (`ui/premio.js`). Um tunable
+ * teria de ser de escopo 'wire' — e o `escolhePremio` roda na tela de MORTE, que existe fora de sala —,
+ * então o valor chegaria tarde e a barra prometeria um número que o servidor não usa.
+ * ⚠️ Baixar para 0 ou 1 não "desliga" nada: concede na primeira partida. Quem desliga a mecânica é tirar a
+ * skin da concessão em `hooks.js`, e aí ela volta a ser só comprável.
+ */
+export const PROGRESSO={PARTIDAS:3};
+/**
  * Minutos escolhidos pelo dono da sala → ticks de rodada. UM lugar, porque a rota, a tela e os testes têm
  * que concordar — e porque "nada de `if (modo === …)` espalhado" é regra escrita de docs/design/modos.md.
  * Devolve `0` para SEM FIM e `null` quando a escolha não vale para o modo.

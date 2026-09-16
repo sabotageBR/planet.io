@@ -163,6 +163,20 @@ export const isPurchasable=s=>s.price>0&&!s.unlockKey;
 /** Nível mínimo para comprar (0 = nenhum). */
 export const levelReqOf=s=>(s&&s.levelReq)|0;
 /**
+ * A SKIN DO TUTORIAL E DA PROGRESSÃO — o Marte Bravo. Ela faz DUAS coisas que são a mesma promessa vista
+ * de dois lados: é a skin com que o tutorial de estreia é JOGADO (o jogador a experimenta antes de ter
+ * qualquer coisa) e é a que `PROGRESSO.PARTIDAS` partidas concedem de graça. O fim do tutorial é o
+ * instante em que ela é TIRADA dele, e é lá que a promessa é feita — sem isso a troca de planeta na
+ * primeira sala lê como defeito.
+ * ⚠️ **DERIVADA DO CATÁLOGO, nunca o literal 119**, pelo mesmo motivo de `AD_GIFT_SKINS`: o id é detalhe
+ * da tabela e o `mascot` é a identidade. O `?? SKINS[0].id` existe porque o import não pode explodir se
+ * um dia o mascote sair do catálogo — sem ele, `AD_GIFT_SKINS` e o servidor inteiro caem na carga.
+ * ⚠️ Ela **continua comprável** (2.100 moedas): a concessão por partidas mora em `persist/hooks.js` e usa
+ * `source:'grant'`, NUNCA um `unlockKey` — aquele campo tira a skin da venda por `isPurchasable` acima, e
+ * ainda criaria uma conquista "jogue 3 partidas" ao lado da família `games` ("Veterano: jogue 10").
+ */
+export const SKIN_TUTORIAL=(SKINS.find(s=>s.mascot==="marte")||SKINS[0]).id;
+/**
  * A POOL DO ANÚNCIO RECOMPENSADO — as skins que assistir um vídeo DÁ, de graça: hoje **as três mascotes**
  * (Marte Bravo, Terra Brava, Lua Soldado). Derivada do catálogo, nunca uma lista cravada: mascote novo
  * entra sozinho. Oferecida em DOIS lugares, a tela de morte (`ui/DeadPrize.jsx`) e a Loja (`ui/Shop.jsx`).
@@ -183,8 +197,14 @@ export const levelReqOf=s=>(s&&s.levelReq)|0;
  * das skins de banco, que o /admin usa.
  * ⚠️ A ORDEM é a da oferta (o primeiro não possuído é o oferecido), então ela é estável entre a morte e o
  * clique — uma oferta que troca no meio é a forma mais rápida de o jogador achar que foi enganado.
+ * ⚠️ **`SKIN_TUTORIAL` SAI DELA**, e é por isso que o filtro tem um segundo termo: aquela skin deixou de
+ * ser vendida por vídeo e passou a ser o PRÊMIO DE PROGRESSÃO (`PROGRESSO.PARTIDAS` partidas jogadas).
+ * Deixá-la nos dois lugares tornaria a barra decorativa — ninguém espera três partidas por algo que um
+ * vídeo de 30 s entrega —, e é a mesma lição de "misturar duas regras na mesma skin faz a Loja mentir".
+ * Sobram Terra e Lua, ou seja **o `rewardedBreak` continua com os seus dois chamadores** (Loja e tela de
+ * morte), que é o item que a Poki cobra por escrito e que não pode desaparecer do pacote.
  */
-export const AD_GIFT_SKINS=SKINS.filter(s=>s.mascot).map(s=>s.id);
+export const AD_GIFT_SKINS=SKINS.filter(s=>s.mascot&&s.id!==SKIN_TUTORIAL).map(s=>s.id);
 export const AD_REWARD_SKINS=[];
 /** A conta nova sorteia UMA destas para nascer equipada (grátis + as 9 comuns, ids 0..9 — o mesmo
  *  conjunto que a loja mostra como "grátis"/"comum"). Derivado do catálogo pelo mesmo motivo de

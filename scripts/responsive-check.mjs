@@ -199,15 +199,21 @@ const SONDA=`(()=>{
   // de propósito. Com ele, a matriz reprovaria as telas de Salas e de Modos inteiras e viraria ruído.
   // (Sem crase em comentário nenhum daqui: a sonda inteira é um template literal — o arquivo avisa isso
   // duas vezes mais acima, e esta linha custou uma rodada.)
-  // ⚠️ O rodapé do TUTORIAL entra aqui, e não é opcional: este critério é uma lista DECLARADA de
-  // seletores, então um botão que não esteja nela é invisível para ele — e o botão de entrar na sala é
-  // literalmente o único caminho de saída do cartão de fim.
+  // ⚠️ O PULAR do TUTORIAL entra aqui, e não é opcional: este critério é uma lista DECLARADA de
+  // seletores, então um botão que não esteja nela é invisível para ele.
+  // ⚠️ O seletor .tut-ir SAIU porque o BOTÃO deixou de existir, não porque deixou de importar. O cartão
+  // de fim virou uma tela que entra na sala SOZINHA depois de TUTOR.FIM_MS — justamente porque o botão
+  // prendia 24% de quem chegava até lá (a contagem congelava no primeiro pointermove). Um seletor que não
+  // casa com nada é um no-op silencioso, que é o defeito que o chip hud-mode cometeu por ~600
+  // combinações: se um dia voltar a existir ação no fim do tutorial, ela volta para esta lista.
+  // (Sem crase em comentário nenhum daqui: a sonda inteira é um template literal — três avisos acima
+  // dizem isto, e esta linha custou mais uma rodada.)
   // ⚠️ O JOGAR DOS CARTÕES DE MODOS entrou pelo mesmo argumento, e a falta dele foi sentida: a tela de
   // Modos passou por uma reforma para caber no frame de portal (o botão do Livre subiu, os chips de
   // esquadrao e o campo de codigo sairam) e a matriz nao tinha como reprovar nada disso, porque o unico
   // botao que aquela reforma move nao estava nesta lista. E o seletor e o do CARTAO, nunca [data-go]
   // solto: o motivo esta duas linhas acima.
-  const ACOES='.dead-foot button,.dead-actions button,.dead-views button,.lobby-hero [data-go],.prefs-foot button,nav.nav,.tut-ir,.tut-sair,.dp-ad,.mode-card>.btn-primary';
+  const ACOES='.dead-foot button,.dead-actions button,.dead-views button,.lobby-hero [data-go],.prefs-foot button,nav.nav,.tut-sair,.dp-ad,.mode-card>.btn-primary';
   const escondida=[];
   for(const el of (tela?tela.querySelectorAll(ACOES):[])){
     if(!vis(el))continue;const r=el.getBoundingClientRect();

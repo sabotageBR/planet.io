@@ -72,10 +72,10 @@ export default {
     btnMouseMover: "mover o mouse", btnMouseClicar: "clique esquerdo",
     btnDedoTocar: "toque na tela", btnDedoMissil: "MÍSSIL", btnDedoDividir: "DIVIDIR",
     // fim
-    fimTitulo: "PRONTO! VOCÊ SABE JOGAR.",
-    fimMover: "Mover", fimAtirar: "Atirar", fimDividir: "Dividir",
-    fimNota: "Na sala de verdade você começa pequeno de novo. É assim que o jogo começa.",
-    fimJogar: "JOGAR AGORA",
+    fimTitulo: "PARABÉNS!",
+    fimSub: "Você já sabe o básico.",
+    fimPromessa: "Jogue {n} partidas e o {s} é seu",
+    fimIndo: "entrando…",
   },
   admJoin: "🟢 {n} entrou no jogo", admJoinTitle: "warspace.io",
   brInviteTitle: "🚀 Battle Royale começando!", brInviteBody: "Uma nova partida está se formando. Quer entrar?",
@@ -98,6 +98,7 @@ export default {
   // respawn repassa a da vida anterior — ela aparece na PRÓXIMA. A tela diz isso em vez de deixar o
   // jogador clicar e achar que não funcionou.
   prizeUnlocked: "SKIN DESBLOQUEADA", prizeOffer: "GANHE ESTA SKIN", prizeWatch: "🎬 Assistir e ganhar",
+  prizeProgress: "JOGUE {n} PARTIDAS E GANHE",
   prizeEquipNote: "equipada na próxima vida", prizeGot: "Skin sua! Ela entra na próxima vida.",
   mapOpen: "🗺 MAPA", mapClose: "🗺 FECHAR", liveOpen: "📡 TEMPO REAL", liveClose: "📡 FECHAR",
   title: "WARSPACE.IO", tagline: "CONQUISTE A GALÁXIA · DIVIDA · EJETE · DEVORE",

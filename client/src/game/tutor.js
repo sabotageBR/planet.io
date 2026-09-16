@@ -33,7 +33,12 @@ export const ETAPAS = 3;
  * ⚠️ Ela é PARÂMETRO da função, não import: `BOT.NOVATO_MASS` é tunable do /admin e quem o lê é o
  * diretor, a cada chamada — capturá-lo aqui na carga do módulo é o antipadrão que `dica.js` documenta.
  */
-export const TUTOR = { SOBRA_MS: 3200, LIMPO_MS: 4000 };
+// ⚠️ `FIM_MS` é quanto a tela de PARABÉNS fica no ar antes de entrar na primeira sala sozinha. Ela não tem
+// botão, então este número é a única saída — e é por isso que ele é curto: o tutorial acabou, o jogador
+// quer jogar, e a tela anterior (um cartão com botão) prendia 24% de quem chegava até aqui porque a
+// contagem dela podia congelar. Nunca subir isto a ponto de a tela virar espera; nunca zerar, senão o
+// parabéns pisca e a promessa da skin não é lida.
+export const TUTOR = { SOBRA_MS: 3200, LIMPO_MS: 4000, FIM_MS: 3000 };
 
 /**
  * Os três degraus de ajuda de cada etapa, em ms desde que ela abriu, e o TETO em que ela se conclui

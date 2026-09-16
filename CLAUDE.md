@@ -1501,7 +1501,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   Ninguém conseguia dividir ali, e nada acusava. O `graceTick` de lá é o espelho de `Sim._graceTick`.
   ⚠️ **A TELA: trilha 1·2·3, letra de instrução e o BOTÃO QUE SE APERTA, desenhado.** São três caras
   (`ui/Tutor.jsx`): a faixa em curso, a TELA DE "ETAPA COMPLETA" (que aparece, comemora e **fecha sozinha**
-  — sem botão, porque é uma celebração e não uma decisão) e o cartão de fim. ⚠️ A instrução fica no TOPO e
+  — sem botão, porque é uma celebração e não uma decisão) e a tela de PARABÉNS, que hoje segue a mesma
+  regra (ver o bloco abaixo; ela já foi um cartão com botão, e o botão prendia um quarto de quem chegava
+  até ele). ⚠️ A instrução fica no TOPO e
   o prompt no RODAPÉ, e essa separação não é estética: empilhados eles desciam até o meio da tela e
   TAPAVAM o planeta e os pedaços, ou seja a explicação cobria a coisa explicada.
   ⚠️ **O PROMPT É A ÚNICA COISA DO JOGO QUE DIZ QUAL BOTÃO APERTAR**, e ele existe porque no mouse **não
@@ -1588,6 +1590,61 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ Os tempos de ajuda foram remedidos: a etapa 1 é a mais LONGA (24 fragmentos num disco de ~250 px
   levam 15–25 s para um iniciante, e com o teto em 22 s o caso NORMAL terminava em "concedemos a massa
   por você"), e a etapa 3 encurtou (o degrau 1 dela não é muleta, é o "aha" da lição).
+- **...E O FIM DELE PRENDIA UM QUARTO DE QUEM CHEGAVA LÁ — ELE VIROU UM PARABÉNS QUE ENTRA SOZINHO**
+  (`Fim` em `ui/Tutor.jsx`, `TUTOR.FIM_MS`, o bloco `#tutor-fim` de `ui.css`): o `Game Events` da Poki
+  mediu o funil do tutorial na 1.30 e o gargalo **não é nenhuma das três lições**. De 1.253 que começam,
+  1.140 passam da etapa 1, 968 da 2, 851 da 3 — e só **647 emitem `tutor_done`**. As 204 pessoas (24%)
+  que somem DEPOIS de aprender tudo são a maior perda única do tutorial, maior que qualquer etapa (que
+  perdem 113, 172 e 117). Só 51,6% de quem começa chega a entrar numa partida, e é isso — não evasão
+  misteriosa — o "~45% das contas nunca jogam" do nosso banco: o tutorial roda no `LocalServer` e não
+  grava linha em `matches`.
+  ⚠️ **A CAUSA ERA UMA LINHA, E A INTENÇÃO DELA ESTAVA CERTA.** A contagem do cartão chamava
+  `saiDoTutorial` sozinha, mas `pausa.current` virava `true` no primeiro `onPointerMove` sobre ele e
+  **nunca voltava a false** — "promessa, não ameaça", escrito no código. No dedo (81% do tráfego)
+  qualquer toque dispara `pointermove`, então o caso NORMAL do celular era a contagem congelar e o
+  jogador ficar diante de uma tela que esperava um clique que ele não sabia dever dar. O argumento
+  original ("uma contagem que come um clique é o pior defeito numa tela de PRÊMIO") valia sobre o
+  prêmio; o conserto foi tirar o prêmio e o clique dali, não consertar a pausa.
+  ⚠️ **HOJE NÃO HÁ CARTÃO, BOTÃO NEM `pointer-events`**: texto grande sobre a partida, `TUTOR.FIM_MS`
+  (3 s) e entra. O disparo tem guarda de `useRef` porque `saiDoTutorial` chama `play()`, que é
+  assíncrono. E `tutorDemo` passa `demo:true` para DESARMAR o relógio — sem isso `?screen=tutor:fim` e a
+  matriz de responsividade entrariam numa sala de verdade 3 s depois de montar a tela que vieram medir.
+  ⚠️ **O `.tut-ir` SAIU da lista de AÇÕES de `responsive-check.mjs`** junto com o botão: seletor que não
+  casa com nada é no-op silencioso, que é o que o chip `hud-mode` fez por ~600 combinações.
+  ⚠️ De graça, isso apagou um defeito que ninguém tinha visto: o bloco de prêmio do cartão usava
+  `.dd-premio`/`.dp-disco`/`.dp-txt`, e **todas as regras dessas classes são escopadas a `#s-dead`** —
+  dentro de `#tutor-fim` nenhuma casava, e o `SkinPreview` de `size=112` num disco desenhado para 46 px
+  saía fora de escala.
+- **O TUTORIAL É JOGADO COM O MARTE BRAVO, E 3 PARTIDAS O DÃO DE VERDADE** (`SKIN_TUTORIAL` e
+  `PROGRESSO.PARTIDAS` em `shared`, o estado `progresso` de `ui/premio.js`, a concessão em
+  `persist/hooks.js`): o jogador EXPERIMENTA a skin antes de ter qualquer coisa, ela é tirada dele ao
+  entrar na primeira sala de verdade, e a barra da tela de morte diz o que falta para ficar com ela.
+  ⚠️ **A PROMESSA É FEITA NO INSTANTE DA PERDA** — na tela de parabéns —, e não é enfeite: sem uma linha
+  explicando, a troca de planeta na primeira sala lê como defeito.
+  ⚠️ **A skin do tutorial é UMA LINHA em `entraNoTutorial`** (`skinId: SKIN_TUTORIAL` no `pendingJoin`),
+  porque a cadeia já aceitava um id explícito (`game/index.js`: `skinId!=null?skinId:user.equippedSkin`).
+  Sair passa por `play()`, que monta um `pendingJoin` novo sem `skinId`, então a volta é automática — e
+  é inerte fora dali, porque o servidor ignora o `skinId` do cliente por construção. De quebra conserta a
+  cena: o planeta do aluno e os dois alvos plantados pelo roteiro eram todos `skinId:0`, mesma cor e
+  mesmo padrão, na etapa que pede para distinguir quem é quem.
+  ⚠️ **`session.stats.games` ESTAVA CONGELADO** — só o boot o escrevia (`GET /api/me`), e `onRewards`
+  tocava apenas em XP. Uma barra pendurada nele ficaria parada a sessão inteira. Agora `finishMatch`
+  devolve `games` (o `stats` já estava em escopo), `onRewards` o reconcilia e `onDead` o incrementa
+  OTIMISTA — este último não é zelo: a tela de morte abre ~1 s antes de o `{t:"rewards"}` chegar e o
+  `DeadPrize` congela a decisão no mount, então sem ele a morte que fez a 1ª partida desenharia 0/3.
+  ⚠️ **A concessão é `source:'grant'` e NUNCA um `unlockKey`**: aquele campo tira a skin da venda por
+  `isPurchasable`, e a decisão é que ela CONTINUE comprável (2.100) para quem não quer esperar. Também
+  evitaria uma conquista "jogue 3 partidas" no Perfil ao lado da família `games` ("Veterano: jogue 10"),
+  que já existe e diria quase a mesma coisa. Não vira fonte infinita porque `grantMany` devolve só o que
+  de fato inseriu — da 4ª partida em diante a lista volta vazia sozinha, o mesmo argumento auto-corretivo
+  já escrito ali para as conquistas. E a comemoração sai de graça: o id entra em `skinsUnlocked`, que é o
+  ramo 1 de `escolhePremio`.
+  ⚠️ **O PROGRESSO VEM ANTES DA OFERTA DE ANÚNCIO**, e não é gosto: `pedagioLiberado` cala a oferta nas
+  duas primeiras vidas, que são exatamente as duas em que a promessa do tutorial precisa ser lembrada.
+  Invertida a ordem, o jogador veria a barra pela primeira vez já em 2/3.
+  ⚠️ **A Marte SAIU de `AD_GIFT_SKINS`** (Terra e Lua ficam): nas duas portas a barra seria decorativa —
+  ninguém espera três partidas por algo que um vídeo de 30 s entrega. Sobrando duas, **o `rewardedBreak`
+  mantém os seus dois chamadores** (Loja e tela de morte), que é o item que a Poki cobra por escrito.
 - **O PORTÃO DO DIVIDIR ESTAVA ACIMA DO TETO DO NOVATO** (`SPLIT.MIN_R` virou tunable de escopo `wire`,
   grupo "Proteção do novato"; a dica em `client/src/game/dica.js` + `ui/DicaSplit.jsx`): a física torna o
   salto OBRIGATÓRIO para matar alguém — `vmax = 2110,6/r^0,449` faz a presa ser sempre mais rápida que o

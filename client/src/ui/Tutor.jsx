@@ -16,23 +16,16 @@
 // concluir que o tutorial mente. `d.dedo` vem do mesmo getter que arma o direcional virtual.
 // ⚠️ `pointer-events:none` no bloco em curso, com `auto` só no botão: o `#hud` inteiro é `none` porque os
 // painéis engoliam o alvo do jogador e congelavam o movimento.
-import React, { useEffect, useRef, useState } from "react";
-import { useStore } from "../state/store.js";
+import React, { useEffect, useRef } from "react";
 import { app } from "../state/app.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { preenche } from "../i18n/index.js";
-import { ETAPA, ETAPAS } from "../game/tutor.js";
+import { ETAPA, ETAPAS, TUTOR } from "../game/tutor.js";
 // ⚠️ As duas decisões (qual frase, qual botão) moram num `.js` à parte: o `node --test` não carrega
 // `.jsx`, e uma função de decisão que ninguém testa é onde o par mouse/dedo se inverte em silêncio.
 import { falaDoTutor, promptDoTutor } from "./tutorFala.js";
-import { escolhePremio } from "./premio.js";
-import { saiDoTutorial, ganharSkinAnuncio } from "../state/actions.js";
-import { portal } from "../portal/index.js";
-import { api } from "../api/client.js";
-import SkinPreview from "./SkinPreview.jsx";
-
-/** Segundos da contagem do botão de entrar na sala. Promessa, não ameaça — ver o `pausa` abaixo. */
-const CONTA_S = 12;
+import { saiDoTutorial } from "../state/actions.js";
+import { PROGRESSO, SKIN_TUTORIAL, skinById } from "@warspace/shared";
 
 /** O título de cada etapa, para a tela de "completa" poder anunciar a próxima. */
 const TIT_ETAPA = { [ETAPA.NOVA]: "novaTit", [ETAPA.TIRO]: "tiroTit", [ETAPA.SPLIT]: "splitTit" };
@@ -68,7 +61,7 @@ export default function Tutor({ d, tecla }) {
   const LB = useLabels();
   if (!d) return null;
   const T = LB.tutor || {};
-  if (d.fim) return <Fim T={T} LB={LB} />;
+  if (d.fim) return <Fim T={T} demo={!!d.demo} />;
   if (d.celebra) return <Completa d={d} T={T} />;
   const [tit, txt] = falaDoTutor(d, T, tecla);
   // ⚠️ **O PROMPT MORA NO RODAPÉ, LONGE DA INSTRUÇÃO, E ISSO NÃO É ESTÉTICA.** Empilhados no topo eles
@@ -148,55 +141,51 @@ function Completa({ d, T }) {
 }
 
 /**
- * O cartão de fim. Aqui sim há véu e `pointer-events:auto` — é o único momento em que a tela pede uma
- * decisão, e a salva de fogos já está saindo do planeta dele por trás.
+ * O FIM DO TUTORIAL: parabéns, a promessa da skin, e ENTRA SOZINHO. Sem cartão, sem botão, sem véu que
+ * capture o ponteiro — nada aqui pede decisão, e essa é a mudança inteira.
+ *
+ * ⚠️ **ISTO ERA UM CARTÃO COM BOTÃO, E ELE PRENDIA UM QUARTO DE QUEM CHEGAVA ATÉ AQUI.** Medido no painel
+ * da Poki (1.30, 15-16/09): de 851 jogadores que completam as três lições, só **647 emitem `tutor_done`**
+ * — 204 pessoas (24%) somem na última tela, que é a maior perda única do tutorial inteiro (as três etapas
+ * perdem 113, 172 e 117). A causa era uma linha: a contagem regressiva chamava `saiDoTutorial` sozinha,
+ * mas `pausa.current` virava `true` no primeiro `onPointerMove` sobre o cartão e **nunca voltava a false**.
+ * No dedo — 81% do tráfego — qualquer toque dispara `pointermove`, então o caso NORMAL do celular era a
+ * contagem congelar e o jogador ficar olhando uma tela que esperava um clique que ele não sabia dever dar.
+ * A intenção original ("uma contagem que come um clique é o pior defeito numa tela de prêmio") estava
+ * certa sobre o prêmio; o conserto foi tirar o prêmio e o clique daqui, não consertar a pausa.
+ *
+ * ⚠️ **A PROMESSA PRECISA SER FEITA NESTE INSTANTE**, e é a única informação além do parabéns. O tutorial é
+ * jogado com `SKIN_TUTORIAL` e a primeira sala de verdade devolve o jogador à skin equipada: sem uma linha
+ * dizendo como ficar com ela, a troca de planeta lê como defeito. A barra nasce no valor REAL
+ * (`stats.games`), que num tutorial de estreia é zero mas não é zero para quem o refez pelo `?tutorial=1`.
+ *
+ * ⚠️ A contagem **não pausa por nada** e o disparo é guardado por um ref: `saiDoTutorial` chama `play()`,
+ * que é assíncrono, e sem a guarda um segundo tick entraria na sala duas vezes.
  */
-function Fim({ T, LB }) {
-  const skins = useStore(app, s => s.session.skins);
-  const [pedindo, setPedindo] = useState(false);
-  const [resta, setResta] = useState(CONTA_S);
-  const premio = useRef(null), pausa = useRef(false);
-  // A oferta é decidida UMA vez, no mount — o molde de `DeadPrize`. Reavaliá-la a cada render a faria
-  // trocar quando a skin chegasse, e uma oferta que muda entre a promessa e o clique é a forma mais
-  // rápida de o jogador achar que foi enganado.
-  if (premio.current === null) {
-    // ⚠️ `api.online === true`, e NÃO `user.id`: o perfil local tem `id:"local"`, que é truthy. Sem esta
-    // linha, um portal com SDK vivo e banco fora faria o jogador assistir 30 s de vídeo para levar um
-    // toast de erro — a pior primeira impressão que este jogo consegue produzir.
-    const s = app.get().session;
-    premio.current = escolhePremio(null, s.skins, portal.temRecompensa && api.online === true, true) || false;
-  }
+function Fim({ T, demo }) {
+  const foi = useRef(false);
+  const games = ((app.get().session || {}).stats || {}).games | 0;
+  const alvo = PROGRESSO.PARTIDAS, feitas = Math.max(0, Math.min(alvo, games));
+  const temSkin = ((app.get().session || {}).skins || []).includes(SKIN_TUTORIAL);
+  // ⚠️ `demo` desarma o relógio, e não é zelo: `?screen=tutor:fim` e a matriz de responsividade montam
+  // esta tela para MEDI-LA, e sem a guarda ela entraria numa sala de verdade três segundos depois — a
+  // sonda mediria outra tela e o `?screen=` seria inutilizável para conferir esta de olho.
   useEffect(() => {
-    // ⚠️ A contagem PAUSA no primeiro gesto sobre o cartão e para de vez durante o vídeo: uma contagem
-    // que come um clique é o pior defeito possível numa tela de prêmio.
-    const t = setInterval(() => setResta(r => (pausa.current || pedindo ? r : r - 1)), 1000);
-    return () => clearInterval(t);
-  }, [pedindo]);
-  useEffect(() => { if (resta <= 0) saiDoTutorial({ fim: true }); }, [resta]);
-
-  const p = premio.current;
-  const tem = p && (skins || []).includes(p.id);
-  return <div id="tutor-fim" onPointerMove={() => { pausa.current = true; }}>
-    <div className="tut-card">
-      <div className="tut-fim-tit">{T.fimTitulo}</div>
-      <ul className="tut-ok">
-        <li>{T.fimMover}</li><li>{T.fimAtirar}</li><li>{T.fimDividir}</li>
-      </ul>
-      {/* ⚠️ Esta linha é o remédio do maior risco de UX da feature: o tutorial termina com o planeta
-          grande e a sala começa pequena de novo. Dito, é o jogo; não dito, é o jogo piorando. */}
-      <p className="tut-nota">{T.fimNota}</p>
-      {p && !tem ? <div className="dd-premio">
-        <div className="dp-disco"><SkinPreview skin={p.skin} r={30} size={112} className="" /></div>
-        <div className="dp-txt"><i>{LB.prizeOffer}</i><b>{p.skin.name}</b></div>
-        <button className="btn-primary dp-ad" disabled={pedindo}
-          onClick={async () => { setPedindo(true); try { await ganharSkinAnuncio(p.id); } finally { setPedindo(false); } }}>
-          {pedindo ? LB.saving : LB.prizeWatch}
-        </button>
-      </div> : null}
-      {tem ? <p className="tut-ganhou">{LB.prizeEquipNote}</p> : null}
-      <button className="btn-primary tut-ir" onClick={() => saiDoTutorial({ fim: true })}>
-        {T.fimJogar}{pausa.current || pedindo ? "" : ` · ${Math.max(0, resta)}`}
-      </button>
-    </div>
+    if (demo) return;
+    const t = setTimeout(() => { if (!foi.current) { foi.current = true; saiDoTutorial({ fim: true }); } }, TUTOR.FIM_MS);
+    return () => clearTimeout(t);
+  }, [demo]);
+  return <div id="tutor-fim">
+    <div className="tf-tit">{T.fimTitulo}</div>
+    <div className="tf-sub">{T.fimSub}</div>
+    {/* Quem já tem a skin não recebe promessa nenhuma — prometer o que a pessoa já possui é o jeito mais
+        rápido de a tela perder a credibilidade. */}
+    {temSkin ? null : <div className="tf-prom">
+      <span className="ach-bar" role="progressbar" aria-valuemin={0} aria-valuemax={alvo} aria-valuenow={feitas}>
+        <i style={{ "--p": feitas / alvo }} />
+      </span>
+      <span>{preenche(T.fimPromessa, { n: alvo, s: skinById(SKIN_TUTORIAL).name })}</span>
+    </div>}
+    <div className="tf-indo">{T.fimIndo}</div>
   </div>;
 }

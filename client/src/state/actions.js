@@ -5,7 +5,7 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { getLabels, setLang, currentLangPref, preenche } from "../i18n/index.js";
 import { errText } from "../i18n/errors.js";
-import { skinById, PROTOCOL_VERSION, SKINS, LEVEL, ROUND, MODE, PORTAL as P, playerNick, createRng, registerSkins} from "@warspace/shared";
+import { skinById, PROTOCOL_VERSION, SKINS, SKIN_TUTORIAL, LEVEL, ROUND, MODE, PORTAL as P, playerNick, createRng, registerSkins} from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
@@ -357,9 +357,12 @@ function tutorDemo(suf) {
   const etapa = fim ? 4 : pre ? 1 : Math.min(3, Math.max(1, +(celebra ? qual.slice(2) : qual) || 1));
   // ⚠️ `pre` é uma CARA À PARTE da etapa 1: outra fala, sem barra e sem prompt. Fora da matriz ela não é
   // medida, e é a primeira tela que um jogador novo vê na vida.
+  // ⚠️ `demo:true` DESARMA o relógio do fim. A tela de parabéns entra na sala sozinha depois de
+  // `TUTOR.FIM_MS` — é o ponto dela —, e sem esta marca `?screen=tutor:fim` e a matriz de
+  // responsividade disparariam um `play()` de verdade 3 s depois de montar a tela que vieram medir.
   g.hudStore.update(h => ({ ...h, mass: 8482, room: "0TUT", ping: 0, fps: 60, ammo: 3, splitOff: etapa < 3,
     tutor: { t: "tutor", etapa, pct: etapa === 1 && !pre ? .45 : 0, ajuda: +aj || 0, festa: 0, celebra,
-      auto: false, fim, pre, dedo } }));
+      auto: false, fim, pre, dedo, demo: true } }));
 }
 function hudDemo() {
   const g = gameRef.get().game;
@@ -805,7 +808,16 @@ export function entraNoTutorial() {
   levelUpFila = null; cancelaTelaMorte(); marcaTutor(); marco("tutor_start");
   app.update(s => ({ ...s, screen: "game", interrompido: false, rewards: null, rewardsPending: false, roundPronto: false,
     overlays: { account: false, reconn: false, pause: false }, conn: "connecting", pendingPlay: null,
-    pendingJoin: { room: null, mode: MODE.FREE, teamSize: 1, party: null, tutorial: true, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
+    // ⚠️ O TUTORIAL É JOGADO COM `SKIN_TUTORIAL` (o Marte Bravo), e este é o único lugar que decide isso.
+    // É test drive: o jogador experimenta a skin antes de ter qualquer coisa, ela é TIRADA dele ao entrar
+    // na primeira sala de verdade (o `play()` da saída monta um `pendingJoin` novo, sem `skinId`, e o
+    // fallback de `game/index.js` volta ao `equippedSkin`), e a promessa de como ficar com ela é feita na
+    // tela de parabéns — que é o instante exato da perda. Sem a promessa, a troca de planeta lê como bug.
+    // ⚠️ Inerte fora daqui: o mundo do tutorial é o `LocalServer`, e num join de sala REAL o servidor
+    // ignora o `skinId` do cliente por construção (nick e skin nunca vêm de lá).
+    // ⚠️ De quebra conserta a cena: hoje o planeta do jogador e os dois alvos plantados pelo roteiro usam
+    // todos `skinId:0` — mesma cor, mesmo padrão —, e a lição do tiro pede que se distinga quem é quem.
+    pendingJoin: { room: null, mode: MODE.FREE, teamSize: 1, party: null, tutorial: true, skinId: SKIN_TUTORIAL, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
 }
 /**
  * SAIR DO TUTORIAL — pular e terminar são a MESMA saída (entrar numa sala de verdade) e diferem em uma
@@ -1081,9 +1093,16 @@ export function onDead(info) {
   // renasce sozinha em 1,2 s não tem modal, menu, anúncio nem cutscene, e fechar o gameplay ali era o
   // que produzia um `gameplayStart` sem interação do outro lado — o defeito que custou o Fit Test 1.21.
   const sozinho = renasceSozinho({ portal: comoPortal(), modo: s.gameMode | 0, mortes });
+  // ⚠️ `games` SOBE AQUI, OTIMISTA, e sem isto a barra de progresso da tela de morte mostra sempre o passo
+  // ANTERIOR. O número autoritativo vem no `{t:"rewards"}` (o `onRewards` logo abaixo o reconcilia), mas
+  // ele chega ~1 s DEPOIS de a tela abrir, e `DeadPrize` congela a decisão no mount de propósito — ou seja
+  // a morte que fez a primeira partida desenharia 0/3. Morrer É terminar uma partida (uma linha em
+  // `matches`), então o otimismo só erra com o banco fora, que é quando o `rewards` chega vazio e ninguém
+  // corrige nada mesmo.
   app.update(a => ({ ...a, mortes, kills: (a.kills | 0) + (info.kills | 0), interrompido: !sozinho,
     lastMatch: { ...info, room: a.room, at: Date.now(), recMass, recScore },
-    session: { ...a.session, stats: { ...st, bestMass: Math.max(recMass, +info.maxMass || 0), bestScore: Math.max(recScore, +info.score || 0) } },
+    session: { ...a.session, stats: { ...st, games: (st.games | 0) + 1,
+      bestMass: Math.max(recMass, +info.maxMass || 0), bestScore: Math.max(recScore, +info.score || 0) } },
     rewards: null, rewardsPending: true }));
   clearTimeout(rewardsT); rewardsT = setTimeout(() => { if (app.get().rewardsPending) app.update({ rewardsPending: false }); }, 5000);
   // A TELA espera; o DADO não. ⚠️ A guarda do disparo relê o estado: entre o agendamento e o estouro pode
@@ -1127,6 +1146,12 @@ export function onRewards(r) {
       // então aqui só se guarda — nada de recalcular e arriscar duas verdades.
       if (r.xp) sess.stats = { ...sess.stats, xp: r.xp.total, level: r.xp.level,
         levelInto: r.xp.into, levelNeed: r.xp.need, levelPct: r.xp.pct };
+      // ⚠️ O `games` do SERVIDOR reconcilia o incremento otimista de `onDead`. Os dois divergem em dois
+      // casos reais e nenhum é raro: duas abas da mesma conta jogando, e a partida que o banco recusou
+      // (`saved:false`, e aí o campo nem vem). Quem manda é ele — é o mesmo número que decide a concessão
+      // da skin do outro lado, e uma barra que promete 3/3 sobre uma contagem que o servidor tem em 2 é
+      // pior que uma barra atrasada.
+      if (typeof r.games === "number") sess.stats = { ...sess.stats, games: r.games };
     }
     return { ...s, session: sess, rewards: r || null, rewardsPending: false };
   });
