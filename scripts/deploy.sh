@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Aplica os manifestos no cluster (namespace warspace).
 # uso:  ./scripts/deploy.sh                 # com ingress + TLS em warspace.io
+#       CANARY_PARTITION=2 ./scripts/deploy.sh   # CANÁRIO: build nova só nos shards de ordinal ≥ 2 (k8s/10-server.yaml)
 #       NO_INGRESS=1 ./scripts/deploy.sh    # sem ingress (só o NodePort 30800)
 #       WARSPACE_HOST=outro.dominio ./scripts/deploy.sh
 set -euo pipefail
@@ -26,7 +27,8 @@ for f in k8s/*.yaml; do
   base=$(basename "$f")
   if [ "$base" = "30-ingress.yaml" ] && [ -z "$HOST" ]; then continue; fi
   dir="$OUT"; [ "$base" = "20-client.yaml" ] && dir="$OUT/cliente"
-  sed -e "s|__IMAGE_SERVER__|${REPO}-server:${TAG}|g" \
+  sed -e "s|__PARTITION__|${CANARY_PARTITION:-0}|g" \
+      -e "s|__IMAGE_SERVER__|${REPO}-server:${TAG}|g" \
       -e "s|__IMAGE_CLIENT__|${REPO}-client:${TAG}|g" \
       -e "s|__HOST__|${HOST}|g" "$f" > "$dir/$base"
 done
@@ -43,14 +45,24 @@ aplica(){ if command -v kubectl >/dev/null 2>&1; then kubectl --kubeconfig="$KUB
   else KUBECONFIG="$KUBECONFIG_FILE" python3 scripts/k8s_apply.py "$1"/*.yaml; fi; }
 aplica "$OUT"
 
-echo "==> aguardando os shards antes de publicar o cliente"
-KUBECONFIG="$KUBECONFIG_FILE" python3 scripts/k8s_apply.py --status server || echo "(atenção: os shards não ficaram prontos no prazo; publicando o cliente assim mesmo)"
+# ⚠️ No canário o `--status server` NUNCA fecha: ele espera TODOS os pods na revisão nova, e a partição
+# segura os de baixo na antiga de propósito. O cliente é compatível com as duas builds (é o contrato de
+# todo rollout daqui), então ele vai junto.
+if [ "${CANARY_PARTITION:-0}" != "0" ]; then
+  echo "==> CANÁRIO: só os shards de ordinal >= ${CANARY_PARTITION} recebem a tag ${TAG}; os outros ficam como estão"
+  sleep 45
+else
+  echo "==> aguardando os shards antes de publicar o cliente"
+  KUBECONFIG="$KUBECONFIG_FILE" python3 scripts/k8s_apply.py --status server || echo "(atenção: os shards não ficaram prontos no prazo; publicando o cliente assim mesmo)"
+fi
 
 echo "==> aplicando o cliente"
 aplica "$OUT/cliente"
 
-echo "==> aguardando os pods"
-KUBECONFIG="$KUBECONFIG_FILE" python3 scripts/k8s_apply.py --status || echo "(atenção: nem tudo ficou pronto no prazo)"
+if [ "${CANARY_PARTITION:-0}" = "0" ]; then
+  echo "==> aguardando os pods"
+  KUBECONFIG="$KUBECONFIG_FILE" python3 scripts/k8s_apply.py --status || echo "(atenção: nem tudo ficou pronto no prazo)"
+fi
 KUBECONFIG="$KUBECONFIG_FILE" python3 scripts/k8s_apply.py --get pods
 
 echo "==> teste: http://192.168.12.50:30800${HOST:+  |  https://$HOST}"

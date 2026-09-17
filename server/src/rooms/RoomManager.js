@@ -8,10 +8,13 @@ import {randomInt} from 'node:crypto';
 import {ROOM,ROUND,MODE,modeOf} from '@warspace/shared/constants.js';
 import {Room} from './Room.js';
 import {newCode,normalizeCode,shardOf} from './codes.js';
-import {fetchPeerRooms,tellPeers} from '../http/peers.js';
+import {criaPeerRooms,tellPeers} from '../http/peers.js';
 import {BUS_MUDO} from '../admin/bus.js';
 /** @param {{config:any,hooks:any,log:any,metrics:any,scheduler:any}} o */
-export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=null,botNames=null,bus=BUS_MUDO}){
+export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=null,botNames=null,bus=BUS_MUDO,peerRooms=null}){
+  // As salas dos IRMÃOS vêm de `criaPeerRooms` (sonda + memo + uma busca em voo — ver `http/peers.js`). Quem
+  // monta o gerente à mão (os testes) ganha um próprio, sem sonda: o comportamento de sempre, com o memo.
+  const irmas=peerRooms||criaPeerRooms({peers:config.peers,log});
   /** @type {Map<string,Room>} */const rooms=new Map();
   const onRewards=(sessionId,rewards)=>{const s=findSession(sessionId);if(s)s.deliverRewards(rewards);};
   function start(room){if(room.running)return;room.start();scheduler.add(room);}
@@ -72,7 +75,8 @@ export function createRoomManager({config,hooks,log,metrics,scheduler,botChat=nu
   // `/api/rooms`, `/internal/rooms` (logo, da agregação dos irmãos) e `/api/auto`, que filtra `allRooms()`.
   // Em `info()` ele quebraria o painel do administrador, que é construído em cima do mesmo objeto.
   const listRooms=()=>[...rooms.values()].filter(r=>!r.private).map(r=>r.info());
-  async function allRooms(){const mine=listRooms();if(!config.peers.length)return mine;return mine.concat(await fetchPeerRooms(config.peers,{log}));}
+  // ⚠️ As LOCAIS são sempre lidas agora; só a parte dos irmãos tem memo (1,5 s).
+  async function allRooms(){const mine=listRooms();if(!config.peers.length)return mine;return mine.concat(await irmas.rooms());}
   function findSession(sessionId){if(!sessionId)return null;for(const r of rooms.values())for(const s of r.sessions.values())if(s.sessionId===sessionId)return s;return null;}
   const playerCount=()=>{let n=0;for(const r of rooms.values())n+=r.humanCount;return n;};
   // ── ceifador (1 s): expira sessões em graça; para/remove salas vazias ──

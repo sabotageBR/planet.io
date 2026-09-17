@@ -10,6 +10,16 @@
 // servidor, e um cliente que desserializa 10 000 mensagens/s vira ele mesmo o gargalo e
 // mente sobre o RTT.
 //
+// ⚠️ O ENGASGO É MEDIDO DAQUI, E A MÉDIA NÃO O VÊ. `snaps/s` dá 20 Hz cravados com um buraco de 400 ms no
+// meio — por construção. O que se mede é o Δt entre SNAPSHOTs CONSECUTIVOS de cada cliente (esperado:
+// 50 ms; um overrun do servidor aparece como ≥83 ms) num histograma de 1 ms, e o `perdido`: relógio de
+// parede menos o tempo de SIMULAÇÃO que os ticks dizem ter passado (o tick vai no offset 1 do pacote, u32
+// LE — é o único campo lido). Atraso de rede entra e SAI dessa conta (o pacote seguinte chega no horário
+// e devolve); o que fica é simulação DESCARTADA pelo `loop.js`, vista de fora. O RTT continua aqui, mas ele
+// é amostrado a 1 Hz: um congelamento de 80 ms tem 8% de chance de cair num ping.
+// ⚠️ O GERADOR TAMBÉM ENGASGA (GC dele, 150 sockets num processo): `gen` é o atraso do event loop DESTE
+// processo no mesmo segundo. Buraco com `gen` alto é nosso, não do servidor.
+//
 // ⚠️ TOKEN É OBRIGATÓRIO no join (hooks.onPlayerJoin recusa token ausente com AUTH), e
 // `POST /api/auth/guest` tem rate de 30/h POR IP (auth/ratelimit.js). O XFF forjado daqui
 // NÃO fura esse teto — MEDIDO em produção: o ingress-nginx SUBSTITUI o X-Forwarded-For e o
@@ -30,6 +40,7 @@ import {fork} from 'node:child_process';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {monitorEventLoopDelay} from 'node:perf_hooks';
 
 // ── argumentos ───────────────────────────────────────────────────────────────
 const A=(()=>{const o={};for(let i=2;i<process.argv.length;i++){const a=process.argv[i];
@@ -62,6 +73,10 @@ const slice=process.env.LT_SLICE!=null?JSON.parse(process.env.LT_SLICE):null;   
 // ── util ─────────────────────────────────────────────────────────────────────
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const pct=(a,p)=>{if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y);return s[Math.min(s.length-1,Math.floor(s.length*p))];};
+/** Percentil de um histograma de 1 ms (índice = ms; o último balde é "≥ DT_MAX"). */
+const DT_MAX=500;
+const pctH=(h,p)=>{let n=0;for(let i=0;i<h.length;i++)n+=h[i];if(!n)return 0;let alvo=Math.ceil(n*p),ac=0;for(let i=0;i<h.length;i++){ac+=h[i];if(ac>=alvo)return i;}return h.length-1;};
+const acimaH=(h,ms)=>{let n=0;for(let i=ms+1;i<h.length;i++)n+=h[i];return n;};
 const fmtB=b=>b>=1048576?`${(b/1048576).toFixed(1)} MB`:b>=1024?`${(b/1024).toFixed(0)} KB`:`${b} B`;
 // XFF próprio por conta: é o que faz o rate de 30/h por IP não morder. 10.0.0.0/8, que
 // nenhum jogador de verdade usa — o log do servidor mostra de onde veio.
@@ -107,7 +122,8 @@ function criaCliente(i,conta,st){
   const shard=st.vivos[i%st.vivos.length];
   const url=`${WS_BASE}/ws/${shard}`;
   const c={i,ws:null,dentro:false,seq:0,tick:0,world:12000,cx:0,cy:0,fase:Math.random()*6.28,
-    raio:900+Math.random()*2600,vel:.4+Math.random()*.8,pingAt:0,timerI:0,timerP:0,vivo:true};
+    raio:900+Math.random()*2600,vel:.4+Math.random()*.8,pingAt:0,timerI:0,timerP:0,vivo:true,
+    snapAt:0,t0:0,tick0:0,perd:0};
   const ws=new WebSocket(url,{headers:CFG.sni?{host:CFG.sni,origin:`https://${CFG.sni}`}:{},perMessageDeflate:false,maxPayload:1<<20});
   c.ws=ws;ws.binaryType='nodebuffer';
   ws.on('open',()=>{
@@ -119,7 +135,7 @@ function criaCliente(i,conta,st){
     if(!bin){let m;try{m=JSON.parse(d.toString('utf8'));}catch{return;}
       if(m.t==='room'){
         if(!c.dentro){c.dentro=true;st.dentro++;}
-        c.world=(m.world&&m.world.w)||12000;
+        c.world=(m.world&&m.world.w)||12000;c.snapAt=0;c.t0=0;c.perd=0;   // sala nova = relógio de tick novo
         c.cx=c.world*(.2+Math.random()*.6);c.cy=c.world*(.2+Math.random()*.6);
         // INPUT e ping só começam DEPOIS do room: antes disso não há slot e o servidor descarta.
         // ⚠️ E LIMPAM os anteriores: morrer manda `join` de novo, o que traz um segundo `room` — sem
@@ -129,12 +145,15 @@ function criaCliente(i,conta,st){
         c.timerI=setInterval(()=>manda(),Math.max(10,Math.round(1000/CFG.hz)));
         c.timerP=setInterval(()=>{if(ws.readyState===1){c.pingAt=Date.now();ws.send(JSON.stringify({t:'ping',c:c.pingAt>>>0}));}},1000);
       }else if(m.t==='error'){st.erros.set(m.code||'?',(st.erros.get(m.code||'?')||0)+1);}
-      else if(m.t==='dead'){st.mortes++;
+      else if(m.t==='dead'){st.mortes++;c.snapAt=0;c.t0=0;c.perd=0;
         // renascer é `leave`+`join`, exatamente como o botão DE NOVO do jogo faz
         setTimeout(()=>{if(ws.readyState===1)ws.send(JSON.stringify({t:'join',token:conta.token,fallbackNick:conta.nick,mode:CFG.mode,teamSize:CFG.team,view:{w:VW,h:VH,z:1}}));},1500+Math.random()*2000);}
       return;}
     const t=d[0];
-    if(t===MSG_SNAP)st.snaps++;
+    if(t===MSG_SNAP){st.snaps++;const ag=performance.now();
+      if(c.snapAt){const dt=ag-c.snapAt;st.dt[dt>=DT_MAX?DT_MAX:dt|0]++;}c.snapAt=ag;
+      const tk=d.readUInt32LE(1);
+      if(!c.t0){c.t0=ag;c.tick0=tk;c.perd=0;}else{const p=(ag-c.t0)-(tk-c.tick0)*1000/60;st.perd+=p-c.perd;c.perd=p;}}
     else if(t===MSG_PONG){const ct=d.readUInt32LE(1);const rtt=((Date.now()>>>0)-ct)|0;if(rtt>=0&&rtt<60000)st.rtt.push(rtt);}
   });
   ws.on('close',code=>{para();if(c.dentro)st.dentro--;st.abertos--;st.fechados++;
@@ -161,7 +180,8 @@ function criaCliente(i,conta,st){
 
 // ── um processo de carga (pai sem workers, ou filho) ─────────────────────────
 async function roda(de,ate,contas){
-  const st={abertos:0,dentro:0,fechados:0,mortes:0,bytes:0,msgs:0,snaps:0,enviados:0,rtt:[],
+  const eld=monitorEventLoopDelay({resolution:10});eld.enable();
+  const st={abertos:0,dentro:0,fechados:0,mortes:0,bytes:0,msgs:0,snaps:0,enviados:0,rtt:[],dt:new Uint32Array(DT_MAX+1),perd:0,
     erros:new Map(),closeCodes:new Map(),sockErr:new Map(),shards:CFG.shards,vivos:null};
   // ⚠️ O SHARD VEM DO POD QUE ATENDE, NÃO DA CONTAGEM. `/api/config` anuncia `shards` como o TETO
   // (o `SHARDS` do ConfigMap, hoje 24 por causa do HPA), e o índice vivo pode ser qualquer
@@ -189,17 +209,21 @@ async function roda(de,ate,contas){
   }
   const relata=()=>{const r={abertos:st.abertos,dentro:st.dentro,fechados:st.fechados,mortes:st.mortes,
       bytes:st.bytes,msgs:st.msgs,snaps:st.snaps,enviados:st.enviados,rtt:st.rtt,
+      // esparso: o IPC do filho serializa isto todo segundo, e 501 zeros por processo é lixo à toa
+      dt:(()=>{const o=[];for(let i=0;i<st.dt.length;i++)if(st.dt[i])o.push(i,st.dt[i]);return o;})(),perd:st.perd,
+      gen:Math.max(0,eld.max/1e6-10),   // o monitor soma a própria resolução ao valor
       erros:[...st.erros],closeCodes:[...st.closeCodes],sockErr:[...st.sockErr]};
-    st.bytes=0;st.msgs=0;st.snaps=0;st.enviados=0;st.rtt=[];st.fechados=0;st.mortes=0;
+    st.bytes=0;st.msgs=0;st.snaps=0;st.enviados=0;st.rtt=[];st.fechados=0;st.mortes=0;st.dt.fill(0);st.perd=0;eld.reset();
     st.erros.clear();st.closeCodes.clear();st.sockErr.clear();return r;};
   return {st,clientes,relata,
     fecha(){for(const c of clientes){try{if(c.ws.readyState===1){c.ws.send(JSON.stringify({t:'quit'}));c.ws.close(1000);}else c.ws.terminate();}catch{}}}};
 }
 
 // ── agregação e saída ────────────────────────────────────────────────────────
-function zero(){return{abertos:0,dentro:0,fechados:0,mortes:0,bytes:0,msgs:0,snaps:0,enviados:0,rtt:[],erros:new Map(),closeCodes:new Map(),sockErr:new Map()};}
+function zero(){return{abertos:0,dentro:0,fechados:0,mortes:0,bytes:0,msgs:0,snaps:0,enviados:0,rtt:[],dt:new Uint32Array(DT_MAX+1),perd:0,gen:0,erros:new Map(),closeCodes:new Map(),sockErr:new Map()};}
 function soma(acc,r){acc.abertos+=r.abertos;acc.dentro+=r.dentro;acc.fechados+=r.fechados;acc.mortes+=r.mortes;
   acc.bytes+=r.bytes;acc.msgs+=r.msgs;acc.snaps+=r.snaps;acc.enviados+=r.enviados;acc.rtt.push(...r.rtt);
+  for(let i=0;i<(r.dt||[]).length;i+=2)acc.dt[r.dt[i]]+=r.dt[i+1];acc.perd+=r.perd||0;if((r.gen||0)>acc.gen)acc.gen=r.gen;
   for(const [k,v] of r.erros)acc.erros.set(k,(acc.erros.get(k)||0)+v);
   for(const [k,v] of r.closeCodes)acc.closeCodes.set(k,(acc.closeCodes.get(k)||0)+v);
   for(const [k,v] of r.sockErr)acc.sockErr.set(k,(acc.sockErr.get(k)||0)+v);return acc;}
@@ -223,6 +247,8 @@ async function principal(){
   const W=CFG.workers||(n<=150?1:Math.min(8,Math.ceil(n/150)));
   const t0=Date.now();
   const linhas=[];
+  const dtTotal=new Uint32Array(DT_MAX+1);let perdTotal=0,clienteSeg=0,genMax=0;   // só dos segundos ESTÁVEIS
+  const errosTot=new Map(),closeTot=new Map();   // do teste inteiro: com --quiet, era o único jeito de um join recusado passar MUDO
   let filhos=[],local=null;
   if(W>1){
     const arq='/tmp/claude-1000/-home-evandro-git-em-tech-planet-io/df1c3556-64f5-4eee-81de-e923c9ce80bc/scratchpad/lt-contas.json';
@@ -248,9 +274,12 @@ async function principal(){
     const rs=await coleta();const a=rs.reduce(soma,zero());
     const s=Math.round((Date.now()-t0)/1000);
     const l={s,dentro:a.dentro,abertos:a.abertos,kbs:Math.round(a.bytes/1024),msgs:a.msgs,snaps:a.snaps,env:a.enviados,
-      p50:pct(a.rtt,.5),p95:pct(a.rtt,.95),max:a.rtt.length?Math.max(...a.rtt):0,quedas:a.fechados,mortes:a.mortes};
+      p50:pct(a.rtt,.5),p95:pct(a.rtt,.95),max:a.rtt.length?Math.max(...a.rtt):0,quedas:a.fechados,mortes:a.mortes,
+      dt99:pctH(a.dt,.99),dtMax:pctH(a.dt,1),b83:acimaH(a.dt,83),b120:acimaH(a.dt,120),b200:acimaH(a.dt,200),perd:Math.round(a.perd),gen:Math.round(a.gen)};
     linhas.push(l);
-    if(!CFG.quiet)console.log(`[${String(s).padStart(4)}s] dentro ${String(l.dentro).padStart(4)} · rx ${String(l.kbs).padStart(6)} KB/s (${String(l.snaps).padStart(5)} snap/s) · tx ${String(l.env).padStart(5)} in/s · rtt ${String(l.p50).padStart(4)}/${String(l.p95).padStart(5)}/${String(l.max).padStart(5)} ms · quedas ${l.quedas} · mortes ${l.mortes}${a.erros.size?` · ERRO ${mapa(a.erros)}`:''}${a.closeCodes.size?` · close ${mapa(a.closeCodes)}`:''}${a.sockErr.size?` · sock ${mapa(a.sockErr)}`:''}`);
+    for(const [k,v] of a.erros)errosTot.set(k,(errosTot.get(k)||0)+v);for(const [k,v] of a.closeCodes)closeTot.set(k,(closeTot.get(k)||0)+v);
+    if(l.dentro>=n*.9){for(let i=0;i<a.dt.length;i++)dtTotal[i]+=a.dt[i];perdTotal+=a.perd;clienteSeg+=l.dentro;if(a.gen>genMax)genMax=a.gen;}
+    if(!CFG.quiet)console.log(`[${String(s).padStart(4)}s] dentro ${String(l.dentro).padStart(4)} · rx ${String(l.kbs).padStart(6)} KB/s (${String(l.snaps).padStart(5)} snap/s) · tx ${String(l.env).padStart(5)} in/s · rtt ${String(l.p50).padStart(4)}/${String(l.p95).padStart(5)}/${String(l.max).padStart(5)} ms · Δsnap p99 ${String(l.dt99).padStart(3)} máx ${String(l.dtMax).padStart(3)}${l.b83?` (>83:${l.b83})`:''} · gen ${String(l.gen).padStart(3)} · quedas ${l.quedas} · mortes ${l.mortes}${a.erros.size?` · ERRO ${mapa(a.erros)}`:''}${a.closeCodes.size?` · close ${mapa(a.closeCodes)}`:''}${a.sockErr.size?` · sock ${mapa(a.sockErr)}`:''}`);
     if(s>=espera)fim();
   },1000);
   let acabando=false;
@@ -268,8 +297,18 @@ async function principal(){
     console.log(`  banda para o cliente: ${med('kbs')} KB/s no total · ${(med('kbs')/Math.max(1,med('dentro'))).toFixed(1)} KB/s por jogador`);
     console.log(`  snapshots           : ${med('snaps')}/s (esperado ~${Math.round(med('dentro')*20)}/s a 20 Hz)`);
     console.log(`  INPUT enviado       : ${med('env')}/s`);
+    // ── A MÉTRICA DO ENGASGO ── Δt entre snapshots consecutivos, por cliente, somado nos segundos estáveis
+    const nDt=dtTotal.reduce((s,v)=>s+v,0),min=Math.max(1e-9,clienteSeg/60);
+    console.log(`  Δt entre snapshots  : p50 ${pctH(dtTotal,.5)} · p95 ${pctH(dtTotal,.95)} · p99 ${pctH(dtTotal,.99)} · p99,9 ${pctH(dtTotal,.999)} · máx ${pctH(dtTotal,1)}${pctH(dtTotal,1)>=DT_MAX?'+':''} ms (${nDt} intervalos; esperado 50)`);
+    console.log(`  buracos             : >83 ms ${acimaH(dtTotal,83)} · >120 ms ${acimaH(dtTotal,120)} · >200 ms ${acimaH(dtTotal,200)}  →  ${(acimaH(dtTotal,83)/min).toFixed(2)} por cliente·minuto (>83)`);
+    console.log(`  simulação perdida   : ${(perdTotal/min).toFixed(1)} ms por cliente·minuto (tempo de parede − tempo dos ticks; o ideal é ~0)`);
+    console.log(`  o próprio gerador   : pior atraso de event loop ${Math.round(genMax)} ms (buraco menor que isto pode ser NOSSO)`);
     console.log(`  quedas              : ${linhas.reduce((s,l)=>s+l.quedas,0)} · mortes ${linhas.reduce((s,l)=>s+l.mortes,0)}`);
-    if(CFG.csv){writeFileSync(CFG.csv,'s,dentro,kbs,snaps,env,p50,p95,max,quedas,mortes\n'+linhas.map(l=>[l.s,l.dentro,l.kbs,l.snaps,l.env,l.p50,l.p95,l.max,l.quedas,l.mortes].join(',')).join('\n'));
+    // ⚠️ Medido do jeito ruim: uma baseline de 10 min com o cache de tokens VENCIDO (AUTH/4401 em todos os
+    // joins) terminou com "0 buracos" — a melhor nota possível — porque ninguém entrou e `--quiet` calava o motivo.
+    if(errosTot.size||closeTot.size)console.log(`  ERROS               : ${mapa(errosTot)} · close ${mapa(closeTot)}`);
+    if(!estaveis.length)console.log(`  ⚠️  NUNCA houve ≥90% dos clientes dentro: os números acima NÃO medem o servidor.`);
+    if(CFG.csv){writeFileSync(CFG.csv,'s,dentro,kbs,snaps,env,p50,p95,max,quedas,mortes,dt99,dtMax,b83,b120,b200,perd,gen\n'+linhas.map(l=>[l.s,l.dentro,l.kbs,l.snaps,l.env,l.p50,l.p95,l.max,l.quedas,l.mortes,l.dt99,l.dtMax,l.b83,l.b120,l.b200,l.perd,l.gen].join(',')).join('\n'));
       console.log(`  csv                 : ${CFG.csv}`);}
     setTimeout(()=>process.exit(0),1200);
   }

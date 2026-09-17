@@ -61,7 +61,7 @@ const ordenaJogadores=(req,arr)=>{if(!Array.isArray(arr))return arr;
  * @param {{rooms:any,config:any,log:any,persistApi:any}} o
  * @returns {(req:any,res:any,p:string,sendJson:Function,readJson:Function)=>Promise<boolean>}
  */
-export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=null}){
+export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=null,sonda:sondaDeFora=null}){
   const coletor=bus?createColetor({config,rooms,bus,metrics,log}):null;
   /**
    * MEMO DA RESOLUÇÃO DO BEARER — só para a porta `/internal`.
@@ -79,7 +79,9 @@ export function createAdminHttp({rooms,config,log,persistApi,bus=null,metrics=nu
    * filtro deixava passar quem tinha sido SONDADO na rodada, e como a sonda revisita os desconhecidos a
    * cada `SONDA_MS`, os nomes que não existem voltavam como chip vermelho no painel a cada 15 s.
    */
-  const sonda=criaSonda({peers:config.peers});
+  // UMA sonda por processo (criada em `index.js` e dividida com `/api/rooms` e `/api/auto`): duas sondas
+  // independentes aprendem a mesma coisa duas vezes e revisitam os fantasmas em dobro.
+  const sonda=sondaDeFora||criaSonda({peers:config.peers});
   /**
    * A LINHA DE CADA JOGADOR DO DETALHE DE UMA SALA: a memória do shard (nome, massa, os dois relógios) mais
    * o que só o BANCO sabe — de onde a conta veio e quanto ela já jogou no total.

@@ -81,7 +81,10 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
       tun:wireValues(),
       mode:room.modeId,teamSize:room.teamSize,cap:room.max,team:(room.sim.players.get(s.slot)||{team:-1}).team,
       private:!!room.private,host:room.isHost(s)});   // JSON: modo, equipe e dono da sala não custam versão de protocolo
-    const rate=()=>{if(s.violation())s.error('RATE','muitas mensagens; conexão encerrada');};
+    // ⚠️ A EXPULSÃO É LOGADA E CONTADA: ela custa a partida do jogador (sem resume), e até aqui acontecia
+    // sem deixar rastro nenhum — `rateLimitHits` contava mensagens rejeitadas, não pessoas expulsas.
+    const rate=()=>{if(s.violation()){if(metrics.rateKick)metrics.rateKick();
+      log.info(`${s.name||'?'} expulso por RATE (sala ${s.room?s.room.code:'—'}, ${s.remoteAddr||'?'})`);s.error('RATE','muitas mensagens; conexão encerrada');}};
     async function join(msg){
       if(s.joining)return;
       if(shuttingDown)return s.error('ROOM_RESTART','servidor reiniciando; tente de novo em instantes');

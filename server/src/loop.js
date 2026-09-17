@@ -5,14 +5,27 @@
 // @ts-check
 import {TICK_HZ} from '@warspace/shared/constants.js';
 const MAX_STEPS=5;
+// ── A CPU DA THREAD PRINCIPAL, em ms ──────────────────────────────────────────
+// É a outra metade do relógio: `performance.now()` diz quanto tempo PASSOU entre dois turnos, isto diz
+// quanto a thread TRABALHOU nesse meio. Intervalo longo com CPU baixa = o processo esteve parado (cota do
+// CFS, preempção); com CPU alta = havia trabalho. ⚠️ Tem que ser a da THREAD: na parada por cota quem
+// gastou a CPU foram as threads auxiliares do V8, e a CPU do PROCESSO sai alta justo quando a principal
+// não andou. `threadCpuUsage` existe a partir do Node 22.19 (medido: ~0,25 µs por chamada, 60×/s); a do
+// processo fica como chão para um runtime mais antigo — classifica pior, mas não quebra.
+const cpuDaThread=typeof process.threadCpuUsage==='function'
+  ?()=>{const u=process.threadCpuUsage();return(u.user+u.system)/1000;}
+  :()=>{const u=process.cpuUsage();return(u.user+u.system)/1000;};
 export class Scheduler{
-  /** @param {{hz?:number,metrics?:any,log?:any}} [o] */
-  constructor({hz=TICK_HZ,metrics=null,log=null}={}){
-    this.period=1000/hz;this.rooms=new Set();this.metrics=metrics;this.log=log;
-    this.running=false;this.next=0;this.overruns=0;this.steps=0;this.timer=null;this._run=this._run.bind(this);}
+  /** @param {{hz?:number,metrics?:any,log?:any,cpuMs?:()=>number}} [o] `cpuMs` é injetável para o teste */
+  constructor({hz=TICK_HZ,metrics=null,log=null,cpuMs=cpuDaThread}={}){
+    this.period=1000/hz;this.rooms=new Set();this.metrics=metrics;this.log=log;this.cpuMs=cpuMs;
+    this.running=false;this.next=0;this.overruns=0;this.steps=0;this.timer=null;this._run=this._run.bind(this);
+    this._turnoAt=0;this._turnoCpu=0;}
   add(room){this.rooms.add(room);if(!this.running)this.start();}
   remove(room){this.rooms.delete(room);}
-  start(){if(this.running)return;this.running=true;this.next=performance.now()+this.period;this._arm();}
+  // ⚠️ `_turnoAt=0` ZERA A RÉGUA: o scheduler DORME sem salas, e o primeiro turno depois de uma hora de
+  // servidor vazio não pode virar "uma parada de uma hora".
+  start(){if(this.running)return;this.running=true;this.next=performance.now()+this.period;this._turnoAt=0;this._arm();}
   stop(){this.running=false;if(this.timer){clearTimeout(this.timer);this.timer=null;}}
   _arm(){const wait=this.next-performance.now()-1;if(wait>0)this.timer=setTimeout(this._run,wait);else setImmediate(this._run);}
   _run(){
@@ -20,6 +33,12 @@ export class Scheduler{
     if(this.rooms.size===0){this.running=false;return;}          // sem salas: dorme até o próximo add()
     let now=performance.now();const m=this.metrics;
     if(now>=this.next){
+      // ── de quem foi o intervalo desde o turno anterior? ── medido AQUI DENTRO, e não na entrada do
+      // `_run`: o `_arm` gira em `setImmediate` no último ~1 ms de cada tick, e esses giros vazios não são
+      // turnos. O caminho normal paga uma leitura de CPU e uma subtração; só o intervalo longo vira evento.
+      if(m&&m.gap){const cpu=this.cpuMs();
+        if(this._turnoAt&&now-this._turnoAt>=40)m.gap(now-this._turnoAt,cpu-this._turnoCpu,now);
+        this._turnoAt=now;this._turnoCpu=cpu;}
       if(m)m.lag(now-this.next);let n=0;
       while(now>=this.next&&n<MAX_STEPS){
         const t0=performance.now();

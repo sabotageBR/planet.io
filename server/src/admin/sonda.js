@@ -42,6 +42,11 @@ export function criaSonda({peers, agora=Date.now, sondaMs=ADMIN_BUS.SONDA_MS}){
         ...peers.filter(p=>conhecidos.has(p)).map(p=>{const r=porPeer.get(p);
           return{shard:(r&&r.body&&r.body.shard)??conhecidos.get(p)??null,peer:p,
             ok:r?!!(!r.error&&r.status===200):true};})];},
+    /**
+     * O peer que JÁ respondeu como sendo o shard `shard`, ou null. Sala e equipe por CÓDIGO têm dono (o 1º
+     * char é o shard), então quem sabe o endereço do dono pergunta a UM irmão em vez de a todos.
+     */
+    peerDe(shard){for(const [p,s] of conhecidos)if(s===shard)return p;return null;},
     /** Só para teste e diagnóstico. */
     conhece(peer){return conhecidos.has(peer);},
   };

@@ -6,7 +6,14 @@ import {randomBytes} from 'node:crypto';
 import {NET,WORLD,ZOOM} from '@warspace/shared/constants.js';
 import {ERROR_CODE} from '@warspace/shared/protocol/constants.js';
 import {NO_REWARDS} from '../sim/hooks.js';
-const VIOLATIONS=3,VIOLATION_WINDOW_MS=10000,VIEW_MIN=240,VIEW_MAX=8192;
+// ⚠️ `VIOLATION_GAP_MS`: UMA RAJADA É UMA VIOLAÇÃO. O excedente do balde sempre foi descartado; o que mudou
+// é quanto ele CUSTA. Um celular com o uplink travado 2,5 s entrega ~75 INPUTs de uma vez: 60 passam (o
+// burst), 15 estouram — e eram 15 violações no mesmo milissegundo, ou seja a expulsão (3 em 10 s) saía NA
+// HORA, com close 4429 e SEM resume (`kicked`): o jogador honesto perdia a partida por causa de um túnel.
+// Medido em produção: 360 / 779 / 871 `rateLimitHits` por shard em menos de um dia. Agora o excedente que
+// chega a menos de 1 s da violação anterior é descartado em silêncio; um flood SUSTENTADO continua
+// produzindo uma violação por segundo e cai em ~2–3 s, que é para quem o limite existe.
+const VIOLATIONS=3,VIOLATION_WINDOW_MS=10000,VIOLATION_GAP_MS=1000,VIEW_MIN=240,VIEW_MAX=8192;
 /** Token bucket: `rate` fichas/s até `burst`. */
 export class Bucket{
   constructor(rate,burst){this.rate=rate;this.burst=burst;this.tokens=burst;this.last=performance.now();}
@@ -97,7 +104,9 @@ export class Session{
   error(code,message,extra){this.sendJson({t:'error',code,message,...(extra||{})});this.kicked=true;const ws=this.ws;if(!ws)return;
     try{ws.close(ERROR_CODE[code]||4400,code);}catch{}}
   /** Registra uma violação de taxa; true quando estourou (VIOLATIONS em VIOLATION_WINDOW_MS). */
-  violation(now=Date.now()){const v=this.violations;v.push(now);if(v.length>VIOLATIONS)v.shift();this.metrics.rateLimitHit();
+  violation(now=Date.now()){const v=this.violations;
+    if(v.length&&now-v[v.length-1]<VIOLATION_GAP_MS){if(this.metrics.rateDrop)this.metrics.rateDrop();return false;}   // mesma rajada: descarta, não conta
+    v.push(now);if(v.length>VIOLATIONS)v.shift();this.metrics.rateLimitHit();
     return v.length>=VIOLATIONS&&now-v[0]<=VIOLATION_WINDOW_MS;}
   deliverRewards(r){const msg={t:'rewards',...(r||NO_REWARDS)};if(this.connected)this.sendJson(msg);else this.pendingRewards=msg;}
   detach(){this.ws=null;this.disconnectedAt=Date.now();}

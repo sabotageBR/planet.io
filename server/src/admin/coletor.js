@@ -158,6 +158,10 @@ export function createColetor({config,rooms,bus,metrics,log}){
         humans:r.humanCount,bots:r.sim.botCount(),restam:r.roundLeft()});}}
     return{shard:config.shard,bootAt:bus.epoch,salas,humanos,bots,lista,
       tickP99:m?m.tick.p99:0,tickP50:m?m.tick.p50:0,overruns:m?m.tick.overruns:0,
+      // ⚠️ PARADAS DO PROCESSO por minuto (`metrics.laco.congelado`): o laço chegou ≥40 ms atrasado SEM a
+      // thread principal ter trabalhado — cota de CPU do contêiner, preempção. É o engasgo que o `tick p99`
+      // não vê por construção (o processo não está lento, está parado), e era o que derrubava o jogo.
+      congelaMin:m&&m.laco?m.laco.congelado.porMin||0:0,congelaMax:m&&m.laco?m.laco.congelado.maxMs||0:0,
       kbps:m?m.net.outKBps:0,joinsMin:m&&m.joins?m.joins.perMin||0:0,
       llmOk:!(m&&m.llm&&m.llm.breaker),llmMs:m&&m.llm?m.llm.p50:0};
   }
@@ -171,17 +175,19 @@ export function createColetor({config,rooms,bus,metrics,log}){
    * acabou de subir arrasta qualquer cumulativo para baixo — o painel esmaece o shard mais novo que a janela.
    */
   function agrega(fs){
-    let salas=0,humanos=0,bots=0,kbps=0,joinsMin=0,overruns=0,pior={shard:-1,ms:0},llmRuins=0;
+    let salas=0,humanos=0,bots=0,kbps=0,joinsMin=0,overruns=0,pior={shard:-1,ms:0},llmRuins=0,congelaMin=0,congelaPior={shard:-1,porMin:0};
     /** @type {any[]} */let lista=[];
     for(const f of fs){
       salas+=f.salas|0;humanos+=f.humanos|0;bots+=f.bots|0;
       kbps+=+f.kbps||0;joinsMin+=+f.joinsMin||0;overruns+=f.overruns|0;
       if((+f.tickP99||0)>pior.ms)pior={shard:f.shard,ms:+f.tickP99||0};
+      // irmão em build antiga não manda o campo: `undefined` vira 0, e o KPI só fica otimista — nunca quebra
+      const cg=+f.congelaMin||0;congelaMin+=cg;if(cg>congelaPior.porMin)congelaPior={shard:f.shard,porMin:cg};
       if(f.llmOk===false)llmRuins++;
       if(Array.isArray(f.lista))lista=lista.concat(f.lista);}
     const vivos=1+saude.filter(s=>s.ok).length;
     return{at:Date.now(),online:humanos,salas,bots,joinsMin:Math.round(joinsMin),
-      tickPior:pior,overruns,mbps:+(kbps/1024).toFixed(2),
+      tickPior:pior,overruns,congelaMin,congelaPior,mbps:+(kbps/1024).toFixed(2),
       shardsOk:vivos,shardsTot:1+saude.length,llmRuins,
       shards:[{shard:config.shard,ok:true},...saude],
       salasLista:lista};

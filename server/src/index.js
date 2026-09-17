@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
 import {ROUND,WORLD,ROOM} from '@warspace/shared/constants.js';
 import {config as baseConfig} from './config.js';
-import {createLogger} from './log.js';
+import {createLogger,logStats} from './log.js';
 import {createDb} from './db/pool.js';
 import {migrate} from './db/migrate.js';
 import {createPersistence} from './persist/hooks.js';
@@ -23,6 +23,8 @@ import {createBotNames} from './rooms/botNames.js';
 import {createNickPool} from './auth/nickPool.js';
 import {createHttpHandler} from './http/api.js';
 import {createAdminBus} from './admin/bus.js';
+import {criaSonda} from './admin/sonda.js';
+import {criaPeerRooms} from './http/peers.js';
 /** @param {Partial<typeof baseConfig>} [overrides] */
 export async function startServer(overrides={}){
   const cfg=Object.freeze({...baseConfig,...overrides});
@@ -99,11 +101,13 @@ export async function startServer(overrides={}){
   // salas porque a Room o recebe no construtor — e é a Room que publica, já que só ela conhece o código
   // da sala e o nome por trás de um slot.
   const bus=game?createAdminBus({shard:cfg.shard,log}):null;
-  const rooms=game?createRoomManager({config:cfg,hooks,log,metrics,scheduler,botChat,botNames,bus}):null;
-  const health=()=>({ok:true,shard:cfg.shard,role:cfg.role,rooms:rooms?rooms.rooms.size:0,players:rooms?rooms.playerCount():0,...metrics.snapshot(),
+  // ── QUEM SÃO OS IRMÃOS: uma sonda e um memo por PROCESSO ── (ver `http/peers.js:criaPeerRooms`)
+  const sonda=criaSonda({peers:cfg.peers}),peerRooms=criaPeerRooms({peers:cfg.peers,sonda,log});
+  const rooms=game?createRoomManager({config:cfg,hooks,log,metrics,scheduler,botChat,botNames,bus,peerRooms}):null;
+  const health=()=>({ok:true,shard:cfg.shard,role:cfg.role,rooms:rooms?rooms.rooms.size:0,players:rooms?rooms.playerCount():0,...metrics.snapshot(),log:logStats(),
     ...(db?healthFields({db,persist}):{db:'none',queue:0}),protocol:PROTOCOL_VERSION});
   // ── http + ws ──
-  const server=http.createServer(createHttpHandler({config:cfg,rooms,persistApi,health,log,bus,metrics,nickPool}));
+  const server=http.createServer(createHttpHandler({config:cfg,rooms,persistApi,health,log,bus,metrics,nickPool,sonda,peerRooms}));
   server.keepAliveTimeout=65000;
   const ws=game?createWsServer({server,config:cfg,rooms,hooks,log,metrics}):null;
   // ⚠️ O MUNDO É FIXADO AQUI, antes de a porta abrir — ou seja, antes de existir a primeira sala. Esperar
@@ -123,7 +127,7 @@ export async function startServer(overrides={}){
   function close(){if(closing)return closing;closing=(async()=>{
     if(ws)ws.close();
     server.close();if(typeof server.closeAllConnections==='function')server.closeAllConnections();
-    if(rooms)rooms.close();if(scheduler)scheduler.stop();if(bus)bus.stop();
+    if(rooms)rooms.close();if(scheduler)scheduler.stop();if(bus)bus.stop();metrics.stop();
     if(persist){try{await persist.shutdown();}catch(e){log.warn('shutdown da persistência falhou:',e&&e.message);}}
     if(db){try{await db.close();}catch{}}
     log.info('encerrado');})();return closing;}

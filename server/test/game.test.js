@@ -172,11 +172,30 @@ test('segunda sessão na mesma sala: PLAYERS com 2 humanos nos dois lados',async
   assert.equal(roomOf(roomCode).humanCount,2);assert.deepEqual((await (await fetch(base+'/api/rooms')).json()).rooms[0].players,2);
   await B.until(()=>B.snaps.length>=2,3000,'snapshots de B');
 });
-test('rate limit: 200 inputs de uma vez → error RATE + close 4429',async()=>{
-  const C=new Client();await C.open();await C.join('Spam',roomCode);
+// ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO ("200 inputs de uma vez → RATE + close"), e era exatamente o defeito: uma
+// RAJADA ÚNICA é o que um celular com o uplink travado 2–3 s entrega quando o túnel volta, e ela expulsava o
+// jogador honesto sem resume. Medido em produção: 360/779/871 `rateLimitHits` por shard em um dia. Hoje uma
+// rajada é UMA violação (o excedente é descartado em silêncio) e só o flood SUSTENTADO — uma violação por
+// segundo — chega às três que fecham a conexão.
+test('rate limit: uma RAJADA única (uplink que destravou) não expulsa ninguém',async()=>{
+  const C=new Client();await C.open();await C.join('Tunel',roomCode);
+  const hits=srv.metrics.rateLimitHits,drops=srv.metrics.snapshot().net.rateDrops;
   for(let i=0;i<200;i++)C.input(3600,3600);
+  await sleep(700);
+  assert.equal(C.closeCode,null,'continua conectado');assert.equal(C.jsonOf('error'),null);
+  assert.equal(srv.metrics.rateLimitHits,hits+1,'200 de uma vez = UMA violação');
+  assert.ok(srv.metrics.snapshot().net.rateDrops>drops+100,'o excedente foi descartado, e contado à parte');
+  assert.equal(srv.metrics.snapshot().net.rateKicks,0);
+  // `quit` e não só fechar: socket que cai fica NET.RESUME_MS em graça, e os testes seguintes contam as sessões da sala
+  C.send({t:'quit'});C.close();await C.until(()=>C.closeCode!=null,2000,'close');
+  await A.until(()=>roomOf(roomCode).sessions.size===2,2000,'Tunel saiu da sala');
+});
+test('rate limit: flood SUSTENTADO → error RATE + close 4429',async()=>{
+  const C=new Client();await C.open();await C.join('Spam',roomCode);
+  for(let r=0;r<4&&C.closeCode==null;r++){for(let i=0;i<200;i++)C.input(3600,3600);await sleep(1100);}
   await C.until(()=>C.closeCode!=null,3000,'close');
   assert.equal(C.jsonOf('error').code,'RATE');assert.equal(C.closeCode,ERROR_CODE.RATE);assert.ok(srv.metrics.rateLimitHits>0);
+  assert.equal(srv.metrics.snapshot().net.rateKicks,1,'a expulsão é contada — ela custa a partida de alguém');
   await A.until(()=>humans(A.players).length===2||roomOf(roomCode).humanCount===3,100).catch(()=>{});
 });
 test('resume: reconecta dentro da graça → mesmo slot, snapshots voltam',async()=>{
@@ -219,7 +238,15 @@ test('/healthz: tick p99, overruns, db, protocol',async()=>{
   // travadas de dois segundos. `ultimoHa` é `null` enquanto nenhum aconteceu — nunca 0, que se leria
   // como "agora mesmo".
   assert.equal(typeof h.overrunMs.max,'number');assert.equal(typeof h.overrunMs.p99,'number');
-  assert.ok(h.overrunMs.ultimoHa===null||typeof h.overrunMs.ultimoHa==='number');assert.ok(['ok','down','none'].includes(h.db));assert.equal(h.protocol,PROTOCOL_VERSION);assert.ok(h.net.outKBps>0);
+  assert.ok(h.overrunMs.ultimoHa===null||typeof h.overrunMs.ultimoHa==='number');
+  // ── DE QUEM É O ENGASGO ── parada do processo × trabalho da thread, GC por tipo, atraso do event loop,
+  // heap e a escrita de log. `cfs` é null fora de contêiner (não há cgroup de CPU nesta máquina de teste).
+  assert.equal(typeof h.laco.congelado.n,'number');assert.equal(typeof h.laco.congelado.porMin,'number');assert.equal(typeof h.laco.trabalho.n,'number');
+  assert.ok(Array.isArray(h.laco.ultimos));assert.equal(typeof h.gc.major.n,'number');assert.equal(typeof h.gc.minor.maxMs,'number');
+  assert.ok(h.eld&&h.eld.max>=0&&h.eld.p99>=0,'atraso do event loop, já sem a resolução do monitor');
+  assert.ok(h.cfs===null||typeof h.cfs.throttled==='number');assert.equal(typeof h.writerRot,'number');
+  assert.equal(typeof h.log.escritas,'number');assert.equal(typeof h.log.maxMs,'number');
+  assert.ok(['ok','down','none'].includes(h.db));assert.equal(h.protocol,PROTOCOL_VERSION);assert.ok(h.net.outKBps>0);
   const cfg=await (await fetch(base+'/api/config')).json();
   // `googleClientId` vazio é o interruptor do login com Google: o cliente só desenha o botão quando vem preenchido.
   // ⚠️ `deepEqual` e não `match`: este objeto é CONTRATO com o cliente, e um campo que aparece sem que

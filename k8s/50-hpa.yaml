@@ -22,11 +22,13 @@
 #
 # Medido em 2026-09-03 (scripts/loadtest.mjs, 500 jogadores em 12 shards): 500/500 dentro, RTT p50
 # 37 ms, shard mais carregado em 790–918m de 1000m. É daí que sai o alvo de 700m: acima disso o RTT
-# começa a subir. O LIMITE DO POD subiu de 1 para 2 cores (decisão operacional, mesma data): o laço
-# do jogo continua Node single-thread e não passa de ~1 core sozinho, então os 700m de alvo seguem
-# valendo — o segundo core é folga para o resto do processo (libuv, GC, TLS/zlib), não uma promessa
-# de o laço principal usar mais que um núcleo. `minReplicas`/`maxReplicas` caíram para 3–9 na mesma
-# decisão: a frota roda mais enxuta, e a autoescala continua livre para variar dentro dessa faixa.
+# começa a subir. O laço do jogo é Node single-thread e não passa de ~1 core sozinho, então os 700m
+# de alvo seguem valendo como medida de CAPACIDADE.
+# ⚠️ O POD NÃO TEM MAIS `limits.cpu` (2026-09-17; já foi 1 e depois 2 cores). Capacidade e LATÊNCIA são
+# perguntas diferentes, e o limite respondia errado à segunda: ele é uma cota do CFS somada entre as 11
+# threads do processo, e as rajadas do GC paralelo a estouravam com 0,3 core de uso médio — o kernel
+# congelava o shard inteiro ~1×/11 s. Era o engasgo do jogo. O porquê completo, com as medições, está no
+# bloco `resources` de `k8s/10-server.yaml`. `minReplicas`/`maxReplicas` já foram 3–9; ver abaixo.
 # ⚠️ O TETO VOLTOU A 20 em 07/09/2026, com `minReplicas` intacto em 3: os Fit Tests da Poki despejam
 # ~500 jogadores numa janela de duas horas em cima de uma frota que fica ociosa o resto do dia (medido:
 # 0 a 2 contas por hora fora dos testes), e `ROOM.BOTS`=50 encareceu a sala. O piso continua 3 porque é
@@ -56,15 +58,17 @@ spec:
   # fantasma (sobe e fica inalcançável, sem erro em lugar nenhum), nunca o contrário.
   # ⚠️ E lembrar que subir aqui é BARATO e descer NÃO EXISTE: `scaleDown: Disabled` vale sempre, então
   # um pico que leve a frota a 20 a deixa em 20 até alguém escalar o StatefulSet à mão, numa janela.
-  # O teto protege o cluster, não a conta — 20 pods × 2 cores de limite é mais do que os 4 nós têm.
+  # O teto protege o cluster, não a conta: sem `limits.cpu`, o que segura a frota é ESTE número (um shard
+  # não passa de ~1,3 core — a thread principal mais as auxiliares do V8) e o `requests.cpu: 1` de cada pod.
   # Se um dia `maxReplicas` precisar passar de 24, aí sim exige arrumar o `shardChar` primeiro: o 1º
   # caractere do código da sala é o shard em base36 (`rooms/codes.js`), e o shard 24 abriria salas com
   # "O" — a letra que `CODE_CHARS` exclui de propósito para ninguém confundir com 0 num convite.
   maxReplicas: 20
   metrics:
-    # AverageValue, não Utilization: `Utilization` é uma porcentagem do REQUEST (200m), então um pod
-    # em 750m — que é o normal com a sala cheia — apareceria como 375% e o HPA iria direto ao teto na
-    # primeira partida movimentada. O que interessa aqui é o valor absoluto contra o core que o pod tem.
+    # AverageValue, não Utilization: `Utilization` é uma porcentagem do REQUEST, e o request é uma
+    # escolha de AGENDAMENTO (hoje 1 core; já foi 200m, quando um pod em 750m apareceria como 375% e o HPA
+    # iria direto ao teto na primeira partida movimentada). O que interessa aqui é o valor absoluto contra
+    # o core que a thread principal consegue usar — e é por ser absoluto que mexer no request não mexe aqui.
     - type: Resource
       resource:
         name: cpu

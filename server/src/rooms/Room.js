@@ -1586,7 +1586,8 @@ export class Room{
     if(busy)this.rotateWriter();
     return true;}
   // ── envio ──
-  rotateWriter(){this.writer=createWriter(WRITER_SIZE);}
+  // contado: cada troca são 32 KiB novos, e com muito cliente lento isso vira lixo em cadência de broadcast
+  rotateWriter(){this.writer=createWriter(WRITER_SIZE);if(this.metrics&&this.metrics.writerRot)this.metrics.writerRot();}
   broadcast(view){let busy=false;for(const s of this.sessions.values())if(s.ws&&!s.send(view))busy=true;if(busy)this.rotateWriter();}
   broadcastPlayers(){this.broadcast(encodePlayers(this.writer,this.sim.playersInfo()));}
   sendPlayers(session){if(!session.send(encodePlayers(this.writer,this.sim.playersInfo())))this.rotateWriter();}

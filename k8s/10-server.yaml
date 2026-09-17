@@ -327,6 +327,14 @@ spec:
   # `./scripts/deploy.sh` devolveria o número do arquivo e DERRUBARIA os shards que o HPA tinha subido
   # — com as salas deles dentro. O server-side apply não mexe em campo que o manifesto não declara.
   podManagementPolicy: Parallel
+  # ── CANÁRIO ── `partition: N` só atualiza os pods de ordinal ≥ N. `CANARY_PARTITION=2 ./scripts/deploy.sh`
+  # publica a build nova SÓ no shard 2 (e nos que o HPA subir acima dele), e os outros seguem na antiga —
+  # que é como se compara throttling/congelamentos lado a lado, no mesmo tráfego, antes de trocar o jogo
+  # inteiro. O padrão é 0 (todo mundo). ⚠️ O campo é PUBLICADO sempre, nunca apagado: com server-side apply,
+  # tirar um campo do manifesto o REMOVE do objeto, e a lição do `replicas` já custou 11 shards uma vez.
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate: {partition: __PARTITION__}
   selector:
     matchLabels: {app: warspace-server}
   template:
@@ -359,17 +367,59 @@ spec:
             - name: POD_NAME
               valueFrom:
                 fieldRef: {fieldPath: metadata.name}
+            # ── O GC DO NODE, dimensionado à mão ── ficam AQUI e não no ConfigMap porque mudar o ConfigMap
+            # não dispara rollout (o pod template fica idêntico) e estas flags só valem no boot do processo.
+            # ⚠️ `--max-semi-space-size=16`: com `limits.memory: 512Mi` o V8 escolhe semi-space de **1 MiB**
+            # (doc do Node 22: "with a memory limit of 512 MiB, the max size of a semi-space defaults to
+            # 1 MiB"). Medido numa sala de 10 min (`scripts/prof-room.mjs`): **2701 scavenges** com 1 MiB
+            # contra **262** com 16 — e o scavenge é PARALELO, acorda as threads auxiliares do V8. Eram
+            # essas rajadas multi-thread que estouravam a cota de CPU (ver `resources`, abaixo). 32 MiB não
+            # ganhou nada sobre 16 na mesma bancada; 16 é o padrão de uma máquina sem limite de memória.
+            # ⚠️ `--max-old-space-size=256` só CRAVA o que o V8 já escolhe sozinho com 512Mi — a conta que
+            # tem de fechar é 256 (old) + 48 (young: 3 semi-spaces) + 128 (4 scrypts de 32 MiB, um por
+            # thread do libuv) + ~60 de nativo ≈ 492 Mi. Subir um sem olhar os outros é OOMKill.
+            - name: NODE_OPTIONS
+              value: "--max-semi-space-size=16 --max-old-space-size=256"
+            # Declarado para que ninguém o suba sem ler isto: cada thread do pool pode estar rodando um
+            # scrypt de login (N=2^15 → 32 MiB fora do heap). 8 threads = 256 MiB só disso, num pod de 512.
+            - name: UV_THREADPOOL_SIZE
+              value: "4"
           envFrom:
             - configMapRef: {name: warspace-config}
             - secretRef: {name: warspace-db, optional: true}   # sem o Secret o servidor sobe em modo sem persistência
+          # ⚠️ `timeoutSeconds` ERA O PADRÃO DE 1 s: uma parada de event loop maior que isso reprovava a
+          # readiness, e três seguidas tiravam o pod de TODOS os Services — o ingress perdia o `/ws/N` e a
+          # consequência do engasgo virava causa de um engasgo maior. E a liveness REINICIA o processo, ou
+          # seja mata todas as salas do shard: ela só pode disparar com o servidor mudo de verdade (~2 min).
           readinessProbe:
             httpGet: {path: /healthz, port: 3000}
             initialDelaySeconds: 3
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             httpGet: {path: /healthz, port: 3000}
             initialDelaySeconds: 30
             periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          # ── SEM `limits.cpu`, E ISSO É O CONSERTO DO ENGASGO ───────────────────────────────────────
+          # O limite vira uma COTA do CFS: N×100 ms de CPU-tempo por período de 100 ms, somando TODAS as
+          # threads. O processo Node tem 11 (principal + 4 do V8 + 4 do libuv + …): uma rajada de GC
+          # paralelo/JIT queima a cota em 20–40 ms de relógio e o kernel CONGELA o cgroup inteiro — thread
+          # principal incluída — até a virada do período. Medido em produção em 2026-09-17, com `cpu: "2"`:
+          # uma sala de 3–5 jogadores, **0,33 core de uso médio**, e o cAdvisor contando **1 congelamento a
+          # cada ~11 s** (447/808/1149 períodos com throttling nos três shards), `tick.max` pulando de 8
+          # para 42–47 ms e 83–206 overruns por pod. O processo não estava lento: estava PARADO, e por isso
+          # nenhuma métrica do jogo enxergava. Ver `server/src/cgroup.js` e `laco.congelado` no /healthz.
+          # ⚠️ Um limite "folgado" (8) seria decorativo: 20 pods × 8 cores passa longe do nó, então ele não
+          # protege vizinho nenhum — e o kernel 5.4 daqui não tem `cfs_burst`, não existe meio-termo. O teto
+          # real de um shard é a thread principal (~1,3 core), quem limita a frota é o `maxReplicas` do HPA,
+          # e sob contenção quem arbitra é `cpu.shares`, que sai do REQUEST. Por isso ele subiu: 200m dava
+          # peso 204 contra qualquer vizinho. (Nós de 32 CPUs a ~4%; requests somados nos workers: 0,7 e
+          # 1,5 core; 34 contêineres do cluster, ingress-nginx incluído, já rodam sem limite de CPU.)
+          # ⚠️ O HPA é `AverageValue: 700m` — absoluto —, então nada lá depende deste request.
+          # ⚠️ `limits.memory` FICA: memória não se recupera congelando, e é ele que dimensiona o heap acima.
           resources:
-            requests: {cpu: 200m, memory: 256Mi}
-            limits:   {cpu: "2",  memory: 512Mi}
+            requests: {cpu: "1", memory: 256Mi}
+            limits:   {memory: 512Mi}

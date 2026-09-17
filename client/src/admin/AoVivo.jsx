@@ -82,7 +82,7 @@ function useVivo(onErro) {
   const [linhas, setLinhas] = useState([]);
   const [pausado, setPausado] = useState(false);
   const [filtro, setFiltro] = useState({ grupos: new Set(), sala: "", nick: "" });
-  const [series, setSeries] = useState({ online: [], salas: [], bots: [], joins: [], tick: [], mbps: [] });
+  const [series, setSeries] = useState({ online: [], salas: [], bots: [], joins: [], tick: [], mbps: [], congela: [] });
 
   const anel = useRef(criaAnel());
   const sujo = useRef(0);
@@ -134,6 +134,7 @@ function useVivo(onErro) {
           online: empurraSerie(s.online, k.online), salas: empurraSerie(s.salas, k.salas),
           bots: empurraSerie(s.bots, k.bots), joins: empurraSerie(s.joins, k.joinsMin),
           tick: empurraSerie(s.tick, k.tickPior ? k.tickPior.ms : 0), mbps: empurraSerie(s.mbps, k.mbps),
+          congela: empurraSerie(s.congela, k.congelaMin || 0),
         }));
         return;
       }
@@ -231,6 +232,12 @@ export function AoVivo({ erro }) {
       <Kpi rot="tick p99" sub={kpi && kpi.tickPior && kpi.tickPior.shard >= 0 ? `s${kpi.tickPior.shard}` : ""}
         valor={`${kpi && kpi.tickPior ? kpi.tickPior.ms.toFixed(2) : "0"} ms`} serie={series.tick}
         cor={kpi && kpi.tickPior && kpi.tickPior.ms > 1.5 ? "var(--warn)" : undefined} />
+      {/* ⚠️ O KPI QUE FALTAVA. "tick p99" mede quanto o passo CUSTA; isto mede quantas vezes o processo
+          ficou PARADO (≥40 ms sem a thread principal gastar CPU) — cota de CPU do contêiner, preempção. O
+          engasgo do jogo morava aqui, invisível, com o tick p99 verde. Qualquer valor acima de 0 é notícia. */}
+      <Kpi rot="congelamentos" sub={kpi && kpi.congelaPior && kpi.congelaPior.shard >= 0 ? `/min · s${kpi.congelaPior.shard}` : "/min"}
+        valor={num(kpi ? kpi.congelaMin || 0 : 0)} serie={series.congela}
+        cor={kpi && kpi.congelaMin > 0 ? "var(--warn)" : undefined} />
       <Kpi rot="banda" sub="MB/s" valor={kpi ? kpi.mbps : 0} serie={series.mbps} />
       {/* O número JÁ é o rótulo do estado — a cor é reforço (ver o comentário do Kpi). */}
       <Kpi rot="shards" valor={kpi ? `${kpi.shardsOk}/${kpi.shardsTot}` : "—"}

@@ -10,7 +10,7 @@ import {sessionKey} from '../auth/tokens.js';
 import {createPartyManager} from '../rooms/Party.js';
 import {escolheSala} from '../rooms/matchmaking.js';
 import {shardOf,newCode} from '../rooms/codes.js';
-import {fetchPeerRooms,askPeers} from './peers.js';
+import {criaPeerRooms,askPeers} from './peers.js';
 import {createAdminHttp} from './admin.js';
 import {createCors} from './cors.js';
 const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript','.mjs':'application/javascript','.css':'text/css','.ico':'image/x-icon','.png':'image/png','.jpg':'image/jpeg',
@@ -20,9 +20,9 @@ const byPlayers=(a,b)=>b.players-a.players;
  * @param {{config:any,rooms:any,persistApi:any,health:()=>any,log:any}} o
  * @returns {(req:any,res:any)=>Promise<void>}
  */
-export function createHttpHandler({config,rooms,persistApi,health,log,parties=null,bus=null,metrics=null,nickPool=null}){
+export function createHttpHandler({config,rooms,persistApi,health,log,parties=null,bus=null,metrics=null,nickPool=null,sonda=null,peerRooms=null}){
   // O painel /admin é o único consumidor de `/internal/admin/*`, que NÃO é publicado no Ingress.
-  const adminHttp=createAdminHttp({rooms,config,log,persistApi,bus,metrics});
+  const adminHttp=createAdminHttp({rooms,config,log,persistApi,bus,metrics,sonda});
   // CORS: o cliente pode estar hospedado por um portal, em outro domínio. Fica AQUI, no topo do
   // handler, porque `setHeader` antes do roteamento é mesclado por todo `writeHead` de baixo — um
   // ponto só cobre o sendJson, o avatar (headers próprios E o 304), o 503 sem banco e os estáticos.
@@ -40,7 +40,14 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
     if(r&&r.error)return sendJson(res,r.error==='not_found'?404:r.error==='not_leader'?403:409,{error:r.error,message:r.message});
     if(r&&r.party&&key)r={...r,you:{key,leader:r.party.leader===key}};
     return sendJson(res,200,r);};
-  const allRooms=async()=>rooms?rooms.allRooms():(config.peers.length?fetchPeerRooms(config.peers,{log}):[]);
+  // shard só de API (`role:'api'`): não há gerente de salas, mas as dos irmãos saem do MESMO memo
+  const irmas=peerRooms||criaPeerRooms({peers:config.peers,sonda,log});
+  const allRooms=async()=>rooms?rooms.allRooms():irmas.rooms();
+  // ── A QUEM PERGUNTAR POR UM RECURSO QUE TEM DONO ──
+  // Sala e equipe por código moram no shard do 1º char. Quem já conhece o endereço do dono pergunta a UM
+  // irmão; quem ainda não conhece pergunta a quem EXISTE (a sonda), nunca aos 23 nomes de `SHARDS`.
+  const alvosDe=dono=>{if(!sonda)return config.peers;const p=sonda.peerDe(dono);return p?[p]:sonda.aPerguntar();};
+  const anota=sonda?(p,ok)=>sonda.anota(p,ok):null;
   /** A CONTA por trás do Bearer, e só se for registrada. Sem banco não há conta — e aí não há dono de sala. */
   async function contaDe(req){const t=bearer(req);
     if(!t||!persistApi||!persistApi.repos||!persistApi.repos.tokens)return null;
@@ -140,7 +147,7 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
         const local=rooms&&rooms.rooms.get(code);   // ⚠️ NUNCA getRoom: ele CRIA a sala e um código errado materializaria uma fantasma
         if(local)return sendJson(res,200,{room:local.info()});
         if(int||!config.peers.length||shardOf(code)===config.shard)return sendJson(res,404,{error:'not_found',message:'sala não encontrada'});
-        const r=await askPeers(config.peers,{path:`/internal/room/${code}`,log});
+        const r=await askPeers(alvosDe(shardOf(code)),{path:`/internal/room/${code}`,log,anota});
         if(!r)return sendJson(res,503,{error:'peer_unreachable',message:'shard indisponível; tente de novo'});
         return sendJson(res,r.status,r.body);}
       if(p==='/api/auto'){
@@ -153,7 +160,8 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
         // quem decide entre reusar uma sala local com folga e abrir outra.
         const mode=+(url.searchParams.get('mode')||0)|0,teamSize=+(url.searchParams.get('teamSize')||1)|0;
         const sala=escolheSala(await allRooms(),{mode,teamSize,shard:config.shard});
-        if(sala)return sendJson(res,200,sala);
+        // sala de IRMÃO vem do memo: sem somar quem este pod já mandou para lá, a janela inteira empilha nela
+        if(sala){if((sala.shard|0)!==config.shard)irmas.conta(sala.code);return sendJson(res,200,sala);}
         if(rooms)return sendJson(res,200,rooms.findOrCreateRoom({mode,teamSize}).info());
         return sendJson(res,503,{error:'no_game',message:'nenhum shard de jogo disponível'});}
       // ── lobby de equipe (código de convite) ──
@@ -173,7 +181,7 @@ export function createHttpHandler({config,rooms,persistApi,health,log,parties=nu
         // sem segredo, então o irmão chega na MESMA chave — e a porta interna não vira passe de impersonação.
         const dono=shardOf(code);
         if(!int&&dono!==config.shard&&dono<config.shards&&config.peers.length){
-          const r=await askPeers(config.peers,{path:`/internal/party/${code}${act?'/'+act:''}`,method:req.method,body:b,auth:req.headers.authorization||null,log});
+          const r=await askPeers(alvosDe(dono),{path:`/internal/party/${code}${act?'/'+act:''}`,method:req.method,body:b,auth:req.headers.authorization||null,log,anota});
           // irmão mudo ≠ equipe desfeita: 503, NUNCA 404 — só o 404 faz o cliente desfazer a equipe
           if(!r)return sendJson(res,503,{error:'peer_unreachable',message:'o shard da equipe não respondeu'});
           return sendJson(res,r.status,r.body);}
