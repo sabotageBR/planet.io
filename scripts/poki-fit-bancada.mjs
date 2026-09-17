@@ -11,7 +11,9 @@
 //   WARSPACE_API_BASE=http://127.0.0.1:3002 VITE_POKI_SDK_URL=./poki-sdk.js node scripts/portal-pack.mjs poki
 //   cp scripts/poki-stub.js portal/poki/dist/poki-sdk.js
 //   python3 -m http.server 4173 --directory portal
-//   node scripts/poki-fit-bancada.mjs [http://127.0.0.1:4173/poki/dist/] [--seg 40]
+//   node scripts/poki-fit-bancada.mjs [http://127.0.0.1:4173/poki/dist/] [--seg 40] [--seq]
+//   (`--seq` imprime a sequência inteira que o SDK recebeu — com `…/?tutorial=1 --seg 90 --seq` é o tutorial de
+//    ponta a ponta no dedo: `tutor_*` → `connect/match` → `match_real`, e nenhum `gameplayStart` inválido)
 //
 // ⚠️ **O TIMEOUT É ENCURTADO** (`__fitTimeoutMs` 15 s, tick de 2 s): a regra é a mesma, e ninguém precisa
 //    esperar 70 s por rodada para ler um booleano. Os 60 s de verdade continuam sendo o padrão do stub.
@@ -96,6 +98,7 @@ const andou=rota.slice(1).reduce((s,p,i)=>s+Math.hypot(p[0]-rota[i][0],p[1]-rota
 const dx=rota.slice(1).map((p,i)=>p[0]-rota[i][0]);
 const virou=dx.some(v=>v>30)&&dx.some(v=>v<-30);
 console.log(`\n## ${SEG} s dirigindo só por toque no canvas (${n} toques, nenhum botão)`);
+if(temSdk&&process.argv.includes("--seq"))console.log("sequência no SDK:\n  "+res.seq.filter(l=>!/measure (session|gameplay)\/\d+s\/start/.test(l)).join("\n  "));
 let ok=true;
 if(temCam){console.log("o planeta obedeceu?   andou "+Math.round(andou)+" px · "+(virou?"VIROU com os toques ✓":"NÃO virou ✗"));ok=ok&&virou;}
 else console.log("o planeta obedeceu?   (sem `__warspace` neste build — confira no de dev, ver o cabeçalho)");
