@@ -38,6 +38,7 @@ export default {
     tiroMouse: "Ese planeta es demasiado grande para comerlo. ¡HAZ CLIC para disparar!",
     tiroDedo: "Ese planeta es demasiado grande para comerlo. ¡Toca MISIL!",
     tiroAjuda: "¡Viene hacia ti! Dispara ya.",
+    tiroAjudaDedo: "¡Viene hacia ti! ¡Toca MISIL ya!",
     tiroAuto: "Esta vez disparamos por ti.",
     splitTit: "DIVÍDETE PARA ALCANZARLO",
     splitCaca: "¡Cómete el planeta pequeño!",

@@ -97,10 +97,33 @@ test("O TETO SEMPRE FECHA — não dá para ficar preso em etapa nenhuma", () =>
   // tutorial nenhum, e o funil quebra aos 30 s.
   for (const et of [ETAPA.NOVA, ETAPA.TIRO, ETAPA.SPLIT]) {
     const e = { ...TUTOR0, etapa: et, desde: 1000 };
-    const r = passoTutor(e, ctx(), 1000 + AJUDA[et].teto);
+    // ⚠️ o teto da etapa 2 tem `folga` (o diretor atira NO teto e a festa espera o BOOM); "sempre fecha" vale
+    // para `teto + folga`, que é o que impede ficar preso mesmo se o míssil do tutorial se perder.
+    const r = passoTutor(e, ctx(), 1000 + AJUDA[et].teto + (AJUDA[et].folga || 0));
     assert.equal(r.festa, et, "etapa " + et + " fechou pelo teto");
     assert.equal(r.auto, true, "e ficou marcada como `auto` — foi carregado, não aprendeu");
   }
+});
+
+test("o teto da etapa 2 tem DOIS TEMPOS: primeiro o tutorial atira, depois a festa", () => {
+  // Era código morto: `celebra` ligava no mesmo passo em que `ajuda` chegava a 3, e o diretor não age
+  // durante a festa — o "atiramos por você" nunca atirou. 216 `tutor_tiro_auto` na 1.31 eram desistências
+  // mudas aos 18 s, sem um míssil na tela.
+  const e = { ...TUTOR0, etapa: ETAPA.TIRO, desde: 1000 }, A = AJUDA[ETAPA.TIRO];
+  assert.ok(A.folga > 0, "sem folga o diretor não tem um tick sequer para puxar o gatilho");
+  const noTeto = passoTutor(e, ctx(), 1000 + A.teto);
+  assert.equal(noTeto.ajuda, 3);
+  assert.equal(noTeto.celebra, false, "no teto a etapa continua ABERTA: é a janela em que `tutorServer.ajuda` atira");
+  assert.equal(noTeto.festa, 0);
+  // o míssil do TUTORIAL acerta: a etapa fecha pelo BOOM, e conta como carregado (`ctx.demo`)
+  const boom = passoTutor(noTeto.est, ctx({ acertou: true, demo: true }), 1000 + A.teto + 400);
+  assert.equal(boom.festa, ETAPA.TIRO);
+  assert.equal(boom.auto, true, "quem atirou foi o diretor: entrar como `tutor_tiro` manual sujaria a métrica do celular");
+  // ...e o acerto do PRÓPRIO aluno nessa mesma janela continua sendo dele
+  assert.equal(passoTutor(noTeto.est, ctx({ acertou: true }), 1000 + A.teto + 400).auto, false);
+  // as outras duas etapas não têm folga: o teto delas fecha no mesmo passo, como sempre
+  for (const et of [ETAPA.NOVA, ETAPA.SPLIT])
+    assert.equal(passoTutor({ ...TUTOR0, etapa: et, desde: 1000 }, ctx(), 1000 + AJUDA[et].teto).festa, et);
 });
 
 test("quem fecha pelo PRÓPRIO gesto não é marcado como `auto`", () => {
@@ -157,7 +180,7 @@ test("é PURA: não mexe no estado nem no contexto que recebe", () => {
 // Elas são puras e exportadas justamente para poderem ser conferidas aqui: o que falha nelas falha em
 // SILÊNCIO — uma instrução de mouse para quem tem dedo faz o planeta virar, nada acontecer, e o jogador
 // concluir que o tutorial mente.
-import { falaDoTutor, promptDoTutor } from "../src/ui/tutorFala.js";
+import { falaDoTutor, promptDoTutor, promptClassico } from "../src/ui/tutorFala.js";
 
 /** Labels de mentira, com o valor igual à chave: assim a asserção diz QUAL chave saiu. */
 const T = new Proxy({}, { get: (_, k) => String(k) });
@@ -174,7 +197,9 @@ test("cada etapa tem título e instrução, e nenhum vem vazio", () => {
 
 test("MOUSE E DEDO NUNCA RECEBEM A MESMA FRASE onde o gesto difere", () => {
   // No dedo, tocar no canvas NÃO atira — dirige o planeta. "Clique para atirar" ali é o tutorial mentindo.
-  for (const [etapa, ajuda] of [[ETAPA.NOVA, 0], [ETAPA.TIRO, 0], [ETAPA.SPLIT, 1]]) {
+  // ⚠️ `[TIRO,1]` entrou depois: "Ele está vindo! Atire agora." era a MESMA frase nos dois, e no celular ela
+  // apagava aos 5 s a única instrução que nomeava o botão — 62% saíam da etapa sem atirar.
+  for (const [etapa, ajuda] of [[ETAPA.NOVA, 0], [ETAPA.TIRO, 0], [ETAPA.TIRO, 1], [ETAPA.SPLIT, 1]]) {
     const m = falaDoTutor({ etapa, ajuda, pct: 0, dedo: false }, T, "ESPAÇO")[1];
     const d = falaDoTutor({ etapa, ajuda, pct: 0, dedo: true }, T, "ESPAÇO")[1];
     assert.notEqual(m, d, `etapa ${etapa}: mouse e dedo recebem a mesma frase`);
@@ -187,6 +212,23 @@ test("o prompt do MOUSE diz QUAL BOTÃO; o do dedo aponta o botão do HUD", () =
   assert.equal(promptDoTutor({ etapa: ETAPA.TIRO, ajuda: 0, dedo: true }, T, "ESPAÇO").tipo, "hud");
   assert.equal(promptDoTutor({ etapa: ETAPA.NOVA, ajuda: 0, dedo: false }, T, "ESPAÇO").tipo, "mouse-mover");
   assert.equal(promptDoTutor({ etapa: ETAPA.NOVA, ajuda: 0, dedo: true }, T, "ESPAÇO").tipo, "toque");
+});
+
+test("no DEDO o modelo clássico troca a RÉPLICA do botão pelo botão de verdade pulsando", () => {
+  // A réplica é `pointer-events:none` e mora no canto OPOSTO ao `#t-fire`: o toque nela cai no canvas e só
+  // vira o planeta. Com `alvoDoTutor` ligando o pulso do botão real, o prompt do clássico sai de cena.
+  assert.equal(promptClassico({ etapa: ETAPA.TIRO, ajuda: 0, dedo: true }, T, "ESPAÇO"), null, "etapa 2 no dedo: sem réplica");
+  assert.equal(promptClassico({ etapa: ETAPA.SPLIT, ajuda: 1, dedo: true }, T, "ESPAÇO"), null, "etapa 3 no dedo, com o botão já pedido: sem réplica");
+  assert.equal(promptClassico({ etapa: ETAPA.NOVA, ajuda: 0, dedo: true }, T, "ESPAÇO").tipo, "toque", "etapa 1: não há botão real a apontar, o prompt fica");
+  assert.deepEqual(promptClassico({ etapa: ETAPA.TIRO, ajuda: 0, dedo: false }, T, "ESPAÇO"),
+    promptDoTutor({ etapa: ETAPA.TIRO, ajuda: 0, dedo: false }, T, "ESPAÇO"), "no mouse nada muda: lá o prompt É a instrução");
+});
+
+test("com o míssil do TUTORIAL no ar, a fala diz que foi ele quem atirou", () => {
+  for (const dedo of [false, true])
+    assert.deepEqual(falaDoTutor({ etapa: ETAPA.TIRO, ajuda: 3, pct: 0, dedo }, T, "ESPAÇO"), ["tiroTit", "tiroAuto"]);
+  assert.deepEqual(falaDoTutor({ etapa: ETAPA.TIRO, ajuda: 2, pct: 0, dedo: true }, T, "ESPAÇO"), ["tiroTit", "tiroAjudaDedo"],
+    "no dedo a frase continua NOMEANDO o botão até o teto");
 });
 
 test("a TECLA do prompt é a que o jogador configurou, não uma cravada", () => {

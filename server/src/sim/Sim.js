@@ -20,6 +20,15 @@ import {incomingMissile,ammoOf,ownedMask,outOfZone,explodeQuit,sobGraca} from '@
 import {firstLive} from '@warspace/shared/physics/body.js';
 
 export const NO_SLOT=0xffff;
+/**
+ * O BRAÇO DO A/B DE UMA CONTA: 1 para id ÍMPAR, 0 para par — e 0 para quem não tem conta (modo `unsaved`).
+ * ⚠️ Da CONTA e não do slot nem da sessão: o slot recicla e o `sessionId` é por vida, então só o id faz a
+ *    mesma pessoa cair no mesmo braço em todas as vidas e em todas as salas — que é o que deixa a leitura
+ *    ser feita por SQL (`user_id % 2`), sem coluna nova em `matches`.
+ * ⚠️ `users.id` é BIGINT e o driver o entrega como STRING (a lição de `hostUserId`): `'7'%2` funciona por
+ *    coerção, mas `Number()` deixa a intenção escrita — e `null`/`NaN` caem no controle.
+ */
+export const bracoAB=id=>Number(id)%2===1?1:0;
 const LB_MAX=10,EVENTS_MAX=256;
 /** WEAPON.* → a chave que o kill feed e o hook de persistência usam. -2 (a rocha) e desconhecido caem em asteroide/míssil. */
 const ARMA=['missile','burst','cluster','nova'];
@@ -92,7 +101,7 @@ export class Sim{
   addHuman(slot,{name='Viajante',registered=false,skinId=0,sessionId=null,userId=null,team=-1,level=0,spawn=true,spectator=false}={}){
     if(this.players.has(slot))this.remove(slot);
     this._lastHit.delete(slot);
-    this.world.addPlayer(slot,{r:PLAYER.SPAWN_R,isBot:false,missiles:0,team,spawn});
+    this.world.addPlayer(slot,{r:PLAYER.SPAWN_R,isBot:false,missiles:0,team,spawn,ab:bracoAB(userId)});
     // ⚠️ `spawn` e `!spectator`: sem corpo não há graça a acabar — o lobby do BR e a arquibancada
     // entrariam no laço de `_graceTick` para nunca sair dele (o `!ps.alive` os tiraria no primeiro passo,
     // mas com um `grace_end` falso no caminho).

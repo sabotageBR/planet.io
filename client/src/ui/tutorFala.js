@@ -33,7 +33,12 @@ export function falaDoTutor(d, T, tecla) {
     return [T.novaTit, dedo ? T.novaDedo : T.novaMouse];
   }
   if (d.etapa === ETAPA.TIRO) {
-    if (d.ajuda >= 1) return [T.tiroTit, T.tiroAjuda];
+    // o teto: o míssil do TUTORIAL está no ar (`tutorServer.ajuda`, `st.demo`) — agora a frase é verdade.
+    if (d.ajuda >= 3) return [T.tiroTit, T.tiroAuto];
+    // ⚠️ NO DEDO A FRASE CONTINUA NOMEANDO O BOTÃO. "Atire agora" serve a quem já sabe COMO se atira; no
+    // celular a única frase que dizia "toque em MÍSSIL" vivia 5 s, e 62% das pessoas que chegavam a esta
+    // etapa saíam dela sem ter atirado (216 `tutor_tiro_auto` × 135 manuais na 1.31, 85% de tráfego touch).
+    if (d.ajuda >= 1) return [T.tiroTit, dedo ? T.tiroAjudaDedo : T.tiroAjuda];
     return [T.tiroTit, dedo ? T.tiroDedo : T.tiroMouse];
   }
   if (d.etapa === ETAPA.SPLIT) {
@@ -153,3 +158,16 @@ export function alvoDoTutor(d) {
   if (d.etapa === ETAPA.SPLIT && d.ajuda >= 1) return "t-split";
   return null;
 }
+
+/**
+ * O PROMPT DO MODELO CLÁSSICO (o de produção): com o botão REAL pulsando, a réplica SAI.
+ *
+ * ⚠️ A réplica do botão (uma pílula amarela de 110×52 px, pulsando, no canto inferior ESQUERDO) parece
+ * exatamente um botão apertável — e é `pointer-events:none`: o toque atravessa para o canvas, que no dedo
+ * DIRIGE o planeta. Ele vira, nada explode, e a pessoa conclui que o jogo não responde. O botão de verdade
+ * mora no canto DIREITO. Duas coisas pedindo o mesmo toque em cantos opostos é o defeito; com o `#t-fire`
+ * real pulsando e com seta (`alvoDoTutor` → `data-alvo`), o olho tem UM lugar para ir.
+ * ⚠️ Função à parte: o retorno de `promptDoTutor` é contrato (`deepEqual` nos testes) e os três modelos
+ * candidatos o usam como está. No mouse nada muda — lá não há botão na tela, e o prompt É a instrução.
+ */
+export const promptClassico = (d, T, tecla) => alvoDoTutor(d) ? null : promptDoTutor(d, T, tecla);

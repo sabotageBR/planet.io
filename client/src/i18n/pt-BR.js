@@ -55,6 +55,7 @@ export default {
     tiroMouse: "Esse planeta é grande demais para comer. CLIQUE para atirar!",
     tiroDedo: "Esse planeta é grande demais para comer. Toque em MÍSSIL!",
     tiroAjuda: "Ele está vindo! Atire agora.",
+    tiroAjudaDedo: "Ele está vindo! Toque em MÍSSIL agora!",
     tiroAuto: "Atiramos por você desta vez.",
     // ETAPA 3 — dividir
     splitTit: "DIVIDA PARA ALCANÇAR",

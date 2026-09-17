@@ -38,6 +38,7 @@ export default {
     tiroMouse: "That planet is too big to eat. CLICK to shoot!",
     tiroDedo: "That planet is too big to eat. Tap MISSILE!",
     tiroAjuda: "It is coming! Shoot now.",
+    tiroAjudaDedo: "It is coming! Tap MISSILE now!",
     tiroAuto: "We fired that one for you.",
     splitTit: "SPLIT TO CATCH IT",
     splitCaca: "Eat the small planet!",

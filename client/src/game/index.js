@@ -24,7 +24,7 @@ import {ESCADA} from "../audio/kit.js";
 import {api} from "../api/client.js";
 import {apiUrl,wsUrl} from "../api/base.js";
 import {PORTAL} from "../portal/flags.js";
-import {marco} from "../portal/marcos.js";
+import {marco,portaoTutorial} from "../portal/marcos.js";
 import {app as appStore} from "../state/app.js";
 import {setRoundHour} from "../state/game.js";
 import {MSG,EVENT,SELF_FLAG,SPLIT,SPEED,EJECT,TICK_HZ,KIND,REMOVE,ROUND,FEED,MISSILE,PLAYER,STAR,MODE,BR,BOT,NET,POWERUP,ZOOM,CAM,WORLD,PROTOCOL_VERSION,ZONE_WARN_AT_S,clampZoom,zoomSpan,focusOf,aimScore,unpackDir} from "@warspace/shared";
@@ -815,7 +815,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // um `{deadAt,armAt}` VENCIDO. Ele chegava à tela de morte pelo store com throttle antes do par novo
       // e disparava o respawn no primeiro frame: a tela não aparecia e o jogador reentrava no ato. Ver
       // `ui/deadClock.js`, que fecha o mesmo buraco do outro lado com o piso.
-      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;specSlot=-1;selfTick=0;espectador=!!spec;tutor=null;souTutorial=!!tutorial;
+      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;specSlot=-1;selfTick=0;espectador=!!spec;tutor=null;souTutorial=!!tutorial;portaoTutorial(souTutorial);   // o funil do portal não pode contar o tutorial como partida (portal/marcos.js)
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null,spec:!!spec};

@@ -55,7 +55,14 @@ export const AJUDA = {
   // varrê-los. Com o teto em 22 s o caso NORMAL terminava em "concedemos a massa por você", que é a
   // mensagem oposta à que a primeira vitória do jogo tem de dar.
   [ETAPA.NOVA]:  { d1: 6000, d2: 14000, teto: 30000 },
-  [ETAPA.TIRO]:  { d1: 5000, d2: 10000, teto: 18000 },
+  // ⚠️ **A ETAPA 2 TEM `folga`, E É O CONSERTO DE UM TETO QUE MENTIA.** O teto fechava a etapa e ligava a festa
+  // NO MESMO passo — e o diretor não age durante a festa (`tutorServer.ajuda` sai cedo em `r.celebra`). O
+  // "o tutorial atira por ele" nunca rodou: os 216 `tutor_tiro_auto` do painel da 1.31 (contra 135 manuais)
+  // eram desistências MUDAS aos 18 s, sem um míssil na tela, e o cartão ainda dizia "Atiramos por você".
+  // Agora o teto tem dois tempos: em `teto` sai `ajuda:3` com a etapa ABERTA (o diretor atira, `ctx.demo`),
+  // e a festa vem do BOOM — ou em `teto+folga`, que mantém a regra "o teto SEMPRE fecha". O míssil cobre os
+  // ~330 px da cena em menos de 1 s; os 3 s são só a rede.
+  [ETAPA.TIRO]:  { d1: 5000, d2: 10000, teto: 18000, folga: 3000 },
   // ⚠️ A etapa 3 abre o primeiro degrau em 5 s, e não nos 8 que ela teve: ali o degrau 1 não é uma
   // muleta, é o "aha" da lição — a frase que explica por que perseguir não funciona e o botão de
   // DIVIDIR aparecendo grande. Oito segundos correndo atrás de algo que a física torna inalcançável
@@ -145,12 +152,16 @@ export function passoTutor(est, ctx, agora) {
     return saida({ etapa: est.etapa + 1, desde: 0, feito: 0, ajuda: 0, auto: 0 });
   }
 
-  const dt = agora - est.desde, d = degrau(est.etapa, dt);
+  const dt = agora - est.desde, d = degrau(est.etapa, dt), a = AJUDA[est.etapa] || {};
+  const ok = cumpriu(est.etapa, ctx, agora);
 
   // Cumpriu agora — pelo próprio gesto, ou pelo teto (e aí fica marcado como `auto`, que é o que
   // distingue "aprendeu" de "foi carregado" no funil).
-  if (cumpriu(est.etapa, ctx, agora) || d >= 3) {
-    const auto = cumpriu(est.etapa, ctx, agora) ? 0 : 1;
+  // ⚠️ `ctx.demo` = o DIRETOR puxou o gatilho (só a etapa 2 tem isso): o BOOM desse míssil cumpre a etapa,
+  //    mas quem atirou não foi o aluno — sem a marca ele entraria no funil como `tutor_tiro` manual, que é
+  //    justamente a métrica que mede se o celular consegue atirar.
+  if (ok || (d >= 3 && dt >= a.teto + (a.folga || 0))) {
+    const auto = ok && !ctx.demo ? 0 : 1;
     const e = { ...est, feito: agora, ajuda: d, auto };
     return { est: e, etapa: e.etapa, pct: 1, festa: e.etapa, celebra: true, ajuda: d, auto: !!auto, fim: false };
   }

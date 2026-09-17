@@ -343,7 +343,7 @@ function orbita(w,st,c,ac,R){
  */
 export function criaRoteiro(){
   const st={etapa:TUTOR0,slot:-1,alvo:-1,estrela:-1,novaEm:0,base:0,montada:0,
-    sobrou:0,ultimo:0,acertou:false,comeu:false,moveu:false,ultEnv:"",
+    sobrou:0,ultimo:0,acertou:false,demo:false,comeu:false,moveu:false,ultEnv:"",
     // `pre` = a estrela ainda não estourou, ou seja a lição de mover ainda não começou. Ele vai no JSON
     // porque é a TELA que precisa saber (a fala e o prompt mudam), e o cliente não tem como derivá-lo.
     pre:false,ancora:null,giro:1,novaLim:0,orbR:0};
@@ -402,7 +402,7 @@ export function criaRoteiro(){
     const c=centro(ps);
     const ctx={vivo:!!(ps&&ps.alive&&c),massa:ps?w.massOf(st.slot):0,base:st.base,
       meta:Math.max(BOT.NOVATO_MASS,SPLIT.MIN_R*SPLIT.MIN_R*1.05)||6000,
-      sobrou:st.sobrou,ultimo:st.ultimo,acertou:st.acertou,comeu:st.comeu};
+      sobrou:st.sobrou,ultimo:st.ultimo,acertou:st.acertou,demo:st.demo,comeu:st.comeu};
     const r=passoTutor(st.etapa,ctx,agora);
     st.etapa=r.est;
 
@@ -414,7 +414,7 @@ export function criaRoteiro(){
 
     // montar a cena da etapa que acabou de abrir (e só uma vez por etapa)
     if(r.etapa!==st.montada&&r.etapa<ETAPA.FIM&&st.etapa.desde){
-      st.montada=r.etapa;st.acertou=false;st.comeu=false;st.ultimo=0;
+      st.montada=r.etapa;st.acertou=false;st.demo=false;st.comeu=false;st.ultimo=0;
       st.pre=r.etapa===ETAPA.NOVA;   // a etapa 1 abre ANTES da explosão; as outras não têm fase de espera
       montaEtapa(w,api,r.etapa,st.slot,st);}
 
@@ -469,9 +469,16 @@ export function criaRoteiro(){
     if(r.etapa===ETAPA.TIRO&&r.ajuda>=1&&st.alvo>=0){
       // o alvo AVANÇA. Ele não pode comer ninguém (ratio 1,05), então é ameaça sem risco.
       const a=w.players.get(st.alvo);if(a&&a.alive)w.setTarget(st.alvo,c.x,c.y);}
-    if(r.etapa===ETAPA.TIRO&&r.ajuda>=3&&st.alvo>=0){
+    if(r.etapa===ETAPA.TIRO&&r.ajuda>=3&&st.alvo>=0&&!st.demo){
       // o teto: o tutorial atira por ele. Quem DIZ que atirou é a tela.
-      const p=w.players.get(st.slot);if(p){w.setTarget(st.slot,...alvoXY(w,st));applyFire(w,p);}}
+      // ⚠️ **ISTO ERA CÓDIGO MORTO**: `passoTutor` ligava `celebra` no mesmo passo em que `ajuda` chegava a 3, e
+      // a primeira linha desta função sai cedo na festa. Hoje o teto da etapa 2 tem `folga` (ver `AJUDA`): a
+      // etapa fica ABERTA com `ajuda:3` até o BOOM, e é nessa janela que isto roda.
+      // ⚠️ UMA VEZ (`st.demo`): o míssil tem `cd` 0, e sem a trava o cinto inteiro sairia em três ticks — que
+      // é o "três segundos de KABOOM por trás do elogio" que o comentário do topo desta função descreve.
+      const p=w.players.get(st.slot);
+      if(p){if(!(p.ammo[WEAPON.MISSILE]>0))p.ammo[WEAPON.MISSILE]=1;p.weapon=WEAPON.MISSILE;p.fireCdUntil=0;p.fireAim=false;
+        w.setTarget(st.slot,...alvoXY(w,st));applyFire(w,p);st.demo=true;}}
     if(r.etapa===ETAPA.SPLIT&&st.alvo>=0){
       const a=w.players.get(st.alvo);if(!a||!a.alive)return;
       const ac=centro(a);if(!ac)return;

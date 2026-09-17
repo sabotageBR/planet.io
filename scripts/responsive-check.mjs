@@ -77,16 +77,20 @@ const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile",
   // mediria. `fim` é o cartão com o prêmio — o único bloco que pede rolagem em tela baixa, e é ali que a
   // tela de morte e o BIG CRUNCH já reprovaram uma vez com os botões fora da dobra.
   // `tutor:2!` FALTAVA, e era a cara mais importante de todas: a etapa 2 no DEDO — a lição que mais perde
-  // gente no funil (172 de 1.140) no ponteiro que é 81% do tráfego. É lá que o prompt vira a réplica do
-  // botão MÍSSIL e divide o rodapé com o #touch e o #hud-status.
-  "tutor:pre","tutor:1","tutor:2@2","tutor:2!","tutor:3@1","tutor:3!","tutor:ok2","tutor:fim"];
+  // gente no funil (172 de 1.140) no ponteiro que é 81% do tráfego.
+  // ⚠️ No modelo CLÁSSICO a réplica do botão MÍSSIL SAIU do dedo (`promptClassico`): ela era
+  // `pointer-events:none` no canto oposto ao `#t-fire`, e o toque nela só virava o planeta. Quem aponta agora
+  // é o botão REAL pulsando com uma seta (`data-alvo`). `tut-prompt` some destas caras sem erro — id ausente
+  // não é medido —, e a seta é pseudo-elemento, que a sonda não vê: ela se confere de OLHO.
+  // `2!@1` é a fala nova do degrau 1 no dedo ("Toque em MÍSSIL agora!"), mais comprida que a do mouse.
+  "tutor:pre","tutor:1","tutor:2@2","tutor:2!","tutor:2!@1","tutor:3@1","tutor:3!","tutor:ok2","tutor:fim"];
 // OS MODELOS CANDIDATOS DO TUTORIAL (client/src/ui/tutorEstilo.js) — PROVISÓRIOS, como eles. O sufixo leva
 // o modelo na frente (`tutor:<modelo>:<cara>`, o molde de `dead:<estilo>`), e a lista sai de ESTILOS: um
 // modelo novo entra na matriz sozinho, e um que for apagado sai sem ninguém lembrar de vir aqui.
 // As caras são as do clássico. O `cena` leva duas a mais porque só ele tem estados que as outras não
 // medem: `1` é a PÍLULA (o demo grava pct .45) e `1@2` é o cartão REABERTO no degrau 2; `ok1` é a
 // comemoração com a tirinha do TIRO (que tem o desenho do botão), contra a da caça em `ok2` (que não tem).
-const CARAS_TUTOR=["pre","1","2@2","2!","3@1","3!","ok2","fim"];
+const CARAS_TUTOR=["pre","1","2@2","2!","2!@1","3@1","3!","ok2","fim"];
 for(const m of TUTOR_ESTILOS){if(m===TUTOR_PADRAO)continue;
   for(const c of CARAS_TUTOR)TELAS.push("tutor:"+m+":"+c);
   if(m==="cena")TELAS.push("tutor:cena:1@2","tutor:cena:ok1");}

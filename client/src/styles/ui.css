@@ -3035,6 +3035,25 @@ body[data-mode="landscape"] .tf-sub{font-size:.95em}
   outline:3px solid var(--accent,#ffc22e);outline-offset:3px}
 @media (prefers-reduced-motion:reduce){
   #hud:has(#tutor[data-alvo="t-fire"]) #t-fire,#hud:has(#tutor[data-alvo="t-split"]) #t-split{animation:none}}
+/* ── ...E UMA SETA APONTA PARA ELE ──
+   O pulso diz "este botão"; a seta diz "AQUI", de longe, para quem está olhando o planeta no meio da tela.
+   Ela é um pseudo-elemento do PRÓPRIO botão (os temas só usam o `::before`, o foguete): fica ancorada nele
+   em qualquer tema e forma de tela sem medir posição nenhuma, e por não ser filho do `#hud` não entra na
+   regra de `pointer-events`. Vale para os quatro modelos — é o mesmo `data-alvo`.
+   ⚠️ ACIMA do botão por padrão; EM PÉ ela vai para a ESQUERDA: lá o `#touch` quebra em duas fileiras
+   (`base.css`) e em cima do MÍSSIL mora o botão de cuspir — a seta cairia em cima dele.
+   ⚠️ Anima `translate`, nunca `transform` (a lição do `dd-bate`), e some a animação com "menos movimento". */
+#hud:has(#tutor[data-alvo="t-fire"]) #t-fire,#hud:has(#tutor[data-alvo="t-split"]) #t-split{position:relative}
+#hud:has(#tutor[data-alvo="t-fire"]) #t-fire::after,#hud:has(#tutor[data-alvo="t-split"]) #t-split::after{content:"";position:absolute;
+  left:50%;bottom:calc(100% + 12px);translate:-50% 0;width:0;height:0;border:13px solid transparent;border-top:18px solid var(--accent,#ffc22e);
+  border-bottom:0;filter:drop-shadow(0 2px 0 #0d0b1f);pointer-events:none;animation:tut-seta 700ms ease-in-out infinite}
+@keyframes tut-seta{0%,100%{translate:-50% -7px}50%{translate:-50% 1px}}
+body[data-mode="portrait"] #hud:has(#tutor[data-alvo="t-fire"]) #t-fire::after,
+body[data-mode="portrait"] #hud:has(#tutor[data-alvo="t-split"]) #t-split::after{left:auto;bottom:auto;right:calc(100% + 12px);top:50%;translate:0 -50%;
+  border:13px solid transparent;border-left:18px solid var(--accent,#ffc22e);border-right:0;animation-name:tut-seta-e}
+@keyframes tut-seta-e{0%,100%{translate:-7px -50%}50%{translate:1px -50%}}
+@media (prefers-reduced-motion:reduce){
+  #hud:has(#tutor[data-alvo="t-fire"]) #t-fire::after,#hud:has(#tutor[data-alvo="t-split"]) #t-split::after{animation:none}}
 
 /* ── O QUE OS TRÊS DIVIDEM NO FIM: a promessa da skin (com o Marte) e a contagem ── */
 #tutor-fim .tp-prom{display:flex;align-items:center;gap:12px;margin-top:6px;max-width:min(48ch,92vw);

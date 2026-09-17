@@ -26,6 +26,7 @@ import * as R from "./rules.js";
  * @property {number} vidas        quantas vezes esta pessoa já nasceu NESTA sala (1 = a primeira vida)
  * @property {number} graceUntil   até quando vale a graça do nascimento (0 = não vale; ver rules.sobGraca)
  * @property {number} killerSlot   quem matou a vida anterior (-1 = ninguém); a próxima nasce longe dele
+ * @property {number} ab           braço do A/B (0|1), da paridade do id da CONTA (`Sim.bracoAB`); só o `bot.js:manso` lê. 0 = controle
  * @property {Body[]} pieces        refs (ordem de criação; compactada 1×/passo)
  * @property {number} team          equipe (-1 = sem equipe: todo mundo é inimigo). Fogo amigo e "quem come quem"
  *                                 saem daqui, não do bot — ver rules.sameTeam
@@ -343,11 +344,12 @@ export class World{
 
   // ── jogadores ──
   /** Entra com uma peça (posição dada ou longe de perigos/jogadores). Retorna a peça. */
-  addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.SPAWN_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true}={}){
+  addPlayer(slot,{x=NaN,y=NaN,r=PLAYER.SPAWN_R,isBot=false,missiles=0,team=-1,weapon=WEAPON.MISSILE,spawn=true,ab=0}={}){
     let ps=this.players.get(slot);
     if(!ps){ps={slot,tx:0,ty:0,alive:false,isBot,spawnTick:this.tick,pieces:[],team,weapon,ammo:newAmmo(missiles),weaponPin:false,splitCdUntil:0,ejectCdUntil:0,fireCdUntil:0,autoDefN:0,autoFireAt:0,zoomUntil:0,feastUntil:0,aimLockId:-1,aimLockKind:0,aimLockPc:-1,aimLockUntil:0,
-      ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false,spawnSafe:true,vidas:0,graceUntil:0,killerSlot:-1};this.players.set(slot,ps);}
+      ejectHold:false,ejectHoldAt:0,ejectRamp:0,score:0,splitReq:false,ejectReq:false,fireReq:false,fireAim:false,swapReq:false,spawnSafe:true,vidas:0,graceUntil:0,killerSlot:-1,ab:0};this.players.set(slot,ps);}
     else{this._dropPieces(ps);ps.isBot=isBot;ps.ammo=newAmmo(missiles);ps.team=team;ps.weapon=weapon;ps.weaponPin=false;}
+    ps.ab=ab?1:0;   // fora do if/else: o slot RECICLADO é de outra conta, e herdar o braço dela sujaria o A/B em silêncio
     // `spawn:false` = entrou na SALA mas ainda não no MAPA. É o lobby do battle royale: o jogador existe
     // (ocupa vaga, aparece no PLAYERS, escolhe equipe) e só ganha corpo na largada, via respawnPlayer.
     // Sem isso a única forma de "esperar" seria estar no mundo, comendo — que é outro jogo.

@@ -23,7 +23,7 @@ import { preenche } from "../i18n/index.js";
 import { ETAPA, ETAPAS } from "../game/tutor.js";
 // ⚠️ As duas decisões (qual frase, qual botão) moram num `.js` à parte: o `node --test` não carrega
 // `.jsx`, e uma função de decisão que ninguém testa é onde o par mouse/dedo se inverte em silêncio.
-import { falaDoTutor, promptDoTutor } from "./tutorFala.js";
+import { falaDoTutor, promptClassico, alvoDoTutor } from "./tutorFala.js";
 import { saiDoTutorial } from "../state/actions.js";
 import { PROGRESSO, SKIN_TUTORIAL, skinById } from "@warspace/shared";
 // ── OS QUATRO MODELOS (ui/tutorEstilo.js) ──
@@ -74,7 +74,7 @@ export default function Tutor({ d, tecla }) {
   // explicada. Com a instrução em cima e o prompt embaixo, o miolo da tela (onde o jogo acontece) fica
   // livre; e no dedo o prompt ainda cai ao lado dos botões de toque reais, que é para onde ele aponta.
   return <>
-    <div id="tutor" data-style="classico" data-etapa={d.etapa}>
+    <div id="tutor" data-style="classico" data-etapa={d.etapa} data-alvo={alvoDoTutor(d) || undefined}>
       <Trilha etapa={d.etapa} T={T} />
       {/* ⚠️ A BARRA SÓ EXISTE NA ETAPA 1, e isso é escolha: lá o `pct` é contínuo (sai da massa) e diz
           quanto falta; nas outras duas a etapa é UM gesto, então a barra ficaria parada em zero por
@@ -90,7 +90,7 @@ export default function Tutor({ d, tecla }) {
       </div>
       <button className="tut-sair" onClick={() => saiDoTutorial({ fim: false })}>{T.pular}</button>
     </div>
-    <Prompt p={promptDoTutor(d, T, tecla)} />
+    <Prompt p={promptClassico(d, T, tecla)} />
   </>;
 }
 
@@ -110,7 +110,7 @@ function Completa({ d, T }) {
       <div className="tok-selo">✓</div>
       <div className="tok-tit">{preenche(T.feito, { n })}</div>
       <div className="tok-sub">{T["feito" + n] || ""}</div>
-      {d.auto ? <div className="tok-auto">{T.tiroAuto}</div> : null}
+      {d.auto && n === ETAPA.TIRO ? <div className="tok-auto">{T.tiroAuto}</div> : null}
       {/* ⚠️ Dizer O QUE VEM é o que transforma três lições soltas numa sequência: a tela fecha sozinha, e
           sem esta linha a etapa seguinte começa com o jogador ainda olhando para o elogio da anterior. */}
       {n < ETAPAS ? <div className="tok-prox">{preenche(T.prox, { s: T[TIT_ETAPA[n + 1]] || "" })}</div> : null}

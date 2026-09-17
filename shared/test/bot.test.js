@@ -263,3 +263,39 @@ test("arena Livre: o salto virou ataque de verdade, e o escudo não vaza mais no
   // medido: 81 níveis no gatilho antes, 0 depois — o bot só paga escudo por ESCOLHA, que é saltar.
   assert.ok(eFire<=eSplit*.25,`escudo queimado no gatilho (${eFire}) contra o gasto no salto (${eSplit}): o vazamento voltou`);
 });
+
+test("manso: o preenchimento NÃO foge de quem está sob a graça — e volta a fugir no primeiro abate", ()=>{
+  // `BOT.NOVATO_MANSO` (o 1º abate é de graça). A asserção primária é `press`: ele sai de uma soma, não de um
+  // sorteio, então a cena não depende do rng do cérebro. `mode` é a secundária — é o que o jogador VÊ.
+  // Bot r=40 no slot 0; a "pessoa" r=60 (massa 3.600 < NOVATO_MASS) a 300 px, recém-nascida.
+  const antes=BOT.NOVATO_MANSO;
+  const cena=(modo,{ab=0,gente=true,semGraca=false,zona=false}={})=>{
+    BOT.NOVATO_MANSO=modo;
+    const w=palco(13);
+    w.addPlayer(0,{r:40,isBot:true,x:3000,y:3000});
+    w.addPlayer(1,{r:60,isBot:!gente,x:3300,y:3000,ab});
+    if(semGraca)w.players.get(1).graceUntil=0;          // exatamente o que `rules.eatPiece` faz com quem abateu
+    if(zona)w.setZone({x0:3000,y0:3000,r0:9000,x1:3000,y1:3000,r1:9000,t0:0,t1:Infinity});   // há Battle Royale rolando
+    const b=cerebro(w,0,()=>{},3,2);                    // persona 2: `flee` 1, sem viés de estilo
+    for(let i=0;i<60;i++){w.setTarget(0,3000,3000);w.setTarget(1,3300,3000);b.act(w.tick);w.step();}
+    return b;};
+  try{
+    assert.ok(BOT.NOVATO_MASS>3600&&BOT.SPAWN_GRACE_TICKS>0,"a cena presume a graça de fábrica: sem ela não há o que medir");
+    const off=cena("off");
+    assert.ok(off.press>0,"`off` é o comportamento de SEMPRE: a pessoa maior é ameaça");
+    assert.equal(off.mode,"flee");assert.equal(off.target,1);
+    const todos=cena("todos");
+    assert.equal(todos.press,0,"`todos`: quem está sob a graça não conta como ameaça");
+    assert.notEqual(todos.mode,"flee","...e portanto o bot não foge dela");
+    // a 2ª metade: perto dela ele ANDA DEVAGAR (alvo dentro de SPEED.RAMP = fração da velocidade). Só não fugir
+    // deixava a isca vagando a vmax, ~1,39× mais rápida que quem tem de alcançá-la.
+    const passo=b=>{const pc=b.w.piecesOf(0)[0];return Math.hypot(b.tx-pc.x,b.ty-pc.y);};
+    assert.ok(passo(todos)<=SPEED.RAMP*BOT.MANSO_K+1e-6,`manso tem que andar a ${BOT.MANSO_K} da velocidade (alvo a ${passo(todos).toFixed(1)} px da peça)`);
+    assert.ok(passo(off)>SPEED.RAMP,"...e em `off` o bot corre como sempre");
+    assert.ok(cena("metade",{ab:0}).press>0,"`metade`: o braço 0 é o CONTROLE — o bot foge como sempre");
+    assert.equal(cena("metade",{ab:1}).press,0,"`metade`: só o braço 1 recebe a regra");
+    assert.ok(cena("todos",{semGraca:true}).press>0,"o primeiro abate zera a graça — e o bot VOLTA a fugir (um abate, não uma sala mansa)");
+    assert.ok(cena("todos",{gente:false}).press>0,"controle negativo: bot × bot não muda");
+    assert.ok(cena("todos",{zona:true}).press>0,"no Battle Royale a sala inteira nasce sob graça: lá a regra NÃO vale");
+  }finally{BOT.NOVATO_MANSO=antes;}
+});

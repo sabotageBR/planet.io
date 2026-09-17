@@ -467,3 +467,26 @@ test("...e se o alvo sumir mesmo assim, a etapa REMONTA em vez de travar", () =>
   const p = w.players.get(st.alvo);
   assert.ok(p && p.alive, "e ele está vivo — a lição voltou a existir");
 });
+
+test("ETAPA 2, PARADO: no teto o tutorial ATIRA — um míssil só — e a festa vem do BOOM, marcada como `auto`", () => {
+  // ⚠️ **Isto era código morto, e o painel mostrava o estrago sem dizer o nome dele.** `passoTutor` ligava
+  // `celebra` no mesmo passo em que `ajuda` chegava a 3, e `ajuda()` sai cedo na festa: o `applyFire` do
+  // teto nunca rodou. Na 1.31, 216 `tutor_tiro_auto` contra 135 manuais — desistências mudas aos 18 s, e o
+  // cartão dizendo "Atiramos por você" sem um míssil ter existido.
+  const { w, rot, api, jsons } = banca();
+  vaiPara(w, rot, api, ETAPA.TIRO);
+  const A = AJUDA[ETAPA.TIRO], vistos = new Set();
+  let festa = null, ticks = 0;
+  for (; ticks < emTicks(A.teto + A.folga) + 120 && !festa; ticks++) {
+    const me = vivas(w.players.get(0))[0]; w.setTarget(0, me.x, me.y);   // o aluno não faz NADA
+    w.step(); rot.passo(w, api);
+    for (const m of w.missiles) if (!m.dead && m.owner === 0) vistos.add(m.id);
+    festa = jsons.find(j => j.t === "tutor" && j.festa === ETAPA.TIRO) || null;
+  }
+  assert.ok(vistos.size > 0, "o tutorial tem de ATIRAR de verdade — sem míssil, 'atiramos por você' é mentira");
+  assert.equal(vistos.size, 1, `um míssil só (saíram ${vistos.size}): o míssil tem cd 0 e sem a trava o cinto inteiro sai em três ticks`);
+  assert.ok(festa, "e a etapa fecha");
+  assert.equal(festa.auto, true, "fechou pelo míssil do DIRETOR: entrar como `tutor_tiro` manual sujaria a métrica do celular");
+  assert.ok(ticks < emTicks(A.teto + A.folga), `a festa veio do BOOM (${ticks} ticks), não do fim da folga (${emTicks(A.teto + A.folga)})`);
+  assert.ok(ticks >= emTicks(A.teto), "e não antes do teto: até lá a vez é do aluno");
+});

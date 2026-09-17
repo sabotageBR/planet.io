@@ -275,6 +275,13 @@ export const TUNABLES=[
   // semente, no tick 0, e sumia junto com eles); em 1 toda reposição nasce comível, o que enche a sala de
   // planetinhas e tira do placar o degrau de tamanhos que a abertura existe para contar.
   num('novato','ROOM.ISCA_P','Com que frequência o preenchimento novo nasce comível por um novato','fração','server',0,1,.05,ROOM,'ISCA_P'),
+  // ⚠️ A ISCA NASCE COMÍVEL E MESMO ASSIM NINGUÉM A COME: ela é ~1,39× mais rápida que o recém-nascido e
+  // FOGE dele. Ligado, o preenchimento deixa de perceber como ameaça quem está sob a graça — e como o
+  // primeiro abate já encerra a graça (`rules.eatPiece`), isto vale UM abate por vida, não uma sala mansa.
+  // ⚠️ `metade` É O MODO DE MEDIR, não um meio-termo: só as contas de id ÍMPAR recebem a regra, e as pares
+  // são o controle do MESMO Fit Test (o mesmo zip já deu 1m56 e 2m39 em dois dias — comparar rodadas não
+  // mede nada). Quem lê é `scripts/poki-coorte.mjs`, por `user_id % 2`. Não vale no Battle Royale.
+  opt('novato','BOT.NOVATO_MANSO','O preenchimento NÃO foge do recém-nascido (até o 1º abate dele)','server',BOT.NOVATO_MANSOS,BOT,'NOVATO_MANSO'),
   // ⚠️ O SENTIDO É FÁCIL DE INVERTER: número MAIOR = MENOS proteção. Ele é o quanto o preenchimento precisa
   // ser maior para a regra o considerar atropelamento e mandá-lo ATRAVESSAR; abaixo disso ele come normal.
   // O piso útil é 1,33 e não 1: `EAT.RATIO` é 1,15 de RAIO, ou seja 1,32 de massa — abaixo disso nenhum

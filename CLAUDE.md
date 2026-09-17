@@ -23,6 +23,8 @@ node scripts/loadtest.mjs --n 150 --dur 90    # N clientes DE VERDADE (guest →
 # ⚠️ o alvo é --host (não --url), e --tokens aponta o cache de contas: contra um servidor LOCAL, use um
 #   cache próprio, senão ele reusa os tokens de PRODUÇÃO e todo join volta 4401.
 node scripts/prof-room.mjs --bots 15 --humanos 10   # onde vai o tempo de UMA sala (cérebro · World.step · _consume)
+node scripts/novato-bancada.mjs --manso off|metade|todos   # sala headless com o painel de produção: mortes por idade + 1º abate do novato
+DATABASE_URL=... node scripts/poki-coorte.mjs --de "2026-09-16 20:19-03" --ate "2026-09-17 01:10-03"   # a RÉGUA dos Fit Tests: coorte Poki por braço do A/B (SÓ LEITURA)
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
 DATABASE_URL=... node scripts/skin-art.mjs [--dry]   # sobe a arte de client/public/faces/ para o banco (uma vez por ambiente)
 node scripts/responsive-check.mjs [url]   # a matriz de layout (18 aparelhos × 3 temas × ~60 telas, 7 critérios; RESP_TELAS/RESP_TEMAS recortam)
@@ -1866,6 +1868,71 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   metade que não termina desiste). ⚠️ A pergunta que `gesture` responde é se vale pôr o TIRO antes da
   supernova: no computador a lição da supernova só pede para mover o mouse, e mover não abre gameplay.
   Ficou de fora de propósito, para a 1.30 medir sem mudar o jogo.
+- **QUEM VAI EMBORA NÃO ESTÁ MORRENDO: ESTÁ SEM ACONTECIMENTO — E O 1º ABATE VIROU UM A/B**
+  (`BOT.NOVATO_MANSO`, `bot.js:manso`, `Sim.bracoAB`, `scripts/poki-coorte.mjs`; medido em 17/09/2026 sobre
+  os três Fit Tests de mesma config, 15–16/09, 874 primeiras vidas REAIS da Poki). A 1.31 reprovou com
+  2m23 · 22%, e o diagnóstico não é a 1.31: no nosso banco as três rodadas são o MESMO jogo (≥3 min de
+  partida por conta 24,8 · 22,9 · 23,1%; média 178 · 166 · 178 s) onde a Poki leu 28 · 24 · 22%. O valor
+  verdadeiro é ~24,5% e ~2m30 contra um critério de 25% E 3 min — o percentual é cara-ou-coroa e a média
+  está ~30 s abaixo. Polimento não fecha isso.
+  ⚠️ **O dado que muda a conversa**: **54% das primeiras vidas terminam com o jogador fechando a aba VIVO**,
+  aos 65 s de mediana (só 16% voltam, 18% chegam a 3 min); quem MORRE renasce em **90%** dos casos e chega
+  a 3 min em **68%**. 81% das primeiras vidas acabam sem um único abate, e nelas sai-se vivo 2× mais do
+  que se morre. Sessões de QUALQUER tamanho acabam com a pessoa viva (79–90%), e morte→renascer leva 3,3 s:
+  não é tela de morte, não é anúncio, não é dificuldade. Dez dias foram para PROTEGER o novato — e o
+  primeiro minuto ficou seguro **e vazio**. A única mudança que já saiu do ruído foi o tutorial, que é
+  sucesso roteirizado; a partida real tirava tudo: a isca (`ROOM.ISCA_P`) é ~1,39× mais rápida que o
+  novato e FOGE dele. ⚠️ Há viés de sobrevivência em "abateu → 59–64% chegam a 3 min × 31–41%" (abater
+  leva tempo); é por isso que a aposta entrou como experimento e não como conserto.
+  ⚠️ **A REGRA**: o preenchimento não percebe como AMEAÇA quem está sob a graça (`sobGraca`) — não foge —
+  e, a menos de `BOT.MANSO_DIST`, anda a `BOT.MANSO_K` da velocidade (alvo a `SPEED.RAMP·k` da peça É
+  andar a `k`; só com UMA peça, e nunca fugindo de outro, saindo do gás ou desviando de estrela). A
+  segunda metade veio da BANCADA: só não fugir levou o 1º abate em ≤60 s de 27% para 42%; com as duas,
+  **27% → 46%** e a mediana até o 1º abate de **83 s para 46 s** (`scripts/novato-bancada.mjs --manso`).
+  ⚠️ O piloto da bancada é um cérebro de bot que **despreza presa em campo aberto** ("perseguir quem é
+  mais rápido é perder tempo") — ele nem tenta o que um humano tentaria, então o número de lá SUBESTIMA.
+  ⚠️ **DESLIGA SOZINHA**: `rules.eatPiece` zera o `graceUntil` do matador — é UM abate por vida, não uma
+  sala mansa. E por isso as MORTES do novato sobem (~+13% na bancada): a graça acaba mais cedo. É o
+  esperado, e o dado acima diz que morrer não é o que expulsa ninguém.
+  ⚠️ **`!w.zoneNow()` é obrigatório** (a guarda de `recemChegado`/`applySplit`): no BR a sala INTEIRA
+  nasce sob graça. **`off` é o padrão** e sai na 1ª comparação — zero rng, sementes de teste intactas.
+  ⚠️ **`metade` É O MODO DE MEDIR**: só contas de id ÍMPAR recebem a regra (`ps.ab`, da CONTA — nunca do
+  slot, que recicla, nem da sessão, que é por vida; `users.id` é BIGINT e chega string). Os dois braços
+  saem do MESMO Fit Test — mesmo público, mesmo horário, mesmo zip —, que é a única comparação que o
+  ruído entre rodadas (o zip 1.30 deu 1m56 · 2m39 · 2m28) não come. Quem lê é
+  `DATABASE_URL=… node scripts/poki-coorte.mjs --de … --ate …` (SOMENTE LEITURA, travado na sessão; não lê
+  o `.env`), por `user_id % 2`, e ele acusa painel mexido na janela (a contaminação que já custou 3 rodadas).
+  ⚠️ **O A/A JÁ FOI MEDIDO**: sem tratamento nenhum, ímpares × pares deram 25,0% × 21,0% de ≥3 min nas
+  duas rodadas de 16/09 (1,5 EP). Quatro pontos entre braços num teste só NÃO é efeito — some janelas,
+  leia em EP, e primeiro o MECANISMO ("1ª vida sem abate", ~81% → previsto <55% no braço ímpar).
+- **...E O PAINEL DA POKI MEDIA O TUTORIAL NO LUGAR DA PARTIDA** (`portal/marcos.js:portaoTutorial`,
+  `onConnection` em `state/actions.js`; zip 1.32): o tutorial é uma PARTIDA (LocalServer, mesmo motor), então
+  comer a presa da etapa 3 disparava `first_kill`, cruzar `NOVATO_MASS` na etapa 1 disparava
+  `grace_end_mass` — e, sendo "uma vez por carga", nunca mais na sala real. Lido na 1.31: `first_kill` em
+  60% das cargas contra **19%** de primeiras vidas com abate no banco, para a mesma gente. O LocalServer
+  também "conecta": `connect/match/complete` saía sem `start` (e de novo a cada reconexão) — "Completed
+  141%", e o funil ordenado deles caindo para **12%** em `session/60s`, um número que não existe (o real é
+  60%). E `first_death_<faixa>` deduplicava por STRING: saía uma vez por FAIXA (252 × 159).
+  ⚠️ O portão vem ANTES do `feitos.add` — barrar não pode QUEIMAR o marco (há teste). Quem o liga é o
+  MOTOR, no `game.join` (a porta única), **nunca o código da sala**: `0TUT` é sorteável pelo shard 0.
+  ⚠️ Nomes existentes intactos (o dono tem funis montados); o único novo é **`life/match_real`** —
+  "chegou à 1ª partida de verdade", o passo que faltava entre `tutor_done` e todo o resto.
+- **...E O "ATIRAMOS POR VOCÊ" DA ETAPA 2 NUNCA ATIROU** (`AJUDA[TIRO].folga` em `game/tutor.js`,
+  `st.demo` em `net/tutorServer.js`, `promptClassico`/`tiroAjudaDedo` em `ui/tutorFala.js`, a seta
+  `::after` de `ui.css`): `passoTutor` ligava `celebra` no MESMO passo em que `ajuda` chegava a 3, e
+  `ajuda()` sai cedo na festa — o `applyFire` do teto era CÓDIGO MORTO. Os 216 `tutor_tiro_auto` da 1.31
+  (contra 135 manuais, 85% de tráfego touch) eram desistências mudas aos 18 s, sem um míssil na tela.
+  Hoje o teto tem dois tempos: em `teto` sai `ajuda:3` com a etapa ABERTA, o diretor atira UMA vez
+  (`st.demo` — o míssil tem `cd` 0, sem a trava o cinto sai em três ticks) e a festa vem do BOOM, ou em
+  `teto+folga` ("o teto sempre fecha" continua valendo). `ctx.demo` marca `auto`, senão o tiro do
+  diretor entraria como `tutor_tiro` manual — justo a métrica que mede se o celular consegue atirar.
+  ⚠️ **No DEDO o modelo clássico perdeu a RÉPLICA do botão**: ela pulsava no canto inferior ESQUERDO,
+  `pointer-events:none`, e o toque nela caía no canvas — que no dedo DIRIGE. O botão de verdade mora no
+  DIREITO e não pulsava no `classico` (o de produção; o `data-alvo` só existia nos três candidatos). Agora
+  pulsa, com uma seta ancorada nele por pseudo-elemento (acima; EM PÉ à esquerda, porque lá há outro
+  botão em cima), e a fala do degrau 1+ continua NOMEANDO o botão. ⚠️ Não se mexeu em `AIM_MS_TOUCH` nem
+  se criou "tocar no alvo = tiro" (colide com o direcional). A métrica é `tutor_tiro` × `tutor_tiro_auto`
+  no mobile: ~28–38% manuais → previsto >60%.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade

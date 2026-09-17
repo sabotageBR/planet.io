@@ -12,7 +12,7 @@ import { nickSorteado } from "../util/nick.js";
 import { portal } from "../portal/index.js";
 import { PORTAL, SEM_MENU, entraDiretoEm, tutorialEm } from "../portal/flags.js";
 import { renasceSozinho, pedagioLiberado } from "../portal/primeiraVida.js";
-import { marco, evento, faixaIdade } from "../portal/marcos.js";
+import { marco, evento, marcoMorte, noTutorial } from "../portal/marcos.js";
 import { destinoDoBoot, destinoDaSaida, precisaTutorial } from "./entrada.js";
 import { tutorVisto, marcaTutor, marcaMissao } from "../game/estreia.js";
 import { partesDoDemo } from "../ui/tutorEstilo.js";
@@ -1098,8 +1098,7 @@ export function onDead(info) {
   // ⚠️ O FUNIL DA PRIMEIRA MORTE (portal/marcos.js). A idade vai na FAIXA porque `measure` só aceita
   // strings — e é dela que sai o histograma que o pack 1.21 elegeu como juiz ("se a coluna 1–2 min não
   // cair, o pack falhou"). O painel da Poki não tinha NENHUM evento entre `match` e `session/60s`.
-  marco("first_death");
-  marco("first_death_" + faixaIdade(info.durationS));
+  marcoMorte(info.durationS);
   // ⚠️ ESTA DECISÃO SOBE PARA CÁ PORQUE ELA DECIDE DUAS COISAS, NÃO UMA. Ela já escolhia se a tela de
   // morte abre; agora escolhe também se isto é uma INTERRUPÇÃO de gameplay para o SDK — e essa segunda
   // metade precisa ser escrita no MESMO `app.update` da morte, senão o `gameplayStop` sai antes de
@@ -1228,10 +1227,22 @@ export function onConnection(ev) {
   if (st === "connected") { app.update(s => ({ ...s, conn: "connected", room: ev.room || s.room, overlays: { ...s.overlays, reconn: false }, reconnAttempt: 0 }));
     // o portal precisa saber em que sala o jogador está para oferecer "entrar com o amigo" (o Full da
     // CrazyGames). O código da nossa sala já é único no jogo inteiro, que é o que eles pedem do roomId.
-    if (PORTAL && ev.room) portal.sala(ev.room, true);
+    // ⚠️ **O TUTORIAL TAMBÉM "CONECTA", E ISSO ENTORTAVA O FUNIL INTEIRO.** Ele roda num LocalServer que
+    // responde `{t:"room"}` como qualquer sala, então este bloco rodava para ele — sem nenhum `start`
+    // (`entraNoTutorial` não passa por `entraNaSala`). No painel da 1.31: `connect/match` com "Started
+    // 68%" e "Completed 141%", e o funil ordenado deles caindo de 83% para **12%** no passo seguinte
+    // (`session/60s`), um número que não existe — o real é 60%. Pelo mesmo motivo o portal era avisado
+    // de uma "sala" `0TUT` para convidar amigos.
+    // ⚠️ Quem responde "é o tutorial?" é o MOTOR (`noTutorial`, escrito no `game.join`), NUNCA o código
+    //    da sala: `0TUT` é um código que o shard 0 pode sortear de verdade (T e U estão no alfabeto).
+    // ⚠️ E o `complete` sai UMA vez por `start` (`!matchResolvido`): cada reconexão e cada troca de
+    //    shard passa por aqui de novo, e era a outra metade dos 141%.
+    const real = !noTutorial();
+    if (PORTAL && real && ev.room) portal.sala(ev.room, true);
     // Game Event: "connect" fecha aqui (o WS confirmou). O funil de SESSÃO não abre por conexão — ele
     // é da carga da página e mora em `portal/sessao.js`; abri-lo aqui era o que o amarrava a uma vida.
-    if (PORTAL) { matchResolvido = true; portal.medir("connect", "match", "complete"); } }
+    if (PORTAL && real) { marco("match_real");   // "chegou à primeira partida DE VERDADE" — o passo que faltava entre `tutor_done` e tudo o mais
+      if (!matchResolvido) { matchResolvido = true; portal.medir("connect", "match", "complete"); } } }
   else if (st === "connecting") app.update(s => ({ ...s, conn: "connecting", room: ev.room || s.room }));
   else if (st === "reconnecting") app.update(s => ({ ...s, conn: "reconnecting", reconnAttempt: ev.attempt || 1, overlays: { ...s.overlays, reconn: true } }));
   else if (st === "closed" || st === "error") {
@@ -1241,7 +1252,7 @@ export function onConnection(ev) {
     // Game Event da Poki: a partida nunca chegou a conectar (nada de "complete" ainda) — sem isto essa
     // sessão cairia em "Left", indistinguível de quem só perdeu o interesse. Só a PRIMEIRA vez: uma queda
     // depois de já ter conectado é `reconnecting`/fim de partida normal, não falha de conexão.
-    if (PORTAL && !matchResolvido) { matchResolvido = true; portal.medir("connect", "match", "fail"); }
+    if (PORTAL && !matchResolvido && !noTutorial()) { matchResolvido = true; portal.medir("connect", "match", "fail"); }   // o tutorial não tem `start`, então também não tem `fail`
     // NICK_IN_ROOM não é "deu erro": é "troque o nome". Desde que o nick ficou livre (dois "Messi" são
     // legais no mundo) isso deixou de ser raro — e cai bem no caminho de EQUIPE, onde todos entram pelo
     // mesmo código. Mandar para a tela de Salas era um beco: a frase não diz onde se troca o nome.

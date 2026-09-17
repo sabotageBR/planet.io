@@ -996,6 +996,26 @@ export const BOT={THINK_TICKS:[20,55],FLEE_RATIO:1.25,FLEE_DIST:760,HUNT_RATIO:1
      MESMO problema. Vale para todo mundo, e o guarda-corpo é o painel: os quatro números são tunables
      do grupo "Proteção do novato" e voltam ao que eram sem deploy. */AIM_CHANCE:.75,DIRS:8,WALL_MARGIN:340,MISSILE_FEAR:900,AST_FEAR:2.4,WAYPOINT_DONE:110,FLEE_STEP:760,
   STICK:1.28,HAZ_TTL:6,DANG_N:6,FIRE_CD:[50,130],FEED_CD:40,MISSILE_MIN_D:1100,
+  // ── O PRIMEIRO ABATE É DE GRAÇA (`bot.js:manso`) ──
+  // O preenchimento NÃO percebe como ameaça a pessoa que está sob a graça do novato — ou seja, não FOGE dela.
+  // Medido nos três Fit Tests limpos de 15–16/09 (874 primeiras vidas reais da Poki): 54% terminam com o
+  // jogador fechando a aba VIVO, aos 65 s de mediana, e 81% sem um único abate — enquanto quem MORRE renasce
+  // em 90% dos casos e chega a 3 min em 68%. Quem vai embora não está perdendo: está sem acontecimento. A
+  // isca existe (`ROOM.ISCA_P`), mas é ~1,39× mais rápida que o novato (`vmax ∝ r^-0,449`) e `FLEE_DIST` a
+  // tira da tela antes de ele se orientar. A proteção deixou o primeiro minuto seguro — e vazio.
+  // ⚠️ DESLIGA SOZINHA: `rules.eatPiece` zera o `graceUntil` de quem abateu, então o primeiro bocado devolve
+  //    a sala ao normal. Não é presa mansa para sempre; é UM abate, que é o que separa quem fica de quem sai.
+  // ⚠️ É A/B POR CONSTRUÇÃO (`metade` = contas de id ÍMPAR, `Sim.bracoAB`): o Fit Test tem ±4 pt de ruído
+  //    entre rodadas do MESMO zip, e só dois braços dentro do mesmo teste — mesmo público, mesmo horário —
+  //    medem isto. A leitura é no NOSSO banco, por `user_id % 2` (`scripts/poki-coorte.mjs`).
+  // ⚠️ `off` é o padrão e reproduz o comportamento de sempre, sem um sorteio a mais (as sementes de teste
+  //    não mudam). Só o ramo de AMEAÇA muda; a caça já era barrada por `recemChegado`.
+  // ⚠️ A 2ª METADE, medida na bancada (`scripts/novato-bancada.mjs --manso`): só não fugir levou o 1º abate em
+  //    ≤60 s de 27% para 42%, porque a isca segue vagando a `vmax`. A menos de `MANSO_DIST` de quem está sob a
+  //    graça ela anda a `MANSO_K` da velocidade (um alvo a `SPEED.RAMP·k` da peça É andar a `k`, ver `bot.js:_hand`).
+  MANSO_DIST:520,MANSO_K:.35,
+  NOVATO_MANSO:'off',NOVATO_MANSOS:[{v:'off',label:'Desligado — o preenchimento foge de quem é maior (como sempre)'},
+    {v:'metade',label:'A/B — só para contas de id ÍMPAR (user_id % 2 = 1)'},{v:'todos',label:'Ligado — ninguém foge de quem está sob a graça'}],
   // Quanto dura o ARREMESSO do salto: o tick em que |v| do canal de impulso cai abaixo de BOOST.STOP.
   // DERIVADO, nunca cravado — o filho é dirigível o voo inteiro (integratePiece soma o ponteiro por cima
   // do boost), e é essa janela que o bot usa para segurar a mira na presa em vez de voltar ao flanco.

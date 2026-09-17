@@ -21,12 +21,12 @@
 //      de viagem com o que resta e sair na hora certa, em vez de reagir depois de já estar queimando.
 // PERSONAS dá o estilo, SKILLS dá a mão (reação, pontaria, antecipação, margem da zona, taxa de erro).
 // @ts-check
-import {BOT,BLACKHOLE,STAR,ASTEROID,MISSILE,FOOD_TYPE,isWeaponFood,ZONE,WEAPON,WEAPONS,weaponOf,EAT,SPLIT,TICK_HZ} from "./constants.js";
+import {BOT,BLACKHOLE,STAR,ASTEROID,MISSILE,FOOD_TYPE,isWeaponFood,ZONE,WEAPON,WEAPONS,weaponOf,EAT,SPLIT,SPEED,TICK_HZ} from "./constants.js";
 import {INPUT_FLAG} from "./protocol/constants.js";
 import {clamp} from "./util.js";
 import {createRng} from "./rng.js";
 import {vmaxFor} from "./physics/integrate.js";
-import {incomingMissile,sameTeam,outOfZone,ammoOf,recemChegado} from "./physics/rules.js";
+import {incomingMissile,sameTeam,outOfZone,ammoOf,recemChegado,sobGraca} from "./physics/rules.js";
 
 // Entre duas presas iguais, a humana vale mais: bot que caça bot é chato de ver.
 // ⚠️ MAS SÓ ENQUANTO O BOT É PEQUENO. Este 1,5 valia para todo preenchimento, inclusive o gigante que a
@@ -43,6 +43,20 @@ const bonusHumano=r=>r<=BOT.HUNT.BONUS_MAX_R?HUMAN_BONUS:1;
 // primeiro abate) e um relógio por vida, e manter o espelho passou a significar reescrever as duas —
 // que é o jeito conhecido de elas se separarem. `bot.js` já importava de `rules.js` (`incomingMissile`,
 // `sameTeam`, `outOfZone`, `ammoOf`), então não há ciclo novo nem custo de import.
+/**
+ * O PRIMEIRO ABATE É DE GRAÇA: esta pessoa é invisível como AMEAÇA para o preenchimento?
+ *
+ * A isca nasce comível (`ROOM.ISCA_P`) e mesmo assim 81% das primeiras vidas terminam sem um abate: ela é
+ * ~1,39× mais rápida que o recém-nascido e `FLEE_DIST` a tira da tela antes de ele se orientar. Aqui o bot
+ * simplesmente NÃO FOGE de quem está sob a graça — segue comendo e vagando, e dá para alcançá-lo.
+ * ⚠️ DESLIGA SOZINHA: `rules.eatPiece` zera o `graceUntil` do matador, então vale UM abate por vida.
+ * ⚠️ SÓ O RAMO DE AMEAÇA. A caça já é barrada por `recemChegado`; o BOCADO não muda.
+ * ⚠️ `!w.zoneNow()` é obrigatório, e é a mesma guarda de `recemChegado`/`applySplit`: no Battle Royale
+ *    `_spawnPiece` dá graça à SALA INTEIRA na largada, e sem a linha nenhum bot fugiria de ninguém por 90 s.
+ * ⚠️ `off` sai na PRIMEIRA comparação — zero `massOf`, zero rng: as sementes de teste não se deslocam.
+ * ⚠️ `metade` = só o braço 1 do A/B (`ps.ab`, escrito por `Sim.bracoAB` a partir do id da conta).
+ */
+const manso=(w,o)=>BOT.NOVATO_MANSO!=='off'&&!o.isBot&&(BOT.NOVATO_MANSO==='todos'||o.ab===1)&&!w.zoneNow()&&sobGraca(w,o);
 const TAU=6.28318,PI=Math.PI;
 const SPLIT_R=Math.SQRT2*EAT.RATIO;   // raio mínimo para engolir a presa DEPOIS do salto (r/√2 ≥ 1,15·rb)
 const SKILL_W=BOT.SKILLS.reduce((a,x)=>a+x.w,0);
@@ -128,7 +142,7 @@ export class BotBrain{
     this.flickUntil=0;this.fkx=0;this.fky=0;this.fireReadyAt=0;
     this.wantFire=false;this.wantAim=false;this.wantSplit=false;this.wantWeapon=-1;
     this.fireAt=0;this.swapAt=0;this.swapTries=0;this.feedAt=0;this.feed=-1;
-    this.ed=Infinity;this.haz=null;this.hazAt=0;this.safeAt=0;this.juke=1;this.dn=0;this.press=0;this.alive=0;this.mate=-1;this.lootUntil=0;this.open=1;}
+    this.ed=Infinity;this.haz=null;this.hazAt=0;this.safeAt=0;this.juke=1;this.dn=0;this.press=0;this.alive=0;this.mate=-1;this.lootUntil=0;this.open=1;this.lento=false;}
 
   // ── AÇÃO (todo tick; só conta O(1) — o que varre lista mora no _think) ──────
   act(tick){
@@ -225,7 +239,11 @@ export class BotBrain{
     const lim=BOT.HAND.JITTER_MAX*sk.jitter;
     this.jit=clamp(this.jit*.94+(this.r.next()*2-1)*BOT.HAND.JITTER_STEP*sk.jitter,-lim,lim);
     // a distância só importa abaixo de SPEED.RAMP (32 px), onde a peça FREIA: é assim que o bot para.
-    const D=hold?BOT.HAND.STOP_R:(d<BOT.HAND.DIST?d:BOT.HAND.DIST),a=this.aim+this.jit;
+    // ⚠️ `lento` (o manso, ver `_think`): a velocidade é `vmax·min(d,RAMP)/RAMP`, então um alvo a `RAMP·k` da peça
+    // É andar a `k` da velocidade. Só com UMA peça (dividido, o alvo único cai dentro do cacho — a lição de
+    // `JOY.SPREAD_K`) e nunca fugindo de OUTRO, saindo do gás ou desviando de estrela: aí a pressa é de verdade.
+    const devagar=this.lento&&!this.haz&&this.mode!=="flee"&&this.mode!=="zone";
+    const D=hold?BOT.HAND.STOP_R:devagar?SPEED.RAMP*BOT.MANSO_K:(d<BOT.HAND.DIST?d:BOT.HAND.DIST),a=this.aim+this.jit;
     this.tx=clamp(c.x+Math.cos(a)*D,0,w.w);this.ty=clamp(c.y+Math.sin(a)*D,0,w.h);}
 
   // ── DECISÃO (a cada THINK_TICKS) ───────────────────────────────────────────
@@ -235,7 +253,7 @@ export class BotBrain{
     const fleeRatio=BOT.FLEE_RATIO/p.flee,huntRatio=BOT.HUNT_RATIO/p.hunt;
     // ── varredura ÚNICA de jogadores: ameaça, presa, companheiro e a lista de perigos da fuga ──
     this.dn=0;
-    let prey=-1,pv=-Infinity,preyBig=0,preyX=0,preyY=0,preyPiece=-1,press=0,mate=-1,md=Infinity,mateBig=0,alive=0,threat=-1,td=Infinity,ed=Infinity,thx=0,thy=0;
+    let lento=false,prey=-1,pv=-Infinity,preyBig=0,preyX=0,preyY=0,preyPiece=-1,press=0,mate=-1,md=Infinity,mateBig=0,alive=0,threat=-1,td=Infinity,ed=Infinity,thx=0,thy=0;
     for(const o of w.players.values()){
       if(!o.alive)continue;alive++;if(o===ps)continue;
       const oc=centroid(o,TMP);if(!oc)continue;
@@ -249,7 +267,11 @@ export class BotBrain{
         const gd=q&&q.gd<Infinity?q.gd:d,gx=q&&q.gd<Infinity?q.gx:oc.x,gy=q&&q.gd<Infinity?q.gy:oc.y;
         // ⚠️ `press` continua saindo do CENTRÓIDE: ele é contrato (Room._humor lê press>1.5 e a fala dos bots
         // lê press>1.2), e medir pela peça o infla — a sala inteira passaria a gritar que está sendo caçada.
-        if(d<BOT.FLEE_DIST){press+=(1-d/BOT.FLEE_DIST)*(oc.big/c.big)*sk.flee;
+        // ⚠️ MANSO TEM DUAS METADES, e só a primeira não bastava (medido na bancada: 1º abate ≤60 s de 27% para
+        // 42% — a isca que não foge continua ~1,39× mais rápida, vagando atrás de comida). Perto de quem está sob
+        // a graça ela também ANDA DEVAGAR (`lento`, lido na mão): quem executa o gesto continua sendo a pessoa.
+        if(d<BOT.FLEE_DIST&&manso(w,o)){if(gd<BOT.MANSO_DIST&&c.n===1)lento=true;}
+        else if(d<BOT.FLEE_DIST){press+=(1-d/BOT.FLEE_DIST)*(oc.big/c.big)*sk.flee;
           this._danger(gx,gy,oc.big*2.4,gd);
           if(gd<td){td=gd;threat=o.slot;thx=gx;thy=gy;}}
         // ── BOCADO: o pedaço solto de um gigante, se estiver LIMPO do guarda ──
@@ -261,7 +283,7 @@ export class BotBrain{
         if(!o.isBot&&recemChegado(w,ps,o))continue;   // acabou de cair no mapa, ou ainda é pequeno demais para mim
         const v=oc.big*(o.isBot?1:bonusHumano(c.big))-d*.1;
         if(v>pv){pv=v;prey=o.slot;preyBig=oc.big;preyX=oc.x;preyY=oc.y;preyPiece=-1;}}}
-    this.press=press;this.alive=alive;this.mate=mate;this.ed=ed;
+    this.press=press;this.alive=alive;this.mate=mate;this.ed=ed;this.lento=lento;
     if(threat>=0){this.thx=thx;this.thy=thy;}   // de onde se foge: a PEÇA que engole, não o centro do sujeito
     // companheiro maior e colado: passar massa para quem pode ganhar é a jogada certa em equipe
     this.feed=(mate>=0&&md<340&&mateBig>c.big*1.35&&rng.chance(sk.weapon*.5))?mate:-1;
