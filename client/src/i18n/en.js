@@ -57,8 +57,6 @@ export default {
     fimPromessa: "Play {n} matches and {s} is yours",
     fimIndo: "entering…",
     verbo1: "MOVE", verbo2: "SHOOT", verbo3: "SPLIT",
-    sgtFeito: "MISSION {n} COMPLETE!",
-    sgtFim: "WELL DONE, RECRUIT!",
     cenaSuaVez: "YOUR TURN!",
   },
   admJoin: "🟢 {n} joined the game", admJoinTitle: "warspace.io",

@@ -26,37 +26,27 @@ import { ETAPA, ETAPAS } from "../game/tutor.js";
 import { falaDoTutor, promptClassico, alvoDoTutor } from "./tutorFala.js";
 import { saiDoTutorial } from "../state/actions.js";
 import { PROGRESSO, SKIN_TUTORIAL, skinById } from "@warspace/shared";
-// ── OS QUATRO MODELOS (ui/tutorEstilo.js) ──
-// Este arquivo continua sendo o dono do CLÁSSICO — a tela que está em produção, e a que todos os ⚠️ daqui
-// descrevem. Os três candidatos moram cada um no seu arquivo, e o que os quatro dividem saiu para
-// `tutorPecas.jsx` (a trilha, o desenho do botão, o relógio do fim): quatro cópias divergiriam no primeiro
-// conserto.
+// ── OS DOIS MODELOS (ui/tutorEstilo.js) ──
+// O PADRÃO é o `cena` (a tirinha — `TutorCena.jsx`), escolhido pelo dono do jogo entre três candidatos
+// jogados em bancada. Este arquivo continua sendo o dono do CLÁSSICO — a tela anterior, que todos os ⚠️
+// daqui descrevem e que fica alcançável por `?tutor=classico` enquanto o Fit Test não disser que o `cena`
+// não é pior. O que os dois dividem mora em `tutorPecas.jsx` (a trilha, o desenho do botão, o prompt do
+// rodapé, o relógio do fim): duas cópias divergiriam no primeiro conserto.
 // ⚠️ **`?tutor=` É LIDO NA CARGA DO MÓDULO, e não dá para ser de outro jeito**: quando o destino do boot é
 // o tutorial, `state/actions.js` faz `history.replaceState(null,"",location.pathname)` ANTES do primeiro
 // render — lido dentro do componente, `location.search` já viria vazio e o modelo pedido cairia no padrão
 // sem aviso. É o mesmo molde do `?dead=` de `Dead.jsx`, e funciona porque `App → Hud → Tutor` é import
 // estático: o módulo carrega antes de o boot rodar.
 import { estiloDe } from "./tutorEstilo.js";
-import { Trilha, Glifo, useEntraSozinho } from "./tutorPecas.jsx";
-import TutorLegenda from "./TutorLegenda.jsx";
-import TutorSargento from "./TutorSargento.jsx";
+import { Trilha, PromptRodape, useEntraSozinho } from "./tutorPecas.jsx";
 import TutorCena from "./TutorCena.jsx";
 
 const Q = typeof location !== "undefined" ? new URLSearchParams(location.search).get("tutor") : null;
 /** Um lookup só, e nenhum `if (estilo === …)` espalhado pela tela: o que não estiver aqui é o clássico. */
-const MODELOS = { legenda: TutorLegenda, sargento: TutorSargento, cena: TutorCena };
+const MODELOS = { cena: TutorCena };
 
 /** O título de cada etapa, para a tela de "completa" poder anunciar a próxima. */
 const TIT_ETAPA = { [ETAPA.NOVA]: "novaTit", [ETAPA.TIRO]: "tiroTit", [ETAPA.SPLIT]: "splitTit" };
-
-/** O prompt do CLÁSSICO: o desenho compartilhado (`Glifo`) no invólucro do rodapé, com o rótulo embaixo. */
-function Prompt({ p }) {
-  if (!p) return null;
-  return <div id="tut-prompt" className={"tut-btn tut-btn-" + p.tipo} aria-hidden="true">
-    <Glifo p={p} />
-    {p.tipo !== "tecla" && p.tipo !== "hud" ? <b>{p.rotulo}</b> : null}
-  </div>;
-}
 
 export default function Tutor({ d, tecla }) {
   const LB = useLabels();
@@ -90,7 +80,7 @@ export default function Tutor({ d, tecla }) {
       </div>
       <button className="tut-sair" onClick={() => saiDoTutorial({ fim: false })}>{T.pular}</button>
     </div>
-    <Prompt p={promptClassico(d, T, tecla)} />
+    <PromptRodape p={promptClassico(d, T, tecla)} />
   </>;
 }
 

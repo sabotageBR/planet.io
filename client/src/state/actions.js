@@ -355,7 +355,7 @@ function devQuery() {
  * `suf` = "pre" (a explosão, antes de a lição de mover começar) | "1" | "2" | "3" | "fim" |
  * "ok1".."ok3" (a tela de etapa concluída), com `@ajuda` opcional ("2@2") e `!` para forçar o par do
  * DEDO ("2!"), que tem outras frases e outro prompt.
- * ⚠️ E o MODELO vem na frente, no molde de `dead:<estilo>`: `tutor:sargento:2@1`, `tutor:cena:fim`. Ele é
+ * ⚠️ E o MODELO vem na frente, no molde de `dead:<estilo>`: `tutor:classico:2@1`, `tutor:cena:fim`. Ele é
  * gravado DENTRO do objeto `tutor` (`estilo`), que é de onde `ui/Tutor.jsx` o lê — e ganha do `?tutor=`
  * da URL (ver `estiloDe`): a matriz troca de modelo sem recarregar a página. Sem modelo no sufixo o campo
  * sai `null` e vale a URL, depois o padrão.

@@ -239,10 +239,17 @@ test("a TECLA do prompt é a que o jogador configurou, não uma cravada", () => 
   assert.equal(p.rotulo, "CTRL");
 });
 
-test("NADA DE PROMPT antes de o problema existir", () => {
-  // Na etapa 3, enquanto o jogador ainda está descobrindo que perseguir não funciona (ajuda 0), não há
-  // gesto a pedir. Uma dica que chega antes do problema é ruído; depois do problema é alívio.
-  assert.equal(promptDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0, dedo: false }, T, "ESPAÇO"), null);
+test("NA ETAPA 3 O BOTÃO É DITO DESDE O SEGUNDO ZERO — no mouse e no dedo", () => {
+  // ⚠️ ISTO INVERTE um teste que morou aqui ("NADA DE PROMPT antes de o problema existir"). A etapa 3
+  // guardava o botão para o degrau 1, 5 s depois, para o DIVIDIR chegar como alívio. No teste do dono do
+  // jogo o que aconteceu foi "no dividir ele não sabe qual botão apertar": cinco segundos correndo atrás
+  // do inalcançável sem nada na tela dizendo o que fazer leem como o jogo não respondendo.
+  for (const ajuda of [0, 1, 2]) {
+    assert.deepEqual(promptDoTutor({ etapa: ETAPA.SPLIT, ajuda, dedo: false }, T, "ESPAÇO"),
+      { tipo: "tecla", rotulo: "ESPAÇO" }, "mouse, ajuda " + ajuda);
+    assert.equal(promptDoTutor({ etapa: ETAPA.SPLIT, ajuda, dedo: true }, T, "ESPAÇO").tipo, "hud", "dedo, ajuda " + ajuda);
+  }
+  // o que continua sem prompt: o FIM (não há gesto) — e a explosão, no teste logo abaixo
   assert.equal(promptDoTutor({ etapa: ETAPA.FIM, ajuda: 0, dedo: false }, T, "ESPAÇO"), null);
 });
 
@@ -281,13 +288,18 @@ test("depois do primeiro terço a instrução vira ELOGIO, não repetição", ()
   assert.equal(d(.5, true), "novaMais");
 });
 
-test("NA ETAPA 3 O DIAGNÓSTICO VEM ANTES DA ORDEM", () => {
-  // ⚠️ `splitNao` ("CORRENDO VOCÊ NUNCA ALCANÇA") é a lição — a presa é mais rápida por FÍSICA, não por
-  // falta de habilidade. Repetir "DIVIDA PARA ALCANÇAR" no degrau 1 só mandaria de novo, mais alto, o
-  // que o jogador acabou de tentar sem sucesso.
-  assert.deepEqual(falaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0, pct: 0, dedo: false }, T, "ESPAÇO"),
-    ["splitTit", "splitCaca"]);
-  assert.equal(falaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 1, pct: 0, dedo: false }, T, "ESPAÇO")[0], "splitNao");
+test("NA ETAPA 3 A FRASE DIZ O OBJETIVO E O COMO — com a TECLA do jogador —, e o diagnóstico entra no degrau 1", () => {
+  // ⚠️ A ordem dentro da frase importa: o salto sai na direção do ponteiro/rumo, então quem divide sem estar
+  // indo para a presa salta para o nada. OBJETIVO primeiro ("coma o planeta pequeno"), COMO depois.
+  const T2 = new Proxy({}, { get: (_, k) => k === "splitMouse" ? "aperte {k}" : String(k) });
+  assert.deepEqual(falaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0, pct: 0, dedo: false }, T2, "CTRL"),
+    ["splitTit", "splitCaca aperte CTRL"]);
+  assert.deepEqual(falaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0, pct: 0, dedo: true }, T2, "CTRL"),
+    ["splitTit", "splitCaca splitDedo"]);
+  // ⚠️ `splitNao` ("CORRENDO VOCÊ NUNCA ALCANÇA") continua sendo a lição para quem ainda não foi — a presa é
+  // mais rápida por FÍSICA, não por falta de habilidade —, e ela não apaga o botão da frase.
+  assert.deepEqual(falaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 1, pct: 0, dedo: false }, T2, "CTRL"),
+    ["splitNao", "aperte CTRL"]);
 });
 
 test("A ETAPA 3 NÃO DEIXA O JOGADOR CORRER MAIS DE 5 s ATRÁS DO IMPOSSÍVEL", () => {
@@ -309,17 +321,16 @@ test("cada etapa tem o SEU verbo, e o FIM não tem nenhum", () => {
   assert.equal(v(ETAPA.FIM), "");
 });
 
-test("A TIRINHA DA ETAPA 3 NÃO MOSTRA O SALTO ANTES DE O PROBLEMA EXISTIR", () => {
-  // ⚠️ É o mesmo tempo duplo de `promptDoTutor`. Com `ajuda 0` o jogador ainda está descobrindo que correr
-  // não alcança — e é essa descoberta que faz o DIVIDIR ser um alívio. A tirinha do salto no segundo zero
-  // entregaria a resposta antes da pergunta.
-  assert.equal(cenaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0 }), "caca");
-  assert.equal(cenaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 1 }), "salto");
-  assert.equal(cenaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 2 }), "salto");
-  // …e as duas decisões NUNCA discordam: há tirinha de salto se, e só se, há prompt de dividir
-  for (const ajuda of [0, 1, 2, 3])
-    assert.equal(cenaDoTutor({ etapa: ETAPA.SPLIT, ajuda }) === "salto",
-      !!promptDoTutor({ etapa: ETAPA.SPLIT, ajuda, dedo: false }, T, "ESPAÇO"), "ajuda " + ajuda);
+test("NA ETAPA 3 A FRASE, O PROMPT, A TIRINHA E O BOTÃO QUE PULSA ANDAM JUNTOS", () => {
+  // São quatro decisões separadas falando do MESMO gesto. Uma tirinha mostrando o salto sem a frase dizer a
+  // tecla — ou o botão pulsando sem prompt nenhum — é a tela se contradizendo, e foi exatamente um
+  // desencontro desses ("a dica só chega no degrau 1") que o dono do jogo viu como "não sabe o que apertar".
+  for (const ajuda of [0, 1, 2, 3]) for (const dedo of [false, true]) {
+    const d = { etapa: ETAPA.SPLIT, ajuda, pct: 0, dedo };
+    assert.equal(cenaDoTutor(d), "salto", "ajuda " + ajuda);
+    assert.ok(promptDoTutor(d, T, "ESPAÇO"), "prompt, ajuda " + ajuda);
+    assert.equal(alvoDoTutor(d), dedo ? "t-split" : null, "botão real, ajuda " + ajuda);
+  }
 });
 
 test("na EXPLOSÃO a tirinha é a de espera — sem gesto, como o prompt", () => {
@@ -329,10 +340,13 @@ test("na EXPLOSÃO a tirinha é a de espera — sem gesto, como o prompt", () =>
   assert.equal(cenaDoTutor({ etapa: ETAPA.FIM }), null);
 });
 
-test("a COMEMORAÇÃO anuncia a próxima lição, mas nunca antecipa o salto", () => {
+test("a COMEMORAÇÃO já mostra a tirinha da PRÓXIMA lição — a pausa vira pré-aula", () => {
   assert.equal(proximaCena(ETAPA.NOVA), "tiro");
-  assert.equal(proximaCena(ETAPA.TIRO), "caca", "depois do tiro vem o OBJETIVO da etapa 3, não a resposta dela");
+  assert.equal(proximaCena(ETAPA.TIRO), "salto");
   assert.equal(proximaCena(ETAPA.SPLIT), null);
+  // …e a tirinha anunciada é SEMPRE a que a etapa seguinte abre mostrando
+  for (const e of [ETAPA.NOVA, ETAPA.TIRO])
+    assert.equal(proximaCena(e), cenaDoTutor({ etapa: e + 1, ajuda: 0, pre: false }), "etapa " + e);
 });
 
 test("o cartão só vira PÍLULA na etapa 1, depois do primeiro pedaço — e REABRE quando a ajuda chega", () => {
@@ -352,11 +366,28 @@ test("O BOTÃO DE VERDADE SÓ PULSA NO DEDO, e só quando há o que apertar", ()
   // REAL — a réplica desenhada convida a criança a tocar nela, o toque dirige o planeta e nada explode.
   assert.equal(alvoDoTutor({ etapa: ETAPA.TIRO, ajuda: 0, dedo: true }), "t-fire");
   assert.equal(alvoDoTutor({ etapa: ETAPA.SPLIT, ajuda: 1, dedo: true }), "t-split");
-  assert.equal(alvoDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0, dedo: true }), null, "antes do problema, nada pulsa");
+  assert.equal(alvoDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0, dedo: true }), "t-split", "desde o segundo zero");
+  assert.equal(alvoDoTutor({ etapa: ETAPA.TIRO, ajuda: 0, dedo: true, pre: true }), null, "na explosão, nada pulsa");
   assert.equal(alvoDoTutor({ etapa: ETAPA.NOVA, ajuda: 0, dedo: true }), null, "mover não tem botão");
   for (const etapa of [ETAPA.NOVA, ETAPA.TIRO, ETAPA.SPLIT, ETAPA.FIM])
     assert.equal(alvoDoTutor({ etapa, ajuda: 2, dedo: false }), null, "mouse, etapa " + etapa);
   // …e o botão que pulsa é sempre o MESMO que o prompt aponta
   for (const [etapa, ajuda] of [[ETAPA.TIRO, 0], [ETAPA.SPLIT, 1]])
     assert.equal(promptDoTutor({ etapa, ajuda, dedo: true }, T, "ESPAÇO").tipo, "hud");
+});
+
+// ── O PLANETA FICA PRESO ATÉ A ESTRELA ESTOURAR (game/tutor.js:presoNaEspera) ──
+import { presoNaEspera } from "../src/game/tutor.js";
+
+test("ENQUANTO A ESTRELA NÃO ESTOURA O ALUNO NÃO ANDA — e só no tutorial", () => {
+  // ⚠️ Ele ia até a estrela antes da explosão (448 px/s contra ~290 px) e era queimado e estilhaçado pela
+  // primeira coisa que o jogo lhe mostrava. Visto pelo dono do jogo.
+  assert.equal(presoNaEspera(true, { pre: true }), true);
+  assert.equal(presoNaEspera(true, { pre: false }), false, "estourou: a lição de mover começa");
+  assert.equal(presoNaEspera(true, { etapa: 2 }), false);
+  // entre o nascimento e o primeiro {t:"tutor"} o estado ainda não chegou — e a estrela já está lá
+  assert.equal(presoNaEspera(true, null), true);
+  // fora do tutorial isto NUNCA segura ninguém: um `tutor` velho na memória não pode travar uma partida
+  assert.equal(presoNaEspera(false, { pre: true }), false);
+  assert.equal(presoNaEspera(false, null), false);
 });

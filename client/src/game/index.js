@@ -46,7 +46,7 @@ import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
 import {OPCOES_TUTORIAL,criaRoteiro} from "./net/tutorServer.js";
-import {ETAPA as ETAPA_TUTOR} from "./tutor.js";
+import {ETAPA as ETAPA_TUTOR,presoNaEspera} from "./tutor.js";
 import {createMic} from "../audio/mic.js";
 import {SEM_VOZ} from "../portal/flags.js";
 import {createSnapshotBuffer} from "./state/SnapshotBuffer.js";
@@ -1289,7 +1289,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // ⚠️ A PAUSA usa o MESMO caminho, e pelo mesmo motivo. Um overlay não impede o planeta de andar: o
     // ponteiro é lido na JANELA (input/Pointer.js), então o alvo continuaria seguindo o mouse por cima do
     // modal — o jogador abriria o menu para mexer no volume e voltaria tendo atravessado meio mapa.
-    if(roundOver||pausado){
+    // ⚠️ E O TUTORIAL usa o mesmo caminho ENQUANTO A ESTRELA NÃO ESTOURA (`presoNaEspera`, game/tutor.js): o
+    // aluno ia até a estrela antes da explosão e era queimado pela primeira coisa que o jogo lhe mostrava.
+    if(roundOver||pausado||presoNaEspera(souTutorial,tutor)){
       if(own0.length){w=alvo;w.x=cx;w.y=cy;input.setTarget(cx,cy);predictor.setTarget(cx,cy);}
       if(conn.isOpen)input.update(now);
       return;}
@@ -1336,7 +1338,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // Nada de `R.econ` nem de `reduceMotion`: isto é informação de CONTROLE, e o celular fraco é
     // justamente o aparelho que acabou de perder a base+manopla desenhada sob o dedo.
     let heading=null;
-    if(dedo&&joy&&joy.enabled&&joy.state.tem&&joined&&!dead&&!roundOver&&!pausado&&own.length){
+    if(dedo&&joy&&joy.enabled&&joy.state.tem&&joined&&!dead&&!roundOver&&!pausado&&!presoNaEspera(souTutorial,tutor)&&own.length){
       let big=own[0];for(const p of own)if(p.rr>big.rr)big=p;
       rumoFx.x=big.rx;rumoFx.y=big.ry;rumoFx.r=big.rr;rumoFx.dx=joy.state.dx;rumoFx.dy=joy.state.dy;rumoFx.k=joy.state.k;heading=rumoFx;}
     let camPieces=own;   // morto: a câmera acompanha quem o servidor mandou assistir (mesmo slot que a AOI segue), senão congela

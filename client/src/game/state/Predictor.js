@@ -59,10 +59,10 @@ export function leadDe(rttMs,leadAtual=-1){const raw=(rttMs||0)/2*TICK_HZ/1000,c
 export function createPredictor({buffer,input,netstat=null,agora=()=>performance.now()}){
   const pieces=[],hidden=new Map(),old=new Map(),seen=new Set(),holes=[];   // hidden: id → tick de expiração
   const ej={hold:false,req:false,cdUntil:0,holdAt:0};   // agenda da cusparada (ver cabeçalho)
-  let slot=-1,localTick=0,acc=0,synced=false,tx=0,ty=0,dead=false,corrSum=0,corrN=0,lastLead=-1,zone=null,cage=null,updAt=0;
+  let slot=-1,localTick=0,acc=0,synced=false,tx=0,ty=0,temAlvo=false,dead=false,corrSum=0,corrN=0,lastLead=-1,zone=null,cage=null,updAt=0;
   const p={pieces,slot:-1,localTick:0,alpha:0,stats:{corrAvg:0,replaySteps:0,lastCorr:0},
     setSlot(s){slot=p.slot=s;},
-    setTarget(x,y){tx=x;ty=y;},
+    setTarget(x,y){tx=x;ty=y;temAlvo=true;},
     /**
      * Círculo da zona (Battle Royale) no tick local. Precisa entrar na predição pela mesma razão do
      * decaimento: ela muda o RAIO da peça, e sem prever a correção do servidor chegaria 20×/s numa peça
@@ -85,7 +85,13 @@ export function createPredictor({buffer,input,netstat=null,agora=()=>performance
         holes.push({x:s.x,y:s.y,r:s.r,k:Math.min(1,e.influenceR/(s.r*BLACKHOLE.INFLUENCE)),seed:(e.seed||0)/65535});}
       return holes.length?holes:null;},
     /** Avança o relógio local a 60 Hz (chamado por frame); guarda px/py para a interpolação do render. */
-    update(dt){updAt=agora();if(!synced)return;acc+=dt;if(acc>.25)acc=.25;
+    // ⚠️ **SEM ALVO NÃO SE ANDA** (`temAlvo`). O alvo nasce (0,0) e o primeiro `setTarget` só vem no frame
+    // SEGUINTE ao primeiro snapshot (o `enviarInput` de `game/index.js` tira o centróide de `own0`, que é
+    // montado no fim do frame) — então nesse frame a peça prevista andava em direção ao CANTO do mapa, e o
+    // "fique parado" de depois cravava o alvo nesse ponto já deslocado, com o servidor indo atrás. Medido no
+    // tutorial, onde o planeta tem de ficar imóvel até a estrela estourar: ~35 px de deriva num frame lento.
+    // É o mesmo argumento do `InputSender`, que não manda nada antes do primeiro alvo.
+    update(dt){updAt=agora();if(!synced||!temAlvo)return;acc+=dt;if(acc>.25)acc=.25;
       const hs=acc>=DT?p.holes():null;
       // ao vivo, o hold LOCAL é o que o servidor vai ver. O toque avulso (EJECT sem hold) fica só para o replay:
       // ele custa um único recuo de 12 px, corrigido no snapshot seguinte — nada perto dos 106 px/s do hold.
@@ -134,7 +140,7 @@ export function createPredictor({buffer,input,netstat=null,agora=()=>performance
     isHidden(id){return hidden.has(id);},
     /** Peças vivas e visíveis (render: px+(x−px)·alpha+vox — ver WorldView.build). */
     forEach(fn){for(const pc of pieces)if(!pc.dead&&!hidden.has(pc.id))fn(pc);},
-    reset(){pieces.length=0;holes.length=0;hidden.clear();synced=false;acc=0;dead=false;corrSum=corrN=0;lastLead=-1;zone=null;p.alpha=0;
+    reset(){pieces.length=0;holes.length=0;hidden.clear();synced=false;temAlvo=false;acc=0;dead=false;corrSum=corrN=0;lastLead=-1;zone=null;p.alpha=0;
       ej.hold=ej.req=false;ej.cdUntil=ej.holdAt=0;},
     resetStats(){corrSum=corrN=0;p.stats.corrAvg=p.stats.lastCorr=0;},
   };

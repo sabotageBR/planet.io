@@ -77,12 +77,9 @@ export default {
     fimSub: "Você já sabe o básico.",
     fimPromessa: "Jogue {n} partidas e o {s} é seu",
     fimIndo: "entrando…",
-    // ── OS TRÊS MODELOS NOVOS (ui/tutorEstilo.js) — PROVISÓRIAS até a escolha: as do modelo que perder
-    // saem junto com ele. `verbo*` é a PALAVRA GIGANTE de cada etapa (uma palavra só: é o que sobra
-    // legível a dois metros de um celular), `sgt*` são as falas do modelo SARGENTO e `cena*` do CENA.
+    // ── O MODELO `cena` (ui/TutorCena.jsx) — `verbo*` é a PALAVRA GIGANTE de cada etapa (uma palavra só: é
+    // o que sobra legível a dois metros de um celular) e `cenaSuaVez` é o chip ao lado dela.
     verbo1: "MOVA", verbo2: "ATIRE", verbo3: "DIVIDA",
-    sgtFeito: "MISSÃO {n} CUMPRIDA!",
-    sgtFim: "PARABÉNS, RECRUTA!",
     cenaSuaVez: "SUA VEZ!",
   },
   admJoin: "🟢 {n} entrou no jogo", admJoinTitle: "warspace.io",

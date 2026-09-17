@@ -31,20 +31,17 @@ import { PROGRESSO, SKIN_TUTORIAL, skinById } from "@warspace/shared";
 // o Vite emite UM asset compartilhado — zero byte a mais no zip de portal.
 import marte from "../assets/scene/planeta-laranja.webp";
 import terra from "../assets/scene/planeta-azul.webp";
-import lua from "../assets/scene/lua.webp";
 import missil from "../assets/scene/missil.webp";
 
 /**
  * OS TRÊS MASCOTES, E CADA UM TEM UM PAPEL FIXO no tutorial inteiro — no mundo e na tela:
  *   MARTE = VOCÊ (é a `SKIN_TUTORIAL`, o planeta com que o aluno joga);
- *   TERRA = O OUTRO (o alvo da etapa 2 e a presa da 3 nascem com essa skin — `game/net/tutorServer.js`);
- *   LUA   = QUEM ENSINA (a instrutora do modelo `sargento`).
+ *   TERRA = O OUTRO (o alvo da etapa 2 e a presa da 3 nascem com essa skin — `game/net/tutorServer.js`).
  * Papel fixo é o que deixa um desenho de 40 px dizer "este é você" sem uma palavra.
  */
 export const ARTE = {
   marte: { src: marte, w: 619, h: 640 },
   terra: { src: terra, w: 640, h: 616 },
-  lua: { src: lua, w: 486, h: 609 },
   missil: { src: missil, w: 256, h: 130 },   // não é personagem: é o míssil do cenário, para a tirinha do tiro
 };
 
@@ -81,11 +78,6 @@ export function Trilha({ etapa, T }) {
   </div>;
 }
 
-/** O chip "1/3" sozinho, para os modelos cuja trilha tem outra forma (segmentos, medalhas). */
-export function Passo({ etapa, T }) {
-  return <b className="tut-passo">{preenche(T.passo, { n: Math.min(Math.max(etapa, 1), ETAPAS), t: ETAPAS })}</b>;
-}
-
 /**
  * O DESENHO do que apertar — um mouse, uma tecla, um toque ou o botão do HUD —, sem invólucro nenhum: quem
  * decide onde ele mora (rodapé, dentro de uma pílula, num balão, num quadro de tirinha) é o modelo.
@@ -107,6 +99,24 @@ export function Glifo({ p }) {
     <line x1="4" y1="20" x2="36" y2="20" className="tm-div" />
     {p.tipo === "mouse-mover" ? <g className="tm-setas"><path d="M20 34 l-7 7 h4 v8 h6 v-8 h4 Z" /></g> : null}
   </svg>;
+}
+
+/**
+ * O PROMPT DO RODAPÉ: o desenho GRANDE do que apertar, pulsando, com o rótulo embaixo (`#tut-prompt`).
+ *
+ * É o "destaque do botão" de quem joga no MOUSE, onde não existe botão nenhum na tela para pulsar — no dedo
+ * quem faz esse papel é o botão REAL do HUD (`alvoDoTutor` → `data-alvo`), e por isso os dois modelos só
+ * montam isto quando não há botão de verdade a apontar: uma réplica apertável longe do botão real convida
+ * a criança a tocar NELA (ver `promptClassico`, em `tutorFala.js`).
+ * ⚠️ No RODAPÉ, longe da instrução, e isso não é estética: empilhados no topo eles desciam até o meio da
+ * tela e tapavam o planeta — a explicação cobrindo a coisa explicada.
+ */
+export function PromptRodape({ p }) {
+  if (!p) return null;
+  return <div id="tut-prompt" className={"tut-btn tut-btn-" + p.tipo} aria-hidden="true">
+    <Glifo p={p} />
+    {p.tipo !== "tecla" && p.tipo !== "hud" ? <b>{p.rotulo}</b> : null}
+  </div>;
 }
 
 /**

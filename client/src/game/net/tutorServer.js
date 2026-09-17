@@ -55,7 +55,7 @@ export const OPCOES_TUTORIAL={seed:7,bots:0,food:0,roundTicks:0,code:"0TUT",
  * Os três mascotes têm papel fixo no tutorial (ver `ARTE` em `ui/tutorPecas.jsx`): o MARTE é o aluno
  * (`SKIN_TUTORIAL`), a TERRA é o outro e a LUA é quem ensina. Os alvos nasciam com `skinId:0`, um disco
  * liso — e a tela fala em "ATIRE NELE" sem que "ele" tenha cara. Com a Terra, o desenho da instrução
- * (a tirinha do modelo `cena`, o retrato no balão do `sargento`) e o planeta no mundo são O MESMO
+ * (a tirinha do modelo `cena`) e o planeta no mundo são O MESMO
  * personagem: é o que deixa uma criança ligar a figura ao alvo sem ler uma palavra.
  * ⚠️ Pelo `mascot`, nunca pelo id cravado, e com o mesmo `?? SKINS[0]` de `SKIN_TUTORIAL`: o import não
  * pode explodir se um dia o mascote sair do catálogo.
@@ -346,7 +346,12 @@ export function criaRoteiro(){
     sobrou:0,ultimo:0,acertou:false,demo:false,comeu:false,moveu:false,ultEnv:"",
     // `pre` = a estrela ainda não estourou, ou seja a lição de mover ainda não começou. Ele vai no JSON
     // porque é a TELA que precisa saber (a fala e o prompt mudam), e o cliente não tem como derivá-lo.
-    pre:false,ancora:null,giro:1,novaLim:0,orbR:0};
+    // ⚠️ `pre` NASCE VERDADEIRO. A etapa 1 sempre abre na espera da explosão, mas ela só é MONTADA (e o
+    // `pre` só era ligado) no passo SEGUINTE ao que abre a etapa — então a primeira mensagem saía com
+    // `pre:false`, o cliente soltava o planeta (`presoNaEspera`, game/tutor.js) e, com o mouse já apontado
+    // para longe, ele andava ~30 px antes de ser preso de novo. Medido em bancada. As etapas 2 e 3 o
+    // desligam na própria montagem, como sempre.
+    pre:true,ancora:null,giro:1,novaLim:0,orbR:0};
 
   function nasce(w,slot,api){
     st.slot=slot;

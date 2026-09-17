@@ -47,8 +47,18 @@ export function falaDoTutor(d, T, tecla) {
     // inteira da etapa 3 em duas linhas: primeiro POR QUE a corrida não funciona — que é física, não
     // falta de habilidade: `vmax ∝ r^-0,449` faz a presa ser sempre mais rápida —, depois o que apertar.
     // Repetir "DIVIDA PARA ALCANÇAR" ali só mandaria de novo, mais alto, o que ele já tentou.
-    if (d.ajuda >= 1) return [T.splitNao, dedo ? T.splitDedo : preenche(T.splitMouse, { k: tecla })];
-    return [T.splitTit, T.splitCaca];
+    const como = dedo ? T.splitDedo : preenche(T.splitMouse, { k: tecla });
+    if (d.ajuda >= 1) return [T.splitNao, como];
+    // ⚠️ **O BOTÃO É DITO DESDE O SEGUNDO ZERO, e isto DESFAZ uma decisão que morou aqui.** A etapa 3 abria
+    // só com o objetivo ("Coma o planeta pequeno!") e guardava o COMO para o degrau 1, 5 s depois — a ideia
+    // era deixar o jogador descobrir sozinho que correr não alcança, para o DIVIDIR chegar como alívio. No
+    // teste do dono do jogo o que aconteceu foi o contrário: "no dividir ele não sabe qual botão apertar".
+    // Cinco segundos perseguindo algo que a física torna inalcançável, sem nada na tela dizendo o que
+    // fazer, não leem como suspense — leem como o jogo não respondendo. A mediana de uma 1ª vida é 31 s.
+    // A frase junta as duas metades, e a ordem importa: o OBJETIVO primeiro (o salto sai na direção do
+    // ponteiro/rumo — quem divide sem estar indo para a presa salta para o nada), o COMO depois.
+    // O diagnóstico ("CORRENDO VOCÊ NUNCA ALCANÇA") continua entrando no degrau 1, para quem ainda não foi.
+    return [T.splitTit, T.splitCaca + " " + como];
   }
   return ["", ""];
 }
@@ -62,9 +72,8 @@ export function falaDoTutor(d, T, tecla) {
  * dizendo a tecla — `#hud-cd` é `display:none` nos três temas e `#touch` só aparece com `pointer:coarse`.
  * ⚠️ A tecla vem do JOGADOR (`prefs.keySplit` é configurável, e o `code` é a posição física, então vale em
  * ABNT, QWERTY e AZERTY). Cravar "ESPAÇO" aqui seria uma legenda que mente para quem remapeou.
- * ⚠️ `null` quando não há gesto a pedir — a etapa 3 antes de o jogador descobrir que perseguir não
- * funciona. Uma dica que chega ANTES do problema é ruído; depois do problema é alívio, e é a razão de a
- * etapa 3 ter dois tempos.
+ * ⚠️ `null` só quando não há gesto a pedir: a fase `pre` (a estrela ainda não estourou) e o FIM. A etapa 3
+ * JÁ TEVE dois tempos (nada de prompt antes do degrau 1) — saiu: ver o ⚠️ de `falaDoTutor`.
  * @returns {{tipo:string,rotulo:string}|null}
  */
 export function promptDoTutor(d, T, tecla) {
@@ -76,12 +85,12 @@ export function promptDoTutor(d, T, tecla) {
       : dedo ? { tipo: "toque", rotulo: T.btnDedoTocar } : { tipo: "mouse-mover", rotulo: T.btnMouseMover };
   if (d.etapa === ETAPA.TIRO)
     return dedo ? { tipo: "hud", rotulo: T.btnDedoMissil } : { tipo: "mouse-clique", rotulo: T.btnMouseClicar };
-  if (d.etapa === ETAPA.SPLIT && d.ajuda >= 1)
+  if (d.etapa === ETAPA.SPLIT)
     return dedo ? { tipo: "hud", rotulo: T.btnDedoDividir } : { tipo: "tecla", rotulo: tecla };
   return null;
 }
 
-// ── O QUE OS TRÊS MODELOS NOVOS PERGUNTAM (ui/tutorEstilo.js) ─────────────────
+// ── O QUE O MODELO `cena` PERGUNTA A MAIS (ui/TutorCena.jsx) ──────────────────
 // Moram aqui, e não nos `.jsx` de cada modelo, pelo motivo do cabeçalho: são DECISÕES, e decisão que mora
 // num `.jsx` é decisão que ninguém testa. Nenhuma delas muda o que `falaDoTutor`/`promptDoTutor` dizem —
 // os modelos mudam a FORMA da aula, nunca o conteúdo.
@@ -97,32 +106,30 @@ export function verboDoTutor(d, T) {
 }
 
 /**
- * QUAL TIRINHA o modelo `cena` desenha: `espera` · `nova` · `tiro` · `caca` · `salto`, ou `null`.
+ * QUAL TIRINHA o modelo `cena` desenha: `espera` · `nova` · `tiro` · `salto`, ou `null`.
  *
- * ⚠️ **A ETAPA 3 TEM DUAS, E A ORDEM É A LIÇÃO.** `caca` mostra o OBJETIVO (coma o planeta pequeno) e só
- * com `ajuda>=1` entra `salto`, que mostra o COMO. É o mesmo tempo duplo de `promptDoTutor`, que devolve
- * `null` ali: uma dica que chega antes do problema é ruído. Mostrar o salto no segundo zero entregaria a
- * resposta antes de o jogador descobrir que correr não alcança — e é essa descoberta que faz o botão de
- * DIVIDIR ser um alívio em vez de mais uma ordem.
+ * ⚠️ A etapa 3 JÁ TEVE duas (`caca`, só o objetivo, e `salto` a partir do degrau 1). Hoje é o `salto` desde
+ * o segundo zero, pelo mesmo motivo do ⚠️ de `falaDoTutor`: o dono do jogo viu o aluno sem saber qual botão
+ * apertar. As três decisões (a frase, o prompt e a tirinha) andam JUNTAS — há teste travando isso, porque
+ * uma tirinha mostrando o salto sem a frase dizer a tecla (ou o contrário) é a tela se contradizendo.
  * ⚠️ `espera` é a fase `pre` (a estrela ainda não estourou): sem gesto na tirinha, porque não há o que
  * fazer ainda — o mesmo argumento que tira o prompt dessa fase.
- * @returns {"espera"|"nova"|"tiro"|"caca"|"salto"|null}
+ * @returns {"espera"|"nova"|"tiro"|"salto"|null}
  */
 export function cenaDoTutor(d) {
   if (d.etapa === ETAPA.NOVA) return d.pre ? "espera" : "nova";
   if (d.etapa === ETAPA.TIRO) return "tiro";
-  if (d.etapa === ETAPA.SPLIT) return d.ajuda >= 1 ? "salto" : "caca";
+  if (d.etapa === ETAPA.SPLIT) return "salto";
   return null;
 }
 
 /**
- * A tirinha que a tela de ETAPA COMPLETA mostra como "A SEGUIR" — a pausa de `SOBRA_MS` vira pré-aula.
- * ⚠️ Depois da etapa 2 vem `caca`, NUNCA `salto`: pelo motivo de cima, antecipar o salto na comemoração
- * estragaria a etapa seguinte inteira. Depois da 3 não há próxima.
- * @returns {"tiro"|"caca"|null}
+ * A tirinha que a tela de ETAPA COMPLETA mostra como "A SEGUIR" — a pausa de `SOBRA_MS` vira pré-aula: o
+ * aluno chega à etapa seguinte já tendo visto o gesto e o botão dela. Depois da 3 não há próxima.
+ * @returns {"tiro"|"salto"|null}
  */
 export function proximaCena(etapa) {
-  return etapa === ETAPA.NOVA ? "tiro" : etapa === ETAPA.TIRO ? "caca" : null;
+  return etapa === ETAPA.NOVA ? "tiro" : etapa === ETAPA.TIRO ? "salto" : null;
 }
 
 /**
@@ -155,7 +162,7 @@ export function formaDoCartao(d) {
 export function alvoDoTutor(d) {
   if (!d.dedo || d.pre) return null;
   if (d.etapa === ETAPA.TIRO) return "t-fire";
-  if (d.etapa === ETAPA.SPLIT && d.ajuda >= 1) return "t-split";
+  if (d.etapa === ETAPA.SPLIT) return "t-split";   // desde o segundo zero — ver o ⚠️ de `falaDoTutor`
   return null;
 }
 
@@ -167,7 +174,7 @@ export function alvoDoTutor(d) {
  * DIRIGE o planeta. Ele vira, nada explode, e a pessoa conclui que o jogo não responde. O botão de verdade
  * mora no canto DIREITO. Duas coisas pedindo o mesmo toque em cantos opostos é o defeito; com o `#t-fire`
  * real pulsando e com seta (`alvoDoTutor` → `data-alvo`), o olho tem UM lugar para ir.
- * ⚠️ Função à parte: o retorno de `promptDoTutor` é contrato (`deepEqual` nos testes) e os três modelos
- * candidatos o usam como está. No mouse nada muda — lá não há botão na tela, e o prompt É a instrução.
+ * ⚠️ Função à parte: o retorno de `promptDoTutor` é contrato (`deepEqual` nos testes) e o modelo `cena`
+ * o usa como está. No mouse nada muda — lá não há botão na tela, e o prompt É a instrução.
  */
 export const promptClassico = (d, T, tecla) => alvoDoTutor(d) ? null : promptDoTutor(d, T, tecla);

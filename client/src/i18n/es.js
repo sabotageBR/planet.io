@@ -57,8 +57,6 @@ export default {
     fimPromessa: "Juega {n} partidas y el {s} es tuyo",
     fimIndo: "entrando…",
     verbo1: "MUÉVETE", verbo2: "DISPARA", verbo3: "DIVÍDETE",
-    sgtFeito: "¡MISIÓN {n} CUMPLIDA!",
-    sgtFim: "¡FELICIDADES, RECLUTA!",
     cenaSuaVez: "¡TU TURNO!",
   },
   admJoin: "🟢 {n} entró al juego", admJoinTitle: "warspace.io",

@@ -70,6 +70,28 @@ export const AJUDA = {
   [ETAPA.SPLIT]: { d1: 5000, d2: 12000, teto: 24000 },
 };
 
+/**
+ * O ALUNO ESTÁ PRESO NO LUGAR? — enquanto a estrela não estoura, o planeta NÃO ANDA.
+ *
+ * ⚠️ **ELE TROMBAVA NA ESTRELA ANTES DE ELA EXPLODIR.** A etapa 1 abre com a estrela inteira a ~290 px e o
+ * aviso "A ESTRELA VAI EXPLODIR!" — e a 448 px/s um novato que segue o instinto (ir até a coisa que brilha)
+ * chega nela em menos de um segundo. O diretor até ADIAVA o estouro com o aluno perto (`CENA.NOVA_SAFE`,
+ * com teto de 4 s), mas adiar não resolve: ele encosta, a estrela o queima e estilhaça, e a PRIMEIRA coisa
+ * que o jogo faz com quem acabou de chegar é puni-lo por obedecer ao aviso. Visto pelo dono do jogo.
+ * Preso, a explosão vira o que ela sempre devia ter sido: a ABERTURA da cena, assistida de longe — e só
+ * então a lição de mover começa, já com os pedaços na tela.
+ * ⚠️ `!t` TAMBÉM PRENDE: entre o nascimento e o primeiro `{t:"tutor"}` há alguns ticks em que o estado
+ * ainda não chegou; sem isso o planeta já sairia andando nesse intervalo, com a estrela logo ali.
+ * ⚠️ Quem executa é o `enviarInput` de `game/index.js`, pelo MESMO caminho da pausa e do fim de rodada
+ * (mandar o alvo em cima do próprio centróide — no modelo do agar, distância zero é peça imóvel). Parar de
+ * MANDAR input não serviria: sem alvo novo o mundo segue movendo a peça na direção velha. E tem de ser no
+ * cliente: é ele que alimenta a predição das peças próprias, e segurar só no mundo faria a peça predita
+ * andar e ser puxada de volta a cada snapshot.
+ * @param {boolean} souTutorial a partida em curso é o tutorial?
+ * @param {{pre?:boolean}|null} t o último `{t:"tutor"}` recebido
+ */
+export const presoNaEspera = (souTutorial, t) => !!souTutorial && (!t || !!t.pre);
+
 /** Estado zerado. `desde` 0 = a etapa ainda não abriu (quem a abre é o primeiro passo). */
 export const TUTOR0 = { etapa: ETAPA.NOVA, desde: 0, feito: 0, ajuda: 0, auto: 0 };
 

@@ -1647,50 +1647,60 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **A Marte SAIU de `AD_GIFT_SKINS`** (Terra e Lua ficam): nas duas portas a barra seria decorativa —
   ninguém espera três partidas por algo que um vídeo de 30 s entrega. Sobrando duas, **o `rewardedBreak`
   mantém os seus dois chamadores** (Loja e tela de morte), que é o item que a Poki cobra por escrito.
-- **A TELA DO TUTORIAL TEM TRÊS MODELOS CANDIDATOS, E ELES SÃO PROVISÓRIOS** (`ui/tutorEstilo.js`,
-  `ui/tutorPecas.jsx`, `ui/TutorLegenda|TutorSargento|TutorCena.jsx`, o bloco "OS TRÊS MODELOS CANDIDATOS"
-  no fim de `ui.css`): o dono do jogo pediu três formas da mesma aula para ESCOLHER jogando —
-  `localhost:5174/?tutor=1|2|3` (`=4` é o clássico, que continua sendo o `PADRAO` e o que está em produção).
-  **LEGENDA** = tudo numa faixa no topo (três segmentos + uma pílula com o desenho do botão dentro da
-  frase) e a etapa completa é um SELO, sem cartão e sem véu — o jogador nunca perde o controle;
-  **SARGENTO** = a Lua Soldado com balão de quadrinho e três medalhas ★☆☆; **CENA** = uma tirinha de três
-  quadros (gesto ▸ ação ▸ resultado) que ensina sem depender de ler, encolhe para pílula no primeiro
-  pedaço comido e, na pausa entre etapas, já mostra a tirinha da PRÓXIMA lição.
-  ⚠️ **A máquina (`game/tutor.js`), o mundo e as DECISÕES de fala não mudam — muda a FORMA.**
-  `falaDoTutor`/`promptDoTutor` seguem a única fonte do que dizer e do que apertar; o que os modelos
-  perguntam a mais (`verboDoTutor`, `cenaDoTutor`, `proximaCena`, `formaDoCartao`, `alvoDoTutor`) mora no
-  mesmo `tutorFala.js` e é testado. A tirinha da etapa 3 tem DOIS tempos (`caca` → `salto` só com
-  `ajuda>=1`), pelo mesmo motivo de o prompt ser `null` ali: a resposta não pode chegar antes da pergunta.
+- **A TELA DO TUTORIAL É A TIRINHA — o modelo `cena`, escolhido pelo dono do jogo JOGANDO** (`ui/TutorCena.jsx`,
+  `ui/tutorEstilo.js`, `ui/tutorPecas.jsx`, o bloco "O MODELO `cena` DO TUTORIAL" no fim de `ui.css`): houve
+  três candidatos em bancada (`legenda`, `sargento` e `cena`) e os dois que perderam SAÍRAM do código. O
+  `cena` é uma tirinha de três quadros — gesto ▸ ação ▸ resultado — mais a palavra gigante (MOVA · ATIRE ·
+  DIVIDA): ensina sem depender de ler, e o público da Poki é o mundo numa UI de três idiomas. Na etapa 1
+  ela encolhe para uma pílula no primeiro pedaço comido (`formaDoCartao`) e, na pausa entre etapas, a tela
+  de "completa" já mostra a tirinha da PRÓXIMA lição. O clássico fica em `?tutor=classico` (é o `Tutor.jsx`)
+  enquanto o Fit Test não disser que o `cena` não é pior — depois sai, e `tutorEstilo.js` com ele.
+  ⚠️ **A máquina (`game/tutor.js`), o mundo e as DECISÕES de fala são dos DOIS modelos — muda a FORMA.**
+  `falaDoTutor`/`promptDoTutor` seguem a única fonte do que dizer e do que apertar; o que o `cena` pergunta
+  a mais (`verboDoTutor`, `cenaDoTutor`, `proximaCena`, `formaDoCartao`) mora no mesmo `tutorFala.js`.
+  ⚠️ **TRÊS COISAS O DONO DO JOGO VIU JOGANDO, e nenhuma aparecia em teste nem em captura de tela:**
+  **(1) O ALUNO TROMBAVA NA ESTRELA ANTES DE ELA EXPLODIR** (`presoNaEspera` em `game/tutor.js`, lido pelo
+  `enviarInput`): a 448 px/s ele chega aos ~290 px da estrela em menos de um segundo, e a primeira coisa
+  que o jogo fazia com quem obedeceu ao aviso era queimá-lo. Hoje o planeta fica PRESO até o estouro, pelo
+  MESMO caminho da pausa (alvo em cima do próprio centróide). Custou dois consertos que só a bancada
+  mostrou: o `pre` do diretor nascia `false` (a etapa só é montada no passo SEGUINTE ao que a abre, então a
+  1ª mensagem soltava o planeta) e **o `Predictor` andava um frame em direção a (0,0) antes do primeiro
+  alvo** (`temAlvo`) — defeito antigo, de TODO nascimento: o "fique parado" de depois cravava o alvo nesse
+  ponto já deslocado. Medido: 38 px de deriva → 0.
+  **(2) NA ETAPA 3 ELE NÃO SABIA QUAL BOTÃO APERTAR.** A etapa guardava o botão para o degrau 1, 5 s depois,
+  para o DIVIDIR chegar "como alívio" — e o que chegava era o jogo parecendo não responder. Isto DESFEZ uma
+  decisão escrita (e dois testes): a frase (objetivo + como, com a TECLA do jogador), o prompt, a tirinha do
+  salto e o botão que pulsa valem desde o segundo zero, e há teste travando que os QUATRO andam juntos. No
+  MOUSE as etapas de um botão só ganharam o `PromptRodape` grande (o mouse com o esquerdo aceso, a tecla) —
+  o quadro da tirinha tem 60 px e não serve para achar tecla no meio de uma perseguição; no DEDO quem é
+  destacado é o botão DE VERDADE (`data-alvo`: pulso + seta), nunca uma réplica longe dele.
+  **(3) O PARABÉNS ERA LETRA SOLTA NO MEIO DA TELA**, em cima da salva de fogos que sai do planeta. Virou um
+  cartão com superfície própria colado no ALTO (`.tc-fimcard`), com véu mais leve — continua sem botão e
+  sem capturar o ponteiro: quem entra na sala é o relógio (`useEntraSozinho`).
   ⚠️ **SEM PREF, SEM WHITELIST, SEM TUNABLE**: o tutorial é visto UMA vez, antes de existir tela de Opções.
   A ordem é `d.estilo` (a bancada, gravado por `tutorDemo`) > `?tutor=` > `PADRAO` — o CONTRÁRIO de
   `?dead=`, porque a matriz troca de modelo sem recarregar a página. E `?tutor=` é lido NA CARGA DO MÓDULO
   (`Tutor.jsx`): `actions.js` faz `replaceState` antes do primeiro render e apagaria a query. Em DEV,
   `?tutor=N` sozinho já abre o tutorial e a URL fica (F5 não perde o modelo).
   ⚠️ **TRÊS IDS SÃO API** (`#tutor` · `#tutor-ok` · `#tutor-fim`) e carregam o que o HUD faz por `:has()`:
-  `#tutor` esconde só o ruído e MANTÉM o `#touch`; os outros dois escondem tudo. É por isso que a
-  comemoração do LEGENDA renderiza como `#tutor[data-ok]` — o id, e não um `if` no CSS, é o que deixa os
-  botões de toque na tela. `data-etapa` também é API (esconde o bloco de arma nas etapas 1 e 3).
+  `#tutor` esconde só o ruído e MANTÉM o `#touch`; os outros dois escondem tudo. `data-etapa` também é API
+  (esconde o bloco de arma nas etapas 1 e 3). ⚠️ E o `#tut-prompt` é IRMÃO do `#tutor`, nunca filho: ele é
+  absoluto com `bottom`, e dentro de um ancestral posicionado colado no topo o "rodapé" seria o da faixa.
   ⚠️ **OS MASCOTES TÊM PAPEL FIXO, no mundo e na tela**: MARTE = você (`SKIN_TUTORIAL`), TERRA = o outro
   (`SKIN_ALVO` em `tutorServer.js` — o alvo da etapa 2 e a presa da 3 nasciam `skinId:0`, e "ATIRE NELE"
-  falava de alguém sem cara), LUA = quem ensina. É o que deixa um desenho de 30 px dizer "este é você".
-  ⚠️ **O BOTÃO DE VERDADE PULSA nos três** (`data-alvo` → `#hud:has(#tutor[data-alvo="t-fire"]) #t-fire`),
-  só no dedo: a réplica desenhada do MÍSSIL/DIVIDIR convida a criança a tocar NELA, o toque dirige o
-  planeta e nada explode — e a etapa 2 é a que mais perde gente (172 de 1.140).
+  falava de alguém sem cara). É o que deixa um desenho de 30 px dizer "este é você".
   ⚠️ **QUATRO ARMADILHAS DE CSS, todas verificadas**: (1) `ui.css:38` `#hud *{transition:…}` vale (1,0,0)
   e MATA qualquer `transition` escrita só com classe — a barra da etapa 1 do clássico andava em degraus de
-  8 Hz por isso, e foi consertada de carona (`#tutor .tut-barra>i`); toda transição nova leva um ID.
-  (2) `body[data-reduce="1"] *` zera toda duração: nada pode depender do FIM de uma animação, e o "apagado"
-  da tirinha só existe DENTRO do keyframe. (3) `#hud button|a|[role=button]` ganham `pointer-events:auto`:
-  glifo decorativo nunca é nenhum dos três. (4) `h.tutor` é objeto novo a cada 125 ms: o relógio do fim
-  (`useEntraSozinho`) depende de um BOOLEANO, e nenhum componente é definido dentro de outro.
+  8 Hz por isso (`#tutor .tut-barra>i`); toda transição nova leva um ID. (2) `body[data-reduce="1"] *` zera
+  toda duração: nada pode depender do FIM de uma animação, e o "apagado" da tirinha só existe DENTRO do
+  keyframe. (3) `#hud button|a|[role=button]` ganham `pointer-events:auto`: glifo decorativo nunca é
+  nenhum dos três. (4) `h.tutor` é objeto novo a cada 125 ms: o relógio do fim depende de um BOOLEANO, e
+  nenhum componente é definido dentro de outro (remontaria a 8 Hz).
   ⚠️ **E A MATRIZ APROVAVA UMA PÁGINA EM BRANCO.** Um `vite` esquecido aberto há dias na 5173 servia um
   `shared/` defasado (módulo fora da raiz, export novo nunca relido), o import falhava na carga, a sonda
   não achava nada para medir e devolvia 378 combinações limpas. Hoje ela ABORTA sem `window.__tela`, e nas
-  entradas `tutor:*` reprova quando o `data-style` medido não é o pedido. `tut-prompt` entrou nos ids de
-  colisão (o rodapé do tutorial não era medido) e `tutor:2!` — a etapa que mais perde, no dedo — também.
-  ⚠️ **DEPOIS DA ESCOLHA**: `PADRAO` muda; saem os arquivos dos perdedores, os blocos `tl-`/`ts-`/`tc-` do
-  CSS, as chaves `sgt*`/`cena*` do i18n e as entradas da matriz (que saem sozinhas: a lista vem de
-  `ESTILOS`). Nenhum zip de portal sai com os quatro dentro, e a publicação vai SOZINHA num Fit Test.
+  entradas `tutor:*` reprova quando o `data-style` medido não é o pedido. As entradas SEM modelo medem o
+  padrão; as do clássico levam o nome (`tutor:classico:<cara>`) e saem da lista sozinhas com ele.
 - **O PORTÃO DO DIVIDIR ESTAVA ACIMA DO TETO DO NOVATO** (`SPLIT.MIN_R` virou tunable de escopo `wire`,
   grupo "Proteção do novato"; a dica em `client/src/game/dica.js` + `ui/DicaSplit.jsx`): a física torna o
   salto OBRIGATÓRIO para matar alguém — `vmax = 2110,6/r^0,449` faz a presa ser sempre mais rápida que o
