@@ -53,3 +53,23 @@ test("cada entrada sai UMA vez, mesmo cabendo em duas carências", () => {
   assert.equal(new Set(fora.map(x=>x.key)).size, fora.length, "chave repetida no plano");
   assert.equal(fora.length,5);
 });
+
+// ── o MISS sem assar dentro do frame: em que ordem procurar um substituto ──
+import {ordemDeTiers} from "../src/game/renderer/TextureCache.js";
+test("ordemDeTiers: primeiro os MAIORES (reduzir fica nítido, ampliar borra), do mais próximo ao mais distante",()=>{
+  assert.deepEqual(ordemDeTiers(128),[256,512]);
+  assert.deepEqual(ordemDeTiers(256),[512,128]);
+  assert.deepEqual(ordemDeTiers(512),[256,128]);
+  assert.deepEqual(ordemDeTiers(256,[256]),[],"sem outro tier, não há substituto: aí sim assa na hora");
+});
+
+// ── a borda do mundo só reassa quando algum lado dela está na tela ──
+import {bordaVisivel} from "../src/game/renderer/layers/Grid.js";
+test("bordaVisivel: no miolo do mapa não há borda à vista; encostou num lado, há",()=>{
+  const W=12000,H=12000;
+  assert.equal(bordaVisivel({x0:5000,y0:5000,x1:7000,y1:6100},W,H,100),false,"miolo do mapa");
+  assert.equal(bordaVisivel({x0:-200,y0:5000,x1:1800,y1:6100},W,H,100),true,"lado esquerdo");
+  assert.equal(bordaVisivel({x0:5000,y0:11000,x1:7000,y1:12100},W,H,100),true,"lado de baixo");
+  assert.equal(bordaVisivel({x0:90,y0:5000,x1:2090,y1:6100},W,H,100),true,"dentro da margem do traço");
+  assert.equal(bordaVisivel(null,W,H),true,"sem retângulo: o comportamento de sempre");
+});

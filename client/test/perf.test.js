@@ -92,3 +92,34 @@ test("guarda os PIORES, não os primeiros: o engasgo dos dez minutos cabe na jan
   p.ini("raro"); p.fim("raro"); p.frame(900);   // chega DEPOIS de a janela já ter enchido
   assert.match(p.relatorio(), /raro/, "a amostra é ordenada e cortada pelo pior, não pela chegada");
 });
+
+// ── o que acontece FORA do frame, os buracos entre frames e o medidor desligado ──
+import {ehBuraco,resumeLoaf} from "../src/game/perf.js";
+test("ehBuraco: relativo à cadência da TELA (60, 144 e 30 Hz), com piso de 25 ms",()=>{
+  assert.equal(ehBuraco(17,16.7),false);assert.equal(ehBuraco(34,16.7),true);
+  assert.equal(ehBuraco(14,6.9),false,"144 Hz: 14 ms é o dobro do normal mas está abaixo do piso");assert.equal(ehBuraco(26,6.9),true);
+  assert.equal(ehBuraco(40,33.3),false,"30 Hz: 40 ms é um frame quase normal");assert.equal(ehBuraco(60,33.3),true);
+});
+test("⚠️ fase aberta FORA do frame não entra no (não medido) — que sairia NEGATIVO",()=>{
+  let t=0;const p=criaPerf(true,{agora:()=>t,observa:false});
+  p.ini("rede");t+=30;p.fim("rede");            // um onmessage de 30 ms, entre dois frames
+  p.abre();p.ini("render");t+=5;p.fim("render");p.frame(5,70);   // frame barato (5 ms) que chegou 70 ms depois: BURACO
+  const r=p.relatorio();
+  assert.match(r,/1 BURACOS/);assert.match(r,/fora:rede\s+total 30\.0 ms/);
+  assert.match(r,/\(não medido\)\s+total 0\.0 ms/,"5 ms de frame − 5 ms de render = 0, e não −30");
+  assert.match(r,/\(entre frames, sem nome\)\s+total 35\.0 ms/,"70 − 5 do frame − 30 da rede");
+});
+test("frame CARO continua sendo ruim pelo custo, e nota() conta como fora",()=>{
+  let t=0;const p=criaPerf(true,{agora:()=>t,observa:false});
+  p.nota("react",12);p.abre();p.ini("render");t+=20;p.fim("render");p.frame(20,20);
+  const r=p.relatorio();assert.match(r,/1 acima de 17 ms de custo \+ 0 BURACOS/);assert.match(r,/fora:react/);
+});
+test("resumeLoaf: o script culpado, ordenado pelo custo",()=>{
+  const r=resumeLoaf({duration:180.4,blockingDuration:130,scripts:[{invoker:"WebSocket.onmessage",duration:20},{invoker:"TimerHandler:setTimeout",duration:140,forcedStyleAndLayoutDuration:35}]});
+  assert.equal(r.ms,180);assert.equal(r.bloqueio,130);assert.equal(r.scripts[0].quem,"TimerHandler:setTimeout");assert.equal(r.scripts[0].layout,35);
+  assert.deepEqual(resumeLoaf({duration:60}).scripts,[]);
+});
+test("o medidor INERTE tem os MESMOS métodos do vivo — um ausente é TypeError no laço de render, em PRODUÇÃO",()=>{
+  const vivo=Object.keys(criaPerf(true,{observa:false})).sort(),inerte=Object.keys(criaPerf(false)).sort();
+  assert.deepEqual(inerte,vivo);
+});

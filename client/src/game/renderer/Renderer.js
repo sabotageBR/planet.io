@@ -9,7 +9,8 @@ import {createGrid} from "./layers/Grid.js";
 import {createFood,foodAtlas} from "./layers/Food.js";
 import {createEjected,ejectedAtlas} from "./layers/Ejected.js";
 import {createHazards,BH_TEX} from "./layers/Hazards.js";
-import {createPlanets} from "./layers/Planets.js";
+import {createPlanets,instalaFonte} from "./layers/Planets.js";
+import {faceKey,faceBitmap} from "../../theme/faces.js";
 import {createMissiles} from "./layers/Missiles.js";
 import {createAim} from "./layers/Aim.js";
 import {createThreat} from "./layers/Threat.js";
@@ -55,6 +56,7 @@ export async function createRenderer({container,theme,prefs}){
   // A troca de tema NÃO invalida o cache: as chaves de textura já são prefixadas com o id do tema, então os
   // temas convivem, voltar a um céu já visto é acerto de cache e nada é reassado dentro do frame da virada.
   // Quem segura textura sem pedi-la por frame chama cache.keepAlive() (ver TextureCache).
+  /** @type {any[]} temas cuja fonte ainda não foi instalada (ver `warmFonts`) */const fontesPend=[];
   let themed=false;
   function setTheme(t){if(!t||(themed&&t===R.theme))return;themed=true;R.theme=t;for(const l of layers)l.setTheme();mount();}
   setTheme(theme);app.stage.addChild(bg.root,world);
@@ -102,15 +104,35 @@ export async function createRenderer({container,theme,prefs}){
      * arena passaria por dentro do mapa, e ninguém entenderia por quê.
      */
     worldResized(){grid.setTheme();bg.setTheme();},
-    /** Aquece as texturas de planeta das skins presentes (tiers 128/256; a própria também em 512 e na variante isMe). */
+    /**
+     * Aquece as texturas de planeta das skins presentes (tiers 128/256; a própria também em 512 e na variante isMe).
+     * ⚠️ A CHAVE TEM DE SER A MESMA QUE `layers/Planets.js` PEDE, e não era: aqui ela saía SEM `face`, e lá ela
+     * leva `face:faceKey(skin)` — "1" assim que a arte da caricatura/mascote chega. Para toda skin com arte o
+     * aquecimento assava uma textura que NINGUÉM usava e o planeta de verdade dava MISS no frame em que
+     * aparecia. (A foto da skin Retrato fica de fora: a versão dela é por JOGADOR, não por skin.)
+     */
     warmPlanets(skins,meSkin,th=R.theme){const TX=th.textures,cap=R.texCap;
-      for(const sk of skins)for(const size of [128,256])if(size<=cap)R.cache.warm(TX.key("planet",{skin:sk,isMe:false},size),size,(c,s)=>TX.planet(c,s,{skin:sk,isMe:false}));
-      if(meSkin)for(const size of [128,256,512])if(size<=cap)R.cache.warm(TX.key("planet",{skin:meSkin,isMe:true},size),size,(c,s)=>TX.planet(c,s,{skin:meSkin,isMe:true}));},
+      // a arte é capturada JUNTO com a chave: lida só na hora de assar, uma arte que chegasse no meio-tempo
+      // entraria numa textura cuja chave diz "sem arte"
+      const um=(sk,isMe,size)=>{const fK=faceKey(sk),bmp=faceBitmap(sk);R.cache.warm(TX.key("planet",{skin:sk,isMe,avatar:null,face:fK},size),size,(c,s)=>TX.planet(c,s,{skin:sk,isMe,avatarBmp:null,faceBmp:bmp}));};
+      for(const sk of skins)for(const size of [128,256])if(size<=cap)um(sk,false,size);
+      if(meSkin)for(const size of [128,256,512])if(size<=cap)um(meSkin,true,size);},
+    /**
+     * AS FONTES DOS TEMAS, FORA DA PARTIDA (ver `instalaFonte`). `warmFonts` instala uma por momento OCIOSO
+     * do navegador — no boot, com o menu na frente, um bloco de 10–40 ms não é visto por ninguém —, e
+     * `flushFonts` instala na hora o que sobrou: é chamado na ENTRADA da sala, quando a tela está trocando.
+     */
+    warmFonts(temas){for(const th of temas)if(th&&!fontesPend.includes(th))fontesPend.push(th);
+      const prox=()=>{const th=fontesPend.shift();if(!th)return;try{instalaFonte(th);}catch{}if(fontesPend.length)agenda();};
+      const agenda=()=>{if(typeof requestIdleCallback==="function")requestIdleCallback(prox,{timeout:2000});else setTimeout(prox,120);};
+      if(fontesPend.length)agenda();},
+    flushFonts(){while(fontesPend.length){const th=fontesPend.shift();try{instalaFonte(th);}catch{}}},
     /**
      * Deixa o PRÓXIMO céu pronto antes da virada: o fundo é assado na hora (é o item caro) e os atlas de comida
      * e de ejetados entram na fila do cache (2 por frame). Com isso a troca de tema não assa nada e não trava.
      */
     prewarmTheme(th,skins=[],meSkin=null){if(!th||th===R.theme)return;
+      instalaFonte(th);   // rede de segurança: 12 s ANTES da virada, nunca no frame dela
       bg.prewarm(th);
       const fa=foodAtlas(th),ea=ejectedAtlas(th);R.cache.warmAtlas(fa.key,fa.items);R.cache.warmAtlas(ea.key,ea.items);
       rd.warmHazards(th);rd.warmPlanets(skins,meSkin,th);},

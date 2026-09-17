@@ -29,6 +29,17 @@ const REBAKE_K=.04;      // 4% de variação de zoom já justifica reassar
 // espessura APARENTE naquele zoom: em .5 sai exatamente o desenho de antes, e nos outros zooms ela deixa
 // de encolher (que é o que fazia a linha virar subpixel e cintilar).
 const REF=.5;
+/**
+ * ALGUM LADO DA BORDA ESTÁ NA TELA? PURA. `rect` é o retângulo de MUNDO que a câmera enxerga (com a folga
+ * de `cam.rect`), e a borda é o contorno de [0,W]×[0,H]: ela só aparece se a câmera encosta num dos quatro
+ * lados. `margem` cobre a espessura do traço. ⚠️ É a condição que faltava ao rebake: o mundo tem 12 000 px
+ * de lado e a tela vê ~2 000 — na MAIOR parte da partida o jogador está no miolo do mapa, sem borda nenhuma
+ * à vista, e o perímetro inteiro continuava sendo retracejado a cada 4 % de variação de zoom.
+ * @param {{x0:number,y0:number,x1:number,y1:number}|null|undefined} rect
+ */
+export function bordaVisivel(rect,W,H,margem=0){
+  if(!rect)return true;   // sem retângulo não há como saber: comporta-se como sempre
+  return rect.x0<=margem||rect.y0<=margem||rect.x1>=W-margem||rect.y1>=H-margem;}
 
 export function createGrid(R){
   const root=new Container(),ts=new TilingSprite({texture:Texture.WHITE,width:WORLD.w,height:WORLD.h}),border=new Graphics();root.addChild(ts,border);
@@ -60,6 +71,9 @@ export function createGrid(R){
     // ⚠️ **INVISÍVEL NÃO REASSA.** A checagem vinha DEPOIS de `border.visible` e ignorava o resultado
     // dela: fora de partida — o menu no ar, a câmera do lobby passeando — o zoom continua mudando e o
     // perímetro de 48 000 px continuava sendo retracejado, para desenhar uma borda que ninguém vê.
+    // ⚠️ **FORA DA TELA TAMBÉM NÃO REASSA** (`bordaVisivel`): é o mesmo argumento da linha de cima, para o
+    // caso que mais acontece. Quando a câmera volta a encostar num lado, o zoom assado está velho e o
+    // rebake sai no mesmo frame — UM bake, em vez de um a cada 4 % de zoom durante a partida inteira.
     const s=f.cam.scale;
-    if(border.visible&&!(Math.abs(s-bakedScale)<=bakedScale*REBAKE_K))bakeBorder(s);},
+    if(border.visible&&!(Math.abs(s-bakedScale)<=bakedScale*REBAKE_K)&&bordaVisivel(f.rect,WORLD.w,WORLD.h,64/(s>1e-4?s:1)))bakeBorder(s);},
     destroy(){root.destroy({children:true});}};}

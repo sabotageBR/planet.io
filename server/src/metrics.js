@@ -135,6 +135,12 @@ export function createMetrics({vivo=true}={}){
       lentosUlt.push({at:Date.now(),sala:room&&room.code,ms:r1(ms),sim:r1(f.sim||0),envio:r1(f.envio||0),fase:room&&room.phase,
         tick:room&&room.sim?room.sim.tick:0,humanos:room?room.humanCount:0,bots:room&&room.sim?room.sim.botCount():0});
       if(lentosUlt.length>8)lentosUlt.shift();},
+    /**
+     * Zera o atraso de event loop acumulado. Chamado DEPOIS do aquecimento do JIT no boot: aquele bloco de
+     * ~1,6 s é de propósito e acontece com a porta fechada, mas ficava gravado para sempre em `eld.maxTotal`
+     * — e o próximo que lesse o /healthz veria "1674 ms" e iria caçar um engasgo que ninguém sentiu.
+     */
+    zeraEld(){eldMaxTotal=0;eldAnterior=null;eldIdade=0;if(eld)try{eld.reset();}catch{}},
     /** O writer de broadcast foi trocado por um novo de 32 KiB (havia socket com bytes pendentes). */
     writerRot:()=>{writerRot++;},
     /** Para os observadores e o timer. Idempotente; sem isto cada `startServer` de teste deixa um monitor ligado. */

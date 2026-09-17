@@ -17,8 +17,15 @@ export function createBackground(R){
   let stars=null,atlas=null,atlasKey="",band=null,bgTex=null,bgKey="",metas=[],propSprites=[],propKeys=[],bgDirty=false;
   let prevTex=null,fade=0,handoff=false;   // handoff: a próxima bake é troca de tema (guarda o céu velho em vez de destruí-lo)
   let ready=null;   // céu do PRÓXIMO tema, já assado (prewarm): na virada é só trocar a referência
-  /** Resolução do bake do céu: teto de 3,5 Mpx (o canvas é do tamanho da tela). */
-  function resFor(W,H){let res=Math.min(R.res,1.5);const mp=W*H*res*res;return mp>3.5e6?Math.sqrt(3.5e6/(W*H)):res;}
+  /**
+   * Resolução do bake do céu: teto de 3,5 Mpx (o canvas é do tamanho da tela).
+   * ⚠️ `min(R.res,1)`, e o 1 é a decisão: o céu é um gradiente vertical com algumas dezenas de pontos de
+   * 2×2 px — assá-lo a 1,5× (até 19 MB por céu, e até TRÊS convivem: atual + crossfade + pré-assado) comprava
+   * nitidez que não existe na arte. E como `R.res` nunca desce de 1 (`RES_PISO` em game/index.js), a chave do
+   * céu DEIXA DE DEPENDER do nível econômico: trocar de nível não reassa mais o item mais caro do jogo.
+   * As estrelas do parallax são PARTÍCULAS, por cima, e continuam na resolução cheia.
+   */
+  function resFor(W,H){let res=Math.min(R.res,1);const mp=W*H*res*res;return mp>3.5e6?Math.sqrt(3.5e6/(W*H)):res;}
   const skyKey=(th,W,H,res)=>`${th.id}:${W}x${H}:${res.toFixed(2)}`;
   /** Assa o céu de um tema (canvas do tamanho da tela) e devolve {key,tex}. */
   function bakeSky(th,W,H){const res=resFor(W,H),key=skyKey(th,W,H,res);
@@ -77,7 +84,12 @@ export function createBackground(R){
      */
     setRes(){bgDirty=true;},
     render(f){const cam=f.cam,W=R.W,H=R.H;if(!band)return;
-      if(bgDirty){bgDirty=false;bgKey="";bakeBg();}   // resolução nova: assa aqui, no tick do desenho
+      // ⚠️ SEM `bgKey=""` AQUI: ele anulava a guarda `key===bgKey` do `bakeBg` e o céu de tela cheia era
+      // reassado (15–60 ms, síncrono, dentro do frame) em TODA troca de nível econômico — inclusive quando a
+      // resolução do céu nem tinha mudado (o teto de 3,5 Mpx dá o mesmo valor para os níveis 0 e 1 em 1080p
+      // com dpr 2). E a troca de nível acontece justamente quando o FPS já está ruim. O `resize()` mantém o
+      // dele, e tem que manter: a restauração do contexto WebGL depende de forçar o rebake.
+      if(bgDirty){bgDirty=false;bakeBg();}
       R.cache.keepAlive(atlasKey);   // o atlas do parallax fica preso ao ParticleContainer das estrelas
       // ⚠️ Os props pegam a textura UMA vez, em rebuild(), e nunca mais a repedem: sem este carimbo eles são
       // o único consumidor que a eviction pode destruir estando em uso (hoje os três temas devolvem

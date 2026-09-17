@@ -11,6 +11,8 @@ import {ensureFace,faceBitmap,faceKey,faceFile} from "../../../theme/faces.js";
 import {PIECE_FLAG,mergeTicks,rectHas} from "@warspace/shared";
 import {colorOf,dashPolyline,seedUnit} from "../../util.js";
 import {paintTalk,paintCrown,paintNameBand} from "../../../theme/util.js";
+import {ordemDeTiers} from "../TextureCache.js";
+import {perf} from "../../perf.js";
 
 const FS=48,CHARS=[[" ","~"],["¡","ÿ"],["Ā","ž"],"✓◆✦•–—…"],TRAIL_MAX=12,TRAIL_MIN_V=72,POP_MS=280,POP_AMP=.22;
 // ── BLOB (borda de gelatina, estilo agar.io) ──
@@ -56,26 +58,43 @@ const CROWN_TEX=96,CROWN_PX=30,CROWN_SINK=.10,CROWN_MAX_K=.9,CROWN_MIN_PX=20,CRO
 // faria o nome aparecer em planeta ~13% menor — justo onde o contorno mais grosso fecha as letras. Com 11
 // o limiar cai só ~5% e o ganho do pedido vai todo para o TAMANHO, que é o que foi pedido.
 const BAND_TEX=128,NAME_MIN_PX=11;
+// ── A FONTE DOS NOMES, UMA POR TEMA — E INSTALADA FORA DA PARTIDA ─────────────────────────────────────
+// ⚠️ O NOME DO ATLAS É A CHAVE DO CACHE, e ele TEM que mudar quando `nameFill`/`strokeWidth` mudam: os
+// dois são assados DENTRO do BitmapFont, e a instalação é pulada por `Cache.has(nome+'-bitmap')`.
+// Em produção a página é nova e o atlas seria regerado de qualquer jeito — quem paga é o DEV: com o HMR
+// do Vite o módulo recarrega com os números novos e o Pixi devolve o atlas VELHO, então a mudança "não
+// funciona" e alguém vai atrás do bug errado. pn3 → pn4 na passada que mexeu na letra.
+const nomeDaFonte=th=>`pn4-${th.id}`;
+/**
+ * Instala a fonte bitmap de um tema (no-op se já existe). Devolve true quando instalou de verdade.
+ *
+ * ⚠️ ISTO MORAVA DENTRO DO `setTheme`, e era um engasgo com hora marcada: rasterizar ~324 glifos e montar o
+ * atlas são 10–40 ms SÍNCRONOS, pagos na primeira vez que cada tema aparece — ou seja NO MEIO DA PARTIDA,
+ * em cada virada de céu (o relógio do espaço troca de tema várias vezes por rodada), e o `prewarmTheme`
+ * aquecia céu, atlas e planetas mas NÃO a fonte. Agora quem instala é o boot (`Renderer.warmFonts`, uma por
+ * momento ocioso) e a entrada na sala garante o que faltar (`flushFonts`); o `setTheme` continua chamando
+ * isto como rede de segurança, e em regime normal cai no `Cache.has`.
+ * ⚠️ `--font-ui` NÃO é webfont (só a display é): a fonte já existe no boot, então instalar cedo não assa o
+ * atlas com a fonte errada.
+ */
+export function instalaFonte(th){const nome=nomeDaFonte(th);if(Cache.has(nome+"-bitmap"))return false;
+  const L=th.hud.labels,sw=L.strokeWidth(FS);
+  perf.ini("fonte");
+  // skipKerning é OBRIGATÓRIO aqui: o kerning do Pixi é O(n²) sobre o charset (≈324 glifos → ~210 mil measureText,
+  // num tick só) — era ele que congelava a tela na primeira vez que cada tema aparecia. O nome é curto e
+  // centralizado, então o espaçamento sem kerning não muda nada na prática.
+  // O FILL é translúcido (labels.nameFill) e o CONTORNO é opaco: a forma da letra continua nítida e a
+  // arte da caricatura aparece por dentro dela. Vem de um campo PRÓPRIO, e não de `nameColor`, porque
+  // `nameColor` também pinta o ícone de push-to-talk logo abaixo — mexer num só desbotaria os dois.
+  BitmapFont.install({name:nome,skipKerning:true,style:{fontFamily:L.font,fontSize:FS,fontWeight:"bold",fill:L.nameFill||L.nameColor,stroke:{color:L.stroke,width:sw,join:"round"}},chars:CHARS,resolution:1,padding:Math.ceil(sw)+2});
+  perf.fim("fonte");return true;}
 export function createPlanets(R){
   const root=new Container();root.sortableChildren=true;const trails=new Graphics();
   const views=new Map(),trailMap=new Map(),seg=[],counts=new Map(),maior=new Map(),pops=new Map();let frame=0,fontName="",lastTrailTick=-1;
-  function setTheme(){const th=R.theme,L=th.hud.labels;// ⚠️ O NOME DO ATLAS É A CHAVE DO CACHE, e ele TEM que mudar quando `nameFill`/`strokeWidth` mudam: os
-  // dois são assados DENTRO do BitmapFont, e a instalação é pulada por `Cache.has(fontName+'-bitmap')`.
-  // Em produção a página é nova e o atlas seria regerado de qualquer jeito — quem paga é o DEV: com o HMR
-  // do Vite o módulo recarrega com os números novos e o Pixi devolve o atlas VELHO, então a mudança "não
-  // funciona" e alguém vai atrás do bug errado. pn3 → pn4 na passada que mexeu na letra.
-  fontName=`pn4-${th.id}`;
-    const sw=L.strokeWidth(FS);
-    // fonte fica instalada por tema (nome inclui o id): desinstalar quebra BitmapTexts de outra instância (StrictMode)
-    // skipKerning é OBRIGATÓRIO aqui: o kerning do Pixi é O(n²) sobre o charset (≈324 glifos → ~210 mil measureText,
-    // num tick só) — era ele que congelava a tela na primeira vez que cada tema aparecia. O nome é curto e
-    // centralizado, então o espaçamento sem kerning não muda nada na prática.
-    if(!Cache.has(fontName+"-bitmap"))
-      // O FILL é translúcido (labels.nameFill) e o CONTORNO é opaco: a forma da letra continua nítida e a
-      // arte da caricatura aparece por dentro dela. Vem de um campo PRÓPRIO, e não de `nameColor`, porque
-      // `nameColor` também pinta o ícone de push-to-talk logo abaixo — mexer num só desbotaria os dois.
-      // ⚠️ O atlas é cacheado pelo NOME (`pn4-`): mudar o estilo sem mudar o nome reaproveita o antigo.
-      BitmapFont.install({name:fontName,skipKerning:true,style:{fontFamily:L.font,fontSize:FS,fontWeight:"bold",fill:L.nameFill||L.nameColor,stroke:{color:L.stroke,width:sw,join:"round"}},chars:CHARS,resolution:1,padding:Math.ceil(sw)+2});
+  function setTheme(){const th=R.theme;
+    // fonte fica instalada por tema (nome inclui o id): desinstalar quebra BitmapTexts de outra instância (StrictMode).
+    // Em regime normal isto é um `Cache.has` — quem instalou foi o boot (ver `instalaFonte`).
+    fontName=nomeDaFonte(th);instalaFonte(th);
     for(const v of views.values())v.name.style.fontFamily=fontName;}
   function mkView(id){const c=new Container(),body=new Sprite();body.anchor.set(.5);const gfx=new Graphics();
     const name=new BitmapText({text:"",style:{fontFamily:fontName,fontSize:FS}});name.anchor.set(.5);
@@ -157,8 +176,29 @@ export function createPlanets(R){
         // ⚠️ `R.texCap` é o teto de tier do modo econômico: `TX.tier` é função só do RAIO, então no nível
         // mínimo (res .6) o planetão continuava assando e segurando 512² ≈ 1,34 MB para uma tela que está
         // desenhando com pouco mais da metade dos pixels.
-        const size=Math.min(TX.tier(e.rr),R.texCap),tex=R.cache.get(TX.key("planet",{skin,isMe,avatar:avBmp?avV:null,face:faceKey(skin)},size),size,
-          (c,s)=>TX.planet(c,s,{skin,isMe,avatarBmp:avBmp,faceBmp:fcBmp}));
+        // ── A TEXTURA, SEM ASSAR NO MEIO DO FRAME ──────────────────────────────────────────────────
+        // Era `R.cache.get(TX.key(…),size,draw)` cru, por peça por frame: (1) montava um objeto, uma STRING e
+        // uma closure por peça por frame — ~18 mil alocações por segundo numa sala cheia, para quase sempre
+        // achar a mesma chave do frame anterior; e (2) no MISS assava SÍNCRONO, aqui dentro: um tier 512 são
+        // 4–12 ms (canvas de 1 MB + padrão procedural + mipmaps + upload), e o orçamento do cache só vale
+        // para a FILA. O MISS acontece o tempo todo em partida: todo planeta que cruza r=44 ou r=120 muda de
+        // tier, a arte da caricatura chega e muda a chave, o nível econômico muda o `texCap`, o tema vira.
+        // Agora a chave é memoizada na view, e no MISS a ordem é: o que ESTA view já mostrava → outro tier da
+        // mesma skin → só então assar na hora (não há nada que sirva: é a 1ª vez que a skin aparece). O tier
+        // certo entra na FRENTE da fila e troca sozinho 1–2 frames depois — ninguém vê um planeta 2× maior ou
+        // menor que a textura por dois frames; um frame de 12 ms a mais, todo mundo vê.
+        // ⚠️ Sempre re-pedir pela CHAVE (`peek` carimba), nunca guardar a textura: é o contrato da eviction.
+        const size=Math.min(TX.tier(e.rr),R.texCap),avK=avBmp?avV:null,fK=faceKey(skin);
+        if(v.kSkin!==skin||v.kMe!==isMe||v.kAv!==avK||v.kFace!==fK||v.kSize!==size||v.kTema!==th.id){
+          v.kSkin=skin;v.kMe=isMe;v.kAv=avK;v.kFace=fK;v.kSize=size;v.kTema=th.id;
+          v.key=TX.key("planet",{skin,isMe,avatar:avK,face:fK},size);}
+        let tex=R.cache.peek(v.key);
+        if(tex)v.shownKey=v.key;
+        else{const draw=(c,s)=>TX.planet(c,s,{skin,isMe,avatarBmp:avBmp,faceBmp:fcBmp});
+          let alt=v.shownKey&&v.shownKey!==v.key?R.cache.peek(v.shownKey):null;
+          if(!alt)for(const s2 of ordemDeTiers(size)){alt=R.cache.peek(TX.key("planet",{skin,isMe,avatar:avK,face:fK},s2));if(alt)break;}
+          if(alt){R.cache.warm(v.key,size,draw,true);tex=alt;}
+          else{tex=R.cache.get(v.key,size,draw);v.shownKey=v.key;}}
         const d=e.rr*PK(skin);let sx=1,sy=1;const pat=pops.get(e.id);   // gulp da absorção: incha e achata de leve
         if(pat!=null){const age=t-pat;if(age>POP_MS)pops.delete(e.id);else if(age>=0){const u=Math.sin(age/POP_MS*Math.PI);sx=1+POP_AMP*u;sy=1-POP_AMP*.35*u;}}
         if(wob&&blobs<WOB_MAX&&e.rr*cam.scale>=WOB_MIN_PX){blobs++;   // as maiores da tela viram gelatina (view.pieces vem ordenado por raio)

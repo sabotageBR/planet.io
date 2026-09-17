@@ -15,6 +15,7 @@
 // Ping de aplicação a 1 Hz ({t:"ping",c}) → PONG binário → RTT (EMA) e relógio de ticks do servidor.
 import {PROTOCOL_VERSION,MSG,decodeMessage,TICK_HZ} from "@warspace/shared";
 import {PORTAL} from "../../portal/flags.js";
+import {perf} from "../perf.js";
 // ⚠️ `sessionStorage` LANÇA em origem opaca (um portal que serve o zip com sandbox sem allow-same-origin),
 // e é justamente lá que o laço de reload doía mais — então os dois acessos vão com guarda. Sem storage a
 // marca não existe e o comportamento cai no de antes: recarrega. Não é pior que hoje, e é o único lugar
@@ -36,8 +37,13 @@ export function createConnection({makeSocket,onJson,onBinary,onState,onOpenSend,
     sock.onopen=()=>{if(ws!==sock)return;pingT=0;onOpenSend(c);startPing();};
     sock.onmessage=ev=>{if(ws!==sock)return;const d=ev.data;
       if(typeof d==="string"){c.bytesIn+=d.length;c.msgsIn++;let m=null;try{m=JSON.parse(d);}catch{return;}handleJson(m);}
-      else{c.bytesIn+=d.byteLength;c.msgsIn++;let m=null;try{m=decodeMessage(d);}catch(e){console.warn("[net] mensagem inválida",e);return;}
-        if(!m)return;if(m.type===MSG.PONG){onPong(m);return;}onBinary(m);}};
+      // `rede`: decode + buffer.apply + a reconciliação da predição. Roda FORA do rAF (é uma task do socket),
+      // então só aparece no `?perf` porque o medidor conta à parte o que é aberto fora do frame — uma rajada de
+      // snapshots represados é processada inteira entre dois frames, e era invisível.
+      else{c.bytesIn+=d.byteLength;c.msgsIn++;let m=null;perf.ini("rede");
+        try{m=decodeMessage(d);}catch(e){perf.fim("rede");console.warn("[net] mensagem inválida",e);return;}
+        if(!m){perf.fim("rede");return;}if(m.type===MSG.PONG){onPong(m);perf.fim("rede");return;}
+        try{onBinary(m);}finally{perf.fim("rede");}}};
     sock.onerror=()=>{};
     sock.onclose=ev=>{if(ws!==sock)return;stopPing();ws=null;
       if(deliberate){setState("closed");return;}

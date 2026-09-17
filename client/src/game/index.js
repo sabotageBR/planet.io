@@ -86,7 +86,9 @@ import {createMinimap} from "./hud/Minimap.js";
 import {isBench,isStats,benchOptions,createOverlay,createFrameStats} from "./bench.js";
 // ⚠️ `perf` é a instância de MÓDULO, e desligada (sem `?perf`) todos os `ini`/`fim` são funções vazias —
 // ver o cabeçalho de perf.js. Ela mede FASES do frame, que é a pergunta que o `?stats` nunca respondeu.
-import {perf} from "./perf.js";
+import {perf,isPerf} from "./perf.js";
+import {criaNetstat,NETSTAT_INERTE} from "./netstat.js";
+import {onFaceReady} from "../theme/faces.js";
 import {passoQualidade,qualidadeZero} from "./quality.js";
 import {createActivity} from "./input/Activity.js";
 import {morteZero,passoMorte} from "../ui/deadClock.js";
@@ -198,7 +200,11 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     onTalk:on=>{if(conn&&conn.isOpen&&joined)conn.sendJson({t:"talk",on:!!on});
       if(view.mySlot>=0)view.setTalking(view.mySlot,on);}});
   const input=createInputSender({send:d=>conn&&conn.send(d),getTick:()=>predictor.localTick,getRtt:()=>conn?conn.rttAvg:0});
-  const predictor=createPredictor({buffer,input});
+  // ── O ENGASGO FOI DA REDE OU DO FRAME? ── o intervalo entre snapshots e o que o netcode decidiu por causa
+  // dele (ver `netstat.js`). Sempre ligado fora do pacote de portal: a sessão em que o jogador reclama é
+  // justamente a que ele não abriu com `?stats`.
+  const medeRede=PORTAL?NETSTAT_INERTE:criaNetstat();let relogioSnapsVisto=0;
+  const predictor=createPredictor({buffer,input,netstat:medeRede});
   const interp=createInterpolator(buffer,{isOwn:e=>predictor.isOwn(e),onVanish});
   const view=createWorldView({buffer,predictor});
   const cam=createCamera(),fstats=createFrameStats();
@@ -311,11 +317,17 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   if(isStats())statsOv=createOverlay(hud);
 
   // ── renderer (assíncrono: Pixi init) ──
+  let offFace=null;   // desliga o aviso de "a arte chegou" (theme/faces.js) no destroy
   let destroyed=false;   // StrictMode destrói a 1ª instância com o init do Pixi ainda pendente: não pode sobrar um canvas zumbi
   createRenderer({container,theme:curTheme,prefs:{fx:!curPrefs.reduceMotion}}).then(r=>{if(destroyed){r.destroy();return;}renderer=r;ready=true;
     pointer=createPointer(r.canvas,{onButton:button});joy=createJoystick(r.canvas);
     // a pinça avisa quando começa: agora que QUALQUER dedo dirige, o primeiro dedo dela é o volante — e dar zoom viraria o planeta junto
     pinch=createPinch(r.canvas,{onZoom:zoomPinch,onPinch:()=>{if(joy)joy.release();}});aplicaJoystick();applyQuality();r.setTheme(curTheme);r.resize();lastT=performance.now();warmSkins();
+    // as fontes dos OUTROS temas: uma por momento ocioso, com o menu na frente (ver `instalaFonte` em layers/Planets.js)
+    r.warmFonts(Object.values(THEMES));
+    // a arte de uma caricatura/mascote CHEGOU: a chave da textura dela mudou, então reaquece já com a arte —
+    // senão o planeta dá MISS no frame em que a arte aparece (o aquecimento antigo assou a versão lisa)
+    offFace=onFaceReady(()=>warmSkins());
     if(!raf)raf=requestAnimationFrame(frame);
     if(!inputTimer)inputTimer=setInterval(()=>enviarInput(performance.now()),Math.max(8,Math.round(1000/NET.INPUT_HZ)));}).catch(e=>{console.error("[game] renderer",e&&e.stack||e);container.innerHTML=`<div style="padding:20px;color:#fff">${getLabels().err.noWebGL}: ${e.message}</div>`;});
   // DEBOUNCE obrigatório: o observer dispara a cada frame enquanto a borda da janela é arrastada, e
@@ -567,7 +579,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     else if(m.t==="rewards"){if(onRewards)onRewards(m);}}
   function onBinary(m){const now=performance.now();
     switch(m.type){
-      case MSG.SNAPSHOT:{if(m.self.flags&SELF_FLAG.RESYNC)buffer.clear();buffer.apply(m,now);
+      case MSG.SNAPSHOT:{if(m.self.flags&SELF_FLAG.RESYNC)buffer.clear();buffer.apply(m,now);medeRede.snap(now,m.tick);
         // ⚠️ A GAIOLA VEM DO `self`, e é isto que a torna de graça — ver o comentário de `CAGE_BOX`. No
         // Livre `w.peace` nunca é true com corpo no mapa, mas o `modeId` fica na conta de propósito: um bit
         // com dois significados possíveis é o tipo de coisa que volta a doer no modo seguinte.
@@ -807,7 +819,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null,spec:!!spec};
-      buffer.clear();predictor.reset();interp.update(performance.now());view.reset();input.reset();cam.reset();zoomF=1;cage=null;cageBeep=-1;hudStore.set({...initialHud(),room:room||null});mapOn="";minimap.setView("",-1);aplicaRadar();
+      buffer.clear();predictor.reset();interp.reset();medeRede.recomeca();interp.update(performance.now());view.reset();
+      if(renderer)renderer.flushFonts();   // a tela está trocando: o que o boot não instalou em momento ocioso entra AGORA, nunca na virada de céuinput.reset();cam.reset();zoomF=1;cage=null;cageBeep=-1;hudStore.set({...initialHud(),room:room||null});mapOn="";minimap.setView("",-1);aplicaRadar();
       if(pointer&&renderer)pointer.center(renderer.W,renderer.H);
       if(joy)joy.reset();   // o rumo NÃO atravessa salas: quem entra nasce parado, esperando o primeiro toque
       // ⚠️ No pacote de portal, servidor fora NÃO vira partida local: o jogador entrou num .io para jogar
@@ -839,7 +852,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;espectador=false;tutor=null;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
-    setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){renderer.setTheme(t);warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
+    setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){perf.ini("tema");renderer.setTheme(t);perf.fim("tema");warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
     /** O painel do TAB abriu/fechou. ⚠️ NÃO mexe em `pausado`: o jogo continua vivo por baixo, e é o
      *  `enviarInput` da pausa (alvo em cima do centróide) que congelaria o planeta. */
     setRoster(on){const v=!!on;if(v===rosterOn)return;rosterOn=v;pushHud(performance.now());},
@@ -856,7 +869,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     muteBrInvite(){brMudo=true;hudStore.update(h=>({...h,brInvite:null}));
       if(conn&&conn.isOpen&&joined)conn.sendJson({t:"brMute"});},
     resize(){if(!renderer)return;renderer.resize();agendaView();},
-    destroy(){destroyed=true;if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();if(pinch)pinch.destroy();game.leave(true);audio.suspend();for(const ev of ["pointerdown","keydown","click","touchend"])removeEventListener(ev,wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();activity.destroy();actions.destroy();clearTimeout(viewT);clearTimeout(specT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
+    destroy(){destroyed=true;if(offFace){offFace();offFace=null;}if(typeof window!=="undefined")delete window.__warspace;cancelAnimationFrame(raf);raf=0;clearInterval(inputTimer);inputTimer=0;clearTimeout(roT);if(joy)joy.destroy();if(pinch)pinch.destroy();game.leave(true);audio.suspend();for(const ev of ["pointerdown","keydown","click","touchend"])removeEventListener(ev,wakeAudio);keyboard.destroy();wheel.destroy();touch.destroy();activity.destroy();actions.destroy();clearTimeout(viewT);clearTimeout(specT);if(pointer)pointer.destroy();minimap.destroy();if(statsOv)statsOv.destroy();
       if(ro)ro.disconnect();document.removeEventListener("visibilitychange",onVis);removeEventListener("warspace:pause",onPortalPause);removeEventListener("warspace:theme",onThemeEvent);if(themeGuard)removeEventListener("warspace:theme",themeGuard);
       if(renderer){renderer.destroy();renderer=null;}ready=false;},
     debug:{stats:()=>({conn,buffer,interp,predictor,view,cam,renderer,fstats,aim,aiming,audio}),local:()=>local,
@@ -870,6 +883,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // ⚠️ DE QUEM É O FRAME LONGO (`?perf`). Sem a query string devolve o aviso em vez de uma tabela
       // vazia: medidor desligado que responde "0 problemas" é pior que medidor nenhum.
       perf:()=>{if(!perf.ativo)return"ligue com ?perf na URL";const t=perf.relatorio();console.log(t);return t;},
+      /** A metade de REDE: Δt entre snapshots, saltos de relógio, ressincronizações (ver netstat.js). */
+      net:()=>{const f=medeRede.foto();console.log(medeRede.texto(performance.now()));return f;},
       perfReset:()=>perf.reset()},
   };
 
@@ -961,7 +976,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     warmedSky=next;
     const skins=[];let me=null;
     for(const pl of view.players.values()){if(!pl.skin)continue;if(pl.slot===view.mySlot)me=pl.skin;else if(!skins.includes(pl.skin))skins.push(pl.skin);}
-    renderer.prewarmTheme(THEMES[next],skins,me);}
+    perf.ini("preaquece");renderer.prewarmTheme(THEMES[next],skins,me);perf.fim("preaquece");}
   /**
    * Alvo provável do tiro mirado — a bolinha mais próxima do PONTEIRO (mesmo `aimScore` do servidor, só que com as
    * posições interpoladas que o cliente vê): serve de aviso na tela; quem decide de verdade é o servidor.
@@ -1207,8 +1222,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     out.sort((a,b)=>b.mass-a.mass||String(a.name||"").localeCompare(String(b.name||"")));
     return out;}
   function statsText(){const c=renderer.counts(),st=predictor.stats;
-    const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
-    return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · estrelas ${c.stars} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}`;}
+    const net=conn?`rtt ${conn.rttAvg.toFixed(0)} ms · clock off ${Number.isNaN(buffer.offset)?"—":buffer.offset.toFixed(1)} tk (jit ${buffer.offsetJitter.toFixed(2)}) · interp ${interp.delayMs.toFixed(0)}→${interp.alvoMs.toFixed(0)} ms (seco ${interp.dry}, extrap ${interp.extrap}) · bytes/s ${bytesRate.toFixed(0)} · msgs ${conn.msgsIn}`:"sem conexão";
+    return`${isBench()?"BENCH":"STATS"} · ${renderer.kind} · ${bodyMode()} · ${fps} fps${econ?" · ECON "+econLevel:""}\nframe ${fstats.avgFrame.toFixed(2)} ms (update ${fstats.avgUpdate.toFixed(2)} + render ${fstats.avgRender.toFixed(2)}) · p95 ${fstats.p95.toFixed(2)}\n${net}\npred: corr média ${st.corrAvg.toFixed(1)} px · última ${st.lastCorr.toFixed(1)} px · replay ${st.replaySteps} tk · pend ${input.pending} · hist ${input.history.length} · seq ${input.sent}\nents: planetas ${c.planets} · comida ${c.food} · ejet ${c.ejected} · ast ${c.asteroids} · buracos ${c.holes} · estrelas ${c.stars} · mísseis ${c.missiles} · fx ${c.fx} · buffer ${buffer.entities.size}\ndraw calls ≈ ${renderer.drawCallsEstimate()} · texturas ${c.textures} (${c.texMB} MB) · res ${renderer.R.res.toFixed(2)} · ${renderer.W}×${renderer.H}\n${medeRede.texto(performance.now())}`;}
   let bytesRate=0,bytesLast=0,bytesT=0,themeAt=0,own0=[];
   // A DICA DO DIVIDIR: `dividiu` é por VIDA e some no primeiro split — a lição foi aprendida. Zerado
   // nos MESMOS pontos que `morte`/`brMudo` (join/leave e `{t:"alive"}`), senão a vida seguinte herda
@@ -1300,14 +1315,16 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // o teto do passo tem que bater com o do acumulador do Predictor (.25): com .1 aqui, uma travada de
     // 300 ms fazia o servidor andar 300 ms e a predição só 100 — a peça ficava para trás e o snapshot
     // seguinte passava dos NET.SNAP_DIST e dava o solavanco. O Predictor já limita a 15 sub-passos.
-    const dt=Math.min(.25,Math.max(0,(now-lastT)/1000));lastT=now;const t0=performance.now();
+    const dtCru=now-lastT,dt=Math.min(.25,Math.max(0,dtCru/1000));lastT=now;const t0=performance.now();perf.abre();
     frames++;if(now-fpsT>1000){fps=Math.round(frames*1000/(now-fpsT));frames=0;fpsT=now;}
     if(forced&&document.documentElement.dataset.theme!==forced&&now-themeAt>500){themeAt=now;applyTheme(forced);}
-    if(renderer.R.theme!==curTheme)renderer.setTheme(curTheme);
-    aplicaEcon();   // a troca de nível acontece AQUI, no mesmo tick do render — ver econCheck
+    if(renderer.R.theme!==curTheme){perf.ini("tema");renderer.setTheme(curTheme);perf.fim("tema");}
+    perf.ini("econ");aplicaEcon();perf.fim("econ");   // a troca de nível acontece AQUI, no mesmo tick do render — ver econCheck
     enviarInput(now);
     perf.ini("predicao");predictor.update(dt);perf.fim("predicao");
     perf.ini("interp");interp.update(now);perf.fim("interp");
+    if(buffer.snaps!==relogioSnapsVisto){relogioSnapsVisto=buffer.snaps;medeRede.relogioSnap();}
+    if(!Number.isNaN(buffer.offset))medeRede.desvio(buffer.offsetTarget-buffer.offset);
     perf.ini("view");view.build();perf.fim("view");
     roundTick(now);
     const own=[];predictor.forEach(pc=>own.push(pc));own0=own;cam.W=renderer.W;cam.H=renderer.H;
@@ -1378,8 +1395,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // ⚠️ O quadro fecha com o custo de CPU (`t0` até agora), NUNCA com o `dt` entre frames: o que se
     // procura é o trabalho que ESTE frame fez, e não o tempo que o navegador levou para chamá-lo de
     // novo (que também cresce quando outra aba trava ou o compositor engasga).
-    perf.frame(performance.now()-t0);}
+    const custo=performance.now()-t0;medeRede.frame(custo);perf.frame(custo,dtCru);}
   // Em dev sempre; em produção só com `?stats`. Sem isto, um bug que só aparece na BUILD (ordem de módulos,
   // minificação) vira caça às cegas: o console não mostra estado nenhum e não há como perguntar ao motor.
-  if(typeof window!=="undefined"&&((import.meta.env&&import.meta.env.DEV)||isStats()))window.__warspace=game.debug;
+  if(typeof window!=="undefined"&&((import.meta.env&&import.meta.env.DEV)||isStats()||isPerf()))window.__warspace=game.debug;   // `?perf` sozinho também: sem isto `__warspace.perf()` não existia em produção. ⚠️ `isPerf()` e NÃO `perf.ativo`: aquele dobra para `false` no pacote de portal (é `!PORTAL&&…` sobre um literal de `define`) e o Rollup poda a atribuição; este é leitura em runtime, a atribuição sobrevivia e a guarda do `portal-pack.mjs` reprovava o zip
   return game;}

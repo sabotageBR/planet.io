@@ -1602,7 +1602,11 @@ export const ZOOM={MIN:.10,K:.40,STEP:1.12,WHEEL_PX:100,PINCH_PX:25,ACC_MS:200,M
 //        VALE é o do snapshot, pelo ΣR real: sem ele um cliente adulterado pediria o mapa inteiro.
 // ⚠️ NÃO entra em tunables.js: chave de escopo `both` responde 501, e é exatamente o caso — o cliente tem a
 // própria cópia do bundle, então mudar isto só no servidor faria a câmera e a AOI divergirem em silêncio.
-export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:150,EXTRAP_MAX_MS:100,SNAP_DIST:120,AOI_PAD:.3,AOI_PAD_OUT:.45,AOI_FOOD_MAX:300,
+// ⚠️ `INTERP_MAX2_MS` (200): o 2º degrau do atraso de interpolação, só do CLIENTE (`state/Interpolator.js`).
+// O 1º pacote atrasado sobe o atraso até `INTERP_MAX_MS`; um 2º em menos de 30 s prova que a rede (ou o
+// servidor) está ruim de verdade e libera este teto — 4 snapshots de folga em vez de 3. É latência VISUAL
+// dos outros planetas, nunca do próprio (que é predito), e volta sozinho 1 tick a cada 10 s calmos.
+export const NET={INPUT_HZ:30,KEEPALIVE_HZ:10,INTERP_DELAY_MS:100,INTERP_MAX_MS:150,INTERP_MAX2_MS:200,EXTRAP_MAX_MS:100,SNAP_DIST:120,AOI_PAD:.3,AOI_PAD_OUT:.45,AOI_FOOD_MAX:300,
   RATE_INPUTS:40,RATE_BURST:60,RATE_JSON:5,SPEC_MS:350,HEARTBEAT_MS:5000,DEAD_MS:15000,RESUME_MS:10000,
   IDLE_KICK:true,IDLE_MS:180000,IDLE_WARN_MS:15000,IDLE_MOVE_PX:24,AWAKE_MS:20000};
 // ── OS TRÊS RELÓGIOS DA SESSÃO, e eles NÃO medem a mesma coisa ───────────────

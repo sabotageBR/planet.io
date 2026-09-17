@@ -13,7 +13,12 @@ import {Texture,CanvasSource,Rectangle} from "pixi.js";
 // 200 para achar as 2 que assam é fabricar custo. Ver o cabeçalho de perf.js.
 import {perf} from "../perf.js";
 
-const WARM_PER_FRAME=2,POR_FRAME=6,PISO=16,IDADES=[120,30,3];   // POR_FRAME: texturas despejadas por frame · PISO: MB que o cache nunca desce abaixo (ver alvoDeDespejo)
+// ⚠️ `WARM_MS`: O ORÇAMENTO DA FILA É DE TEMPO, NÃO DE CONTAGEM. "2 por frame" deixava duas texturas de 512²
+// (4–12 ms cada, com o upload e os mipmaps) caírem no MESMO frame — até 24 ms de assadura "orçada". Agora a
+// fila assa até estourar `WARM_MS`, com o mínimo de UMA por frame (senão ela nunca esvaziaria numa máquina
+// lenta) e o teto de `WARM_PER_FRAME` (as de 128² custam ~0,5 ms: sem teto, 8 delas num frame é desperdício
+// de upload). A primeira da fila sempre sai; o que o tempo decide é se vem uma SEGUNDA.
+const WARM_PER_FRAME=4,WARM_MS=4,POR_FRAME=6,PISO=16,IDADES=[120,30,3];   // POR_FRAME: texturas despejadas por frame · PISO: MB que o cache nunca desce abaixo (ver alvoDeDespejo)
 /**
  * O ALVO É DO CACHE, NUNCA DO TOTAL — e é aqui que morava o engasgo de alguns frames.
  * `externo` (os céus do Background, 10,6 MB cada a 1920×1080) não passa por este cache e NÃO tem como ser
@@ -47,7 +52,15 @@ export function planoDeDespejo(entradas,{frame,bytes,alvo,max}){
     for(const x of velhas){fora.push(x);vistos.add(x.key);b-=x.e.bytes;
       if(b<=alvo||fora.length>=max)return fora;}}
   return fora;}
-export function createTextureCache({budgetMB=48,upload=null}={}){
+/**
+ * EM QUE ORDEM PROCURAR UM SUBSTITUTO quando o tier pedido ainda não foi assado, PURA. Primeiro os MAIORES
+ * (reduzir uma textura fica nítido; ampliar borra), do mais próximo ao mais distante; depois os menores.
+ * @param {number} size o tier que faltou @param {number[]} [tiers] @returns {number[]}
+ */
+export function ordemDeTiers(size,tiers=[128,256,512]){
+  const maiores=tiers.filter(t=>t>size).sort((a,b)=>a-b),menores=tiers.filter(t=>t<size).sort((a,b)=>b-a);
+  return maiores.concat(menores);}
+export function createTextureCache({budgetMB=48,upload=null,agora=()=>performance.now()}={}){
   const map=new Map(),queue=[];let bytes=0,frame=0,externo=0,evictFrame=-1;
   const mk=(canvas,resolution=1)=>new Texture({source:new CanvasSource({resource:canvas,autoGenerateMipmaps:true,scaleMode:"linear",resolution})});
   const cache={
@@ -58,13 +71,26 @@ export function createTextureCache({budgetMB=48,upload=null}={}){
      * real e o teto de 48 MB era uma conta sobre o item errado.
      */
     setExternal(n){externo=n>0?n:0;},
-    tick(){frame++;evict();for(let i=0;i<WARM_PER_FRAME&&queue.length;i++){const q=queue.shift();if(map.has(q.key))continue;
-      const tex=q.atlasItems?cache.atlas(q.key,q.atlasItems).texture:cache.get(q.key,q.size,q.draw);
-      if(upload)try{upload(tex);}catch{/* sem GPU: fica para o 1º draw */}}},
+    tick(){frame++;evict();if(!queue.length)return;const t0=agora();
+      for(let i=0;i<WARM_PER_FRAME&&queue.length;i++){if(i&&agora()-t0>=WARM_MS)break;   // a 1ª sempre sai; as seguintes, só dentro do orçamento
+        const q=queue.shift();if(map.has(q.key)){i--;continue;}
+        const tex=q.atlasItems?cache.atlas(q.key,q.atlasItems).texture:cache.get(q.key,q.size,q.draw);
+        if(upload)try{upload(tex);}catch{/* sem GPU: fica para o 1º draw */}}},
     /** Marca a entrada como viva neste frame (para quem segura a textura sem pedi-la de novo). */
     keepAlive(key){const e=map.get(key);if(e)e.last=frame;},
-    /** Enfileira (se ainda não existe) uma textura para assar nos próximos frames. */
-    warm(key,size,draw){if(map.has(key))return;for(const q of queue)if(q.key===key)return;queue.push({key,size,draw});},
+    /**
+     * A textura SE JÁ EXISTE (e a carimba como viva); null se não. É o que deixa quem desenha escolher entre
+     * assar AGORA, dentro do frame, e mostrar um substituto enquanto a fila assa — ver `layers/Planets.js`.
+     */
+    peek(key){const e=map.get(key);if(!e)return null;e.last=frame;return e.tex;},
+    /**
+     * Enfileira (se ainda não existe) uma textura para assar nos próximos frames.
+     * `urgente`: vai para a FRENTE da fila — é o que está na tela AGORA com um substituto; sem isto ela
+     * esperaria atrás das ~100 entradas do pré-aquecimento de uma sala cheia.
+     */
+    warm(key,size,draw,urgente=false){if(map.has(key))return;
+      for(let i=0;i<queue.length;i++)if(queue[i].key===key){if(urgente&&i){const q=queue.splice(i,1)[0];queue.unshift(q);}return;}
+      if(urgente)queue.unshift({key,size,draw});else queue.push({key,size,draw});},
     /** Textura quadrada `size`; draw(ctx,size) recebe o contexto já transladado ao centro. */
     get(key,size,draw){let e=map.get(key);if(e){e.last=frame;return e.tex;}
       perf.ini("assaTextura");
