@@ -26,6 +26,10 @@ export const config=Object.freeze({
   databaseUrl:str('DATABASE_URL',''),
   dbPoolMax:Math.max(1,num('DB_POOL_MAX',5)),
   migrateOnStart:bool('MIGRATE_ON_START',false),
+  // AQUECIMENTO DO JIT no boot (server/src/aquece.js): roda uma sala descartável ANTES de a porta abrir, para a
+  // 1ª sala de verdade não pagar ~200 ms de código frio com gente jogando nas outras. Ligado por padrão; os
+  // testes (que sobem dezenas de servidores por arquivo) ficam de fora — o `node --test` marca o processo.
+  jitWarmup:env.JIT_WARMUP!=null?env.JIT_WARMUP!=='0':!env.NODE_TEST_CONTEXT,
   port,shard,shards,podName,peerHost,peerName,peers,
   // ⚠️ O padrão sai da CONSTANTE, não de um número copiado aqui: os dois viraram parâmetro do painel e o
   // env os semeia no boot. Com `30`/`15` cravados, mudar `ROOM` em constants.js não mudaria nada em dev.

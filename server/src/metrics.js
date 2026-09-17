@@ -54,6 +54,9 @@ export function createMetrics({vivo=true}={}){
   // ── GC ── por tipo; os MAJORS ganham anel próprio porque são eles que se cruza com as paradas.
   const gcN={minor:{n:0,somaMs:0,maxMs:0},major:{n:0,somaMs:0,maxMs:0},incremental:{n:0,somaMs:0,maxMs:0},weakcb:{n:0,somaMs:0,maxMs:0}};
   /** @type {{t:number,dur:number}[]} */const majors=[];let majorAt=0,gcObs=null;
+  // TODO GC recente (qualquer tipo), para dizer quanto de um turno lento foi coleta: num núcleo lento um
+  // scavenge de semi-space de 16 MiB chega a 10–14 ms e um ciclo de marcação incremental soma vários deles.
+  /** @type {{t:number,dur:number}[]} */const gcs=[];
   // ── paradas do laço ── anel de 64: a 1 evento a cada ~11 s (o medido) são 12 min de história.
   const laco={congelado:{n:0,somaMs:0,maxMs:0,at:0},trabalho:{n:0,somaMs:0,maxMs:0,at:0}};
   /** @type {{t:number,at:number,wall:number,cpu:number,tipo:string,passo:number}[]} */const gaps=[];
@@ -75,6 +78,7 @@ export function createMetrics({vivo=true}={}){
     try{gcObs=new PerformanceObserver(l=>{for(const e of l.getEntries()){const k=/** @type {any} */(e).detail?.kind;
         const b=k===PERF.NODE_PERFORMANCE_GC_MAJOR?gcN.major:k===PERF.NODE_PERFORMANCE_GC_MINOR?gcN.minor:k===PERF.NODE_PERFORMANCE_GC_INCREMENTAL?gcN.incremental:gcN.weakcb;
         b.n++;b.somaMs+=e.duration;if(e.duration>b.maxMs)b.maxMs=e.duration;
+        gcs.push({t:e.startTime,dur:e.duration});if(gcs.length>128)gcs.shift();
         if(b===gcN.major){majors.push({t:e.startTime,dur:e.duration});if(majors.length>32)majors.shift();majorAt=Date.now();}}});
       gcObs.observe({entryTypes:['gc']});}catch{gcObs=null;}
     leitura=setInterval(()=>{leTudo();},LEITURA_MS);leitura.unref&&leitura.unref();leTudo();}
@@ -164,6 +168,8 @@ export function createMetrics({vivo=true}={}){
       // o intervalo parado é [t−wall, t]; o GC major é [t, t+dur]. Tolerância dos dois lados: o observador
       // entrega a entrada DEPOIS do GC, e a cota estoura pelas threads auxiliares que continuam varrendo.
       let comGc=0;for(const g of gaps)if(g.tipo==='congelado'&&majors.some(j=>j.t<g.t+GC_TOL_MS&&j.t+j.dur>g.t-g.wall-GC_TOL_MS))comGc++;
+      // quanto do intervalo [t−wall, t] foi GC na thread principal (soma das sobreposições)
+      const gcNo=g=>{let s=0;const a=g.t-g.wall,z=g.t;for(const c of gcs){const i=Math.max(a,c.t),f=Math.min(z,c.t+c.dur);if(f>i)s+=f-i;}return s;};
       const lado=(b,tipo)=>({n:b.n,somaMs:Math.round(b.somaMs),maxMs:r1(b.maxMs),ultimoHa:ha(b.at),porMin:noMin(tipo)});
       const gcOut=k=>({n:gcN[k].n,somaMs:Math.round(gcN[k].somaMs),maxMs:r1(gcN[k].maxMs)});
       let majMin=0;for(const j of majors)if(agoraP-j.t<=60000)majMin++;
@@ -181,7 +187,9 @@ export function createMetrics({vivo=true}={}){
         gc:{minor:gcOut('minor'),major:{...gcOut('major'),ultimoHa:ha(majorAt),porMin:majMin},incremental:gcOut('incremental'),weakcb:gcOut('weakcb')},
         laco:{congelado:{...lado(laco.congelado,'congelado'),comGcMajor:comGc},trabalho:lado(laco.trabalho,'trabalho'),
           // `passo` = quanto do intervalo foi o passo das salas; o que sobra de `cpu` é trabalho FORA dele
-          ultimos:gaps.slice(-5).map(g=>({ha:Math.round((agora-g.at)/1000),wall:r1(g.wall),cpu:r1(g.cpu),passo:r1(g.passo||0),tipo:g.tipo})),
+          // `gc` = quanto dele foi coleta de lixo. O que sobra de `cpu − passo − gc` é trabalho de verdade fora do
+          // passo (um join, uma sala nascendo, um JSON grande).
+          ultimos:gaps.slice(-5).map(g=>({ha:Math.round((agora-g.at)/1000),wall:r1(g.wall),cpu:r1(g.cpu),passo:r1(g.passo||0),gc:r1(gcNo(g)),tipo:g.tipo})),
           passosLentos:{n:lentos.n,maxMs:r1(lentos.maxMs),ultimos:lentosUlt.slice(-5).map(l=>({...l,ha:Math.round((agora-l.at)/1000),at:undefined}))}},
         cfs:cfs?{cota:cfs.cota,periods:cfs.periods,throttled:cfs.throttled,throttledMs:cfs.throttledMs,throttled10s:cfsDelta,ultimoHa:ha(cfsAt)}:null,
         heap,writerRot,

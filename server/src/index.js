@@ -5,7 +5,7 @@
 import http from 'node:http';
 import {pathToFileURL} from 'node:url';
 import {PROTOCOL_VERSION} from '@warspace/shared/protocol/constants.js';
-import {ROUND,WORLD,ROOM} from '@warspace/shared/constants.js';
+import {ROUND,WORLD,ROOM,MODE} from '@warspace/shared/constants.js';
 import {config as baseConfig} from './config.js';
 import {createLogger,logStats} from './log.js';
 import {createDb} from './db/pool.js';
@@ -25,6 +25,7 @@ import {createHttpHandler} from './http/api.js';
 import {createAdminBus} from './admin/bus.js';
 import {criaSonda} from './admin/sonda.js';
 import {criaPeerRooms} from './http/peers.js';
+import {aqueceJit} from './aquece.js';
 /** @param {Partial<typeof baseConfig>} [overrides] */
 export async function startServer(overrides={}){
   const cfg=Object.freeze({...baseConfig,...overrides});
@@ -118,6 +119,10 @@ export async function startServer(overrides={}){
   await Promise.resolve(persistApi&&persistApi.tunablesReady).catch(()=>{});
   if(WORLD.LADO>0&&WORLD.LADO!==WORLD.w){log.info(`mundo: ${WORLD.w} → ${WORLD.LADO} px de lado`);WORLD.w=WORLD.h=WORLD.LADO;}
   else WORLD.LADO=WORLD.w;
+  // ── AQUECE O JIT ANTES DE ABRIR A PORTA ── (ver server/src/aquece.js) depois do `WORLD.w` fixado, para o
+  // mundo aquecido ter o tamanho do de verdade, e antes do `listen`: enquanto não há socket, não há quem sinta.
+  if(game&&cfg.jitWarmup){try{const a=aqueceJit({config:cfg,modos:[MODE.FREE,MODE.BR]});log.info(`JIT aquecido: ${a.salas} sala(s) descartáveis, ${a.ticks} passos em ${a.ms} ms`);}
+    catch(e){log.warn('aquecimento do JIT falhou (segue sem ele):',e&&e.message);}}
   await new Promise((res,rej)=>{server.once('error',rej);server.listen(cfg.port,()=>{server.off('error',rej);res(undefined);});});
   const addr=server.address(),port=typeof addr==='object'&&addr?addr.port:cfg.port;
   log.info(`warspace.io v2 | shard ${cfg.shard}/${cfg.shards} | porta ${port} | role ${cfg.role} | db ${db?(db.health.down?'down':'ok'):'nenhum'}`+

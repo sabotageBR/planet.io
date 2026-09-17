@@ -45,3 +45,15 @@ test('sem metrics (ou com um metrics antigo, sem gap) o laço roda igual',()=>{
   s._arm=()=>{};const r=sala();s.add(r);s.next=performance.now()-1;s._run();
   assert.ok(r.passos>=1);s.stop();
 });
+
+// ── o aquecimento do JIT no boot ──
+import {aqueceJit} from '../src/aquece.js';
+import {config} from '../src/config.js';
+import {MODE} from '@warspace/shared/constants.js';
+test('aqueceJit: roda salas DESCARTÁVEIS dos dois modos sem lançar e sem deixar nada para trás',()=>{
+  const a=aqueceJit({config,ticks:90,humanos:3,modos:[MODE.FREE,MODE.BR]});
+  assert.equal(a.salas,2);assert.equal(a.ticks,180);assert.ok(a.ms>=0);
+});
+test('o aquecimento fica FORA dos testes por padrão (o node --test marca o processo) e o env manda',()=>{
+  assert.equal(config.jitWarmup,false,'dezenas de startServer por arquivo de teste não podem pagar isso');
+});
