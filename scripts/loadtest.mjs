@@ -3,6 +3,7 @@
 //
 //   node scripts/loadtest.mjs --n 500 --dur 300
 //   node scripts/loadtest.mjs --n 50 --dur 60 --host http://192.168.12.50:30800 --sni warspace.io
+//   node scripts/loadtest.mjs --n 15 --dur 600 --only 2     # TODOS os clientes no shard 2 (canário × controle, lado a lado)
 //
 // Cada cliente é uma sessão completa: guest pela API, WS no shard, `join`, INPUT a
 // `--hz` e ping a 1 Hz. Não há render, não há predição e o snapshot NÃO é decodificado —
@@ -58,6 +59,7 @@ const CFG={
   mode:num('mode',0),                     // 0 = Livre, 1 = Battle Royale
   team:num('team',1),
   shards:num('shards',0),                 // 0 = descobre no /api/config
+  only:A.only!=null&&A.only!==true?String(A.only).split(',').map(Number).filter(Number.isInteger):null,   // fixa o(s) shard(s): A/B de canário
   view:String(A.view||'1600x900'),
   tokens:String(A.tokens||'/tmp/claude-1000/-home-evandro-git-em-tech-planet-io/df1c3556-64f5-4eee-81de-e923c9ce80bc/scratchpad/loadtest-tokens.json'),
   prefix:String(A.prefix||'LT'),
@@ -189,6 +191,7 @@ async function roda(de,ate,contas){
   // pod, e o 503 parecia saturação do jogo. O cliente de verdade usa o campo `shard` da resposta
   // (`game/index.js`), que só pode vir de um pod PRONTO porque o Service da API balanceia entre eles;
   // aqui a mesma coisa, amostrada algumas vezes para achar o conjunto inteiro.
+  if(CFG.only&&CFG.only.length){st.vivos=CFG.only;if(!slice)console.log(`shards FIXADOS: ${st.vivos.join(',')}`);}
   if(!st.vivos){
     const achados=new Set();
     for(let i=0;i<40&&achados.size<(st.shards||99);i++){

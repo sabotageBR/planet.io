@@ -1864,7 +1864,9 @@ export class Room{
     // `close` do painel.
     if(this.roundTicks&&sim.tick-this.roundStart>=this.roundTicks){this.endRound('time');return;}
     this._chegadaBots();this._trimTick();
-    sim.step();
+    // `_fase`: onde foi o tempo DESTE passo (lido pelo scheduler só quando o passo inteiro passa do limiar)
+    const f=this._fase||(this._fase={sim:0,envio:0}),f0=performance.now();
+    sim.step();f.sim=performance.now()-f0;f.envio=0;
     if(sim.botTalk.length)this.botChatTick();
     if(this.falaFila.length)this._filaTick();
     if(this.digitaFila.length)this._digitaTick();   // o que já "acabou de digitar" entra no chat agora
@@ -1873,7 +1875,7 @@ export class Room{
       const lb=sim.leaderboard();
       if(lb.length){const gp=sim.players.get(lb[0].slot);if(gp)this.champion={slot:gp.slot,team:gp.team};}
       this.endRound('lastAlive');return;}
-    this._flush(sim);}
+    const f1=performance.now();this._flush(sim);f.envio=performance.now()-f1;}
   /**
    * ENTROU GENTE DE VERDADE — e só quem é ADMIN fica sabendo.
    * ⚠️ "De verdade" é `Room.join`, e só: preenchimento nunca tem `Session` (nasce em `_nasceBot`), então

@@ -56,7 +56,9 @@ export function createMetrics({vivo=true}={}){
   /** @type {{t:number,dur:number}[]} */const majors=[];let majorAt=0,gcObs=null;
   // ── paradas do laço ── anel de 64: a 1 evento a cada ~11 s (o medido) são 12 min de história.
   const laco={congelado:{n:0,somaMs:0,maxMs:0,at:0},trabalho:{n:0,somaMs:0,maxMs:0,at:0}};
-  /** @type {{t:number,at:number,wall:number,cpu:number,tipo:string}[]} */const gaps=[];
+  /** @type {{t:number,at:number,wall:number,cpu:number,tipo:string,passo:number}[]} */const gaps=[];
+  // ── passos lentos de UMA sala (≥12 ms), com a fase que custou ──
+  const lentos={n:0,maxMs:0};/** @type {any[]} */const lentosUlt=[];
   // ── cgroup + heap (lidos por timer) ──
   let cfs=null,cfsAnt=null,cfsDelta=0,cfsAt=0,heap=null,leitura=null,writerRot=0;
   const leitor=criaLeitorCgroup();
@@ -118,9 +120,17 @@ export function createMetrics({vivo=true}={}){
      * nesse meio (ver `classificaGap`). Chamado pelo `loop.js` só acima de `GAP_MS` — o caminho normal não
      * passa por aqui.
      */
-    gap(wallMs,cpuMs,t=performance.now()){const tipo=classificaGap(wallMs,cpuMs);if(!tipo)return null;
+    gap(wallMs,cpuMs,t=performance.now(),passoMs=0){const tipo=classificaGap(wallMs,cpuMs);if(!tipo)return null;
       const b=laco[tipo];b.n++;b.somaMs+=wallMs;if(wallMs>b.maxMs)b.maxMs=wallMs;b.at=Date.now();
-      gaps.push({t,at:b.at,wall:wallMs,cpu:cpuMs,tipo});if(gaps.length>64)gaps.shift();return tipo;},
+      gaps.push({t,at:b.at,wall:wallMs,cpu:cpuMs,tipo,passo:passoMs});if(gaps.length>64)gaps.shift();return tipo;},
+    /**
+     * O passo de UMA sala passou do limiar (loop.js). `room._fase` diz onde: `sim` (cérebros + física +
+     * eventos), `envio` (snapshots/placar/eventos por sessão) e o resto (zona, chegada de bots, fala).
+     */
+    passoLento(room,ms){lentos.n++;if(ms>lentos.maxMs)lentos.maxMs=ms;const f=room&&room._fase||{};
+      lentosUlt.push({at:Date.now(),sala:room&&room.code,ms:r1(ms),sim:r1(f.sim||0),envio:r1(f.envio||0),fase:room&&room.phase,
+        tick:room&&room.sim?room.sim.tick:0,humanos:room?room.humanCount:0,bots:room&&room.sim?room.sim.botCount():0});
+      if(lentosUlt.length>8)lentosUlt.shift();},
     /** O writer de broadcast foi trocado por um novo de 32 KiB (havia socket com bytes pendentes). */
     writerRot:()=>{writerRot++;},
     /** Para os observadores e o timer. Idempotente; sem isto cada `startServer` de teste deixa um monitor ligado. */
@@ -170,7 +180,9 @@ export function createMetrics({vivo=true}={}){
           janelaS:eldIdade,anterior:eldAnterior,maxTotal:r1(Math.max(eldMaxTotal,eld.max/1e6-ELD_RES,0))}:null,
         gc:{minor:gcOut('minor'),major:{...gcOut('major'),ultimoHa:ha(majorAt),porMin:majMin},incremental:gcOut('incremental'),weakcb:gcOut('weakcb')},
         laco:{congelado:{...lado(laco.congelado,'congelado'),comGcMajor:comGc},trabalho:lado(laco.trabalho,'trabalho'),
-          ultimos:gaps.slice(-5).map(g=>({ha:Math.round((agora-g.at)/1000),wall:r1(g.wall),cpu:r1(g.cpu),tipo:g.tipo}))},
+          // `passo` = quanto do intervalo foi o passo das salas; o que sobra de `cpu` é trabalho FORA dele
+          ultimos:gaps.slice(-5).map(g=>({ha:Math.round((agora-g.at)/1000),wall:r1(g.wall),cpu:r1(g.cpu),passo:r1(g.passo||0),tipo:g.tipo})),
+          passosLentos:{n:lentos.n,maxMs:r1(lentos.maxMs),ultimos:lentosUlt.slice(-5).map(l=>({...l,ha:Math.round((agora-l.at)/1000),at:undefined}))}},
         cfs:cfs?{cota:cfs.cota,periods:cfs.periods,throttled:cfs.throttled,throttledMs:cfs.throttledMs,throttled10s:cfsDelta,ultimoHa:ha(cfsAt)}:null,
         heap,writerRot,
         net:{outKBps:r3(rate(bo)/1024),inMsgps:r3(rate(mi)),rateLimitHits,rateDrops,rateKicks},
