@@ -33,13 +33,17 @@ export function createPointer(canvas,{onButton}){
   const mediu=()=>{const r=canvas.getBoundingClientRect();cx=r.left;cy=r.top;temRect=true;};
   const invalida=()=>{temRect=false;};
   const pos=e=>{if(!temRect)mediu();st.sx=e.clientX-cx;st.sy=e.clientY-cy;st.type=e.pointerType||"mouse";st.active=true;};
-  const move=e=>{if(pid>=0&&e.pointerId!==pid)return;
+  // ⚠️ `e.__volante` = o dedo que DIRIGE, já tratado pelo direcional (input/Joystick.js, em captura no mesmo
+  // canvas). Ele MARCA o evento em vez de dar `stopPropagation()`, porque parar o evento o escondia também do
+  // SDK do portal, que escuta na bolha da janela — ver o bloco no fim de Joystick.js. Aqui o efeito é o de
+  // sempre: o Pointer não vê esse dedo. As três portas têm de ter a guarda; o dedo da MIRA vem sem marca.
+  const move=e=>{if(e.__volante)return;if(pid>=0&&e.pointerId!==pid)return;
     if(e.pointerType&&e.pointerType!=="mouse"&&e.target!==canvas&&pid<0)return;   // dedo fora do canvas e sem captura não dirige
     pos(e);};
-  const down=e=>{if(pid>=0&&e.pointerId!==pid)return;pid=e.pointerId;pos(e);st.down=true;
+  const down=e=>{if(e.__volante)return;if(pid>=0&&e.pointerId!==pid)return;pid=e.pointerId;pos(e);st.down=true;
     try{canvas.setPointerCapture(e.pointerId);}catch{}
     if(e.button===2||e.button===1)e.preventDefault();onButton(e.button,"down",st.type);};
-  const up=e=>{if(pid>=0&&e.pointerId!==pid)return;pos(e);st.down=false;pid=-1;
+  const up=e=>{if(e.__volante)return;if(pid>=0&&e.pointerId!==pid)return;pos(e);st.down=false;pid=-1;
     if(st.type!=="mouse")st.active=false;   // dedo levantado = sem alvo: o index volta a mirar no próprio centroide (parar)
     onButton(e.button,"up",st.type);};
   const ctx=e=>e.preventDefault();

@@ -7,7 +7,8 @@
 // nunca apareceu porque o cursor já mora a centenas de px. node --test client/test/joystick.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { joyTarget } from "../src/game/input/Joystick.js";
+import { joyTarget, createJoystick } from "../src/game/input/Joystick.js";
+import { createPointer } from "../src/game/input/Pointer.js";
 import { SPEED, JOY, WORLD } from "@warspace/shared";
 
 const C = 4800;   // centro do mundo: longe de qualquer parede, para o clamp não entrar na conta
@@ -76,4 +77,67 @@ test("varredura: nunca sai do mundo, nunca muda de direção, nunca inverte", ()
       assert.ok(dx * ux + dy * uy >= -1e-9, "o corte encurta, não inverte");
     }
   }
+});
+
+// ── O DEDO QUE DIRIGE NÃO PODE SER ESCONDIDO DA JANELA ───────────────────────────
+// O SDK da Poki registra interação com `window.addEventListener("pointerdown",…)` — na BOLHA —, e o relator do
+// Player Fit Test congela a duração do jogador depois de 60 s sem um toque que ele veja (o trecho está em
+// `scripts/poki-stub.js`). O `down` do direcional dava `stopPropagation()` em captura: no celular o SDK nunca
+// via o toque que dirige o planeta, e a média de TODA rodada parava em ~2m10. Hoje o direcional MARCA o evento
+// e o Pointer ignora o marcado. O que este bloco trava são os DOIS sentidos: o evento segue para a janela, e
+// o jogo continua se comportando como quando ele era parado.
+/** Um alvo de eventos de mentira: guarda os handlers por tipo+fase e os dispara na ordem do DOM (captura antes). */
+function alvoFalso() {
+  const hs = [];
+  return { hs,
+    addEventListener(t, h, cap) { hs.push({ t, h, cap: !!(cap === true || (cap && cap.capture)) }); },
+    removeEventListener() {},
+    getBoundingClientRect() { return { left: 0, top: 0, width: 400, height: 800 }; },
+    setPointerCapture() {},
+    /** Dispara como o navegador: captura, depois bolha — e PARA se alguém pedir. Devolve o evento. */
+    dispara(t, e) { e.parou = false; e.stopPropagation = () => { e.parou = true; }; e.preventDefault = () => {};
+      for (const fase of [true, false]) for (const x of hs) if (x.t === t && x.cap === fase && !e.parou) x.h(e);
+      return e; } };
+}
+const dedo = (x, y, id = 1) => ({ pointerType: "touch", pointerId: id, clientX: x, clientY: y, button: 0 });
+
+test("o toque do volante NÃO é parado: ele segue para a janela (onde o SDK do portal escuta), MARCADO", () => {
+  const cv = alvoFalso(), joy = createJoystick(cv); joy.setEnabled(true);
+  const d = cv.dispara("pointerdown", dedo(300, 400));
+  assert.equal(d.parou, false, "`stopPropagation` no down esconde o toque do SDK: o relógio do Fit Test congela para quem só dirige");
+  assert.equal(d.__volante, true, "a marca é o que tira o dedo do caminho do Pointer");
+  const m = cv.dispara("pointermove", dedo(360, 400));
+  assert.equal(m.parou, false); assert.equal(m.__volante, true);
+  assert.equal(joy.state.tem, true, "o arrasto continua virando rumo");
+  assert.ok(joy.state.dx > .9, "…para a direita, que é para onde o dedo foi");
+  const u = cv.dispara("pointerup", dedo(360, 400));
+  assert.equal(u.parou, false); assert.equal(u.__volante, true);
+  assert.equal(joy.state.tem, true, "soltar NÃO para: o rumo fica travado");
+});
+
+test("o Pointer não vê o dedo do volante — e continua vendo o da MIRA e o mouse", () => {
+  const cv = alvoFalso(), botoes = [];
+  const joy = createJoystick(cv); joy.setEnabled(true);           // captura: registrado antes, roda antes
+  const ptr = createPointer(cv, { onButton: (b, fase, tipo) => botoes.push(fase + ":" + tipo) });
+  cv.dispara("pointerdown", dedo(300, 400, 1));
+  assert.deepEqual(botoes, [], "o dedo que dirige não é clique de jogo");
+  assert.equal(ptr.state.active, false, "…nem alvo do ponteiro: quem dirige é o rumo do direcional");
+  // o 2º dedo é o da MIRA: o direcional não o marca, e o Pointer TEM de vê-lo
+  const mira = cv.dispara("pointerdown", dedo(100, 200, 2));
+  assert.equal(mira.__volante, undefined);
+  assert.deepEqual(botoes, ["down:touch"]);
+  assert.equal(ptr.state.active, true);
+  cv.dispara("pointerup", dedo(100, 200, 2));
+  cv.dispara("pointerup", dedo(300, 400, 1));
+  assert.deepEqual(botoes, ["down:touch", "up:touch"], "o `up` do volante também passa marcado, sem virar clique");
+});
+
+test("no MOUSE o direcional não toca no evento: nem marca, nem para", () => {
+  const cv = alvoFalso(), botoes = [];
+  const joy = createJoystick(cv); joy.setEnabled(true);
+  createPointer(cv, { onButton: (b, fase, tipo) => botoes.push(fase + ":" + tipo) });
+  const e = cv.dispara("pointerdown", { pointerType: "mouse", pointerId: 9, clientX: 50, clientY: 50, button: 0 });
+  assert.equal(e.__volante, undefined); assert.equal(e.parou, false);
+  assert.deepEqual(botoes, ["down:mouse"], "o clique do mouse é o tiro — tem de chegar ao Pointer");
+  assert.equal(joy.state.tem, false);
 });

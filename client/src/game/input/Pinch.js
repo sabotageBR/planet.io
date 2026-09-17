@@ -5,9 +5,9 @@
 // que alguém jogasse com os dois polegares.
 //
 // Não disputa nada com o Joystick: os dois módulos leem os MESMOS eventos do canvas de forma
-// independente (nenhum chama `stopImmediatePropagation`, só `stopPropagation`, que não impede outro
-// listener no MESMO elemento) — quem decide mover/mirar continua sendo só o Joystick, e a pinça só
-// participa do zoom, nunca do alvo do jogador.
+// independente (nenhum chama `stopImmediatePropagation`, que é a única coisa que cortaria outro listener no
+// MESMO elemento — e hoje nem `stopPropagation` há: o Joystick só MARCA o evento, ver o fim dele) — quem
+// decide mover/mirar continua sendo só o Joystick, e a pinça só participa do zoom, nunca do alvo do jogador.
 //
 // ⚠️ MAS ELE PRECISA AVISAR QUE COMEÇOU (`onPinch`). Enquanto o direcional só valia na metade esquerda,
 // uma pinça na metade direita não mexia no rumo; agora que QUALQUER dedo dirige, o primeiro dedo da
@@ -42,7 +42,7 @@ export function createPinch(alvo,{onZoom,onPinch}={}){
     toques.delete(e.pointerId);
     if(par&&(e.pointerId===par[0]||e.pointerId===par[1])){par=null;dist=0;}};
   // captura, como Joystick.js: o canvas escuta na fase de bolha, e capturar aqui não impede o Joystick de
-  // ver o mesmo evento — os dois só usam `stopPropagation`, que não corta listeners irmãos no MESMO nó.
+  // ver o mesmo evento — nenhum dos dois corta listeners irmãos no MESMO nó.
   alvo.addEventListener("pointerdown",down,true);
   alvo.addEventListener("pointermove",move,true);
   alvo.addEventListener("pointerup",up,true);

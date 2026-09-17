@@ -41,9 +41,10 @@ export function createActivity({onAtivo,hud=null}){
   // gesto contariam duas vezes sem comprar nada. O pedido falava em mouse, mas no celular não há mouse — sem
   // o ponteiro do dedo a tela de morte ficaria travada para sempre em metade do público de um .io.
   // ⚠️ CAPTURA, não bolha. O detector existe para responder "alguém fez alguma coisa?", e na bolha
-  // qualquer `stopPropagation()` no caminho ESCONDE o gesto dele — e há vários: o `down` do direcional
-  // virtual dá `stopPropagation`, os botões de toque do HUD param o próprio evento, e os handlers do
-  // canvas ficam todos entre o alvo e a janela. Na captura o evento passa por aqui ANTES de qualquer um
+  // qualquer `stopPropagation()` no caminho ESCONDE o gesto dele — e os handlers do canvas ficam todos
+  // entre o alvo e a janela. (O `down` do direcional virtual JÁ DEU `stopPropagation` — hoje ele só MARCA o
+  // evento, porque parar escondia o toque também do SDK do portal; ver o fim de input/Joystick.js. A captura
+  // fica: ela não depende de ninguém no caminho se comportar.) Na captura o evento passa por aqui ANTES de qualquer um
   // deles, e ninguém consegue mentir sobre presença. Isso deixou de ser detalhe quando o
   // `gameplayStart` da Poki passou a depender do PRIMEIRO INPUT (ver portal/sessao.js): no dedo, um
   // toque sem arrastar pode ser o único input que existe, e engoli-lo é o evento não sair nunca.

@@ -23,7 +23,7 @@
 //      sob o dedo, a tela ficava inteiramente inerte. Visto em teste de leitura de tela: o jogador toca,
 //      toca de novo, e nada acontece nem se move nem responde. Tocar onde se quer ir é o modelo mental
 //      de quem chega do celular, e aqui esse gesto estava livre — no dedo o toque no canvas não atira
-//      (`actions.button` ignora `type==="touch"`) e o `down` do volante já dá `stopPropagation`.
+//      (`actions.button` ignora `type==="touch"`) e o `down` do volante já o tira do caminho do Pointer.
 //
 // OS DOIS DEDOS. Só o primeiro dirige; o segundo move a MIRA (a retícula do tiro segurado, que game/
 // index.js injeta no `pointer.state`). ⚠️ Isso precisa de um complemento que não é óbvio: com o rumo
@@ -134,11 +134,11 @@ export function createJoystick(alvo){
     if(aimPid<0&&(pid>=0||mirando)){aimPid=e.pointerId;st.aim=true;st.aimX=x;st.aimY=y;return;}   // sem stopPropagation: a mira precisa que o Pointer veja o dedo
     if(pid>=0)return;
     pid=e.pointerId;rumo.down(x,y);
-    e.stopPropagation();e.preventDefault();};
+    e.__volante=true;e.preventDefault();};   // MARCA, nunca `stopPropagation` — ver o bloco do fim
   const move=e=>{
     if(!ligado)return;
     const r=alvo.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
-    if(e.pointerId===pid){rumo.move(x,y);e.stopPropagation();e.preventDefault();return;}
+    if(e.pointerId===pid){rumo.move(x,y);e.__volante=true;e.preventDefault();return;}
     if(e.pointerId===aimPid){st.aimX=x;st.aimY=y;}};
   const up=e=>{
     if(!ligado)return;
@@ -146,7 +146,7 @@ export function createJoystick(alvo){
     // precisa para transformar um toque em direção. Passar a CÂMERA e não o centróide é de propósito: o
     // jogador aponta para o que ele VÊ, e a câmera é suavizada.
     if(e.pointerId===pid){const r=alvo.getBoundingClientRect();
-      pid=-1;rumo.up(r.width/2,r.height/2);e.stopPropagation();return;}   // o rumo FICA: soltar não para
+      pid=-1;rumo.up(r.width/2,r.height/2);e.__volante=true;return;}   // o rumo FICA: soltar não para
     if(e.pointerId===aimPid){aimPid=-1;st.aim=false;}};
   // ⚠️ `pointercancel` tem handler PRÓPRIO: gesto cancelado (o navegador assumiu o toque) não é um toque
   // deliberado, e convertê-lo em rumo viraria o planeta por causa de algo que o jogador não pediu.
@@ -154,10 +154,24 @@ export function createJoystick(alvo){
     if(!ligado)return;
     if(e.pointerId===pid){pid=-1;rumo.up();return;}
     if(e.pointerId===aimPid){aimPid=-1;st.aim=false;}};
-  // captura: o canvas escuta na fase de bolha, então parar aqui tira o toque do Pointer sem tocar nele.
-  // ⚠️ Agora isso vale em QUALQUER ponto do canvas (antes só na metade esquerda), então o Pointer deixa de
-  // ver o down/up do dedo que dirige. É inócuo — `actions.button` já ignora `type==="touch"` e quem liga o
-  // `pointer.state.active` no dedo é o dedo da MIRA, via game/index.js —, mas é uma mudança silenciosa.
+  // captura: o canvas escuta na fase de bolha, então este handler roda ANTES do `Pointer.js` e pode tirar o
+  // dedo do volante do caminho dele.
+  // ⚠️ **QUEM TIRA É UMA MARCA NO EVENTO (`e.__volante`), NUNCA `stopPropagation()` — e isto custou ~20 Fit
+  //    Tests reprovados.** Parar o evento aqui, em captura, o mata para TODO MUNDO que escuta na bolha — e um
+  //    deles não é nosso: o SDK do portal. O da Poki registra interação com
+  //    `window.addEventListener("pointerdown",…)` (bolha), e o relator do Player Fit Test CONGELA a duração do
+  //    jogador, para sempre, depois de 60 s sem um `pointerdown`/`keydown` que ele veja (o trecho está em
+  //    `scripts/poki-stub.js`). Com o `stopPropagation`, NO CELULAR o SDK nunca via o toque que dirige o
+  //    planeta: quem só dirigia — o novato inteiro — "não interagia", o `gameplayStart` dele saía INVÁLIDO e
+  //    o relógio deles parava ~60 s depois do último botão do tutorial, em ~2m10, que foi a média de TODA
+  //    rodada. Nós já sabíamos que a bolha ficava cega (é por isso que `Activity.js` e o `GESTO` de
+  //    `portal/sessao.js` escutam em captura) — e nunca ligamos isso ao listener DELES.
+  //    A marca dá o mesmo resultado para o jogo (o `Pointer.js` abre com `if(e.__volante)return`) sem mentir
+  //    para ninguém: o evento é o toque REAL do jogador, só deixou de ser escondido. Quem mede o antes/depois
+  //    é `scripts/poki-fit-bancada.mjs`, e `client/test/joystick.test.js` trava os dois sentidos.
+  // ⚠️ Vale em QUALQUER ponto do canvas (antes só na metade esquerda), então o Pointer não vê o down/move/up
+  //    do dedo que dirige. É inócuo — `actions.button` já ignora `type==="touch"` e quem liga o
+  //    `pointer.state.active` no dedo é o dedo da MIRA, via game/index.js.
   alvo.addEventListener("pointerdown",down,true);
   alvo.addEventListener("pointermove",move,true);
   alvo.addEventListener("pointerup",up,true);

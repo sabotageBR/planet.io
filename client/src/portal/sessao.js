@@ -156,8 +156,12 @@ const FACHADA = { comecou: () => portal.jogoComecou(), parou: () => portal.jogoP
  * perguntas diferentes, dois detectores; unificá-los é o que quebrou.
  *
  * ⚠️ **CAPTURA + `setTimeout(0)`, e as duas metades são obrigatórias.** Captura porque na bolha um
- * `stopPropagation()` esconde o evento (o direcional virtual e os botões de toque do HUD dão), e no dedo
- * o toque pode ser o único input que existe. E o `setTimeout` porque em captura NÓS rodamos ANTES do
+ * `stopPropagation()` esconde o evento, e no dedo o toque pode ser o único input que existe.
+ * ⚠️ **E O NOSSO LADO NÃO BASTAVA: o SDK DELES escuta na BOLHA.** O direcional virtual dava
+ * `stopPropagation()` em captura, então este detector via o toque (e mandava o `gameplayStart`) e o
+ * rastreador da Poki NÃO — no celular o evento saía com `interaction` vazio, INVÁLIDO, e o relógio do
+ * Player Fit Test congelava para quem só dirige. Hoje o direcional MARCA o evento em vez de pará-lo (ver o
+ * fim de `game/input/Joystick.js`); quem mede é `scripts/poki-fit-bancada.mjs`. E o `setTimeout` porque em captura NÓS rodamos ANTES do
  * listener do SDK, que é de bolha — chamar `gameplayStart()` ali dentro o faria ler o `interaction` de
  * antes deste gesto, ou seja vazio. O timeout devolve o controle depois do despacho inteiro, e 0 ms cabe
  * com folga nos 5 s. (O próprio SDK usa `setTimeout(...,0)` dentro do `gameplayStart` pelo mesmo motivo.)
