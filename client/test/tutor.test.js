@@ -254,3 +254,67 @@ test("A ETAPA 3 NÃO DEIXA O JOGADOR CORRER MAIS DE 5 s ATRÁS DO IMPOSSÍVEL", 
   assert.ok(AJUDA[ETAPA.SPLIT].d1 <= 5000, `${AJUDA[ETAPA.SPLIT].d1} ms até a dica do salto`);
   assert.ok(AJUDA[ETAPA.SPLIT].d1 > AJUDA[ETAPA.NOVA].d1 * .8, "mas não tão cedo que ele nem tente");
 });
+
+// ── AS DECISÕES DOS TRÊS MODELOS NOVOS (ui/tutorFala.js) ─────────────────────
+// Os modelos mudam a FORMA da aula, nunca o conteúdo — e o que eles perguntam a mais (qual palavra
+// gigante, qual tirinha, cartão aberto ou pílula, qual botão de verdade pulsa) é decisão, então mora num
+// `.js` e é conferida aqui.
+import { verboDoTutor, cenaDoTutor, proximaCena, formaDoCartao, alvoDoTutor } from "../src/ui/tutorFala.js";
+
+test("cada etapa tem o SEU verbo, e o FIM não tem nenhum", () => {
+  const v = etapa => verboDoTutor({ etapa }, T);
+  assert.deepEqual([v(ETAPA.NOVA), v(ETAPA.TIRO), v(ETAPA.SPLIT)], ["verbo1", "verbo2", "verbo3"]);
+  assert.equal(v(ETAPA.FIM), "");
+});
+
+test("A TIRINHA DA ETAPA 3 NÃO MOSTRA O SALTO ANTES DE O PROBLEMA EXISTIR", () => {
+  // ⚠️ É o mesmo tempo duplo de `promptDoTutor`. Com `ajuda 0` o jogador ainda está descobrindo que correr
+  // não alcança — e é essa descoberta que faz o DIVIDIR ser um alívio. A tirinha do salto no segundo zero
+  // entregaria a resposta antes da pergunta.
+  assert.equal(cenaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0 }), "caca");
+  assert.equal(cenaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 1 }), "salto");
+  assert.equal(cenaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 2 }), "salto");
+  // …e as duas decisões NUNCA discordam: há tirinha de salto se, e só se, há prompt de dividir
+  for (const ajuda of [0, 1, 2, 3])
+    assert.equal(cenaDoTutor({ etapa: ETAPA.SPLIT, ajuda }) === "salto",
+      !!promptDoTutor({ etapa: ETAPA.SPLIT, ajuda, dedo: false }, T, "ESPAÇO"), "ajuda " + ajuda);
+});
+
+test("na EXPLOSÃO a tirinha é a de espera — sem gesto, como o prompt", () => {
+  assert.equal(cenaDoTutor({ etapa: ETAPA.NOVA, pre: true }), "espera");
+  assert.equal(cenaDoTutor({ etapa: ETAPA.NOVA, pre: false }), "nova");
+  assert.equal(cenaDoTutor({ etapa: ETAPA.TIRO }), "tiro");
+  assert.equal(cenaDoTutor({ etapa: ETAPA.FIM }), null);
+});
+
+test("a COMEMORAÇÃO anuncia a próxima lição, mas nunca antecipa o salto", () => {
+  assert.equal(proximaCena(ETAPA.NOVA), "tiro");
+  assert.equal(proximaCena(ETAPA.TIRO), "caca", "depois do tiro vem o OBJETIVO da etapa 3, não a resposta dela");
+  assert.equal(proximaCena(ETAPA.SPLIT), null);
+});
+
+test("o cartão só vira PÍLULA na etapa 1, depois do primeiro pedaço — e REABRE quando a ajuda chega", () => {
+  const f = o => formaDoCartao({ etapa: ETAPA.NOVA, pct: 0, ajuda: 0, pre: false, ...o });
+  assert.equal(f({}), "aberto", "antes do primeiro pedaço a tirinha É a instrução");
+  assert.equal(f({ pct: .1 }), "pilula");
+  assert.equal(f({ pct: .1, ajuda: 1 }), "pilula");
+  assert.equal(f({ pct: .1, ajuda: 2 }), "aberto", "no degrau 2 ele claramente não entendeu: a tirinha volta");
+  assert.equal(f({ pct: .1, pre: true }), "aberto");
+  // nas outras duas o gesto É a etapa: não há "começou a acertar" que justifique encolher
+  assert.equal(formaDoCartao({ etapa: ETAPA.TIRO, pct: 0, ajuda: 0 }), "aberto");
+  assert.equal(formaDoCartao({ etapa: ETAPA.SPLIT, pct: 0, ajuda: 1 }), "aberto");
+});
+
+test("O BOTÃO DE VERDADE SÓ PULSA NO DEDO, e só quando há o que apertar", () => {
+  // No mouse não existe botão na tela (`#touch` é só `pointer:coarse`). No dedo, quem pulsa é o botão
+  // REAL — a réplica desenhada convida a criança a tocar nela, o toque dirige o planeta e nada explode.
+  assert.equal(alvoDoTutor({ etapa: ETAPA.TIRO, ajuda: 0, dedo: true }), "t-fire");
+  assert.equal(alvoDoTutor({ etapa: ETAPA.SPLIT, ajuda: 1, dedo: true }), "t-split");
+  assert.equal(alvoDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0, dedo: true }), null, "antes do problema, nada pulsa");
+  assert.equal(alvoDoTutor({ etapa: ETAPA.NOVA, ajuda: 0, dedo: true }), null, "mover não tem botão");
+  for (const etapa of [ETAPA.NOVA, ETAPA.TIRO, ETAPA.SPLIT, ETAPA.FIM])
+    assert.equal(alvoDoTutor({ etapa, ajuda: 2, dedo: false }), null, "mouse, etapa " + etapa);
+  // …e o botão que pulsa é sempre o MESMO que o prompt aponta
+  for (const [etapa, ajuda] of [[ETAPA.TIRO, 0], [ETAPA.SPLIT, 1]])
+    assert.equal(promptDoTutor({ etapa, ajuda, dedo: true }, T, "ESPAÇO").tipo, "hud");
+});

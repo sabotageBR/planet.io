@@ -25,7 +25,7 @@ node scripts/loadtest.mjs --n 150 --dur 90    # N clientes DE VERDADE (guest →
 node scripts/prof-room.mjs --bots 15 --humanos 10   # onde vai o tempo de UMA sala (cérebro · World.step · _consume)
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
 DATABASE_URL=... node scripts/skin-art.mjs [--dry]   # sobe a arte de client/public/faces/ para o banco (uma vez por ambiente)
-node scripts/responsive-check.mjs [url]   # a matriz de layout (17 aparelhos × 3 temas × 20 telas, 7 critérios)
+node scripts/responsive-check.mjs [url]   # a matriz de layout (18 aparelhos × 3 temas × ~60 telas, 7 critérios; RESP_TELAS/RESP_TEMAS recortam)
 node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|gamepix|all  # o .zip do cliente para os portais (docs/spec/portais.md)
 ./scripts/build-push.sh      # builda (contexto = raiz, -f server/Dockerfile / client/Dockerfile) e publica evandromoura/warspace-io-{server,client}
 ./scripts/deploy.sh          # aplica k8s/ + Ingress em warspace.io (WARSPACE_HOST=... troca o host, NO_INGRESS=1 pula)
@@ -1645,6 +1645,50 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **A Marte SAIU de `AD_GIFT_SKINS`** (Terra e Lua ficam): nas duas portas a barra seria decorativa —
   ninguém espera três partidas por algo que um vídeo de 30 s entrega. Sobrando duas, **o `rewardedBreak`
   mantém os seus dois chamadores** (Loja e tela de morte), que é o item que a Poki cobra por escrito.
+- **A TELA DO TUTORIAL TEM TRÊS MODELOS CANDIDATOS, E ELES SÃO PROVISÓRIOS** (`ui/tutorEstilo.js`,
+  `ui/tutorPecas.jsx`, `ui/TutorLegenda|TutorSargento|TutorCena.jsx`, o bloco "OS TRÊS MODELOS CANDIDATOS"
+  no fim de `ui.css`): o dono do jogo pediu três formas da mesma aula para ESCOLHER jogando —
+  `localhost:5174/?tutor=1|2|3` (`=4` é o clássico, que continua sendo o `PADRAO` e o que está em produção).
+  **LEGENDA** = tudo numa faixa no topo (três segmentos + uma pílula com o desenho do botão dentro da
+  frase) e a etapa completa é um SELO, sem cartão e sem véu — o jogador nunca perde o controle;
+  **SARGENTO** = a Lua Soldado com balão de quadrinho e três medalhas ★☆☆; **CENA** = uma tirinha de três
+  quadros (gesto ▸ ação ▸ resultado) que ensina sem depender de ler, encolhe para pílula no primeiro
+  pedaço comido e, na pausa entre etapas, já mostra a tirinha da PRÓXIMA lição.
+  ⚠️ **A máquina (`game/tutor.js`), o mundo e as DECISÕES de fala não mudam — muda a FORMA.**
+  `falaDoTutor`/`promptDoTutor` seguem a única fonte do que dizer e do que apertar; o que os modelos
+  perguntam a mais (`verboDoTutor`, `cenaDoTutor`, `proximaCena`, `formaDoCartao`, `alvoDoTutor`) mora no
+  mesmo `tutorFala.js` e é testado. A tirinha da etapa 3 tem DOIS tempos (`caca` → `salto` só com
+  `ajuda>=1`), pelo mesmo motivo de o prompt ser `null` ali: a resposta não pode chegar antes da pergunta.
+  ⚠️ **SEM PREF, SEM WHITELIST, SEM TUNABLE**: o tutorial é visto UMA vez, antes de existir tela de Opções.
+  A ordem é `d.estilo` (a bancada, gravado por `tutorDemo`) > `?tutor=` > `PADRAO` — o CONTRÁRIO de
+  `?dead=`, porque a matriz troca de modelo sem recarregar a página. E `?tutor=` é lido NA CARGA DO MÓDULO
+  (`Tutor.jsx`): `actions.js` faz `replaceState` antes do primeiro render e apagaria a query. Em DEV,
+  `?tutor=N` sozinho já abre o tutorial e a URL fica (F5 não perde o modelo).
+  ⚠️ **TRÊS IDS SÃO API** (`#tutor` · `#tutor-ok` · `#tutor-fim`) e carregam o que o HUD faz por `:has()`:
+  `#tutor` esconde só o ruído e MANTÉM o `#touch`; os outros dois escondem tudo. É por isso que a
+  comemoração do LEGENDA renderiza como `#tutor[data-ok]` — o id, e não um `if` no CSS, é o que deixa os
+  botões de toque na tela. `data-etapa` também é API (esconde o bloco de arma nas etapas 1 e 3).
+  ⚠️ **OS MASCOTES TÊM PAPEL FIXO, no mundo e na tela**: MARTE = você (`SKIN_TUTORIAL`), TERRA = o outro
+  (`SKIN_ALVO` em `tutorServer.js` — o alvo da etapa 2 e a presa da 3 nasciam `skinId:0`, e "ATIRE NELE"
+  falava de alguém sem cara), LUA = quem ensina. É o que deixa um desenho de 30 px dizer "este é você".
+  ⚠️ **O BOTÃO DE VERDADE PULSA nos três** (`data-alvo` → `#hud:has(#tutor[data-alvo="t-fire"]) #t-fire`),
+  só no dedo: a réplica desenhada do MÍSSIL/DIVIDIR convida a criança a tocar NELA, o toque dirige o
+  planeta e nada explode — e a etapa 2 é a que mais perde gente (172 de 1.140).
+  ⚠️ **QUATRO ARMADILHAS DE CSS, todas verificadas**: (1) `ui.css:38` `#hud *{transition:…}` vale (1,0,0)
+  e MATA qualquer `transition` escrita só com classe — a barra da etapa 1 do clássico andava em degraus de
+  8 Hz por isso, e foi consertada de carona (`#tutor .tut-barra>i`); toda transição nova leva um ID.
+  (2) `body[data-reduce="1"] *` zera toda duração: nada pode depender do FIM de uma animação, e o "apagado"
+  da tirinha só existe DENTRO do keyframe. (3) `#hud button|a|[role=button]` ganham `pointer-events:auto`:
+  glifo decorativo nunca é nenhum dos três. (4) `h.tutor` é objeto novo a cada 125 ms: o relógio do fim
+  (`useEntraSozinho`) depende de um BOOLEANO, e nenhum componente é definido dentro de outro.
+  ⚠️ **E A MATRIZ APROVAVA UMA PÁGINA EM BRANCO.** Um `vite` esquecido aberto há dias na 5173 servia um
+  `shared/` defasado (módulo fora da raiz, export novo nunca relido), o import falhava na carga, a sonda
+  não achava nada para medir e devolvia 378 combinações limpas. Hoje ela ABORTA sem `window.__tela`, e nas
+  entradas `tutor:*` reprova quando o `data-style` medido não é o pedido. `tut-prompt` entrou nos ids de
+  colisão (o rodapé do tutorial não era medido) e `tutor:2!` — a etapa que mais perde, no dedo — também.
+  ⚠️ **DEPOIS DA ESCOLHA**: `PADRAO` muda; saem os arquivos dos perdedores, os blocos `tl-`/`ts-`/`tc-` do
+  CSS, as chaves `sgt*`/`cena*` do i18n e as entradas da matriz (que saem sozinhas: a lista vem de
+  `ESTILOS`). Nenhum zip de portal sai com os quatro dentro, e a publicação vai SOZINHA num Fit Test.
 - **O PORTÃO DO DIVIDIR ESTAVA ACIMA DO TETO DO NOVATO** (`SPLIT.MIN_R` virou tunable de escopo `wire`,
   grupo "Proteção do novato"; a dica em `client/src/game/dica.js` + `ui/DicaSplit.jsx`): a física torna o
   salto OBRIGATÓRIO para matar alguém — `vmax = 2110,6/r^0,449` faz a presa ser sempre mais rápida que o

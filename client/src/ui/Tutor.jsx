@@ -16,43 +16,44 @@
 // concluir que o tutorial mente. `d.dedo` vem do mesmo getter que arma o direcional virtual.
 // ⚠️ `pointer-events:none` no bloco em curso, com `auto` só no botão: o `#hud` inteiro é `none` porque os
 // painéis engoliam o alvo do jogador e congelavam o movimento.
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import { app } from "../state/app.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { preenche } from "../i18n/index.js";
-import { ETAPA, ETAPAS, TUTOR } from "../game/tutor.js";
+import { ETAPA, ETAPAS } from "../game/tutor.js";
 // ⚠️ As duas decisões (qual frase, qual botão) moram num `.js` à parte: o `node --test` não carrega
 // `.jsx`, e uma função de decisão que ninguém testa é onde o par mouse/dedo se inverte em silêncio.
 import { falaDoTutor, promptDoTutor } from "./tutorFala.js";
 import { saiDoTutorial } from "../state/actions.js";
 import { PROGRESSO, SKIN_TUTORIAL, skinById } from "@warspace/shared";
+// ── OS QUATRO MODELOS (ui/tutorEstilo.js) ──
+// Este arquivo continua sendo o dono do CLÁSSICO — a tela que está em produção, e a que todos os ⚠️ daqui
+// descrevem. Os três candidatos moram cada um no seu arquivo, e o que os quatro dividem saiu para
+// `tutorPecas.jsx` (a trilha, o desenho do botão, o relógio do fim): quatro cópias divergiriam no primeiro
+// conserto.
+// ⚠️ **`?tutor=` É LIDO NA CARGA DO MÓDULO, e não dá para ser de outro jeito**: quando o destino do boot é
+// o tutorial, `state/actions.js` faz `history.replaceState(null,"",location.pathname)` ANTES do primeiro
+// render — lido dentro do componente, `location.search` já viria vazio e o modelo pedido cairia no padrão
+// sem aviso. É o mesmo molde do `?dead=` de `Dead.jsx`, e funciona porque `App → Hud → Tutor` é import
+// estático: o módulo carrega antes de o boot rodar.
+import { estiloDe } from "./tutorEstilo.js";
+import { Trilha, Glifo, useEntraSozinho } from "./tutorPecas.jsx";
+import TutorLegenda from "./TutorLegenda.jsx";
+import TutorSargento from "./TutorSargento.jsx";
+import TutorCena from "./TutorCena.jsx";
+
+const Q = typeof location !== "undefined" ? new URLSearchParams(location.search).get("tutor") : null;
+/** Um lookup só, e nenhum `if (estilo === …)` espalhado pela tela: o que não estiver aqui é o clássico. */
+const MODELOS = { legenda: TutorLegenda, sargento: TutorSargento, cena: TutorCena };
 
 /** O título de cada etapa, para a tela de "completa" poder anunciar a próxima. */
 const TIT_ETAPA = { [ETAPA.NOVA]: "novaTit", [ETAPA.TIRO]: "tiroTit", [ETAPA.SPLIT]: "splitTit" };
 
-/** O desenho do prompt: um mouse, uma tecla ou o botão do HUD. SVG inline — nada de imagem nova. */
+/** O prompt do CLÁSSICO: o desenho compartilhado (`Glifo`) no invólucro do rodapé, com o rótulo embaixo. */
 function Prompt({ p }) {
   if (!p) return null;
-  const mouse = p.tipo === "mouse-mover" || p.tipo === "mouse-clique";
   return <div id="tut-prompt" className={"tut-btn tut-btn-" + p.tipo} aria-hidden="true">
-    {mouse ? <svg viewBox="0 0 40 60" aria-hidden="true" className="tut-mouse">
-      <rect x="4" y="4" width="32" height="52" rx="16" className="tm-corpo" />
-      {/* a metade ESQUERDA acesa é a resposta a "qual botão na tela" */}
-      {p.tipo === "mouse-clique"
-        ? <path d="M4 20 V20 A16 16 0 0 1 20 4 V20 Z" className="tm-esq" />
-        : null}
-      <line x1="20" y1="4" x2="20" y2="20" className="tm-div" />
-      <line x1="4" y1="20" x2="36" y2="20" className="tm-div" />
-      {p.tipo === "mouse-mover"
-        ? <g className="tm-setas"><path d="M20 34 l-7 7 h4 v8 h6 v-8 h4 Z" /></g>
-        : null}
-    </svg> : null}
-    {p.tipo === "tecla" ? <kbd className="tut-tecla">{p.rotulo}</kbd> : null}
-    {p.tipo === "toque" ? <svg viewBox="0 0 40 60" aria-hidden="true" className="tut-mouse">
-      <circle cx="20" cy="26" r="11" className="tm-toque" />
-      <circle cx="20" cy="26" r="17" className="tm-onda" />
-    </svg> : null}
-    {p.tipo === "hud" ? <span className="tut-hud-btn">{p.rotulo}</span> : null}
+    <Glifo p={p} />
     {p.tipo !== "tecla" && p.tipo !== "hud" ? <b>{p.rotulo}</b> : null}
   </div>;
 }
@@ -61,6 +62,10 @@ export default function Tutor({ d, tecla }) {
   const LB = useLabels();
   if (!d) return null;
   const T = LB.tutor || {};
+  // `d.estilo` só existe na BANCADA (`tutorDemo`, que o grava no objeto do hudStore) e ganha da URL — ver
+  // o porquê em `estiloDe`. No jogo de verdade vale o `?tutor=`, e sem ele o padrão.
+  const M = MODELOS[estiloDe({ demo: d.estilo, q: Q })];
+  if (M) return <M d={d} T={T} tecla={tecla} />;
   if (d.fim) return <Fim T={T} demo={!!d.demo} />;
   if (d.celebra) return <Completa d={d} T={T} />;
   const [tit, txt] = falaDoTutor(d, T, tecla);
@@ -69,7 +74,7 @@ export default function Tutor({ d, tecla }) {
   // explicada. Com a instrução em cima e o prompt embaixo, o miolo da tela (onde o jogo acontece) fica
   // livre; e no dedo o prompt ainda cai ao lado dos botões de toque reais, que é para onde ele aponta.
   return <>
-    <div id="tutor" data-etapa={d.etapa}>
+    <div id="tutor" data-style="classico" data-etapa={d.etapa}>
       <Trilha etapa={d.etapa} T={T} />
       {/* ⚠️ A BARRA SÓ EXISTE NA ETAPA 1, e isso é escolha: lá o `pct` é contínuo (sai da massa) e diz
           quanto falta; nas outras duas a etapa é UM gesto, então a barra ficaria parada em zero por
@@ -90,32 +95,6 @@ export default function Tutor({ d, tecla }) {
 }
 
 /**
- * A trilha 1·2·3. Três bolas NUMERADAS ligadas por um traço — o vocabulário de tutorial que o pedido
- * nomeia ("uma barra que tem 3 etapas, 1,2,3").
- * ⚠️ NENHUM ESTADO VAI SÓ NA COR: o número está sempre lá e a etapa feita vira ✓. Medido com o validador
- * de paleta, o verde e o âmbar dos tokens ficam com ΔE 6,7 em protanopia.
- */
-function Trilha({ etapa, T }) {
-  // ⚠️ `pos`, e não `n`: o `map` abaixo declara o próprio `n`, e um homônimo aqui fora seria sombreado
-  // dentro dele. É a mesma classe de defeito que o `marco`/`degrau` de `game/index.js` custou caro.
-  const pos = Math.min(Math.max(etapa, 1), ETAPAS);
-  return <div className="tut-trilha" role="progressbar" aria-valuenow={pos} aria-valuemin={1} aria-valuemax={ETAPAS}>
-    {/* ⚠️ O "1/3" É TEXTO, ao lado das bolas, e não substitui nenhuma delas: as bolas dizem o CAMINHO
-        (onde já esteve, onde está, quanto falta) e o número diz a POSIÇÃO sem depender de contar
-        círculos numa tela de 360 px com um planeta andando por baixo. É o mesmo princípio de "nenhum
-        estado vai só na cor" aplicado à forma. */}
-    <b className="tut-passo">{preenche(T.passo, { n: pos, t: ETAPAS })}</b>
-    {Array.from({ length: ETAPAS }, (_, i) => {
-      const n = i + 1, st = n < etapa ? "ok" : n === etapa ? "now" : "off";
-      return <React.Fragment key={n}>
-        {i ? <i className={"tut-liga " + (n <= etapa ? "ok" : "")} /> : null}
-        <b className={"tut-bola " + st}>{st === "ok" ? "✓" : n}</b>
-      </React.Fragment>;
-    })}
-  </div>;
-}
-
-/**
  * A TELA DE "PASSOU DE ETAPA". Ela aparece, comemora e **fecha sozinha** — é o pedido literal ("aparece
  * uma comemoração que passou de nível, a tela fecha e começa a segunda etapa").
  *
@@ -126,7 +105,7 @@ function Trilha({ etapa, T }) {
  */
 function Completa({ d, T }) {
   const n = d.etapa;
-  return <div id="tutor-ok" role="status" aria-live="assertive">
+  return <div id="tutor-ok" data-style="classico" role="status" aria-live="assertive">
     <div className="tok-card">
       <div className="tok-selo">✓</div>
       <div className="tok-tit">{preenche(T.feito, { n })}</div>
@@ -163,19 +142,15 @@ function Completa({ d, T }) {
  * que é assíncrono, e sem a guarda um segundo tick entraria na sala duas vezes.
  */
 function Fim({ T, demo }) {
-  const foi = useRef(false);
   const games = ((app.get().session || {}).stats || {}).games | 0;
   const alvo = PROGRESSO.PARTIDAS, feitas = Math.max(0, Math.min(alvo, games));
   const temSkin = ((app.get().session || {}).skins || []).includes(SKIN_TUTORIAL);
   // ⚠️ `demo` desarma o relógio, e não é zelo: `?screen=tutor:fim` e a matriz de responsividade montam
   // esta tela para MEDI-LA, e sem a guarda ela entraria numa sala de verdade três segundos depois — a
   // sonda mediria outra tela e o `?screen=` seria inutilizável para conferir esta de olho.
-  useEffect(() => {
-    if (demo) return;
-    const t = setTimeout(() => { if (!foi.current) { foi.current = true; saiDoTutorial({ fim: true }); } }, TUTOR.FIM_MS);
-    return () => clearTimeout(t);
-  }, [demo]);
-  return <div id="tutor-fim">
+  // O relógio em si (o `setTimeout` com guarda de ref) é o MESMO dos quatro modelos: `useEntraSozinho`.
+  useEntraSozinho(!demo);
+  return <div id="tutor-fim" data-style="classico">
     <div className="tf-tit">{T.fimTitulo}</div>
     <div className="tf-sub">{T.fimSub}</div>
     {/* Quem já tem a skin não recebe promessa nenhuma — prometer o que a pessoa já possui é o jeito mais

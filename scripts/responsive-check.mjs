@@ -11,6 +11,7 @@
 // matriz mede layout e HUD, e o jogo em si continua sendo aprovado de olho, em Chrome de verdade.
 // uso:  node scripts/responsive-check.mjs [url]        (padrão: http://127.0.0.1:5173)
 import {spawn} from "node:child_process";
+import {ESTILOS as TUTOR_ESTILOS,PADRAO as TUTOR_PADRAO} from "../client/src/ui/tutorEstilo.js";
 
 const BASE=process.argv[2]||process.env.RESP_URL||"http://127.0.0.1:5173";
 const PORT=9800+Math.floor(Math.random()*300);
@@ -75,7 +76,23 @@ const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile",
   // (outras frases, outro prompt) e `ok<n>` é a TELA de etapa concluída, que sem isto nenhuma combinação
   // mediria. `fim` é o cartão com o prêmio — o único bloco que pede rolagem em tela baixa, e é ali que a
   // tela de morte e o BIG CRUNCH já reprovaram uma vez com os botões fora da dobra.
-  "tutor:pre","tutor:1","tutor:2@2","tutor:3@1","tutor:3!","tutor:ok2","tutor:fim"];
+  // `tutor:2!` FALTAVA, e era a cara mais importante de todas: a etapa 2 no DEDO — a lição que mais perde
+  // gente no funil (172 de 1.140) no ponteiro que é 81% do tráfego. É lá que o prompt vira a réplica do
+  // botão MÍSSIL e divide o rodapé com o #touch e o #hud-status.
+  "tutor:pre","tutor:1","tutor:2@2","tutor:2!","tutor:3@1","tutor:3!","tutor:ok2","tutor:fim"];
+// OS MODELOS CANDIDATOS DO TUTORIAL (client/src/ui/tutorEstilo.js) — PROVISÓRIOS, como eles. O sufixo leva
+// o modelo na frente (`tutor:<modelo>:<cara>`, o molde de `dead:<estilo>`), e a lista sai de ESTILOS: um
+// modelo novo entra na matriz sozinho, e um que for apagado sai sem ninguém lembrar de vir aqui.
+// As caras são as do clássico. O `cena` leva duas a mais porque só ele tem estados que as outras não
+// medem: `1` é a PÍLULA (o demo grava pct .45) e `1@2` é o cartão REABERTO no degrau 2; `ok1` é a
+// comemoração com a tirinha do TIRO (que tem o desenho do botão), contra a da caça em `ok2` (que não tem).
+const CARAS_TUTOR=["pre","1","2@2","2!","3@1","3!","ok2","fim"];
+for(const m of TUTOR_ESTILOS){if(m===TUTOR_PADRAO)continue;
+  for(const c of CARAS_TUTOR)TELAS.push("tutor:"+m+":"+c);
+  if(m==="cena")TELAS.push("tutor:cena:1@2","tutor:cena:ok1");}
+/** O modelo que uma entrada `tutor:…` PEDE — `null` para o que não é tutorial. Sem modelo no sufixo é o padrão. */
+const modeloPedido=t=>{if(t!=="tutor"&&!t.startsWith("tutor:"))return null;
+  const m=t.split(":")[1];return TUTOR_ESTILOS.includes(m)?m:TUTOR_PADRAO;};
 const TEMAS=(process.env.RESP_TEMAS||"dawn,sunset,dusk").split(",");   // o dusk é o mais fraco: tem menos regras de mobile que os outros dois
 // `RESP_TELAS` recorta a matriz, no molde do `RESP_TEMAS`: a rodada inteira são ~600 combinações e vários
 // minutos, e quem acabou de mexer em UMA tela quer o retorno dela em segundos. A rodada completa continua
@@ -99,6 +116,16 @@ const ev=async e=>{const o=await call("Runtime.evaluate",{expression:e,returnByV
   return o&&o.result?o.result.value:null;};
 await call("Runtime.enable");
 await new Promise(r=>setTimeout(r,3500));
+// ⚠️ **O APP SUBIU?** Sem esta pergunta a matriz APROVA UMA PÁGINA EM BRANCO: com o bundle quebrado não há
+// tela, não há HUD, a sonda não acha nada para medir e devolve zero problemas em todas as combinações — o
+// verde mais barato que existe. Aconteceu: um `vite` esquecido aberto há dias servia um `shared/` defasado
+// (módulo fora da raiz do Vite, export novo que ele nunca releu), o import falhava na carga e a "linha de
+// base" de 378 combinações limpas era de uma página vazia. `window.__tela` é pendurado pelo boot do
+// cliente em DEV (state/actions.js): se ele não existe, ou o app não subiu ou isto não é um servidor de DEV
+// — e nos dois casos não há o que medir.
+if(!(await ev("typeof window.__tela==='function'"))){
+  console.error("o app NÃO subiu em "+BASE+" (window.__tela ausente): a matriz mediria uma página em branco e aprovaria tudo.\n"+
+    "  confira o console do navegador nessa URL — e se há um `vite` antigo na porta servindo código defasado.");fim(2);}
 
 // Navegar por CLIQUE só funciona quando a tela atual tem o botão certo — e `dead`/`round` não têm nenhum,
 // então o resíduo delas vazava para a combinação seguinte e a sonda media a tela errada. `window.__tela`
@@ -123,7 +150,10 @@ const SONDA=`(()=>{
     if(r.width<44||r.height<44)pequenos.push(nome(el)+' '+Math.round(r.width)+'x'+Math.round(r.height));}
   // Só blocos com CAIXA própria: os wrappers (#hud-left é display:contents no desktop, #hud-right contém
   // os três da direita) colidiriam com os próprios filhos e dariam falso positivo o tempo todo.
-  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-br','touch','chat','talk','radar','toast','kill-feed','tutor','tutor-ok'];
+  // ⚠️ tut-prompt ENTROU TARDE, e a falta dele era um ponto cego: o prompt de botão do tutorial mora no
+  // RODAPÉ, fora do #tutor, exatamente onde vivem o #touch e o #hud-status — e nada do que o tutorial
+  // pusesse ali embaixo era cobrado por colisão. (Sem crase aqui: a sonda é um template literal.)
+  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-br','touch','chat','talk','radar','toast','kill-feed','tutor','tutor-ok','tut-prompt'];
   const cai=ids.map(i=>document.getElementById(i)).filter(e=>e&&vis(e)),cx=[];
   for(let a=0;a<cai.length;a++)for(let b=a+1;b<cai.length;b++){
     const A=cai[a].getBoundingClientRect(),B=cai[b].getBoundingClientRect();
@@ -224,7 +254,12 @@ const SONDA=`(()=>{
     const lim=Math.min(base,innerHeight);
     if(r.bottom>lim+2)escondida.push(nome(el)+' '+Math.round(r.bottom-lim)+'px abaixo da dobra');
     else if(r.top<Math.max(topo,0)-2)escondida.push(nome(el)+' acima da dobra');}
-  return{modo:document.body.dataset.mode,ponteiro:document.body.dataset.pointer,alt:document.body.dataset.h||'',
+  // QUAL MODELO DO TUTORIAL foi medido (data-style na raiz que estiver no ar). Quem compara com o pedido e
+  // o laco la embaixo: um sufixo com erro de digitacao cai no modelo padrao em silencio, e a matriz
+  // mediria o classico tres vezes dizendo que mediu os candidatos. (Sem crase aqui: template literal.)
+  const raizTutor=document.querySelector('#tutor,#tutor-ok,#tutor-fim');
+  return{estilo:raizTutor?(raizTutor.dataset.style||''):'',
+         modo:document.body.dataset.mode,ponteiro:document.body.dataset.pointer,alt:document.body.dataset.h||'',
          over,pequenos,cx,fora:fora.slice(0,6),estoura,lados:[...new Set(lados)].slice(0,4),
          escondida:[...new Set(escondida)].slice(0,4),tela:tela?tela.id:'game'};
 })()`;
@@ -271,7 +306,9 @@ for(const [nome,w,h,toque,modo] of APARELHOS){
     await new Promise(r=>setTimeout(r,80));
     const r=await ev(SONDA);if(!r)continue;
     await ev(`(()=>{const h=document.getElementById('hud');if(h&&!document.querySelector('.screen.on'))return;if(h)h.classList.add('hidden');})()`);
-    const ruim=r.over>0||r.cx.length||r.pequenos.length||r.fora.length||(r.estoura&&r.estoura.length)||(r.lados&&r.lados.length)||(r.escondida&&r.escondida.length);
+    // o tutorial pedido é o tutorial medido? (só quando a entrada É de tutorial)
+    const pedido=modeloPedido(t);r.trocado=pedido&&r.estilo!==pedido?`pediu ${pedido}, mediu ${r.estilo||"nenhum"}`:"";
+    const ruim=r.over>0||r.cx.length||r.pequenos.length||r.fora.length||(r.estoura&&r.estoura.length)||(r.lados&&r.lados.length)||(r.escondida&&r.escondida.length)||!!r.trocado;
     if(ruim)falhas++;
     linhas.push({nome,w,h,t,tema,...r,ruim});
   }
@@ -280,7 +317,7 @@ for(const [nome,w,h,toque,modo] of APARELHOS){
 const porTela=new Map();for(const l of linhas){const k=l.t+" → "+l.tela;porTela.set(k,(porTela.get(k)||0)+1);}
 console.log("visitas (tela pedida → tela medida):");
 for(const [k,n] of porTela)console.log("  "+k.padEnd(28)+n);
-console.log("aparelho                    tela      tema      modo      ponteiro  altura  problemas");
+console.log("aparelho                    tela                    tema      modo      ponteiro  altura  problemas");
 for(const l of linhas){
   if(!l.ruim)continue;
   const p=[];if(l.over)p.push("transborda "+l.over+"px");
@@ -290,7 +327,8 @@ for(const l of linhas){
   if(l.estoura&&l.estoura.length)p.push("fora da janela: "+l.estoura.join(", "));
   if(l.lados&&l.lados.length)p.push("rola de lado: "+l.lados.join(", "));
   if(l.escondida&&l.escondida.length)p.push("ação fora da dobra: "+l.escondida.join(", "));
-  console.log((l.nome+" "+l.w+"x"+l.h).padEnd(28)+l.t.padEnd(10)+String(l.tema).padEnd(10)+String(l.modo).padEnd(10)+String(l.ponteiro).padEnd(10)+String(l.alt||"-").padEnd(8)+p.join("  ·  "));
+  if(l.trocado)p.push("MODELO ERRADO: "+l.trocado);
+  console.log((l.nome+" "+l.w+"x"+l.h).padEnd(28)+l.t.padEnd(24)+String(l.tema).padEnd(10)+String(l.modo).padEnd(10)+String(l.ponteiro).padEnd(10)+String(l.alt||"-").padEnd(8)+p.join("  ·  "));
 }
 console.log(`\n${linhas.length} combinações · ${falhas} com problema · ${linhas.length-falhas} limpas`);
 ws.close();fim(falhas?1:0);

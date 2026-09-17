@@ -2996,3 +2996,397 @@ body[data-mode="landscape"] .tf-sub{font-size:.95em}
    matriz pegou `hud-status×tutor-ok` e `touch×tutor-ok` em 12 combinações. É o mesmo argumento do
    `#br-lobby`: enquanto a tela de espera está no ar, o resto fala de uma coisa que não está acontecendo. */
 #hud:has(#tutor-ok) > *:not(#tutor-ok){visibility:hidden;pointer-events:none}
+
+
+/* ══ OS TRÊS MODELOS CANDIDATOS DO TUTORIAL (ui/tutorEstilo.js) — PROVISÓRIOS ══════════════════
+   O bloco de cima é o CLÁSSICO (a tela em produção) e fica como está. Aqui moram os três candidatos que o
+   dono do jogo compara jogando (`?tutor=1|2|3`): LEGENDA (`tl-`), SARGENTO (`ts-`) e CENA (`tc-`), mais o
+   pouco que os três dividem (`tp-`). Depois da escolha os blocos dos perdedores SAEM, cada um inteiro —
+   por isso cada modelo é contíguo, 100% escopado pelo seu `[data-style]` e com prefixo de classe próprio.
+
+   ⚠️ **TODA `transition` DAQUI LEVA UM ID NO SELETOR, e não é capricho**: lá em cima,
+   `#hud,#hud *{transition:background-color .35s…}` vale (1,0,0) e GANHA de qualquer `transition` escrita
+   só com classe — a propriedade inteira é substituída, então a largura de uma barra para de animar em
+   silêncio. `animation` não é afetada.
+   ⚠️ **NADA DEPENDE DO FIM DE UMA ANIMAÇÃO PARA APARECER OU SUMIR.** `body[data-reduce="1"] *` (base.css)
+   zera toda duração com `!important`: o que nasce invisível e "entra" por keyframe tem de terminar
+   visível (`both`), e o estado PARADO de cada desenho tem de ler sozinho — o "apagado" da tirinha só
+   existe DENTRO do keyframe, nunca no estilo-base.
+   ⚠️ Keyframes só com `translate`/`scale`/`rotate`/`opacity` — nunca `transform` em quem se posiciona
+   por `transform` (foi assim que a tela de morte saiu meia janela para fora).
+   ⚠️ Os modelos NÃO reusam `#tut-prompt` nem brigam com `.tut-fala`/`.tok-*`: as regras responsivas
+   daqueles valem (1,1,1) e ganhariam. As classes do DESENHO do botão (`.tut-mouse`, `.tut-tecla`,
+   `.tut-hud-btn`) são reusadas, e sempre redimensionadas com um ID na frente. */
+
+/* ── CONSERTO DE CARONA, no clássico: a barra da etapa 1 andava em DEGRAUS de 8 Hz ──
+   `.tut-barra>i{transition:width…}` vale (0,1,1) e perdia para o `#hud *` de cima — a transição que o
+   comentário daquela regra descreve nunca existiu. Com o id ela passa a valer; idem a bola da trilha. */
+#tutor .tut-barra>i{transition:width 180ms linear}
+#tutor .tut-bola,#tutor-ok .tut-bola{transition:background-color .25s ease,color .25s ease,border-color .25s ease,transform .25s ease}
+@media (prefers-reduced-motion:reduce){#tutor .tut-barra>i,#tutor .tut-bola,#tutor-ok .tut-bola{transition:none}}
+
+/* ── O BOTÃO DE VERDADE PULSA (os três modelos; `alvoDoTutor`, só no dedo) ──
+   O prompt desenha uma RÉPLICA do botão MÍSSIL/DIVIDIR, e uma criança toca na réplica: o toque cai no
+   canvas, que no dedo DIRIGE o planeta — ele vira, nada explode. Com o botão REAL pulsando o olho vai
+   para onde o dedo tem de ir. É o `dica-pulsa` que o `#t-split.dica` já usa (box-shadow/filter, nunca
+   `transform`: o `.tbtn` é posicionado pelos temas). Sem animação sobra o contorno, que já aponta. */
+#hud:has(#tutor[data-alvo="t-fire"]) #t-fire,
+#hud:has(#tutor[data-alvo="t-split"]) #t-split{animation:dica-pulsa 900ms ease-in-out infinite;
+  outline:3px solid var(--accent,#ffc22e);outline-offset:3px}
+@media (prefers-reduced-motion:reduce){
+  #hud:has(#tutor[data-alvo="t-fire"]) #t-fire,#hud:has(#tutor[data-alvo="t-split"]) #t-split{animation:none}}
+
+/* ── O QUE OS TRÊS DIVIDEM NO FIM: a promessa da skin (com o Marte) e a contagem ── */
+#tutor-fim .tp-prom{display:flex;align-items:center;gap:12px;margin-top:6px;max-width:min(48ch,92vw);
+  text-align:left;font-size:.95em;font-weight:bold;line-height:1.3;text-wrap:balance}
+#tutor-fim .tp-prom-arte{flex:none;width:64px;height:auto;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5))}
+#tutor-fim .tp-prom-txt{display:flex;flex-direction:column;gap:6px;min-width:0}
+#tutor-fim .tp-prom .ach-bar{width:min(220px,54vw);height:10px;margin:0;border-radius:99px;
+  background:color-mix(in srgb,var(--line,#0006) 70%,transparent);color:var(--accent,#ffc22e);
+  border:2px solid var(--line,#0006)}
+#tutor-fim .tp-prom .ach-bar i{border-radius:99px}
+/* "entrando…" com a barra que enche em FIM_MS. ENFEITE: quem entra na sala é o `setTimeout` de
+   `useEntraSozinho` — sem animação a barra nasce cheia (`both`) e nada deixa de acontecer. */
+#tutor-fim .tp-conta{display:flex;flex-direction:column;align-items:center;gap:5px;margin-top:6px;
+  font-size:.82em;letter-spacing:.08em;opacity:.85}
+#tutor-fim .tp-conta>i{position:relative;display:block;width:min(200px,60vw);height:6px;border-radius:99px;
+  overflow:hidden;background:rgba(255,255,255,.2)}
+#tutor-fim .tp-conta>i::after{content:"";position:absolute;inset:0;border-radius:99px;
+  background:var(--accent,#ffc22e);transform-origin:left center;animation:tp-enche var(--ms,3000ms) linear both}
+@keyframes tp-enche{from{scale:0 1}to{scale:1 1}}
+/* na bancada (`?screen=tutor:…:fim`, a matriz) o relógio está desarmado, então a barra fica cheia e parada */
+#tutor-fim .tp-conta[data-demo]>i::after{animation:none}
+@media (prefers-reduced-motion:reduce){#tutor-fim .tp-conta>i::after{animation:none}}
+body[data-mode="landscape"] #tutor-fim .tp-prom-arte{width:46px}
+
+
+/* ═══ MODELO 1 · LEGENDA (`tl-`) — "o jogo nunca é coberto" ═══════════════════════════════════
+   Tudo numa faixa só, no topo: a linha dos segmentos (com o 1/3 e o Pular DENTRO dela, em fluxo — nada
+   absoluto para colidir) e a pílula da instrução. Rodapé e miolo 100% livres. */
+#tutor[data-style="legenda"]{gap:8px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0}
+#tutor[data-style="legenda"] .tl-topo{display:flex;align-items:center;gap:10px;width:min(620px,100%)}
+#tutor[data-style="legenda"] .tut-passo{margin:0;flex:none}
+/* o Pular entra no FLUXO da linha: absoluto (como no clássico) ele cobriria a ponta dos segmentos */
+#tutor[data-style="legenda"] .tut-sair{position:static;flex:none}
+.tl-segs{display:flex;gap:6px;flex:1;min-width:0}
+.tl-seg{position:relative;flex:1;height:20px;border-radius:99px;overflow:hidden;
+  background:rgba(13,11,31,.85);border:2px solid rgba(255,255,255,.32)}
+.tl-seg>i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:var(--accent,#ffc22e)}
+#tutor[data-style="legenda"] .tl-seg>i{transition:width 180ms linear}
+/* o NÚMERO (ou ✓) dentro do segmento: nenhum estado vai só na cor */
+.tl-seg>em{position:relative;display:block;text-align:center;font-style:normal;
+  font-size:12px;font-weight:900;line-height:16px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+.tl-seg.now{border-color:var(--accent,#ffc22e)}
+.tl-seg.ok{border-color:var(--ok,#3ddc5f)}
+.tl-seg.ok>i{background:var(--ok,#3ddc5f)}
+.tl-seg.ok>em{color:#0d0b1f;text-shadow:none}
+/* etapa de UM gesto: o segmento não tem o que encher, então PULSA — barra parada em zero lê como
+   "não estou vendo o que você faz" */
+.tl-seg.pulsa{animation:tl-pulsa 1.4s ease-in-out infinite}
+@keyframes tl-pulsa{0%,100%{box-shadow:0 0 0 0 rgba(255,194,46,.55)}50%{box-shadow:0 0 0 6px rgba(255,194,46,0)}}
+
+.tl-pilula{display:flex;align-items:center;gap:12px;max-width:min(620px,100%);
+  padding:9px 20px 9px 14px;border-radius:24px;background:rgba(13,11,31,.86);border:3px solid #8b5cff;
+  box-shadow:0 6px 22px rgba(0,0,0,.45);animation:tut-entra 240ms ease-out both}
+.tl-glifo{flex:none;display:flex;align-items:center;animation:tut-pulsa 1.5s ease-in-out infinite}
+#tutor[data-style="legenda"] .tut-mouse{width:30px;height:45px}
+#tutor[data-style="legenda"] .tut-tecla{min-width:64px;min-height:36px;padding:0 12px;font-size:16px;
+  border-radius:9px;box-shadow:0 4px 0 #0d0b1f}
+#tutor[data-style="legenda"] .tut-hud-btn{min-width:72px;min-height:36px;padding:0 12px;font-size:13px;
+  box-shadow:0 4px 0 #0d0b1f}
+.tl-txts{display:flex;flex-direction:column;gap:2px;min-width:0;text-align:left}
+.tl-tit{font-size:21px;font-weight:900;letter-spacing:.03em;line-height:1.12;color:var(--accent,#ffc22e)}
+.tl-rot{font-style:normal;font-size:.68em;letter-spacing:.07em;text-transform:uppercase;color:#fff;opacity:.85}
+.tl-txt{font-size:16px;font-weight:bold;line-height:1.25;animation:tl-fade 200ms ease-out both}
+@keyframes tl-fade{from{opacity:0}to{opacity:1}}
+/* o SELO da etapa completa: a própria pílula, verde, sem véu — fica pela janela inteira de `celebra` */
+.tl-pilula.ok{border-color:var(--ok,#3ddc5f)}
+.tl-pilula.ok .tl-tit{color:var(--ok,#3ddc5f)}
+.tl-selo{flex:none;display:flex;align-items:center;justify-content:center;width:42px;height:42px;
+  border-radius:50%;font-size:25px;font-weight:900;color:#0d0b1f;background:var(--ok,#3ddc5f);
+  box-shadow:0 0 0 6px rgba(61,220,95,.22);animation:tok-selo 420ms cubic-bezier(.2,1.6,.4,1) both}
+.tl-auto{font-size:13px;opacity:.65}
+.tl-prox{margin-top:2px;font-size:14px;font-weight:900;letter-spacing:.06em;color:var(--accent,#ffc22e)}
+#tutor-fim[data-style="legenda"] .tl-segs{flex:none;width:min(320px,80vw)}
+@media (prefers-reduced-motion:reduce){
+  .tl-seg.pulsa,.tl-glifo{animation:none}
+  .tl-pilula,.tl-txt,.tl-selo{animation-duration:1ms}
+  #tutor[data-style="legenda"] .tl-seg>i{transition:none}}
+body[data-mode="portrait"] #tutor[data-style="legenda"] .tl-tit{font-size:19px}
+/* em pé o rótulo do gesto sai: ali ele só repete a frase de baixo ("toque na tela" · "TOQUE na tela…") e
+   custa uma linha inteira da pílula */
+body[data-mode="portrait"] #tutor[data-style="legenda"] .tl-rot{display:none}
+body[data-mode="portrait"] #tutor[data-style="legenda"] .tl-txt{font-size:15px}
+body[data-mode="portrait"] #tutor[data-style="legenda"] .tl-pilula{padding:8px 14px 8px 12px;gap:10px}
+body[data-mode="landscape"] #tutor[data-style="legenda"]{gap:5px;padding-top:calc(env(safe-area-inset-top,0px) + 6px)}
+body[data-mode="landscape"] #tutor[data-style="legenda"] .tl-seg{height:16px}
+body[data-mode="landscape"] #tutor[data-style="legenda"] .tl-seg>em{font-size:10px;line-height:12px}
+body[data-mode="landscape"] #tutor[data-style="legenda"] .tl-pilula{padding:6px 16px 6px 12px;border-radius:18px}
+body[data-mode="landscape"] #tutor[data-style="legenda"] .tl-tit{font-size:17px}
+body[data-mode="landscape"] #tutor[data-style="legenda"] .tl-txt{font-size:14px}
+body[data-mode="landscape"] #tutor[data-style="legenda"] .tut-mouse{width:24px;height:36px}
+body[data-mode="landscape"] #tutor[data-style="legenda"] .tl-selo{width:34px;height:34px;font-size:20px}
+
+
+/* ═══ MODELO 2 · SARGENTO (`ts-`) — "alguém está te ensinando" ═════════════════════════════════
+   A Lua Soldado à esquerda com as três medalhas embaixo; o balão de quadrinho à direita, com o rabinho
+   apontando para ela. O mesmo nó vive nas três caras (o `id` troca nele): nas duas de tela cheia o palco
+   vira COLUNA, o mascote cresce e o rabinho passa a apontar para cima. */
+#tutor[data-style="sargento"]{padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0}
+[data-style="sargento"] .ts-palco{display:flex;align-items:flex-start;gap:12px;width:min(660px,100%)}
+[data-style="sargento"] .ts-cabeca{flex:none;display:flex;flex-direction:column;align-items:center;gap:3px}
+[data-style="sargento"] .ts-mascote{display:block;width:72px;height:auto;filter:drop-shadow(0 5px 10px rgba(0,0,0,.55))}
+[data-style="sargento"] .ts-medalhas{display:flex;align-items:center;gap:1px}
+[data-style="sargento"] .ts-medalha{font-size:20px;line-height:1;color:rgba(255,255,255,.5);text-shadow:0 2px 5px rgba(0,0,0,.8)}
+[data-style="sargento"] .ts-medalha.now{color:#fff}
+[data-style="sargento"] .ts-medalha.ok{color:var(--accent,#ffc22e)}
+[data-style="sargento"] .ts-medalhas .tut-passo{margin:0 0 0 5px;padding:2px 7px;font-size:12px;border-width:2px}
+/* o balão: BRANCO com letra escura — é o que o faz ler como FALA de personagem e não como aviso de sistema */
+[data-style="sargento"] .ts-balao{position:relative;flex:1;min-width:0;display:flex;align-items:center;gap:14px;
+  margin-top:4px;padding:11px 16px;border-radius:18px;background:#fff;color:#1c1440;
+  border:3px solid #0d0b1f;box-shadow:0 5px 0 #0d0b1f,0 12px 26px rgba(0,0,0,.4);
+  animation:ts-fala 280ms cubic-bezier(.2,1.4,.4,1) both}
+@keyframes ts-fala{from{opacity:0;scale:.9}to{opacity:1;scale:1}}
+/* o rabinho: dois triângulos (a borda e o miolo), apontando para o mascote */
+[data-style="sargento"] .ts-balao::before,[data-style="sargento"] .ts-balao::after{content:"";position:absolute;
+  top:20px;border:10px solid transparent;border-left:0}
+[data-style="sargento"] .ts-balao::before{left:-13px;border-right-color:#0d0b1f}
+[data-style="sargento"] .ts-balao::after{left:-8px;border-right-color:#fff}
+[data-style="sargento"] .ts-txts{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;text-align:left}
+[data-style="sargento"] .ts-tit{font-size:22px;font-weight:900;letter-spacing:.03em;line-height:1.12;color:#6d28d9}
+[data-style="sargento"] .ts-txt{font-size:17px;font-weight:bold;line-height:1.25;animation:tl-fade 200ms ease-out both}
+[data-style="sargento"] .ts-auto{font-size:13px;opacity:.7}
+[data-style="sargento"] .ts-prox{margin-top:3px;font-size:14px;font-weight:900;letter-spacing:.06em;color:#c2410c}
+/* o RETRATO de "quem": a Terra — a mesma cara que o alvo tem no mundo. Na etapa 2 com a mira em volta. */
+[data-style="sargento"] .ts-quem{position:relative;flex:none;width:52px;height:52px;display:flex;align-items:center;justify-content:center}
+[data-style="sargento"] .ts-quem-arte{display:block;width:44px;height:auto}
+[data-style="sargento"] .ts-quem.presa .ts-quem-arte{width:32px}
+[data-style="sargento"] .ts-quem::after{content:"";position:absolute;inset:0;border-radius:50%;border:3px solid #e11d48}
+[data-style="sargento"] .ts-quem.mira::after{background:
+  linear-gradient(#e11d48,#e11d48) center/3px 100% no-repeat,linear-gradient(#e11d48,#e11d48) center/100% 3px no-repeat;
+  -webkit-mask:radial-gradient(circle,transparent 14px,#000 15px);mask:radial-gradient(circle,transparent 14px,#000 15px)}
+[data-style="sargento"] .ts-quem.presa::after{border:3px dashed #16a34a}
+/* o desenho do botão, AO LADO do texto */
+[data-style="sargento"] .ts-glifo{flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;
+  animation:tut-pulsa 1.5s ease-in-out infinite}
+[data-style="sargento"] .ts-glifo b{max-width:10ch;text-align:center;font-size:11px;font-weight:900;line-height:1.1;
+  letter-spacing:.05em;text-transform:uppercase;color:#1c1440}
+#tutor[data-style="sargento"] .tut-mouse{width:36px;height:54px;filter:none}
+#tutor[data-style="sargento"] .tut-mouse .tm-corpo{stroke:#0d0b1f}
+#tutor[data-style="sargento"] .tut-mouse .tm-div{stroke:#fff}
+#tutor[data-style="sargento"] .tut-tecla{min-width:84px;min-height:42px;font-size:18px;padding:0 14px;
+  background:#f4f1ff;box-shadow:0 5px 0 #0d0b1f;filter:none}
+#tutor[data-style="sargento"] .tut-hud-btn{min-width:86px;min-height:42px;font-size:14px;padding:0 14px}
+/* ── as duas caras de tela cheia: palco em COLUNA, mascote grande, rabinho para cima ── */
+#tutor-ok[data-style="sargento"]{background:rgba(13,11,31,.4)}
+#tutor-ok[data-style="sargento"] .ts-palco,#tutor-fim[data-style="sargento"] .ts-palco{
+  flex-direction:column;align-items:center;gap:12px;width:min(430px,92vw)}
+#tutor-ok[data-style="sargento"] .ts-mascote,#tutor-fim[data-style="sargento"] .ts-mascote{width:128px;
+  animation:ts-pula 700ms cubic-bezier(.2,1.5,.4,1) both}
+@keyframes ts-pula{0%{translate:0 0;scale:.8}45%{translate:0 -22px;scale:1.06}100%{translate:0 0;scale:1}}
+#tutor-ok[data-style="sargento"] .ts-medalha,#tutor-fim[data-style="sargento"] .ts-medalha{font-size:36px}
+#tutor-ok[data-style="sargento"] .ts-medalhas .tut-passo,#tutor-fim[data-style="sargento"] .ts-medalhas .tut-passo{display:none}
+/* a medalha que ACABOU de ser ganha é a única que anima — as outras já estavam acesas */
+#tutor-ok[data-style="sargento"] .ts-medalha.nova{animation:ts-acende 640ms 220ms cubic-bezier(.2,1.6,.4,1) both}
+@keyframes ts-acende{0%{scale:.2;rotate:-40deg;opacity:0}60%{scale:1.5;rotate:8deg;opacity:1}100%{scale:1;rotate:0deg;opacity:1}}
+#tutor-ok[data-style="sargento"] .ts-balao,#tutor-fim[data-style="sargento"] .ts-balao{flex:none;width:100%;
+  box-sizing:border-box;margin-top:2px;padding:16px 18px}
+#tutor-ok[data-style="sargento"] .ts-balao::before,#tutor-ok[data-style="sargento"] .ts-balao::after,
+#tutor-fim[data-style="sargento"] .ts-balao::before,#tutor-fim[data-style="sargento"] .ts-balao::after{
+  top:auto;left:50%;translate:-50% 0;border:10px solid transparent;border-top:0}
+#tutor-ok[data-style="sargento"] .ts-balao::before,#tutor-fim[data-style="sargento"] .ts-balao::before{bottom:100%;margin-bottom:3px;border-bottom-color:#0d0b1f}
+#tutor-ok[data-style="sargento"] .ts-balao::after,#tutor-fim[data-style="sargento"] .ts-balao::after{bottom:100%;margin-bottom:-2px;border-bottom-color:#fff}
+#tutor-ok[data-style="sargento"] .ts-txts,#tutor-fim[data-style="sargento"] .ts-txts{align-items:center;text-align:center;gap:4px}
+#tutor-ok[data-style="sargento"] .ts-tit,#tutor-fim[data-style="sargento"] .ts-tit{font-size:25px;color:#15803d}
+/* dentro do balão BRANCO as peças do fim trocam de tinta */
+#tutor-fim[data-style="sargento"] .tp-prom{margin-top:8px}
+#tutor-fim[data-style="sargento"] .tp-prom .ach-bar{background:rgba(28,20,64,.16);border-color:rgba(28,20,64,.3);color:#c2410c}
+#tutor-fim[data-style="sargento"] .tp-conta>i{background:rgba(28,20,64,.16)}
+#tutor-fim[data-style="sargento"] .tp-conta>i::after{background:#6d28d9}
+@media (prefers-reduced-motion:reduce){
+  [data-style="sargento"] .ts-glifo{animation:none}
+  [data-style="sargento"] .ts-balao,[data-style="sargento"] .ts-txt,
+  [data-style="sargento"] .ts-mascote,[data-style="sargento"] .ts-medalha.nova{animation-duration:1ms;animation-delay:0s}}
+/* EM PÉ: o balão não cabe ao lado do mascote (sobrariam ~190 px de texto). Duas linhas: mascote +
+   medalhas em cima — à esquerda, com o Pular à direita na MESMA linha — e o balão de largura cheia
+   embaixo, rabinho para cima. O retrato de "quem" sai: em 336 px ele espremeria a frase. */
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-palco{flex-direction:column;align-items:stretch;gap:9px}
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-cabeca{flex-direction:row;gap:8px;align-self:flex-start}
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-mascote{width:54px}
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-medalha{font-size:24px}
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-balao{margin-top:0;padding:10px 13px;gap:10px}
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-balao::before,
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-balao::after{top:auto;left:20px;border:10px solid transparent;border-top:0}
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-balao::before{bottom:100%;margin-bottom:3px;border-bottom-color:#0d0b1f}
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-balao::after{bottom:100%;margin-bottom:-2px;border-bottom-color:#fff}
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-quem{display:none}
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-tit{font-size:20px}
+body[data-mode="portrait"] #tutor[data-style="sargento"] .ts-txt{font-size:16px}
+/* DEITADO: altura apertada — tudo encolhe, e o palco deixa a margem do Pular livre à direita */
+body[data-mode="landscape"] #tutor[data-style="sargento"]{padding-top:calc(env(safe-area-inset-top,0px) + 6px)}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-palco{width:min(560px,calc(100% - 180px));gap:10px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-mascote{width:46px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-medalha{font-size:15px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-medalhas .tut-passo{font-size:10px;padding:1px 5px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-balao{margin-top:0;padding:7px 13px;gap:10px;border-radius:14px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-balao::before,
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-balao::after{top:12px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-tit{font-size:17px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-txt{font-size:14px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-quem{width:40px;height:40px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-quem-arte{width:32px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-quem.presa .ts-quem-arte{width:24px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .ts-quem.mira::after{
+  -webkit-mask:radial-gradient(circle,transparent 10px,#000 11px);mask:radial-gradient(circle,transparent 10px,#000 11px)}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .tut-mouse{width:28px;height:42px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .tut-tecla{min-width:70px;min-height:34px;font-size:15px}
+body[data-mode="landscape"] #tutor[data-style="sargento"] .tut-hud-btn{min-width:72px;min-height:34px;font-size:12px}
+body[data-mode="landscape"] [data-style="sargento"] .ts-glifo b{font-size:10px}
+body[data-mode="landscape"] #tutor-ok[data-style="sargento"] .ts-palco,
+body[data-mode="landscape"] #tutor-fim[data-style="sargento"] .ts-palco{flex-direction:row;align-items:center;width:min(620px,94vw);gap:16px}
+body[data-mode="landscape"] #tutor-ok[data-style="sargento"] .ts-mascote,
+body[data-mode="landscape"] #tutor-fim[data-style="sargento"] .ts-mascote{width:88px}
+body[data-mode="landscape"] #tutor-ok[data-style="sargento"] .ts-medalha,
+body[data-mode="landscape"] #tutor-fim[data-style="sargento"] .ts-medalha{font-size:26px}
+body[data-mode="landscape"] #tutor-ok[data-style="sargento"] .ts-balao,
+body[data-mode="landscape"] #tutor-fim[data-style="sargento"] .ts-balao{flex:1;width:auto;padding:12px 16px}
+body[data-mode="landscape"] #tutor-ok[data-style="sargento"] .ts-balao::before,body[data-mode="landscape"] #tutor-ok[data-style="sargento"] .ts-balao::after,
+body[data-mode="landscape"] #tutor-fim[data-style="sargento"] .ts-balao::before,body[data-mode="landscape"] #tutor-fim[data-style="sargento"] .ts-balao::after{display:none}
+body[data-mode="landscape"] #tutor-ok[data-style="sargento"] .ts-tit,
+body[data-mode="landscape"] #tutor-fim[data-style="sargento"] .ts-tit{font-size:20px}
+
+
+/* ═══ MODELO 3 · CENA (`tc-`) — "mostre, não diga" ═════════════════════════════════════════════
+   A TIRINHA de três quadros (gesto ▸ ação ▸ resultado) à esquerda e a palavra gigante à direita, num
+   cartão só. O tamanho do quadro é UMA variável (`--tq-w`/`--tq-h`), porque ele muda por forma de tela e
+   a arte de dentro é toda proporcional a ela. */
+#tutor[data-style="cena"],#tutor-ok[data-style="cena"]{--tq-w:86px;--tq-h:62px}
+#tutor[data-style="cena"]{padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0}
+/* o palco: a linha de cabeçalho (trilha à esquerda, Pular à direita, os dois EM FLUXO) e o cartão embaixo,
+   com a mesma largura — o Pular absoluto do clássico caía por cima da tirinha em pé */
+.tc-palco{display:flex;flex-direction:column;align-items:stretch;gap:7px;max-width:min(700px,100%)}
+.tc-topo{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#tutor[data-style="cena"] .tut-sair{position:static;flex:none}
+.tc-cartao{position:relative;overflow:hidden;display:flex;align-items:center;gap:16px;
+  box-sizing:border-box;padding:10px 18px 14px 10px;border-radius:18px;background:rgba(13,11,31,.88);
+  border:3px solid #8b5cff;box-shadow:0 6px 22px rgba(0,0,0,.45);animation:tut-entra 240ms ease-out both}
+/* ── a tirinha ── */
+.tc-tira{flex:none;display:flex;align-items:center;gap:4px}
+.tc-q{position:relative;overflow:hidden;box-sizing:border-box;width:var(--tq-w);height:var(--tq-h);
+  display:flex;align-items:center;justify-content:center;gap:calc(var(--tq-w)*.05);
+  border-radius:12px;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.3)}
+.tc-sep{flex:none;font-style:normal;font-size:13px;color:rgba(255,255,255,.65)}
+.tc-tira.um .tc-q{width:calc(var(--tq-w)*1.5)}
+/* ⚠️ O ACENDE-APAGA: o estilo-BASE do quadro é o legível (é o que sobra sem animação, e tem de ler como
+   tirinha de jornal); o "apagado" só existe aqui dentro. Atrasos NEGATIVOS, e não positivos: com atraso
+   positivo os quadros 2 e 3 passariam o primeiro ciclo acesos junto com o 1. */
+.tc-tira.viva .tc-q{animation:tc-acende 3.6s ease-in-out infinite}
+.tc-tira.viva .q2{animation-delay:-2.4s}
+.tc-tira.viva .q3{animation-delay:-1.2s}
+@keyframes tc-acende{
+  0%,30%  {opacity:1;scale:1.05;border-color:var(--accent,#ffc22e);background:rgba(255,194,46,.18)}
+  38%,100%{opacity:.6;scale:1;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.08)}}
+/* ── o elenco: MARTE é você, TERRA é o outro — tamanhos como fração do quadro ── */
+.tc-q img{display:block;height:auto;flex:none}
+.tc-eu{width:calc(var(--tq-w)*.34)} .tc-eu.g{width:calc(var(--tq-w)*.5)}
+.tc-eu.p{width:calc(var(--tq-w)*.27)} .tc-eu.pp{width:calc(var(--tq-w)*.2)}
+.tc-ele{width:calc(var(--tq-w)*.34)} .tc-ele.p{width:calc(var(--tq-w)*.22)} .tc-ele.pp{width:calc(var(--tq-w)*.2)}
+.tc-missil{width:calc(var(--tq-w)*.26)}
+.tc-vai{flex:none;width:calc(var(--tq-w)*.24);height:auto;stroke:var(--accent,#ffc22e)}
+/* os pedaços: um ponto e três sombras dele */
+.tc-pts{flex:none;display:block;width:6px;height:6px;margin:0 12px 6px 2px;border-radius:50%;background:#ffd76a;
+  box-shadow:9px -9px 0 #ffd76a,12px 7px 0 #ffb020,1px 12px 0 #ffd76a}
+.tc-pts.cacos{position:absolute;left:18%;top:26%;margin:0;background:#9fd0ff;
+  box-shadow:calc(var(--tq-w)*.5) -4px 0 #9fd0ff,calc(var(--tq-w)*.56) calc(var(--tq-h)*.42) 0 #7bdc8f,4px calc(var(--tq-h)*.46) 0 #9fd0ff}
+/* o estouro: uma estrela de 12 pontas atrás da Terra trincada */
+.tc-bum{position:absolute;left:50%;top:50%;translate:-50% -50%;width:calc(var(--tq-h)*.92);aspect-ratio:1;
+  background:radial-gradient(circle,#fff 0 18%,#ffd76a 19% 46%,#ff7a3c 47% 100%);
+  clip-path:polygon(50% 0,59% 27%,85% 15%,73% 41%,100% 50%,73% 59%,85% 85%,59% 73%,50% 100%,41% 73%,15% 85%,27% 59%,0 50%,27% 41%,15% 15%,41% 27%)}
+.tc-ele.quebra{position:relative;width:calc(var(--tq-w)*.27);rotate:16deg;opacity:.9}
+/* o salto: a metade que VOA leva um arco tracejado até a presa */
+.tc-arco{position:relative;flex:none;display:flex;align-items:flex-start;align-self:stretch;
+  width:calc(var(--tq-w)*.26);padding-top:calc(var(--tq-h)*.1)}
+.tc-arco::before{content:"";position:absolute;left:-30%;right:-45%;top:calc(var(--tq-h)*.2);height:calc(var(--tq-h)*.5);
+  border:2px dashed var(--accent,#ffc22e);border-bottom:0;border-radius:50% 50% 0 0/100% 100% 0 0;opacity:.9}
+/* os dois selos de resultado — FORMA além de cor: "+" e "✓" */
+.tc-mais,.tc-ok{position:absolute;right:6%;top:8%;display:flex;align-items:center;justify-content:center;
+  width:calc(var(--tq-h)*.36);height:calc(var(--tq-h)*.36);border-radius:50%;font-size:calc(var(--tq-h)*.27);
+  font-weight:900;line-height:1;color:#0d0b1f;background:var(--ok,#3ddc5f)}
+.tc-mais{background:var(--accent,#ffc22e)}
+/* a estrela da `espera`, inchando */
+.tc-estrela{display:block;width:calc(var(--tq-h)*.5);aspect-ratio:1;border-radius:50%;
+  background:radial-gradient(circle,#fff 0 22%,#ffd76a 23% 58%,#ff7a3c 59% 100%);
+  box-shadow:0 0 18px 6px rgba(255,160,60,.55);animation:tc-incha 1.1s ease-in both}
+@keyframes tc-incha{from{scale:.7}to{scale:1.45}}
+/* o desenho do GESTO dentro do quadro 1 */
+#tutor[data-style="cena"] .tc-q .tut-mouse,#tutor-ok[data-style="cena"] .tc-q .tut-mouse{
+  width:calc(var(--tq-h)*.5);height:calc(var(--tq-h)*.75);filter:none}
+#tutor[data-style="cena"] .tc-q .tut-tecla,#tutor-ok[data-style="cena"] .tc-q .tut-tecla{
+  min-width:0;min-height:calc(var(--tq-h)*.5);max-width:92%;padding:0 8px;box-sizing:border-box;
+  font-size:calc(var(--tq-h)*.2);letter-spacing:.04em;border-width:2px;border-radius:8px;box-shadow:0 3px 0 #0d0b1f;filter:none}
+#tutor[data-style="cena"] .tc-q .tut-hud-btn,#tutor-ok[data-style="cena"] .tc-q .tut-hud-btn{
+  min-width:0;min-height:calc(var(--tq-h)*.5);max-width:92%;padding:0 8px;box-sizing:border-box;
+  font-size:calc(var(--tq-h)*.18);border-width:2px;box-shadow:0 3px 0 #0d0b1f}
+/* ── o lado: a PALAVRA GIGANTE, a frase e a trilha compacta ── */
+.tc-lado{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;text-align:left}
+.tc-sobre{font-size:12px;font-weight:900;letter-spacing:.06em;line-height:1.15;color:#fff;opacity:.9}
+.tc-verbo{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;
+  font-size:34px;font-weight:900;letter-spacing:.04em;line-height:1;color:var(--accent,#ffc22e)}
+.tc-vez{font-style:normal;padding:3px 9px;border-radius:99px;font-size:11px;letter-spacing:.07em;line-height:1.3;
+  color:#0d0b1f;background:var(--ok,#3ddc5f);animation:tut-pulsa 1.5s ease-in-out infinite}
+.tc-txt{max-width:36ch;font-size:15px;font-weight:bold;line-height:1.25;animation:tl-fade 200ms ease-out both}
+#tutor[data-style="cena"] .tut-bola{width:26px;height:26px;font-size:13px;border-width:2px}
+#tutor[data-style="cena"] .tut-bola.now{box-shadow:0 0 0 3px rgba(255,194,46,.22)}
+#tutor[data-style="cena"] .tut-liga{width:16px;height:4px}
+#tutor[data-style="cena"] .tut-passo{margin-right:8px;padding:2px 8px;font-size:13px;border-width:2px}
+/* a barra da etapa 1 é a BORDA de baixo do cartão: diz quanto falta sem custar altura nenhuma */
+.tc-barra{position:absolute;left:0;right:0;bottom:0;display:block;height:6px;background:rgba(255,255,255,.14)}
+.tc-barra>i{display:block;height:100%;background:var(--accent,#ffc22e)}
+#tutor[data-style="cena"] .tc-barra>i{transition:width 180ms linear}
+/* ── a PÍLULA: depois do primeiro pedaço a tirinha sai da frente do jogo ── */
+.tc-pilula{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:2px;
+  box-sizing:border-box;padding:7px 20px 12px;border-radius:16px;
+  background:rgba(13,11,31,.88);border:3px solid #8b5cff;box-shadow:0 6px 22px rgba(0,0,0,.45)}
+.tc-pilula .tc-verbo{font-size:24px}
+.tc-pilula .tc-txt{text-align:center}
+/* ── ETAPA COMPLETA: o carimbo e a tirinha da PRÓXIMA lição ── */
+.tc-okcard{display:flex;flex-direction:column;align-items:center;gap:8px;width:min(440px,92vw);box-sizing:border-box;
+  padding:22px 18px;text-align:center;color:#fff;border-radius:22px;border:4px solid var(--ok,#3ddc5f);
+  background:rgba(13,11,31,.95);box-shadow:0 12px 40px rgba(0,0,0,.6);
+  animation:tok-sobe 320ms cubic-bezier(.2,1.4,.4,1) both}
+.tc-carimbo{display:flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:50%;
+  font-size:36px;font-weight:900;color:#0d0b1f;background:var(--ok,#3ddc5f);
+  box-shadow:0 0 0 8px rgba(61,220,95,.22);animation:tok-selo 420ms cubic-bezier(.2,1.6,.4,1) both}
+#tutor-ok[data-style="cena"] .tc-tira{margin:2px 0 4px}
+/* ── FIM: o recap das três lições ── */
+#tutor-fim[data-style="cena"] .tc-recap{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+#tutor-fim[data-style="cena"] .tc-recap b{padding:6px 14px;border-radius:99px;font-size:15px;font-weight:900;
+  letter-spacing:.05em;background:rgba(13,11,31,.85);border:2px solid var(--ok,#3ddc5f)}
+#tutor-fim[data-style="cena"] .tc-recap i{margin-right:6px;font-style:normal;color:var(--ok,#3ddc5f)}
+@media (prefers-reduced-motion:reduce){
+  .tc-tira.viva .tc-q,.tc-vez{animation:none}
+  .tc-cartao,.tc-txt,.tc-okcard,.tc-carimbo,.tc-estrela{animation-duration:1ms}
+  #tutor[data-style="cena"] .tc-barra>i{transition:none}}
+/* EM PÉ: tirinha em cima (de largura cheia), palavra embaixo, tudo centrado */
+body[data-mode="portrait"] #tutor[data-style="cena"],body[data-mode="portrait"] #tutor-ok[data-style="cena"]{--tq-w:min(94px,26vw);--tq-h:58px}
+body[data-mode="portrait"] #tutor[data-style="cena"] .tc-cartao{flex-direction:column;align-items:center;gap:7px;padding:10px 12px 14px}
+body[data-mode="portrait"] #tutor[data-style="cena"] .tc-lado{align-items:center;text-align:center}
+body[data-mode="portrait"] #tutor[data-style="cena"] .tc-verbo{justify-content:center;font-size:30px}
+body[data-mode="portrait"] .tc-okcard{gap:7px;padding:20px 14px}
+/* DEITADO: altura apertada — quadros menores, palavra menor, e o palco deixa a margem do Pular livre */
+body[data-mode="landscape"] #tutor[data-style="cena"],body[data-mode="landscape"] #tutor-ok[data-style="cena"]{--tq-w:64px;--tq-h:46px}
+body[data-mode="landscape"] #tutor[data-style="cena"]{padding-top:calc(env(safe-area-inset-top,0px) + 6px)}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tc-palco{gap:4px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tc-cartao{gap:12px;padding:6px 14px 10px 8px;border-radius:14px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tc-q{border-radius:9px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tc-verbo{font-size:22px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tc-txt{font-size:13px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tc-sobre{font-size:10px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tut-bola{width:20px;height:20px;font-size:11px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tut-liga{width:12px;height:3px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tut-passo{font-size:11px;padding:1px 6px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tc-pilula{padding:5px 16px 10px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tc-pilula .tc-verbo{font-size:19px}
+body[data-mode="landscape"] .tc-okcard{gap:4px;padding:12px 16px;width:min(520px,92vw)}
+body[data-mode="landscape"] .tc-carimbo{width:44px;height:44px;font-size:26px;box-shadow:0 0 0 5px rgba(61,220,95,.22)}
+body[data-mode="landscape"] #tutor-fim[data-style="cena"] .tc-recap b{font-size:13px;padding:4px 11px}

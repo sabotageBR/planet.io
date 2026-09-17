@@ -13,7 +13,7 @@
 // tiro) continuam de pé no servidor de verdade; o que o tutorial faz é o que o modo `bench` já fazia —
 // MUTAR o mundo local depois de criado.
 // @ts-check
-import {STAR,SPLIT,MISSILE,PLAYER,BOT,POWERUP,WEAPON,TICK_HZ,clamp} from "@warspace/shared";
+import {STAR,SPLIT,MISSILE,PLAYER,BOT,POWERUP,WEAPON,TICK_HZ,SKINS,clamp} from "@warspace/shared";
 import {STAR_PHASE} from "@warspace/shared/protocol/constants.js";
 import {setR} from "@warspace/shared/physics/body.js";
 import {applyFire,supernova} from "@warspace/shared/physics/rules.js";
@@ -48,6 +48,21 @@ export const OPCOES_TUTORIAL={seed:7,bots:0,food:0,roundTicks:0,code:"0TUT",
   // dois lados, então um mundo menor só ganha precisão (0,18 px por unidade). E o cliente obedece ao
   // `world:{w,h}` do JSON `room`, que o `LocalServer` já mandava — a grade, a borda e o radar acompanham.
   mundo:{w:1800,h:1800,asteroids:false,holes:0,stars:0,decay:false}};
+
+/**
+ * A SKIN DO "OUTRO": o alvo da etapa 2 e a presa da etapa 3 nascem como a TERRA BRAVA.
+ *
+ * Os três mascotes têm papel fixo no tutorial (ver `ARTE` em `ui/tutorPecas.jsx`): o MARTE é o aluno
+ * (`SKIN_TUTORIAL`), a TERRA é o outro e a LUA é quem ensina. Os alvos nasciam com `skinId:0`, um disco
+ * liso — e a tela fala em "ATIRE NELE" sem que "ele" tenha cara. Com a Terra, o desenho da instrução
+ * (a tirinha do modelo `cena`, o retrato no balão do `sargento`) e o planeta no mundo são O MESMO
+ * personagem: é o que deixa uma criança ligar a figura ao alvo sem ler uma palavra.
+ * ⚠️ Pelo `mascot`, nunca pelo id cravado, e com o mesmo `?? SKINS[0]` de `SKIN_TUTORIAL`: o import não
+ * pode explodir se um dia o mascote sair do catálogo.
+ * ⚠️ Skin de mascote não desenha o NOME do planeta por cima da arte (`faceFile`, em `layers/Planets.js`)
+ * — aqui isso é bônus: o alvo tinha um apelido sorteado de bot, que num tutorial é só ruído.
+ */
+const SKIN_ALVO=(SKINS.find(sk=>sk.mascot==="terra")||SKINS[0]).id;
 
 /** A coreografia, num lugar só. Ver o bloco de contas no fim do arquivo. */
 export const CENA={
@@ -255,7 +270,7 @@ export function montaEtapa(w,api,etapa,slot,st){
     preparaJogador(w,slot,{ammo:MISSILE.MAX_AMMO});
     const r=c.r*CENA.ALVO_K;
     const p=perto(w,c,CENA.DIST+c.r+r);
-    st.alvo=api.alvo({x:p.x,y:p.y,r});
+    st.alvo=api.alvo({x:p.x,y:p.y,r,skinId:SKIN_ALVO});
     return;}
   if(etapa===ETAPA.SPLIT){
     // ⚠️ As duas travas do split caem JUNTAS e aqui, não lá na frente: o tamanho (o portão `SPLIT.MIN_R`)
@@ -277,7 +292,7 @@ export function montaEtapa(w,api,etapa,slot,st){
     // a arrancaria de lado, e o jogador veria a presa dar um tranco no primeiro frame.
     const p=perto(w,me,st.orbR);
     const dx=p.x-st.ancora.x,dy=p.y-st.ancora.y,n=Math.hypot(dx,dy)||1;
-    st.alvo=api.alvo({x:st.ancora.x+dx/n*st.orbR,y:st.ancora.y+dy/n*st.orbR,r:CENA.PRESA_R});
+    st.alvo=api.alvo({x:st.ancora.x+dx/n*st.orbR,y:st.ancora.y+dy/n*st.orbR,r:CENA.PRESA_R,skinId:SKIN_ALVO});
     return;}}
 
 /**

@@ -75,3 +75,81 @@ export function promptDoTutor(d, T, tecla) {
     return dedo ? { tipo: "hud", rotulo: T.btnDedoDividir } : { tipo: "tecla", rotulo: tecla };
   return null;
 }
+
+// ── O QUE OS TRÊS MODELOS NOVOS PERGUNTAM (ui/tutorEstilo.js) ─────────────────
+// Moram aqui, e não nos `.jsx` de cada modelo, pelo motivo do cabeçalho: são DECISÕES, e decisão que mora
+// num `.jsx` é decisão que ninguém testa. Nenhuma delas muda o que `falaDoTutor`/`promptDoTutor` dizem —
+// os modelos mudam a FORMA da aula, nunca o conteúdo.
+
+/**
+ * A PALAVRA GIGANTE da etapa: MOVA · ATIRE · DIVIDA. Uma palavra só, porque é o que sobra legível a 2 m de
+ * um celular na mão de uma criança — e a frase inteira continua vindo de `falaDoTutor`, logo abaixo dela.
+ * @returns {string}
+ */
+export function verboDoTutor(d, T) {
+  return d.etapa === ETAPA.NOVA ? T.verbo1 : d.etapa === ETAPA.TIRO ? T.verbo2
+    : d.etapa === ETAPA.SPLIT ? T.verbo3 : "";
+}
+
+/**
+ * QUAL TIRINHA o modelo `cena` desenha: `espera` · `nova` · `tiro` · `caca` · `salto`, ou `null`.
+ *
+ * ⚠️ **A ETAPA 3 TEM DUAS, E A ORDEM É A LIÇÃO.** `caca` mostra o OBJETIVO (coma o planeta pequeno) e só
+ * com `ajuda>=1` entra `salto`, que mostra o COMO. É o mesmo tempo duplo de `promptDoTutor`, que devolve
+ * `null` ali: uma dica que chega antes do problema é ruído. Mostrar o salto no segundo zero entregaria a
+ * resposta antes de o jogador descobrir que correr não alcança — e é essa descoberta que faz o botão de
+ * DIVIDIR ser um alívio em vez de mais uma ordem.
+ * ⚠️ `espera` é a fase `pre` (a estrela ainda não estourou): sem gesto na tirinha, porque não há o que
+ * fazer ainda — o mesmo argumento que tira o prompt dessa fase.
+ * @returns {"espera"|"nova"|"tiro"|"caca"|"salto"|null}
+ */
+export function cenaDoTutor(d) {
+  if (d.etapa === ETAPA.NOVA) return d.pre ? "espera" : "nova";
+  if (d.etapa === ETAPA.TIRO) return "tiro";
+  if (d.etapa === ETAPA.SPLIT) return d.ajuda >= 1 ? "salto" : "caca";
+  return null;
+}
+
+/**
+ * A tirinha que a tela de ETAPA COMPLETA mostra como "A SEGUIR" — a pausa de `SOBRA_MS` vira pré-aula.
+ * ⚠️ Depois da etapa 2 vem `caca`, NUNCA `salto`: pelo motivo de cima, antecipar o salto na comemoração
+ * estragaria a etapa seguinte inteira. Depois da 3 não há próxima.
+ * @returns {"tiro"|"caca"|null}
+ */
+export function proximaCena(etapa) {
+  return etapa === ETAPA.NOVA ? "tiro" : etapa === ETAPA.TIRO ? "caca" : null;
+}
+
+/**
+ * O cartão do modelo `cena` está ABERTO (tirinha à vista) ou virou PÍLULA (uma linha)?
+ *
+ * ⚠️ Só a etapa 1 encolhe, e não é preguiça: ela é a única com sinal de "começou a acertar" (`pct` sai da
+ * massa). Nas outras duas o gesto É a etapa — quando ele acontece, ela acabou. E encolher por TEMPO está
+ * fora: `body[data-reduce="1"] *` zera toda duração de animação, então nada aqui pode depender de um
+ * relógio de CSS, e um relógio de JS bateria de frente com o degrau de ajuda dos 5 s.
+ * ⚠️ Reabre no degrau 2 (`ajuda>=2`): é quando os pedaços passam a vir até o jogador, ou seja, quando ele
+ * claramente NÃO entendeu — e a tirinha é a explicação.
+ * @returns {"aberto"|"pilula"}
+ */
+export function formaDoCartao(d) {
+  return d.etapa === ETAPA.NOVA && !d.pre && d.pct > 0 && d.ajuda < 2 ? "pilula" : "aberto";
+}
+
+/**
+ * QUAL BOTÃO DE VERDADE DO HUD PULSA (`#t-fire` · `#t-split`), ou `null`.
+ *
+ * ⚠️ **SÓ NO DEDO, E É O CONSERTO DE UM CONVITE ERRADO.** O prompt desenha uma RÉPLICA do botão MÍSSIL /
+ * DIVIDIR, longe do botão real — e uma criança toca na réplica. O toque cai no canvas, que no dedo DIRIGE
+ * o planeta: ele vira, nada explode, e ela conclui que o jogo não responde. A etapa 2 é a que mais perde
+ * gente no funil (172 de 1.140). Com o botão VERDADEIRO pulsando, o olho vai para onde o dedo tem de ir.
+ * No mouse não há botão na tela (`#touch` só existe com `pointer:coarse`), então não há o que pulsar.
+ * ⚠️ Função à parte, e não um campo em `promptDoTutor`: o retorno de lá é comparado por `deepEqual` nos
+ * testes e é o contrato do modelo clássico, que fica como está.
+ * @returns {"t-fire"|"t-split"|null}
+ */
+export function alvoDoTutor(d) {
+  if (!d.dedo || d.pre) return null;
+  if (d.etapa === ETAPA.TIRO) return "t-fire";
+  if (d.etapa === ETAPA.SPLIT && d.ajuda >= 1) return "t-split";
+  return null;
+}

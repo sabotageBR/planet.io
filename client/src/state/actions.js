@@ -15,6 +15,7 @@ import { renasceSozinho, pedagioLiberado } from "../portal/primeiraVida.js";
 import { marco, evento, faixaIdade } from "../portal/marcos.js";
 import { destinoDoBoot, destinoDaSaida, precisaTutorial } from "./entrada.js";
 import { tutorVisto, marcaTutor, marcaMissao } from "../game/estreia.js";
+import { partesDoDemo } from "../ui/tutorEstilo.js";
 import { silenciaAnuncio, sfx } from "../audio/index.js";
 import { setSkinArt } from "../theme/faces.js";
 
@@ -290,13 +291,21 @@ export async function boot() {
   // ⚠️ `?tutorial=1` GANHA DA LISTA TAMBÉM, e tem de ganhar: a plataforma desta aba é uma constante de
   // BUILD que não se falsifica em 127.0.0.1, então sem isso não haveria como PROVAR a tela em dev sem
   // marcar `site` no painel de produção. É o mesmo tipo de interruptor de bancada que `?vida1=1` já é.
-  const forcado = Q.get("tutorial");
+  // ⚠️ **`?tutor=N` SOZINHO JÁ ABRE O TUTORIAL, mas só em DEV** — é o atalho de quem está COMPARANDO os
+  // modelos de `ui/tutorEstilo.js`: três URLs curtas (`?tutor=1|2|3`) em vez de `?tutorial=1&tutor=…`.
+  // Fora de DEV o parâmetro só ESCOLHE o modelo de um tutorial que já ia acontecer, nunca o provoca: em
+  // produção quem decide se há tutorial continua sendo `precisaTutorial` + a lista de plataformas.
+  const forcado = Q.get("tutorial") || (import.meta.env.DEV && Q.get("tutor") ? "1" : null);
   const tutor = forcado === "1" ? true : forcado === "0" ? false
     : (precisaTutorial({ games: (st0.session.stats || {}).games | 0, marcado: tutorVisto(),
         online: api.online, erro: !!st0.bootError })
       && tutorialEm(cfgSonda ? cfgSonda.tutorial : null));
   const destino = destinoDoBoot({ semMenu: SEM_MENU, party: Q.get("party"), sala: Q.get("sala"), assistir: !!Q.get("assistir"), tutor });
-  if (destino.tipo !== "dev" && destino.tipo !== "jogar") history.replaceState(null, "", location.pathname);
+  // ⚠️ Em DEV, com `?tutor=`, a URL FICA: quem está comparando modelos dá F5 o tempo todo, e sem isto o
+  // primeiro F5 perderia o modelo escolhido e cairia no padrão — a comparação viraria "1 contra o clássico"
+  // sem aviso. (Quem LÊ o `?tutor=` é `ui/Tutor.jsx`, na carga do módulo — antes desta linha rodar.)
+  const ficaUrl = import.meta.env.DEV && destino.tipo === "tutor" && !!Q.get("tutor");
+  if (destino.tipo !== "dev" && destino.tipo !== "jogar" && !ficaUrl) history.replaceState(null, "", location.pathname);
   const conv = destino.tipo === "party" ? destino.code : null;
   if (conv) { joinParty(conv); return; }   // link de convite: cai direto no lobby da equipe do amigo
   // Convite para a SALA de alguém. ⚠️ Consulta o modo ANTES de entrar: sem isso o convidado entraria com o
@@ -346,12 +355,17 @@ function devQuery() {
  * `suf` = "pre" (a explosão, antes de a lição de mover começar) | "1" | "2" | "3" | "fim" |
  * "ok1".."ok3" (a tela de etapa concluída), com `@ajuda` opcional ("2@2") e `!` para forçar o par do
  * DEDO ("2!"), que tem outras frases e outro prompt.
+ * ⚠️ E o MODELO vem na frente, no molde de `dead:<estilo>`: `tutor:sargento:2@1`, `tutor:cena:fim`. Ele é
+ * gravado DENTRO do objeto `tutor` (`estilo`), que é de onde `ui/Tutor.jsx` o lê — e ganha do `?tutor=`
+ * da URL (ver `estiloDe`): a matriz troca de modelo sem recarregar a página. Sem modelo no sufixo o campo
+ * sai `null` e vale a URL, depois o padrão.
  */
 function tutorDemo(suf) {
   const g = gameRef.get().game;
   app.update({ screen: "game", played: true });
   if (!g || !g.hudStore) return;
-  const [qual0, aj] = String(suf || "1").split("@");
+  const { estilo, cara } = partesDoDemo(suf);
+  const [qual0, aj] = String(cara || "1").split("@");
   const dedo = qual0.endsWith("!"), qual = dedo ? qual0.slice(0, -1) : qual0;
   const fim = qual === "fim", celebra = qual.startsWith("ok"), pre = qual === "pre";
   const etapa = fim ? 4 : pre ? 1 : Math.min(3, Math.max(1, +(celebra ? qual.slice(2) : qual) || 1));
@@ -362,7 +376,7 @@ function tutorDemo(suf) {
   // responsividade disparariam um `play()` de verdade 3 s depois de montar a tela que vieram medir.
   g.hudStore.update(h => ({ ...h, mass: 8482, room: "0TUT", ping: 0, fps: 60, ammo: 3, splitOff: etapa < 3,
     tutor: { t: "tutor", etapa, pct: etapa === 1 && !pre ? .45 : 0, ajuda: +aj || 0, festa: 0, celebra,
-      auto: false, fim, pre, dedo, demo: true } }));
+      auto: false, fim, pre, dedo, demo: true, estilo } }));
 }
 function hudDemo() {
   const g = gameRef.get().game;
