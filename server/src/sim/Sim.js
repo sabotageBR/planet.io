@@ -59,7 +59,12 @@ export class Sim{
     this.world=createWorld({seed,weapons:this.mode.weapons});this.hooks=hooks;this.log=log;this.rng=rng||createRng((seed^0x9e3779b9)>>>0);
     /** @type {Map<number,GamePlayer>} */this.players=new Map();
     /** @type {{kind:number,x:number,y:number,r:number,slotA:number,slotB:number,extra:number}[]} */this.wireEvents=[];
-    /** @type {Map<number,number>} id → REMOVE.* desde o último snapshot */this.gone=new Map();
+    /** @type {Map<number,number>} id → REMOVE.* desde o último ciclo de snapshot */this.gone=new Map();
+    // ⚠️ DUAS GERAÇÕES, porque o snapshot é ESCALONADO (Room._flush): as sessões saem em 3 fases, uma por
+    // tick do ciclo. Limpar `gone` depois da fase 0 faria as fases 1 e 2 perderem o MOTIVO do que morreu
+    // naquele tick — e o motivo é o que decide se o grão some com efeito e som (EATEN) ou em silêncio
+    // (LEFT_AOI). A rotação acontece uma vez por ciclo; quem procura olha nas duas.
+    /** @type {Map<number,number>} */this.goneAnt=new Map();
     /** @type {{slot:number,kind:string,quem:string|null}[]} fila de gatilhos de fala dos preenchimentos (a sala drena) */this.botTalk=[];
     this.playersDirty=true;
     /** @type {{k:string,a:number,b:number,how:string,by:number|null,n?:number}[]} fila do KILL FEED (a sala drena e difunde) */this.feed=[];
@@ -142,6 +147,8 @@ export class Sim{
     for(const p of ps.pieces)if(!p.dead){p.dead=true;this.gone.set(p.id,cause==='blackhole'?REMOVE.SUCKED:REMOVE.EATEN);}
     ps.alive=false;this._died({type:'PLAYER_DEAD',slot,cause,bySlot});this._hit.clear();return true;}
   // ── passo ──
+  /** Fecha um ciclo de snapshot: o que morreu neste ciclo vira "geração anterior" e o mapa velho é reciclado. */
+  rotacionaGone(){const g=this.goneAnt;this.goneAnt=this.gone;g.clear();this.gone=g;}
   step(){
     const w=this.world;
     for(const gp of this.players.values())if(gp.brain&&!gp.dead)gp.brain.act(w.tick);

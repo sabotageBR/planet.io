@@ -136,9 +136,12 @@ export function createSnapshotter(room){
     const fin=fs===s.scale?rin:viewRect(s.cx,s.cy,fs,s.view.w,s.view.h,NET.AOI_PAD),
           fout=fs===s.scale?rout:viewRect(s.cx,s.cy,fs,s.view.w,s.view.h,NET.AOI_PAD_OUT);
     visit(w.pieces,KIND.PIECE);visitFood(w,fin,fout,known,tag,slot,sim,s.cx,s.cy);visit(w.ejected,KIND.EJECT);visit(w.asteroids,KIND.ASTEROID);visit(w.holes,KIND.BLACKHOLE);visit(w.stars,KIND.STAR);visit(w.missiles,KIND.MISSILE);
-    const gone=sim.gone,byId=w.entityById;
+    // `goneAnt`: a geração anterior de removidos — esta sessão pode estar numa FASE que sai depois da rotação
+    // do ciclo (ver `Room._flush` e `Sim.rotacionaGone`), e o motivo do sumiço não pode se perder no caminho.
+    const gone=sim.gone,goneAnt=sim.goneAnt,byId=w.entityById;
     for(const [id,v] of known){if((v>>>3)===stamp)continue;known.delete(id);
-      const g=gone.get(id);pushRemove(id,g!==undefined?g:byId.has(id)?REMOVE.LEFT_AOI:DEFAULT_REASON[v&7]);}
+      let g=gone.get(id);if(g===undefined&&goneAnt)g=goneAnt.get(id);
+      pushRemove(id,g!==undefined?g:byId.has(id)?REMOVE.LEFT_AOI:DEFAULT_REASON[v&7]);}
     snap.tick=w.tick;snap.ackSeq=gp?gp.lastInput.seq:0;sim.self(slot,self);
     if(s.resync){self.flags|=SELF_FLAG.RESYNC;s.resync=false;}
     const view=encodeSnapshot(room.writer,snap);if(!s.send(view))room.rotateWriter();return true;}

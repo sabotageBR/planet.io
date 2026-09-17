@@ -495,7 +495,7 @@ export class Room{
     const gp=this.sim.players.get(slot);if(gp){gp.country=country||null;this.flagsDirty=true;}
     if(lobby&&!this.lobbyUntil){this.lobbyStart=this.sim.tick;this.lobbyUntil=this.sim.tick+this.lobbyTicks;}   // a janela começa no PRIMEIRO humano
     const pc=this.sim.world.piecesOf(slot)[0];if(pc){session.cx=pc.x;session.cy=pc.y;}
-    session.room=this;session.slot=slot;session.pid=++this._pid;session.known.clear();session.rect=null;session.specSlot=-1;session.espectador=false;this.sessions.set(slot,session);this.lastHumanAt=Date.now();
+    session.room=this;session.slot=slot;session.pid=++this._pid;session.known.clear();session.rect=null;session.specSlot=-1;session.espectador=false;session.fase=this._faseLivre();this.sessions.set(slot,session);this.lastHumanAt=Date.now();
     if(session.avatar&&session.userId)this._setAvatar(slot,session.userId,session.avatar);
     if(lobby)this.broadcastLobby();
     if(this.hostUserId!=null){const h=this.hostSession();if(h)this.sendHost(h);this.holdUntil=Date.now()+ROOM.HOST_HOLD_MS;}
@@ -542,6 +542,7 @@ export class Room{
     this.sim.addHuman(slot,{name,registered:false,skinId,sessionId,userId,team:-1,level,spawn:false,spectator:true});
     const gp=this.sim.players.get(slot);if(gp)gp.country=country||null;
     session.room=this;session.slot=slot;session.pid=++this._pid;session.known.clear();session.rect=null;session.specSlot=-1;session.espectador=true;
+    session.fase=this._faseLivre();
     this.sessions.set(slot,session);
     // ⚠️ `lastHumanAt` NÃO é tocado: ele é o que segura a sala de pé para o ceifador (`STOP_AFTER_MS` /
     // `REMOVE_AFTER_MS`), e uma sala vazia com um espectador esquecido não pode viver para sempre. Quem
@@ -1980,11 +1981,29 @@ export class Room{
       zonaS:Number.isFinite(zt)&&zt>0?Math.round(zt/TICK_HZ):0,
       feedFresco:sim.tick-this.feedAt<BOT_LLM.FEED_FRESCO_TICKS&&this.feedLog.length>0};}
   /** Envio por tick: PLAYERS se mudou, snapshots a 20 Hz, eventos por AOI e o placar a 2 Hz. */
+  /** A fase de snapshot com MENOS sessões (ver `_flush`): quem entra equilibra a carga entre os 3 ticks do ciclo. */
+  _faseLivre(){const n=new Array(SNAPSHOT_EVERY).fill(0);for(const s of this.sessions.values())n[(s.fase|0)%SNAPSHOT_EVERY]++;
+    let f=0;for(let i=1;i<n.length;i++)if(n[i]<n[f])f=i;return f;}
   _flush(sim){
     const t=sim.tick;
     if(t%LEADERBOARD_EVERY===0){this._expiraFala(sim,t);this._humor(sim,t);this._iniciativaTick(sim,t);}
     if(sim.playersDirty){sim.playersDirty=false;this.broadcastPlayers();}
-    if(t%SNAPSHOT_EVERY===0){this.snapshotter.beginTick();for(const s of this.sessions.values())this.snapshotter.send(s);this.flushEvents();sim.gone.clear();}
+    // ── O SNAPSHOT É ESCALONADO: um terço das sessões por tick, não todas a cada 3 ──────────────────
+    // Cada cliente continua recebendo a 20 Hz (um snapshot a cada SNAPSHOT_EVERY ticks); o que mudou é
+    // QUANDO. Medido em produção em 2026-09-17, já sem a cota de CPU: montar e codificar o snapshot custa
+    // ~1 ms POR SESSÃO nos núcleos de lá (8–10× mais lentos que uma máquina de dev), e saíam TODOS no mesmo
+    // tick — 8–11 ms com 10 humanos, contra um tick de 16,7 ms; com 25–30 (uma sala de Fit Test) o tick de
+    // snapshot estourava sozinho, o laço atrasava e a cadência de envio virava serra. O trabalho total é o
+    // mesmo; o PICO por tick cai a um terço.
+    // ⚠️ As MÁSCARAS de mudança são calculadas UMA vez por ciclo (fase 0) e valem para as três fases: quem sai
+    // na fase 1 ou 2 manda os valores DAQUELE tick (e o snapshot leva o tick certo) para o que mudou no ciclo.
+    // O que começou a se mexer depois da fase 0 entra no ciclo seguinte — 1–2 ticks de atraso no INÍCIO de um
+    // movimento, só para corpo que estava parado. `gone` tem duas gerações pelo mesmo motivo (Sim.rotacionaGone).
+    // ⚠️ Os EVENTOS continuam saindo de uma vez, na fase 0: têm posição própria e não dependem da entidade.
+    const fase=t%SNAPSHOT_EVERY;
+    if(fase===0)this.snapshotter.beginTick();
+    for(const s of this.sessions.values())if((s.fase|0)===fase)this.snapshotter.send(s);
+    if(fase===0){this.flushEvents();sim.rotacionaGone();}
     else if(sim.wireEvents.length>=200)this.flushEvents();
     if(t%LEADERBOARD_EVERY===0){
       const rows=this.sim.leaderboard();

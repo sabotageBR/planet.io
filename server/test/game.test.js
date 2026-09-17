@@ -328,6 +328,26 @@ test('versão: faixa aceita, eco no room, omissão sem declaração, recusa fora
     V.close();S.close();
   }finally{await s2.close();}
 });
+// ── O SNAPSHOT É ESCALONADO (Room._flush): cada sessão sai numa FASE do ciclo de 3 ticks ──
+// O que o cliente tem de continuar vendo: 20 Hz cravados, sempre na MESMA fase (senão o intervalo entre
+// snapshots vira serra de 33/67 ms), e sessões diferentes em fases diferentes (senão não houve escalonamento).
+test('snapshot escalonado: cada cliente a 20 Hz numa fase FIXA do ciclo, e as sessões não saem todas no mesmo tick',async()=>{
+  const n0=[A.snaps.length,B.snaps.length];await sleep(1500);
+  const fases=[A,B].map((c,i)=>{const ts=c.snaps.slice(n0[i]).map(s=>s.tick);
+    assert.ok(ts.length>=24&&ts.length<=36,`~30 snapshots em 1,5 s (vieram ${ts.length})`);
+    const f=new Set(ts.map(t=>t%SNAPSHOT_EVERY));assert.equal(f.size,1,`sempre na mesma fase: ${[...f]}`);
+    for(let k=1;k<ts.length;k++)assert.equal(ts[k]-ts[k-1],SNAPSHOT_EVERY,'um snapshot a cada 3 ticks, sem buraco nem dobra');
+    return [...f][0];});
+  assert.notEqual(fases[0],fases[1],`duas sessões, duas fases (${fases})`);
+  const room=roomOf(roomCode);assert.deepEqual([...room.sessions.values()].map(s=>s.fase).sort(),[0,1]);
+});
+test('snapshot escalonado: quem sai numa fase ≠ 0 ainda recebe o MOTIVO do que sumiu (gone em duas gerações)',async()=>{
+  const {REMOVE}=await import('@warspace/shared/protocol/constants.js');
+  const sim=roomOf(roomCode).sim;
+  sim.gone.set(999001,REMOVE.EATEN);sim.rotacionaGone();
+  assert.equal(sim.gone.get(999001),undefined);assert.equal(sim.goneAnt.get(999001),REMOVE.EATEN,'depois da rotação do ciclo, a fase 1 e a 2 ainda acham o motivo');
+  sim.rotacionaGone();assert.equal(sim.goneAnt.get(999001),undefined,'um ciclo depois, some — a lista não cresce para sempre');
+});
 test('soak 10 s: 3 clientes + bots → overruns 0, tick p99 < 3.5 ms',async()=>{
   const cs=[A,B,new Client()];await cs[2].open();await cs[2].join('Carol',roomCode);
   const room=roomOf(roomCode);assert.equal(room.sessions.size,3);

@@ -77,10 +77,10 @@ function tickDividido(){
   sim._consume();
   const t3=hr();fase.consume+=t3-t2;
   // ── a MESMA cadência do `Room._flush`: snapshot a cada SNAPSHOT_EVERY, placar a cada LEADERBOARD_EVERY ──
-  if(snapshotter&&w.tick%SNAPSHOT_EVERY===0){
-    snapshotter.beginTick();
-    for(const s of sessoes)snapshotter.send(s);
-    sim.gone.clear();   // o `_flush` real limpa aqui; sem isso a lista de removidos cresce sem fim
+  if(snapshotter){const f3=w.tick%SNAPSHOT_EVERY;   // ESCALONADO, como o `_flush` real: um terço das sessões por tick
+    if(f3===0)snapshotter.beginTick();
+    for(let i=0;i<sessoes.length;i++)if(i%SNAPSHOT_EVERY===f3)snapshotter.send(sessoes[i]);
+    if(f3===0)sim.rotacionaGone();   // o `_flush` real rotaciona aqui; sem isso a lista de removidos cresce sem fim
     fase.snapshot+=hr()-t3;}
   const t4=hr();
   if(w.tick%LEADERBOARD_EVERY===0){sim.leaderboard();fase.placar+=hr()-t4;}
@@ -106,7 +106,9 @@ console.log(`  _consume        : ${(fase.consume/TICKS).toFixed(3)} ms  (${(fase
 // ⚠️ AS DUAS ÚLTIMAS SÃO POR TICK MÉDIO E TAMBÉM POR OCORRÊNCIA, e a segunda é a que importa para um
 // engasgo: diluída em 60 ticks, uma fase que só roda em 1 deles parece barata. O tick que a paga é o
 // que estoura o orçamento — e é ele que o jogador sente.
-const nSnap=snapshotter?Math.floor(TICKS/SNAPSHOT_EVERY):0,nLb=Math.floor(TICKS/LEADERBOARD_EVERY);
+// ⚠️ O SNAPSHOT É ESCALONADO desde 2026-09-17 (um terço das sessões por tick): ele sai em TODO tick, então
+// "o tick em que sai" é todo tick e o pico é a média — era `TICKS/SNAPSHOT_EVERY`, que triplicaria o número.
+const nSnap=snapshotter?TICKS:0,nLb=Math.floor(TICKS/LEADERBOARD_EVERY);
 console.log(`  snapshot (${String(SESSOES).padStart(2)} ses.): ${(fase.snapshot/TICKS).toFixed(3)} ms  (${(fase.snapshot/total*100).toFixed(1)}%)  · ${nSnap?(fase.snapshot/nSnap).toFixed(3):'0.000'} ms no tick em que sai`);
 console.log(`  placar          : ${(fase.placar/TICKS).toFixed(3)} ms  (${(fase.placar/total*100).toFixed(1)}%)  · ${nLb?(fase.placar/nLb).toFixed(3):'0.000'} ms no tick em que sai`);
 // ⚠️ `LEADERBOARD_EVERY % SNAPSHOT_EVERY === 0` é o que faz as duas caírem SEMPRE no mesmo tick: 30/3.
