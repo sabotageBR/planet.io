@@ -25,6 +25,7 @@ node scripts/loadtest.mjs --n 150 --dur 90    # N clientes DE VERDADE (guest →
 node scripts/prof-room.mjs --bots 15 --humanos 10   # onde vai o tempo de UMA sala (cérebro · World.step · _consume)
 node scripts/novato-bancada.mjs --manso off|metade|todos   # sala headless com o painel de produção: mortes por idade + 1º abate do novato
 DATABASE_URL=... node scripts/poki-coorte.mjs --de "2026-09-16 20:19-03" --ate "2026-09-17 01:10-03"   # a RÉGUA dos Fit Tests: coorte Poki por braço do A/B (SÓ LEITURA)
+node scripts/poki-fit-bancada.mjs [url]   # o SDK da Poki VÊ o dedo que dirige? (o relógio do Fit Test, replicado no stub; pacote = SDK, dev = controle)
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
 DATABASE_URL=... node scripts/skin-art.mjs [--dry]   # sobe a arte de client/public/faces/ para o banco (uma vez por ambiente)
 node scripts/responsive-check.mjs [url]   # a matriz de layout (18 aparelhos × 3 temas × ~60 telas, 7 critérios; RESP_TELAS/RESP_TEMAS recortam)
@@ -1501,11 +1502,10 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `LocalServer` **nunca mandava essa mensagem**: no modo local ele ficava `true` para sempre, `act()`
   engolia todo comando de dividir, o `#t-split` não era renderizado e a etapa 3 da missão nunca aparecia.
   Ninguém conseguia dividir ali, e nada acusava. O `graceTick` de lá é o espelho de `Sim._graceTick`.
-  ⚠️ **A TELA: trilha 1·2·3, letra de instrução e o BOTÃO QUE SE APERTA, desenhado.** São três caras
-  (`ui/Tutor.jsx`): a faixa em curso, a TELA DE "ETAPA COMPLETA" (que aparece, comemora e **fecha sozinha**
-  — sem botão, porque é uma celebração e não uma decisão) e a tela de PARABÉNS, que hoje segue a mesma
-  regra (ver o bloco abaixo; ela já foi um cartão com botão, e o botão prendia um quarto de quem chegava
-  até ele). ⚠️ A instrução fica no TOPO e
+  ⚠️ **A TELA: trilha 1·2·3, letra de instrução e o BOTÃO QUE SE APERTA, desenhado.** Hoje é UMA cara só, a
+  faixa em curso. (Histórico: já foram três — havia a TELA DE "ETAPA COMPLETA", que aparecia, comemorava e
+  fechava sozinha, e a de PARABÉNS, que já foi um cartão com botão que prendia um quarto de quem chegava até
+  ele. As duas saíram no zip 1.34: ver "...E O TUTORIAL DEIXOU DE TER TELA DE PARADA".) ⚠️ A instrução fica no TOPO e
   o prompt no RODAPÉ, e essa separação não é estética: empilhados eles desciam até o meio da tela e
   TAPAVAM o planeta e os pedaços, ou seja a explicação cobria a coisa explicada.
   ⚠️ **O PROMPT É A ÚNICA COISA DO JOGO QUE DIZ QUAL BOTÃO APERTAR**, e ele existe porque no mouse **não
@@ -1516,8 +1516,8 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ `falaDoTutor`/`promptDoTutor` moram num `.js` (`ui/tutorFala.js`) e não no `.jsx`: o `node --test` não
   carrega `.jsx`, e uma função de DECISÃO que ninguém testa é onde o par mouse/dedo se inverte em
   silêncio. O molde é `ui/premio.js` e `ui/deadEstilo.js`.
-  ⚠️ **`celebra` é a JANELA e `festa` é o INSTANTE**: aquele segura a tela de etapa pelos `SOBRA_MS`, este
-  dispara som e efeito uma vez. Com só um dos dois, ou a tela pisca um frame, ou o som toca a 8 Hz.
+  ⚠️ **`celebra` é a JANELA e `festa` é o INSTANTE**: aquele é o batimento de `SOBRA_MS` entre duas etapas (e
+  cala a ajuda do diretor nele), este dispara som, efeito e o selo ✓ uma vez. Tela nenhuma depende mais dele.
   ⚠️ **O bloco de arma fica só na ETAPA 2**, que é a do tiro — lá a munição É a lição e o jogador precisa
   vê-la cair de 3 para 2. Nas outras duas um "0 MÍSSIL" na etapa de MOVER é ruído, e ainda brigava com o
   prompt pelo mesmo pedaço de rodapé.
@@ -1607,8 +1607,8 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   jogador ficar diante de uma tela que esperava um clique que ele não sabia dever dar. O argumento
   original ("uma contagem que come um clique é o pior defeito numa tela de PRÊMIO") valia sobre o
   prêmio; o conserto foi tirar o prêmio e o clique dali, não consertar a pausa.
-  ⚠️ **HOJE NÃO HÁ CARTÃO, BOTÃO NEM `pointer-events`**: texto grande sobre a partida, `TUTOR.FIM_MS`
-  (3 s) e entra. O disparo tem guarda de `useRef` porque `saiDoTutorial` chama `play()`, que é
+  ⚠️ **HOJE NÃO HÁ NEM TELA** (zip 1.34: `FIM_MS` = 0, e o parabéns é a faixa de `TutorParabens.jsx` por cima da
+  primeira partida). Antes disso foi: texto grande sobre a partida, `TUTOR.FIM_MS` (3 s) e entra. O disparo tem guarda de `useRef` porque `saiDoTutorial` chama `play()`, que é
   assíncrono. E `tutorDemo` passa `demo:true` para DESARMAR o relógio — sem isso `?screen=tutor:fim` e a
   matriz de responsividade entrariam numa sala de verdade 3 s depois de montar a tela que vieram medir.
   ⚠️ **O `.tut-ir` SAIU da lista de AÇÕES de `responsive-check.mjs`** junto com o botão: seletor que não
@@ -1621,8 +1621,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `PROGRESSO.PARTIDAS` em `shared`, o estado `progresso` de `ui/premio.js`, a concessão em
   `persist/hooks.js`): o jogador EXPERIMENTA a skin antes de ter qualquer coisa, ela é tirada dele ao
   entrar na primeira sala de verdade, e a barra da tela de morte diz o que falta para ficar com ela.
-  ⚠️ **A PROMESSA É FEITA NO INSTANTE DA PERDA** — na tela de parabéns —, e não é enfeite: sem uma linha
-  explicando, a troca de planeta na primeira sala lê como defeito.
+  ⚠️ **A PROMESSA É FEITA NO INSTANTE DA PERDA** — hoje na faixa de parabéns que entra na sala JUNTO com o
+  jogador (`TutorParabens.jsx`; já foi na tela de parabéns) —, e não é enfeite: sem uma linha explicando, a
+  troca de planeta na primeira sala lê como defeito.
   ⚠️ **A skin do tutorial é UMA LINHA em `entraNoTutorial`** (`skinId: SKIN_TUTORIAL` no `pendingJoin`),
   porque a cadeia já aceitava um id explícito (`game/index.js`: `skinId!=null?skinId:user.equippedSkin`).
   Sair passa por `play()`, que monta um `pendingJoin` novo sem `skinId`, então a volta é automática — e
@@ -1652,12 +1653,12 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   três candidatos em bancada (`legenda`, `sargento` e `cena`) e os dois que perderam SAÍRAM do código. O
   `cena` é uma tirinha de três quadros — gesto ▸ ação ▸ resultado — mais a palavra gigante (MOVA · ATIRE ·
   DIVIDA): ensina sem depender de ler, e o público da Poki é o mundo numa UI de três idiomas. Na etapa 1
-  ela encolhe para uma pílula no primeiro pedaço comido (`formaDoCartao`) e, na pausa entre etapas, a tela
-  de "completa" já mostra a tirinha da PRÓXIMA lição. O clássico fica em `?tutor=classico` (é o `Tutor.jsx`)
+  ela encolhe para uma pílula no primeiro pedaço comido (`formaDoCartao`). (A tela de "completa", que mostrava
+  a tirinha da PRÓXIMA lição na pausa entre etapas, saiu no zip 1.34 junto com a pausa.) O clássico fica em `?tutor=classico` (é o `Tutor.jsx`)
   enquanto o Fit Test não disser que o `cena` não é pior — depois sai, e `tutorEstilo.js` com ele.
   ⚠️ **A máquina (`game/tutor.js`), o mundo e as DECISÕES de fala são dos DOIS modelos — muda a FORMA.**
   `falaDoTutor`/`promptDoTutor` seguem a única fonte do que dizer e do que apertar; o que o `cena` pergunta
-  a mais (`verboDoTutor`, `cenaDoTutor`, `proximaCena`, `formaDoCartao`) mora no mesmo `tutorFala.js`.
+  a mais (`verboDoTutor`, `cenaDoTutor`, `seloDoTutor`, `formaDoCartao`) mora no mesmo `tutorFala.js`.
   ⚠️ **TRÊS COISAS O DONO DO JOGO VIU JOGANDO, e nenhuma aparecia em teste nem em captura de tela:**
   **(1) O ALUNO TROMBAVA NA ESTRELA ANTES DE ELA EXPLODIR** (`presoNaEspera` em `game/tutor.js`, lido pelo
   `enviarInput`): a 448 px/s ele chega aos ~290 px da estrela em menos de um segundo, e a primeira coisa
@@ -1675,15 +1676,15 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   o quadro da tirinha tem 60 px e não serve para achar tecla no meio de uma perseguição; no DEDO quem é
   destacado é o botão DE VERDADE (`data-alvo`: pulso + seta), nunca uma réplica longe dele.
   **(3) O PARABÉNS ERA LETRA SOLTA NO MEIO DA TELA**, em cima da salva de fogos que sai do planeta. Virou um
-  cartão com superfície própria colado no ALTO (`.tc-fimcard`), com véu mais leve — continua sem botão e
-  sem capturar o ponteiro: quem entra na sala é o relógio (`useEntraSozinho`).
+  cartão com superfície própria colado no ALTO (`.tc-fimcard`) — e no zip 1.34 SAIU DE VEZ: o parabéns é a
+  faixa por cima da primeira partida, e quem entra na sala continua sendo o relógio (`useEntraSozinho`, em 0 ms).
   ⚠️ **SEM PREF, SEM WHITELIST, SEM TUNABLE**: o tutorial é visto UMA vez, antes de existir tela de Opções.
   A ordem é `d.estilo` (a bancada, gravado por `tutorDemo`) > `?tutor=` > `PADRAO` — o CONTRÁRIO de
   `?dead=`, porque a matriz troca de modelo sem recarregar a página. E `?tutor=` é lido NA CARGA DO MÓDULO
   (`Tutor.jsx`): `actions.js` faz `replaceState` antes do primeiro render e apagaria a query. Em DEV,
   `?tutor=N` sozinho já abre o tutorial e a URL fica (F5 não perde o modelo).
-  ⚠️ **TRÊS IDS SÃO API** (`#tutor` · `#tutor-ok` · `#tutor-fim`) e carregam o que o HUD faz por `:has()`:
-  `#tutor` esconde só o ruído e MANTÉM o `#touch`; os outros dois escondem tudo. `data-etapa` também é API
+  ⚠️ **UM ID É API** (`#tutor`; `#tutor-ok` e `#tutor-fim` saíram com as telas deles no zip 1.34) e carrega o
+  que o HUD faz por `:has()`: esconde só o ruído e MANTÉM o `#touch`. `data-etapa` também é API
   (esconde o bloco de arma nas etapas 1 e 3). ⚠️ E o `#tut-prompt` é IRMÃO do `#tutor`, nunca filho: ele é
   absoluto com `bottom`, e dentro de um ancestral posicionado colado no topo o "rodapé" seria o da faixa.
   ⚠️ **OS MASCOTES TÊM PAPEL FIXO, no mundo e na tela**: MARTE = você (`SKIN_TUTORIAL`), TERRA = o outro
@@ -1872,7 +1873,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   1.30): `session/60s|180s|300s` conta PRESENÇA (partida, tela de morte, pódio) e `gameplay/60s|180s|300s`
   conta só o intervalo entre o nosso `gameplayStart` e o `gameplayStop`. Medido nos Fit Tests 1.26–1.29,
   a presença acima de 3 min fica 2 a 8 pontos ACIMA do "engaged players" deles, e a documentação da Poki
-  não diz como o playtime é contado — o relógio que bater com o número deles responde. Junto saem
+  não diz como o playtime é contado — o relógio que bater com o número deles responde. ⚠️ **RESPONDIDO em
+  17/09, lendo o SDK deles**: nenhum dos dois batia porque a `duration` do Fit Test CONGELA depois de 60 s sem
+  um toque/tecla que o rastreador deles veja — ver "O RELÓGIO DO PLAYER FIT TEST CONGELA". Junto saem
   `gesture/<faixa>` (quanto tempo na sala antes do primeiro clique ou tecla, que é o que o SDK chama de
   interação), `device/touch|mouse` e `life/tutor_nova|tiro|split[_auto]` (em qual etapa do tutorial a
   metade que não termina desiste). ⚠️ A pergunta que `gesture` responde é se vale pôr o TIRO antes da
@@ -1943,6 +1946,81 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   botão em cima), e a fala do degrau 1+ continua NOMEANDO o botão. ⚠️ Não se mexeu em `AIM_MS_TOUCH` nem
   se criou "tocar no alvo = tiro" (colide com o direcional). A métrica é `tutor_tiro` × `tutor_tiro_auto`
   no mobile: ~28–38% manuais → previsto >60%.
+- **O RELÓGIO DO PLAYER FIT TEST CONGELA EM 60 s SEM UM TOQUE QUE O SDK VEJA — E NO CELULAR ELE NÃO VIA O DEDO
+  QUE DIRIGE** (`e.__volante` em `game/input/Joystick.js` + `Pointer.js`, o relator replicado em
+  `scripts/poki-stub.js`, `scripts/poki-fit-bancada.mjs`; medido em 17/09/2026, zip 1.34). Foi a resposta da
+  pergunta que ficou ~20 rodadas em aberto ("como eles contam o playtime?"), e ela estava no CÓDIGO deles
+  (`poki-sdk-core-1712989e….js`), não na doc. O `?playerfit_test_id=` liga um relator próprio, que manda a
+  `mystery-game-tile.poki.io/v0/metric` a cada 10 s:
+  `if(!o){ n=l; if(l-Math.max(Vd,Yd())>6e4) o=!0 }` → `{duration:n, total_duration:l, timed_out:o, have_interaction:Yd()>0}`.
+  `Yd()` é o último **`pointerdown`/`keydown`** do rastreador deles — `window.addEventListener("pointerdown",…)`
+  e `document.addEventListener("keydown",…)`, na **BOLHA** —, `Vd` é o último evento RASTREADO do SDK
+  (`gameplayStart/Stop`, `commercialBreak`, `rewardedBreak`, `gameLoadingFinished`; **`measure()` NÃO**: ele mora
+  no carregador e não passa pelo `track`), e **`o` nunca volta a false**: 60 s sem sinal e a `duration` daquele
+  jogador fica CONGELADA para sempre, jogue ele o quanto jogar. `pointermove` não conta.
+  ⚠️ **E o `down` do direcional dava `stopPropagation()` em CAPTURA no canvas**: o evento morria ali e nunca
+  chegava à bolha da janela. Nós já sabíamos disso para os NOSSOS detectores (é por isso que `Activity.js` e o
+  `GESTO` de `portal/sessao.js` escutam em captura) e nunca ligamos ao listener DELES. Para a Poki, no celular
+  (78–82% do tráfego) o jogador só "interagia" ao tocar num botão do HUD ou no DE NOVO — e o novato (79% sem
+  abate, 41% sem dividir, vivo e protegido por 90 s) só DIRIGE. Linha do tempo dele no relógio deles: tutorial
+  ~60 s (último toque visível: o DIVIDIR da etapa 3) → partida real só dirigindo → congela em **~2m10**. É a
+  média de TODA rodada (2m15 · 2m23 · 2m28), e é por que nada do que se fez na partida real jamais apareceu no
+  número deles. Pior: cada proteção ao novato (1ª morte sem tela, zero anúncio nas 2 primeiras vidas, graça de
+  90 s) REMOVEU eventos que zeravam o relógio (o toque no DE NOVO, `gameplayStop/Start`, `commercialBreak`).
+  ⚠️ **A prova estava no painel DELES, nos NOSSOS relógios**: na 1.33, `session/60s` 65% × 68% no histograma
+  deles (bate — antes de 60 s não há como congelar), `session/180s` **25% × 19,8%** e `session/300s`
+  **18% × 9,8%**. O vão cresce com a duração: é truncamento, não ruído.
+  ⚠️ **O conserto é uma MARCA, nunca fabricar sinal**: o direcional escreve `e.__volante=true` em vez de parar o
+  evento, e o `Pointer.js` abre as três portas com `if(e.__volante)return` — para o jogo é byte a byte o de antes
+  (medido: a mesma rota de câmera, 893,890 → 1735,890 → 1734,65 → …), e o toque REAL do jogador segue para a
+  janela. Bancada, antes → depois: `gameplayStart INVALIDO (nunca houve input)` · `haveInteraction:false` ·
+  `timedOut:true` → `VALIDO (pointerdown, há 154ms)` · `true` · `false`. De quebra o `gameplayStart` do celular
+  deixa de sair INVÁLIDO no Inspector. **NÃO usar** `PokiSDK.customEvent` como batimento (ele zera o `Vd`, e é
+  fabricar sinal para o medidor) nem despachar `pointerdown` sintético.
+  ⚠️ **O DESKTOP CONTINUA CEGO, E O PONTO CEGO É DELES**: dirigir com o mouse é `pointermove`, que o relator
+  ignora (embora o `playerActive` do próprio SDK conte `pointermove` como atividade). ~18% do tráfego; o que
+  cabe é avisar a Poki. `?force_playerfit=1` liga o relator à mão, se um dia for preciso ver o SDK de verdade.
+  ⚠️ **A BANCADA RESPONDE DUAS PERGUNTAS EM DOIS BUILDS**: no PACOTE o stub diz se o SDK viu o dedo (`__sdkFit()`),
+  mas `?perf` é desligado lá (`!PORTAL`) e não há `__warspace`; no DEV há `__warspace` (a câmera tem de andar e
+  VIRAR com os toques) e não há SDK. O calço de `matchMedia("(pointer: coarse)")` é obrigatório (sem ele o
+  direcional não arma e a bancada mede o `Pointer.js`), e ela ABORTA se ele não pegar.
+  ⚠️ **Previsão escrita ANTES do Fit Test da 1.34** (é uma RAZÃO dentro do mesmo teste, imune ao ruído de ±4 pt
+  entre rodadas): o "engaged" deles passa a bater com o nosso `session/180s` (±2 pt; era −5) e o bin 5m+ com o
+  `session/300s` (era −8 pt); o bin 1–2 min murcha; a média sobe ≥ 30 s. Se o vão NÃO fechar, morre a hipótese
+  de TAMANHO (o mecanismo não), e o que sobra é o desktop + o jogo.
+- **...E O TUTORIAL DEIXOU DE TER TELA DE PARADA: SEM "ETAPA COMPLETA", SEM PARABÉNS** (`TUTOR.SOBRA_MS` 3200 → 700
+  e `FIM_MS` 3000 → 0 em `game/tutor.js`; o selo `#tutor-selo` de `ui/TutorCena.jsx` + `seloDoTutor`;
+  `ui/TutorParabens.jsx` + `app.parabensAte`; zip 1.34). O dono do jogo trouxe o estudo de caso que a própria
+  Poki divulga: um desenvolvedor foi de 2,5 para 7 min de playtime médio em cinco dias rodando UM teste de 500
+  plays por dia com UMA mudança pequena, e a maior delas foi **tirar a tela de "Level Complete"** (+2 min) — o
+  jogador flui de uma fase para a outra, e a parada entre fases é onde ele decide ir embora. Aqui eram QUATRO:
+  3 × 3,2 s de `#tutor-ok` (tela cheia, HUD inteiro escondido por `:has()`) + 3 s de `#tutor-fim` = **12,6 s de
+  espera obrigatória** num tutorial de ~60 s (perdas por passo na 1.33: 7% · 11% · 8% · 7%).
+  ⚠️ **`SOBRA_MS` virou um BATIMENTO, não uma tela**: a `festa` continua saindo UMA vez (som, efeito, os marcos
+  `tutor_nova|tiro|split[_auto]` — nomes e gatilhos intactos) e `celebra` continua calando a AJUDA do diretor no
+  intervalo, mas ninguém mais desenha nada pendurado nele. O elogio é o SELO "✓ ETAPA n COMPLETA!": o motor
+  guarda `tutorOk` na `festa` e o `pushHud` o publica em `h.tutor.ok` por `SELO_MS` (2,2 s) — o componente não
+  tem relógio próprio (`h.tutor` é objeto novo a 8 Hz). Ele mora EM FLUXO, último filho do `.tc-palco`, logo
+  abaixo do cartão; o "Atiramos por você" viaja nele (fazer por alguém em silêncio é a pior opção).
+  ⚠️ **O PARABÉNS E A PROMESSA DA SKIN VIRARAM FAIXA POR CIMA DA PRIMEIRA PARTIDA.** Este arquivo dizia "`FIM_MS`
+  nunca zerar, senão a promessa da skin não é lida" — a premissa morreu: a promessa tem de ser feita no instante
+  da PERDA do Marte Bravo, e esse instante É a entrada na sala. `saiDoTutorial({fim:true})` escreve
+  `app.parabensAte` (campo de TOPO: `play()` reescreve `overlays` na linha seguinte) e a faixa cobre o handshake
+  ("entrando…") e os primeiros ~7 s, no canto do `#notice`, `pointer-events:none`, sem esconder nada do HUD;
+  quem a aposenta é o relógio de 8 Hz do `Hud.jsx`. Em pé ela desce para baixo do radar; DEITADA ela é ancorada
+  entre o radar e a coluna da direita (`left:112px;right:calc(16px + min(34vw,206px))`) — centrada, num iPhone SE
+  ela entrava 45–49 px na coluna, e o quanto dependia de o placar estar aberto (nenhum `max-width` fixo resolvia).
+  ⚠️ **`#tutor-ok` e `#tutor-fim` NÃO EXISTEM MAIS** (o único id de API do tutorial é `#tutor`); na matriz `ok<n>`
+  mede o selo por cima da etapa SEGUINTE e o parabéns é `game@parabens` (`__parabensDemo`, semeado no modo LIVRE
+  — o `hudDemo` é Battle Royale, e a faixa nunca convive com o painel do BR). O SELO é filho do `#tutor`: listado
+  entre os ids de colisão ele colide com o próprio pai.
+  ⚠️ `client/test/tutor-mundo.test.js` trava o FLUXO pelo caminho real (mundo + diretor + máquina: da `festa` à
+  etapa seguinte montada, < 1 s; da 3ª ao `fim`, idem) e `tutor.test.js` é a memória da decisão
+  (`SOBRA_MS ≤ 1000`, `FIM_MS === 0`) — os dois ficam vermelhos devolvendo os 3.200.
+  ⚠️ De carona: **o mundo LOCAL nascia com 1.800 px depois do tutorial** (`createLocalServer` herdava `WORLD.w`,
+  que o cliente reescreve com o mundo da última sala) — 3.900 grãos e 24 bots num quadradinho, o jogador morto em
+  1 s. Só no `?local=1`; hoje ele nasce de `WORLD.LADO`, que ninguém reescreve.
+  ⚠️ Previsão (Game Events deles): `match_real`/cargas 64% → ≥ 68%, e nenhum passo do tutorial pior.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade
@@ -2541,7 +2619,10 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   "engaged players" que a Poki reportou na MESMA versão; e `session/300s` deu 14,4% contra os 13,0% do
   bin 5m+. **Os dois relógios concordam**, ou seja o start inválido NÃO estava truncando o playtime
   medido: a Poki conta o evento mesmo com `interaction` vazio, e quem reprova por isso é o Inspector, na
-  revisão, não o Player Fit Test. Adiar o start só tira tempo que antes era contado — a 1.27 saiu com
+  revisão, não o Player Fit Test. ⚠️ **(corrigido em 17/09)** A metade sobre o START continua de pé (o relator
+  do Fit Test só pergunta se houve ALGUM `gameplayStart`), mas "o relógio nunca parou" era FALSO: ele congela
+  por outro caminho — 60 s sem um `pointerdown`/`keydown` que o SDK veja —, e da 1.30 em diante o vão chegou a
+  5–8 pontos. Ver "O RELÓGIO DO PLAYER FIT TEST CONGELA". Adiar o start só tira tempo que antes era contado — a 1.27 saiu com
   2m24/23% contra 2m40/25% da 1.26 (dentro do ruído, mas na direção errada e sem nenhum ganho para
   compensar). Se um dia isto voltar, que volte para passar o item do INSPECTOR, com o custo de playtime
   declarado — nunca como conserto de retenção.
