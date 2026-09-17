@@ -490,3 +490,25 @@ test("ETAPA 2, PARADO: no teto o tutorial ATIRA — um míssil só — e a festa
   assert.ok(ticks < emTicks(A.teto + A.folga), `a festa veio do BOOM (${ticks} ticks), não do fim da folga (${emTicks(A.teto + A.folga)})`);
   assert.ok(ticks >= emTicks(A.teto), "e não antes do teto: até lá a vez é do aluno");
 });
+
+// ── NÃO HÁ TELA ENTRE AS ETAPAS ──────────────────────────────────────────────
+// A "ETAPA COMPLETA" de tela cheia (3,2 s, três vezes) e o cartão de PARABÉNS (3 s) saíram: eram 12,6 s de
+// parada obrigatória num tutorial de ~60 s, em quatro pontos de saída — a tela de "Level Complete". O que
+// este teste trava é o FLUXO pelo caminho de verdade (mundo + diretor + máquina): fechou uma etapa, a cena
+// da seguinte está montada em menos de um segundo; fechou a terceira, o `fim` sai no mesmo fôlego.
+test("NÃO HÁ TELA ENTRE AS ETAPAS: fechou uma, a seguinte abre em < 1 s — e o fim não espera", () => {
+  const { w, rot, api, jsons } = banca();
+  const quando = []; let visto = 0;
+  for (let i = 0; i < TICK_HZ * 110; i++) { w.step(); rot.passo(w, api);
+    while (visto < jsons.length) quando.push([i, jsons[visto++]]); }
+  const tut = quando.filter(([, j]) => j.t === "tutor");
+  for (const n of [ETAPA.NOVA, ETAPA.TIRO, ETAPA.SPLIT]) {
+    const f = tut.find(([, j]) => j.festa === n);
+    assert.ok(f, `a etapa ${n} fechou (sem tocar em nada, pelo teto dela)`);
+    const prox = tut.find(([tk, j]) => tk > f[0] && (n < ETAPA.SPLIT ? j.etapa === n + 1 && !j.celebra : j.fim));
+    assert.ok(prox, n < ETAPA.SPLIT ? `a etapa ${n + 1} abriu` : "o fim saiu");
+    const s = (prox[0] - f[0]) / TICK_HZ;
+    assert.ok(s <= 1, `da festa da etapa ${n} até ${n < ETAPA.SPLIT ? "a etapa seguinte" : "o fim"}: ${s.toFixed(2)} s — acima de 1 s é uma tela de espera de volta`);
+  }
+  assert.equal(w.players.get(0).alive, true);
+});

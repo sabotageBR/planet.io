@@ -313,7 +313,7 @@ test("A ETAPA 3 NÃO DEIXA O JOGADOR CORRER MAIS DE 5 s ATRÁS DO IMPOSSÍVEL", 
 // Os modelos mudam a FORMA da aula, nunca o conteúdo — e o que eles perguntam a mais (qual palavra
 // gigante, qual tirinha, cartão aberto ou pílula, qual botão de verdade pulsa) é decisão, então mora num
 // `.js` e é conferida aqui.
-import { verboDoTutor, cenaDoTutor, proximaCena, formaDoCartao, alvoDoTutor } from "../src/ui/tutorFala.js";
+import { verboDoTutor, cenaDoTutor, seloDoTutor, formaDoCartao, alvoDoTutor } from "../src/ui/tutorFala.js";
 
 test("cada etapa tem o SEU verbo, e o FIM não tem nenhum", () => {
   const v = etapa => verboDoTutor({ etapa }, T);
@@ -340,13 +340,24 @@ test("na EXPLOSÃO a tirinha é a de espera — sem gesto, como o prompt", () =>
   assert.equal(cenaDoTutor({ etapa: ETAPA.FIM }), null);
 });
 
-test("a COMEMORAÇÃO já mostra a tirinha da PRÓXIMA lição — a pausa vira pré-aula", () => {
-  assert.equal(proximaCena(ETAPA.NOVA), "tiro");
-  assert.equal(proximaCena(ETAPA.TIRO), "salto");
-  assert.equal(proximaCena(ETAPA.SPLIT), null);
-  // …e a tirinha anunciada é SEMPRE a que a etapa seguinte abre mostrando
-  for (const e of [ETAPA.NOVA, ETAPA.TIRO])
-    assert.equal(proximaCena(e), cenaDoTutor({ etapa: e + 1, ajuda: 0, pre: false }), "etapa " + e);
+test("o elogio da etapa é um SELO por cima do jogo — e é nele que o 'atiramos por você' viaja", () => {
+  const T = { feito: "ETAPA {n} COMPLETA!", feito1: "Você sabe se mover.", feito2: "Você sabe atirar.", tiroAuto: "Atiramos por você desta vez." };
+  assert.equal(seloDoTutor({ etapa: 2 }, T), null, "sem `ok` não há selo: a etapa em curso fica limpa");
+  assert.equal(seloDoTutor({ etapa: 2, ok: null }, T), null);
+  assert.deepEqual(seloDoTutor({ etapa: 2, ok: { n: 1, auto: false } }, T), ["ETAPA 1 COMPLETA!", "Você sabe se mover."],
+    "o selo fala da etapa que FECHOU (`ok.n`), não da que está na tela (`etapa`)");
+  assert.deepEqual(seloDoTutor({ etapa: 3, ok: { n: 2, auto: true } }, T), ["ETAPA 2 COMPLETA!", "Atiramos por você desta vez."],
+    "fazer por alguém em silêncio é a pior opção: quando o teto atirou, o selo DIZ");
+  assert.deepEqual(seloDoTutor({ etapa: 2, ok: { n: 1, auto: true } }, T), ["ETAPA 1 COMPLETA!", "Você sabe se mover."],
+    "`auto` fora da etapa do tiro não tem frase própria");
+});
+
+test("NÃO EXISTE TELA ENTRE AS ETAPAS: o batimento é curto e o fim não espera", () => {
+  // 3 × 3,2 s de "ETAPA COMPLETA" + 3 s de PARABÉNS eram 12,6 s de parada obrigatória num tutorial de ~60 s,
+  // em quatro pontos de saída. Este teste é a memória da decisão: quem subir estes números de volta para
+  // "dar tempo de ler" está recriando a tela de Level Complete.
+  assert.ok(TUTOR.SOBRA_MS <= 1000, "o batimento entre etapas não pode voltar a ser uma tela de espera");
+  assert.equal(TUTOR.FIM_MS, 0, "acabou a 3ª lição, entra na sala — o parabéns é faixa por cima da partida");
 });
 
 test("o cartão só vira PÍLULA na etapa 1, depois do primeiro pedaço — e REABRE quando a ajuda chega", () => {

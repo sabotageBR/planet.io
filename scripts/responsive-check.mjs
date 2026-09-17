@@ -69,13 +69,8 @@ const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile",
   // retrato e três alvos de toque — a forma de elemento que esta matriz existe para cobrar.
   "spec",
   // O TUTORIAL DE ESTREIA. As três etapas têm a mesma casca mas frases de comprimentos bem diferentes, e
-  // o `@2` mede o degrau de ajuda (a frase mais longa de todas). O `fim` é o cartão com o prêmio, que é o
-  // único bloco dele que pede rolagem em tela baixa — e é justamente ali que a tela de morte e o BIG
-  // CRUNCH já reprovaram uma vez, com os botões fora da dobra.
-  // As três etapas têm a mesma casca mas frases, prompts e alturas diferentes; `!` força o par do DEDO
-  // (outras frases, outro prompt) e `ok<n>` é a TELA de etapa concluída, que sem isto nenhuma combinação
-  // mediria. `fim` é o cartão com o prêmio — o único bloco que pede rolagem em tela baixa, e é ali que a
-  // tela de morte e o BIG CRUNCH já reprovaram uma vez com os botões fora da dobra.
+  // o `@2` mede o degrau de ajuda (a frase mais longa de todas). `!` força o par do DEDO (outras frases,
+  // outro prompt).
   // `tutor:2!` FALTAVA, e era a cara mais importante de todas: a etapa 2 no DEDO — a lição que mais perde
   // gente no funil (172 de 1.140) no ponteiro que é 81% do tráfego.
   // ⚠️ No modelo CLÁSSICO a réplica do botão MÍSSIL SAIU do dedo (`promptClassico`): ela era
@@ -83,15 +78,19 @@ const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile",
   // é o botão REAL pulsando com uma seta (`data-alvo`). `tut-prompt` some destas caras sem erro — id ausente
   // não é medido —, e a seta é pseudo-elemento, que a sonda não vê: ela se confere de OLHO.
   // `2!@1` é a fala nova do degrau 1 no dedo ("Toque em MÍSSIL agora!"), mais comprida que a do mouse.
-  "tutor:pre","tutor:1","tutor:2@2","tutor:2!","tutor:2!@1","tutor:3@1","tutor:3!","tutor:ok2","tutor:fim"];
+  // ⚠️ `ok<n>` DEIXOU DE SER UMA TELA e `fim` DEIXOU DE EXISTIR: a "ETAPA COMPLETA" de tela cheia e o cartão
+  // de PARABÉNS saíram (eram 12,6 s de parada obrigatória — ver TUTOR em client/src/game/tutor.js). `ok<n>`
+  // mede hoje o SELO "✓ etapa n" por cima do cartão da etapa SEGUINTE (`ok2` leva a frase mais longa, o
+  // "atiramos por você"), e o parabéns virou a faixa de `game@parabens`, por cima do HUD de PARTIDA.
+  "tutor:pre","tutor:1","tutor:2@2","tutor:2!","tutor:2!@1","tutor:3@1","tutor:3!","tutor:ok2","game@parabens"];
 // OS MODELOS DO TUTORIAL (client/src/ui/tutorEstilo.js). As entradas SEM modelo no sufixo (as de cima) medem
 // o PADRÃO — hoje o `cena`, a tirinha —, e é por isso que elas levam duas caras que só ele tem: `1` é a
-// PÍLULA (o demo grava pct .45) e `1@2` é o cartão REABERTO no degrau 2; `ok1` é a comemoração com a
-// tirinha do TIRO e `ok2` a do SALTO. Os OUTROS modelos entram com o nome na frente
+// PÍLULA (o demo grava pct .45) e `1@2` é o cartão REABERTO no degrau 2; `ok1` é o selo da etapa 1 por
+// cima da tirinha do TIRO e `ok2` o da 2 por cima da do SALTO. Os OUTROS modelos entram com o nome na frente
 // (`tutor:<modelo>:<cara>`, o molde de `dead:<estilo>`), e a lista sai de ESTILOS: o dia em que o clássico
 // for apagado, as entradas dele somem daqui sem ninguém lembrar de vir.
-TELAS.push("tutor:1@2","tutor:ok1");
-const CARAS_TUTOR=["pre","1","2@2","2!","2!@1","3@1","3!","ok2","fim"];
+TELAS.push("tutor:1@2","tutor:ok1!");   // `ok1!` e não `ok1`: a etapa 2 em curso no par do MOUSE, medida num tablet de toque, é uma combinação que não existe (o `dedo` sai do mesmo matchMedia) e acusa um falso `hud-status×tut-prompt`
+const CARAS_TUTOR=["pre","1","2@2","2!","2!@1","3@1","3!"];   // sem `ok`/`fim`: no clássico o selo não existe e o fim não desenha nada
 for(const m of TUTOR_ESTILOS){if(m===TUTOR_PADRAO)continue;
   for(const c of CARAS_TUTOR)TELAS.push("tutor:"+m+":"+c);}
 /** O modelo que uma entrada `tutor:…` PEDE — `null` para o que não é tutorial. Sem modelo no sufixo é o padrão. */
@@ -157,7 +156,7 @@ const SONDA=`(()=>{
   // ⚠️ tut-prompt ENTROU TARDE, e a falta dele era um ponto cego: o prompt de botão do tutorial mora no
   // RODAPÉ, fora do #tutor, exatamente onde vivem o #touch e o #hud-status — e nada do que o tutorial
   // pusesse ali embaixo era cobrado por colisão. (Sem crase aqui: a sonda é um template literal.)
-  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-br','touch','chat','talk','radar','toast','kill-feed','tutor','tutor-ok','tut-prompt'];
+  const ids=['hud-top','hud-lb','hud-score','hud-status','hud-br','touch','chat','talk','radar','toast','kill-feed','tutor','tut-prompt','tutor-parabens'];   // o SELO da etapa e FILHO do #tutor (mora em fluxo dentro dele): listado aqui ele colidiria com o proprio pai
   const cai=ids.map(i=>document.getElementById(i)).filter(e=>e&&vis(e)),cx=[];
   for(let a=0;a<cai.length;a++)for(let b=a+1;b<cai.length;b++){
     const A=cai[a].getBoundingClientRect(),B=cai[b].getBoundingClientRect();
@@ -261,7 +260,7 @@ const SONDA=`(()=>{
   // QUAL MODELO DO TUTORIAL foi medido (data-style na raiz que estiver no ar). Quem compara com o pedido e
   // o laco la embaixo: um sufixo com erro de digitacao cai no modelo padrao em silencio, e a matriz
   // mediria o classico tres vezes dizendo que mediu os candidatos. (Sem crase aqui: template literal.)
-  const raizTutor=document.querySelector('#tutor,#tutor-ok,#tutor-fim');
+  const raizTutor=document.querySelector('#tutor');
   return{estilo:raizTutor?(raizTutor.dataset.style||''):'',
          modo:document.body.dataset.mode,ponteiro:document.body.dataset.pointer,alt:document.body.dataset.h||'',
          over,pequenos,cx,fora:fora.slice(0,6),estoura,lados:[...new Set(lados)].slice(0,4),
@@ -286,14 +285,14 @@ for(const [nome,w,h,toque,modo] of APARELHOS){
   await ev(`document.documentElement.dataset.theme=${JSON.stringify(tema)}`);
   await new Promise(r=>setTimeout(r,120));
   for(const t of (TELAS_ALVO||TELAS)){
-    if(t==="game"){await ev(`(()=>{const b=document.querySelector('[data-go="entry"]');if(b)b.click();})()`);
+    if(t==="game"||t==="game@parabens"){await ev(`(()=>{const b=document.querySelector('[data-go="entry"]');if(b)b.click();})()`);
           await new Promise(r=>setTimeout(r,200));
           // `__hudDemo` põe a tela em "game" DE VERDADE e enche o hudStore com dados sintéticos. Só remover
           // o `.on` da tela não bastava: sem partida, #hud-lb / #hud-score / #kill-feed ficam com 0 linhas e
           // altura zero, o `vis()` da sonda os descarta, e a coluna inteira passava sem ser medida. Pior:
           // `Hud.jsx` escreve `className={screen==="game"?"":"hidden"}`, então qualquer re-render desfazia
           // o `classList.remove('hidden')` que a sonda fazia na mão.
-          await ev(`window.__hudDemo&&window.__hudDemo()`);
+          await ev(t==="game"?`window.__hudDemo&&window.__hudDemo()`:`window.__parabensDemo&&window.__parabensDemo()`);
           await new Promise(r=>setTimeout(r,300));}
     // 900 ms e não 420: os blocos do fim de rodada entram em CASCATA (`rd-sobe`, o último acaba em 760 ms)
     // e medir no meio dela lê um `translateY` de transição como se fosse transbordo.

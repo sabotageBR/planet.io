@@ -338,7 +338,14 @@ function devQuery() {
   // A matriz de responsividade (scripts/responsive-check.mjs) precisa passar por `dead` e `round`, que não
   // têm botão de navegação nenhum — e recarregar a página com ?screen= a cada uma das ~400 combinações
   // levaria minutos. Em DEV, o mesmo atalho fica pendurado no window.
-  if (import.meta.env.DEV) { window.__tela = mostrarTela; window.__hudDemo = hudDemo; }
+  if (import.meta.env.DEV) { window.__tela = mostrarTela; window.__hudDemo = hudDemo;
+    // a faixa de PARABÉNS do tutorial por cima do HUD de partida (`ui/TutorParabens.jsx`): é uma cara que só
+    // existe nos ~7 s seguintes ao fim do tutorial, e sem este atalho a matriz nunca a mediria
+    // ⚠️ No modo LIVRE, que é o único em que ela existe (`saiDoTutorial` entra por `play({mode:FREE})`): o
+    // `hudDemo` semeia Battle Royale, e o painel do BR no topo é um bloco com que esta faixa nunca convive.
+    window.__parabensDemo = () => { hudDemo(); const g = gameRef.get().game;
+      if (g && g.hudStore) g.hudStore.update(h => ({ ...h, mode: MODE.FREE }));
+      app.update({ parabensAte: Date.now() + 36e5 }); }; }
 }
 /**
  * HUD de mentira, só em DEV. A matriz de responsividade precisa MEDIR a tela `game` — mas sem partida o
@@ -352,9 +359,11 @@ function devQuery() {
  * verdade os blocos ficam com altura zero e o `vis()` da sonda os descarta, então ~600 combinações
  * passariam por cima de uma tela inteira. Aqui a tela vira "game" e o hudStore recebe o `tutor` no pior
  * formato plausível: a frase mais longa de cada etapa.
- * `suf` = "pre" (a explosão, antes de a lição de mover começar) | "1" | "2" | "3" | "fim" |
- * "ok1".."ok3" (a tela de etapa concluída), com `@ajuda` opcional ("2@2") e `!` para forçar o par do
- * DEDO ("2!"), que tem outras frases e outro prompt.
+ * `suf` = "pre" (a explosão, antes de a lição de mover começar) | "1" | "2" | "3" |
+ * "ok1".."ok3" (o SELO da etapa concluída por cima da etapa seguinte; `ok2` leva o "atiramos por você",
+ * que é a frase mais longa), com `@ajuda` opcional ("2@2") e `!` para forçar o par do DEDO ("2!"), que tem
+ * outras frases e outro prompt. "fim" não desenha NADA (o tutorial não tem mais tela de fim — a faixa de
+ * parabéns é `__parabensDemo`, por cima do HUD de partida).
  * ⚠️ E o MODELO vem na frente, no molde de `dead:<estilo>`: `tutor:classico:2@1`, `tutor:cena:fim`. Ele é
  * gravado DENTRO do objeto `tutor` (`estilo`), que é de onde `ui/Tutor.jsx` o lê — e ganha do `?tutor=`
  * da URL (ver `estiloDe`): a matriz troca de modelo sem recarregar a página. Sem modelo no sufixo o campo
@@ -362,25 +371,28 @@ function devQuery() {
  */
 function tutorDemo(suf) {
   const g = gameRef.get().game;
-  app.update({ screen: "game", played: true });
+  app.update({ screen: "game", played: true, parabensAte: 0 });
   if (!g || !g.hudStore) return;
   const { estilo, cara } = partesDoDemo(suf);
   const [qual0, aj] = String(cara || "1").split("@");
   const dedo = qual0.endsWith("!"), qual = dedo ? qual0.slice(0, -1) : qual0;
-  const fim = qual === "fim", celebra = qual.startsWith("ok"), pre = qual === "pre";
-  const etapa = fim ? 4 : pre ? 1 : Math.min(3, Math.max(1, +(celebra ? qual.slice(2) : qual) || 1));
+  // ⚠️ `ok<n>` DEIXOU DE SER UMA TELA: a "ETAPA COMPLETA" de tela cheia saiu (ver `TUTOR` em game/tutor.js).
+  // Hoje é o SELO "✓ etapa n" por cima do cartão EM CURSO da etapa SEGUINTE — que é como ele aparece de
+  // verdade ~700 ms depois da `festa` —, e é essa sobreposição que a matriz precisa medir.
+  const fim = qual === "fim", selo = qual.startsWith("ok") ? Math.min(3, Math.max(1, +qual.slice(2) || 1)) : 0, pre = qual === "pre";
+  const etapa = fim ? 4 : pre ? 1 : selo ? Math.min(3, selo + 1) : Math.min(3, Math.max(1, +qual || 1));
   // ⚠️ `pre` é uma CARA À PARTE da etapa 1: outra fala, sem barra e sem prompt. Fora da matriz ela não é
   // medida, e é a primeira tela que um jogador novo vê na vida.
   // ⚠️ `demo:true` DESARMA o relógio do fim. A tela de parabéns entra na sala sozinha depois de
   // `TUTOR.FIM_MS` — é o ponto dela —, e sem esta marca `?screen=tutor:fim` e a matriz de
   // responsividade disparariam um `play()` de verdade 3 s depois de montar a tela que vieram medir.
   g.hudStore.update(h => ({ ...h, mass: 8482, room: "0TUT", ping: 0, fps: 60, ammo: 3, splitOff: etapa < 3,
-    tutor: { t: "tutor", etapa, pct: etapa === 1 && !pre ? .45 : 0, ajuda: +aj || 0, festa: 0, celebra,
-      auto: false, fim, pre, dedo, demo: true, estilo } }));
+    tutor: { t: "tutor", etapa, pct: etapa === 1 && !pre ? .45 : 0, ajuda: +aj || 0, festa: 0, celebra: false,
+      auto: false, fim, pre, dedo, demo: true, estilo, ok: selo ? { n: selo, auto: selo === 2 } : null } }));
 }
 function hudDemo() {
   const g = gameRef.get().game;
-  app.update({ screen: "game", played: true });
+  app.update({ screen: "game", played: true, parabensAte: 0 });
   if (!g || !g.hudStore) return;
   const nome = i => ["Fodao","Stellara","Astrophex","Hydraxis","Darkion","Meteora","Nexaris","Volcanix","Nebulox","Quasara","xXcapitaoXx","trovao_137"][i % 12];
   const lb = Array.from({ length: 12 }, (_, i) => ({ slot: i, name: nome(i), mass: 183273 - i * 12000, level: 60 - i * 3, isBot: i % 3 === 0, registered: i % 4 === 0, me: i === 0, rank: i + 1 }));
@@ -394,7 +406,9 @@ function hudDemo() {
     { id: 5, at: agora, k: "sys", how: "crunch", a: null, b: null, assist: null, n: 300, mine: false },
     { id: 6, at: agora, k: "kill", how: "cluster", a: quem(6), b: quem(7), assist: null, mine: false },
   ];
-  g.hudStore.update(h => ({ ...h, mass: 183273, score: 139933, rank: 1, coins: 2087, ammo: 3, weapon: 0, owned: 3,
+  // ⚠️ `tutor: null`: o demo do TUTORIAL deixa o estado dele no hudStore, e o HUD de partida herdaria a faixa
+  // da lição por cima do placar (e a faixa de parabéns, que só monta SEM tutorial, nunca apareceria).
+  g.hudStore.update(h => ({ ...h, tutor: null, mass: 183273, score: 139933, rank: 1, coins: 2087, ammo: 3, weapon: 0, owned: 3,
     // os três FORMATOS de powerup, que é o que a matriz precisa medir: tempo (anel + segundos), nível
     // (o escudo) e CARGA (a auto-defesa, que não tem relógio nenhum e fica até ser usada)
     powerups: { magnet: 12, shield: 3, feast: 2, autodef: 1 }, lb, feed, room: "253A", ping: 49, fps: 60,
@@ -833,6 +847,8 @@ export function entraNoTutorial() {
     // todos `skinId:0` — mesma cor, mesmo padrão —, e a lição do tiro pede que se distinga quem é quem.
     pendingJoin: { room: null, mode: MODE.FREE, teamSize: 1, party: null, tutorial: true, skinId: SKIN_TUTORIAL, n: (s.pendingJoin ? s.pendingJoin.n : 0) + 1 } }));
 }
+/** Quanto a faixa de PARABÉNS fica por cima da primeira partida. Cobre o handshake (1–3 s) e sobra para ler. */
+const PARABENS_MS = 7000;
 /**
  * SAIR DO TUTORIAL — pular e terminar são a MESMA saída (entrar numa sala de verdade) e diferem em uma
  * coisa só, que é uma decisão de produto e não de código:
@@ -848,7 +864,12 @@ export function entraNoTutorial() {
  */
 export function saiDoTutorial({ fim = false } = {}) {
   marcaTutor();
-  if (fim) { marcaMissao(); marco("tutor_done"); } else marco("tutor_skip");
+  // ⚠️ O PARABÉNS VIAJA COM O JOGADOR: o tutorial não tem mais tela de fim (ver `TUTOR` em game/tutor.js),
+  // então quem CONCLUIU entra na sala com a faixa de `TutorParabens.jsx` por cima — ela cobre o handshake e
+  // os primeiros segundos da partida, que é quando o Marte Bravo é trocado pela skin equipada e a promessa
+  // ("jogue 3 partidas e ele é seu") precisa estar na tela. Quem PULOU não ganha parabéns nenhum.
+  if (fim) { marcaMissao(); marco("tutor_done"); app.update({ parabensAte: Date.now() + PARABENS_MS }); }
+  else marco("tutor_skip");
   return play({ mode: MODE.FREE, teamSize: 1, party: null });
 }
 /**

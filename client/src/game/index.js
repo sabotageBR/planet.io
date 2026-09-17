@@ -498,7 +498,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // ⚠️ O MARCO DE CADA ETAPA, pelo NOME da lição e não pelo número: o funil 1.29 mostrou 1.045
       // `tutor_start` contra 522 `tutor_done`, e sem isto não há como saber EM QUAL etapa metade dos
       // jogadores desiste. `_auto` separa quem fez de quem foi carregado pelo teto da ajuda.
-      if(m.festa){festeja(m.festa);
+      if(m.festa){festeja(m.festa);tutorOk={n:m.festa,auto:!!m.auto,at:performance.now()};   // o SELO "✓ etapa n" — ver `pushHud`
         const nome={[ETAPA_TUTOR.NOVA]:"nova",[ETAPA_TUTOR.TIRO]:"tiro",[ETAPA_TUTOR.SPLIT]:"split"}[m.festa];
         if(nome)marco("tutor_"+nome+(m.auto?"_auto":""));}
       if(m.fim)celebrate();}
@@ -815,7 +815,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // um `{deadAt,armAt}` VENCIDO. Ele chegava à tela de morte pelo store com throttle antes do par novo
       // e disparava o respawn no primeiro frame: a tela não aparecia e o jogador reentrava no ato. Ver
       // `ui/deadClock.js`, que fecha o mesmo buraco do outro lado com o piso.
-      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;specSlot=-1;selfTick=0;espectador=!!spec;tutor=null;souTutorial=!!tutorial;portaoTutorial(souTutorial);   // o funil do portal não pode contar o tutorial como partida (portal/marcos.js)
+      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;specSlot=-1;selfTick=0;espectador=!!spec;tutor=null;tutorOk=null;souTutorial=!!tutorial;portaoTutorial(souTutorial);   // o funil do portal não pode contar o tutorial como partida (portal/marcos.js)
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null,spec:!!spec};
@@ -849,7 +849,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // própria entrada marcaria a sessão como "já viveu uma vida" — a missão nunca apareceria para
       // ninguém, em silêncio.
       if(joined&&!souTutorial)fimDaVida();
-      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;espectador=false;tutor=null;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
+      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;espectador=false;tutor=null;tutorOk=null;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){perf.ini("tema");renderer.setTheme(t);perf.fim("tema");warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -1176,7 +1176,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       mode:modeId,teamSize,team:myTeam,phase,cap:roomCap,
       // ⚠️ DENTRO do literal do `set`, nunca por `hudStore.update` depois: o `set` troca o objeto inteiro
       // a 8 Hz e apagaria o campo. É a mesma armadilha já documentada para `cage`, `brInvite` e `idle`.
-      tutor:tutor?{...tutor,dedo}:null,
+      // `ok` = o SELO da etapa que acabou de fechar, no ar por `SELO_MS`. Quem o aposenta é ESTE relógio
+      // (o `pushHud` roda a 8 Hz), não um timer do componente: `h.tutor` é objeto novo a cada passada e um
+      // `useEffect` pendurado nele remontaria a 8 Hz — a mesma armadilha do `useEntraSozinho`.
+      tutor:tutor?{...tutor,dedo,ok:tutorOk&&now-tutorOk.at<SELO_MS?tutorOk:null}:null,
       lobby:lobby?{...lobby,
         // o servidor manda a 2 Hz; aqui o número desce liso, descontando o tempo desde que a mensagem chegou
         startsInMs:lobby.startsInMs?Math.max(0,lobby.startsInMs-(now-lobby.at)):0,
@@ -1230,6 +1233,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // o estado da anterior e a dica nunca mais aparece. Ver game/dica.js.
   let dividiu=false,dicaEst=DICA0,comidas=0,comeuAlguem=false,missaoEst=missaoZero();
   let tutor=null;   // o estado do TUTORIAL DE ESTREIA, vindo do `{t:"tutor"}` do servidor local
+  // ⚠️ O ELOGIO DA ETAPA É UM SELO, NÃO UMA TELA: a "ETAPA COMPLETA" de tela cheia parava o jogo 3,2 s três
+  // vezes (ver `TUTOR` em game/tutor.js). O selo aparece na `festa`, fica `SELO_MS` por cima da etapa
+  // SEGUINTE já rodando, e some sozinho.
+  let tutorOk=null;const SELO_MS=2200;
   // ⚠️ **O TUTORIAL NÃO É UMA VIDA, e sem esta flag ele marca a missão de sessão 0 sozinho — para o lado
   // errado.** `leave()` chama `fimDaVida()` sempre que havia partida, e SAIR do tutorial passa por
   // `play()` → `game.join()` → `leave(true)`. Ou seja: quem PULOU — que é justamente quem não aprendeu

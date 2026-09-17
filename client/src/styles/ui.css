@@ -2887,56 +2887,31 @@ body[data-mode="portrait"] #tut-prompt{bottom:calc(env(safe-area-inset-bottom,0p
    abaixo), senão ele e a instrução dividem os mesmos 390 px de tela */
 body[data-mode="landscape"] #tut-prompt{bottom:calc(env(safe-area-inset-bottom,0px) + 74px)}
 
-/* ── A TELA DE "PASSOU DE ETAPA" ──
-   Ela aparece, comemora e fecha SOZINHA (`celebra`, a janela de SOBRA_MS). Sem botão de propósito: é uma
-   celebração, não uma decisão — pedir um clique para receber um elogio é o oposto do que ela faz. */
-#tutor-ok{position:absolute;inset:0;z-index:21;display:flex;align-items:center;justify-content:center;
-  padding:14px;pointer-events:none;background:rgba(13,11,31,.55);
-  animation:tok-ve 220ms ease-out both}
-@keyframes tok-ve{from{opacity:0}to{opacity:1}}
-.tok-card{display:flex;flex-direction:column;align-items:center;gap:10px;
-  width:min(400px,92vw);padding:26px 22px;text-align:center;color:#fff;
-  border-radius:22px;border:4px solid var(--ok,#3ddc5f);background:rgba(13,11,31,.95);
-  box-shadow:0 12px 40px rgba(0,0,0,.6);animation:tok-sobe 320ms cubic-bezier(.2,1.4,.4,1) both}
-@keyframes tok-sobe{from{opacity:0;scale:.82}to{opacity:1;scale:1}}
-.tok-selo{display:flex;align-items:center;justify-content:center;width:72px;height:72px;border-radius:50%;
-  font-size:40px;font-weight:900;color:#0d0b1f;background:var(--ok,#3ddc5f);
-  box-shadow:0 0 0 8px rgba(61,220,95,.22);animation:tok-selo 420ms cubic-bezier(.2,1.6,.4,1) both}
-@keyframes tok-selo{from{scale:.2;rotate:-30deg}to{scale:1;rotate:0deg}}
-.tok-tit{font-size:26px;font-weight:900;letter-spacing:.04em;line-height:1.1;color:var(--ok,#3ddc5f)}
-.tok-sub{font-size:18px;font-weight:bold;opacity:.92}
-.tok-auto{font-size:14px;opacity:.62;max-width:28ch}
-/* "A SEGUIR: ATIRE NELE" — o que costura as três lições numa sequência em vez de três telas soltas. */
-.tok-prox{margin-top:2px;font-size:15px;font-weight:900;letter-spacing:.06em;
-  color:var(--accent,#ffc22e);opacity:.95}
-#tutor-ok .tut-trilha{margin-top:4px}
-@media (prefers-reduced-motion:reduce){
-  #tutor-ok,.tok-card,.tok-selo{animation-duration:1ms}}
-
-/* ── O FIM: PARABÉNS, A PROMESSA, E ENTRA SOZINHO ──
-   ⚠️ **`pointer-events:none` E NENHUM BOTÃO** — é a mudança inteira, e o motivo está medido no painel da
-   Poki (1.30): o cartão que morava aqui prendia 204 de 851 jogadores (24%) que completavam as três lições,
-   porque a contagem que entrava na sala sozinha congelava no primeiro `pointermove` sobre ele. No dedo,
-   que é 81% do tráfego, isso era o caso NORMAL. Nada nesta tela pode capturar o ponteiro nem pedir clique.
-   ⚠️ O véu é mais leve que o do cartão (48% contra 68%): não há nada a ler com atenção aqui, e por trás
-   dela a salva de fogos está saindo do planeta do jogador — que é a comemoração de verdade. */
-#tutor-fim{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:10px;padding:12px;text-align:center;
-  background:color-mix(in srgb,var(--bg,#141026) 48%,transparent);pointer-events:none;
-  animation:tut-entra .22s ease-out both}
-.tf-tit{font-size:2.4em;font-weight:900;letter-spacing:.06em;color:var(--accent,#ffc22e);line-height:1.1;
-  text-shadow:0 3px 0 var(--line,#0006)}
-.tf-sub{font-size:1.05em;font-weight:bold;opacity:.9}
-/* A promessa: barra + frase, numa faixa só. `max-width` em `ch` porque o que limita é a LINHA de texto —
-   em `px` ela quebraria em dois idiomas e não no terceiro. */
-.tf-prom{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:6px;
-  max-width:min(34ch,92vw);font-size:.95em;font-weight:bold;line-height:1.35}
-.tf-prom .ach-bar{width:min(240px,70vw);height:10px;border-radius:99px;
-  background:color-mix(in srgb,var(--line,#0006) 70%,transparent);color:var(--accent,#ffc22e);
-  border:2px solid var(--line,#0006)}
-.tf-prom .ach-bar i{border-radius:99px}
-.tf-indo{margin-top:4px;font-size:.82em;letter-spacing:.08em;opacity:.6}
-@media (prefers-reduced-motion:reduce){#tutor-fim{animation-duration:1ms}}
+/* ── O SELO "✓ ETAPA n COMPLETA!" — o elogio que NÃO PARA O JOGO ──
+   ⚠️ **AQUI MORAVAM DUAS TELAS DE PARADA** (`#tutor-ok`, tela cheia de 3,2 s, três vezes, com o HUD inteiro
+   escondido por `:has()`; e `#tutor-fim`, o cartão de PARABÉNS de 3 s): 12,6 s de espera obrigatória num
+   tutorial de ~60 s, em quatro pontos de saída — a tela de "Level Complete" (ver `TUTOR` em game/tutor.js).
+   O selo aparece na `festa`, fica ~2 s (`SELO_MS`, game/index.js) por cima da etapa SEGUINTE já rodando, e
+   some. `pointer-events:none` (herdado do `#tutor`), EM FLUXO como último filho do `.tc-palco`: fica logo
+   abaixo do cartão da lição em qualquer forma de tela, sem adivinhar a altura dele.
+   ⚠️ Anima `opacity`/`scale`, NUNCA `transform` — a regra da casa para keyframe de entrada.
+   ⚠️ O estado PARADO já é o legível (`body[data-reduce="1"] *` zera toda duração): a saída é por desmontagem. */
+#tutor-selo{align-self:center;
+  display:flex;align-items:center;gap:10px;max-width:100%;box-sizing:border-box;padding:8px 18px 8px 8px;
+  pointer-events:none;color:#fff;border-radius:99px;border:3px solid var(--ok,#3ddc5f);
+  background:rgba(13,11,31,.92);box-shadow:0 8px 26px rgba(0,0,0,.5),0 0 0 5px rgba(61,220,95,.18);
+  animation:tsel-entra 360ms cubic-bezier(.2,1.5,.4,1) both}
+@keyframes tsel-entra{from{opacity:0;scale:.6}to{opacity:1;scale:1}}
+#tutor-selo>i{flex:none;display:flex;align-items:center;justify-content:center;width:38px;height:38px;
+  border-radius:50%;font-style:normal;font-size:23px;font-weight:900;color:#0d0b1f;background:var(--ok,#3ddc5f)}
+#tutor-selo>span{display:flex;flex-direction:column;min-width:0;line-height:1.15}
+#tutor-selo b{font-size:17px;font-weight:900;letter-spacing:.04em;color:var(--ok,#3ddc5f)}
+#tutor-selo em{font-style:normal;font-size:13.5px;font-weight:bold;opacity:.9}
+@media (prefers-reduced-motion:reduce){#tutor-selo{animation-duration:1ms}}
+body[data-mode="landscape"] #tutor-selo{padding:5px 14px 5px 5px}
+body[data-mode="landscape"] #tutor-selo>i{width:30px;height:30px;font-size:18px}
+body[data-mode="landscape"] #tutor-selo b{font-size:14.5px}
+body[data-mode="landscape"] #tutor-selo em{font-size:12px}
 
 /* ── responsivo ── */
 body[data-mode="portrait"] .tut-tit{font-size:23px}
@@ -2950,8 +2925,6 @@ body[data-mode="landscape"] .tut-liga{width:18px;height:4px}
 body[data-mode="landscape"] .tut-passo{font-size:15px;padding:3px 9px;margin-right:8px}
 body[data-mode="landscape"] .tut-barra{height:9px;border-width:2px}
 body[data-mode="landscape"] #tutor{gap:7px}
-body[data-mode="portrait"] .tok-card{gap:8px;padding:22px 16px}
-body[data-mode="portrait"] .tf-tit{font-size:2em}
 /* deitado é o caso apertado de ALTURA: o prompt e a trilha encolhem, a instrução continua legível */
 body[data-mode="landscape"] #tutor{padding-top:8px;gap:7px}
 body[data-mode="landscape"] .tut-tit{font-size:19px}
@@ -2963,13 +2936,6 @@ body[data-mode="landscape"] .tut-mouse{width:38px;height:56px}
 body[data-mode="landscape"] .tut-tecla{min-width:96px;min-height:40px;font-size:18px}
 body[data-mode="landscape"] .tut-hud-btn{min-width:92px;min-height:40px;font-size:15px}
 body[data-mode="landscape"] .tut-btn b{font-size:13px}
-body[data-mode="landscape"] .tok-card{gap:6px;padding:16px 18px}
-body[data-mode="landscape"] .tok-selo{width:52px;height:52px;font-size:30px}
-body[data-mode="landscape"] .tok-tit{font-size:21px}
-body[data-mode="landscape"] .tok-sub{font-size:15px}
-body[data-mode="landscape"] #tutor-fim{gap:6px}
-body[data-mode="landscape"] .tf-tit{font-size:1.7em}
-body[data-mode="landscape"] .tf-sub{font-size:.95em}
 
 /* Enquanto o tutorial está no ar, o HUD fica só com o que É a lição. Placar, feed, chat e os chips do
    topo não significam nada para quem ainda não sabe o que é um planeta.
@@ -2990,12 +2956,6 @@ body[data-mode="landscape"] .tf-sub{font-size:.95em}
    e ainda brigava com o prompt do rodapé pelo mesmo pedaço de tela. */
 #hud:has(#tutor[data-etapa="1"]) #hud-status,
 #hud:has(#tutor[data-etapa="3"]) #hud-status{visibility:hidden;pointer-events:none}
-#hud:has(#tutor-fim) > *:not(#tutor-fim){visibility:hidden;pointer-events:none}
-/* ⚠️ Na tela de ETAPA COMPLETA o HUD some INTEIRO, como no cartão de fim: ela é um modal de tela cheia e
-   qualquer coisa por baixo (o bloco de arma, os botões de toque, o radar) fica atravessada nela — a
-   matriz pegou `hud-status×tutor-ok` e `touch×tutor-ok` em 12 combinações. É o mesmo argumento do
-   `#br-lobby`: enquanto a tela de espera está no ar, o resto fala de uma coisa que não está acontecendo. */
-#hud:has(#tutor-ok) > *:not(#tutor-ok){visibility:hidden;pointer-events:none}
 
 
 /* ══ O MODELO `cena` DO TUTORIAL (ui/TutorCena.jsx) — o PADRÃO — E O QUE ELE DIVIDE COM O CLÁSSICO ══════
@@ -3021,8 +2981,8 @@ body[data-mode="landscape"] .tf-sub{font-size:.95em}
    `.tut-barra>i{transition:width…}` vale (0,1,1) e perdia para o `#hud *` de cima — a transição que o
    comentário daquela regra descreve nunca existiu. Com o id ela passa a valer; idem a bola da trilha. */
 #tutor .tut-barra>i{transition:width 180ms linear}
-#tutor .tut-bola,#tutor-ok .tut-bola{transition:background-color .25s ease,color .25s ease,border-color .25s ease,transform .25s ease}
-@media (prefers-reduced-motion:reduce){#tutor .tut-barra>i,#tutor .tut-bola,#tutor-ok .tut-bola{transition:none}}
+#tutor .tut-bola{transition:background-color .25s ease,color .25s ease,border-color .25s ease,transform .25s ease}
+@media (prefers-reduced-motion:reduce){#tutor .tut-barra>i,#tutor .tut-bola{transition:none}}
 
 /* ── O BOTÃO DE VERDADE PULSA (os dois modelos; `alvoDoTutor`, só no dedo) ──
    O prompt desenha uma RÉPLICA do botão MÍSSIL/DIVIDIR, e uma criança toca na réplica: o toque cai no
@@ -3054,35 +3014,51 @@ body[data-mode="portrait"] #hud:has(#tutor[data-alvo="t-split"]) #t-split::after
 @media (prefers-reduced-motion:reduce){
   #hud:has(#tutor[data-alvo="t-fire"]) #t-fire::after,#hud:has(#tutor[data-alvo="t-split"]) #t-split::after{animation:none}}
 
-/* ── AS PEÇAS DO FIM (`tutorPecas.jsx`): a promessa da skin, com o Marte, e a contagem ── */
-#tutor-fim .tp-prom{display:flex;align-items:center;gap:12px;margin-top:6px;max-width:min(48ch,92vw);
-  text-align:left;font-size:.95em;font-weight:bold;line-height:1.3;text-wrap:balance}
-#tutor-fim .tp-prom-arte{flex:none;width:64px;height:auto;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5))}
-#tutor-fim .tp-prom-txt{display:flex;flex-direction:column;gap:6px;min-width:0}
-#tutor-fim .tp-prom .ach-bar{width:min(220px,54vw);height:10px;margin:0;border-radius:99px;
-  background:color-mix(in srgb,var(--line,#0006) 70%,transparent);color:var(--accent,#ffc22e);
-  border:2px solid var(--line,#0006)}
-#tutor-fim .tp-prom .ach-bar i{border-radius:99px}
-/* "entrando…" com a barra que enche em FIM_MS. ENFEITE: quem entra na sala é o `setTimeout` de
-   `useEntraSozinho` — sem animação a barra nasce cheia (`both`) e nada deixa de acontecer. */
-#tutor-fim .tp-conta{display:flex;flex-direction:column;align-items:center;gap:5px;margin-top:6px;
-  font-size:.82em;letter-spacing:.08em;opacity:.85}
-#tutor-fim .tp-conta>i{position:relative;display:block;width:min(200px,60vw);height:6px;border-radius:99px;
-  overflow:hidden;background:rgba(255,255,255,.2)}
-#tutor-fim .tp-conta>i::after{content:"";position:absolute;inset:0;border-radius:99px;
-  background:var(--accent,#ffc22e);transform-origin:left center;animation:tp-enche var(--ms,3000ms) linear both}
-@keyframes tp-enche{from{scale:0 1}to{scale:1 1}}
-/* na bancada (`?screen=tutor:…:fim`, a matriz) o relógio está desarmado, então a barra fica cheia e parada */
-#tutor-fim .tp-conta[data-demo]>i::after{animation:none}
-@media (prefers-reduced-motion:reduce){#tutor-fim .tp-conta>i::after{animation:none}}
-body[data-mode="landscape"] #tutor-fim .tp-prom-arte{width:46px}
+/* ── O PARABÉNS DO TUTORIAL, POR CIMA DA PRIMEIRA PARTIDA (`ui/TutorParabens.jsx`, `app.parabensAte`) ──
+   O tutorial não tem mais tela de fim: acabou a 3ª lição, entra na sala. O elogio e a PROMESSA DA SKIN
+   ("jogue 3 partidas e o Marte Bravo é seu") acompanham o jogador para dentro dela — é ali que o Marte é
+   trocado pela skin equipada, ou seja é ali que a promessa tem de estar na tela. Cobre o handshake também.
+   ⚠️ É o MESMO canto do `#notice` (topo, centrado, abaixo da faixa de chips) e a mesma regra dele: AVISA,
+   não pede clique — `pointer-events:none`, sem botão, some pelo prazo. Não esconde NADA do HUD.
+   ⚠️ `translate`/`opacity` no keyframe, nunca `transform` (ele se centra por `translate`). */
+#hud #tutor-parabens{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + var(--top-h,52px) + 8px);
+  translate:-50% 0;z-index:8;display:flex;flex-direction:column;align-items:center;gap:3px;
+  width:max-content;max-width:min(430px,92vw);box-sizing:border-box;padding:9px 18px 11px;text-align:center;
+  pointer-events:none;color:#fff;border-radius:18px;border:3px solid var(--accent,#ffc22e);
+  background:rgba(13,11,31,.9);box-shadow:0 8px 28px rgba(0,0,0,.5),0 0 0 5px rgba(255,194,46,.14);
+  animation:tpb-entra 320ms cubic-bezier(.2,1.4,.4,1) both}
+@keyframes tpb-entra{from{opacity:0;translate:-50% -14px}to{opacity:1;translate:-50% 0}}
+#tutor-parabens .tpb-tit{font-size:22px;font-weight:900;letter-spacing:.06em;line-height:1.1;color:var(--accent,#ffc22e)}
+#tutor-parabens .tpb-sub{font-size:14px;font-weight:bold;opacity:.92}
+#tutor-parabens .tp-prom{display:flex;align-items:center;gap:10px;margin-top:4px;max-width:100%;
+  text-align:left;font-size:13.5px;font-weight:bold;line-height:1.25;text-wrap:balance}
+#tutor-parabens .tp-prom-arte{flex:none;width:44px;height:auto;filter:drop-shadow(0 3px 8px rgba(0,0,0,.5))}
+#tutor-parabens .tp-prom-txt{display:flex;flex-direction:column;gap:5px;min-width:0}
+/* o trilho da barra: sobre a superfície ESCURA o `--line` dos temas some (escuro no escuro), e uma barra em
+   0/3 que não se vê lê como barra nenhuma */
+#tutor-parabens .tp-prom .ach-bar{width:min(190px,50vw);height:9px;margin:0;border-radius:99px;
+  background:rgba(255,255,255,.2);color:var(--accent,#ffc22e);border:2px solid rgba(255,255,255,.28)}
+#tutor-parabens .tp-prom .ach-bar i{border-radius:99px}
+@media (prefers-reduced-motion:reduce){#tutor-parabens{animation-duration:1ms}}
+/* EM PÉ o radar mora no canto superior esquerdo, logo abaixo da faixa de chips — exatamente onde a faixa
+   cairia. Ela desce para baixo dele (o chat, que mora ali, não existe no telefone enquanto se joga). */
+body[data-mode="portrait"] #hud #tutor-parabens{top:calc(var(--radar-top,60px) + var(--radar-h,92px) + 10px)}
+/* DEITADO ela NÃO se centra na tela: é ANCORADA entre o radar (à esquerda, 12 + 92 px) e a coluna da direita
+   (`#hud-right>.panel` = min(34vw,206px), a 8 px da borda). Centrada, num iPhone SE de 667 px ela entrava 45–49 px
+   na coluna — e o quanto dependia de o placar estar aberto, ou seja nenhum `max-width` fixo resolvia (a matriz
+   mediu os dois). Como sai do `translate:-50%`, a entrada usa um keyframe próprio. */
+body[data-mode="landscape"] #hud #tutor-parabens{left:112px;right:calc(16px + min(34vw,206px));translate:0 0;
+  width:auto;max-width:none;padding:6px 14px 8px;animation-name:tpb-entra-l}
+@keyframes tpb-entra-l{from{opacity:0;translate:0 -14px}to{opacity:1;translate:0 0}}
+body[data-mode="landscape"] #tutor-parabens .tpb-tit{font-size:18px}
+body[data-mode="landscape"] #tutor-parabens .tp-prom-arte{width:34px}
 
 
 /* ═══ O MODELO CENA (`tc-`) — "mostre, não diga" ════════════════════════════════════════════════
    A TIRINHA de três quadros (gesto ▸ ação ▸ resultado) à esquerda e a palavra gigante à direita, num
    cartão só. O tamanho do quadro é UMA variável (`--tq-w`/`--tq-h`), porque ele muda por forma de tela e
    a arte de dentro é toda proporcional a ela. */
-#tutor[data-style="cena"],#tutor-ok[data-style="cena"]{--tq-w:86px;--tq-h:62px}
+#tutor[data-style="cena"]{--tq-w:86px;--tq-h:62px}
 #tutor[data-style="cena"]{padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0}
 /* o palco: a linha de cabeçalho (trilha à esquerda, Pular à direita, os dois EM FLUXO) e o cartão embaixo,
    com a mesma largura — o Pular absoluto do clássico caía por cima da tirinha em pé */
@@ -3141,12 +3117,12 @@ body[data-mode="landscape"] #tutor-fim .tp-prom-arte{width:46px}
   box-shadow:0 0 18px 6px rgba(255,160,60,.55);animation:tc-incha 1.1s ease-in both}
 @keyframes tc-incha{from{scale:.7}to{scale:1.45}}
 /* o desenho do GESTO dentro do quadro 1 */
-#tutor[data-style="cena"] .tc-q .tut-mouse,#tutor-ok[data-style="cena"] .tc-q .tut-mouse{
+#tutor[data-style="cena"] .tc-q .tut-mouse{
   width:calc(var(--tq-h)*.5);height:calc(var(--tq-h)*.75);filter:none}
-#tutor[data-style="cena"] .tc-q .tut-tecla,#tutor-ok[data-style="cena"] .tc-q .tut-tecla{
+#tutor[data-style="cena"] .tc-q .tut-tecla{
   min-width:0;min-height:calc(var(--tq-h)*.5);max-width:92%;padding:0 8px;box-sizing:border-box;
   font-size:calc(var(--tq-h)*.2);letter-spacing:.04em;border-width:2px;border-radius:8px;box-shadow:0 3px 0 #0d0b1f;filter:none}
-#tutor[data-style="cena"] .tc-q .tut-hud-btn,#tutor-ok[data-style="cena"] .tc-q .tut-hud-btn{
+#tutor[data-style="cena"] .tc-q .tut-hud-btn{
   min-width:0;min-height:calc(var(--tq-h)*.5);max-width:92%;padding:0 8px;box-sizing:border-box;
   font-size:calc(var(--tq-h)*.18);border-width:2px;box-shadow:0 3px 0 #0d0b1f}
 /* ── o lado: a PALAVRA GIGANTE, a frase e a trilha compacta ── */
@@ -3172,53 +3148,17 @@ body[data-mode="landscape"] #tutor-fim .tp-prom-arte{width:46px}
   background:rgba(13,11,31,.88);border:3px solid #8b5cff;box-shadow:0 6px 22px rgba(0,0,0,.45)}
 .tc-pilula .tc-verbo{font-size:24px}
 .tc-pilula .tc-txt{text-align:center}
-/* ── ETAPA COMPLETA: o carimbo e a tirinha da PRÓXIMA lição ── */
-.tc-okcard{display:flex;flex-direction:column;align-items:center;gap:8px;width:min(440px,92vw);box-sizing:border-box;
-  padding:22px 18px;text-align:center;color:#fff;border-radius:22px;border:4px solid var(--ok,#3ddc5f);
-  background:rgba(13,11,31,.95);box-shadow:0 12px 40px rgba(0,0,0,.6);
-  animation:tok-sobe 320ms cubic-bezier(.2,1.4,.4,1) both}
-.tc-carimbo{display:flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:50%;
-  font-size:36px;font-weight:900;color:#0d0b1f;background:var(--ok,#3ddc5f);
-  box-shadow:0 0 0 8px rgba(61,220,95,.22);animation:tok-selo 420ms cubic-bezier(.2,1.6,.4,1) both}
-#tutor-ok[data-style="cena"] .tc-tira{margin:2px 0 4px}
-/* ── FIM: UM CARTÃO NO ALTO DA TELA ──
-   O parabéns era letra solta sobre um véu, no MEIO da tela — que é onde a salva de fogos está saindo do
-   planeta do jogador. A letra brigava com as faíscas e perdia (a queixa foi literal). Agora é um cartão com
-   superfície própria, colado no alto: lê de longe e deixa o miolo para a comemoração de verdade. O véu
-   ficou mais leve (28%) justamente porque não precisa mais segurar a legibilidade — quem segura é o cartão.
-   ⚠️ Continua `pointer-events:none` e sem botão (herdado do `#tutor-fim` de cima): quem entra na sala é o
-   relógio. `clamp` no topo porque deitado (375 px de altura) não há 8vh sobrando. */
-#tutor-fim[data-style="cena"]{justify-content:flex-start;
-  padding-top:calc(env(safe-area-inset-top,0px) + clamp(10px,8vh,84px));
-  background:color-mix(in srgb,var(--bg,#141026) 28%,transparent)}
-.tc-fimcard{display:flex;flex-direction:column;align-items:center;gap:8px;width:min(480px,94vw);
-  box-sizing:border-box;padding:18px 20px 16px;text-align:center;color:#fff;border-radius:22px;
-  border:4px solid var(--accent,#ffc22e);background:rgba(13,11,31,.94);
-  box-shadow:0 12px 40px rgba(0,0,0,.6),0 0 0 6px rgba(255,194,46,.16);
-  animation:tok-sobe 320ms cubic-bezier(.2,1.4,.4,1) both}
-#tutor-fim[data-style="cena"] .tf-tit{font-size:clamp(34px,8vw,54px);letter-spacing:.05em;
-  text-shadow:0 3px 0 #0d0b1f,0 0 24px rgba(255,194,46,.5)}
-#tutor-fim[data-style="cena"] .tf-sub{font-size:1.15em;opacity:1}
-#tutor-fim[data-style="cena"] .tp-prom{margin-top:2px}
-/* o trilho da barra da promessa: sobre o cartão ESCURO o `--line` dos temas some (escuro no escuro), e uma
-   barra em 0/3 que não se vê lê como barra nenhuma */
-#tutor-fim[data-style="cena"] .tp-prom .ach-bar{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.28)}
-#tutor-fim[data-style="cena"] .tc-recap{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
-#tutor-fim[data-style="cena"] .tc-recap b{padding:6px 14px;border-radius:99px;font-size:15px;font-weight:900;
-  letter-spacing:.05em;background:rgba(13,11,31,.85);border:2px solid var(--ok,#3ddc5f)}
-#tutor-fim[data-style="cena"] .tc-recap i{margin-right:6px;font-style:normal;color:var(--ok,#3ddc5f)}
 @media (prefers-reduced-motion:reduce){
   .tc-tira.viva .tc-q,.tc-vez{animation:none}
-  .tc-cartao,.tc-txt,.tc-okcard,.tc-fimcard,.tc-carimbo,.tc-estrela{animation-duration:1ms}
+  .tc-cartao,.tc-txt,.tc-estrela{animation-duration:1ms}
   #tutor[data-style="cena"] .tc-barra>i{transition:none}}
 /* EM PÉ: tirinha em cima (de largura cheia), palavra embaixo, tudo centrado */
-body[data-mode="portrait"] #tutor[data-style="cena"],body[data-mode="portrait"] #tutor-ok[data-style="cena"]{--tq-w:min(94px,26vw);--tq-h:58px}
+body[data-mode="portrait"] #tutor[data-style="cena"]{--tq-w:min(94px,26vw);--tq-h:58px}
 body[data-mode="portrait"] #tutor[data-style="cena"] .tc-cartao{flex-direction:column;align-items:center;gap:7px;padding:10px 12px 14px}
 body[data-mode="portrait"] #tutor[data-style="cena"] .tc-lado{align-items:center;text-align:center}
 body[data-mode="portrait"] #tutor[data-style="cena"] .tc-verbo{justify-content:center;font-size:30px}
-body[data-mode="portrait"] .tc-okcard{gap:7px;padding:20px 14px}
 /* DEITADO: altura apertada — quadros menores, palavra menor, e o palco deixa a margem do Pular livre */
-body[data-mode="landscape"] #tutor[data-style="cena"],body[data-mode="landscape"] #tutor-ok[data-style="cena"]{--tq-w:64px;--tq-h:46px}
+body[data-mode="landscape"] #tutor[data-style="cena"]{--tq-w:64px;--tq-h:46px}
 body[data-mode="landscape"] #tutor[data-style="cena"]{padding-top:calc(env(safe-area-inset-top,0px) + 6px)}
 body[data-mode="landscape"] #tutor[data-style="cena"] .tc-palco{gap:4px}
 body[data-mode="landscape"] #tutor[data-style="cena"] .tc-cartao{gap:12px;padding:6px 14px 10px 8px;border-radius:14px}
@@ -3231,10 +3171,3 @@ body[data-mode="landscape"] #tutor[data-style="cena"] .tut-liga{width:12px;heigh
 body[data-mode="landscape"] #tutor[data-style="cena"] .tut-passo{font-size:11px;padding:1px 6px}
 body[data-mode="landscape"] #tutor[data-style="cena"] .tc-pilula{padding:5px 16px 10px}
 body[data-mode="landscape"] #tutor[data-style="cena"] .tc-pilula .tc-verbo{font-size:19px}
-body[data-mode="landscape"] .tc-okcard{gap:4px;padding:12px 16px;width:min(520px,92vw)}
-body[data-mode="landscape"] .tc-carimbo{width:44px;height:44px;font-size:26px;box-shadow:0 0 0 5px rgba(61,220,95,.22)}
-body[data-mode="landscape"] #tutor-fim[data-style="cena"] .tc-recap b{font-size:13px;padding:4px 11px}
-body[data-mode="landscape"] .tc-fimcard{gap:4px;padding:10px 18px;width:min(560px,94vw)}
-body[data-mode="landscape"] #tutor-fim[data-style="cena"] .tf-tit{font-size:30px}
-body[data-mode="landscape"] #tutor-fim[data-style="cena"] .tf-sub{font-size:1em}
-body[data-mode="portrait"] .tc-fimcard{padding:16px 14px 14px}

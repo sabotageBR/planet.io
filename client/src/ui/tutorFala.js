@@ -124,12 +124,20 @@ export function cenaDoTutor(d) {
 }
 
 /**
- * A tirinha que a tela de ETAPA COMPLETA mostra como "A SEGUIR" — a pausa de `SOBRA_MS` vira pré-aula: o
- * aluno chega à etapa seguinte já tendo visto o gesto e o botão dela. Depois da 3 não há próxima.
- * @returns {"tiro"|"salto"|null}
+ * O SELO "✓ ETAPA n COMPLETA!" — o elogio que NÃO PARA O JOGO. `d.ok` é publicado pelo motor na `festa` e
+ * fica ~2 s (`SELO_MS`, game/index.js), por cima da etapa SEGUINTE já rodando.
+ *
+ * ⚠️ **ISTO JÁ FOI UMA TELA CHEIA** (`#tutor-ok`, 3,2 s, HUD inteiro escondido, três vezes por tutorial) com
+ * a tirinha da próxima lição como "pré-aula". Saiu: era a tela de "Level Complete" — a parada entre duas
+ * fases é onde o jogador decide ir embora —, e a pré-aula é redundante desde que a etapa seguinte abre com
+ * a própria tirinha e o botão destacado no segundo zero.
+ * ⚠️ O "Atiramos por você" viaja AQUI: é a única frase da tela antiga que carrega informação (fazer por
+ * alguém em silêncio é a pior das três opções — ver `AJUDA` em game/tutor.js), e só vale na etapa do tiro.
+ * @returns {[string,string]|null} [título, subtítulo]
  */
-export function proximaCena(etapa) {
-  return etapa === ETAPA.NOVA ? "tiro" : etapa === ETAPA.TIRO ? "salto" : null;
+export function seloDoTutor(d, T) {
+  const ok = d && d.ok; if (!ok || !ok.n) return null;
+  return [preenche(T.feito, { n: ok.n }), ok.auto && ok.n === ETAPA.TIRO ? T.tiroAuto : (T["feito" + ok.n] || "")];
 }
 
 /**

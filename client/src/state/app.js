@@ -113,6 +113,12 @@ export const initialState = {
   // `overlays` inteiro, e este aviso precisa sobreviver justamente à saída da sala que o causou. `0` = não
   // aconteceu (nunca é um número de minutos válido).
   expulsoInativo: 0,
+  // Até QUANDO (ms de `Date.now()`) a faixa de PARABÉNS do tutorial fica por cima da partida
+  // (`ui/TutorParabens.jsx`). Escrito por `saiDoTutorial({fim:true})` — o tutorial não tem mais tela de fim,
+  // então o elogio e a promessa da skin acompanham o jogador para DENTRO da primeira sala. Campo de topo
+  // pelo motivo dos três acima: quem o escreve chama `play()` na linha seguinte, e `play()` reescreve
+  // `overlays` inteiro. `0` = não há faixa.
+  parabensAte: 0,
   reconnAttempt: 0,
   room: null,            // código da sala atual (do evento `room` do jogo)
   pendingJoin: null,     // {room, mode, teamSize, party, n} — GameHost faz o join quando muda

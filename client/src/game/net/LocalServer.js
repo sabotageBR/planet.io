@@ -26,7 +26,11 @@ const GRACE_EVERY=15;   // idem server/src/sim/Sim.js: a graça é conferida a 4
  *   ganchos. Com `null`, tudo aqui se comporta byte a byte como antes.
  */
 export function createLocalServer({seed=7,bots=ROOM.BOTS,bench=false,lag=0,food=FOOD.COUNT,code="0LOC",roundTicks=ROUND.TICKS,mundo=null,roteiro=null}={}){
-  const w=createWorld({seed,food:bench?Math.max(food,1800):food,holes:BLACKHOLE.COUNT,...(mundo||{})});
+  // ⚠️ `w`/`h` EXPLÍCITOS, a partir de `WORLD.LADO`: o padrão do `createWorld` é `WORLD.w`, e o CLIENTE reescreve
+  // `WORLD.w/h` com o mundo da última sala (game/index.js, no `room`). Depois do TUTORIAL — uma arena de 1.800 px
+  // — o mundo local seguinte nascia com 1.800 de lado e a população de 12.000: 3.900 grãos e 24 bots num
+  // quadradinho, e o jogador era engolido em 1 s (visto em `?local=1&tutorial=1`). `LADO` ninguém reescreve.
+  const w=createWorld({seed,w:WORLD.LADO,h:WORLD.LADO,food:bench?Math.max(food,1800):food,holes:BLACKHOLE.COUNT,...(mundo||{})});
   const rng=createRng(seed*7+1),writer=createWriter(1<<16),meta=new Map(),sessions=new Set(),brains=new Map();
   const nicksUsados=new Set();   // o gerador de apelidos não repete nome na mesma sala
   const souGraca=new Set();      // slots HUMANOS sob a graça do nascimento — ver graceTick()

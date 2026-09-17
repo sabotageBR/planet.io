@@ -23,10 +23,9 @@
 // ⚠️ O quadro do GESTO reusa o `Glifo` — o mesmo desenho do par mouse/dedo do clássico (metade esquerda do
 // mouse acesa, a TECLA que o jogador configurou, a réplica do botão do HUD). Nenhuma decisão nova aqui.
 import React from "react";
-import { preenche } from "../i18n/index.js";
-import { ETAPA, ETAPAS } from "../game/tutor.js";
-import { falaDoTutor, promptDoTutor, alvoDoTutor, verboDoTutor, cenaDoTutor, proximaCena, formaDoCartao } from "./tutorFala.js";
-import { Glifo, Mascote, Trilha, Pular, PromptRodape, Promessa, Contagem, useEntraSozinho } from "./tutorPecas.jsx";
+import { ETAPA } from "../game/tutor.js";
+import { falaDoTutor, promptDoTutor, alvoDoTutor, verboDoTutor, cenaDoTutor, seloDoTutor, formaDoCartao } from "./tutorFala.js";
+import { Glifo, Mascote, Trilha, Pular, PromptRodape, useEntraSozinho } from "./tutorPecas.jsx";
 
 const TIT_ETAPA = { [ETAPA.NOVA]: "novaTit", [ETAPA.TIRO]: "tiroTit", [ETAPA.SPLIT]: "splitTit" };
 
@@ -72,45 +71,18 @@ function Tira({ cena, p, viva }) {
 export default function TutorCena({ d, T, tecla }) {
   useEntraSozinho(!!d.fim && !d.demo);
 
-  // ── FIM: o recap das três lições, a promessa e a contagem ──
-  // ⚠️ **UM CARTÃO NO ALTO DA TELA, e não letras soltas no meio dela.** O parabéns era texto sobre um véu,
-  // centrado — e o centro da tela é exatamente onde a salva de fogos está saindo do planeta do jogador: a
-  // letra brigava com as faíscas e perdia ("está meio ruim no meio da tela", nas palavras do dono do jogo).
-  // No alto, sobre uma superfície própria, ele lê de longe E deixa o miolo para a comemoração de verdade.
-  // Continua sem botão e sem capturar o ponteiro: quem entra na sala é o relógio (`useEntraSozinho`).
-  if (d.fim) return <div id="tutor-fim" data-style="cena">
-    <div className="tc-fimcard">
-      <div className="tf-tit">{T.fimTitulo}</div>
-      <div className="tf-sub">{T.fimSub}</div>
-      <div className="tc-recap">
-        {[T.verbo1, T.verbo2, T.verbo3].map((v, i) => <b key={i}><i>✓</i>{v}</b>)}
-      </div>
-      <Promessa T={T} />
-      <Contagem T={T} demo={!!d.demo} />
-    </div>
-  </div>;
+  // ── FIM: NÃO HÁ TELA. Acabou a 3ª lição, entra na sala (`useEntraSozinho`, com `TUTOR.FIM_MS` = 0) ──
+  // ⚠️ **AQUI MORAVAM DUAS TELAS DE PARADA, e elas saíram juntas**: o cartão de PARABÉNS (3 s) e, logo abaixo,
+  // a de "ETAPA COMPLETA" (3,2 s de tela cheia, três vezes, com o HUD inteiro escondido) — 12,6 s de espera
+  // obrigatória num tutorial de ~60 s, em quatro pontos de saída. É a tela de "Level Complete": a parada
+  // entre duas fases é onde o jogador decide ir embora (ver `TUTOR` em game/tutor.js).
+  // O parabéns e a PROMESSA DA SKIN não se perderam — viraram a faixa de `TutorParabens.jsx`, por cima da
+  // primeira partida, que é o instante em que o Marte Bravo é de fato tirado do jogador.
+  if (d.fim) return null;
 
   const n = d.etapa;
-
-  // ── ETAPA COMPLETA: o carimbo, e a tirinha da PRÓXIMA lição — a pausa de SOBRA_MS vira pré-aula ──
-  if (d.celebra) {
-    const prox = proximaCena(n);
-    // o gesto da próxima cena, no par certo (mouse/dedo)
-    const pProx = prox ? promptDoTutor({ etapa: n + 1, ajuda: 0, pct: 0, dedo: d.dedo }, T, tecla) : null;
-    return <div id="tutor-ok" data-style="cena" role="status" aria-live="assertive">
-      <div className="tc-okcard">
-        <div className="tc-carimbo">✓</div>
-        <div className="tok-tit">{preenche(T.feito, { n })}</div>
-        <div className="tok-sub">{T["feito" + n] || ""}</div>
-        {d.auto && n === ETAPA.TIRO ? <div className="tok-auto">{T.tiroAuto}</div> : null}
-        {prox ? <>
-          <div className="tok-prox">{preenche(T.prox, { s: T[TIT_ETAPA[n + 1]] || "" })}</div>
-          <Tira cena={prox} p={pProx} viva />
-        </> : null}
-        <Trilha etapa={Math.min(n + 1, ETAPAS)} T={T} />
-      </div>
-    </div>;
-  }
+  // o elogio da etapa que acabou de fechar: um SELO que não bloqueia nada, por cima da etapa seguinte
+  const selo = seloDoTutor(d, T);
 
   // ── EM CURSO ──
   const cena = cenaDoTutor(d), forma = formaDoCartao(d);
@@ -149,6 +121,13 @@ export default function TutorCena({ d, T, tecla }) {
             </div>
             {barra}
           </div>}
+      {/* O SELO mora EM FLUXO, logo abaixo do cartão da lição: assim ele nunca cobre a tirinha nem depende de
+          adivinhar a altura dela em cada forma de tela (o cartão muda de altura entre pílula, aberto, em pé
+          e deitado). ⚠️ `key` = a etapa elogiada: o selo da 2 é OUTRO elemento que o da 1, então a animação
+          de entrada toca de novo em vez de o texto trocar em silêncio. */}
+      {selo ? <div id="tutor-selo" key={d.ok.n} role="status" aria-live="polite">
+        <i>✓</i><span><b>{selo[0]}</b>{selo[1] ? <em>{selo[1]}</em> : null}</span>
+      </div> : null}
     </div>
   </div>
   {/* o DESTAQUE do botão para quem joga no mouse — só nas etapas de UM botão (o clique do tiro, a tecla do

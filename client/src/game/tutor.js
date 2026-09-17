@@ -33,12 +33,20 @@ export const ETAPAS = 3;
  * ⚠️ Ela é PARÂMETRO da função, não import: `BOT.NOVATO_MASS` é tunable do /admin e quem o lê é o
  * diretor, a cada chamada — capturá-lo aqui na carga do módulo é o antipadrão que `dica.js` documenta.
  */
-// ⚠️ `FIM_MS` é quanto a tela de PARABÉNS fica no ar antes de entrar na primeira sala sozinha. Ela não tem
-// botão, então este número é a única saída — e é por isso que ele é curto: o tutorial acabou, o jogador
-// quer jogar, e a tela anterior (um cartão com botão) prendia 24% de quem chegava até aqui porque a
-// contagem dela podia congelar. Nunca subir isto a ponto de a tela virar espera; nunca zerar, senão o
-// parabéns pisca e a promessa da skin não é lida.
-export const TUTOR = { SOBRA_MS: 3200, LIMPO_MS: 4000, FIM_MS: 3000 };
+// ⚠️ **O TUTORIAL NÃO TEM MAIS TELA DE PARADA NENHUMA, e os dois números abaixo são essa decisão.**
+// `SOBRA_MS` já foi 3.200 ms de uma tela cheia de "ETAPA COMPLETA" (que escondia o HUD inteiro) e `FIM_MS`
+// 3.000 ms de um cartão de PARABÉNS: 3 × 3,2 + 3 = **12,6 s de espera obrigatória** num tutorial de ~60 s, em
+// quatro paradas — e cada parada é um ponto de saída (medido no Game Events da Poki, 1.33: os passos perdem
+// 7% · 11% · 8% · 7%). É a tela de "Level Complete" do estudo de caso que a própria Poki divulga: um
+// desenvolvedor tirou a dele, o jogador passou a FLUIR de uma fase para a outra, e o playtime médio subiu
+// 2 minutos. Aqui: `SOBRA_MS` virou um BATIMENTO (o som e o efeito da `festa` leem, o mundo da etapa
+// seguinte monta logo atrás, e o elogio é um selo que não bloqueia nada — `ui/TutorCena.jsx`), e `FIM_MS`
+// é ZERO: acabou a terceira lição, entra na sala.
+// ⚠️ Este comentário já disse "nunca zerar o `FIM_MS`, senão a promessa da skin não é lida". A premissa
+// morreu: a promessa (e o parabéns) viraram uma FAIXA por cima da primeira partida
+// (`ui/TutorParabens.jsx`, `app.parabensAte`) — que é o instante exato em que o Marte Bravo é tirado do
+// jogador, ou seja o instante em que a promessa tem de ser feita.
+export const TUTOR = { SOBRA_MS: 700, LIMPO_MS: 4000, FIM_MS: 0 };
 
 /**
  * Os três degraus de ajuda de cada etapa, em ms desde que ela abriu, e o TETO em que ela se conclui
@@ -145,9 +153,10 @@ function cumpriu(etapa, ctx, agora) {
  * @param {{vivo:boolean,massa:number,base:number,meta:number,sobrou:number,ultimo:number,
  *          acertou:boolean,comeu:boolean}} ctx
  * @param {number} agora ms monotônicos (`performance.now()` no cliente, um contador no teste)
- * ⚠️ `celebra` é a JANELA da tela de "etapa concluída", não o instante: `festa` sai uma vez (é o gatilho
- * do som e do efeito) e `celebra` fica verdadeiro pelos `SOBRA_MS` inteiros, que é o que a tela precisa
- * para existir. Sem os dois, ou a tela pisca um frame, ou o som toca a 8 Hz.
+ * ⚠️ `celebra` é a JANELA do batimento entre duas etapas (`SOBRA_MS`), não o instante: `festa` sai uma
+ * vez (é o gatilho do som, do efeito e do selo ✓) e `celebra` fica verdadeiro até a etapa seguinte subir —
+ * é ele que cala a AJUDA do diretor nesse intervalo (`tutorServer.ajuda`), senão o teto da etapa 2
+ * seguiria atirando por trás do elogio. Tela nenhuma depende mais dele.
  *
  * @returns {{est:object, etapa:number, pct:number, festa:number, celebra:boolean, ajuda:number,
  *            auto:boolean, fim:boolean}}
@@ -165,7 +174,7 @@ export function passoTutor(est, ctx, agora) {
   // A etapa ainda não abriu: abre agora, e é `agora` que vira a régua dos degraus de ajuda.
   if (!est.desde) return saida({ ...est, desde: agora, ajuda: 0, auto: 0 });
 
-  // Já cumpriu: a festa fica `SOBRA_MS` no ar e só então a próxima sobe.
+  // Já cumpriu: um batimento de `SOBRA_MS` e a próxima sobe (não há tela no meio — ver `TUTOR`).
   if (est.feito) {
     if (agora < est.feito + TUTOR.SOBRA_MS) return saida(est);
     // ⚠️ `desde:0` e não `desde:agora`: quem abre a etapa é o ramo acima, no passo SEGUINTE. Assim

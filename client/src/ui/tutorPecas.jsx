@@ -4,14 +4,12 @@
 // sozinho. O que cada modelo tem de próprio é o ARRANJO — se uma destas peças ganhasse quatro cópias,
 // elas divergiriam no primeiro conserto (a lição de `useSpec`/`SpecBar`).
 //
-// ⚠️ **TRÊS IDS SÃO API, E TODO MODELO OS RESPEITA** — `#tutor`, `#tutor-ok` e `#tutor-fim`. Eles não são
-// só nomes: carregam o que o HUD faz enquanto o tutorial está no ar, por `:has()` (o fim do bloco do
-// tutorial em `styles/ui.css`), e a matriz de responsividade os lê por id.
-//   `#tutor`     = aula em curso: some o ruído (placar, feed, chat, topo), FICAM `#touch` e `#hud-cd`;
-//   `#tutor-ok`  = modal de tela cheia: some TUDO por baixo;
-//   `#tutor-fim` = idem, e nada captura o ponteiro.
-// Um modelo que queira comemorar SEM cobrir o jogo (o `legenda`) renderiza a comemoração como `#tutor`, e
-// é o id — não um `if` no CSS — que mantém os botões de toque na tela.
+// ⚠️ **UM ID É API, E TODO MODELO O RESPEITA** — `#tutor`. Ele não é só um nome: carrega o que o HUD faz
+// enquanto o tutorial está no ar, por `:has()` (o fim do bloco do tutorial em `styles/ui.css`), e a matriz
+// de responsividade o lê por id: aula em curso = some o ruído (placar, feed, chat, topo), FICAM `#touch` e
+// `#hud-cd`. (Já foram três: `#tutor-ok` e `#tutor-fim` eram as duas telas cheias — "etapa completa" e
+// parabéns —, que escondiam TUDO por baixo. Saíram com as telas: o tutorial não para mais o jogo para
+// elogiar. O elogio é o selo `#tutor-selo`, filho do `#tutor`, e o parabéns é `TutorParabens.jsx`.)
 // ⚠️ `data-etapa` no `#tutor` também é API: é ele que esconde o bloco de arma nas etapas 1 e 3. Esquecê-lo
 // devolve o "0 MÍSSIL" na lição de MOVER, em silêncio.
 // ⚠️ **NENHUM COMPONENTE É DEFINIDO DENTRO DE OUTRO.** `h.tutor` é um objeto NOVO a cada 125 ms
@@ -128,7 +126,8 @@ export function Pular({ T }) {
 }
 
 /**
- * O RELÓGIO DO FIM: `TUTOR.FIM_MS` depois de `ativo` virar verdadeiro, entra na primeira sala SOZINHO.
+ * A SAÍDA DO FIM: `TUTOR.FIM_MS` (hoje ZERO — não há tela de fim) depois de `ativo` virar verdadeiro, entra
+ * na primeira sala SOZINHO. O `setTimeout` fica mesmo com zero: ele tira o `play()` de dentro do commit do React.
  *
  * ⚠️ **A DEPENDÊNCIA É UM BOOLEANO, NUNCA `d`.** `h.tutor` é objeto novo a cada 125 ms; um
  * `useEffect(…,[d])` desmontaria e remontaria o `setTimeout` a 8 Hz e NINGUÉM sairia do parabéns — uma
@@ -150,7 +149,7 @@ export function useEntraSozinho(ativo) {
 /**
  * A PROMESSA DA SKIN, com o MARTE ao lado: "jogue 3 partidas e o Marte Bravo é seu". O tutorial é jogado
  * com ele e a primeira sala de verdade o tira do jogador — sem esta linha a troca de planeta lê como
- * defeito. Mostrar o PRÓPRIO mascote aqui é o que liga a frase ao planeta que ele acabou de pilotar.
+ * defeito. Quem a desenha hoje é a faixa de `TutorParabens.jsx`, por cima da primeira partida. Mostrar o PRÓPRIO mascote aqui é o que liga a frase ao planeta que ele acabou de pilotar.
  * Quem já tem a skin não recebe promessa nenhuma: prometer o que a pessoa já possui é o jeito mais rápido
  * de a tela perder a credibilidade.
  */
@@ -166,19 +165,5 @@ export function Promessa({ T }) {
         <i style={{ "--p": feitas / alvo }} />
       </span>
     </div>
-  </div>;
-}
-
-/**
- * "entrando…" com a barra que ENCHE em `FIM_MS`: a tela não tem botão, e a barra é o que diz ao jogador
- * que ele não precisa fazer nada — sem ela, três segundos parados diante de um parabéns leem como "e
- * agora, onde eu clico?".
- * ⚠️ A barra é ENFEITE: quem entra na sala é `useEntraSozinho`, por `setTimeout`. `body[data-reduce="1"] *`
- * zera toda duração de animação, então NADA aqui pode depender do fim de uma animação de CSS.
- */
-export function Contagem({ T, demo }) {
-  return <div className="tp-conta" data-demo={demo ? "1" : undefined}>
-    <span>{T.fimIndo}</span>
-    <i style={{ "--ms": TUTOR.FIM_MS + "ms" }} />
   </div>;
 }
