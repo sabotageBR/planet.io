@@ -4315,9 +4315,11 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   1 jogador (1 sala com 13 preenchimentos) = **~300m de CPU**; 50 jogadores (3 salas, 17 por shard) =
   **~680m**; 150 jogadores = **974–993m dos 1000m do limite**, com o RTT p95 saindo de 96 para 209 ms e
   desconexões por `RATE`. Banda: **3–6 KB/s por jogador**, ou seja rede não é o gargalo — CPU é.
-  ⚠️ **Subir `limits.cpu` NÃO ajuda**: o servidor é Node single-thread, então um shard é um core por
+  ⚠️ **Subir `limits.cpu` não dá CAPACIDADE**: o servidor é Node single-thread, então um shard é um core por
   construção e já encosta nele. Quem escala é o número de SHARDS (processos), e cada um novo custa
-  `replicas` + `SHARDS` no ConfigMap + um Service + um path de Ingress.
+  `replicas` + `SHARDS` no ConfigMap + um Service + um path de Ingress. ⚠️ **Mas o limite custava LATÊNCIA, e
+  hoje o pod NÃO TEM `limits.cpu`** — capacidade e engasgo são perguntas diferentes; ver o bloco "O ENGASGO
+  ERA A COTA DE CPU", logo abaixo.
   **Feito: 3 → 12 shards, e 500 jogadores entram.** Medido em 2026-09-03 com o gerador acima:
   **500 de 500 dentro, 167 s estáveis, ZERO quedas, RTT p50 37 ms / p95 92 ms**, 9 616 snapshots/s e
   3,2 MB/s de banda. Custo: **8,5–9,6 cores dos 12**, o shard mais carregado em 790–918m de 1000m, e
@@ -4332,6 +4334,87 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   fica sem endpoint e o ingress responde 503 naquele `/ws/N`. Uma varredura dos 12 no meio de um
   rollout acusa "1 shard roteando errado" a cada rodada, em shards diferentes — não é roteamento, é o
   rollout. Espere `12/12 prontos` antes de medir qualquer coisa.
+- **O ENGASGO ERA A COTA DE CPU — E, DEPOIS DELA, O PICO DO SNAPSHOT, O JIT FRIO E O RELOAD DO INGRESS**
+  (`k8s/10-server.yaml`, `server/src/{metrics,cgroup,loop,aquece}.js`, `Room._flush`, `scripts/loadtest.mjs`;
+  medido em produção em 2026-09-17). A investigação anterior tinha parado em "o que bloqueia o event loop está
+  FORA do tick" e só acrescentado contadores; as sete mudanças de infra até ali foram todas de CAPACIDADE. Eram
+  QUATRO camadas, e cada uma só apareceu depois de a anterior sair da frente:
+  ⚠️ **(1) O CFS CONGELAVA O PROCESSO ~1×/11 s.** `limits.cpu: "2"` é uma COTA somada entre as 11 threads do
+  processo (principal + 4 do V8 + 4 do libuv…): uma rajada de GC paralelo queima os 200 ms do período em 20–40 ms
+  de relógio e o kernel para o cgroup INTEIRO até a virada. Medido com **0,33 core de uso médio**: 447/808/1149
+  períodos com throttling nos três shards, `tick.max` pulando de 8 para 42–47 ms. O processo não estava lento,
+  estava PARADO — por isso nenhuma métrica do jogo via; só o cAdvisor (`container_cpu_cfs_throttled_periods_total`).
+  E quem fabricava as rajadas era o `limits.memory: 512Mi`: com ele o V8 escolhe semi-space de **1 MiB** (doc do
+  Node 22) — 2701 scavenges em 10 min contra 262 com 16 MiB, e scavenge é PARALELO. Conserto: **sem `limits.cpu`**
+  (um "8" seria decorativo; quem arbitra sob contenção é `cpu.shares`, do request, que foi a 1) e
+  `NODE_OPTIONS="--max-semi-space-size=16 --max-old-space-size=256"`. A/B no MESMO nó, 15 clientes por 10 min:
+  controle 48 buracos >83 ms e +86 congelamentos; canário **0 e 0**.
+  ⚠️ **(2) O SNAPSHOT SAÍA TODO NO MESMO TICK.** Montar e codificar custa **~1 ms POR SESSÃO** nos núcleos de
+  produção, que são **8–10× mais lentos** que uma máquina de dev (tick p50 1,9–2,7 ms lá contra 0,24–0,33 aqui;
+  o aquecimento de 0,19 s aqui leva 1,6 s lá). Com 10 humanos eram 8–11 ms a cada 3 ticks; com 25–30 (uma sala
+  de Fit Test) o tick de snapshot estourava os 16,7 ms SOZINHO. Hoje as sessões saem em **3 fases**, uma por tick
+  do ciclo (`session.fase`, `Room._faseLivre`): cada cliente segue a 20 Hz, o pico cai a um terço. As MÁSCARAS de
+  mudança são de UMA vez por ciclo (fase 0) e valem para as três; `sim.gone` ganhou DUAS gerações
+  (`rotacionaGone`), senão as fases 1 e 2 perderiam o MOTIVO do que sumiu (EATEN × LEFT_AOI decide efeito e som).
+  Passos lentos (≥12 ms) em 10 min: 1129/534/296 → 28/48/31.
+  ⚠️ **(3) A PRIMEIRA SALA DE CADA POD CUSTAVA ~200 ms** de código FRIO (criar o mundo + os primeiros passos), e o
+  laço de 60 Hz é UM por processo: todas as outras salas do pod paravam junto. Num Fit Test os pods são recém-
+  subidos pelo HPA. `server/src/aquece.js` roda duas salas DESCARTÁVEIS (Livre e BR, sessões de mentira, hooks
+  NOOP) ANTES do `listen`; `JIT_WARMUP=0` desliga, e o `node --test` fica de fora sozinho (`NODE_TEST_CONTEXT`).
+  ⚠️ **(4) O INGRESS-NGINX DERRUBA TODO MUNDO A CADA 3 HORAS — E ISTO NÃO É DO JOGO.** Medido no log do
+  controller: **5 reloads às HH:00:02 de 3 em 3 horas** (00, 03, 06… UTC), 80 em 48 h. `worker-shutdown-timeout`
+  é o padrão (240 s), então às **HH:04** os workers antigos morrem e TODAS as conexões WebSocket caem juntas
+  (close 1006) — visto ao vivo: 30 de 30 clientes do loadtest, nos três shards, no mesmo segundo. O gatilho é de
+  OUTRO projeto: no namespace `itm`, os Deployments e Ingresses `itm-itrixti` e `itm-tlfibra` são RECRIADOS
+  (`kubectl delete` + `apply`, `generation 1`, `creationTimestamp` na hora cheia) por um cron EXTERNO ao cluster;
+  cada recriação abre um pedido no cert-manager e um ingress `cm-acme-http-solver`. ⚠️ **NÃO FOI CONSERTADO**: o
+  ingress é compartilhado por 41 domínios de 12 namespaces. As duas saídas: trocar aquele cron por
+  `kubectl rollout restart` (não toca em Ingress → não há reload), ou subir `worker-shutdown-timeout` no ConfigMap
+  `ingress-nginx/ingress-nginx-controller` (ex.: `7200s`) para os workers antigos esperarem as partidas acabarem.
+  ⚠️ **COMO SE MEDE AGORA** — o `/healthz` responde "de quem foi": `laco.congelado` (intervalo ≥40 ms entre
+  turnos SEM CPU da thread principal = o processo esteve parado: cota, preempção) × `laco.trabalho` (havia CPU =
+  código), com `passo` (quanto foi o passo das salas) e `gc` (quanto foi coleta) em cada evento;
+  `laco.passosLentos` dá a SALA e a FASE (`sim` × `envio`); `cfs` lê a cota e o throttling de DENTRO do contêiner
+  (`cgroup.js`, v1 e v2 — sem cota os contadores parados são o estado SAUDÁVEL); `gc`, `eld`, `heap`, `log`.
+  ⚠️ A CPU tem de ser a da THREAD (`process.threadCpuUsage`, Node ≥ 22.19 — por isso a imagem crava a versão):
+  na parada por cota quem gastou a CPU foram as threads auxiliares, e a do PROCESSO sai alta justo quando a
+  principal não andou. O `/healthz` é alcançável pelo proxy da API na porta **3000**
+  (`/api/v1/namespaces/warspace/pods/<pod>:3000/proxy/healthz`; a memória que dizia "não chega" tinha testado a 3001).
+  De fora, `scripts/loadtest.mjs` mede o **Δt entre snapshots por cliente** (esperado 50 ms; um overrun aparece
+  como ≥83) e o `perdido` (parede − tempo dos ticks = simulação descartada); `--only N` fixa o shard para A/B.
+  ⚠️ **A MÉDIA NÃO VÊ ENGASGO**: `snaps/s` dá 20 Hz cravados com um buraco de 400 ms no meio. E uma baseline com o
+  cache de tokens VENCIDO terminou com "0 buracos" porque ninguém entrou — o RESUMO agora grita os erros.
+  Baseline → final, 30 clientes por 10 min: buracos >83 ms **64 → 17–20**, p99 56 → 53–54 ms, congelamentos 194 → 0.
+  ⚠️ **O QUE SOBRA**: 8–14 turnos de 40–55 ms por shard a cada 10 min, com `congelado 0`, `gc 0` e `passo`
+  pequeno — trabalho de verdade FORA do passo (join, sala nascendo: ~25–45 ms lá mesmo com o JIT quente). Ficam
+  abaixo dos 83 ms e a interpolação do cliente os absorve. E a lentidão dos núcleos merece uma olhada no HOST:
+  governor de frequência (`cpupower frequency-info`) — carga de 60 Hz em rajadas de 3 ms num nó a 4% de uso é
+  o caso clássico de núcleo que nunca sai do P-state mínimo. Daqui não dá para ler isso pela API.
+  ⚠️ **O `deploy.sh` ganhou CANÁRIO**: `CANARY_PARTITION=2` publica só nos shards de ordinal ≥ 2
+  (`updateStrategy.rollingUpdate.partition`, sempre PUBLICADO, nunca apagado — a lição do `replicas`).
+- **O CLIENTE TRANSFORMAVA BURACO DE REDE EM TRANCO** (`game/state/{SnapshotBuffer,Interpolator,Predictor}.js`,
+  `game/netstat.js`; `client/test/netcode.test.js` — até aqui NÃO EXISTIA teste de nenhum dos três):
+  ⚠️ **O relógio desliza por TEMPO e nunca anda para trás** (`passoRelogio`): era `.02` tick POR FRAME (metade da
+  velocidade a 30 fps) e SALTAVA acima de 3 ticks — um overrun do servidor jogava TODAS as entidades para trás no
+  mesmo frame. Hoje atrasar = o render cai a 60 % da velocidade; o salto ficou para |desvio| > 12 ticks (resume).
+  ⚠️ **A predição não obedece a PACOTE ATRASADO** (`deveRessincronizar`, `buffer.late`): um snapshot 90 ms atrasado
+  voltava `localTick` 5 ticks e o seguinte o devolvia — o planeta próprio freava e disparava, com a CÂMERA junto
+  (4,2 px de desvio num passo de 5,5; conferido por MUTAÇÃO). Deriva de verdade move a mediana e ressincroniza UMA vez.
+  ⚠️ **E a deriva é medida NO INSTANTE DO SNAPSHOT, não no último frame**: `localTick` só anda no `update()`, e a
+  12 fps isso são 5 ticks — **426 ressincronizações em 434 snapshots** num navegador sem GPU, 84 → 2 na bancada.
+  É o regime de um celular fraco. `leadDe` tem histerese (RTT na fronteira de um tick alternava o lead 2↔3).
+  ⚠️ **O atraso de interpolação sobe no PRIMEIRO pacote atrasado** (`alvoDeAtraso`): a regra "2 secas em 5 s" nunca
+  disparava com 1 tropeço a cada 11 s. 2º evento em 30 s libera `NET.INTERP_MAX2_MS` (200); volta 1 tick/10 s.
+  ⚠️ **Fora do meio do frame**: as fontes dos 3 temas são instaladas no boot, em momento ocioso, e garantidas no
+  `join` (`instalaFonte`/`warmFonts`/`flushFonts` — eram 10–40 ms em cada virada de céu); o céu NÃO reassa mais
+  na troca de nível econômico (`resFor` = `min(R.res,1)` e sem o `bgKey=""` que anulava a própria guarda); o MISS
+  de textura mostra o que a view já tinha ou outro tier da mesma skin e põe o certo na FRENTE da fila
+  (`cache.peek`, `warm(…,urgente)`, fila com orçamento de TEMPO); a chave do aquecimento passou a bater com a do
+  desenho (faltava `face`); a borda do mundo não reassa fora da tela (`bordaVisivel`).
+  ⚠️ **`?stats` diz REDE ou FRAME** (`netstat`: Δt de snapshot, rajadas, saltos de relógio, ressincronizações) e o
+  `?perf` passou a ver o que roda FORA do rAF (fases `rede`/`fonte`/`tema`/`econ`, BURACOS entre frames e as
+  tarefas longas do Chrome). ⚠️ Expor `__warspace` exige `isPerf()`, nunca `perf.ativo`: leitura em runtime não
+  é podada, e a guarda do `portal-pack.mjs` reprova o zip ("atalho de desenvolvimento vivo").
 - **AUTOESCALA: SOBE SOZINHA, DESCE NA MÃO** (`k8s/50-hpa.yaml`, `autoscaling/v2beta2` — o cluster é
   1.21 e `autoscaling/v2` só existe a partir do 1.23). O HPA do servidor vai de 12 a 24 shards por CPU
   média de **700m** (o ponto em que o RTT começou a subir nas medições), com `scaleUp` de no máximo 4
