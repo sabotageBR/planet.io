@@ -25,9 +25,6 @@ export class Session{
   constructor({ws,metrics,log=null,remoteAddr=null,userAgent=null}){
     this.ws=ws;this.metrics=metrics;this.log=log;this.remoteAddr=remoteAddr;this.userAgent=userAgent;
     this.slot=-1;this.pid=0;this.room=null;this.sessionId=null;this.userId=null;this.key=null;this.name='';this.unsaved=true;
-    // `isAdmin`: só para RECEBER o aviso de "entrou gente" (Room._avisaAdmins). Agir continua exigindo o
-    // token de outro `kind` — roubar a aba do jogo de um administrador não pode abrir o painel.
-    this.isAdmin=false;
     // Versão do protocolo que ESTA sessão declarou no join/resume, ou null quando o cliente não declarou
     // (é o caso de toda build publicada até a v15). Ela é a resposta do `room`: o servidor ECOA a versão do
     // cliente em vez de anunciar a dele, e assim o cliente antigo não se acha desatualizado. `null` faz o

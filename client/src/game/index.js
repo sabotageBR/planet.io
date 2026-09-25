@@ -530,17 +530,6 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // o número é calculado exato), então o cliente só precisa contar para baixo.
     else if(m.t==="idle"){hudStore.update(h=>({...h,idle:{at:performance.now(),inMs:Math.max(1000,m.inMs|0)}}));
       audio.play("toast",{mine:true});}
-    // ENTROU GENTE, e só quem é admin recebe (o servidor decide: nenhuma sessão comum vê esta mensagem).
-    // Reusa a faixa `#notice`, que já expira sozinha e já é `aria-live`, e tenta a notificação do SISTEMA
-    // por cima — ela só sai com permissão já concedida, e a permissão é pedida por um botão em Opções.
-    // Nunca `requestPermission()` daqui: o navegador exige gesto do usuário, e num iframe de portal ela
-    // nem existe. O toast é o chão.
-    else if(m.t==="adm"){
-      const L=getLabels(),txt=preenche(L.admJoin||"{n} entrou",{n:m.name||"?"})+(m.room?` (${m.room})`:"");
-      chatSys(txt);
-      hudStore.update(h=>({...h,notice:{text:txt,level:"info",at:performance.now(),ttlMs:8000}}));
-      audio.play("toast",{mine:true});
-      notificaSistema(L.admJoinTitle||"warspace.io",txt);}
     else if(m.t==="avatars"){view.setAvatars(m.list);}
     else if(m.t==="flags"){view.setFlags(m.list);}   // bandeira de cada jogador (humano e preenchimento) — ver Room.broadcastFlags
     else if(m.t==="roundEnd"){roundOver=true;input.setHold(false);
@@ -648,17 +637,6 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     hudStore.update(h=>({...h,chat:chatLog.slice()}));
     if(m.slot!==view.mySlot)audio.play("chatIn",{mine:true,bus:"ui"});}
   const chatSys=text=>pushChat({slot:-1,name:null,team:null,text,at:Date.now()});
-  /**
-   * Notificação do SISTEMA, e só se a permissão JÁ foi concedida. Não se pede aqui: `requestPermission()`
-   * exige gesto do usuário (a tela de Opções tem o botão) e no iframe de um portal ela nem existe. Tudo
-   * dentro de try/catch porque em contexto inseguro o construtor lança.
-   */
-  function notificaSistema(titulo,corpo){
-    try{
-      if(typeof Notification==="undefined"||Notification.permission!=="granted")return;
-      if(typeof document!=="undefined"&&!document.hidden)return;   // com a aba na frente, a faixa já disse
-      new Notification(titulo,{body:corpo,tag:"warspace-admin",silent:false});
-    }catch{}}
   // ── kill feed ──
   /**
    * Uma leva de linhas do feed. Os nomes são resolvidos AQUI, na chegada, e não na renderização: quem sai
@@ -674,10 +652,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // linha nascia vencida e o feed sumia inteiro, sem erro, sem log e sem sintoma nenhum.
     const at=Date.now();
     for(const it of (m.v||[])){
-      // ⚠️ `it.name` ganha do `playerOf` quando existe, e é por isso que a linha de SAÍDA o carrega: quem
-      // saiu já não está em `view.players`, e o PLAYERS sem o slot pode chegar antes desta leva.
-      const a=it.name?{slot:it.a,name:it.name,bot:false,ally:false,level:0,me:it.a===view.mySlot}:quem(it.a);
-      const b=quem(it.b),as=quem(it.by);
+      const a=quem(it.a),b=quem(it.b),as=quem(it.by);
       feedLog.push({id:feedSeq++,at,k:it.k,how:it.how,byHow:it.byHow||null,n:it.n|0,a,b,assist:as,
         mine:!!((a&&a.me)||(b&&b.me)||(as&&as.me))});}
     if(feedLog.length>FEED.KEEP)feedLog.splice(0,feedLog.length-FEED.KEEP);

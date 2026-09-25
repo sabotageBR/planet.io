@@ -134,7 +134,7 @@ test('admin: o detalhe da sala traz origem e tempo total de cada jogador',async 
   // Sessão no molde de espectador.test.js: o painel só lê `Room.adminInfo`, não abre socket.
   const sessao={ws:{},sendJson(){},send(){return true;},known:new Map(),detach(){},
     name:'admin-teste',userId:conta.id,key:null,level:0,avatar:null,country:null,sessionId:null,unsaved:true,
-    isAdmin:false,slot:-1,room:null,pid:0,rect:null,specSlot:-1,espectador:false,lastActiveAt:Date.now()};
+    slot:-1,room:null,pid:0,rect:null,specSlot:-1,espectador:false,lastActiveAt:Date.now()};
   sala.join(sessao,{name:'admin-teste',userId:conta.id});
   try{
     const d=await J('GET',`/api/admin/rooms/${sala.code}`,null,painel);

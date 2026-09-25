@@ -17,34 +17,6 @@ export default function Prefs({ on }) {
 }
 const coerce = (it, raw) => (it.kind === "num" ? +raw : raw);
 /**
- * O botão que pede permissão de notificação do navegador — e ele SÓ existe para quem é administrador.
- * O aviso de "entrou gente" (`{t:'adm'}`) já chega como faixa, som e linha de chat sem permissão nenhuma;
- * a notificação do SISTEMA é o que faz o aviso valer com a aba em segundo plano, e `requestPermission()`
- * exige gesto do usuário. Por isso um botão, e não uma tentativa automática no boot: pedir permissão sem
- * o jogador ter pedido nada é o padrão que os navegadores passaram anos desencorajando.
- * ⚠️ `Notification` não existe em contexto inseguro nem no iframe de um portal; tudo em try/catch, e a
- * ausência simplesmente não desenha a linha.
- */
-function AvisoAdmin({ LB }) {
-  const user = useStore(app, s => s.session.user) || {};
-  const [estado, setEstado] = React.useState(() => {
-    try { return typeof Notification === "undefined" ? null : Notification.permission; } catch { return null; }
-  });
-  if (!user.isAdmin || estado === null) return null;
-  const pedir = () => { try { Notification.requestPermission().then(p => setEstado(p)).catch(() => {}); } catch {} };
-  return <section className="card pg" id="pg-admin">
-    <h2>{LB.opt.g_admin}</h2>
-    <div className="prow">
-      <span>{LB.opt.adminNotify}</span>
-      {estado === "granted"
-        ? <em className="dim">{LB.opt.adminNotifyOn}</em>
-        : estado === "denied"
-          ? <em className="dim">{LB.opt.adminNotifyBlocked}</em>
-          : <button className="btn-secondary" onClick={pedir}>{LB.opt.adminNotifyAsk}</button>}
-    </div>
-  </section>;
-}
-/**
  * O rótulo de uma OPÇÃO. Três origens, porque nem toda opção é texto de UI: tecla é a tecla física
  * (grupo `keys`), idioma fica sempre no próprio idioma (`English`, não `Inglês`) e número é o número.
  * O resto segue a convenção `prefs[chave_valor]`, com o valor cru de reserva — assim uma opção nova
@@ -97,7 +69,6 @@ function Body() {
       {PREFS.map(gp => <section className="card pg" id={"pg-" + gp.id} key={gp.id}><h2>{LB.opt["g_" + gp.id]}</h2>
         {gp.items.map(it => <PrefRow key={it.key} it={it} v={prefs[it.key]} />)}
       </section>)}
-      <AvisoAdmin LB={LB} />
       <Ajuda />
     </div>
     <div className="prefs-foot"><button className="btn-secondary" id="pf-reset" onClick={resetPrefs}>{LB.reset}</button><button className="btn-primary" id="pf-save" onClick={savePrefs}>{LB.save}</button></div>

@@ -880,6 +880,50 @@ test("estrela: nasce fora do anel de todo cinturão (BELT_SAFE)",()=>{
     for(const st of w.stars)for(const b of w.belts){const d=Math.hypot(st.x-b.cx,st.y-b.cy);
       assert.ok(Math.abs(d-b.rad)>=ASTEROID.BELT_SAFE,`seed ${seed}: estrela a ${Math.abs(d-b.rad).toFixed(0)} px do anel`);}}});
 
+// A estrela NUNCA nasce dentro de um planeta. A folga STAR.SAFE_SPAWN era medida centro a centro, e com
+// peças de até PLAYER.MAX_R o gigante recebia a estrela dentro do próprio disco (a regra antiga, conferida
+// por mutação, põe ~1 em 4 delas dentro de alguém neste mesmo cenário). E no Livre o fallback das 40
+// tentativas largava a estrela no último ponto sorteado mesmo que ele estivesse em cima de alguém.
+test("estrela: nunca nasce dentro de um planeta — a folga é da BORDA da peça, nos dois modos",()=>{
+  let nasceram=0;
+  for(let seed=1;seed<=12;seed++){const w=createWorld({seed,food:0,asteroids:true,holes:0,stars:0,decay:false});
+    for(let i=0;i<8;i++)w.addPlayer(i,{r:PLAYER.MAX_R});
+    for(let i=0;i<37;i++)w.addPlayer(8+i);
+    for(let k=0;k<30;k++){const st=w.spawnStar(true);if(!st)continue;nasceram++;
+      for(const p of w.pieces){if(p.dead)continue;const d=Math.hypot(p.x-st.x,p.y-st.y);
+        assert.ok(d>=p.r+STAR.SAFE_SPAWN,`seed ${seed}: estrela a ${(d-p.r).toFixed(0)} px da borda de uma peça de r=${p.r.toFixed(0)}`);}
+      st.dead=true;}}
+  assert.ok(nasceram>=300,`só ${nasceram} de 360 nasceram — o filtro não pode esterilizar a sala`);
+  // com zona (Battle Royale) vale a mesma régua
+  const b=createWorld({seed:5,food:0,asteroids:false,holes:0,stars:0,weapons:true,decay:false}),c=WORLD.w/2;
+  b.setZone({x0:c,y0:c,r0:4000,x1:c,y1:c,r1:4000,t0:0,t1:Infinity});
+  const g=b.addPlayer(0,{x:c,y:c,r:PLAYER.MAX_R});
+  for(let k=0;k<30;k++){const st=b.spawnStar(true);if(!st)continue;
+    assert.ok(Math.hypot(g.x-st.x,g.y-st.y)>=g.r+STAR.SAFE_SPAWN,"com zona, também longe da borda do gigante");st.dead=true;}});
+
+test("estrela: sem lugar longe de todo planeta, o Livre NÃO larga no fallback — a fila tenta depois",()=>{
+  const w=createWorld({seed:9,food:0,asteroids:false,holes:0,stars:0,decay:false});
+  // uma grade de gigantes a 2400 px cobre o mapa inteiro: nenhum ponto fica a SAFE_SPAWN da borda de todos
+  let s=0;for(let x=1200;x<WORLD.w;x+=2400)for(let y=1200;y<WORLD.h;y+=2400)w.addPlayer(s++,{x,y,r:PLAYER.MAX_R});
+  assert.equal(w.spawnStar(true),null,"no Livre, ponto colado num planeta = a estrela não nasce agora");
+  w.queueStar(1);
+  for(let t=0;t<5;t++)w.step();
+  assert.equal(w.stars.length,0,"a fila não força a estrela para dentro de ninguém");
+  assert.equal(w.starQueue.length,1,"e o pedido continua na fila — a população não se perde");
+  for(const p of w.pieces)w.killPiece(p,"left",-1);   // a sala abriu espaço
+  let nasceu=false;for(let t=0;t<600&&!nasceu;t++){w.step();nasceu=w.stars.some(b=>!b.dead);}
+  assert.ok(nasceu,"com espaço, a fila volta a entregar");});
+
+test("estrela: afastaEstrelas tira a que ficou colada num planeta, em silêncio e de volta para a fila",()=>{
+  const w=empty(31),c=WORLD.w/2;
+  const perto=w.spawnStar(true,{x:c+300,y:c}),longe=w.spawnStar(true,{x:c+5000,y:c});
+  w.addPlayer(0,{x:c,y:c});
+  const fila=w.starQueue.length,ev=w.events.length;
+  assert.equal(w.afastaEstrelas(),1);
+  assert.ok(perto.dead,"a colada sai");assert.ok(!longe.dead,"a longe fica");
+  assert.equal(w.starQueue.length,fila+1,"e volta para a fila");
+  assert.ok(!w.events.slice(ev).some(e=>e.type==="SUPERNOVA"),"sem supernova: ninguém a viu, ninguém ganha nada");});
+
 // ── 34. conservação: o que sai do planeta volta inteiro ──
 test("massa: cuspir↔reabsorver fecha em zero e o fragmento carrega a massa real (score por √mass)",()=>{
   const w=empty(123),pc=w.addPlayer(0,{x:2000,y:2000,r:80}),ps=w.players.get(0),m0=pc.mass;

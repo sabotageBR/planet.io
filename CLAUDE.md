@@ -691,6 +691,30 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   entrar ATRÁS da estrela. Ele não cabe lá dentro — tem que TAPÁ-LA, e a cena precisa dizer isso. O teste
   é o MESMO da física, e é por isso que `STAR.PASS_R` virou tunable de escopo `wire`: com `server`, mudar
   o parâmetro faria o planeta ser tapado numa faixa e atravessar em outra.
+- **A ESTRELA NUNCA NASCE DENTRO DE UM PLANETA, NOS DOIS MODOS** (`World._longeDasPecas`/`_starSpotOk`/
+  `afastaEstrelas` em `physics/world.js`, `Room.begin`): a folga `STAR.SAFE_SPAWN` (700) passou a ser da
+  BORDA da peça (`d ≥ pc.r + 700`), não do centro. Centro a centro, um gigante de r > 654 recebia a estrela
+  DENTRO do próprio disco — medido com 8 gigantes de `PLAYER.MAX_R` numa sala: **407 de 1600** estrelas
+  nasciam dentro de alguém, e depois **0**. Uma estrela em GROW arma em ~1 s (`ARM_K`), e o planetão não sai
+  dela nesse tempo: queimava 30 % e estilhaçava sem ter feito nada.
+  ⚠️ **O fallback do Livre deixou de valer quando o ponto encosta em alguém**: `_farSpot` devolve a última
+  tentativa quando as 40 falham, e só o BR recusava. Hoje as regras MOLES (separação entre estrelas, anel de
+  cinturão) continuam aceitando o fallback; a de planeta é DURA — `spawnStar` devolve `null` e o dreno de
+  `starQueue` (que já existia para o BR) re-enfileira com `ZONE.STAR_RETRY_TICKS`. Medido numa sala cheia do
+  Livre: zero recusas e fila média igual à do HEAD (2,76 × 2,72) — a regra não esvazia o mapa.
+  ⚠️ **A LARGADA DO BR ERA O OUTRO FURO**: as 19 estrelas nascem com o mundo, sorteadas no mapa inteiro, e a
+  gaiola põe os 50 no centro sem olhar nenhuma — ~1 partida em 5 largava com uma estrela dentro do
+  octógono. `Room.begin()` chama `w.afastaEstrelas()` logo depois de `_posicionaGaiola()`: a estrela colada
+  em alguém some em SILÊNCIO (molde de `_cullStarsOutOfZone`, sem supernova) e volta pela fila, longe. Só é
+  seguro ali porque o lobby não mandou snapshot nenhum — no meio da partida, sumir debaixo do nariz de
+  alguém seria outro defeito.
+  ⚠️ **Laço sobre `this.pieces`, nunca a grade**: na fase 11 `this.grid` é o da fase 3 (raios velhos, sem as
+  peças nascidas no tick) e no construtor nem existe. O construtor não muda: sem peças o predicado é sempre
+  verdadeiro, e a mesma semente dá o mesmo mundo inicial. Durante a partida o stream do rng anda diferente
+  quando um ponto é recusado — `roombots.test.js` ("a mistura se esgota") perdeu a folga por isso e ganhou
+  alvo maior, não limiar mais frouxo.
+  ⚠️ **Fora do escopo, de propósito**: o sorteio cego de nascimento do JOGADOR (`_spawnPiece`) também
+  devolve o último ponto quando falha — é a direção inversa (planeta em cima de estrela) e não foi pedida.
 - **O JOGADOR NASCE NO BERÇÁRIO DA SUPERNOVA** (`World.novas`, `_novaSpot`, `STAR.NOVA_SPOT_*`): quem
   entra numa sala do Livre nasce com 900 de massa num mapa de 144 M px² e leva minutos até achar comida em
   quantidade. A estrela que acabou de morrer deixou `NOVA_FOOD` grãos permanentes e `NOVA_PARTICLES`
@@ -2264,35 +2288,25 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   controles de voz somem da tela de Opções junto (`prefsTable.js`): interruptor que não liga nada é pior
   que interruptor nenhum. ⚠️ O harness `portal/iframe.html` PEDIA microfone e por isso nunca reproduziu
   isso — ele tem que ser o `allow` mais POBRE que já se mediu num portal, não o mais generoso.
-- **...E ELE SÓ APARECE PARA O ADMINISTRADOR** (`ENTRA_SAI` em `client/src/ui/KillFeed.jsx`): para quem
-  joga, "entrou/saiu" nunca respondeu a uma pergunta — numa sala do Livre o vaivém é constante e essas
-  linhas empurram para fora justamente o que interessa, porque `drenaFeed` corta em `FEED.MAX_PER_FLUSH`
-  e a coluna tem quatro linhas de altura. ⚠️ Quem modera continua vendo por DOIS caminhos independentes:
-  a aba AO VIVO do painel tem `entrou`/`saiu` próprios (que sabem mais — conta, duração, abates e a
-  causa) e o administrador que está DENTRO da partida continua com a linha no canto da tela, que é onde
-  ele está olhando. ⚠️ O corte é no CLIENTE e não em `Room._pushFeed`: no servidor o feed é um só,
-  difundido à sala inteira, e filtrar por sessão custaria uma fila por jogador para poupar ~60 bytes por
-  entrada — e o administrador jogando se perderia junto. ⚠️ Os outros `sys` (`start`, `few`, `zone`,
-  `crunch`, `lead`) continuam valendo para todo mundo: o filtro nomeia `joined`/`left`, nunca `k==='sys'`.
-- **O LOG DE QUEM ENTRA E QUEM SAI** (`Room.join`/`leave` → `{k:'sys',how:'joined'|'left'}` no feed): reusa
-  o kill feed, que já é JSON de controle sem AOI, já tem a linha de SISTEMA com ícone e molde de texto, e
-  já mora no canto direito. Nenhuma linha de `KillFeed.jsx` mudou.
-  ⚠️ **É de GENTE por construção**: preenchimento nunca passa por `join`/`leave` (nasce em `_nasceBot`), o
-  mesmo mecanismo que mantém o roster do dono limpo — e é isso que preserva o `anonBots` do BR sem um
-  filtro a escrever. **Não** instrumentar `trimBots`/`_nasceBot`.
-  ⚠️ **A linha de SAÍDA leva o `name` junto** (`it.name` ganha do `playerOf` em `pushFeed`): quem saiu já
-  não está em `view.players`, e o PLAYERS sem o slot pode chegar antes da leva do feed.
-  ⚠️ **`FEED.JOIN_QUIET_MS` existe porque no Livre RENASCER É `leave`+`join`** — o botão DE NOVO fecha o
-  socket e abre outro —, então sem a guarda cada morte de cada jogador produzia duas linhas. A chave é a de
-  `_rosterKey` (a mesma que resolve "a mesma pessoa entre vidas") e a guarda mora DENTRO de `join`/`leave`,
-  nunca nos chamadores: há três caminhos até lá (o quit, o re-join que troca de sala e o roubo de sessão
-  pelo `resume`). Queda de rede **não** é saída: ela cai em `detach` e só vira `leave` no `housekeeping`.
-  ⚠️ `drenaFeed` descarta `sys` primeiro (teto `MAX_PER_FLUSH`): num fecho de gás com 4 abates é o
-  "entrou/saiu" que some. É o comportamento certo.
-  ⚠️ **A frase "no Livre RENASCER É `leave`+`join`" DEIXOU DE SER VERDADE** — ver o bloco abaixo. O
-  `JOIN_QUIET_MS` continua, mas cobrindo só trocar de sala e o roubo de sessão pelo `resume`; e o
-  `joined` passou a ser suprimido no LOBBY também, que é o simétrico do `left` (o `_avisaAdmins` fica
-  FORA dessa guarda: "entrou gente" vale igual na fase de espera).
+- **NA PARTIDA NINGUÉM É AVISADO DE QUEM ENTRA OU SAI — NEM O ADMINISTRADOR** (`Room.join`/`leave`,
+  `ENTRA_SAI` em `client/src/ui/KillFeed.jsx`): existiram dois avisos, e os dois saíram por pedido do dono
+  do jogo ("isso só polui a tela"). (a) As linhas ➕/➖ `{k:'sys',how:'joined'|'left'}` do kill feed, que
+  já eram só do administrador (para quem joga elas nunca responderam a uma pergunta: numa sala do Livre o
+  vaivém é constante e elas empurravam para fora do feed o que interessa, porque `drenaFeed` corta em
+  `FEED.MAX_PER_FLUSH`). (b) O `{t:'adm'}` de `Room._avisaAdmins` — faixa `#notice` + linha de chat + dois
+  sons + notificação do sistema, com o cartão Opções → Administração que pedia a permissão do navegador.
+  Saíram o método, o handler do cliente, `notificaSistema`, o cartão, `Session.isAdmin` (só servia para
+  RECEBER o aviso) e as chaves `admJoin*`/`opt.g_admin`/`adminNotify*`/`sys_joined`/`sys_left`.
+  ⚠️ **Quem modera continua vendo o vaivém na aba AO VIVO do painel** (`bus.publica('entrou'|'saiu')`), que
+  sabe mais — conta, duração, abates e a CAUSA (kick × desistência × inatividade). É por ela que
+  `_voltouAgora`/`_saiuEm`/`FEED.JOIN_QUIET_MS` continuam vivos: viram a marca `voltou` do `entrou`, que é o
+  re-join em laço que o administrador procura. Os outros `sys` (`start`, `few`, `zone`, `crunch`, `lead`)
+  continuam no feed para todo mundo.
+  ⚠️ **`ENTRA_SAI` FICA no cliente, agora para TODO MUNDO, como defesa de rollout**: um shard na build
+  anterior ainda empurra as duas linhas, e sem o filtro o cliente novo as mostraria a todos (a versão velha
+  só as escondia de quem não era admin). E um `{t:'adm'}` de pod velho cai no `else if` sem ramo — ignorado.
+  ⚠️ `user.isAdmin` do `toPublic` NÃO saiu: ele ainda decide o chat no telefone e o feed do admin com
+  `FEED.SHOW` desligado. Só a metade de SERVIDOR (a sessão de WS) perdeu o uso.
 - **A ARQUIBANCADA PREFERE GENTE** (`Room.humanosVivos`, lido por `spectateTargetFor` e `spectatePick`):
   a câmera andava pelo PLACAR, que conta o preenchimento — e no Livre ele é a maioria esmagadora da sala,
   então as setas ‹ › gastavam quase todas as paradas num robô. Assistir a um bot é assistir a ninguém: o
@@ -2444,19 +2458,6 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ E `actions.js` só tratava desconexão com erro em `screen==="game"` — na tela de morte (`"dead"`) a
   expulsão caía num toast de 3 s e deixava a tela pendurada com o socket fechado. Já valia para o kick e o
   ban do dono; passou a incluir `dead` e `round`.
-- **ENTROU GENTE DE VERDADE, E SÓ O ADMIN É AVISADO** (`Room._avisaAdmins`, `{t:'adm'}`): faixa `#notice` +
-  som + linha de chat, mais a **notificação do sistema** quando a permissão já foi concedida. O alcance é o
-  SHARD (`RoomManager` passa o `Map rooms` para cada sala); o cluster inteiro exigiria `tellPeers` e uma
-  rota interna, e um aviso não vale essa superfície.
-  ⚠️ **A sessão de WS não sabia que era de um admin**: o `RESOLVE_SQL` do token já faz `SELECT u.*`, mas
-  `persist/hooks.js` monta o retorno campo a campo e a coluna era descartada. Agora `isAdmin` viaja até
-  `Session` — e serve só para RECEBER: kick, ban e parâmetros continuam exigindo `token_kind==='admin'`,
-  que é o que impede roubar a aba do jogo de um administrador.
-  ⚠️ **Nada de `sessionId`/`userId`/IP na mensagem**: o `sessionId` é metade da credencial de `resume`, e o
-  lugar de dado de identificação é o `adminInfo`, que só sai por HTTP autenticado.
-  ⚠️ **A permissão do navegador é pedida por um BOTÃO** (Opções → Administração, visível só para admin, com
-  `isAdmin` acrescentado ao `toPublic`): `requestPermission()` exige gesto do usuário e no iframe de um
-  portal ela nem existe. O jogo nunca pede sozinho, e a faixa é sempre o chão.
 - **TAMANHO DA SALA E PREENCHIMENTOS SÃO PARÂMETROS** (`ROOM.MAX`/`ROOM.BOTS`, grupo "Salas"): mesmo
   contrato do `ROUND.TICKS` — o env semeia no boot, `Room.js` lê a CONSTANTE VIVA e `admin_settings` a
   sobrescreve em ≤30 s. Lendo `config.roomMax` o ConfigMap venceria o painel em toda sala nova.

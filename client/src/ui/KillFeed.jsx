@@ -26,17 +26,12 @@ import { useLabels } from "../hooks/useTheme.js";
 import { HOW_ICON, SYS_ICON } from "./icons.js";
 import { Nick } from "./bits.jsx";
 
-// ── "ENTROU" E "SAIU" SÓ PARA O ADMINISTRADOR ────────────────────────────────
-// Para quem joga, essas duas linhas nunca responderam a uma pergunta: numa sala do Livre o vaivém é
-// constante e elas empurram para fora do feed justamente o que interessa — quem matou quem —, porque
-// `drenaFeed` corta em FEED.MAX_PER_FLUSH e a coluna tem quatro linhas de altura.
-// ⚠️ Quem MODERA continua vendo, e por dois caminhos independentes: a aba AO VIVO do painel tem
-// `entrou`/`saiu` PRÓPRIOS, que sabem mais (se é conta, quanto durou, quantos abates e a causa — o que
-// distingue um kick de uma desistência), e o administrador que está DENTRO da partida continua com a
-// linha no canto da tela, que é onde ele está olhando.
-// ⚠️ O corte é aqui e não em `Room._pushFeed`: no servidor o feed é um só, difundido à sala inteira, e
-// filtrar por sessão custaria uma fila por jogador para poupar ~60 bytes por entrada. E o painel /admin
-// não é o único leitor — o administrador jogando é o segundo, e ele se perderia junto.
+// ── "ENTROU" E "SAIU" NÃO APARECEM PARA NINGUÉM ──────────────────────────────
+// Eles saíram do servidor (`Room.join`/`leave` não empurram mais essas linhas): numa sala do Livre o vaivém
+// é constante e elas empurravam para fora do feed justamente o que interessa — quem matou quem —, porque
+// `drenaFeed` corta em FEED.MAX_PER_FLUSH. Quem modera vê o vaivém na aba AO VIVO do painel, que sabe mais.
+// ⚠️ O filtro FICA como defesa de rollout: um shard na build anterior ainda manda as duas linhas, e sem ele
+// este cliente as mostraria a TODO MUNDO (a versão velha só as filtrava para quem não era admin).
 const ENTRA_SAI = l => l.k === "sys" && (l.how === "joined" || l.how === "left");
 
 export default function KillFeed({ h, espectando }) {
@@ -57,7 +52,7 @@ export default function KillFeed({ h, espectando }) {
   //    seria religá-lo para todo mundo. É um dos dois caminhos de moderação que o projeto declara (o
   //    outro é a aba AO VIVO do painel).
   const mostra = FEED.SHOW || espectando || admin;
-  const vivas = linhas.filter(l => agora - l.at < FEED.TTL_MS && (admin || !ENTRA_SAI(l)));
+  const vivas = linhas.filter(l => agora - l.at < FEED.TTL_MS && !ENTRA_SAI(l));
   if (!vivas.length || !mostra) return null;
   const F = LB.killFeed || {};
   const sysText = l => (F["sys_" + l.how] || l.how).replace("{n}", l.how === "crunch" ? crunchLabel(LB, l.n) : (l.a && l.a.name) || l.n);

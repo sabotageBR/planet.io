@@ -178,11 +178,6 @@ export class Room{
      */
     this.sim.onFeed=o=>{
       if(!this.bus.on)return;
-      // ⚠️ `joined`/`left` NÃO passam por aqui: o painel já tem `entrou`/`saiu` próprios, publicados em
-      // `join`/`leave`, e eles sabem MAIS (se é conta, quanto durou, quantos abates, e a causa — que
-      // distingue um kick de uma desistência). Deixando os dois, cada entrada e cada saída viravam DUAS
-      // linhas iguais na coluna, uma delas mais pobre. Visto na primeira medição com jogadores de verdade.
-      if(o.k==='sys'&&(o.how==='joined'||o.how==='left'))return;
       this.bus.publica(o.k==='sys'?'marco':o.k,{sala:this.code,how:o.how,
         a:this._nomeDe(o.a),b:this._nomeDe(o.b),by:this._nomeDe(o.by),n:o.n});};
     this.sim.on('death',info=>{
@@ -499,23 +494,15 @@ export class Room{
     if(session.avatar&&session.userId)this._setAvatar(slot,session.userId,session.avatar);
     if(lobby)this.broadcastLobby();
     if(this.hostUserId!=null){const h=this.hostSession();if(h)this.sendHost(h);this.holdUntil=Date.now()+ROOM.HOST_HOLD_MS;}
-    // ── QUEM CHEGOU ── uma linha no feed e, para quem é admin, um aviso. Bots NÃO passam por aqui (nascem
-    // em `_nasceBot`), então "gente de verdade" sai por construção — o mesmo mecanismo do roster do dono,
-    // e é ele que mantém o `anonBots` do BR intacto sem uma linha a mais.
+    // ── QUEM CHEGOU ── só o painel /admin (aba AO VIVO) fica sabendo. Na PARTIDA não há mais aviso nenhum:
+    // a linha "entrou" do kill feed e a faixa + chat + som + notificação que o administrador recebia
+    // (`{t:'adm'}`) saíram — numa sala do Livre o vaivém é constante e isso só poluía a tela de quem joga.
+    // Bots NÃO passam por aqui (nascem em `_nasceBot`), então "gente de verdade" sai por construção.
     if(gp){
       this._rosterVolta(gp);
-      // ⚠️ `!lobby` no FEED, para casar com o `leave`, que já suprimia a linha de saída na fase de espera.
-      // A assimetria era antiga e silenciosa: o lobby anunciava quem chegava e não quem desistia, e como o
-      // `BrLobby` não desenha o feed, aquilo era ruído que ninguém via ocupando o teto do dreno.
-      // O AVISO AO ADMIN não entra nessa guarda: "entrou gente de verdade" vale igual no lobby — é
-      // justamente lá que ele quer saber que a partida vai encher.
+      // ⚠️ A marca `voltou` NÃO esconde nada: o administrador QUER ver o re-join — alguém entrando e saindo
+      // em laço é exatamente o padrão que ele procura. Ela vai junto e a tela do painel decide se colapsa.
       const voltou=this._voltouAgora(gp);
-      if(!lobby&&!voltou)this._pushFeed({k:'sys',a:slot,b:-1,how:'joined',by:null,name:gp.name||null});
-      if(!voltou)this._avisaAdmins(session,gp);
-      // ⚠️ NO PAINEL A GUARDA `voltou` NÃO VALE. No feed ela existe para o respawn não virar "saiu/entrou"
-      // duas vezes; aqui o administrador QUER ver o re-join — alguém entrando e saindo em laço é
-      // exatamente o padrão que ele está procurando, e escondê-lo seria esconder o sintoma. Vai a marca
-      // `voltou` e a tela decide se colapsa.
       this.bus.publica('entrou',{sala:this.code,quem:gp.name||'',conta:!!gp.registered,
         nivel:gp.level|0,pais:gp.country||null,voltou,lobby:!!lobby});}
     return slot;}
@@ -529,8 +516,7 @@ export class Room{
    * O que ele NÃO faz é o que separa assistir de jogar, e cada omissão aqui tem um dono:
    * · `usedNicks` — assistir não reserva nome. Reservando, quem assistiu uma partida não conseguiria
    *   ENTRAR na seguinte com o próprio nick, e a sala viraria lista negra por causa de quem só olhava.
-   * · feed e `_avisaAdmins` — "entrou gente" é sobre quem vai jogar; um espectador virando linha do kill
-   *   feed gastaria o teto de `drenaFeed` com o que ninguém quer ler.
+   * · `entrou` do painel — "entrou gente" é sobre quem vai jogar; ele tem o `assiste` próprio.
    * · `_rosterVolta`/roster — ele não disputa o placar nem o pódio, então não entra na tabela de quem
    *   disputou. `Sim.endRound` já o pula pelo `gp.dead`.
    * · persistência — quem descarta a sessão é o `wsServer` (`hooks.dropSession`), pelo mesmo caminho que
@@ -552,9 +538,9 @@ export class Room{
     this.spectateTargetFor(session);
     return slot;}
   /**
-   * A MESMA pessoa acabou de sair desta sala? No Livre renascer é `leave`+`join` (o botão DE NOVO fecha o
-   * socket e abre outro), então sem esta guarda cada morte viraria "Fulano saiu" + "Fulano entrou".
-   * Consome a marca: quem volta uma vez fica quieto, quem volta de novo mais tarde é anunciado.
+   * A MESMA pessoa acabou de sair desta sala (trocar de sala e voltar, roubo de sessão pelo `resume`)? Vira a
+   * marca `voltou` do `entrou` do painel. Consome a marca: quem volta uma vez é marcado, quem volta de novo
+   * mais tarde não.
    */
   _voltouAgora(gp){
     const k=this._rosterKey(gp),t=this._saiuEm.get(k);
@@ -619,10 +605,8 @@ export class Room{
     if(gp&&gp.spectator){this.bus.publica('parou',{sala:this.code,quem:gp.name||'',
       durouS:Math.round((this.sim.tick-gp.entrouTick)/TICK_HZ)});}
     else if(gp){this._rosterFold(gp);this._rosterLeft(gp);
-      // ⚠️ ANTES do `sim.remove`: o nome sai daqui, e o cliente resolve nome por `view.playerOf` — o PLAYERS
-      // já sem o slot pode chegar antes do feed. Por isso a linha leva o `name` junto.
       this._saiuEm.set(this._rosterKey(gp),Date.now());
-      if(this.phase!=='lobby')this._pushFeed({k:'sys',a:slot,b:-1,how:'left',by:null,name:gp.name||null});
+      // (a linha "saiu" do kill feed também saiu da partida — ver o `join`; quem conta a saída é o painel)
       // ⚠️ AQUI DENTRO, antes do `sim.remove(slot)` lá embaixo: depois dele o `gp.name` já não existe.
       // ⚠️ E leva o `motivo`, que NÃO é o `cause`: `leave` também é a saída do KICK do painel, a da expiração
       // do housekeeping e a da remoção por INATIVIDADE — coisas muito diferentes que o administrador precisa
@@ -875,6 +859,10 @@ export class Room{
     // 2. a gaiola ANTES de posicionar — `_posicionaGaiola` a lê
     w.cage={x:w.w/2,y:w.h/2,ap:BR.CAGE_AP*w.w};
     this._posicionaGaiola();
+    // 2b. ...e a estrela que ficou em cima deles sai. As 19 nasceram com o mundo, sorteadas no mapa inteiro,
+    // e a gaiola não olha nenhuma: ~1 partida em 5 largava com uma estrela no meio da multidão. Some em
+    // silêncio (o lobby não mandou snapshot nenhum, ninguém a viu) e volta pela fila, longe de todo planeta.
+    w.afastaEstrelas();
     // 3. o relógio da partida começa quando a gaiola ABRE. Escrito aqui e no FUTURO (não lá no `largar()`)
     // para que este único `broadcastPhase` já leve o `round` definitivo: o céu, a contagem e o BIG CRUNCH
     // saem todos dele, e um `roundStart` zero durante três segundos faria os três mentirem.
@@ -1877,25 +1865,6 @@ export class Room{
       if(lb.length){const gp=sim.players.get(lb[0].slot);if(gp)this.champion={slot:gp.slot,team:gp.team};}
       this.endRound('lastAlive');return;}
     const f1=performance.now();this._flush(sim);f.envio=performance.now()-f1;}
-  /**
-   * ENTROU GENTE DE VERDADE — e só quem é ADMIN fica sabendo.
-   * ⚠️ "De verdade" é `Room.join`, e só: preenchimento nunca tem `Session` (nasce em `_nasceBot`), então
-   * não há filtro a escrever nem risco de vazar o `anonBots` do Battle Royale.
-   * ⚠️ NADA de `sessionId`, `userId` ou IP aqui: o `sessionId` é metade da credencial de `resume`, e o
-   * lugar de dado de identificação é o `adminInfo`, que só sai por HTTP autenticado. Vai o nome e a sala.
-   * ⚠️ `is_admin` no token do JOGO serve para RECEBER um aviso, nunca para AGIR: kick, ban e parâmetros
-   * continuam exigindo `token_kind==='admin'`, que é o que impede roubar a aba do jogo de um administrador.
-   * O ALCANCE É A PRÓPRIA SALA — versão anterior varria o SHARD inteiro (`RoomManager` passando o `Map`
-   * de salas para cada uma), e isso fazia o aviso (chat + faixa + som + notificação do sistema) aparecer
-   * para um admin jogando numa sala sempre que ALGUÉM entrasse em QUALQUER outra sala do shard,
-   * incomodando quem estava no meio de uma partida. A visão cross-shard de "quem entrou onde" continua
-   * existindo — é o painel /admin (aba Ao Vivo), alimentado por `bus.publica('entrou',...)` logo abaixo em
-   * `join()`, que é o caminho certo para monitorar o cluster inteiro.
-   */
-  _avisaAdmins(quem,gp){
-    const msg={t:'adm',kind:'join',name:gp.name||'',room:this.code,registered:!!gp.registered,at:Date.now()};
-    for(const s of this.sessions.values())
-      if(s!==quem&&s.ws&&s.isAdmin)s.sendJson(msg);}
   /**
    * Apaga o "está falando" de quem estourou o prazo (morto incluído: ele fala, então a varredura não pode mais
    * apagar o 🎤 dele meio segundo depois de acender). A flag TALK é calculada ao vivo em `playersInfo`, mas o

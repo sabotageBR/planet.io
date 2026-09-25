@@ -17,7 +17,7 @@ const mudo={info(){},warn(){},error(){},debug(){}};
 const sala=(extra={})=>new Room({code:'TST0',shard:0,seed:7,hooks:null,log:mudo,
   metrics:{inc(){},add(){}},config:{},roomMax:30,roomBots:0,mode:MODE.FREE,...extra});
 const sessaoFalsa=()=>({room:null,slot:-1,pid:0,known:new Set(),rect:null,specSlot:-1,avatar:null,
-  userId:null,resumeToken:'tok',isAdmin:false,sessionId:null,kicked:false,ws:{},disconnectedAt:0,json:[],
+  userId:null,resumeToken:'tok',sessionId:null,kicked:false,ws:{},disconnectedAt:0,json:[],
   sendJson(m){this.json.push(m);},send(){return true;},
   error(code){this.kicked=true;this.json.push({t:'error',code});},
   detach(){this.ws=null;this.disconnectedAt=Date.now();}});

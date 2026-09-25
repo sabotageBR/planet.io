@@ -11,7 +11,7 @@ if(!process.env.DATABASE_URL){try{for(const l of readFileSync(path.join(ROOT,'.e
 process.env.LOG_LEVEL=process.env.TEST_LOG||'silent';process.env.SHARD='0';process.env.SHARDS='1';process.env.PEERS='';
 const {startServer}=await import('../src/index.js');
 const {decodeMessage,encodeInput,encodeVoiceUp,MSG,KIND,PLAYER_FLAG,SELF_FLAG,NO_TEAM,PROTOCOL_VERSION}=await import('@warspace/shared/protocol/index.js');
-const {MODE,BR,ZONE,VOICE,CHAT,WEAPON,NET,BOT_NAMES,BOT_TALK,modeCap}=await import('@warspace/shared/constants.js');
+const {MODE,BR,ZONE,VOICE,CHAT,WEAPON,NET,STAR,BOT_NAMES,BOT_TALK,modeCap}=await import('@warspace/shared/constants.js');
 // O repertório fixo saiu de `constants.js` e virou `rooms/botFrases.js`, com as três línguas: ele é o CHÃO
 // da fala e era, por isso, a maior fonte de português na tela com o idioma travado em inglês.
 const {FRASES,IDIOMA_BASE,frasesDe}=await import('../src/rooms/botFrases.js');
@@ -139,6 +139,9 @@ test('Battle Royale: cheio o lobby, entra a contagem e a partida larga',async()=
   const c=new C(wsUrl);await c.open();
   const r=await c.join({nick:'Larga',mode:MODE.BR,teamSize:1,room:newRoom()});
   const room=roomOf(r.code);
+  // uma estrela cravada no MEIO da gaiola: as 19 nascem com o mundo, sorteadas no mapa inteiro, e a largada
+  // põe os 50 no centro — sem `afastaEstrelas` ~1 partida em 5 largava com uma estrela no meio da multidão
+  const w0=room.sim.world,cravada=w0.spawnStar(true,{x:w0.w/2,y:w0.h/2});
   room.lobbyUntil=room.sim.tick+60;room.lobbyStart=room.sim.tick;
   const cont=await c.until(()=>c.all('lobby').find(x=>x.startsInMs>0),6000,'contagem');
   assert.ok(cont.startsInMs>0&&cont.startsInMs<=BR.COUNTDOWN_TICKS/60*1000+200,'a contagem é curta e vem em ms');
@@ -150,6 +153,10 @@ test('Battle Royale: cheio o lobby, entra a contagem e a partida larga',async()=
   // paz são do `largar()`, CAGE_TICKS depois. É `phase!=='lobby'` que faz o snapshot sair — e é o snapshot
   // que desenha o octógono —, então a fase vira 'live' já aqui, com o jogo desarmado por dentro.
   assert.ok(room.sim.world.cage,'a gaiola existe na largada');
+  assert.ok(cravada.dead,'a estrela que estava dentro da gaiola sai na largada');
+  for(const st of room.sim.world.stars){if(st.dead)continue;
+    for(const pc of room.sim.world.pieces){if(pc.dead)continue;const d=Math.hypot(pc.x-st.x,pc.y-st.y);
+      assert.ok(d>=pc.r+STAR.SAFE_SPAWN-60,`estrela a ${(d-pc.r).toFixed(0)} px da borda de um planeta na largada`);}}
   assert.equal(room.sim.world.peace,true,'e dentro dela ninguém come, atira nem divide');
   assert.equal(room.zone,null,'a zona só nasce quando a gaiola abre — é assim que "o gás não age" sai de graça');
   assert.equal(ph.round.startsAt,room.roundStart,'a contagem e o relógio da rodada apontam para o MESMO tick');

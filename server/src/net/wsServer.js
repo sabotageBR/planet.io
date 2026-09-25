@@ -39,7 +39,7 @@ const JOIN_TIMEOUT_MS=3000,MAX_PAYLOAD=VOICE.MAX_BYTES+VOICE_UP_HEADER_BYTES+64,
 const withTimeout=(p,ms)=>new Promise((res,rej)=>{const t=setTimeout(()=>rej(new Error('timeout')),ms);Promise.resolve(p).then(v=>{clearTimeout(t);res(v);},e=>{clearTimeout(t);rej(e);});});
 const unsaved=nick=>{const n=String(nick||'Viajante').slice(0,16)||'Viajante';
   // mesmo easter egg do caminho com banco (persist/hooks.js): ele depende só do nick
-  return{ok:true,userId:null,nick:n,registered:false,skinId:eggSkinFor(n)||0,level:0,avatar:null,prefs:{},sessionId:null,unsaved:true,isAdmin:false};};
+  return{ok:true,userId:null,nick:n,registered:false,skinId:eggSkinFor(n)||0,level:0,avatar:null,prefs:{},sessionId:null,unsaved:true};};
 const NICK_RE=/^[\p{L}\p{N} _.\-]{2,16}$/u;
 const cleanNick=n=>{const s=String(n??'').normalize('NFKC').replace(/\s+/g,' ').trim().slice(0,16);return NICK_RE.test(s)?s:'Viajante';};
 /** @param {{server:any,config:any,rooms:any,hooks:any,log:any,metrics:any}} o */
@@ -137,7 +137,7 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
           // ⚠️ UUID NOVO, nunca o `res.sessionId`: aquele é a sessão de PERSISTÊNCIA que o `finally` vai
           // descartar logo abaixo, e guardá-lo aqui deixaria um id morto circulando por um caminho que
           // ainda o aceita (o `resume`). O da Session existe só para o `resume` do espectador funcionar.
-          s.sessionId=randomUUID();s.userId=res.userId??null;s.key=sessionKey(msg.token);s.name=nickEsp;s.unsaved=!!res.unsaved;s.isAdmin=!!res.isAdmin;
+          s.sessionId=randomUUID();s.userId=res.userId??null;s.key=sessionKey(msg.token);s.name=nickEsp;s.unsaved=!!res.unsaved;
           s.level=res.level|0;s.avatar=res.avatar||null;s.country=res.country||null;
           // ⚠️ E o `GamePlayer` nasce com `sessionId:null`. Ele é a chave que `onMatchEnd` usaria; com ela
           // nula, nenhum caminho de persistência consegue sequer tentar gravar uma partida que não houve.
@@ -184,7 +184,7 @@ export function createWsServer({server,config,rooms,hooks,log,metrics}){
         // pelo matchmaking e refletido em `info().open`, onde ainda não há jogador nenhum para identificar.
         if(room.banned({userId:res.userId??null,key:sessionKey(msg.token)})){
           return s.error('ROOM_BANNED','você foi banido dessa sala');}
-        s.sessionId=res.sessionId||randomUUID();s.userId=res.userId??null;s.key=sessionKey(msg.token);s.name=nick;s.unsaved=!!res.unsaved;s.isAdmin=!!res.isAdmin;
+        s.sessionId=res.sessionId||randomUUID();s.userId=res.userId??null;s.key=sessionKey(msg.token);s.name=nick;s.unsaved=!!res.unsaved;
         s.level=res.level|0;s.avatar=res.avatar||null;s.country=res.country||null;
         room.join(s,{name:s.name,registered:!!res.registered,skinId:res.skinId|0,sessionId:s.sessionId,userId:s.userId,level:s.level,country:s.country,party});
         aberta=null;                       // a partir daqui ela é da SALA: quem a fecha é `Room.leave`/a morte

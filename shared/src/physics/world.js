@@ -281,7 +281,7 @@ export class World{
     this.holes.push(h);return this._register(h);}
   /**
    * Estrela: perigo que estilhaça quem encosta e termina em supernova. Sem posição, nasce em GROW (`k` rampa) longe
-   * das outras (MIN_SEP), dos buracos e dos jogadores (SAFE_SPAWN) e **fora do anel de qualquer cinturão**
+   * das outras (MIN_SEP), dos buracos e da BORDA de toda peça (SAFE_SPAWN, `_longeDasPecas`) e **fora do anel de qualquer cinturão**
    * (BELT_SAFE): com a trombada meteoro×estrela, uma estrela dentro de um cinturão vira moedor e a população
    * nunca para de repor. `active` pula a fase GROW (início do mundo e filhas de um racha, que vêm com `{x,y,r,vx,vy,life}`).
    */
@@ -291,11 +291,12 @@ export class World{
       // porque 1400 px de folga não cabem num círculo de 1400. Sem zona nada muda: mesmo sorteio de sempre.
       const zc=this.zoneNow();
       const sep=zc?Math.min(STAR.MIN_SEP,zc.r*ZONE.STAR_SEP_K):STAR.MIN_SEP;
-      const s=this._farSpot(STAR_MARGIN,this.stars,sep,this.holes,BLACKHOLE.MIN_SEP,this.pieces,STAR.SAFE_SPAWN,this._notInBelt,zc,ZONE.STAR_PAD);
-      // Sem zona `_farSpot` nunca "falha" de um jeito que importe (o fallback é um ponto qualquer do mapa e
-      // isso sempre foi aceitável). COM zona ele pode não achar nada limpo dentro do círculo, e aí largar a
-      // estrela no ponto de fallback é largá-la no gás ou em cima de alguém: melhor não nascer agora.
-      if(zc&&!s.ok)return null;
+      const s=this._farSpot(STAR_MARGIN,this.stars,sep,this.holes,BLACKHOLE.MIN_SEP,null,0,this._starSpotOk,zc,ZONE.STAR_PAD);
+      // Falhar as 40 tentativas tem dois pesos. Se o que reprovou foram as regras MOLES (separação entre
+      // estrelas, anel de cinturão), o ponto de fallback do Livre serve como sempre serviu. Mas a estrela
+      // NUNCA nasce em cima de um planeta, em modo nenhum: aí ela não nasce agora, e quem chamou (o dreno de
+      // `starQueue`) a devolve à fila. COM zona qualquer falha recusa — o fallback cairia no gás.
+      if(!s.ok&&(zc||!this._longeDasPecas(s.x,s.y)))return null;
       x=s.x;y=s.y;}
     const st=createBody(KIND.STAR,this.newId(),clamp(x,r,this.w-r),clamp(y,r,this.h-r),r);st.seed=rng.next();st.vx=vx;st.vy=vy;
     if(active){st.type=STAR_PHASE.ACTIVE;st.k=1;st.life=life||this.tick+rng.int(STAR.LIFE_TICKS[0],STAR.LIFE_TICKS[1]);}
@@ -316,6 +317,33 @@ export class World{
   /** (x,y) está a ≥ BELT_SAFE do ANEL de todo cinturão? (o teste é sobre o anel, não sobre o centro). */
   _notInBelt=(x,y)=>{const m=ASTEROID.BELT_SAFE,bs=this.belts;
     for(let i=0;i<bs.length;i++){const b=bs[i],dx=x-b.cx,dy=y-b.cy,d=Math.sqrt(dx*dx+dy*dy);if(Math.abs(d-b.rad)<m)return false;}return true;};
+  /**
+   * (x,y) está a ≥ STAR.SAFE_SPAWN da BORDA de toda peça viva? É a regra que impede a estrela de nascer
+   * DENTRO de um planeta. Ela já existia medida centro a centro (`farFrom`), e com peças de até
+   * `PLAYER.MAX_R` = 1250 isso deixava o gigante receber a estrela dentro do próprio disco — medido, 34 %
+   * dos pontos aprovados numa sala com oito gigantes. Uma estrela em GROW arma em ~1 s (`ARM_K`) e o planetão
+   * não sai dela nesse tempo: queimava 30 % e estilhaçava sem ter feito nada.
+   * ⚠️ Laço sobre `this.pieces`, NUNCA a grade: na fase 11 ela é a da fase 3 (raios velhos, sem as peças que
+   * nasceram no meio do tick), e no construtor nem existe. São ≤ 800 peças × 40 tentativas, só quando nasce estrela.
+   */
+  _longeDasPecas(x,y){const ps=this.pieces,m=STAR.SAFE_SPAWN;
+    for(let i=0;i<ps.length;i++){const p=ps[i];if(p.dead)continue;const dx=p.x-x,dy=p.y-y,l=p.r+m;if(dx*dx+dy*dy<l*l)return false;}
+    return true;}
+  /** O filtro inteiro do ponto de uma estrela nova (o slot `pred` de `_farSpot` é um só). */
+  _starSpotOk=(x,y)=>this._notInBelt(x,y)&&this._longeDasPecas(x,y);
+  /**
+   * Tira de perto dos planetas toda estrela que ficou colada neles — é o caso da LARGADA do Battle Royale: as
+   * estrelas nascem com o mundo, espalhadas pelo mapa, e a gaiola põe os 50 no centro sem olhar nenhuma
+   * (~1 partida em 5 largava com uma estrela dentro do octógono). Some em SILÊNCIO e volta para a fila, o
+   * molde de `_cullStarsOutOfZone`: sem supernova, sem prêmio, e a que volta nasce pelo `spawnStar`, longe.
+   * ⚠️ Só serve ANTES de o cliente ver o mundo (o lobby não manda snapshot): no meio da partida, uma estrela
+   * sumindo debaixo do nariz de alguém seria outro defeito.
+   * @returns {number} quantas saíram
+   */
+  afastaEstrelas(){let n=0;const st=this.stars;
+    for(let i=0;i<st.length;i++){const b=st[i];if(b.dead||this._longeDasPecas(b.x,b.y))continue;
+      b.dead=true;this.queueStar(ZONE.STAR_RETRY_TICKS);n++;}
+    return n;}
   /**
    * Ponto aleatório com margem a ≥ minX de cada lista (até 3; null ignora) e passando por `pred`.
    * 40 tentativas; devolve a última se falhar, mas agora DIZ que falhou em `s.ok` — quem chama é que sabe
@@ -712,7 +740,7 @@ export class World{
       // fila, então se a partida durar num círculo grande a população se recompõe sozinha.
       if(zc&&zc.r<ZONE.STAR_MIN_R){e.at=tick+ZONE.STAR_RETRY_TICKS;sq[k++]=e;continue;}
       const st=this.spawnStar();
-      if(!st){e.at=tick+ZONE.STAR_RETRY_TICKS;sq[k++]=e;continue;}   // círculo sem lugar limpo agora: tenta de novo
+      if(!st){e.at=tick+ZONE.STAR_RETRY_TICKS;sq[k++]=e;continue;}   // sem lugar limpo agora (círculo apertado, ou só sobrou ponto colado num planeta): tenta de novo
       ev.push({type:"STAR_RESPAWN",starId:st.id,x:st.x,y:st.y,r:st.r});}
       sq.length=k;}
     // A estrela que o círculo deixou para trás some (e volta para a fila, senão a população cai para sempre).

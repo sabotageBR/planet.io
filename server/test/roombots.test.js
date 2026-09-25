@@ -129,7 +129,9 @@ test('a cota não depende de sorte: toda sala abre em andamento', () => {
 test('a mistura se esgota: quem chega depois da janela entra pequeno', () => {
   // sala com alvo GRANDE de propósito: com o alvo colado na semente a sala enche antes dos 2 min da
   // janela e não sobra ninguém para chegar depois — que é justamente o caso que este teste observa.
-  const r=sala(ROOM.BOT_SEED+25); r.start();
+  // ⚠️ +40 e não +25: com +25 a sala enchia NO TICK do fim da janela, e bastou o stream do rng andar
+  // (o spawn de estrela passou a recusar ponto colado em planeta) para o teste ficar sem ninguém a observar.
+  const r=sala(ROOM.BOT_SEED+40); r.start();
   anda(r,ROOM.SEED_WINDOW_TICKS+1);
   const antes=r.sim.botCount();
   assert.ok(antes>ROOM.BOT_SEED,'a chegada gradual aconteceu durante a janela');
@@ -186,7 +188,7 @@ test('destaques: sem ninguém pontuando, o cartão fica vazio em vez de mentir',
 // O teste tem que passar pelo caminho REAL (join/leave/join/endRound) — com o roster montado à mão, como
 // nos dois testes acima, este defeito é invisível por construção.
 const sessaoFalsa=(userId,tok)=>({room:null,slot:-1,pid:0,known:new Set(),rect:null,specSlot:-1,avatar:null,
-  userId,resumeToken:tok,isAdmin:false,sessionId:null,json:[],sendJson(m){this.json.push(m);},send(){return true;}});
+  userId,resumeToken:tok,sessionId:null,json:[],sendJson(m){this.json.push(m);},send(){return true;}});
 
 test('quem morreu e voltou continua no placar — e é o campeão se estiver maior', () => {
   const r=sala(2); r.start();

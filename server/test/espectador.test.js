@@ -17,7 +17,7 @@ const sala=(mode=MODE.FREE,extra={})=>{
     config:{},roomMax:4,roomBots:0,mode,...extra});
   r.start();return r;};
 const sessao=()=>({ws:{},sendJson(){},send(){return true;},known:new Map(),detach(){},
-  name:'',userId:null,key:null,level:0,avatar:null,country:null,sessionId:null,unsaved:true,isAdmin:false,
+  name:'',userId:null,key:null,level:0,avatar:null,country:null,sessionId:null,unsaved:true,
   slot:-1,room:null,pid:0,rect:null,specSlot:-1,espectador:false,lastActiveAt:Date.now()});
 // ⚠️ `s.name` é escrito pelo `wsServer` antes do join, não pela Room — o `hostRoster` lê a SESSÃO.
 const entra=(r,nome)=>{const s=sessao();s.name=nome;r.join(s,{name:nome});return s;};

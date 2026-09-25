@@ -18,7 +18,7 @@ const sala=(extra={})=>new Room({code:'TST0',shard:0,seed:7,hooks:null,log:mudo,
   metrics:{inc(){},add(){}},config:{},roomMax:30,roomBots:0,mode:MODE.FREE,...extra});
 /** O molde de `quit.test.js`, mais os dois campos que a inatividade lê. */
 const sessaoFalsa=(o={})=>({room:null,slot:-1,pid:0,known:new Set(),rect:null,specSlot:-1,avatar:null,
-  userId:null,resumeToken:'tok',isAdmin:false,sessionId:null,kicked:false,ws:{},disconnectedAt:0,json:[],
+  userId:null,resumeToken:'tok',sessionId:null,kicked:false,ws:{},disconnectedAt:0,json:[],
   lastActiveAt:0,idleWarnedAt:0,name:'Fulano',
   marcaAtivo(now=Date.now()){this.lastActiveAt=now;this.idleWarnedAt=0;},
   sendJson(m){this.json.push(m);},send(){return true;},
