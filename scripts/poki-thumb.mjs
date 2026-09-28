@@ -4,7 +4,7 @@
 //   A · perseguição — o laço inteiro: ele engole a comida do campo enquanto persegue um planeta MENOR;
 //   B · supernova   — a etapa 1 do tutorial: a estrela estoura e ele come os pedaços (a luz vem do estouro);
 //   C · o salto     — a etapa 2: ele se DIVIDE e a metade lançada alcança o menor (a de trás tem o sorriso
-//                     da skin do jogo);
+//                     da skin do jogo), com uma supernova estourando no canto — A ESCOLHIDA;
 //   D · close       — o rosto ocupando o tile, a mais legível no tile de 94 px.
 //
 // ⚠️ É A PARTIDA, NÃO UM CARTAZ: tudo o que aparece existe no jogo do jeito que o jogador vai ver no pacote.
@@ -35,7 +35,7 @@
 //
 // uso:  [POKI_THUMB=<id>] node scripts/poki-thumb.mjs [pasta]   → brand/poki/ por padrão:
 //   opcoes/<id>-628.png + <id>.svg   as quatro cenas, para comparar (a-perseguicao · b-supernova · c-salto · d-close)
-//   thumb-1256.png  a ESCOLHIDA (POKI_THUMB, padrão a-perseguicao), no tamanho de SUBIR — o dobro do mínimo:
+//   thumb-1256.png  a ESCOLHIDA (POKI_THUMB, padrão c-salto), no tamanho de SUBIR — o dobro do mínimo:
 //                   o tile maior tem 314 px, e o celular tem dpr 2–3
 //   thumb-1256.jpg  a mesma em JPG, se o formulário recusar o PNG pelo tamanho
 //   thumb-628.png   o mínimo exato deles
@@ -346,6 +346,38 @@ function cenaPerseguicao() {
   ${corrente([958, 468], [812, 612], [bx, by], [[0, 30], [.16, 26], [.31, 31], [.45, 23], [.58, 20], [.7, 17], [.81, 13], [.91, 10]])}`);
 }
 
+/**
+ * A SUPERNOVA do jogo: a estrela estoura em raios e pedaços brilhantes que voam para FORA (a cauda de cada
+ * pedaço aponta de volta para o centro). `k` é a escala (1 = a da cena B); `livre(x,y,r,a)` diz onde um
+ * pedaço pode cair — ninguém nasce em cima de um rosto. A ordem dos sorteios é fixa: a mesma semente dá o
+ * mesmo estouro. Devolve o clarão largo (vai ANTES de tudo) e o estouro em si.
+ */
+const CORES_NOVA = ["#ffd96b", "#fff1d6", "#ffb547", "#ff9e57", "#ff7ab3", "#ffcf9a"];
+function supernova(N, k, seed, livre = () => true) {
+  const rnd = rng(seed);
+  let raios = "", pedacos = "";
+  for (let i = 0; i < 18; i++) {
+    const a = i / 18 * 2 * Math.PI + (rnd() - .5) * .16, longo = i % 2 === 0;
+    raios += cauda(N.x, N.y, -Math.cos(a), -Math.sin(a), (longo ? 340 + rnd() * 120 : 190 + rnd() * 80) * k, (longo ? 46 : 30) * k, longo ? "#fff1d6" : "#ffd96b", longo ? .5 : .45);
+  }
+  for (let i = 0; i < 26; i++) {
+    const a = rnd() * 2 * Math.PI, d = (150 + rnd() * 320) * k, r = (9 + rnd() * 14) * Math.sqrt(k);
+    const x = N.x + Math.cos(a) * d, y = N.y + Math.sin(a) * d;
+    if (x < 40 || x > 960 || y < 40 || y > 960 || !livre(x, y, r, a)) continue;
+    pedacos += particula(x, y, r, CORES_NOVA[i % CORES_NOVA.length], [Math.cos(a), Math.sin(a), r * 3.6]);
+  }
+  return {
+    clarao: `<circle cx="${N.x}" cy="${N.y}" r="${n(560 * k)}" fill="url(#clarao)" opacity=".55"/>`,
+    estouro: `${raios}
+  <circle cx="${N.x}" cy="${N.y}" r="${n(210 * k)}" fill="url(#clarao)"/>
+  <circle cx="${N.x}" cy="${N.y}" r="${n(62 * k)}" fill="#fffbea"/>
+  ${faisca(N.x, N.y, n(118 * k), 1)}
+  ${pedacos}`,
+  };
+}
+/** o ângulo entre duas direções, em (-π, π] */
+const difAng = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+
 // ── B · A SUPERNOVA ───────────────────────────────────────────────────────────
 // A etapa 1 do tutorial: a estrela estoura e ele avança de boca aberta sobre os pedaços brilhantes. Um
 // personagem só e o elemento de jogo mais vistoso do mapa; quem ilumina a cena é a explosão.
@@ -356,37 +388,19 @@ function cenaSupernova() {
   const dx = N.x - M.x, dy = N.y - M.y, dl = Math.hypot(dx, dy), ux = dx / dl, uy = dy / dl;
   LUZ = [ux, uy];
   const GIRO = -20, ROSTO = [44, -50];
-  const rnd = rng(23);
-  let raios = "";
-  for (let i = 0; i < 18; i++) {
-    const a = i / 18 * 2 * Math.PI + (rnd() - .5) * .16, longo = i % 2 === 0;
-    raios += cauda(N.x, N.y, -Math.cos(a), -Math.sin(a), longo ? 340 + rnd() * 120 : 190 + rnd() * 80, longo ? 46 : 30, longo ? "#fff1d6" : "#ffd96b", longo ? .5 : .45);
-  }
-  // os pedaços voando para FORA (a cauda aponta de volta para o centro)…
-  const cores = ["#ffd96b", "#fff1d6", "#ffb547", "#ff9e57", "#ff7ab3", "#ffcf9a"];
+  // os pedaços voam para fora — menos na direção dele (esses são os que ele suga, logo abaixo)
   const paraEle = Math.atan2(M.y - N.y, M.x - N.x);
-  let pedacos = "";
-  for (let i = 0; i < 26; i++) {
-    const a = rnd() * 2 * Math.PI, d = 150 + rnd() * 320, r = 9 + rnd() * 14;
-    const x = N.x + Math.cos(a) * d, y = N.y + Math.sin(a) * d;
-    if (Math.abs(Math.atan2(Math.sin(a - paraEle), Math.cos(a - paraEle))) < .5 || x < 40 || x > 960 || y < 40 || y > 960) continue;
-    if (Math.hypot(x - M.x, y - M.y) < M.r + 30) continue;
-    pedacos += particula(x, y, r, cores[i % cores.length], [Math.cos(a), Math.sin(a), r * 3.6]);
-  }
+  const nova = supernova(N, 1, 23, (x, y, r, a) => Math.abs(difAng(a, paraEle)) >= .5 && Math.hypot(x - M.x, y - M.y) >= M.r + 30);
   // …e os que ele suga: saem do estouro, contornam o rosto pela direita e entram pelo canto da boca
   const [bx, by] = doRosto(M, GIRO, ROSTO, [150, 118]);
   const S0 = [N.x - ux * 120, N.y - uy * 120];
-  const naBoca = corrente(S0, [S0[0] + 120, S0[1] + 230], [bx, by], [[0, 28], [.17, 25], [.33, 29], [.48, 22], [.62, 19], [.74, 16], [.85, 12], [.93, 9.5]], cores);
+  const naBoca = corrente(S0, [S0[0] + 120, S0[1] + 230], [bx, by], [[0, 28], [.17, 25], [.33, 29], [.48, 22], [.62, 19], [.74, 16], [.85, 12], [.93, 9.5]], CORES_NOVA);
   return svgDe(`
   ${estrelas(11)}
-  <circle cx="${N.x}" cy="${N.y}" r="560" fill="url(#clarao)" opacity=".55"/>
+  ${nova.clarao}
   <circle cx="${M.x}" cy="${M.y}" r="${M.r * 1.4}" fill="url(#aura)"/>
   ${faisca(120, 150, 16, .8)}${faisca(90, 560, 10, .6)}${faisca(560, 940, 12, .6)}
-  ${raios}
-  <circle cx="${N.x}" cy="${N.y}" r="210" fill="url(#clarao)"/>
-  <circle cx="${N.x}" cy="${N.y}" r="62" fill="#fffbea"/>
-  ${faisca(N.x, N.y, 118, 1)}
-  ${pedacos}
+  ${nova.estouro}
   ${rastroDe(M, ux, uy, [[-.6, 170, 22], [-.28, 240, 28], [.04, 200, 22], [.36, 150, 16]])}
   <g transform="${estica(M, ux, uy)}">${marte({ ...M, giro: GIRO, rosto: ROSTO, olhar: [24, -6], lw: 13 })}</g>
   ${naBoca}`);
@@ -394,19 +408,25 @@ function cenaSupernova() {
 
 // ── C · O SALTO ───────────────────────────────────────────────────────────────
 // A etapa 2 do tutorial: ele se DIVIDE e a metade lançada alcança o menor, que era mais rápido que ele
-// inteiro. A metade que fica tem o sorriso da skin; a que voa já abriu a boca.
+// inteiro. A metade que fica tem o sorriso da skin; a que voa já abriu a boca. No canto vazio da diagonal,
+// uma supernova estourando (a etapa 1): a luz da cena vem dela, do alto à esquerda.
 function cenaSalto() {
   seq = 0; LUZ = [-.707, -.707];
   const A = { x: 196, y: 826, r: 148 }, B = { x: 556, y: 486, r: 232 };
   const dx = B.x - A.x, dy = B.y - A.y, dl = Math.hypot(dx, dy), ux = dx / dl, uy = dy / dl;
   const T = { x: n(B.x + ux * (B.r + 86 + 54)), y: n(B.y + uy * (B.r + 86 + 54)), r: 86 };
+  const N = { x: 196, y: 214 };
+  const fora = (x, y, r, C, folga) => Math.hypot(x - C.x, y - C.y) >= C.r + r + folga;
+  const nova = supernova(N, .6, 31, (x, y, r) => fora(x, y, r, B, 46) && fora(x, y, r, A, 40) && fora(x, y, r, T, 40));
   return svgDe(`
   <circle cx="${B.x}" cy="${B.y}" r="600" fill="url(#luz)"/>
   ${estrelas(5)}
+  ${nova.clarao}
   <circle cx="${T.x}" cy="${T.y}" r="260" fill="url(#neb)"/>
   <circle cx="${B.x}" cy="${B.y}" r="${B.r * 1.45}" fill="url(#aura)"/>
-  ${faisca(150, 140, 18, .9)}${faisca(640, 90, 12, .8)}${faisca(930, 560, 12, .7)}${faisca(560, 940, 12, .6)}
-  ${campo([[120, 330, 13, 2], [300, 190, 11, 0, 1], [480, 118, 12, 3], [70, 560, 10, 1], [860, 700, 15, 4], [700, 860, 12, 0], [950, 420, 10, 5, 1], [520, 900, 10, 2], [930, 880, 12, 3], [410, 760, 10, 6]])}
+  ${faisca(640, 90, 12, .8)}${faisca(930, 560, 12, .7)}${faisca(560, 940, 12, .6)}
+  ${campo([[480, 118, 12, 3], [70, 560, 10, 1], [860, 700, 15, 4], [700, 860, 12, 0], [950, 420, 10, 5, 1], [520, 900, 10, 2], [930, 880, 12, 3], [410, 760, 10, 6]])}
+  ${nova.estouro}
   ${rastroDe(B, ux, uy, [[-.46, 150, 24], [-.16, 150, 34], [.14, 150, 28], [.44, 130, 20]])}
   ${marte({ ...A, giro: -26, rosto: [40, -30], olhar: [26, -8], lw: 12, boca: "sorriso" })}
   ${rastroDe(T, ux, uy, [[-.42, 56, 11], [.34, 44, 9]], "#ffffff", .5)}
@@ -463,7 +483,7 @@ ${jpg ? `i.save(${JSON.stringify(saida)},quality=93,optimize=True,progressive=Tr
 // ── SAÍDA ───────────────────────────────────────────────────────────────────
 // As quatro cenas saem em opcoes/ (o PNG de 628 para comparar e a fonte SVG); a PRINCIPAL — a que vai para o
 // painel — sai também como thumb-* no tamanho de subir. Trocar a principal: POKI_THUMB=<id> node …
-const PRINCIPAL = process.env.POKI_THUMB || "a-perseguicao";
+const PRINCIPAL = process.env.POKI_THUMB || "c-salto";   // a escolhida pelo dono (28/09/2026)
 if (!CENAS.some(([id]) => id === PRINCIPAL)) throw new Error(`POKI_THUMB desconhecida: ${PRINCIPAL} (${CENAS.map(([id]) => id).join(", ")})`);
 const destino = process.argv[2] ? path.resolve(process.argv[2]) : SAI;
 fs.mkdirSync(path.join(destino, "opcoes"), { recursive: true });

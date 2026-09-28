@@ -180,7 +180,7 @@ cenário do menu, que foi exatamente o que a recusa do Web Fit Test apontou. Sob
 *Game thumbnail*** (antes de pedir o WFT) e pode ser trocada a qualquer momento em desenvolvimento, menos
 com um WFT rodando. Suba o `thumb-1256.png` (o JPG é a reserva, se o formulário recusar o tamanho). São quatro
 cenas em `brand/poki/opcoes/` — perseguição, supernova, o salto e close —, e a que vira `thumb-*` é a de
-`POKI_THUMB=<id>` (padrão `a-perseguicao`).
+`POKI_THUMB=<id>` (padrão `c-salto`, a escolhida: o salto da etapa 2 com uma supernova estourando no canto).
 
 ## CrazyGames: conta e sala (o "Full")
 
