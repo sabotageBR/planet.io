@@ -156,9 +156,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const buffer=createSnapshotBuffer();
   const alvo={x:0,y:0};let inputTimer=0,joy=null,pinch=null,dedo=false;
   const rumoFx={x:0,y:0,r:0,dx:0,dy:0,k:0};
-  // O ANEL DO NOVATO e a SETA DA PRESA (game/guia.js). `novatoVisual` é recalculado a 8 Hz no `pushHud`
-  // (o nível só muda no fim de uma vida); a presa é escolhida a 4 Hz e a seta anda todo frame sobre a posição.
-  const riscoFx={min:0,max:0},presaPecas=[],presaFora=new Set();let novatoVisual=false,presaAt=0,presaRows=null;
+  // A SETA DA PRESA (game/guia.js). `novatoVisual` é recalculado a 8 Hz no `pushHud` (o nível só muda no fim
+  // de uma vida); a presa é escolhida a 4 Hz e a seta anda todo frame sobre a posição.
+  const presaPecas=[],presaFora=new Set();let novatoVisual=false,presaAt=0,presaRows=null;
   // A DICA DO TIRO (`h.dicaTiro`): a lição do tiro saiu do tutorial (28/09) e virou isto — na PRIMEIRA munição
   // da sessão o botão de tiro pulsa (dedo) ou o clique do mouse aparece ao lado do chip, por `DICA_TIRO_MS`,
   // no instante em que ela passa a valer. Duas vezes por sessão no máximo, e some de vez no primeiro tiro.
@@ -1138,7 +1138,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     {const pronto=s&&!dead&&joined&&!souTutorial&&(s.missiles|0)>0&&!s.fireCd?1:0;
       if(!atirou&&pronto&&!ammoAntes&&dicaTiroN<2){dicaTiroN++;dicaTiroAte=now+DICA_TIRO_MS;}
       ammoAntes=pronto;}
-    // o anel do novato e a seta da presa (ver `riscoFx`): o nível só muda no fim de uma vida, então 8 Hz sobra
+    // a seta da presa (ver `presaPecas`): o nível só muda no fim de uma vida, então 8 Hz sobra
     novatoVisual=(((appStore.get().session||{}).stats||{}).level|0)<NOVATO_NIVEL;
     let dica=null,festa=0;{
       let me=null;
@@ -1382,18 +1382,18 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       guia=guiaDoTutor({...tutor,tocou:tocouEstrela},{x:big.rx,y:big.ry,r:big.rr},
         {estrela:st?{x:st.rx,y:st.ry,r:st.rr}:null,cacos:view.ejected,presa:presa?{x:presa.rx,y:presa.ry,r:presa.rr}:null});
       if(guia)guia.dedo=!!dedo;}
-    // ── O NOVATO NA PARTIDA: o anel do que ele come e do que o come, e a seta da presa fora da tela ──
+    // ── O NOVATO NA PARTIDA: a seta da presa fora da tela ──
     // 54% das primeiras vidas da Poki terminavam com o jogador saindo VIVO e sem um abate: não estava morrendo,
-    // estava sem saber quem é comida. O jogo sempre soube (é uma comparação de raio) e ninguém desenhava.
-    // Só abaixo de `NOVATO_NIVEL`, só fora do tutorial (lá o guia é o dele) e só com o jogador no controle.
+    // estava sem saber onde está a comida. Só abaixo de `NOVATO_NIVEL`, só fora do tutorial (lá o guia é o dele)
+    // e só com o jogador no controle.
     // ⚠️ A seta vale até o PRIMEIRO abate da vida: depois dele o laço está aprendido, e uma seta eterna vira ruído.
-    let risco=null;
+    // ⚠️ Houve aqui um ANEL em volta dos outros planetas (verde em quem ele come, vermelho com pontas em quem o
+    // come). Ele SAIU em 28/09 por decisão do dono do jogo: as pontas liam como raios, e não tinha sido pedido.
     if(!souTutorial&&novatoVisual&&joined&&!dead&&!pausado&&!roundOver&&!espectador&&own.length){
-      let mn=Infinity,mx=0,big=own[0];for(const p of own){if(p.rr<mn)mn=p.rr;if(p.rr>mx){mx=p.rr;big=p;}}
-      riscoFx.min=mn;riscoFx.max=mx;risco=riscoFx;
+      let big=own[0];for(const p of own)if(p.rr>big.rr)big=p;
       // ⚠️ A ESCOLHA É POR FRAME, sobre as posições DESTE frame: guardada por 250 ms, a seta ficava parada
-      // enquanto a presa andava e, quando ela entrava na tela, o guia ainda desenhava um anel onde ela ESTAVA
-      // — um aro verde vazio ao lado do anel de verdade. Só o placar interpolado é refeito a 10 Hz (é ele que
+      // enquanto a presa andava e, quando ela entrava na tela, o guia ainda desenhava a marca onde ela ESTAVA
+      // — um aro vazio ao lado da peça de verdade. Só o placar interpolado é refeito a 10 Hz (é ele que
       // aloca), e ele é só o recurso para quem está FORA da AOI.
       if(!comeuAlguem&&!guia){
         if(now>=presaAt||!presaRows){presaAt=now+100;presaRows=view.lbRows(true);}
@@ -1441,7 +1441,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // Fora de partida some a GRADE e a borda do mundo: elas são a moldura da arena, e com o menu na frente
     // viram um traço solto no meio da tela. O céu (que é assado por resolução e não custa nada) fica.
     perf.ini("render");
-    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,heading,guia,risco,reduz:!!curPrefs.reduceMotion,zone:zoneDraw,cage:cageDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
+    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,heading,guia,reduz:!!curPrefs.reduceMotion,zone:zoneDraw,cage:cageDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
       showNames:curPrefs.showNames!==false,showTrails:!curPrefs.reduceMotion&&!econ});
     perf.fim("render");
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU

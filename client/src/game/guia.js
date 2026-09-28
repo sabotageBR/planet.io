@@ -67,35 +67,20 @@ export function guiaDoTutor(d, eu, mundo) {
   return null;
 }
 
-// ── O NOVATO NA PARTIDA: o que eu como, o que me come, e onde está a presa ────
+// ── O NOVATO NA PARTIDA: onde está a presa ────────────────────────────────────
 // Medido nas primeiras vidas da Poki (25/09): 54% terminam com o jogador SAINDO VIVO, e 80% sem um abate. Ele
-// não estava morrendo — estava sem saber o que fazer, num mapa em que nada diz quem é comida e quem é perigo.
-// O jogo sempre soube (é uma comparação de raio), e ninguém desenhava. Estas duas decisões são as do guia
-// da PARTIDA; a camada `Planets.js` desenha o anel e `Guia.js` desenha a seta.
+// não estava morrendo — estava sem saber o que fazer, num mapa em que a comida mais perto costuma estar fora
+// da tela. Esta é a decisão do guia da PARTIDA; a camada `Guia.js` desenha a seta.
+// ⚠️ Houve aqui um `anelDeRisco` (verde em quem ele come, vermelho com pontas em quem o come, desenhado em
+// `Planets.js`). Ele SAIU em 28/09 por decisão do dono do jogo: as pontas liam como raios, e não tinha sido pedido.
 
-/** Até que NÍVEL o jogador recebe os anéis e a seta. Nível 5 são ~1.600 XP — várias sessões de estreia. */
+/** Até que NÍVEL o jogador recebe a seta. Nível 5 são ~1.600 XP — várias sessões de estreia. */
 export const NOVATO_NIVEL = 5;
 
 /**
- * O ANEL DE UMA PEÇA ALHEIA: "comivel" (a minha maior a engole), "perigo" (ela engole a minha menor) ou nada.
- * A régua é a do jogo — `EAT.RATIO` de raio, a mesma de `rules.js` —, e por isso o anel nunca promete o que
- * a física recusa. As duas pontas são deliberadas: COMÍVEL mede contra a MAIOR peça (é ela que vai comer), e
- * PERIGO contra a MENOR (é ela que vai ser comida). Entre as duas, briga parelha: sem anel.
- * @param {number} r o raio da peça alheia
- * @param {{min:number,max:number}|null} eu os raios da minha menor e da minha maior peça
- * @returns {"comivel"|"perigo"|null}
- */
-export function anelDeRisco(r, eu) {
-  if (!eu || !(r > 0)) return null;
-  if (r * EAT.RATIO <= eu.max) return "comivel";
-  if (r >= eu.min * EAT.RATIO) return "perigo";
-  return null;
-}
-
-/**
  * A PRESA FORA DA TELA: a comida mais perto que o novato NÃO está vendo, para a seta na borda (`presa` em
- * `Guia.js`). Nada se há comida NA TELA — ali o anel verde já está nela, e duas indicações da mesma coisa
- * brigam pelo olho.
+ * `Guia.js`). Nada se há comida NA TELA — ali o próprio planeta está à vista, e a seta apontando para
+ * fora brigaria com ele pelo olho.
  * ⚠️ Duas fontes, porque nenhuma basta: as peças da AOI têm o RAIO de verdade (mas a AOI é pouco maior que a
  * tela), e o placar tem TODOS os vivos (mas só a massa total). Do placar, só entra quem é comível por
  * inteiro — `√massa` é o maior raio que qualquer peça dele pode ter, então a conta é conservadora: a seta
@@ -114,7 +99,7 @@ export function presaForaDaTela(eu, pecas, rows, fora, tela) {
   const ve = (x, y, r) => { const dx = x - eu.x, dy = y - eu.y, d2 = dx * dx + dy * dy; if (d2 < d2m) { d2m = d2; alvo = { tipo: "presa", x, y, r }; } };
   for (const p of pecas || []) {
     if (!(p.r <= lim)) continue;
-    if (na(p.x, p.y)) return null;   // há comida na tela: o anel verde basta
+    if (na(p.x, p.y)) return null;   // há comida na tela: ela já está à vista
     ve(p.x, p.y, p.r);
   }
   for (const w of rows || []) {

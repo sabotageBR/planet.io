@@ -453,8 +453,8 @@ scripts/portal-pack.mjs poki`) é a primeira das três etapas do plano; o detalh
   (regra do SERVIDOR — publicar o servidor ANTES de subir o zip).
 - **Estreia sem esperar a conta**: o tutorial abre logo depois do `/api/config`; a última etapa adianta o nick e
   a sala da 1ª partida.
-- **O novato vê o jogo**: anel verde/vermelho em quem ele come/quem o come, seta para a presa fora da tela,
-  missão desenhada, dica do tiro.
+- **O novato vê o jogo**: seta para a presa fora da tela, missão desenhada, dica do tiro. (O anel verde/vermelho
+  em volta dos outros planetas chegou a entrar e saiu antes do upload, na 1.1.1, por decisão do dono.)
 - **Medição**: `fit/congela_<faixa>` no Game Events é a réplica do relógio do Fit Test (quantas sessões o
   número deles congela, e quando); `scripts/poki-fit-bancada.mjs --mouse` é a bancada do desktop.
 - **Thumbnail nova** (`brand/poki/thumb-1256.png`): a imagem do painel era a arte de IA com o logo escrito e

@@ -2091,13 +2091,17 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   para sempre. A sonda tenta de novo uma vez, o 429 curto (≤ 8 s) no convidado espera, e sonda que falhou pula a
   conta (era meio minuto a mais de cortina). ⚠️ No pacote de portal o inglês é ESTÁTICO (`DICT` em
   i18n/index.js): o `import()` dele estava no caminho de todo primeiro frame.
-  ⚠️ **O NOVATO VÊ O JOGO** (abaixo de `NOVATO_NIVEL` = 5): anel VERDE liso em quem ele come e VERMELHO com
-  PONTAS em quem o come (`anelDeRisco` em game/guia.js, desenhado em `Planets.js` com tamanho constante em tela;
-  as pontas são para a protanopia — verde e vermelho é o par que some), seta na borda da tela apontando a presa
+  ⚠️ **O NOVATO VÊ O JOGO** (abaixo de `NOVATO_NIVEL` = 5): seta na borda da tela apontando a presa
   fora dela até o 1º abate da vida (`presaForaDaTela`: peças da AOI com o raio exato + o placar só para quem é
   comível por INTEIRO, `√massa`), a missão da 1ª vida como DESENHO com a barra das 8 partículas
   (`ui/DicaSplit.jsx`) e a dica do tiro (`h.dicaTiro`: na borda de subida de "tiro PRONTO" — munição sem a
   carência do nascimento — o botão pulsa, e no mouse o clique aparece ao lado do chip; some no 1º tiro).
+  ⚠️ **O ANEL EM VOLTA DOS OUTROS PLANETAS SAIU** (28/09, antes de o zip subir): era verde e liso em quem o
+  novato come e vermelho com PONTAS em quem o come (`anelDeRisco`, desenhado em `Planets.js`; as pontas eram
+  para a protanopia). O dono do jogo o viu na partida, leu as pontas como "raios" e não o tinha pedido — o
+  plano falava de um contorno, e as pontas foram acréscimo nosso. Saiu INTEIRO por decisão dele, e com a
+  seta a presa NA TELA continua sem marca nenhuma (`presaForaDaTela` só aponta a que está fora). Não
+  devolver sem ele pedir.
   ⚠️ **O PACOTE DA POKI ENXUTO** (`portal/flags.js`: `POKI`, `SEM_CHAT`, `SEM_BR`, `ENXUTO`, `TEMA_FIXO`="dusk" —
   literais de build, podados no site): sem chat, sem Battle Royale (nem o convite no meio da partida, nem o
   botão de sair), um tema só (sem relógio), HUD sem rótulos de texto (`body[data-pacote="poki"]`), EJETAR a

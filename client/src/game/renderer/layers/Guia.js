@@ -91,8 +91,8 @@ function salto(g,q,s,t){
   traco(g,()=>{g.moveTo(bx-vx*h-vy*h*.8,by-vy*h+vx*h*.8);g.lineTo(bx,by);g.lineTo(bx-vx*h+vy*h*.8,by-vy*h-vx*h*.8);},4.5*s,OURO,.95);}
 
 // ── PRESA (na partida): uma seta na borda da tela apontando para ela ──
-// ⚠️ NA TELA, NADA: ali quem a marca é o anel verde do novato (`Planets.js`, na PEÇA de verdade). Um segundo
-// anel aqui, desenhado na posição do placar (2 Hz, interpolada), ficava ao LADO da peça — um aro vazio.
+// ⚠️ NA TELA, NADA: ali o próprio planeta está à vista. Uma marca aqui, desenhada na posição do placar (2 Hz,
+// interpolada), ficava ao LADO da peça — um aro vazio.
 function presa(g,q,s,t,cam){
   const hw=cam.W/(2*cam.scale),hh=cam.H/(2*cam.scale),m=46*s;
   const dx=q.x-cam.x,dy=q.y-cam.y;
