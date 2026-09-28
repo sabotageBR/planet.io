@@ -441,7 +441,7 @@ function devQuery() {
  */
 function tutorDemo(suf) {
   const g = gameRef.get().game;
-  app.update({ screen: "game", played: true, parabensAte: 0 });
+  app.update({ screen: "game", played: true, parabensAte: 0, pipsAte: 0 });
   if (!g || !g.hudStore) return;
   const { estilo, cara } = partesDoDemo(suf);
   const [qual0, aj] = String(cara || "1").split("@");
@@ -464,7 +464,7 @@ function tutorDemo(suf) {
 }
 function hudDemo() {
   const g = gameRef.get().game;
-  app.update({ screen: "game", played: true, parabensAte: 0 });
+  app.update({ screen: "game", played: true, parabensAte: 0, pipsAte: 0 });
   if (!g || !g.hudStore) return;
   const nome = i => ["Fodao","Stellara","Astrophex","Hydraxis","Darkion","Meteora","Nexaris","Volcanix","Nebulox","Quasara","xXcapitaoXx","trovao_137"][i % 12];
   const lb = Array.from({ length: 12 }, (_, i) => ({ slot: i, name: nome(i), mass: 183273 - i * 12000, level: 60 - i * 3, isBot: i % 3 === 0, registered: i % 4 === 0, me: i === 0, rank: i + 1 }));

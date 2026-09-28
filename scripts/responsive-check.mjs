@@ -122,7 +122,11 @@ let id=1;const call=(m,p={})=>new Promise(res=>{const i=id++;
 const ev=async e=>{const o=await call("Runtime.evaluate",{expression:e,returnByValue:true,awaitPromise:true});
   return o&&o.result?o.result.value:null;};
 await call("Runtime.enable");
-await new Promise(r=>setTimeout(r,3500));
+// ⚠️ ESPERA POR PERGUNTA, não por relógio: com o servidor de DEV frio (perfil novo do Chrome, ~300 módulos
+// pedidos um a um ao Vite) numa máquina carregada, os 3,5 s fixos de antes não bastavam e a matriz abortava
+// dizendo que o app não subiu — com o app subindo, só que mais devagar. Até 25 s, perguntando a cada 500 ms.
+await new Promise(r=>setTimeout(r,1500));
+for(let i=0;i<48&&!(await ev("typeof window.__tela==='function'"));i++)await new Promise(r=>setTimeout(r,500));
 // ⚠️ **O APP SUBIU?** Sem esta pergunta a matriz APROVA UMA PÁGINA EM BRANCO: com o bundle quebrado não há
 // tela, não há HUD, a sonda não acha nada para medir e devolve zero problemas em todas as combinações — o
 // verde mais barato que existe. Aconteceu: um `vite` esquecido aberto há dias servia um `shared/` defasado

@@ -368,3 +368,15 @@ test("ENQUANTO A ESTRELA NÃO ESTOURA O ALUNO NÃO ANDA — e só no tutorial", 
   assert.equal(presoNaEspera(false, { pre: true }), false);
   assert.equal(presoNaEspera(false, null), false);
 });
+
+// ── A ETAPA DO SALTO NÃO COMEÇA NUMA PAREDE (`recentraNoSalto`) ──
+import { recentraNoSalto, RECENTRA_MS } from "../src/game/tutor.js";
+test("acuado numa parede na etapa do salto, o planeta desliza para o CENTRO da arena", () => {
+  const arena = { w: 1800, h: 1800 }, folga = 386;
+  assert.deepEqual(recentraNoSalto({ etapa: ETAPA.SPLIT }, { x: 1700, y: 1700 }, arena, folga), { x: 900, y: 900 }, "canto");
+  assert.deepEqual(recentraNoSalto({ etapa: ETAPA.SPLIT }, { x: 900, y: 200 }, arena, folga), { x: 900, y: 900 }, "só uma parede já conta");
+  assert.equal(recentraNoSalto({ etapa: ETAPA.SPLIT }, { x: 900, y: 900 }, arena, folga), null, "no meio, nada a fazer");
+  assert.equal(recentraNoSalto({ etapa: ETAPA.NOVA }, { x: 1700, y: 1700 }, arena, folga), null, "só na etapa do salto");
+  assert.equal(recentraNoSalto(null, { x: 1700, y: 1700 }, arena, folga), null);
+  assert.ok(RECENTRA_MS > 0 && RECENTRA_MS <= 3000, "um deslize curto, não um roteiro");
+});

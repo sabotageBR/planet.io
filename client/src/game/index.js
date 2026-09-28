@@ -45,9 +45,9 @@ const RAIZES_WIRE={CAM,ZOOM,STAR,ROUND,SPLIT,SPEED,FEED,BR,MISSILE,BOT};   // SP
 import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
-import {OPCOES_TUTORIAL,criaRoteiro} from "./net/tutorServer.js";
+import {OPCOES_TUTORIAL,criaRoteiro,folgaDoSalto} from "./net/tutorServer.js";
 import {guiaDoTutor,presaForaDaTela,NOVATO_NIVEL} from "./guia.js";
-import {ETAPA as ETAPA_TUTOR,presoNaEspera} from "./tutor.js";
+import {ETAPA as ETAPA_TUTOR,presoNaEspera,recentraNoSalto,RECENTRA_MS} from "./tutor.js";
 import {createMic} from "../audio/mic.js";
 import {SEM_VOZ,SEM_CHAT,SEM_BR} from "../portal/flags.js";
 import {createSnapshotBuffer} from "./state/SnapshotBuffer.js";
@@ -510,6 +510,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // ⚠️ A festa sai DAQUI e não da tela: o efeito e o som moram no motor, e `festa` chega uma vez só
     // por etapa (o servidor já garante isso — ver `passoTutor`).
     else if(m.t==="tutor"){const antes=tutor;tutor=m;pushHud(performance.now());
+      // a etapa do salto ABRIU: a janela do deslize para dentro (`recentraNoSalto`) começa, e o rumo travado do
+      // dedo é zerado — senão, acabado o deslize, o planeta voltaria direto para a parede de onde saiu
+      if(m.etapa===ETAPA_TUTOR.SPLIT&&(!antes||antes.etapa!==ETAPA_TUTOR.SPLIT)){recentraAte=performance.now()+RECENTRA_MS;if(joy)joy.reset();}
       // a estrela estourou SEM toque (o teto `TOQUE_TETO` do diretor): o funil separa quem tocou de quem esperou
       if(antes&&antes.pre&&!m.pre&&!tocouEstrela){tocouEstrela=true;marco("tutor_toque_auto");}
       // ⚠️ O MARCO DE CADA ETAPA, pelo NOME da lição e não pelo número: o funil 1.29 mostrou 1.045
@@ -1253,7 +1256,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // O ROTEIRO do tutorial em curso (game/net/tutorServer.js) e se o jogador já TOCOU a estrela. O roteiro
   // mora na mesma página (é injetado no `LocalServer`), então o toque vai por chamada direta — e é com ele
   // que a estrela estoura: a primeira interação do jogo, que no desktop é também o `gameplayStart`.
-  let tutorRot=null,tocouEstrela=false;
+  let tutorRot=null,tocouEstrela=false,recentraAte=0;
   const tocaEstrela=()=>{if(!souTutorial||!tutorRot||tocouEstrela||(tutor&&!tutor.pre))return;
     tocouEstrela=true;tutorRot.toque();marco("tutor_toque");};
   // Em CAPTURA na janela, como o latch do SDK (portal/sessao.js): o direcional marca o evento mas não o para,
@@ -1317,6 +1320,10 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       if(own0.length){w=alvo;w.x=cx;w.y=cy;input.setTarget(cx,cy);predictor.setTarget(cx,cy);}
       if(conn.isOpen)input.update(now);
       return;}
+    // ── A ETAPA DO SALTO NÃO COMEÇA NUMA PAREDE (`recentraNoSalto`, game/tutor.js) ──
+    // O mesmo caminho de cima, com outro alvo: o centro da arena, por `RECENTRA_MS`, só com o aluno acuado.
+    if(souTutorial&&own0.length&&now<recentraAte){const a=recentraNoSalto(tutor,{x:cx,y:cy},WORLD,folgaDoSalto());
+      if(a){w=alvo;w.x=a.x;w.y=a.y;input.setTarget(a.x,a.y);predictor.setTarget(a.x,a.y);if(conn.isOpen)input.update(now);return;}}
     // ── O RUMO SOBREVIVE AO DEDO (modelo agar.io; ver input/Joystick.js) ──
     // A condição é `tem` (HÁ RUMO), não `on` (há dedo no chão): soltar o dedo travou a direção, e é ela
     // que continua produzindo alvo. Antes, soltar caía no ramo de baixo e mandava o alvo em cima do

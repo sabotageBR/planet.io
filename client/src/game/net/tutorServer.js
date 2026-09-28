@@ -209,6 +209,13 @@ function perto(w,c,dist){
  *     (`eatPiece` zera a do matador) já faz.
  * @param {*} w @param {number} slot
  */
+/**
+ * A folga das paredes em que a pista da presa da etapa do salto cabe inteira (a mesma conta de `orbita`,
+ * com o raio que `preparaJogador` dá ao aluno ao abrir a etapa). É o limite de `recentraNoSalto`
+ * (game/tutor.js). `SPLIT.MIN_R` é lido a cada chamada: é tunable 'wire'.
+ */
+export const folgaDoSalto=()=>CENA.MARGEM+CENA.DIST+SPLIT.MIN_R*CENA.SPLIT_K+CENA.PRESA_R;
+
 export function preparaJogador(w,slot,{r=0,ammo=-1,graca=null}={}){
   const ps=w.players.get(slot);if(!ps)return null;
   const pc=vivas(ps)[0];if(!pc)return null;

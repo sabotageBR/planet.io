@@ -117,6 +117,32 @@ export const AJUDA = {
  */
 export const presoNaEspera = (souTutorial, t) => !!souTutorial && (!t || !!t.pre);
 
+/** Quanto dura o deslize de volta para dentro quando a etapa do salto abre com o aluno numa parede. */
+export const RECENTRA_MS = 1800;
+/**
+ * A ETAPA DO SALTO NÃO COMEÇA NUMA PAREDE: se ela abre com o aluno acuado, o planeta DESLIZA para o centro da
+ * arena por `RECENTRA_MS` — pelo mesmo caminho do `presoNaEspera` (o alvo que o cliente manda), nunca por
+ * teletransporte.
+ * ⚠️ O MOTIVO É A PRESA FORA DA TELA, visto em bancada: a arena é um quadradinho de 1.800 px e o rumo travado
+ * do dedo leva o planeta até a parede em segundos, então muita gente termina a etapa 1 encostada num canto. A
+ * pista da presa tem de CABER na arena (`orbita`, em tutorServer.js, clampa o centro dela a `folga` das
+ * paredes), e com o aluno no canto esse centro fica até ~380 px para dentro — a presa circulando do outro
+ * lado passava de 600 px do planeta, fora da tela de um celular em pé. A lição era "salte nela", e ela não
+ * estava na tela.
+ * ⚠️ Só DENTRO da janela: depois o controle é do jogador de novo (e no dedo o rumo é zerado na abertura da
+ * etapa, senão ele voltaria direto para a parede).
+ * @param {{etapa:number}|null} t o último `{t:"tutor"}`
+ * @param {{x:number,y:number}|null} pos o centróide do aluno
+ * @param {{w:number,h:number}} arena
+ * @param {number} folga a distância das paredes em que a pista da presa cabe inteira
+ * @returns {{x:number,y:number}|null} para onde deslizar, ou null (nada a fazer)
+ */
+export function recentraNoSalto(t, pos, arena, folga) {
+  if (!t || t.etapa !== ETAPA.SPLIT || !pos || !arena) return null;
+  const acuado = pos.x < folga || pos.x > arena.w - folga || pos.y < folga || pos.y > arena.h - folga;
+  return acuado ? { x: arena.w / 2, y: arena.h / 2 } : null;
+}
+
 /** Estado zerado. `desde` 0 = a etapa ainda não abriu (quem a abre é o primeiro passo). */
 export const TUTOR0 = { etapa: ETAPA.NOVA, desde: 0, feito: 0, ajuda: 0, auto: 0 };
 
