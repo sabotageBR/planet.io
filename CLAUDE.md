@@ -27,7 +27,7 @@ node scripts/novato-bancada.mjs --manso off|metade|todos   # sala headless com o
 DATABASE_URL=... node scripts/poki-coorte.mjs --de "2026-09-16 20:19-03" --ate "2026-09-17 01:10-03"   # a RÉGUA dos Fit Tests: coorte Poki por braço do A/B (SÓ LEITURA)
 node scripts/poki-fit-bancada.mjs [url]   # o SDK da Poki VÊ o dedo que dirige? (o relógio do Fit Test, replicado no stub; pacote = SDK, dev = controle)
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
-node scripts/poki-thumb.mjs         # a thumbnail da POKI (brand/poki/): SVG à mão, sem texto, a jogada do pacote — as regras deles no cabeçalho
+[POKI_THUMB=<id>] node scripts/poki-thumb.mjs   # a thumbnail da POKI (brand/poki/): 4 cenas em SVG à mão (opcoes/), sem texto; a <id> vira thumb-*
 DATABASE_URL=... node scripts/skin-art.mjs [--dry]   # sobe a arte de client/public/faces/ para o banco (uma vez por ambiente)
 node scripts/responsive-check.mjs [url]   # a matriz de layout (18 aparelhos × 3 temas × ~60 telas, 7 critérios; RESP_TELAS/RESP_TEMAS recortam)
 node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|gamepix|all  # o .zip do cliente para os portais (docs/spec/portais.md)

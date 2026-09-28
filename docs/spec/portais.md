@@ -178,7 +178,9 @@ na skin padrão, sugerindo movimento. É uma ilustração em SVG da JOGADA — o
 do jogo e perseguindo um planeta menor, no céu dusk do pacote — e **não reaproveita a arte de IA** do
 cenário do menu, que foi exatamente o que a recusa do Web Fit Test apontou. Sobe no painel em **Level 4 →
 *Game thumbnail*** (antes de pedir o WFT) e pode ser trocada a qualquer momento em desenvolvimento, menos
-com um WFT rodando. Suba o `thumb-1256.png` (o JPG é a reserva, se o formulário recusar o tamanho).
+com um WFT rodando. Suba o `thumb-1256.png` (o JPG é a reserva, se o formulário recusar o tamanho). São quatro
+cenas em `brand/poki/opcoes/` — perseguição, supernova, o salto e close —, e a que vira `thumb-*` é a de
+`POKI_THUMB=<id>` (padrão `a-perseguicao`).
 
 ## CrazyGames: conta e sala (o "Full")
 
