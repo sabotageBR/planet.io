@@ -22,6 +22,7 @@ import { ZoneWarnBanner, ZoneAlarmFlash } from "./ZoneAlert.jsx";
 import IdleWarn from "./IdleWarn.jsx";
 import DicaSplit from "./DicaSplit.jsx";
 import Tutor from "./Tutor.jsx";
+import { Glifo } from "./tutorPecas.jsx";
 import TutorParabens from "./TutorParabens.jsx";
 import { MODE, weaponOf, POWERUP, TICK_HZ, flagOf } from "@warspace/shared";
 import { keysOf } from "../game/input/Keyboard.js";   // a legenda tem que dizer a tecla que está DE FATO ligada (inclusive a do desempate de colisão)
@@ -200,6 +201,8 @@ export default function Hud() {
         title={podeTrocar ? `${LB.swapWeapon} (${LB.keySwap})` : undefined} {...press("swap")}>
         <i>{armaIco}</i> {fireCd ? <b className="fire-cd">{fireCd}s</b> : <b id="v-ammo">{ammo}</b>} <span>{fireCd ? LB.fireCd : (LB.weapons[arma.key] || LB.ammo)}</span>
         {podeTrocar ? <em className="belt-alt">{cinto.map(w => <span key={w} className={"belt-ico" + (w === (h.weapon | 0) ? " on" : "")}>{WEAPON_ICON[w]}</span>)}</em> : null}
+        {/* a dica do tiro no MOUSE: o desenho do clique colado ao chip (no dedo quem pulsa é o `#t-fire`) */}
+        {h.dicaTiro ? <span className="dica-tiro-mouse" aria-hidden="true"><Glifo p={{ tipo: "mouse-clique" }} /></span> : null}
       </button>}
       {/* ÍCONE COM O NÚMERO EM CIMA, não chip com rótulo escrito: em partida ninguém lê "Auto-defesa 12s" —
           o que se lê é a figura e um número. O anel dá o tempo sem ocupar linha, e o badge dá a carga. */}

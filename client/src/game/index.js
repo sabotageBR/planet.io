@@ -46,7 +46,7 @@ import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
 import {OPCOES_TUTORIAL,criaRoteiro} from "./net/tutorServer.js";
-import {guiaDoTutor} from "./guia.js";
+import {guiaDoTutor,presaForaDaTela,NOVATO_NIVEL} from "./guia.js";
 import {ETAPA as ETAPA_TUTOR,presoNaEspera} from "./tutor.js";
 import {createMic} from "../audio/mic.js";
 import {SEM_VOZ,SEM_CHAT,SEM_BR} from "../portal/flags.js";
@@ -54,7 +54,7 @@ import {createSnapshotBuffer} from "./state/SnapshotBuffer.js";
 import {createInterpolator} from "./state/Interpolator.js";
 import {createPredictor} from "./state/Predictor.js";
 import {createWorldView} from "./state/WorldView.js";
-import {passoDica,temPresa,temComivel,passoMissao,ETAPA,DICA0,MISSAO0,MISSAO_VETERANO} from "./dica.js";
+import {passoDica,temPresa,temComivel,passoMissao,ETAPA,DICA0,MISSAO,MISSAO0,MISSAO_VETERANO} from "./dica.js";
 import {missaoFeita,marcaMissao} from "./estreia.js";
 
 // ── A MISSÃO SÓ VALE NA PRIMEIRA VIDA DA SESSÃO ──────────────────────────────
@@ -155,7 +155,15 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // ── estado de rede/simulação ──
   const buffer=createSnapshotBuffer();
   const alvo={x:0,y:0};let inputTimer=0,joy=null,pinch=null,dedo=false;
-  const rumoFx={x:0,y:0,r:0,dx:0,dy:0,k:0};   // a seta de rumo entregue ao render; literal reusado, como o `alvo`
+  const rumoFx={x:0,y:0,r:0,dx:0,dy:0,k:0};
+  // O ANEL DO NOVATO e a SETA DA PRESA (game/guia.js). `novatoVisual` é recalculado a 8 Hz no `pushHud`
+  // (o nível só muda no fim de uma vida); a presa é escolhida a 4 Hz e a seta anda todo frame sobre a posição.
+  const riscoFx={min:0,max:0},presaPecas=[],presaFora=new Set();let novatoVisual=false,presaAt=0,presaRows=null;
+  // A DICA DO TIRO (`h.dicaTiro`): a lição do tiro saiu do tutorial (28/09) e virou isto — na PRIMEIRA munição
+  // da sessão o botão de tiro pulsa (dedo) ou o clique do mouse aparece ao lado do chip, por `DICA_TIRO_MS`,
+  // no instante em que ela passa a valer. Duas vezes por sessão no máximo, e some de vez no primeiro tiro.
+  // ⚠️ Por SESSÃO (carga da página), não por vida: quem aprendeu a atirar não esquece porque morreu.
+  const DICA_TIRO_MS=3500;let atirou=false,dicaTiroN=0,dicaTiroAte=0,ammoAntes=0;   // a seta de rumo entregue ao render; literal reusado, como o `alvo`
   // o direcional de toque só vale onde o ponteiro é o DEDO: no mouse o próprio ponteiro já é o controle
   const aplicaJoystick=()=>{dedo=typeof matchMedia!=="undefined"&&matchMedia("(pointer: coarse)").matches;
     if(joy)joy.setEnabled(curPrefs.joystick!==false&&dedo);};   // alvo reusado; inputTimer: o envio de input não depende do rAF (ver enviarInput)
@@ -252,6 +260,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // motivos e o som é o mesmo, porque para quem está jogando a informação é uma só ("agora não").
     if(a==="split"&&ph==="down"&&(splitTravado()||semTamanhoPraDividir())){audio.play("error",{mine:true});return;}
     if(a==="split"&&ph==="down")dividiu=true;   // a dica existe para ensinar ISTO; ensinada, ela some
+    if(a==="fire"&&ph==="down"&&canAct()&&view.self&&view.self.missiles>0)atirou=true;   // idem para a dica do tiro
     if(a==="swap"&&ph==="down")audio.play("weapon",{mine:true});
     actions.act(a,ph);};
   /** Botão do ponteiro: mira/tiro (esquerdo) e split (direito) são inteiramente do createActions — sem
@@ -261,6 +270,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // para não abrir o scroll do meio) e não fazia nada: "o botão da roda desfaz a roda" é a associação mais
     // direta que existe, e não disputa com o esquerdo, que é o tiro com carga de mira.
     if(btn===1&&ph==="down"){zoomReset();return;}
+    if(btn===0&&ph==="down"&&type!=="touch"&&canAct()&&view.self&&view.self.missiles>0)atirou=true;   // o clique É o tiro: a dica do tiro foi aprendida
     actions.button(btn,ph,type);};
   /**
    * Um entalhe de roda. ⚠️ O DETENT: um passo que CRUZARIA o zoom automático para exatamente nele. É a única
@@ -1119,6 +1129,14 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // A decisão inteira mora em `passoMissao`, que DELEGA ao `passoDica` na etapa 3 — o laço aqui é o
     // mesmo de antes e passa a produzir DOIS booleanos em vez de um: `comivel` (sem portão de split, para
     // a etapa 2) e `presa` (com portão, para a 3). Nenhum custo novo por frame.
+    // a dica do tiro (ver `atirou`): o instante em que a lição passa a valer é o tiro ficar PRONTO — munição
+    // na mão E sem a carência do nascimento (`fireCd`, `MISSILE.SPAWN_CD_TICKS`): pulsar um botão que ainda
+    // não atira ensinaria que ele está quebrado. É a borda de subida disso, e não da munição sozinha.
+    {const pronto=s&&!dead&&joined&&!souTutorial&&(s.missiles|0)>0&&!s.fireCd?1:0;
+      if(!atirou&&pronto&&!ammoAntes&&dicaTiroN<2){dicaTiroN++;dicaTiroAte=now+DICA_TIRO_MS;}
+      ammoAntes=pronto;}
+    // o anel do novato e a seta da presa (ver `riscoFx`): o nível só muda no fim de uma vida, então 8 Hz sobra
+    novatoVisual=(((appStore.get().session||{}).stats||{}).level|0)<NOVATO_NIVEL;
     let dica=null,festa=0;{
       let me=null;
       if(joined&&!dead&&!pausado&&own0.length){
@@ -1143,7 +1161,8 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       const passo=tutor?{est:missaoEst,banda:"",festa:0}
         :passoMissao(missaoEst,{vivo:!!me,comidas,comeuAlguem,comivel,pode:!!me&&!dividiu&&!splitTravado(),presa},now);
       missaoEst=passo.est;festa=passo.festa;
-      if(passo.banda)dica={id:passo.banda,at:missaoEst.desde,dedo};
+      // `n`/`alvo`: o progresso da etapa 1, que a faixa desenha em vez de escrever "coma as partículas"
+      if(passo.banda)dica={id:passo.banda,at:missaoEst.desde,dedo,n:Math.min(comidas,MISSAO.COMIDAS),alvo:MISSAO.COMIDAS};
       // ⚠️ A FESTA SAI UMA VEZ por construção: `festa` só é diferente de zero no tick em que a etapa
       // COMPLETA (nos seguintes o `feito` já é truthy e o ramo não repete). Sem flag no chamador.
       // ⚠️ `combo` e não `firework`: aquele é a estrela com texto que já existe nos TRÊS temas e já aceita
@@ -1172,7 +1191,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         startsInMs:lobby.startsInMs?Math.max(0,lobby.startsInMs-(now-lobby.at)):0,
         waitMs:lobby.waitMs?Math.max(0,lobby.waitMs-(now-lobby.at)):0,
         roster:[...view.players.values()].map(p=>({slot:p.slot,name:p.name,skinId:p.skinId,me:p.slot===view.mySlot}))}:null,
-      dica,
+      dica,dicaTiro:!atirou&&now<dicaTiroAte,
       alive:s?s.alive:0,weapon:s?s.weapon|0:0,owned:s?s.owned|1:1,zoneHurt:!!(s&&(s.flags&SELF_FLAG.ZONE_HURT)),
       // A CONTAGEM 3·2·1 DA GAIOLA. `startsAt` é TICK ABSOLUTO e já vinha no bloco `round` do `phase`; `tk`
       // é o relógio do servidor que o `buffer` já sincroniza. Zero protocolo novo — e, porque é absoluto, a
@@ -1356,6 +1375,26 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       guia=guiaDoTutor({...tutor,tocou:tocouEstrela},{x:big.rx,y:big.ry,r:big.rr},
         {estrela:st?{x:st.rx,y:st.ry,r:st.rr}:null,cacos:view.ejected,presa:presa?{x:presa.rx,y:presa.ry,r:presa.rr}:null});
       if(guia)guia.dedo=!!dedo;}
+    // ── O NOVATO NA PARTIDA: o anel do que ele come e do que o come, e a seta da presa fora da tela ──
+    // 54% das primeiras vidas da Poki terminavam com o jogador saindo VIVO e sem um abate: não estava morrendo,
+    // estava sem saber quem é comida. O jogo sempre soube (é uma comparação de raio) e ninguém desenhava.
+    // Só abaixo de `NOVATO_NIVEL`, só fora do tutorial (lá o guia é o dele) e só com o jogador no controle.
+    // ⚠️ A seta vale até o PRIMEIRO abate da vida: depois dele o laço está aprendido, e uma seta eterna vira ruído.
+    let risco=null;
+    if(!souTutorial&&novatoVisual&&joined&&!dead&&!pausado&&!roundOver&&!espectador&&own.length){
+      let mn=Infinity,mx=0,big=own[0];for(const p of own){if(p.rr<mn)mn=p.rr;if(p.rr>mx){mx=p.rr;big=p;}}
+      riscoFx.min=mn;riscoFx.max=mx;risco=riscoFx;
+      // ⚠️ A ESCOLHA É POR FRAME, sobre as posições DESTE frame: guardada por 250 ms, a seta ficava parada
+      // enquanto a presa andava e, quando ela entrava na tela, o guia ainda desenhava um anel onde ela ESTAVA
+      // — um aro verde vazio ao lado do anel de verdade. Só o placar interpolado é refeito a 10 Hz (é ele que
+      // aloca), e ele é só o recurso para quem está FORA da AOI.
+      if(!comeuAlguem&&!guia){
+        if(now>=presaAt||!presaRows){presaAt=now+100;presaRows=view.lbRows(true);}
+        presaPecas.length=0;presaFora.clear();presaFora.add(view.mySlot);
+        // quem tem peça na AOI sai do placar (`presaFora`): ali vale a posição EXATA da peça, e não a de 2 Hz
+        for(const q of view.pieces){if(q.isMe)continue;presaFora.add(q.owner);const pl=view.playerOf(q.owner);if(pl&&pl.ally)continue;presaPecas.push({x:q.rx,y:q.ry,r:q.rr});}
+        for(const pl of view.players.values())if(pl.ally)presaFora.add(pl.slot);
+        guia=presaForaDaTela({x:big.rx,y:big.ry,r:big.rr},presaPecas,presaRows,presaFora,cam.rect(0));}}
     let camPieces=own;   // morto: a câmera acompanha quem o servidor mandou assistir (mesmo slot que a AOI segue), senão congela
     if(!own.length&&specSlot>=0){const sp=view.pieces.filter(p=>p.owner===specSlot);if(sp.length)camPieces=sp;}
     // O powerup de ZOOM afasta a câmera — e o servidor amplia a AOI pelo mesmo fator (net/snapshot.js),
@@ -1395,7 +1434,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // Fora de partida some a GRADE e a borda do mundo: elas são a moldura da arena, e com o menu na frente
     // viram um traço solto no meio da tela. O céu (que é assado por resolução e não custa nada) fica.
     perf.ini("render");
-    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,heading,guia,reduz:!!curPrefs.reduceMotion,zone:zoneDraw,cage:cageDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
+    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,heading,guia,risco,reduz:!!curPrefs.reduceMotion,zone:zoneDraw,cage:cageDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
       showNames:curPrefs.showNames!==false,showTrails:!curPrefs.reduceMotion&&!econ});
     perf.fim("render");
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU

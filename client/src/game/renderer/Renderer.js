@@ -142,7 +142,7 @@ export async function createRenderer({container,theme,prefs}){
     /** Buraco negro: uma textura 512 por tema, mas é o desenho mais caro do jogo — sem aquecer, ela é assada
      *  sincronamente no primeiro frame em que um buraco entra na tela, e isso é um engasgo visível. */
     warmHazards(th=R.theme){const TX=th.textures;R.cache.warm(TX.key("blackHole",{},BH_TEX),BH_TEX,(c,s)=>TX.blackHole(c,s,{}));},
-    /** f: {view,cam,now,dt,t,rt,rect,aim,threat,heading,guia,reduz,zone,cage,glow,parallax,wobble,showGrid,showNames,showTrails,idle} */
+    /** f: {view,cam,now,dt,t,rt,rect,aim,threat,heading,guia,risco,reduz,zone,cage,glow,parallax,wobble,showGrid,showNames,showTrails,idle} — `risco` = os raios da minha menor/maior peça para o anel do novato (Planets.js), ou null */
     /** `idle`: canvas vivo, sem partida (o menu está na frente) — some a moldura da arena, fica o céu. */
     render(f){if(R.lost)return;   // sem contexto não há o que desenhar, e insistir a 60 Hz é trabalho puro
       R.cache.setExternal(bg.bytes());R.cache.tick();const cam=f.cam;world.position.set(R.W/2-cam.x*cam.scale,R.H/2-cam.y*cam.scale);world.scale.set(cam.scale);

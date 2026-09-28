@@ -4,7 +4,8 @@
 // node --test client/test/guia.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { guiaDoTutor, maisPerto } from "../src/game/guia.js";
+import { guiaDoTutor, maisPerto, anelDeRisco, presaForaDaTela } from "../src/game/guia.js";
+import { EAT } from "@warspace/shared";
 import { ETAPA } from "../src/game/tutor.js";
 
 const eu = { x: 900, y: 900, r: 63 };
@@ -54,4 +55,37 @@ test("`maisPerto` aceita os dois formatos e não quebra com lista vazia", () => 
   assert.deepEqual(maisPerto({ x: 0, y: 0 }, [{ x: 5, y: 0, r: 2 }, { rx: 1, ry: 1, rr: 3 }]), { x: 1, y: 1, r: 3 });
   assert.equal(maisPerto({ x: 0, y: 0 }, []), null);
   assert.equal(maisPerto({ x: 0, y: 0 }, null), null);
+});
+
+// ── O NOVATO NA PARTIDA ──
+test("o ANEL segue a régua do jogo: a MAIOR peça come, a MENOR é comida, e no meio não há anel", () => {
+  const eu = { min: 80, max: 100 };
+  assert.equal(anelDeRisco(100 / EAT.RATIO, eu), "comivel", "no limite exato da maior: come");
+  assert.equal(anelDeRisco(100 / EAT.RATIO + .5, eu), null, "um pouco acima: não come mais, e ainda não é perigo");
+  assert.equal(anelDeRisco(80 * EAT.RATIO, eu), "perigo", "no limite da MENOR: ela é comida");
+  assert.equal(anelDeRisco(80 * EAT.RATIO - .5, eu), null);
+  // dividido, a peça que eu ainda não como já pode ser o perigo da minha MENOR — é a regra, não um acaso
+  assert.equal(anelDeRisco(88, { min: 40, max: 100 }), "perigo");
+  assert.equal(anelDeRisco(50, null), null, "sem peça minha, nada");
+  // com UMA peça as duas réguas são a mesma, e a faixa do meio é a briga parelha
+  const um = { min: 63, max: 63 };
+  assert.equal(anelDeRisco(54, um), "comivel");
+  assert.equal(anelDeRisco(63, um), null);
+  assert.equal(anelDeRisco(73, um), "perigo");
+});
+
+test("a SETA DA PRESA: nada com comida na tela; senão a comível mais perto, da AOI ou do placar", () => {
+  const eu = { x: 0, y: 0, r: 63 }, tela = { x0: -500, y0: -300, x1: 500, y1: 300 };
+  const pequena = 50;   // < 63/1,15
+  // comida NA TELA: o anel verde já está nela
+  assert.equal(presaForaDaTela(eu, [{ x: 100, y: 0, r: pequena }], [], new Set(), tela), null);
+  // fora da tela, pela AOI
+  assert.deepEqual(presaForaDaTela(eu, [{ x: 800, y: 0, r: pequena }], [], new Set(), tela), { tipo: "presa", x: 800, y: 0, r: pequena });
+  // pelo placar: só quem é comível por INTEIRO (√massa ≤ limite), e o mais perto
+  const rows = [{ slot: 1, x: 3000, y: 0, mass: pequena * pequena }, { slot: 2, x: -900, y: 0, mass: pequena * pequena },
+    { slot: 3, x: 600, y: 0, mass: 90 * 90 }, { slot: 9, x: 550, y: 0, mass: 100 }];
+  const g = presaForaDaTela(eu, [], rows, new Set([9]), tela);
+  assert.equal(g.x, -900, "o grande (slot 3) e o excluído (slot 9, eu) não contam");
+  assert.equal(presaForaDaTela(eu, [], [{ slot: 1, x: 900, y: 0, mass: 70 * 70 }], new Set(), tela), null, "ninguém comível: nada");
+  assert.equal(presaForaDaTela(null, [], rows, new Set(), tela), null);
 });

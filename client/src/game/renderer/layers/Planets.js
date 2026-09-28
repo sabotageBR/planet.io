@@ -13,6 +13,15 @@ import {colorOf,dashPolyline,seedUnit} from "../../util.js";
 import {paintTalk,paintCrown,paintNameBand} from "../../../theme/util.js";
 import {ordemDeTiers} from "../TextureCache.js";
 import {perf} from "../../perf.js";
+import {anelDeRisco} from "../../guia.js";
+
+// ── O ANEL DO NOVATO (`f.risco`, game/guia.js `anelDeRisco`) ──
+// Verde LISO em volta do que eu como, vermelho COM PONTAS em volta do que me come — as pontas não são enfeite:
+// verde e vermelho são o par que some em protanopia, e a forma diz o que a cor não diz a quem não a vê.
+// Tamanho CONSTANTE EM TELA (`s = 1/cam.scale`, a conta da seta de rumo): num planetão afastado um anel de
+// mundo sumiria, e num novato aproximado viraria um pneu. Cores FIXAS, não do tema: é informação de jogo e
+// tem de ler igual nos três céus — quem a separa do fundo é a TINTA escura por baixo.
+const RISCO={comivel:0x3ddc5f,perigo:0xff4d4d,tinta:0x141026,PONTAS:8};
 
 const FS=48,CHARS=[[" ","~"],["¡","ÿ"],["Ā","ž"],"✓◆✦•–—…"],TRAIL_MAX=12,TRAIL_MIN_V=72,POP_MS=280,POP_AMP=.22;
 // ── BLOB (borda de gelatina, estilo agar.io) ──
@@ -264,6 +273,14 @@ export function createPlanets(R){
         else if(v.talk)v.talk.visible=false;
         // arco de merge + anéis de powerup
         const g=v.gfx;g.clear();let drew=false;const n=counts.get(e.owner)||1;
+        if(f.risco&&!isMe&&!(pl&&pl.ally)){const k=anelDeRisco(e.rr,f.risco);
+          if(k){const s=1/(cam&&cam.scale||1),rr=e.rr+5*s,cor=RISCO[k];
+            g.circle(0,0,rr);g.stroke({width:6*s,color:RISCO.tinta,alpha:.35});
+            g.circle(0,0,rr);g.stroke({width:3*s,color:cor,alpha:.95});
+            if(k==="perigo"){const h=7*s,b=.16,N=RISCO.PONTAS;   // as pontas, para fora, paradas
+              for(let i=0;i<N;i++){const a=i*6.2832/N,ca=Math.cos(a),sa=Math.sin(a),cb=Math.cos(a-b),sb=Math.sin(a-b),cc=Math.cos(a+b),sc=Math.sin(a+b),r0=rr+1.5*s;
+                g.poly([cb*r0,sb*r0,ca*(r0+h),sa*(r0+h),cc*r0,sc*r0],true);g.fill({color:cor,alpha:.95});}}
+            drew=true;}}
         if(n>1&&!(e.flags&PIECE_FLAG.MERGING)){const t0=e.firstTick!=null?e.firstTick:e.createdTick,prog=t0!=null?Math.min(1,Math.max(0,(rt-t0)/mergeTicks(e.rr))):1;
           if(prog<1){const m=cell.merge,col=colorOf(m.color);g.arc(0,0,e.rr*m.radiusK,-1.5708,-1.5708+prog*6.2832);g.stroke({width:m.width(e.rr),color:col.c,alpha:col.a,cap:"round"});drew=true;}}
         // ── ESCUDO E ÍMÃ: BORDA NEON, não anel girando ──

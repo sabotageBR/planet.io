@@ -2752,6 +2752,42 @@ body[data-mode="portrait"] #hud .dica-split{bottom:150px;font-size:12px;padding:
   max-width:calc(100% - 24px);white-space:normal;text-align:center}
 body[data-mode="landscape"] #hud .dica-split{bottom:96px}
 @media (prefers-reduced-motion:reduce){#hud .dica-split{animation:none}}
+/* O DESENHO DA MISSÃO (`ui/DicaSplit.jsx`): grãos → planeta · planeta → presa com o anel VERDE (o mesmo do
+   anel do novato no mundo) · a tecla/o botão + o arco do salto. A frase só existe fora do pacote (`ds-txt`).
+   ⚠️ A transição da barra leva ID: `#hud *{transition:…}` (ui.css, topo) vale (1,0,0) e mata qualquer
+   transição escrita só com classe — é a armadilha que fez a barra do tutorial andar em degraus de 8 Hz. */
+#hud .dica-split{display:flex;align-items:center;gap:9px}
+#hud .dica-split .ds-svg{flex:none;width:84px;height:28px;overflow:visible}
+#hud .dica-split .ds-btn{flex:none;width:26px;height:26px}
+#hud .dica-split .ds-grao{stroke:#141026;stroke-width:1.2}
+#hud .dica-split .ds-grao.a{fill:#ffc22e}#hud .dica-split .ds-grao.b{fill:#2ee6ff}#hud .dica-split .ds-grao.c{fill:#ff6fb5}
+#hud .dica-split .ds-eu{fill:#ff7a3d;stroke:#fff;stroke-width:2}
+#hud .dica-split .ds-presa{fill:#5aa9ff;stroke:#fff;stroke-width:1.6}
+#hud .dica-split .ds-anel{fill:none;stroke:#3ddc5f;stroke-width:2.6}
+#hud .dica-split .ds-seta{fill:none;stroke:#fff;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+#hud .dica-split .ds-arco{fill:none;stroke:#ffc22e;stroke-width:2.6;stroke-linecap:round;stroke-dasharray:5 4}
+#hud .dica-split .ds-btn-fundo{fill:#1c1440;stroke:#8b5cff;stroke-width:2}
+#hud .dica-split .tut-tecla{flex:none;font-size:11px}
+#hud .dica-split .ds-barra{flex:none;display:block;width:54px;height:8px;border-radius:99px;overflow:hidden;
+  background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.3)}
+#hud .dica-split .ds-barra>i{display:block;height:100%;background:#ffc22e;border-radius:99px;transition:width .3s ease-out}
+#hud .dica-split .ds-txt{white-space:nowrap}
+body[data-mode="portrait"] #hud .dica-split{flex-wrap:wrap;justify-content:center}
+
+/* ── A DICA DO TIRO (`h.dicaTiro`, game/index.js) ─────────────────────────────
+   A lição do tiro saiu do tutorial e virou isto: na PRIMEIRA munição da sessão o botão de tiro pulsa em
+   dourado (dedo) e, no mouse, o desenho do CLIQUE aparece colado ao chip da munição, por 3,5 s. O mesmo
+   `dica-pulsa` do DIVIDIR (box-shadow/filter, nunca `transform` — os botões são posicionados pelos temas). */
+#hud #t-fire.dica-tiro,#hud #hud-ammo.dica-tiro{animation:dica-pulsa-tiro 800ms ease-in-out infinite;outline:2px solid #ffc22e;outline-offset:2px}
+@keyframes dica-pulsa-tiro{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,194,46,.6);filter:brightness(1)}
+  50%    {box-shadow:0 0 0 10px rgba(255,194,46,0);filter:brightness(1.3)}}
+/* À ESQUERDA do chip: à direita moram os discos dos powerups, e o desenho caía em cima deles */
+#hud #hud-ammo .dica-tiro-mouse{position:absolute;right:calc(100% + 10px);top:50%;translate:0 -50%;width:26px;height:39px;
+  pointer-events:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));animation:dica-entra 220ms ease-out both}
+#hud #hud-ammo .dica-tiro-mouse .tut-mouse{width:100%;height:100%}
+body[data-pointer="coarse"] #hud #hud-ammo .dica-tiro-mouse{display:none}
+@media (prefers-reduced-motion:reduce){#hud #t-fire.dica-tiro,#hud #hud-ammo.dica-tiro{animation:none}}
 
 /* ── O BOTÃO DE DIVIDIR PULSANDO JUNTO COM A DICA ────────────────────────────
    A pílula de texto diz o QUE fazer; o pulso diz ONDE. Uma frase sozinha, no meio de uma partida, exige

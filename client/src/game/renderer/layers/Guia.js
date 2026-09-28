@@ -5,7 +5,7 @@
 //   toque — ondas saindo da estrela e a mão (dedo) ou o cursor (mouse) tocando nela;
 //   ir    — setas andando da borda do planeta até o caco mais perto, e o gesto deslizando por elas;
 //   salto — o arco tracejado do planeta até a presa, com a ponta de seta e a presa pulsando;
-//   presa — na PARTIDA, a presa mais perto: um anel nela se está na tela, uma seta na borda se não está.
+//   presa — na PARTIDA, a presa mais perto FORA da tela: uma seta na borda apontando para ela.
 //
 // ⚠️ TAMANHO CONSTANTE EM TELA: a camada vive no container do mundo (que leva `world.scale.set(cam.scale)`),
 // então toda medida em px de tela é multiplicada por `s = 1/cam.scale` — a conta da seta de rumo
@@ -90,11 +90,13 @@ function salto(g,q,s,t){
   const tx=bx-cx,ty=by-cy,tn=Math.hypot(tx,ty)||1,vx=tx/tn,vy=ty/tn,h=12*s;
   traco(g,()=>{g.moveTo(bx-vx*h-vy*h*.8,by-vy*h+vx*h*.8);g.lineTo(bx,by);g.lineTo(bx-vx*h+vy*h*.8,by-vy*h-vx*h*.8);},4.5*s,OURO,.95);}
 
-// ── PRESA (na partida): um anel nela, ou uma seta na borda da tela apontando para ela ──
+// ── PRESA (na partida): uma seta na borda da tela apontando para ela ──
+// ⚠️ NA TELA, NADA: ali quem a marca é o anel verde do novato (`Planets.js`, na PEÇA de verdade). Um segundo
+// anel aqui, desenhado na posição do placar (2 Hz, interpolada), ficava ao LADO da peça — um aro vazio.
 function presa(g,q,s,t,cam){
   const hw=cam.W/(2*cam.scale),hh=cam.H/(2*cam.scale),m=46*s;
   const dx=q.x-cam.x,dy=q.y-cam.y;
-  if(Math.abs(dx)<hw-m*.5&&Math.abs(dy)<hh-m*.5){anel(g,q.x,q.y,q.r,s,t,VERDE);return;}
+  if(Math.abs(dx)<hw-m*.5&&Math.abs(dy)<hh-m*.5)return;
   // fora da tela: onde a direção fura a janela (o menor avanço que bate numa das bordas) — a conta do `Threat.js`
   const d=Math.hypot(dx,dy)||1,nx=dx/d,ny=dy/d,ax=Math.abs(nx),ay=Math.abs(ny);
   const k=Math.min(ax>1e-4?(hw-m)/ax:Infinity,ay>1e-4?(hh-m)/ay:Infinity);if(!Number.isFinite(k)||k<=0)return;
