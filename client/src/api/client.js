@@ -25,21 +25,39 @@ const ls = { get(k) { try { return localStorage.getItem(k); } catch { return nul
 export const getToken = () => ls.get(TOKEN_KEY);
 const setToken = t => ls.set(TOKEN_KEY, t);
 
-async function request(method, path, body, { auth = true, raw = false, contentType = null } = {}) {
+/**
+ * ⚠️ TODA REQUISIÇÃO TEM TETO DE TEMPO (`timeout`). Sem ele, uma rede que não falha mas também não
+ * responde (o 4G que "pega mas não anda", o Wi-Fi de hotel) segurava o `await` para sempre — e o boot
+ * inteiro mora atrás de um `await api.bootstrap()`: o jogador olhava a cortina até desistir, sem erro e
+ * sem a tela de "sem conexão", que só existe quando alguma coisa FALHA. Estourado, vira `NetworkError`,
+ * que é exatamente o que uma rede caída já produz, então quem chama não precisa saber a diferença.
+ * ⚠️ O `raw` (a foto do jogador) tem teto próprio e largo: é upload, e num celular fraco ele leva tempo de
+ * verdade. E o relógio só para depois do CORPO lido — `res.text()` também pode pendurar.
+ */
+const TIMEOUT_MS = 12000, TIMEOUT_RAW_MS = 60000;
+async function request(method, path, body, { auth = true, raw = false, contentType = null, timeout = raw ? TIMEOUT_RAW_MS : TIMEOUT_MS } = {}) {
   const headers = { Accept: "application/json" };
   // `raw`: o corpo vai como está (um Blob de imagem). Serializar em base64 dentro de JSON custaria 33% a
   // mais e estouraria o teto de corpo do router — a rota do avatar tem limite próprio justamente por isso.
   if (body !== undefined) headers["Content-Type"] = raw ? (contentType || "application/octet-stream") : "application/json";
   const tok = getToken(); if (auth && tok) headers.Authorization = "Bearer " + tok;
-  let res;
-  // `apiUrl` é a costura ÚNICA: os ~30 literais "/api/…" abaixo continuam literais, e no pacote de
-  // portal ganham a origem absoluta de uma vez só (client/src/api/base.js).
-  try { res = await fetch(apiUrl(path), { method, headers, body: body === undefined ? undefined : (raw ? body : JSON.stringify(body)), cache: "no-store" }); }
-  catch (e) { throw new NetworkError(e.message || "rede"); }
-  if (res.status === 204) return null;
-  const text = await res.text(); let data = null;
+  let res, text;
+  const ctl = typeof AbortController === "function" ? new AbortController() : null;
+  const relogio = ctl && timeout > 0 ? setTimeout(() => ctl.abort(), timeout) : 0;
+  try {
+    // `apiUrl` é a costura ÚNICA: os ~30 literais "/api/…" abaixo continuam literais, e no pacote de
+    // portal ganham a origem absoluta de uma vez só (client/src/api/base.js).
+    try { res = await fetch(apiUrl(path), { method, headers, body: body === undefined ? undefined : (raw ? body : JSON.stringify(body)), cache: "no-store", signal: ctl ? ctl.signal : undefined }); }
+    catch (e) { throw new NetworkError(ctl && ctl.signal.aborted ? "timeout" : (e.message || "rede")); }
+    if (res.status === 204) return null;
+    try { text = await res.text(); } catch (e) { throw new NetworkError(ctl && ctl.signal.aborted ? "timeout" : (e.message || "rede")); }
+  } finally { clearTimeout(relogio); }
+  let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { /* corpo não-JSON */ }
   if (!res.ok) {
+    // o `Retry-After` do 429 vai no `data`: o servidor o manda em CABEÇALHO (e o tira do corpo), e sem isto
+    // quem chama não teria como decidir se vale esperar
+    if (res.status === 429 && data && data.error) { const ra = +res.headers.get("retry-after"); if (ra > 0) data.retryAfter = ra; }
     if (data && data.error) throw new ApiError(res.status, data.error, data.message || data.error, data);
     // O código é o que o cliente traduz (i18n/errors.js); a mensagem daqui é só o paraquedas do paraquedas.
     // `http` leva o status no `data` para o molde "Erro {n}" — antes o código era "http_404", que nenhum
@@ -47,6 +65,22 @@ async function request(method, path, body, { auth = true, raw = false, contentTy
     throw new ApiError(res.status, res.status >= 500 ? "unreachable" : "http", res.status >= 500 ? "Servidor indisponível" : "Erro " + res.status, { status: res.status });
   }
   return data;
+}
+
+/**
+ * O CONVIDADO NOVO. ⚠️ Um 429 com espera CURTA (`Retry-After` ≤ 8 s) espera e tenta UMA vez: sem isto ele
+ * subia do `bootstrap()` como erro, e no pacote de portal todo erro do boot vira a tela "sem contato com a
+ * base" — com o servidor de pé e respondendo. Espera longa não se espera (o balde de convidados é por hora):
+ * aí o erro sobe como sempre subiu.
+ */
+async function criaConvidado() {
+  try { return await request("POST", "/api/auth/guest", {}, { auth: false }); }
+  catch (e) {
+    const ra = e instanceof ApiError && e.status === 429 ? +((e.data && e.data.retryAfter) || 0) : 0;
+    if (!(ra > 0 && ra <= 8)) throw e;
+    await new Promise(r => setTimeout(r, ra * 1000));
+    return request("POST", "/api/auth/guest", {}, { auth: false });
+  }
 }
 
 // ── perfil local (offline) ───────────────────────────────────────────────────
@@ -96,8 +130,27 @@ export const api = {
   post: (p, b) => request("POST", p, b === undefined ? {} : b),
   patch: (p, b) => request("PATCH", p, b),
 
-  /** GET /api/me (401 → POST /api/auth/guest → guarda token → me). Sem servidor → perfil local. */
-  async bootstrap() {
+  /**
+   * A SONDA: `GET /api/config`, sem conta. Diz se o servidor existe (`api.server`) e guarda o corpo
+   * (`api.cfg`). Separada de `bootstrap()` porque a ESTREIA (state/actions.js, `estreiaRapida`) decide o
+   * tutorial só com ela — a conta do convidado novo são mais duas idas ao servidor que o tutorial, que roda
+   * na página, não precisa esperar.
+   * ⚠️ UMA nova tentativa, e só para rede (`NetworkError`, que inclui o teto de tempo): é a primeira
+   * requisição da página, a que paga o aperto de mão TLS, e a que mais sofre com o celular acordando o
+   * rádio. Um 5xx não se repete — ali o servidor RESPONDEU que está fora.
+   */
+  async sonda() {
+    for (let i = 0; i < 2; i++) {
+      try { api.cfg = await request("GET", "/api/config", undefined, { auth: false, timeout: 7000 }); api.server = true; return api.cfg; }
+      catch (e) { if (!(e instanceof NetworkError) || i) { api.server = false; return null; } await new Promise(r => setTimeout(r, 400)); }
+    }
+    return null;
+  },
+  /**
+   * GET /api/me (401 → POST /api/auth/guest → guarda token → me). Sem servidor → perfil local.
+   * `sonda:false` = quem chama já sondou (a estreia rápida): não repete a ida ao `/api/config`.
+   */
+  async bootstrap({ sonda = true } = {}) {
     try {
       // ⚠️ A sonda é INCONDICIONAL. Ela morava dentro do `if (getToken())`, então quem chegava SEM token
       // nunca a fazia: `api.server` ficava `null`, o `boot()` caía no ramo do `api.online===false` e o
@@ -106,14 +159,17 @@ export const api = {
       // zero: `loadConfig()` pede a MESMA rota logo depois.
       // ⚠️ A RESPOSTA É GUARDADA (`api.cfg`), e não jogada fora: é ela que põe o parâmetro do tutorial de
       // estreia em mãos ANTES de `destinoDoBoot`, sem uma requisição a mais. Ver o campo lá em cima.
-      try { api.cfg = await request("GET", "/api/config", undefined, { auth: false }); api.server = true; }
-      catch { api.server = false; }
+      if (sonda || api.server == null) await api.sonda();
+      // ⚠️ sonda que falhou = servidor fora: tentar a conta assim mesmo só produzia o MESMO perfil local,
+      // e agora cada tentativa custa o teto de tempo (12 s) — numa rede pendurada, meio minuto a mais de
+      // cortina antes da tela que diz a verdade
+      if (api.server === false) throw new NetworkError("sem servidor");
       let me = null;
       if (getToken()) {
         try { me = await request("GET", "/api/me"); }
         catch (e) { if (e instanceof ApiError && e.status === 401) setToken(null); else throw e; }
       }
-      if (!me) { const g = await request("POST", "/api/auth/guest", {}, { auth: false }); setToken(g.token); me = await request("GET", "/api/me"); }
+      if (!me) { const g = await criaConvidado(); setToken(g.token); me = await request("GET", "/api/me"); }
       api.online = true; return me;
     } catch (e) {
       // servidor sem banco (rotas de conta ausentes) ou fora do ar → perfil local

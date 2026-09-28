@@ -7,7 +7,7 @@
 // Rodar: node --test client/test/entrada.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { destinoDoBoot, destinoDaSaida, precisaTutorial } from "../src/state/entrada.js";
+import { destinoDoBoot, destinoDaSaida, precisaTutorial, estreiaSemConta } from "../src/state/entrada.js";
 
 test("no pacote, o boot sem querystring termina na ARENA", () => {
   assert.deepEqual(destinoDoBoot({ semMenu: true }), { tipo: "jogar" });
@@ -109,4 +109,24 @@ test("precisaTutorial é PURA: a mesma entrada dá a mesma saída", () => {
   const a = precisaTutorial(ctx);
   assert.equal(precisaTutorial(ctx), a);
   assert.deepEqual(ctx, { games: 0, marcado: false, online: true, erro: false }, "e não mexe no argumento");
+});
+
+// ── A ESTREIA SEM ESPERAR A CONTA (`estreiaRapida`, state/actions.js) ──
+// Um aparelho novo entra no tutorial logo depois da sonda do `/api/config`, e a conta do convidado corre por
+// trás. O que se trava aqui é QUEM pode fazer isso — a lista de plataformas é o segundo portão, depois da sonda.
+test("estreia sem conta: aparelho NOVO, sem marca e sem link, pode", () => {
+  assert.equal(estreiaSemConta({ temToken: false, marcado: false }), true);
+  assert.equal(estreiaSemConta({ temToken: false, marcado: false, forcado: "1" }), true, "?tutorial=1 não barra");
+});
+test("...mas quem tem TOKEN espera a conta: só o /api/me sabe se ela já jogou", () => {
+  assert.equal(estreiaSemConta({ temToken: true, marcado: false }), false);
+  assert.equal(estreiaSemConta({ temToken: true, marcado: false, forcado: "1" }), false,
+    "o `?tutorial=1` de uma conta existente continua pelo boot normal, que também o respeita");
+});
+test("...e a MARCA do tutorial fecha a porta mesmo sem token (limpou o token, não a marca)", () => {
+  assert.equal(estreiaSemConta({ temToken: false, marcado: true }), false);
+});
+test("...e os LINKS e o `?tutorial=0` nunca: eles têm destino próprio", () => {
+  assert.equal(estreiaSemConta({ temToken: false, marcado: false, link: true }), false);
+  assert.equal(estreiaSemConta({ temToken: false, marcado: false, forcado: "0" }), false);
 });

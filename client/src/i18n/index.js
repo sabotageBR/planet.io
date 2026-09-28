@@ -7,6 +7,7 @@
 // Os outros vêm por `import()` (o mesmo padrão de `/admin` e `?sfx` em main.jsx), então quem joga em
 // português não baixa um byte de espanhol — medido, um dicionário completo dá ~29 KB.
 import base from "./pt-BR.js";
+import en from "./en.js";
 import { PORTAL } from "../portal/flags.js";
 
 // ⚠️ SÃO DOIS papéis, e misturá-los num `DEFAULT_LANG` só escondia a diferença:
@@ -24,7 +25,13 @@ export const LANG_PREFS = ["auto", ...LANGS];
 // O nome de cada idioma fica NO PRÓPRIO idioma: quem fala inglês procura "English" na lista, não "Inglês".
 export const LANG_NAMES = { "pt-BR": "Português", en: "English", es: "Español" };
 const CARGA = { en: () => import("./en.js"), es: () => import("./es.js") };
-const DICT = { [BASE_LANG]: base };
+// ⚠️ NO PACOTE DE PORTAL O INGLÊS TAMBÉM É ESTÁTICO. Lá o público é o mundo e quase ninguém fala português,
+// então o `import()` do inglês estava no caminho de TODO primeiro frame: o `bootLang` espera por ele (até
+// 600 ms) antes do primeiro render, e ele só é pedido depois que o bundle principal chega e roda — uma ida a
+// mais, em série. ~8 KB comprimidos contra um RTT no instante mais caro da página (o que o C2P da Poki mede).
+// No site nada muda: `PORTAL` é literal de build (`define`), o ramo falso é dobrado e o import estático some
+// da árvore — o inglês continua um chunk à parte.
+const DICT = PORTAL ? { [BASE_LANG]: base, en } : { [BASE_LANG]: base };
 const CHAVE = "warspace_lang";   // o idioma tem que estar decidido ANTES do 1º paint (ver bootLang)
 
 // Merge profundo GENÉRICO em vez da lista de grupos que existia aqui: a lista tinha que ser lembrada a

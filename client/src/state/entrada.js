@@ -68,6 +68,29 @@ export function precisaTutorial({ games, marcado, online, erro, forcado = null }
 }
 
 /**
+ * A ESTREIA PODE COMEÇAR ANTES DA CONTA? — o primeiro dos dois portões de `estreiaRapida` (state/actions.js).
+ *
+ * Um aparelho NOVO numa plataforma com tutorial entra nele assim que a sonda do `/api/config` responde, e a
+ * conta do convidado (criar + `/api/me`: duas idas ao servidor em série) corre por trás. Este predicado diz
+ * se o boot PODE tentar isso; o segundo portão (a lista de plataformas, `tutorialEm`) só se conhece depois
+ * da sonda, e é por isso que ele não mora aqui.
+ *
+ * ⚠️ `temToken` é o que separa "aparelho novo" de "conta que já existe": com token, a conta pode já ter
+ * jogado, e só o `/api/me` sabe — o boot normal (`precisaTutorial`) decide. Sem token, `games` é zero POR
+ * DEFINIÇÃO: a conta nem nasceu.
+ * ⚠️ `marcado` (a marca do tutorial em localStorage) fecha a porta mesmo sem token: quem limpou o token mas
+ * não a marca já viu o tutorial neste aparelho.
+ * ⚠️ Os LINKS (`?party=`/`?sala=`) nunca: eles têm destino próprio, e o amigo está esperando do outro lado.
+ * ⚠️ `?tutorial=0` desliga; `?tutorial=1` não precisa deste portão para nada além de não ser barrado.
+ *
+ * @param {{temToken:boolean,marcado:boolean,link?:boolean,forcado?:string|null}} q
+ */
+export function estreiaSemConta({ temToken, marcado, link = false, forcado = null }) {
+  if (forcado === "0" || link || temToken || marcado) return false;
+  return true;
+}
+
+/**
  * O destino de SAIR DA PARTIDA. No site é a tela de SALAS; no pacote é a tela de MODOS.
  *
  * ⚠️ Ela existe porque são SETE botões de sair espalhados pelo cliente (o ☰ do HUD, o lobby do BR, o

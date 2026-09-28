@@ -13,7 +13,7 @@ import { portal } from "../portal/index.js";
 import { PORTAL, SEM_MENU, entraDiretoEm, tutorialEm } from "../portal/flags.js";
 import { renasceSozinho, pedagioLiberado } from "../portal/primeiraVida.js";
 import { marco, evento, marcoMorte, noTutorial } from "../portal/marcos.js";
-import { destinoDoBoot, destinoDaSaida, precisaTutorial } from "./entrada.js";
+import { destinoDoBoot, destinoDaSaida, precisaTutorial, estreiaSemConta } from "./entrada.js";
 import { tutorVisto, marcaTutor, marcaMissao } from "../game/estreia.js";
 import { partesDoDemo } from "../ui/tutorEstilo.js";
 import { ETAPA as ETAPA_TUTOR, proximaEtapa } from "../game/tutor.js";
@@ -223,8 +223,13 @@ async function garanteNick() {
   if (!nickEmVoo) nickEmVoo = setNick(st.nickSugerido, { silencioso: true }).finally(() => { nickEmVoo = null; });
   await nickEmVoo;
 }
-export async function boot() {
-  try { applySession(await api.bootstrap()); }
+/**
+ * A CONTA DO BOOT: sessão, portal, catálogos e a sugestão de nick. Era o começo de `boot()`, e saiu dele
+ * porque a ESTREIA (`estreiaRapida`) a roda em SEGUNDO PLANO — com o tutorial já na tela.
+ * `sonda:false` = a sonda do `/api/config` já foi feita por quem chamou.
+ */
+async function bootConta({ sonda = true } = {}) {
+  try { applySession(await api.bootstrap({ sonda })); }
   // ⚠️ O idioma sobrevive ao boot que falhou. Este ramo reaplica os PADRÕES, e `lang` é a única pref que
   // também mora fora do perfil (o atalho de localStorage que o `bootLang` lê antes do 1º render): sem
   // preservá-la aqui, um servidor fora do ar fazia o jogador que escolheu inglês ver o padrão "auto"
@@ -237,17 +242,6 @@ export async function boot() {
   // para receber `null`, e tudo o que vem depois herdava a espera. Ele continua valendo (é a promoção de
   // guest a conta do portal, o "Full" da CrazyGames), só deixa de estar no caminho crítico.
   if (SEM_MENU) entraPeloPortal(); else await entraPeloPortal();
-  // ⚠️ No pacote de portal, servidor fora NÃO pode virar um toast de 3 s e uma partida contra bots: ali
-  // não existe "modo local" que faça sentido (o jogador clicou num .io para jogar com gente), e o
-  // silêncio faz o jogo PARECER que funcionou. Vira uma tela que fica.
-  if (PORTAL && api.server === false) app.update({ servidorFora: true });
-  else if (api.server === false) toast(getLabels().offlineNote, 3200);
-  else if (api.online === false) toast(getLabels().noDbNote, 3200);
-  // ⚠️ E BOOT QUE FALHOU TAMBÉM É TELA QUE FICA, no pacote. `bootError` sozinho não muda tela nenhuma: no
-  // site ele aparece como a nota de convidado da tela inicial, e sem tela inicial isso vira SHELL PRETO —
-  // o jogador olhando nada, sem nem um botão de tentar de novo. `Offline.jsx` já é essa tela e já tem o
-  // botão; o que faltava era alguém acendê-la.
-  if (SEM_MENU && app.get().bootError) app.update({ servidorFora: true });
   // ⚠️ `loadRooms()` SAI no pacote: é um pedido de rede, a cada boot, para uma lista que nenhuma tela
   // desenha — o mesmo defeito que a própria tela inicial já corrigiu uma vez ("A PORTA DE ENTRADA NÃO
   // ANUNCIA SALA VAZIA") e que a coluna escondida pelos temas cometeu antes dela. O TOP 5 fica: ele é
@@ -278,6 +272,69 @@ export async function boot() {
   const uBoot = app.get().session.user;
   if (nickSorteado(uBoot && uBoot.nick)) app.update({ nickSugerido: chaoLocalNick() });
   resolveNickSugerido(uBoot).then(n => app.update({ nickSugerido: n }));
+}
+/**
+ * A ESTREIA NÃO ESPERA A CONTA. Um aparelho NOVO (sem token e sem a marca do tutorial) numa plataforma com
+ * tutorial entra NELE assim que a sonda do `/api/config` responde — e a conta do convidado (criar + `/api/me`,
+ * duas idas ao servidor em série) corre por trás, enquanto a estrela espera o primeiro toque. O tutorial
+ * roda inteiro na página (`game/net/tutorServer.js`); quem precisa da conta é a PRIMEIRA SALA, e é ali que
+ * ela é esperada (`garanteConta`, no começo de `entraNaSala`).
+ * ⚠️ O motivo é o C2P da Poki (quantos visitantes chegam ao primeiro `gameplayStart`): do Vietnã ao Brasil
+ * cada ida e volta são ~330 ms, e a estreia esperava TRÊS delas mais o aperto de mão TLS — ~2 s de cortina
+ * a mais para exatamente quem ainda não decidiu se fica.
+ * ⚠️ A SONDA CONTINUA NO CAMINHO, de propósito: é ela que traz a lista de plataformas do painel
+ * (`TUTORIAL.PLATAFORMAS`), ou seja o interruptor do tutorial continua valendo sem deploy. Sem ela, desligar
+ * o tutorial num dia ruim exigiria um zip novo na fila de revisão do portal.
+ * ⚠️ Links (`?party=`/`?sala=`) e `?tutorial=0` nunca entram aqui: eles têm destino próprio no boot normal.
+ * @returns {Promise<boolean>} true = a estreia assumiu o boot
+ */
+let contaBoot = null;   // a conta que a estreia NÃO esperou — `garanteConta` a espera antes da primeira sala
+async function estreiaRapida() {
+  const forcado = Q.get("tutorial") || (import.meta.env.DEV && Q.get("tutor") ? "1" : null);
+  if (!estreiaSemConta({ temToken: !!api.token, marcado: tutorVisto(), link: !!(Q.get("party") || Q.get("sala")), forcado })) return false;
+  await api.sonda();
+  if (api.server !== true) return false;
+  if (forcado !== "1" && !tutorialEm(api.cfg ? api.cfg.tutorial : null)) return false;
+  // a mesma regra da URL do boot normal: em DEV, com `?tutor=`, ela fica (F5 não perde o modelo escolhido)
+  if (!(import.meta.env.DEV && Q.get("tutor"))) history.replaceState(null, "", location.pathname);
+  app.update({ booted: true });
+  entraNoTutorial();
+  contaBoot = bootConta({ sonda: false });
+  return true;
+}
+/**
+ * A PRIMEIRA SALA ESPERA A CONTA QUE A ESTREIA DEIXOU CORRENDO. Sem estreia rápida (`contaBoot` nulo) é
+ * um no-op. Se a conta falhou por trás enquanto o jogador aprendia, há UMA nova tentativa agora — agora que
+ * ele de fato espera por ela —, e só então, no pacote, a tela que fica (`servidorFora`): acendê-la no meio
+ * do tutorial tiraria de alguém uma aula que não depende de servidor nenhum.
+ * @returns {Promise<boolean>} false = não há conta e a tela de servidor fora já foi acesa
+ */
+async function garanteConta() {
+  if (!contaBoot) return true;
+  const c = contaBoot; await c;
+  if (contaBoot !== c) return garanteConta();   // outra chamada já refez a conta: vale a dela
+  contaBoot = null;
+  if (!app.get().bootError) return true;
+  app.update({ bootError: null });
+  await bootConta();
+  if (!app.get().bootError && api.server !== false) return true;
+  if (PORTAL) { app.update({ servidorFora: true }); return false; }
+  return true;   // no site o caminho de sempre segue com o perfil que houver (e a nota de erro da tela inicial)
+}
+export async function boot() {
+  if (await estreiaRapida()) return;
+  await bootConta();
+  // ⚠️ No pacote de portal, servidor fora NÃO pode virar um toast de 3 s e uma partida contra bots: ali
+  // não existe "modo local" que faça sentido (o jogador clicou num .io para jogar com gente), e o
+  // silêncio faz o jogo PARECER que funcionou. Vira uma tela que fica.
+  if (PORTAL && api.server === false) app.update({ servidorFora: true });
+  else if (api.server === false) toast(getLabels().offlineNote, 3200);
+  else if (api.online === false) toast(getLabels().noDbNote, 3200);
+  // ⚠️ E BOOT QUE FALHOU TAMBÉM É TELA QUE FICA, no pacote. `bootError` sozinho não muda tela nenhuma: no
+  // site ele aparece como a nota de convidado da tela inicial, e sem tela inicial isso vira SHELL PRETO —
+  // o jogador olhando nada, sem nem um botão de tentar de novo. `Offline.jsx` já é essa tela e já tem o
+  // botão; o que faltava era alguém acendê-la.
+  if (SEM_MENU && app.get().bootError) app.update({ servidorFora: true });
   // ── PARA ONDE ESTE BOOT VAI ──
   // A escolha mora em `state/entrada.js` (pura e testada); aqui só se executa o que ela decidiu. Os quatro
   // ramos de querystring continuam GANHANDO do boot direto, e o motivo é que todos já terminam numa
@@ -779,6 +836,8 @@ export async function play(pedido = {}) {
 }
 async function entraNaSala({ room, mode, teamSize, party, semAnuncio } = {}) {
   cancelaTelaMorte();   // entrar noutra sala durante a espera: a tela de morte seria da sala que ficou
+  // a conta que a estreia rápida deixou correndo por trás do tutorial (no-op fora dela)
+  if (!(await garanteConta())) return;
   // ANTES da guarda, e é o que a torna inerte quando há sugestão: com o campo já preenchido, mandar o
   // jogador de volta à tela inicial para pedir um nome que está lá é repique puro. Com a sugestão vazia
   // (parâmetro desligado no /admin, ou a conta já nomeada) isto é um no-op e `semNome` segue mandando.
@@ -877,9 +936,14 @@ const PARABENS_MS = 7000;
  */
 const SAIDA_MS = 25000;
 let saidaPronta = null;   // {at, code} — o `api.auto` feito durante a última etapa
-export function preparaSaida() {
-  if (saidaPronta || api.online !== true) return;
+export async function preparaSaida() {
+  if (saidaPronta) return;
   const eu = saidaPronta = { at: Date.now(), code: null };
+  // a estreia rápida pode estar com a conta ainda a caminho: o nick e a sala precisam dela
+  if (contaBoot) await contaBoot;
+  if (saidaPronta !== eu) return;
+  if (api.online !== true) { saidaPronta = null; return; }
+  eu.at = Date.now();
   garanteNick().catch(() => {});
   api.auto({ mode: MODE.FREE, teamSize: 1 }).then(a => { if (a && a.code && saidaPronta === eu) eu.code = String(a.code); }).catch(() => {});
 }
