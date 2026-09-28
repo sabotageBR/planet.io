@@ -7,7 +7,8 @@ import {ROOM} from '@warspace/shared/constants.js';
 import {escolheSala,cargaPorShard} from '../src/rooms/matchmaking.js';
 
 const sala=(o={})=>({code:o.code||'0AAA',shard:o.shard|0,mode:o.mode|0,teamSize:o.teamSize||1,
-  players:o.players|0,bots:o.bots|0,max:o.max||50,open:o.open!==undefined?o.open:true});
+  players:o.players|0,bots:o.bots|0,max:o.max||50,open:o.open!==undefined?o.open:true,
+  ...(o.round!==undefined?{round:o.round}:{})});
 const auto=(salas,o={})=>escolheSala(salas,{mode:0,teamSize:1,shard:0,...o});
 
 test('sala vazia junta gente: com folga, o destino é a MAIS cheia', ()=>{
@@ -64,4 +65,32 @@ test('`open:false` (BR já em partida) fica de fora; irmão em build antiga cai 
 
 test('sala sem nada devolve null: a primeira do cluster nasce aqui', ()=>{
   assert.equal(auto([]),null);
+});
+
+// ── RODADA ACABANDO ── (Fit Test 25/09: 23 primeiras vidas terminaram no BIG CRUNCH aos ~84 s)
+test('sala do Livre com a rodada acabando sai do automático quando há outra', ()=>{
+  const acabando=sala({code:'0AAA',players:9,round:ROOM.ROUND_LEFT_MIN_S-1}),inteira=sala({code:'0BBB',players:3,round:1500});
+  assert.equal(auto([acabando,inteira]).code,'0BBB');
+});
+
+test('só salas acabando e folga aqui: abre uma NOVA (rodada inteira), não o pódio', ()=>{
+  assert.equal(auto([sala({code:'0AAA',players:9,round:60})]),null);
+});
+
+test('`round` null (sala sem fim) e ausente (irmão antigo) não são "acabando"', ()=>{
+  assert.equal(auto([sala({code:'0AAA',players:9,round:null})]).code,'0AAA');
+  assert.equal(auto([sala({code:'0BBB',players:9})]).code,'0BBB');
+});
+
+test('sem folga em lugar nenhum, a sala acabando ainda serve — fila num .io é jogador indo embora', ()=>{
+  const a=sala({code:'0AAA',players:ROOM.SHARD_SOFT,round:30});
+  assert.equal(auto([a],{shard:0}).code,'0AAA');
+  // e entre uma acabando e uma inteira, no teto, fica a inteira
+  const b=sala({code:'1AAA',shard:1,players:ROOM.SHARD_SOFT+2,round:1200});
+  assert.equal(auto([a,b],{shard:0}).code,'1AAA');
+});
+
+test('o Battle Royale não é filtrado: a sala aberta dele está no lobby', ()=>{
+  const lobby=sala({code:'0AAA',mode:1,teamSize:1,players:4,round:30});
+  assert.equal(auto([lobby],{mode:1,teamSize:1}).code,'0AAA');
 });

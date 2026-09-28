@@ -59,6 +59,11 @@ export const ROOM={SPEC_MAX:10,MAX:30,BOTS:32,CODE_LEN:4,STOP_AFTER_MS:30000,REM
   // do SOFT — quem já está jogando fica. E não são recusa: sem nenhum shard abaixo do teto, o jogador
   // entra do mesmo jeito (na sala MENOS cheia), porque fila de espera num .io é o jogador indo embora.
   SOFT:20,SHARD_SOFT:40,CUSTO_BOT:.1,CUSTO_SALA:3.5,
+  // ROUND_LEFT_MIN_S: o JOGAR (AUTO) não manda ninguém para uma sala do Livre cuja rodada acaba em menos
+  // que isso — a não ser que não exista outra. Medido no Fit Test da Poki de 25/09: 23 PRIMEIRAS vidas
+  // (4,4%) terminaram no BIG CRUNCH aos ~84 s, ou seja a primeira coisa que o novato viu na partida real
+  // foi um pódio de uma sala que ele mal conheceu. Sem outra sala boa, abre-se uma NOVA (rodada inteira).
+  ROUND_LEFT_MIN_S:300,
   // ── PREENCHIMENTO É O QUE FALTA PARA A SALA PARECER VIVA, NÃO UMA COTA FIXA ──
   // `BOTS` era o alvo ABSOLUTO: uma sala com 50 humanos carregava os 15 preenchimentos do mesmo jeito —
   // 15 cérebros, 15 planetas e 15 linhas de placar que ninguém pediu, no pod que já estava saturado. O
