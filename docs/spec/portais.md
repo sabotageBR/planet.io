@@ -171,6 +171,15 @@ por isso `scripts/brand-assets.mjs` monta a cena com os planetas do menu, o mís
 em vez de só a marca. ⚠️ A de 200×120 sai **sem tipografia**: a 120 px de altura qualquer texto vira
 mancha, e é a que mais aparece nas grades dos publishers.
 
+**A da Poki é outra coisa** (`node scripts/poki-thumb.mjs` → `brand/poki/`; a regra na letra está no cabeçalho
+do script): quadrada, **≥ 628×628**, full-bleed e **sem texto** — o título aparece no hover, e o tile tem 94
+ou 204 px, com canto de 16 px, sobre o fundo menta `#83FFE7` (com losangos) do site deles. **Um** personagem,
+na skin padrão, sugerindo movimento. É uma ilustração em SVG da JOGADA — o Marte Bravo engolindo a comida
+do jogo e perseguindo um planeta menor, no céu dusk do pacote — e **não reaproveita a arte de IA** do
+cenário do menu, que foi exatamente o que a recusa do Web Fit Test apontou. Sobe no painel em **Level 4 →
+*Game thumbnail*** (antes de pedir o WFT) e pode ser trocada a qualquer momento em desenvolvimento, menos
+com um WFT rodando. Suba o `thumb-1256.png` (o JPG é a reserva, se o formulário recusar o tamanho).
+
 ## CrazyGames: conta e sala (o "Full")
 
 Eles pedem mais que a GD, e o jogo atende:
@@ -446,6 +455,8 @@ scripts/portal-pack.mjs poki`) é a primeira das três etapas do plano; o detalh
   missão desenhada, dica do tiro.
 - **Medição**: `fit/congela_<faixa>` no Game Events é a réplica do relógio do Fit Test (quantas sessões o
   número deles congela, e quando); `scripts/poki-fit-bancada.mjs --mouse` é a bancada do desktop.
+- **Thumbnail nova** (`brand/poki/thumb-1256.png`): a imagem do painel era a arte de IA com o logo escrito e
+  quatro personagens em colagem — tudo o que o guia deles pede para não fazer. Ver "As thumbnails".
 
 ⚠️ **Disciplina de cada rodada**: `admin_settings`/`admin_audit` quietos durante o teste, zip com
 `WARSPACE_BUILD_VERSION`, a CSP da versão nova conferida (ela fica gravada na VERSÃO), o Inspector verde e

@@ -27,6 +27,7 @@ node scripts/novato-bancada.mjs --manso off|metade|todos   # sala headless com o
 DATABASE_URL=... node scripts/poki-coorte.mjs --de "2026-09-16 20:19-03" --ate "2026-09-17 01:10-03"   # a RÉGUA dos Fit Tests: coorte Poki por braço do A/B (SÓ LEITURA)
 node scripts/poki-fit-bancada.mjs [url]   # o SDK da Poki VÊ o dedo que dirige? (o relógio do Fit Test, replicado no stub; pacote = SDK, dev = controle)
 node scripts/brand-assets.mjs       # assa favicon/ícones/og/manifest + as 3 thumbnails de catálogo (brand/)
+node scripts/poki-thumb.mjs         # a thumbnail da POKI (brand/poki/): SVG à mão, sem texto, a jogada do pacote — as regras deles no cabeçalho
 DATABASE_URL=... node scripts/skin-art.mjs [--dry]   # sobe a arte de client/public/faces/ para o banco (uma vez por ambiente)
 node scripts/responsive-check.mjs [url]   # a matriz de layout (18 aparelhos × 3 temas × ~60 telas, 7 critérios; RESP_TELAS/RESP_TEMAS recortam)
 node scripts/portal-pack.mjs gd|crazy|poki|itch|y8|gm|gameflare|playgama|gamepix|all  # o .zip do cliente para os portais (docs/spec/portais.md)
@@ -2108,6 +2109,11 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `pointerdown`/`keydown` de BOLHA nem evento rastreado — a fachada registra `portal.ultimoRastreado`), para ver
   no painel de verdade quanto do nosso tempo o número deles não vê; `scripts/poki-fit-bancada.mjs --mouse` prova
   o `gameplayStart` válido no clique da estrela e a réplica congelando junto com o stub.
+  ⚠️ **A THUMBNAIL É A JOGADA, DESENHADA** (`scripts/poki-thumb.mjs` → `brand/poki/thumb-1256.png`): a do painel
+  era a arte de IA com o logo escrito e quatro personagens em colagem. A nova segue o guia deles na letra (1:1,
+  ≥ 628, full-bleed, sem texto, um personagem na skin padrão, movimento, contraste com o menta `#83FFE7`) e
+  mostra só o que existe no pacote: o céu dusk, a comida `WARM` com contorno de tinta, o elenco do tutorial.
+  Ela NÃO sai do cenário do menu (`assets/scene/*.webp`), que é justamente a arte que eles chamaram de IA.
   ⚠️ **ORDEM DE PUBLICAÇÃO**: o SERVIDOR antes do zip — a skin em teste, o `equipped` e o matchmaking são dele. O
   protocolo não mudou (`PROTOCOL_VERSION` 15): zip velho com servidor novo e vice-versa funcionam.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
