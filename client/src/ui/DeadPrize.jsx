@@ -21,6 +21,8 @@ import { useLabels } from "../hooks/useTheme.js";
 import { preenche } from "../i18n/index.js";
 import { skinName } from "../i18n/catalog.js";
 import SkinPreview from "./SkinPreview.jsx";
+import { TrilhaSkin } from "./tutorPecas.jsx";
+import { ENXUTO } from "../portal/flags.js";
 // ⚠️ `{ portal }`, NUNCA `* as portal`: a fachada é um OBJETO exportado com esse nome, então a importação
 // de namespace faz `portal.temRecompensa` ler um export que não existe — `undefined`, em silêncio, e a
 // oferta de anúncio NUNCA aparecia em portal nenhum. Quem acusou foi o empacotador (o Rollup avisa
@@ -62,31 +64,34 @@ export default function DeadPrize({ on }) {
   const ganhou = premio.tipo === "skin";
   const progresso = premio.tipo === "progresso";
   const jaTem = (skins || []).includes(premio.id);
-  // O PROGRESSO é o mesmo nó, com a mesma altura: disco + texto, e a barra no lugar do botão. Trocar a
-  // altura entre os estados moveria o rodapé sticky, que é o que `min-height:64px` existe para impedir.
+  // O PROGRESSO é o mesmo nó, com a mesma altura: disco + a trilha da skin em teste. Trocar a altura entre
+  // os estados moveria o rodapé sticky, que é o que `min-height:64px` existe para impedir.
+  // ⚠️ A barra virou as BOLINHAS da mesma trilha da faixa de parabéns (`TrilhaSkin`), com a partida que acabou
+  // de contar ESTOURANDO: é o mesmo desenho em todo lugar que a promessa aparece, e no pacote ele fala sozinho —
+  // a frase ("JOGUE 3 PARTIDAS E GANHE") e o nome da skin saem no `ENXUTO` e ficam no `aria-label`.
   if (progresso) {
-    const p = Math.max(0, Math.min(1, premio.feitas / premio.alvo));
+    const frase = preenche(LB.prizeProgress, { n: premio.alvo }) + " " + skinName(premio.skin);
     return <div className="dd-premio prog">
       <div className="dp-disco"><SkinPreview skin={premio.skin} r={30} size={112} className="" /></div>
-      <div className="dp-txt">
-        <i>{preenche(LB.prizeProgress, { n: premio.alvo })}</i>
-        <b>{skinName(premio.skin)}</b>
-        {/* A barra é o markup do Perfil (`.ach-bar` + `--p`), para as duas telas falarem a mesma língua. */}
-        <span className="ach-bar" role="progressbar" aria-valuemin={0} aria-valuemax={premio.alvo}
-          aria-valuenow={premio.feitas}><i style={{ "--p": p }} /></span>
+      <div className="dp-txt" role="progressbar" aria-valuemin={0} aria-valuemax={premio.alvo}
+        aria-valuenow={premio.feitas} aria-label={frase}>
+        {ENXUTO ? null : <i>{preenche(LB.prizeProgress, { n: premio.alvo })}</i>}
+        {ENXUTO ? null : <b>{skinName(premio.skin)}</b>}
+        <TrilhaSkin feitas={premio.feitas} alvo={premio.alvo} nova={premio.feitas - 1} arte={false} />
       </div>
-      <div className="dp-passo">{premio.feitas}<span>/{premio.alvo}</span></div>
     </div>;
   }
   return <div className={"dd-premio" + (ganhou ? " ganhou" : "")}>
     <div className="dp-disco"><SkinPreview skin={premio.skin} r={30} size={112} className="" /></div>
     <div className="dp-txt">
       <i>{ganhou ? LB.prizeUnlocked : LB.prizeOffer}</i>
-      <b>{skinName(premio.skin)}</b>
+      {ENXUTO ? null : <b>{skinName(premio.skin)}</b>}
       {/* ⚠️ O texto do equipar não é enfeite: a skin da VIDA é resolvida no join, e `Room.respawn` repassa
           a da vida anterior — ela aparece na PRÓXIMA vida. Um botão que parece não fazer nada é pior que
           botão nenhum, então a tela DIZ isso em vez de deixar o jogador descobrir. */}
-      {ganhou || jaTem ? <em>{LB.prizeEquipNote}</em> : null}
+      {/* ⚠️ No pacote a nota sai: a skin que se ganha ali é quase sempre a do tutorial, que o jogador JÁ está
+          usando (a skin em teste) e que a concessão equipa sozinha — "equipada na próxima vida" seria mentira. */}
+      {!ENXUTO && (ganhou || jaTem) ? <em>{LB.prizeEquipNote}</em> : null}
     </div>
     {ganhou || jaTem ? null
       : <button className="btn-primary dp-ad" disabled={pedindo}

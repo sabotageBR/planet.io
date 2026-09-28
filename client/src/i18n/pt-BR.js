@@ -69,9 +69,7 @@ export default {
     btnDedoTocar: "toque na tela", btnDedoMissil: "MÍSSIL", btnDedoDividir: "DIVIDIR",
     // fim
     fimTitulo: "PARABÉNS!",
-    fimSub: "Você já sabe o básico.",
     fimPromessa: "Jogue {n} partidas e o {s} é seu",
-    fimIndo: "entrando…",
   },
   brInviteTitle: "🚀 Battle Royale começando!", brInviteBody: "Uma nova partida está se formando. Quer entrar?",
   brInviteYes: "Entrar", brInviteNo: "Agora não", brInviteMute: "Silenciar", brInviteMuteTip: "Não avisar mais nesta sala (para desligar de vez: Opções → Interface)",

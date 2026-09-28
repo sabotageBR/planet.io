@@ -14,7 +14,7 @@ import {levelFromXp,levelProgress} from '@warspace/shared/levels.js';
 import {eggSkinFor} from '@warspace/shared/eggs.js';
 import {SKIN_TUTORIAL} from '@warspace/shared/skins.js';
 import {PROGRESSO} from '@warspace/shared/constants.js';
-const JOIN_TIMEOUT_MS=3000,DRAIN_MS=10000,CLEAN_LOCK=727002,HOUR=3600e3,DAY=24*HOUR;
+const JOIN_TIMEOUT_MS=3000,TESTE_MS=800,DRAIN_MS=10000,CLEAN_LOCK=727002,HOUR=3600e3,DAY=24*HOUR;
 // Sem banco não há skin equipada nem nível — mas o EASTER EGG continua valendo: ele depende só do nick,
 // e é justamente no modo sem persistência (e no ?local=1) que ele é mais visível.
 const UNSAVED=(nick)=>({ok:true,userId:null,nick,registered:false,skinId:eggSkinFor(nick)||0,level:0,avatar:null,prefs:{},unsaved:true});
@@ -51,7 +51,22 @@ export function createPersistence({db,log,config,metrics=SEM_METRICS}){
     // `prefs.eggs:false` desliga, para quem gastou 30 mil moedas e por acaso se chama Bruxo.
     const prefs=u.prefs||{};
     const egg=prefs.eggs===false?null:eggSkinFor(u.nick);
-    const s=new MatchSession({userId:Number(u.id),nick:u.nick,kind:u.kind,skinId:egg!=null?egg:u.equipped_skin_id,roomCode,shard:config.shard});
+    // ⚠️ A SKIN EM TESTE: nas primeiras `PROGRESSO.PARTIDAS` partidas quem ainda está com a skin de
+    // NASCENÇA (a que `nasceCom` sorteia entre as grátis/comuns) joga com o Marte Bravo — o planeta do
+    // tutorial. Ele era TIRADO do jogador na entrada da primeira sala, e a troca de planeta no instante em
+    // que a partida começa lia como defeito (visto nos playtests da Poki de 25/09). Agora ele fica, e a
+    // concessão em `finishMatch` o torna definitivo sem que o planeta mude uma vez sequer.
+    // ⚠️ Só por cima da skin de NASCENÇA, e quem diz isso é a ORIGEM da posse (`source='default'`), nunca a
+    // lista de skins iniciais: as nove comuns estão nela E estão à venda, e quem comprou uma e a equipou
+    // joga com a DELA. O easter egg continua ganhando — é uma escolha feita no nick.
+    // ⚠️ Override de VIDA, como o egg: não escreve em `users.equipped_skin_id` (quem escreve é a concessão),
+    // então a Loja continua dizendo a verdade sobre o que a conta tem equipado.
+    // ⚠️ A consulta só existe nas 3 primeiras partidas da conta, e com teto próprio: falhou ou demorou, a
+    // vida sai com a skin equipada — nunca um join mais lento por causa de um enfeite.
+    let emTeste=false;
+    if(egg==null&&(Number(u.games)|0)<PROGRESSO.PARTIDAS)
+      try{emTeste=u.equipped_skin_id==null||await withTimeout(skins.isDefault(u.id,u.equipped_skin_id),TESTE_MS);}catch{emTeste=false;}
+    const s=new MatchSession({userId:Number(u.id),nick:u.nick,kind:u.kind,skinId:egg!=null?egg:emTeste?SKIN_TUTORIAL:u.equipped_skin_id,roomCode,shard:config.shard});
     sessions.set(s.sessionId,s);
     return{ok:true,userId:s.userId,nick:s.nick,registered:s.registered,skinId:s.skinId,
       level:levelFromXp(Number(u.xp||0)),avatar:u.avatar_hash||null,country:u.country||null,prefs,sessionId:s.sessionId,unsaved:false};
@@ -115,8 +130,15 @@ export function createPersistence({db,log,config,metrics=SEM_METRICS}){
       // ⚠️ Não vira fonte infinita nem custa uma consulta por partida a mais: `grantMany` devolve só o que
       // de fato inseriu, então da 4ª partida em diante a lista volta vazia sozinha — é o mesmo argumento
       // auto-corretivo escrito logo acima para as conquistas.
+      // ⚠️ E ELA FICA EQUIPADA, mas só por cima da skin de NASCENÇA (`equipSeInicial`): nas partidas anteriores o
+      // jogador já estava com ela (a skin em teste de `onPlayerJoin`), e sem a troca a partida seguinte à
+      // concessão voltaria à skin sorteada — o planeta mudaria no instante exato em que virou DELE.
+      // `equipped` viaja no payload porque o cliente guarda a skin equipada (`session.user.equippedSkin`)
+      // e a Loja diria outra coisa até o próximo boot.
+      let equipped=null;
       if((stats.games|0)>=PROGRESSO.PARTIDAS)
-        for(const id of await skins.grantMany(c,m.userId,[SKIN_TUTORIAL],'grant'))skinsUnlocked.push(id);
+        for(const id of await skins.grantMany(c,m.userId,[SKIN_TUTORIAL],'grant')){skinsUnlocked.push(id);
+          if(await users.equipSeInicial(m.userId,id,c))equipped=id;}
       let coins=null,earned=0;
       const base=matchCoins(m);if(base>0){coins=(await ledger.apply(c,{userId:m.userId,delta:base,reason:'match',refType:'match',refId:ins.id})).coins;earned+=base;}
       for(const k of fresh){const d=achievementCoins(k);coins=(await ledger.apply(c,{userId:m.userId,delta:d,reason:'achievement',refType:'achievement',refId:k})).coins;earned+=d;}
@@ -131,7 +153,7 @@ export function createPersistence({db,log,config,metrics=SEM_METRICS}){
       // congelada a sessão inteira. O `onDead` o incrementa otimista para a tela abrir com o número certo;
       // este aqui é o autoritativo, e é o MESMO que decide a concessão acima (uma fonte só para os dois
       // lados da promessa).
-      return{saved:true,matchId:ins.id,coinsEarned:earned,coins,achievements:fresh.map(k=>({key:k,title:achievementTitle(k)})),skinsUnlocked,games:stats.games|0,
+      return{saved:true,matchId:ins.id,coinsEarned:earned,coins,achievements:fresh.map(k=>({key:k,title:achievementTitle(k)})),skinsUnlocked,games:stats.games|0,equipped,
         xp:{gained:m.xp,total,level,prevLevel:prev,leveledUp:level>prev,into:p.into,need:p.need,pct:p.pct}};
     });
     let day=null,pais=null;try{const r=await ranking.rankOf({period:'day',by:'score',userId:m.userId});day=r?r.rank:null;}catch{}

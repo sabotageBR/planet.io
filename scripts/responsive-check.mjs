@@ -86,7 +86,7 @@ const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile",
   // `cena` NÃO TEM TEXTO: a instrução é o gesto no MUNDO (renderer/layers/Guia.js), que é canvas e esta sonda
   // não mede. O que sobra de DOM é a faixa de cima (bolas + pular em ícone), a barra, o selo ✓ e, no mouse,
   // a tecla de dividir no rodapé. As caras do tiro (`2…`) saíram; `ok1` é o selo da etapa 1 por cima da de dividir.
-  "tutor:pre","tutor:1","tutor:3@1","tutor:3!","tutor:ok1","game@parabens"];
+  "tutor:pre","tutor:1","tutor:3@1","tutor:3!","tutor:ok1","game@parabens","game@pips"];
 // OS MODELOS DO TUTORIAL (client/src/ui/tutorEstilo.js). As entradas SEM modelo no sufixo (as de cima) medem
 // o PADRÃO — hoje o `cena`, a tirinha —, e é por isso que elas levam duas caras que só ele tem: `1` é a
 // PÍLULA (o demo grava pct .45) e `1@2` é o cartão REABERTO no degrau 2; `ok1` é o selo da etapa 1 por
@@ -289,14 +289,15 @@ for(const [nome,w,h,toque,modo] of APARELHOS){
   await ev(`document.documentElement.dataset.theme=${JSON.stringify(tema)}`);
   await new Promise(r=>setTimeout(r,120));
   for(const t of (TELAS_ALVO||TELAS)){
-    if(t==="game"||t==="game@parabens"){await ev(`(()=>{const b=document.querySelector('[data-go="entry"]');if(b)b.click();})()`);
+    if(t==="game"||t==="game@parabens"||t==="game@pips"){await ev(`(()=>{const b=document.querySelector('[data-go="entry"]');if(b)b.click();})()`);
           await new Promise(r=>setTimeout(r,200));
           // `__hudDemo` põe a tela em "game" DE VERDADE e enche o hudStore com dados sintéticos. Só remover
           // o `.on` da tela não bastava: sem partida, #hud-lb / #hud-score / #kill-feed ficam com 0 linhas e
           // altura zero, o `vis()` da sonda os descarta, e a coluna inteira passava sem ser medida. Pior:
           // `Hud.jsx` escreve `className={screen==="game"?"":"hidden"}`, então qualquer re-render desfazia
           // o `classList.remove('hidden')` que a sonda fazia na mão.
-          await ev(t==="game"?`window.__hudDemo&&window.__hudDemo()`:`window.__parabensDemo&&window.__parabensDemo()`);
+          // `game@pips` = a MESMA faixa depois da morte sem tela (as bolinhas da skin em teste, `__pipsDemo`)
+          await ev(t==="game"?`window.__hudDemo&&window.__hudDemo()`:t==="game@pips"?`window.__pipsDemo&&window.__pipsDemo()`:`window.__parabensDemo&&window.__parabensDemo()`);
           await new Promise(r=>setTimeout(r,300));}
     // 900 ms e não 420: os blocos do fim de rodada entram em CASCATA (`rd-sobe`, o último acaba em 760 ms)
     // e medir no meio dela lê um `translateY` de transição como se fosse transbordo.

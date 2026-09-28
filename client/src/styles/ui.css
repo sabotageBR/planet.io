@@ -1471,22 +1471,20 @@ body[data-mode="portrait"] #s-round .dead-card{padding-bottom:calc(18px + env(sa
    nome num aparelho de 360 px. */
 body[data-pointer="coarse"] #s-dead .dd-premio{flex-wrap:wrap}
 body[data-pointer="coarse"] #s-dead .dp-ad{width:100%;min-height:44px}
-/* ── A BARRA "JOGUE N PARTIDAS" ──
-   O quarto estado do mesmo bloco: o Marte Bravo que o jogador usou no tutorial e perdeu ao entrar na
-   primeira sala. Mesma faixa, mesma altura de 64 px — a barra ocupa o lugar do botão, então trocar de
-   estado não mexe um pixel no rodapé sticky (que é o que `min-height` existe para garantir).
-   ⚠️ O markup da barra é o do PERFIL (`.ach-bar` + `--p`, base.css), de propósito: as duas telas falam da
-   mesma coisa — o que falta para destravar — e inventar um segundo vocabulário aqui é como as cinco telas
-   do /admin acabaram com quatro formas de cabeçalho. Só a altura e a cor mudam. */
+/* ── AS BOLINHAS "JOGUE N PARTIDAS" ──
+   O quarto estado do mesmo bloco: o Marte Bravo do tutorial, que o jogador usa em TESTE nas primeiras
+   partidas (a skin em teste de `persist/hooks.js`). Mesma faixa, mesma altura de 64 px — a trilha ocupa o
+   lugar do botão, então trocar de estado não mexe um pixel no rodapé sticky (que é o que `min-height` existe
+   para garantir).
+   ⚠️ A barra virou as BOLINHAS da `TrilhaSkin` (ui/tutorPecas.jsx), o mesmo desenho da faixa de parabéns e
+   da morte sem tela: a promessa tem UMA cara em todo lugar. No pacote (`ENXUTO`) a frase e o nome saem e a
+   trilha fala sozinha.
+   ⚠️ Aqui o aro vem de `currentColor`, e não do branco fixo da faixa: o cartão de morte é CLARO nos temas do
+   dia, e um aro branco sobre ele seria uma bolinha que não existe. */
 #s-dead .dd-premio.prog{border-color:color-mix(in srgb,var(--accent,#ffc22e) 40%,var(--stroke,#fff2))}
-#s-dead .dd-premio.prog .ach-bar{height:7px;border-radius:99px;margin-top:4px;
-  background:color-mix(in srgb,var(--line,#0006) 70%,transparent);color:var(--accent,#ffc22e)}
-#s-dead .dd-premio.prog .ach-bar i{border-radius:99px;transition:width .4s}
-/* `tabular-nums` porque o passo troca de 1 para 2 com a tela aberta: sem ele o "/3" anda de lado. */
-#s-dead .dp-passo{flex:0 0 auto;font-size:1.5em;font-weight:900;line-height:1;color:var(--accent,#ffc22e);
-  font-variant-numeric:tabular-nums}
-#s-dead .dp-passo span{font-size:.6em;opacity:.7}
-@media (prefers-reduced-motion:reduce){#s-dead .dd-premio.prog .ach-bar i{transition:none}}
+#s-dead .dd-premio.prog .tsk{margin-top:4px}
+#s-dead .dd-premio.prog .tsk-pips i{border-color:color-mix(in srgb,currentColor 60%,transparent)}
+#s-dead .dd-premio.prog .tsk-pips i.on{border-color:currentColor}
 
 /* ── O RODAPÉ DE AÇÃO NÃO ROLA ───────────────────────────────────────────────────────────────────
    A queixa era "no frame da Poki os botões não aparecem", e a causa NÃO era falta de rolagem: as três
@@ -3021,44 +3019,64 @@ body[data-mode="portrait"] #hud:has(#tutor[data-alvo="t-split"]) #t-split::after
 @media (prefers-reduced-motion:reduce){
   #hud:has(#tutor[data-alvo="t-fire"]) #t-fire::after,#hud:has(#tutor[data-alvo="t-split"]) #t-split::after{animation:none}}
 
-/* ── O PARABÉNS DO TUTORIAL, POR CIMA DA PRIMEIRA PARTIDA (`ui/TutorParabens.jsx`, `app.parabensAte`) ──
-   O tutorial não tem mais tela de fim: acabou a 3ª lição, entra na sala. O elogio e a PROMESSA DA SKIN
-   ("jogue 3 partidas e o Marte Bravo é seu") acompanham o jogador para dentro dela — é ali que o Marte é
-   trocado pela skin equipada, ou seja é ali que a promessa tem de estar na tela. Cobre o handshake também.
+/* ── A FAIXA DA SKIN EM TESTE, POR CIMA DA PARTIDA (`ui/TutorParabens.jsx`, `app.parabensAte`/`pipsAte`) ──
+   Sem uma frase: o ✓ do fim do tutorial e/ou a trilha Marte · ●○○ · 🎁 (`TrilhaSkin`). A frase inteira mora
+   no `aria-label` (a Poki recusou o Web Fit Test de 28/09 por TEXTO: "players on Poki really don't like reading").
    ⚠️ É o MESMO canto do `#notice` (topo, centrado, abaixo da faixa de chips) e a mesma regra dele: AVISA,
-   não pede clique — `pointer-events:none`, sem botão, some pelo prazo. Não esconde NADA do HUD.
-   ⚠️ `translate`/`opacity` no keyframe, nunca `transform` (ele se centra por `translate`). */
+   não pede clique — `pointer-events:none`, sem botão, some pelo prazo.
+   ⚠️ `translate`/`opacity`/`scale` nos keyframes, nunca `transform` (ela se centra por `translate`). */
 #hud #tutor-parabens{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + var(--top-h,52px) + 8px);
-  translate:-50% 0;z-index:8;display:flex;flex-direction:column;align-items:center;gap:3px;
-  width:max-content;max-width:min(430px,92vw);box-sizing:border-box;padding:9px 18px 11px;text-align:center;
-  pointer-events:none;color:#fff;border-radius:18px;border:3px solid var(--accent,#ffc22e);
+  translate:-50% 0;z-index:8;display:flex;flex-direction:row;align-items:center;gap:12px;
+  width:max-content;max-width:min(430px,92vw);box-sizing:border-box;padding:8px 16px;
+  pointer-events:none;color:#fff;border-radius:999px;border:3px solid var(--accent,#ffc22e);
   background:rgba(13,11,31,.9);box-shadow:0 8px 28px rgba(0,0,0,.5),0 0 0 5px rgba(255,194,46,.14);
   animation:tpb-entra 320ms cubic-bezier(.2,1.4,.4,1) both}
 @keyframes tpb-entra{from{opacity:0;translate:-50% -14px}to{opacity:1;translate:-50% 0}}
-#tutor-parabens .tpb-tit{font-size:22px;font-weight:900;letter-spacing:.06em;line-height:1.1;color:var(--accent,#ffc22e)}
-#tutor-parabens .tpb-sub{font-size:14px;font-weight:bold;opacity:.92}
-#tutor-parabens .tp-prom{display:flex;align-items:center;gap:10px;margin-top:4px;max-width:100%;
-  text-align:left;font-size:13.5px;font-weight:bold;line-height:1.25;text-wrap:balance}
-#tutor-parabens .tp-prom-arte{flex:none;width:44px;height:auto;filter:drop-shadow(0 3px 8px rgba(0,0,0,.5))}
-#tutor-parabens .tp-prom-txt{display:flex;flex-direction:column;gap:5px;min-width:0}
-/* o trilho da barra: sobre a superfície ESCURA o `--line` dos temas some (escuro no escuro), e uma barra em
-   0/3 que não se vê lê como barra nenhuma */
-#tutor-parabens .tp-prom .ach-bar{width:min(190px,50vw);height:9px;margin:0;border-radius:99px;
-  background:rgba(255,255,255,.2);color:var(--accent,#ffc22e);border:2px solid rgba(255,255,255,.28)}
-#tutor-parabens .tp-prom .ach-bar i{border-radius:99px}
-@media (prefers-reduced-motion:reduce){#tutor-parabens{animation-duration:1ms}}
+/* o ✓ do fim do tutorial: o mesmo selo do fim de cada etapa (`#tutor-selo`), agora o do tutorial inteiro */
+#hud #tutor-parabens .tpb-ok{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:50%;
+  font-style:normal;font-size:26px;font-weight:900;line-height:1;color:#141026;background:var(--accent,#ffc22e);
+  box-shadow:0 0 0 3px #fff,0 4px 12px rgba(0,0,0,.45);animation:tpb-ok 560ms cubic-bezier(.2,1.6,.4,1) both}
+@keyframes tpb-ok{0%{scale:0}70%{scale:1.2}100%{scale:1}}
+/* a rodinha enquanto a sala conecta: diz "estou indo" sem o "entrando…" escrito */
+#hud #tutor-parabens .tpb-roda{flex:none;width:18px;height:18px;border-radius:50%;box-sizing:border-box;
+  border:3px solid rgba(255,255,255,.85);border-top-color:transparent;animation:tpb-roda .8s linear infinite}
+@keyframes tpb-roda{to{rotate:1turn}}
+/* ENQUANTO A SALA CONECTA, O RESTO DO HUD SAI: entre o fim do tutorial e o primeiro snapshot os blocos da
+   partida mostrariam os números do tutorial (ou zeros) e botões que ainda não fazem nada. `visibility`, e não
+   `display`: nada muda de tamanho, então nada pula quando a sala chega. */
+#hud:has(>#tutor-parabens.indo)>:not(#tutor-parabens){visibility:hidden}
+@media (prefers-reduced-motion:reduce){#tutor-parabens,#tutor-parabens .tpb-ok{animation-duration:1ms}}
 /* EM PÉ o radar mora no canto superior esquerdo, logo abaixo da faixa de chips — exatamente onde a faixa
    cairia. Ela desce para baixo dele (o chat, que mora ali, não existe no telefone enquanto se joga). */
 body[data-mode="portrait"] #hud #tutor-parabens{top:calc(var(--radar-top,60px) + var(--radar-h,92px) + 10px)}
 /* DEITADO ela NÃO se centra na tela: é ANCORADA entre o radar (à esquerda, 12 + 92 px) e a coluna da direita
    (`#hud-right>.panel` = min(34vw,206px), a 8 px da borda). Centrada, num iPhone SE de 667 px ela entrava 45–49 px
    na coluna — e o quanto dependia de o placar estar aberto, ou seja nenhum `max-width` fixo resolvia (a matriz
-   mediu os dois). Como sai do `translate:-50%`, a entrada usa um keyframe próprio. */
+   mediu os dois). Como sai do `translate:-50%`, a entrada usa um keyframe próprio; e como a faixa fica LARGA ali,
+   o conteúdo se centra por dentro dela. */
 body[data-mode="landscape"] #hud #tutor-parabens{left:112px;right:calc(16px + min(34vw,206px));translate:0 0;
-  width:auto;max-width:none;padding:6px 14px 8px;animation-name:tpb-entra-l}
+  width:auto;max-width:none;justify-content:center;padding:5px 12px;animation-name:tpb-entra-l}
 @keyframes tpb-entra-l{from{opacity:0;translate:0 -14px}to{opacity:1;translate:0 0}}
-body[data-mode="landscape"] #tutor-parabens .tpb-tit{font-size:18px}
-body[data-mode="landscape"] #tutor-parabens .tp-prom-arte{width:34px}
+body[data-mode="landscape"] #hud #tutor-parabens .tpb-ok{width:32px;height:32px;font-size:21px}
+
+/* ── A TRILHA DA SKIN EM TESTE (`TrilhaSkin` em ui/tutorPecas.jsx) — Marte · ●●○ · 🎁 ──
+   O mesmo desenho na faixa de parabéns, na faixa da morte sem tela e na tela de morte. A bolinha FEITA é
+   cheia e a que falta é um aro vazio (nenhum estado só na cor); a que acabou de encher estoura (`nova`).
+   ⚠️ Cores FIXAS: ela mora sobre superfícies escuras nos três lugares, e o `--line` dos temas some ali. */
+.tsk{display:inline-flex;align-items:center;gap:11px;flex:none}
+.tsk-arte{flex:none;width:44px;height:auto;filter:drop-shadow(0 3px 7px rgba(0,0,0,.5))}
+.tsk-pips{display:inline-flex;align-items:center;gap:7px}
+.tsk-pips i{display:block;width:17px;height:17px;border-radius:50%;box-sizing:border-box;
+  border:3px solid rgba(255,255,255,.72);background:transparent}
+.tsk-pips i.on{border-color:#fff;background:var(--accent,#ffc22e);box-shadow:0 0 8px rgba(255,194,46,.55)}
+.tsk-pips i.nova{animation:tsk-nova 700ms cubic-bezier(.2,1.6,.4,1) 250ms both}
+@keyframes tsk-nova{0%{scale:.2;background:transparent}60%{scale:1.45}100%{scale:1}}
+.tsk-presente{flex:none;width:32px;height:32px;overflow:visible;filter:drop-shadow(0 2px 5px rgba(0,0,0,.5))}
+.tsk-presente .tp-caixa{fill:var(--accent,#ffc22e);stroke:#141026;stroke-width:1.4;stroke-linejoin:round}
+.tsk-presente .tp-tampa{fill:#ffd766;stroke:#141026;stroke-width:1.4}
+.tsk-presente .tp-fita{fill:none;stroke:#e0413a;stroke-width:2.6}
+.tsk-presente .tp-laco{fill:#e0413a;stroke:#141026;stroke-width:1.2;stroke-linejoin:round}
+body[data-mode="landscape"] .tsk-arte{width:32px}
 
 
 /* ═══ O MODELO CENA (`tc-`) — SEM TEXTO NENHUM NA TELA ═══════════════════════════════════════════

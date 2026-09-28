@@ -24,8 +24,10 @@ export const ttlSql=kind=>kind==='admin'?`now()+interval '12 hours'`:`now()+inte
 // ⚠️ Aqui havia um EXISTS(...) AS nick_reserved — uma subconsulta por token resolvido, ou seja em TODA
 // chamada autenticada e em TODO join de WS — só para barrar quem tivesse o nick de um registrado. O nick
 // ficou livre na 0009 e a subconsulta saiu junto.
+// ⚠️ `games` entra pelo MESMO LEFT JOIN do `xp` (custo zero): é ele que decide a SKIN EM TESTE no join
+// (`persist/hooks.js`), e sem ele a regra custaria uma consulta a mais em todo join de WS.
 const RESOLVE_SQL=`SELECT u.*, t.id AS token_id, t.kind AS token_kind, t.last_used_at AS token_used_at,
-  COALESCE(st.xp,0) AS xp
+  COALESCE(st.xp,0) AS xp, COALESCE(st.games,0) AS games
   FROM auth_tokens t JOIN users u ON u.id=t.user_id
   LEFT JOIN user_stats st ON st.user_id=u.id
   WHERE t.token_hash=$1 AND t.revoked_at IS NULL AND t.expires_at>now()`;

@@ -119,6 +119,10 @@ export const initialState = {
   // pelo motivo dos três acima: quem o escreve chama `play()` na linha seguinte, e `play()` reescreve
   // `overlays` inteiro. `0` = não há faixa.
   parabensAte: 0,
+  // Até QUANDO a MESMA faixa mostra as bolinhas da skin em teste depois de uma morte SEM TELA (escrito em
+  // `onDead`): a primeira morte do pacote vira um clarão e uma vida nova, e sem isto a partida que ela
+  // fechou contaria em silêncio. `0` = não há faixa.
+  pipsAte: 0,
   reconnAttempt: 0,
   room: null,            // código da sala atual (do evento `room` do jogo)
   pendingJoin: null,     // {room, mode, teamSize, party, n} — GameHost faz o join quando muda

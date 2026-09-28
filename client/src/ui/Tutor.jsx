@@ -18,13 +18,13 @@
 // concluir que o tutorial mente. `d.dedo` vem do mesmo getter que arma o direcional virtual.
 // ⚠️ `pointer-events:none` no bloco em curso, com `auto` só no botão: o `#hud` inteiro é `none` porque os
 // painéis engoliam o alvo do jogador e congelavam o movimento.
-import React from "react";
+import React, { useEffect } from "react";
 import { useLabels } from "../hooks/useTheme.js";
-import { ETAPA, posicaoDaEtapa } from "../game/tutor.js";
+import { ETAPA, SEQUENCIA, posicaoDaEtapa } from "../game/tutor.js";
 // ⚠️ As duas decisões (qual frase, qual botão) moram num `.js` à parte: o `node --test` não carrega
 // `.jsx`, e uma função de decisão que ninguém testa é onde o par mouse/dedo se inverte em silêncio.
 import { falaDoTutor, promptClassico, alvoDoTutor } from "./tutorFala.js";
-import { saiDoTutorial } from "../state/actions.js";
+import { saiDoTutorial, preparaSaida } from "../state/actions.js";
 // ── OS DOIS MODELOS (ui/tutorEstilo.js) ──
 // O PADRÃO é o `cena` (a tirinha — `TutorCena.jsx`), escolhido pelo dono do jogo entre três candidatos
 // jogados em bancada. Este arquivo continua sendo o dono do CLÁSSICO — a tela anterior, que todos os ⚠️
@@ -46,6 +46,12 @@ const MODELOS = { cena: TutorCena };
 
 export default function Tutor({ d, tecla }) {
   const LB = useLabels();
+  // ⚠️ A SAÍDA ADIANTADA (`preparaSaida`): quando a ÚLTIMA etapa começa, o nick e a sala da primeira partida
+  // já vão sendo pedidos — são dois passos de rede que o fim faria em série, com a tela vazia. Aqui, e não
+  // num modelo, porque os dois modelos passam por este componente. A dependência é um BOOLEANO: `d` é objeto
+  // novo a 8 Hz. `demo` fica de fora — a bancada monta a última etapa sem querer entrar em sala nenhuma.
+  const ultima = !!d && d.etapa === SEQUENCIA[SEQUENCIA.length - 1] && !d.demo;
+  useEffect(() => { if (ultima) preparaSaida(); }, [ultima]);
   if (!d) return null;
   const T = LB.tutor || {};
   // `d.estilo` só existe na BANCADA (`tutorDemo`, que o grava no objeto do hudStore) e ganha da URL — ver

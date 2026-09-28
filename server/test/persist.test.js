@@ -462,6 +462,47 @@ test('progressão: N partidas dão a skin do tutorial, e só uma vez',async()=>{
   assert.ok(owned.includes(SKIN_TUTORIAL),'a skin tem de estar na conta, não só no payload');
 });
 
+test('skin em teste: o planeta do tutorial FICA nas primeiras partidas e vira o equipado na concessão',async()=>{
+  // Ele era TIRADO na entrada da primeira sala de verdade, e a troca de planeta no instante em que a
+  // partida começa lia como defeito. Agora a skin inicial (sorteada entre as grátis/comuns) é substituída
+  // pelo Marte Bravo em cada VIDA até a concessão — e a concessão o equipa, então o planeta do jogador não
+  // muda uma vez sequer entre o tutorial e a 4ª partida.
+  const {SKIN_TUTORIAL}=await import('@warspace/shared/skins.js');
+  const {PROGRESSO}=await import('@warspace/shared/constants.js');
+  const h=persist.hooks;
+  const joga=async t=>{const j=await h.onPlayerJoin({token:t.token,fallbackNick:'Teste',roomCode:'0ABC'});
+    const r=await h.onMatchEnd({sessionId:j.sessionId,cause:'eaten',score:10,maxMass:900,durationMs:9000});return{j,r};};
+  const t=await novoGuest('Aprendiz');
+  assert.ok(await api.repos.skins.isDefault(t.userId,(await api.repos.users.byId(t.userId)).equipped_skin_id),'premissa: nasce com a skin de nascença');
+  let v=null;
+  for(let i=1;i<=PROGRESSO.PARTIDAS;i++){v=await joga(t);
+    assert.equal(v.j.skinId,SKIN_TUTORIAL,`a partida ${i} tem de ser jogada com o planeta do tutorial`);}
+  assert.equal(v.r.equipped,SKIN_TUTORIAL,'a concessão tem de equipar — senão a partida seguinte volta à skin sorteada');
+  const me=(await req('GET','/api/me',null,t.token)).body;
+  assert.equal(me.user.equippedSkin,SKIN_TUTORIAL,'equipada na CONTA, não só no payload');
+  v=await joga(t);
+  assert.equal(v.j.skinId,SKIN_TUTORIAL,'depois da concessão ela continua, agora por ser a equipada');
+  assert.equal(v.r.equipped,null,'e não "equipa de novo" a cada partida');
+
+  // ⚠️ NUNCA por cima de uma ESCOLHA: quem comprou e equipou outra skin joga com a dele, e a concessão não
+  // a troca. O caso escolhido é o que a lista de skins iniciais NÃO distingue: uma COMUM comprada — ela está
+  // no sorteio de nascença E à venda, e só a origem da posse diz que foi escolha.
+  const comum=SKINS.find(s=>s.rarity==='common'&&s.id!==0);
+  const e=await novoGuest('Escolheu');
+  assert.equal((await req('POST',`/api/skins/${comum.id}/buy`,{},e.token)).status,200);
+  assert.equal((await req('POST',`/api/skins/${comum.id}/equip`,{},e.token)).status,200);
+  for(let i=1;i<=PROGRESSO.PARTIDAS;i++){v=await joga(e);
+    assert.equal(v.j.skinId,comum.id,`a skin comprada não pode ser trocada (partida ${i})`);}
+  assert.ok(v.r.skinsUnlocked.includes(SKIN_TUTORIAL),'o prêmio continua sendo dado');
+  assert.equal(v.r.equipped,null,'mas não equipado por cima da escolha');
+  assert.equal((await api.repos.users.byId(e.userId)).equipped_skin_id,comum.id);
+
+  // ⚠️ O easter egg continua ganhando: é uma escolha feita no nick.
+  const {eggSkinFor}=await import('@warspace/shared/eggs.js');
+  const b=await novoGuest('Bruxo');
+  assert.equal((await h.onPlayerJoin({token:b.token,fallbackNick:'Bruxo'})).skinId,eggSkinFor('Bruxo'));
+});
+
 test('easter egg: o nick escolhe a skin da VIDA, sem tocar na skin equipada',async()=>{
   const {eggSkinFor}=await import('@warspace/shared/eggs.js');
   const t=await novoGuest('Bruxo');
@@ -472,11 +513,14 @@ test('easter egg: o nick escolhe a skin da VIDA, sem tocar na skin equipada',asy
   // que o valor continua sendo a skin inicial da CONTA, e não a caricatura do egg.
   assert.ok(STARTER_SKINS.includes(u.equipped_skin_id),'o easter egg NÃO pode escrever na skin equipada');
   // prefs.eggs:false desliga
+  // ⚠️ Sem o egg a vida cai no caminho de SEMPRE — que, para uma conta que ainda não jogou 3 partidas, é
+  // a skin em TESTE (o Marte Bravo do tutorial), e não mais a de nascença.
+  const {SKIN_TUTORIAL}=await import('@warspace/shared/skins.js');
   await req('PATCH','/api/me/prefs',{eggs:false},t.token);
-  assert.equal((await persist.hooks.onPlayerJoin({token:t.token,fallbackNick:'Bruxo'})).skinId,0);
+  assert.equal((await persist.hooks.onPlayerJoin({token:t.token,fallbackNick:'Bruxo'})).skinId,SKIN_TUTORIAL);
   // e um nick comum continua com a skin de sempre
   const t2=await novoGuest('Fulano');
-  assert.equal((await persist.hooks.onPlayerJoin({token:t2.token,fallbackNick:'Fulano'})).skinId,0);
+  assert.equal((await persist.hooks.onPlayerJoin({token:t2.token,fallbackNick:'Fulano'})).skinId,SKIN_TUTORIAL);
 });
 
 test('avatar: valida pelo CONTEÚDO, guarda, serve com ETag e 304',async()=>{

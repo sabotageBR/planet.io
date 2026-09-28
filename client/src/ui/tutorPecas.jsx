@@ -20,11 +20,9 @@
 // `pointer-events:auto` a esses três dentro do `#hud`. Uma réplica de botão que capture o toque é um botão
 // que não faz nada NO LUGAR de um toque que dirigiria o planeta — e ainda entraria no critério de 44 px.
 import React, { useEffect, useRef } from "react";
-import { app } from "../state/app.js";
 import { preenche } from "../i18n/index.js";
 import { ETAPAS, TUTOR } from "../game/tutor.js";
 import { saiDoTutorial } from "../state/actions.js";
-import { PROGRESSO, SKIN_TUTORIAL, skinById } from "@warspace/shared";
 // A MESMA arte do cenário do menu, dos cartões de Modos e das três skins de mascote: importada por módulo,
 // o Vite emite UM asset compartilhado — zero byte a mais no zip de portal.
 import marte from "../assets/scene/planeta-laranja.webp";
@@ -152,23 +150,27 @@ export function useEntraSozinho(ativo) {
 }
 
 /**
- * A PROMESSA DA SKIN, com o MARTE ao lado: "jogue 3 partidas e o Marte Bravo é seu". O tutorial é jogado
- * com ele e a primeira sala de verdade o tira do jogador — sem esta linha a troca de planeta lê como
- * defeito. Quem a desenha hoje é a faixa de `TutorParabens.jsx`, por cima da primeira partida. Mostrar o PRÓPRIO mascote aqui é o que liga a frase ao planeta que ele acabou de pilotar.
- * Quem já tem a skin não recebe promessa nenhuma: prometer o que a pessoa já possui é o jeito mais rápido
- * de a tela perder a credibilidade.
+ * A PROMESSA DA SKIN, SEM UMA PALAVRA: o Marte · ●●○ · 🎁. É o "jogue 3 partidas e ele é seu" dito com
+ * desenho — o mascote que o jogador acabou de pilotar, uma bolinha por partida e o presente no fim da
+ * fila. A frase continua existindo, mas no `aria-label` de quem a usa (a Poki pediu onboarding VISUAL:
+ * "players on Poki really don't like reading").
+ * ⚠️ `aria-hidden`: o desenho não é o texto. Quem chama é que dá o nome (`role`/`aria-label`), porque é ele
+ * que sabe se aquilo é um aviso (`status`) ou um progresso (`progressbar`).
+ * ⚠️ `nova` é o índice da bolinha que ACABOU de encher (ela entra com um estouro): é o retorno de "esta
+ * partida contou", e sem ele o jogador olharia para 1 de 3 sem saber que foi ele que fez aquilo agora.
+ * ⚠️ `arte:false` na tela de morte, que já desenha o disco da skin ao lado — dois Martes no mesmo bloco.
+ * ⚠️ NENHUM ESTADO VAI SÓ NA COR: a bolinha feita é cheia e a que falta é um aro vazio.
  */
-export function Promessa({ T }) {
-  const sess = app.get().session || {};
-  if ((sess.skins || []).includes(SKIN_TUTORIAL)) return null;
-  const alvo = PROGRESSO.PARTIDAS, feitas = Math.max(0, Math.min(alvo, (sess.stats || {}).games | 0));
-  return <div className="tp-prom">
-    <Mascote quem="marte" className="tp-prom-arte" />
-    <div className="tp-prom-txt">
-      <span>{preenche(T.fimPromessa, { n: alvo, s: skinById(SKIN_TUTORIAL).name })}</span>
-      <span className="ach-bar" role="progressbar" aria-valuemin={0} aria-valuemax={alvo} aria-valuenow={feitas}>
-        <i style={{ "--p": feitas / alvo }} />
-      </span>
-    </div>
-  </div>;
+export function TrilhaSkin({ feitas, alvo, nova = -1, arte = true }) {
+  return <span className="tsk" aria-hidden="true">
+    {arte ? <Mascote quem="marte" className="tsk-arte" /> : null}
+    <span className="tsk-pips">{Array.from({ length: alvo }, (_, i) =>
+      <i key={i} className={(i < feitas ? "on" : "") + (i === nova ? " nova" : "")} />)}</span>
+    <svg className="tsk-presente" viewBox="0 0 24 24">
+      <path className="tp-caixa" d="M4.5 11.5h15v8a1.5 1.5 0 0 1-1.5 1.5H6a1.5 1.5 0 0 1-1.5-1.5z" />
+      <rect className="tp-tampa" x="3" y="8" width="18" height="4" rx="1.2" />
+      <path className="tp-fita" d="M12 8v13" />
+      <path className="tp-laco" d="M12 8c-1.2-2.6-4.6-4.1-5.4-2.3-.7 1.6 1.9 2.3 5.4 2.3zM12 8c1.2-2.6 4.6-4.1 5.4-2.3.7 1.6-1.9 2.3-5.4 2.3z" />
+    </svg>
+  </span>;
 }

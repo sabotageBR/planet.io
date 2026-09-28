@@ -70,6 +70,16 @@ export function createUsers(db){
   /** merge raso de prefs (jsonb ||) */
   const mergePrefs=(id,prefs,c=db)=>c.query(`UPDATE users SET prefs=prefs||$2::jsonb WHERE id=$1 RETURNING prefs`,[id,JSON.stringify(prefs)]).then(r=>r.rows[0]?r.rows[0].prefs:null);
   const setEquipped=(id,skinId,c=db)=>c.query(`UPDATE users SET equipped_skin_id=$2 WHERE id=$1 RETURNING equipped_skin_id`,[id,skinId]).then(r=>r.rows[0]?r.rows[0].equipped_skin_id:null);
+  /**
+   * Equipa `skinId` SÓ se a skin equipada hoje for a de NASCENÇA (`user_skins.source='default'`, a que
+   * `nasceCom` concede) — a skin em teste virando a de verdade não pode passar por cima de uma ESCOLHA, e a
+   * origem da posse é o que separa "nunca mexi" de "comprei esta". A lista de skins iniciais não serve: as
+   * nove comuns estão nela E estão à venda, então quem comprou uma e a equipou seria trocado.
+   * Um UPDATE condicional, e não ler-e-escrever: a condição e a troca no mesmo comando não têm corrida com
+   * uma compra feita no meio. Devolve se trocou.
+   */
+  const equipSeInicial=(id,skinId,c=db)=>c.query(`UPDATE users u SET equipped_skin_id=$2 WHERE u.id=$1 AND (u.equipped_skin_id IS NULL
+    OR EXISTS(SELECT 1 FROM user_skins s WHERE s.user_id=u.id AND s.skin_id=u.equipped_skin_id AND s.source='default'))`,[id,skinId]).then(r=>r.rowCount>0);
   const touchSeen=id=>db.query(`UPDATE users SET last_seen_at=now() WHERE id=$1`,[id]);
   /** País do ranking regional. `null` limpa (o jogador pode sair do ranking do país dele). */
   const setCountry=(id,country,c=db)=>c.query(`UPDATE users SET country=$2 WHERE id=$1 RETURNING *`,[id,country||null]).then(r=>r.rows[0]||null);
@@ -174,6 +184,6 @@ export function createUsers(db){
   const promoteByEmails=emails=>!emails||!emails.length?Promise.resolve(0):
     db.query(`UPDATE users SET is_admin=true WHERE kind='registered' AND is_admin=false AND lower(email)=ANY($1::text[])`,
       [emails.map(e=>String(e).trim().toLowerCase()).filter(Boolean)]).then(r=>r.rowCount);
-  return{byId,byLogin,byEmail,insertGuest,setNick,setLogin,claim,mergePrefs,setEquipped,setCountry,setAvatarHash,touchSeen,purgeOrphanGuests,
+  return{byId,byLogin,byEmail,insertGuest,setNick,setLogin,claim,mergePrefs,setEquipped,equipSeInicial,setCountry,setAvatarHash,touchSeen,purgeOrphanGuests,
     toAdmin,search,adminById,adminBrief,setBan,setAdmin,adminCount,promoteByEmails};
 }

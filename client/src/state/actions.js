@@ -5,7 +5,7 @@ import { app, normalizePrefs, normalizeStats, PREF_DEFAULTS, PREF_KEYS, SCREENS 
 import { applyTheme, resolveThemeId, startThemeClock } from "../app/theme.js";
 import { getLabels, setLang, currentLangPref, preenche } from "../i18n/index.js";
 import { errText } from "../i18n/errors.js";
-import { skinById, PROTOCOL_VERSION, SKINS, SKIN_TUTORIAL, LEVEL, ROUND, MODE, PORTAL as P, playerNick, createRng, registerSkins} from "@warspace/shared";
+import { skinById, PROTOCOL_VERSION, SKINS, SKIN_TUTORIAL, LEVEL, ROUND, MODE, PORTAL as P, PROGRESSO, playerNick, createRng, registerSkins} from "@warspace/shared";
 import { clockRef, gameRef, getGame } from "./game.js";
 import { partidaIniciada } from "../app/analytics.js";
 import { nickSorteado } from "../util/nick.js";
@@ -214,10 +214,14 @@ function chaoLocalNick() {
  * ⚠️ Silencioso de propósito — o toast de "nick salvo" aqui é barulho a cada primeira partida, porque
  * ninguém pediu para salvar nada.
  */
+// ⚠️ UMA gravação em voo por vez: a saída do tutorial a ADIANTA (`preparaSaida`) e o `play()` do fim a
+// pede de novo — sem o memo, a segunda chegaria com o nick ainda sorteado e mandaria o mesmo PATCH duas vezes.
+let nickEmVoo = null;
 async function garanteNick() {
   const st = app.get(), u = st.session.user || {};
   if (st.nomeado || !st.nickSugerido || !nickSorteado(u.nick)) return;
-  await setNick(st.nickSugerido, { silencioso: true });
+  if (!nickEmVoo) nickEmVoo = setNick(st.nickSugerido, { silencioso: true }).finally(() => { nickEmVoo = null; });
+  await nickEmVoo;
 }
 export async function boot() {
   try { applySession(await api.bootstrap()); }
@@ -346,7 +350,15 @@ function devQuery() {
     // `hudDemo` semeia Battle Royale, e o painel do BR no topo é um bloco com que esta faixa nunca convive.
     window.__parabensDemo = () => { hudDemo(); const g = gameRef.get().game;
       if (g && g.hudStore) g.hudStore.update(h => ({ ...h, mode: MODE.FREE }));
-      app.update({ parabensAte: Date.now() + 36e5 }); }; }
+      // ⚠️ sem a skin e em 0 partidas: é a cara de quem acabou de terminar o tutorial, e a conta de dev
+      // já pode ter o Marte — aí a faixa encolheria para só o ✓ e a matriz mediria outra coisa
+      // ⚠️ e com a sala CONECTADA: conectando, a faixa esconde o resto do HUD (`.indo`) e a matriz não teria
+      // com o que medir colisão — que é justamente o que ela precisa medir nos segundos seguintes
+      app.update(a => ({ ...a, parabensAte: Date.now() + 36e5, pipsAte: 0, conn: "connected",
+        session: { ...a.session, skins: (a.session.skins || []).filter(x => x !== SKIN_TUTORIAL), stats: { ...(a.session.stats || {}), games: 0 } } })); };
+    // a MESMA faixa na morte sem tela: as bolinhas da skin em teste, com a nova estourando (1 de 3)
+    window.__pipsDemo = () => { window.__parabensDemo(); app.update(a => ({ ...a, parabensAte: 0, pipsAte: Date.now() + 36e5,
+      session: { ...a.session, skins: (a.session.skins || []).filter(x => x !== SKIN_TUTORIAL), stats: { ...(a.session.stats || {}), games: 1 } } })); }; }
 }
 /**
  * HUD de mentira, só em DEV. A matriz de responsividade precisa MEDIR a tela `game` — mas sem partida o
@@ -836,7 +848,7 @@ async function entraNaSala({ room, mode, teamSize, party, semAnuncio } = {}) {
  * lado é perder 40 s de tutorial num reload. É uma tentativa por pessoa.
  */
 export function entraNoTutorial() {
-  levelUpFila = null; cancelaTelaMorte(); marcaTutor(); marco("tutor_start");
+  levelUpFila = null; saidaPronta = null; cancelaTelaMorte(); marcaTutor(); marco("tutor_start");
   app.update(s => ({ ...s, screen: "game", interrompido: false, rewards: null, rewardsPending: false, roundPronto: false,
     overlays: { account: false, reconn: false, pause: false }, conn: "connecting", pendingPlay: null,
     // ⚠️ O TUTORIAL É JOGADO COM `SKIN_TUTORIAL` (o Marte Bravo), e este é o único lugar que decide isso.
@@ -852,6 +864,25 @@ export function entraNoTutorial() {
 }
 /** Quanto a faixa de PARABÉNS fica por cima da primeira partida. Cobre o handshake (1–3 s) e sobra para ler. */
 const PARABENS_MS = 7000;
+/**
+ * A SAÍDA DO TUTORIAL, ADIANTADA. Nos playtests da Poki de 25/09 (Vietnã, ~330 ms de ida e volta até o
+ * Brasil) a passagem do tutorial para a sala foram ~5 s de tela VAZIA — e dois desses passos em série não
+ * dependem de nada do tutorial: gravar o nick sorteado (`garanteNick`, um PATCH) e perguntar a sala
+ * (`api.auto`, um GET). Os dois saem aqui, quando a ÚLTIMA etapa começa (`ui/Tutor.jsx`), e o fim só usa.
+ * ⚠️ UMA vez por tutorial, e a sala sugerida VENCE (`SAIDA_MS`): uma sugestão velha pode ter lotado ou
+ * chegado ao fim da rodada — aí o `play()` pergunta de novo, como sempre fez. E se ela ainda assim for
+ * recusada, o pacote já re-entra sozinho (`voltaAoJogo`, que refaz o `api.auto`).
+ * ⚠️ Só com o servidor de pé (`api.online`): sem banco não há nick a gravar, e o `play()` do fim cai no
+ * caminho de sempre. Falha aqui é silenciosa — ela só deixa de adiantar o que o fim faria de qualquer jeito.
+ */
+const SAIDA_MS = 25000;
+let saidaPronta = null;   // {at, code} — o `api.auto` feito durante a última etapa
+export function preparaSaida() {
+  if (saidaPronta || api.online !== true) return;
+  const eu = saidaPronta = { at: Date.now(), code: null };
+  garanteNick().catch(() => {});
+  api.auto({ mode: MODE.FREE, teamSize: 1 }).then(a => { if (a && a.code && saidaPronta === eu) eu.code = String(a.code); }).catch(() => {});
+}
 /**
  * SAIR DO TUTORIAL — pular e terminar são a MESMA saída (entrar numa sala de verdade) e diferem em uma
  * coisa só, que é uma decisão de produto e não de código:
@@ -873,7 +904,9 @@ export function saiDoTutorial({ fim = false } = {}) {
   // ("jogue 3 partidas e ele é seu") precisa estar na tela. Quem PULOU não ganha parabéns nenhum.
   if (fim) { marcaMissao(); marco("tutor_done"); app.update({ parabensAte: Date.now() + PARABENS_MS }); }
   else marco("tutor_skip");
-  return play({ mode: MODE.FREE, teamSize: 1, party: null });
+  const pronta = saidaPronta; saidaPronta = null;
+  const room = pronta && pronta.code && Date.now() - pronta.at < SAIDA_MS ? pronta.code : undefined;
+  return play({ mode: MODE.FREE, teamSize: 1, party: null, room });
 }
 /**
  * ASSISTIR a uma sala em andamento. É o irmão de `play()`, e o que o separa dele é o que assistir NÃO é:
@@ -1136,7 +1169,14 @@ export function onDead(info) {
   // a morte que fez a primeira partida desenharia 0/3. Morrer É terminar uma partida (uma linha em
   // `matches`), então o otimismo só erra com o banco fora, que é quando o `rewards` chega vazio e ninguém
   // corrige nada mesmo.
-  app.update(a => ({ ...a, mortes, kills: (a.kills | 0) + (info.kills | 0), interrompido: !sozinho,
+  // ⚠️ A MORTE SEM TELA TAMBÉM CONTA A PARTIDA DA SKIN EM TESTE (`app.pipsAte`, `ui/TutorParabens.jsx`): o
+  // Marte · ●○○ · 🎁 com a bolinha nova estourando, por cima do clarão e da vida nova. Sem isto a primeira
+  // partida contava em silêncio e a barra só aparecia na tela de morte da SEGUNDA. Só enquanto há promessa
+  // a cumprir (a skin não é dele e o alvo não foi batido) e com o servidor de pé — sem banco nada é contado.
+  const g1 = (st.games | 0) + 1;
+  const pipsAte = sozinho && api.online === true && g1 <= PROGRESSO.PARTIDAS && !(s.session.skins || []).includes(SKIN_TUTORIAL)
+    ? Date.now() + (P.RESPAWN_1_MS | 0) + 3600 : s.pipsAte;
+  app.update(a => ({ ...a, mortes, kills: (a.kills | 0) + (info.kills | 0), interrompido: !sozinho, pipsAte,
     lastMatch: { ...info, room: a.room, at: Date.now(), recMass, recScore },
     session: { ...a.session, stats: { ...st, games: (st.games | 0) + 1,
       bestMass: Math.max(recMass, +info.maxMass || 0), bestScore: Math.max(recScore, +info.score || 0) } },
@@ -1189,6 +1229,9 @@ export function onRewards(r) {
       // da skin do outro lado, e uma barra que promete 3/3 sobre uma contagem que o servidor tem em 2 é
       // pior que uma barra atrasada.
       if (typeof r.games === "number") sess.stats = { ...sess.stats, games: r.games };
+      // ⚠️ A concessão da skin em teste a EQUIPA no servidor (`persist/hooks.js`), e a Loja e o Perfil leem a
+      // equipada daqui: sem isto, até o próximo boot a Loja diria que a equipada é a de nascença.
+      if (r.equipped != null) sess.user = { ...sess.user, equippedSkin: r.equipped };
     }
     return { ...s, session: sess, rewards: r || null, rewardsPending: false };
   });

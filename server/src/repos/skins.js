@@ -13,6 +13,8 @@ export function createSkins(db){
   /** concede; devolve true se era nova */
   const grant=(c,{userId,skinId,source,ledgerId=null})=>c.query(`INSERT INTO user_skins(user_id,skin_id,source,ledger_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING skin_id`,[userId,skinId,source,ledgerId]).then(r=>r.rows.length>0);
   /** concede várias (conquistas); devolve ids realmente novos */
+  /** A skin é da conta desde o NASCIMENTO (`source='default'`)? É o que separa "nunca escolhi" de "comprei esta". */
+  const isDefault=(userId,skinId,c=db)=>c.query(`SELECT 1 FROM user_skins WHERE user_id=$1 AND skin_id=$2 AND source='default'`,[userId,skinId]).then(r=>r.rowCount>0);
   async function grantMany(c,userId,skinIds,source){const out=[];for(const id of skinIds)if(await grant(c,{userId,skinId:id,source}))out.push(id);return out;}
   /** ids das skins mascote cujo anúncio a conta já assistiu (não implica posse — só destrava a compra) */
   const adWatchedIds=(userId,c=db)=>c.query(`SELECT skin_id FROM user_ad_watched WHERE user_id=$1 ORDER BY skin_id`,[userId]).then(r=>r.rows.map(x=>x.skin_id));
@@ -64,6 +66,6 @@ export function createSkins(db){
    *  diria "salvo" e o restart seguinte a religaria — um botão que se desfaz sozinho. */
   const setActive=(c,id,on)=>c.query(
     `UPDATE skins SET active=$2 WHERE id=$1 AND source='db' RETURNING id`,[id,!!on]).then(r=>r.rowCount);
-  return{byId,ownedIds,has,grant,grantMany,adWatchedIds,hasWatchedAd,markAdWatched,
+  return{byId,ownedIds,has,isDefault,grant,grantMany,adWatchedIds,hasWatchedAd,markAdWatched,
     artOf,artAdmin,putArt,setArtStatus,catalogo,adminList,upsertDb,setActive};
 }
