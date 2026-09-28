@@ -27,7 +27,7 @@ import Toast from "../ui/Toast.jsx";
 import LevelUp from "../ui/LevelUp.jsx";
 import Roster from "../ui/Roster.jsx";
 import { sfx } from "../audio/index.js";
-import { SEM_MENU } from "../portal/flags.js";
+import { SEM_MENU, ENXUTO } from "../portal/flags.js";
 
 let booted = false; // StrictMode monta o efeito duas vezes em dev
 export default function App() {
@@ -46,6 +46,9 @@ export default function App() {
   useEffect(() => { if (flash) setClarao(flash); }, [flash]);
   useEffect(() => { if (!booted) { booted = true; boot(); } }, []);
   useEffect(() => { document.body.dataset.screen = screen; }, [screen]);
+  // ⚠️ O PACOTE ENXUTO (portal/flags.js) é decidido por CSS a partir deste atributo: o CSS dos temas não
+  // sabe de portal nenhum, e um `if` por rótulo espalhado nos componentes divergiria no primeiro conserto.
+  useEffect(() => { if (ENXUTO) document.body.dataset.pacote = "poki"; }, []);
   // "center" = o menu fica centralizado, com o céu inteiro atrás.
   // "rail"   = o menu vira gaveta à direita e a CÂMERA ENCOLHE para a esquerda, em vez de ficar
   //            escondida atrás dela. Quem faz a conta é ui.css.

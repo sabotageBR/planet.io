@@ -48,7 +48,7 @@ import {createLocalServer} from "./net/LocalServer.js";
 import {OPCOES_TUTORIAL,criaRoteiro} from "./net/tutorServer.js";
 import {ETAPA as ETAPA_TUTOR,presoNaEspera} from "./tutor.js";
 import {createMic} from "../audio/mic.js";
-import {SEM_VOZ} from "../portal/flags.js";
+import {SEM_VOZ,SEM_CHAT,SEM_BR} from "../portal/flags.js";
 import {createSnapshotBuffer} from "./state/SnapshotBuffer.js";
 import {createInterpolator} from "./state/Interpolator.js";
 import {createPredictor} from "./state/Predictor.js";
@@ -477,7 +477,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       phase=m.phase;round=m.round||round;startsAt=(m.round&&m.round.startsAt)||0;lastCount=-1;lobby=null;lobbyBeep=false;cageBeep=-1;
       pushHud(performance.now());   // na hora: o HUD roda a 8 Hz e a tela do lobby ficaria até 125 ms por cima da partida já em curso
       if(phase==="live"){audio.play("matchStart",{mine:true});chatSys(getLabels().killFeed.sys_start);}}
-    else if(m.t==="chat"){pushChat(m);}
+    // ⚠️ PACOTE SEM CHAT (portal/flags.js): a linha é DESCARTADA aqui, não só escondida na tela — guardada no
+    // `chatLog` ela ainda tocaria o som de chat e pesaria no HUD a 8 Hz para um painel que não existe.
+    else if(m.t==="chat"){if(!SEM_CHAT)pushChat(m);}
     else if(m.t==="talk"){view.setTalking(m.slot,!!m.on);}   // push-to-talk de outro: acende/apaga o ícone no planeta dele
     else if(m.t==="feed"){pushFeed(m);}
     // A GRAÇA DO NASCIMENTO ACABOU, e o servidor diz POR QUÊ (`Sim._graceTick`): tempo, massa ou o
@@ -508,7 +510,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // Calado NESTA sala: o servidor já parou de mandar (`Session.brMudo`), e esta guarda pega só o que
       // estava em voo quando o jogador clicou. ⚠️ `if(!brMudo){...}` e não um `return`: o que vem depois
       // da cadeia de `else if` não é problema desta mensagem.
-      if(!brMudo){
+      // ⚠️ E no pacote SEM BR (portal/flags.js) ele nem existe: o card puxava o NOVATO do Livre para outro
+      // modo no meio do primeiro minuto, com 20 s de texto na tela e som.
+      if(!brMudo&&!SEM_BR){
         hudStore.update(h=>({...h,brInvite:{room:m.room,at:performance.now(),ttlMs:m.ttlMs|0||20000}}));
         audio.play("toast",{mine:true});}}
     // O GÁS COMEÇOU A FECHAR, para a sala inteira (não só quem está perto do círculo novo — o
@@ -594,6 +598,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
         // servidor diz isso mandando o slot de quem trombou no `slotA`, que neste evento estava livre.
         else if(m.kind===EVENT.SUPERNOVA){const L=getLabels().fx||{};
           f.text=m.slotA!==SEM_SLOT?(L.nebula||"NEBULOSA PLANETÁRIA!"):(L.supernova||"SUPERNOVA!");}
+        // ⚠️ "NHAC!" e "ARRANCOU!" estavam CRAVADOS em português nos três temas — o jogador inglês da Poki
+        // lia português no meio do mundo. O texto vem do i18n pelo mesmo caminho de SUPERNOVA e ESCUDO.
+        if(m.kind===EVENT.EAT||m.kind===EVENT.STUCK){const L=getLabels().fx||{},t=m.kind===EVENT.EAT?L.eat:L.stuck;if(t)f.text=t;}
         const mine=m.slotA===view.mySlot||m.slotB===view.mySlot;   // o que envolve a própria peça (já à frente) não espera
         const delay=mine?0:interp.delayMs;
         // ⚠️ "COMI ALGUÉM" É ESTE EVENTO, e o sinal é exato: `Sim._ev(EVENT.EAT, …, e.killerSlot, …)`, ou

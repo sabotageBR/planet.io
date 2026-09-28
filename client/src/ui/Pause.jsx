@@ -20,7 +20,7 @@ import { PREFS } from "./prefsTable.js";
 import { PrefRow } from "./Prefs.jsx";
 import { Nick, Field, MiniRank } from "./bits.jsx";
 import { linkConvite } from "../util/convite.js";
-import { PORTAL, SEM_MENU } from "../portal/flags.js";
+import { PORTAL, SEM_MENU, SEM_BR } from "../portal/flags.js";
 import { portal } from "../portal/index.js";
 import { skinById } from "@warspace/shared";
 import { skinName } from "../i18n/catalog.js";
@@ -31,7 +31,8 @@ import { nickSorteado } from "../util/nick.js";
 // ⚠️ `brInvite` entra aqui porque a pergunta "como faço isto parar?" nasce EM PARTIDA, com o card na
 // tela — e o Esc é o único menu que se abre sem sair da sala. O card também tem o "Nunca" próprio; são
 // dois caminhos para a MESMA chave, não duas verdades.
-const RAPIDAS = ["muted", "volume", "music", "musicVolume", "quality", "reduceMotion", "showNames", "showMinimap", "brInvite"];
+// ⚠️ No pacote SEM BR (portal/flags.js) o interruptor do convite sai: é um controle de algo que não existe.
+const RAPIDAS = ["muted", "volume", "music", "musicVolume", "quality", "reduceMotion", "showNames", "showMinimap", ...(SEM_BR ? [] : ["brInvite"])];
 const ITENS = RAPIDAS.map(k => PREFS.flatMap(g => g.items).find(it => it.key === k)).filter(Boolean);
 
 const EMPTY = {}, EMPTY_STORE = { subscribe: () => () => {}, get: () => EMPTY };
@@ -57,7 +58,9 @@ export default function Pause({ on }) {
       {SEM_MENU ? <EuBloco LB={LB} /> : null}
       <div className="pause-prefs">{ITENS.map(it => <PrefRow key={it.key} it={it} v={prefs[it.key]} pfx="pause-" />)}</div>
       <div className="modal-actions pause-actions">
-        <button className="btn-secondary" id="pause-exit" data-go="lobby" onClick={() => { flushPrefs(); sairDaPartida(); }}>{LB.exitMatch}</button>
+        {/* ⚠️ No pacote SEM BR não há para onde sair: a tela de Modos ficaria só com o Livre de novo. Quem
+            quer parar fecha a aba — é o que se faz em todo jogo do catálogo deles. */}
+        {SEM_BR ? null : <button className="btn-secondary" id="pause-exit" data-go="lobby" onClick={() => { flushPrefs(); sairDaPartida(); }}>{LB.exitMatch}</button>}
         <button className="btn-primary" id="pause-resume" onClick={fecha} autoFocus>{LB.resume}</button>
       </div>
     </div> : null}</div>;

@@ -10,6 +10,7 @@ import {WORLD} from "@warspace/shared";
 import {getLabels} from "../../i18n/index.js";
 import {fmt} from "../../ui/format.js";
 import {bodyMode} from "../util.js";
+import {ENXUTO} from "../../portal/flags.js";   // pacote enxuto: sem a legenda "RADAR" (ver portal/flags.js)
 
 export function createMinimap({hud,theme,getScene,onPick}){
   const cv=document.createElement("canvas");cv.id="radar";cv.style.cssText="position:absolute;z-index:5;pointer-events:none";
@@ -113,7 +114,7 @@ export function createMinimap({hud,theme,getScene,onPick}){
     const md=R0.meDot;c.fillStyle=md.fill;c.strokeStyle=md.stroke;c.lineWidth=md.width;
     for(const p of S.mine){c.beginPath();c.arc(mx+p.x*sc,my+p.y*sc,Math.max(md.r[m]||3,p.r*sc),0,6.283);c.fill();c.stroke();}
     c.restore();
-    if(!big()&&R0.label&&(!R0.label.desktopOnly||m==="desktop")){c.font=R0.label.font;c.fillStyle=R0.label.color;c.textAlign="center";c.textBaseline="middle";c.fillText(getLabels().radar||R0.label.text,cx,cy+R+R0.label.dy+14);}}
+    if(!ENXUTO&&!big()&&R0.label&&(!R0.label.desktopOnly||m==="desktop")){c.font=R0.label.font;c.fillStyle=R0.label.color;c.textAlign="center";c.textBaseline="middle";c.fillText(getLabels().radar||R0.label.text,cx,cy+R+R0.label.dy+14);}}
   /** Clique no mapa grande → o jogador mais próximo do ponto (o mesmo blip que se vê), em coordenadas de mundo. */
   function pick(e){
     if(!big()||!mapa||!onPick)return;

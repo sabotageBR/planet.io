@@ -1208,7 +1208,12 @@ export function onRewards(r) {
       // só 9 níveis têm skin associada, então a linha só aparece quando fizer sentido.)
       const proxNivel = r.xp ? r.xp.level + 1 : 0;
       const proximaSkin = proxNivel > 0 && proxNivel <= LEVEL.MAX ? SKINS.find(s => s.levelReq === proxNivel) || null : null;
-      const cartao = { subiu, rapido: naMorte && !subiu && !novas.length,
+      // ⚠️ `passa` = o cartão NÃO PODE COMER O TOQUE. Na tela de morte ele caía por cima do DE NOVO e o
+      // primeiro toque do jogador só o fechava; e depois da 1ª morte SEM TELA (portal/primeiraVida.js) o
+      // `{t:"rewards"}` chega com a pessoa JÁ JOGANDO — `vivo` —, e um véu escuro de tela cheia por 6,5 s no
+      // meio da partida era o cartão tapando o jogo. Nos dois ele continua comemorando, sem bloquear nada.
+      const vivo = st0.screen === "game";
+      const cartao = { subiu, rapido: naMorte && !subiu && !novas.length, passa: naMorte || vivo, vivo,
         level: r.xp ? r.xp.level : 0, gained: r.xp ? r.xp.gained : 0,
         into: r.xp ? r.xp.into : 0, need: r.xp ? r.xp.need : 1, pct: r.xp ? r.xp.pct : 0,
         achievements: novas, proximaSkin, n: ++levelUpN };

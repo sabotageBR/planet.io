@@ -25,7 +25,7 @@ import Tutor from "./Tutor.jsx";
 import TutorParabens from "./TutorParabens.jsx";
 import { MODE, weaponOf, POWERUP, TICK_HZ, flagOf } from "@warspace/shared";
 import { keysOf } from "../game/input/Keyboard.js";   // a legenda tem que dizer a tecla que está DE FATO ligada (inclusive a do desempate de colisão)
-import { SEM_MENU } from "../portal/flags.js";
+import { SEM_MENU, SEM_CHAT, SEM_BR, ENXUTO } from "../portal/flags.js";
 
 const EMPTY = { mass: 0, score: 0, rank: 0, coins: null, ammo: 0, fireCd: 0, powerups: { magnet: 0, shield: 0, autodef: 0, zoom: 0, feast: 0 }, splitCd: 0, ejectCd: 0, lb: [], room: null, ping: 0, fps: 0, dead: false, map: "", clock: null, notice: null,
   mode: 0, teamSize: 1, team: -1, phase: "live", alive: 0, weapon: 0, owned: 1, zoneHurt: false, zoneIn: null, zoneShrinking: false, talk: null, chat: [], feed: [], lobby: null,
@@ -46,6 +46,7 @@ function Ring({ resta, cls = "talk-ring", low = .25 }) {
 }
 const EMPTY_STORE = { get: () => EMPTY, subscribe: () => () => {} };
 const PW_ICON = { magnet: "🧲", shield: "🛡️", autodef: "🛰️", zoom: "🔭", feast: "🍀" };
+const NIVEL_EJETAR = 3;   // no pacote enxuto, o botão EJETAR só aparece a partir deste nível (ver `mostraEjetar`)
 // Quanto dura cada um, em segundos — o `self` manda só o que RESTA, e sem o total não há fração para o
 // anel desenhar. Ímã e banquete ainda acumulam ao pegar outro, então a fração é limitada a 1 em `Ring`.
 const PW_FULL = { magnet: POWERUP.TICKS / TICK_HZ, zoom: POWERUP.ZOOM_TICKS / TICK_HZ, feast: POWERUP.FEAST_TICKS / TICK_HZ };
@@ -98,6 +99,10 @@ export default function Hud() {
   // ⚠️ E ele só APAGA quando o painel mandou travar: `BOT.NOVATO_SPLIT` nasce LIGADO, então no jogo de
   // fábrica este ramo nunca acende.
   const splitReady = !(h.splitCd > 0) && !h.splitOff, ejectReady = !(h.ejectCd > 0);
+  // ⚠️ PACOTE ENXUTO: os botões entram AOS POUCOS ("reveal actions and buttons over the first few levels",
+  // guia da Poki). EJETAR é mecânica de quem já joga (alimentar aliado, isca) e para o novato só ocupa um
+  // alvo de toque; o TIRO sem munição é um botão apagado que não faz nada. O W continua ejetando no teclado.
+  const mostraEjetar = !ENXUTO || nivel >= NIVEL_EJETAR, mostraTiro = !ENXUTO || ammo > 0 || fireCd > 0;
   // Teclas configuráveis: `#hud-cd` desenha a legenda, e uma legenda que mente é pior que nenhuma.
   const teclas = keysOf(prefs), kSplit = LB.keys[teclas.split] || LB.keySplit, kEject = LB.keys[teclas.eject] || LB.keyEject;
   const br = h.mode === MODE.BR, noLobby = !!h.lobby;
@@ -121,7 +126,9 @@ export default function Hud() {
       <span className="chip" id="h-room"><i>{LB.room}</i> <b id="v-room">{h.room || room || "—"}</b></span>
       {/* `leftS == null` é a sala SEM FIM (o dono escolheu ∞): o relógio do espaço continua girando, mas não
           há contagem regressiva — e um "0:00" ali diria que a partida acabou. */}
-      {h.clock ? <span className="chip" id="h-clock"><i>🕒</i> <b>{String(h.clock.h).padStart(2, "0")}:{String(h.clock.m).padStart(2, "0")}</b> <i>⏳</i> <b>{h.clock.leftS == null ? "∞" : `${Math.floor(h.clock.leftS / 60)}:${String(Math.floor(h.clock.leftS % 60)).padStart(2, "0")}`}</b></span> : null}
+      {/* ⚠️ NO PACOTE ENXUTO o relógio só aparece no ÚLTIMO MINUTO: um "25:12" no canto é metainformação que
+          o novato não sabe ler, e o BIG CRUNCH que ele anuncia só interessa quando está perto. */}
+      {h.clock && (!ENXUTO || (h.clock.leftS != null && h.clock.leftS <= 60)) ? <span className="chip" id="h-clock"><i>🕒</i> <b>{String(h.clock.h).padStart(2, "0")}:{String(h.clock.m).padStart(2, "0")}</b> <i>⏳</i> <b>{h.clock.leftS == null ? "∞" : `${Math.floor(h.clock.leftS / 60)}:${String(Math.floor(h.clock.leftS % 60)).padStart(2, "0")}`}</b></span> : null}
       {/* MASSA + COLOCAÇÃO, e só no RETRATO (o CSS o esconde no resto). Em pé, o cartão de massa e o placar
           comiam a lateral direita inteira por cima da área de jogo — e no celular a lateral é onde o polegar
           direito trabalha. Aqui as duas únicas coisas que o jogador consulta no meio de uma partida (o meu
@@ -183,17 +190,17 @@ export default function Hud() {
         #hud — o chat saía fora da tela em vez de ficar no canto superior esquerdo, sob o radar. Como
         irmão, ele é sempre filho direto de #hud e a regra `#hud #chat` (ui.css) resolve certo em
         qualquer data-mode/data-pointer. */}
-    <Chat h={h} persist={espectando} />
+    {SEM_CHAT ? null : <Chat h={h} persist={espectando} />}
     {/* Coluna esquerda: no DESKTOP este div é `display:contents` e some da conta (cada bloco fica exatamente
         onde o tema o coloca). No DEDO ele vira uma pilha flex — porque #hud-status CRESCE com os powerups
         ativos, e qualquer `bottom` fixo para o chat voltava a colidir assim que um ímã entrava. */}
     <div id="hud-left">
     <div id="hud-status">
-      <button className={"chip belt" + (armed ? "" : " empty") + (podeTrocar ? " swap" : "")} id="hud-ammo"
+      {!mostraTiro && !podeTrocar ? null : <button className={"chip belt" + (armed ? "" : " empty") + (podeTrocar ? " swap" : "") + (h.dicaTiro ? " dica-tiro" : "")} id="hud-ammo"
         title={podeTrocar ? `${LB.swapWeapon} (${LB.keySwap})` : undefined} {...press("swap")}>
         <i>{armaIco}</i> {fireCd ? <b className="fire-cd">{fireCd}s</b> : <b id="v-ammo">{ammo}</b>} <span>{fireCd ? LB.fireCd : (LB.weapons[arma.key] || LB.ammo)}</span>
         {podeTrocar ? <em className="belt-alt">{cinto.map(w => <span key={w} className={"belt-ico" + (w === (h.weapon | 0) ? " on" : "")}>{WEAPON_ICON[w]}</span>)}</em> : null}
-      </button>
+      </button>}
       {/* ÍCONE COM O NÚMERO EM CIMA, não chip com rótulo escrito: em partida ninguém lê "Auto-defesa 12s" —
           o que se lê é a figura e um número. O anel dá o tempo sem ocupar linha, e o badge dá a carga. */}
       {/* O balão explica o que o ícone não consegue dizer: "🍀" não ensina "a comida vale o dobro". Era um
@@ -246,7 +253,7 @@ export default function Hud() {
     <CageStart c={h.cage} />
     <Notice n={h.notice} />
     <IdleWarn n={h.idle} />
-    <BrInvite b={h.brInvite} />
+    {SEM_BR ? null : <BrInvite b={h.brInvite} />}
     <ZoneAlarmFlash at={h.zoneAlarmAt} />
     {falando ? <div id="talk"><Ring resta={1 - h.talk.k} /><span>{LB.talkOn}</span></div>
       : talkAviso ? <div id="talk" className="hint"><span>{LB[TALK_MSG[talkAviso]] || LB.talkHint}</span></div> : null}
@@ -261,8 +268,8 @@ export default function Hud() {
           comando que o servidor recusa (`SPLIT.MIN_R`), que é pior que não ensinar nada e é exatamente o
           erro que o bloco de game/dica.js existe para prevenir. */}
       <button className={"tbtn" + (splitReady ? "" : " cd") + (h.dica && h.dica.dedo && h.dica.id === "split" ? " dica" : "")} id="t-split" {...press("split")}><span>{LB.split}</span></button>
-      <button className={"tbtn" + (ejectReady ? "" : " cd")} id="t-eject" {...press("eject")}><span>{LB.eject}</span></button>
-      <button className={"tbtn" + (armed ? "" : " empty") + (fireCd ? " cd" : "")} id="t-fire" {...press("fire")}><span>{LB.fire}</span><b id="t-ammo">{ammo}</b>{fireCd ? <em className="fire-cd">{fireCd}</em> : null}</button>
+      {mostraEjetar ? <button className={"tbtn" + (ejectReady ? "" : " cd")} id="t-eject" {...press("eject")}><span>{LB.eject}</span></button> : null}
+      {mostraTiro ? <button className={"tbtn" + (armed ? "" : " empty") + (fireCd ? " cd" : "") + (h.dicaTiro ? " dica-tiro" : "")} id="t-fire" {...press("fire")}><span>{LB.fire}</span><b id="t-ammo">{ammo}</b>{fireCd ? <em className="fire-cd">{fireCd}</em> : null}</button> : null}
       {/* ⚠️ **O MICROFONE SAIU DO DEDO.** Ele era o único botão de `#touch` que não é ação de JOGO, e
           custava uma coluna inteira num canto onde o `flex-wrap` já quebra em três fileiras — espaço que
           vale mais para dividir, cuspir e atirar. No teclado a voz continua inteira (`KeyK`, a tecla

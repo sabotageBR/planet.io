@@ -92,7 +92,7 @@ export default {
     sys_start: "La partida ha empezado", sys_lead: "{n} tomó la delantera", sys_crunch: "BIG CRUNCH en {n}",
     sys_zone: "El gas está avanzando", sys_few: "Quedan {n}", sys_streak: "{n} bajas seguidas",
   },
-  fx: { supernova: "¡SUPERNOVA!", nebula: "¡NEBULOSA PLANETARIA!", shield: "ESCUDO", combo: "COMBO {n}x", missao: "¡BIEN!" },
+  fx: { supernova: "¡SUPERNOVA!", nebula: "¡NEBULOSA PLANETARIA!", shield: "ESCUDO", combo: "COMBO {n}x", missao: "¡BIEN!", eat: "¡ÑAM!", stuck: "¡ARRANCADO!" },
   respawn: "¡OTRA VEZ!", newMatch: "OTRA PARTIDA", brWatchHint: "Quédate para ver el podio al final.", respawnArm: "Mueve el ratón o toca la pantalla para renacer", toLobby: "Salas", timeWord: "tiempo", rankWord: "clasificación diaria", coinsEarned: "monedas ganadas",
   lobbyTitle: "SALAS", roomCode: "CÓDIGO", enter: "Entrar", create: "➕ Crear sala", autoNote: "Entra en la sala más llena con lugar", shard: "shard", botsWord: "bots",
   roomModeCol: "MODO", roomTimeCol: "TIEMPO", roomFree: "Libre", roomBr: "BR",

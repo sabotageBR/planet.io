@@ -19,7 +19,7 @@ import { play, setMode, createParty, joinParty, criarSala } from "../state/actio
 import { useLabels } from "../hooks/useTheme.js";
 import { preenche } from "../i18n/index.js";
 import { Screen, ScreenHeader } from "./bits.jsx";
-import { SEM_MENU } from "../portal/flags.js";
+import { SEM_MENU, SEM_BR } from "../portal/flags.js";
 // Os mascotes JÁ ESTÃO no bundle, em WebP, e são os mesmos que o cenário de fundo usa (`ui/Scene.jsx`):
 // importados por módulo, o Vite emite UM asset compartilhado — mesma URL, mesmo cache, zero byte a mais no
 // zip de portal. ⚠️ Nada de PNG em `client/public/`: a `base:"./"` do build de portal não conserta
@@ -44,7 +44,8 @@ function Body() {
   // "Sala sua" virou BOTÃO: o cartão de criação é a coisa menos usada da tela e ocupava um quarto dela.
   const [abrirSala, setAbrirSala] = useState(false);
   const offline = api.server === false;
-  const showFree = cfgPanels.free !== false, showBr = cfgPanels.br !== false, showOwn = cfgPanels.own !== false;
+  // ⚠️ No pacote SEM BR (portal/flags.js) o cartão do Battle Royale não existe, diga o painel o que disser.
+  const showFree = cfgPanels.free !== false, showBr = !SEM_BR && cfgPanels.br !== false, showOwn = cfgPanels.own !== false;
   // ⚠️ ESTES DOIS SÃO `=== true`, NÃO `!== false`, e a diferença é o que os faz funcionarem no portal:
   // os três acima tratam AUSÊNCIA como visível (o padrão de sempre, para não quebrar com um servidor
   // mais velho nem no modo offline). Aqui a ausência tem que ser OCULTO — o cartão foi redesenhado
@@ -168,7 +169,7 @@ function SalaPropria({ offline, registrada, LB }) {
     <b>{LB.ownRoom}</b>
     <span>{LB.ownRoomSub}</span>
     <div className="own-row" role="radiogroup" aria-label={LB.modesShort}>
-      {[[MODE.FREE, LB.modeFree], [MODE.BR, LB.modeSolo]].map(([id, l]) =>
+      {[[MODE.FREE, LB.modeFree], ...(SEM_BR ? [] : [[MODE.BR, LB.modeSolo]])].map(([id, l]) =>
         <button key={id} className={"chip-btn" + (modo === id ? " on" : "")} disabled={bloqueado} onClick={() => setModo(id)}>{l}</button>)}
     </div>
     <div className="own-row" role="radiogroup" aria-label={LB.ownTime}>

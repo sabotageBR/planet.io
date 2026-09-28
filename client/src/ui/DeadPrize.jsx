@@ -19,6 +19,7 @@ import { pedagioLiberado } from "../portal/primeiraVida.js";
 import { ganharSkinAnuncio } from "../state/actions.js";
 import { useLabels } from "../hooks/useTheme.js";
 import { preenche } from "../i18n/index.js";
+import { skinName } from "../i18n/catalog.js";
 import SkinPreview from "./SkinPreview.jsx";
 // ⚠️ `{ portal }`, NUNCA `* as portal`: a fachada é um OBJETO exportado com esse nome, então a importação
 // de namespace faz `portal.temRecompensa` ler um export que não existe — `undefined`, em silêncio, e a
@@ -69,7 +70,7 @@ export default function DeadPrize({ on }) {
       <div className="dp-disco"><SkinPreview skin={premio.skin} r={30} size={112} className="" /></div>
       <div className="dp-txt">
         <i>{preenche(LB.prizeProgress, { n: premio.alvo })}</i>
-        <b>{premio.skin.name}</b>
+        <b>{skinName(premio.skin)}</b>
         {/* A barra é o markup do Perfil (`.ach-bar` + `--p`), para as duas telas falarem a mesma língua. */}
         <span className="ach-bar" role="progressbar" aria-valuemin={0} aria-valuemax={premio.alvo}
           aria-valuenow={premio.feitas}><i style={{ "--p": p }} /></span>
@@ -81,7 +82,7 @@ export default function DeadPrize({ on }) {
     <div className="dp-disco"><SkinPreview skin={premio.skin} r={30} size={112} className="" /></div>
     <div className="dp-txt">
       <i>{ganhou ? LB.prizeUnlocked : LB.prizeOffer}</i>
-      <b>{premio.skin.name}</b>
+      <b>{skinName(premio.skin)}</b>
       {/* ⚠️ O texto do equipar não é enfeite: a skin da VIDA é resolvida no join, e `Room.respawn` repassa
           a da vida anterior — ela aparece na PRÓXIMA vida. Um botão que parece não fazer nada é pior que
           botão nenhum, então a tela DIZ isso em vez de deixar o jogador descobrir. */}

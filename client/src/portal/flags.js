@@ -153,3 +153,30 @@ export const BOUNTY = (() => {
  *  gyroscope; magnetometer; xr-spatial-tracking` — MEDIDO, e sem `microphone`. Mesmo caso do GameFlare,
  *  então a voz sai pelo mesmo interruptor em vez de um `if` novo espalhado pelo cliente. */
 export const SEM_VOZ = PORTAL || BOUNTY;
+/**
+ * O PACOTE DA POKI É ENXUTO — decisão do dono em 28/09/2026, depois da recusa do Web Fit Test ("players on
+ * Poki really don't like reading", "unnecessary text taken out", "lacks intentional design direction").
+ *
+ * POKI        o pacote é o da Poki (e só ele: os outros portais seguem iguais, por decisão).
+ * SEM_CHAT    sem chat de texto NENHUM na tela — nem o das pessoas, nem a fala dos preenchimentos. É texto
+ *             (que a Poki diz que ninguém lê) e é moderação (que eles cobram com filtro rígido); no celular,
+ *             81% do tráfego, o painel já estava escondido. O servidor continua mandando as linhas — quem
+ *             não desenha é o cliente, que também as descarta sem guardar.
+ * SEM_BR      sem Battle Royale: nem o card de convite no meio da partida do Livre (um cartão de texto de
+ *             20 s puxando o NOVATO para outro modo), nem o cartão do modo em Modos, nem o "Sair da partida"
+ *             da pausa — sem BR ele levava a uma tela que só oferece o Livre de novo.
+ * ENXUTO      o HUD perde o que é texto e não é jogo: chip da sala, relógio da rodada (volta no último
+ *             minuto), ms/fps, legenda "RADAR", rótulo da arma e dos botões de toque. Quem desenha a regra
+ *             é `body[data-pacote="poki"]` em ui.css (escrito por `App.jsx`), para o CSS dos temas não ter
+ *             de saber de portal nenhum.
+ * TEMA_FIXO   um tema só, sem relógio: o céu trocava na passagem do tutorial para a sala e de novo no meio
+ *             da primeira partida (15 min reais por dia do espaço), e é a primeira coisa que "sem direção de
+ *             arte" quer dizer. `theme/index.js` o lê em `resolveThemeId`, o ponto único por onde passam o
+ *             relógio, o pré-aquecimento do céu e as prefs.
+ * ⚠️ Literais de build, como o resto deste arquivo — e pelo mesmo motivo.
+ */
+export const POKI = PORTAL && PORTAL_ID === "poki";
+export const SEM_CHAT = POKI;
+export const SEM_BR = POKI;
+export const ENXUTO = POKI;
+export const TEMA_FIXO = POKI ? "dusk" : "";

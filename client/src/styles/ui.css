@@ -1832,6 +1832,13 @@ body[data-mode="portrait"] #rk-table .c-food,body[data-mode="portrait"] #rk-tabl
 .lvup-wrap{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
   padding:20px;pointer-events:auto;background:rgba(0,0,0,.34);animation:lvup-fade .18s ease}
 @keyframes lvup-fade{from{opacity:0}to{opacity:1}}
+/* ⚠️ `passa`: sobre a tela de morte e sobre a partida viva o cartão NÃO come o toque — ele caía por cima do
+   DE NOVO (o primeiro toque só o fechava) e, depois da 1ª morte sem tela, escurecia o jogo por 6,5 s. */
+.lvup-wrap.passa{pointer-events:none;background:none}
+.lvup-wrap.passa .lvup{pointer-events:none}
+/* `vivo`: a pessoa já está jogando — o cartão sobe para o alto e encolhe, sem cobrir o centro da tela */
+.lvup-wrap.vivo{align-items:flex-start;padding-top:max(70px,env(safe-area-inset-top))}
+.lvup-wrap.vivo .lvup{width:min(300px,100%);padding:12px 14px;gap:6px}
 .lvup{width:min(400px,100%);display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center;
   padding:22px 20px;border:5px solid var(--accent,#ffc22e);border-radius:var(--radius-lg,20px);
   background:var(--surface,#232f63);box-shadow:0 16px 46px rgba(0,0,0,.55);
@@ -3171,3 +3178,20 @@ body[data-mode="landscape"] #tutor[data-style="cena"] .tut-liga{width:12px;heigh
 body[data-mode="landscape"] #tutor[data-style="cena"] .tut-passo{font-size:11px;padding:1px 6px}
 body[data-mode="landscape"] #tutor[data-style="cena"] .tc-pilula{padding:5px 16px 10px}
 body[data-mode="landscape"] #tutor[data-style="cena"] .tc-pilula .tc-verbo{font-size:19px}
+
+/* ── O PACOTE ENXUTO DA POKI (`body[data-pacote="poki"]`, escrito por App.jsx; ver portal/flags.js) ─────────
+   Decisão de 28/09/2026, depois da recusa do Web Fit Test: "players on Poki really don't like reading" e
+   "unnecessary text taken out". Sai o texto que não é jogo; fica o que se lê de relance (número, ícone).
+   ⚠️ Especificidade (2,1,1) ou mais: ganha das regras dos temas (o `:where` zera o html) e das de ui.css em
+   `#hud #x` (2,0,0), sem `!important`. */
+body[data-pacote="poki"] #hud #h-room,
+body[data-pacote="poki"] #hud #h-net{display:none}
+/* o rótulo da arma ("MISSILE", "RELOADING"): o ícone e o número dizem a mesma coisa */
+body[data-pacote="poki"] #hud #hud-ammo>span{display:none}
+/* botões de toque só com o ícone — o rótulo de 9 px ninguém lê no meio de uma briga. O de trocar de arma
+   fica de fora: nele o <span> É o ícone. */
+body[data-pacote="poki"] #hud #touch .tbtn:not(#t-swap)>span{display:none}
+/* o cartão de massa fica com o NÚMERO, o nick com o nível e as moedas: saem "MASSA", "pontos" e o rótulo */
+body[data-pacote="poki"] #hud #hud-score .score-sub,
+body[data-pacote="poki"] #hud #hud-score .score-row:nth-child(3),
+body[data-pacote="poki"] #hud #hud-score .score-row:nth-child(4)>.k{display:none}

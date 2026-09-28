@@ -131,7 +131,7 @@ export default {
   // temas, porque a mesma string repetida em três arquivos diverge na primeira correção.
   // "Nebulosa planetária" é o nome certo do que sobra de uma estrela que morre SEM supernova de verdade —
   // e é exatamente o caso do atropelamento, o único que não larga prêmio (STAR.RAM_REWARD).
-  fx: { supernova: "SUPERNOVA!", nebula: "NEBULOSA PLANETÁRIA!", shield: "ESCUDO", combo: "COMBO {n}x", missao: "BOA!" },
+  fx: { supernova: "SUPERNOVA!", nebula: "NEBULOSA PLANETÁRIA!", shield: "ESCUDO", combo: "COMBO {n}x", missao: "BOA!", eat: "NHAC!", stuck: "ARRANCOU!" },
   // ⚠️ Sem emoji: o ícone vinha do TEXTO (não há <i> nos botões da tela de morte) e o 🔄 competia com
   // o próprio rótulo num botão que já é o maior da tela.
   respawn: "DE NOVO!", newMatch: "OUTRA PARTIDA", brWatchHint: "Fique para ver o pódio no fim.", respawnArm: "Mexa o mouse ou toque na tela para renascer", toLobby: "Lobby", timeWord: "tempo", rankWord: "ranking diário", coinsEarned: "moedas ganhas",

@@ -34,7 +34,9 @@ export default function LevelUp() {
     return () => clearTimeout(t);
   }, [lv && lv.n]);
   if (!lv) return null;
-  return <div className="lvup-wrap" onClick={closeLevelUp} role="status" aria-live="polite"><Card lv={lv} /></div>;
+  // `passa`: o cartão não intercepta o toque (ver o bloco de `onRewards` em state/actions.js) — ele some sozinho.
+  return <div className={"lvup-wrap" + (lv.passa ? " passa" : "") + (lv.vivo ? " vivo" : "")}
+    onClick={lv.passa ? undefined : closeLevelUp} role="status" aria-live="polite"><Card lv={lv} /></div>;
 }
 
 function Card({ lv }) {

@@ -11,6 +11,7 @@
 import dawn from "./dawn/index.js";
 import sunset from "./sunset/index.js";
 import dusk from "./dusk/index.js";
+import {TEMA_FIXO} from "../portal/flags.js";
 
 export const THEMES={dawn,sunset,dusk};
 export const DEFAULT_THEME="dawn";
@@ -21,6 +22,8 @@ export const THEME_PREFS=["auto","dawn","sunset","dusk"];
 // 'auto' → pela hora de `when` (Date, ou hora 0..24 do relógio do espaço da rodada); id conhecido → ele mesmo
 export function resolveThemeId(pref="auto",when=new Date()){
   if(pref&&pref!=="auto"&&THEMES[pref])return pref;
+  // pacote com tema fixo (portal/flags.js): o "auto" deixa de olhar o relógio — do jogador E da rodada
+  if(TEMA_FIXO&&THEMES[TEMA_FIXO])return TEMA_FIXO;
   const h=typeof when==="number"?((when%24)+24)%24:when.getHours()+when.getMinutes()/60;
   for(const s of SCHEDULE){if(h>=s.from&&h<s.to)return s.id;if(s.to>24&&h+24>=s.from&&h+24<s.to)return s.id;}
   return DEFAULT_THEME;}

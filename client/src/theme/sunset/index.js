@@ -175,7 +175,7 @@ export const effects={
           P.push({type:"ring",x,y,r:f.r*(1-kk*.75)+2,color:GOLD,alpha:a*(1-i*.28),width:Math.max(2,f.r*.18*(1-kk))});}
         P.push({type:"burst",x:f.x,y:f.y,n:8,r0:f.r*(.9+k*.8),r1:f.r*(1.2+k*1.2),color:CREAM,alpha:a*.8,width:Math.max(2,f.r*.07)});
         P.push({type:"ring",x:tx,y:ty,r:tr*(1.05+k*.35),color:CREAM,alpha:a,width:Math.max(2,tr*.08)});
-        if(f.r>8)P.push({type:"text",x:tx,y:ty-tr*(1+k*.6),text:"NHAC!",size:Math.max(10,tr*.55),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
+        if(f.r>8)P.push({type:"text",x:tx,y:ty-tr*(1+k*.6),text:f.text||"CHOMP!",size:Math.max(10,tr*.55),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
       case "vanish":{const col=f.color||CREAM;   // sumiço no mesmo frame: colapsa e, se foi comida, voa para quem comeu
         if(f.tx!=null){const x=f.x+(f.tx-f.x)*k,y=f.y+(f.ty-f.y)*k;
           P.push({type:"line",x1:f.x,y1:f.y,x2:x,y2:y,color:col,alpha:a*.45,width:Math.max(1.5,f.r*.14*(1-k))});
@@ -241,7 +241,7 @@ export const effects={
       case "stuck":{const s=f.r*(1.05+k*.5),al=Math.min(1,a*1.3);
         for(let i=0;i<5;i++){const a0=i*1.256+k*.6;P.push({type:"arc",x:f.x,y:f.y,r:s,a0,a1:a0+.72,color:GOLD,alpha:al,width:Math.max(2.5,f.r*.07)});}
         P.push({type:"burst",x:f.x,y:f.y,n:8,r0:f.r*(.9+k*1.6),r1:f.r*(1.3+k*2.6),color:CORAL,alpha:a,width:Math.max(2,f.r*.09)});
-        P.push({type:"text",x:f.x,y:f.y-f.r*(1.25+k),text:"ARRANCOU!",size:Math.max(10,f.r*.5),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
+        P.push({type:"text",x:f.x,y:f.y-f.r*(1.25+k),text:f.text||"RIPPED!",size:Math.max(10,f.r*.5),fill:"#fff",stroke:INK,font:FONT,alpha:al});break;}
       // ⚠️ A ONDA DE CHOQUE SAIU. Eram três `ring` concêntricos crescendo — o "anel branco de espessura
       // constante expandindo" que `fireworkPrims` foi reescrito para eliminar, e o conserto nunca tinha
       // sido propagado para cá. Hoje a explosão fala a MESMA língua: rastro, arrasto que satura, cor em
