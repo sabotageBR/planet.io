@@ -424,6 +424,35 @@ frequency"). Usado hoje para as 3 skins mascote (`server/src/api/skins.js`, rota
 `POST /api/skins/:id/watch-ad`): cada mascote pede o PRÓPRIO anúncio, e assistir NÃO substitui a compra
 com moedas — só destrava o botão de comprar daquela skin, que continua cobrando o preço normal.
 
+### Poki 1.1 (28/09/2026): o pacote que a recusa do Web Fit Test pediu
+
+A 1.0.1 passou no Player Fit Test (3m05, 28% engaged) e o **Web Fit Test foi recusado** por três motivos:
+KPIs abaixo do piso (~65% de conversão para jogar, ~6 min de playtime), apresentação sem direção de arte, e
+onboarding em TEXTO — *"players on Poki really don't like reading"*. O jogo voltou para "testing", e o pedido
+é **≥ 5 min no Player Fit Test** antes de um novo WFT. O zip 1.1.0 (`WARSPACE_BUILD_VERSION=1.1.0 node
+scripts/portal-pack.mjs poki`) é a primeira das três etapas do plano; o detalhe de cada mudança está no bloco
+"A POKI 1.1" do `CLAUDE.md`. Em uma linha cada:
+
+- **Pacote enxuto** (`POKI`/`SEM_CHAT`/`SEM_BR`/`ENXUTO`/`TEMA_FIXO` em `client/src/portal/flags.js`): sem chat,
+  sem Battle Royale, um tema só (dusk), HUD sem rótulos, botões que entram aos poucos (EJETAR no nível 3, TIRO
+  com munição).
+- **Tutorial de 2 etapas sem uma frase**: a estrela espera o toque (que no desktop passa a abrir o
+  `gameplayStart` VÁLIDO nos primeiros segundos), e a instrução é o gesto desenhado no mundo.
+- **Skin em teste**: o Marte Bravo do tutorial fica nas 3 primeiras partidas e vira o equipado na concessão
+  (regra do SERVIDOR — publicar o servidor ANTES de subir o zip).
+- **Estreia sem esperar a conta**: o tutorial abre logo depois do `/api/config`; a última etapa adianta o nick e
+  a sala da 1ª partida.
+- **O novato vê o jogo**: anel verde/vermelho em quem ele come/quem o come, seta para a presa fora da tela,
+  missão desenhada, dica do tiro.
+- **Medição**: `fit/congela_<faixa>` no Game Events é a réplica do relógio do Fit Test (quantas sessões o
+  número deles congela, e quando); `scripts/poki-fit-bancada.mjs --mouse` é a bancada do desktop.
+
+⚠️ **Disciplina de cada rodada**: `admin_settings`/`admin_audit` quietos durante o teste, zip com
+`WARSPACE_BUILD_VERSION`, a CSP da versão nova conferida (ela fica gravada na VERSÃO), o Inspector verde e
+`scripts/poki-coorte.mjs` na janela. E as métricas de mecanismo escritas ANTES do teste: tutorial→partida
+82% → ≥ 88%; "saiu vivo antes de 60 s" 27% → ≤ 18% das contas; gesto do desktop ≤ 5 s; meta do PFT ≥ 3:30 e
+engaged ≥ 32% (a de 5 min é da 1.3).
+
 ## Y8 (`developer.y8.com`)
 
 Painel próprio (BETA), separado do `y8.com/upload` antigo: **Basic Info · SDK Initialization · Builds ·

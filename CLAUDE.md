@@ -1425,7 +1425,8 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   da entrega inteira: a classe liga o pulso do botão de DIVIDIR, e enquanto a única dica do jogo era a do
   split isso acertava por acidente. Com três etapas, "coma as pedras" faria o botão pulsar para um novato
   de r=30 — anunciando um comando que o servidor recusa.
-- **O TUTORIAL DE ESTREIA: TRÊS ETAPAS NUM MUNDO QUE É NOSSO** (`game/tutor.js` a decisão · `game/net/
+- **O TUTORIAL DE ESTREIA: TRÊS ETAPAS NUM MUNDO QUE É NOSSO** (⚠️ desde 28/09/2026 são DUAS — supernova e
+  salto; a do tiro ficou dormente — e a estrela espera o TOQUE: ver "A POKI 1.1", mais abaixo) (`game/tutor.js` a decisão · `game/net/
   tutorServer.js` o diretor · `ui/Tutor.jsx` a tela · `TUTORIAL.PLATAFORMAS` o interruptor): supernova →
   míssil → salto, single-player, e no fim a oferta de uma skin por anúncio e a entrada automática numa
   sala. Ele existe pelo número que o `algoz` e o histograma vinham repetindo: **64,6% dos novatos nunca
@@ -1641,7 +1642,8 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   `.dd-premio`/`.dp-disco`/`.dp-txt`, e **todas as regras dessas classes são escopadas a `#s-dead`** —
   dentro de `#tutor-fim` nenhuma casava, e o `SkinPreview` de `size=112` num disco desenhado para 46 px
   saía fora de escala.
-- **O TUTORIAL É JOGADO COM O MARTE BRAVO, E 3 PARTIDAS O DÃO DE VERDADE** (`SKIN_TUTORIAL` e
+- **O TUTORIAL É JOGADO COM O MARTE BRAVO, E 3 PARTIDAS O DÃO DE VERDADE** (⚠️ desde 28/09/2026 ele NÃO é
+  mais tirado na entrada da sala: vira a skin em TESTE das 3 primeiras partidas — ver "A POKI 1.1") (`SKIN_TUTORIAL` e
   `PROGRESSO.PARTIDAS` em `shared`, o estado `progresso` de `ui/premio.js`, a concessão em
   `persist/hooks.js`): o jogador EXPERIMENTA a skin antes de ter qualquer coisa, ela é tirada dele ao
   entrar na primeira sala de verdade, e a barra da tela de morte diz o que falta para ficar com ela.
@@ -1672,7 +1674,9 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   ⚠️ **A Marte SAIU de `AD_GIFT_SKINS`** (Terra e Lua ficam): nas duas portas a barra seria decorativa —
   ninguém espera três partidas por algo que um vídeo de 30 s entrega. Sobrando duas, **o `rewardedBreak`
   mantém os seus dois chamadores** (Loja e tela de morte), que é o item que a Poki cobra por escrito.
-- **A TELA DO TUTORIAL É A TIRINHA — o modelo `cena`, escolhido pelo dono do jogo JOGANDO** (`ui/TutorCena.jsx`,
+- **A TELA DO TUTORIAL É A TIRINHA — o modelo `cena`, escolhido pelo dono do jogo JOGANDO** (⚠️ a tirinha e a
+  palavra gigante SAÍRAM em 28/09/2026: o `cena` hoje é só a trilha, o pular e o selo, e a instrução é o gesto
+  desenhado no mundo — ver "A POKI 1.1") (`ui/TutorCena.jsx`,
   `ui/tutorEstilo.js`, `ui/tutorPecas.jsx`, o bloco "O MODELO `cena` DO TUTORIAL" no fim de `ui.css`): houve
   três candidatos em bancada (`legenda`, `sargento` e `cena`) e os dois que perderam SAÍRAM do código. O
   `cena` é uma tirinha de três quadros — gesto ▸ ação ▸ resultado — mais a palavra gigante (MOVA · ATIRE ·
@@ -2045,6 +2049,67 @@ legacy         server/legacy/server.cjs e client/legacy/ — versão v1, só ref
   que o cliente reescreve com o mundo da última sala) — 3.900 grãos e 24 bots num quadradinho, o jogador morto em
   1 s. Só no `?local=1`; hoje ele nasce de `WORLD.LADO`, que ninguém reescreve.
   ⚠️ Previsão (Game Events deles): `match_real`/cargas 64% → ≥ 68%, e nenhum passo do tutorial pior.
+- **A POKI 1.1: O PRIMEIRO MINUTO SEM UMA FRASE** (28/09/2026; plano em `~/.claude/plans/estou-homologando-o-jogo-
+  cozy-nova.md`). A Poki recusou o Web Fit Test da 1.0.1 (PFT 3m05, 28% engaged, C2P ~65%) com três recados —
+  KPIs abaixo do piso, apresentação sem direção de arte, e *"players on Poki really don't like reading, so
+  onboarding needs to be visual"* — e pediu ≥ 5 min no Player Fit Test antes de um novo WFT. O diagnóstico
+  (nosso banco + Game Events + 28 playtests gravados): 54% das primeiras vidas terminam com o jogador SAINDO VIVO
+  e 80% sem um abate — ele não estava morrendo, estava sem saber o que fazer. O que mudou:
+  ⚠️ **TUTORIAL DE DUAS ETAPAS** (`SEQUENCIA` em `game/tutor.js`: NOVA → SPLIT; `ETAPA.TIRO` fica DORMENTE, com
+  número e marco intactos, e o tiro virou dica na partida). `proximaEtapa`/`posicaoDaEtapa` são a ordem; o
+  NÚMERO da etapa é nome do funil. **A estrela ESPERA O TOQUE** (`tocaEstrela` em game/index.js: qualquer
+  `pointerdown`/`keydown`, em captura; `CENA.TOQUE_TETO` = 5 s de fallback): é o primeiro gesto da vida do
+  jogador, e no DESKTOP é ele que faz o `gameplayStart` sair VÁLIDO nos primeiros segundos — antes o primeiro
+  clique só vinha na lição do tiro, e mover o mouse não conta para a Poki. Marcos `tutor_toque[_auto]`.
+  ⚠️ **SEM TEXTO NA TELA**: o gesto é DESENHADO NO MUNDO (`game/guia.js` decide, puro e testado;
+  `renderer/layers/Guia.js` desenha): mão/cursor tocando a estrela, rastro do planeta até o caco mais perto
+  (some depois de 35% da massa, volta com a ajuda) e o arco do salto até a presa. A frase de cada etapa
+  continua existindo, no `aria-label`. ⚠️ **A etapa do salto não começa numa parede** (`recentraNoSalto` +
+  `folgaDoSalto`): a arena tem 1.800 px, o rumo travado do dedo leva o planeta até a borda em segundos, e com o
+  aluno acuado o centro da pista da presa (clampado para caber na arena) ficava ~380 px para dentro — a presa
+  circulava FORA DA TELA. Acuado, o planeta desliza para o centro por `RECENTRA_MS` e o rumo do dedo é zerado.
+  ⚠️ **A SKIN EM TESTE** (`persist/hooks.js`): nas primeiras `PROGRESSO.PARTIDAS` partidas quem está com a skin
+  de NASCENÇA joga com o Marte Bravo (override de VIDA, como o egg — não escreve em `equipped_skin_id`), e a
+  concessão o EQUIPA (`users.equipSeInicial`) e devolve `equipped` no `rewards`. O planeta não troca mais na
+  entrada da sala, que lia como defeito nos playtests. ⚠️ "De nascença" é a ORIGEM da posse
+  (`user_skins.source='default'`, `skins.isDefault`), nunca `STARTER_SKINS`: as nove comuns estão no sorteio de
+  nascença E à venda, e quem comprou uma não pode ser trocado. O egg continua ganhando. ⚠️ `RESOLVE_SQL` ganhou
+  `games` pelo MESMO LEFT JOIN do `xp` (zero consulta a mais), e a consulta da origem só existe nas 3 primeiras
+  partidas, com teto de 800 ms (falhou: a vida sai com a equipada).
+  ⚠️ **A PROMESSA É DESENHO** (`TrilhaSkin` em ui/tutorPecas.jsx: Marte · ●○○ · 🎁): na faixa do fim do
+  tutorial (`app.parabensAte`, com o ✓ e a rodinha enquanto a sala conecta), na morte SEM tela (`app.pipsAte`,
+  escrito em `onDead` — sem ela a 1ª partida contava em silêncio) e no bloco de prêmio da tela de morte (no
+  pacote sem a frase). `#tutor-parabens.indo` esconde o RESTO do HUD por CSS enquanto a sala não conecta.
+  ⚠️ **A ESTREIA NÃO ESPERA A CONTA** (`estreiaRapida` em state/actions.js, `estreiaSemConta` em
+  state/entrada.js): aparelho NOVO (sem token e sem a marca) numa plataforma com tutorial entra nele logo depois
+  da sonda do `/api/config` — que continua no caminho, porque é ela que traz o interruptor do painel — e a conta
+  do convidado nasce por trás; quem a espera é `garanteConta`, no começo de `entraNaSala`, com UMA nova
+  tentativa e só então a tela de servidor fora. A última etapa ADIANTA o nick e a sala da 1ª partida
+  (`preparaSaida`, disparado por `ui/Tutor.jsx`): no Vietnã eram ~5 s de tela vazia entre o fim do tutorial e a
+  sala. ⚠️ `request()` ganhou TETO (12 s; 60 s no upload da foto): uma rede pendurada segurava o `await` do boot
+  para sempre. A sonda tenta de novo uma vez, o 429 curto (≤ 8 s) no convidado espera, e sonda que falhou pula a
+  conta (era meio minuto a mais de cortina). ⚠️ No pacote de portal o inglês é ESTÁTICO (`DICT` em
+  i18n/index.js): o `import()` dele estava no caminho de todo primeiro frame.
+  ⚠️ **O NOVATO VÊ O JOGO** (abaixo de `NOVATO_NIVEL` = 5): anel VERDE liso em quem ele come e VERMELHO com
+  PONTAS em quem o come (`anelDeRisco` em game/guia.js, desenhado em `Planets.js` com tamanho constante em tela;
+  as pontas são para a protanopia — verde e vermelho é o par que some), seta na borda da tela apontando a presa
+  fora dela até o 1º abate da vida (`presaForaDaTela`: peças da AOI com o raio exato + o placar só para quem é
+  comível por INTEIRO, `√massa`), a missão da 1ª vida como DESENHO com a barra das 8 partículas
+  (`ui/DicaSplit.jsx`) e a dica do tiro (`h.dicaTiro`: na borda de subida de "tiro PRONTO" — munição sem a
+  carência do nascimento — o botão pulsa, e no mouse o clique aparece ao lado do chip; some no 1º tiro).
+  ⚠️ **O PACOTE DA POKI ENXUTO** (`portal/flags.js`: `POKI`, `SEM_CHAT`, `SEM_BR`, `ENXUTO`, `TEMA_FIXO`="dusk" —
+  literais de build, podados no site): sem chat, sem Battle Royale (nem o convite no meio da partida, nem o
+  botão de sair), um tema só (sem relógio), HUD sem rótulos de texto (`body[data-pacote="poki"]`), EJETAR a
+  partir do nível 3 e TIRO só com munição; "NHAC!"/"ARRANCOU!" saíram do código dos temas para o i18n
+  (`fx.eat`/`fx.stuck`); o cartão de XP deixou de comer o toque do DE NOVO (`passa`) e de escurecer a partida viva.
+  ⚠️ **MATCHMAKING**: o JOGAR (AUTO) pula sala do Livre com menos de `ROOM.ROUND_LEFT_MIN_S` (300 s) de rodada —
+  23 primeiras vidas do PFT de 25/09 terminaram no BIG CRUNCH aos ~84 s. Sem outra, abre-se uma nova.
+  ⚠️ **MEDIÇÃO**: `fit/congela_<faixa>` é a RÉPLICA do relógio do Player Fit Test (portal/sessao.js: 60 s sem
+  `pointerdown`/`keydown` de BOLHA nem evento rastreado — a fachada registra `portal.ultimoRastreado`), para ver
+  no painel de verdade quanto do nosso tempo o número deles não vê; `scripts/poki-fit-bancada.mjs --mouse` prova
+  o `gameplayStart` válido no clique da estrela e a réplica congelando junto com o stub.
+  ⚠️ **ORDEM DE PUBLICAÇÃO**: o SERVIDOR antes do zip — a skin em teste, o `equipped` e o matchmaking são dele. O
+  protocolo não mudou (`PROTOCOL_VERSION` 15): zip velho com servidor novo e vice-versa funcionam.
 - **PAINEL /admin** (`docs/spec/admin.md`): rota da MESMA SPA, chunk sob demanda (`main.jsx`, o padrão do
   `?sfx`) — nenhuma linha de infraestrutura muda. Um admin é uma CONTA (`users.is_admin`, migração 0008),
   porque o `RESOLVE_SQL` do token já faz `SELECT u.*` e a coluna chega de graça, e porque sem identidade
