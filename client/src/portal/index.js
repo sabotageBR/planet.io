@@ -68,6 +68,14 @@ const avisa = lista => { for (const cb of lista) { try { cb(); } catch { /* um o
  *    dele perderia o "o jogo carregou" — que em vários SDKs é o marco que libera o anúncio.
  */
 let venceu = false;   // o prazo acabou? (é o que separa "chegou atrasado" de "chegou a tempo")
+/**
+ * QUANDO (ms de `performance.now()`) o SDK recebeu pela última vez um evento que o relator do Player Fit
+ * Test RASTREIA — `gameLoadingFinished`, `gameplayStart/Stop`, `commercialBreak`, `rewardedBreak` (o `Vd` do
+ * código deles; `measure()` NÃO conta). É meio relógio da réplica em `portal/sessao.js` (`fit/congela_*`):
+ * a outra metade é o último `pointerdown`/`keydown` que eles veem.
+ */
+let ultimoRastreado = 0;
+const rastreia = () => { ultimoRastreado = typeof performance !== "undefined" ? performance.now() : 0; };
 const pronto = (async () => {
   const mod = carrega(); if (!mod) return null;
   const feito = mod.then(m => m.criar({ pausou: () => avisa(aoPausar), retomou: () => avisa(aoRetomar) })).catch(() => null);
@@ -75,7 +83,7 @@ const pronto = (async () => {
   // uma aqui e outra por quem estava esperando o `pronto`. Vários SDKs recusam o segundo (o Playgama
   // rejeita a promessa do `game_ready` repetido), e isso é ruído no console do revisor.
   feito.then(s => { if (!s || sdk) return; sdk = s;
-    if (venceu && pediuCarregou && s.carregou) { try { s.carregou(); } catch { /* nunca derruba o jogo */ } } });
+    if (venceu && pediuCarregou && s.carregou) { try { s.carregou(); rastreia(); } catch { /* nunca derruba o jogo */ } } });
   sdk = await prazo(feito, P.SDK_MS, null);
   venceu = true;
   return sdk;
@@ -93,6 +101,8 @@ export const portal = {
    * lugar errado. Quem oferece recompensa pergunta AQUI.
    */
   get temRecompensa() { return !!(sdk && sdk.recompensa); },
+  /** O último evento RASTREADO pelo relator do Player Fit Test (ver `ultimoRastreado`). 0 = nenhum ainda. */
+  get ultimoRastreado() { return ultimoRastreado; },
   /**
    * Este portal sabe fazer link de convite? Mesmo argumento do `temRecompensa` acima, e o defeito que ele
    * fecha é de CERTIFICAÇÃO: sem `sdk.convite` o botão do dono cai em `linkConvite()` e copia uma URL de
@@ -103,7 +113,7 @@ export const portal = {
   get temConvite() { return !!(sdk && sdk.convite); },
   pronto,
   /** O jogo terminou de carregar (CrazyGames e Poki contam isso; a GD não tem equivalente). */
-  async carregou() { pediuCarregou = true; await pronto; if (sdk && sdk.carregou) try { sdk.carregou(); } catch { /* nunca derruba */ } },
+  async carregou() { pediuCarregou = true; await pronto; if (sdk && sdk.carregou) try { sdk.carregou(); rastreia(); } catch { /* nunca derruba */ } },
   /**
    * Anúncio antes de entrar em partida. `tipo` é "preroll" (a primeira desta carga) ou "midroll".
    * SEMPRE resolve, e respeita o intervalo mínimo — quem chama não precisa lembrar de nada disso.
@@ -133,7 +143,7 @@ export const portal = {
     emAnuncio = true; comecouNoAd = false;
     await portal.jogoParou();
     avisa(aoPausar);
-    try { await prazo(sdk.anuncio(tipo), P.AD_MS, null); }
+    try { rastreia(); await prazo(sdk.anuncio(tipo), P.AD_MS, null); }
     catch { /* sem preenchimento, bloqueado, o que for: joga do mesmo jeito */ }
     finally {
       avisa(aoRetomar);
@@ -163,7 +173,7 @@ export const portal = {
     await portal.jogoParou();
     avisa(aoPausar);
     let assistiu = false;
-    try { assistiu = await prazo(sdk.recompensa(), P.AD_MS, false); }
+    try { rastreia(); assistiu = await prazo(sdk.recompensa(), P.AD_MS, false); }
     catch { /* o adaptador pode lançar antes de devolver a promessa */ }
     finally {
       avisa(aoRetomar);
@@ -205,9 +215,9 @@ export const portal = {
    *    ordem, e checar cedo faz a segunda decidir com o estado da primeira ainda por aplicar.
    */
   async jogoComecou() { await pronto; if (emAnuncio) { comecouNoAd = true; return; } if (emJogo) return; emJogo = true;
-    if (sdk && sdk.jogoComecou) try { sdk.jogoComecou(); } catch { /**/ } },
+    if (sdk && sdk.jogoComecou) try { sdk.jogoComecou(); rastreia(); } catch { /**/ } },
   async jogoParou() { await pronto; if (!emJogo) return; emJogo = false;
-    if (sdk && sdk.jogoParou) try { sdk.jogoParou(); } catch { /**/ } },
+    if (sdk && sdk.jogoParou) try { sdk.jogoParou(); rastreia(); } catch { /**/ } },
   /**
    * Abrir uma página EXTERNA (hoje só a política de privacidade). Devolve `true` se o portal cuidou
    * disso; `false` quer dizer "abra você mesmo", que é o caso do site e de quem não tem SDK.

@@ -358,3 +358,27 @@ test("gameplay/* abre o funil UMA vez, no primeiro jogo ativo", () => {
   assert.deepEqual(m.filter(x => x.endsWith("/start") && x.startsWith("gameplay/")),
     ["gameplay/60s/start", "gameplay/180s/start", "gameplay/300s/start"]);
 });
+
+// ── A RÉPLICA DO RELÓGIO DO PLAYER FIT TEST ──
+import { passoFit, faixaFit, FIT } from "../src/portal/sessao.js";
+test("réplica do Fit Test: congela quando passa de 60 s sem sinal, e só uma vez", () => {
+  assert.equal(passoFit(false, 60000, 0), null, "60 s cravados ainda não (a conta deles é `>`)");
+  assert.equal(passoFit(false, 70000, 0), 70, "no passo seguinte, congela com a duração DAQUELE passo");
+  assert.equal(passoFit(false, 200000, 150000), null, "um toque há 50 s mantém o relógio andando");
+  assert.equal(passoFit(true, 999999, 0), null, "congelado não volta — e não reemite");
+  assert.equal(FIT.PASSO_MS, 10000); assert.equal(FIT.OCIOSO_MS, 60000);
+});
+test("réplica do Fit Test: a faixa é um NOME, e a primeira possível é 60_120s", () => {
+  assert.equal(faixaFit(70), "60_120s"); assert.equal(faixaFit(130), "120_180s");
+  assert.equal(faixaFit(250), "180_300s"); assert.equal(faixaFit(420), "300_600s"); assert.equal(faixaFit(900), "600s_mais");
+});
+test("réplica do Fit Test: o congelamento sai como `fit/congela_<faixa>`, pela fachada", () => {
+  const m = [], st0 = { screen: "entry", conn: "idle", interrompido: false, overlays: { pause: false } };
+  const store = { get: () => st0, subscribe: () => () => {} };
+  let dispara = null;
+  const off = iniciaSessaoPortal({ comecou() {}, parou() {}, medir: (c, o, a) => m.push(`${c}/${o}/${a}`) }, store, () => 0,
+    () => () => {}, () => null, cb => { dispara = cb; return () => {}; });
+  dispara(131.4);
+  assert.deepEqual(m, ["fit/congela_120_180s/complete"]);
+  off();
+});

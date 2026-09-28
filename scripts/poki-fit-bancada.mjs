@@ -28,6 +28,15 @@
 //    não há SDK. Rode nos dois — o conserto só vale se as duas respostas forem sim:
 //      node scripts/poki-fit-bancada.mjs                                  # pacote: o SDK vê?
 //      node scripts/poki-fit-bancada.mjs "http://127.0.0.1:5174/?local=1&tutorial=1" # dev: o controle continua igual?
+//
+// ── `--mouse`: O COMPUTADOR (a outra pergunta, 28/09/2026) ──
+// Janela de desktop, sem toque: UM clique (é o toque na estrela do tutorial — qualquer `pointerdown` a detona) e
+// depois só `mousemove`, que é como se dirige no mouse. Duas respostas: (1) o clique na estrela abre o gameplay
+// com interação VÁLIDA (antes do tutorial de 2 etapas o primeiro gesto do desktop só vinha na lição do TIRO);
+// (2) dirigindo só com o mouse o relógio deles CONGELA (o ponto cego é deles: `pointermove` não conta) — e a
+// nossa réplica (`fit/congela_*`, portal/sessao.js) tem de congelar JUNTO com o stub. É ela que conta, no painel
+// de verdade, quantas sessões de desktop o número deles corta.
+//      node scripts/poki-fit-bancada.mjs "http://127.0.0.1:4173/poki/dist/?tutorial=1" --mouse --seg 30 --seq
 // @ts-check
 import {spawn} from "node:child_process";
 
@@ -35,7 +44,8 @@ const arg=n=>{const i=process.argv.indexOf("--"+n);return i>0?process.argv[i+1]:
 const BASE=(process.argv[2]&&!process.argv[2].startsWith("--")?process.argv[2]:"http://127.0.0.1:4173/poki/dist/");
 const SEG=+(arg("seg")||40),PORT=9500+Math.floor(Math.random()*300);
 const CHROME=process.env.CHROME_BIN||"/opt/google/chrome/chrome";
-const W=390,H=844;
+const MOUSE=process.argv.includes("--mouse");
+const W=MOUSE?1280:390,H=MOUSE?720:844;
 
 const ch=spawn(CHROME,["--headless=new",`--remote-debugging-port=${PORT}`,"--no-sandbox","--disable-dev-shm-usage",
   "--use-gl=swiftshader","--enable-unsafe-swiftshader",`--window-size=${W},${H}`,"about:blank"],{stdio:"ignore"});
@@ -55,16 +65,43 @@ const ev=async e=>{const o=await call("Runtime.evaluate",{expression:e,returnByV
 const dorme=ms=>new Promise(r=>setTimeout(r,ms));
 
 await call("Page.enable");await call("Runtime.enable");
-await call("Emulation.setDeviceMetricsOverride",{width:W,height:H,deviceScaleFactor:1,mobile:true});
-await call("Emulation.setTouchEmulationEnabled",{enabled:true,maxTouchPoints:5});
+await call("Emulation.setDeviceMetricsOverride",{width:W,height:H,deviceScaleFactor:1,mobile:!MOUSE});
+if(!MOUSE)await call("Emulation.setTouchEmulationEnabled",{enabled:true,maxTouchPoints:5});
 await call("Page.addScriptToEvaluateOnNewDocument",{source:`
-  window.__fitTimeoutMs=15000;window.__fitTickMs=2000;
+  window.__fitTimeoutMs=15000;window.__fitTickMs=2000;`+(MOUSE?"":`
   (function(){const mm=window.matchMedia.bind(window);
     window.matchMedia=q=>/pointer:\\s*coarse/.test(q)?{matches:true,media:q,onchange:null,addListener(){},removeListener(){},
-      addEventListener(){},removeEventListener(){},dispatchEvent(){return false;}}:mm(q);})();`});
+      addEventListener(){},removeEventListener(){},dispatchEvent(){return false;}}:mm(q);})();`)});
 // `perf` só vale fora do pacote; e quem já disse `tutorial=` na URL manda (no build de DEV o boot para na tela
 // inicial, então lá a partida da bancada é o próprio tutorial: `?local=1&tutorial=1` — mesmo motor, mesmo direcional)
 await call("Page.navigate",{url:BASE+(BASE.includes("?")?"&":"?")+(BASE.includes("tutorial=")?"":"tutorial=0&")+"perf"});
+
+// ── `--mouse`: um clique e depois só movimento ──
+async function modoMouse(){
+  const mv=(x,y)=>call("Input.dispatchMouseEvent",{type:"mouseMoved",x,y,button:"none"});
+  const clique=async(x,y)=>{await call("Input.dispatchMouseEvent",{type:"mousePressed",x,y,button:"left",clickCount:1});
+    await dorme(60);await call("Input.dispatchMouseEvent",{type:"mouseReleased",x,y,button:"left",clickCount:1});};
+  await mv(W*.6,H*.6);await dorme(300);await clique(W*.6,H*.6);   // o toque na estrela (qualquer pointerdown a detona)
+  const pontos=[[W*.8,H*.5],[W*.5,H*.2],[W*.2,H*.5],[W*.5,H*.8]];
+  const t0=Date.now();let n=0;
+  while(Date.now()-t0<SEG*1000){const [x,y]=pontos[n++%pontos.length];
+    for(let k=0;k<10;k++){await mv(x+Math.sin(k)*12,y+Math.cos(k)*12);await dorme(300);}}
+  const fit=await ev("window.__sdkFit&&window.__sdkFit()"),res=await ev("window.__sdkResumo&&window.__sdkResumo()");
+  if(!res){console.error("sem o stub neste build: `cp scripts/poki-stub.js portal/poki/dist/poki-sdk.js`");fim(2);}
+  console.log(`\n## --mouse: 1 clique e ${SEG} s dirigindo só com o mouse`);
+  if(process.argv.includes("--seq"))console.log("sequência no SDK:\n  "+res.seq.filter(l=>!/measure (session|gameplay)\/\d+s\/start/.test(l)).join("\n  "));
+  const starts=res.seq.filter(s=>s.includes("gameplayStart"));
+  console.log("gameplayStart:        "+(starts.join(" | ")||"NENHUM"));
+  console.log("relógio do Fit Test:  ",fit);
+  const replica=res.seq.find(s=>/measure fit\/congela_/.test(s));
+  console.log("réplica (fit/congela):"+(replica?" "+replica:" nenhuma"));
+  const clicou=res.gameplayStart>0&&res.invalidos===0;
+  // a réplica tem de concordar com o stub: os dois congelam, ou nenhum
+  const concorda=!!replica===!!(fit&&fit.timedOut);
+  console.log(clicou?"\n✓ o clique na estrela abre o gameplay com interação VÁLIDA":"\n✗ o gameplay do desktop não abriu válido");
+  console.log(concorda?"✓ a réplica congela junto com o relógio deles":"✗ a réplica e o relógio deles DISCORDAM");
+  fim(clicou&&concorda?0:1);
+}
 
 // ── esperar a arena ──
 let tela="";
@@ -73,7 +110,8 @@ if(tela!=="game"){console.error(`a arena não abriu (tela="${tela}") — o servi
 await dorme(2500);   // o primeiro snapshot: sem peça própria a câmera ainda é a do lobby
 const temSdk=await ev("typeof window.__sdkFit==='function'"),temCam=await ev("!!(window.__warspace&&window.__warspace.stats)");
 if(!temSdk&&!temCam){console.error("nem stub (`cp scripts/poki-stub.js portal/poki/dist/poki-sdk.js`) nem `__warspace` (build de dev com ?perf): não há o que medir aqui");fim(2);}
-if(!await ev("matchMedia('(pointer: coarse)').matches")){console.error("o calço de (pointer: coarse) não pegou — sem ele o direcional não arma e a bancada mede outro caminho");fim(2);}
+if(!MOUSE&&!await ev("matchMedia('(pointer: coarse)').matches")){console.error("o calço de (pointer: coarse) não pegou — sem ele o direcional não arma e a bancada mede outro caminho");fim(2);}
+if(MOUSE){await modoMouse();}
 
 // ── dirigir SÓ por toque no canvas: um toque a cada 3 s, rodando o alvo em volta do planeta ──
 // ⚠️ à prova de recarga: se a página recarregar no meio (build desatualizada, queda), `__warspace` some por um

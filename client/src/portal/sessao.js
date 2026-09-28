@@ -179,6 +179,49 @@ const GESTO = cb => {
   return fora;
 };
 
+// ── A RÉPLICA DO RELÓGIO DO PLAYER FIT TEST ───────────────────────────────────
+// O relator que a Poki liga com `?playerfit_test_id=` (lido no bundle do SDK deles, 17/09/2026) manda a
+// duração a cada 10 s e a CONGELA para sempre quando passa de 60 s sem um sinal que ele veja:
+//     if(!o){ n=l; if(l-Math.max(Vd,Yd())>6e4) o=!0 }
+// `Yd()` = o último `pointerdown` (janela) ou `keydown` (documento), na BOLHA; `Vd` = o último evento RASTREADO
+// do SDK (`portal.ultimoRastreado`). Quem joga dirigindo com o mouse, sem clicar, congela aos ~70 s na conta
+// deles — jogando o quanto jogar. Esta réplica mede QUANTAS sessões congelam e QUANDO (`fit/congela_<faixa>`),
+// ao lado do nosso `session/*`: a distância entre os dois é quanto do nosso tempo o número deles não vê.
+// ⚠️ UMA vez por carga, como o deles: congelado não volta.
+// ⚠️ Os listeners são de BOLHA de propósito — é o que o rastreador deles vê. Um evento parado com
+// `stopPropagation()` no caminho não conta lá, e não pode contar aqui (foi assim que o dedo sumiu uma vez).
+export const FIT = { PASSO_MS: 10000, OCIOSO_MS: 60000 };
+const FAIXAS_FIT = [[120, "60_120s"], [180, "120_180s"], [300, "180_300s"], [600, "300_600s"]];
+/** A faixa da duração congelada, em segundos (nome, não número: `measure` só aceita strings). */
+export const faixaFit = s => { const n = +s || 0;
+  for (const [ate, id] of FAIXAS_FIT) if (n < ate) return id;
+  return "600s_mais"; };
+/**
+ * O passo da réplica — PURA. `agora` e `ultimo` em ms desde o início (o `l` deles e o maior entre `Vd`/`Yd()`).
+ * @returns {number|null} a duração, em segundos, em que o relógio deles CONGELOU neste passo; senão null
+ */
+export function passoFit(parado, agora, ultimo, ocioso = FIT.OCIOSO_MS) {
+  if (parado) return null;
+  return agora - ultimo > ocioso ? agora / 1000 : null;
+}
+/** O relógio de verdade: a cada `FIT.PASSO_MS`, como o deles. No Node (teste) não existe janela: no-op. */
+// ⚠️ `__fitTimeoutMs`/`__fitTickMs` são os MESMOS ganchos do stub (`scripts/poki-stub.js`): a bancada os encurta
+// antes do script, e aí a réplica e o stub têm de congelar juntos — é o que prova que ela conta como eles.
+const RELOGIO_FIT = cb => {
+  if (typeof window === "undefined" || typeof document === "undefined") return () => {};
+  const ocioso = +window.__fitTimeoutMs || FIT.OCIOSO_MS, passoMs = +window.__fitTickMs || FIT.PASSO_MS;
+  const t0 = performance.now(); let ultimo = 0, parado = false;
+  const bate = () => { ultimo = performance.now() - t0; };
+  window.addEventListener("pointerdown", bate); document.addEventListener("keydown", bate);
+  const fora = () => { clearInterval(iv); window.removeEventListener("pointerdown", bate); document.removeEventListener("keydown", bate); };
+  const iv = setInterval(() => {
+    const rastreado = portal.ultimoRastreado ? portal.ultimoRastreado - t0 : 0;
+    const s = passoFit(parado, performance.now() - t0, Math.max(ultimo, rastreado), ocioso);
+    if (s != null) { parado = true; fora(); cb(s); }
+  }, passoMs);
+  return fora;
+};
+
 /**
  * Liga a assinatura. Uma vez por carga da página, de `main.jsx`. Devolve a função de cancelar.
  *
@@ -191,7 +234,7 @@ const GESTO = cb => {
  *    caminhos peçam a mesma coisa o SDK nunca vê start-após-start nem stop-após-stop — que é o outro
  *    item que eles cobram por escrito.
  */
-export function iniciaSessaoPortal(alvo = FACHADA, store = app, agora = Date.now, esperaGesto = GESTO, aparelho = APARELHO) {
+export function iniciaSessaoPortal(alvo = FACHADA, store = app, agora = Date.now, esperaGesto = GESTO, aparelho = APARELHO, relogioFit = RELOGIO_FIT) {
   let est = SESSAO0, estJ = SESSAO0, jogando = false, abriu = false, abriuJ = false, t = null, gesto = false;
   // ⚠️ **DOIS RELÓGIOS LADO A LADO, e a distância entre eles é a pergunta.** `session/*` conta PRESENÇA
   // (partida, tela de morte, pódio); `gameplay/*` conta só o tempo entre o `gameplayStart` e o
@@ -236,5 +279,7 @@ export function iniciaSessaoPortal(alvo = FACHADA, store = app, agora = Date.now
   // ⚠️ E o estado de AGORA: o adaptador é um chunk sob demanda com script de terceiro dentro, e numa
   // rede ruim o jogador chega à partida antes de isto rodar (o mesmo argumento de `portal/vidas.js`).
   passo(store.get());
-  return () => { clearTimeout(t); t = null; off(); offGesto(); };
+  // a réplica do relógio do Player Fit Test (ver `FIT`): o instante em que o número DELES deixa de andar
+  const offFit = relogioFit(s => alvo.medir("fit", "congela_" + faixaFit(s), "complete"));
+  return () => { clearTimeout(t); t = null; off(); offGesto(); offFit(); };
 }
