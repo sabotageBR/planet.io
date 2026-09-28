@@ -51,25 +51,27 @@ export function Mascote({ quem, className }) {
 }
 
 /**
- * A trilha 1·2·3. Três bolas NUMERADAS ligadas por um traço — o vocabulário de tutorial que o pedido
- * nomeia ("uma barra que tem 3 etapas, 1,2,3").
+ * A trilha das etapas: bolas NUMERADAS ligadas por um traço — o vocabulário de tutorial que se lê sem
+ * uma palavra.
+ * ⚠️ Recebe a POSIÇÃO (1-based, `posicaoDaEtapa` em game/tutor.js), nunca o NÚMERO da etapa: os números são
+ * nomes do funil (`tutor_nova|tiro|split`) e deixaram de ser a ordem quando o tiro saiu da sequência — com o
+ * número, a etapa de dividir (3) acenderia as duas bolas como feitas.
  * ⚠️ NENHUM ESTADO VAI SÓ NA COR: o número está sempre lá e a etapa feita vira ✓. Medido com o validador
  * de paleta, o verde e o âmbar dos tokens ficam com ΔE 6,7 em protanopia.
+ * `semPasso`: sem o "1/2" escrito ao lado (o modelo `cena`, que não tem texto nenhum).
  */
-export function Trilha({ etapa, T }) {
-  // ⚠️ `pos`, e não `n`: o `map` abaixo declara o próprio `n`, e um homônimo aqui fora seria sombreado
+export function Trilha({ pos, T, semPasso = false }) {
+  // ⚠️ `atual`, e não `n`: o `map` abaixo declara o próprio `n`, e um homônimo aqui fora seria sombreado
   // dentro dele. É a mesma classe de defeito que o `marco`/`degrau` de `game/index.js` custou caro.
-  const pos = Math.min(Math.max(etapa, 1), ETAPAS);
-  return <div className="tut-trilha" role="progressbar" aria-valuenow={pos} aria-valuemin={1} aria-valuemax={ETAPAS}>
-    {/* ⚠️ O "1/3" É TEXTO, ao lado das bolas, e não substitui nenhuma delas: as bolas dizem o CAMINHO
-        (onde já esteve, onde está, quanto falta) e o número diz a POSIÇÃO sem depender de contar
-        círculos numa tela de 360 px com um planeta andando por baixo. É o mesmo princípio de "nenhum
-        estado vai só na cor" aplicado à forma. */}
-    <b className="tut-passo">{preenche(T.passo, { n: pos, t: ETAPAS })}</b>
+  const atual = Math.min(Math.max(pos | 0, 1), ETAPAS + 1), vis = Math.min(atual, ETAPAS);
+  return <div className="tut-trilha" role="progressbar" aria-valuenow={vis} aria-valuemin={1} aria-valuemax={ETAPAS}>
+    {/* ⚠️ O "1/2" É TEXTO, ao lado das bolas, e não substitui nenhuma delas: as bolas dizem o CAMINHO e o
+        número diz a POSIÇÃO sem depender de contar círculos numa tela de 360 px. O modelo `cena` o dispensa. */}
+    {semPasso ? null : <b className="tut-passo">{preenche(T.passo, { n: vis, t: ETAPAS })}</b>}
     {Array.from({ length: ETAPAS }, (_, i) => {
-      const n = i + 1, st = n < etapa ? "ok" : n === etapa ? "now" : "off";
+      const n = i + 1, st = n < atual ? "ok" : n === atual ? "now" : "off";
       return <React.Fragment key={n}>
-        {i ? <i className={"tut-liga " + (n <= etapa ? "ok" : "")} /> : null}
+        {i ? <i className={"tut-liga " + (n <= atual ? "ok" : "")} /> : null}
         <b className={"tut-bola " + st}>{st === "ok" ? "✓" : n}</b>
       </React.Fragment>;
     })}
@@ -109,11 +111,11 @@ export function Glifo({ p }) {
  * ⚠️ No RODAPÉ, longe da instrução, e isso não é estética: empilhados no topo eles desciam até o meio da
  * tela e tapavam o planeta — a explicação cobrindo a coisa explicada.
  */
-export function PromptRodape({ p }) {
+export function PromptRodape({ p, semRotulo = false }) {
   if (!p) return null;
   return <div id="tut-prompt" className={"tut-btn tut-btn-" + p.tipo} aria-hidden="true">
     <Glifo p={p} />
-    {p.tipo !== "tecla" && p.tipo !== "hud" ? <b>{p.rotulo}</b> : null}
+    {!semRotulo && p.tipo !== "tecla" && p.tipo !== "hud" ? <b>{p.rotulo}</b> : null}
   </div>;
 }
 
@@ -121,8 +123,11 @@ export function PromptRodape({ p }) {
  * O Pular: discreto e presente do segundo zero, e a ÚNICA coisa clicável do tutorial inteiro — nenhum
  * clique é EXIGIDO em modelo nenhum. Nunca primário e nunca um ✕ sozinho (✕ lê como "fechar o jogo").
  */
-export function Pular({ T }) {
-  return <button className="tut-sair" onClick={() => saiDoTutorial({ fim: false })}>{T.pular}</button>;
+export function Pular({ T, icone = false }) {
+  // `icone`: ⏩ desenhado (o modelo `cena` não tem texto) — o nome continua no `aria-label`/`title`
+  return <button className={"tut-sair" + (icone ? " ico" : "")} onClick={() => saiDoTutorial({ fim: false })}
+    aria-label={T.pular} title={icone ? T.pular : undefined}>
+    {icone ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5v13l8.5-6.5zM12.5 5.5v13L21 12z" /></svg> : T.pular}</button>;
 }
 
 /**

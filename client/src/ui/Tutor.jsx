@@ -20,7 +20,7 @@
 // painéis engoliam o alvo do jogador e congelavam o movimento.
 import React from "react";
 import { useLabels } from "../hooks/useTheme.js";
-import { ETAPA } from "../game/tutor.js";
+import { ETAPA, posicaoDaEtapa } from "../game/tutor.js";
 // ⚠️ As duas decisões (qual frase, qual botão) moram num `.js` à parte: o `node --test` não carrega
 // `.jsx`, e uma função de decisão que ninguém testa é onde o par mouse/dedo se inverte em silêncio.
 import { falaDoTutor, promptClassico, alvoDoTutor } from "./tutorFala.js";
@@ -60,7 +60,7 @@ export default function Tutor({ d, tecla }) {
   // livre; e no dedo o prompt ainda cai ao lado dos botões de toque reais, que é para onde ele aponta.
   return <>
     <div id="tutor" data-style="classico" data-etapa={d.etapa} data-alvo={alvoDoTutor(d) || undefined}>
-      <Trilha etapa={d.etapa} T={T} />
+      <Trilha pos={posicaoDaEtapa(d.etapa)} T={T} />
       {/* ⚠️ A BARRA SÓ EXISTE NA ETAPA 1, e isso é escolha: lá o `pct` é contínuo (sai da massa) e diz
           quanto falta; nas outras duas a etapa é UM gesto, então a barra ficaria parada em zero por
           dez segundos — uma barra que não anda enquanto o jogador tenta lê como "não estou

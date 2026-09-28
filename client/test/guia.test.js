@@ -1,0 +1,57 @@
+// ── O GUIA NO MUNDO (client/src/game/guia.js) ─────────────────────────────────
+// A instrução do tutorial deixou de ser texto e passou a ser um GESTO desenhado no mundo. O que este arquivo
+// trava é a ESCOLHA do gesto — um só por vez, no lugar certo, e nunca em cima de uma comemoração.
+// node --test client/test/guia.test.js
+import test from "node:test";
+import assert from "node:assert/strict";
+import { guiaDoTutor, maisPerto } from "../src/game/guia.js";
+import { ETAPA } from "../src/game/tutor.js";
+
+const eu = { x: 900, y: 900, r: 63 };
+const mundo = {
+  estrela: { x: 900, y: 600, r: 24 },
+  cacos: [{ rx: 1200, ry: 900, rr: 8 }, { rx: 950, ry: 880, rr: 8 }, { rx: 400, ry: 400, rr: 8 }],
+  presa: { x: 1100, y: 700, r: 40 },
+};
+
+test("na ESPERA o guia é o TOQUE na estrela — e some assim que o jogador toca", () => {
+  const g = guiaDoTutor({ etapa: ETAPA.NOVA, pre: true }, eu, mundo);
+  assert.deepEqual(g, { tipo: "toque", x: 900, y: 600, r: 24 });
+  // o `pre` do servidor fica de pé mais 0,8 s de inchaço: sem o `tocou` a mão continuaria tocando ali
+  assert.equal(guiaDoTutor({ etapa: ETAPA.NOVA, pre: true, tocou: true }, eu, mundo), null);
+  assert.equal(guiaDoTutor({ etapa: ETAPA.NOVA, pre: true }, eu, { ...mundo, estrela: null }), null, "sem estrela, nada");
+});
+
+test("depois do estouro o guia vai ATÉ O CACO MAIS PERTO", () => {
+  const g = guiaDoTutor({ etapa: ETAPA.NOVA, pre: false, pct: 0 }, eu, mundo);
+  assert.equal(g.tipo, "ir");
+  assert.deepEqual([g.x0, g.y0, g.r0], [900, 900, 63], "sai do planeta");
+  assert.deepEqual([g.x, g.y], [950, 880], "e aponta o mais perto, não o primeiro da lista");
+});
+
+test("quem já entendeu não recebe rastro — e ele VOLTA se a ajuda chegar", () => {
+  assert.equal(guiaDoTutor({ etapa: ETAPA.NOVA, pre: false, pct: .5, ajuda: 0 }, eu, mundo), null);
+  assert.equal(guiaDoTutor({ etapa: ETAPA.NOVA, pre: false, pct: .5, ajuda: 1 }, eu, mundo).tipo, "ir");
+  assert.equal(guiaDoTutor({ etapa: ETAPA.NOVA, pre: false, pct: 0 }, eu, { ...mundo, cacos: [] }), null, "sem caco, nada");
+});
+
+test("na etapa de dividir o guia é o SALTO até a presa", () => {
+  const g = guiaDoTutor({ etapa: ETAPA.SPLIT, ajuda: 0 }, eu, mundo);
+  assert.deepEqual(g, { tipo: "salto", x0: 900, y0: 900, r0: 63, x: 1100, y: 700, r: 40 });
+  assert.equal(guiaDoTutor({ etapa: ETAPA.SPLIT }, eu, { ...mundo, presa: null }), null);
+});
+
+test("NADA durante a festa, no fim, sem estado ou sem planeta", () => {
+  assert.equal(guiaDoTutor({ etapa: ETAPA.SPLIT, celebra: true }, eu, mundo), null, "o selo ✓ é o único retorno ali");
+  assert.equal(guiaDoTutor({ etapa: ETAPA.FIM, fim: true }, eu, mundo), null);
+  assert.equal(guiaDoTutor(null, eu, mundo), null);
+  assert.equal(guiaDoTutor({ etapa: ETAPA.SPLIT }, null, mundo), null);
+  // a etapa DORMENTE do tiro não tem guia no mundo (ela não está na sequência)
+  assert.equal(guiaDoTutor({ etapa: ETAPA.TIRO }, eu, mundo), null);
+});
+
+test("`maisPerto` aceita os dois formatos e não quebra com lista vazia", () => {
+  assert.deepEqual(maisPerto({ x: 0, y: 0 }, [{ x: 5, y: 0, r: 2 }, { rx: 1, ry: 1, rr: 3 }]), { x: 1, y: 1, r: 3 });
+  assert.equal(maisPerto({ x: 0, y: 0 }, []), null);
+  assert.equal(maisPerto({ x: 0, y: 0 }, null), null);
+});

@@ -96,12 +96,19 @@ export const CENA={
                      // que não conhece o raio da estrela.
   // ⚠️ **A EXPLOSÃO É A ABERTURA DA CENA, NÃO UM EVENTO NO MEIO DELA.** Ela esperava 2,5 s, e nesses
   // 2,5 s o jogador via uma estrela parada com a instrução "coma os pedaços" e nenhum pedaço na tela —
-  // ou seja, a primeira coisa que o tutorial fazia era pedir algo impossível. Hoje o mundo abre, a
-  // estrela incha e estoura em 1,1 s, e SÓ ENTÃO a lição de mover começa (o relógio da ajuda é
-  // recarimbado no estouro, em `passo`). O inchaço continua telegrafando: explosão sem aviso lê como
-  // defeito, e o empurrão que ele leva precisa ter uma causa visível.
-  NOVA_ESPERA:66,    // ticks até a estrela estourar (1,1 s)
-  NOVA_INCHA:48,     // ticks finais em que ela incha, telegrafando o estouro
+  // ou seja, a primeira coisa que o tutorial fazia era pedir algo impossível. SÓ DEPOIS do estouro a lição
+  // de mover começa (o relógio da ajuda é recarimbado no estouro, em `passo`). O inchaço continua
+  // telegrafando: explosão sem aviso lê como defeito, e o empurrão que ele leva precisa ter uma causa visível.
+  // ⚠️ **E QUEM A DETONA É O JOGADOR, COM UM TOQUE** (28/09/2026). Ela estourava sozinha em 1,1 s; agora ela
+  // RESPIRA e espera o primeiro toque/clique/tecla (a camada `Guia.js` desenha a mão ou o cursor em cima
+  // dela). Duas razões, e a segunda é a que decide: (1) é a primeira interação do jogo, e é satisfatória —
+  // tocar e ver explodir, sem uma palavra; (2) no DESKTOP a etapa 1 só pedia MOVER o mouse, e `pointermove`
+  // não é interação para a Poki: o `gameplayStart` (que é o que o Web Fit Test chama de *conversion to play*)
+  // só saía no clique da etapa do tiro. Tocando a estrela ele sai no segundo zero, nos dois aparelhos.
+  // ⚠️ O toque chega por `roteiro.toque()`, chamado DIRETO pelo motor (game/index.js) — o roteiro mora na
+  // mesma página, e uma mensagem pelo socket de mentira não compraria nada.
+  TOQUE_TETO:300,    // ⚠️ ...e se ninguém tocar, ela estoura sozinha em 5 s: esperar para sempre é travamento
+  NOVA_INCHA:48,     // ticks em que ela incha DEPOIS do toque, telegrafando o estouro (0,8 s)
   NOVA_SWELL:1.6,    // o quanto ela incha (o inchaço é NOSSO — ver o ⚠️ do `tickStar` abaixo)
   NOVA_TETO:240,     // ⚠️ ...mas ela espera NO MÁXIMO isto (4 s). O adiamento sem teto é um travamento:
                      // o aluno que corre direto para a estrela (448 px/s contra os 300 px que a separam)
@@ -263,7 +270,8 @@ export function montaEtapa(w,api,etapa,slot,st){
     // sobrevivia por 10 px parado, e era despedaçado assim que se mexia (visto em bancada: o planeta do
     // tutorial virou dois). Em ACTIVE o raio é o nosso, o inchaço é o nosso, e a margem é de 162 px.
     const s=w.spawnStar(true,{x:p.x,y:p.y,r:CENA.ESTRELA_R,life:w.tick+9e6});
-    if(s){st.estrela=s.id;st.novaEm=w.tick+CENA.NOVA_ESPERA;st.novaLim=w.tick+CENA.NOVA_TETO;}
+    // `novaEm` 0 = a estrela ainda ESPERA o toque (ver `TOQUE_TETO`); o relógio do estouro só nasce nele
+    if(s){st.estrela=s.id;st.novaEm=0;st.toqueLim=w.tick+CENA.TOQUE_TETO;st.novaLim=0;}
     st.base=w.massOf(slot);
     return;}
   if(etapa===ETAPA.TIRO){
@@ -351,7 +359,9 @@ export function criaRoteiro(){
     // `pre:false`, o cliente soltava o planeta (`presoNaEspera`, game/tutor.js) e, com o mouse já apontado
     // para longe, ele andava ~30 px antes de ser preso de novo. Medido em bancada. As etapas 2 e 3 o
     // desligam na própria montagem, como sempre.
-    pre:true,ancora:null,giro:1,novaLim:0,orbR:0};
+    pre:true,ancora:null,giro:1,novaLim:0,orbR:0,
+    // `toque` = o jogador já tocou/clicou para detonar a estrela (ver `TOQUE_TETO`); `toqueLim` = o teto
+    toque:false,toqueLim:0};
 
   function nasce(w,slot,api){
     st.slot=slot;
@@ -381,6 +391,11 @@ export function criaRoteiro(){
     // ── a estrela: o inchaço e o estouro são nossos (ver `montaEtapa`) ──
     if(st.estrela>=0){const s=w.stars.find(x=>x.id===st.estrela&&!x.dead);
       if(!s)st.estrela=-1;
+      else if(!st.novaEm){
+        // ESPERANDO O TOQUE (ver `TOQUE_TETO`): ela RESPIRA — é para lá que se toca —, e o relógio do estouro
+        // nasce no toque, ou no teto se ninguém tocar.
+        if(st.toque||w.tick>=st.toqueLim){st.novaEm=w.tick+CENA.NOVA_INCHA;st.novaLim=w.tick+CENA.NOVA_TETO;}
+        else setR(s,CENA.ESTRELA_R*(1+.07*Math.sin(w.tick*.12)));}
       else{
         const falta=st.novaEm-w.tick;
         // o telegrama: ela incha nos últimos `NOVA_INCHA` ticks, com o raio que NÓS escolhemos
@@ -507,4 +522,7 @@ export function criaRoteiro(){
 
   function alvoXY(w,st){const a=w.players.get(st.alvo),c=centro(a);return c?[c.x,c.y]:[w.w/2,w.h/2];}
 
-  return{nasce,passo,estado:()=>st};}
+  /** O jogador tocou/clicou/apertou uma tecla na espera: a estrela começa a inchar (ver `TOQUE_TETO`). */
+  function toque(){if(st.pre)st.toque=true;}
+
+  return{nasce,passo,estado:()=>st,toque};}

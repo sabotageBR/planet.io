@@ -15,6 +15,7 @@ import {createMissiles} from "./layers/Missiles.js";
 import {createAim} from "./layers/Aim.js";
 import {createThreat} from "./layers/Threat.js";
 import {createHeading} from "./layers/Heading.js";
+import {createGuia} from "./layers/Guia.js";
 import {createZone} from "./layers/Zone.js";
 import {createCage} from "./layers/Cage.js";
 import {createFx} from "./layers/Fx.js";
@@ -43,16 +44,18 @@ export async function createRenderer({container,theme,prefs}){
   container.appendChild(canvas);
   const upload=tex=>{const r=app.renderer;if(r.prepare&&r.prepare.upload)r.prepare.upload(tex);else if(r.texture&&r.texture.initSource)r.texture.initSource(tex.source);};
   const R={app,canvas,kind,cache:createTextureCache({budgetMB:48,upload}),theme,prefs:{fx:true,...prefs},W:app.screen.width,H:app.screen.height,res:dpr,econ:false,econLevel:0,texCap:512,lost:false,mesh:temMesh,ambient:null};
-  const bg=createBackground(R),grid=createGrid(R),food=createFood(R),ejected=createEjected(R),hazards=createHazards(R),planets=createPlanets(R),missiles=createMissiles(R),aim=createAim(R),zone=createZone(R),cage=createCage(R),threat=createThreat(R),heading=createHeading(R),fx=createFx(R);
+  const bg=createBackground(R),grid=createGrid(R),food=createFood(R),ejected=createEjected(R),hazards=createHazards(R),planets=createPlanets(R),missiles=createMissiles(R),aim=createAim(R),zone=createZone(R),cage=createCage(R),threat=createThreat(R),heading=createHeading(R),guia=createGuia(R),fx=createFx(R);
   R.ambient=(kind,f)=>fx.ambient(kind,f);   // camadas pedem efeitos contínuos (ímã) sem conhecer a camada de fx
   const world=new Container();
-  const layers=[bg,grid,food,ejected,hazards,planets,missiles,aim,zone,cage,threat,heading,fx];   // `cage` logo depois de `zone`: elas nunca coexistem (a zona só nasce quando a gaiola abre), e a ordem documenta a sucessão
+  const layers=[bg,grid,food,ejected,hazards,planets,missiles,aim,zone,cage,threat,heading,guia,fx];   // `cage` logo depois de `zone`: elas nunca coexistem (a zona só nasce quando a gaiola abre), e a ordem documenta a sucessão
   function mount(){world.removeChildren();world.addChild(bg.props,grid.root,hazards.holes,hazards.stars,
     food.glow,ejected.glow,   // os halos vão POR BAIXO dos corpos: o brilho vaza para fora do disco, não por cima dele
     food.root,ejected.root,hazards.asteroids,missiles.root,planets.trails,planets.root,
     hazards.starsFront,   // a estrela por CIMA dos planetas: quem cabe nela (STAR.PASS_R) se esconde lá dentro
     heading.root,   // a seta de rumo acima do próprio planeta (e de quem se escondeu na estrela): é instrumento, não corpo
-    aim.root,zone.root,cage.root,threat.root,fx.root);}
+    aim.root,zone.root,cage.root,threat.root,
+    guia.root,   // o gesto do tutorial e a seta da presa: por cima de tudo que é MUNDO, por baixo dos efeitos
+    fx.root);}
   // A troca de tema NÃO invalida o cache: as chaves de textura já são prefixadas com o id do tema, então os
   // temas convivem, voltar a um céu já visto é acerto de cache e nada é reassado dentro do frame da virada.
   // Quem segura textura sem pedi-la por frame chama cache.keepAlive() (ver TextureCache).
@@ -139,7 +142,7 @@ export async function createRenderer({container,theme,prefs}){
     /** Buraco negro: uma textura 512 por tema, mas é o desenho mais caro do jogo — sem aquecer, ela é assada
      *  sincronamente no primeiro frame em que um buraco entra na tela, e isso é um engasgo visível. */
     warmHazards(th=R.theme){const TX=th.textures;R.cache.warm(TX.key("blackHole",{},BH_TEX),BH_TEX,(c,s)=>TX.blackHole(c,s,{}));},
-    /** f: {view,cam,now,dt,t,rt,rect,aim,threat,heading,zone,cage,glow,parallax,wobble,showGrid,showNames,showTrails,idle} */
+    /** f: {view,cam,now,dt,t,rt,rect,aim,threat,heading,guia,reduz,zone,cage,glow,parallax,wobble,showGrid,showNames,showTrails,idle} */
     /** `idle`: canvas vivo, sem partida (o menu está na frente) — some a moldura da arena, fica o céu. */
     render(f){if(R.lost)return;   // sem contexto não há o que desenhar, e insistir a 60 Hz é trabalho puro
       R.cache.setExternal(bg.bytes());R.cache.tick();const cam=f.cam;world.position.set(R.W/2-cam.x*cam.scale,R.H/2-cam.y*cam.scale);world.scale.set(cam.scale);

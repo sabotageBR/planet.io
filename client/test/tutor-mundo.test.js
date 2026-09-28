@@ -15,7 +15,7 @@ import { createWorld } from "@warspace/shared/physics/index.js";
 import { applySplit, applyFire } from "@warspace/shared/physics/rules.js";
 import { STAR, SPLIT, MISSILE, PLAYER, EAT, POWERUP, WORLD, zoomFor } from "@warspace/shared";
 import { OPCOES_TUTORIAL, CENA, criaRoteiro, montaEtapa, preparaJogador } from "../src/game/net/tutorServer.js";
-import { ETAPA, TUTOR0 } from "../src/game/tutor.js";
+import { ETAPA, TUTOR0, proximaEtapa, SEQUENCIA } from "../src/game/tutor.js";
 
 /** Uma bancada: o mundo do tutorial, o roteiro, e um `api` que só anota o que seria mandado. */
 function banca() {
@@ -32,6 +32,8 @@ function banca() {
   return { w, api, rot, jsons, alvos, st: rot.estado() };
 }
 const anda = (w, rot, api, n) => { for (let i = 0; i < n; i++) { w.step(); rot.passo(w, api); } };
+/** O jogador TOCA a estrela (é o toque que a detona — ver `TOQUE_TETO` no diretor) e o mundo anda até ela estourar. */
+const tocaEEstoura = (w, rot, api, folga = 30) => { anda(w, rot, api, 1); rot.toque(); anda(w, rot, api, CENA.NOVA_INCHA + folga); };
 const vivas = ps => ps.pieces.filter(p => !p.dead);
 
 test("O MUNDO DO TUTORIAL NASCE VAZIO — e continua vazio", () => {
@@ -41,7 +43,7 @@ test("O MUNDO DO TUTORIAL NASCE VAZIO — e continua vazio", () => {
   assert.equal(w.foodAlive, 0);
   assert.equal(w.asteroids.length, 0);
   assert.equal(w.holes.length, 0);
-  anda(w, rot, api, CENA.NOVA_ESPERA - 10);
+  anda(w, rot, api, CENA.TOQUE_TETO - 10);   // ninguém tocou: a estrela ainda espera
   assert.equal(w.foodAlive, 0, "a fase 11 do step não repõe nada por conta própria");
   assert.equal(w.asteroids.length, 0);
   // ⚠️ Depois da supernova HÁ comida, e é de propósito: o berçário (`STAR.NOVA_FOOD` = 16 grãos
@@ -66,13 +68,15 @@ test("ETAPA 1: a estrela explode e o aluno SOBREVIVE", () => {
   // diretor só monta o que ela abriu. Um lugar só decide, sempre.
   anda(w, rot, api, 1);
   assert.equal(w.stars.filter(s => !s.dead).length, 1, "uma estrela, plantada pelo roteiro");
+  rot.toque();
+  const t0 = w.tick;
   let nova = -1;
-  for (let i = 0; i < CENA.NOVA_ESPERA + 60; i++) {
+  for (let i = 0; i < CENA.NOVA_INCHA + 60; i++) {
     w.step(); rot.passo(w, api);
     if (nova < 0 && w.events.some(e => e.type === "SUPERNOVA")) nova = w.tick;
   }
   assert.ok(nova > 0, "a supernova aconteceu");
-  assert.ok(nova <= CENA.NOVA_ESPERA + 30, "e no tempo prometido, não daqui a um minuto");
+  assert.ok(nova - t0 <= CENA.NOVA_INCHA + 30, "e logo depois do toque, não daqui a um minuto");
   const ps = w.players.get(0);
   // ⚠️ O MIOLO É LETAL: `blast·NOVA_SHATTER` ≈ 290 px na fase OLD, e quem tem r ≥ SHATTER_MIN_R lá dentro
   // queima 30% da massa e racha. A distância de `CENA.DIST` e a guarda de `NOVA_SAFE` são o que impede o
@@ -92,8 +96,9 @@ test("A MARGEM DA EXPLOSÃO É FOLGADA, não raspada", () => {
   // 644 px e o miolo que estilhaça, de 86 para 290 — contra um aluno a 300. Em bancada o planeta do
   // tutorial virou DOIS na etapa que devia ensiná-lo a crescer. "Sobreviveu" não basta como asserção.
   const { w, rot, api } = banca();
+  anda(w, rot, api, 1); rot.toque();
   let ev = null;
-  for (let i = 0; i < CENA.NOVA_ESPERA + 60 && !ev; i++) { w.step(); rot.passo(w, api); ev = w.events.find(e => e.type === "SUPERNOVA"); }
+  for (let i = 0; i < CENA.NOVA_INCHA + 60 && !ev; i++) { w.step(); rot.passo(w, api); ev = w.events.find(e => e.type === "SUPERNOVA"); }
   assert.ok(ev, "a supernova aconteceu");
   const pc = vivas(w.players.get(0))[0];
   const d = Math.hypot(pc.x - ev.x, pc.y - ev.y), miolo = ev.r * STAR.NOVA_SHATTER;
@@ -102,7 +107,7 @@ test("A MARGEM DA EXPLOSÃO É FOLGADA, não raspada", () => {
 
 test("...e ela deixa massa de sobra para o portão do dividir", () => {
   const { w, rot, api } = banca();
-  anda(w, rot, api, CENA.NOVA_ESPERA + 30);
+  tocaEEstoura(w, rot, api);
   const cacos = w.ejected.filter(e => !e.dead);
   assert.equal(cacos.length, STAR.NOVA_PARTICLES);
   const total = cacos.reduce((s, e) => s + e.mass, 0);
@@ -116,7 +121,7 @@ test("OS CACOS NÃO EVAPORAM NO MEIO DA LIÇÃO", () => {
   // `STAR.NOVA_LIFE_TICKS` = 900 = 15 s. Um novato descobrindo o mouse não come 17 cacos nesse tempo, e a
   // etapa 1 se esvaziaria sozinha — justo para quem esta feature existe para atender.
   const { w, rot, api } = banca();
-  anda(w, rot, api, CENA.NOVA_ESPERA + 30);
+  tocaEEstoura(w, rot, api);
   const vida = w.ejected.find(e => !e.dead).life - w.tick;
   assert.ok(vida > STAR.NOVA_LIFE_TICKS, `os cacos vivem ${vida} ticks, não os ${STAR.NOVA_LIFE_TICKS} de série`);
   // ⚠️ Daqui em diante, SEM o roteiro: o 2º degrau de ajuda faz os cacos derivarem até o jogador parado,
@@ -131,8 +136,8 @@ test("NENHUMA ESTRELA FANTASMA nasce depois da supernova", () => {
   // fase 11 — `stars:0` não a impede. Sem a limpeza, uma estrela aparece em ponto sorteado do mapa 10 s
   // depois, no meio da etapa 2 ou 3.
   const { w, rot, api, st } = banca();
-  anda(w, rot, api, CENA.NOVA_ESPERA + 30);
-  montaEtapa(w, api, ETAPA.TIRO, 0, st);
+  tocaEEstoura(w, rot, api);
+  montaEtapa(w, api, ETAPA.SPLIT, 0, st);
   assert.equal(w.starQueue.length, 0, "a fila foi esvaziada ao trocar de etapa");
   anda(w, rot, api, STAR.RESPAWN_TICKS + 120);
   assert.equal(w.stars.filter(s => !s.dead).length, 0, "e nenhuma estrela voltou");
@@ -280,7 +285,7 @@ test("A ARENA CABE NA CÂMERA — com o `zoomFor` de verdade, em toda tela da ma
 
 test("nenhuma etapa deixa lixo da anterior", () => {
   const { w, rot, api, st } = banca();
-  anda(w, rot, api, CENA.NOVA_ESPERA + 60);
+  tocaEEstoura(w, rot, api, 60);
   assert.ok(w.ejected.filter(e => !e.dead).length > 0, "havia cacos");
   montaEtapa(w, api, ETAPA.TIRO, 0, st);
   assert.equal(w.ejected.filter(e => !e.dead).length, 0);
@@ -323,25 +328,40 @@ function vaiPara(w, rot, api, etapa) {
   return st;
 }
 
-test("A SUPERNOVA É A ABERTURA DA ETAPA 1, não um evento no meio dela", () => {
+test("A ESTRELA ESPERA O TOQUE — e estoura logo depois dele", () => {
+  // ⚠️ É a primeira interação do jogo (28/09/2026): no desktop a etapa 1 só pedia MOVER o mouse, e
+  // `pointermove` não é interação para a Poki — o `gameplayStart` só saía no clique da etapa do tiro.
   const { w, rot, api, st } = banca();
   w.step(); rot.passo(w, api);
   assert.equal(st.pre, true, "antes de estourar, a lição de mover ainda não começou");
+  anda(w, rot, api, 90);
+  assert.equal(st.pre, true, "ninguém tocou: ela continua esperando");
   assert.equal(w.ejected.filter(e => !e.dead).length, 0, "e não há o que comer");
-  assert.ok(CENA.NOVA_ESPERA <= 90, `${CENA.NOVA_ESPERA} ticks olhando uma estrela parada é espera demais`);
-  anda(w, rot, api, CENA.NOVA_ESPERA + 4);
-  assert.equal(st.pre, false, "estourou");
+  rot.toque();
+  anda(w, rot, api, CENA.NOVA_INCHA + 4);
+  assert.equal(st.pre, false, "tocou: estourou");
+  assert.ok(w.ejected.filter(e => !e.dead).length > 10, "e os pedaços estão na tela");
+});
+
+test("...e se ninguém tocar, ela estoura SOZINHA no teto — esperar para sempre é travamento", () => {
+  const { w, rot, api, st } = banca();
+  assert.ok(CENA.TOQUE_TETO <= 360, `${CENA.TOQUE_TETO} ticks esperando um toque é espera demais`);
+  anda(w, rot, api, CENA.TOQUE_TETO + CENA.NOVA_INCHA + 4);
+  assert.equal(st.pre, false, "estourou pelo teto");
   assert.ok(w.ejected.filter(e => !e.dead).length > 10, "e os pedaços estão na tela");
 });
 
 test("O RELÓGIO DA AJUDA SÓ COMEÇA DEPOIS DA EXPLOSÃO", () => {
   // ⚠️ Sem o recarimbo de `desde` no estouro, os degraus contariam o tempo em que o jogador estava
-  // ASSISTINDO à explosão — e a primeira muleta chegaria antes de a lição ter começado.
+  // ASSISTINDO à explosão (e agora também o tempo até o toque) — e a primeira muleta chegaria antes de a
+  // lição ter começado.
   const { w, rot, api, st } = banca();
   const d1 = emTicks(AJUDA[ETAPA.NOVA].d1);
-  anda(w, rot, api, d1 + 10);
-  assert.equal(st.etapa.ajuda, 0, "o relógio não é o da abertura do mundo");
-  anda(w, rot, api, CENA.NOVA_ESPERA + 10);
+  anda(w, rot, api, d1 - 60);      // esperando o toque por quase o degrau inteiro
+  rot.toque();
+  anda(w, rot, api, CENA.NOVA_INCHA + d1 - 30);
+  assert.equal(st.etapa.ajuda, 0, "o relógio não é o da abertura do mundo, nem o da espera do toque");
+  anda(w, rot, api, 60);
   assert.equal(st.etapa.ajuda, 1, "mas ele corre: a ajuda chega, contada do estouro");
 });
 
@@ -502,13 +522,16 @@ test("NÃO HÁ TELA ENTRE AS ETAPAS: fechou uma, a seguinte abre em < 1 s — e 
   for (let i = 0; i < TICK_HZ * 110; i++) { w.step(); rot.passo(w, api);
     while (visto < jsons.length) quando.push([i, jsons[visto++]]); }
   const tut = quando.filter(([, j]) => j.t === "tutor");
-  for (const n of [ETAPA.NOVA, ETAPA.TIRO, ETAPA.SPLIT]) {
+  for (const n of SEQUENCIA) {
     const f = tut.find(([, j]) => j.festa === n);
     assert.ok(f, `a etapa ${n} fechou (sem tocar em nada, pelo teto dela)`);
-    const prox = tut.find(([tk, j]) => tk > f[0] && (n < ETAPA.SPLIT ? j.etapa === n + 1 && !j.celebra : j.fim));
-    assert.ok(prox, n < ETAPA.SPLIT ? `a etapa ${n + 1} abriu` : "o fim saiu");
-    const s = (prox[0] - f[0]) / TICK_HZ;
-    assert.ok(s <= 1, `da festa da etapa ${n} até ${n < ETAPA.SPLIT ? "a etapa seguinte" : "o fim"}: ${s.toFixed(2)} s — acima de 1 s é uma tela de espera de volta`);
+    const prox = proximaEtapa(n), ultima = prox === ETAPA.FIM;
+    const seg = tut.find(([tk, j]) => tk > f[0] && (!ultima ? j.etapa === prox && !j.celebra : j.fim));
+    assert.ok(seg, !ultima ? `a etapa ${prox} abriu` : "o fim saiu");
+    const s = (seg[0] - f[0]) / TICK_HZ;
+    assert.ok(s <= 1, `da festa da etapa ${n} até ${!ultima ? "a etapa seguinte" : "o fim"}: ${s.toFixed(2)} s — acima de 1 s é uma tela de espera de volta`);
   }
+  // e o tiro NÃO aconteceu: ele saiu da sequência (é ensinado na partida)
+  assert.equal(tut.some(([, j]) => j.etapa === ETAPA.TIRO), false);
   assert.equal(w.players.get(0).alive, true);
 });

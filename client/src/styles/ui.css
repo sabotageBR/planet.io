@@ -3061,123 +3061,38 @@ body[data-mode="landscape"] #tutor-parabens .tpb-tit{font-size:18px}
 body[data-mode="landscape"] #tutor-parabens .tp-prom-arte{width:34px}
 
 
-/* ═══ O MODELO CENA (`tc-`) — "mostre, não diga" ════════════════════════════════════════════════
-   A TIRINHA de três quadros (gesto ▸ ação ▸ resultado) à esquerda e a palavra gigante à direita, num
-   cartão só. O tamanho do quadro é UMA variável (`--tq-w`/`--tq-h`), porque ele muda por forma de tela e
-   a arte de dentro é toda proporcional a ela. */
-#tutor[data-style="cena"]{--tq-w:86px;--tq-h:62px}
+/* ═══ O MODELO CENA (`tc-`) — SEM TEXTO NENHUM NA TELA ═══════════════════════════════════════════
+   Desde 28/09/2026 a instrução é o GESTO desenhado no mundo (`renderer/layers/Guia.js`: a mão/o cursor na
+   estrela, o rastro até os cacos, o arco até a presa). A tirinha, a palavra gigante e a frase saíram — era a
+   explicação desenhada LONGE da coisa explicada, e texto que a Poki disse que ninguém lê. Aqui sobra uma
+   faixa pequena no topo: as bolas das etapas, o PULAR em ícone, a barra da etapa 1 e o selo ✓.
+   ⚠️ Tudo `pointer-events:none` (herdado do `#tutor`), menos o botão — ver a regra genérica de `#hud button`. */
 #tutor[data-style="cena"]{padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0}
-/* o palco: a linha de cabeçalho (trilha à esquerda, Pular à direita, os dois EM FLUXO) e o cartão embaixo,
-   com a mesma largura — o Pular absoluto do clássico caía por cima da tirinha em pé */
-.tc-palco{display:flex;flex-direction:column;align-items:stretch;gap:7px;max-width:min(700px,100%)}
-.tc-topo{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.tc-palco{display:flex;flex-direction:column;align-items:center;gap:8px}
+.tc-topo{display:flex;align-items:center;gap:12px;padding:6px 8px 6px 12px;border-radius:99px;
+  background:rgba(13,11,31,.7);box-shadow:0 4px 16px rgba(0,0,0,.35)}
 #tutor[data-style="cena"] .tut-sair{position:static;flex:none}
-.tc-cartao{position:relative;overflow:hidden;display:flex;align-items:center;gap:16px;
-  box-sizing:border-box;padding:10px 18px 14px 10px;border-radius:18px;background:rgba(13,11,31,.88);
-  border:3px solid #8b5cff;box-shadow:0 6px 22px rgba(0,0,0,.45);animation:tut-entra 240ms ease-out both}
-/* ── a tirinha ── */
-.tc-tira{flex:none;display:flex;align-items:center;gap:4px}
-.tc-q{position:relative;overflow:hidden;box-sizing:border-box;width:var(--tq-w);height:var(--tq-h);
-  display:flex;align-items:center;justify-content:center;gap:calc(var(--tq-w)*.05);
-  border-radius:12px;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.3)}
-.tc-sep{flex:none;font-style:normal;font-size:13px;color:rgba(255,255,255,.65)}
-.tc-tira.um .tc-q{width:calc(var(--tq-w)*1.5)}
-/* ⚠️ O ACENDE-APAGA: o estilo-BASE do quadro é o legível (é o que sobra sem animação, e tem de ler como
-   tirinha de jornal); o "apagado" só existe aqui dentro. Atrasos NEGATIVOS, e não positivos: com atraso
-   positivo os quadros 2 e 3 passariam o primeiro ciclo acesos junto com o 1. */
-.tc-tira.viva .tc-q{animation:tc-acende 3.6s ease-in-out infinite}
-.tc-tira.viva .q2{animation-delay:-2.4s}
-.tc-tira.viva .q3{animation-delay:-1.2s}
-@keyframes tc-acende{
-  0%,30%  {opacity:1;scale:1.05;border-color:var(--accent,#ffc22e);background:rgba(255,194,46,.18)}
-  38%,100%{opacity:.6;scale:1;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.08)}}
-/* ── o elenco: MARTE é você, TERRA é o outro — tamanhos como fração do quadro ── */
-.tc-q img{display:block;height:auto;flex:none}
-.tc-eu{width:calc(var(--tq-w)*.34)} .tc-eu.g{width:calc(var(--tq-w)*.5)}
-.tc-eu.p{width:calc(var(--tq-w)*.27)} .tc-eu.pp{width:calc(var(--tq-w)*.2)}
-.tc-ele{width:calc(var(--tq-w)*.34)} .tc-ele.p{width:calc(var(--tq-w)*.22)}
-.tc-missil{width:calc(var(--tq-w)*.26)}
-.tc-vai{flex:none;width:calc(var(--tq-w)*.24);height:auto;stroke:var(--accent,#ffc22e)}
-/* os pedaços: um ponto e três sombras dele */
-.tc-pts{flex:none;display:block;width:6px;height:6px;margin:0 12px 6px 2px;border-radius:50%;background:#ffd76a;
-  box-shadow:9px -9px 0 #ffd76a,12px 7px 0 #ffb020,1px 12px 0 #ffd76a}
-.tc-pts.cacos{position:absolute;left:18%;top:26%;margin:0;background:#9fd0ff;
-  box-shadow:calc(var(--tq-w)*.5) -4px 0 #9fd0ff,calc(var(--tq-w)*.56) calc(var(--tq-h)*.42) 0 #7bdc8f,4px calc(var(--tq-h)*.46) 0 #9fd0ff}
-/* o estouro: uma estrela de 12 pontas atrás da Terra trincada */
-.tc-bum{position:absolute;left:50%;top:50%;translate:-50% -50%;width:calc(var(--tq-h)*.92);aspect-ratio:1;
-  background:radial-gradient(circle,#fff 0 18%,#ffd76a 19% 46%,#ff7a3c 47% 100%);
-  clip-path:polygon(50% 0,59% 27%,85% 15%,73% 41%,100% 50%,73% 59%,85% 85%,59% 73%,50% 100%,41% 73%,15% 85%,27% 59%,0 50%,27% 41%,15% 15%,41% 27%)}
-.tc-ele.quebra{position:relative;width:calc(var(--tq-w)*.27);rotate:16deg;opacity:.9}
-/* o salto: a metade que VOA leva um arco tracejado até a presa */
-.tc-arco{position:relative;flex:none;display:flex;align-items:flex-start;align-self:stretch;
-  width:calc(var(--tq-w)*.26);padding-top:calc(var(--tq-h)*.1)}
-.tc-arco::before{content:"";position:absolute;left:-30%;right:-45%;top:calc(var(--tq-h)*.2);height:calc(var(--tq-h)*.5);
-  border:2px dashed var(--accent,#ffc22e);border-bottom:0;border-radius:50% 50% 0 0/100% 100% 0 0;opacity:.9}
-/* os dois selos de resultado — FORMA além de cor: "+" e "✓" */
-.tc-mais,.tc-ok{position:absolute;right:6%;top:8%;display:flex;align-items:center;justify-content:center;
-  width:calc(var(--tq-h)*.36);height:calc(var(--tq-h)*.36);border-radius:50%;font-size:calc(var(--tq-h)*.27);
-  font-weight:900;line-height:1;color:#0d0b1f;background:var(--ok,#3ddc5f)}
-.tc-mais{background:var(--accent,#ffc22e)}
-/* a estrela da `espera`, inchando */
-.tc-estrela{display:block;width:calc(var(--tq-h)*.5);aspect-ratio:1;border-radius:50%;
-  background:radial-gradient(circle,#fff 0 22%,#ffd76a 23% 58%,#ff7a3c 59% 100%);
-  box-shadow:0 0 18px 6px rgba(255,160,60,.55);animation:tc-incha 1.1s ease-in both}
-@keyframes tc-incha{from{scale:.7}to{scale:1.45}}
-/* o desenho do GESTO dentro do quadro 1 */
-#tutor[data-style="cena"] .tc-q .tut-mouse{
-  width:calc(var(--tq-h)*.5);height:calc(var(--tq-h)*.75);filter:none}
-#tutor[data-style="cena"] .tc-q .tut-tecla{
-  min-width:0;min-height:calc(var(--tq-h)*.5);max-width:92%;padding:0 8px;box-sizing:border-box;
-  font-size:calc(var(--tq-h)*.2);letter-spacing:.04em;border-width:2px;border-radius:8px;box-shadow:0 3px 0 #0d0b1f;filter:none}
-#tutor[data-style="cena"] .tc-q .tut-hud-btn{
-  min-width:0;min-height:calc(var(--tq-h)*.5);max-width:92%;padding:0 8px;box-sizing:border-box;
-  font-size:calc(var(--tq-h)*.18);border-width:2px;box-shadow:0 3px 0 #0d0b1f}
-/* ── o lado: a PALAVRA GIGANTE, a frase e a trilha compacta ── */
-.tc-lado{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;text-align:left}
-.tc-sobre{font-size:12px;font-weight:900;letter-spacing:.06em;line-height:1.15;color:#fff;opacity:.9}
-.tc-verbo{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;
-  font-size:34px;font-weight:900;letter-spacing:.04em;line-height:1;color:var(--accent,#ffc22e)}
-.tc-vez{font-style:normal;padding:3px 9px;border-radius:99px;font-size:11px;letter-spacing:.07em;line-height:1.3;
-  color:#0d0b1f;background:var(--ok,#3ddc5f);animation:tut-pulsa 1.5s ease-in-out infinite}
-.tc-txt{max-width:36ch;font-size:15px;font-weight:bold;line-height:1.25;animation:tc-fade 200ms ease-out both}
-@keyframes tc-fade{from{opacity:0}to{opacity:1}}
-#tutor[data-style="cena"] .tut-bola{width:26px;height:26px;font-size:13px;border-width:2px}
+#tutor[data-style="cena"] .tut-bola{width:28px;height:28px;font-size:14px;border-width:2px}
 #tutor[data-style="cena"] .tut-bola.now{box-shadow:0 0 0 3px rgba(255,194,46,.22)}
-#tutor[data-style="cena"] .tut-liga{width:16px;height:4px}
-#tutor[data-style="cena"] .tut-passo{margin-right:8px;padding:2px 8px;font-size:13px;border-width:2px}
-/* a barra da etapa 1 é a BORDA de baixo do cartão: diz quanto falta sem custar altura nenhuma */
-.tc-barra{position:absolute;left:0;right:0;bottom:0;display:block;height:6px;background:rgba(255,255,255,.14)}
-.tc-barra>i{display:block;height:100%;background:var(--accent,#ffc22e)}
+#tutor[data-style="cena"] .tut-liga{width:22px;height:4px}
+/* o PULAR como ícone (⏩ desenhado): redondo, discreto, e 44 px no dedo — o nome fica no `aria-label` */
+.tut-sair.ico{display:flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;border-radius:50%}
+.tut-sair.ico svg{width:18px;height:18px;fill:#fff}
+body[data-pointer="coarse"] .tut-sair.ico{min-width:44px;min-height:44px}
+/* a barra da etapa 1: quanto falta, sem uma palavra (a transição leva ID — ver o `#hud *` do topo do arquivo) */
+.tc-barra{display:block;width:min(220px,60vw);height:9px;border-radius:99px;overflow:hidden;
+  background:rgba(13,11,31,.75);border:2px solid rgba(255,255,255,.3)}
+.tc-barra>i{display:block;height:100%;border-radius:99px;background:var(--accent,#ffc22e)}
 #tutor[data-style="cena"] .tc-barra>i{transition:width 180ms linear}
-/* ── a PÍLULA: depois do primeiro pedaço a tirinha sai da frente do jogo ── */
-.tc-pilula{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:2px;
-  box-sizing:border-box;padding:7px 20px 12px;border-radius:16px;
-  background:rgba(13,11,31,.88);border:3px solid #8b5cff;box-shadow:0 6px 22px rgba(0,0,0,.45)}
-.tc-pilula .tc-verbo{font-size:24px}
-.tc-pilula .tc-txt{text-align:center}
-@media (prefers-reduced-motion:reduce){
-  .tc-tira.viva .tc-q,.tc-vez{animation:none}
-  .tc-cartao,.tc-txt,.tc-estrela{animation-duration:1ms}
-  #tutor[data-style="cena"] .tc-barra>i{transition:none}}
-/* EM PÉ: tirinha em cima (de largura cheia), palavra embaixo, tudo centrado */
-body[data-mode="portrait"] #tutor[data-style="cena"]{--tq-w:min(94px,26vw);--tq-h:58px}
-body[data-mode="portrait"] #tutor[data-style="cena"] .tc-cartao{flex-direction:column;align-items:center;gap:7px;padding:10px 12px 14px}
-body[data-mode="portrait"] #tutor[data-style="cena"] .tc-lado{align-items:center;text-align:center}
-body[data-mode="portrait"] #tutor[data-style="cena"] .tc-verbo{justify-content:center;font-size:30px}
-/* DEITADO: altura apertada — quadros menores, palavra menor, e o palco deixa a margem do Pular livre */
-body[data-mode="landscape"] #tutor[data-style="cena"]{--tq-w:64px;--tq-h:46px}
+/* o SELO: só o ✓, grande — a outra metade do elogio é o som da `festa` */
+#tutor[data-style="cena"] #tutor-selo{padding:6px;border-radius:50%}
+#tutor[data-style="cena"] #tutor-selo>i{width:54px;height:54px;font-size:32px}
+@media (prefers-reduced-motion:reduce){#tutor[data-style="cena"] .tc-barra>i{transition:none}}
+/* DEITADO: altura apertada — tudo um pouco menor */
 body[data-mode="landscape"] #tutor[data-style="cena"]{padding-top:calc(env(safe-area-inset-top,0px) + 6px)}
-body[data-mode="landscape"] #tutor[data-style="cena"] .tc-palco{gap:4px}
-body[data-mode="landscape"] #tutor[data-style="cena"] .tc-cartao{gap:12px;padding:6px 14px 10px 8px;border-radius:14px}
-body[data-mode="landscape"] #tutor[data-style="cena"] .tc-q{border-radius:9px}
-body[data-mode="landscape"] #tutor[data-style="cena"] .tc-verbo{font-size:22px}
-body[data-mode="landscape"] #tutor[data-style="cena"] .tc-txt{font-size:13px}
-body[data-mode="landscape"] #tutor[data-style="cena"] .tc-sobre{font-size:10px}
-body[data-mode="landscape"] #tutor[data-style="cena"] .tut-bola{width:20px;height:20px;font-size:11px}
-body[data-mode="landscape"] #tutor[data-style="cena"] .tut-liga{width:12px;height:3px}
-body[data-mode="landscape"] #tutor[data-style="cena"] .tut-passo{font-size:11px;padding:1px 6px}
-body[data-mode="landscape"] #tutor[data-style="cena"] .tc-pilula{padding:5px 16px 10px}
-body[data-mode="landscape"] #tutor[data-style="cena"] .tc-pilula .tc-verbo{font-size:19px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tc-palco{gap:5px}
+body[data-mode="landscape"] #tutor[data-style="cena"] .tut-bola{width:22px;height:22px;font-size:12px}
+body[data-mode="landscape"] #tutor[data-style="cena"] #tutor-selo>i{width:42px;height:42px;font-size:25px}
 
 /* ── O PACOTE ENXUTO DA POKI (`body[data-pacote="poki"]`, escrito por App.jsx; ver portal/flags.js) ─────────
    Decisão de 28/09/2026, depois da recusa do Web Fit Test: "players on Poki really don't like reading" e

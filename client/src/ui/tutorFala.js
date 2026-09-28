@@ -90,70 +90,10 @@ export function promptDoTutor(d, T, tecla) {
   return null;
 }
 
-// ── O QUE O MODELO `cena` PERGUNTA A MAIS (ui/TutorCena.jsx) ──────────────────
-// Moram aqui, e não nos `.jsx` de cada modelo, pelo motivo do cabeçalho: são DECISÕES, e decisão que mora
-// num `.jsx` é decisão que ninguém testa. Nenhuma delas muda o que `falaDoTutor`/`promptDoTutor` dizem —
-// os modelos mudam a FORMA da aula, nunca o conteúdo.
-
-/**
- * A PALAVRA GIGANTE da etapa: MOVA · ATIRE · DIVIDA. Uma palavra só, porque é o que sobra legível a 2 m de
- * um celular na mão de uma criança — e a frase inteira continua vindo de `falaDoTutor`, logo abaixo dela.
- * @returns {string}
- */
-export function verboDoTutor(d, T) {
-  return d.etapa === ETAPA.NOVA ? T.verbo1 : d.etapa === ETAPA.TIRO ? T.verbo2
-    : d.etapa === ETAPA.SPLIT ? T.verbo3 : "";
-}
-
-/**
- * QUAL TIRINHA o modelo `cena` desenha: `espera` · `nova` · `tiro` · `salto`, ou `null`.
- *
- * ⚠️ A etapa 3 JÁ TEVE duas (`caca`, só o objetivo, e `salto` a partir do degrau 1). Hoje é o `salto` desde
- * o segundo zero, pelo mesmo motivo do ⚠️ de `falaDoTutor`: o dono do jogo viu o aluno sem saber qual botão
- * apertar. As três decisões (a frase, o prompt e a tirinha) andam JUNTAS — há teste travando isso, porque
- * uma tirinha mostrando o salto sem a frase dizer a tecla (ou o contrário) é a tela se contradizendo.
- * ⚠️ `espera` é a fase `pre` (a estrela ainda não estourou): sem gesto na tirinha, porque não há o que
- * fazer ainda — o mesmo argumento que tira o prompt dessa fase.
- * @returns {"espera"|"nova"|"tiro"|"salto"|null}
- */
-export function cenaDoTutor(d) {
-  if (d.etapa === ETAPA.NOVA) return d.pre ? "espera" : "nova";
-  if (d.etapa === ETAPA.TIRO) return "tiro";
-  if (d.etapa === ETAPA.SPLIT) return "salto";
-  return null;
-}
-
-/**
- * O SELO "✓ ETAPA n COMPLETA!" — o elogio que NÃO PARA O JOGO. `d.ok` é publicado pelo motor na `festa` e
- * fica ~2 s (`SELO_MS`, game/index.js), por cima da etapa SEGUINTE já rodando.
- *
- * ⚠️ **ISTO JÁ FOI UMA TELA CHEIA** (`#tutor-ok`, 3,2 s, HUD inteiro escondido, três vezes por tutorial) com
- * a tirinha da próxima lição como "pré-aula". Saiu: era a tela de "Level Complete" — a parada entre duas
- * fases é onde o jogador decide ir embora —, e a pré-aula é redundante desde que a etapa seguinte abre com
- * a própria tirinha e o botão destacado no segundo zero.
- * ⚠️ O "Atiramos por você" viaja AQUI: é a única frase da tela antiga que carrega informação (fazer por
- * alguém em silêncio é a pior das três opções — ver `AJUDA` em game/tutor.js), e só vale na etapa do tiro.
- * @returns {[string,string]|null} [título, subtítulo]
- */
-export function seloDoTutor(d, T) {
-  const ok = d && d.ok; if (!ok || !ok.n) return null;
-  return [preenche(T.feito, { n: ok.n }), ok.auto && ok.n === ETAPA.TIRO ? T.tiroAuto : (T["feito" + ok.n] || "")];
-}
-
-/**
- * O cartão do modelo `cena` está ABERTO (tirinha à vista) ou virou PÍLULA (uma linha)?
- *
- * ⚠️ Só a etapa 1 encolhe, e não é preguiça: ela é a única com sinal de "começou a acertar" (`pct` sai da
- * massa). Nas outras duas o gesto É a etapa — quando ele acontece, ela acabou. E encolher por TEMPO está
- * fora: `body[data-reduce="1"] *` zera toda duração de animação, então nada aqui pode depender de um
- * relógio de CSS, e um relógio de JS bateria de frente com o degrau de ajuda dos 5 s.
- * ⚠️ Reabre no degrau 2 (`ajuda>=2`): é quando os pedaços passam a vir até o jogador, ou seja, quando ele
- * claramente NÃO entendeu — e a tirinha é a explicação.
- * @returns {"aberto"|"pilula"}
- */
-export function formaDoCartao(d) {
-  return d.etapa === ETAPA.NOVA && !d.pre && d.pct > 0 && d.ajuda < 2 ? "pilula" : "aberto";
-}
+// ── O QUE OS MODELOS PERGUNTAM A MAIS ────────────────────────────────────────
+// ⚠️ Aqui moravam as decisões da TIRINHA do modelo `cena` (a palavra gigante, qual tirinha, o selo com texto,
+// cartão aberto ou pílula). Saíram com ela em 28/09/2026: o `cena` não tem mais texto nenhum na tela, e o
+// gesto passou a ser desenhado NO MUNDO — a decisão de onde e qual gesto é `game/guia.js`, também pura.
 
 /**
  * QUAL BOTÃO DE VERDADE DO HUD PULSA (`#t-fire` · `#t-split`), ou `null`.

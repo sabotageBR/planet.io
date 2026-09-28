@@ -1,6 +1,7 @@
 // ── O TUTORIAL DE ESTREIA: A DECISÃO ──────────────────────────────────────────
-// Três etapas — crescer na supernova, atirar num planeta, dividir para alcançar uma presa — e a máquina
-// que decide em qual delas o jogador está, o quanto ele avançou e quando a etapa fechou.
+// Duas etapas — crescer na supernova e dividir para alcançar uma presa (a do tiro está dormente: ver
+// `SEQUENCIA`) — e a máquina que decide em qual delas o jogador está, o quanto ele avançou e quando a
+// etapa fechou.
 //
 // PURA, e pelo mesmo motivo de `game/dica.js`, `game/quality.js`, `ui/roundClock.js` e `state/entrada.js`:
 // não há jsdom no projeto, e o que precisa ser conferido aqui não é o efeito (montar o mundo, desenhar a
@@ -17,10 +18,26 @@
 // avanço das etapas é por EVENTO do mundo, e só a escala de AJUDA olha o tempo.
 // @ts-check
 
-/** As etapas, na ordem. `FIM` é terminal: a máquina nunca volta dele. */
+/** As etapas. `FIM` é terminal: a máquina nunca volta dele. Os NÚMEROS são nomes (viram marco do funil:
+ *  `tutor_nova|tiro|split`), por isso não mudam quando a ordem muda — quem diz a ordem é `SEQUENCIA`. */
 export const ETAPA = { NOVA: 1, TIRO: 2, SPLIT: 3, FIM: 4 };
-/** Quantas etapas a barra de progresso desenha (o FIM não é um passo, é o destino). */
-export const ETAPAS = 3;
+/**
+ * A ORDEM DAS ETAPAS: comer (a supernova) e dividir (a presa). **O TIRO SAIU do tutorial** (28/09/2026,
+ * depois da recusa do Web Fit Test da Poki): era a etapa que o celular menos conseguia fazer sozinho (69% de
+ * tiros manuais na 1.0.1, contra quase todos nas outras duas), e o guia deles pede o contrário de ensinar
+ * tudo de uma vez — "reveal actions and buttons over the first few levels". O míssil passou a ser ensinado
+ * NA PARTIDA, no instante em que o jogador pega a primeira munição (o botão aparece pulsando).
+ * ⚠️ A etapa continua DORMENTE e testada — a máquina ainda sabe atravessá-la (`proximaEtapa` cai no `+1`
+ * para quem estiver fora da sequência) e o diretor ainda a monta —, no precedente de `BLACKHOLE.COUNT=0`:
+ * volta acrescentando `ETAPA.TIRO` aqui.
+ */
+export const SEQUENCIA = [ETAPA.NOVA, ETAPA.SPLIT];
+/** Quantas etapas a trilha desenha (o FIM não é um passo, é o destino). */
+export const ETAPAS = SEQUENCIA.length;
+/** A etapa seguinte na sequência (a última leva ao FIM). Fora da sequência — a etapa dormente —, a de número seguinte. */
+export const proximaEtapa = e => { const i = SEQUENCIA.indexOf(e); return i < 0 ? e + 1 : SEQUENCIA[i + 1] || ETAPA.FIM; };
+/** A POSIÇÃO de uma etapa na trilha, 1-based (a do FIM é a última + 1). É ela que a tela desenha, nunca o número. */
+export const posicaoDaEtapa = e => { const i = SEQUENCIA.indexOf(e); return i < 0 ? (e >= ETAPA.FIM ? ETAPAS + 1 : 1) : i + 1; };
 
 /**
  * Quanto a festa fica no ar antes de a próxima etapa subir, e a META de massa da etapa 1.
@@ -180,7 +197,7 @@ export function passoTutor(est, ctx, agora) {
     // ⚠️ `desde:0` e não `desde:agora`: quem abre a etapa é o ramo acima, no passo SEGUINTE. Assim
     // "abrir" é um lugar só, e o relógio da ajuda nunca começa a contar num tick em que a etapa nova
     // ainda não foi montada pelo diretor.
-    return saida({ etapa: est.etapa + 1, desde: 0, feito: 0, ajuda: 0, auto: 0 });
+    return saida({ etapa: proximaEtapa(est.etapa), desde: 0, feito: 0, ajuda: 0, auto: 0 });
   }
 
   const dt = agora - est.desde, d = degrau(est.etapa, dt), a = AJUDA[est.etapa] || {};

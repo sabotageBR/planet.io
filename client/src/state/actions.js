@@ -16,6 +16,7 @@ import { marco, evento, marcoMorte, noTutorial } from "../portal/marcos.js";
 import { destinoDoBoot, destinoDaSaida, precisaTutorial } from "./entrada.js";
 import { tutorVisto, marcaTutor, marcaMissao } from "../game/estreia.js";
 import { partesDoDemo } from "../ui/tutorEstilo.js";
+import { ETAPA as ETAPA_TUTOR, proximaEtapa } from "../game/tutor.js";
 import { silenciaAnuncio, sfx } from "../audio/index.js";
 import { setSkinArt } from "../theme/faces.js";
 
@@ -380,7 +381,9 @@ function tutorDemo(suf) {
   // Hoje é o SELO "✓ etapa n" por cima do cartão EM CURSO da etapa SEGUINTE — que é como ele aparece de
   // verdade ~700 ms depois da `festa` —, e é essa sobreposição que a matriz precisa medir.
   const fim = qual === "fim", selo = qual.startsWith("ok") ? Math.min(3, Math.max(1, +qual.slice(2) || 1)) : 0, pre = qual === "pre";
-  const etapa = fim ? 4 : pre ? 1 : selo ? Math.min(3, selo + 1) : Math.min(3, Math.max(1, +qual || 1));
+  // ⚠️ o selo cai por cima da etapa SEGUINTE NA SEQUÊNCIA (`proximaEtapa`), não da de número seguinte: o tiro
+  // (2) saiu da sequência, e o selo da etapa 1 aparece por cima da de dividir (3)
+  const etapa = fim ? ETAPA_TUTOR.FIM : pre ? ETAPA_TUTOR.NOVA : selo ? proximaEtapa(selo) : Math.min(3, Math.max(1, +qual || 1));
   // ⚠️ `pre` é uma CARA À PARTE da etapa 1: outra fala, sem barra e sem prompt. Fora da matriz ela não é
   // medida, e é a primeira tela que um jogador novo vê na vida.
   // ⚠️ `demo:true` DESARMA o relógio do fim. A tela de parabéns entra na sala sozinha depois de

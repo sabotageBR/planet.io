@@ -82,15 +82,19 @@ const TELAS=["entry","entry@rail","modes","modes@rail","lobby","rank","profile",
   // de PARABÉNS saíram (eram 12,6 s de parada obrigatória — ver TUTOR em client/src/game/tutor.js). `ok<n>`
   // mede hoje o SELO "✓ etapa n" por cima do cartão da etapa SEGUINTE (`ok2` leva a frase mais longa, o
   // "atiramos por você"), e o parabéns virou a faixa de `game@parabens`, por cima do HUD de PARTIDA.
-  "tutor:pre","tutor:1","tutor:2@2","tutor:2!","tutor:2!@1","tutor:3@1","tutor:3!","tutor:ok2","game@parabens"];
+  // ⚠️ DESDE 28/09/2026 SÃO DUAS ETAPAS (o tiro saiu da sequência — ver SEQUENCIA em game/tutor.js) e o
+  // `cena` NÃO TEM TEXTO: a instrução é o gesto no MUNDO (renderer/layers/Guia.js), que é canvas e esta sonda
+  // não mede. O que sobra de DOM é a faixa de cima (bolas + pular em ícone), a barra, o selo ✓ e, no mouse,
+  // a tecla de dividir no rodapé. As caras do tiro (`2…`) saíram; `ok1` é o selo da etapa 1 por cima da de dividir.
+  "tutor:pre","tutor:1","tutor:3@1","tutor:3!","tutor:ok1","game@parabens"];
 // OS MODELOS DO TUTORIAL (client/src/ui/tutorEstilo.js). As entradas SEM modelo no sufixo (as de cima) medem
 // o PADRÃO — hoje o `cena`, a tirinha —, e é por isso que elas levam duas caras que só ele tem: `1` é a
 // PÍLULA (o demo grava pct .45) e `1@2` é o cartão REABERTO no degrau 2; `ok1` é o selo da etapa 1 por
 // cima da tirinha do TIRO e `ok2` o da 2 por cima da do SALTO. Os OUTROS modelos entram com o nome na frente
 // (`tutor:<modelo>:<cara>`, o molde de `dead:<estilo>`), e a lista sai de ESTILOS: o dia em que o clássico
 // for apagado, as entradas dele somem daqui sem ninguém lembrar de vir.
-TELAS.push("tutor:1@2","tutor:ok1!");   // `ok1!` e não `ok1`: a etapa 2 em curso no par do MOUSE, medida num tablet de toque, é uma combinação que não existe (o `dedo` sai do mesmo matchMedia) e acusa um falso `hud-status×tut-prompt`
-const CARAS_TUTOR=["pre","1","2@2","2!","2!@1","3@1","3!"];   // sem `ok`/`fim`: no clássico o selo não existe e o fim não desenha nada
+TELAS.push("tutor:1@2","tutor:ok1!");
+const CARAS_TUTOR=["pre","1","3@1","3!"];   // sem `ok`/`fim`: no clássico o selo não existe e o fim não desenha nada
 for(const m of TUTOR_ESTILOS){if(m===TUTOR_PADRAO)continue;
   for(const c of CARAS_TUTOR)TELAS.push("tutor:"+m+":"+c);}
 /** O modelo que uma entrada `tutor:…` PEDE — `null` para o que não é tutorial. Sem modelo no sufixo é o padrão. */

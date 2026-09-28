@@ -5,7 +5,7 @@
 // node --test client/test/tutor.test.js
 import test from "node:test";
 import assert from "node:assert/strict";
-import { passoTutor, TUTOR0, TUTOR, ETAPA, ETAPAS, AJUDA } from "../src/game/tutor.js";
+import { passoTutor, TUTOR0, TUTOR, ETAPA, ETAPAS, AJUDA, SEQUENCIA, proximaEtapa, posicaoDaEtapa } from "../src/game/tutor.js";
 
 /** Contexto neutro: vivo, nada aconteceu, meta de massa 6000 a partir de 900. */
 const ctx = (o = {}) => ({ vivo: true, massa: 900, base: 900, meta: 6000, sobrou: 24, ultimo: 0,
@@ -80,7 +80,8 @@ test("a próxima etapa só sobe depois da SOBRA — a festa fica no ar", () => {
   const a = passoTutor(TUTOR0, ctx(), 1000);
   const b = passoTutor(a.est, ctx({ massa: 7000, sobrou: 0 }), 1100);
   assert.equal(passoTutor(b.est, ctx(), 1100 + TUTOR.SOBRA_MS - 1).etapa, ETAPA.NOVA);
-  assert.equal(passoTutor(b.est, ctx(), 1100 + TUTOR.SOBRA_MS).etapa, ETAPA.TIRO);
+  // ⚠️ depois de comer vem DIVIDIR: o tiro saiu da sequência (ver `SEQUENCIA` em game/tutor.js)
+  assert.equal(passoTutor(b.est, ctx(), 1100 + TUTOR.SOBRA_MS).etapa, ETAPA.SPLIT);
 });
 
 test("etapa 2 fecha no ACERTO, etapa 3 no ABATE", () => {
@@ -156,7 +157,9 @@ test("o FIM é terminal: a máquina nunca volta dele", () => {
   assert.equal(passoTutor(r.est, ctx(), 9e9 + 1e6).etapa, ETAPA.FIM);
 });
 
-test("as três etapas percorrem até o FIM, na ordem, sem pular nem repetir", () => {
+test("as DUAS etapas percorrem até o FIM, na ordem, sem pular nem repetir — o tiro saiu", () => {
+  // ⚠️ O tiro saiu do tutorial em 28/09/2026 (recusa do Web Fit Test da Poki): era a etapa que o celular
+  // menos fazia sozinho, e o guia deles pede os botões revelados aos poucos. Ele é ensinado NA PARTIDA.
   let est = TUTOR0, t = 1000, ordem = [], festas = [];
   const gesto = () => ({ acertou: true, comeu: true, massa: 9000, sobrou: 0 });
   for (let i = 0; i < 200 && est.etapa < ETAPA.FIM; i++, t += 100) {
@@ -164,9 +167,22 @@ test("as três etapas percorrem até o FIM, na ordem, sem pular nem repetir", ()
     est = r.est; if (r.festa) { festas.push(r.festa); }
     if (ordem[ordem.length - 1] !== r.etapa) ordem.push(r.etapa);
   }
-  assert.deepEqual(festas, [ETAPA.NOVA, ETAPA.TIRO, ETAPA.SPLIT]);
-  assert.deepEqual(ordem, [ETAPA.NOVA, ETAPA.TIRO, ETAPA.SPLIT, ETAPA.FIM]);
-  assert.equal(ETAPAS, 3, "e a barra desenha exatamente essas três");
+  assert.deepEqual(festas, [ETAPA.NOVA, ETAPA.SPLIT]);
+  assert.deepEqual(ordem, [ETAPA.NOVA, ETAPA.SPLIT, ETAPA.FIM]);
+  assert.equal(ETAPAS, 2, "e a trilha desenha exatamente essas duas");
+});
+
+test("A ORDEM MORA EM `SEQUENCIA`, e os NÚMEROS continuam sendo nomes", () => {
+  // Os números viram marco do funil (`tutor_nova|tiro|split`): mudar a ordem não pode renomeá-los.
+  assert.deepEqual(SEQUENCIA, [ETAPA.NOVA, ETAPA.SPLIT]);
+  assert.equal(proximaEtapa(ETAPA.NOVA), ETAPA.SPLIT);
+  assert.equal(proximaEtapa(ETAPA.SPLIT), ETAPA.FIM);
+  // a etapa DORMENTE ainda sabe sair de si mesma (volta acrescentando-a à sequência)
+  assert.equal(proximaEtapa(ETAPA.TIRO), ETAPA.SPLIT);
+  // a TELA desenha a POSIÇÃO, nunca o número: com o número, a etapa 3 acenderia as duas bolas como feitas
+  assert.equal(posicaoDaEtapa(ETAPA.NOVA), 1);
+  assert.equal(posicaoDaEtapa(ETAPA.SPLIT), 2);
+  assert.equal(posicaoDaEtapa(ETAPA.FIM), ETAPAS + 1);
 });
 
 test("é PURA: não mexe no estado nem no contexto que recebe", () => {
@@ -265,7 +281,7 @@ test("`celebra` é a JANELA, `festa` é o instante", () => {
   assert.equal(c.celebra, true, "mas a tela continua no ar");
   const d = passoTutor(b.est, ctx(), 1100 + TUTOR.SOBRA_MS);
   assert.equal(d.celebra, false, "e sai quando a próxima etapa sobe");
-  assert.equal(d.etapa, ETAPA.TIRO);
+  assert.equal(d.etapa, ETAPA.SPLIT);
 });
 
 test("NA EXPLOSÃO A FALA É OUTRA, E NÃO HÁ BOTÃO A APERTAR", () => {
@@ -309,48 +325,10 @@ test("A ETAPA 3 NÃO DEIXA O JOGADOR CORRER MAIS DE 5 s ATRÁS DO IMPOSSÍVEL", 
   assert.ok(AJUDA[ETAPA.SPLIT].d1 > AJUDA[ETAPA.NOVA].d1 * .8, "mas não tão cedo que ele nem tente");
 });
 
-// ── AS DECISÕES DOS TRÊS MODELOS NOVOS (ui/tutorFala.js) ─────────────────────
-// Os modelos mudam a FORMA da aula, nunca o conteúdo — e o que eles perguntam a mais (qual palavra
-// gigante, qual tirinha, cartão aberto ou pílula, qual botão de verdade pulsa) é decisão, então mora num
-// `.js` e é conferida aqui.
-import { verboDoTutor, cenaDoTutor, seloDoTutor, formaDoCartao, alvoDoTutor } from "../src/ui/tutorFala.js";
-
-test("cada etapa tem o SEU verbo, e o FIM não tem nenhum", () => {
-  const v = etapa => verboDoTutor({ etapa }, T);
-  assert.deepEqual([v(ETAPA.NOVA), v(ETAPA.TIRO), v(ETAPA.SPLIT)], ["verbo1", "verbo2", "verbo3"]);
-  assert.equal(v(ETAPA.FIM), "");
-});
-
-test("NA ETAPA 3 A FRASE, O PROMPT, A TIRINHA E O BOTÃO QUE PULSA ANDAM JUNTOS", () => {
-  // São quatro decisões separadas falando do MESMO gesto. Uma tirinha mostrando o salto sem a frase dizer a
-  // tecla — ou o botão pulsando sem prompt nenhum — é a tela se contradizendo, e foi exatamente um
-  // desencontro desses ("a dica só chega no degrau 1") que o dono do jogo viu como "não sabe o que apertar".
-  for (const ajuda of [0, 1, 2, 3]) for (const dedo of [false, true]) {
-    const d = { etapa: ETAPA.SPLIT, ajuda, pct: 0, dedo };
-    assert.equal(cenaDoTutor(d), "salto", "ajuda " + ajuda);
-    assert.ok(promptDoTutor(d, T, "ESPAÇO"), "prompt, ajuda " + ajuda);
-    assert.equal(alvoDoTutor(d), dedo ? "t-split" : null, "botão real, ajuda " + ajuda);
-  }
-});
-
-test("na EXPLOSÃO a tirinha é a de espera — sem gesto, como o prompt", () => {
-  assert.equal(cenaDoTutor({ etapa: ETAPA.NOVA, pre: true }), "espera");
-  assert.equal(cenaDoTutor({ etapa: ETAPA.NOVA, pre: false }), "nova");
-  assert.equal(cenaDoTutor({ etapa: ETAPA.TIRO }), "tiro");
-  assert.equal(cenaDoTutor({ etapa: ETAPA.FIM }), null);
-});
-
-test("o elogio da etapa é um SELO por cima do jogo — e é nele que o 'atiramos por você' viaja", () => {
-  const T = { feito: "ETAPA {n} COMPLETA!", feito1: "Você sabe se mover.", feito2: "Você sabe atirar.", tiroAuto: "Atiramos por você desta vez." };
-  assert.equal(seloDoTutor({ etapa: 2 }, T), null, "sem `ok` não há selo: a etapa em curso fica limpa");
-  assert.equal(seloDoTutor({ etapa: 2, ok: null }, T), null);
-  assert.deepEqual(seloDoTutor({ etapa: 2, ok: { n: 1, auto: false } }, T), ["ETAPA 1 COMPLETA!", "Você sabe se mover."],
-    "o selo fala da etapa que FECHOU (`ok.n`), não da que está na tela (`etapa`)");
-  assert.deepEqual(seloDoTutor({ etapa: 3, ok: { n: 2, auto: true } }, T), ["ETAPA 2 COMPLETA!", "Atiramos por você desta vez."],
-    "fazer por alguém em silêncio é a pior opção: quando o teto atirou, o selo DIZ");
-  assert.deepEqual(seloDoTutor({ etapa: 2, ok: { n: 1, auto: true } }, T), ["ETAPA 1 COMPLETA!", "Você sabe se mover."],
-    "`auto` fora da etapa do tiro não tem frase própria");
-});
+// ── O BOTÃO DE VERDADE QUE PULSA (ui/tutorFala.js) ───────────────────────────
+// A tirinha, a palavra gigante e o selo escrito saíram (o modelo `cena` não tem mais texto — o gesto é
+// desenhado no mundo, `game/guia.js`). O que continua sendo decisão da TELA é qual botão real pulsa.
+import { alvoDoTutor } from "../src/ui/tutorFala.js";
 
 test("NÃO EXISTE TELA ENTRE AS ETAPAS: o batimento é curto e o fim não espera", () => {
   // 3 × 3,2 s de "ETAPA COMPLETA" + 3 s de PARABÉNS eram 12,6 s de parada obrigatória num tutorial de ~60 s,
@@ -358,18 +336,6 @@ test("NÃO EXISTE TELA ENTRE AS ETAPAS: o batimento é curto e o fim não espera
   // "dar tempo de ler" está recriando a tela de Level Complete.
   assert.ok(TUTOR.SOBRA_MS <= 1000, "o batimento entre etapas não pode voltar a ser uma tela de espera");
   assert.equal(TUTOR.FIM_MS, 0, "acabou a 3ª lição, entra na sala — o parabéns é faixa por cima da partida");
-});
-
-test("o cartão só vira PÍLULA na etapa 1, depois do primeiro pedaço — e REABRE quando a ajuda chega", () => {
-  const f = o => formaDoCartao({ etapa: ETAPA.NOVA, pct: 0, ajuda: 0, pre: false, ...o });
-  assert.equal(f({}), "aberto", "antes do primeiro pedaço a tirinha É a instrução");
-  assert.equal(f({ pct: .1 }), "pilula");
-  assert.equal(f({ pct: .1, ajuda: 1 }), "pilula");
-  assert.equal(f({ pct: .1, ajuda: 2 }), "aberto", "no degrau 2 ele claramente não entendeu: a tirinha volta");
-  assert.equal(f({ pct: .1, pre: true }), "aberto");
-  // nas outras duas o gesto É a etapa: não há "começou a acertar" que justifique encolher
-  assert.equal(formaDoCartao({ etapa: ETAPA.TIRO, pct: 0, ajuda: 0 }), "aberto");
-  assert.equal(formaDoCartao({ etapa: ETAPA.SPLIT, pct: 0, ajuda: 1 }), "aberto");
 });
 
 test("O BOTÃO DE VERDADE SÓ PULSA NO DEDO, e só quando há o que apertar", () => {

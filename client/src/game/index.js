@@ -46,6 +46,7 @@ import {createConnection} from "./net/Connection.js";
 import {createInputSender} from "./net/InputSender.js";
 import {createLocalServer} from "./net/LocalServer.js";
 import {OPCOES_TUTORIAL,criaRoteiro} from "./net/tutorServer.js";
+import {guiaDoTutor} from "./guia.js";
 import {ETAPA as ETAPA_TUTOR,presoNaEspera} from "./tutor.js";
 import {createMic} from "../audio/mic.js";
 import {SEM_VOZ,SEM_CHAT,SEM_BR} from "../portal/flags.js";
@@ -209,7 +210,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   const view=createWorldView({buffer,predictor});
   const cam=createCamera(),fstats=createFrameStats();
   let pausado=false;   // menu do Esc aberto: o motor larga o CONTROLE (a partida continua no servidor — ver ui/Pause.jsx)
-  const canAct=()=>joined&&!dead&&!roundOver&&!pausado&&conn&&conn.isOpen;
+  // ⚠️ `presoNaEspera`: enquanto a estrela do tutorial espera o toque, o toque (ou a tecla) é o GATILHO dela —
+  // dividir, cuspir ou atirar ali gastaria o gesto antes de a lição existir.
+  const canAct=()=>joined&&!dead&&!roundOver&&!pausado&&conn&&conn.isOpen&&!presoNaEspera(souTutorial,tutor);
   let aiming=false,aim=null;const pendingEat=new Map();   // id da peça comida → id de quem comeu (destino da sucção no frame do sumiço)
   let travado=-1,travadoAte=0;   // o alvo do último tiro mirado e até quando o anel continua na tela (MISSILE.AIM_HOLD_TICKS)
   let comboN=0,comboT=0;   // acertos SEGUIDOS do meu tiro — só cosmético (fx/som), nunca entra na física
@@ -496,7 +499,9 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // controle, então o `PROTOCOL_VERSION` não sobe: o precedente é o próprio `grace` logo acima.
     // ⚠️ A festa sai DAQUI e não da tela: o efeito e o som moram no motor, e `festa` chega uma vez só
     // por etapa (o servidor já garante isso — ver `passoTutor`).
-    else if(m.t==="tutor"){tutor=m;pushHud(performance.now());
+    else if(m.t==="tutor"){const antes=tutor;tutor=m;pushHud(performance.now());
+      // a estrela estourou SEM toque (o teto `TOQUE_TETO` do diretor): o funil separa quem tocou de quem esperou
+      if(antes&&antes.pre&&!m.pre&&!tocouEstrela){tocouEstrela=true;marco("tutor_toque_auto");}
       // ⚠️ O MARCO DE CADA ETAPA, pelo NOME da lição e não pelo número: o funil 1.29 mostrou 1.045
       // `tutor_start` contra 522 `tutor_done`, e sem isto não há como saber EM QUAL etapa metade dos
       // jogadores desiste. `_auto` separa quem fez de quem foi carregado pelo teto da ajuda.
@@ -797,7 +802,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // um `{deadAt,armAt}` VENCIDO. Ele chegava à tela de morte pelo store com throttle antes do par novo
       // e disparava o respawn no primeiro frame: a tela não aparecia e o jogador reentrava no ato. Ver
       // `ui/deadClock.js`, que fecha o mesmo buraco do outro lado com o piso.
-      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;specSlot=-1;selfTick=0;espectador=!!spec;tutor=null;tutorOk=null;souTutorial=!!tutorial;portaoTutorial(souTutorial);   // o funil do portal não pode contar o tutorial como partida (portal/marcos.js)
+      game.leave(true);joined=true;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;specSlot=-1;selfTick=0;espectador=!!spec;tutor=null;tutorOk=null;souTutorial=!!tutorial;tutorRot=null;tocouEstrela=false;portaoTutorial(souTutorial);   // o funil do portal não pode contar o tutorial como partida (portal/marcos.js)
       const user=(appStore.get().session||{}).user||{};
       joinOpts={token,fallbackNick:fallbackNick||user.nick||"Viajante",room:room||null,skinId:skinId!=null?skinId:(user.equippedSkin|0),
         mode:mode|0,teamSize:ts||1,party:party||null,spec:!!spec};
@@ -819,7 +824,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       const isLocal=useLocal||tutorial||(!PORTAL&&qflag("local"))||isBench()||(api.server===false&&!PORTAL);
       if(isLocal){const rs=+(Q.get("round")||0);   // ?round=<segundos> encurta a rodada local (dev)
         local=createLocalServer(isBench()?benchOptions()
-          :tutorial?{...OPCOES_TUTORIAL,roteiro:criaRoteiro()}
+          :tutorial?{...OPCOES_TUTORIAL,roteiro:(tutorRot=criaRoteiro())}
           :{lag:+(Q.get("lag")||0),seed:+(Q.get("seed")||7),...(rs>0?{roundTicks:Math.round(rs*TICK_HZ)}:{})});connectWith(()=>local.connect());return;}
       staleTries=0;conectaAoServidor();},
     // sair é DELIBERADO: avisa o servidor antes de fechar. Sem o `quit`, o `close` do socket é
@@ -831,7 +836,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
       // própria entrada marcaria a sessão como "já viveu uma vida" — a missão nunca apareceria para
       // ninguém, em silêncio.
       if(joined&&!souTutorial)fimDaVida();
-      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;espectador=false;tutor=null;tutorOk=null;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
+      const was=joined;joined=false;dead=false;morte=morteZero();brMudo=false;dividiu=false;dicaEst=DICA0;comidas=0;comeuAlguem=false;missaoEst=missaoZero();souNovato=true;espectador=false;tutor=null;tutorOk=null;tutorRot=null;specSlot=-1;spec=null;audio.stop();mic.release();round=null;roundOver=false;roundClock=null;zone=null;cage=null;cageBeep=-1;mudos.clear();chatLog=[];feedLog=[];phase="live";modeId=MODE.FREE;myTeam=-1;pendingEat.clear();setRoundHour(null);input.reset();input.setHold(false);buffer.clear();predictor.reset();view.reset();zoomF=1;souDono=false;salaPrivada=false;painel=null;mapOn="";minimap.setView("",-1);minimap.show(false);comboN=0;comboT=0;zoneWarnIdx=0;
       if(was&&!silent)hudStore.set({...initialHud()});},
     setPrefs(p){curPrefs={...curPrefs,...(p||{})};aplicaJoystick();applyQuality();audio.setPrefs(curPrefs);aplicaRadar();keyboard.setKeys(curPrefs);wheel.setPrefs(curPrefs);if(renderer)renderer.R.prefs.fx=!curPrefs.reduceMotion;},
     setTheme(t){if(!t||t===curTheme)return;curTheme=t;if(renderer){perf.ini("tema");renderer.setTheme(t);perf.fim("tema");warmSkins();}minimap.setTheme(t);},   // o cache foi invalidado: reaquece as skins para a troca no meio da rodada não engasgar
@@ -1226,6 +1231,15 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
   // "coma o planeta pequeno" no rodapé. Medido em bancada antes de virar este comentário.
   // Quem decide a marca é `saiDoTutorial` (concluir marca, pular não); o motor só não decide por ele.
   let souTutorial=false;
+  // O ROTEIRO do tutorial em curso (game/net/tutorServer.js) e se o jogador já TOCOU a estrela. O roteiro
+  // mora na mesma página (é injetado no `LocalServer`), então o toque vai por chamada direta — e é com ele
+  // que a estrela estoura: a primeira interação do jogo, que no desktop é também o `gameplayStart`.
+  let tutorRot=null,tocouEstrela=false;
+  const tocaEstrela=()=>{if(!souTutorial||!tutorRot||tocouEstrela||(tutor&&!tutor.pre))return;
+    tocouEstrela=true;tutorRot.toque();marco("tutor_toque");};
+  // Em CAPTURA na janela, como o latch do SDK (portal/sessao.js): o direcional marca o evento mas não o para,
+  // e um botão do HUD que desse `stopPropagation` não pode esconder o toque de quem o quer ver.
+  if(typeof window!=="undefined"){window.addEventListener("pointerdown",tocaEstrela,true);window.addEventListener("keydown",tocaEstrela,true);}
   // ⚠️ ESTOU SOB A GRAÇA DO NASCIMENTO? Nasce `true` e só o servidor o apaga, pelo `{t:"grace"}` — ver
   // o handler daquela mensagem. É ele que trava o DIVIDIR na tela enquanto o servidor o recusa.
   let souNovato=true;
@@ -1330,6 +1344,18 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     if(dedo&&joy&&joy.enabled&&joy.state.tem&&joined&&!dead&&!roundOver&&!pausado&&!presoNaEspera(souTutorial,tutor)&&own.length){
       let big=own[0];for(const p of own)if(p.rr>big.rr)big=p;
       rumoFx.x=big.rx;rumoFx.y=big.ry;rumoFx.r=big.rr;rumoFx.dx=joy.state.dx;rumoFx.dy=joy.state.dy;rumoFx.k=joy.state.k;heading=rumoFx;}
+    // ── O GUIA NO MUNDO (game/guia.js decide; renderer/layers/Guia.js desenha) ──
+    // O gesto do tutorial desenhado ONDE ele tem de ser feito — a mão/o cursor na estrela, o rastro até os
+    // cacos, o arco até a presa —, no lugar da faixa de texto que a Poki recusou. Só no tutorial (a presa da
+    // PARTIDA entra pelo mesmo `guia`, mais abaixo).
+    let guia=null;
+    if(souTutorial&&tutor&&joined&&!dead&&!pausado&&own.length){
+      let big=own[0];for(const p of own)if(p.rr>big.rr)big=p;
+      const st=view.stars[0];let presa=null,dp=Infinity;
+      for(const p of view.pieces){if(p.isMe)continue;const d2=(p.rx-big.rx)**2+(p.ry-big.ry)**2;if(d2<dp){dp=d2;presa=p;}}
+      guia=guiaDoTutor({...tutor,tocou:tocouEstrela},{x:big.rx,y:big.ry,r:big.rr},
+        {estrela:st?{x:st.rx,y:st.ry,r:st.rr}:null,cacos:view.ejected,presa:presa?{x:presa.rx,y:presa.ry,r:presa.rr}:null});
+      if(guia)guia.dedo=!!dedo;}
     let camPieces=own;   // morto: a câmera acompanha quem o servidor mandou assistir (mesmo slot que a AOI segue), senão congela
     if(!own.length&&specSlot>=0){const sp=view.pieces.filter(p=>p.owner===specSlot);if(sp.length)camPieces=sp;}
     // O powerup de ZOOM afasta a câmera — e o servidor amplia a AOI pelo mesmo fator (net/snapshot.js),
@@ -1369,7 +1395,7 @@ export function createGame({container,hud,prefs={},theme=null,onDead,onRewards,o
     // Fora de partida some a GRADE e a borda do mundo: elas são a moldura da arena, e com o menu na frente
     // viram um traço solto no meio da tela. O céu (que é assado por resolução e não custa nada) fica.
     perf.ini("render");
-    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,heading,zone:zoneDraw,cage:cageDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
+    renderer.render({view,cam,now,dt,t:now,rt:interp.renderTick,rect:cam.rect(.05),aim,threat,heading,guia,reduz:!!curPrefs.reduceMotion,zone:zoneDraw,cage:cageDraw,glow:!econ&&!curPrefs.reduceMotion,parallax:!curPrefs.reduceMotion,wobble:!curPrefs.reduceMotion,showGrid:joined&&curPrefs.showGrid!==false,idle:!joined&&!conn,
       showNames:curPrefs.showNames!==false,showTrails:!curPrefs.reduceMotion&&!econ});
     perf.fim("render");
     const t2=performance.now();fstats.push(t1-t0,t2-t1);econCheck(now,dt*1000);   // dt real entre frames, não o custo de CPU

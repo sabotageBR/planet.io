@@ -64,11 +64,6 @@ export default {
     splitMouse: "Aperte {k} para se dividir e dar o salto!",
     splitDedo: "Toque em DIVIDIR para dar o salto!",
     splitAjuda: "Ele parou! Divida agora.",
-    // as três telas de "passou de etapa"
-    feito: "ETAPA {n} COMPLETA!",
-    feito1: "Você sabe se mover.",
-    feito2: "Você sabe atirar.",
-    feito3: "Você sabe alcançar.",
     // os prompts de botão (o bloco grande)
     btnMouseMover: "mover o mouse", btnMouseClicar: "clique esquerdo",
     btnDedoTocar: "toque na tela", btnDedoMissil: "MÍSSIL", btnDedoDividir: "DIVIDIR",
@@ -77,10 +72,6 @@ export default {
     fimSub: "Você já sabe o básico.",
     fimPromessa: "Jogue {n} partidas e o {s} é seu",
     fimIndo: "entrando…",
-    // ── O MODELO `cena` (ui/TutorCena.jsx) — `verbo*` é a PALAVRA GIGANTE de cada etapa (uma palavra só: é
-    // o que sobra legível a dois metros de um celular) e `cenaSuaVez` é o chip ao lado dela.
-    verbo1: "MOVA", verbo2: "ATIRE", verbo3: "DIVIDA",
-    cenaSuaVez: "SUA VEZ!",
   },
   brInviteTitle: "🚀 Battle Royale começando!", brInviteBody: "Uma nova partida está se formando. Quer entrar?",
   brInviteYes: "Entrar", brInviteNo: "Agora não", brInviteMute: "Silenciar", brInviteMuteTip: "Não avisar mais nesta sala (para desligar de vez: Opções → Interface)",
