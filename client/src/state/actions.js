@@ -289,10 +289,12 @@ async function bootConta({ sonda = true } = {}) {
  * @returns {Promise<boolean>} true = a estreia assumiu o boot
  */
 let contaBoot = null;   // a conta que a estreia NÃO esperou — `garanteConta` a espera antes da primeira sala
+let sondouAgora = false;   // a estreia já sondou o `/api/config` NESTE boot (o boot normal não repete a ida)
 async function estreiaRapida() {
+  sondouAgora = false;
   const forcado = Q.get("tutorial") || (import.meta.env.DEV && Q.get("tutor") ? "1" : null);
   if (!estreiaSemConta({ temToken: !!api.token, marcado: tutorVisto(), link: !!(Q.get("party") || Q.get("sala")), forcado })) return false;
-  await api.sonda();
+  await api.sonda(); sondouAgora = true;
   if (api.server !== true) return false;
   if (forcado !== "1" && !tutorialEm(api.cfg ? api.cfg.tutorial : null)) return false;
   // a mesma regra da URL do boot normal: em DEV, com `?tutor=`, ela fica (F5 não perde o modelo escolhido)
@@ -323,7 +325,10 @@ async function garanteConta() {
 }
 export async function boot() {
   if (await estreiaRapida()) return;
-  await bootConta();
+  // ⚠️ `sonda` só quando a estreia NÃO sondou neste boot: com a sonda feita, repeti-la seria uma segunda ida ao
+  // `/api/config` no caminho de todo mundo. E nunca pela leitura de `api.server`: no "tentar de novo" ele vem
+  // `false` da tentativa anterior, e sem sondar de novo o jogo não veria o servidor que voltou.
+  await bootConta({ sonda: !sondouAgora });
   // ⚠️ No pacote de portal, servidor fora NÃO pode virar um toast de 3 s e uma partida contra bots: ali
   // não existe "modo local" que faça sentido (o jogador clicou num .io para jogar com gente), e o
   // silêncio faz o jogo PARECER que funcionou. Vira uma tela que fica.
